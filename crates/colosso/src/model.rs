@@ -282,7 +282,13 @@ impl Workspace {
     }
 
     pub fn set_error(&mut self, project: usize, error: impl Into<SharedString>) {
-        self.projects[project].error = Some(error.into());
+        let project = &mut self.projects[project];
+        let error = error.into();
+        // Said once, rather than again each time the window comes back.
+        if project.error.as_ref() != Some(&error) {
+            log::warn!("couldn't read {}: {error}", project.path.display());
+        }
+        project.error = Some(error);
     }
 
     /// Selects the checkout at `path` in `project`, if git reported it.

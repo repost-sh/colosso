@@ -162,6 +162,13 @@ impl Render for Surface {
 }
 
 /// Tells the user something went wrong, over `parent`.
+/// Shows `message` in a dialog's footer as why `what` couldn't be done, and notes it in the log.
+pub fn fail(error: &mut Option<SharedString>, what: &str, message: impl Into<SharedString>) {
+    let message = message.into();
+    log::warn!("couldn't {what}: {message}");
+    *error = Some(message);
+}
+
 pub fn alert(
     title: impl Into<SharedString>,
     message: impl Into<SharedString>,
@@ -169,6 +176,7 @@ pub fn alert(
     cx: &mut App,
 ) {
     let (title, message) = (title.into(), message.into());
+    log::warn!("{title}: {message}");
     open(380., 170., parent, cx, |_, _| Alert { title, message });
 }
 

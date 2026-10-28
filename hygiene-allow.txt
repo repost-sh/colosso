@@ -11,6 +11,3 @@ crates/colosso/src/picker.rs  # 1057 lines
 crates/colosso/src/shell.rs  # 870 lines
 # Listing changes, diffing files, and staging, unstaging and discarding them.
 crates/git/src/changes.rs  # 725 lines
-# Reading changes in the background, and the tests of what's read again.
-crates/colosso/src/changes/state.rs  # 612 lines
-crates/colosso/src/new_worktree.rs  # 522 lines

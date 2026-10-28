@@ -5,6 +5,10 @@
 set -eu
 cd "$(dirname "$0")/.."
 
+# The checkout's own cargo home, as its other builds use. Builds share one build directory,
+# which rebuilds every crate read from a different place than it was built from last.
+export CARGO_HOME="${CARGO_HOME:-$PWD/.cargo-home}"
+
 # dx must match the dioxus devtools version GPUI's hot-reload feature links against.
 DX_VERSION=0.7.10
 DX_SHA256=342c92bc33dca60dadd725ed5e249923f049ae2e1e50b7477f4968d56695b425

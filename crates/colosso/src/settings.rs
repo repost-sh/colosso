@@ -248,19 +248,10 @@ fn load(path: &Path) -> Settings {
         // Before anything was saved.
         Err(_) if !path.exists() => Settings::default(),
         Err(error) => {
-            warn(&format!("ignoring unreadable {}: {error}", path.display()));
+            log::warn!("ignoring unreadable {}: {error}", path.display());
             Settings::default()
         }
     }
-}
-
-/// Says what went wrong with the settings file, where a dev build shows it.
-#[expect(
-    clippy::print_stderr,
-    reason = "the app has no logger yet, and the terminal is where a dev build is read"
-)]
-fn warn(message: &str) {
-    eprintln!("colosso: {message}");
 }
 
 /// The settings file's path and the JSON to write there.
@@ -270,7 +261,7 @@ fn encode(cx: &mut App) -> Option<(PathBuf, Vec<u8>)> {
     match serde_json::to_vec_pretty(&store.settings) {
         Ok(json) => Some((path, json)),
         Err(error) => {
-            warn(&format!("could not encode settings: {error}"));
+            log::error!("couldn't encode the settings: {error}");
             None
         }
     }
@@ -285,7 +276,7 @@ fn write(path: &Path, json: &[u8]) {
         .and_then(|()| std::fs::write(&temporary, json))
         .and_then(|()| std::fs::rename(&temporary, path));
     if let Err(error) = written {
-        warn(&format!("could not save {}: {error}", path.display()));
+        log::error!("couldn't save {}: {error}", path.display());
     }
 }
 

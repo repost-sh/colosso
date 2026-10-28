@@ -3,6 +3,7 @@
 mod discard;
 mod highlight;
 mod line;
+mod reread;
 mod rows;
 mod state;
 mod tree;

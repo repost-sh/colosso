@@ -125,7 +125,7 @@ impl DiscardDialog {
                 Ok(()) => modal::dismiss(window, cx),
                 Err(error) => {
                     this.discarding = false;
-                    this.error = Some(error.message.into());
+                    modal::fail(&mut this.error, "discard the changes", error.message);
                     cx.notify();
                 }
             })
