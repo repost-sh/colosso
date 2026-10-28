@@ -7,6 +7,13 @@ publish.workspace = true
 
 [dependencies]
 colosso-git = { path = "../git" }
+# The changes view's file watcher, the version GPUI already pulls in, and its channel.
+notify = "8"
+futures = "0.3"
+# Syntax highlighting for diffs: syntect's parser with bat's syntaxes, which add TypeScript,
+# TOML, Svelte and more. Pure-Rust regexes, so nothing to link.
+syntect = { version = "5.3", default-features = false, features = ["parsing", "dump-load", "regex-fancy"] }
+two-face = { version = "0.5", default-features = false, features = ["syntect-fancy"] }
 gpui-kit.workspace = true
 # Only for the frames of bitmaps painted at runtime; the version GPUI already pulls in.
 image = { version = "0.25", default-features = false }
@@ -16,6 +23,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Only named to turn on GPUI's hot-reload feature; it must match the version gpui-kit pins.
 gpui-pre = { version = "=0.3.10", default-features = false, optional = true }
+
+[dev-dependencies]
+# Headless windows for measuring and testing views.
+gpui-kit = { workspace = true, features = ["test-support"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # Haptic ticks on the theme picker's detents; the version GPUI already pulls in.

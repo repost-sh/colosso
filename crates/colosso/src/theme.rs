@@ -18,6 +18,19 @@ pub const CARD_RADIUS: f32 = 10.;
 pub const SIDEBAR_WIDTH: f32 = 260.;
 pub const SIDEBAR_MIN_WIDTH: f32 = 200.;
 pub const SIDEBAR_MAX_WIDTH: f32 = 480.;
+/// The changes panel's width beside the chat, unless widened to the whole card.
+pub const CHANGES_WIDTH: f32 = 960.;
+/// Room for the narrowest file list beside the narrowest diffs.
+pub const CHANGES_MIN_WIDTH: f32 = CHANGES_FILES_MIN_WIDTH + DIFFS_MIN_WIDTH;
+pub const CHANGES_MAX_WIDTH: f32 = 1400.;
+/// The changes panel's file list, beside the diffs.
+pub const CHANGES_FILES_WIDTH: f32 = 320.;
+pub const CHANGES_FILES_MIN_WIDTH: f32 = 180.;
+pub const CHANGES_FILES_MAX_WIDTH: f32 = 640.;
+/// What the file list leaves of the changes panel for the diffs, at its widest.
+pub const DIFFS_MIN_WIDTH: f32 = 360.;
+/// What the changes panel leaves of the card for the chat beside it, at its widest.
+pub const CHAT_MIN_WIDTH: f32 = 320.;
 pub const TAB_STRIP_HEIGHT: f32 = 38.;
 pub const ROW_HEIGHT: f32 = 30.;
 /// How wide a settings page's column grows before it centers in the card.
@@ -45,6 +58,30 @@ pub struct Palette {
     pub accent: Hsla,
     /// Errors, and what can't be undone.
     pub danger: Hsla,
+    /// Lines and files a change added, and the counts of them.
+    pub added: Hsla,
+    /// Lines and files a change removed.
+    pub removed: Hsla,
+    /// Files changed in place.
+    pub modified: Hsla,
+    /// The colours of code by kind of token.
+    pub code: Code,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Code {
+    pub comment: Hsla,
+    pub keyword: Hsla,
+    pub string: Hsla,
+    pub number: Hsla,
+    pub function: Hsla,
+    pub kind: Hsla,
+    pub tag: Hsla,
+    pub attribute: Hsla,
+}
+
+const fn hsl(h: f32, s: f32, l: f32) -> Hsla {
+    Hsla { h, s, l, a: 1. }
 }
 
 pub const fn gray(lightness: f32, alpha: f32) -> Hsla {
@@ -56,18 +93,29 @@ pub const fn gray(lightness: f32, alpha: f32) -> Hsla {
     }
 }
 
-const ACCENT: Hsla = Hsla {
-    h: 0.59,
-    s: 0.9,
-    l: 0.56,
-    a: 1.,
+const ACCENT: Hsla = hsl(0.59, 0.9, 0.56);
+const DANGER: Hsla = hsl(0., 0.75, 0.6);
+
+const DARK_CODE: Code = Code {
+    comment: gray(1., 0.42),
+    keyword: hsl(0.78, 0.6, 0.74),
+    string: hsl(0.27, 0.42, 0.66),
+    number: hsl(0.07, 0.7, 0.67),
+    function: hsl(0.58, 0.75, 0.72),
+    kind: hsl(0.12, 0.65, 0.68),
+    tag: hsl(0.99, 0.62, 0.68),
+    attribute: hsl(0.08, 0.6, 0.7),
 };
 
-const DANGER: Hsla = Hsla {
-    h: 0.,
-    s: 0.75,
-    l: 0.6,
-    a: 1.,
+const LIGHT_CODE: Code = Code {
+    comment: gray(0., 0.45),
+    keyword: hsl(0.78, 0.55, 0.45),
+    string: hsl(0.33, 0.6, 0.3),
+    number: hsl(0.07, 0.75, 0.43),
+    function: hsl(0.6, 0.7, 0.42),
+    kind: hsl(0.1, 0.8, 0.33),
+    tag: hsl(0.98, 0.6, 0.45),
+    attribute: hsl(0.07, 0.7, 0.4),
 };
 
 const DARK: Palette = Palette {
@@ -84,6 +132,10 @@ const DARK: Palette = Palette {
     menu: gray(1., 0.06),
     accent: ACCENT,
     danger: DANGER,
+    added: hsl(0.38, 0.55, 0.58),
+    removed: hsl(0.0, 0.7, 0.64),
+    modified: hsl(0.11, 0.75, 0.6),
+    code: DARK_CODE,
 };
 
 const LIGHT: Palette = Palette {
@@ -100,6 +152,10 @@ const LIGHT: Palette = Palette {
     menu: gray(1., 0.35),
     accent: ACCENT,
     danger: DANGER,
+    added: hsl(0.38, 0.6, 0.36),
+    removed: hsl(0.0, 0.65, 0.48),
+    modified: hsl(0.1, 0.8, 0.4),
+    code: LIGHT_CODE,
 };
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

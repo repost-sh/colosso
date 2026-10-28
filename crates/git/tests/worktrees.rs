@@ -1,11 +1,13 @@
 //! The worktree lifecycle against real repositories: a bare "origin" and a clone of it, made
 //! fresh for each test in the checkout's `target/test-repos`.
 
+mod common;
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use colosso_git::{Head, NewWorktree, Ref, Repo, Start};
+use common::git;
 
 struct Fixture {
     root: PathBuf,
@@ -15,19 +17,7 @@ struct Fixture {
 impl Fixture {
     /// An origin with one commit on `main` and a branch `shared`, cloned into `app`.
     fn new() -> Self {
-        static NEXT: AtomicUsize = AtomicUsize::new(0);
-        // Not CARGO_TARGET_TMPDIR: a shared build dir can put that outside the checkout.
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../target/test-repos")
-            .join(format!(
-                "{}-{}",
-                std::process::id(),
-                NEXT.fetch_add(1, Ordering::Relaxed)
-            ));
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(&root).unwrap();
-        // Spelled the way git reports paths, without the `..` above.
-        let root = std::fs::canonicalize(&root).unwrap();
+        let root = common::scratch("worktrees");
         git(&root, &["init", "--bare", "-b", "main", "origin.git"]);
         git(&root, &["clone", "origin.git", "seed"]);
         let seed = root.join("seed");
@@ -63,28 +53,6 @@ impl Drop for Fixture {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.root);
     }
-}
-
-/// Runs git for the fixture's own setup, without the user's signing or hooks getting in.
-fn git(dir: &Path, args: &[&str]) -> String {
-    let output = Command::new("git")
-        .args(["-c", "user.name=Test", "-c", "user.email=test@example.com"])
-        .args([
-            "-c",
-            "commit.gpgsign=false",
-            "-c",
-            "core.hooksPath=/dev/null",
-        ])
-        .args(args)
-        .current_dir(dir)
-        .output()
-        .unwrap();
-    assert!(
-        output.status.success(),
-        "git {args:?}: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    String::from_utf8(output.stdout).unwrap()
 }
 
 fn commit(dir: &Path, file: &str, text: &str) {

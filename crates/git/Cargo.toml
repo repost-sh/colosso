@@ -4,3 +4,10 @@ version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
+
+[dependencies]
+# Status and diffs read in-process: no git process per call, files diffed in parallel.
+# Creating and removing worktrees stays on the git CLI.
+gix = { version = "0.90", default-features = false, features = ["sha1", "status", "max-performance"] }
+# Discarding an untracked file moves it to the trash, so it can be put back.
+trash = "5.2"

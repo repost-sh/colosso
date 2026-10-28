@@ -27,6 +27,9 @@ const TOP: f32 = 72.;
 pub const PADDING: f32 = 20.;
 /// The height of a dialog's [`footer`].
 pub const FOOTER: f32 = 32.;
+/// Every line in a dialog is one of these high, so its height is known before it opens.
+pub const LINE: f32 = 20.;
+pub const SMALL_LINE: f32 = 18.;
 
 /// The dialog on screen, if any.
 #[derive(Default)]
@@ -220,6 +223,16 @@ pub fn footer(error: Option<SharedString>, p: Palette) -> gpui_kit::Div {
 }
 
 /// The button that closes a dialog without doing anything.
+/// A line of small text, cut short to fit.
+pub fn small_line() -> gpui_kit::Div {
+    div()
+        .h(px(SMALL_LINE))
+        .flex()
+        .items_center()
+        .text_xs()
+        .truncate()
+}
+
 pub fn cancel(id: &'static str) -> Button {
     Button::new(id, "Cancel", Tone::Plain).on_click(|_, window, cx| dismiss(window, cx))
 }

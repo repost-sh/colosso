@@ -79,6 +79,8 @@ pub struct Settings {
     pub dark_theme: GradientTheme,
     pub layout: Layout,
     pub sidebar_width: f32,
+    pub changes_width: f32,
+    pub changes_files_width: f32,
     pub sidebar_open_on_launch: bool,
     /// The main checkouts of the projects in the sidebar, in order.
     pub projects: Vec<PathBuf>,
@@ -123,6 +125,18 @@ impl Settings {
         self.sidebar_width
             .clamp(theme::SIDEBAR_MIN_WIDTH, theme::SIDEBAR_MAX_WIDTH)
     }
+
+    /// The changes panel's file list's width, kept within its limits.
+    pub fn changes_files_width(&self) -> f32 {
+        self.changes_files_width
+            .clamp(theme::CHANGES_FILES_MIN_WIDTH, theme::CHANGES_FILES_MAX_WIDTH)
+    }
+
+    /// The changes panel's width, kept within its limits even if the file says otherwise.
+    pub fn changes_width(&self) -> f32 {
+        self.changes_width
+            .clamp(theme::CHANGES_MIN_WIDTH, theme::CHANGES_MAX_WIDTH)
+    }
 }
 
 impl Default for Settings {
@@ -133,6 +147,8 @@ impl Default for Settings {
             dark_theme: GradientTheme::default(),
             layout: Layout::default(),
             sidebar_width: theme::SIDEBAR_WIDTH,
+            changes_width: theme::CHANGES_WIDTH,
+            changes_files_width: theme::CHANGES_FILES_WIDTH,
             sidebar_open_on_launch: true,
             projects: Vec::new(),
             worktrees_dir: None,
@@ -270,6 +286,7 @@ mod tests {
             appearance: ThemePreference::Dark,
             layout: Layout::Arc,
             sidebar_width: 320.,
+            changes_width: 700.,
             projects: vec!["/src/app".into()],
             worktrees_dir: Some("/work".into()),
             branch_prefix: BranchPrefix::Custom("me".into()),
@@ -287,6 +304,7 @@ mod tests {
         let settings: Settings = serde_json::from_str(r#"{ "layout": "Arc" }"#).unwrap();
         assert_eq!(settings.layout, Layout::Arc);
         assert_eq!(settings.sidebar_width, theme::SIDEBAR_WIDTH);
+        assert_eq!(settings.changes_width, theme::CHANGES_WIDTH);
         assert_eq!(settings.dark_theme, GradientTheme::default());
         assert_eq!(settings.branch_prefix, BranchPrefix::GitHubUser);
     }

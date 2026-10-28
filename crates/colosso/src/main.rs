@@ -1,5 +1,6 @@
 mod arc;
 mod backdrop;
+mod changes;
 mod delete_worktree;
 mod gradient;
 mod menu;
@@ -32,13 +33,18 @@ fn main() {
             settings::init(cx);
             theme::init(cx);
             shell::init(cx);
+            changes::init(cx);
             navigation::bind_keys(cx);
+            // Most of the screen, so the chat, the sidebar and the changes fit side by side.
+            let screen = cx
+                .primary_display()
+                .map_or(size(px(1440.), px(900.)), |display| display.visible_bounds().size);
+            let window = size(
+                (screen.width * 0.9).min(px(1920.)),
+                (screen.height * 0.9).min(px(1200.)),
+            );
             let options = WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
-                    None,
-                    size(px(1180.), px(800.)),
-                    cx,
-                ))),
+                window_bounds: Some(WindowBounds::Windowed(Bounds::centered(None, window, cx))),
                 window_min_size: Some(size(px(820.), px(520.))),
                 window_background: WindowBackgroundAppearance::Blurred,
                 // The rails are custom chrome, so the shell moves the window itself.
