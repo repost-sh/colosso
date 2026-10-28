@@ -5,16 +5,19 @@ mod pane;
 mod shell;
 mod theme;
 
+use gpui_kit::base::Root;
 use gpui_kit::{
-    AppContext as _, Bounds, TitlebarOptions, WindowBackgroundAppearance, WindowBounds,
-    WindowOptions, point, px, size,
+    AppContext as _, Bounds, Styled as _, TitlebarOptions, WindowBackgroundAppearance,
+    WindowBounds, WindowOptions, point, px, size, transparent_black,
 };
 
 fn main() {
     gpui_kit::application()
-        .with_assets(gpui_kit::assets::Assets)
+        // The full Lucide set: the default bundle leaves out icons we use, which then draw nothing.
+        .with_assets(gpui_kit::assets::AllAssets)
         .run(|cx| {
             gpui_kit::init(cx);
+            theme::init(cx);
             shell::bind_keys(cx);
             let options = WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
@@ -36,8 +39,11 @@ fn main() {
                 }),
                 ..Default::default()
             };
-            gpui_kit::open_window(options, cx, |window, cx| {
-                cx.new(|cx| shell::Shell::new(window, cx))
+            cx.open_window(options, |window, cx| {
+                theme::follow_window_appearance(window);
+                let shell = cx.new(|cx| shell::Shell::new(window, cx));
+                // gpui-kit's root paints the theme background by default, covering the blur.
+                cx.new(|cx| Root::new(shell, window, cx).bg(transparent_black()))
             })
             .expect("failed to open window");
         });

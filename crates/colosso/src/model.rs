@@ -4,12 +4,6 @@ use gpui_kit::SharedString;
 use gpui_kit::assets::IconName;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SidebarMode {
-    Orca,
-    Arc,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PaneKind {
     Chat,
     Terminal,
@@ -94,7 +88,6 @@ impl Project {
 pub struct Workspace {
     pub projects: Vec<Project>,
     pub active_project: usize,
-    pub mode: SidebarMode,
 }
 
 impl Workspace {
@@ -238,7 +231,6 @@ impl Workspace {
                 },
             ],
             active_project: 0,
-            mode: SidebarMode::Orca,
         }
     }
 }

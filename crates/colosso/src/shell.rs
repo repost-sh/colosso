@@ -2,15 +2,17 @@
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::{Icon, Sizable as _};
+use gpui_kit::component::native_menu::NativeMenu;
+use gpui_kit::component::Icon;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    App, Context, Div, ElementId, FocusHandle, InteractiveElement as _, IntoElement, KeyBinding,
-    MouseButton, MouseDownEvent, ParentElement as _, Render, ScrollDelta, ScrollEvent, Stateful,
-    Styled as _, TouchPhase, Window, actions, div, px,
+    Action, App, Context, Div, ElementId, FocusHandle, InteractiveElement as _, IntoElement,
+    KeyBinding, MouseButton, MouseDownEvent, ParentElement as _, Render, SharedString, Stateful,
+    Styled as _, Window, actions, div, px,
 };
 
-use crate::model::{SidebarMode, Workspace};
+use crate::model::Workspace;
+use crate::theme::{CycleTheme, Palette, ThemePreference};
 use crate::{arc, orca, pane, theme};
 
 actions!(
@@ -34,11 +36,15 @@ pub fn bind_keys(cx: &mut App) {
     ]);
 }
 
-/// Horizontal travel, in points, that switches the Arc sidebar to the next project.
-const SWIPE_THRESHOLD: f32 = 70.;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SidebarMode {
+    Orca,
+    Arc,
+}
 
 pub struct Shell {
     pub workspace: Workspace,
+    mode: SidebarMode,
     sidebar_open: bool,
     right_panel_open: bool,
     bottom_panel_open: bool,
@@ -53,6 +59,7 @@ impl Shell {
         window.focus(&focus, cx);
         Shell {
             workspace: Workspace::sample(),
+            mode: SidebarMode::Orca,
             sidebar_open: true,
             right_panel_open: false,
             bottom_panel_open: false,
@@ -72,7 +79,7 @@ impl Shell {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.workspace.mode = match self.workspace.mode {
+        self.mode = match self.mode {
             SidebarMode::Orca => SidebarMode::Arc,
             SidebarMode::Arc => SidebarMode::Orca,
         };
@@ -99,33 +106,7 @@ impl Shell {
         cx.notify();
     }
 
-    pub fn swipe(&mut self, event: &ScrollEvent, _: &mut Window, cx: &mut Context<Self>) {
-        let ScrollDelta::Pixels(delta) = event.delta else {
-            return;
-        };
-        let (dx, dy) = (delta.x.as_f32(), delta.y.as_f32());
-        self.swipe = match (event.touch_phase, self.swipe) {
-            (TouchPhase::Started, _) => Some(0.),
-            // A gesture that starts vertical is a scroll, not a swipe.
-            (TouchPhase::Moved, Some(0.)) if dy.abs() > dx.abs() => None,
-            (TouchPhase::Moved, Some(travel)) => {
-                Some((travel + dx).clamp(-theme::SIDEBAR_WIDTH, theme::SIDEBAR_WIDTH))
-            }
-            (TouchPhase::Ended, Some(travel)) => {
-                if travel <= -SWIPE_THRESHOLD {
-                    self.workspace.step_project(1);
-                } else if travel >= SWIPE_THRESHOLD {
-                    self.workspace.step_project(-1);
-                }
-                None
-            }
-            // Momentum events arrive after the fingers lift and carry no swipe.
-            _ => None,
-        };
-        cx.notify();
-    }
-
-    fn top_rail(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn top_rail(&self) -> impl IntoElement {
         div()
             .h(px(theme::TITLE_BAR_HEIGHT))
             .flex_shrink_0()
@@ -134,42 +115,33 @@ impl Shell {
             .gap_1()
             .pr(px(theme::GUTTER))
             .child(drag_area("traffic-lights").w(px(theme::TRAFFIC_LIGHTS_WIDTH)))
-            .child(
-                icon_button("toggle-sidebar", IconName::PanelLeft, "Toggle sidebar (⌘B)").on_click(
-                    cx.listener(|this, _, window, cx| {
-                        this.toggle_sidebar(&ToggleSidebar, window, cx)
-                    }),
-                ),
-            )
+            .child(action_button(
+                "toggle-sidebar",
+                IconName::PanelLeft,
+                "Toggle sidebar",
+                ToggleSidebar,
+            ))
             .child(icon_button("back", IconName::ArrowLeft, "Back"))
             .child(icon_button("forward", IconName::ArrowRight, "Forward"))
             .child(drag_area("title").flex_1())
-            .child(
-                icon_button(
-                    "toggle-bottom",
-                    IconName::PanelBottom,
-                    "Toggle bottom panel (⌘J)",
-                )
-                .on_click(cx.listener(|this, _, window, cx| {
-                    this.toggle_bottom_panel(&ToggleBottomPanel, window, cx)
-                })),
-            )
-            .child(
-                icon_button(
-                    "toggle-right",
-                    IconName::PanelRight,
-                    "Toggle right panel (⌥⌘B)",
-                )
-                .on_click(cx.listener(|this, _, window, cx| {
-                    this.toggle_right_panel(&ToggleRightPanel, window, cx)
-                })),
-            )
+            .child(action_button(
+                "toggle-bottom",
+                IconName::PanelBottom,
+                "Toggle bottom panel",
+                ToggleBottomPanel,
+            ))
+            .child(action_button(
+                "toggle-right",
+                IconName::PanelRight,
+                "Toggle right panel",
+                ToggleRightPanel,
+            ))
     }
 
-    fn icon_rail(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let other_mode = match self.workspace.mode {
-            SidebarMode::Orca => "Switch to Arc layout (⇧⌘M)",
-            SidebarMode::Arc => "Switch to Orca layout (⇧⌘M)",
+    fn icon_rail(&self, cx: &App) -> impl IntoElement {
+        let other_mode = match self.mode {
+            SidebarMode::Orca => "Switch to Arc layout",
+            SidebarMode::Arc => "Switch to Orca layout",
         };
         div()
             .w(px(theme::ICON_RAIL_WIDTH))
@@ -186,17 +158,17 @@ impl Shell {
                 "Changes",
             ))
             .child(div().flex_1())
-            .child(
-                icon_button("rail-mode", IconName::PanelsTopLeft, other_mode).on_click(
-                    cx.listener(|this, _, window, cx| {
-                        this.toggle_sidebar_mode(&ToggleSidebarMode, window, cx)
-                    }),
-                ),
-            )
+            .child(action_button(
+                "rail-mode",
+                IconName::PanelsTopLeft,
+                other_mode,
+                ToggleSidebarMode,
+            ))
+            .child(theme_toggle(theme::preference(cx)))
             .child(icon_button("rail-settings", IconName::Settings, "Settings"))
     }
 
-    fn content(&self) -> impl IntoElement {
+    fn content(&self, p: Palette) -> impl IntoElement {
         let workspace = &self.workspace;
         let branch = workspace.branch();
         let context = format!("{} / {}", workspace.project().name, branch.name);
@@ -204,14 +176,14 @@ impl Shell {
             .flex_1()
             .min_h_0()
             .child(match branch.tabs.get(branch.active_tab) {
-                Some(tab) => pane::tab(tab, context.into()),
+                Some(tab) => pane::tab(tab, context.into(), p),
                 None => div()
                     .size_full()
                     .flex()
                     .items_center()
                     .justify_center()
                     .text_sm()
-                    .text_color(theme::muted())
+                    .text_color(p.muted)
                     .child("No tabs on this branch. ⌘T starts a chat.")
                     .into_any_element(),
             })
@@ -220,15 +192,16 @@ impl Shell {
 
 impl Render for Shell {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let orca = self.workspace.mode == SidebarMode::Orca;
+        let p = theme::palette(cx);
+        let orca = self.mode == SidebarMode::Orca;
         let main = div()
             .flex_1()
             .min_w_0()
             .flex()
             .flex_col()
             .when(orca, |main| main.child(orca::tab_strip(self, cx)))
-            .child(self.content())
-            .when(self.bottom_panel_open, |main| main.child(bottom_panel()));
+            .child(self.content(p))
+            .when(self.bottom_panel_open, |main| main.child(bottom_panel(p)));
         let card = div()
             .flex_1()
             .min_w_0()
@@ -236,15 +209,15 @@ impl Render for Shell {
             .mb(px(theme::GUTTER))
             .rounded(px(theme::CARD_RADIUS))
             .border_1()
-            .border_color(theme::hairline())
-            .bg(theme::card())
+            .border_color(p.hairline)
+            .bg(p.card)
             .overflow_hidden()
             .flex()
             .when(orca && self.sidebar_open, |card| {
                 card.child(orca::sidebar(self, cx))
             })
             .child(main)
-            .when(self.right_panel_open, |card| card.child(right_panel()));
+            .when(self.right_panel_open, |card| card.child(right_panel(p)));
 
         div()
             .track_focus(&self.focus)
@@ -256,9 +229,9 @@ impl Render for Shell {
             .size_full()
             .flex()
             .flex_col()
-            .bg(theme::rail_tint())
-            .text_color(theme::text())
-            .child(self.top_rail(cx))
+            .bg(p.rail_tint)
+            .text_color(p.text)
+            .child(self.top_rail())
             .child(
                 div()
                     .flex_1()
@@ -271,6 +244,28 @@ impl Render for Shell {
                     .child(card),
             )
     }
+}
+
+/// Click cycles System, Light and Dark; right-click picks one from a native menu.
+fn theme_toggle(preference: ThemePreference) -> impl IntoElement {
+    div()
+        .on_mouse_down(
+            MouseButton::Right,
+            move |event: &MouseDownEvent, window, cx| {
+                ThemePreference::ALL
+                    .into_iter()
+                    .fold(NativeMenu::new(), |menu, option| {
+                        menu.menu_with_check(option.label(), option == preference, option.action())
+                    })
+                    .show(event.position, window, cx);
+            },
+        )
+        .child(action_button(
+            "rail-theme",
+            preference.icon(),
+            format!("Theme: {}", preference.label()),
+            CycleTheme,
+        ))
 }
 
 /// Empty rail space that moves the window, since the app owns titlebar dragging.
@@ -287,16 +282,30 @@ fn drag_area(id: &'static str) -> Stateful<Div> {
         })
 }
 
-pub fn icon_button(id: &'static str, icon: IconName, tooltip: &'static str) -> Button {
-    Button::new(id).ghost().small().icon(icon).tooltip(tooltip)
+pub fn icon_button(id: &'static str, icon: IconName, tooltip: impl Into<SharedString>) -> Button {
+    Button::new(id).ghost().icon(icon).tooltip(tooltip)
+}
+
+/// A button that dispatches `action`; its tooltip shows the action's keybinding.
+pub fn action_button(
+    id: &'static str,
+    icon: IconName,
+    tooltip: impl Into<SharedString>,
+    action: impl Action,
+) -> Button {
+    Button::new(id)
+        .ghost()
+        .icon(icon)
+        .tooltip_with_action(tooltip, &action, None)
+        .on_click(move |_, window, cx| window.dispatch_action(action.boxed_clone(), cx))
 }
 
 pub fn icon(name: IconName, size: f32) -> Icon {
     Icon::new(name).size(px(size))
 }
 
-/// A sidebar row: highlighted when selected, tinted on hover otherwise.
-pub fn row(id: impl Into<ElementId>, selected: bool) -> Stateful<Div> {
+/// A selectable row: highlighted when selected, tinted on hover otherwise.
+pub fn row(id: impl Into<ElementId>, selected: bool, p: Palette) -> Stateful<Div> {
     div()
         .id(id)
         .h(px(theme::ROW_HEIGHT))
@@ -308,20 +317,39 @@ pub fn row(id: impl Into<ElementId>, selected: bool) -> Stateful<Div> {
         .rounded(px(6.))
         .text_sm()
         .cursor_pointer()
-        .when(selected, |row| row.bg(theme::selected()))
-        .when(!selected, |row| row.hover(|style| style.bg(theme::hover())))
+        .when(selected, |row| row.bg(p.selected))
+        .when(!selected, |row| row.hover(|style| style.bg(p.hover)))
+}
+
+pub fn search_row(p: Palette) -> Div {
+    div()
+        .h(px(theme::ROW_HEIGHT))
+        .px_2()
+        .flex()
+        .items_center()
+        .gap_2()
+        .text_sm()
+        .text_color(p.muted)
+        .child(icon(IconName::Search, 14.))
+        .child("Search")
+}
+
+pub fn section_label(p: Palette) -> Div {
+    div()
+        .h(px(24.))
+        .px_2()
+        .flex()
+        .items_center()
+        .gap_2()
+        .text_xs()
+        .text_color(p.muted)
 }
 
 pub fn ellipsized(text: impl IntoElement) -> Div {
-    div()
-        .min_w_0()
-        .overflow_hidden()
-        .whitespace_nowrap()
-        .text_ellipsis()
-        .child(text)
+    div().min_w_0().truncate().child(text)
 }
 
-fn right_panel() -> impl IntoElement {
+fn right_panel(p: Palette) -> impl IntoElement {
     let files = [
         (0., "src/"),
         (12., "ledger.rs"),
@@ -335,20 +363,11 @@ fn right_panel() -> impl IntoElement {
         .h_full()
         .p_2()
         .border_l_1()
-        .border_color(theme::hairline())
+        .border_color(p.hairline)
         .flex()
         .flex_col()
         .gap_1()
-        .child(
-            div()
-                .px_2()
-                .h(px(28.))
-                .flex()
-                .items_center()
-                .text_xs()
-                .text_color(theme::muted())
-                .child("Files"),
-        )
+        .child(section_label(p).child("Files"))
         .children(files.iter().map(|(indent, file)| {
             div()
                 .px_2()
@@ -361,16 +380,16 @@ fn right_panel() -> impl IntoElement {
         }))
 }
 
-fn bottom_panel() -> impl IntoElement {
+fn bottom_panel(p: Palette) -> impl IntoElement {
     div()
         .h(px(200.))
         .flex_shrink_0()
         .border_t_1()
-        .border_color(theme::hairline())
+        .border_color(p.hairline)
         .p_3()
-        .font_family("Menlo")
+        .font_family(theme::MONO)
         .text_sm()
-        .text_color(theme::muted())
-        .bg(theme::sunken())
+        .text_color(p.muted)
+        .bg(p.sunken)
         .child("Terminal")
 }

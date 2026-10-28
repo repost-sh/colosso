@@ -10,14 +10,15 @@ publish = false
 [workspace.dependencies]
 gpui-kit = "0.8.1"
 
-# Hot rendering and layout crates stay optimized in debug builds so the dev app
-# runs at a usable frame rate; the list follows gpui-kit's own workspace.
+# The macOS renderer, platform layer and rasterizers stay optimized in debug builds
+# so the dev app's frame times resemble a release build.
 [profile.dev.package]
 gpui-pre = { opt-level = 3 }
-gpui-pre-platform = { opt-level = 3 }
+gpui-pre-apple = { opt-level = 3 }
+gpui-pre-macos = { opt-level = 3 }
 gpui-pre-sum-tree = { opt-level = 3 }
 resvg = { opt-level = 3 }
-rustybuzz = { opt-level = 3 }
 smol = { opt-level = 3 }
 taffy = { opt-level = 3 }
+tiny-skia = { opt-level = 3 }
 ttf-parser = { opt-level = 3 }
