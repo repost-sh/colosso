@@ -14,7 +14,8 @@ use gpui_kit::{
     Styled as _, Window, actions, div, ease_in_out, px,
 };
 
-use crate::model::Workspace;
+use crate::menu::{self, MenuItem};
+use crate::model::{PaneKind, Workspace};
 use crate::theme::{CycleTheme, Palette, ThemePreference};
 use crate::{arc, orca, pane, theme};
 
@@ -28,7 +29,10 @@ actions!(
         ToggleSidebarMode,
         ToggleRightPanel,
         ToggleBottomPanel,
-        NewChat
+        NewChat,
+        NewTerminal,
+        NewBrowserTab,
+        NewEditorTab
     ]
 );
 
@@ -59,7 +63,7 @@ pub struct Shell {
     bottom_panel_open: bool,
     /// Horizontal travel of a two-finger swipe in progress over the Arc sidebar.
     pub swipe: Option<f32>,
-    focus: FocusHandle,
+    pub focus: FocusHandle,
 }
 
 impl Shell {
@@ -128,8 +132,8 @@ impl Shell {
         cx.notify();
     }
 
-    fn new_chat(&mut self, _: &NewChat, _: &mut Window, cx: &mut Context<Self>) {
-        self.workspace.new_chat();
+    fn new_tab(&mut self, kind: PaneKind, cx: &mut Context<Self>) {
+        self.workspace.new_tab(kind);
         cx.notify();
     }
 
@@ -268,7 +272,16 @@ impl Render for Shell {
             .on_action(cx.listener(Self::toggle_sidebar_mode))
             .on_action(cx.listener(Self::toggle_right_panel))
             .on_action(cx.listener(Self::toggle_bottom_panel))
-            .on_action(cx.listener(Self::new_chat))
+            .on_action(cx.listener(|this, _: &NewChat, _, cx| this.new_tab(PaneKind::Chat, cx)))
+            .on_action(
+                cx.listener(|this, _: &NewTerminal, _, cx| this.new_tab(PaneKind::Terminal, cx)),
+            )
+            .on_action(
+                cx.listener(|this, _: &NewBrowserTab, _, cx| this.new_tab(PaneKind::Browser, cx)),
+            )
+            .on_action(
+                cx.listener(|this, _: &NewEditorTab, _, cx| this.new_tab(PaneKind::Editor, cx)),
+            )
             .on_drag_move(cx.listener(Self::resize_sidebar))
             .size_full()
             .flex()
@@ -353,6 +366,33 @@ fn theme_toggle(preference: ThemePreference) -> impl IntoElement {
         ))
 }
 
+fn new_tab_action(kind: PaneKind) -> Box<dyn Action> {
+    match kind {
+        PaneKind::Chat => Box::new(NewChat),
+        PaneKind::Terminal => Box::new(NewTerminal),
+        PaneKind::Browser => Box::new(NewBrowserTab),
+        PaneKind::Editor => Box::new(NewEditorTab),
+    }
+}
+
+/// Opens a menu under `trigger` offering a tab of each kind for the selected branch unit.
+pub fn new_tab_menu(
+    id: impl Into<ElementId>,
+    trigger: Button,
+    target: FocusHandle,
+) -> impl IntoElement {
+    menu::dropdown(id, trigger, target, || {
+        PaneKind::ALL
+            .into_iter()
+            .map(|kind| MenuItem {
+                icon: kind.icon(),
+                label: kind.new_tab_label().into(),
+                action: new_tab_action(kind),
+            })
+            .collect()
+    })
+}
+
 /// Empty rail space that moves the window, since the app owns titlebar dragging.
 fn drag_area(id: &'static str) -> Stateful<Div> {
     div()
@@ -367,7 +407,11 @@ fn drag_area(id: &'static str) -> Stateful<Div> {
         })
 }
 
-pub fn icon_button(id: &'static str, icon: IconName, tooltip: impl Into<SharedString>) -> Button {
+pub fn icon_button(
+    id: impl Into<ElementId>,
+    icon: IconName,
+    tooltip: impl Into<SharedString>,
+) -> Button {
     Button::new(id).ghost().icon(icon).tooltip(tooltip)
 }
 

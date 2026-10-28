@@ -5,13 +5,15 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Context, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, ScrollDelta,
-    ScrollEvent, StatefulInteractiveElement as _, Styled as _, TouchPhase, Window, div, px,
+    Context, FocusHandle, FontWeight, InteractiveElement as _, IntoElement, MouseButton,
+    ParentElement as _, ScrollDelta, ScrollEvent, StatefulInteractiveElement as _, Styled as _,
+    TouchPhase, Window, div, px,
 };
 
 use crate::model::{BranchKind, BranchUnit};
 use crate::shell::{
-    Shell, ellipsized, icon, icon_button, row, search_row, section_label, sidebar_resize_handle,
+    Shell, ellipsized, icon, icon_button, new_tab_menu, row, search_row, section_label,
+    sidebar_resize_handle,
 };
 use crate::theme::{self, Palette};
 
@@ -82,8 +84,27 @@ pub fn sidebar(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
                 .map(|(branch_index, branch)| {
                     let active_tab =
                         (branch_index == project.active_branch).then_some(branch.active_tab);
-                    branch_group(project_index, branch_index, branch, active_tab, p, cx)
+                    branch_group(
+                        &shell.focus,
+                        project_index,
+                        branch_index,
+                        branch,
+                        active_tab,
+                        p,
+                        cx,
+                    )
                 }),
+        )
+        .child(
+            row("arc-new-worktree", false, p)
+                .mt_2()
+                .text_color(p.muted)
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.workspace.new_worktree(project_index);
+                    cx.notify();
+                }))
+                .child(icon(IconName::GitBranchPlus, 13.))
+                .child("New worktree"),
         );
 
     let switcher = div()
@@ -135,6 +156,7 @@ pub fn sidebar(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
 
 /// A branch unit's header and its tabs; `active_tab` is set only on the selected branch.
 fn branch_group(
+    focus: &FocusHandle,
     project_index: usize,
     branch_index: usize,
     branch: &BranchUnit,
@@ -149,11 +171,28 @@ fn branch_group(
         .gap_px()
         .child(
             section_label(p)
+                .pr_0()
                 .child(icon(IconName::GitBranch, 12.))
                 .child(ellipsized(branch.name.clone()))
                 .when(branch.kind == BranchKind::Checkout, |header| {
                     header.child("checkout")
-                }),
+                })
+                .child(div().flex_1())
+                .child(new_tab_menu(
+                    ("arc-new-tab-menu", branch_index),
+                    icon_button(("arc-new-tab", branch_index), IconName::Plus, "New tab")
+                        .xsmall()
+                        // The menu opens its tab on the selected branch unit, so select
+                        // this one on the press that opens the menu.
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(move |this, _, _, cx| {
+                                this.workspace.select_branch(project_index, branch_index);
+                                cx.notify();
+                            }),
+                        ),
+                    focus.clone(),
+                )),
         )
         .children(branch.tabs.iter().enumerate().map(|(tab_index, tab)| {
             row(

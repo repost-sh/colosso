@@ -12,6 +12,32 @@ pub enum PaneKind {
 }
 
 impl PaneKind {
+    pub const ALL: [PaneKind; 4] = [
+        PaneKind::Chat,
+        PaneKind::Terminal,
+        PaneKind::Browser,
+        PaneKind::Editor,
+    ];
+
+    /// The menu entry that opens a tab of this kind.
+    pub fn new_tab_label(self) -> &'static str {
+        match self {
+            PaneKind::Chat => "New Chat",
+            PaneKind::Terminal => "New Terminal",
+            PaneKind::Browser => "New Browser Tab",
+            PaneKind::Editor => "New Editor Tab",
+        }
+    }
+
+    fn new_tab_title(self) -> &'static str {
+        match self {
+            PaneKind::Chat => "New chat",
+            PaneKind::Terminal => "zsh",
+            PaneKind::Browser => "New tab",
+            PaneKind::Editor => "Untitled",
+        }
+    }
+
     pub fn icon(self) -> IconName {
         match self {
             PaneKind::Chat => IconName::MessageSquare,
@@ -132,13 +158,35 @@ impl Workspace {
         }
     }
 
-    pub fn new_chat(&mut self) {
+    pub fn new_tab(&mut self, kind: PaneKind) {
         let unit = self.branch_mut();
         unit.tabs.push(Tab::Single(Pane {
-            kind: PaneKind::Chat,
-            title: "New chat".into(),
+            kind,
+            title: kind.new_tab_title().into(),
         }));
         unit.active_tab = unit.tabs.len() - 1;
+    }
+
+    /// Adds a worktree with a fresh chat to `project` and selects it. Placeholder until
+    /// worktrees come from git: it only picks a name no other branch unit uses.
+    pub fn new_worktree(&mut self, project: usize) {
+        let branches = &mut self.projects[project].branches;
+        let name = (1..)
+            .map(|n| match n {
+                1 => "new-worktree".to_string(),
+                n => format!("new-worktree-{n}"),
+            })
+            .find(|name| branches.iter().all(|branch| branch.name != name.as_str()))
+            .expect("a free worktree name");
+        branches.push(BranchUnit {
+            name: name.into(),
+            kind: BranchKind::Worktree,
+            tabs: Vec::new(),
+            active_tab: 0,
+        });
+        let branch = branches.len() - 1;
+        self.select_branch(project, branch);
+        self.new_tab(PaneKind::Chat);
     }
 
     pub fn sample() -> Self {
@@ -266,6 +314,16 @@ mod tests {
         let mut workspace = unit_with_tabs(3, 2);
         workspace.close_tab(0, 0, 2);
         assert_eq!(workspace.branch().active_tab, 1);
+    }
+
+    #[test]
+    fn new_worktrees_get_unique_names_and_are_selected() {
+        let mut workspace = Workspace::sample();
+        workspace.new_worktree(1);
+        workspace.new_worktree(1);
+        assert_eq!(workspace.active_project, 1);
+        assert_eq!(workspace.branch().name, "new-worktree-2");
+        assert_eq!(workspace.branch().tabs.len(), 1);
     }
 
     #[test]

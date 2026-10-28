@@ -10,7 +10,7 @@ use gpui_kit::{
 
 use crate::model::{BranchKind, BranchUnit};
 use crate::shell::{
-    NewChat, Shell, action_button, ellipsized, icon, row, search_row, section_label,
+    Shell, ellipsized, icon, icon_button, new_tab_menu, row, search_row, section_label,
     sidebar_resize_handle,
 };
 use crate::theme::{self, Palette};
@@ -44,14 +44,34 @@ pub fn sidebar(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
                         .gap_px()
                         .child(
                             div()
+                                .group("orca-project")
                                 .h(px(theme::ROW_HEIGHT))
-                                .px_2()
+                                .pl_2()
                                 .flex()
                                 .items_center()
                                 .gap_2()
                                 .text_sm()
                                 .child(icon(IconName::Folder, 14.).text_color(p.muted))
-                                .child(project.name.clone()),
+                                .child(ellipsized(project.name.clone()).flex_1())
+                                .child(
+                                    div()
+                                        .opacity(0.)
+                                        .group_hover("orca-project", |style| style.opacity(1.))
+                                        .child(
+                                            icon_button(
+                                                ("orca-new-worktree", project_index),
+                                                IconName::GitBranchPlus,
+                                                "New worktree",
+                                            )
+                                            .small()
+                                            .on_click(
+                                                cx.listener(move |this, _, _, cx| {
+                                                    this.workspace.new_worktree(project_index);
+                                                    cx.notify();
+                                                }),
+                                            ),
+                                        ),
+                                ),
                         )
                         .children(project.branches.iter().enumerate().map(
                             |(branch_index, branch)| {
@@ -140,5 +160,9 @@ pub fn tab_strip(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
                         .child(icon(IconName::X, 12.)),
                 )
         }))
-        .child(action_button("orca-new-tab", IconName::Plus, "New chat", NewChat).small())
+        .child(new_tab_menu(
+            "orca-new-tab-menu",
+            icon_button("orca-new-tab", IconName::Plus, "New tab").small(),
+            shell.focus.clone(),
+        ))
 }

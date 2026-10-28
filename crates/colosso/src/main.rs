@@ -1,4 +1,5 @@
 mod arc;
+mod menu;
 mod model;
 mod orca;
 mod pane;
