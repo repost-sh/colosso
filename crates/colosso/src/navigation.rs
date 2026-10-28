@@ -1,6 +1,7 @@
 //! Where the window is: the workspace or a settings page, with back and forward history
 //! like a browser's. The shell owns the history; views move through it with actions.
 
+use gpui_kit::base::History;
 use gpui_kit::{Action, App, KeyBinding, actions};
 
 use crate::settings_view::SettingsPage;
@@ -31,25 +32,24 @@ pub fn bind_keys(cx: &mut App) {
 }
 
 pub struct NavigationHistory {
-    back: Vec<Route>,
-    current: Route,
-    forward: Vec<Route>,
+    routes: History<Route>,
     /// The settings page Open Settings returns to.
     last_settings_page: SettingsPage,
 }
 
 impl NavigationHistory {
     pub fn new() -> Self {
+        let mut routes = History::new().max_entries(HISTORY_LIMIT);
+        routes.push(Route::Workspace);
         NavigationHistory {
-            back: Vec::new(),
-            current: Route::Workspace,
-            forward: Vec::new(),
+            routes,
             last_settings_page: SettingsPage::General,
         }
     }
 
     pub fn current(&self) -> Route {
-        self.current
+        // Never empty: it starts on the workspace and Back keeps the first route.
+        self.routes.current().copied().unwrap_or(Route::Workspace)
     }
 
     pub fn last_settings_page(&self) -> SettingsPage {
@@ -57,47 +57,38 @@ impl NavigationHistory {
     }
 
     pub fn can_go_back(&self) -> bool {
-        !self.back.is_empty()
+        self.routes.can_back()
     }
 
     pub fn can_go_forward(&self) -> bool {
-        !self.forward.is_empty()
+        self.routes.can_forward()
     }
 
     /// Goes to `route` and drops the forward history; returns whether the route changed.
     pub fn push(&mut self, route: Route) -> bool {
-        if route == self.current {
+        if route == self.current() {
             return false;
         }
-        self.back.push(self.current);
-        if self.back.len() > HISTORY_LIMIT {
-            self.back.remove(0);
-        }
-        self.forward.clear();
-        self.arrive(route);
+        self.routes.push(route);
+        self.arrived(route);
         true
     }
 
     pub fn go_back(&mut self) -> bool {
-        let Some(route) = self.back.pop() else {
-            return false;
-        };
-        self.forward.push(self.current);
-        self.arrive(route);
-        true
+        self.routes
+            .back()
+            .map(|route| self.arrived(route))
+            .is_some()
     }
 
     pub fn go_forward(&mut self) -> bool {
-        let Some(route) = self.forward.pop() else {
-            return false;
-        };
-        self.back.push(self.current);
-        self.arrive(route);
-        true
+        self.routes
+            .forward()
+            .map(|route| self.arrived(route))
+            .is_some()
     }
 
-    fn arrive(&mut self, route: Route) {
-        self.current = route;
+    fn arrived(&mut self, route: Route) {
         if let Route::Settings(page) = route {
             self.last_settings_page = page;
         }
@@ -147,6 +138,9 @@ mod tests {
         let mut history = NavigationHistory::new();
         history.push(Route::Settings(SettingsPage::KeyboardShortcuts));
         history.push(Route::Workspace);
-        assert_eq!(history.last_settings_page(), SettingsPage::KeyboardShortcuts);
+        assert_eq!(
+            history.last_settings_page(),
+            SettingsPage::KeyboardShortcuts
+        );
     }
 }

@@ -5,9 +5,9 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AppContext as _, Context, Entity, FontWeight, InteractiveElement as _, IntoElement,
-    ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled as _,
-    Subscription, Window, div, px,
+    App, AppContext as _, Context, Entity, FontWeight, InteractiveElement as _, IntoElement,
+    ParentElement as _, Render, StatefulInteractiveElement as _, Styled as _, Subscription, Window,
+    div, px,
 };
 
 use super::{SIDEBAR_GROUPS, SettingsPage};
@@ -18,7 +18,8 @@ use crate::theme;
 pub struct SettingsSidebar {
     history: Entity<NavigationHistory>,
     search: Entity<InputState>,
-    query: SharedString,
+    /// The search text, trimmed and lowercased for matching.
+    query: String,
     _subscriptions: [Subscription; 2],
 }
 
@@ -36,7 +37,7 @@ impl SettingsSidebar {
         SettingsSidebar {
             history,
             search,
-            query: SharedString::default(),
+            query: String::new(),
             _subscriptions,
         }
     }
@@ -51,11 +52,12 @@ impl SettingsSidebar {
     ) {
         match event {
             InputEvent::Change => {
-                self.query = search.read(cx).value();
+                self.query = search.read(cx).value().trim().to_lowercase();
                 cx.notify();
             }
             InputEvent::PressEnter { .. } => {
-                if let Some(page) = self.matching_pages().next() {
+                let first = self.matching_groups(cx).first().map(|(_, pages)| pages[0]);
+                if let Some(page) = first {
                     window.dispatch_action(Box::new(Navigate(Route::Settings(page))), cx);
                 }
             }
@@ -63,11 +65,20 @@ impl SettingsSidebar {
         }
     }
 
-    fn matching_pages(&self) -> impl Iterator<Item = SettingsPage> + '_ {
+    /// The sidebar's headings with the pages under each that match the search, leaving out
+    /// headings with none.
+    fn matching_groups(&self, cx: &App) -> Vec<(&'static str, Vec<SettingsPage>)> {
         SIDEBAR_GROUPS
             .iter()
-            .flat_map(|(_, pages)| pages.iter().copied())
-            .filter(|page| page.matches(&self.query))
+            .filter_map(|(heading, pages)| {
+                let pages: Vec<_> = pages
+                    .iter()
+                    .copied()
+                    .filter(|page| page.matches(&self.query, cx))
+                    .collect();
+                (!pages.is_empty()).then_some((*heading, pages))
+            })
+            .collect()
     }
 }
 
@@ -78,17 +89,7 @@ impl Render for SettingsSidebar {
             Route::Settings(page) => Some(page),
             Route::Workspace => None,
         };
-        let groups: Vec<_> = SIDEBAR_GROUPS
-            .iter()
-            .filter_map(|(heading, pages)| {
-                let pages: Vec<_> = pages
-                    .iter()
-                    .copied()
-                    .filter(|page| page.matches(&self.query))
-                    .collect();
-                (!pages.is_empty()).then_some((*heading, pages))
-            })
-            .collect();
+        let groups = self.matching_groups(cx);
         let nothing_found = groups.is_empty();
 
         div()
@@ -149,7 +150,10 @@ impl Render for SettingsSidebar {
                         .px_2()
                         .text_sm()
                         .text_color(p.muted)
-                        .child(format!("No settings match “{}”.", self.query.trim())),
+                        .child(format!(
+                            "No settings match “{}”.",
+                            self.search.read(cx).value().trim()
+                        )),
                 )
             })
     }

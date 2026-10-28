@@ -13,8 +13,8 @@ use gpui_kit::{
     Action, AnyElement, App, AppContext as _, Context, Div, DragMoveEvent, ElementId, Entity,
     FocusHandle, InteractiveElement as _, IntoElement, KeyBinding, MouseButton, MouseDownEvent,
     ParentElement as _, Pixels, Point, Render, SharedString, Stateful,
-    StatefulInteractiveElement as _, Styled as _, Subscription, Window, actions, div,
-    ease_in_out, px,
+    StatefulInteractiveElement as _, Styled as _, Subscription, Window, actions, div, ease_in_out,
+    px,
 };
 
 use crate::menu::{self, MenuItem};
@@ -36,8 +36,6 @@ actions!(
     [
         ToggleSidebar,
         ToggleSidebarMode,
-        UseOrcaLayout,
-        UseArcLayout,
         ToggleRightPanel,
         ToggleBottomPanel,
         NewChat,
@@ -56,32 +54,10 @@ pub fn init(cx: &mut App) {
         KeyBinding::new("cmd-t", NewChat, None),
         KeyBinding::new("cmd-shift-m", ToggleSidebarMode, None),
     ]);
-    // The layout is a setting, so these work from any window or menu.
-    cx.on_action(|_: &UseOrcaLayout, cx| set_layout(Layout::Orca, cx));
-    cx.on_action(|_: &UseArcLayout, cx| set_layout(Layout::Arc, cx));
+    // The layout is a setting, so this works from any window or menu.
     cx.on_action(|_: &ToggleSidebarMode, cx| {
-        set_layout(
-            match settings::get(cx).layout {
-                Layout::Orca => Layout::Arc,
-                Layout::Arc => Layout::Orca,
-            },
-            cx,
-        )
+        settings::update(cx, |settings| settings.layout = settings.layout.other())
     });
-}
-
-fn set_layout(layout: Layout, cx: &mut App) {
-    settings::update(cx, |settings| settings.layout = layout);
-}
-
-impl Layout {
-    /// Switches to this layout from a menu.
-    pub fn action(self) -> Box<dyn Action> {
-        match self {
-            Layout::Orca => Box::new(UseOrcaLayout),
-            Layout::Arc => Box::new(UseArcLayout),
-        }
-    }
 }
 
 pub struct Shell {
@@ -130,43 +106,30 @@ impl Shell {
         settings::get(cx).layout
     }
 
-    fn sidebar_width(cx: &App) -> f32 {
-        settings::get(cx)
-            .sidebar_width
-            .clamp(theme::SIDEBAR_MIN_WIDTH, theme::SIDEBAR_MAX_WIDTH)
-    }
-
     fn route(&self, cx: &App) -> Route {
         self.history.read(cx).current()
     }
 
-    fn navigate(&mut self, route: Route, cx: &mut Context<Self>) {
+    /// Moves through the history with `step`, which reports whether the route changed.
+    fn update_history(
+        &mut self,
+        step: impl FnOnce(&mut NavigationHistory) -> bool,
+        cx: &mut Context<Self>,
+    ) {
         self.history.update(cx, |history, cx| {
-            if history.push(route) {
+            if step(history) {
                 cx.notify();
             }
         });
+    }
+
+    fn navigate(&mut self, route: Route, cx: &mut Context<Self>) {
+        self.update_history(|history| history.push(route), cx);
     }
 
     fn open_settings(&mut self, _: &OpenSettings, _: &mut Window, cx: &mut Context<Self>) {
         let page = self.history.read(cx).last_settings_page();
         self.navigate(Route::Settings(page), cx);
-    }
-
-    fn go_back(&mut self, _: &GoBack, _: &mut Window, cx: &mut Context<Self>) {
-        self.history.update(cx, |history, cx| {
-            if history.go_back() {
-                cx.notify();
-            }
-        });
-    }
-
-    fn go_forward(&mut self, _: &GoForward, _: &mut Window, cx: &mut Context<Self>) {
-        self.history.update(cx, |history, cx| {
-            if history.go_forward() {
-                cx.notify();
-            }
-        });
     }
 
     fn toggle_sidebar(&mut self, _: &ToggleSidebar, _: &mut Window, cx: &mut Context<Self>) {
@@ -232,13 +195,10 @@ impl Shell {
     ) {
         picker::close(cx);
         self.rails_menu_at = event.position;
-        let other_layout = match Self::layout(cx) {
-            Layout::Orca => "Switch to Arc Layout",
-            Layout::Arc => "Switch to Orca Layout",
-        };
+        let other_layout = format!("Switch to {} Layout", Self::layout(cx).other().label());
         NativeMenu::new()
             .menu("Edit Theme…", Box::new(EditTheme))
-            .submenu("Appearance", appearance_menu(theme::preference(cx)))
+            .submenu("Appearance", theme::preference(cx).menu())
             .separator()
             .menu("Toggle Sidebar", Box::new(ToggleSidebar))
             .menu(other_layout, Box::new(ToggleSidebarMode))
@@ -282,10 +242,7 @@ impl Shell {
 
     fn icon_rail(&self, cx: &App) -> impl IntoElement {
         let in_settings = matches!(self.route(cx), Route::Settings(_));
-        let other_layout = match Self::layout(cx) {
-            Layout::Orca => "Switch to Arc layout",
-            Layout::Arc => "Switch to Orca layout",
-        };
+        let other_layout = format!("Switch to {} layout", Self::layout(cx).other().label());
         div()
             .w(px(theme::ICON_RAIL_WIDTH))
             .flex_shrink_0()
@@ -315,14 +272,19 @@ impl Shell {
             ))
             .child(theme_toggle(theme::preference(cx)))
             .child(
-                action_button("rail-settings", IconName::Settings, "Settings", OpenSettings)
-                    .selected(in_settings),
+                action_button(
+                    "rail-settings",
+                    IconName::Settings,
+                    "Settings",
+                    OpenSettings,
+                )
+                .selected(in_settings),
             )
     }
 
     /// What the sidebar slot holds on the current route.
     fn sidebar(&self, route: Route, layout: Layout, cx: &mut Context<Self>) -> AnyElement {
-        let frame = SidebarFrame::new(layout, Self::sidebar_width(cx));
+        let frame = SidebarFrame::new(layout, settings::get(cx).sidebar_width());
         match (route, layout) {
             (Route::Settings(_), _) => frame.child(self.settings_sidebar.clone()),
             (Route::Workspace, Layout::Orca) => frame.child(orca::sidebar(self, cx)),
@@ -332,21 +294,17 @@ impl Shell {
     }
 
     /// What the card shows beside the sidebar on the current route.
-    fn main(
-        &self,
-        route: Route,
-        layout: Layout,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
+    fn main(&self, route: Route, layout: Layout, cx: &mut Context<Self>) -> AnyElement {
         let p = theme::palette(cx);
         let column = div().flex_1().min_w_0().flex().flex_col();
         match route {
             Route::Settings(page) => column
-                .child(settings_view::page(page, window, cx))
+                .child(settings_view::page(page, cx))
                 .into_any_element(),
             Route::Workspace => column
-                .when(layout == Layout::Orca, |main| main.child(orca::tab_strip(self, cx)))
+                .when(layout == Layout::Orca, |main| {
+                    main.child(orca::tab_strip(self, cx))
+                })
                 .child(self.workspace_content(p))
                 .when(self.bottom_panel_open, |main| main.child(bottom_panel(p)))
                 .into_any_element(),
@@ -380,14 +338,15 @@ impl Render for Shell {
         let p = theme::palette(cx);
         let route = self.route(cx);
         let layout = Self::layout(cx);
-        let width = Self::sidebar_width(cx);
+        let width = settings::get(cx).sidebar_width();
         let (reveal, sliding) = self.sidebar_reveal();
         if sliding {
             window.request_animation_frame();
         } else {
             self.sidebar_slide = None;
         }
-        let sidebar = (reveal > 0.).then(|| slide_out(self.sidebar(route, layout, cx), width, reveal));
+        let sidebar =
+            (reveal > 0.).then(|| slide_out(self.sidebar(route, layout, cx), width, reveal));
         // Orca keeps the sidebar inside the card, Arc on the glass beside it.
         let (card_sidebar, glass_sidebar) = match layout {
             Layout::Orca => (sidebar, None),
@@ -405,7 +364,7 @@ impl Render for Shell {
             .overflow_hidden()
             .flex()
             .children(card_sidebar)
-            .child(self.main(route, layout, window, cx))
+            .child(self.main(route, layout, cx))
             .when(route == Route::Workspace && self.right_panel_open, |card| {
                 card.child(right_panel(p))
             })
@@ -425,8 +384,12 @@ impl Render for Shell {
             .on_action(
                 cx.listener(|this, _: &CloseSettings, _, cx| this.navigate(Route::Workspace, cx)),
             )
-            .on_action(cx.listener(Self::go_back))
-            .on_action(cx.listener(Self::go_forward))
+            .on_action(cx.listener(|this, _: &GoBack, _, cx| {
+                this.update_history(NavigationHistory::go_back, cx)
+            }))
+            .on_action(cx.listener(|this, _: &GoForward, _, cx| {
+                this.update_history(NavigationHistory::go_forward, cx)
+            }))
             .on_action(cx.listener(Self::toggle_sidebar))
             .on_action(cx.listener(Self::toggle_right_panel))
             .on_action(cx.listener(Self::toggle_bottom_panel))
@@ -451,7 +414,9 @@ impl Render for Shell {
             .flex()
             .flex_col()
             // A gradient theme paints the glass instead of the plain tint.
-            .when(gradient::current(cx).dots.is_empty(), |root| root.bg(p.rail_tint))
+            .when(gradient::current(cx).dots.is_empty(), |root| {
+                root.bg(p.rail_tint)
+            })
             .text_color(p.text)
             .child(backdrop::backdrop(cx))
             .child(self.top_rail(cx))
@@ -475,7 +440,7 @@ fn theme_toggle(preference: ThemePreference) -> impl IntoElement {
             move |event: &MouseDownEvent, window, cx| {
                 // This menu stands in for the one the rest of the rails open.
                 cx.stop_propagation();
-                appearance_menu(preference).show(event.position, window, cx);
+                preference.menu().show(event.position, window, cx);
             },
         )
         .child(action_button(
@@ -484,15 +449,6 @@ fn theme_toggle(preference: ThemePreference) -> impl IntoElement {
             format!("Theme: {}", preference.label()),
             CycleTheme,
         ))
-}
-
-/// System, Light and Dark, with `preference` checked.
-fn appearance_menu(preference: ThemePreference) -> NativeMenu {
-    ThemePreference::ALL
-        .into_iter()
-        .fold(NativeMenu::new(), |menu, option| {
-            menu.menu_with_check(option.label(), option == preference, option.action())
-        })
 }
 
 fn new_tab_action(kind: PaneKind) -> Box<dyn Action> {

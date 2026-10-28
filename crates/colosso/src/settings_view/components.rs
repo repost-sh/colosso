@@ -76,7 +76,7 @@ impl RenderOnce for SettingsPageColumn {
 #[derive(IntoElement)]
 pub struct SettingsSection {
     title: SharedString,
-    rows: Vec<AnyElement>,
+    rows: Vec<SettingRow>,
 }
 
 impl SettingsSection {
@@ -86,11 +86,26 @@ impl SettingsSection {
             rows: Vec::new(),
         }
     }
-}
 
-impl ParentElement for SettingsSection {
-    fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
-        self.rows.extend(elements);
+    pub fn row(mut self, row: SettingRow) -> Self {
+        self.rows.push(row);
+        self
+    }
+
+    pub fn rows(mut self, rows: impl IntoIterator<Item = SettingRow>) -> Self {
+        self.rows.extend(rows);
+        self
+    }
+
+    /// Whether the section's title or any of its rows mentions `query`, which must already be
+    /// lowercase.
+    pub fn matches(&self, query: &str) -> bool {
+        let mentions = |text: &str| text.to_lowercase().contains(query);
+        mentions(&self.title)
+            || self
+                .rows
+                .iter()
+                .any(|row| mentions(&row.title) || row.description.as_deref().is_some_and(mentions))
     }
 }
 
@@ -230,10 +245,9 @@ impl RenderOnce for PillButton {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let p = theme::palette(cx);
         pill(self.id, self.disabled, p)
-            .when_some(
-                self.on_click.filter(|_| !self.disabled),
-                |pill, handler| pill.on_click(move |event, window, cx| handler(event, window, cx)),
-            )
+            .when_some(self.on_click.filter(|_| !self.disabled), |pill, handler| {
+                pill.on_click(move |event, window, cx| handler(event, window, cx))
+            })
             .child(self.label)
     }
 }

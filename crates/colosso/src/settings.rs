@@ -5,7 +5,8 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use gpui_kit::{App, Context, Global, Subscription, Task};
+use gpui_kit::component::native_menu::NativeMenu;
+use gpui_kit::{Action, App, Context, Global, Subscription, Task};
 use serde::{Deserialize, Serialize};
 
 use crate::gradient::GradientTheme;
@@ -23,6 +24,11 @@ pub enum Layout {
     Arc,
 }
 
+/// Switches the window to a layout, from a menu or a key.
+#[derive(Clone, Debug, PartialEq, Action)]
+#[action(namespace = settings, no_json)]
+pub struct SetLayout(pub Layout);
+
 impl Layout {
     pub const ALL: [Layout; 2] = [Layout::Orca, Layout::Arc];
 
@@ -31,6 +37,22 @@ impl Layout {
             Layout::Orca => "Orca",
             Layout::Arc => "Arc",
         }
+    }
+
+    pub fn other(self) -> Self {
+        match self {
+            Layout::Orca => Layout::Arc,
+            Layout::Arc => Layout::Orca,
+        }
+    }
+
+    /// A menu of the layouts with `self` checked.
+    pub fn menu(self) -> NativeMenu {
+        Layout::ALL
+            .into_iter()
+            .fold(NativeMenu::new(), |menu, layout| {
+                menu.menu_with_check(layout.label(), layout == self, Box::new(SetLayout(layout)))
+            })
     }
 }
 
@@ -61,6 +83,12 @@ impl Settings {
         } else {
             &mut self.light_theme
         }
+    }
+
+    /// The sidebar's width, kept within its limits even if the file says otherwise.
+    pub fn sidebar_width(&self) -> f32 {
+        self.sidebar_width
+            .clamp(theme::SIDEBAR_MIN_WIDTH, theme::SIDEBAR_MAX_WIDTH)
     }
 }
 
@@ -98,6 +126,9 @@ pub fn init(cx: &mut App) {
         path,
         pending: None,
     });
+    cx.on_action(|SetLayout(layout): &SetLayout, cx| {
+        update(cx, |settings| settings.layout = *layout)
+    });
     // A change still settling when the app quits is written on the way out.
     cx.on_app_quit(|cx| {
         if cx.global_mut::<Store>().pending.take().is_some()
@@ -124,14 +155,15 @@ pub fn observe<V: 'static>(cx: &mut Context<V>) -> Subscription {
     cx.observe_global::<Store>(|_, cx| cx.notify())
 }
 
-/// Applies `change` and saves once changes settle, if it changed anything.
+/// Applies `change` and saves once changes settle, if it changed anything. Observers only
+/// hear about changes, so a change to nothing does not re-render them.
 pub fn update(cx: &mut App, change: impl FnOnce(&mut Settings)) {
-    let store = cx.global_mut::<Store>();
-    let before = store.settings.clone();
-    change(&mut store.settings);
-    if store.settings == before {
+    let mut settings = get(cx).clone();
+    change(&mut settings);
+    if settings == *get(cx) {
         return;
     }
+    cx.global_mut::<Store>().settings = settings;
     let save = cx.spawn(async move |cx| {
         cx.background_executor().timer(SAVE_DELAY).await;
         if let Some((path, json)) = cx.update(encode) {

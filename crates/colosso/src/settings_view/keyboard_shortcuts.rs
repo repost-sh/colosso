@@ -1,7 +1,7 @@
-//! Keyboard shortcuts: each command and the keys bound to it, read from the live keymap.
+//! Keyboard shortcuts: each command and the keys bound to it, read from the keymap.
 
 use gpui_kit::component::kbd::Kbd;
-use gpui_kit::{Action, App, IntoElement, ParentElement as _, Styled as _, Window, div};
+use gpui_kit::{Action, App, AsKeystroke as _, IntoElement, ParentElement as _, Styled as _, div};
 
 use super::components::{SettingRow, SettingsSection};
 use crate::navigation::{CloseSettings, GoBack, GoForward, OpenSettings};
@@ -10,84 +10,40 @@ use crate::shell::{
 };
 use crate::theme::{self, CycleTheme};
 
-struct Shortcut {
-    label: &'static str,
-    action: fn() -> Box<dyn Action>,
-}
+/// A command as the page names it, and the action it runs.
+type Command = (&'static str, &'static dyn Action);
 
-const SECTIONS: [(&str, &[Shortcut]); 3] = [
+/// Each section's commands, in the order the page lists them.
+const SECTIONS: [(&str, &[Command]); 3] = [
     (
         "Navigation",
         &[
-            Shortcut {
-                label: "Open settings",
-                action: || Box::new(OpenSettings),
-            },
-            Shortcut {
-                label: "Close settings",
-                action: || Box::new(CloseSettings),
-            },
-            Shortcut {
-                label: "Back",
-                action: || Box::new(GoBack),
-            },
-            Shortcut {
-                label: "Forward",
-                action: || Box::new(GoForward),
-            },
+            ("Open settings", &OpenSettings),
+            ("Close settings", &CloseSettings),
+            ("Back", &GoBack),
+            ("Forward", &GoForward),
         ],
     ),
     (
         "Window",
         &[
-            Shortcut {
-                label: "Toggle sidebar",
-                action: || Box::new(ToggleSidebar),
-            },
-            Shortcut {
-                label: "Switch between Orca and Arc layouts",
-                action: || Box::new(ToggleSidebarMode),
-            },
-            Shortcut {
-                label: "Toggle right panel",
-                action: || Box::new(ToggleRightPanel),
-            },
-            Shortcut {
-                label: "Toggle bottom panel",
-                action: || Box::new(ToggleBottomPanel),
-            },
-            Shortcut {
-                label: "Cycle theme",
-                action: || Box::new(CycleTheme),
-            },
+            ("Toggle sidebar", &ToggleSidebar),
+            ("Switch between Orca and Arc layouts", &ToggleSidebarMode),
+            ("Toggle right panel", &ToggleRightPanel),
+            ("Toggle bottom panel", &ToggleBottomPanel),
+            ("Cycle theme", &CycleTheme),
         ],
     ),
-    (
-        "Tabs",
-        &[Shortcut {
-            label: "New chat",
-            action: || Box::new(NewChat),
-        }],
-    ),
+    ("Tabs", &[("New chat", &NewChat)]),
 ];
 
-pub fn search_terms() -> Vec<&'static str> {
-    SECTIONS
-        .iter()
-        .flat_map(|(title, shortcuts)| {
-            std::iter::once(*title).chain(shortcuts.iter().map(|shortcut| shortcut.label))
-        })
-        .collect()
-}
-
-pub fn sections(window: &mut Window, cx: &App) -> Vec<impl IntoElement> {
+pub fn sections(cx: &App) -> Vec<SettingsSection> {
     let muted = theme::palette(cx).muted;
     SECTIONS
         .iter()
-        .map(|(title, shortcuts)| {
-            SettingsSection::new(*title).children(shortcuts.iter().map(|shortcut| {
-                let keys = Kbd::binding_for_action(&*(shortcut.action)(), None, window);
-                SettingRow::new(shortcut.label).control(match keys {
+        .map(|(title, commands)| {
+            SettingsSection::new(*title).rows(commands.iter().map(|(label, action)| {
+                SettingRow::new(*label).control(match keys(*action, cx) {
                     Some(keys) => keys.into_any_element(),
                     None => div()
                         .text_sm()
@@ -98,4 +54,15 @@ pub fn sections(window: &mut Window, cx: &App) -> Vec<impl IntoElement> {
             }))
         })
         .collect()
+}
+
+/// The first keystroke of the binding that wins for `action`, whatever key context the binding
+/// is limited to: this page lists every shortcut, not only those live where focus is.
+fn keys(action: &dyn Action, cx: &App) -> Option<Kbd> {
+    let keymap = cx.key_bindings();
+    let keymap = keymap.borrow();
+    // The keymap lists later bindings last, and later bindings take precedence.
+    let binding = keymap.bindings_for_action(action).last()?;
+    let keystroke = binding.keystrokes().first()?.as_keystroke().clone();
+    Some(Kbd::new(keystroke))
 }
