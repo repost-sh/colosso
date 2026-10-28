@@ -1,0 +1,21 @@
+# Tests may unwrap, expect, panic and index freely: a test that fails should fail loudly, and
+# indexing a fixture it just built asserts the fixture's shape.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-indexing-slicing-in-tests = true
+allow-print-in-tests = true
+
+# A render function is one long builder chain, so the line limit sits above repost-rs's 40.
+too-many-lines-threshold = 100
+
+# Every crate here is internal, so there's no exported API for lints to tiptoe around. Left
+# at `true`, this turns lints like `needless_pass_by_value` off for `pub` functions, where
+# they matter most.
+avoid-breaking-exported-api = false
+
+disallowed-methods = [
+    { path = "std::process::exit", reason = "return from main instead, so destructors and flushes run" },
+    { path = "std::process::abort", reason = "aborting skips every destructor and says nothing" },
+    { path = "std::thread::sleep", reason = "blocks the thread; wait on a timer or a channel instead" },
+]

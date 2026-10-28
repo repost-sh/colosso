@@ -58,8 +58,12 @@ impl Row {
     /// The file the row belongs to.
     pub fn file(self) -> usize {
         match self {
-            Row::File(file) | Row::Note(file) | Row::End(file) => file,
-            Row::Fold { file, .. } | Row::Line { file, .. } | Row::Pair { file, .. } => file,
+            Row::File(file)
+            | Row::Note(file)
+            | Row::End(file)
+            | Row::Fold { file, .. }
+            | Row::Line { file, .. }
+            | Row::Pair { file, .. } => file,
         }
     }
 }
@@ -121,7 +125,7 @@ fn file_rows(
                 new: Some(new),
                 changed: false,
             },
-        })
+        });
     };
     // Shows the unchanged run of `len` lines from `old`/`new`, keeping `before` lines at its
     // start and `after` at its end and folding the middle if there's more than one line to it.
@@ -178,6 +182,8 @@ fn file_rows(
 
 #[cfg(test)]
 mod tests {
+    use std::fmt::Write as _;
+
     use colosso_git::{Change, Lines, Status};
 
     use super::*;
@@ -192,7 +198,12 @@ mod tests {
             .iter()
             .map(|(old, new)| new.len() as u32 - old.len() as u32)
             .sum();
-        let text = |len: u32| (0..len).map(|n| format!("{n}\n")).collect::<String>();
+        let text = |len: u32| {
+            (0..len).fold(String::new(), |mut text, n| {
+                let _ = writeln!(text, "{n}");
+                text
+            })
+        };
         let content = Content::Text {
             old: Lines::new(text(old)),
             new: Lines::new(text(old + added)),

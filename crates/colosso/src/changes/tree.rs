@@ -51,8 +51,10 @@ fn flatten(
 ) {
     for (name, mut inner) in &folder.folders {
         let mut name = (*name).to_owned();
-        while inner.files.is_empty() && inner.folders.len() == 1 {
-            let (next, only) = inner.folders.iter().next().expect("one folder");
+        while inner.files.is_empty()
+            && inner.folders.len() == 1
+            && let Some((next, only)) = inner.folders.iter().next()
+        {
             name = format!("{name}/{next}");
             inner = only;
         }

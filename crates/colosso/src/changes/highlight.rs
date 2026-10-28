@@ -100,7 +100,7 @@ fn side(syntaxes: &SyntaxSet, syntax: &SyntaxReference, lines: &Lines) -> Vec<Li
                 {
                     match tokens.last_mut() {
                         Some((range, last)) if *last == token && range.end == start as u32 => {
-                            range.end = end as u32
+                            range.end = end as u32;
                         }
                         _ => tokens.push((start as u32..end as u32, token)),
                     }
@@ -128,7 +128,7 @@ fn token_of(stack: &ScopeStack) -> Option<Token> {
     })
 }
 
-/// The kind a TextMate scope name like `entity.name.function.rust` stands for.
+/// The kind a `TextMate` scope name like `entity.name.function.rust` stands for.
 fn kind_of(scope: &str) -> Option<Token> {
     const KINDS: [(&str, Token); 15] = [
         ("comment", Token::Comment),

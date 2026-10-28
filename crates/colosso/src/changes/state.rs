@@ -167,7 +167,7 @@ impl Changes {
     pub fn new(root: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
         // Nothing is read while nobody can see it; what changed meanwhile is read on return.
         let _visibility = cx.observe_window_visibility(window, |this, visibility, _, cx| {
-            this.set_visible(visibility.is_visible(), cx)
+            this.set_visible(visibility.is_visible(), cx);
         });
         let path = root.clone();
         let opening = cx.spawn(async move |this, cx| {
@@ -180,7 +180,7 @@ impl Changes {
                         git_dir,
                         common_dir,
                     });
-                    Ok::<_, colosso_git::Error>((checkout, watched))
+                    Ok::<_, colosso_git::GitError>((checkout, watched))
                 })
                 .await;
             this.update(cx, |this, cx| this.opened(opened, cx)).ok();
@@ -300,9 +300,9 @@ impl Changes {
         self.reading = None;
         match opened {
             Err(error) => self.error = Some(error.message),
-            Ok((checkout, watched)) => {
+            Ok((checkout, watching)) => {
                 self.checkout = Some(Arc::new(checkout));
-                match watched {
+                match watching {
                     Ok((watcher, touched)) => {
                         self._watcher = Some(watcher);
                         self._following =
@@ -334,7 +334,7 @@ impl Changes {
         let files = self.files.clone();
         self.reading = Some(cx.spawn(async move |this, cx| {
             let read = cx
-                .background_spawn(async move { read(&checkout, stale, listed, files) })
+                .background_spawn(async move { read(&checkout, &stale, &listed, files) })
                 .await;
             this.update(cx, |this, cx| this.read_done(read, cx)).ok();
         }));
@@ -372,7 +372,7 @@ impl Changes {
         if uncoloured.is_empty() {
             return;
         }
-        let threads = std::thread::available_parallelism().map_or(1, |threads| threads.get());
+        let threads = std::thread::available_parallelism().map_or(1, std::num::NonZero::get);
         self.colouring = Some(cx.spawn(async move |this, cx| {
             let executor = cx.background_executor().clone();
             for batch in uncoloured.chunks(threads) {
@@ -393,14 +393,14 @@ impl Changes {
 /// keeping the rest of `files` as they are.
 fn read(
     checkout: &Checkout,
-    stale: Stale,
-    listed: Vec<Change>,
+    stale: &Stale,
+    listed: &[Change],
     files: Vec<Arc<FileView>>,
 ) -> colosso_git::Result<Read> {
     let changes = checkout.changes()?;
-    let unread = unread(&changes, listed, &stale);
+    let unread = unread(&changes, listed, stale);
     let reread: HashSet<Key> = unread.iter().map(key).collect();
-    let diffs = checkout.diffs(unread);
+    let diffs = checkout.diffs(&unread);
     let read = diffs
         .into_iter()
         .map(|diff| Arc::new(FileView::new(diff)))
@@ -412,7 +412,7 @@ fn read(
 }
 
 /// Which of `changes` to read again: the `stale` ones and any `listed` differently before.
-fn unread(changes: &[Change], listed: Vec<Change>, stale: &Stale) -> Vec<Change> {
+fn unread(changes: &[Change], listed: &[Change], stale: &Stale) -> Vec<Change> {
     // Staging a file moves what its unstaged change is diffed from, so with the index changed,
     // every file staged before or now is read again.
     let staged: HashSet<&str> = (listed.iter().chain(changes))
@@ -523,8 +523,8 @@ mod tests {
         let b = change("b.rs", Status::Modified);
         let c = change("c.rs", Status::Added);
         let listed = vec![a.clone(), b.clone(), change("c.rs", Status::Modified)];
-        let changes = [a.clone(), b, c.clone(), change("d.rs", Status::Added)];
-        let unread = unread(&changes, listed, &stale(&["a.rs"]));
+        let changes = [a, b, c, change("d.rs", Status::Added)];
+        let unread = unread(&changes, &listed, &stale(&["a.rs"]));
         let paths: Vec<&str> = unread.iter().map(|change| change.path.as_str()).collect();
         assert_eq!(paths, ["a.rs", "c.rs", "d.rs"]);
     }
@@ -539,7 +539,7 @@ mod tests {
         );
         let unread = unread(
             std::slice::from_ref(&moved),
-            vec![moved.clone()],
+            std::slice::from_ref(&moved),
             &stale(&["old.rs"]),
         );
         assert_eq!(unread.len(), 1);
@@ -551,7 +551,7 @@ mod tests {
         let mut head = Stale::default();
         head.add(vec![Touched::Index, Touched::Head]);
         assert_eq!(
-            unread(std::slice::from_ref(&a), vec![a.clone()], &head).len(),
+            unread(std::slice::from_ref(&a), std::slice::from_ref(&a), &head).len(),
             1
         );
         let many: Vec<String> = (0..=MOST_TOUCHED).map(|n| format!("f{n}")).collect();
@@ -582,10 +582,10 @@ mod tests {
         ];
         let mut index = Stale::default();
         index.add(vec![Touched::Index]);
-        assert_eq!(unread(&changes, listed.clone(), &index), changes[..3]);
+        assert_eq!(unread(&changes, &listed, &index), changes[..3]);
         // Writing a file leaves what's staged of it as it was.
         assert_eq!(
-            unread(&changes, listed, &stale(&["a.rs"])),
+            unread(&changes, &listed, &stale(&["a.rs"])),
             [unstaged("a.rs")]
         );
     }

@@ -15,8 +15,7 @@ use gpui_kit::{
     Action, AnyElement, App, AppContext as _, Context, Div, DragMoveEvent, ElementId, Entity,
     FocusHandle, InteractiveElement as _, IntoElement, KeyBinding, MouseButton, MouseDownEvent,
     ParentElement as _, Pixels, Point, Render, SharedString, Stateful,
-    StatefulInteractiveElement as _, Styled as _, Subscription, Window, actions, div, ease_in_out,
-    px,
+    StatefulInteractiveElement as _, Styled, Subscription, Window, actions, div, ease_in_out, px,
 };
 
 use crate::changes::{self, Changes, ChangesPanel, ChangesResize, ToggleChangesWidth};
@@ -61,10 +60,14 @@ pub fn init(cx: &mut App) {
     ]);
     // The layout is a setting, so this works from any window or menu.
     cx.on_action(|_: &ToggleSidebarMode, cx| {
-        settings::update(cx, |settings| settings.layout = settings.layout.other())
+        settings::update(cx, |settings| settings.layout = settings.layout.other());
     });
 }
 
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "each panel opens and closes on its own; no two flags make one state"
+)]
 pub struct Shell {
     pub workspace: Workspace,
     history: Entity<NavigationHistory>,
@@ -405,7 +408,7 @@ impl Shell {
                 icon_button("rail-chats", IconName::MessagesSquare, "Chats", cx)
                     .selected(!in_settings)
                     .on_click(|_, window, cx| {
-                        window.dispatch_action(Box::new(Navigate(Route::Workspace)), cx)
+                        window.dispatch_action(Box::new(Navigate(Route::Workspace)), cx);
                     }),
             )
             .child(icon_button(
@@ -483,7 +486,7 @@ impl Shell {
             (Some(project), Some(branch)) => match branch.tabs.get(branch.active_tab) {
                 Some(tab) => {
                     let context = format!("{} / {}", project.name, branch.name());
-                    pane::tab(tab, context.into(), p)
+                    pane::tab(tab, &context, p)
                 }
                 None => note("No tabs on this branch. ⌘T starts a chat."),
             },
@@ -540,7 +543,7 @@ impl Render for Shell {
                     div()
                         .h_full()
                         .min_w_0()
-                        .when(wide, |panel| panel.flex_1())
+                        .when(wide, Styled::flex_1)
                         .when(!wide, |panel| {
                             panel
                                 .relative()
@@ -567,48 +570,7 @@ impl Render for Shell {
             .when(matches!(route, Route::Settings(_)), |root| {
                 root.key_context("Settings")
             })
-            .on_action(cx.listener(|this, Navigate(route), _, cx| this.navigate(*route, cx)))
-            .on_action(cx.listener(Self::open_settings))
-            .on_action(
-                cx.listener(|this, _: &CloseSettings, _, cx| this.navigate(Route::Workspace, cx)),
-            )
-            .on_action(cx.listener(|this, _: &GoBack, _, cx| {
-                this.update_history(NavigationHistory::go_back, cx)
-            }))
-            .on_action(cx.listener(|this, _: &GoForward, _, cx| {
-                this.update_history(NavigationHistory::go_forward, cx)
-            }))
-            .on_action(cx.listener(Self::toggle_sidebar))
-            .on_action(cx.listener(Self::toggle_right_panel))
-            .on_action(cx.listener(Self::toggle_changes_width))
-            .on_action(cx.listener(Self::toggle_bottom_panel))
-            .on_action(cx.listener(|this, _: &NewChat, _, cx| this.new_tab(PaneKind::Chat, cx)))
-            .on_action(
-                cx.listener(|this, _: &NewTerminal, _, cx| this.new_tab(PaneKind::Terminal, cx)),
-            )
-            .on_action(
-                cx.listener(|this, _: &NewBrowserTab, _, cx| this.new_tab(PaneKind::Browser, cx)),
-            )
-            .on_action(
-                cx.listener(|this, _: &NewEditorTab, _, cx| this.new_tab(PaneKind::Editor, cx)),
-            )
-            .map(|root| projects::handle_actions(root, cx))
-            .on_action(|_: &EditBranchPrefix, window, cx| {
-                settings_view::edit_branch_prefix(window, cx)
-            })
-            .on_drag_move(cx.listener(Self::resize_sidebar))
-            .on_drag_move(cx.listener(Self::resize_changes))
-            // A press in the window puts the picker and any dialog over it away, so what's
-            // typed next goes where the user pressed. It's heard on the way down: text fields
-            // stop presses from reaching anything around them.
-            .capture_any_mouse_down(|_, _, cx| {
-                picker::close(cx);
-                modal::close(cx);
-            })
-            .on_action(cx.listener(|this, _: &EditTheme, window, cx| {
-                picker::open(this.rails_menu_at, window, cx)
-            }))
-            .on_mouse_down(MouseButton::Right, cx.listener(Self::show_rails_menu))
+            .map(|root| Self::handle_actions(root, cx))
             .size_full()
             .relative()
             .flex()
@@ -778,6 +740,52 @@ pub fn tab_close_button(
 }
 
 impl Shell {
+    /// What the window does with its actions, presses and drags, wherever they land.
+    fn handle_actions(root: Div, cx: &mut Context<Self>) -> Div {
+        root.on_action(cx.listener(|this, Navigate(route), _, cx| this.navigate(*route, cx)))
+            .on_action(cx.listener(Self::open_settings))
+            .on_action(
+                cx.listener(|this, _: &CloseSettings, _, cx| this.navigate(Route::Workspace, cx)),
+            )
+            .on_action(cx.listener(|this, _: &GoBack, _, cx| {
+                this.update_history(NavigationHistory::go_back, cx);
+            }))
+            .on_action(cx.listener(|this, _: &GoForward, _, cx| {
+                this.update_history(NavigationHistory::go_forward, cx);
+            }))
+            .on_action(cx.listener(Self::toggle_sidebar))
+            .on_action(cx.listener(Self::toggle_right_panel))
+            .on_action(cx.listener(Self::toggle_changes_width))
+            .on_action(cx.listener(Self::toggle_bottom_panel))
+            .on_action(cx.listener(|this, _: &NewChat, _, cx| this.new_tab(PaneKind::Chat, cx)))
+            .on_action(
+                cx.listener(|this, _: &NewTerminal, _, cx| this.new_tab(PaneKind::Terminal, cx)),
+            )
+            .on_action(
+                cx.listener(|this, _: &NewBrowserTab, _, cx| this.new_tab(PaneKind::Browser, cx)),
+            )
+            .on_action(
+                cx.listener(|this, _: &NewEditorTab, _, cx| this.new_tab(PaneKind::Editor, cx)),
+            )
+            .map(|root| projects::handle_actions(root, cx))
+            .on_action(|_: &EditBranchPrefix, window, cx| {
+                settings_view::edit_branch_prefix(window, cx);
+            })
+            .on_drag_move(cx.listener(Self::resize_sidebar))
+            .on_drag_move(cx.listener(Self::resize_changes))
+            // A press in the window puts the picker and any dialog over it away, so what's
+            // typed next goes where the user pressed. It's heard on the way down: text fields
+            // stop presses from reaching anything around them.
+            .capture_any_mouse_down(|_, _, cx| {
+                picker::close(cx);
+                modal::close(cx);
+            })
+            .on_action(cx.listener(|this, _: &EditTheme, window, cx| {
+                picker::open(this.rails_menu_at, window, cx);
+            }))
+            .on_mouse_down(MouseButton::Right, cx.listener(Self::show_rails_menu))
+    }
+
     /// What the sidebar's search field holds.
     pub fn search_query(&self, cx: &App) -> SharedString {
         self.search.read(cx).value()

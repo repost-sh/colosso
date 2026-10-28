@@ -7,6 +7,78 @@ edition = "2024"
 license = "Apache-2.0"
 publish = false
 
+# The lint policy, adapted from repost-rs: Clippy's pedantic group as warnings, and the
+# shortcuts that hide a failure or a panic denied. A rule is never downgraded to make a
+# warning go away; the one place that needs an exception carries
+# `#[expect(lint, reason = "...")]` on that expression, which rustc retires once the code
+# stops tripping it.
+[workspace.lints.rust]
+macro_use_extern_crate = "warn"
+meta_variable_misuse = "warn"
+non_ascii_idents = "warn"
+redundant_lifetimes = "warn"
+trivial_casts = "warn"
+trivial_numeric_casts = "warn"
+unit_bindings = "warn"
+unused_lifetimes = "warn"
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+# Exceptions argue for themselves.
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
+# Panics outside tests: a failure is returned or handled, and a state that can't happen is
+# made unrepresentable rather than asserted.
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+unreachable = "deny"
+unwrap_used = "deny"
+# `map_err(|_| ...)` throws away the only description of what broke.
+map_err_ignore = "deny"
+# `Instant - Duration` panics if the clock reads less than the duration.
+unchecked_time_subtraction = "deny"
+# What reaches the terminal goes through one place that says why it may.
+print_stderr = "deny"
+print_stdout = "deny"
+dbg_macro = "deny"
+await_holding_lock = "deny"
+needless_pass_by_value = "deny"
+redundant_clone = "deny"
+error_impl_error = "deny"
+
+# Considered and left off, so the next reader doesn't argue them again:
+#
+# * `elided_lifetimes_in_paths` (and so `rust_2018_idioms`): it writes every
+#   `&mut Context<Self>` as `Context<'_, Self>`, about a hundred times over, saying nothing.
+# * `unreachable_pub`: the app is a binary, where `pub` can't leak and dead code is found
+#   regardless.
+# * `large_types_passed_by_value`: the palette is a 384-byte `Copy` value that listeners
+#   capture by copy, since they outlive the frame; borrowing it would mean copying it out
+#   again in every one.
+# * `unreadable_literal`: colours are written as `0xRRGGBB`, which separators only break up.
+# * `cast_*`: UI maths turns counts into pixels and back on every line. The git crate,
+#   where a cast can truncate a line number, turns them back on itself.
+# * `must_use_candidate`, `missing_errors_doc`: every crate here is internal, and its error
+#   type already says what failed.
+# * `excessive_nesting`, `cognitive_complexity`: GPUI's element trees nest by design.
+# * `used_underscore_binding`: `_subscriptions` and the like are GPUI's way of holding what
+#   only needs to stay alive, and are set where the view is made.
+# * `unused_self`: a view's methods take `self` to be its listeners and to reach it through
+#   `cx`, whether or not they read it.
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+large_types_passed_by_value = "allow"
+missing_errors_doc = "allow"
+must_use_candidate = "allow"
+unreadable_literal = "allow"
+unused_self = "allow"
+used_underscore_binding = "allow"
+
 [workspace.dependencies]
 # gpui-fast: GPUI with retained views, list rows kept across frames and scroll layers, so a
 # notified view is drawn without rebuilding everything around it.

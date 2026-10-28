@@ -121,7 +121,7 @@ pub fn open(position: Point<Pixels>, window: &mut Window, cx: &mut App) {
                 // losing it only closes the picker once focus has left them both.
                 cx.observe_window_activation(window, move |_, _, cx| close_once_left(parent, cx)),
                 cx.observe_window_activation(picker_window, move |_, _, cx| {
-                    close_once_left(parent, cx)
+                    close_once_left(parent, cx);
                 }),
                 cx.intercept_keystrokes(|event, _, cx| {
                     if event.keystroke.key == "escape" {
@@ -189,7 +189,8 @@ enum Control {
 struct Glide {
     from: Point<f32>,
     to: Point<f32>,
-    start: Instant,
+    /// When it set off, unless it's resting where it is.
+    start: Option<Instant>,
 }
 
 impl Glide {
@@ -197,13 +198,15 @@ impl Glide {
         Glide {
             from: at,
             to: at,
-            start: Instant::now() - Duration::from_secs_f32(GLIDE_TIME),
+            start: None,
         }
     }
 
     /// Where the dot is now, and whether it is still moving.
     fn position(&self) -> (Point<f32>, bool) {
-        let elapsed = self.start.elapsed().as_secs_f32();
+        let elapsed = self
+            .start
+            .map_or(GLIDE_TIME, |start| start.elapsed().as_secs_f32());
         if elapsed >= GLIDE_TIME {
             return (self.to, false);
         }
@@ -228,7 +231,7 @@ pub struct Picker {
 
 impl Picker {
     fn press(&mut self, event: &MouseDownEvent, cx: &mut Context<Self>) {
-        let at = event.position.map(|value| value.as_f32());
+        let at = event.position.map(Pixels::as_f32);
         let on_pad = point(at.x - INSET, at.y - INSET);
         if inside_pad(on_pad) {
             if on_button(on_pad) {
@@ -270,7 +273,7 @@ impl Picker {
         match self.drag {
             Some(Control::Dot) => {
                 gradient::update(cx, |theme| {
-                    theme.move_primary(point(at.x - INSET, at.y - INSET))
+                    theme.move_primary(point(at.x - INSET, at.y - INSET));
                 });
             }
             Some(Control::Opacity) => {
@@ -280,7 +283,8 @@ impl Picker {
                 let opacity = MIN_OPACITY + along * (MAX_OPACITY - MIN_OPACITY);
                 gradient::update(cx, |theme| theme.set_opacity(opacity));
                 // A tick for every tenth crossed.
-                if (opacity * 10.).round() != (before * 10.).round() {
+                let tenth = |opacity: f32| (opacity * 10.).round() as i32;
+                if tenth(opacity) != tenth(before) {
                     haptic_tick();
                 }
             }
@@ -290,7 +294,12 @@ impl Picker {
                     .rem_euclid(360.)
                     / 360.;
                 gradient::update(cx, |theme| theme.set_texture(turn));
-                if gradient::current(cx).texture != before {
+                #[expect(
+                    clippy::float_cmp,
+                    reason = "the texture snaps to detents, so any change is a whole detent"
+                )]
+                let moved = gradient::current(cx).texture != before;
+                if moved {
                     haptic_tick();
                 }
             }
@@ -336,7 +345,7 @@ impl Picker {
                         Glide {
                             from: glide.position().0,
                             to: target,
-                            start: Instant::now(),
+                            start: Some(Instant::now()),
                         }
                     };
                 }
@@ -357,7 +366,11 @@ impl Picker {
         let actions: [DotAction; 3] = [
             (PLUS, theme.can_add(), GradientTheme::add_dot),
             (MINUS, has_dots, GradientTheme::remove_dot),
-            (HARMONY, theme.can_cycle_harmony(), GradientTheme::cycle_harmony),
+            (
+                HARMONY,
+                theme.can_cycle_harmony(),
+                GradientTheme::cycle_harmony,
+            ),
         ];
         let grid = colors.grid;
         div()
@@ -371,15 +384,18 @@ impl Picker {
             .child(
                 canvas(
                     |_, _, _| {},
-                    move |bounds, _, window, _| {
+                    move |bounds, (), window, _| {
                         let mut y = GRID_OFFSET;
                         while y < PAD {
                             let mut x = GRID_OFFSET;
                             while x < PAD {
                                 let origin = bounds.origin + point(px(x - 1.), px(y - 1.));
                                 window.paint_quad(
-                                    gpui_kit::fill(gpui_kit::Bounds::new(origin, size(px(2.), px(2.))), grid)
-                                        .corner_radii(px(1.)),
+                                    gpui_kit::fill(
+                                        gpui_kit::Bounds::new(origin, size(px(2.), px(2.))),
+                                        grid,
+                                    )
+                                    .corner_radii(px(1.)),
                                 );
                                 x += GRID_SPACING;
                             }
@@ -403,28 +419,35 @@ impl Picker {
                         .child("Click to add a color"),
                 )
             })
+            .children(self.shown.iter().zip(theme.colors()).enumerate().rev().map(
+                |(index, (glide, color))| {
+                    let dragged = index == 0 && self.drag == Some(Control::Dot);
+                    dot(index, glide.position().0, color, dragged, colors.dark)
+                },
+            ))
             .children(
-                self.shown
-                    .iter()
-                    .zip(theme.colors())
+                schemes
+                    .into_iter()
                     .enumerate()
-                    .rev()
-                    .map(|(index, (glide, color))| {
-                        let dragged = index == 0 && self.drag == Some(Control::Dot);
-                        dot(index, glide.position().0, color, dragged, colors.dark)
+                    .map(|(index, (scheme, svg))| {
+                        pad_button(("scheme", index), index, SCHEME_ROW, svg, true, colors)
+                            .when(scheme == preference, |button| button.bg(colors.hover))
+                            .on_click(move |_, window, cx| {
+                                window.dispatch_action(scheme.action(), cx);
+                            })
                     }),
             )
-            .children(schemes.into_iter().enumerate().map(|(index, (scheme, svg))| {
-                pad_button(("scheme", index), index, SCHEME_ROW, svg, true, colors)
-                    .when(scheme == preference, |button| button.bg(colors.hover))
-                    .on_click(move |_, window, cx| window.dispatch_action(scheme.action(), cx))
-            }))
-            .children(actions.into_iter().enumerate().map(|(index, (svg, enabled, action))| {
-                pad_button(("dot-action", index), index, DOT_ROW, svg, enabled, colors).when(
-                    enabled,
-                    |button| button.on_click(move |_, _, cx| gradient::update(cx, action)),
-                )
-            }))
+            .children(
+                actions
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, (svg, enabled, action))| {
+                        pad_button(("dot-action", index), index, DOT_ROW, svg, enabled, colors)
+                            .when(enabled, |button| {
+                                button.on_click(move |_, _, cx| gradient::update(cx, action))
+                            })
+                    }),
+            )
     }
 
     fn swatches(&self, colors: &Colors, cx: &mut Context<Self>) -> impl IntoElement {
@@ -441,17 +464,23 @@ impl Picker {
                 arrow("page-left", ARROW_CENTER, CHEVRON_LEFT, page > 0, colors).when(
                     page > 0,
                     |arrow| {
-                        arrow.on_click(cx.listener(move |this, _, _, cx| this.show_page(page - 1, cx)))
+                        arrow.on_click(
+                            cx.listener(move |this, _, _, cx| this.show_page(page - 1, cx)),
+                        )
                     },
                 ),
             )
             .child(
-                arrow("page-right", WIDTH - ARROW_CENTER, CHEVRON_RIGHT, page < last, colors).when(
+                arrow(
+                    "page-right",
+                    WIDTH - ARROW_CENTER,
+                    CHEVRON_RIGHT,
                     page < last,
-                    |arrow| {
-                        arrow.on_click(cx.listener(move |this, _, _, cx| this.show_page(page + 1, cx)))
-                    },
-                ),
+                    colors,
+                )
+                .when(page < last, |arrow| {
+                    arrow.on_click(cx.listener(move |this, _, _, cx| this.show_page(page + 1, cx)))
+                }),
             )
             .child(
                 div()
@@ -477,17 +506,19 @@ impl Picker {
                                     .flex()
                                     .items_center()
                                     .justify_between()
-                                    .when(shown, |page_row| page_row.children(presets.iter().enumerate().map(
-                                        move |(index, preset)| {
-                                            swatch((page, index), preset.swatch).on_click(
-                                                move |_, _, cx| {
-                                                    gradient::update(cx, |theme| {
-                                                        theme.apply_preset(&PAGES[page][index])
-                                                    })
-                                                },
-                                            )
-                                        },
-                                    )))
+                                    .when(shown, |page_row| {
+                                        page_row.children(presets.iter().enumerate().map(
+                                            move |(index, preset)| {
+                                                swatch((page, index), preset.swatch).on_click(
+                                                    move |_, _, cx| {
+                                                        gradient::update(cx, |theme| {
+                                                            theme.apply_preset(&PAGES[page][index]);
+                                                        });
+                                                    },
+                                                )
+                                            },
+                                        ))
+                                    })
                             })),
                     ),
             )
@@ -506,7 +537,13 @@ impl Picker {
         let (left, travel) = thumb_travel(progress);
         let thumb_x = left + progress * travel;
         let split = if enabled { thumb_x } else { f32::NEG_INFINITY };
-        let (track, wave, wave_dim) = (colors.track, colors.wave, colors.wave_dim);
+        let wave = Wave {
+            progress,
+            split,
+            track: colors.track,
+            bright: colors.wave,
+            dim: colors.wave_dim,
+        };
         let top = CONTROLS_ROW - SLIDER_REACH;
         div()
             .absolute()
@@ -517,59 +554,19 @@ impl Picker {
             .child(
                 canvas(
                     |_, _, _| {},
-                    move |bounds, _, window, _| {
-                        let origin = bounds.origin;
-                        let at = |x: f32, y: f32| origin + point(px(x), px(y));
-                        let center = SLIDER_REACH;
-                        window.paint_quad(
-                            gpui_kit::fill(
-                                gpui_kit::Bounds::new(
-                                    at(TRACK_LEFT, center - TRACK_HEIGHT / 2.),
-                                    size(px(TRACK_WIDTH), px(TRACK_HEIGHT)),
-                                ),
-                                track,
-                            )
-                            .corner_radii(px(TRACK_HEIGHT / 2.)),
-                        );
-                        let start = TRACK_LEFT + WAVE_INSET;
-                        let end = TRACK_LEFT + TRACK_WIDTH - WAVE_INSET;
-                        let amplitude = WAVE_AMPLITUDE * progress;
-                        let wave_y = |x: f32| {
-                            let turn = (x - start) / (end - start) * WAVE_TURNS;
-                            center - amplitude * (turn * std::f32::consts::TAU).sin()
-                        };
-                        // The wave is bright up to the thumb and dim past it.
-                        for (from, to, color) in [(start, split.min(end), wave), (split.max(start), end, wave_dim)] {
-                            if to - from < 0.5 {
-                                continue;
-                            }
-                            let mut path = PathBuilder::stroke(px(WAVE_STROKE));
-                            path.move_to(at(from, wave_y(from)));
-                            let mut x = from;
-                            while x < to {
-                                x = (x + 2.).min(to);
-                                path.line_to(at(x, wave_y(x)));
-                            }
-                            if let Ok(path) = path.build() {
-                                window.paint_path(path, color);
-                            }
-                            // Round caps.
-                            for x in [from, to] {
-                                let cap = gpui_kit::Bounds::new(
-                                    at(x - WAVE_STROKE / 2., wave_y(x) - WAVE_STROKE / 2.),
-                                    size(px(WAVE_STROKE), px(WAVE_STROKE)),
-                                );
-                                window.paint_quad(gpui_kit::fill(cap, color).corner_radii(px(WAVE_STROKE / 2.)));
-                            }
-                        }
-                    },
+                    move |bounds, (), window, _| wave.paint(bounds, window),
                 )
                 .size_full(),
             )
             .when(enabled, |slider| {
                 let thumb = |scale: f32| {
                     let (w, h) = (thumb_width * scale, thumb_height * scale);
-                    (px(thumb_x - w / 2.), px(SLIDER_REACH - h / 2.), px(w), px(h))
+                    (
+                        px(thumb_x - w / 2.),
+                        px(SLIDER_REACH - h / 2.),
+                        px(w),
+                        px(h),
+                    )
                 };
                 let (left, top, w, h) = thumb(1.);
                 let (hover_left, hover_top, hover_w, hover_h) = thumb(1.1);
@@ -625,7 +622,7 @@ impl Picker {
             .child(
                 canvas(
                     |_, _, _| {},
-                    move |bounds, _, window, _| {
+                    move |bounds, (), window, _| {
                         let center = bounds.center();
                         let radius = DIAL / 2.;
                         for index in 0..16 {
@@ -668,8 +665,14 @@ impl Render for Picker {
             .relative()
             .bg(p.menu)
             .text_color(p.text)
-            .on_mouse_down(MouseButton::Left, cx.listener(|this, event, _, cx| this.press(event, cx)))
-            .on_mouse_down(MouseButton::Right, cx.listener(|this, event, _, cx| this.press(event, cx)))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, event, _, cx| this.press(event, cx)),
+            )
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(|this, event, _, cx| this.press(event, cx)),
+            )
             .child(self.pad(&theme, &colors, cx))
             .child(self.swatches(&colors, cx))
             .child(self.slider(&theme, &colors))
@@ -679,18 +682,18 @@ impl Render for Picker {
                 root.child(
                     canvas(
                         |_, _, _| {},
-                        move |_, _, window, _| {
+                        move |_, (), window, _| {
                             let moved = picker.clone();
                             window.on_mouse_event(move |event: &MouseMoveEvent, phase, _, cx| {
                                 if phase == DispatchPhase::Bubble {
-                                    let at = event.position.map(|value| value.as_f32());
+                                    let at = event.position.map(Pixels::as_f32);
                                     moved.update(cx, |this, cx| this.drag_to(at, cx)).ok();
                                 }
                             });
-                            let released = picker.clone();
+                            let released = picker;
                             window.on_mouse_event(move |_: &MouseUpEvent, phase, _, cx| {
                                 if phase == DispatchPhase::Bubble {
-                                    released.update(cx, |this, cx| this.release(cx)).ok();
+                                    released.update(cx, Picker::release).ok();
                                 }
                             });
                         },
@@ -722,7 +725,13 @@ struct Colors {
 impl Colors {
     fn new(dark: bool) -> Self {
         // Light ink on dark, dark ink on light.
-        let ink = |alpha: f32| if dark { gray(1., alpha) } else { gray(0., alpha) };
+        let ink = |alpha: f32| {
+            if dark {
+                gray(1., alpha)
+            } else {
+                gray(0., alpha)
+            }
+        };
         Colors {
             dark,
             pad: ink(if dark { 0.03 } else { 0.05 }),
@@ -731,7 +740,11 @@ impl Colors {
             hover: ink(0.1),
             track: ink(0.1),
             wave: if dark { gray(0.63, 1.) } else { gray(0.35, 1.) },
-            wave_dim: if dark { gray(0.63, 0.5) } else { gray(0.3, 0.5) },
+            wave_dim: if dark {
+                gray(0.63, 0.5)
+            } else {
+                gray(0.3, 0.5)
+            },
             thumb: ink(1.),
             tick: ink(0.3),
             handle: if dark { gray(0.82, 1.) } else { gray(0.46, 1.) },
@@ -741,7 +754,13 @@ impl Colors {
     }
 }
 
-fn dot(index: usize, at: Point<f32>, color: gradient::Rgb, dragged: bool, dark: bool) -> AnyElement {
+fn dot(
+    index: usize,
+    at: Point<f32>,
+    color: gradient::Rgb,
+    dragged: bool,
+    dark: bool,
+) -> AnyElement {
     let primary = index == 0;
     let (side, border) = if primary {
         (PRIMARY_DOT, PRIMARY_BORDER)
@@ -774,9 +793,8 @@ fn dot(index: usize, at: Point<f32>, color: gradient::Rgb, dragged: bool, dark: 
             }])
         })
         .when(primary && !dragged, |dot| {
-            dot.cursor_pointer().hover(move |style| {
-                style.left(hover_left).top(hover_top).size(hover_side)
-            })
+            dot.cursor_pointer()
+                .hover(move |style| style.left(hover_left).top(hover_top).size(hover_side))
         })
         .into_any_element()
 }
@@ -803,7 +821,9 @@ fn pad_button(
         .items_center()
         .justify_center()
         .text_color(colors.icon)
-        .when(enabled, |button| button.cursor_pointer().hover(move |style| style.bg(hover)))
+        .when(enabled, |button| {
+            button.cursor_pointer().hover(move |style| style.bg(hover))
+        })
         .when(!enabled, |button| button.opacity(0.5))
         .child(Icon::default().data(svg).size(px(18.)))
 }
@@ -826,7 +846,9 @@ fn arrow(
         .items_center()
         .justify_center()
         .text_color(colors.icon)
-        .when(enabled, |arrow| arrow.cursor_pointer().hover(move |style| style.bg(hover)))
+        .when(enabled, |arrow| {
+            arrow.cursor_pointer().hover(move |style| style.bg(hover))
+        })
         .when(!enabled, |arrow| arrow.opacity(0.4))
         .child(Icon::default().data(svg).size(px(16.)))
 }
@@ -855,7 +877,9 @@ fn swatch(id: (usize, usize), swatch: Swatch) -> gpui_kit::Stateful<gpui_kit::Di
         });
     let face = match swatch {
         Swatch::Solid(color) => face.bg(gradient::rgba(color, 1.)),
-        Swatch::Blend(colors) => face.child(backdrop::swatch(colors, Corners::all(px(SWATCH / 2.)))),
+        Swatch::Blend(colors) => {
+            face.child(backdrop::swatch(colors, Corners::all(px(SWATCH / 2.))))
+        }
     };
     div()
         .id(ElementId::from(("swatch", id.0 * 16 + id.1)))
@@ -868,14 +892,23 @@ fn swatch(id: (usize, usize), swatch: Swatch) -> gpui_kit::Stateful<gpui_kit::Di
 }
 
 /// Draws the dial's handle: a small bar on the rim at `texture`'s turn, pointing outward.
-fn paint_handle(center: Point<Pixels>, radius: f32, texture: f32, color: Hsla, window: &mut Window) {
+fn paint_handle(
+    center: Point<Pixels>,
+    radius: f32,
+    texture: f32,
+    color: Hsla,
+    window: &mut Window,
+) {
     let angle = texture * std::f32::consts::TAU;
     let (sin, cos) = angle.sin_cos();
     // Along the radius, then across it.
     let outward = (sin, -cos);
     let across = (cos, sin);
     let (half_length, half_width, corner) = (6., 3., 2.);
-    let rim = (center.x.as_f32() + outward.0 * radius, center.y.as_f32() + outward.1 * radius);
+    let rim = (
+        center.x.as_f32() + outward.0 * radius,
+        center.y.as_f32() + outward.1 * radius,
+    );
     let at = |along: f32, side: f32| {
         point(
             px(rim.0 + outward.0 * along + across.0 * side),
@@ -946,9 +979,72 @@ fn thumb_travel(progress: f32) -> (f32, f32) {
     )
 }
 
+/// The opacity slider's track and wave, bright up to the thumb at `split` and dim past it,
+/// swinging wider the higher `progress` is.
+#[derive(Clone, Copy)]
+struct Wave {
+    progress: f32,
+    split: f32,
+    track: Hsla,
+    bright: Hsla,
+    dim: Hsla,
+}
+
+impl Wave {
+    fn paint(&self, bounds: gpui_kit::Bounds<Pixels>, window: &mut Window) {
+        let origin = bounds.origin;
+        let at = |x: f32, y: f32| origin + point(px(x), px(y));
+        let center = SLIDER_REACH;
+        window.paint_quad(
+            gpui_kit::fill(
+                gpui_kit::Bounds::new(
+                    at(TRACK_LEFT, center - TRACK_HEIGHT / 2.),
+                    size(px(TRACK_WIDTH), px(TRACK_HEIGHT)),
+                ),
+                self.track,
+            )
+            .corner_radii(px(TRACK_HEIGHT / 2.)),
+        );
+        let start = TRACK_LEFT + WAVE_INSET;
+        let end = TRACK_LEFT + TRACK_WIDTH - WAVE_INSET;
+        let amplitude = WAVE_AMPLITUDE * self.progress;
+        let wave_y = |x: f32| {
+            let turn = (x - start) / (end - start) * WAVE_TURNS;
+            center - amplitude * (turn * std::f32::consts::TAU).sin()
+        };
+        // The wave is bright up to the thumb and dim past it.
+        for (from, to, color) in [
+            (start, self.split.min(end), self.bright),
+            (self.split.max(start), end, self.dim),
+        ] {
+            if to - from < 0.5 {
+                continue;
+            }
+            let mut path = PathBuilder::stroke(px(WAVE_STROKE));
+            path.move_to(at(from, wave_y(from)));
+            let mut x = from;
+            while x < to {
+                x = (x + 2.).min(to);
+                path.line_to(at(x, wave_y(x)));
+            }
+            if let Ok(path) = path.build() {
+                window.paint_path(path, color);
+            }
+            // Round caps.
+            for x in [from, to] {
+                let cap = gpui_kit::Bounds::new(
+                    at(x - WAVE_STROKE / 2., wave_y(x) - WAVE_STROKE / 2.),
+                    size(px(WAVE_STROKE), px(WAVE_STROKE)),
+                );
+                window.paint_quad(gpui_kit::fill(cap, color).corner_radii(px(WAVE_STROKE / 2.)));
+            }
+        }
+    }
+}
+
 /// A light tap on the trackpad, as each detent passes.
 // objc's `msg_send!` checks a `cargo-clippy` cfg that current Rust no longer declares.
-#[allow(unexpected_cfgs)]
+#[expect(unexpected_cfgs, reason = "objc's `msg_send!` checks the cfg itself")]
 fn haptic_tick() {
     #[cfg(target_os = "macos")]
     unsafe {

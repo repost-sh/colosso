@@ -1,0 +1,10 @@
+#!/bin/sh
+# The checks a change passes before it's committed: Clippy under the workspace lint policy
+# with every warning an error, the file-size limit, and the tests.
+set -eu
+cd "$(dirname "$0")/.."
+
+cargo clippy --workspace --all-targets -- -D warnings
+script/hygiene
+# Tests keep their settings in the checkout, away from the app's own.
+COLOSSO_CONFIG_DIR="$PWD/target/test-config" cargo test --workspace

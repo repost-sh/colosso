@@ -1,0 +1,42 @@
+#!/bin/sh
+# Holds every Rust file under 500 lines: one file, one job. The files listed in
+# hygiene-allow.txt are over it already; each may shrink but not grow, and leaves the list
+# once it's under the limit.
+set -eu
+cd "$(dirname "$0")/.."
+
+LIMIT=500
+ALLOW=hygiene-allow.txt
+
+find crates -name '*.rs' -not -path '*/target/*' -exec wc -l {} + | grep -v ' total$' |
+  awk -v limit="$LIMIT" -v allow="$ALLOW" '
+    BEGIN {
+      while ((getline line < allow) > 0) {
+        if (line ~ /^[[:space:]]*(#|$)/) continue
+        split(line, field, /[[:space:]]+#[[:space:]]*/)
+        path = field[1]
+        gsub(/[[:space:]]+$/, "", path)
+        listed[path] = field[2] + 0
+      }
+    }
+    {
+      lines = $1; path = $2; seen[path] = 1
+      if (path in listed) {
+        if (lines <= limit) {
+          printf "%s is %d lines now: take it off %s.\n", path, lines, allow; failed = 1
+        } else if (lines > listed[path]) {
+          printf "%s grew from %d to %d lines: split it instead.\n", path, listed[path], lines; failed = 1
+        } else if (lines < listed[path]) {
+          printf "%s shrank to %d lines: note that in %s.\n", path, lines, allow; failed = 1
+        }
+      } else if (lines > limit) {
+        printf "%s is %d lines, over %d: split it by what it does.\n", path, lines, limit; failed = 1
+      }
+    }
+    END {
+      for (path in listed) if (!(path in seen)) {
+        printf "%s is gone: take it off %s.\n", path, allow; failed = 1
+      }
+      exit failed
+    }
+  '

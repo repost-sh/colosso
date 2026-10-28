@@ -1,6 +1,12 @@
 //! A checkout's changes against real repositories, made fresh for each test in the checkout's
 //! `target/test-repos`.
 
+#![expect(
+    clippy::unwrap_used,
+    clippy::panic,
+    reason = "a test fails loudly at the step that broke"
+)]
+
 mod common;
 
 use std::path::PathBuf;
@@ -60,7 +66,7 @@ impl Fixture {
             .into_iter()
             .find(|change| change.path == path)
             .unwrap_or_else(|| panic!("{path} isn't changed"));
-        checkout.diffs(vec![change]).remove(0).content
+        checkout.diffs(&[change]).remove(0).content
     }
 }
 
@@ -158,7 +164,7 @@ fn a_partly_staged_file_has_a_diff_for_each_part() {
     fixture.git(&["add", "a.txt"]);
     fixture.write("a.txt", "ONE\ntwo\nTHREE\n");
     let checkout = Checkout::open(&fixture.root).unwrap();
-    let diffs = checkout.diffs(checkout.changes().unwrap());
+    let diffs = checkout.diffs(&checkout.changes().unwrap());
     let sides: Vec<_> = diffs
         .iter()
         .map(|diff| (diff.change.staged, text(&diff.content)))
@@ -194,7 +200,7 @@ fn a_mode_change_alone_is_still_a_change() {
     fixture.git(&["commit", "-m", "executable"]);
     fixture.git(&["update-index", "--chmod=-x", "run.sh"]);
     let checkout = Checkout::open(&fixture.root).unwrap();
-    let diffs = checkout.diffs(checkout.changes().unwrap());
+    let diffs = checkout.diffs(&checkout.changes().unwrap());
     assert_eq!(diffs.len(), 1, "{diffs:?}");
 }
 
@@ -315,7 +321,7 @@ fn many_files_are_diffed_in_their_order() {
     }
     let checkout = Checkout::open(&fixture.root).unwrap();
     let changes = checkout.changes().unwrap();
-    let diffs = checkout.diffs(changes.clone());
+    let diffs = checkout.diffs(&changes);
     let order: Vec<&Change> = diffs.iter().map(|diff| &diff.change).collect();
     assert_eq!(order, changes.iter().collect::<Vec<_>>());
     assert!(

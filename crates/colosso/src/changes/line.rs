@@ -185,7 +185,7 @@ impl Element for CodeLine {
         _: Option<&GlobalElementId>,
         _: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        _: &mut (),
+        (): &mut (),
         window: &mut Window,
         _: &mut App,
     ) -> Shaped {
@@ -230,7 +230,7 @@ impl Element for CodeLine {
         _: Option<&GlobalElementId>,
         _: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        _: &mut (),
+        (): &mut (),
         shaped: &mut Shaped,
         window: &mut Window,
         cx: &mut App,
@@ -342,15 +342,15 @@ pub fn runs(
         let background = (words.iter())
             .any(|word| word.start <= start && end <= word.end)
             .then_some(marked);
-        let color = colour(kind);
+        let foreground = colour(kind);
         match runs.last_mut() {
-            Some(last) if last.color == color && last.background_color == background => {
-                last.len += end - start
+            Some(last) if last.color == foreground && last.background_color == background => {
+                last.len += end - start;
             }
             _ => runs.push(TextRun {
                 len: end - start,
                 font: font.clone(),
-                color,
+                color: foreground,
                 background_color: background,
                 underline: None,
                 strikethrough: None,

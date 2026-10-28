@@ -2,6 +2,14 @@
 //! Nothing here knows about the UI, and every call blocks until git is done, so the app makes
 //! them off its main thread.
 
+// The workspace leaves casts to UI maths; here one can cut a line number or a count short.
+#![warn(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss
+)]
+
 mod changes;
 mod command;
 mod create;
@@ -12,11 +20,11 @@ mod worktree;
 use std::path::{Path, PathBuf};
 
 pub use changes::{
-    ChangedWords, Change, Checkout, Content, Discarding, FileDiff, Hunk, Lines, Status,
+    Change, ChangedWords, Checkout, Content, Discarding, FileDiff, Hunk, Lines, Status,
     changed_words,
 };
 use command::Git;
-pub use command::{Error, Result};
+pub use command::{GitError, Result};
 pub use create::{NewWorktree, Start};
 pub use refs::Ref;
 pub use remove::Loss;
@@ -38,7 +46,7 @@ impl Repo {
             .read()
             .map_err(|error| {
                 if error.message.contains("not a git repository") {
-                    Error::refused(format!("{} is not in a git repository.", path.display()))
+                    GitError::refused(format!("{} is not in a git repository.", path.display()))
                 } else {
                     error
                 }
@@ -46,7 +54,7 @@ impl Repo {
         let main = command::nul_fields(&list)
             .next()
             .and_then(|field| field.strip_prefix("worktree "))
-            .ok_or_else(|| Error::refused("Git listed no checkouts."))?;
+            .ok_or_else(|| GitError::refused("Git listed no checkouts."))?;
         Ok(Repo {
             path: PathBuf::from(main),
         })

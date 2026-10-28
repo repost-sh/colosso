@@ -35,7 +35,9 @@ fn sidebar(cx: &App) -> SettingsSection {
                         .checked(current.sidebar_open_on_launch)
                         .color(p.accent)
                         .on_click(|open, _, cx| {
-                            settings::update(cx, |settings| settings.sidebar_open_on_launch = *open)
+                            settings::update(cx, |settings| {
+                                settings.sidebar_open_on_launch = *open;
+                            });
                         }),
                 ),
         )
@@ -62,8 +64,8 @@ fn sidebar(cx: &App) -> SettingsSection {
                         .disabled(width == theme::SIDEBAR_WIDTH)
                         .on_click(|_, _, cx| {
                             settings::update(cx, |settings| {
-                                settings.sidebar_width = theme::SIDEBAR_WIDTH
-                            })
+                                settings.sidebar_width = theme::SIDEBAR_WIDTH;
+                            });
                         }),
                 ),
         )
@@ -92,8 +94,8 @@ fn worktrees(cx: &App) -> SettingsSection {
                             if let Some(folder) = picked.await {
                                 cx.update(|cx| {
                                     settings::update(cx, |settings| {
-                                        settings.worktrees_dir = Some(folder)
-                                    })
+                                        settings.worktrees_dir = Some(folder);
+                                    });
                                 });
                             }
                         })
@@ -104,7 +106,7 @@ fn worktrees(cx: &App) -> SettingsSection {
                     PillButton::new("reset-worktrees-dir", "Reset")
                         .disabled(current.worktrees_dir.is_none())
                         .on_click(|_, _, cx| {
-                            settings::update(cx, |settings| settings.worktrees_dir = None)
+                            settings::update(cx, |settings| settings.worktrees_dir = None);
                         }),
                 ),
         )
@@ -191,9 +193,10 @@ impl BranchPrefixDialog {
             .trim_matches('/')
             .to_owned();
         settings::update(cx, |settings| {
-            settings.branch_prefix = match prefix.is_empty() {
-                true => BranchPrefix::None,
-                false => BranchPrefix::Custom(prefix),
+            settings.branch_prefix = if prefix.is_empty() {
+                BranchPrefix::None
+            } else {
+                BranchPrefix::Custom(prefix)
             }
         });
         modal::dismiss(window, cx);

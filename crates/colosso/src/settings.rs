@@ -128,8 +128,10 @@ impl Settings {
 
     /// The changes panel's file list's width, kept within its limits.
     pub fn changes_files_width(&self) -> f32 {
-        self.changes_files_width
-            .clamp(theme::CHANGES_FILES_MIN_WIDTH, theme::CHANGES_FILES_MAX_WIDTH)
+        self.changes_files_width.clamp(
+            theme::CHANGES_FILES_MIN_WIDTH,
+            theme::CHANGES_FILES_MAX_WIDTH,
+        )
     }
 
     /// The changes panel's width, kept within its limits even if the file says otherwise.
@@ -186,10 +188,10 @@ pub fn init(cx: &mut App) {
         pending: None,
     });
     cx.on_action(|SetLayout(layout): &SetLayout, cx| {
-        update(cx, |settings| settings.layout = *layout)
+        update(cx, |settings| settings.layout = *layout);
     });
     cx.on_action(|SetBranchPrefix(prefix): &SetBranchPrefix, cx| {
-        update(cx, |settings| settings.branch_prefix = prefix.clone())
+        update(cx, |settings| settings.branch_prefix = prefix.clone());
     });
     // A change still settling when the app quits is written on the way out.
     cx.on_app_quit(|cx| {
@@ -238,13 +240,27 @@ pub fn update(cx: &mut App, change: impl FnOnce(&mut Settings)) {
 }
 
 fn load(path: &Path) -> Settings {
-    match std::fs::read(path) {
-        Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_else(|error| {
-            eprintln!("colosso: ignoring unreadable {}: {error}", path.display());
+    let read = std::fs::read(path)
+        .map_err(|error| error.to_string())
+        .and_then(|bytes| serde_json::from_slice(&bytes).map_err(|error| error.to_string()));
+    match read {
+        Ok(settings) => settings,
+        // Before anything was saved.
+        Err(_) if !path.exists() => Settings::default(),
+        Err(error) => {
+            warn(&format!("ignoring unreadable {}: {error}", path.display()));
             Settings::default()
-        }),
-        Err(_) => Settings::default(),
+        }
     }
+}
+
+/// Says what went wrong with the settings file, where a dev build shows it.
+#[expect(
+    clippy::print_stderr,
+    reason = "the app has no logger yet, and the terminal is where a dev build is read"
+)]
+fn warn(message: &str) {
+    eprintln!("colosso: {message}");
 }
 
 /// The settings file's path and the JSON to write there.
@@ -254,7 +270,7 @@ fn encode(cx: &mut App) -> Option<(PathBuf, Vec<u8>)> {
     match serde_json::to_vec_pretty(&store.settings) {
         Ok(json) => Some((path, json)),
         Err(error) => {
-            eprintln!("colosso: could not encode settings: {error}");
+            warn(&format!("could not encode settings: {error}"));
             None
         }
     }
@@ -269,7 +285,7 @@ fn write(path: &Path, json: &[u8]) {
         .and_then(|()| std::fs::write(&temporary, json))
         .and_then(|()| std::fs::rename(&temporary, path));
     if let Err(error) = written {
-        eprintln!("colosso: could not save {}: {error}", path.display());
+        warn(&format!("could not save {}: {error}", path.display()));
     }
 }
 
@@ -300,6 +316,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "a missing width is the default itself, not near it"
+    )]
     fn missing_fields_fall_back_to_defaults() {
         let settings: Settings = serde_json::from_str(r#"{ "layout": "Arc" }"#).unwrap();
         assert_eq!(settings.layout, Layout::Arc);

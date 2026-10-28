@@ -85,16 +85,15 @@ mod tests {
     use super::*;
 
     fn porcelain(records: &[&[&str]]) -> String {
-        records
-            .iter()
-            .map(|fields| {
-                fields
-                    .iter()
-                    .map(|field| format!("{field}\0"))
-                    .collect::<String>()
-                    + "\0"
-            })
-            .collect()
+        let mut out = String::new();
+        for fields in records {
+            for field in *fields {
+                out.push_str(field);
+                out.push('\0');
+            }
+            out.push('\0');
+        }
+        out
     }
 
     #[test]

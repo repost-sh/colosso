@@ -138,10 +138,10 @@ pub struct Project {
 
 impl Project {
     fn new(path: PathBuf) -> Self {
-        let name = path
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_else(|| path.display().to_string());
+        let name = path.file_name().map_or_else(
+            || path.display().to_string(),
+            |name| name.to_string_lossy().into_owned(),
+        );
         Project {
             path,
             name: name.into(),

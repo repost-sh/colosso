@@ -91,7 +91,7 @@ pub fn sidebar(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
                                             window.dispatch_action(
                                                 Box::new(NewWorktreeIn(path.clone())),
                                                 cx,
-                                            )
+                                            );
                                         },
                                     ),
                                 ),
