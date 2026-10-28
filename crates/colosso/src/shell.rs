@@ -1,19 +1,25 @@
 //! The window: translucent rails around a rounded content card, in Orca or Arc layout.
 
+use std::time::{Duration, Instant};
+
 use gpui_kit::assets::IconName;
+use gpui_kit::component::Icon;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::native_menu::NativeMenu;
-use gpui_kit::component::Icon;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Action, App, Context, Div, ElementId, FocusHandle, InteractiveElement as _, IntoElement,
-    KeyBinding, MouseButton, MouseDownEvent, ParentElement as _, Render, SharedString, Stateful,
-    Styled as _, Window, actions, div, px,
+    Action, App, AppContext as _, Context, Div, DragMoveEvent, ElementId, Empty, FocusHandle,
+    InteractiveElement as _, IntoElement, KeyBinding, MouseButton, MouseDownEvent,
+    ParentElement as _, Render, SharedString, Stateful, StatefulInteractiveElement as _,
+    Styled as _, Window, actions, div, ease_in_out, px,
 };
 
 use crate::model::Workspace;
 use crate::theme::{CycleTheme, Palette, ThemePreference};
 use crate::{arc, orca, pane, theme};
+
+/// How long the sidebar takes to slide fully in or out.
+const SIDEBAR_SLIDE: Duration = Duration::from_millis(180);
 
 actions!(
     colosso,
@@ -28,7 +34,7 @@ actions!(
 
 pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
-        KeyBinding::new("cmd-b", ToggleSidebar, None),
+        KeyBinding::new("cmd-s", ToggleSidebar, None),
         KeyBinding::new("cmd-alt-b", ToggleRightPanel, None),
         KeyBinding::new("cmd-j", ToggleBottomPanel, None),
         KeyBinding::new("cmd-t", NewChat, None),
@@ -46,6 +52,9 @@ pub struct Shell {
     pub workspace: Workspace,
     mode: SidebarMode,
     sidebar_open: bool,
+    /// Where the sidebar was and when it started sliding toward `sidebar_open`.
+    sidebar_slide: Option<(f32, Instant)>,
+    pub sidebar_width: f32,
     right_panel_open: bool,
     bottom_panel_open: bool,
     /// Horizontal travel of a two-finger swipe in progress over the Arc sidebar.
@@ -61,6 +70,8 @@ impl Shell {
             workspace: Workspace::sample(),
             mode: SidebarMode::Orca,
             sidebar_open: true,
+            sidebar_slide: None,
+            sidebar_width: theme::SIDEBAR_WIDTH,
             right_panel_open: false,
             bottom_panel_open: false,
             swipe: None,
@@ -69,8 +80,24 @@ impl Shell {
     }
 
     fn toggle_sidebar(&mut self, _: &ToggleSidebar, _: &mut Window, cx: &mut Context<Self>) {
+        // Turning around mid-slide starts from wherever the sidebar is now.
+        let (reveal, _) = self.sidebar_reveal();
         self.sidebar_open = !self.sidebar_open;
+        self.sidebar_slide = Some((reveal, Instant::now()));
         cx.notify();
+    }
+
+    /// How far out the sidebar is, from 0 hidden to 1 fully out, and whether it is still sliding.
+    fn sidebar_reveal(&self) -> (f32, bool) {
+        let target = if self.sidebar_open { 1. } else { 0. };
+        let Some((from, start)) = self.sidebar_slide else {
+            return (target, false);
+        };
+        let progress = start.elapsed().as_secs_f32() / SIDEBAR_SLIDE.as_secs_f32();
+        if progress >= 1. {
+            return (target, false);
+        }
+        (from + (target - from) * ease_in_out(progress), true)
     }
 
     fn toggle_sidebar_mode(
@@ -106,6 +133,21 @@ impl Shell {
         cx.notify();
     }
 
+    fn resize_sidebar(
+        &mut self,
+        event: &DragMoveEvent<SidebarResize>,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // Both layouts start the sidebar right after the icon rail.
+        let width = (event.event.position.x.as_f32() - theme::ICON_RAIL_WIDTH)
+            .clamp(theme::SIDEBAR_MIN_WIDTH, theme::SIDEBAR_MAX_WIDTH);
+        if width != self.sidebar_width {
+            self.sidebar_width = width;
+            cx.notify();
+        }
+    }
+
     fn top_rail(&self) -> impl IntoElement {
         div()
             .h(px(theme::TITLE_BAR_HEIGHT))
@@ -124,12 +166,6 @@ impl Shell {
             .child(icon_button("back", IconName::ArrowLeft, "Back"))
             .child(icon_button("forward", IconName::ArrowRight, "Forward"))
             .child(drag_area("title").flex_1())
-            .child(action_button(
-                "toggle-bottom",
-                IconName::PanelBottom,
-                "Toggle bottom panel",
-                ToggleBottomPanel,
-            ))
             .child(action_button(
                 "toggle-right",
                 IconName::PanelRight,
@@ -191,9 +227,16 @@ impl Shell {
 }
 
 impl Render for Shell {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = theme::palette(cx);
         let orca = self.mode == SidebarMode::Orca;
+        let (reveal, sliding) = self.sidebar_reveal();
+        if sliding {
+            window.request_animation_frame();
+        } else {
+            self.sidebar_slide = None;
+        }
+        let sidebar_shown = reveal > 0.;
         let main = div()
             .flex_1()
             .min_w_0()
@@ -213,8 +256,8 @@ impl Render for Shell {
             .bg(p.card)
             .overflow_hidden()
             .flex()
-            .when(orca && self.sidebar_open, |card| {
-                card.child(orca::sidebar(self, cx))
+            .when(orca && sidebar_shown, |card| {
+                card.child(slide(orca::sidebar(self, cx), self.sidebar_width, reveal))
             })
             .child(main)
             .when(self.right_panel_open, |card| card.child(right_panel(p)));
@@ -226,6 +269,7 @@ impl Render for Shell {
             .on_action(cx.listener(Self::toggle_right_panel))
             .on_action(cx.listener(Self::toggle_bottom_panel))
             .on_action(cx.listener(Self::new_chat))
+            .on_drag_move(cx.listener(Self::resize_sidebar))
             .size_full()
             .flex()
             .flex_col()
@@ -238,12 +282,53 @@ impl Render for Shell {
                     .min_h_0()
                     .flex()
                     .child(self.icon_rail(cx))
-                    .when(!orca && self.sidebar_open, |body| {
-                        body.child(arc::sidebar(self, cx))
+                    .when(!orca && sidebar_shown, |body| {
+                        body.child(slide(arc::sidebar(self, cx), self.sidebar_width, reveal))
                     })
                     .child(card),
             )
     }
+}
+
+/// Shows the revealed part of a `width`-wide sidebar, sliding it out from under the left edge
+/// so its contents keep their layout while it moves.
+fn slide(sidebar: impl IntoElement, width: f32, reveal: f32) -> impl IntoElement {
+    div()
+        .w(px(width * reveal))
+        .flex_shrink_0()
+        .h_full()
+        .flex()
+        .overflow_hidden()
+        .child(
+            div()
+                .flex_shrink_0()
+                .h_full()
+                .relative()
+                .left(px(width * (reveal - 1.)))
+                .child(sidebar),
+        )
+}
+
+/// The drag payload while the sidebar's right border is being dragged.
+pub struct SidebarResize;
+
+impl Render for SidebarResize {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        Empty
+    }
+}
+
+/// A grab strip along the sidebar's right border; the sidebar must be `relative`.
+pub fn sidebar_resize_handle() -> impl IntoElement {
+    div()
+        .id("sidebar-resize")
+        .absolute()
+        .top_0()
+        .bottom_0()
+        .right_0()
+        .w(px(6.))
+        .cursor_col_resize()
+        .on_drag(SidebarResize, |_, _, _, cx| cx.new(|_| SidebarResize))
 }
 
 /// Click cycles System, Light and Dark; right-click picks one from a native menu.

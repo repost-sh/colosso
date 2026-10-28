@@ -10,7 +10,9 @@ use gpui_kit::{
 };
 
 use crate::model::{BranchKind, BranchUnit};
-use crate::shell::{Shell, ellipsized, icon, icon_button, row, search_row, section_label};
+use crate::shell::{
+    Shell, ellipsized, icon, icon_button, row, search_row, section_label, sidebar_resize_handle,
+};
 use crate::theme::{self, Palette};
 
 /// Horizontal travel, in points, that switches the sidebar to the next project.
@@ -116,7 +118,8 @@ pub fn sidebar(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
 
     div()
         .id("arc-sidebar")
-        .w(px(theme::SIDEBAR_WIDTH - 20.))
+        .relative()
+        .w(px(shell.sidebar_width))
         .flex_shrink_0()
         .h_full()
         .pr(px(theme::GUTTER))
@@ -127,6 +130,7 @@ pub fn sidebar(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
         .on_scroll(cx.listener(Shell::swipe))
         .child(space)
         .child(switcher)
+        .child(sidebar_resize_handle())
 }
 
 /// A branch unit's header and its tabs; `active_tab` is set only on the selected branch.
