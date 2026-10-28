@@ -11,6 +11,7 @@ use gpui_kit::{
 use crate::model::{BranchKind, BranchUnit};
 use crate::shell::{
     NewChat, Shell, action_button, ellipsized, icon, row, search_row, section_label,
+    sidebar_resize_handle,
 };
 use crate::theme::{self, Palette};
 
@@ -18,7 +19,8 @@ pub fn sidebar(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
     let p = theme::palette(cx);
     let workspace = &shell.workspace;
     div()
-        .w(px(theme::SIDEBAR_WIDTH))
+        .relative()
+        .w(px(shell.sidebar_width))
         .flex_shrink_0()
         .h_full()
         .p_2()
@@ -27,6 +29,7 @@ pub fn sidebar(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
         .gap_px()
         .border_r_1()
         .border_color(p.hairline)
+        .child(sidebar_resize_handle())
         .child(search_row(p))
         .child(section_label(p).mt_2().child("Projects"))
         .children(
