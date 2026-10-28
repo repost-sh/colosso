@@ -1,9 +1,16 @@
 mod arc;
+mod backdrop;
+mod gradient;
 mod menu;
 mod model;
+mod navigation;
 mod orca;
 mod pane;
+mod picker;
+mod settings;
+mod settings_view;
 mod shell;
+mod sidebar;
 mod theme;
 
 use gpui_kit::base::Root;
@@ -18,8 +25,10 @@ fn main() {
         .with_assets(gpui_kit::assets::AllAssets)
         .run(|cx| {
             gpui_kit::init(cx);
+            settings::init(cx);
             theme::init(cx);
-            shell::bind_keys(cx);
+            shell::init(cx);
+            navigation::bind_keys(cx);
             let options = WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
                     None,

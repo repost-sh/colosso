@@ -896,8 +896,13 @@ checksum = "3d7b894f5411737b7867f4827955924d7c254fc9f4d91a6aad6b097804b1018b"
 name = "colosso"
 version = "0.1.0"
 dependencies = [
+ "dirs 6.0.0",
  "gpui-kit",
  "gpui-pre",
+ "image",
+ "objc",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

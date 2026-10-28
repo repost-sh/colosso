@@ -13,7 +13,7 @@ use gpui_kit::{
 use crate::model::{BranchKind, BranchUnit};
 use crate::shell::{
     Shell, ellipsized, icon, icon_button, new_tab_menu, row, search_row, section_label,
-    sidebar_resize_handle, tab_close_button,
+    tab_close_button,
 };
 use crate::theme::{self, Palette};
 
@@ -139,19 +139,13 @@ pub fn sidebar(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
 
     div()
         .id("arc-sidebar")
-        .relative()
-        .w(px(shell.sidebar_width))
-        .flex_shrink_0()
-        .h_full()
-        .pr(px(theme::GUTTER))
-        .pb(px(theme::GUTTER))
+        .flex_1()
+        .min_h_0()
         .flex()
         .flex_col()
-        .overflow_hidden()
         .on_scroll(cx.listener(Shell::swipe))
         .child(space)
         .child(switcher)
-        .child(sidebar_resize_handle())
 }
 
 /// A branch unit's header and its tabs; `active_tab` is set only on the selected branch.

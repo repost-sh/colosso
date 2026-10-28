@@ -2,7 +2,10 @@
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::{ActiveTheme as _, Theme};
-use gpui_kit::{Action, App, Global, Hsla, Window, WindowAppearance, actions};
+use gpui_kit::{Action, App, Hsla, Window, WindowAppearance, actions};
+use serde::{Deserialize, Serialize};
+
+use crate::settings;
 
 pub const TITLE_BAR_HEIGHT: f32 = 40.;
 pub const TRAFFIC_LIGHT_SIZE: f32 = 14.;
@@ -16,6 +19,8 @@ pub const SIDEBAR_MIN_WIDTH: f32 = 200.;
 pub const SIDEBAR_MAX_WIDTH: f32 = 480.;
 pub const TAB_STRIP_HEIGHT: f32 = 38.;
 pub const ROW_HEIGHT: f32 = 30.;
+/// How wide a settings page's column grows before it centers in the card.
+pub const SETTINGS_PAGE_WIDTH: f32 = 680.;
 pub const MONO: &str = "Menlo";
 
 #[derive(Clone, Copy, Debug)]
@@ -35,9 +40,11 @@ pub struct Palette {
     pub selected: Hsla,
     /// Dropdown menus sit in a blurred window of their own; this tints that glass.
     pub menu: Hsla,
+    /// Switched-on switches and links.
+    pub accent: Hsla,
 }
 
-const fn gray(lightness: f32, alpha: f32) -> Hsla {
+pub const fn gray(lightness: f32, alpha: f32) -> Hsla {
     Hsla {
         h: 0.,
         s: 0.,
@@ -45,6 +52,13 @@ const fn gray(lightness: f32, alpha: f32) -> Hsla {
         a: alpha,
     }
 }
+
+const ACCENT: Hsla = Hsla {
+    h: 0.59,
+    s: 0.9,
+    l: 0.56,
+    a: 1.,
+};
 
 const DARK: Palette = Palette {
     rail_tint: gray(0.08, 0.55),
@@ -58,6 +72,7 @@ const DARK: Palette = Palette {
     hover: gray(1., 0.05),
     selected: gray(1., 0.1),
     menu: gray(1., 0.06),
+    accent: ACCENT,
 };
 
 const LIGHT: Palette = Palette {
@@ -72,9 +87,10 @@ const LIGHT: Palette = Palette {
     hover: gray(0., 0.04),
     selected: gray(0., 0.07),
     menu: gray(1., 0.35),
+    accent: ACCENT,
 };
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ThemePreference {
     #[default]
     System,
@@ -135,16 +151,12 @@ actions!(
     [CycleTheme, UseSystemTheme, UseLightTheme, UseDarkTheme]
 );
 
-struct Preference(ThemePreference);
-
-impl Global for Preference {}
-
 pub fn init(cx: &mut App) {
     cx.on_action(|_: &CycleTheme, cx| set_preference(preference(cx).next(), cx));
     cx.on_action(|_: &UseSystemTheme, cx| set_preference(ThemePreference::System, cx));
     cx.on_action(|_: &UseLightTheme, cx| set_preference(ThemePreference::Light, cx));
     cx.on_action(|_: &UseDarkTheme, cx| set_preference(ThemePreference::Dark, cx));
-    set_preference(ThemePreference::System, cx);
+    set_preference(settings::get(cx).appearance, cx);
 }
 
 /// Keeps the theme on the window's appearance: the forced one while a preference forces
@@ -164,12 +176,12 @@ pub fn palette(cx: &App) -> Palette {
 }
 
 pub fn preference(cx: &App) -> ThemePreference {
-    cx.global::<Preference>().0
+    settings::get(cx).appearance
 }
 
 /// Forcing the native appearance too keeps the window frame and blur on the theme.
 fn set_preference(preference: ThemePreference, cx: &mut App) {
-    cx.set_global(Preference(preference));
+    settings::update(cx, |settings| settings.appearance = preference);
     let forced = preference.forced_appearance();
     cx.set_window_appearance(forced);
     Theme::change(forced.unwrap_or_else(|| cx.window_appearance()), None, cx);

@@ -1,4 +1,5 @@
-//! Orca layout: projects and their branch units inside the card, tabs along the top.
+//! Orca layout: projects and their branch units in the sidebar inside the card, tabs along
+//! the top.
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::Sizable as _;
@@ -11,7 +12,7 @@ use gpui_kit::{
 use crate::model::{BranchKind, BranchUnit};
 use crate::shell::{
     Shell, ellipsized, icon, icon_button, new_tab_menu, row, search_row, section_label,
-    sidebar_resize_handle, tab_close_button,
+    tab_close_button,
 };
 use crate::theme::{self, Palette};
 
@@ -19,17 +20,9 @@ pub fn sidebar(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
     let p = theme::palette(cx);
     let workspace = &shell.workspace;
     div()
-        .relative()
-        .w(px(shell.sidebar_width))
-        .flex_shrink_0()
-        .h_full()
-        .p_2()
         .flex()
         .flex_col()
         .gap_px()
-        .border_r_1()
-        .border_color(p.hairline)
-        .child(sidebar_resize_handle())
         .child(search_row(p))
         .child(section_label(p).mt_2().child("Projects"))
         .children(

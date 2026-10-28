@@ -7,8 +7,18 @@ publish.workspace = true
 
 [dependencies]
 gpui-kit.workspace = true
+# Only for the frames of bitmaps painted at runtime; the version GPUI already pulls in.
+image = { version = "0.25", default-features = false }
+# Settings on disk; all versions GPUI already pulls in.
+dirs = "6"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 # Only named to turn on GPUI's hot-reload feature; it must match the version gpui-kit pins.
 gpui-pre = { version = "=0.3.10", default-features = false, optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# Haptic ticks on the theme picker's detents; the version GPUI already pulls in.
+objc = "0.2"
 
 [features]
 # Debug builds only: lets `dx serve --hot-patch` swap render code into the running app.
