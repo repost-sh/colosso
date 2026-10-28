@@ -1,18 +1,15 @@
-//! About: which build is running and where its settings are kept.
+//! About: which build is running, where its settings are kept and where it logs.
+
+use std::path::Path;
 
 use gpui_kit::{App, ParentElement as _, Styled as _, div};
 
 use super::components::{PillButton, SettingRow, SettingsSection};
-use crate::settings;
-use crate::theme;
+use crate::projects::display_path;
+use crate::{logs, settings, theme};
 
 pub fn sections(cx: &App) -> Vec<SettingsSection> {
     let p = theme::palette(cx);
-    let path = settings::path(cx).map(std::path::Path::to_path_buf);
-    let location = path.as_ref().map_or_else(
-        || "No folder to save settings in; changes last until Colosso quits.".to_string(),
-        |path| path.display().to_string(),
-    );
     vec![
         SettingsSection::new("Colosso")
             .row(
@@ -23,18 +20,41 @@ pub fn sections(cx: &App) -> Vec<SettingsSection> {
                         .child(env!("CARGO_PKG_VERSION")),
                 ),
             )
-            .row(
-                SettingRow::new("Settings file")
-                    .description(location)
-                    .control(
-                        PillButton::new("reveal-settings-file", "Reveal in Finder")
-                            .disabled(path.is_none())
-                            .on_click(move |_, _, cx| {
-                                if let Some(path) = &path {
-                                    cx.reveal_path(path);
-                                }
-                            }),
-                    ),
-            ),
+            .row(file_row(
+                "Settings file",
+                "reveal-settings-file",
+                settings::path(cx),
+                "No folder to save settings in; changes last until Colosso quits.",
+            ))
+            .row(file_row(
+                "Log file",
+                "reveal-log-file",
+                logs::file(),
+                "Logging to the terminal Colosso was started from.",
+            )),
     ]
+}
+
+/// A row saying where a file is kept, with a button to show it, or why there isn't one.
+fn file_row(
+    title: &'static str,
+    id: &'static str,
+    path: Option<&Path>,
+    missing: &'static str,
+) -> SettingRow {
+    let path = path.map(Path::to_path_buf);
+    SettingRow::new(title)
+        .description(
+            path.as_deref()
+                .map_or_else(|| missing.to_owned(), display_path),
+        )
+        .control(
+            PillButton::new(id, "Reveal in Finder")
+                .disabled(path.is_none())
+                .on_click(move |_, _, cx| {
+                    if let Some(path) = &path {
+                        cx.reveal_path(path);
+                    }
+                }),
+        )
 }

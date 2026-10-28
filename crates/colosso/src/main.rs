@@ -3,6 +3,7 @@ mod backdrop;
 mod changes;
 mod delete_worktree;
 mod gradient;
+mod logs;
 mod menu;
 mod modal;
 mod model;
@@ -25,6 +26,7 @@ use gpui_kit::{
 };
 
 fn main() {
+    logs::init();
     gpui_kit::application()
         // The full Lucide set: the default bundle leaves out icons we use, which then draw nothing.
         .with_assets(gpui_kit::assets::AllAssets)

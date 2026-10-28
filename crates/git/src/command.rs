@@ -2,8 +2,9 @@
 
 use std::ffi::OsStr;
 use std::fmt;
-use std::path::Path;
-use std::process::{Command, Stdio};
+use std::path::{Path, PathBuf};
+use std::process::{Command, ExitStatus, Stdio};
+use std::time::Instant;
 
 pub type Result<T> = std::result::Result<T, GitError>;
 
@@ -34,6 +35,7 @@ impl GitError {
 /// A git command run in `dir`.
 pub(crate) struct Git {
     command: Command,
+    dir: PathBuf,
     line: String,
 }
 
@@ -52,6 +54,7 @@ impl Git {
             .env("GIT_TERMINAL_PROMPT", "0");
         Git {
             command,
+            dir: dir.to_owned(),
             line: "git".into(),
         }
     }
@@ -70,10 +73,10 @@ impl Git {
 
     /// Runs the command and returns what it printed.
     pub fn read(mut self) -> Result<String> {
-        let output = self
-            .command
-            .output()
-            .map_err(|error| could_not_run(&error))?;
+        let started = Instant::now();
+        let output = self.command.output();
+        self.ran(output.as_ref().map(|output| output.status), started);
+        let output = output.map_err(|error| could_not_run(&error))?;
         if output.status.success() {
             return Ok(String::from_utf8_lossy(&output.stdout).into_owned());
         }
@@ -107,10 +110,19 @@ impl Git {
     /// Runs a query whose answer is its exit status, like `show-ref --verify --quiet`.
     pub fn succeeds(mut self) -> Result<bool> {
         self.command.stdout(Stdio::null()).stderr(Stdio::null());
-        self.command
-            .status()
-            .map(|status| status.success())
-            .map_err(|error| could_not_run(&error))
+        let started = Instant::now();
+        let status = self.command.status();
+        self.ran(status.as_ref().copied(), started);
+        Ok(status.map_err(|error| could_not_run(&error))?.success())
+    }
+
+    /// Notes in the log how the command, `started` then, ended, or that it couldn't start.
+    fn ran(&self, ended: std::result::Result<ExitStatus, &std::io::Error>, started: Instant) {
+        let (line, dir, took) = (&self.line, self.dir.display(), started.elapsed());
+        match ended {
+            Ok(status) => log::debug!("`{line}` in {dir}: {status} after {took:.1?}"),
+            Err(error) => log::debug!("`{line}` in {dir} couldn't start: {error}"),
+        }
     }
 
     /// Runs a query that prints nothing and fails when there is no answer, like

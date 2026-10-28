@@ -978,12 +978,14 @@ checksum = "3d7b894f5411737b7867f4827955924d7c254fc9f4d91a6aad6b097804b1018b"
 name = "colosso"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "colosso-git",
  "dirs 6.0.0",
  "futures",
  "gpui-kit",
  "gpui-pre",
  "image",
+ "log",
  "notify",
  "objc",
  "serde",
@@ -997,6 +999,7 @@ name = "colosso-git"
 version = "0.1.0"
 dependencies = [
  "gix",
+ "log",
  "trash",
 ]
 

@@ -19,6 +19,10 @@ gpui-kit.workspace = true
 image = { version = "0.25", default-features = false }
 # Settings on disk; all versions GPUI already pulls in.
 dirs = "6"
+# The log: the facade GPUI and gix already log through, and the clock its lines are stamped
+# with, both already built for GPUI.
+log = { version = "0.4", features = ["std"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Only named to turn on GPUI's hot-reload feature; it must match the version gpui-kit pins.

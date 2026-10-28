@@ -40,7 +40,7 @@ unwrap_used = "deny"
 map_err_ignore = "deny"
 # `Instant - Duration` panics if the clock reads less than the duration.
 unchecked_time_subtraction = "deny"
-# What reaches the terminal goes through one place that says why it may.
+# Messages go through the log, `colosso::logs`, which knows where they belong.
 print_stderr = "deny"
 print_stdout = "deny"
 dbg_macro = "deny"

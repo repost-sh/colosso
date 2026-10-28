@@ -180,6 +180,7 @@ impl DeleteWorktreeDialog {
                 .update(cx, |_, window, cx| {
                     if still_there {
                         // Asked again with what git says now, and why it stopped.
+                        log::warn!("couldn't delete the worktree: {}", error.message);
                         ask(shell, project, path, Some(error.message.into()), parent, cx);
                     } else {
                         modal::alert(
