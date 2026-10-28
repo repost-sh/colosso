@@ -13,7 +13,7 @@ use gpui_kit::{
 use crate::model::{BranchKind, BranchUnit};
 use crate::shell::{
     Shell, ellipsized, icon, icon_button, new_tab_menu, row, search_row, section_label,
-    sidebar_resize_handle,
+    sidebar_resize_handle, tab_close_button,
 };
 use crate::theme::{self, Palette};
 
@@ -195,17 +195,30 @@ fn branch_group(
                 )),
         )
         .children(branch.tabs.iter().enumerate().map(|(tab_index, tab)| {
-            row(
-                ("arc-tab", branch_index * 100 + tab_index),
-                active_tab == Some(tab_index),
-                p,
-            )
-            .on_click(cx.listener(move |this, _, _, cx| {
-                this.workspace
-                    .select_tab(project_index, branch_index, tab_index);
-                cx.notify();
-            }))
-            .child(icon(tab.icon(), 13.).text_color(p.muted))
-            .child(ellipsized(tab.title()))
+            let active = active_tab == Some(tab_index);
+            row(("arc-tab", branch_index * 100 + tab_index), active, p)
+                .group("arc-tab")
+                .pr_1()
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.workspace
+                        .select_tab(project_index, branch_index, tab_index);
+                    cx.notify();
+                }))
+                .child(icon(tab.icon(), 13.).text_color(p.muted))
+                .child(ellipsized(tab.title()).flex_1())
+                // Shown on the active tab, and on the others while hovered.
+                .child(
+                    tab_close_button(
+                        ("arc-tab-close", branch_index * 100 + tab_index),
+                        (project_index, branch_index, tab_index),
+                        p,
+                        cx,
+                    )
+                    .when(!active, |close| {
+                        close
+                            .opacity(0.)
+                            .group_hover("arc-tab", |style| style.opacity(1.))
+                    }),
+                )
         }))
 }
