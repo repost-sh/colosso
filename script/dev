@@ -1,0 +1,24 @@
+#!/bin/sh
+# Runs Colosso with hot reload: edits to render code apply to the running app
+# without a restart. Anything subsecond can't patch (new struct fields, statics,
+# other crates) triggers a full rebuild and relaunch.
+set -eu
+cd "$(dirname "$0")/.."
+
+# dx must match the dioxus devtools version GPUI's hot-reload feature links against.
+DX_VERSION=0.7.10
+DX_SHA256=342c92bc33dca60dadd725ed5e249923f049ae2e1e50b7477f4968d56695b425
+DX_DIR=".tools/dx-$DX_VERSION"
+DX="$DX_DIR/dx"
+
+if [ ! -x "$DX" ]; then
+  echo "Installing dx $DX_VERSION into $DX_DIR"
+  mkdir -p "$DX_DIR"
+  curl -fsSL -o "$DX_DIR/dx.tar.gz" \
+    "https://github.com/DioxusLabs/dioxus/releases/download/v$DX_VERSION/dx-aarch64-apple-darwin.tar.gz"
+  echo "$DX_SHA256  $DX_DIR/dx.tar.gz" | shasum -a 256 -c -
+  tar -xzf "$DX_DIR/dx.tar.gz" -C "$DX_DIR"
+  rm "$DX_DIR/dx.tar.gz"
+fi
+
+exec "$DX" serve --hot-patch --package colosso --features hot-reload,inspector --platform macos "$@"
