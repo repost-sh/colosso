@@ -5,6 +5,7 @@ use gpui_kit::{Action, App, AsKeystroke as _, IntoElement, ParentElement as _, S
 
 use super::components::{SettingRow, SettingsSection};
 use crate::navigation::{CloseSettings, GoBack, GoForward, OpenSettings};
+use crate::projects::NewWorktree;
 use crate::shell::{
     NewChat, ToggleBottomPanel, ToggleRightPanel, ToggleSidebar, ToggleSidebarMode,
 };
@@ -14,7 +15,7 @@ use crate::theme::{self, CycleTheme};
 type Command = (&'static str, &'static dyn Action);
 
 /// Each section's commands, in the order the page lists them.
-const SECTIONS: [(&str, &[Command]); 3] = [
+const SECTIONS: [(&str, &[Command]); 4] = [
     (
         "Navigation",
         &[
@@ -34,6 +35,7 @@ const SECTIONS: [(&str, &[Command]); 3] = [
             ("Cycle theme", &CycleTheme),
         ],
     ),
+    ("Worktrees", &[("New worktree", &NewWorktree)]),
     ("Tabs", &[("New chat", &NewChat)]),
 ];
 

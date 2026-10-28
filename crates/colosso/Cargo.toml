@@ -6,6 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+colosso-git = { path = "../git" }
 gpui-kit.workspace = true
 # Only for the frames of bitmaps painted at runtime; the version GPUI already pulls in.
 image = { version = "0.25", default-features = false }

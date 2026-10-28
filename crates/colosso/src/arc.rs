@@ -10,10 +10,11 @@ use gpui_kit::{
     TouchPhase, Window, div, px,
 };
 
-use crate::model::{BranchKind, BranchUnit};
+use crate::model::BranchUnit;
+use crate::projects::{AddProject, NewWorktreeIn, project_menu, with_menu, worktree_menu};
 use crate::shell::{
-    Shell, ellipsized, icon, icon_button, new_tab_menu, row, search_row, section_label,
-    tab_close_button,
+    Shell, action_button, add_project_row, ellipsized, icon, icon_button, new_tab_menu, no_matches,
+    project_error, row, search_field, section_label, tab_close_button,
 };
 use crate::theme::{self, Palette};
 
@@ -55,7 +56,6 @@ pub fn sidebar(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
     let p = theme::palette(cx);
     let workspace = &shell.workspace;
     let project_index = workspace.active_project;
-    let project = workspace.project();
 
     let space = div()
         .flex_1()
@@ -65,47 +65,59 @@ pub fn sidebar(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
         .flex()
         .flex_col()
         .gap_px()
-        .child(
-            div()
-                .h(px(28.))
-                .px_2()
-                .flex()
-                .items_center()
-                .text_sm()
-                .font_weight(FontWeight::SEMIBOLD)
-                .child(project.name.clone()),
-        )
-        .child(search_row(p).rounded(px(8.)).bg(p.hover))
-        .children(
-            project
-                .branches
-                .iter()
-                .enumerate()
-                .map(|(branch_index, branch)| {
-                    let active_tab =
-                        (branch_index == project.active_branch).then_some(branch.active_tab);
-                    branch_group(
-                        &shell.focus,
-                        project_index,
-                        branch_index,
-                        branch,
-                        active_tab,
-                        p,
-                        cx,
+        .map(|space| match workspace.project() {
+            None => space.child(add_project_row("arc-first-project", p)),
+            Some(project) => {
+                let path = project.path.clone();
+                let shown = project.shown_branches(&shell.search_query(cx));
+                space
+                    .child(with_menu(
+                        div()
+                            .h(px(28.))
+                            .px_2()
+                            .flex()
+                            .items_center()
+                            .text_sm()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child(project.name.clone()),
+                        {
+                            let path = path.clone();
+                            move || project_menu(&path)
+                        },
+                    ))
+                    .child(search_field(&shell.search, p).rounded(px(8.)).bg(p.hover))
+                    .when_some(project.error.clone(), |space, error| {
+                        space.child(project_error(error, p))
+                    })
+                    .when(shown.is_empty() && !project.branches.is_empty(), |space| {
+                        space.child(no_matches(p))
+                    })
+                    .children(shown.into_iter().map(|branch_index| {
+                        let branch = &project.branches[branch_index];
+                        let active_tab =
+                            (branch_index == project.active_branch).then_some(branch.active_tab);
+                        branch_group(
+                            &shell.focus,
+                            project_index,
+                            branch_index,
+                            branch,
+                            active_tab,
+                            p,
+                            cx,
+                        )
+                    }))
+                    .child(
+                        row("arc-new-worktree", false, p)
+                            .mt_2()
+                            .text_color(p.muted)
+                            .on_click(move |_, window, cx| {
+                                window.dispatch_action(Box::new(NewWorktreeIn(path.clone())), cx)
+                            })
+                            .child(icon(IconName::GitBranchPlus, 13.))
+                            .child("New worktree"),
                     )
-                }),
-        )
-        .child(
-            row("arc-new-worktree", false, p)
-                .mt_2()
-                .text_color(p.muted)
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.workspace.new_worktree(project_index);
-                    cx.notify();
-                }))
-                .child(icon(IconName::GitBranchPlus, 13.))
-                .child("New worktree"),
-        );
+            }
+        });
 
     let switcher = div()
         .h(px(32.))
@@ -135,7 +147,16 @@ pub fn sidebar(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
                         .child(project.initials())
                 }),
         )
-        .child(icon_button("arc-new-space", IconName::Plus, "New project").small());
+        .child(
+            action_button(
+                "arc-new-space",
+                IconName::Plus,
+                "Add project",
+                AddProject,
+                cx,
+            )
+            .small(),
+        );
 
     div()
         .id("arc-sidebar")
@@ -158,23 +179,22 @@ fn branch_group(
     p: Palette,
     cx: &mut Context<Shell>,
 ) -> impl IntoElement + use<> {
+    let (path, is_main) = (branch.worktree.path.clone(), branch.is_main());
     div()
         .mt_2()
         .flex()
         .flex_col()
         .gap_px()
-        .child(
+        .child(with_menu(
             section_label(p)
                 .pr_0()
                 .child(icon(IconName::GitBranch, 12.))
-                .child(ellipsized(branch.name.clone()))
-                .when(branch.kind == BranchKind::Checkout, |header| {
-                    header.child("checkout")
-                })
+                .child(ellipsized(branch.name()))
+                .when(is_main, |header| header.child("checkout"))
                 .child(div().flex_1())
                 .child(new_tab_menu(
                     ("arc-new-tab-menu", branch_index),
-                    icon_button(("arc-new-tab", branch_index), IconName::Plus, "New tab")
+                    icon_button(("arc-new-tab", branch_index), IconName::Plus, "New tab", cx)
                         .xsmall()
                         // The menu opens its tab on the selected branch unit, so select
                         // this one on the press that opens the menu.
@@ -187,7 +207,8 @@ fn branch_group(
                         ),
                     focus.clone(),
                 )),
-        )
+            move || worktree_menu(&path, is_main),
+        ))
         .children(branch.tabs.iter().enumerate().map(|(tab_index, tab)| {
             let active = active_tab == Some(tab_index);
             row(("arc-tab", branch_index * 100 + tab_index), active, p)

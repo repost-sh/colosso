@@ -56,6 +56,21 @@ impl Layout {
     }
 }
 
+/// What the branches of new worktrees are named under: `<prefix>/<name>`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum BranchPrefix {
+    /// The GitHub username git's config or the GitHub CLI knows; no prefix if neither does.
+    #[default]
+    GitHubUser,
+    Custom(String),
+    None,
+}
+
+/// Picks what new branches are named under, from a menu.
+#[derive(Clone, Debug, PartialEq, Action)]
+#[action(namespace = settings, no_json)]
+pub struct SetBranchPrefix(pub BranchPrefix);
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -65,6 +80,12 @@ pub struct Settings {
     pub layout: Layout,
     pub sidebar_width: f32,
     pub sidebar_open_on_launch: bool,
+    /// The main checkouts of the projects in the sidebar, in order.
+    pub projects: Vec<PathBuf>,
+    /// Where new worktrees go, in a folder per project. Unset, they go in
+    /// `~/colosso/workspaces`.
+    pub worktrees_dir: Option<PathBuf>,
+    pub branch_prefix: BranchPrefix,
 }
 
 impl Settings {
@@ -85,6 +106,18 @@ impl Settings {
         }
     }
 
+    /// The folder new worktrees go in, each project's in a folder of its own.
+    pub fn worktrees_root(&self) -> PathBuf {
+        self.worktrees_dir
+            .clone()
+            .unwrap_or_else(default_worktrees_dir)
+    }
+
+    /// The folder new worktrees of a project called `project` go in.
+    pub fn worktrees_dir(&self, project: &str) -> PathBuf {
+        self.worktrees_root().join(project)
+    }
+
     /// The sidebar's width, kept within its limits even if the file says otherwise.
     pub fn sidebar_width(&self) -> f32 {
         self.sidebar_width
@@ -101,8 +134,18 @@ impl Default for Settings {
             layout: Layout::default(),
             sidebar_width: theme::SIDEBAR_WIDTH,
             sidebar_open_on_launch: true,
+            projects: Vec::new(),
+            worktrees_dir: None,
+            branch_prefix: BranchPrefix::default(),
         }
     }
+}
+
+fn default_worktrees_dir() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_default()
+        .join("colosso")
+        .join("workspaces")
 }
 
 struct Store {
@@ -128,6 +171,9 @@ pub fn init(cx: &mut App) {
     });
     cx.on_action(|SetLayout(layout): &SetLayout, cx| {
         update(cx, |settings| settings.layout = *layout)
+    });
+    cx.on_action(|SetBranchPrefix(prefix): &SetBranchPrefix, cx| {
+        update(cx, |settings| settings.branch_prefix = prefix.clone())
     });
     // A change still settling when the app quits is written on the way out.
     cx.on_app_quit(|cx| {
@@ -224,6 +270,9 @@ mod tests {
             appearance: ThemePreference::Dark,
             layout: Layout::Arc,
             sidebar_width: 320.,
+            projects: vec!["/src/app".into()],
+            worktrees_dir: Some("/work".into()),
+            branch_prefix: BranchPrefix::Custom("me".into()),
             ..Settings::default()
         };
         settings.dark_theme.dots = vec![point(250., 120.), point(110., 240.)];
@@ -239,5 +288,20 @@ mod tests {
         assert_eq!(settings.layout, Layout::Arc);
         assert_eq!(settings.sidebar_width, theme::SIDEBAR_WIDTH);
         assert_eq!(settings.dark_theme, GradientTheme::default());
+        assert_eq!(settings.branch_prefix, BranchPrefix::GitHubUser);
+    }
+
+    #[test]
+    fn worktrees_go_in_a_folder_per_project() {
+        let settings = Settings {
+            worktrees_dir: Some("/work".into()),
+            ..Settings::default()
+        };
+        assert_eq!(settings.worktrees_dir("app"), Path::new("/work/app"));
+        assert!(
+            Settings::default()
+                .worktrees_dir("app")
+                .ends_with("colosso/workspaces/app")
+        );
     }
 }

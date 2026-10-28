@@ -5,9 +5,10 @@
 use std::time::{Duration, Instant};
 
 use gpui_kit::assets::IconName;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
+use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::native_menu::NativeMenu;
-use gpui_kit::component::{Disableable as _, Icon, Selectable as _};
+use gpui_kit::component::{Disableable as _, Icon, Selectable as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Action, AnyElement, App, AppContext as _, Context, Div, DragMoveEvent, ElementId, Entity,
@@ -22,11 +23,12 @@ use crate::model::{PaneKind, Workspace};
 use crate::navigation::{
     CloseSettings, GoBack, GoForward, Navigate, NavigationHistory, OpenSettings, Route,
 };
+use crate::projects::{AddProject, NewWorktree};
 use crate::settings::{self, Layout};
-use crate::settings_view::{self, SettingsSidebar};
+use crate::settings_view::{self, EditBranchPrefix, SettingsSidebar};
 use crate::sidebar::{SidebarFrame, SidebarResize, slide_out};
 use crate::theme::{CycleTheme, Palette, ThemePreference};
-use crate::{arc, backdrop, gradient, orca, pane, picker, theme};
+use crate::{arc, backdrop, gradient, modal, orca, pane, picker, projects, theme};
 
 /// How long the sidebar takes to slide fully in or out.
 const SIDEBAR_SLIDE: Duration = Duration::from_millis(180);
@@ -53,6 +55,7 @@ pub fn init(cx: &mut App) {
         KeyBinding::new("cmd-j", ToggleBottomPanel, None),
         KeyBinding::new("cmd-t", NewChat, None),
         KeyBinding::new("cmd-shift-m", ToggleSidebarMode, None),
+        KeyBinding::new("cmd-n", NewWorktree, None),
     ]);
     // The layout is a setting, so this works from any window or menu.
     cx.on_action(|_: &ToggleSidebarMode, cx| {
@@ -72,9 +75,11 @@ pub struct Shell {
     /// Horizontal travel of a two-finger swipe in progress over the Arc sidebar.
     pub swipe: Option<f32>,
     pub focus: FocusHandle,
+    /// What the sidebar's search field narrows its worktrees to.
+    pub search: Entity<InputState>,
     /// Where the rails were last right-clicked, for the theme picker their menu opens.
     rails_menu_at: Point<Pixels>,
-    _subscriptions: [Subscription; 2],
+    _subscriptions: [Subscription; 4],
 }
 
 impl Shell {
@@ -83,12 +88,28 @@ impl Shell {
         window.focus(&focus, cx);
         let history = cx.new(|_| NavigationHistory::new());
         let settings_sidebar = cx.new(|cx| SettingsSidebar::new(history.clone(), window, cx));
+        let search = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("Search")
+                .clean_on_escape()
+        });
         let _subscriptions = [
             settings::observe(cx),
             cx.observe(&history, |_, _, cx| cx.notify()),
+            // Worktrees may have come or gone in a terminal while the window was away.
+            cx.observe_window_activation(window, |this, window, cx| {
+                if window.is_window_active() {
+                    this.reload_projects(cx);
+                }
+            }),
+            cx.subscribe(&search, |_, _, event, cx| {
+                if let InputEvent::Change = event {
+                    cx.notify();
+                }
+            }),
         ];
-        Shell {
-            workspace: Workspace::sample(),
+        let mut shell = Shell {
+            workspace: Workspace::new(&settings::get(cx).projects),
             history,
             settings_sidebar,
             sidebar_open: settings::get(cx).sidebar_open_on_launch,
@@ -97,9 +118,12 @@ impl Shell {
             bottom_panel_open: false,
             swipe: None,
             focus,
+            search,
             rails_menu_at: Point::default(),
             _subscriptions,
-        }
+        };
+        shell.reload_projects(cx);
+        shell
     }
 
     fn layout(cx: &App) -> Layout {
@@ -168,7 +192,7 @@ impl Shell {
         cx.notify();
     }
 
-    fn new_tab(&mut self, kind: PaneKind, cx: &mut Context<Self>) {
+    pub fn new_tab(&mut self, kind: PaneKind, cx: &mut Context<Self>) {
         self.workspace.new_tab(kind);
         // A new tab is something to look at, so leave settings for it.
         self.navigate(Route::Workspace, cx);
@@ -222,13 +246,14 @@ impl Shell {
                 IconName::PanelLeft,
                 "Toggle sidebar",
                 ToggleSidebar,
+                cx,
             ))
             .child(
-                action_button("back", IconName::ArrowLeft, "Back", GoBack)
+                action_button("back", IconName::ArrowLeft, "Back", GoBack, cx)
                     .disabled(!history.can_go_back()),
             )
             .child(
-                action_button("forward", IconName::ArrowRight, "Forward", GoForward)
+                action_button("forward", IconName::ArrowRight, "Forward", GoForward, cx)
                     .disabled(!history.can_go_forward()),
             )
             .child(drag_area("title").flex_1())
@@ -237,6 +262,7 @@ impl Shell {
                 IconName::PanelRight,
                 "Toggle right panel",
                 ToggleRightPanel,
+                cx,
             ))
     }
 
@@ -252,7 +278,7 @@ impl Shell {
             .gap_1()
             .pb(px(theme::GUTTER))
             .child(
-                icon_button("rail-chats", IconName::MessagesSquare, "Chats")
+                icon_button("rail-chats", IconName::MessagesSquare, "Chats", cx)
                     .selected(!in_settings)
                     .on_click(|_, window, cx| {
                         window.dispatch_action(Box::new(Navigate(Route::Workspace)), cx)
@@ -262,6 +288,7 @@ impl Shell {
                 "rail-changes",
                 IconName::GitPullRequest,
                 "Changes",
+                cx,
             ))
             .child(div().flex_1())
             .child(action_button(
@@ -269,14 +296,16 @@ impl Shell {
                 IconName::PanelsTopLeft,
                 other_layout,
                 ToggleSidebarMode,
+                cx,
             ))
-            .child(theme_toggle(theme::preference(cx)))
+            .child(theme_toggle(theme::preference(cx), cx))
             .child(
                 action_button(
                     "rail-settings",
                     IconName::Settings,
                     "Settings",
                     OpenSettings,
+                    cx,
                 )
                 .selected(in_settings),
             )
@@ -313,23 +342,29 @@ impl Shell {
 
     fn workspace_content(&self, p: Palette) -> impl IntoElement {
         let workspace = &self.workspace;
-        let branch = workspace.branch();
-        let context = format!("{} / {}", workspace.project().name, branch.name);
-        div()
-            .flex_1()
-            .min_h_0()
-            .child(match branch.tabs.get(branch.active_tab) {
-                Some(tab) => pane::tab(tab, context.into(), p),
-                None => div()
-                    .size_full()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .text_sm()
-                    .text_color(p.muted)
-                    .child("No tabs on this branch. ⌘T starts a chat.")
-                    .into_any_element(),
-            })
+        let note = |text: &'static str| {
+            div()
+                .size_full()
+                .flex()
+                .items_center()
+                .justify_center()
+                .text_sm()
+                .text_color(p.muted)
+                .child(text)
+                .into_any_element()
+        };
+        let content = match (workspace.project(), workspace.branch()) {
+            (None, _) => note("Add a project to see its worktrees here."),
+            (Some(_), None) => note("No checkout selected."),
+            (Some(project), Some(branch)) => match branch.tabs.get(branch.active_tab) {
+                Some(tab) => {
+                    let context = format!("{} / {}", project.name, branch.name());
+                    pane::tab(tab, context.into(), p)
+                }
+                None => note("No tabs on this branch. ⌘T starts a chat."),
+            },
+        };
+        div().flex_1().min_h_0().child(content)
     }
 }
 
@@ -403,8 +438,18 @@ impl Render for Shell {
             .on_action(
                 cx.listener(|this, _: &NewEditorTab, _, cx| this.new_tab(PaneKind::Editor, cx)),
             )
+            .map(|root| projects::handle_actions(root, cx))
+            .on_action(|_: &EditBranchPrefix, window, cx| {
+                settings_view::edit_branch_prefix(window, cx)
+            })
             .on_drag_move(cx.listener(Self::resize_sidebar))
-            .on_mouse_down(MouseButton::Left, |_, _, cx| picker::close(cx))
+            // A press in the window puts the picker and any dialog over it away, so what's
+            // typed next goes where the user pressed. It's heard on the way down: text fields
+            // stop presses from reaching anything around them.
+            .capture_any_mouse_down(|_, _, cx| {
+                picker::close(cx);
+                modal::close(cx);
+            })
             .on_action(cx.listener(|this, _: &EditTheme, window, cx| {
                 picker::open(this.rails_menu_at, window, cx)
             }))
@@ -433,7 +478,7 @@ impl Render for Shell {
 }
 
 /// Click cycles System, Light and Dark; right-click picks one from a native menu.
-fn theme_toggle(preference: ThemePreference) -> impl IntoElement {
+fn theme_toggle(preference: ThemePreference, cx: &App) -> impl IntoElement {
     div()
         .on_mouse_down(
             MouseButton::Right,
@@ -448,6 +493,7 @@ fn theme_toggle(preference: ThemePreference) -> impl IntoElement {
             preference.icon(),
             format!("Theme: {}", preference.label()),
             CycleTheme,
+            cx,
         ))
 }
 
@@ -496,22 +542,36 @@ pub fn icon_button(
     id: impl Into<ElementId>,
     icon: IconName,
     tooltip: impl Into<SharedString>,
+    cx: &App,
 ) -> Button {
-    Button::new(id).ghost().icon(icon).tooltip(tooltip)
+    glass_button(id, icon, cx).tooltip(tooltip)
 }
 
-/// A button that dispatches `action`; its tooltip shows the action's keybinding.
+/// An icon button that dispatches `action`; its tooltip shows the action's keybinding.
 pub fn action_button(
     id: &'static str,
     icon: IconName,
     tooltip: impl Into<SharedString>,
     action: impl Action,
+    cx: &App,
 ) -> Button {
-    Button::new(id)
-        .ghost()
-        .icon(icon)
+    glass_button(id, icon, cx)
         .tooltip_with_action(tooltip, &action, None)
         .on_click(move |_, window, cx| window.dispatch_action(action.boxed_clone(), cx))
+}
+
+/// An icon on the glass, shaded from the palette rather than gpui-component's opaque theme, so
+/// hovering, pressing and selecting it tint it the way they tint the sidebar's rows.
+fn glass_button(id: impl Into<ElementId>, icon: IconName, cx: &App) -> Button {
+    let p = theme::palette(cx);
+    Button::new(id)
+        .custom(
+            ButtonCustomVariant::new(cx)
+                .foreground(p.text)
+                .hover(p.hover)
+                .active(p.selected),
+        )
+        .icon(icon)
 }
 
 pub fn icon(name: IconName, size: f32) -> Icon {
@@ -559,17 +619,40 @@ pub fn tab_close_button(
         .child(icon(IconName::X, 12.))
 }
 
-pub fn search_row(p: Palette) -> Div {
+impl Shell {
+    /// What the sidebar's search field holds.
+    pub fn search_query(&self, cx: &App) -> SharedString {
+        self.search.read(cx).value()
+    }
+}
+
+/// The sidebar's search field, which narrows its worktrees as it's typed in.
+pub fn search_field(search: &Entity<InputState>, p: Palette) -> Div {
+    div()
+        .h(px(theme::ROW_HEIGHT))
+        .px_1()
+        .flex()
+        .items_center()
+        .text_sm()
+        .child(
+            Input::new(search)
+                .appearance(false)
+                .small()
+                .prefix(icon(IconName::Search, 14.).text_color(p.muted))
+                .flex_1(),
+        )
+}
+
+/// What a sidebar says where a search found no worktrees.
+pub fn no_matches(p: Palette) -> Div {
     div()
         .h(px(theme::ROW_HEIGHT))
         .px_2()
         .flex()
         .items_center()
-        .gap_2()
         .text_sm()
         .text_color(p.muted)
-        .child(icon(IconName::Search, 14.))
-        .child("Search")
+        .child("No worktrees match.")
 }
 
 pub fn section_label(p: Palette) -> Div {
@@ -581,6 +664,25 @@ pub fn section_label(p: Palette) -> Div {
         .gap_2()
         .text_xs()
         .text_color(p.muted)
+}
+
+/// The row that adds a first project, where a sidebar would list them.
+pub fn add_project_row(id: &'static str, p: Palette) -> Stateful<Div> {
+    row(id, false, p)
+        .text_color(p.muted)
+        .on_click(|_, window, cx| window.dispatch_action(Box::new(AddProject), cx))
+        .child(icon(IconName::FolderPlus, 14.))
+        .child("Add project")
+}
+
+/// Why a project's worktrees could not be read, under its name.
+pub fn project_error(error: SharedString, p: Palette) -> Div {
+    div()
+        .px_2()
+        .py_1()
+        .text_xs()
+        .text_color(p.danger)
+        .child(error)
 }
 
 pub fn ellipsized(text: impl IntoElement) -> Div {
