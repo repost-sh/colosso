@@ -1,33 +1,26 @@
 //! Placeholder tab contents: what each pane kind will roughly look like.
 
 use gpui_kit::assets::IconName;
-use gpui_kit::{
-    AnyElement, IntoElement, ParentElement as _, SharedString, Styled as _, div, px, relative,
-};
+use gpui_kit::{AnyElement, IntoElement, ParentElement as _, Styled as _, div, px, relative};
 
 use crate::model::{Pane, PaneKind, Tab};
 use crate::shell::icon;
 use crate::theme::{MONO, Palette};
 
-pub fn tab(tab: &Tab, context: SharedString, p: Palette) -> AnyElement {
+pub fn tab(tab: &Tab, context: &str, p: Palette) -> AnyElement {
     match tab {
         Tab::Single(pane) => self::pane(pane, context, p),
         Tab::Split(left, right) => div()
             .size_full()
             .flex()
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .child(pane(left, context.clone(), p)),
-            )
+            .child(div().flex_1().min_w_0().child(pane(left, context, p)))
             .child(div().w(px(1.)).h_full().bg(p.hairline))
             .child(div().flex_1().min_w_0().child(pane(right, context, p)))
             .into_any_element(),
     }
 }
 
-fn pane(pane: &Pane, context: SharedString, p: Palette) -> AnyElement {
+fn pane(pane: &Pane, context: &str, p: Palette) -> AnyElement {
     match pane.kind {
         PaneKind::Chat => chat(pane, context, p),
         PaneKind::Terminal => terminal(p),
@@ -36,7 +29,7 @@ fn pane(pane: &Pane, context: SharedString, p: Palette) -> AnyElement {
     }
 }
 
-fn chat(pane: &Pane, context: SharedString, p: Palette) -> AnyElement {
+fn chat(pane: &Pane, context: &str, p: Palette) -> AnyElement {
     let message = |width: f32, lines: usize| {
         div()
             .flex()

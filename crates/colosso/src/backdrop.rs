@@ -230,7 +230,7 @@ pub fn backdrop(cx: &App) -> impl IntoElement {
             backdrop.child(
                 canvas(
                     |_, _, _| {},
-                    move |bounds, _, window, cx| paint_window(bounds, fades, window, cx),
+                    move |bounds, (), window, cx| paint_window(bounds, fades, window, cx),
                 )
                 .size_full(),
             )
@@ -241,9 +241,8 @@ pub fn backdrop(cx: &App) -> impl IntoElement {
 }
 
 fn paint_window(bounds: Bounds<Pixels>, fades: Vec<Fade>, window: &mut Window, cx: &mut App) {
-    let scaled = |side: Pixels| {
-        ((side.as_f32() / DOWNSCALE).ceil() as u32 / SIZE_STEP + 1) * SIZE_STEP
-    };
+    let scaled =
+        |side: Pixels| ((side.as_f32() / DOWNSCALE).ceil() as u32 / SIZE_STEP + 1) * SIZE_STEP;
     let scaled = (scaled(bounds.size.width), scaled(bounds.size.height));
     let images = cx.default_global::<Images>();
     let image = match &images.window {
@@ -270,41 +269,47 @@ fn paint_window(bounds: Bounds<Pixels>, fades: Vec<Fade>, window: &mut Window, c
 /// `relative`.
 pub fn grain(opacity: f32, corners: Corners<Pixels>) -> impl IntoElement {
     // Pinned, or it would sit below whatever comes before it in the parent.
-    div().absolute().top_0().left_0().size_full().opacity(opacity).child(
-        canvas(
-            |_, _, _| {},
-            move |bounds, _, window, cx| {
-                let tile = cx
-                    .default_global::<Images>()
-                    .grain
-                    .get_or_insert_with(render_grain)
-                    .clone();
-                // One noise pixel per screen pixel: any larger and the stretch blurs the
-                // specks into blotches.
-                let side = px(GRAIN_TILE as f32 / window.scale_factor());
-                let mut y = bounds.top();
-                while y < bounds.bottom() {
-                    let mut x = bounds.left();
-                    while x < bounds.right() {
-                        let tile_bounds = Bounds::new(point(x, y), size(side, side));
-                        window
-                            .paint_image(bounds, tile_bounds, corners, tile.clone(), 0, false)
-                            .ok();
-                        x += side;
+    div()
+        .absolute()
+        .top_0()
+        .left_0()
+        .size_full()
+        .opacity(opacity)
+        .child(
+            canvas(
+                |_, _, _| {},
+                move |bounds, (), window, cx| {
+                    let tile = cx
+                        .default_global::<Images>()
+                        .grain
+                        .get_or_insert_with(render_grain)
+                        .clone();
+                    // One noise pixel per screen pixel: any larger and the stretch blurs the
+                    // specks into blotches.
+                    let side = px(GRAIN_TILE as f32 / window.scale_factor());
+                    let mut y = bounds.top();
+                    while y < bounds.bottom() {
+                        let mut x = bounds.left();
+                        while x < bounds.right() {
+                            let tile_bounds = Bounds::new(point(x, y), size(side, side));
+                            window
+                                .paint_image(bounds, tile_bounds, corners, tile.clone(), 0, false)
+                                .ok();
+                            x += side;
+                        }
+                        y += side;
                     }
-                    y += side;
-                }
-            },
+                },
+            )
+            .size_full(),
         )
-        .size_full(),
-    )
 }
 
 /// A three-color swatch, filling its parent and clipped to `corners`.
 pub fn swatch(colors: [Rgb; 3], corners: Corners<Pixels>) -> impl IntoElement {
     canvas(
         |_, _, _| {},
-        move |bounds, _, window, cx| {
+        move |bounds, (), window, cx| {
             let image = cx
                 .default_global::<Images>()
                 .swatches

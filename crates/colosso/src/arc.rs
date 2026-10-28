@@ -5,7 +5,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Context, FocusHandle, FontWeight, InteractiveElement as _, IntoElement, MouseButton,
+    Context, Div, FocusHandle, FontWeight, InteractiveElement as _, IntoElement, MouseButton,
     ParentElement as _, ScrollDelta, ScrollEvent, StatefulInteractiveElement as _, Styled as _,
     TouchPhase, Window, div, px,
 };
@@ -111,7 +111,7 @@ pub fn sidebar(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
                             .mt_2()
                             .text_color(p.muted)
                             .on_click(move |_, window, cx| {
-                                window.dispatch_action(Box::new(NewWorktreeIn(path.clone())), cx)
+                                window.dispatch_action(Box::new(NewWorktreeIn(path.clone())), cx);
                             })
                             .child(icon(IconName::GitBranchPlus, 13.))
                             .child("New worktree"),
@@ -119,7 +119,22 @@ pub fn sidebar(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
             }
         });
 
-    let switcher = div()
+    div()
+        .id("arc-sidebar")
+        .flex_1()
+        .min_h_0()
+        .flex()
+        .flex_col()
+        .on_scroll(cx.listener(Shell::swipe))
+        .child(space)
+        .child(switcher(shell, p, cx))
+}
+
+/// The row of spaces along the sidebar's foot, one per project, and the button that adds one.
+fn switcher(shell: &Shell, p: Palette, cx: &mut Context<Shell>) -> Div {
+    let workspace = &shell.workspace;
+    let project_index = workspace.active_project;
+    div()
         .h(px(32.))
         .flex_shrink_0()
         .px_1()
@@ -156,17 +171,7 @@ pub fn sidebar(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
                 cx,
             )
             .small(),
-        );
-
-    div()
-        .id("arc-sidebar")
-        .flex_1()
-        .min_h_0()
-        .flex()
-        .flex_col()
-        .on_scroll(cx.listener(Shell::swipe))
-        .child(space)
-        .child(switcher)
+        )
 }
 
 /// A branch unit's header and its tabs; `active_tab` is set only on the selected branch.

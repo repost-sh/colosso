@@ -1,0 +1,16 @@
+# Files over script/hygiene's 500-line limit, with their size when they were listed. Each
+# entry is debt, not an exemption: the file may shrink but not grow, and comes off the list
+# once it's under the limit.
+
+# The changes panel's view: the file list, the diff rows, the header, scrolling and the
+# file actions, to be split along those lines.
+crates/colosso/src/changes/view.rs  # 1505 lines
+# The theme picker's pad, presets, opacity slider and texture dial.
+crates/colosso/src/picker.rs  # 1057 lines
+# The window: rails, card, panels, navigation and resizing.
+crates/colosso/src/shell.rs  # 870 lines
+# Listing changes, diffing files, and staging, unstaging and discarding them.
+crates/git/src/changes.rs  # 725 lines
+# Reading changes in the background, and the tests of what's read again.
+crates/colosso/src/changes/state.rs  # 612 lines
+crates/colosso/src/new_worktree.rs  # 522 lines

@@ -104,32 +104,32 @@ pub fn handle_actions(root: Div, cx: &mut Context<Shell>) -> Div {
     root.on_action(cx.listener(|this, _: &AddProject, window, cx| this.add_project(window, cx)))
         .on_action(cx.listener(|this, _: &NewWorktree, window, cx| {
             if let Some(project) = this.workspace.project() {
-                new_worktree::open(cx.weak_entity(), project.path.clone(), window, cx)
+                new_worktree::open(cx.weak_entity(), project.path.clone(), window, cx);
             }
         }))
         .on_action(
             cx.listener(|_, NewWorktreeIn(project): &NewWorktreeIn, window, cx| {
-                new_worktree::open(cx.weak_entity(), project.clone(), window, cx)
+                new_worktree::open(cx.weak_entity(), project.clone(), window, cx);
             }),
         )
         .on_action(
             cx.listener(|this, DeleteWorktree(path): &DeleteWorktree, window, cx| {
                 if let Some(project) = this.workspace.project_of(path) {
                     let project = project.path.clone();
-                    delete_worktree::open(cx.weak_entity(), project, path.clone(), window, cx)
+                    delete_worktree::open(cx.weak_entity(), project, path.clone(), window, cx);
                 }
             }),
         )
         .on_action(
             cx.listener(|this, RemoveProject(path): &RemoveProject, _, cx| {
-                this.remove_project(path, cx)
+                this.remove_project(path, cx);
             }),
         )
         .on_action(
             cx.listener(|_, RevealInFinder(path): &RevealInFinder, _, cx| cx.reveal_path(path)),
         )
         .on_action(cx.listener(|_, CopyPath(path): &CopyPath, _, cx| {
-            cx.write_to_clipboard(ClipboardItem::new_string(path.display().to_string()))
+            cx.write_to_clipboard(ClipboardItem::new_string(path.display().to_string()));
         }))
 }
 
@@ -211,7 +211,7 @@ impl Shell {
                 .background_spawn(async move {
                     let repo = Repo::open(&folder)?;
                     let worktrees = repo.worktrees()?;
-                    Ok::<_, colosso_git::Error>((repo.path().to_owned(), worktrees))
+                    Ok::<_, colosso_git::GitError>((repo.path().to_owned(), worktrees))
                 })
                 .await;
             this.update_in(cx, |this, window, cx| match opened {

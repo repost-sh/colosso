@@ -5,27 +5,27 @@ use std::fmt;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, GitError>;
 
 /// A git command that could not run or exited unsuccessfully.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Error {
+pub struct GitError {
     /// What went wrong, in git's own words when it said any.
     pub message: String,
 }
 
-impl fmt::Display for Error {
+impl fmt::Display for GitError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.message)
     }
 }
 
-impl std::error::Error for Error {}
+impl std::error::Error for GitError {}
 
-impl Error {
+impl GitError {
     /// A request git was never asked to carry out, because it could not succeed.
     pub(crate) fn refused(message: impl Into<String>) -> Self {
-        Error {
+        GitError {
             message: message.into(),
         }
     }
@@ -70,7 +70,10 @@ impl Git {
 
     /// Runs the command and returns what it printed.
     pub fn read(mut self) -> Result<String> {
-        let output = self.command.output().map_err(could_not_run)?;
+        let output = self
+            .command
+            .output()
+            .map_err(|error| could_not_run(&error))?;
         if output.status.success() {
             return Ok(String::from_utf8_lossy(&output.stdout).into_owned());
         }
@@ -87,7 +90,7 @@ impl Git {
             .join("\n")
             .trim()
             .to_owned();
-        Err(Error {
+        Err(GitError {
             message: if message.is_empty() {
                 format!("`{}` failed with {}", self.line, output.status)
             } else {
@@ -107,7 +110,7 @@ impl Git {
         self.command
             .status()
             .map(|status| status.success())
-            .map_err(could_not_run)
+            .map_err(|error| could_not_run(&error))
     }
 
     /// Runs a query that prints nothing and fails when there is no answer, like
@@ -120,8 +123,8 @@ impl Git {
     }
 }
 
-fn could_not_run(error: std::io::Error) -> Error {
-    Error::refused(format!("Could not run git: {error}"))
+fn could_not_run(error: &std::io::Error) -> GitError {
+    GitError::refused(format!("Could not run git: {error}"))
 }
 
 /// Splits `-z` output into its NUL-terminated fields.

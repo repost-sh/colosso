@@ -59,6 +59,7 @@ fn main() {
                 }),
                 ..Default::default()
             };
+            #[expect(clippy::expect_used, reason = "with no window there's no app to run")]
             cx.open_window(options, |window, cx| {
                 theme::follow_window_appearance(window);
                 let shell = cx.new(|cx| shell::Shell::new(window, cx));

@@ -36,3 +36,6 @@ objc = "0.2"
 # Debug builds only: lets `dx serve --hot-patch` swap render code into the running app.
 hot-reload = ["dep:gpui-pre", "gpui-pre/hot-reload"]
 inspector = ["gpui-kit/inspector"]
+
+[lints]
+workspace = true

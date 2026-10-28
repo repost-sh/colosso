@@ -11,3 +11,6 @@ publish.workspace = true
 gix = { version = "0.90", default-features = false, features = ["sha1", "status", "max-performance"] }
 # Discarding an untracked file moves it to the trash, so it can be put back.
 trash = "5.2"
+
+[lints]
+workspace = true

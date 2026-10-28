@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use crate::command::{Error, Git, Result};
+use crate::command::{Git, GitError, Result};
 use crate::{Head, Ref, Repo, Worktree, real_path};
 
 /// How many numbered variants of a name to try before giving up on it.
@@ -58,12 +58,12 @@ impl Repo {
     pub fn create_worktree(&self, new: &NewWorktree) -> Result<Worktree> {
         let slug = new.slug();
         if slug.is_empty() {
-            return Err(Error::refused("Give the worktree a name."));
+            return Err(GitError::refused("Give the worktree a name."));
         }
         let folder_taken = |folder: &str| new.parent.join(folder).exists();
-        let all_taken = || Error::refused(format!("Every name like “{slug}” is taken."));
+        let all_taken = || GitError::refused(format!("Every name like “{slug}” is taken."));
         std::fs::create_dir_all(&new.parent).map_err(|error| {
-            Error::refused(format!(
+            GitError::refused(format!(
                 "Could not create {}: {error}",
                 new.parent.display()
             ))
@@ -84,7 +84,7 @@ impl Repo {
                 .ok_or_else(all_taken)?;
                 let branch = prefixed(prefix, &folder);
                 if !self.valid_branch(&branch)? {
-                    return Err(Error::refused(format!(
+                    return Err(GitError::refused(format!(
                         "“{branch}” can't be a branch name."
                     )));
                 }

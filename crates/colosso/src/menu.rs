@@ -156,7 +156,7 @@ impl Menu {
         let (item, _) = &self.items[index];
         self.parent
             .update(cx, |_, window, cx| {
-                self.target.dispatch_action(&*item.action, window, cx)
+                self.target.dispatch_action(&*item.action, window, cx);
             })
             .ok();
     }
@@ -189,11 +189,9 @@ impl Render for Menu {
                             .text_sm()
                             .cursor_pointer()
                             .hover(|style| style.bg(p.selected))
-                            .on_click(
-                                cx.listener(move |this, _, window, cx| {
-                                    this.pick(index, window, cx)
-                                }),
-                            )
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.pick(index, window, cx);
+                            }))
                             .child(icon(item.icon, 15.).text_color(p.muted))
                             .child(div().flex_1().child(item.label.clone()))
                             .when_some(shortcut.clone(), |row, keys| {

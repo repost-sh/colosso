@@ -8,7 +8,7 @@ use crate::theme;
 
 pub fn sections(cx: &App) -> Vec<SettingsSection> {
     let p = theme::palette(cx);
-    let path = settings::path(cx).map(|path| path.to_path_buf());
+    let path = settings::path(cx).map(std::path::Path::to_path_buf);
     let location = path.as_ref().map_or_else(
         || "No folder to save settings in; changes last until Colosso quits.".to_string(),
         |path| path.display().to_string(),

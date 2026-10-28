@@ -3,6 +3,7 @@
 //! anything is deleted, and only offers to take the branch along by default when nothing goes
 //! with it. Git checks again just before deleting, and refuses if more would go by then.
 
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use colosso_git::{Head, Loss, Repo};
@@ -112,12 +113,11 @@ impl DeleteWorktreeDialog {
     /// The window height that fits what the dialog says.
     fn height(&self) -> f32 {
         let title = LINE + SMALL_LINE;
-        let changes = match self.loss.changes.len() {
-            0 => LINE,
-            _ => {
-                let lines = self.listed_changes() + usize::from(self.unlisted_changes() > 0);
-                26. + LINE + 4. + lines as f32 * SMALL_LINE
-            }
+        let changes = if self.loss.changes.is_empty() {
+            LINE
+        } else {
+            let lines = self.listed_changes() + usize::from(self.unlisted_changes() > 0);
+            26. + LINE + 4. + lines as f32 * SMALL_LINE
         };
         let commits = if self.lost_commits() > 0 {
             8. + LINE
@@ -247,7 +247,7 @@ impl DeleteWorktreeDialog {
             .collect::<Vec<_>>()
             .join(", ");
         if ignored.len() > LISTED_IGNORED {
-            names.push_str(&format!(" and {} more", ignored.len() - LISTED_IGNORED));
+            let _ = write!(names, " and {} more", ignored.len() - LISTED_IGNORED);
         }
         small_line()
             .gap_2()

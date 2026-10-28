@@ -123,7 +123,7 @@ impl NewWorktreeDialog {
                     BranchPrefix::None => None,
                 }
                 .filter(|prefix| !prefix.is_empty());
-                Ok::<_, colosso_git::Error>(Project {
+                Ok::<_, colosso_git::GitError>(Project {
                     repo,
                     prefix,
                     branches,
@@ -275,7 +275,7 @@ impl NewWorktreeDialog {
             let created = cx
                 .background_spawn(async move {
                     let worktree = repo.create_worktree(&request)?;
-                    Ok::<_, colosso_git::Error>((worktree.path, read_worktrees(repo.path())))
+                    Ok::<_, colosso_git::GitError>((worktree.path, read_worktrees(repo.path())))
                 })
                 .await;
             // The shell hears about the worktree even if the dialog was closed meanwhile.
@@ -283,7 +283,7 @@ impl NewWorktreeDialog {
                 Ok((path, read)) => {
                     shell
                         .update(cx, |shell, cx| {
-                            shell.show_new_worktree(&project_path, &path, read, cx)
+                            shell.show_new_worktree(&project_path, &path, read, cx);
                         })
                         .ok();
                     this.update_in(cx, |_, window, cx| modal::dismiss(window, cx))
@@ -301,7 +301,7 @@ impl NewWorktreeDialog {
             if shown.is_err() {
                 behind
                     .update(cx, |_, window, cx| {
-                        modal::alert("Couldn't create the worktree", error.message, window, cx)
+                        modal::alert("Couldn't create the worktree", error.message, window, cx);
                     })
                     .ok();
             }

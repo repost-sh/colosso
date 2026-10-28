@@ -46,7 +46,7 @@ pub fn watch(watched: Watched) -> Watching {
     };
     let (sender, receiver): (UnboundedSender<Vec<Touched>>, _) = unbounded();
     let sorting = watched.clone();
-    let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
+    let mut notifier = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
         let Ok(event) = event else {
             return;
         };
@@ -59,15 +59,15 @@ pub fn watch(watched: Watched) -> Watching {
             let _ = sender.unbounded_send(touched);
         }
     })?;
-    watcher.watch(&watched.root, RecursiveMode::Recursive)?;
+    notifier.watch(&watched.root, RecursiveMode::Recursive)?;
     // A linked worktree's git folders are outside it; a main checkout's are inside, watched
     // already.
     for dir in [&watched.git_dir, &watched.common_dir] {
         if !dir.starts_with(&watched.root) {
-            watcher.watch(dir, RecursiveMode::Recursive)?;
+            notifier.watch(dir, RecursiveMode::Recursive)?;
         }
     }
-    Ok((Watcher { _watcher: watcher }, receiver))
+    Ok((Watcher { _watcher: notifier }, receiver))
 }
 
 impl Watched {
@@ -89,6 +89,10 @@ impl Watched {
 }
 
 /// What a path inside a git folder changing means.
+#[expect(
+    clippy::case_sensitive_file_extension_comparisons,
+    reason = "git names its lock files `.lock` exactly; a branch named `x.LOCK` is a branch"
+)]
 fn git_file(inside: &Path) -> Option<Touched> {
     let inside = inside.to_str()?.replace(std::path::MAIN_SEPARATOR, "/");
     match inside.as_str() {
@@ -164,6 +168,10 @@ mod tests {
     }
 
     /// Waits up to a few seconds for the watcher to report `wanted`.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a synchronous test, with no runtime to wait on but the thread"
+    )]
     fn reported(touched: &mut UnboundedReceiver<Vec<Touched>>, wanted: &Touched) -> bool {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         while std::time::Instant::now() < deadline {

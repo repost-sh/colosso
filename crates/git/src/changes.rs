@@ -3,6 +3,7 @@
 //! it writes costs no process per look, and the files are diffed in parallel.
 
 use std::collections::HashSet;
+use std::num::NonZeroUsize;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -19,7 +20,7 @@ use gix::status::index_worktree::Item as WorktreeItem;
 use gix::status::index_worktree::iter::Summary;
 use gix::status::{Item, Submodule, UntrackedFiles, tree_index::TrackRenames};
 
-use crate::command::{Error, Git, Result};
+use crate::command::{Git, GitError, Result};
 
 /// Files at least this big are summed up rather than diffed: nobody reads a diff that long, and
 /// reading one costs memory and time the rest of the files are waiting on.
@@ -99,6 +100,10 @@ pub struct Lines {
 }
 
 impl Lines {
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "a file over LARGE_FILE, far under 4 GiB, isn't read as text"
+    )]
     pub fn new(text: impl Into<String>) -> Lines {
         let text = text.into();
         let mut spans = Vec::new();
@@ -172,8 +177,8 @@ impl Content {
         match self {
             Content::Text { hunks, .. } => hunks.iter().fold((0, 0), |(added, removed), hunk| {
                 (
-                    added + hunk.new.len() as u32,
-                    removed + hunk.old.len() as u32,
+                    added + (hunk.new.end - hunk.new.start),
+                    removed + (hunk.old.end - hunk.old.start),
                 )
             }),
             _ => (0, 0),
@@ -187,7 +192,9 @@ impl Checkout {
         let repo = gix::open(path).map_err(failed)?;
         let root = repo
             .workdir()
-            .ok_or_else(|| Error::refused(format!("{} has no files checked out.", path.display())))?
+            .ok_or_else(|| {
+                GitError::refused(format!("{} has no files checked out.", path.display()))
+            })?
             .to_owned();
         Ok(Checkout {
             repo: repo.into_sync(),
@@ -350,7 +357,7 @@ impl Checkout {
         }
         trash_context()
             .delete_all(&files)
-            .map_err(|error| Error::refused(format!("Couldn't move to the trash: {error}")))
+            .map_err(|error| GitError::refused(format!("Couldn't move to the trash: {error}")))
     }
 
     /// Runs git's `command` on `paths`, taken as they are rather than as patterns, a batch at a
@@ -370,9 +377,9 @@ impl Checkout {
     /// What changed in each of `changes`, in their order, read on as many threads as there are
     /// cores. A file that can't be read says so in its content rather than failing the rest;
     /// one whose change undid itself, which only reading it can tell, is left out.
-    pub fn diffs(&self, changes: Vec<Change>) -> Vec<FileDiff> {
+    pub fn diffs(&self, changes: &[Change]) -> Vec<FileDiff> {
         let threads = std::thread::available_parallelism()
-            .map_or(1, |threads| threads.get())
+            .map_or(1, NonZeroUsize::get)
             .min(changes.len())
             .max(1);
         // Each thread takes the next file when it's done with one, so a big file doesn't hold
@@ -380,7 +387,7 @@ impl Checkout {
         let next = AtomicUsize::new(0);
         let mut diffs: Vec<(usize, FileDiff)> = std::thread::scope(|scope| {
             let workers: Vec<_> = (0..threads)
-                .map(|_| scope.spawn(|| self.diff_next(&changes, &next)))
+                .map(|_| scope.spawn(|| self.diff_next(changes, &next)))
                 .collect();
             workers
                 .into_iter()
@@ -454,7 +461,7 @@ impl<'repo> Sides<'repo> {
                 )
                 .map_err(failed)?;
             cache.filter.options.large_file_threshold_bytes = LARGE_FILE;
-            Ok::<_, Error>(cache)
+            Ok::<_, GitError>(cache)
         };
         Ok(Sides {
             head: head_tree(repo)?,
@@ -594,9 +601,9 @@ fn is_executable(_: &std::fs::Metadata) -> bool {
 /// Lines longer than this are marked whole rather than word by word.
 const LONGEST_WORD_DIFF: usize = 2000;
 
-/// Pairs sharing less than this share of their text are marked whole: marking nearly every word
-/// says less than marking none.
-const MIN_SHARED: f32 = 0.3;
+/// Pairs sharing less than this percentage of their text are marked whole: marking nearly every
+/// word says less than marking none.
+const MIN_SHARED_PERCENT: usize = 30;
 
 /// The byte ranges of the words that differ, in the old line and in the new.
 pub type ChangedWords = (Vec<Range<usize>>, Vec<Range<usize>>);
@@ -620,12 +627,12 @@ pub fn changed_words(old: &str, new: &str) -> Option<ChangedWords> {
     let ranges = |text: &str, words: &[&str], changed: &dyn Fn(u32) -> bool| {
         let mut ranges: Vec<Range<usize>> = Vec::new();
         let mut start = 0;
-        for (index, word) in words.iter().enumerate() {
+        for (index, word) in (0..).zip(words) {
             let end = start + word.len();
-            if changed(index as u32) {
+            if changed(index) {
                 match ranges.last_mut() {
                     Some(last) if text[last.end..start].bytes().all(|byte| byte == b' ') => {
-                        last.end = end
+                        last.end = end;
                     }
                     _ => ranges.push(start..end),
                 }
@@ -639,11 +646,11 @@ pub fn changed_words(old: &str, new: &str) -> Option<ChangedWords> {
     let changed: usize = old_ranges
         .iter()
         .chain(&new_ranges)
-        .map(|range| range.len())
+        .map(ExactSizeIterator::len)
         .sum();
-    let total = old.len() + new.len();
-    let shared = 1. - changed as f32 / total.max(1) as f32;
-    (shared >= MIN_SHARED).then_some((old_ranges, new_ranges))
+    let total = (old.len() + new.len()).max(1);
+    let shared = 100 * changed <= (100 - MIN_SHARED_PERCENT) * total;
+    shared.then_some((old_ranges, new_ranges))
 }
 
 /// Where discarded files go.
@@ -672,8 +679,8 @@ fn head_tree(repo: &gix::Repository) -> Result<gix::Tree<'_>> {
     repo.find_tree(id).map_err(failed)
 }
 
-fn failed(error: impl std::fmt::Display) -> Error {
-    Error::refused(error.to_string())
+fn failed(error: impl std::fmt::Display) -> GitError {
+    GitError::refused(error.to_string())
 }
 
 #[cfg(test)]

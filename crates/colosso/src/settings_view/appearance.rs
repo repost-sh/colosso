@@ -35,14 +35,14 @@ pub fn sections(cx: &App) -> Vec<SettingsSection> {
                         PillButton::new("reset-glass", "Reset")
                             .disabled(glass_is_default)
                             .on_click(|_, _, cx| {
-                                gradient::update(cx, |glass| *glass = GradientTheme::default())
+                                gradient::update(cx, |glass| *glass = GradientTheme::default());
                             }),
                     )
-                    .control(
-                        PillButton::new("edit-glass", "Edit…").on_click(|event, window, cx| {
-                            picker::open(event.position(), window, cx)
-                        }),
-                    ),
+                    .control(PillButton::new("edit-glass", "Edit…").on_click(
+                        |event, window, cx| {
+                            picker::open(event.position(), window, cx);
+                        },
+                    )),
             ),
     ]
 }

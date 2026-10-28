@@ -137,7 +137,7 @@ impl Render for SettingsSidebar {
                             .when(!is_selected, |row| row.text_color(p.text))
                             .on_click(move |_, window, cx| {
                                 window
-                                    .dispatch_action(Box::new(Navigate(Route::Settings(page))), cx)
+                                    .dispatch_action(Box::new(Navigate(Route::Settings(page))), cx);
                             })
                             .child(icon(page.icon(), 14.).text_color(p.muted))
                             .child(page.title())

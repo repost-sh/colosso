@@ -1,6 +1,11 @@
 //! The worktree lifecycle against real repositories: a bare "origin" and a clone of it, made
 //! fresh for each test in the checkout's `target/test-repos`.
 
+#![expect(
+    clippy::unwrap_used,
+    reason = "a test fails loudly at the step that broke"
+)]
+
 mod common;
 
 use std::path::{Path, PathBuf};

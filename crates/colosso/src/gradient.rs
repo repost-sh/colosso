@@ -238,11 +238,13 @@ impl GradientTheme {
         let angle = dy.atan2(dx);
         let distance = dx.hypot(dy).min(center);
         self.dots.truncate(1);
-        self.dots
-            .extend(self.harmony.angles().iter().map(|offset| {
-                let angle = angle + offset.to_radians();
-                point(center + distance * angle.cos(), center + distance * angle.sin())
-            }));
+        self.dots.extend(self.harmony.angles().iter().map(|offset| {
+            let angle = angle + offset.to_radians();
+            point(
+                center + distance * angle.cos(),
+                center + distance * angle.sin(),
+            )
+        }));
     }
 }
 
@@ -262,16 +264,16 @@ fn onto_disc(at: Point<f32>) -> Point<f32> {
 
 pub fn rgba([r, g, b]: Rgb, alpha: f32) -> Rgba {
     Rgba {
-        r: r as f32 / 255.,
-        g: g as f32 / 255.,
-        b: b as f32 / 255.,
+        r: f32::from(r) / 255.,
+        g: f32::from(g) / 255.,
+        b: f32::from(b) / 255.,
         a: alpha,
     }
 }
 
 /// `amount` of the way from `from` to `to`, per channel.
 fn mix(from: Rgb, to: Rgb, amount: f32) -> [f32; 3] {
-    [0, 1, 2].map(|i| from[i] as f32 * (1. - amount) + to[i] as f32 * amount)
+    [0, 1, 2].map(|i| f32::from(from[i]) * (1. - amount) + f32::from(to[i]) * amount)
 }
 
 fn hsl_to_rgb(hue: f32, saturation: f32, lightness: f32) -> Rgb {

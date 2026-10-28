@@ -5,7 +5,7 @@
 use std::collections::HashSet;
 use std::path::Path;
 
-use crate::command::{Error, Git, Result, nul_fields};
+use crate::command::{Git, GitError, Result, nul_fields};
 use crate::create::base_key;
 use crate::{Head, Ref, Repo, real_path};
 
@@ -75,7 +75,7 @@ impl Repo {
             .any(|worktree| real_path(&worktree.path) == real_path(path));
         if listed {
             if self.inspect_removal(path)?.exceeds(shown) {
-                return Err(Error::refused(
+                return Err(GitError::refused(
                     "The worktree changed since you were asked. Look again before deleting it.",
                 ));
             }
@@ -99,7 +99,7 @@ impl Repo {
             .arg(Ref::Local(branch.to_owned()).full())
             .read()?;
         if current.trim() != tip {
-            return Err(Error::refused(format!(
+            return Err(GitError::refused(format!(
                 "{branch} has new commits, so it was kept."
             )));
         }
@@ -178,10 +178,9 @@ fn parse_status(output: &str) -> (Vec<String>, Vec<String>) {
 }
 
 fn parse_count(output: &str) -> Result<usize> {
-    output
-        .trim()
-        .parse()
-        .map_err(|_| Error::refused(format!("git counted “{}” commits.", output.trim())))
+    output.trim().parse().map_err(|error| {
+        GitError::refused(format!("git counted “{}” commits: {error}.", output.trim()))
+    })
 }
 
 #[cfg(test)]

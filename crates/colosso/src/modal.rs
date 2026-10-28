@@ -15,7 +15,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyView, AnyWindowHandle, App, AppContext as _, ClickEvent, Context, FontWeight, Global, Hsla,
     InteractiveElement as _, IntoElement, ParentElement as _, Render, RenderOnce, SharedString,
-    StatefulInteractiveElement as _, Styled as _, Subscription, Window, WindowBackgroundAppearance,
+    StatefulInteractiveElement as _, Styled, Subscription, Window, WindowBackgroundAppearance,
     WindowBounds, WindowKind, WindowOptions, div, point, px, size,
 };
 
@@ -75,10 +75,10 @@ pub fn open<V: Render>(
             content: content.into(),
             _subscriptions: [
                 cx.observe_window_activation(parent, move |_, _, cx| {
-                    close_once_left(parent_handle, cx)
+                    close_once_left(parent_handle, cx);
                 }),
                 cx.observe_window_activation(window, move |_, _, cx| {
-                    close_once_left(parent_handle, cx)
+                    close_once_left(parent_handle, cx);
                 }),
                 // The dialog holds focus, so Escape usually arrives in its own window.
                 cx.intercept_keystrokes(|event, window, cx| {
@@ -343,11 +343,7 @@ impl RenderOnce for Button {
             )
             .relative()
             // The label stays, unseen, so the button keeps its width.
-            .child(
-                div()
-                    .when(self.busy, |label| label.invisible())
-                    .child(self.label),
-            )
+            .child(div().when(self.busy, Styled::invisible).child(self.label))
             .when(self.busy, |button| button.child(spinner(text)))
     }
 }

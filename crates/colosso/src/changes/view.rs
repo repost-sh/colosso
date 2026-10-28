@@ -19,7 +19,7 @@ use gpui_kit::{
     AnyElement, Context, Div, DragMoveEvent, Empty, Entity, FocusHandle, Font, FontWeight, Hsla,
     InteractiveElement as _, IntoElement, KeyBinding, ListAlignment, ListOffset, ListScrollEvent,
     ListState, ParentElement as _, Pixels, Render, ScrollStrategy, SharedString,
-    StatefulInteractiveElement as _, Styled as _, Subscription, UniformListScrollHandle, Window,
+    StatefulInteractiveElement as _, Styled, Subscription, UniformListScrollHandle, Window,
     actions, div, font, list, px, uniform_list,
 };
 
@@ -252,7 +252,7 @@ impl ChangesPanel {
             }),
             // Its colours aren't needed while nothing shows them.
             cx.on_release(|this, cx| {
-                (this.changes).update(cx, |changes, cx| changes.set_coloured(false, cx))
+                (this.changes).update(cx, |changes, cx| changes.set_coloured(false, cx));
             }),
         ];
         changes.update(cx, |changes, cx| changes.set_coloured(true, cx));
@@ -370,12 +370,11 @@ impl ChangesPanel {
         self.rebuild_entries(cx);
         // A glide carries on to its file wherever that is now.
         let gliding = gliding.and_then(|gliding| find(&self.files, &gliding));
-        match (&mut self.glide, gliding) {
-            (Some(glide), Some(file)) => glide.file = file,
-            _ => {
-                self.glide = None;
-                self.follow_scroll(cx);
-            }
+        if let (Some(glide), Some(file)) = (&mut self.glide, gliding) {
+            glide.file = file;
+        } else {
+            self.glide = None;
+            self.follow_scroll(cx);
         }
         cx.notify();
     }
@@ -470,16 +469,12 @@ impl ChangesPanel {
 
     /// The file list entry the keyboard is on: a folder it moved to, or the current file.
     fn cursor(&self) -> Option<usize> {
-        match &self.folder {
-            Some(folder) => {
-                (self.entries.iter()).position(|entry| entry.folder().as_ref() == Some(folder))
-            }
-            None => {
-                let current = self.current?;
-                (self.entries.iter()).position(
-                    |entry| matches!(entry, Entry::File { index, .. } if *index == current),
-                )
-            }
+        if let Some(folder) = &self.folder {
+            (self.entries.iter()).position(|entry| entry.folder().as_ref() == Some(folder))
+        } else {
+            let current = self.current?;
+            (self.entries.iter())
+                .position(|entry| matches!(entry, Entry::File { index, .. } if *index == current))
         }
     }
 
@@ -490,17 +485,15 @@ impl ChangesPanel {
         };
         self.files_scroll
             .scroll_to_item(index, ScrollStrategy::Nearest);
-        match (entry.folder(), entry) {
-            (Some(folder), _) => {
-                self.folder = Some(folder);
+        match *entry {
+            Entry::Folder { .. } => {
+                self.folder = entry.folder();
                 cx.notify();
             }
-            (None, Entry::File { index: file, .. }) => {
-                let file = *file;
+            Entry::File { index: file, .. } => {
                 self.folder = None;
                 self.show(file, cx);
             }
-            (None, Entry::Folder { .. }) => unreachable!("a folder has a key"),
         }
     }
 
@@ -703,7 +696,7 @@ impl ChangesPanel {
                 icon_button("changes-width", glyph, tip, cx)
                     .xsmall()
                     .on_click(|_, window, cx| {
-                        window.dispatch_action(Box::new(ToggleChangesWidth), cx)
+                        window.dispatch_action(Box::new(ToggleChangesWidth), cx);
                     })
             })
     }
@@ -756,9 +749,12 @@ impl ChangesPanel {
         };
         match &self.entries[index] {
             Entry::Folder {
-                path, name, depth, ..
+                staged,
+                path,
+                name,
+                depth,
             } => {
-                let folder = self.entries[index].folder().expect("a folder has a key");
+                let folder = (*staged, path.clone());
                 let open = !self.closed.contains(&folder);
                 let group = path.is_empty();
                 row(("folder", index), self.folder.as_ref() == Some(&folder))
@@ -768,7 +764,7 @@ impl ChangesPanel {
                     .on_click(cx.listener(move |this, _, window, cx| {
                         window.focus(&this.focus, cx);
                         this.folder = Some(folder.clone());
-                        this.toggle_folder(folder.clone(), cx)
+                        this.toggle_folder(folder.clone(), cx);
                     }))
                     .child(icon(
                         if open {
@@ -802,7 +798,7 @@ impl ChangesPanel {
                     .on_click(cx.listener(move |this, _, window, cx| {
                         window.focus(&this.focus, cx);
                         this.folder = None;
-                        this.show(file, cx)
+                        this.show(file, cx);
                     }))
                     .child(status_letter(&change.status, p))
                     .child(div().flex_shrink_0().child(name.to_owned()))
@@ -811,7 +807,7 @@ impl ChangesPanel {
                     })
                     .child(div().flex_1())
                     // The actions take the counts' place while the row is hovered.
-                    .child(counts(added, removed, p).group_hover(ENTRY, |style| style.invisible()))
+                    .child(counts(added, removed, p).group_hover(ENTRY, Styled::invisible))
                     .child(over_the_end(self.entry_actions(index, cx)))
                     .into_any_element()
             }
@@ -863,7 +859,7 @@ impl ChangesPanel {
         // would paint them unlaid.
         div()
             .invisible()
-            .group_hover(ENTRY, |style| style.visible())
+            .group_hover(ENTRY, Styled::visible)
             .flex()
             .items_center()
             .child(button("discard", IconName::Undo2, discard, Act::Discard))
@@ -945,7 +941,7 @@ impl ChangesPanel {
                     .into_any_element()
             }
             Row::End(_) => div()
-                .when(index + 1 == self.rows.len(), |end| end.pb_3())
+                .when(index + 1 == self.rows.len(), Styled::pb_3)
                 .child(card().h(px(4.)).border_b_1().rounded_b(px(8.)))
                 .into_any_element(),
             Row::Note(_) => card()
@@ -984,7 +980,8 @@ impl ChangesPanel {
                     (Some(old), None) => (Side::Old, old, Some(p.removed)),
                     (None, Some(new)) => (Side::New, new, Some(p.added)),
                     (_, Some(new)) => (Side::New, new, None),
-                    (None, None) => unreachable!("a line is on one side at least"),
+                    // Every line is on one side at least.
+                    (None, None) => return Empty.into_any_element(),
                 };
                 let half = half(file, side, line, tint, vec![old, new], &look.font, p);
                 CodeLine::new(vec![half], look.clone()).into_any_element()
@@ -1107,7 +1104,7 @@ fn note_for(file: &FileView) -> String {
         (Content::TooLarge { bytes }, _) => {
             format!(
                 "Too large to show ({:.1} MB)",
-                *bytes as f64 / (1 << 20) as f64
+                *bytes as f64 / f64::from(1 << 20)
             )
         }
         (Content::Unreadable { reason }, _) => format!("Couldn't be read: {reason}"),
@@ -1381,7 +1378,7 @@ mod tests {
         cx: &mut TestAppContext,
     ) -> (AnyWindowHandle, Entity<ChangesPanel>) {
         cx.update(gpui_kit::init);
-        cx.update(crate::settings::init);
+        cx.update(settings::init);
         cx.update(|cx| {
             let bounds = Bounds {
                 origin: Point::default(),
@@ -1429,13 +1426,13 @@ mod tests {
         let (handle, _) = open(8, cx);
         let draw = |cx: &mut TestAppContext| {
             cx.update_window(handle, |_, window, cx| window.draw(cx).clear(cx))
-                .unwrap()
+                .unwrap();
         };
         draw(cx);
         // Down the file list, row by row, onto each row and off it again.
         for y in (40..400).step_by(9) {
             cx.update_window(handle, |_, window, cx| {
-                window.simulate_mouse_move(gpui_kit::point(px(120.), px(y as f32)), cx)
+                window.simulate_mouse_move(gpui_kit::point(px(120.), px(y as f32)), cx);
             })
             .unwrap();
             draw(cx);
@@ -1447,7 +1444,7 @@ mod tests {
         let (handle, panel) = open(20, cx);
         let draw = |cx: &mut TestAppContext| {
             cx.update_window(handle, |_, window, cx| window.draw(cx).clear(cx))
-                .unwrap()
+                .unwrap();
         };
         draw(cx);
         panel.update(cx, |panel, cx| panel.show(12, cx));
