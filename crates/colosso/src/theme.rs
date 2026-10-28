@@ -43,6 +43,8 @@ pub struct Palette {
     pub menu: Hsla,
     /// Switched-on switches and links.
     pub accent: Hsla,
+    /// Errors, and what can't be undone.
+    pub danger: Hsla,
 }
 
 pub const fn gray(lightness: f32, alpha: f32) -> Hsla {
@@ -61,6 +63,13 @@ const ACCENT: Hsla = Hsla {
     a: 1.,
 };
 
+const DANGER: Hsla = Hsla {
+    h: 0.,
+    s: 0.75,
+    l: 0.6,
+    a: 1.,
+};
+
 const DARK: Palette = Palette {
     rail_tint: gray(0.08, 0.55),
     card: gray(0.1, 0.6),
@@ -74,6 +83,7 @@ const DARK: Palette = Palette {
     selected: gray(1., 0.1),
     menu: gray(1., 0.06),
     accent: ACCENT,
+    danger: DANGER,
 };
 
 const LIGHT: Palette = Palette {
@@ -89,6 +99,7 @@ const LIGHT: Palette = Palette {
     selected: gray(0., 0.07),
     menu: gray(1., 0.35),
     accent: ACCENT,
+    danger: DANGER,
 };
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

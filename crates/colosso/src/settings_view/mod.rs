@@ -11,6 +11,7 @@ mod settings_sidebar;
 use gpui_kit::assets::IconName;
 use gpui_kit::{App, IntoElement, ParentElement as _};
 
+pub use general::{EditBranchPrefix, edit_branch_prefix};
 pub use settings_sidebar::SettingsSidebar;
 
 use components::{SettingsPageColumn, SettingsSection};

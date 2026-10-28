@@ -1,12 +1,16 @@
 mod arc;
 mod backdrop;
+mod delete_worktree;
 mod gradient;
 mod menu;
+mod modal;
 mod model;
 mod navigation;
+mod new_worktree;
 mod orca;
 mod pane;
 mod picker;
+mod projects;
 mod settings;
 mod settings_view;
 mod shell;
