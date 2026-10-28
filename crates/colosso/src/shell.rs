@@ -450,6 +450,30 @@ pub fn row(id: impl Into<ElementId>, selected: bool, p: Palette) -> Stateful<Div
         .when(!selected, |row| row.hover(|style| style.bg(p.hover)))
 }
 
+/// The × that closes the tab at `(project, branch, tab)` without selecting it.
+pub fn tab_close_button(
+    id: impl Into<ElementId>,
+    (project, branch, tab): (usize, usize, usize),
+    p: Palette,
+    cx: &mut Context<Shell>,
+) -> Stateful<Div> {
+    div()
+        .id(id)
+        .size(px(18.))
+        .flex_shrink_0()
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded(px(4.))
+        .hover(|style| style.bg(p.hover))
+        .on_click(cx.listener(move |this, _, _, cx| {
+            cx.stop_propagation();
+            this.workspace.close_tab(project, branch, tab);
+            cx.notify();
+        }))
+        .child(icon(IconName::X, 12.))
+}
+
 pub fn search_row(p: Palette) -> Div {
     div()
         .h(px(theme::ROW_HEIGHT))

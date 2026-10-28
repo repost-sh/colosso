@@ -11,7 +11,7 @@ use gpui_kit::{
 use crate::model::{BranchKind, BranchUnit};
 use crate::shell::{
     Shell, ellipsized, icon, icon_button, new_tab_menu, row, search_row, section_label,
-    sidebar_resize_handle,
+    sidebar_resize_handle, tab_close_button,
 };
 use crate::theme::{self, Palette};
 
@@ -141,24 +141,12 @@ pub fn tab_strip(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
                 }))
                 .child(icon(tab.icon(), 13.))
                 .child(ellipsized(tab.title()))
-                .child(
-                    div()
-                        .id(("orca-tab-close", tab_index))
-                        .size(px(18.))
-                        .flex_shrink_0()
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .rounded(px(4.))
-                        .hover(|style| style.bg(p.hover))
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            cx.stop_propagation();
-                            this.workspace
-                                .close_tab(project_index, branch_index, tab_index);
-                            cx.notify();
-                        }))
-                        .child(icon(IconName::X, 12.)),
-                )
+                .child(tab_close_button(
+                    ("orca-tab-close", tab_index),
+                    (project_index, branch_index, tab_index),
+                    p,
+                    cx,
+                ))
         }))
         .child(new_tab_menu(
             "orca-new-tab-menu",
