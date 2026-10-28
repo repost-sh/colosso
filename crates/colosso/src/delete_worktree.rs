@@ -15,7 +15,7 @@ use gpui_kit::{
     SharedString, Styled as _, WeakEntity, Window, div, px,
 };
 
-use crate::modal::{self, Button, Tone};
+use crate::modal::{self, Button, LINE, SMALL_LINE, Tone, small_line};
 use crate::projects::{display_path, read_worktrees};
 use crate::shell::{Shell, icon};
 use crate::theme;
@@ -25,9 +25,6 @@ const WIDTH: f32 = 420.;
 const LISTED_CHANGES: usize = 6;
 /// How many ignored files and folders it names.
 const LISTED_IGNORED: usize = 3;
-/// Every line in the dialog is one of these high, so its height is known before it opens.
-const LINE: f32 = 20.;
-const SMALL_LINE: f32 = 18.;
 const GAP: f32 = 16.;
 
 /// Asks git what deleting the worktree at `path`, of the project at `project`, would lose,
@@ -331,15 +328,6 @@ fn warning(p: theme::Palette) -> gpui_kit::Div {
         .gap_2()
         .text_color(p.danger)
         .child(icon(IconName::TriangleAlert, 14.))
-}
-
-fn small_line() -> gpui_kit::Div {
-    div()
-        .h(px(SMALL_LINE))
-        .flex()
-        .items_center()
-        .text_xs()
-        .truncate()
 }
 
 /// The folder's name, for the title.

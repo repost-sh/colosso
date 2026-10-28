@@ -2,6 +2,7 @@
 //! sidebar slot and the card show whichever route the navigation history is on: the
 //! workspace, or a settings page.
 
+use std::mem;
 use std::time::{Duration, Instant};
 
 use gpui_kit::assets::IconName;
@@ -18,6 +19,7 @@ use gpui_kit::{
     px,
 };
 
+use crate::changes::{self, Changes, ChangesPanel, ChangesResize, ToggleChangesWidth};
 use crate::menu::{self, MenuItem};
 use crate::model::{PaneKind, Workspace};
 use crate::navigation::{
@@ -26,7 +28,7 @@ use crate::navigation::{
 use crate::projects::{AddProject, NewWorktree};
 use crate::settings::{self, Layout};
 use crate::settings_view::{self, EditBranchPrefix, SettingsSidebar};
-use crate::sidebar::{SidebarFrame, SidebarResize, slide_out};
+use crate::sidebar::{SidebarFrame, SidebarResize, resize_handle, slide_out};
 use crate::theme::{CycleTheme, Palette, ThemePreference};
 use crate::{arc, backdrop, gradient, modal, orca, pane, picker, projects, theme};
 
@@ -71,6 +73,15 @@ pub struct Shell {
     /// Where the sidebar was and when it started sliding toward `sidebar_open`.
     sidebar_slide: Option<(f32, Instant)>,
     right_panel_open: bool,
+    /// The selected checkout's changes, followed while it's selected so the top rail can count
+    /// them, and re-rendering the shell when they change.
+    changes: Option<(Entity<Changes>, Subscription)>,
+    /// The panel showing them, while the right panel is open.
+    changes_panel: Option<Entity<ChangesPanel>>,
+    /// Whether the changes panel takes the keyboard once it's shown, as it does when opened.
+    focus_changes: bool,
+    /// Whether the changes have the card to themselves.
+    changes_wide: bool,
     bottom_panel_open: bool,
     /// Horizontal travel of a two-finger swipe in progress over the Arc sidebar.
     pub swipe: Option<f32>,
@@ -115,6 +126,10 @@ impl Shell {
             sidebar_open: settings::get(cx).sidebar_open_on_launch,
             sidebar_slide: None,
             right_panel_open: false,
+            changes: None,
+            changes_panel: None,
+            focus_changes: false,
+            changes_wide: false,
             bottom_panel_open: false,
             swipe: None,
             focus,
@@ -179,7 +194,65 @@ impl Shell {
 
     fn toggle_right_panel(&mut self, _: &ToggleRightPanel, _: &mut Window, cx: &mut Context<Self>) {
         self.right_panel_open = !self.right_panel_open;
+        self.focus_changes = self.right_panel_open;
         cx.notify();
+    }
+
+    fn toggle_changes_width(
+        &mut self,
+        _: &ToggleChangesWidth,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.changes_wide = !self.changes_wide;
+        cx.notify();
+    }
+
+    /// Follows the selected checkout's changes, and returns the panel showing them if it's
+    /// `shown`. Each is made for the checkout when the one there is for another or there's none.
+    fn changes_panel(
+        &mut self,
+        shown: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<Entity<ChangesPanel>> {
+        let path = self
+            .workspace
+            .branch()
+            .map(|branch| branch.worktree.path.clone());
+        let followed = (self.changes.as_ref()).map(|(changes, _)| changes.read(cx).root().clone());
+        if followed != path {
+            self.changes = path.map(|path| {
+                let changes = cx.new(|cx| Changes::new(path, window, cx));
+                let observing = cx.observe(&changes, |_, _, cx| cx.notify());
+                (changes, observing)
+            });
+        }
+        let changes = self.changes.as_ref().map(|(changes, _)| changes.clone());
+        let Some(changes) = changes.filter(|_| shown) else {
+            self.changes_panel = None;
+            return None;
+        };
+        let panel = match &self.changes_panel {
+            Some(panel) if *panel.read(cx).changes() == changes => panel.clone(),
+            _ => {
+                let panel = cx.new(|cx| ChangesPanel::new(changes, cx));
+                self.changes_panel = Some(panel.clone());
+                panel
+            }
+        };
+        if mem::take(&mut self.focus_changes) {
+            let focus = panel.read(cx).focus_handle().clone();
+            window.focus(&focus, cx);
+        }
+        Some(panel)
+    }
+
+    /// The lines the selected checkout's changes add and remove, once they've been read.
+    fn change_totals(&self, cx: &App) -> (u32, u32) {
+        self.changes
+            .as_ref()
+            .map_or((0, 0), |(changes, _)| changes.read(cx).totals())
     }
 
     fn toggle_bottom_panel(
@@ -209,6 +282,44 @@ impl Shell {
         let width = (event.event.position.x.as_f32() - theme::ICON_RAIL_WIDTH)
             .clamp(theme::SIDEBAR_MIN_WIDTH, theme::SIDEBAR_MAX_WIDTH);
         settings::update(cx, |settings| settings.sidebar_width = width);
+    }
+
+    fn resize_changes(
+        &mut self,
+        event: &DragMoveEvent<ChangesResize>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // The panel ends at the card's right edge, a gutter in from the window's.
+        let right = window.viewport_size().width.as_f32() - theme::GUTTER;
+        let width = (right - event.event.position.x.as_f32())
+            .min(self.widest_changes(window, cx))
+            .clamp(theme::CHANGES_MIN_WIDTH, theme::CHANGES_MAX_WIDTH);
+        settings::update(cx, |settings| settings.changes_width = width);
+    }
+
+    /// The widest the changes panel can be and leave the chat room beside the rail and the
+    /// sidebar.
+    fn widest_changes(&self, window: &Window, cx: &App) -> f32 {
+        let sidebar = if self.sidebar_open {
+            settings::get(cx).sidebar_width()
+        } else {
+            0.
+        };
+        window.viewport_size().width.as_f32()
+            - theme::GUTTER
+            - theme::ICON_RAIL_WIDTH
+            - sidebar
+            - theme::CHAT_MIN_WIDTH
+    }
+
+    /// The changes panel's width beside the chat: as set, unless the window is too narrow for
+    /// that and the chat both.
+    fn changes_width(&self, window: &Window, cx: &App) -> f32 {
+        settings::get(cx)
+            .changes_width()
+            .min(self.widest_changes(window, cx))
+            .max(theme::CHANGES_MIN_WIDTH)
     }
 
     fn show_rails_menu(
@@ -257,13 +368,26 @@ impl Shell {
                     .disabled(!history.can_go_forward()),
             )
             .child(drag_area("title").flex_1())
-            .child(action_button(
-                "toggle-right",
-                IconName::PanelRight,
-                "Toggle right panel",
-                ToggleRightPanel,
-                cx,
-            ))
+            .child(self.changes_button(cx))
+    }
+
+    /// Opens and closes the changes panel, saying how many lines the changes add and remove.
+    fn changes_button(&self, cx: &App) -> Button {
+        let (added, removed) = self.change_totals(cx);
+        glass("toggle-changes", cx)
+            .selected(self.right_panel_open)
+            .tooltip_with_action("Changes", &ToggleRightPanel, None)
+            .on_click(|_, window, cx| window.dispatch_action(Box::new(ToggleRightPanel), cx))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_1p5()
+                    .when(added + removed > 0, |button| {
+                        button.child(changes::counts(added, removed, theme::palette(cx)))
+                    })
+                    .child(icon(IconName::FileDiff, 16.)),
+            )
     }
 
     fn icon_rail(&self, cx: &App) -> impl IntoElement {
@@ -387,6 +511,17 @@ impl Render for Shell {
             Layout::Orca => (sidebar, None),
             Layout::Arc => (None, sidebar),
         };
+        let changes = self.changes_panel(
+            route == Route::Workspace && self.right_panel_open,
+            window,
+            cx,
+        );
+        let wide = changes.is_some() && self.changes_wide;
+        let changes_width = self.changes_width(window, cx);
+        if let Some(changes) = &changes {
+            let width = (!wide).then_some(changes_width);
+            changes.update(cx, |changes, cx| changes.set_width(width, cx));
+        }
         let card = div()
             .flex_1()
             .min_w_0()
@@ -399,9 +534,27 @@ impl Render for Shell {
             .overflow_hidden()
             .flex()
             .children(card_sidebar)
-            .child(self.main(route, layout, cx))
-            .when(route == Route::Workspace && self.right_panel_open, |card| {
-                card.child(right_panel(p))
+            .when(!wide, |card| card.child(self.main(route, layout, cx)))
+            .when_some(changes, |card, changes| {
+                card.child(
+                    div()
+                        .h_full()
+                        .min_w_0()
+                        .when(wide, |panel| panel.flex_1())
+                        .when(!wide, |panel| {
+                            panel
+                                .relative()
+                                .w(px(changes_width))
+                                .flex_shrink_0()
+                                .border_l_1()
+                                .border_color(p.hairline)
+                        })
+                        .child(changes)
+                        // Over the panel's edge, so it's grabbed before what's under it.
+                        .when(!wide, |panel| {
+                            panel.child(resize_handle("changes-resize", ChangesResize).left_0())
+                        }),
+                )
             })
             // The rails' menu belongs to the rails, not the card.
             .on_mouse_down(MouseButton::Right, |_, _, cx| {
@@ -427,6 +580,7 @@ impl Render for Shell {
             }))
             .on_action(cx.listener(Self::toggle_sidebar))
             .on_action(cx.listener(Self::toggle_right_panel))
+            .on_action(cx.listener(Self::toggle_changes_width))
             .on_action(cx.listener(Self::toggle_bottom_panel))
             .on_action(cx.listener(|this, _: &NewChat, _, cx| this.new_tab(PaneKind::Chat, cx)))
             .on_action(
@@ -443,6 +597,7 @@ impl Render for Shell {
                 settings_view::edit_branch_prefix(window, cx)
             })
             .on_drag_move(cx.listener(Self::resize_sidebar))
+            .on_drag_move(cx.listener(Self::resize_changes))
             // A press in the window puts the picker and any dialog over it away, so what's
             // typed next goes where the user pressed. It's heard on the way down: text fields
             // stop presses from reaching anything around them.
@@ -563,15 +718,18 @@ pub fn action_button(
 /// An icon on the glass, shaded from the palette rather than gpui-component's opaque theme, so
 /// hovering, pressing and selecting it tint it the way they tint the sidebar's rows.
 fn glass_button(id: impl Into<ElementId>, icon: IconName, cx: &App) -> Button {
+    glass(id, cx).icon(icon)
+}
+
+/// A button on the glass with whatever it's given to show.
+fn glass(id: impl Into<ElementId>, cx: &App) -> Button {
     let p = theme::palette(cx);
-    Button::new(id)
-        .custom(
-            ButtonCustomVariant::new(cx)
-                .foreground(p.text)
-                .hover(p.hover)
-                .active(p.selected),
-        )
-        .icon(icon)
+    Button::new(id).custom(
+        ButtonCustomVariant::new(cx)
+            .foreground(p.text)
+            .hover(p.hover)
+            .active(p.selected),
+    )
 }
 
 pub fn icon(name: IconName, size: f32) -> Icon {
@@ -687,37 +845,6 @@ pub fn project_error(error: SharedString, p: Palette) -> Div {
 
 pub fn ellipsized(text: impl IntoElement) -> Div {
     div().min_w_0().truncate().child(text)
-}
-
-fn right_panel(p: Palette) -> impl IntoElement {
-    let files = [
-        (0., "src/"),
-        (12., "ledger.rs"),
-        (12., "payouts.rs"),
-        (0., "Cargo.toml"),
-        (0., "README.md"),
-    ];
-    div()
-        .w(px(260.))
-        .flex_shrink_0()
-        .h_full()
-        .p_2()
-        .border_l_1()
-        .border_color(p.hairline)
-        .flex()
-        .flex_col()
-        .gap_1()
-        .child(section_label(p).child("Files"))
-        .children(files.iter().map(|(indent, file)| {
-            div()
-                .px_2()
-                .pl(px(8. + indent))
-                .h(px(24.))
-                .flex()
-                .items_center()
-                .text_sm()
-                .child(*file)
-        }))
 }
 
 fn bottom_panel(p: Palette) -> impl IntoElement {

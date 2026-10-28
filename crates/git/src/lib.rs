@@ -2,6 +2,7 @@
 //! Nothing here knows about the UI, and every call blocks until git is done, so the app makes
 //! them off its main thread.
 
+mod changes;
 mod command;
 mod create;
 mod refs;
@@ -10,6 +11,10 @@ mod worktree;
 
 use std::path::{Path, PathBuf};
 
+pub use changes::{
+    ChangedWords, Change, Checkout, Content, Discarding, FileDiff, Hunk, Lines, Status,
+    changed_words,
+};
 use command::Git;
 pub use command::{Error, Result};
 pub use create::{NewWorktree, Start};

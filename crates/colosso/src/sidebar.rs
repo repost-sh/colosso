@@ -1,11 +1,12 @@
 //! The sidebar's frame, shared by the workspace sidebars and the settings sidebar: its width,
 //! the chrome the layout gives it, the grab strip that resizes it, and its slide in and out.
+//! The grab strip resizes the changes panel too.
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Empty, InteractiveElement as _, IntoElement,
-    ParentElement, Render, RenderOnce, StatefulInteractiveElement as _, Styled as _, Window, div,
-    px,
+    AnyElement, App, AppContext as _, Context, Div, Empty, InteractiveElement as _, IntoElement,
+    ParentElement, Render, RenderOnce, Stateful, StatefulInteractiveElement as _, Styled as _,
+    Window, div, px,
 };
 
 use crate::settings::Layout;
@@ -52,11 +53,12 @@ impl RenderOnce for SidebarFrame {
                 Layout::Arc => frame.pr(px(theme::GUTTER)).pb(px(theme::GUTTER)),
             })
             .children(self.children)
-            .child(resize_handle())
+            .child(resize_handle("sidebar-resize", SidebarResize).right_0())
     }
 }
 
 /// The drag payload while the sidebar's right border is being dragged.
+#[derive(Clone)]
 pub struct SidebarResize;
 
 impl Render for SidebarResize {
@@ -65,17 +67,20 @@ impl Render for SidebarResize {
     }
 }
 
-/// A grab strip along the sidebar's right border.
-fn resize_handle() -> impl IntoElement {
+/// A grab strip down the side of a panel, which must be `relative`, dragging `payload` so the
+/// drag says which panel it resizes. Place it on the panel's left or right edge.
+pub fn resize_handle<T: Render + Clone>(id: &'static str, payload: T) -> Stateful<Div> {
     div()
-        .id("sidebar-resize")
+        .id(id)
         .absolute()
         .top_0()
         .bottom_0()
-        .right_0()
         .w(px(6.))
         .cursor_col_resize()
-        .on_drag(SidebarResize, |_, _, _, cx| cx.new(|_| SidebarResize))
+        .on_drag(payload, |payload, _, _, cx| {
+            let payload = payload.clone();
+            cx.new(|_| payload)
+        })
 }
 
 /// Shows the revealed part of a `width`-wide sidebar, sliding it out from under the left edge
