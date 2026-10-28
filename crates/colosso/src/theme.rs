@@ -1,6 +1,7 @@
 //! Sizes, the light and dark palettes, and the System/Light/Dark preference that picks one.
 
 use gpui_kit::assets::IconName;
+use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::component::{ActiveTheme as _, Theme};
 use gpui_kit::{Action, App, Hsla, Window, WindowAppearance, actions};
 use serde::{Deserialize, Serialize};
@@ -135,6 +136,15 @@ impl ThemePreference {
             ThemePreference::Light => Box::new(UseLightTheme),
             ThemePreference::Dark => Box::new(UseDarkTheme),
         }
+    }
+
+    /// System, Light and Dark, with `self` checked.
+    pub fn menu(self) -> NativeMenu {
+        ThemePreference::ALL
+            .into_iter()
+            .fold(NativeMenu::new(), |menu, option| {
+                menu.menu_with_check(option.label(), option == self, option.action())
+            })
     }
 
     fn forced_appearance(self) -> Option<WindowAppearance> {

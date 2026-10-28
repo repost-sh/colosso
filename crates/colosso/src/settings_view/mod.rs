@@ -9,13 +9,13 @@ mod keyboard_shortcuts;
 mod settings_sidebar;
 
 use gpui_kit::assets::IconName;
-use gpui_kit::{App, IntoElement, ParentElement as _, Window};
+use gpui_kit::{App, IntoElement, ParentElement as _};
 
 pub use settings_sidebar::SettingsSidebar;
 
-use components::SettingsPageColumn;
+use components::{SettingsPageColumn, SettingsSection};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SettingsPage {
     General,
     Appearance,
@@ -55,44 +55,45 @@ impl SettingsPage {
         }
     }
 
-    /// Whether the page's title or any setting on it mentions `query`, ignoring case.
-    fn matches(self, query: &str) -> bool {
-        let query = query.trim().to_lowercase();
-        let terms = match self {
-            SettingsPage::General => general::SEARCH_TERMS.to_vec(),
-            SettingsPage::Appearance => appearance::SEARCH_TERMS.to_vec(),
-            SettingsPage::KeyboardShortcuts => keyboard_shortcuts::search_terms(),
-            SettingsPage::About => about::SEARCH_TERMS.to_vec(),
-        };
-        std::iter::once(self.title())
-            .chain(terms)
-            .any(|term| term.to_lowercase().contains(&query))
+    fn sections(self, cx: &App) -> Vec<SettingsSection> {
+        match self {
+            SettingsPage::General => general::sections(cx),
+            SettingsPage::Appearance => appearance::sections(cx),
+            SettingsPage::KeyboardShortcuts => keyboard_shortcuts::sections(cx),
+            SettingsPage::About => about::sections(cx),
+        }
+    }
+
+    /// Whether the page's title or anything on it mentions `query`, which must already be
+    /// trimmed and lowercase. Searches the same sections the page shows.
+    fn matches(self, query: &str, cx: &App) -> bool {
+        query.is_empty()
+            || self.title().to_lowercase().contains(query)
+            || self
+                .sections(cx)
+                .iter()
+                .any(|section| section.matches(query))
     }
 }
 
 /// The page's contents for the card.
-pub fn page(page: SettingsPage, window: &mut Window, cx: &mut App) -> impl IntoElement {
-    let column = SettingsPageColumn::new(page);
-    match page {
-        SettingsPage::General => column.children(general::sections(cx)),
-        SettingsPage::Appearance => column.children(appearance::sections(cx)),
-        SettingsPage::KeyboardShortcuts => {
-            column.children(keyboard_shortcuts::sections(window, cx))
-        }
-        SettingsPage::About => column.children(about::sections(cx)),
-    }
+pub fn page(page: SettingsPage, cx: &App) -> impl IntoElement {
+    SettingsPageColumn::new(page).children(page.sections(cx))
 }
 
 #[cfg(test)]
 mod tests {
+    use super::components::SettingRow;
     use super::*;
 
     #[test]
-    fn search_finds_pages_by_title_and_by_setting() {
-        assert!(SettingsPage::Appearance.matches("appear"));
-        assert!(SettingsPage::General.matches("  SIDEBAR width "));
-        assert!(SettingsPage::KeyboardShortcuts.matches("bottom panel"));
-        assert!(!SettingsPage::About.matches("sidebar"));
+    fn a_section_matches_its_title_and_its_rows() {
+        let section = SettingsSection::new("Sidebar")
+            .row(SettingRow::new("Sidebar width").description("Drag the sidebar's right edge."));
+        assert!(section.matches("sidebar"));
+        assert!(section.matches("width"));
+        assert!(section.matches("right edge"));
+        assert!(!section.matches("theme"));
     }
 
     #[test]

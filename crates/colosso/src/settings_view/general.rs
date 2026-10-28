@@ -1,29 +1,19 @@
 //! General: how the sidebar opens, which layout holds it, and how wide it is.
 
-use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::component::switch::Switch;
-use gpui_kit::{App, IntoElement, ParentElement as _, Styled as _, div};
+use gpui_kit::{App, ParentElement as _, Styled as _, div};
 
 use super::components::{MenuButton, PillButton, SettingRow, SettingsSection};
-use crate::settings::{self, Layout};
+use crate::settings;
 use crate::theme;
 
-pub const SEARCH_TERMS: &[&str] = &[
-    "Sidebar",
-    "Show sidebar on launch",
-    "Layout",
-    "Orca",
-    "Arc",
-    "Sidebar width",
-];
-
-pub fn sections(cx: &App) -> [impl IntoElement; 1] {
+pub fn sections(cx: &App) -> Vec<SettingsSection> {
     let p = theme::palette(cx);
     let current = settings::get(cx);
     let layout = current.layout;
-    let width = current.sidebar_width.round();
-    [SettingsSection::new("Sidebar")
-        .child(
+    let width = current.sidebar_width().round();
+    vec![SettingsSection::new("Sidebar")
+        .row(
             SettingRow::new("Show sidebar on launch")
                 .description("Open the window with the sidebar out. ⌘S slides it in and out.")
                 .control(
@@ -37,19 +27,16 @@ pub fn sections(cx: &App) -> [impl IntoElement; 1] {
                         }),
                 ),
         )
-        .child(
+        .row(
             SettingRow::new("Layout")
                 .description(
                     "Orca keeps the sidebar and tabs inside the card. Arc lists tabs on the glass.",
                 )
                 .control(MenuButton::new("layout", layout.label(), |cx| {
-                    let current = settings::get(cx).layout;
-                    Layout::ALL.into_iter().fold(NativeMenu::new(), |menu, layout| {
-                        menu.menu_with_check(layout.label(), layout == current, layout.action())
-                    })
+                    settings::get(cx).layout.menu()
                 })),
         )
-        .child(
+        .row(
             SettingRow::new("Sidebar width")
                 .description("Drag the sidebar's right edge to resize it.")
                 .control(
