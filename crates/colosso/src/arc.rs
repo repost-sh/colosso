@@ -2,17 +2,53 @@
 //! listed beneath, and a project switcher at the bottom. Two fingers swipe between projects.
 
 use gpui_kit::assets::IconName;
+use gpui_kit::component::Sizable as _;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Context, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _,
-    StatefulInteractiveElement as _, Styled as _, div, px,
+    Context, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, ScrollDelta,
+    ScrollEvent, StatefulInteractiveElement as _, Styled as _, TouchPhase, Window, div, px,
 };
 
-use crate::model::BranchKind;
-use crate::shell::{Shell, ellipsized, icon, icon_button, row};
-use crate::theme;
+use crate::model::{BranchKind, BranchUnit};
+use crate::shell::{Shell, ellipsized, icon, icon_button, row, search_row, section_label};
+use crate::theme::{self, Palette};
+
+/// Horizontal travel, in points, that switches the sidebar to the next project.
+const SWIPE_THRESHOLD: f32 = 70.;
+
+impl Shell {
+    fn swipe(&mut self, event: &ScrollEvent, _: &mut Window, cx: &mut Context<Self>) {
+        let ScrollDelta::Pixels(delta) = event.delta else {
+            return;
+        };
+        let before = (self.swipe.unwrap_or(0.), self.workspace.active_project);
+        let (dx, dy) = (delta.x.as_f32(), delta.y.as_f32());
+        self.swipe = match (event.touch_phase, self.swipe) {
+            (TouchPhase::Started, _) => Some(0.),
+            // A gesture that starts vertical is a scroll, not a swipe.
+            (TouchPhase::Moved, Some(0.)) if dy.abs() > dx.abs() => None,
+            (TouchPhase::Moved, Some(travel)) => {
+                Some((travel + dx).clamp(-theme::SIDEBAR_WIDTH, theme::SIDEBAR_WIDTH))
+            }
+            (TouchPhase::Ended, Some(travel)) => {
+                if travel <= -SWIPE_THRESHOLD {
+                    self.workspace.step_project(1);
+                } else if travel >= SWIPE_THRESHOLD {
+                    self.workspace.step_project(-1);
+                }
+                None
+            }
+            // Momentum events arrive after the fingers lift and carry no swipe.
+            _ => None,
+        };
+        if (self.swipe.unwrap_or(0.), self.workspace.active_project) != before {
+            cx.notify();
+        }
+    }
+}
 
 pub fn sidebar(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
+    let p = theme::palette(cx);
     let workspace = &shell.workspace;
     let project_index = workspace.active_project;
     let project = workspace.project();
@@ -35,61 +71,16 @@ pub fn sidebar(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
                 .font_weight(FontWeight::SEMIBOLD)
                 .child(project.name.clone()),
         )
-        .child(
-            div()
-                .h(px(theme::ROW_HEIGHT))
-                .px_2()
-                .flex()
-                .items_center()
-                .gap_2()
-                .rounded(px(8.))
-                .bg(theme::hover())
-                .text_sm()
-                .text_color(theme::muted())
-                .child(icon(IconName::Search, 14.))
-                .child("Search"),
-        )
+        .child(search_row(p).rounded(px(8.)).bg(p.hover))
         .children(
             project
                 .branches
                 .iter()
                 .enumerate()
                 .map(|(branch_index, branch)| {
-                    div()
-                        .mt_2()
-                        .flex()
-                        .flex_col()
-                        .gap_px()
-                        .child(
-                            div()
-                                .h(px(24.))
-                                .px_2()
-                                .flex()
-                                .items_center()
-                                .gap_2()
-                                .text_xs()
-                                .text_color(theme::muted())
-                                .child(icon(IconName::GitBranch, 12.))
-                                .child(ellipsized(branch.name.clone()))
-                                .when(branch.kind == BranchKind::Checkout, |header| {
-                                    header.child("checkout")
-                                }),
-                        )
-                        .children(branch.tabs.iter().enumerate().map(|(tab_index, tab)| {
-                            let selected = branch_index == project.active_branch
-                                && tab_index == branch.active_tab;
-                            row(("arc-tab", branch_index * 100 + tab_index), selected)
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.workspace.select_tab(
-                                        project_index,
-                                        branch_index,
-                                        tab_index,
-                                    );
-                                    cx.notify();
-                                }))
-                                .child(icon(tab.icon(), 13.).text_color(theme::muted()))
-                                .child(ellipsized(tab.title()))
-                        }))
+                    let active_tab =
+                        (branch_index == project.active_branch).then_some(branch.active_tab);
+                    branch_group(project_index, branch_index, branch, active_tab, p, cx)
                 }),
         );
 
@@ -107,22 +98,13 @@ pub fn sidebar(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
                 .enumerate()
                 .map(|(index, project)| {
                     let active = index == project_index;
-                    div()
-                        .id(("arc-space", index))
+                    row(("arc-space", index), active, p)
                         .size(px(26.))
-                        .flex()
-                        .items_center()
+                        .p_0()
                         .justify_center()
-                        .rounded(px(6.))
                         .text_xs()
                         .font_weight(FontWeight::SEMIBOLD)
-                        .cursor_pointer()
-                        .when(active, |space| space.bg(theme::selected()))
-                        .when(!active, |space| {
-                            space
-                                .text_color(theme::muted())
-                                .hover(|style| style.bg(theme::hover()))
-                        })
+                        .when(!active, |space| space.text_color(p.muted))
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.workspace.active_project = index;
                             cx.notify();
@@ -130,7 +112,7 @@ pub fn sidebar(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
                         .child(project.initials())
                 }),
         )
-        .child(icon_button("arc-new-space", IconName::Plus, "New project"));
+        .child(icon_button("arc-new-space", IconName::Plus, "New project").small());
 
     div()
         .id("arc-sidebar")
@@ -145,4 +127,42 @@ pub fn sidebar(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
         .on_scroll(cx.listener(Shell::swipe))
         .child(space)
         .child(switcher)
+}
+
+/// A branch unit's header and its tabs; `active_tab` is set only on the selected branch.
+fn branch_group(
+    project_index: usize,
+    branch_index: usize,
+    branch: &BranchUnit,
+    active_tab: Option<usize>,
+    p: Palette,
+    cx: &mut Context<Shell>,
+) -> impl IntoElement + use<> {
+    div()
+        .mt_2()
+        .flex()
+        .flex_col()
+        .gap_px()
+        .child(
+            section_label(p)
+                .child(icon(IconName::GitBranch, 12.))
+                .child(ellipsized(branch.name.clone()))
+                .when(branch.kind == BranchKind::Checkout, |header| {
+                    header.child("checkout")
+                }),
+        )
+        .children(branch.tabs.iter().enumerate().map(|(tab_index, tab)| {
+            row(
+                ("arc-tab", branch_index * 100 + tab_index),
+                active_tab == Some(tab_index),
+                p,
+            )
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.workspace
+                    .select_tab(project_index, branch_index, tab_index);
+                cx.notify();
+            }))
+            .child(icon(tab.icon(), 13.).text_color(p.muted))
+            .child(ellipsized(tab.title()))
+        }))
 }
