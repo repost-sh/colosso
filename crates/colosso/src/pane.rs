@@ -131,7 +131,7 @@ fn chat(pane: &Pane, context: SharedString, p: Palette) -> AnyElement {
                                         .flex()
                                         .items_center()
                                         .justify_center()
-                                        .child(icon(IconName::ArrowUp, 14.).text_color(p.card)),
+                                        .child(icon(IconName::ArrowUp, 14.).text_color(p.on_text)),
                                 ),
                         ),
                 ),

@@ -22,14 +22,19 @@ pub const MONO: &str = "Menlo";
 pub struct Palette {
     /// The window's blur shows through this, so its alpha sets how glassy the rails look.
     pub rail_tint: Hsla,
+    /// Painted over `rail_tint`, which covers the whole window, so the two alphas stack.
     pub card: Hsla,
     pub sunken: Hsla,
     pub raised: Hsla,
     pub hairline: Hsla,
     pub text: Hsla,
+    /// Solid, for marks drawn on a `text`-colored fill.
+    pub on_text: Hsla,
     pub muted: Hsla,
     pub hover: Hsla,
     pub selected: Hsla,
+    /// Dropdown menus sit in a blurred window of their own; this tints that glass.
+    pub menu: Hsla,
 }
 
 const fn gray(lightness: f32, alpha: f32) -> Hsla {
@@ -43,26 +48,30 @@ const fn gray(lightness: f32, alpha: f32) -> Hsla {
 
 const DARK: Palette = Palette {
     rail_tint: gray(0.08, 0.55),
-    card: gray(0.11, 1.),
-    sunken: gray(0.085, 1.),
-    raised: gray(0.15, 1.),
+    card: gray(0.1, 0.6),
+    sunken: gray(0., 0.2),
+    raised: gray(1., 0.05),
     hairline: gray(1., 0.08),
     text: gray(1., 0.9),
+    on_text: gray(0.1, 1.),
     muted: gray(1., 0.5),
     hover: gray(1., 0.05),
     selected: gray(1., 0.1),
+    menu: gray(1., 0.06),
 };
 
 const LIGHT: Palette = Palette {
     rail_tint: gray(0.96, 0.55),
-    card: gray(1., 1.),
-    sunken: gray(0.965, 1.),
-    raised: gray(0.94, 1.),
+    card: gray(1., 0.65),
+    sunken: gray(0., 0.03),
+    raised: gray(0., 0.05),
     hairline: gray(0., 0.09),
     text: gray(0., 0.87),
+    on_text: gray(1., 1.),
     muted: gray(0., 0.5),
     hover: gray(0., 0.04),
     selected: gray(0., 0.07),
+    menu: gray(1., 0.35),
 };
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
