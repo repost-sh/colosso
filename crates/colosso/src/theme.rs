@@ -8,6 +8,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::settings;
 
+mod accent;
+#[cfg(target_os = "macos")]
+mod system_accent;
+#[cfg(feature = "visual-check")]
+pub mod visual;
+
 pub const TITLE_BAR_HEIGHT: f32 = 40.;
 pub const TRAFFIC_LIGHT_SIZE: f32 = 14.;
 /// Room left of the top-rail buttons for the traffic lights.
@@ -29,10 +35,18 @@ pub const CHANGES_FILES_MIN_WIDTH: f32 = 180.;
 pub const CHANGES_FILES_MAX_WIDTH: f32 = 640.;
 /// What the file list leaves of the changes panel for the diffs, at its widest.
 pub const DIFFS_MIN_WIDTH: f32 = 360.;
-/// The Files panel's width beside the chat.
-pub const FILES_WIDTH: f32 = 300.;
-pub const FILES_MIN_WIDTH: f32 = 200.;
-pub const FILES_MAX_WIDTH: f32 = 640.;
+/// The Files panel's width beside the chat, unless widened to the whole card: the tree and
+/// the file it shows.
+pub const FILES_WIDTH: f32 = 960.;
+/// Room for the narrowest tree beside the narrowest viewer.
+pub const FILES_MIN_WIDTH: f32 = FILES_TREE_MIN_WIDTH + VIEWER_MIN_WIDTH;
+pub const FILES_MAX_WIDTH: f32 = 1400.;
+/// The Files panel's tree, beside the file it shows.
+pub const FILES_TREE_WIDTH: f32 = 300.;
+pub const FILES_TREE_MIN_WIDTH: f32 = 180.;
+pub const FILES_TREE_MAX_WIDTH: f32 = 640.;
+/// What the tree leaves of the Files panel for the file it shows, at its widest.
+pub const VIEWER_MIN_WIDTH: f32 = 360.;
 /// What the right panel leaves of the card for the chat beside it, at its widest.
 pub const CHAT_MIN_WIDTH: f32 = 320.;
 pub const TAB_STRIP_HEIGHT: f32 = 38.;
@@ -58,7 +72,7 @@ pub struct Palette {
     pub selected: Hsla,
     /// Dropdown menus sit in a blurred window of their own; this tints that glass.
     pub menu: Hsla,
-    /// Switched-on switches and links.
+    /// Switched-on switches and links: the system's accent on macOS, `ACCENT` elsewhere.
     pub accent: Hsla,
     /// Errors, and what can't be undone.
     pub danger: Hsla,
@@ -237,6 +251,8 @@ pub fn init(cx: &mut App) {
     cx.on_action(|_: &UseSystemTheme, cx| set_preference(ThemePreference::System, cx));
     cx.on_action(|_: &UseLightTheme, cx| set_preference(ThemePreference::Light, cx));
     cx.on_action(|_: &UseDarkTheme, cx| set_preference(ThemePreference::Dark, cx));
+    #[cfg(target_os = "macos")]
+    system_accent::follow(cx);
     set_preference(settings::get(cx).appearance, cx);
 }
 
@@ -248,11 +264,13 @@ pub fn follow_window_appearance(window: &Window) {
         .detach();
 }
 
+/// The palette of the appearance on screen, in the accent in use.
 pub fn palette(cx: &App) -> Palette {
-    if cx.theme().mode.is_dark() {
-        DARK
-    } else {
-        LIGHT
+    let dark = cx.theme().mode.is_dark();
+    let palette = if dark { DARK } else { LIGHT };
+    Palette {
+        accent: accent::get(dark, cx),
+        ..palette
     }
 }
 

@@ -4,10 +4,10 @@
 
 # The changes panel's view: the file list, the diff rows, the header, scrolling and the
 # file actions, to be split along those lines.
-crates/colosso/src/changes/view.rs  # 1484 lines
+crates/colosso/src/changes/view.rs  # 1439 lines
 # The theme picker's pad, presets, opacity slider and texture dial.
 crates/colosso/src/picker.rs  # 1057 lines
 # The window: rails, card, panels, navigation and resizing.
-crates/colosso/src/shell.rs  # 728 lines
+crates/colosso/src/shell.rs  # 709 lines
 # Listing changes, diffing files, and staging, unstaging and discarding them.
 crates/git/src/changes.rs  # 725 lines

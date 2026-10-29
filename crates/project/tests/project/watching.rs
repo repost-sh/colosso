@@ -1,7 +1,9 @@
 //! Following writes as the platform reports them: listings kept up to date, ignore rules
 //! edited, bursts inside ignored folders dropped, and bursts too big to name collapsed.
 
-use colosso_project::{Feed, Git, Options, Subscription, Update, Written};
+use std::sync::Arc;
+
+use colosso_project::{Feed, Folder, Git, Options, Subscription, Update, Written};
 
 use crate::common::{Checkout, ignored, names, until, until_listed};
 
@@ -210,4 +212,57 @@ fn a_burst_past_the_cap_is_taken_up_by_folder_then_whole() {
     }
     assert!(collapsed, "a burst of 400 never went past a cap of 8");
     assert_eq!(project.files().len(), 401);
+}
+
+#[test]
+fn a_folders_files_stay_shared_until_its_listing_changes() {
+    let checkout = Checkout::new("by-folder");
+    checkout.write(".gitignore", "*.tmp\n");
+    for file in ["src/a.rs", "src/b.tmp", "lib/c.rs"] {
+        checkout.write(file, "");
+    }
+    checkout.mkdir("empty");
+    let (project, updates) = checkout.open();
+    let folders = project.files_by_folder();
+    let files = |folders: &[Folder], dir: &str| {
+        let folder = folders.iter().find(|folder| &*folder.path == dir);
+        folder.map(|folder| folder.files.clone())
+    };
+    let mut listed: Vec<&str> = folders.iter().map(|folder| &*folder.path).collect();
+    listed.sort_unstable();
+    assert_eq!(listed, ["", "lib", "src"]);
+    let lib = files(&folders, "lib").unwrap();
+    assert_eq!(&*lib, [Arc::from("lib/c.rs")]);
+
+    checkout.write("src/d.rs", "");
+    assert!(until_listed(&updates, "src", |listing| listing
+        .is_some_and(
+            |listing| names(listing) == ["a.rs", "b.tmp", "d.rs"]
+        )));
+    let after = project.files_by_folder();
+    assert!(Arc::ptr_eq(&lib, &files(&after, "lib").unwrap()));
+    let src = files(&after, "src").unwrap();
+    assert_eq!(&*src, [Arc::from("src/a.rs"), Arc::from("src/d.rs")]);
+    assert!(Arc::ptr_eq(&after, &project.files_by_folder()));
+}
+
+#[test]
+fn a_listings_feed_hears_what_is_listed_and_nothing_written() {
+    let checkout = Checkout::new("listings-feed");
+    checkout.write("src/a.rs", "");
+    let (project, _everything) = checkout.open();
+    let listings = project.subscribe(Feed::Listings);
+    let first = listings.try_next().expect("what's listed so far");
+    assert!(first.scanned.is_some() && first.listings.contains_key("src"));
+
+    checkout.write("src/a.rs", "written over");
+    checkout.write("src/b.rs", "");
+    let mut written = Vec::new();
+    let listed = until(&listings, |update| {
+        written.push(update.written.clone());
+        let src = update.listings.get("src").cloned().flatten();
+        src.is_some_and(|listing| names(&listing) == ["a.rs", "b.rs"])
+    });
+    assert!(listed, "src/b.rs was never listed");
+    assert!(written.iter().all(Written::is_empty), "{written:?}");
 }

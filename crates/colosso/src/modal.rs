@@ -110,6 +110,14 @@ pub fn close(cx: &mut App) {
         .ok();
 }
 
+/// What the dialog on screen shows, if one is open and shows a `T`.
+#[cfg(feature = "visual-check")]
+pub fn current<T: 'static>(cx: &App) -> Option<gpui_kit::Entity<T>> {
+    let window = cx.try_global::<OpenModal>()?.0?.downcast::<Surface>()?;
+    let surface = window.read(cx).ok()?;
+    surface.content.clone().downcast::<T>().ok()
+}
+
 /// Closes the dialog in `window`, from inside it.
 pub fn dismiss(window: &mut Window, cx: &mut App) {
     let open = &mut cx.default_global::<OpenModal>().0;
@@ -149,9 +157,9 @@ struct Surface {
 }
 
 impl Render for Surface {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = theme::palette(cx);
-        div()
+        crate::key_repeat::track(div(), window, cx)
             .size_full()
             .p(px(PADDING))
             .bg(p.menu)

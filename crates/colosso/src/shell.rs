@@ -17,7 +17,6 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled, Subscription, Window, actions, div, ease_in_out, px,
 };
 
-use crate::changes;
 use crate::menu::{self, MenuItem};
 use crate::model::{PaneKind, Workspace};
 use crate::navigation::{
@@ -259,25 +258,7 @@ impl Shell {
             )
             .child(drag_area("title").flex_1())
             .child(self.changes_button(cx))
-    }
-
-    /// Opens and closes the changes panel, saying how many lines the changes add and remove.
-    fn changes_button(&self, cx: &App) -> Button {
-        let (added, removed) = self.right_panel.totals(cx);
-        glass("toggle-changes", theme::palette(cx).text, cx)
-            .selected(self.right_panel.is_open())
-            .tooltip_with_action("Changes", &ToggleRightPanel, None)
-            .on_click(|_, window, cx| window.dispatch_action(Box::new(ToggleRightPanel), cx))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_1p5()
-                    .when(added + removed > 0, |button| {
-                        button.child(changes::counts(added, removed, theme::palette(cx)))
-                    })
-                    .child(icon(IconName::FileDiff, 16.)),
-            )
+            .child(self.files_button(cx))
     }
 
     fn icon_rail(&self, cx: &App) -> impl IntoElement {
@@ -425,7 +406,7 @@ impl Render for Shell {
                 cx.stop_propagation();
             });
 
-        div()
+        crate::key_repeat::track(div(), window, cx)
             .track_focus(&self.focus)
             .when(matches!(route, Route::Settings(_)), |root| {
                 root.key_context("Settings")

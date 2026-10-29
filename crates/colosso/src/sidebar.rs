@@ -72,6 +72,7 @@ impl Render for SidebarResize {
 pub fn resize_handle<T: Render + Clone>(id: &'static str, payload: T) -> Stateful<Div> {
     div()
         .id(id)
+        .debug_selector(|| id.to_owned())
         .absolute()
         .top_0()
         .bottom_0()

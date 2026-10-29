@@ -7,6 +7,9 @@ mod components;
 mod general;
 mod keyboard_shortcuts;
 mod settings_sidebar;
+mod ticked_slider;
+#[cfg(feature = "visual-check")]
+pub mod visual;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::{App, IntoElement, ParentElement as _};
@@ -84,8 +87,67 @@ pub fn page(page: SettingsPage, cx: &App) -> impl IntoElement {
 
 #[cfg(test)]
 mod tests {
+    use gpui_kit::{
+        AppContext as _, Bounds, Context, Modifiers, Pixels, Render, Styled as _, TestAppContext,
+        VisualTestContext, Window, div, point, px, size,
+    };
+
     use super::components::SettingRow;
     use super::*;
+    use crate::key_repeat::KeyRepeat;
+    use crate::settings;
+    use crate::test_support::in_window;
+
+    /// The General page in a window of its own.
+    struct General;
+
+    impl Render for General {
+        fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            div().size_full().child(page(SettingsPage::General, cx))
+        }
+    }
+
+    /// Clicks stop `index` of the `count` along the slider `selector` names.
+    fn pick(selector: &'static str, index: usize, count: usize, cx: &mut VisualTestContext) {
+        let track: Bounds<Pixels> = cx.debug_bounds(selector).unwrap();
+        let along = track.size.width * (index as f32 / (count - 1) as f32);
+        let at = point(track.left() + along, track.center().y);
+        cx.simulate_click(at, Modifiers::none());
+    }
+
+    #[gpui_kit::test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "a stop is written as it's listed, and a value by hand left as it was"
+    )]
+    fn the_keyboard_section_sets_how_a_held_arrow_repeats(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        // Set by hand between two stops, it's shown at the nearer and left as it is.
+        cx.update(|cx| {
+            settings::update(cx, |settings| {
+                settings.key_repeat = KeyRepeat {
+                    per_second: 100.,
+                    ..KeyRepeat::default()
+                };
+            });
+        });
+        let (window, _) = in_window(size(px(900.), px(1100.)), cx, |_, cx| cx.new(|_| General));
+        let cx = &mut VisualTestContext::from_window(window, cx);
+        cx.run_until_parked();
+        let repeat = |cx: &mut VisualTestContext| cx.read(|cx| settings::get(cx).key_repeat);
+        assert_eq!(repeat(cx).per_second, 100.);
+        pick("arrow-repeat-speed", 7, 10, cx);
+        assert_eq!(repeat(cx).per_second, 150.);
+        // The longest delay is at the left, as macOS has it.
+        pick("arrow-repeat-delay", 0, 8, cx);
+        assert_eq!(repeat(cx).delay_ms, 500);
+        // Off, the arrows are macOS's, and the two can't be moved.
+        let switch = cx.debug_bounds("arrow-repeat").unwrap();
+        cx.simulate_click(switch.center(), Modifiers::none());
+        assert!(!repeat(cx).enabled);
+        pick("arrow-repeat-speed", 2, 10, cx);
+        assert_eq!(repeat(cx).per_second, 150.);
+    }
 
     #[test]
     fn a_section_matches_its_title_and_its_rows() {

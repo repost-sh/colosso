@@ -5,7 +5,11 @@ mod checkout;
 mod checkouts;
 mod delete_worktree;
 mod files;
+mod go_to_file;
 mod gradient;
+mod key_repeat;
+mod language;
+mod list;
 mod logs;
 mod menu;
 mod modal;
@@ -21,9 +25,11 @@ mod settings;
 mod settings_view;
 mod shell;
 mod sidebar;
-#[cfg(test)]
+#[cfg(any(test, feature = "visual-check"))]
 mod test_support;
 mod theme;
+#[cfg(feature = "visual-check")]
+mod visual;
 
 use std::process::ExitCode;
 
@@ -37,10 +43,12 @@ use gpui_kit::{
 fn init(cx: &mut App) {
     gpui_kit::init(cx);
     settings::init(cx);
+    key_repeat::init(cx);
     theme::init(cx);
     shell::init(cx);
     right_panel::init(cx);
     navigation::bind_keys(cx);
+    go_to_file::init(cx);
 }
 
 fn main() -> ExitCode {
@@ -49,15 +57,36 @@ fn main() -> ExitCode {
     if std::env::args().any(|arg| arg == "--visual-check") {
         return files::visual::run();
     }
+    #[cfg(feature = "visual-check")]
+    if std::env::args().any(|arg| arg == "--visual-check-finder") {
+        return go_to_file::visual::run();
+    }
+    #[cfg(feature = "visual-check")]
+    if std::env::args().any(|arg| arg == "--visual-check-lsp") {
+        return language::visual::run();
+    }
+    #[cfg(feature = "visual-check")]
+    if std::env::args().any(|arg| arg == "--visual-check-settings") {
+        return settings_view::visual::run();
+    }
+    #[cfg(feature = "visual-check")]
+    if std::env::args().any(|arg| arg == "--visual-check-accent") {
+        return theme::visual::run();
+    }
     gpui_kit::application()
         // The full Lucide set: the default bundle leaves out icons we use, which then draw nothing.
         .with_assets(gpui_kit::assets::AllAssets)
         .run(|cx| {
             init(cx);
+            // Not in `init`, which tests and the visual check share: they run servers of
+            // their own, or none.
+            language::init(cx);
             // Most of the screen, so the chat, the sidebar and the changes fit side by side.
             let screen = cx
                 .primary_display()
-                .map_or(size(px(1440.), px(900.)), |display| display.visible_bounds().size);
+                .map_or(size(px(1440.), px(900.)), |display| {
+                    display.visible_bounds().size
+                });
             let window = size(
                 (screen.width * 0.9).min(px(1920.)),
                 (screen.height * 0.9).min(px(1200.)),

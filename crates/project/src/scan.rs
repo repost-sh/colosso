@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Condvar, Mutex, PoisonError, mpsc};
 use std::thread;
 
+use crate::lock;
 use crate::read::{Job, Read, read};
 
 /// The folders waiting to be read, and whether reading is over.
@@ -75,7 +76,7 @@ pub(crate) fn scan(
 
 impl Shared<'_> {
     fn queue(&self) -> std::sync::MutexGuard<'_, Queue> {
-        self.queue.lock().unwrap_or_else(PoisonError::into_inner)
+        lock(&self.queue)
     }
 
     /// The next folder to read, waiting for one; `None` once reading is over.

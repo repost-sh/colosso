@@ -1,14 +1,11 @@
 //! What the shell shows: the projects the user added, the checkouts git reports for each,
-//! and the tabs open on each checkout. Tab contents are placeholders until agents exist,
-//! but for files opened from the file tree, which each tab keeps its editor for.
+//! and the tabs open on each checkout. Tab contents are placeholders until agents exist.
 
 use std::path::{Path, PathBuf};
 
 use colosso_git::{Head, Worktree};
+use gpui_kit::SharedString;
 use gpui_kit::assets::IconName;
-use gpui_kit::{Entity, SharedString};
-
-use crate::files::FileEditor;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PaneKind {
@@ -59,16 +56,6 @@ impl PaneKind {
 pub struct Pane {
     pub kind: PaneKind,
     pub title: SharedString,
-    /// The file an editor pane shows, if it was opened from one.
-    pub file: Option<FileTab>,
-}
-
-/// A file open in an editor pane, and the editor showing it, kept with the tab so switching
-/// tabs never reads it again.
-#[derive(Clone, Debug)]
-pub struct FileTab {
-    pub path: PathBuf,
-    pub editor: Entity<FileEditor>,
 }
 
 #[derive(Clone, Debug)]
@@ -90,14 +77,6 @@ impl Tab {
         match self {
             Tab::Single(pane) => pane.kind.icon(),
             Tab::Split(..) => IconName::Columns2,
-        }
-    }
-
-    /// The file it shows, if it's a single editor pane opened from one.
-    pub fn file(&self) -> Option<&FileTab> {
-        match self {
-            Tab::Single(pane) => pane.file.as_ref(),
-            Tab::Split(..) => None,
         }
     }
 }
@@ -362,43 +341,8 @@ impl Workspace {
         unit.tabs.push(Tab::Single(Pane {
             kind,
             title: kind.new_tab_title().into(),
-            file: None,
         }));
         unit.active_tab = unit.tabs.len() - 1;
-    }
-
-    /// Selects the selected checkout's tab showing the file at `path`; whether one does.
-    pub fn select_file(&mut self, path: &Path) -> bool {
-        let Some(unit) = self.branch_mut() else {
-            return false;
-        };
-        let found =
-            (unit.tabs.iter()).position(|tab| tab.file().is_some_and(|file| file.path == path));
-        if let Some(tab) = found {
-            unit.active_tab = tab;
-        }
-        found.is_some()
-    }
-
-    /// Opens a tab showing `file` on the selected checkout, named after the file, and
-    /// selects it.
-    pub fn open_file(&mut self, file: FileTab) {
-        let Some(unit) = self.branch_mut() else {
-            return;
-        };
-        let title = file.path.file_name().unwrap_or_default().to_string_lossy();
-        unit.tabs.push(Tab::Single(Pane {
-            kind: PaneKind::Editor,
-            title: title.into_owned().into(),
-            file: Some(file),
-        }));
-        unit.active_tab = unit.tabs.len() - 1;
-    }
-
-    /// The file the selected checkout's active tab shows, if it shows one.
-    pub fn active_file(&self) -> Option<&Path> {
-        let unit = self.branch()?;
-        Some(&unit.tabs.get(unit.active_tab)?.file()?.path)
     }
 }
 

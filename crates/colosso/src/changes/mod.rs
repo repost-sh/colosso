@@ -15,5 +15,5 @@ mod watch;
 pub use file_view::FileView;
 pub use marks::{Mark, Marks};
 pub use reread::{Read, Stale, read};
-pub use view::{ChangesPanel, ToggleChangesWidth, counts};
+pub use view::{ChangesPanel, counts};
 pub use watch::{Touched, touched};

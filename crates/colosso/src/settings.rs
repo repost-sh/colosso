@@ -3,13 +3,14 @@
 //! changes back through `update`, which saves once they settle.
 
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use gpui_kit::component::native_menu::NativeMenu;
-use gpui_kit::{Action, App, Context, Global, Subscription, Task};
+use gpui_kit::{Action, App, Context, Global, Subscription, Task, Window};
 use serde::{Deserialize, Serialize};
 
 use crate::gradient::GradientTheme;
+use crate::key_repeat::KeyRepeat;
 use crate::theme::{self, ThemePreference};
 
 const APP_ID: &str = "dev.colosso.desktop";
@@ -81,7 +82,9 @@ pub struct Settings {
     pub sidebar_width: f32,
     pub changes_width: f32,
     pub changes_files_width: f32,
-    pub files_width: f32,
+    /// The Files panel's width, its tree and the file shown beside it.
+    pub files_panel_width: f32,
+    pub files_tree_width: f32,
     pub sidebar_open_on_launch: bool,
     /// The main checkouts of the projects in the sidebar, in order.
     pub projects: Vec<PathBuf>,
@@ -89,6 +92,11 @@ pub struct Settings {
     /// `~/colosso/workspaces`.
     pub worktrees_dir: Option<PathBuf>,
     pub branch_prefix: BranchPrefix,
+    /// The most language servers running at once. rust-analyzer takes a gigabyte or more on
+    /// a big workspace; past this, the least recently used one stops for the next.
+    pub most_language_servers: usize,
+    /// How a held arrow key repeats.
+    pub key_repeat: KeyRepeat,
 }
 
 impl Settings {
@@ -126,26 +134,6 @@ impl Settings {
         self.sidebar_width
             .clamp(theme::SIDEBAR_MIN_WIDTH, theme::SIDEBAR_MAX_WIDTH)
     }
-
-    /// The changes panel's file list's width, kept within its limits.
-    pub fn changes_files_width(&self) -> f32 {
-        self.changes_files_width.clamp(
-            theme::CHANGES_FILES_MIN_WIDTH,
-            theme::CHANGES_FILES_MAX_WIDTH,
-        )
-    }
-
-    /// The changes panel's width, kept within its limits even if the file says otherwise.
-    pub fn changes_width(&self) -> f32 {
-        self.changes_width
-            .clamp(theme::CHANGES_MIN_WIDTH, theme::CHANGES_MAX_WIDTH)
-    }
-
-    /// The Files panel's width, kept within its limits.
-    pub fn files_width(&self) -> f32 {
-        self.files_width
-            .clamp(theme::FILES_MIN_WIDTH, theme::FILES_MAX_WIDTH)
-    }
 }
 
 impl Default for Settings {
@@ -158,13 +146,24 @@ impl Default for Settings {
             sidebar_width: theme::SIDEBAR_WIDTH,
             changes_width: theme::CHANGES_WIDTH,
             changes_files_width: theme::CHANGES_FILES_WIDTH,
-            files_width: theme::FILES_WIDTH,
+            files_panel_width: theme::FILES_WIDTH,
+            files_tree_width: theme::FILES_TREE_WIDTH,
             sidebar_open_on_launch: true,
             projects: Vec::new(),
             worktrees_dir: None,
             branch_prefix: BranchPrefix::default(),
+            most_language_servers: 4,
+            key_repeat: KeyRepeat::default(),
         }
     }
+}
+
+/// The folder the app keeps what it fetches in, language servers among it, unless
+/// `COLOSSO_DATA_DIR` points elsewhere.
+pub fn data_dir() -> Option<PathBuf> {
+    std::env::var_os("COLOSSO_DATA_DIR")
+        .map(PathBuf::from)
+        .or_else(|| dirs::data_dir().map(|dir| dir.join(APP_ID)))
 }
 
 fn default_worktrees_dir() -> PathBuf {
@@ -179,6 +178,10 @@ struct Store {
     path: Option<PathBuf>,
     /// The save waiting for changes to settle; replacing it cancels it.
     pending: Option<Task<()>>,
+    /// Whether a change made in the app is still to be written, so the file doesn't undo it.
+    unsaved: bool,
+    /// When the file was last changed as the app knows it, read or written.
+    seen: Option<SystemTime>,
 }
 
 impl Global for Store {}
@@ -190,11 +193,26 @@ pub fn init(cx: &mut App) {
         .or_else(|| dirs::data_dir().map(|dir| dir.join(APP_ID)))
         .map(|dir| dir.join(FILE));
     let settings = path.as_deref().map(load).unwrap_or_default();
+    let seen = path.as_deref().and_then(modified);
     cx.set_global(Store {
         settings,
         path,
         pending: None,
+        unsaved: false,
+        seen,
     });
+    // Edits to the file while the app runs, a key's repeat tuned by hand say, take effect
+    // within half a second. Tests share one file, so they leave it be.
+    #[cfg(not(test))]
+    cx.spawn(async move |cx| {
+        loop {
+            cx.background_executor()
+                .timer(Duration::from_millis(500))
+                .await;
+            cx.update(reload);
+        }
+    })
+    .detach();
     cx.on_action(|SetLayout(layout): &SetLayout, cx| {
         update(cx, |settings| settings.layout = *layout);
     });
@@ -227,6 +245,15 @@ pub fn observe<V: 'static>(cx: &mut Context<V>) -> Subscription {
     cx.observe_global::<Store>(|_, cx| cx.notify())
 }
 
+/// Calls `changed` whenever a setting changes, with the window `cx`'s view is in.
+pub fn observe_in<V: 'static>(
+    window: &Window,
+    cx: &mut Context<V>,
+    changed: impl FnMut(&mut V, &mut Window, &mut Context<V>) + 'static,
+) -> Subscription {
+    cx.observe_global_in::<Store>(window, changed)
+}
+
 /// Applies `change` and saves once changes settle, if it changed anything. Observers only
 /// hear about changes, so a change to nothing does not re-render them.
 pub fn update(cx: &mut App, change: impl FnOnce(&mut Settings)) {
@@ -239,19 +266,86 @@ pub fn update(cx: &mut App, change: impl FnOnce(&mut Settings)) {
     let save = cx.spawn(async move |cx| {
         cx.background_executor().timer(SAVE_DELAY).await;
         if let Some((path, json)) = cx.update(encode) {
-            cx.background_executor()
-                .spawn(async move { write(&path, &json) })
-                .await;
+            let written = cx.background_executor().spawn(async move {
+                write(&path, &json);
+                modified(&path)
+            });
+            let seen = written.await;
+            cx.update(|cx| {
+                let store = cx.global_mut::<Store>();
+                (store.unsaved, store.seen) = (false, seen);
+            });
         }
     });
-    cx.global_mut::<Store>().pending = Some(save);
+    let store = cx.global_mut::<Store>();
+    (store.pending, store.unsaved) = (Some(save), true);
+}
+
+/// Takes up an edit made to the file outside the app since it was last read or written,
+/// unless a change made in the app is still to be written; an edit that doesn't read as
+/// settings, as one half done may not, is noted and left until the next.
+fn reload(cx: &mut App) {
+    let store = cx.global::<Store>();
+    let Some(path) = store.path.clone().filter(|_| !store.unsaved) else {
+        return;
+    };
+    let changed = modified(&path);
+    if changed == store.seen {
+        return;
+    }
+    let read = read(&path);
+    let store = cx.global_mut::<Store>();
+    store.seen = changed;
+    match read {
+        Ok(settings) if settings != store.settings => store.settings = settings,
+        Ok(_) => {}
+        Err(error) => log::warn!("not taking up {}: {error}", path.display()),
+    }
+}
+
+/// When the file at `path` last changed, if it's there.
+fn modified(path: &Path) -> Option<SystemTime> {
+    std::fs::metadata(path)
+        .and_then(|metadata| metadata.modified())
+        .ok()
+}
+
+fn read(path: &Path) -> Result<Settings, String> {
+    let bytes = std::fs::read(path).map_err(|error| error.to_string())?;
+    let mut value = serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
+    migrate(&mut value);
+    serde_json::from_value(value).map_err(|error| error.to_string())
+}
+
+/// Settings a file may hold that the app no longer has, each where it was and why it went.
+/// A key that's renamed, or changes what it means, goes here under its old name.
+const RETIRED: [(&[&str], &str); 5] = [
+    // The Files panel's tree's width, from before the panel showed a file beside its tree:
+    // too narrow for both, it gave way to `files_panel_width` and `files_tree_width`.
+    (&[], "files_width"),
+    // A held arrow sped up the longer it was held, in steps a frame; it now has one speed,
+    // `per_second`, the same whatever the display's rate.
+    (&["key_repeat"], "start_per_frame"),
+    (&["key_repeat"], "accelerate_after_ms"),
+    (&["key_repeat"], "full_speed_after_ms"),
+    (&["key_repeat"], "most_per_frame"),
+];
+
+/// Brings settings read from a file to what the app has now: retired keys are dropped, so
+/// what they meant isn't taken for what a key of the same name means later.
+fn migrate(value: &mut serde_json::Value) {
+    for (within, key) in RETIRED {
+        let object = within
+            .iter()
+            .try_fold(&mut *value, |value, key| value.get_mut(*key));
+        if let Some(serde_json::Value::Object(object)) = object {
+            object.remove(key);
+        }
+    }
 }
 
 fn load(path: &Path) -> Settings {
-    let read = std::fs::read(path)
-        .map_err(|error| error.to_string())
-        .and_then(|bytes| serde_json::from_slice(&bytes).map_err(|error| error.to_string()));
-    match read {
+    match read(path) {
         Ok(settings) => settings,
         // Before anything was saved.
         Err(_) if !path.exists() => Settings::default(),
@@ -326,6 +420,67 @@ mod tests {
         assert_eq!(settings.changes_width, theme::CHANGES_WIDTH);
         assert_eq!(settings.dark_theme, GradientTheme::default());
         assert_eq!(settings.branch_prefix, BranchPrefix::GitHubUser);
+    }
+
+    #[gpui_kit::test]
+    fn edits_to_the_file_are_taken_up_while_the_app_runs(cx: &mut gpui_kit::TestAppContext) {
+        let path = crate::test_support::scratch("settings-reload").join(FILE);
+        let store = Store {
+            settings: Settings::default(),
+            path: Some(path.clone()),
+            pending: None,
+            unsaved: false,
+            seen: None,
+        };
+        cx.update(|cx| cx.set_global(store));
+        let mut edited = SystemTime::UNIX_EPOCH;
+        let mut edit = |json: &str| {
+            std::fs::write(&path, json).unwrap();
+            edited += Duration::from_secs(1);
+            let file = std::fs::File::options().write(true).open(&path).unwrap();
+            file.set_modified(edited).unwrap();
+        };
+        let delay = |cx: &mut gpui_kit::TestAppContext| cx.read(|cx| get(cx).key_repeat.delay_ms);
+        edit(r#"{ "key_repeat": { "delay_ms": 90 } }"#);
+        cx.update(reload);
+        assert_eq!(delay(cx), 90);
+        // Half written, it's left until the next edit.
+        edit(r#"{ "key_repeat": { "delay_ms": 4"#);
+        cx.update(reload);
+        assert_eq!(delay(cx), 90);
+        // A change made in the app and not written yet wins over the file.
+        cx.update(|cx| update(cx, |settings| settings.key_repeat.delay_ms = 120));
+        edit(r#"{ "key_repeat": { "delay_ms": 60 } }"#);
+        cx.update(reload);
+        assert_eq!(delay(cx), 120);
+    }
+
+    #[test]
+    fn a_file_with_retired_keys_reads_without_them() {
+        let path = crate::test_support::scratch("settings-migrate").join(FILE);
+        let old = r#"{
+            "layout": "Arc",
+            "files_width": 280,
+            "key_repeat": {
+                "delay_ms": 200,
+                "start_per_frame": 0.8,
+                "accelerate_after_ms": 500,
+                "full_speed_after_ms": 1500,
+                "most_per_frame": 30.0
+            }
+        }"#;
+        std::fs::write(&path, old).unwrap();
+        let mut value = serde_json::from_str(old).unwrap();
+        migrate(&mut value);
+        assert!(value.get("files_width").is_none());
+        assert_eq!(value["key_repeat"], serde_json::json!({ "delay_ms": 200 }));
+        let settings = read(&path).unwrap();
+        assert_eq!(settings.layout, Layout::Arc);
+        let repeat = KeyRepeat {
+            delay_ms: 200,
+            ..KeyRepeat::default()
+        };
+        assert_eq!(settings.key_repeat, repeat);
     }
 
     #[test]

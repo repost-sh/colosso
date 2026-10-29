@@ -6,6 +6,8 @@
 //! - `{"echo": method}`: as `recv`, then sends the message back as a `fake/received`
 //!   notification, so the test sees what the client sent.
 //! - `{"echo_reply": true}`: the next message must be an answer; it's sent back the same way.
+//! - `{"expect": message}`: the next message must hold `message`: each of its fields, at any
+//!   depth, the same in the one received, which may have more. Remembered as `recv` does.
 //! - `{"reply": n, "result": value}`, `{"reply": n, "error": error}`: answers the `n`th
 //!   remembered request.
 //! - `{"send": message}`: sends `message`, `jsonrpc` added.
@@ -87,6 +89,15 @@ impl Fake {
                 }
                 if key == "echo" {
                     self.send(&json!({"method": "fake/received", "params": message}))?;
+                }
+            }
+            "expect" => {
+                let message = self.next()?;
+                if !holds(&message, value) {
+                    return Err(format!("expected {value}, received {message}"));
+                }
+                if let Some(id) = message.get("id") {
+                    self.ids.push(id.clone());
                 }
             }
             "echo_reply" => {
@@ -186,6 +197,16 @@ impl Fake {
             .write_all(bytes)
             .and_then(|()| self.output.flush())
             .map_err(|error| error.to_string())
+    }
+}
+
+/// Whether `value` has each of `expected`'s fields, the same, at any depth.
+fn holds(value: &Value, expected: &Value) -> bool {
+    match (value, expected) {
+        (Value::Object(value), Value::Object(expected)) => expected
+            .iter()
+            .all(|(key, field)| value.get(key).is_some_and(|got| holds(got, field))),
+        _ => value == expected,
     }
 }
 

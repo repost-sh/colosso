@@ -3,10 +3,9 @@
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::Sizable as _;
-use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Context, InteractiveElement as _, IntoElement, ParentElement as _, SharedString,
+    Context, InteractiveElement as _, IntoElement, ParentElement as _,
     StatefulInteractiveElement as _, Styled as _, div, px,
 };
 
@@ -177,10 +176,6 @@ pub fn tab_strip(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
                         .select_tab(project_index, branch_index, tab_index);
                     cx.notify();
                 }))
-                .when_some(tab.file(), |tab, file| {
-                    let path = SharedString::from(file.path.display().to_string());
-                    tab.tooltip(move |window, cx| Tooltip::new(path.clone()).build(window, cx))
-                })
                 .child(icon(tab.icon(), 13.))
                 .child(ellipsized(tab.title()))
                 .child(tab_close_button(

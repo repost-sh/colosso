@@ -37,10 +37,14 @@ pub enum Kind {
     RowsUpdate,
     /// A file 25 folders deep revealed, every folder above it closed.
     RowsReveal,
+    /// Go to File's query typed a letter at a time over the tree's files, then erased.
+    FinderQuery,
+    /// A folder of files added while Go to File's query is typed.
+    FinderUpdate,
 }
 
 impl Kind {
-    const ALL: [Self; 15] = [
+    const ALL: [Self; 17] = [
         Self::Open,
         Self::Scroll,
         Self::Type,
@@ -56,6 +60,8 @@ impl Kind {
         Self::RowsCollapse,
         Self::RowsUpdate,
         Self::RowsReveal,
+        Self::FinderQuery,
+        Self::FinderUpdate,
     ];
 
     pub fn name(self) -> &'static str {
@@ -75,6 +81,8 @@ impl Kind {
             Self::RowsCollapse => "rows-collapse",
             Self::RowsUpdate => "rows-update",
             Self::RowsReveal => "rows-reveal",
+            Self::FinderQuery => "finder-query",
+            Self::FinderUpdate => "finder-update",
         }
     }
 
@@ -90,11 +98,17 @@ impl Kind {
         )
     }
 
-    /// Whether it works the file tree's rows rather than a file or a checkout.
+    /// Whether it works the tree held in memory, its rows or its files searched, rather
+    /// than a file or a checkout.
     pub fn lists(self) -> bool {
         matches!(
             self,
-            Self::RowsExpand | Self::RowsCollapse | Self::RowsUpdate | Self::RowsReveal
+            Self::RowsExpand
+                | Self::RowsCollapse
+                | Self::RowsUpdate
+                | Self::RowsReveal
+                | Self::FinderQuery
+                | Self::FinderUpdate
         )
     }
 }
@@ -183,9 +197,11 @@ impl Scenario {
     /// Keystroke to paint under 4 ms, a scroll frame under 8.3 ms (120 Hz), a resize never
     /// blocking over 5 ms, and the first paint of a mebibyte under 50 ms. A checkout listed
     /// within 3 s, and a file written shown in its folder's listing within 100 ms. The file
-    /// tree's rows never take 2 ms, well inside a frame.
+    /// tree's rows never take 2 ms, well inside a frame; Go to File's results are ready
+    /// within a frame of a keystroke or a folder added.
     pub fn budget(self, fixture_bytes: usize) -> Option<Budget> {
         let (ms, stat) = match self.kind {
+            Kind::FinderQuery | Kind::FinderUpdate => (16., Stat::P95),
             Kind::RowsExpand | Kind::RowsCollapse | Kind::RowsUpdate | Kind::RowsReveal => {
                 (2., Stat::Max)
             }
@@ -213,7 +229,7 @@ mod tests {
         for scenario in &all {
             assert_eq!(Scenario::from_id(&scenario.id()), Some(*scenario));
         }
-        assert_eq!(all.len(), 56);
+        assert_eq!(all.len(), 58);
         let scans: Vec<String> = (all.iter())
             .filter(|scenario| scenario.kind.scans())
             .map(|scenario| scenario.id())
@@ -237,7 +253,9 @@ mod tests {
                 "rows-expand/tree-500k",
                 "rows-collapse/tree-500k",
                 "rows-update/tree-500k",
-                "rows-reveal/tree-500k"
+                "rows-reveal/tree-500k",
+                "finder-query/tree-500k",
+                "finder-update/tree-500k"
             ]
         );
         let last: Vec<String> = all[all.len() - 3..].iter().map(|s| s.id()).collect();

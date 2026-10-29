@@ -39,6 +39,13 @@ The rows scenarios time the Files panel's rows model (`colosso_project::Rows`) o
 | `rows-update` | a listing of `src/pkg-000/mod-00` with a file added or taken away, applied as an update brings it, before every other open row (60) |
 | `rows-reveal` | the file at the bottom of `deep/` revealed with every folder above it closed (60) |
 
+The finder scenarios time Go to File's search (`colosso_project::Finder`) over the same tree's files, handed over by folder as `Project::files_by_folder` hands them out, on as many threads as the machine runs. Each sample ends with the 500 best matches ranked and their matched characters found, which is what the palette draws.
+
+| Scenario | Each sample |
+| --- | --- |
+| `finder-query` | one keystroke of `modfil` typed a letter at a time, then erased to nothing, from a finder just opened each time (240); every prefix matches all 500,000 files of `src/` |
+| `finder-update` | a folder of 1,000 files the query matches added while `modfil` is typed, to the results with them; it's taken away again between samples, untimed (60) |
+
 ## Budgets
 
 | What | Budget | Held against |
@@ -50,6 +57,7 @@ The rows scenarios time the Files panel's rows model (`colosso_project::Rows`) o
 | First scan of `repo-300k` | < 3 s | max |
 | One file written to its listing updated | < 100 ms | p95 |
 | A folder of the file tree opened or closed, a listing applied, a path revealed | < 2 ms | max |
+| Go to File's results after a keystroke or a folder added, off the main thread | < 16 ms | p95 |
 
 ## What the numbers leave out
 

@@ -978,16 +978,22 @@ checksum = "3d7b894f5411737b7867f4827955924d7c254fc9f4d91a6aad6b097804b1018b"
 name = "colosso"
 version = "0.1.0"
 dependencies = [
+ "block2 0.6.2",
  "chrono",
  "colosso-git",
+ "colosso-lsp",
  "colosso-project",
  "dirs 6.0.0",
  "futures",
+ "globset",
  "gpui-kit",
  "gpui-pre",
  "image",
  "log",
  "objc",
+ "objc2 0.6.5",
+ "objc2-app-kit 0.3.2",
+ "objc2-foundation 0.3.2",
  "serde",
  "serde_json",
  "syntect",
@@ -1037,8 +1043,10 @@ dependencies = [
  "ignore",
  "log",
  "notify",
+ "nucleo-matcher",
  "objc2-core-foundation",
  "objc2-core-services",
+ "rayon",
 ]
 
 [[package]]
@@ -5482,6 +5490,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3b335231dfd352ffb0f8017f3b6027a4917f7df785ea2143d8af2adc66980ae"
 dependencies = [
  "winapi",
+]
+
+[[package]]
+name = "nucleo-matcher"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf33f538733d1a5a3494b836ba913207f14d9d4a1d3cd67030c5061bdd2cac85"
+dependencies = [
+ "memchr",
+ "unicode-segmentation",
 ]
 
 [[package]]

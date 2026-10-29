@@ -6,12 +6,13 @@ use std::ops::Sub;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{
-    Arc, Condvar, Mutex, MutexGuard, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard, Weak,
+    Arc, Condvar, Mutex, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard, Weak,
 };
 use std::time::{Duration, Instant};
 
 use crate::feed::{Feed, Git, Inbox, Scanned, Update};
-use crate::files::Files;
+use crate::files::{Files, Folder};
+use crate::lock;
 use crate::paths::Written;
 use crate::tree::Tree;
 
@@ -133,12 +134,6 @@ pub(crate) struct Shared {
     files: Mutex<Files>,
 }
 
-/// Takes a lock whoever held it last, even a thread that panicked: everything behind these
-/// locks is whole between statements.
-fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(PoisonError::into_inner)
-}
-
 impl Shared {
     pub(crate) fn new(root: PathBuf, most: usize) -> Self {
         Shared {
@@ -254,7 +249,7 @@ impl Shared {
             unwatched: self.unwatched(),
             ..Update::default()
         };
-        if feed == Feed::Everything {
+        if feed.listed() {
             let tree = self.tree();
             first.listings = (tree.dirs.iter())
                 .map(|(dir, listed)| (dir.clone(), Some(listed.entries.clone())))
@@ -306,17 +301,27 @@ impl Shared {
         self.counters.stats()
     }
 
-    /// Every file listed that git doesn't ignore. The listings are only looked at under the
-    /// tree's lock; the list is made after it's let go, so the worker isn't held up.
+    /// Every file listed that git doesn't ignore.
     pub(crate) fn files(&self) -> Arc<[Arc<str>]> {
+        self.with_files(Files::list)
+    }
+
+    /// The same, by folder.
+    pub(crate) fn folders(&self) -> Arc<[Folder]> {
+        self.with_files(Files::folders)
+    }
+
+    /// `read` of the files as the tree lists them now. The listings are only looked at under
+    /// the tree's lock; the files are made after it's let go, so the worker isn't held up.
+    fn with_files<R>(&self, read: impl FnOnce(&mut Files) -> R) -> R {
         let mut files = lock(&self.files);
-        let (generation, listings) = {
+        let listed = {
             let tree = self.tree();
-            if let Some(made) = files.at(tree.generation) {
-                return made;
-            }
-            (tree.generation, tree.listings())
+            (!files.is_at(tree.generation)).then(|| (tree.generation, tree.listings()))
         };
-        files.make(generation, listings)
+        if let Some((generation, listings)) = listed {
+            files.update(generation, listings);
+        }
+        read(&mut files)
     }
 }

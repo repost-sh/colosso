@@ -13,7 +13,7 @@ use gpui_kit::{
 use crate::harness::{Bench, HEIGHT, Setup, WIDTH};
 use crate::scenarios::{Kind, Scenario};
 use crate::stats::{self, Deadline, Measured};
-use crate::{rows, scan};
+use crate::{finder, rows, scan};
 
 /// Fresh editors opened per file; the first is cold, the rest find fonts and glyphs cached.
 const OPENS: usize = 5;
@@ -44,6 +44,8 @@ pub fn run(scenario: Scenario, deadline: Deadline) -> Result<Measured> {
         Kind::RowsExpand | Kind::RowsCollapse | Kind::RowsUpdate | Kind::RowsReveal => {
             return rows::run(scenario, deadline);
         }
+        // Nor does Go to File's search.
+        Kind::FinderQuery | Kind::FinderUpdate => return finder::run(scenario, deadline),
     };
     let text = SharedString::from(fixture.read()?);
     let mut bench = Bench::open(Setup {

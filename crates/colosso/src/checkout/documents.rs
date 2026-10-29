@@ -5,10 +5,12 @@
 
 use std::collections::HashMap;
 use std::fs;
+use std::future::Future;
 use std::io::Read as _;
 use std::path::Path;
 use std::sync::Arc;
 
+use futures::channel::oneshot;
 use gpui_kit::{App, AppContext as _, Context, Entity, SharedString, Task, WeakEntity};
 
 /// Files past this size are noted rather than opened. The editor builds its buffer on the
@@ -35,6 +37,8 @@ pub struct Document {
     content: Content,
     /// Moves each time `content` is replaced, so a view can tell its copy is out of date.
     version: u64,
+    /// Those waiting for it to be read.
+    waiting: Vec<oneshot::Sender<()>>,
     _reading: Option<Task<()>>,
 }
 
@@ -52,6 +56,7 @@ impl Document {
             path,
             content: Content::Reading,
             version: 0,
+            waiting: Vec::new(),
             _reading: Some(reading),
         }
     }
@@ -68,10 +73,26 @@ impl Document {
         self.version
     }
 
+    /// Done once the file's read, at once if it is; or once the document's gone.
+    pub fn read(&mut self) -> impl Future<Output = ()> + use<> {
+        let (read, waiting) = oneshot::channel();
+        if self.content == Content::Reading {
+            self.waiting.push(read);
+        } else {
+            let _: Result<(), ()> = read.send(());
+        }
+        async move {
+            let _: Result<(), oneshot::Canceled> = waiting.await;
+        }
+    }
+
     fn set_content(&mut self, content: Content, cx: &mut Context<Self>) {
         self.content = content;
         self.version += 1;
         self._reading = None;
+        for read in self.waiting.drain(..) {
+            let _: Result<(), ()> = read.send(());
+        }
         cx.notify();
     }
 }

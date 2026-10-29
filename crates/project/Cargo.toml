@@ -11,6 +11,11 @@ ignore = "0.4"
 # Subscriptions are streams, so any executor can wait on them.
 futures = "0.3"
 log = "0.4"
+# Go to File's fuzzy matching: Helix's matcher, which scores like fzf, with paths in mind.
+# The matcher alone: `Finder` drives it over the folders on threads of its own.
+nucleo-matcher = "0.3"
+# The pool those threads are, made once per finder; already in the lockfile.
+rayon = "1.12"
 
 # On macOS, FSEvents driven directly, through the bindings `notify` builds on: notify hands
 # reports over one by one, which a burst outruns (see `src/watcher/fsevents.rs`).

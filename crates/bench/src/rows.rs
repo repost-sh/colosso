@@ -28,8 +28,8 @@ const SAMPLES: usize = 60;
 const UPDATED: &str = "src/pkg-000/mod-00";
 
 /// The tree's listings, by folder.
-struct Tree {
-    dirs: HashMap<Arc<str>, Arc<[Entry]>>,
+pub struct Tree {
+    pub dirs: HashMap<Arc<str>, Arc<[Entry]>>,
 }
 
 impl Listings for Tree {
@@ -42,7 +42,7 @@ impl Listings for Tree {
 }
 
 impl Tree {
-    fn new() -> Tree {
+    pub fn new() -> Tree {
         let mut tree = Tree {
             dirs: HashMap::new(),
         };

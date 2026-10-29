@@ -14,7 +14,7 @@ pub fn icon(entry: &Entry, expanded: bool) -> IconName {
     }
 }
 
-fn file(name: &str) -> IconName {
+pub fn file(name: &str) -> IconName {
     match name {
         "Cargo.lock" | "package-lock.json" | "yarn.lock" | "pnpm-lock.yaml" | "Gemfile.lock"
         | "poetry.lock" | "bun.lockb" | "flake.lock" => return IconName::FileLock,
