@@ -504,12 +504,44 @@ impl gpui_base::input::HighlightStyleResolver for HighlightTheme {
 pub type LanguageParserFactory =
     Arc<dyn Fn() -> Result<(tree_sitter::Parser, tree_sitter::Language)> + Send + Sync>;
 
+/// The queries compiled for a language, see [`LanguageRegistry::query`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) enum QueryKind {
+    /// The injections, locals and highlights queries in one, as a buffer in
+    /// the language is highlighted with.
+    Combined,
+    /// The injections query, which finds the injected layers.
+    Injections,
+    /// The highlights query alone, as an injected layer is highlighted with.
+    Highlights,
+}
+
 /// Registry for code highlighter languages.
 pub struct LanguageRegistry {
     languages: Mutex<HashMap<SharedString, GrammarConfig>>,
     parser_factories: Mutex<HashMap<SharedString, LanguageParserFactory>>,
     /// Bumped by every registration; see [`Self::generation`].
     generation: AtomicU64,
+    /// Compiled queries: compiling one takes milliseconds, and every editor
+    /// and injected layer in the language uses the same.
+    queries: Mutex<CompiledQueries>,
+}
+
+/// Queries by language and kind, and for each language how many times a
+/// registration changed it, so a query compiled from what it replaced is
+/// never kept.
+#[derive(Default)]
+struct CompiledQueries {
+    queries: HashMap<(SharedString, QueryKind), Arc<tree_sitter::Query>>,
+    changes: HashMap<SharedString, u64>,
+}
+
+impl CompiledQueries {
+    /// Forget the queries of the language named `name`.
+    fn forget(&mut self, name: &SharedString) {
+        self.queries.retain(|(language, _), _| language != name);
+        *self.changes.entry(name.clone()).or_default() += 1;
+    }
 }
 
 impl LanguageRegistry {
@@ -523,16 +555,24 @@ impl LanguageRegistry {
             ),
             parser_factories: Mutex::new(HashMap::new()),
             generation: AtomicU64::new(0),
+            queries: Mutex::default(),
         });
         &INSTANCE
     }
 
     /// Registers a new language configuration to the registry.
     pub fn register(&self, lang: &str, config: &GrammarConfig) {
-        self.languages
+        let replaced = self
+            .languages
             .lock()
             .unwrap()
             .insert(lang.to_string().into(), config.clone());
+        let mut queries = self.queries.lock().unwrap();
+        queries.forget(&config.name);
+        if let Some(replaced) = replaced {
+            queries.forget(&replaced.name);
+        }
+        drop(queries);
         self.generation.fetch_add(1, Ordering::Relaxed);
     }
 
@@ -545,6 +585,10 @@ impl LanguageRegistry {
             .lock()
             .unwrap()
             .insert(lang.to_string().into(), factory);
+        let name = self
+            .language(lang)
+            .map_or_else(|| SharedString::from(lang.to_string()), |config| config.name);
+        self.queries.lock().unwrap().forget(&name);
         self.generation.fetch_add(1, Ordering::Relaxed);
     }
 
@@ -604,6 +648,33 @@ impl LanguageRegistry {
         Ok(self.parser(name)?.1)
     }
 
+    /// The `kind` query of the language named `name`, as `compile` makes it
+    /// from the language's configuration and grammar: compiled once, and
+    /// again only after a registration changed the language.
+    pub(crate) fn query(
+        &self,
+        name: &SharedString,
+        kind: QueryKind,
+        compile: impl FnOnce() -> Result<tree_sitter::Query>,
+    ) -> Result<Arc<tree_sitter::Query>> {
+        let key = (name.clone(), kind);
+        let changes = {
+            let queries = self.queries.lock().unwrap();
+            if let Some(query) = queries.queries.get(&key) {
+                return Ok(query.clone());
+            }
+            queries.changes.get(name).copied()
+        };
+        // Compiled without the lock held: it takes a while, and two threads
+        // compiling the same query at once only waste the time.
+        let query = Arc::new(compile()?);
+        let mut queries = self.queries.lock().unwrap();
+        if queries.changes.get(name).copied() == changes {
+            queries.queries.insert(key, query.clone());
+        }
+        Ok(query)
+    }
+
     pub(crate) fn editing_language_name(&self, name: &str) -> SharedString {
         self.languages
             .lock()
@@ -638,6 +709,7 @@ mod tests {
             languages: std::sync::Mutex::new(std::collections::HashMap::new()),
             parser_factories: std::sync::Mutex::new(std::collections::HashMap::new()),
             generation: std::sync::atomic::AtomicU64::new(0),
+            queries: std::sync::Mutex::default(),
         };
         registry.register("json", &GrammarConfig::plain("canonical"));
         assert_eq!(registry.language("jsonc").unwrap().name, "canonical");
@@ -662,6 +734,7 @@ mod tests {
             languages: std::sync::Mutex::new(std::collections::HashMap::new()),
             parser_factories: std::sync::Mutex::new(std::collections::HashMap::new()),
             generation: std::sync::atomic::AtomicU64::new(0),
+            queries: std::sync::Mutex::default(),
         };
         registry.register("typescript", &GrammarConfig::plain("typescript"));
         assert!(registry.language("ts").is_none());

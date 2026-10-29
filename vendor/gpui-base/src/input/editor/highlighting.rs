@@ -65,6 +65,10 @@ pub trait InputHighlighter {
         resolver: &dyn HighlightStyleResolver,
     ) -> Vec<(Range<usize>, HighlightStyle)>;
 
+    /// The resolver [`Self::styles`] is called with changed: styles kept
+    /// from the one before no longer apply.
+    fn styles_changed(&mut self) {}
+
     fn fold_ranges(&self, text: &Rope) -> Vec<FoldRange>;
 
     fn fold_ranges_for_edit(&self, range: Range<usize>, text: &Rope) -> Vec<FoldRange> {

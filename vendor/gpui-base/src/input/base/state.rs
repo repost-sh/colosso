@@ -18,6 +18,8 @@ use std::borrow::Cow;
 use std::cell::Cell;
 use std::ops::Range;
 use std::rc::Rc;
+use std::sync::Arc;
+use std::time::Duration;
 use sum_tree::Bias;
 use unicode_segmentation::*;
 
@@ -37,15 +39,39 @@ use super::{
     undo_manager::{EditIntent, UndoManager},
 };
 use crate::actions::{SelectDown, SelectLeft, SelectRight, SelectUp};
+use crate::async_util::CancelOnDrop;
 use crate::input::blink_cursor::CURSOR_WIDTH;
 use crate::input::movement::MoveDirection;
 use crate::input::{
-    InputExtras as _, Position, RopeExt as _, element::RIGHT_MARGIN, layout::LastLayout,
+    InputExtras as _, Position, RopeExt as _, display_map::WrapParams, element::RIGHT_MARGIN,
+    layout::LastLayout,
 };
 use crate::overscroll::Overscroll;
 use crate::{AutoScroll, StepAction, TestSupportExt as _};
 
 pub(super) const EDITOR_ELEMENT_ID: &str = "input-state";
+
+/// The main thread's time for wrapping lines out of view after what lines
+/// wrap by changed (a resize, a font change); past it they are wrapped in the
+/// background.
+const RELAYOUT_WRAP_BUDGET: Duration = Duration::from_millis(2);
+
+/// How long what lines wrap by stays the same before the lines left stale
+/// are wrapped in the background: a live resize changes it every frame, and
+/// only its last width is worth wrapping everything at.
+pub(super) const BACKGROUND_WRAP_DELAY: Duration = Duration::from_millis(100);
+
+/// How long edits pause before the text is copied for assistive technology
+/// again, when none is connected but the value is exposed anyway, as for
+/// tests: the copy is of the whole document.
+const ACCESSIBILITY_VALUE_DELAY: Duration = Duration::from_millis(300);
+
+/// A buffer line at the top of the view, and how far into it the view begins.
+#[derive(Clone, Copy)]
+struct WrapScrollAnchor {
+    line: usize,
+    within: Pixels,
+}
 
 /// Vertical clearance to retain when revealing a text position.
 pub(crate) enum ScrollPadding {
@@ -426,6 +452,22 @@ pub struct InputBaseState<M: InputModeKind> {
     pub(super) replaying_history: bool,
     pub(super) validated_token_edit: bool,
     pub(super) document_revision: u64,
+    /// The text as one string for assistive technology, see
+    /// [`Self::accessibility_value`].
+    accessibility_value: Option<SharedString>,
+    /// The text changed since `accessibility_value` was copied.
+    accessibility_value_stale: bool,
+    /// The copy of the text waiting for the edits to pause.
+    accessibility_value_task: Option<gpui::Task<()>>,
+    /// The wrap of the whole text under way in the background after what
+    /// lines wrap by changed, see [`Self::relayout_wrap`].
+    wrap_task: Option<gpui::Task<()>>,
+    /// The main thread's time for wrapping lines out of view, see
+    /// [`Self::relayout_wrap`].
+    pub(super) relayout_wrap_budget: Duration,
+    /// The search of the whole text under way in the background after a new
+    /// query, see `search_for`.
+    pub(crate) search_task: Option<gpui::Task<()>>,
     pub(super) token_presentation: super::InlineTokenPresentation,
     pub(super) token_layout_cache: Option<Box<super::token_presentation::TokenLayoutCache>>,
     /// Real per-frame bounds of the placed token elements, keyed by token
@@ -775,14 +817,16 @@ impl<M: InputModeKind> InputBaseState<M> {
             return;
         }
         let wrap_width = (width - RIGHT_MARGIN).max(px(1.));
-        self.display_map.set_font(font, font_size, cx);
+        self.display_map.set_wrap_params(WrapParams {
+            font,
+            font_size,
+            wrap_width: self.soft_wrap.then_some(wrap_width),
+            wrapping_indent: self.wrapping_indent,
+            tab_size: self.mode.tab_size().tab_size,
+        });
+        self.display_map.ensure_text_prepared(&self.text);
         self.display_map
-            .set_tab_size(self.mode.tab_size().tab_size, cx);
-        self.display_map
-            .on_layout_changed(self.soft_wrap.then_some(wrap_width), cx);
-        self.display_map
-            .set_wrapping_indent(self.wrapping_indent, cx);
-        self.display_map.ensure_text_prepared(&self.text, cx);
+            .wrap_stale_rows(0..usize::MAX, Duration::MAX, cx);
     }
 
     pub fn diagnostic_popover(&self) -> Option<Rc<crate::input::DiagnosticEntry>> {
@@ -960,6 +1004,12 @@ impl<M: InputModeKind> InputBaseState<M> {
             replaying_history: false,
             validated_token_edit: false,
             document_revision: 0,
+            accessibility_value: None,
+            accessibility_value_stale: false,
+            accessibility_value_task: None,
+            wrap_task: None,
+            relayout_wrap_budget: RELAYOUT_WRAP_BUDGET,
+            search_task: None,
             token_presentation: Default::default(),
             token_bounds: Default::default(),
             hovered_token: None,
@@ -1102,8 +1152,20 @@ impl<M: InputModeKind> InputBaseState<M> {
     }
 
     pub fn set_editor_style(&mut self, style: InputEditorStyle) {
-        self.editor_style = style.clone();
+        self.replace_editor_style(style.clone());
         self.projected_editor_style = style;
+    }
+
+    /// Paint with `style` from now on. Highlights resolved with another
+    /// resolver are resolved again.
+    fn replace_editor_style(&mut self, style: InputEditorStyle) {
+        if !Arc::ptr_eq(&style.highlight_styles, &self.editor_style.highlight_styles)
+            && let Some(highlighter) = self.mode.highlighter()
+            && let Some(highlighter) = highlighter.borrow_mut().as_mut()
+        {
+            highlighter.styles_changed();
+        }
+        self.editor_style = style;
     }
 
     /// Project semantics onto the editor, never onto a second focus owner.
@@ -1326,10 +1388,58 @@ impl<M: InputModeKind> InputBaseState<M> {
         let text: SharedString = text.into();
         self.with_edits_allowed(|this| {
             this.undo_manager.set_pending_intent(EditIntent::Atomic);
-            let range = 0..this.text.chars().map(|c| c.len_utf16()).sum();
+            let range = 0..this.text.len_utf16();
             this.replace_text_in_range_silent(Some(range), &text, window, cx);
             this.reset_highlighter(cx);
         });
+    }
+
+    /// The text for assistive technology, copied out of the rope once per
+    /// change of the text while a screen reader is connected. Otherwise it is
+    /// copied once the edits pause for [`ACCESSIBILITY_VALUE_DELAY`], so that
+    /// typing doesn't copy the whole document a keystroke.
+    fn accessibility_value(&mut self, window: &Window, cx: &mut Context<Self>) -> SharedString {
+        if self.accessibility_value.is_none()
+            || (self.accessibility_value_stale && window.is_a11y_active())
+        {
+            self.copy_accessibility_value();
+        } else if self.accessibility_value_stale && self.accessibility_value_task.is_none() {
+            self.accessibility_value_task = Some(cx.spawn(async move |this, cx| {
+                cx.background_executor()
+                    .timer(ACCESSIBILITY_VALUE_DELAY)
+                    .await;
+                this.update(cx, |state, cx| {
+                    state.copy_accessibility_value();
+                    cx.notify();
+                })
+                .ok();
+            }));
+        }
+        self.accessibility_value.clone().unwrap_or_default()
+    }
+
+    fn copy_accessibility_value(&mut self) {
+        self.accessibility_value = Some(String::from(&self.text).into());
+        self.accessibility_value_stale = false;
+    }
+
+    /// Bytes `range` of the text were replaced by `new_len` bytes: what
+    /// follows the text keeps up with the edit.
+    fn text_edited(&mut self, range: &Range<usize>, new_len: usize) {
+        self.accessibility_text_changed();
+        self.search_text_edited(range, new_len);
+    }
+
+    /// The text changed in a way no edit describes.
+    fn text_replaced(&mut self) {
+        self.accessibility_text_changed();
+        self.search_text_replaced();
+    }
+
+    fn accessibility_text_changed(&mut self) {
+        self.accessibility_value_stale = true;
+        // A copy waiting for the edits to pause waits for this one too.
+        self.accessibility_value_task = None;
     }
 
     fn reset_selection(&mut self) {
@@ -1577,6 +1687,7 @@ impl<M: InputModeKind> InputBaseState<M> {
     pub fn default_value(mut self, value: impl Into<SharedString>) -> Self {
         let text: SharedString = value.into();
         self.text = Rope::from(self.normalize_input(&text).as_ref());
+        self.text_replaced();
         if let Some(diagnostics) = self.mode.diagnostics_mut() {
             diagnostics.reset(&self.text)
         }
@@ -4103,26 +4214,133 @@ impl<M: InputModeKind> InputBaseState<M> {
         };
     }
 
-    pub(super) fn set_input_bounds(&mut self, new_bounds: Bounds<Pixels>, cx: &mut Context<Self>) {
-        let wrap_width_changed = self.input_bounds.size.width != new_bounds.size.width;
-        self.input_bounds = new_bounds;
+    /// Wraps the text for a layout with `params`. The lines in view, and a
+    /// view's worth either side, are wrapped at once; the rest too when they
+    /// look like they fit in [`Self::relayout_wrap_budget`], and otherwise in the
+    /// background, keeping their earlier wrapping until it's done. The buffer
+    /// line at the top of the view stays there throughout.
+    pub(super) fn relayout_wrap(
+        &mut self,
+        params: WrapParams,
+        viewport_height: Pixels,
+        line_height: Pixels,
+        cx: &mut Context<Self>,
+    ) {
+        let changed = *self.display_map.wrap_params() != params;
+        if !changed && self.display_map.stale_wrap_rows() == 0 {
+            return;
+        }
+        let anchor = self.wrap_scroll_anchor(line_height);
+        self.display_map.set_wrap_params(params);
+        let top_line = anchor.map_or(0, |anchor| anchor.line);
+        let rows = if line_height > px(0.) {
+            (f32::from(viewport_height) / f32::from(line_height)).ceil() as usize + 1
+        } else {
+            1
+        };
+        let focus = top_line.saturating_sub(rows)..top_line + 2 * rows;
+        let wrapped = self
+            .display_map
+            .wrap_stale_rows(focus, self.relayout_wrap_budget, cx);
+        if (changed || wrapped)
+            && let Some(anchor) = anchor
+        {
+            self.restore_wrap_scroll_anchor(anchor, line_height);
+        }
+        self.spawn_background_wrap(cx);
+    }
 
-        // Update display_map wrap_width if changed.
-        if let Some(last_layout) = self.last_layout.as_ref() {
-            if wrap_width_changed {
-                let wrap_width = if !self.soft_wrap {
-                    // None to disable wrapping (will use Pixels::MAX)
-                    None
-                } else {
-                    last_layout.wrap_width
-                };
-
-                self.display_map.on_layout_changed(wrap_width, cx);
-                if self.is_multi_line() {
-                    self.mode.update_auto_grow(&self.display_map);
+    /// Wraps the lines left stale in the background, once what they wrap
+    /// by stayed the same for [`BACKGROUND_WRAP_DELAY`], and takes them when
+    /// it's done. A newer wrap replaces the task, which stops this one.
+    fn spawn_background_wrap(&mut self, cx: &mut Context<Self>) {
+        if !self.display_map.schedule_background_wrap() {
+            return;
+        }
+        let cancel = CancelOnDrop::new();
+        let flag = cancel.flag();
+        self.wrap_task = Some(cx.spawn(async move |this, cx| {
+            let _cancel = cancel;
+            cx.background_executor().timer(BACKGROUND_WRAP_DELAY).await;
+            let Ok(Some(job)) = this.update(cx, |state, cx| state.display_map.background_wrap(cx))
+            else {
+                return;
+            };
+            let wrapped = cx
+                .background_executor()
+                .spawn(async move { job.run(&flag) })
+                .await;
+            let Some(wrapped) = wrapped else {
+                return;
+            };
+            this.update(cx, |state, cx| {
+                let line_height = state
+                    .last_layout
+                    .as_ref()
+                    .map_or(px(0.), |layout| layout.line_height);
+                let anchor = state.wrap_scroll_anchor(line_height);
+                if state.display_map.apply_background_wrap(wrapped) {
+                    if let Some(anchor) = anchor {
+                        state.restore_wrap_scroll_anchor(anchor, line_height);
+                    }
+                    cx.notify();
                 }
-                cx.notify();
+            })
+            .ok();
+        }));
+    }
+
+    /// The buffer line at the top of the view, for keeping it there while
+    /// the lines above it are wrapped again.
+    fn wrap_scroll_anchor(&self, line_height: Pixels) -> Option<WrapScrollAnchor> {
+        if !self.is_multi_line() || self.deferred_scroll_offset.is_some() || line_height <= px(0.)
+        {
+            return None;
+        }
+        let display_rows = self.display_map.display_row_count();
+        if display_rows == 0 {
+            return None;
+        }
+        let top = (-self.scroll_handle.offset().y).max(px(0.));
+        let display_row =
+            ((f32::from(top) / f32::from(line_height)).floor() as usize).min(display_rows - 1);
+        let line = self.display_map.display_row_to_buffer_line(display_row);
+        let line_top = line_height * self.display_map.buffer_line_to_display_row(line);
+        Some(WrapScrollAnchor {
+            line,
+            within: top - line_top,
+        })
+    }
+
+    /// Scrolls the anchor's buffer line back to the top of the view, as far
+    /// into it as before, within the rows it wraps into now.
+    fn restore_wrap_scroll_anchor(&mut self, anchor: WrapScrollAnchor, line_height: Pixels) {
+        let line_top = line_height * self.display_map.buffer_line_to_display_row(anchor.line);
+        let rows = self
+            .display_map
+            .buffer_line_to_display_row_range(anchor.line)
+            .map_or(1, |rows| rows.len().max(1));
+        let within_rows = (f32::from(anchor.within) / f32::from(line_height)).floor();
+        let within = line_height * within_rows.min((rows - 1) as f32)
+            + (anchor.within - line_height * within_rows);
+        let mut offset = self.scroll_handle.offset();
+        if (-offset.y).max(px(0.)) == line_top + within {
+            return;
+        }
+        offset.y = -(line_top + within);
+        self.scroll_handle.set_offset(offset);
+    }
+
+    /// The lines are wrapped at the new width as it is laid out, see
+    /// [`Self::relayout_wrap`].
+    pub(super) fn set_input_bounds(&mut self, new_bounds: Bounds<Pixels>, cx: &mut Context<Self>) {
+        let width_changed = self.input_bounds.size.width != new_bounds.size.width;
+        self.input_bounds = new_bounds;
+        if width_changed && self.last_layout.is_some() {
+            if self.is_multi_line() {
+                self.mode.update_auto_grow(&self.display_map);
             }
+            cx.notify();
         }
     }
 
@@ -4185,7 +4403,7 @@ impl<M: InputModeKind> InputBaseState<M> {
     /// pairs.
     pub(crate) fn replace_text_in_ranges(
         &mut self,
-        edits: &[(Range<usize>, String)],
+        edits: &[(Range<usize>, impl AsRef<str>)],
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -4202,7 +4420,7 @@ impl<M: InputModeKind> InputBaseState<M> {
         // highest offsets first, leaving lower offsets unchanged.
         let mut sorted: Vec<(Range<usize>, &str)> = edits
             .iter()
-            .map(|(range, text)| (self.normalize_token_range(range.clone()), text.as_str()))
+            .map(|(range, text)| (self.normalize_token_range(range.clone()), text.as_ref()))
             .collect();
         sorted.sort_by_key(|edit| std::cmp::Reverse(edit.0.start));
         if !self.token_spans().is_empty() {
@@ -4263,6 +4481,7 @@ impl<M: InputModeKind> InputBaseState<M> {
             let old_text = self.text.clone();
             self.mode.adjust_auto_closed_pair(range, new_text.len());
             self.text.replace(range.clone(), new_text);
+            self.text_edited(range, new_text.len());
 
             M::adjust_annotations(self, range, new_text.len());
             recorded |= self.push_history(
@@ -4278,7 +4497,7 @@ impl<M: InputModeKind> InputBaseState<M> {
             self.display_map
                 .adjust_folds_for_edit(&old_text, range, new_text);
             self.display_map
-                .on_text_changed(&self.text, range, &Rope::from(*new_text), cx);
+                .text_edited(&self.text, range, new_text.len(), cx);
 
             if group {
                 if self.is_code_editor() {
@@ -4585,11 +4804,7 @@ impl<M: InputModeKind> EntityInputHandler for InputBaseState<M> {
                         self.selections.iter().copied().collect(),
                     );
                 } else {
-                    self.replace_text_in_ranges(
-                        &[(range.clone(), new_text.to_string())],
-                        window,
-                        cx,
-                    );
+                    self.replace_text_in_ranges(&[(range.clone(), new_text)], window, cx);
                 }
             }
             if ends_composition {
@@ -4606,6 +4821,7 @@ impl<M: InputModeKind> EntityInputHandler for InputBaseState<M> {
         let old_text = self.text.clone();
         self.mode.adjust_auto_closed_pair(&range, new_text.len());
         self.text.replace(range.clone(), new_text);
+        self.text_edited(&range, new_text.len());
 
         let mut new_offset = (range.start + new_text.len()).min(self.text.len());
 
@@ -4626,6 +4842,7 @@ impl<M: InputModeKind> EntityInputHandler for InputBaseState<M> {
                 && self.is_valid_input(&old_text.to_string(), cx)
             {
                 self.text = old_text;
+                self.text_replaced();
                 return;
             }
 
@@ -4633,6 +4850,7 @@ impl<M: InputModeKind> EntityInputHandler for InputBaseState<M> {
                 let mask_text = self.mask_pattern.mask(&pending_text);
                 mask_changed = mask_text.as_str() != pending_text;
                 self.text = Rope::from(mask_text.as_str());
+                self.text_replaced();
                 let new_text_len =
                     (new_text.len() + mask_text.len()).saturating_sub(pending_text.len());
                 new_offset = (range.start + new_text_len).min(mask_text.len());
@@ -4675,7 +4893,7 @@ impl<M: InputModeKind> EntityInputHandler for InputBaseState<M> {
         self.display_map
             .adjust_folds_for_edit(&old_text, &range, new_text);
         self.display_map
-            .on_text_changed(&self.text, &range, &Rope::from(new_text), cx);
+            .text_edited(&self.text, &range, new_text.len(), cx);
 
         self.mode.update_highlighter::<M>(
             super::mode::HighlighterUpdate {
@@ -4768,6 +4986,7 @@ impl<M: InputModeKind> EntityInputHandler for InputBaseState<M> {
         let old_text = self.text.clone();
         self.mode.adjust_auto_closed_pair(&range, new_text.len());
         self.text.replace(range.clone(), new_text);
+        self.text_edited(&range, new_text.len());
 
         if self.is_single_line() {
             let pending_text = self.text.to_string();
@@ -4778,6 +4997,7 @@ impl<M: InputModeKind> EntityInputHandler for InputBaseState<M> {
                 && self.is_valid_input(&old_text.to_string(), cx)
             {
                 self.text = old_text;
+                self.text_replaced();
                 if starts_composition {
                     self.undo_manager.commit_transaction();
                 }
@@ -4793,7 +5013,7 @@ impl<M: InputModeKind> EntityInputHandler for InputBaseState<M> {
         self.display_map
             .adjust_folds_for_edit(&old_text, &range, new_text);
         self.display_map
-            .on_text_changed(&self.text, &range, &Rope::from(new_text), cx);
+            .text_edited(&self.text, &range, new_text.len(), cx);
 
         self.mode.update_highlighter::<M>(
             super::mode::HighlighterUpdate {
@@ -4951,9 +5171,10 @@ impl<M: InputModeKind> Render for InputBaseState<M> {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Before anything reads it: the element resolves this style during
         // layout and paint, and both happen after this call in the same frame.
-        self.editor_style = self
-            .projected_editor_style
-            .resolved(&crate::Theme::global(cx).tokens);
+        self.replace_editor_style(
+            self.projected_editor_style
+                .resolved(&crate::Theme::global(cx).tokens),
+        );
         let entity = cx.entity();
         if self._pending_update {
             self.mode.update_highlighter::<M>(
@@ -4973,6 +5194,15 @@ impl<M: InputModeKind> Render for InputBaseState<M> {
             self._pending_update = false;
         }
 
+        let accessibility_value = self
+            .accessibility
+            .as_ref()
+            .is_some_and(|accessibility| {
+                accessibility.value_exposed
+                    && !self.masked
+                    && (window.is_a11y_active() || cfg!(feature = "test-support"))
+            })
+            .then(|| self.accessibility_value(window, cx));
         let element = div()
             .id(EDITOR_ELEMENT_ID)
             .key_context(CONTEXT)
@@ -4987,12 +5217,7 @@ impl<M: InputModeKind> Render for InputBaseState<M> {
                     .when_some(accessibility.accessibility_id.clone(), |this, id| {
                         this.accessibility_id(id)
                     })
-                    .when(
-                        accessibility.value_exposed
-                            && !self.masked
-                            && (window.is_a11y_active() || cfg!(feature = "test-support")),
-                        |this| this.aria_value(self.text.to_string()),
-                    )
+                    .when_some(accessibility_value, |this, value| this.aria_value(value))
                     .on_a11y_action(gpui::AccessibleAction::Focus, {
                         let entity = entity.clone();
                         move |_, window, cx| {
@@ -7335,6 +7560,38 @@ mod tests {
         input.read_with(&cx, |state, _| {
             assert!(!state.search_session().is_active());
         });
+    }
+
+    /// A new query in a text longer than the main thread searches finds
+    /// every match in the background, and replacing them all doesn't wait
+    /// for it.
+    #[gpui::test]
+    fn test_a_long_text_is_searched_whole_in_the_background(cx: &mut TestAppContext) {
+        let input_view = InputView::build_editor(cx, |state| state.searchable(false));
+        let mut cx = VisualTestContext::from_window(input_view.window_handle.into(), cx);
+        let input = input_view.input;
+        let text = format!("foo\n{}\nfoo foo\n", "x".repeat(2 << 20));
+        cx.update(|window, cx| {
+            input.update(cx, |state, cx| {
+                state.set_value(text.clone(), window, cx);
+                state.set_search_query("foo", true, cx);
+                assert_eq!(state.search_session().matcher.len(), 1);
+            });
+        });
+        cx.run_until_parked();
+        input.read_with(&cx, |state, _| {
+            assert_eq!(state.search_session().matcher.len(), 3);
+        });
+
+        cx.update(|window, cx| {
+            input.update(cx, |state, cx| {
+                state.set_search_query("FOO", false, cx);
+                state.set_search_query("foo", false, cx);
+                assert_eq!(state.replace_all_search_matches("bar", window, cx), 3);
+                assert!(!state.text().to_string().contains("foo"));
+            });
+        });
+        cx.run_until_parked();
     }
 
     /// A closed search skips rescanning on edits, so every path that reads
@@ -10106,6 +10363,46 @@ mod tests {
         assert_cursors(&mut cx, &view.input, "a|b|c");
     }
 
+    /// Without a screen reader the text is copied for one once the edits
+    /// pause, not on every frame an edit draws: until then the copy before
+    /// stands.
+    #[gpui::test]
+    fn test_the_accessibility_value_is_copied_once_edits_pause(cx: &mut TestAppContext) {
+        let view = multi_line(cx);
+        let mut cx = VisualTestContext::from_window(view.window_handle.into(), cx);
+        let redraw = |cx: &mut VisualTestContext| {
+            cx.update(|window, cx| {
+                window.refresh();
+                window.draw(cx).clear(cx);
+            })
+        };
+        let value = |cx: &mut VisualTestContext| {
+            view.input
+                .read_with(cx, |state, _| state.accessibility_value.clone())
+                .map(|value| value.to_string())
+        };
+        cx.update(|window, cx| {
+            view.input.update(cx, |state, cx| {
+                state.set_accessibility(InputAccessibility::new(None));
+                state.set_value("one", window, cx);
+            })
+        });
+        redraw(&mut cx);
+        assert_eq!(value(&mut cx).as_deref(), Some("one"));
+
+        for typed in ["one t", "one tw", "one two"] {
+            cx.update(|window, cx| {
+                view.input
+                    .update(cx, |state, cx| state.set_value(typed, window, cx))
+            });
+            redraw(&mut cx);
+            assert_eq!(value(&mut cx).as_deref(), Some("one"));
+        }
+        cx.executor().advance_clock(ACCESSIBILITY_VALUE_DELAY);
+        cx.run_until_parked();
+        assert_eq!(value(&mut cx).as_deref(), Some("one two"));
+    }
+
     #[gpui::test]
     fn test_shift_end_respects_soft_wrap_end(cx: &mut TestAppContext) {
         let view = InputView::<EditorMode>::new(cx);
@@ -10113,7 +10410,7 @@ mod tests {
         cx.update(|window, cx| {
             view.input.update(cx, |state, cx| {
                 state.set_value("abcdef ".repeat(30), window, cx);
-                state.display_map.on_layout_changed(Some(px(60.)), cx);
+                state.display_map.wrap_now(Some(px(60.)), cx);
                 let line = state.display_map.line(0).unwrap();
                 assert!(line.wrapped_lines.len() > 1);
                 let boundary = line.wrapped_lines[0].end;
@@ -12144,23 +12441,15 @@ impl<M: crate::input::MultiLineMode> InputBaseState<M> {
     }
 
     /// Update the soft wrap mode, default is true.
+    ///
+    /// The lines are wrapped again as the input is laid out next.
     pub fn set_soft_wrap(&mut self, wrap: bool, _: &mut Window, cx: &mut Context<Self>) {
         self.soft_wrap = wrap;
         if wrap {
-            let wrap_width = self
-                .last_layout
-                .as_ref()
-                .and_then(|b| b.wrap_width)
-                .unwrap_or(self.input_bounds.size.width);
-
-            self.display_map.on_layout_changed(Some(wrap_width), cx);
-
             // Reset scroll to left 0
             let mut offset = self.scroll_handle.offset();
             offset.x = px(0.);
             self.scroll_handle.set_offset(offset);
-        } else {
-            self.display_map.on_layout_changed(None, cx);
         }
         cx.notify();
     }
@@ -12172,7 +12461,8 @@ impl<M: crate::input::MultiLineMode> InputBaseState<M> {
         self
     }
 
-    /// Update how soft-wrapped continuation lines are indented.
+    /// Update how soft-wrapped continuation lines are indented. The lines
+    /// are wrapped again as the input is laid out next.
     pub fn set_wrapping_indent(
         &mut self,
         wrapping_indent: WrappingIndent,
@@ -12180,7 +12470,6 @@ impl<M: crate::input::MultiLineMode> InputBaseState<M> {
         cx: &mut Context<Self>,
     ) {
         self.wrapping_indent = wrapping_indent;
-        self.display_map.set_wrapping_indent(wrapping_indent, cx);
         cx.notify();
     }
 }

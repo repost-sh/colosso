@@ -354,12 +354,14 @@ impl<M: OverlayMode> InputOverlayHost<M> {
             // session. Re-showing it for that echo would select the query or steal
             // focus from replacement, so preserve changes the panel already holds.
             // External mode changes still move focus out of a hidden replace field.
+            // A query the panel set moves its anchor to the view too: that is part
+            // of the echo, or every letter typed would select the query again for
+            // the next to replace.
             let was = &self.search_signature;
             let query_echo = search_open
                 && was.open
                 && (was.replace_mode == search_signature.replace_mode
                     || panel_replace_mode == search_signature.replace_mode)
-                && was.anchor_offset == search_signature.anchor_offset
                 && was.activation_revision == search_signature.activation_revision
                 && self.search.read(cx).query(cx) == search_session.query;
             self.search_signature = search_signature;
@@ -521,6 +523,71 @@ mod tests {
                 0..3,
                 "re-invoking search must select the query again"
             );
+        });
+    }
+
+    struct EditorProbe {
+        state: Entity<crate::input::EditorState>,
+    }
+
+    impl Render for EditorProbe {
+        fn render(
+            &mut self,
+            _window: &mut Window,
+            _cx: &mut gpui::Context<Self>,
+        ) -> impl IntoElement {
+            use gpui::{ParentElement as _, Styled as _};
+            div()
+                .size_full()
+                .child(crate::input::Editor::new(&self.state).h_full())
+        }
+    }
+
+    /// Typing into the open panel's field adds to the query. A laid-out
+    /// editor moves the query's anchor to its view on the first letter; taking
+    /// that for a new search selected the field again, and the next letter
+    /// replaced the query.
+    #[gpui::test]
+    fn typing_into_the_search_panel_keeps_every_letter(cx: &mut gpui::TestAppContext) {
+        cx.update(crate::init);
+        let mut editor = None;
+        let window = cx.open_window(gpui::size(gpui::px(400.), gpui::px(300.)), |window, cx| {
+            let state = cx.new(|cx| crate::input::EditorState::new(window, cx).searchable(true));
+            editor = Some(state.clone());
+            EditorProbe { state }
+        });
+        let state = editor.unwrap();
+        let cx = &mut gpui::VisualTestContext::from_window(window.into(), cx);
+        let draw = |cx: &mut gpui::VisualTestContext| {
+            cx.update(|window, cx| {
+                window.refresh();
+                window.draw(cx).clear(cx);
+            })
+        };
+        cx.update(|window, cx| {
+            state.update(cx, |state, cx| {
+                state.set_value("see sea se", window, cx);
+                state.open_search(false, cx);
+            })
+        });
+        draw(cx);
+
+        // The panel the editor draws, its field focused as the shortcut leaves it.
+        let search_input = cx.update(|window, cx| {
+            let registry = cx.global::<InputOverlayRegistry<gpui_base::input::EditorMode>>();
+            let (_, host) = registry.hosts.get(&state.entity_id()).unwrap();
+            let search_input = host.search.read(cx).search_input().clone();
+            search_input.update(cx, |input, cx| input.focus(window, cx));
+            search_input
+        });
+        draw(cx);
+        for letter in ["s", "e"] {
+            cx.simulate_input(letter);
+            draw(cx);
+        }
+        cx.update(|_, cx| {
+            assert_eq!(search_input.read(cx).value(), "se");
+            assert_eq!(state.read(cx).search_session().query, "se");
         });
     }
 
