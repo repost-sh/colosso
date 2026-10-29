@@ -1,6 +1,7 @@
 mod arc;
 mod backdrop;
 mod changes;
+mod checkouts;
 mod delete_worktree;
 mod gradient;
 mod logs;

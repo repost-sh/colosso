@@ -6,8 +6,10 @@
 mod fixtures;
 mod generate;
 mod harness;
+mod repo;
 mod report;
 mod run;
+mod scan;
 mod scenarios;
 mod stats;
 mod suite;
@@ -64,8 +66,8 @@ fn cli() -> Result<()> {
             for info in infos {
                 writeln!(
                     out,
-                    "{:<14} {:>11} bytes {:>9} lines  {}",
-                    info.name, info.bytes, info.lines, info.file
+                    "{:<14} {:>11} bytes {:>9} lines {:>7} files  {}",
+                    info.name, info.bytes, info.lines, info.files, info.file
                 )?;
             }
             Ok(())
@@ -120,8 +122,9 @@ fn all(only: &str, timeout: Duration) -> Result<()> {
     }
     let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let outcomes = suite::run_all(&scenarios, timeout)?;
+    // The scans open no window, so leave the scale at 0.
     let scale_factor = outcomes.iter().find_map(|(_, outcome)| match outcome {
-        Outcome::Measured(measured) => Some(measured.scale_factor),
+        Outcome::Measured(measured) if measured.scale_factor > 0. => Some(measured.scale_factor),
         _ => None,
     });
     let rows = report::rows(outcomes, &fixtures);

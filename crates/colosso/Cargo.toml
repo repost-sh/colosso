@@ -7,8 +7,8 @@ publish.workspace = true
 
 [dependencies]
 colosso-git = { path = "../git" }
-# The changes view's file watcher, the version GPUI already pulls in, and its channel.
-notify = "8"
+# Each checkout's files, scanned and watched once for every panel that shows it.
+colosso-project = { path = "../project" }
 futures = "0.3"
 # Syntax highlighting for diffs: syntect's parser with bat's syntaxes, which add TypeScript,
 # TOML, Svelte and more. Pure-Rust regexes, so nothing to link.

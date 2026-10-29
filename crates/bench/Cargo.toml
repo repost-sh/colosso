@@ -18,6 +18,8 @@ gpui-kit = { workspace = true, features = [
   "tree-sitter-markdown-inline",
 ] }
 anyhow = "1"
+# The scan scenarios: a checkout listed and watched as the app lists and watches it.
+colosso-project = { path = "../project" }
 # The results file and the scenario reports passed from each run back to the harness; the
 # versions GPUI already pulls in.
 serde = { version = "1", features = ["derive"] }

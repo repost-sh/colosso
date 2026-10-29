@@ -134,14 +134,14 @@ pub fn table(results: &Results) -> Result<String, std::fmt::Error> {
     writeln!(out)?;
     writeln!(
         out,
-        "{:<14} {:>11} {:>9} {:>14}",
-        "fixture", "bytes", "lines", "longest line"
+        "{:<14} {:>11} {:>9} {:>14} {:>7}",
+        "fixture", "bytes", "lines", "longest line", "files"
     )?;
     for info in &results.fixtures {
         writeln!(
             out,
-            "{:<14} {:>11} {:>9} {:>14}",
-            info.name, info.bytes, info.lines, info.longest_line_bytes
+            "{:<14} {:>11} {:>9} {:>14} {:>7}",
+            info.name, info.bytes, info.lines, info.longest_line_bytes, info.files
         )?;
     }
     writeln!(out)?;

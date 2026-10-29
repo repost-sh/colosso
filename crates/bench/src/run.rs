@@ -11,6 +11,7 @@ use gpui_kit::{
 };
 
 use crate::harness::{Bench, HEIGHT, Setup, WIDTH};
+use crate::scan;
 use crate::scenarios::{Kind, Scenario};
 use crate::stats::{Deadline, Measured};
 
@@ -27,6 +28,19 @@ const EDIT_QUERY: &str = "self";
 
 pub fn run(scenario: Scenario, deadline: Deadline) -> Result<Measured> {
     let fixture = scenario.fixture;
+    let edit: fn(&mut Run, SharedString) -> Result<()> = match scenario.kind {
+        Kind::Open => |run, text| run.open(&text),
+        Kind::Scroll if fixture.single_line => |run, text| run.scroll(text, true),
+        Kind::Scroll => |run, text| run.scroll(text, false),
+        Kind::Type | Kind::TypeWrap => Run::typing,
+        Kind::Resize => Run::resize,
+        Kind::SearchQuery => Run::search_query,
+        Kind::SearchEdit => Run::search_edit,
+        // The scans run no editor and open no window.
+        Kind::Scan | Kind::ScanTouch | Kind::BurstIgnored | Kind::BurstTracked => {
+            return scan::run(scenario, deadline);
+        }
+    };
     let text = SharedString::from(fixture.read()?);
     let mut bench = Bench::open(Setup {
         language: fixture.language,
@@ -41,14 +55,7 @@ pub fn run(scenario: Scenario, deadline: Deadline) -> Result<Measured> {
         deadline,
         measured,
     };
-    match scenario.kind {
-        Kind::Open => run.open(&text)?,
-        Kind::Scroll => run.scroll(text, fixture.single_line)?,
-        Kind::Type | Kind::TypeWrap => run.typing(text)?,
-        Kind::Resize => run.resize(text)?,
-        Kind::SearchQuery => run.search_query(text)?,
-        Kind::SearchEdit => run.search_edit(text)?,
-    }
+    edit(&mut run, text)?;
     Ok(run.measured)
 }
 
