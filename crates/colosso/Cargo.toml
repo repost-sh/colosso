@@ -58,6 +58,9 @@ dirs = "6"
 log = { version = "0.4", features = ["std"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 serde = { version = "1", features = ["derive"] }
+# A file written from outside lands in its editor as the difference, line by line; the
+# version already in the lockfile.
+similar = { version = "2", default-features = false, features = ["text"] }
 serde_json = "1"
 # Only named to turn on GPUI's hot-reload feature; it must match the version gpui-kit pins.
 gpui-pre = { version = "=0.3.10", default-features = false, optional = true }

@@ -32,9 +32,9 @@ pub struct Attached {
     /// The checkout the file is in, where a definition in another file is read.
     checkout: WeakEntity<Checkout>,
     path: Arc<Path>,
-    /// When the diagnostics put into the editor were published, and the text they were
-    /// converted for.
-    applied: Option<(u64, u64)>,
+    /// When the diagnostics put into the editor were published; once in, the editor moves
+    /// them along with its edits.
+    applied: Option<u64>,
     _server: Subscription,
 }
 
@@ -55,8 +55,9 @@ impl Attached {
         }
     }
 
-    /// Gives `editor`, just made for the file, its hooks into the server; `view` is the
-    /// viewer showing it, which shows a definition found in another file.
+    /// Gives `editor`, just made for the file, its hooks into the server, and the server
+    /// its text; `view` is the viewer showing it, which shows a definition found in another
+    /// file.
     pub fn equip(
         &mut self,
         editor: &Entity<EditorState>,
@@ -75,26 +76,26 @@ impl Attached {
             lsp.hover_provider = Some(hooks);
             lsp.show_document = Some(show_document);
         });
+        self.server
+            .update(cx, |server, cx| server.show(&self.path, editor, cx));
         self.applied = None;
     }
 
-    /// Puts the diagnostics published for the file into `editor`, which shows `version` of
-    /// it, unless it has them already or the server holds another version.
-    pub fn refresh(&mut self, editor: &Entity<EditorState>, version: u64, cx: &mut App) {
-        let server = self.server.read(cx);
-        let Some(shown) = (server.documents.get(&self.path)).and_then(|open| open.shown.clone())
-        else {
-            return;
-        };
-        let (published, diagnostics) = server.published.get(&self.path);
-        if shown.version != version || self.applied == Some((published, version)) {
+    /// `editor` edited the file's text: the server hears of the edits.
+    pub fn changed(&self, editor: &Entity<EditorState>, cx: &mut App) {
+        self.server
+            .update(cx, |server, cx| server.changed(&self.path, editor, cx));
+    }
+
+    /// Puts the diagnostics published for the file into `editor`, unless it has them
+    /// already.
+    pub fn refresh(&mut self, editor: &Entity<EditorState>, cx: &mut App) {
+        let (published, diagnostics) = self.server.read(cx).published.get(&self.path);
+        if self.applied == Some(published) {
             return;
         }
-        let encoding = server.encoding;
-        editor.update(cx, |editor, cx| {
-            diagnostics::show(editor, &diagnostics, &shown, encoding, cx);
-        });
-        self.applied = Some((published, version));
+        editor.update(cx, |editor, cx| diagnostics::show(editor, &diagnostics, cx));
+        self.applied = Some(published);
     }
 }
 
@@ -123,10 +124,10 @@ impl Hooks {
         let open = server.documents.get(&self.path).filter(|open| open.sent)?;
         let shown = open.shown.clone()?;
         // Another version than the editor's, and the positions would mean nothing.
-        if shown.text.len() != rope.len() {
+        if shown.text.as_str().len() != rope.len() {
             return None;
         }
-        let position = shown.lines.position(&shown.text, offset, server.encoding);
+        let position = shown.text.position(offset, server.encoding);
         Some(Asked {
             client,
             at: TextDocumentPositionParams {
@@ -161,8 +162,7 @@ impl Asked {
 
     /// A range in this file, from the server's encoding to the editor's positions.
     fn for_editor(&self, range: lsp_types::Range) -> lsp_types::Range {
-        let (shown, encoding) = (&self.shown, self.encoding);
-        let bytes = shown.lines.offsets(&shown.text, range, encoding);
+        let bytes = self.shown.text.offsets(range, self.encoding);
         lsp_types::Range::new(
             self.rope.offset_to_position(bytes.start),
             self.rope.offset_to_position(bytes.end),

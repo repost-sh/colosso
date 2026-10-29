@@ -50,6 +50,7 @@ fn init(cx: &mut App) {
     theme::init(cx);
     shell::init(cx);
     right_panel::init(cx);
+    files::init(cx);
     navigation::bind_keys(cx);
     go_to_file::init(cx);
     #[cfg(target_os = "macos")]

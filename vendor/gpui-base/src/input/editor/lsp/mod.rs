@@ -3,7 +3,7 @@ use gpui::{App, Context, Hsla, SharedString, Task, Window};
 use ropey::Rope;
 use std::rc::Rc;
 
-use crate::input::{Cursors, EditorMode, InputBaseState, RopeExt};
+use crate::input::{EditorMode, InputBaseState, RopeExt};
 
 mod code_actions;
 mod completions;
@@ -159,9 +159,7 @@ impl InputBaseState<EditorMode> {
                 (start..end, edit.new_text.as_str())
             })
             .collect();
-        self.with_edits_allowed(|this| {
-            this.replace_text_in_ranges(&edits, Cursors::Following, window, cx);
-        });
+        self.edit(&edits, window, cx);
     }
 }
 

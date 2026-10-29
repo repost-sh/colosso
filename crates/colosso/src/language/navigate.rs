@@ -62,7 +62,7 @@ pub(super) fn show_document(
 }
 
 /// The bytes of `document`'s text the server's `range` stands for, once it's read as text:
-/// through the lines the server's copy of it has indexed, when it has this version open, and
+/// through the lines the server's copy of it has indexed, when it has the file open, and
 /// else through the text's own.
 fn bytes(
     document: &Entity<Document>,
@@ -78,10 +78,9 @@ fn bytes(
     let server = server.upgrade();
     let open = (server.as_ref())
         .and_then(|server| server.read(cx).documents.get(document.path()))
-        .and_then(|open| open.shown.as_ref())
-        .filter(|shown| shown.version == document.version());
+        .and_then(|open| open.shown.as_ref());
     Some(match open {
-        Some(shown) => shown.lines.offsets(&shown.text, range, encoding),
+        Some(shown) => shown.text.offsets(range, encoding),
         None => LineIndex::new(text).offsets(text, range, encoding),
     })
 }

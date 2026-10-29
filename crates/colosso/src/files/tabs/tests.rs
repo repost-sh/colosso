@@ -1,7 +1,10 @@
-use gpui_kit::{AnyWindowHandle, Entity, TestAppContext};
+use gpui_kit::{Entity, TestAppContext};
 
-use super::super::tests::{checkout, open, selected};
+use super::super::At;
+use super::super::closing::SaveDialog;
+use super::super::tests::{checkout, editing, open, selected, typed, with};
 use super::*;
+use crate::modal;
 
 /// The tabs open, by their paths in the checkout, a preview's ending in `*` and the one shown
 /// in brackets.
@@ -19,18 +22,6 @@ fn tabs(panel: &Entity<FilesPanel>, cx: &TestAppContext) -> Vec<String> {
             })
             .collect()
     })
-}
-
-fn with(
-    window: AnyWindowHandle,
-    panel: &Entity<FilesPanel>,
-    cx: &mut TestAppContext,
-    change: impl FnOnce(&mut FilesPanel, &mut Window, &mut Context<FilesPanel>),
-) {
-    (cx.update_window(window, |_, window, cx| {
-        panel.update(cx, |panel, cx| change(panel, window, cx));
-    }))
-    .unwrap();
 }
 
 #[gpui_kit::test]
@@ -70,6 +61,24 @@ fn a_preview_gives_way_to_the_next_until_its_pinned(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn a_preview_typed_into_is_kept(cx: &mut TestAppContext) {
+    let root = checkout("files-tabs-preview-typed");
+    let (window, panel) = open(&root, cx);
+    with(window, &panel, cx, |panel, window, cx| {
+        panel.preview(Place::file("src/lib.rs"), window, cx);
+    });
+    cx.run_until_parked();
+    let editor = cx.read(|cx| (panel.read(cx).viewing().unwrap().editor.read(cx).editor()).cloned());
+    typed(window, &editor.unwrap(), "// typed\n", cx);
+    // Pinned by the typing: the next preview opens beside it.
+    with(window, &panel, cx, |panel, window, cx| {
+        panel.preview(Place::file("README.md"), window, cx);
+    });
+    assert_eq!(tabs(&panel, cx), ["src/lib.rs", "[README.md*]"]);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[gpui_kit::test]
 fn closing_the_tab_shown_shows_the_next_or_else_the_one_before(cx: &mut TestAppContext) {
     let root = checkout("files-tabs-close");
     let (window, panel) = open(&root, cx);
@@ -79,12 +88,12 @@ fn closing_the_tab_shown_shows_the_next_or_else_the_one_before(cx: &mut TestAppC
         });
     }
     with(window, &panel, cx, |panel, _, cx| panel.show_tab(1, cx));
-    with(window, &panel, cx, |panel, _, cx| panel.close(1, cx));
+    with(window, &panel, cx, |panel, window, cx| panel.close(1, window, cx));
     assert_eq!(tabs(&panel, cx), ["README.md", "[src/lib.rs]"]);
     assert_eq!(selected(&panel, cx).as_deref(), Some("src/lib.rs"));
-    with(window, &panel, cx, |panel, _, cx| panel.close(1, cx));
+    with(window, &panel, cx, |panel, window, cx| panel.close(1, window, cx));
     assert_eq!(tabs(&panel, cx), ["[README.md]"]);
-    with(window, &panel, cx, |panel, _, cx| panel.close(0, cx));
+    with(window, &panel, cx, |panel, window, cx| panel.close(0, window, cx));
     assert!(tabs(&panel, cx).is_empty());
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -146,5 +155,55 @@ fn a_tab_dragged_to_another_slot_leaves_the_one_shown_shown(cx: &mut TestAppCont
     with(window, &panel, cx, |panel, _, cx| panel.reorder(1, 3, cx));
     with(window, &panel, cx, |panel, _, cx| panel.reorder(1, 1, cx));
     assert_eq!(tabs(&panel, cx), ["README.md", "[src/lib.rs]", "new.txt"]);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[gpui_kit::test]
+fn a_tab_with_unsaved_edits_asks_before_it_closes(cx: &mut TestAppContext) {
+    let root = checkout("files-tabs-unsaved");
+    let (window, panel) = open(&root, cx);
+    let lib = root.join("src/lib.rs");
+    // Opens the file and types `text` at its start, keeping no hold on its editor.
+    let edit = |text: &str, cx: &mut TestAppContext| {
+        let (_, editor, _) = editing(window, &panel, "src/lib.rs", At::Bytes(0..0), cx);
+        typed(window, &editor, text, cx);
+    };
+    let close = |cx: &mut TestAppContext| {
+        with(window, &panel, cx, |panel, window, cx| panel.close(0, window, cx));
+        cx.run_until_parked();
+    };
+    let asked = |cx: &mut TestAppContext| {
+        cx.read(|cx| Some((modal::window(cx)?, modal::current::<SaveDialog>(cx)?)))
+    };
+    // Answers the question, keeping no hold on the dialog, which goes with its window.
+    let answer = |cx: &mut TestAppContext,
+                  act: fn(&mut SaveDialog, &mut Window, &mut Context<SaveDialog>)| {
+        let (dialog_window, dialog) = asked(cx).expect("asked");
+        (cx.update_window(dialog_window, |_, window, cx| {
+            dialog.update(cx, |dialog, cx| act(dialog, window, cx));
+        }))
+        .unwrap();
+        cx.run_until_parked();
+    };
+    // Saved: the file's written, then the tab closes.
+    edit("// kept\n", cx);
+    close(cx);
+    assert_eq!(tabs(&panel, cx), ["[src/lib.rs]"], "still open, asked");
+    answer(cx, SaveDialog::save);
+    assert!(tabs(&panel, cx).is_empty(), "closed once saved");
+    assert!(asked(cx).is_none(), "the question's answered");
+    let on_disk = || std::fs::read_to_string(&lib).unwrap();
+    assert_eq!(on_disk(), "// kept\npub fn a() {}\npub fn b() {}\n");
+    // Not saved: the tab closes, the file as it was.
+    edit("// lost\n", cx);
+    close(cx);
+    answer(cx, SaveDialog::close_tab);
+    assert!(tabs(&panel, cx).is_empty());
+    assert_eq!(on_disk(), "// kept\npub fn a() {}\npub fn b() {}\n");
+    // Clean, a tab closes without a word.
+    editing(window, &panel, "src/lib.rs", At::Bytes(0..0), cx);
+    close(cx);
+    assert!(tabs(&panel, cx).is_empty());
+    assert!(asked(cx).is_none());
     let _ = std::fs::remove_dir_all(&root);
 }

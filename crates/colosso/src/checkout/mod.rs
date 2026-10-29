@@ -19,7 +19,7 @@ use gpui_kit::gpui::{
 use documents::Documents;
 #[cfg(test)]
 pub use documents::read_at_most;
-pub use documents::{Content, Document, MOST_BYTES};
+pub use documents::{Content, Document, DocumentEvent, MOST_BYTES};
 
 use crate::changes::{FileView, Marks, Read, Stale, Touched, read, touched};
 use crate::checkouts;
@@ -246,7 +246,8 @@ impl Checkout {
         cx.notify();
     }
 
-    fn touched(&mut self, touched: Vec<Touched>, cx: &mut Context<Self>) {
+    pub(crate) fn touched(&mut self, touched: Vec<Touched>, cx: &mut Context<Self>) {
+        self.documents.touched(&touched, &self.root, cx);
         self.stale.add(touched);
         self.read(cx);
     }

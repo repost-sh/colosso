@@ -13,6 +13,11 @@ use crate::theme::{MONO, Palette};
 
 /// A tab's close button: an X, lit when the pointer's over it.
 pub fn close_button(id: impl Into<ElementId>, p: Palette) -> Stateful<Div> {
+    tab_button(id, p).child(icon(IconName::X, 12.))
+}
+
+/// A small square button in a tab, lit when hovered, without what's drawn in it.
+pub fn tab_button(id: impl Into<ElementId>, p: Palette) -> Stateful<Div> {
     div()
         .id(id)
         .size(px(18.))
@@ -22,7 +27,6 @@ pub fn close_button(id: impl Into<ElementId>, p: Palette) -> Stateful<Div> {
         .justify_center()
         .rounded(px(4.))
         .hover(|style| style.bg(p.hover))
-        .child(icon(IconName::X, 12.))
 }
 
 pub fn tab(tab: &Tab, context: &str, p: Palette) -> AnyElement {

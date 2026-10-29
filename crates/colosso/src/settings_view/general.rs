@@ -110,7 +110,7 @@ fn sidebar(cx: &App) -> SettingsSection {
     SettingsSection::new("Sidebar")
         .row(
             SettingRow::new("Show sidebar on launch")
-                .description("Open the window with the sidebar out. ⌘S slides it in and out.")
+                .description("Open the window with the sidebar out. ⌘B slides it in and out.")
                 .control(NativeSwitch::new(
                     "sidebar-open-on-launch",
                     |settings| settings.sidebar_open_on_launch,
