@@ -21,7 +21,7 @@ use super::diagnostics::Published;
 use super::server_log::Log;
 use super::sync::Open;
 use super::watch::Watch;
-use super::{CRASH_WINDOW, Kind, Launcher, MOST_RESTARTS, SHUTDOWN, backoff};
+use super::{CRASH_WINDOW, Failure, Kind, Launcher, MOST_RESTARTS, SHUTDOWN, backoff};
 
 /// What a server is doing, as its status line says it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -39,7 +39,7 @@ pub enum State {
     /// Done with all the work it had queued.
     Ready,
     /// It couldn't be found, fetched or started, and why.
-    Failed(SharedString),
+    Failed(Failure),
     /// It ended on its own, and the last of what it wrote to stderr.
     Crashed(SharedString),
 }
@@ -198,7 +198,7 @@ impl Server {
                 .background_spawn(async move {
                     let mut launch = launcher(kind, &launching)?;
                     launch.log = log;
-                    Client::start(&launch).map_err(|error| error.to_string())
+                    Client::start(&launch).map_err(|error| Failure::from(error.to_string()))
                 })
                 .await;
             let client = match started {
@@ -221,7 +221,7 @@ impl Server {
                 Err(LspError::Exited) => {}
                 Err(error) => {
                     let why = format!("it couldn't be initialized: {error}");
-                    this.update(cx, |this, cx| this.failed(why, cx)).ok();
+                    this.update(cx, |this, cx| this.failed(why.into(), cx)).ok();
                     return;
                 }
             }
@@ -279,10 +279,10 @@ impl Server {
         }
     }
 
-    fn failed(&mut self, why: String, cx: &mut Context<Self>) {
-        self.tell(log::Level::Warn, &format!("couldn't start: {why}"));
+    fn failed(&mut self, failure: Failure, cx: &mut Context<Self>) {
+        self.tell(log::Level::Warn, &format!("couldn't start: {}", failure.why));
         self.running = None;
-        self.set_state(State::Failed(why.into()), cx);
+        self.set_state(State::Failed(failure), cx);
     }
 
     /// Takes the initialized server, and opens on it the files already open.
@@ -295,6 +295,7 @@ impl Server {
         self.client = Some(client.clone());
         self.send_all();
         self.registrations_changed(cx);
+        self.settle(cx);
         cx.notify();
     }
 
@@ -345,7 +346,8 @@ impl Server {
     }
 
     /// Says what the server is doing from what it last reported: indexing while any work is
-    /// under way, the indexing itself first; ready once it's quiescent.
+    /// under way, the indexing itself first; ready once it's quiescent, or once it's
+    /// initialized with no work if it never says.
     fn settle(&mut self, cx: &mut Context<Self>) {
         if self.client.is_none() {
             return;
@@ -361,7 +363,7 @@ impl Server {
                 total: work.total,
                 title: work.title.clone(),
             },
-            None if self.quiescent => State::Ready,
+            None if self.quiescent || !self.kind.reports_status() => State::Ready,
             None if self.ready_once => State::Indexing {
                 done: 0,
                 total: 0,

@@ -89,7 +89,8 @@ fn ready(drawn: &mut Drawn, root: &Path, lines: &mut Vec<String>) -> Result<Enti
         let state = drawn.cx.read(|cx| repo.read(cx).state().clone());
         match state {
             State::Ready => Ok(true),
-            State::Failed(why) | State::Crashed(why) => Err(format!("rust-analyzer: {why}")),
+            State::Failed(failure) => Err(format!("rust-analyzer: {}", failure.why)),
+            State::Crashed(why) => Err(format!("rust-analyzer: {why}")),
             State::Stopped => Err("rust-analyzer stopped".into()),
             State::Indexing { total, .. } if total > 0 && indexing.is_none() => {
                 indexing = Some(drawn.save("lsp-indexing.png")?);

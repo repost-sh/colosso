@@ -67,6 +67,21 @@ pub fn root() -> &'static Path {
     Path::new(env!("CARGO_MANIFEST_DIR"))
 }
 
+/// A workspace of `files` for a real server, under this workspace's `target`, spelled as
+/// the server will spell it.
+pub fn fixture(name: &str, files: &[(&str, &str)]) -> PathBuf {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/lsp-fixtures")
+        .join(format!("{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    for (path, text) in files {
+        let path = root.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    }
+    std::fs::canonicalize(&root).unwrap()
+}
+
 /// `future`'s output, failing the test if that takes longer than `seconds`.
 pub fn wait<F: Future>(seconds: u64, future: F) -> F::Output {
     block_on(within(Duration::from_secs(seconds), future))

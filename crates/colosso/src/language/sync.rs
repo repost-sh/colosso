@@ -13,7 +13,6 @@ use colosso_lsp::{Client, IndexedText, uri};
 use gpui_kit::component::input::EditorState;
 use gpui_kit::{Context, Entity, EntityId, Subscription};
 
-use super::Kind;
 use super::server::{Activity, Server};
 use crate::checkout::{Document, DocumentEvent};
 
@@ -27,6 +26,8 @@ pub(in crate::language) struct Open {
     document: EntityId,
     /// Its name on the server, and the version the server has.
     pub(super) lsp: colosso_lsp::Document,
+    /// The language it's opened as.
+    language_id: &'static str,
     /// Its text as the server has it, once a view gave it.
     pub(super) shown: Option<Shown>,
     /// Whether the running server has it open.
@@ -82,6 +83,7 @@ impl Server {
         let open = Open {
             document: id,
             lsp: colosso_lsp::Document::new(uri),
+            language_id: super::language_id(&path),
             shown: None,
             sent: false,
             _released,
@@ -102,7 +104,7 @@ impl Server {
         };
         open.shown = Some(Shown::new(editor.read(cx)));
         if let Some(client) = &self.client {
-            send(client, self.kind, open);
+            send(client, open);
         }
         cx.notify();
     }
@@ -192,13 +194,13 @@ impl Server {
             return;
         };
         for open in self.documents.values_mut() {
-            send(client, self.kind, open);
+            send(client, open);
         }
     }
 }
 
 /// Sends the file's text: opening it, or replacing the text the server has.
-fn send(client: &Client, kind: Kind, open: &mut Open) {
+fn send(client: &Client, open: &mut Open) {
     let Some(shown) = &open.shown else {
         return;
     };
@@ -206,7 +208,7 @@ fn send(client: &Client, kind: Kind, open: &mut Open) {
     let sent = if open.sent {
         client.notify::<DidChangeTextDocument>(&open.lsp.replace(text))
     } else {
-        client.notify::<DidOpenTextDocument>(&open.lsp.open(kind.language_id(), text))
+        client.notify::<DidOpenTextDocument>(&open.lsp.open(open.language_id, text))
     };
     match sent {
         Ok(()) => open.sent = true,

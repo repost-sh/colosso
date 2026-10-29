@@ -5,11 +5,12 @@
 //! "language_servers": { "rust-analyzer": { "enabled": true, "off_in": ["/path/to/project"] } }
 //! ```
 //!
-//! A server the file doesn't name runs, as rust-analyzer does unless it's turned off.
+//! A server the file doesn't name runs, as each does unless it's turned off.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+use colosso_lsp::servers::{BASEDPYRIGHT, RUST_ANALYZER, VTSLS};
 use gpui_kit::Action;
 use serde::{Deserialize, Serialize};
 
@@ -39,7 +40,18 @@ pub type LanguageServers = BTreeMap<String, ServerSettings>;
 
 /// Every server the app runs, each on: so the file lists them for whoever edits it.
 pub fn every_server() -> LanguageServers {
-    [("rust-analyzer".to_owned(), ServerSettings::default())].into()
+    ([RUST_ANALYZER.name, VTSLS.name, BASEDPYRIGHT.name].into_iter())
+        .map(|name| (name.to_owned(), ServerSettings::default()))
+        .collect()
+}
+
+impl Settings {
+    /// Lists every server the app runs, as a file from before one was added doesn't.
+    pub(super) fn list_every_server(&mut self) {
+        for (name, server) in every_server() {
+            self.language_servers.entry(name).or_insert(server);
+        }
+    }
 }
 
 /// Where a language server is turned on or off.

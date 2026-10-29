@@ -135,7 +135,8 @@ mod tests {
                 };
             });
         });
-        let (window, _) = in_window(size(px(900.), px(1400.)), cx, |_, cx| cx.new(|_| General));
+        // Tall enough for the whole page, two server rows more than it had.
+        let (window, _) = in_window(size(px(900.), px(1700.)), cx, |_, cx| cx.new(|_| General));
         let cx = &mut VisualTestContext::from_window(window, cx);
         cx.run_until_parked();
         let repeat = |cx: &mut VisualTestContext| cx.read(|cx| settings::get(cx).key_repeat);

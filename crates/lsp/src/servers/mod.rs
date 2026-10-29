@@ -1,6 +1,7 @@
 //! The servers the app knows: where each one's binary comes from, and what it starts with.
 
 mod install;
+mod node;
 mod rust_analyzer;
 
 use std::path::{Path, PathBuf};
@@ -9,6 +10,7 @@ use std::process::{Command, Stdio};
 use serde_json::{Map, Value};
 
 pub use install::{Curl, Fetch};
+pub use node::{BASEDPYRIGHT, NodeServer, Npm, NpmCli, VTSLS, node};
 pub use rust_analyzer::RUST_ANALYZER;
 
 use crate::client::Launch;
@@ -47,14 +49,10 @@ impl ServerSpec {
         }
     }
 
-    /// The first binary on PATH by the server's name that answers `--version`. A rustup proxy
-    /// for a component that isn't installed is on PATH, and doesn't.
+    /// The first binary on PATH by the server's name that runs.
     pub(crate) fn on_path(&self) -> Option<PathBuf> {
         let path = std::env::var_os("PATH")?;
-        std::env::split_paths(&path)
-            .map(|dir| dir.join(self.name))
-            .filter(|candidate| candidate.is_file())
-            .find(|candidate| runs(candidate))
+        first_that_runs(std::env::split_paths(&path), self.name)
     }
 
     /// The managed binary in `data`'s `servers` folder, fetched, checked against the pinned
@@ -94,6 +92,14 @@ pub(crate) fn host_target() -> Option<&'static str> {
         ("x86_64", "linux") => Some("x86_64-unknown-linux-gnu"),
         _ => None,
     }
+}
+
+/// The first `name` in `folders` that answers `--version`: a rustup proxy for a component
+/// that isn't installed is on PATH, and doesn't.
+pub(crate) fn first_that_runs(folders: impl IntoIterator<Item = PathBuf>, name: &str) -> Option<PathBuf> {
+    (folders.into_iter().map(|folder| folder.join(name)))
+        .filter(|candidate| candidate.is_file())
+        .find(|candidate| runs(candidate))
 }
 
 /// Whether `binary --version` runs and succeeds.

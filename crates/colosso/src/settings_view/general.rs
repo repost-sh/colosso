@@ -2,6 +2,7 @@
 //! worktrees go and what their branches are named under; how files open and how many
 //! language servers run; and how a held arrow key repeats.
 
+use colosso_lsp::servers::{BASEDPYRIGHT, RUST_ANALYZER, VTSLS};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::{
@@ -62,8 +63,29 @@ fn code(cx: &App) -> SettingsSection {
                 )
                 .control(NativeSwitch::new(
                     "rust-analyzer",
-                    |settings| settings.runs_server("rust-analyzer", None),
-                    |settings, on| settings.set_server("rust-analyzer", &Scope::Everywhere, on),
+                    |settings| settings.runs_server(RUST_ANALYZER.name, None),
+                    |settings, on| settings.set_server(RUST_ANALYZER.name, &Scope::Everywhere, on),
+                )),
+        )
+        .row(
+            SettingRow::new("vtsls")
+                .description(
+                    "The same in TypeScript and JavaScript files, run by the Node on PATH \
+                     and installed into the app's data folder the first time.",
+                )
+                .control(NativeSwitch::new(
+                    "vtsls",
+                    |settings| settings.runs_server(VTSLS.name, None),
+                    |settings, on| settings.set_server(VTSLS.name, &Scope::Everywhere, on),
+                )),
+        )
+        .row(
+            SettingRow::new("basedpyright")
+                .description("The same in Python files, run and installed the same way.")
+                .control(NativeSwitch::new(
+                    "basedpyright",
+                    |settings| settings.runs_server(BASEDPYRIGHT.name, None),
+                    |settings, on| settings.set_server(BASEDPYRIGHT.name, &Scope::Everywhere, on),
                 )),
         )
         .row(
@@ -81,9 +103,10 @@ fn code(cx: &App) -> SettingsSection {
         .row(
             SettingRow::new("Language servers at once")
                 .description(
-                    "Each worktree with a Rust file open runs its own rust-analyzer, which can \
-                     take several GB of memory on a large project. With a limit, the one used \
-                     least recently stops, and indexes again when it's next needed.",
+                    "Each worktree with a Rust, TypeScript or Python file open runs its own \
+                     server; rust-analyzer can take several GB of memory on a large project. \
+                     With a limit, the one used least recently stops, and indexes again when \
+                     it's next needed.",
                 )
                 .control(MenuButton::new(
                     "most-language-servers",

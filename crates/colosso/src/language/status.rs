@@ -185,7 +185,7 @@ impl Shown {
             }
             State::Indexing { title, .. } => format!("{title}…").into(),
             State::Ready => return self.health.clone(),
-            State::Failed(_) => "couldn't start".into(),
+            State::Failed(failure) => failure.words.unwrap_or("couldn't start").into(),
             State::Crashed(_) if self.restarting => "restarting".into(),
             State::Crashed(_) => "crashed".into(),
         };
@@ -206,7 +206,7 @@ impl Shown {
                     Some(health) => format!("{name}: {health}"),
                     None => format!("{name} is ready"),
                 },
-                State::Failed(why) => format!("{name} couldn't start: {why}"),
+                State::Failed(failure) => format!("{name} couldn't start: {}", failure.why),
                 State::Crashed(why) => format!("{name} crashed: {why}"),
             }
         };

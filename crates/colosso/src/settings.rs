@@ -360,7 +360,9 @@ fn read(path: &Path) -> Result<Settings, String> {
     let bytes = std::fs::read(path).map_err(|error| error.to_string())?;
     let mut value = serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
     migrate(&mut value);
-    serde_json::from_value(value).map_err(|error| error.to_string())
+    let mut settings: Settings = serde_json::from_value(value).map_err(|error| error.to_string())?;
+    settings.list_every_server();
+    Ok(settings)
 }
 
 /// Settings a file may hold that the app no longer has, each where it was and why it went.
