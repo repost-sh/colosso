@@ -11,8 +11,9 @@
 //! - `providers`: the editor's hooks, go to definition and hover, positions converted with
 //!   the encoding the server chose; `completions`, the words that could complete the one
 //!   being typed, ranked here as it's typed on; `code_actions`, what could be done about the
-//!   code, and `edits`, the chosen one's edit applied; `navigate`, a definition in another
-//!   file turned into a place in it for the viewer.
+//!   code, and `edits`, the chosen one's edit applied; `inlay_hints`, the types and
+//!   parameter names the server infers, shown in the text; `navigate`, a definition in
+//!   another file turned into a place in it for the viewer.
 //! - `status`: the selected checkout's servers in the status bar, each with its menu;
 //!   `server_log`, each server's own log, which the menu shows.
 
@@ -20,6 +21,7 @@ mod code_actions;
 mod completions;
 mod diagnostics;
 mod edits;
+mod inlay_hints;
 mod navigate;
 mod providers;
 mod registry;

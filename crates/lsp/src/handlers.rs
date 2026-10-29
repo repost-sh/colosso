@@ -10,8 +10,8 @@ use std::sync::{Arc, mpsc};
 use lsp_types::error_codes::REQUEST_FAILED;
 use lsp_types::notification::{DidChangeWatchedFiles, Notification};
 use lsp_types::request::{
-    ApplyWorkspaceEdit, RegisterCapability, Request, ShowDocument, ShowMessageRequest,
-    UnregisterCapability, WorkDoneProgressCreate, WorkspaceConfiguration,
+    ApplyWorkspaceEdit, InlayHintRefreshRequest, RegisterCapability, Request, ShowDocument,
+    ShowMessageRequest, UnregisterCapability, WorkDoneProgressCreate, WorkspaceConfiguration,
 };
 use lsp_types::{
     ConfigurationParams, DidChangeWatchedFilesRegistrationOptions, FileSystemWatcher, Registration,
@@ -119,6 +119,11 @@ pub(crate) fn answer(shared: &Arc<Shared>, params: &Payload, responder: Responde
         UnregisterCapability::METHOD => {
             let result = parse(params).map(|params| unregister(shared, &params));
             responder.send(result.as_ref());
+        }
+        // Answered at once: the fetching is the owner's, once it hears.
+        InlayHintRefreshRequest::METHOD => {
+            responder.send(Ok(&()));
+            shared.emit(&Event::InlayHintsRefresh);
         }
         method => match shared.handler(method) {
             Some(handler) => handler(params, responder, &Peer::new(shared)),

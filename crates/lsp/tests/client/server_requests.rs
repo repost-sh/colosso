@@ -104,6 +104,20 @@ fn registrations_are_kept_until_unregistered() {
 }
 
 #[test]
+fn an_inlay_hint_refresh_is_answered_at_once_and_passed_on() {
+    let mut script = vec![json!({"recv": "fake/echo"})];
+    script.extend(ask("refresh", "workspace/inlayHint/refresh", &Value::Null));
+    script.push(json!({"reply": 0, "result": null}));
+    let client = fake(&Value::Array(script));
+    let mut events = client.events();
+    let mut received = client.subscribe::<Received>();
+
+    wait(5, client.request::<Echo>(&json!(null))).unwrap();
+    assert_eq!(wait(5, received.next()).unwrap()["result"], Value::Null);
+    assert_eq!(wait(5, events.next()), Some(Event::InlayHintsRefresh));
+}
+
+#[test]
 fn owner_handlers_answer_now_later_or_by_default() {
     let mut script = vec![json!({"recv": "fake/echo"})];
     script.extend(ask("edit", "workspace/applyEdit", &json!({"edit": {}})));

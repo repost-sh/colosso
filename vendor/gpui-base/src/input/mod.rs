@@ -116,9 +116,10 @@ pub use lsp::{
     CodeActionItem, CodeActionMenuState, CodeActionProvider, CompletionHighlighter,
     CompletionMenuOptions, CompletionMenuState, CompletionProvider, DefinitionProvider,
     DocumentColorProvider, DocumentRangeSemanticTokensProvider, HoverPopoverState, HoverProvider,
-    InputOverlayKind, Lsp, ShowDocumentHandler, highlight_characters,
+    Inlay, InlayHintProvider, InputOverlayKind, Lsp, ShowDocumentHandler, highlight_characters,
     highlight_contains, highlight_prefix,
 };
+pub use sum_tree::Bias;
 pub use lsp_types::Position;
 pub use mask_pattern::MaskPattern;
 #[cfg(target_os = "macos")]

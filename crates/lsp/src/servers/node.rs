@@ -137,8 +137,22 @@ fn vtsls_settings() -> Value {
         // The project's own TypeScript when it has one in `node_modules`, so what the
         // editor says agrees with what the project builds with.
         "vtsls": { "autoUseWorkspaceTsdk": true },
-        "typescript": {},
-        "javascript": {},
+        // TypeScript's inlay hints are all off unless asked for.
+        "typescript": { "inlayHints": inlay_hints() },
+        "javascript": { "inlayHints": inlay_hints() },
+    })
+}
+
+/// Every kind of inlay hint TypeScript offers, parameter names where the argument is a
+/// literal (VS Code's "literals"), which is where a name tells the most.
+fn inlay_hints() -> Value {
+    json!({
+        "parameterNames": { "enabled": "literals" },
+        "parameterTypes": { "enabled": true },
+        "variableTypes": { "enabled": true },
+        "propertyDeclarationTypes": { "enabled": true },
+        "functionLikeReturnTypes": { "enabled": true },
+        "enumMemberValues": { "enabled": true },
     })
 }
 

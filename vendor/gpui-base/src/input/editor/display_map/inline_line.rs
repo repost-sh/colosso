@@ -7,6 +7,9 @@ pub(crate) struct InlineFragment {
     pub(crate) x: Pixels,
     pub(crate) width: Pixels,
     pub(crate) text: Option<ShapedLine>,
+    /// For a fragment of no bytes, an inlay: whether the caret at its offset is painted
+    /// before it rather than after.
+    pub(crate) caret_before: bool,
 }
 
 pub(crate) struct InputLine {
@@ -123,6 +126,12 @@ impl InputLine {
             }
             Content::Inline(fragments) => {
                 for f in fragments {
+                    if f.range.is_empty() {
+                        if ix == f.range.start && f.caret_before {
+                            return f.x;
+                        }
+                        continue;
+                    }
                     if ix < f.range.end {
                         return f.x
                             + f.text.as_ref().map_or(
@@ -156,6 +165,10 @@ impl InputLine {
             Content::Inline(fragments) => {
                 for f in fragments {
                     if x <= f.x + f.width {
+                        // A fragment of no bytes puts the pointer at its offset.
+                        if f.range.is_empty() {
+                            return f.range.start;
+                        }
                         return f.text.as_ref().map_or(
                             if x - f.x < f.width / 2. {
                                 f.range.start
@@ -256,5 +269,43 @@ impl InputLine {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fragment(range: Range<usize>, x: f32, width: f32, caret_before: bool) -> InlineFragment {
+        InlineFragment {
+            range,
+            x: px(x),
+            width: px(width),
+            text: Some(ShapedLine::default()),
+            caret_before,
+        }
+    }
+
+    /// `let x: i32 = f(name: 1)`: a type hint after `x` the caret stays before, a
+    /// parameter hint before `1` the caret goes after.
+    #[test]
+    fn the_caret_at_an_inlay_s_offset_goes_by_its_side_and_a_pointer_on_it_to_its_offset() {
+        let row = InputLine::inline(
+            "let x = f(1)".into(),
+            vec![
+                fragment(0..5, 0., 50., false),
+                fragment(5..5, 50., 40., true),
+                fragment(5..10, 90., 50., false),
+                fragment(10..10, 140., 60., false),
+                fragment(10..12, 200., 20., false),
+            ],
+        );
+        assert_eq!(row.width, px(220.));
+        assert_eq!(row.x_for_index(5), px(50.), "before the type hint");
+        assert_eq!(row.x_for_index(10), px(200.), "after the parameter hint");
+        assert_eq!(row.x_for_index(0), px(0.));
+        assert_eq!(row.closest_index_for_x(px(70.)), 5, "on the type hint");
+        assert_eq!(row.closest_index_for_x(px(150.)), 10, "on the parameter hint");
+        assert_eq!(row.closest_index_for_x(px(500.)), 12);
     }
 }

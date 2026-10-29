@@ -20,7 +20,8 @@ use crate::{
     input::{
         RopeExt as _,
         blink_cursor::CURSOR_WIDTH,
-        display_map::{InputLine, LineLayout, PartialColumns, WrapParams},
+        Bias,
+        display_map::{InlineFragment, InputLine, LineLayout, PartialColumns, WrapParams},
     },
 };
 
@@ -28,7 +29,7 @@ use super::{
     InputBaseState, PrepaintCaretGeometry, RangeDecorationStyle, TextDecoration,
     layout::{LastLayout, WhitespaceIndicators},
     mode::LayoutMode,
-    tab_stops::{expand_tabs, expanded_width, tab_stop_width},
+    tab_stops::{expand_tabs, expand_tabs_from, expanded_width, tab_stop_width},
 };
 
 fn diagnostic_highlight_style(
@@ -1943,12 +1944,12 @@ impl<M: InputModeKind> TextElement<M> {
                                 None,
                             );
                             let width = shaped.width;
-                            fragments.push(InlineFragment {
-                                range: part.start - range.start..part.end - range.start,
+                            fragments.push(text_fragment(
+                                part.start - range.start..part.end - range.start,
                                 x,
-                                width,
-                                text: Some(shaped),
-                            });
+                                shaped,
+                                false,
+                            ));
                             x += width;
                         }
                         let width = cache.widths.get(span.token()).copied().unwrap_or_default();
@@ -1957,6 +1958,7 @@ impl<M: InputModeKind> TextElement<M> {
                             x,
                             width,
                             text: None,
+                            caret_before: false,
                         });
                         x += width;
                         offset = local.end;
@@ -1969,13 +1971,12 @@ impl<M: InputModeKind> TextElement<M> {
                             &runs_for_range(runs, run_offset, &part),
                             None,
                         );
-                        let width = shaped.width;
-                        fragments.push(InlineFragment {
-                            range: part.start - range.start..part.end - range.start,
+                        fragments.push(text_fragment(
+                            part.start - range.start..part.end - range.start,
                             x,
-                            width,
-                            text: Some(shaped),
-                        });
+                            shaped,
+                            false,
+                        ));
                     }
                     lines.push(InputLine::inline(text[range].to_owned().into(), fragments));
                 }
@@ -2149,9 +2150,10 @@ impl<M: InputModeKind> TextElement<M> {
             return Self::layout_token_lines(state, last_layout, font_size, runs, window);
         }
 
+        let font = window.text_style().font();
         let tab_stop = tab_stop_width(
             window.text_system(),
-            &window.text_style().font(),
+            &font,
             font_size,
             state.mode.tab_size().tab_size,
         );
@@ -2221,16 +2223,15 @@ impl<M: InputModeKind> TextElement<M> {
 
             debug_assert_eq!(line_item.len(), line.len());
 
-            let shape_range = |range: Range<usize>, window: &mut Window| {
+            let line_start = last_layout.visible_line_byte_offsets[vi];
+            // Shapes the bytes `range` of the line with their runs, `from` being where the
+            // piece begins in its row, which its tabs count their stops from.
+            let shape_range = |range: Range<usize>, from: Pixels, window: &mut Window| {
                 let line_runs = runs_for_range(runs, run_offset, &range);
                 let line_runs = if bg_segments.is_empty() {
                     line_runs
                 } else {
-                    split_runs_by_bg_segments(
-                        last_layout.visible_line_byte_offsets[vi] + (range.start),
-                        &line_runs,
-                        bg_segments,
-                    )
+                    split_runs_by_bg_segments(line_start + range.start, &line_runs, bg_segments)
                 };
 
                 let sub_line: SharedString = line.slice(range).to_string().into();
@@ -2239,14 +2240,70 @@ impl<M: InputModeKind> TextElement<M> {
                 let mut shaped_line = window
                     .text_system()
                     .shape_line(sub_line, font_size, &line_runs, None);
-                expand_tabs(&mut shaped_line, tab_stop);
+                expand_tabs_from(&mut shaped_line, tab_stop, from);
                 (shaped_line, has_background(&line_runs))
             };
 
+            let inlays = state.extras.inlays(&(line_start..line_start + line.len()));
             let mut rows: SmallVec<[InputLine; 1]> =
                 SmallVec::with_capacity(line_item.wrapped_lines.len());
             let mut line_has_background = false;
-            for range in &line_item.wrapped_lines {
+            let last_row = line_item.wrapped_lines.len().saturating_sub(1);
+            for (i, range) in line_item.wrapped_lines.iter().enumerate() {
+                // The row's inlays, by offset in the line: one at the row's end is this
+                // row's on the line's last row only, and begins the next row otherwise.
+                let row_end = range.end + usize::from(i == last_row);
+                let first = inlays.partition_point(|inlay| inlay.offset - line_start < range.start);
+                let end = inlays.partition_point(|inlay| inlay.offset - line_start < row_end);
+                let row_inlays = &inlays[first..end];
+                // A row too long to shape whole isn't hinted: it's shaped only where it can
+                // be seen, which an inline row isn't.
+                if !row_inlays.is_empty() && range.len() <= LONG_ROW_BYTES {
+                    // An inline row: the text between the inlays shaped with its runs, each
+                    // inlay a fragment of no bytes.
+                    let mut fragments = Vec::new();
+                    let mut x = px(0.);
+                    let mut at = range.start;
+                    for inlay in row_inlays {
+                        let local = inlay.offset - line_start;
+                        if at < local {
+                            let (shaped, has_background) = shape_range(at..local, x, window);
+                            line_has_background |= has_background;
+                            let piece = text_fragment(at - range.start..local - range.start, x, shaped, false);
+                            x += piece.width;
+                            fragments.push(piece);
+                            at = local;
+                        }
+                        // The label in the editor's font, in the muted foreground.
+                        let run = TextRun {
+                            len: inlay.label.len(),
+                            font: font.clone(),
+                            color: state.editor_style.muted_foreground,
+                            background_color: None,
+                            underline: None,
+                            strikethrough: None,
+                        };
+                        let shaped = window
+                            .text_system()
+                            .shape_line(inlay.label.clone(), font_size, &[run], None);
+                        let label = text_fragment(
+                            local - range.start..local - range.start,
+                            x,
+                            shaped,
+                            inlay.bias == Bias::Right,
+                        );
+                        x += label.width;
+                        fragments.push(label);
+                    }
+                    if at < range.end {
+                        let (shaped, has_background) = shape_range(at..range.end, x, window);
+                        line_has_background |= has_background;
+                        fragments.push(text_fragment(at - range.start..range.end - range.start, x, shaped, false));
+                    }
+                    let text: SharedString = line.slice(range.clone()).to_string().into();
+                    rows.push(InputLine::inline(text, fragments));
+                    continue;
+                }
                 let part = visible_part(
                     line.slice(range.clone()),
                     shaped_x.clone(),
@@ -2255,7 +2312,7 @@ impl<M: InputModeKind> TextElement<M> {
                 let shaped_range = part.as_ref().map_or(range.clone(), |(part, _)| {
                     range.start + part.start..range.start + part.end
                 });
-                let (shaped, has_background) = shape_range(shaped_range, window);
+                let (shaped, has_background) = shape_range(shaped_range, px(0.), window);
                 line_has_background |= has_background;
                 rows.push(match part {
                     Some((part, columns)) => InputLine::partly_shaped(
@@ -3562,6 +3619,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
             state.scroll_size = prepaint.scroll_size;
             state.update_scroll_offset(Some(prepaint.cursor_scroll_offset), cx);
             state.deferred_scroll_offset = None;
+            M::laid_out(state, window, cx);
 
             // Layout consumers need changed geometry, not another notification
             // for every paint of an unchanged input.
@@ -3803,6 +3861,19 @@ fn visible_part(
             after: chars - end,
         },
     ))
+}
+
+/// A fragment of an inline row: the bytes `range` of the row, shaped as `text`, at `x`;
+/// for an inlay, of no bytes, `caret_before` says the caret at its offset is painted
+/// before it.
+fn text_fragment(range: Range<usize>, x: Pixels, text: ShapedLine, caret_before: bool) -> InlineFragment {
+    InlineFragment {
+        range,
+        x,
+        width: text.width,
+        text: Some(text),
+        caret_before,
+    }
 }
 
 /// Whether any of these runs paints a glyph background, used to skip the background

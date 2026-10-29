@@ -47,6 +47,9 @@ pub enum Event {
     /// The server registered or dropped capabilities: [`Client::registrations`] and
     /// [`Client::watched_files`] have the new set.
     RegistrationsChanged,
+    /// The server asked for every inlay hint shown to be fetched again
+    /// (`workspace/inlayHint/refresh`); its request was answered already.
+    InlayHintsRefresh,
     /// The server's process ended; [`Exit::crashed`] says whether it was meant to. Nothing
     /// restarts it; the app decides whether to.
     Ended(Exit),

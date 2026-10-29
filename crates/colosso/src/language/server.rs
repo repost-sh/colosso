@@ -95,6 +95,10 @@ pub struct Server {
     /// The files open on it, by path.
     pub(super) documents: HashMap<Arc<Path>, Open>,
     pub(super) published: Published,
+    /// How often the inlay hints shown went out of date: it asked for them to be fetched
+    /// again, it was first ready to answer for them, or what it said was forgotten. The
+    /// files shown follow it.
+    pub(super) hints_refreshed: u64,
     pub(super) watch: Watch,
     /// Its own log, begun when it first starts.
     log: Log,
@@ -123,6 +127,7 @@ impl Server {
             started: None,
             documents: HashMap::new(),
             published: Published::default(),
+            hints_refreshed: 0,
             watch: Watch::default(),
             logging: false,
         }
@@ -254,12 +259,14 @@ impl Server {
         })
     }
 
-    /// Forgets what the last process said: its work, its diagnostics, the files open on it.
+    /// Forgets what the last process said: its work, its diagnostics, its inlay hints, the
+    /// files open on it.
     fn reset(&mut self) {
         self.work.clear();
         self.quiescent = false;
         self.health = None;
         self.published.clear();
+        self.hints_refreshed += 1;
         self.watch.clear();
         for open in self.documents.values_mut() {
             open.sent = false;
@@ -315,6 +322,10 @@ impl Server {
                 }
             }
             Heard::Diagnostics(params) => return self.published(&params, cx),
+            Heard::Event(Event::InlayHintsRefresh) => {
+                self.hints_refreshed += 1;
+                return cx.notify();
+            }
             Heard::Event(Event::RegistrationsChanged) => return self.registrations_changed(cx),
             Heard::Event(Event::Ended(exit)) => return self.ended(&exit, cx),
         }
@@ -373,6 +384,9 @@ impl Server {
         };
         if state == State::Ready && !self.ready_once {
             self.ready_once = true;
+            // A file shown before now got no hints, or hints from before it had read
+            // everything: fetched again.
+            self.hints_refreshed += 1;
             let took = (self.started).map(|started| {
                 cx.background_executor()
                     .now()
