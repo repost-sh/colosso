@@ -62,6 +62,9 @@ pub struct Stats {
     /// Of those, the ones dropped where they arrived: inside ignored folders nobody reads,
     /// or among git's own files that nothing shows.
     pub dropped: u64,
+    /// Of those, the ones saying the platform lost track of what changed somewhere a
+    /// consumer reads, which is read again whole: it drops reports when it falls behind.
+    pub lost: u64,
     /// Batches of writes taken up.
     pub batches: u64,
     /// Folders read from the disk, the first scan's included.
@@ -78,6 +81,7 @@ impl Sub for Stats {
         Stats {
             events: self.events.saturating_sub(before.events),
             dropped: self.dropped.saturating_sub(before.dropped),
+            lost: self.lost.saturating_sub(before.lost),
             batches: self.batches.saturating_sub(before.batches),
             folders_read: self.folders_read.saturating_sub(before.folders_read),
             busy: self.busy.saturating_sub(before.busy),
@@ -89,6 +93,7 @@ impl Sub for Stats {
 pub(crate) struct Counters {
     pub events: AtomicU64,
     pub dropped: AtomicU64,
+    pub lost: AtomicU64,
     pub batches: AtomicU64,
     pub folders_read: AtomicU64,
     pub busy_ns: AtomicU64,
@@ -104,6 +109,7 @@ impl Counters {
         Stats {
             events: get(&self.events),
             dropped: get(&self.dropped),
+            lost: get(&self.lost),
             batches: get(&self.batches),
             folders_read: get(&self.folders_read),
             busy: Duration::from_nanos(get(&self.busy_ns)),

@@ -10,14 +10,26 @@ fn wrote(update: &Update, path: &str) -> bool {
     matches!(&update.written, Written::Paths(paths) if paths.contains(path))
 }
 
+/// Whether `update` says `path` may have been written: by name, or as part of a folder
+/// written in or of everything, as when the platform lost track of what changed.
+fn covers(update: &Update, path: &str) -> bool {
+    match &update.written {
+        Written::Paths(paths) => paths.contains(path),
+        Written::Folders(folders) => (folders.iter())
+            .any(|folder| folder.is_empty() || path.starts_with(&format!("{folder}/"))),
+        Written::Everything => true,
+    }
+}
+
 /// Writes `marker` and takes `written`'s updates until one says so, returning every update
-/// taken, the marker's included.
+/// taken, the marker's included. The platform drops reports when it falls behind, and then
+/// says only that it lost track: the marker is then reported as part of something broader.
 fn through_marker(checkout: &Checkout, written: &Subscription, marker: &str) -> Vec<Update> {
     checkout.write(marker, "");
     let mut taken = Vec::new();
     let seen = until(written, |update| {
         taken.push(update.clone());
-        wrote(update, marker)
+        covers(update, marker)
     });
     assert!(seen, "{marker} was never reported");
     taken
@@ -132,6 +144,7 @@ fn a_burst_inside_an_ignored_folder_reaches_nobody() {
     checkout.write("src/main.rs", "");
     let (project, _updates) = checkout.open();
     let written = project.subscribe(Feed::Written);
+    let start = project.stats();
     // Whatever the setup left for the watcher to report is taken first.
     through_marker(&checkout, &written, "src/before");
     let before = project.stats();
@@ -141,13 +154,31 @@ fn a_burst_inside_an_ignored_folder_reaches_nobody() {
     // The platform reports in order: everything about the burst comes before the marker.
     let taken = through_marker(&checkout, &written, "src/after");
     let after = project.stats();
-    assert_eq!(taken.len(), 1, "{taken:?}");
-    assert_eq!(
-        taken[0].written,
-        Written::Paths(["src/after".into()].into())
-    );
     assert!(after.dropped > before.dropped, "{after:?}");
     assert!(project.listing("node_modules").is_none());
+    if after.lost == start.lost {
+        assert_eq!(taken.len(), 1, "{taken:?}");
+        assert_eq!(
+            taken[0].written,
+            Written::Paths(["src/after".into()].into())
+        );
+        return;
+    }
+    // The platform lost track of the checkout, under load: what was written is then read
+    // again whole, and a marker may come late or be part of that. Still, nothing names
+    // the ignored folder, nor anything in it.
+    for update in &taken {
+        let markers = match &update.written {
+            Written::Paths(paths) => {
+                (paths.iter()).all(|path| ["src/before", "src/after"].contains(&&**path))
+            }
+            Written::Folders(folders) => {
+                (folders.iter()).all(|folder| ["", "src"].contains(&&**folder))
+            }
+            Written::Everything => true,
+        };
+        assert!(markers, "{after:?} {taken:?}");
+    }
 }
 
 #[test]
