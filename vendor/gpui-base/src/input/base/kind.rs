@@ -29,7 +29,7 @@ use ropey::Rope;
 use super::decorations::DecorationCollections;
 use super::lsp::{ContextMenuContent, HoverDefinition, InlineCompletion, SnippetSession};
 use crate::input::{
-    HighlightStyleResolver, InputEdit, InputHighlighter, RangeDecoration, SyntaxContext,
+    HighlightStyleResolver, Inlay, InputEdit, InputHighlighter, RangeDecoration, SyntaxContext,
     TextDecoration,
 };
 use crate::input::{HoverPopoverState, Lsp};
@@ -110,6 +110,12 @@ pub trait InputExtras: Default + 'static {
     /// The symbol range the hover popover is anchored to.
     fn hover_symbol_range(&self) -> Option<std::ops::Range<usize>> {
         None
+    }
+
+    /// The inlay hints at a byte range, both ends included, in ascending order, when an
+    /// LSP supplies them.
+    fn inlays(&self, _range: &std::ops::Range<usize>) -> &[Inlay] {
+        &[]
     }
 
     /// The inline completion to paint as ghost text.
@@ -222,6 +228,14 @@ pub trait InputModeKind: sealed::Sealed + Sized + 'static {
 
     /// Refreshes language-server state after the text changed.
     fn refresh_language_features(
+        _state: &mut InputBaseState<Self>,
+        _window: &mut Window,
+        _cx: &mut gpui::Context<InputBaseState<Self>>,
+    ) {
+    }
+
+    /// The input was laid out: `state.last_layout` says which rows are in view.
+    fn laid_out(
         _state: &mut InputBaseState<Self>,
         _window: &mut Window,
         _cx: &mut gpui::Context<InputBaseState<Self>>,

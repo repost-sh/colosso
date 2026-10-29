@@ -56,6 +56,18 @@ fn code(cx: &App) -> SettingsSection {
                 )),
         )
         .row(
+            SettingRow::new("Inlay hints")
+                .description(
+                    "The types and parameter names the language server infers, shown greyed \
+                     in the code where they'd go. They aren't in the file.",
+                )
+                .control(NativeSwitch::new(
+                    "inlay-hints",
+                    |settings| settings.inlay_hints,
+                    |settings, on| settings.inlay_hints = on,
+                )),
+        )
+        .row(
             SettingRow::new("rust-analyzer")
                 .description(
                     "Go to definition, hover and diagnostics in Rust files. Its menu in the \

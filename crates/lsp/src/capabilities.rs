@@ -8,7 +8,8 @@ use lsp_types::{
     CompletionItemTag, DiagnosticTag, DidChangeWatchedFilesClientCapabilities,
     DocumentSymbolClientCapabilities, DynamicRegistrationClientCapabilities,
     GeneralClientCapabilities, GotoCapability, HoverClientCapabilities,
-    InlayHintClientCapabilities, InlayHintResolveClientCapabilities, InsertTextMode,
+    InlayHintClientCapabilities, InlayHintResolveClientCapabilities,
+    InlayHintWorkspaceClientCapabilities, InsertTextMode,
     InsertTextModeSupport, MarkupKind, ParameterInformationSettings, PositionEncodingKind,
     PrepareSupportDefaultBehavior, PublishDiagnosticsClientCapabilities, RenameClientCapabilities,
     ResourceOperationKind, SemanticTokenModifier, SemanticTokenType,
@@ -82,6 +83,10 @@ fn workspace() -> WorkspaceClientCapabilities {
         }),
         workspace_folders: Some(true),
         configuration: Some(true),
+        // It may ask for every inlay hint to be fetched again.
+        inlay_hint: Some(InlayHintWorkspaceClientCapabilities {
+            refresh_support: Some(true),
+        }),
         ..WorkspaceClientCapabilities::default()
     }
 }

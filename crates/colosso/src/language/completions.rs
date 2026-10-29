@@ -248,7 +248,8 @@ impl CompletionProvider for Hooks {
         let (Some(ch), None) = (typed.next(), typed.next()) else {
             return false;
         };
-        is_identifier_char(ch) || self.is_trigger_character(new_text, cx)
+        self.offers_completions(cx)
+            && (is_identifier_char(ch) || self.is_trigger_character(new_text, cx))
     }
 
     /// Asked by the editor once it's done with the edit, which the server has heard of.
@@ -265,7 +266,7 @@ impl CompletionProvider for Hooks {
         if let Some(items) = self.completions.borrow_mut().ranked(start, &query) {
             return Task::ready(Ok(CompletionResponse::Array(items)));
         }
-        let Some(asked) = self.ask(rope, cx) else {
+        let Some(asked) = self.ask(rope, cx).filter(|_| self.offers_completions(cx)) else {
             return Task::ready(Ok(CompletionResponse::Array(Vec::new())));
         };
         let typed = context.trigger_character.filter(|typed| {
@@ -338,6 +339,11 @@ impl CompletionProvider for Hooks {
 }
 
 impl Hooks {
+    /// Whether the server completes words at all.
+    fn offers_completions(&self, cx: &App) -> bool {
+        (self.capabilities(cx)).is_some_and(|capabilities| capabilities.completion_provider.is_some())
+    }
+
     /// Whether `text` is a character the server asked to hear of as it's typed.
     fn is_trigger_character(&self, text: &str, cx: &App) -> bool {
         (self.capabilities(cx)).is_some_and(|capabilities| {

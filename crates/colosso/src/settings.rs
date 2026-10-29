@@ -88,6 +88,7 @@ pub struct SetBranchPrefix(pub BranchPrefix);
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
+#[expect(clippy::struct_excessive_bools, reason = "a settings file: each switch is one")]
 pub struct Settings {
     pub appearance: ThemePreference,
     pub light_theme: GradientTheme,
@@ -102,6 +103,9 @@ pub struct Settings {
     /// Whether a file picked in the Files panel's tree, by a click or the arrow keys, opens in
     /// a preview tab the next one picked takes over, rather than in a tab of its own.
     pub preview_files: bool,
+    /// Whether the types and parameter names a language server infers are shown greyed in
+    /// the code where they'd go (inlay hints). On, as in Zed and VS Code.
+    pub inlay_hints: bool,
     pub sidebar_open_on_launch: bool,
     /// The main checkouts of the projects in the sidebar, in order.
     pub projects: Vec<PathBuf>,
@@ -173,6 +177,7 @@ impl Default for Settings {
             files_panel_width: theme::FILES_WIDTH,
             files_tree_width: theme::FILES_TREE_WIDTH,
             preview_files: true,
+            inlay_hints: true,
             sidebar_open_on_launch: true,
             projects: Vec::new(),
             worktrees_dir: None,

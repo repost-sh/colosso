@@ -4,6 +4,7 @@
 //! and characters.
 
 mod completions;
+mod inlay_hints;
 mod support;
 
 use std::path::{Path, PathBuf};

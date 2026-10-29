@@ -2,6 +2,7 @@ mod clear_button;
 mod content_type;
 mod input;
 mod token;
+pub use gpui_base::input::Bias;
 pub use gpui_base::input::{
     ActivateToken, InlineToken, InlineTokenClickEvent, InlineTokenContext, InlineTokenError,
     InlineTokenHoverEvent, InlineTokenSpan, InputContent,
@@ -29,7 +30,8 @@ pub use gpui_base::input::{
     DeleteToBeginningOfLine, DeleteToEndOfLine, DeleteToNextWordEnd, DeleteToPreviousWordStart,
     DisplayMap, DisplayPoint, DocumentColorProvider, DocumentRangeSemanticTokensProvider,
     EditorState, Enter, Escape, FoldRange, GoToDefinition, HighlightStyleResolver,
-    HoverPopoverState, HoverProvider, Indent, IndentInline, InputEdit, InputEvent,
+    HoverPopoverState, HoverProvider, Indent, IndentInline, Inlay, InlayHintProvider, InputEdit,
+    InputEvent,
     InputHighlighter, InputHighlighterFactory, InputState, Lsp, MaskPattern, MoveDown, MoveEnd,
     MoveHome, MoveLeft, MovePageDown, MovePageUp, MoveRight, MoveToEnd, MoveToEndOfLine,
     MoveToNextWord, MoveToPreviousWord, MoveToStart, MoveToStartOfLine, MoveUp, Outdent,

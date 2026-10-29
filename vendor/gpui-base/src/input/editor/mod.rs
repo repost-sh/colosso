@@ -64,6 +64,7 @@ impl InputModeKind for EditorMode {
         if let Some(diagnostics) = state.diagnostics_mut() {
             diagnostics.edited(range, new_len, &text);
         }
+        state.extras.lsp.inlays.edited(range, new_len);
     }
 
     fn refresh_language_features(
@@ -73,6 +74,18 @@ impl InputModeKind for EditorMode {
     ) {
         let text = state.text().clone();
         state.extras.lsp.update(&text, window, cx);
+    }
+
+    fn laid_out(
+        state: &mut InputBaseState<Self>,
+        window: &mut Window,
+        cx: &mut gpui::Context<InputBaseState<Self>>,
+    ) {
+        let Some(viewport) = (state.last_layout.as_ref()).map(|layout| layout.visible_range_offset.clone())
+        else {
+            return;
+        };
+        state.extras.lsp.viewport_shown(viewport, window, cx);
     }
 
     fn accept_inline_completion(
@@ -285,6 +298,10 @@ impl crate::input::InputExtras for super::EditorExtras {
         self.hover_popover
             .as_ref()
             .map(|session| session.symbol_range.clone())
+    }
+
+    fn inlays(&self, range: &std::ops::Range<usize>) -> &[super::Inlay] {
+        self.lsp.inlays.within(range)
     }
 
     fn inline_completion_item(&self) -> Option<&lsp_types::InlineCompletionItem> {

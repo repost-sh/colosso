@@ -222,7 +222,12 @@ pub(super) async fn until(
     done: impl Fn(&App) -> bool,
 ) {
     let mut watched = stream::select_all(watched);
+    let began = std::time::Instant::now();
     while !cx.read(&done) {
+        assert!(
+            began.elapsed() < PATIENCE * 6,
+            "things kept changing, but it never got there"
+        );
         let changed = colosso_lsp::within(PATIENCE, watched.next()).await;
         let changed = changed.expect("nothing changed for too long, and it never got there");
         changed.expect("what was watched is gone");

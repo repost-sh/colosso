@@ -37,6 +37,7 @@ fn missing_fields_fall_back_to_defaults() {
     // As Zed and VS Code have them: previews on, no limit to the language servers, and none
     // stopped for being idle.
     assert!(settings.preview_files);
+    assert!(settings.inlay_hints);
     assert_eq!(settings.most_language_servers, None);
     assert!(!settings.stop_idle_language_servers);
     assert!(settings.runs_server("rust-analyzer", None));
