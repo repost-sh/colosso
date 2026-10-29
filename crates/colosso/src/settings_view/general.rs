@@ -14,7 +14,7 @@ use super::native_slider::NativeSlider;
 use super::native_switch::NativeSwitch;
 use crate::modal::{self, Button, Tone};
 use crate::projects::{display_path, pick_folder};
-use crate::settings::{self, BranchPrefix, SetBranchPrefix, SetMostLanguageServers};
+use crate::settings::{self, BranchPrefix, Scope, SetBranchPrefix, SetMostLanguageServers};
 use crate::theme;
 
 actions!(settings, [EditBranchPrefix]);
@@ -52,6 +52,30 @@ fn code(cx: &App) -> SettingsSection {
                     "preview-files",
                     |settings| settings.preview_files,
                     |settings, on| settings.preview_files = on,
+                )),
+        )
+        .row(
+            SettingRow::new("rust-analyzer")
+                .description(
+                    "Go to definition, hover and diagnostics in Rust files. Its menu in the \
+                     status bar turns it off for one project only.",
+                )
+                .control(NativeSwitch::new(
+                    "rust-analyzer",
+                    |settings| settings.runs_server("rust-analyzer", None),
+                    |settings, on| settings.set_server("rust-analyzer", &Scope::Everywhere, on),
+                )),
+        )
+        .row(
+            SettingRow::new("Stop idle language servers")
+                .description(
+                    "Stop a language server ten minutes after the last file it knows is \
+                     closed. It starts, and indexes, again with the next one.",
+                )
+                .control(NativeSwitch::new(
+                    "stop-idle-language-servers",
+                    |settings| settings.stop_idle_language_servers,
+                    |settings, on| settings.stop_idle_language_servers = on,
                 )),
         )
         .row(

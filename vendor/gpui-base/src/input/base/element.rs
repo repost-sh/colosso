@@ -2,7 +2,7 @@ use crate::input::{InputExtras as _, InputModeKind};
 use gpui::Corners;
 use gpui::Half;
 use gpui::{
-    AnyElement, App, Bounds, Edges, Element, ElementId, ElementInputHandler, Entity,
+    AnyElement, App, Bounds, ContentMask, Edges, Element, ElementId, ElementInputHandler, Entity,
     GlobalElementId,
 };
 use gpui::{
@@ -3322,183 +3322,189 @@ impl<M: InputModeKind> Element for TextElement<M> {
             px(0.)
         };
 
-        // Paint glyph backgrounds
-        //
-        // gpui's `paint` only draws glyphs, underlines, and strikethroughs, so decoration
-        // backgrounds need their own pass. It runs ahead of the indent guides, selections,
-        // and text so a highlighted range sits under them instead of covering them.
-        let mut offset_y = invisible_top_padding;
-        for (line, &buffer_line) in prepaint
-            .last_layout
-            .lines
-            .iter()
-            .zip(prepaint.last_layout.visible_buffer_lines.iter())
-        {
-            let p = point(
-                origin.x + prepaint.last_layout.line_number_width + scroll_offset,
-                origin.y + offset_y,
-            );
-
-            line.paint_background(
-                p,
-                line_height,
-                text_align,
-                Some(prepaint.last_layout.content_width),
-                window,
-                cx,
-            );
-
-            offset_y += line.size(line_height).height;
-
-            // Ghost lines shift every later line down.
-            if Some(buffer_line) == prepaint.current_row {
-                offset_y += prepaint.ghost_lines_height;
-            }
-        }
-
-        // Paint indent guides
-        if let Some(path) = prepaint.indent_guides_path.take() {
-            window.paint_path(path, editor_style.border.opacity(0.85));
-        }
-
-        // Application decorations sit below the user's selection.
-        for (path, color) in &prepaint.range_decoration_fills {
-            window.paint_path(path.clone(), *color);
-        }
-        for (path, color) in &prepaint.range_decoration_frames {
-            window.paint_path(path.clone(), *color);
-        }
-
-        // Paint selections
-        if window.is_window_active() {
-            let secondary_selection = Hsla {
-                s: 0.1,
-                ..editor_style.selection
-            };
-            for (path, is_active) in prepaint.search_match_paths.iter() {
-                window.paint_path(path.clone(), secondary_selection);
-
-                if *is_active {
-                    window.paint_path(path.clone(), editor_style.selection);
-                }
-            }
-
-            for path in prepaint.selection_paths.drain(..) {
-                window.paint_path(path, editor_style.selection);
-            }
-
-            // Paint hover highlight
-            if let Some(path) = prepaint.hover_highlight_path.take() {
-                window.paint_path(path, secondary_selection);
-            }
-        }
-
-        // Paint document colors
-        for (path, color) in prepaint.document_color_paths.iter() {
-            let color = if disabled { color.opacity(0.5) } else { *color };
-            window.paint_path(path.clone(), color);
-        }
-
-        // Paint text with inline completion ghost line support
-        let mut offset_y = invisible_top_padding;
-        let ghost_lines = &prepaint.ghost_lines;
-        let has_ghost_lines = !ghost_lines.is_empty();
-
         // Track the y-position of the cursor row for positioning the first line suffix
         let mut cursor_row_y = None;
+        // Text, selections and carets stay right of the gutter, which then needn't be
+        // opaque to hide text scrolled under it: an editor without a background of its own
+        // shows what's behind it under its line numbers too.
+        let mut text_clip = window.content_mask().bounds;
+        let text_left = origin.x + prepaint.last_layout.line_number_width;
+        text_clip.size.width -= (text_left - text_clip.origin.x).max(px(0.));
+        text_clip.origin.x = text_clip.origin.x.max(text_left);
+        window.with_content_mask(Some(ContentMask { bounds: text_clip }), |window| {
+            // Paint glyph backgrounds
+            //
+            // gpui's `paint` only draws glyphs, underlines, and strikethroughs, so decoration
+            // backgrounds need their own pass. It runs ahead of the indent guides, selections,
+            // and text so a highlighted range sits under them instead of covering them.
+            let mut offset_y = invisible_top_padding;
+            for (line, &buffer_line) in prepaint
+                .last_layout
+                .lines
+                .iter()
+                .zip(prepaint.last_layout.visible_buffer_lines.iter())
+            {
+                let p = point(
+                    origin.x + prepaint.last_layout.line_number_width + scroll_offset,
+                    origin.y + offset_y,
+                );
 
-        for (line, &buffer_line) in prepaint
-            .last_layout
-            .lines
-            .iter()
-            .zip(prepaint.last_layout.visible_buffer_lines.iter())
-        {
-            let row = buffer_line;
-            let line_y = origin.y + offset_y;
-            let p = point(
-                origin.x + prepaint.last_layout.line_number_width + (scroll_offset),
-                line_y,
-            );
+                line.paint_background(
+                    p,
+                    line_height,
+                    text_align,
+                    Some(prepaint.last_layout.content_width),
+                    window,
+                    cx,
+                );
 
-            // Paint the actual line
-            _ = line.paint(
-                p,
-                line_height,
-                text_align,
-                Some(prepaint.last_layout.content_width),
-                window,
-                cx,
-            );
-            offset_y += line.size(line_height).height;
+                offset_y += line.size(line_height).height;
 
-            if Some(row) == prepaint.current_row {
-                cursor_row_y = Some(line_y);
-            }
-
-            // After the cursor row, paint ghost lines (which shifts subsequent content down)
-            if has_ghost_lines && Some(row) == prepaint.current_row {
-                let ghost_x = origin.x + prepaint.last_layout.line_number_width;
-
-                for ghost_line in ghost_lines {
-                    let ghost_p = point(ghost_x, origin.y + offset_y);
-
-                    // Paint semi-transparent background for ghost line
-                    let ghost_bounds = Bounds::new(
-                        ghost_p,
-                        size(
-                            bounds.size.width - prepaint.last_layout.line_number_width,
-                            line_height,
-                        ),
-                    );
-                    window.paint_quad(fill(ghost_bounds, editor_background));
-
-                    // Paint ghost line text
-                    _ = ghost_line.paint(
-                        ghost_p,
-                        line_height,
-                        text_align,
-                        Some(prepaint.last_layout.content_width),
-                        window,
-                        cx,
-                    );
-                    offset_y += line_height;
+                // Ghost lines shift every later line down.
+                if Some(buffer_line) == prepaint.current_row {
+                    offset_y += prepaint.ghost_lines_height;
                 }
             }
-        }
 
-        for element in &mut prepaint.token_elements {
-            element.paint(window, cx);
-        }
-
-        // Paint blinking cursors (shared blink state for all carets)
-        if focused && show_cursor {
-            for cursor_info in prepaint.cursor_infos_with_scroll() {
-                window.paint_quad(fill(
-                    snap_caret_to_device_pixels(cursor_info.bounds, window.scale_factor()),
-                    editor_style.caret,
-                ));
+            // Paint indent guides
+            if let Some(path) = prepaint.indent_guides_path.take() {
+                window.paint_path(path, editor_style.border.opacity(0.85));
             }
-        }
+
+            // Application decorations sit below the user's selection.
+            for (path, color) in &prepaint.range_decoration_fills {
+                window.paint_path(path.clone(), *color);
+            }
+            for (path, color) in &prepaint.range_decoration_frames {
+                window.paint_path(path.clone(), *color);
+            }
+
+            // Paint selections
+            if window.is_window_active() {
+                let secondary_selection = Hsla {
+                    s: 0.1,
+                    ..editor_style.selection
+                };
+                for (path, is_active) in prepaint.search_match_paths.iter() {
+                    window.paint_path(path.clone(), secondary_selection);
+
+                    if *is_active {
+                        window.paint_path(path.clone(), editor_style.selection);
+                    }
+                }
+
+                for path in prepaint.selection_paths.drain(..) {
+                    window.paint_path(path, editor_style.selection);
+                }
+
+                // Paint hover highlight
+                if let Some(path) = prepaint.hover_highlight_path.take() {
+                    window.paint_path(path, secondary_selection);
+                }
+            }
+
+            // Paint document colors
+            for (path, color) in prepaint.document_color_paths.iter() {
+                let color = if disabled { color.opacity(0.5) } else { *color };
+                window.paint_path(path.clone(), color);
+            }
+
+            // Paint text with inline completion ghost line support
+            let mut offset_y = invisible_top_padding;
+            let ghost_lines = &prepaint.ghost_lines;
+            let has_ghost_lines = !ghost_lines.is_empty();
+
+
+            for (line, &buffer_line) in prepaint
+                .last_layout
+                .lines
+                .iter()
+                .zip(prepaint.last_layout.visible_buffer_lines.iter())
+            {
+                let row = buffer_line;
+                let line_y = origin.y + offset_y;
+                let p = point(
+                    origin.x + prepaint.last_layout.line_number_width + (scroll_offset),
+                    line_y,
+                );
+
+                // Paint the actual line
+                _ = line.paint(
+                    p,
+                    line_height,
+                    text_align,
+                    Some(prepaint.last_layout.content_width),
+                    window,
+                    cx,
+                );
+                offset_y += line.size(line_height).height;
+
+                if Some(row) == prepaint.current_row {
+                    cursor_row_y = Some(line_y);
+                }
+
+                // After the cursor row, paint ghost lines (which shifts subsequent content down)
+                if has_ghost_lines && Some(row) == prepaint.current_row {
+                    let ghost_x = origin.x + prepaint.last_layout.line_number_width;
+
+                    for ghost_line in ghost_lines {
+                        let ghost_p = point(ghost_x, origin.y + offset_y);
+
+                        // Paint semi-transparent background for ghost line
+                        let ghost_bounds = Bounds::new(
+                            ghost_p,
+                            size(
+                                bounds.size.width - prepaint.last_layout.line_number_width,
+                                line_height,
+                            ),
+                        );
+                        window.paint_quad(fill(ghost_bounds, editor_background));
+
+                        // Paint ghost line text
+                        _ = ghost_line.paint(
+                            ghost_p,
+                            line_height,
+                            text_align,
+                            Some(prepaint.last_layout.content_width),
+                            window,
+                            cx,
+                        );
+                        offset_y += line_height;
+                    }
+                }
+            }
+
+            for element in &mut prepaint.token_elements {
+                element.paint(window, cx);
+            }
+
+            // Paint blinking cursors (shared blink state for all carets)
+            if focused && show_cursor {
+                for cursor_info in prepaint.cursor_infos_with_scroll() {
+                    window.paint_quad(fill(
+                        snap_caret_to_device_pixels(cursor_info.bounds, window.scale_factor()),
+                        editor_style.caret,
+                    ));
+                }
+            }
+        });
 
         // Paint line numbers
         let mut offset_y = px(0.);
         if let Some(line_numbers) = prepaint.line_numbers.as_ref() {
             offset_y += invisible_top_padding;
 
-            // The gutter is a fixed overlay above horizontally scrolling text.
-            // Always give it an opaque editor background when the theme does not
-            // provide a dedicated gutter color, and cover the complete gutter so
-            // text cannot show through its right-side spacing/fold-icon area.
-            let gutter_bg = editor_style
-                .editor_gutter_background
-                .unwrap_or(editor_background);
+            // The gutter is a fixed overlay above horizontally scrolling text, which is
+            // clipped to its right, so it's painted only when the theme gives it a colour.
             let gutter_bounds = editor_gutter_bounds(
                 input_bounds,
                 prepaint.last_layout.line_number_width,
                 prepaint.ghost_lines_height,
                 editor_paddings,
             );
-            window.paint_quad(fill(gutter_bounds, gutter_bg));
+            if let Some(gutter_bg) = editor_style.editor_gutter_background {
+                window.paint_quad(fill(gutter_bounds, gutter_bg));
+            }
 
             // Each item is the normal lines.
             for (lines, &buffer_line) in line_numbers

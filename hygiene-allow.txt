@@ -8,6 +8,6 @@ crates/colosso/src/changes/view.rs  # 1439 lines
 # The theme picker's pad, presets, opacity slider and texture dial.
 crates/colosso/src/picker.rs  # 1057 lines
 # The window: rails, card, panels, navigation and resizing.
-crates/colosso/src/shell.rs  # 684 lines
+crates/colosso/src/shell.rs  # 673 lines
 # Listing changes, diffing files, and staging, unstaging and discarding them.
 crates/git/src/changes.rs  # 725 lines

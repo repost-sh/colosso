@@ -303,6 +303,9 @@ impl Shell {
         let selected = workspace
             .branch()
             .map(|branch| branch.worktree.path.as_path());
+        let located = (workspace.project().zip(selected))
+            .map(|(project, root)| (root, project.path.as_path()));
+        self.status_bar.follow(located, cx);
         let reselected = panel.selected.as_deref() != selected;
         if reselected {
             if let Some(left) = panel.shown() {

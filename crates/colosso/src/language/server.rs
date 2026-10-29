@@ -18,6 +18,7 @@ use futures::stream::{self, LocalBoxStream};
 use gpui_kit::{AppContext as _, AsyncApp, Context, EventEmitter, SharedString, Task, WeakEntity};
 
 use super::diagnostics::Published;
+use super::server_log::Log;
 use super::sync::Open;
 use super::watch::Watch;
 use super::{CRASH_WINDOW, Kind, Launcher, MOST_RESTARTS, SHUTDOWN, backoff};
@@ -86,6 +87,7 @@ pub struct Server {
     work: Vec<Work>,
     /// Whether it said it's done with everything queued.
     quiescent: bool,
+    /// Whether this process has been ready: work after that is reloading, not starting.
     ready_once: bool,
     /// What it says is wrong with the workspace, if anything.
     health: Option<SharedString>,
@@ -94,6 +96,9 @@ pub struct Server {
     pub(super) documents: HashMap<Arc<Path>, Open>,
     pub(super) published: Published,
     pub(super) watch: Watch,
+    /// Its own log, begun when it first starts.
+    log: Log,
+    logging: bool,
 }
 
 impl EventEmitter<Activity> for Server {}
@@ -101,6 +106,7 @@ impl EventEmitter<Activity> for Server {}
 impl Server {
     pub(super) fn new(kind: Kind, root: PathBuf) -> Self {
         Server {
+            log: Log::of(kind, &root),
             kind,
             root,
             state: State::Stopped,
@@ -118,6 +124,7 @@ impl Server {
             documents: HashMap::new(),
             published: Published::default(),
             watch: Watch::default(),
+            logging: false,
         }
     }
 
@@ -136,6 +143,11 @@ impl Server {
     /// What the server says is wrong with the workspace, while it says so.
     pub fn health(&self) -> Option<&SharedString> {
         self.health.as_ref()
+    }
+
+    /// Its own log.
+    pub fn log(&self) -> &Log {
+        &self.log
     }
 
     /// Whether it's restarting by itself after a crash.
@@ -169,15 +181,23 @@ impl Server {
         self.restarting = None;
         self.running = None;
         self.reset();
+        // A new process: starting until it's first ready, and said ready again then.
+        self.ready_once = false;
         self.started = Some(cx.background_executor().now());
         self.set_state(State::Starting, cx);
+        if !self.logging {
+            self.logging = true;
+            self.log.begin();
+        }
         let (kind, root) = (self.kind, self.root.clone());
-        log::info!("starting {} for {}", kind.name(), root.display());
+        self.tell(log::Level::Info, &format!("starting, in {}", root.display()));
+        let log = self.log.path().map(Path::to_path_buf);
         self.running = Some(cx.spawn(async move |this, cx| {
             let launching = root.clone();
             let started = cx
                 .background_spawn(async move {
-                    let launch = launcher(kind, &launching)?;
+                    let mut launch = launcher(kind, &launching)?;
+                    launch.log = log;
                     Client::start(&launch).map_err(|error| error.to_string())
                 })
                 .await;
@@ -222,8 +242,8 @@ impl Server {
         let client = self.client.take();
         self.reset();
         self.set_state(State::Stopped, cx);
+        self.tell(log::Level::Info, &format!("stopping: {why}"));
         let (name, root) = (self.kind.name(), self.root.display().to_string());
-        log::info!("stopping {name} for {root}: {why}");
         // Dropped while it was starting, the client was killed with the task.
         let Some(client) = client else {
             return Task::ready(());
@@ -246,6 +266,12 @@ impl Server {
         }
     }
 
+    /// Says `line` of the server in the app's log, as `level`, and in its own.
+    fn tell(&self, level: log::Level, line: &str) {
+        log::log!(level, "{} for {}: {line}", self.kind.name(), self.root.display());
+        self.log.note(line);
+    }
+
     fn set_state(&mut self, state: State, cx: &mut Context<Self>) {
         if self.state != state {
             self.state = state;
@@ -254,11 +280,7 @@ impl Server {
     }
 
     fn failed(&mut self, why: String, cx: &mut Context<Self>) {
-        log::warn!(
-            "{} for {} failed: {why}",
-            self.kind.name(),
-            self.root.display()
-        );
+        self.tell(log::Level::Warn, &format!("couldn't start: {why}"));
         self.running = None;
         self.set_state(State::Failed(why.into()), cx);
     }
@@ -266,11 +288,9 @@ impl Server {
     /// Takes the initialized server, and opens on it the files already open.
     fn initialized(&mut self, client: &Client, cx: &mut Context<Self>) {
         self.encoding = client.encoding();
-        log::info!(
-            "{} for {} initialized, speaking {:?}",
-            self.kind.name(),
-            self.root.display(),
-            self.encoding
+        self.tell(
+            log::Level::Info,
+            &format!("initialized, speaking {:?}", self.encoding),
         );
         self.client = Some(client.clone());
         self.send_all();
@@ -287,7 +307,7 @@ impl Server {
                     .then(|| status.message.clone().unwrap_or_default().into());
                 if health != self.health {
                     if let Some(message) = &health {
-                        log::warn!("{} says: {message}", self.kind.name());
+                        self.tell(log::Level::Warn, &format!("says: {message}"));
                     }
                     self.health = health;
                     cx.notify();
@@ -356,11 +376,10 @@ impl Server {
                     .now()
                     .saturating_duration_since(started)
             });
-            log::info!(
-                "{} for {} is ready, {:.1} s after it started",
-                self.kind.name(),
-                self.root.display(),
-                took.unwrap_or_default().as_secs_f64()
+            let took = took.unwrap_or_default().as_secs_f64();
+            self.tell(
+                log::Level::Info,
+                &format!("ready, {took:.1} s after it started"),
             );
         }
         self.set_state(state, cx);
@@ -373,9 +392,8 @@ impl Server {
         self.running = None;
         self.reset();
         cx.notify();
-        let (name, root) = (self.kind.name(), self.root.display().to_string());
         if !exit.crashed {
-            log::info!("{name} for {root} exited");
+            self.tell(log::Level::Info, "exited");
             return self.set_state(State::Stopped, cx);
         }
         let said: Vec<&str> = (exit.stderr.iter().map(|line| line.trim()))
@@ -388,24 +406,25 @@ impl Server {
         } else {
             last.join(" ")
         };
-        log::warn!("{name} for {root} crashed: {why}");
+        self.tell(log::Level::Warn, &format!("crashed: {why}"));
         let now = cx.background_executor().now();
         (self.crashes).retain(|at| now.saturating_duration_since(*at) < CRASH_WINDOW);
         self.crashes.push_back(now);
         self.set_state(State::Crashed(why.into()), cx);
         if self.crashes.len() > MOST_RESTARTS {
-            log::warn!(
-                "{name} for {root} crashed {} times in {} minutes; it's left stopped until retried",
+            let line = format!(
+                "crashed {} times in {} minutes; it's left stopped until it's restarted",
                 self.crashes.len(),
                 CRASH_WINDOW.as_secs() / 60
             );
+            self.tell(log::Level::Warn, &line);
             return;
         }
         let Some(launcher) = self.launcher.clone() else {
             return;
         };
         let delay = backoff(self.crashes.len());
-        log::info!("restarting {name} for {root} in {delay:?}");
+        self.tell(log::Level::Info, &format!("restarting in {delay:?}"));
         self.restarting = Some(cx.spawn(async move |this, cx| {
             cx.background_executor().timer(delay).await;
             this.update(cx, |this, cx| this.start(launcher, cx)).ok();

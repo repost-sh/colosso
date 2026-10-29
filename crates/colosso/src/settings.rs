@@ -9,6 +9,10 @@ use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::{Action, App, Context, Global, Subscription, Task, Window};
 use serde::{Deserialize, Serialize};
 
+mod language_servers;
+
+pub use language_servers::{LanguageServers, Scope, SetLanguageServer};
+
 use crate::gradient::GradientTheme;
 use crate::key_repeat::KeyRepeat;
 use crate::theme::{self, ThemePreference};
@@ -109,6 +113,12 @@ pub struct Settings {
     /// and VS Code. rust-analyzer takes a few gigabytes on a big workspace; past this, the
     /// least recently used one stops for the next.
     pub most_language_servers: Option<usize>,
+    /// Whether a language server stops once it has had no file open for ten minutes. Off,
+    /// as in Zed and VS Code: a server runs only once a file of its language is open, and
+    /// starting it again means indexing again.
+    pub stop_idle_language_servers: bool,
+    /// Which language servers run, everywhere and in each project.
+    pub language_servers: LanguageServers,
     /// How a held arrow key repeats.
     pub key_repeat: KeyRepeat,
 }
@@ -168,6 +178,8 @@ impl Default for Settings {
             worktrees_dir: None,
             branch_prefix: BranchPrefix::default(),
             most_language_servers: None,
+            stop_idle_language_servers: false,
+            language_servers: language_servers::every_server(),
             key_repeat: KeyRepeat::default(),
         }
     }
@@ -203,10 +215,12 @@ impl Global for Store {}
 
 /// Loads the settings, falling back to the defaults for a missing or unreadable file.
 pub fn init(cx: &mut App) {
+    // Tests keep no file: each starts from the defaults, and none writes over the user's.
     let path = std::env::var_os("COLOSSO_CONFIG_DIR")
         .map(PathBuf::from)
         .or_else(|| dirs::data_dir().map(|dir| dir.join(APP_ID)))
-        .map(|dir| dir.join(FILE));
+        .map(|dir| dir.join(FILE))
+        .filter(|_| !cfg!(test));
     let settings = path.as_deref().map(load).unwrap_or_default();
     let seen = path.as_deref().and_then(modified);
     cx.set_global(Store {
@@ -217,7 +231,7 @@ pub fn init(cx: &mut App) {
         seen,
     });
     // Edits to the file while the app runs, a key's repeat tuned by hand say, take effect
-    // within half a second. Tests share one file, so they leave it be.
+    // within half a second. Tests leave the file be.
     #[cfg(not(test))]
     cx.spawn(async move |cx| {
         loop {
@@ -236,6 +250,9 @@ pub fn init(cx: &mut App) {
     });
     cx.on_action(|SetMostLanguageServers(most): &SetMostLanguageServers, cx| {
         update(cx, |settings| settings.most_language_servers = *most);
+    });
+    cx.on_action(|SetLanguageServer { name, scope, on }: &SetLanguageServer, cx| {
+        update(cx, |settings| settings.set_server(name, scope, *on));
     });
     cx.on_action(|SetBranchPrefix(prefix): &SetBranchPrefix, cx| {
         update(cx, |settings| settings.branch_prefix = prefix.clone());
@@ -264,6 +281,14 @@ pub fn path(cx: &App) -> Option<&Path> {
 /// Re-renders the observing view whenever a setting changes.
 pub fn observe<V: 'static>(cx: &mut Context<V>) -> Subscription {
     cx.observe_global::<Store>(|_, cx| cx.notify())
+}
+
+/// Calls `changed` whenever a setting changes.
+pub fn on_change<V: 'static>(
+    cx: &mut Context<V>,
+    changed: impl FnMut(&mut V, &mut Context<V>) + 'static,
+) -> Subscription {
+    cx.observe_global::<Store>(changed)
 }
 
 /// Calls `changed` whenever a setting changes, with the window `cx`'s view is in.

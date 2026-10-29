@@ -1,5 +1,6 @@
 mod arc;
 mod backdrop;
+mod bottom;
 mod changes;
 mod checkout;
 mod checkouts;
@@ -51,6 +52,8 @@ fn init(cx: &mut App) {
     right_panel::init(cx);
     navigation::bind_keys(cx);
     go_to_file::init(cx);
+    #[cfg(target_os = "macos")]
+    native::init(cx);
 }
 
 fn main() -> ExitCode {

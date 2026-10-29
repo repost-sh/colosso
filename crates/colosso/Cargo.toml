@@ -87,6 +87,8 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
   # The settings' sliders and switches, which AppKit draws (native, settings_view/native_*).
   "NSApplication",
   "NSControl",
+  # The blur behind the editor's cards (native/glass.rs).
+  "NSVisualEffectView",
   "NSResponder",
   "NSSlider",
   "NSSliderCell",

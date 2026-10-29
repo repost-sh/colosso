@@ -29,7 +29,8 @@ use crate::settings_view::{self, EditBranchPrefix, SettingsSidebar};
 use crate::sidebar::{SidebarFrame, SidebarResize, slide_out};
 use crate::pane::close_button;
 use crate::theme::Palette;
-use crate::{arc, backdrop, gradient, modal, orca, pane, picker, projects, theme};
+use crate::bottom::StatusBar;
+use crate::{arc, backdrop, bottom, gradient, modal, orca, pane, picker, projects, theme};
 
 /// How long the sidebar takes to slide fully in or out.
 const SIDEBAR_SLIDE: Duration = Duration::from_millis(180);
@@ -74,6 +75,7 @@ pub struct Shell {
     /// The selected checkout's changes or files, beside the chat.
     pub right_panel: RightPanel,
     bottom_panel_open: bool,
+    pub status_bar: StatusBar,
     /// Horizontal travel of a two-finger swipe in progress over the Arc sidebar.
     pub swipe: Option<f32>,
     pub focus: FocusHandle,
@@ -126,6 +128,7 @@ impl Shell {
             sidebar_slide: None,
             right_panel: RightPanel::default(),
             bottom_panel_open: false,
+            status_bar: StatusBar::new(cx),
             swipe: None,
             focus,
             search,
@@ -335,7 +338,7 @@ impl Shell {
                     main.child(orca::tab_strip(self, cx))
                 })
                 .child(self.workspace_content(p))
-                .when(self.bottom_panel_open, |main| main.child(bottom_panel(p)))
+                .when(self.bottom_panel_open, |main| main.child(bottom::panel(p)))
                 .into_any_element(),
         }
     }
@@ -395,7 +398,6 @@ impl Render for Shell {
             .flex_1()
             .min_w_0()
             .mr(px(theme::GUTTER))
-            .mb(px(theme::GUTTER))
             .rounded(px(theme::CARD_RADIUS))
             .border_1()
             .border_color(p.hairline)
@@ -437,6 +439,7 @@ impl Render for Shell {
                     .children(glass_sidebar)
                     .child(card),
             )
+            .child(self.status_bar.render(p))
     }
 }
 
@@ -667,18 +670,4 @@ pub fn project_error(error: SharedString, p: Palette) -> Div {
 
 pub fn ellipsized(text: impl IntoElement) -> Div {
     div().min_w_0().truncate().child(text)
-}
-
-fn bottom_panel(p: Palette) -> impl IntoElement {
-    div()
-        .h(px(200.))
-        .flex_shrink_0()
-        .border_t_1()
-        .border_color(p.hairline)
-        .p_3()
-        .font_family(theme::MONO)
-        .text_sm()
-        .text_color(p.muted)
-        .bg(p.sunken)
-        .child("Terminal")
 }
