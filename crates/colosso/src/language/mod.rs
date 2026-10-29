@@ -9,12 +9,17 @@
 //!   crashes, stopped; the files open on it (`sync`), what it published for them
 //!   (`diagnostics`), and the files it asked to hear about (`watch`).
 //! - `providers`: the editor's hooks, go to definition and hover, positions converted with
-//!   the encoding the server chose; `navigate`, a definition in another file turned into a
-//!   place in it for the viewer.
+//!   the encoding the server chose; `completions`, the words that could complete the one
+//!   being typed, ranked here as it's typed on; `code_actions`, what could be done about the
+//!   code, and `edits`, the chosen one's edit applied; `navigate`, a definition in another
+//!   file turned into a place in it for the viewer.
 //! - `status`: the selected checkout's servers in the status bar, each with its menu;
 //!   `server_log`, each server's own log, which the menu shows.
 
+mod code_actions;
+mod completions;
 mod diagnostics;
+mod edits;
 mod navigate;
 mod providers;
 mod registry;
@@ -34,7 +39,7 @@ use std::time::Duration;
 
 use colosso_lsp::Launch;
 use colosso_lsp::servers::{BASEDPYRIGHT, Curl, NodeServer, NpmCli, RUST_ANALYZER, VTSLS, node};
-use gpui_kit::component::input::GoToDefinition;
+use gpui_kit::component::input::{GoToDefinition, ShowCompletions};
 use gpui_kit::{App, KeyBinding};
 
 pub use providers::Attached;
@@ -146,7 +151,8 @@ impl From<String> for Failure {
 pub type Launcher = Arc<dyn Fn(Kind, &Path) -> Result<Launch, Failure> + Send + Sync>;
 
 /// Runs the language servers the app knows, fetched into its data folder when they aren't
-/// on PATH; binds F12 to go to a definition; and has the status bar's menus act.
+/// on PATH; binds F12 to go to a definition and ctrl-space to complete; and has the status
+/// bar's menus act.
 pub fn init(cx: &mut App) {
     install(managed(true), cx);
     bind_keys(cx);
@@ -191,7 +197,11 @@ fn node_server(server: &NodeServer, data: &Path, root: &Path) -> Result<Launch, 
     Ok(server.launch(node, &script, root))
 }
 
-/// F12 goes to the definition of what's under the cursor.
+/// F12 goes to the definition of what's under the cursor; ctrl-space asks for completions
+/// without typing.
 fn bind_keys(cx: &mut App) {
-    cx.bind_keys([KeyBinding::new("f12", GoToDefinition, Some("Input"))]);
+    cx.bind_keys([
+        KeyBinding::new("f12", GoToDefinition, Some("Input")),
+        KeyBinding::new("ctrl-space", ShowCompletions, Some("Input")),
+    ]);
 }

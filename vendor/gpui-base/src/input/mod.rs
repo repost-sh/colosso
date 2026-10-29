@@ -116,8 +116,8 @@ pub use lsp::{
     CodeActionItem, CodeActionMenuState, CodeActionProvider, CompletionHighlighter,
     CompletionMenuOptions, CompletionMenuState, CompletionProvider, DefinitionProvider,
     DocumentColorProvider, DocumentRangeSemanticTokensProvider, HoverPopoverState, HoverProvider,
-    InputOverlayKind, Lsp, ShowDocumentHandler, highlight_characters, highlight_contains,
-    highlight_prefix,
+    InputOverlayKind, Lsp, ShowDocumentHandler, highlight_characters,
+    highlight_contains, highlight_prefix,
 };
 pub use lsp_types::Position;
 pub use mask_pattern::MaskPattern;
@@ -125,7 +125,7 @@ pub use mask_pattern::MaskPattern;
 #[doc(hidden)]
 pub use native::set_text_content_type;
 pub use native::{NativeMenu, NativeMenuItem};
-pub use rope_ext::{InputEdit, Point, RopeExt, RopeLines};
+pub use rope_ext::{InputEdit, Point, RopeExt, RopeLines, is_identifier_char};
 pub use ropey::Rope;
 pub use search::{SearchMatcher, SearchSession};
 pub use state::*;

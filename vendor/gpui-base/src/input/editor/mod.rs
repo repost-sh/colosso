@@ -33,6 +33,7 @@ impl InputModeKind for EditorMode {
 
     fn reset_language_features(state: &mut InputBaseState<Self>) {
         state.extras.lsp.reset();
+        state.extras.snippet = None;
     }
 
     fn reset_annotations(state: &mut InputBaseState<Self>) {
@@ -84,6 +85,18 @@ impl InputModeKind for EditorMode {
 
     fn has_inline_completion(state: &InputBaseState<Self>) -> bool {
         state.has_inline_completion()
+    }
+
+    fn snippet_tab(
+        state: &mut InputBaseState<Self>,
+        backwards: bool,
+        cx: &mut gpui::Context<InputBaseState<Self>>,
+    ) -> bool {
+        state.snippet_tab(backwards, cx)
+    }
+
+    fn end_snippet(state: &mut InputBaseState<Self>) -> bool {
+        state.extras.snippet.take().is_some()
     }
 
     fn on_click(

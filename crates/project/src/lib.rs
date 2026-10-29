@@ -31,7 +31,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 pub use entry::{Entry, Kind, natural, order};
 pub use feed::{Counts, Feed, Git, Scanned, Subscription, Update};
 pub use files::Folder;
-pub use finder::{Finder, Found, MOST_FOUND, Query, Results};
+pub use finder::{Finder, Found, MOST_FOUND, Query, Results, matched_bytes};
 pub use ignores::Excludes;
 pub use paths::Written;
 pub use rows::{Listings, Reveal, Row, Rows};

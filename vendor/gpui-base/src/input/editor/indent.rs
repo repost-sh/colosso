@@ -201,11 +201,18 @@ impl InputBaseState<crate::input::EditorMode> {
 impl<M: InputModeKind> InputBaseState<M> {
     pub(super) fn indent_inline(
         &mut self,
-        _: &IndentInline,
+        action: &IndentInline,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // First, try to accept inline completion if present
+        // An open menu takes Tab as its choice, a snippet as its next stop,
+        // and an inline completion as its acceptance, before Tab indents.
+        if M::handle_context_menu_action(self, Box::new(action.clone()), window, cx) {
+            return;
+        }
+        if M::snippet_tab(self, false, cx) {
+            return;
+        }
         if M::accept_inline_completion(self, window, cx) {
             return;
         }
@@ -222,6 +229,9 @@ impl<M: InputModeKind> InputBaseState<M> {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if M::snippet_tab(self, true, cx) {
+            return;
+        }
         self.outdent(false, window, cx);
     }
 

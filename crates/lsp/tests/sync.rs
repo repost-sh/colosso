@@ -70,6 +70,7 @@ fn reference(text: &str, offset: usize, encoding: Encoding) -> Position {
     let character = match encoding {
         Encoding::Utf8 => column.len(),
         Encoding::Utf16 => column.encode_utf16().count(),
+        Encoding::Utf32 => column.chars().count(),
     };
     Position::new(line as u32, character as u32)
 }

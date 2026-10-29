@@ -13,6 +13,7 @@
 mod pool;
 mod query;
 mod rank;
+pub use rank::matched_bytes;
 mod scan;
 #[cfg(test)]
 mod tests;

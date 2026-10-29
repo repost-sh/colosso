@@ -14,6 +14,9 @@ colosso-lsp = { path = "../lsp" }
 # The files a language server asked to hear about, matched by its globs: ripgrep's matcher,
 # already in the lockfile.
 globset = "0.4"
+# The completions a server listed, ranked against the word as it's typed on: the matcher the
+# command palette already uses (crates/project), so already in the lockfile.
+nucleo-matcher = "0.3"
 futures = "0.3"
 # Syntax highlighting for diffs: syntect's parser with bat's syntaxes, which add TypeScript,
 # TOML, Svelte and more. Pure-Rust regexes, so nothing to link.

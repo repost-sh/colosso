@@ -3,6 +3,7 @@
 //! must be sent, in order. Positions are UTF-16, on lines where that differs from both bytes
 //! and characters.
 
+mod completions;
 mod support;
 
 use std::path::{Path, PathBuf};
@@ -163,14 +164,7 @@ async fn hover_asks_the_server_and_a_definition_opens_its_file(cx: &mut TestAppC
     assert_eq!(range, greet);
 
     // F12 on the call: the other file is shown, the definition selected.
-    (cx.update_window(shell.0, |_, window, cx| {
-        lib_editor.update(cx, |editor, cx| {
-            editor.set_selected_range(call..call, cx);
-            editor.focus(window, cx);
-        });
-        window.draw(cx).clear(cx);
-    }))
-    .unwrap();
+    place_caret(shell.0, &lib_editor, call, cx);
     cx.simulate_keystrokes(shell.0, "f12");
     let other = root.join("src/other.rs");
     let selected = |cx: &App| {
@@ -184,8 +178,7 @@ async fn hover_asks_the_server_and_a_definition_opens_its_file(cx: &mut TestAppC
     assert_eq!(cx.read(selected), Some(target));
     // It has the keyboard, so the selection shows, and keeps it as frames go by.
     for _ in 0..3 {
-        cx.update_window(shell.0, |_, window, cx| window.draw(cx).clear(cx))
-            .unwrap();
+        draw(shell.0, cx);
         cx.executor().advance_clock(Duration::from_millis(500));
         cx.run_until_parked();
     }
@@ -458,11 +451,9 @@ async fn edits_reach_the_server_as_they_happen_and_a_save_is_told(cx: &mut TestA
     let (launcher, _) = launcher(move |root, _| {
         let mut script = started(root, "src/lib.rs");
         let lib = uri(&root.join("src/lib.rs"));
-        let at = json!({"line": 3, "character": 21});
+        let at = json!({"start": at(3, 21), "end": at(3, 21)});
         script.extend([
-            json!({"expect": {"method": "textDocument/didChange", "params": {
-                "textDocument": {"uri": lib, "version": 1},
-                "contentChanges": [{"range": {"start": at, "end": at}, "text": "y"}]}}}),
+            change(1, &at, "y", &lib),
             status("warning", Some("changed")),
             json!({"expect": {"method": "textDocument/didSave",
                 "params": {"textDocument": {"uri": lib}}}}),

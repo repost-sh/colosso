@@ -27,7 +27,7 @@ use gpui::{Div, Entity, Stateful, Window};
 use ropey::Rope;
 
 use super::decorations::DecorationCollections;
-use super::lsp::{ContextMenuContent, HoverDefinition, InlineCompletion};
+use super::lsp::{ContextMenuContent, HoverDefinition, InlineCompletion, SnippetSession};
 use crate::input::{
     HighlightStyleResolver, InputEdit, InputHighlighter, RangeDecoration, SyntaxContext,
     TextDecoration,
@@ -299,6 +299,21 @@ pub trait InputModeKind: sealed::Sealed + Sized + 'static {
         false
     }
 
+    /// Tab in a snippet moves to its next stop, back with `backwards`.
+    /// Returns true when it did.
+    fn snippet_tab(
+        _state: &mut InputBaseState<Self>,
+        _backwards: bool,
+        _cx: &mut gpui::Context<InputBaseState<Self>>,
+    ) -> bool {
+        false
+    }
+
+    /// Escape ends a snippet's stops. Returns true when there were any.
+    fn end_snippet(_state: &mut InputBaseState<Self>) -> bool {
+        false
+    }
+
     /// Highlights the symbol under the pointer for go-to-definition.
     ///
     /// Separate from [`Self::on_mouse_move`]: this runs on paths that have no
@@ -359,6 +374,10 @@ pub struct EditorExtras {
     pub(crate) hover_popover: Option<HoverPopoverState>,
     pub(crate) hover_definition: HoverDefinition,
     pub(crate) context_menu_task: Task<anyhow::Result<()>>,
+    /// Filling in the completion row selected, or the one being taken.
+    pub(crate) completion_resolving: Task<anyhow::Result<()>>,
+    /// The stops of a snippet just inserted, while Tab moves through them.
+    pub(crate) snippet: Option<SnippetSession>,
 }
 
 impl Default for EditorExtras {
@@ -372,6 +391,8 @@ impl Default for EditorExtras {
             hover_popover: None,
             hover_definition: HoverDefinition::default(),
             context_menu_task: Task::ready(Ok(())),
+            completion_resolving: Task::ready(Ok(())),
+            snippet: None,
         }
     }
 }

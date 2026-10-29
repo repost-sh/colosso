@@ -1,55 +1,92 @@
-//! Caret-anchored popups positioned from the input's current-frame geometry.
+//! Boxes anchored at the caret, placed from the input's current-frame geometry.
 //!
 //! The input stashes fresh caret geometry in its prepaint
-//! ([`PrepaintCaretGeometry`]). Popups live inside `deferred()`, so their
+//! ([`PrepaintCaretGeometry`]). The boxes live inside `deferred()`, so their
 //! prepaint runs after the input's prepaint but before its paint; resolving
-//! the anchor there puts the popup at the current frame's caret instead of
-//! the previous frame's.
+//! the anchor there puts them at the current frame's caret instead of the
+//! previous frame's.
+//!
+//! The first box goes under the caret's line, or over it when there's no
+//! room under; each next box goes to the right of the one before while the
+//! window has room, else under it, or over it when the first is over the
+//! caret. Each is framed as the editor's cards are, over the same backdrop.
 
 use gpui::{
-    AnyElement, App, AvailableSpace, Bounds, Element, ElementId, GlobalElementId,
-    InspectorElementId, IntoElement, LayoutId, Pixels, Point, Size, Style, WeakEntity, Window, px,
+    AnyElement, App, AvailableSpace, Bounds, DispatchPhase, Element, ElementId, GlobalElementId,
+    InspectorElementId, IntoElement, LayoutId, MouseDownEvent, Pixels, Point, Size, Style,
+    WeakEntity, Window, point, px,
 };
 
 use crate::input::{EditorState, PrepaintCaretGeometry};
 
-/// Computes the caret-anchored popup origin from fresh prepaint geometry.
-///
-/// Shared by the completion and code-action menus so both anchor to the
-/// same point: just below the caret, nudged left. The result is in window
-/// coordinates, matching where the caret itself is painted.
-pub(crate) fn caret_popup_anchor(geometry: PrepaintCaretGeometry) -> Point<Pixels> {
-    Point::new(
-        geometry.cursor_bounds().origin.x - px(4.),
-        geometry.cursor_bounds().origin.y
-            + geometry.scroll_offset().y
-            + geometry.line_height()
-            + px(4.),
-    )
-}
+use super::{GAP, RADIUS, SNAP_TO_EDGE, cards::popover_backdrop};
 
-/// A popup positioned at the caret from the input's current-frame prepaint.
-///
-/// The content is built in prepaint (not render) from the resolved anchor,
-/// so position, hitboxes, accessibility bounds, and width/layout decisions
-/// are all consistent with the current frame's caret. Always use inside
-/// `deferred()` so the prepaint runs after the input's prepaint.
+/// Builds one box, told whether a backdrop shows behind it.
+pub(crate) type BoxBuilder = Box<dyn Fn(bool, &mut Window, &mut App) -> AnyElement>;
+
 pub(crate) struct CaretAnchoredPopup {
     editor: WeakEntity<EditorState>,
-    build: Box<dyn Fn(Point<Pixels>, &mut Window, &mut App) -> AnyElement>,
-    content: Option<AnyElement>,
+    boxes: Vec<BoxBuilder>,
+    /// Called on a mouse down outside every box.
+    on_click_out: Option<Box<dyn Fn(&mut Window, &mut App)>>,
+    placed: Vec<Bounds<Pixels>>,
+    content: Vec<AnyElement>,
 }
 
 impl CaretAnchoredPopup {
-    pub(crate) fn new(
-        editor: WeakEntity<EditorState>,
-        build: impl Fn(Point<Pixels>, &mut Window, &mut App) -> AnyElement + 'static,
-    ) -> Self {
+    pub(crate) fn new(editor: WeakEntity<EditorState>, boxes: Vec<BoxBuilder>) -> Self {
         Self {
             editor,
-            build: Box::new(build),
-            content: None,
+            boxes,
+            on_click_out: None,
+            placed: Vec::new(),
+            content: Vec::new(),
         }
+    }
+
+    /// Has `handler` called on a mouse down outside every box.
+    pub(crate) fn on_click_out(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
+        self.on_click_out = Some(Box::new(handler));
+        self
+    }
+}
+
+/// The caret's line in window coordinates, where the caret itself is painted.
+fn caret_line(geometry: PrepaintCaretGeometry) -> Bounds<Pixels> {
+    let bounds = geometry.cursor_bounds();
+    Bounds::new(
+        point(bounds.origin.x, bounds.origin.y + geometry.scroll_offset().y),
+        Size::new(bounds.size.width, geometry.line_height()),
+    )
+}
+
+/// Where a box of `size` goes, the boxes `before` it placed already.
+fn placement(
+    size: Size<Pixels>,
+    before: &[Bounds<Pixels>],
+    caret: Bounds<Pixels>,
+    viewport: Size<Pixels>,
+) -> Point<Pixels> {
+    let Some((first, last)) = before.first().zip(before.last()) else {
+        let x = (caret.left() - px(4.))
+            .min(viewport.width - size.width - SNAP_TO_EDGE)
+            .max(SNAP_TO_EDGE);
+        let below = caret.bottom() + GAP;
+        let above = caret.top() - GAP - size.height;
+        let fits_below = below + size.height <= viewport.height - SNAP_TO_EDGE;
+        let y = if fits_below || above < SNAP_TO_EDGE { below } else { above };
+        return point(x, y);
+    };
+    let over = first.top() < caret.top();
+    let x = last.right() + GAP;
+    if x + size.width <= viewport.width - SNAP_TO_EDGE {
+        // Beside the last: top-aligned under the caret, bottom-aligned over it.
+        let y = if over { last.bottom() - size.height } else { last.top() };
+        point(x, y.max(SNAP_TO_EDGE))
+    } else if over {
+        point(first.left(), last.top() - GAP - size.height)
+    } else {
+        point(first.left(), last.bottom() + GAP)
     }
 }
 
@@ -92,19 +129,35 @@ impl Element for CaretAnchoredPopup {
         let Some(geometry) = editor.read(cx).prepaint_caret_geometry() else {
             return;
         };
-        let anchor = caret_popup_anchor(geometry);
-        let mut content = (self.build)(anchor, window, cx);
+        let caret = caret_line(geometry);
         let viewport = window.viewport_size();
-        content.layout_as_root(
-            Size {
-                width: AvailableSpace::Definite(viewport.width),
-                height: AvailableSpace::Definite(viewport.height),
-            },
-            window,
-            cx,
-        );
-        content.prepaint_at(anchor, window, cx);
-        self.content = Some(content);
+        let backdrop = popover_backdrop(cx);
+        self.placed.clear();
+        self.content.clear();
+        for (i, build) in self.boxes.iter().enumerate() {
+            window.with_id(ElementId::from(("caret-box", i)), |window| {
+                let shows = backdrop
+                    .as_ref()
+                    .is_some_and(|backdrop| backdrop.shows(window, cx));
+                let mut content = build(shows, window, cx);
+                let size = content.layout_as_root(
+                    Size {
+                        width: AvailableSpace::Definite(viewport.width),
+                        height: AvailableSpace::Definite(viewport.height),
+                    },
+                    window,
+                    cx,
+                );
+                let origin = placement(size, &self.placed, caret, viewport);
+                let bounds = Bounds::new(origin, size);
+                if let Some(backdrop) = backdrop.as_ref().filter(|_| shows) {
+                    backdrop.place(bounds, RADIUS, window, cx);
+                }
+                content.prepaint_at(origin, window, cx);
+                self.placed.push(bounds);
+                self.content.push(content);
+            });
+        }
     }
 
     fn paint(
@@ -117,8 +170,20 @@ impl Element for CaretAnchoredPopup {
         window: &mut Window,
         cx: &mut App,
     ) {
-        if let Some(content) = self.content.as_mut() {
-            content.paint(window, cx);
+        for (i, content) in self.content.iter_mut().enumerate() {
+            window.with_id(ElementId::from(("caret-box", i)), |window| {
+                content.paint(window, cx);
+            });
+        }
+        if let Some(on_click_out) = self.on_click_out.take() {
+            let placed = std::mem::take(&mut self.placed);
+            window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
+                if phase == DispatchPhase::Capture
+                    && !placed.iter().any(|bounds| bounds.contains(&event.position))
+                {
+                    on_click_out(window, cx);
+                }
+            });
         }
     }
 }
@@ -128,5 +193,52 @@ impl IntoElement for CaretAnchoredPopup {
 
     fn into_element(self) -> Self::Element {
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::size;
+
+    fn bounds(x: f32, y: f32, w: f32, h: f32) -> Bounds<Pixels> {
+        Bounds::new(point(px(x), px(y)), size(px(w), px(h)))
+    }
+
+    #[test]
+    fn the_first_box_goes_under_the_caret_or_over_it_when_there_is_no_room() {
+        let viewport = size(px(800.), px(600.));
+        let caret = bounds(100., 100., 2., 20.);
+        let at = placement(size(px(200.), px(240.)), &[], caret, viewport);
+        assert_eq!(at, point(px(96.), px(124.)));
+        // No room under a caret near the bottom: over its line instead.
+        let caret = bounds(100., 500., 2., 20.);
+        let at = placement(size(px(200.), px(240.)), &[], caret, viewport);
+        assert_eq!(at, point(px(96.), px(256.)));
+        // Nor over it: under, as it was.
+        let at = placement(size(px(200.), px(500.)), &[], caret, viewport);
+        assert_eq!(at, point(px(96.), px(524.)));
+        // Kept off the window's right edge.
+        let caret = bounds(700., 100., 2., 20.);
+        let at = placement(size(px(200.), px(240.)), &[], caret, viewport);
+        assert_eq!(at, point(px(592.), px(124.)));
+    }
+
+    #[test]
+    fn the_next_box_goes_beside_the_last_or_under_it_when_there_is_no_room() {
+        let viewport = size(px(800.), px(600.));
+        let caret = bounds(100., 100., 2., 20.);
+        let first = bounds(96., 124., 200., 240.);
+        let at = placement(size(px(300.), px(100.)), &[first], caret, viewport);
+        assert_eq!(at, point(px(300.), px(124.)));
+        // Beside a box over the caret, its bottom aligned.
+        let over = bounds(96., 20., 200., 60.);
+        let at = placement(size(px(300.), px(40.)), &[over], caret, viewport);
+        assert_eq!(at, point(px(300.), px(40.)));
+        // No room to the right: under the first, or over one that's over.
+        let at = placement(size(px(600.), px(100.)), &[first], caret, viewport);
+        assert_eq!(at, point(px(96.), px(368.)));
+        let at = placement(size(px(600.), px(10.)), &[over], caret, viewport);
+        assert_eq!(at, point(px(96.), px(6.)));
     }
 }

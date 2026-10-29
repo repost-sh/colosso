@@ -18,6 +18,8 @@ pub enum Encoding {
     /// emoji is. The protocol's default, which every server speaks.
     #[default]
     Utf16,
+    /// Characters, which is what the editor's own positions count; no server is offered it.
+    Utf32,
 }
 
 impl Encoding {
@@ -35,7 +37,8 @@ impl Encoding {
     pub(crate) fn units(self, text: &str) -> usize {
         match self {
             Encoding::Utf16 if !text.is_ascii() => text.chars().map(char::len_utf16).sum(),
-            Encoding::Utf8 | Encoding::Utf16 => text.len(),
+            Encoding::Utf32 if !text.is_ascii() => text.chars().count(),
+            Encoding::Utf8 | Encoding::Utf16 | Encoding::Utf32 => text.len(),
         }
     }
 }

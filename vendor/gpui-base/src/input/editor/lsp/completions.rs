@@ -4,12 +4,11 @@ use gpui::{App, Context, EntityInputHandler, Pixels, Task, Window, px};
 use lsp_types::{
     CompletionContext, CompletionItem, CompletionResponse, InlineCompletionContext,
     InlineCompletionItem, InlineCompletionResponse, InlineCompletionTriggerKind,
-    request::Completion,
 };
 use ropey::Rope;
-use std::{cell::RefCell, ops::Range, rc::Rc, time::Duration};
+use std::{ops::Range, rc::Rc, time::Duration};
 
-use crate::input::{InputBaseState, ShowCompletions};
+use crate::input::{InputBaseState, RopeExt as _, ShowCompletions, is_identifier_char};
 
 /// Default debounce duration for inline completions.
 const DEFAULT_INLINE_COMPLETION_DEBOUNCE: Duration = Duration::from_millis(300);
@@ -193,13 +192,14 @@ pub trait CompletionProvider {
         DEFAULT_INLINE_COMPLETION_DEBOUNCE
     }
 
-    fn resolve_completions(
-        &self,
-        _completion_indices: Vec<usize>,
-        _completions: Rc<RefCell<Box<[Completion]>>>,
-        _: &mut App,
-    ) -> Task<Result<bool>> {
-        Task::ready(Ok(false))
+    /// Fills in `item`: its documentation, and the edits that come with it.
+    /// The list arrives light, and a row is filled in once it's looked at.
+    ///
+    /// completionItem/resolve
+    ///
+    /// https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#completionItem_resolve
+    fn resolve(&self, item: CompletionItem, _: &mut App) -> Task<Result<CompletionItem>> {
+        Task::ready(Ok(item))
     }
 
     /// Determines if the completion should be triggered based on the given byte offset.
@@ -264,10 +264,13 @@ impl InputBaseState<EditorMode> {
         // must still read as a prefix of the last query. Deleting back into
         // the word keeps it; typing somewhere else, or into a document that
         // has since been replaced, starts a new query at this edit instead of
-        // handing the provider text the user never typed as a prefix.
+        // handing the provider text the user never typed as a prefix. A
+        // trigger character that isn't a word's, a `.` say, begins a new,
+        // empty word after it.
+        let word = new_text.chars().all(is_identifier_char);
         let completion = &self.extras.context_menu_content.completion;
         let latched = completion.trigger_start_offset.filter(|&latched| {
-            latched <= start
+            word && latched <= start
                 && start <= latched + completion.query.len()
                 && self.text.is_char_boundary(latched)
                 && self.text.is_char_boundary(start)
@@ -275,7 +278,7 @@ impl InputBaseState<EditorMode> {
                     .query
                     .starts_with(self.text.slice(latched..start).to_string().as_str())
         });
-        let start_offset = latched.unwrap_or(start);
+        let start_offset = if word { latched.unwrap_or(start) } else { new_offset };
         if new_offset < start_offset {
             return;
         }
@@ -292,10 +295,10 @@ impl InputBaseState<EditorMode> {
         self.request_completions(
             provider,
             start_offset,
-            query.clone(),
+            query,
             CompletionContext {
                 trigger_kind: lsp_types::CompletionTriggerKind::TRIGGER_CHARACTER,
-                trigger_character: Some(query),
+                trigger_character: Some(new_text.to_owned()),
             },
             window,
             cx,
@@ -335,14 +338,7 @@ impl InputBaseState<EditorMode> {
         };
 
         let offset = self.cursor();
-        let word_len: usize = self
-            .text
-            .chars_at(offset)
-            .reversed()
-            .take_while(|ch| ch.is_alphanumeric() || *ch == '_')
-            .map(char::len_utf8)
-            .sum();
-        let start_offset = offset - word_len;
+        let start_offset = self.text.identifier_start(offset);
         let query = self.text.slice(start_offset..offset).to_string();
 
         self.hide_context_menu(cx);
@@ -386,9 +382,13 @@ impl InputBaseState<EditorMode> {
             .query
             .clone_from(&query);
 
-        let provider_responses =
-            provider.completions(&self.text, new_offset, completion_context, window, cx);
+        let text = self.text.clone();
         self.extras.context_menu_task = cx.spawn_in(window, async move |editor, cx| {
+            // Asked once the editor is done with the edit, so a provider that
+            // keeps a server in step with the text hears of the edit first.
+            let provider_responses = cx.update(|window, cx| {
+                provider.completions(&text, new_offset, completion_context, window, cx)
+            })?;
             let mut completions: Vec<CompletionItem> = vec![];
             if let Some(provider_responses) = provider_responses.await.ok() {
                 match provider_responses {
@@ -409,13 +409,88 @@ impl InputBaseState<EditorMode> {
                         return;
                     }
 
-                    editor.extras.context_menu_content.completion.open = !completions.is_empty();
-                    editor.extras.context_menu_content.completion.items = completions;
-                    editor.extras.context_menu_content.completion.bump();
-                    cx.notify();
+                    editor.present_completion_items(start_offset, query, completions, cx);
                 })
                 .ok();
 
+            Ok(())
+        });
+    }
+
+    /// Row `ix` of the menu is selected: the provider fills it in, if it
+    /// hasn't yet, for its documentation and the edits that come with it.
+    pub fn select_completion(&mut self, ix: usize, cx: &mut Context<Self>) {
+        let completion = &mut self.extras.context_menu_content.completion;
+        if completion.resolved.get(ix).is_none_or(|resolved| *resolved)
+            || completion.resolving == Some(ix)
+        {
+            return;
+        }
+        let Some(provider) = self.extras.lsp.completion_provider.clone() else {
+            return;
+        };
+        let Some(item) = completion.items.get(ix).cloned() else {
+            return;
+        };
+        let revision = completion.revision();
+        completion.resolving = Some(ix);
+        let resolving = provider.resolve(item, cx);
+        self.extras.completion_resolving = cx.spawn(async move |editor, cx| {
+            let resolved = resolving.await;
+            editor.update(cx, |editor, cx| {
+                let completion = &mut editor.extras.context_menu_content.completion;
+                if completion.revision() != revision {
+                    return;
+                }
+                completion.resolving = None;
+                let Ok(item) = resolved else {
+                    return;
+                };
+                if let (Some(slot), Some(resolved)) =
+                    (completion.items.get_mut(ix), completion.resolved.get_mut(ix))
+                {
+                    *resolved = true;
+                    // Filled in as it was: the menu needn't redraw.
+                    if *slot != item {
+                        *slot = item;
+                        completion.refresh();
+                        cx.notify();
+                    }
+                }
+            })?;
+            Ok(())
+        });
+    }
+
+    /// Row `ix` of the menu is taken: inserted, filled in first if it hasn't
+    /// been, so the edits that come with it, an import say, come too.
+    pub fn accept_completion(
+        &mut self,
+        ix: usize,
+        fallback_range: Range<usize>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let completion = &self.extras.context_menu_content.completion;
+        let Some(item) = completion.items.get(ix).cloned() else {
+            return;
+        };
+        let resolved = completion.resolved.get(ix).is_none_or(|resolved| *resolved);
+        let provider = self.extras.lsp.completion_provider.clone();
+        let Some(provider) = provider.filter(|_| !resolved) else {
+            self.insert_completion(&item, fallback_range, window, cx);
+            return;
+        };
+        let version = self.version();
+        let resolving = provider.resolve(item.clone(), cx);
+        self.extras.completion_resolving = cx.spawn_in(window, async move |editor, cx| {
+            let item = resolving.await.unwrap_or(item);
+            editor.update_in(cx, |editor, window, cx| {
+                // Typed into since: the row was for a text that's gone.
+                if editor.version() == version {
+                    editor.insert_completion(&item, fallback_range, window, cx);
+                }
+            })?;
             Ok(())
         });
     }

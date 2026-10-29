@@ -7,22 +7,19 @@ use std::{
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AbsoluteLength, AnyElement, App, AppContext as _, AvailableSpace, Bounds, Context,
-    EdgesRefinement, Element, ElementId, Entity, Focusable as _, Global, HitboxBehavior,
-    InteractiveElement, IntoElement, MouseDownEvent, MouseMoveEvent, ParentElement as _, Pixels,
-    Render, SharedString, Size, StatefulInteractiveElement as _, Styled, Window, deferred, div,
-    point, px, size,
+    AnyElement, App, AppContext as _, AvailableSpace, Bounds, Context, Element, ElementId, Entity,
+    Focusable as _, Global, HitboxBehavior, InteractiveElement, IntoElement, MouseDownEvent,
+    MouseMoveEvent, ParentElement as _, Pixels, Render, SharedString, Size,
+    Styled, Window, deferred, div, point, px, size,
 };
 
 use crate::{
-    ActiveTheme as _, ThemeStyled as _,
     animation::ease_out_cubic,
     highlighter::DiagnosticEntry,
     input::{
         EditorState,
-        popovers::{render_diagnostic, render_markdown},
+        popovers::{GAP, RADIUS, SNAP_TO_EDGE, card_body, framed, render_diagnostic, render_markdown},
     },
-    styled::popover_ring,
 };
 
 /// What an app puts behind the editor's hover and diagnostic cards, a platform's blur say,
@@ -45,22 +42,16 @@ pub fn set_popover_backdrop(backdrop: impl PopoverBackdrop, cx: &mut App) {
     cx.set_global(GlobalPopoverBackdrop(Rc::new(backdrop)));
 }
 
-fn popover_backdrop(cx: &App) -> Option<Rc<dyn PopoverBackdrop>> {
+pub(super) fn popover_backdrop(cx: &App) -> Option<Rc<dyn PopoverBackdrop>> {
     cx.try_global::<GlobalPopoverBackdrop>()
         .map(|backdrop| backdrop.0.clone())
 }
 
-/// A card's corners.
-const RADIUS: Pixels = px(10.);
-/// Between the two cards, and between a card and what it's about.
-const GAP: Pixels = px(4.);
 /// How long a card takes to open, change size or close.
 const MOTION: Duration = Duration::from_millis(180);
 /// A card's largest width, and its largest height before it scrolls.
 const MAX_WIDTH: Pixels = px(500.);
 const MAX_HEIGHT: Pixels = px(320.);
-/// The least space kept between a card and the window's edge.
-const SNAP_TO_EDGE: Pixels = px(8.);
 
 /// How big a card is drawn: it eases from the size it's drawn at toward the size it's to be,
 /// its content's or nothing.
@@ -339,15 +330,9 @@ impl Cards {
                 render_markdown("message", markdown.clone(), window, cx).into_any_element()
             }
         };
-        div()
-            .id("content")
-            .px_3()
-            .py_2()
-            .text_xs()
-            .font_family(cx.theme().font_family.clone())
+        card_body("content", cx)
             .max_w(max_width)
             .max_h(max_height)
-            .overflow_y_scroll()
             .child(content)
     }
 
@@ -366,29 +351,10 @@ impl Cards {
             .w(laid_out.width)
             .h(laid_out.height);
         deferred(
-            div()
-                .id("card")
-                .flex_none()
+            framed("card", backdrop, cx)
                 .when(card.wanted, |this| this.occlude())
                 .w(drawn.width)
                 .h(drawn.height)
-                .overflow_hidden()
-                .popover_style(cx)
-                .rounded(RADIUS)
-                // Over a backdrop the card is clear, and the shadow's ring that edges it
-                // would tint it all through; a hairline border in its ink edges it instead.
-                .when(backdrop, |mut this| {
-                    let hairline = Some(AbsoluteLength::Pixels(px(0.5)));
-                    this.style().border_widths = EdgesRefinement {
-                        top: hairline,
-                        right: hairline,
-                        bottom: hairline,
-                        left: hairline,
-                    };
-                    this.bg(cx.theme().transparent)
-                        .shadow_none()
-                        .border_color(popover_ring(cx))
-                })
                 .child(content),
         )
         .into_any_element()

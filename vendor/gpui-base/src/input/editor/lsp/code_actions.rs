@@ -122,15 +122,21 @@ impl InputBaseState<EditorMode> {
         let Some(provider) = providers
             .iter()
             .find(|provider| provider.id() == item.provider_id)
+            .cloned()
         else {
             return;
         };
 
         let state = cx.entity();
-        let task = provider.perform_code_action(state, item.action.clone(), true, window, cx);
-
-        cx.spawn_in(window, async move |_, _| {
-            let _ = task.await;
+        let action = item.action.clone();
+        cx.spawn_in(window, async move |_, cx| {
+            // Asked once the editor is done with the key that chose the
+            // action, so the provider can read it.
+            let task =
+                cx.update(|window, cx| provider.perform_code_action(state, action, true, window, cx));
+            if let Ok(task) = task {
+                let _ = task.await;
+            }
         })
         .detach();
     }

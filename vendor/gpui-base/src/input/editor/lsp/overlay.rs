@@ -1,8 +1,8 @@
 use super::*;
-use crate::input::EditorMode;
+use crate::input::{Cursors, EditorMode};
 use std::ops::Range;
 
-use lsp_types::{CompletionItem, Hover};
+use lsp_types::{CompletionItem, Hover, InsertTextFormat};
 
 #[derive(Clone, Debug, Default)]
 pub struct CompletionMenuState {
@@ -10,7 +10,11 @@ pub struct CompletionMenuState {
     pub trigger_start_offset: Option<usize>,
     pub query: String,
     pub items: Vec<CompletionItem>,
+    /// Which rows the provider has filled in, and the one it's filling in.
+    pub(super) resolved: Vec<bool>,
+    pub(super) resolving: Option<usize>,
     revision: u64,
+    refreshed: u64,
 }
 
 impl CompletionMenuState {
@@ -20,6 +24,16 @@ impl CompletionMenuState {
     /// to rebuild, so it never has to compare the item list itself.
     pub fn revision(&self) -> u64 {
         self.revision
+    }
+
+    /// Bumped whenever a row is filled in where it is, the list otherwise
+    /// the same: a renderer replaces its rows without losing its selection.
+    pub fn refreshed(&self) -> u64 {
+        self.refreshed
+    }
+
+    pub(super) fn refresh(&mut self) {
+        self.refreshed = self.refreshed.wrapping_add(1);
     }
 
     pub(super) fn bump(&mut self) {
@@ -64,6 +78,8 @@ pub enum InputOverlayKind {
 }
 
 impl InputBaseState<EditorMode> {
+    /// Shows `items` for the word begun at `trigger_start_offset`, the first
+    /// selected and so filled in.
     pub fn present_completion_items(
         &mut self,
         trigger_start_offset: usize,
@@ -71,16 +87,16 @@ impl InputBaseState<EditorMode> {
         items: Vec<CompletionItem>,
         cx: &mut Context<Self>,
     ) {
-        self.extras
-            .context_menu_content
-            .completion
-            .trigger_start_offset = Some(trigger_start_offset);
-        self.extras.context_menu_content.completion.query = query.into();
-        self.extras.context_menu_content.completion.items = items;
-        self.extras.context_menu_content.completion.open =
-            !self.extras.context_menu_content.completion.items.is_empty();
-        self.extras.context_menu_content.completion.bump();
+        let completion = &mut self.extras.context_menu_content.completion;
+        completion.trigger_start_offset = Some(trigger_start_offset);
+        completion.query = query.into();
+        completion.open = !items.is_empty();
+        completion.resolved = vec![false; items.len()];
+        completion.resolving = None;
+        completion.items = items;
+        completion.bump();
         cx.notify();
+        self.select_completion(0, cx);
     }
 
     pub fn present_code_actions(&mut self, items: Vec<CodeActionItem>, cx: &mut Context<Self>) {
@@ -163,6 +179,10 @@ impl InputBaseState<EditorMode> {
         }
     }
 
+    /// Puts `item` in over the word it completes, or over `fallback_range`,
+    /// the word the menu was opened on, when the item doesn't say; with the
+    /// edits that come with it, an import say, as one undo step. A snippet
+    /// goes in as plain text, its first stop selected and the rest for Tab.
     pub fn insert_completion(
         &mut self,
         item: &CompletionItem,
@@ -170,30 +190,99 @@ impl InputBaseState<EditorMode> {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let mut range = fallback_range;
-        let mut new_text = item.label.clone();
-        if let Some(edit) = item.text_edit.as_ref() {
-            match edit {
-                lsp_types::CompletionTextEdit::Edit(edit) => {
-                    new_text.clone_from(&edit.new_text);
-                    range = self.text.position_to_offset(&edit.range.start)
-                        ..self.text.position_to_offset(&edit.range.end);
-                }
-                lsp_types::CompletionTextEdit::InsertAndReplace(edit) => {
-                    new_text.clone_from(&edit.new_text);
-                    range = self.text.position_to_offset(&edit.replace.start)
-                        ..self.text.position_to_offset(&edit.replace.end);
-                }
+        let (range, new_text) = match (&item.text_edit, &item.insert_text) {
+            (Some(lsp_types::CompletionTextEdit::Edit(edit)), _) => {
+                (self.lsp_range_to_offsets(&edit.range), &edit.new_text)
             }
-        } else if let Some(insert_text) = item.insert_text.as_ref() {
-            new_text.clone_from(insert_text);
-            range = range.end..range.end;
+            (Some(lsp_types::CompletionTextEdit::InsertAndReplace(edit)), _) => {
+                (self.lsp_range_to_offsets(&edit.replace), &edit.new_text)
+            }
+            (None, Some(insert_text)) => (fallback_range, insert_text),
+            (None, None) => (fallback_range, &item.label),
+        };
+        let snippet = if item.insert_text_format == Some(InsertTextFormat::SNIPPET) {
+            Snippet::parse(new_text)
+        } else {
+            Snippet {
+                text: new_text.clone(),
+                stops: vec![vec![new_text.len()..new_text.len()]],
+            }
+        };
+
+        let mut edits = vec![(range.clone(), snippet.text.as_str())];
+        // How far the edits before the word move it; one over the word is
+        // dropped, as the two can't both go in.
+        let mut shift = 0isize;
+        for edit in item.additional_text_edits.iter().flatten() {
+            let elsewhere = self.lsp_range_to_offsets(&edit.range);
+            if elsewhere.end <= range.start {
+                shift += edit.new_text.len() as isize - elsewhere.len() as isize;
+            } else if elsewhere.start < range.end {
+                continue;
+            }
+            edits.push((elsewhere, edit.new_text.as_str()));
         }
+        // An edit at the word's start goes in before the word, as given first.
+        edits.sort_by_key(|(range, _)| (range.start, range.end));
         self.completion_inserting = true;
-        let range = self.range_to_utf16(&range);
-        self.replace_text_in_range_silent(Some(range), &new_text, window, cx);
+        self.replace_text_in_ranges(&edits, Cursors::Following, window, cx);
         self.completion_inserting = false;
+
+        let start = range.start.saturating_add_signed(shift);
+        let places = |stop: &Vec<Range<usize>>| -> Vec<Range<usize>> {
+            stop.iter()
+                .map(|place| start + place.start..start + place.end)
+                .collect()
+        };
+        self.select_places(&places(&snippet.stops[0]), cx);
+        self.extras.snippet = (snippet.stops.len() > 1).then(|| SnippetSession {
+            stops: snippet.stops.iter().map(places).collect(),
+            current: 0,
+            version: self.version(),
+        });
         self.focus(window, cx);
+    }
+
+    fn lsp_range_to_offsets(&self, range: &lsp_types::Range) -> Range<usize> {
+        self.text.position_to_offset(&range.start)..self.text.position_to_offset(&range.end)
+    }
+
+    /// Selects `places`, a cursor at each.
+    fn select_places(&mut self, places: &[Range<usize>], cx: &mut Context<Self>) {
+        let Some((first, rest)) = places.split_first() else {
+            return;
+        };
+        self.set_selected_range(first.clone(), cx);
+        for place in rest {
+            self.add_selection(place.clone(), cx);
+        }
+    }
+
+    /// Tab in a snippet: moves to its next stop, or back with `backwards`,
+    /// selecting it everywhere it is. The snippet is over once its last stop
+    /// is reached, or the text a stop was in is gone; then this is false and
+    /// Tab does what it usually does.
+    pub(crate) fn snippet_tab(&mut self, backwards: bool, cx: &mut Context<Self>) -> bool {
+        let Some(mut session) = self.extras.snippet.take() else {
+            return false;
+        };
+        let next = if backwards {
+            session.current.saturating_sub(1)
+        } else {
+            session.current + 1
+        };
+        let places: Option<Vec<Range<usize>>> = (session.stops[next].iter())
+            .map(|place| self.translate_range(place.clone(), session.version))
+            .collect();
+        let Some(places) = places else {
+            return false;
+        };
+        self.select_places(&places, cx);
+        if next + 1 < session.stops.len() {
+            session.current = next;
+            self.extras.snippet = Some(session);
+        }
+        true
     }
 
     #[doc(hidden)]
