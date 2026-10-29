@@ -4,7 +4,6 @@
 
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::native_menu::NativeMenu;
-use gpui_kit::component::switch::Switch;
 use gpui_kit::{
     App, AppContext as _, Context, Entity, Focusable as _, InteractiveElement as _, IntoElement,
     ParentElement as _, Render, Styled as _, Subscription, Window, actions, div, px,
@@ -12,6 +11,7 @@ use gpui_kit::{
 
 use super::components::{MenuButton, PillButton, SettingRow, SettingsSection};
 use super::native_slider::NativeSlider;
+use super::native_switch::NativeSwitch;
 use crate::modal::{self, Button, Tone};
 use crate::projects::{display_path, pick_folder};
 use crate::settings::{self, BranchPrefix, SetBranchPrefix, SetMostLanguageServers};
@@ -31,7 +31,8 @@ pub fn sections(cx: &App) -> Vec<SettingsSection> {
 }
 
 /// The choices for how many language servers run at once, no limit first.
-const MOST_SERVERS: [Option<usize>; 7] = [None, Some(1), Some(2), Some(3), Some(4), Some(6), Some(8)];
+const MOST_SERVERS: [Option<usize>; 7] =
+    [None, Some(1), Some(2), Some(3), Some(4), Some(6), Some(8)];
 
 /// How a choice of how many language servers run at once reads.
 fn most_label(most: Option<usize>) -> String {
@@ -39,7 +40,6 @@ fn most_label(most: Option<usize>) -> String {
 }
 
 fn code(cx: &App) -> SettingsSection {
-    let p = theme::palette(cx);
     let current = settings::get(cx);
     SettingsSection::new("Code")
         .row(
@@ -48,14 +48,11 @@ fn code(cx: &App) -> SettingsSection {
                     "A file picked in the Files panel, by a click or the arrow keys, opens in \
                      a preview tab the next one takes over. A double click keeps it open.",
                 )
-                .control(
-                    Switch::new("preview-files")
-                        .checked(current.preview_files)
-                        .color(p.accent)
-                        .on_click(|on, _, cx| {
-                            settings::update(cx, |settings| settings.preview_files = *on);
-                        }),
-                ),
+                .control(NativeSwitch::new(
+                    "preview-files",
+                    |settings| settings.preview_files,
+                    |settings, on| settings.preview_files = on,
+                )),
         )
         .row(
             SettingRow::new("Language servers at once")
@@ -90,16 +87,11 @@ fn sidebar(cx: &App) -> SettingsSection {
         .row(
             SettingRow::new("Show sidebar on launch")
                 .description("Open the window with the sidebar out. ⌘S slides it in and out.")
-                .control(
-                    Switch::new("sidebar-open-on-launch")
-                        .checked(current.sidebar_open_on_launch)
-                        .color(p.accent)
-                        .on_click(|open, _, cx| {
-                            settings::update(cx, |settings| {
-                                settings.sidebar_open_on_launch = *open;
-                            });
-                        }),
-                ),
+                .control(NativeSwitch::new(
+                    "sidebar-open-on-launch",
+                    |settings| settings.sidebar_open_on_launch,
+                    |settings, open| settings.sidebar_open_on_launch = open,
+                )),
         )
         .row(
             SettingRow::new("Layout")
@@ -185,7 +177,6 @@ fn worktrees(cx: &App) -> SettingsSection {
 }
 
 fn keyboard(cx: &App) -> SettingsSection {
-    let p = theme::palette(cx);
     let repeat = settings::get(cx).key_repeat;
     let off = !repeat.enabled;
     SettingsSection::new("Keyboard")
@@ -196,16 +187,13 @@ fn keyboard(cx: &App) -> SettingsSection {
                      repeat.",
                 )
                 .control(
-                    div().debug_selector(|| "arrow-repeat".into()).child(
-                        Switch::new("arrow-repeat")
-                            .checked(repeat.enabled)
-                            .color(p.accent)
-                            .on_click(|on, _, cx| {
-                                settings::update(cx, |settings| {
-                                    settings.key_repeat.enabled = *on;
-                                });
-                            }),
-                    ),
+                    div()
+                        .debug_selector(|| "arrow-repeat".into())
+                        .child(NativeSwitch::new(
+                            "arrow-repeat",
+                            |settings| settings.key_repeat.enabled,
+                            |settings, on| settings.key_repeat.enabled = on,
+                        )),
                 ),
         )
         .row(

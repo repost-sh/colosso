@@ -1,17 +1,12 @@
-//! What keeps a native slider for as long as its page shows it: the `AppKit` slider, the moves
-//! it reports, and where on the page it goes.
+//! The native slider on the page: its track, which `AppKit` draws, over the words for its
+//! ends, and what a move of its thumb writes.
 
-use std::sync::Once;
-
-use futures::StreamExt as _;
-use futures::channel::mpsc;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, Context, ElementId, HitboxBehavior, IntoElement as _, ParentElement as _,
-    Styled as _, Task, Window, div, px,
+    AnyElement, App, IntoElement as _, ParentElement as _, Styled as _, Window, div, px,
 };
 
-use super::appkit::Native;
+use crate::native;
 use crate::settings_view::ticked_slider::{Stops, TickedSlider, WIDTH, ends_row};
 use crate::theme;
 
@@ -22,49 +17,14 @@ pub struct Shown {
     pub enabled: bool,
 }
 
-/// The slider's `AppKit` half and what it was last told to show. Dropped with the page, which
-/// takes the slider out of the window.
-pub struct Host {
-    stops: Stops,
-    /// What `AppKit` was last told, so it's told only what changes.
-    shown: Option<Shown>,
-    native: Option<Native>,
-    _moves: Task<()>,
-}
-
 /// `slider` with the track `AppKit` draws, over the words for its ends; none where the window
 /// can't host a native view, which falls back to the GPUI slider.
 pub fn slider(slider: &TickedSlider, window: &mut Window, cx: &mut App) -> Option<AnyElement> {
-    let stops = slider.stops;
-    let key = ElementId::NamedInteger(slider.id.into(), 0);
-    let host = window.use_keyed_state(key, cx, |window, cx| Host::new(stops, window, cx));
     let shown = Shown {
-        at: stops.at(cx),
+        at: slider.stops.at(cx),
         enabled: !slider.disabled,
     };
-    let height = host.update(cx, |host, _| {
-        let native = host.native.as_ref()?;
-        if host.shown != Some(shown) {
-            native.show(shown);
-            host.shown = Some(shown);
-        }
-        Some(native.height())
-    })?;
-    // The listener hands AppKit the track's bounds as the page prepaints it, clipped as a
-    // hitbox there is: to what of a scroll layer shows, not what it paints beyond. One keeps
-    // the scrolling page off a scroll layer too, which would move it without prepainting it.
-    let track = div()
-        .w_full()
-        .h(px(height))
-        .on_children_prepainted(move |children, window, cx| {
-            if let Some(&bounds) = children.first() {
-                let hitbox = window.insert_hitbox(bounds, HitboxBehavior::Normal);
-                if let Some(native) = &host.read(cx).native {
-                    native.place(bounds, hitbox.content_mask.bounds, window);
-                }
-            }
-        })
-        .child(div().size_full());
+    let (_, track) = native::host(slider.id, slider.stops, shown, window, cx)?;
     let ends = ends_row(slider.ends, theme::palette(cx));
     let framed = div()
         .w(px(WIDTH))
@@ -75,45 +35,9 @@ pub fn slider(slider: &TickedSlider, window: &mut Window, cx: &mut App) -> Optio
     Some(framed.into_any_element())
 }
 
-impl Host {
-    fn new(stops: Stops, window: &mut Window, cx: &mut Context<Host>) -> Host {
-        let (tell, mut told) = mpsc::unbounded();
-        let native = match Native::new(window, stops.values.len(), tell) {
-            Ok(native) => Some(native),
-            Err(why) => {
-                static SAID: Once = Once::new();
-                SAID.call_once(|| log::warn!("the GPUI slider stands in for AppKit's: {why}"));
-                None
-            }
-        };
-        // AppKit sends each move as it happens, the thumb still held; they're taken up in the
-        // order sent, all that are waiting at once, before the page is drawn again.
-        let moves = cx.spawn(async move |host, cx| {
-            while let Some(index) = told.next().await {
-                let taken = host.update(cx, |host, cx| take_move(host.stops, host.shown, index, cx));
-                if taken.is_err() {
-                    break;
-                }
-            }
-        });
-        cx.on_release(|host: &mut Host, cx| {
-            if let Some(native) = host.native.take() {
-                native.remove(cx);
-            }
-        })
-        .detach();
-        Host {
-            stops,
-            shown: None,
-            native,
-            _moves: moves,
-        }
-    }
-}
-
 /// Writes the stop at `index`, `AppKit` having moved the thumb there, unless the slider as it
 /// was last `shown` can't be moved: a move sent before it heard, arriving after.
-fn take_move(stops: Stops, shown: Option<Shown>, index: usize, cx: &mut App) {
+pub fn take_move(stops: Stops, shown: Option<Shown>, index: usize, cx: &mut App) {
     if shown.is_some_and(|shown| shown.enabled) {
         stops.pick(index, cx);
     }

@@ -1,14 +1,14 @@
-//! The Keyboard settings' sliders as macOS draws them, in the real app: the window on screen
-//! with `AppKit`'s run loop running, so the native sliders are composited, and captured with
-//! `screencapture` into `.superpowers/qa/native-slider/`. On the way it moves a slider as
-//! `AppKit` does (its action sent in the process; no input is injected), turns the repeat off,
-//! scrolls the page and resizes the window, and counts the window's views before the page
-//! shows, while it does, and after it closed, twice.
+//! The General settings' sliders and switches as macOS draws them, in the real app: the window
+//! on screen with `AppKit`'s run loop running, so the native controls are composited, and
+//! captured with `screencapture` into `.superpowers/qa/native-controls/`. On the way it moves a
+//! slider and flips a switch as `AppKit` does (their actions sent in the process; no input is
+//! injected), turns the repeat off, scrolls the page and resizes the window, and counts the
+//! window's views before the page shows, while it does, and after it closed, twice.
 //!
 //! ```sh
-//! Q=$PWD/.superpowers/qa/native-slider
+//! Q=$PWD/.superpowers/qa/native-controls
 //! COLOSSO_CONFIG_DIR=$Q/config COLOSSO_DATA_DIR=$Q/data COLOSSO_LOG_DIR=$Q/logs TMPDIR=$Q/tmp \
-//!   cargo run -p colosso --features visual-check -- --visual-check-native-slider
+//!   cargo run -p colosso --features visual-check -- --visual-check-native-controls
 //! ```
 
 use std::path::PathBuf;
@@ -17,13 +17,16 @@ use std::time::Duration;
 
 use gpui_kit::base::Root;
 use gpui_kit::{
-    Action, AnyWindowHandle, AppContext as _, AsyncApp, Bounds, Entity, MouseMoveEvent, PlatformInput, ScrollDelta,
-    ScrollEvent, Styled as _, TitlebarOptions, WindowBackgroundAppearance, WindowBounds,
-    WindowOptions, point, px, size, transparent_black,
+    Action, AnyWindowHandle, AppContext as _, AsyncApp, Bounds, Entity, MouseMoveEvent,
+    PlatformInput, ScrollDelta, ScrollEvent, Styled as _, TitlebarOptions,
+    WindowBackgroundAppearance, WindowBounds, WindowOptions, point, px, size, transparent_black,
 };
+use objc2::MainThreadMarker;
 use objc2::rc::Retained;
-use objc2::{MainThreadMarker, Message as _};
-use objc2_app_kit::{NSApplication, NSSlider, NSView, NSWindow};
+use objc2_app_kit::{
+    NSApplication, NSControl, NSControlStateValueOff, NSControlStateValueOn, NSSlider, NSSwitch,
+    NSView, NSWindow,
+};
 
 use crate::key_repeat::KeyRepeat;
 use crate::navigation::Route;
@@ -33,7 +36,7 @@ use crate::shell::Shell;
 use crate::theme::{self, UseDarkTheme, UseLightTheme};
 use crate::visual::Result;
 
-const OUT: &str = ".superpowers/qa/native-slider";
+const OUT: &str = ".superpowers/qa/native-controls";
 /// Long enough for a change to be drawn, and composited, a few times over.
 const SETTLE: Duration = Duration::from_millis(700);
 
@@ -58,7 +61,7 @@ pub fn run() -> ExitCode {
                 window_background: WindowBackgroundAppearance::Blurred,
                 app_owns_titlebar_drag: true,
                 titlebar: Some(TitlebarOptions {
-                    title: Some("Colosso native slider check".into()),
+                    title: Some("Colosso native controls check".into()),
                     appears_transparent: true,
                     traffic_light_position: None,
                 }),
@@ -116,6 +119,7 @@ async fn check(
     });
     settle(cx).await;
     lines.push(views(&ns_window, "General shown").0);
+    lines.extend(flip(&ns_window, cx).await?);
     lines.push(shoot(&ns_window, out, "top-light.png", cx).await?);
     scroll(window, 4000., cx)?;
     settle(cx).await;
@@ -124,8 +128,7 @@ async fn check(
     // As AppKit does once the thumb is dragged to the eighth stop.
     let speed = slider(&ns_window, 10)?;
     speed.setDoubleValue(7.);
-    // SAFETY: the slider's own action to its own target, as a drag sends it.
-    unsafe { speed.sendAction_to(speed.action(), speed.target().as_deref()) };
+    act(&speed);
     settle(cx).await;
     let per_second = cx.update(|cx| settings::get(cx).key_repeat.per_second);
     lines.push(format!("speed moved to stop 7: per_second = {per_second}"));
@@ -143,7 +146,7 @@ async fn check(
         let enabled = [10, 8].map(|stops| slider(&ns_window, stops).map(|s| s.isEnabled()));
         lines.push(format!("repeat off ({name}): sliders enabled {enabled:?}"));
         if enabled.iter().any(|enabled| *enabled != Ok(false)) {
-            return Err("a slider stayed enabled with the repeat off".into());
+            return fail("a slider stayed enabled with the repeat off", &lines);
         }
         lines.push(shoot(&ns_window, out, &format!("off-{name}.png"), cx).await?);
         cx.update(|cx| settings::update(cx, |settings| settings.key_repeat.enabled = true));
@@ -183,10 +186,10 @@ async fn check(
     ] {
         go(shell, route, cx);
         settle(cx).await;
-        let (said, sliders) = views(&ns_window, label);
+        let (said, controls) = views(&ns_window, label);
         lines.push(said);
-        if route == Route::Workspace && sliders != 0 {
-            return Err("a slider outlived its page".into());
+        if route == Route::Workspace && controls != 0 {
+            return fail("a native control outlived its page", &lines);
         }
     }
     Ok(lines)
@@ -235,40 +238,112 @@ fn ns_window(main: MainThreadMarker) -> Result<Retained<NSWindow>> {
         .ok_or_else(|| "no window on screen".into())
 }
 
-/// How many views the window holds and how many are sliders, said after `label`; and the
-/// sliders' count.
+/// How many views the window holds and how many are native controls, said after `label`; and
+/// the controls' count.
 fn views(window: &NSWindow, label: &str) -> (String, usize) {
-    let (mut views, mut sliders) = (0, 0);
-    if let Some(content) = window.contentView() {
-        each_view(&content, &mut |view| {
-            views += 1;
-            sliders += usize::from(view.downcast_ref::<NSSlider>().is_some());
-        });
-    }
-    (format!("{label}: {views} views, {sliders} sliders"), sliders)
+    let mut views = 0;
+    each_view(window, &mut |_| views += 1);
+    let controls = controls::<NSControl>(window).len();
+    let said = format!("{label}: {views} views, {controls} native controls");
+    (said, controls)
 }
 
-fn each_view(view: &NSView, visit: &mut dyn FnMut(&NSView)) {
-    visit(view);
-    let subviews = view.subviews();
-    for index in 0..subviews.count() {
-        each_view(&subviews.objectAtIndex(index), visit);
+/// The views in `window` that are `T`s, in the order the window holds them.
+fn controls<T: objc2::DowncastTarget + objc2::Message>(window: &NSWindow) -> Vec<Retained<T>> {
+    let mut found = Vec::new();
+    each_view(window, &mut |view| {
+        if let Some(control) = view.downcast_ref::<T>() {
+            found.push(control.retain());
+        }
+    });
+    found
+}
+
+/// Sends `control`'s action to its target, as `AppKit` does once it's used.
+fn act(control: &NSControl) {
+    // SAFETY: the control's own action to its own target.
+    unsafe { control.sendAction_to(control.action(), control.target().as_deref()) };
+}
+
+/// The check failed with `why`, after what it saw so far.
+fn fail<T>(why: &str, lines: &[String]) -> Result<T> {
+    Err(format!("{why}:\n{}", lines.join("\n")))
+}
+
+/// The three settings the page's switches turn on and off.
+fn switched(cx: &mut AsyncApp) -> [bool; 3] {
+    cx.update(|cx| {
+        let settings = settings::get(cx);
+        [
+            settings.preview_files,
+            settings.sidebar_open_on_launch,
+            settings.key_repeat.enabled,
+        ]
+    })
+}
+
+/// Flips a switch as `AppKit` does once it's clicked, and has exactly one setting follow; then
+/// sets the settings back, and has the switch follow.
+async fn flip(window: &NSWindow, cx: &mut AsyncApp) -> Result<Vec<String>> {
+    let switches = controls::<NSSwitch>(window);
+    let [switch, _, _] = switches.as_slice() else {
+        return Err(format!(
+            "{} switches on the General page, not 3",
+            switches.len()
+        ));
+    };
+    let saved = cx.update(|cx| settings::get(cx).clone());
+    let before = switched(cx);
+    let on = switch.state() != NSControlStateValueOn;
+    switch.setState(if on {
+        NSControlStateValueOn
+    } else {
+        NSControlStateValueOff
+    });
+    act(switch);
+    settle(cx).await;
+    let after = switched(cx);
+    let changed: Vec<bool> = (before.iter().zip(&after))
+        .filter(|(before, after)| before != after)
+        .map(|(_, after)| *after)
+        .collect();
+    if changed != [on] {
+        return Err(format!(
+            "flipping a switch to {on} changed {before:?} to {after:?}"
+        ));
+    }
+    let mut lines = vec![format!(
+        "switch flipped to {on}: settings {before:?} -> {after:?}"
+    )];
+    cx.update(|cx| settings::update(cx, |settings| *settings = saved));
+    settle(cx).await;
+    let shows = switch.state() == NSControlStateValueOn;
+    lines.push(format!("settings set back: switch on = {shows}"));
+    if shows == on {
+        return Err("the switch didn't follow its setting".into());
+    }
+    Ok(lines)
+}
+
+/// Visits each view in `window`, its content view first.
+fn each_view(window: &NSWindow, visit: &mut dyn FnMut(&NSView)) {
+    fn under(view: &NSView, visit: &mut dyn FnMut(&NSView)) {
+        visit(view);
+        let subviews = view.subviews();
+        for index in 0..subviews.count() {
+            under(&subviews.objectAtIndex(index), visit);
+        }
+    }
+    if let Some(content) = window.contentView() {
+        under(&content, visit);
     }
 }
 
 /// The slider over `stops` stops.
 fn slider(window: &NSWindow, stops: isize) -> Result<Retained<NSSlider>> {
-    let mut found = None;
-    if let Some(content) = window.contentView() {
-        each_view(&content, &mut |view| {
-            if let Some(slider) = view.downcast_ref::<NSSlider>()
-                && slider.numberOfTickMarks() == stops
-            {
-                found = Some(slider.retain());
-            }
-        });
-    }
-    found.ok_or_else(|| format!("no slider over {stops} stops"))
+    (controls::<NSSlider>(window).into_iter())
+        .find(|slider| slider.numberOfTickMarks() == stops)
+        .ok_or_else(|| format!("no slider over {stops} stops"))
 }
 
 /// How much of the slider its container, clipped to the page, shows.

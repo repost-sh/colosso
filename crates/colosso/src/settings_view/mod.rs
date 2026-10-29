@@ -7,12 +7,13 @@ mod components;
 mod general;
 mod keyboard_shortcuts;
 mod native_slider;
+mod native_switch;
+#[cfg(all(target_os = "macos", feature = "visual-check"))]
+pub mod native_visual;
 mod settings_sidebar;
 mod ticked_slider;
 #[cfg(feature = "visual-check")]
 pub mod visual;
-#[cfg(all(target_os = "macos", feature = "visual-check"))]
-pub use native_slider::visual as native_slider_visual;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::{App, IntoElement, ParentElement as _};

@@ -10,8 +10,6 @@
 mod appkit;
 #[cfg(target_os = "macos")]
 mod host;
-#[cfg(all(target_os = "macos", feature = "visual-check"))]
-pub mod visual;
 
 use gpui_kit::{App, IntoElement, RenderOnce, Window};
 
