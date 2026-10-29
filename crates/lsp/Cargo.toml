@@ -1,0 +1,23 @@
+[package]
+name = "colosso-lsp"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The protocol's types, the version gpui-base's editor uses, so values pass straight through.
+lsp-types = "0.97"
+# Messages are read into borrowed raw values first, so each payload is left unparsed until
+# whoever takes it parses it, once, into the type it asked for.
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["raw_value"] }
+# Replies and subscriptions are futures and streams, so any executor can wait on them.
+futures = "0.3"
+log = "0.4"
+# A downloaded server is checked against its pinned digest and unpacked in-process.
+sha2 = "0.10"
+flate2 = "1"
+
+[lints]
+workspace = true
