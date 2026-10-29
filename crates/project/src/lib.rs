@@ -6,6 +6,8 @@
 //! Folders git ignores (`node_modules`, `target`) are listed as entries but not read until a
 //! consumer asks, and writes inside them are dropped where the platform reports them, so an
 //! `npm install` or a `cargo build` wakes nobody.
+//!
+//! `Rows` turns the listings into the rows a file tree draws, through the folders it opens.
 
 mod entry;
 mod feed;
@@ -14,6 +16,7 @@ mod ignores;
 mod paths;
 mod places;
 mod read;
+mod rows;
 mod scan;
 mod shared;
 mod tree;
@@ -27,6 +30,7 @@ pub use entry::{Entry, Kind, natural, order};
 pub use feed::{Counts, Feed, Git, Scanned, Subscription, Update};
 pub use ignores::Excludes;
 pub use paths::Written;
+pub use rows::{Listings, Reveal, Row, Rows};
 pub use shared::Stats;
 
 use crate::shared::Shared;

@@ -11,9 +11,9 @@ use gpui_kit::{
 };
 
 use crate::harness::{Bench, HEIGHT, Setup, WIDTH};
-use crate::scan;
 use crate::scenarios::{Kind, Scenario};
-use crate::stats::{Deadline, Measured};
+use crate::stats::{self, Deadline, Measured};
+use crate::{rows, scan};
 
 /// Fresh editors opened per file; the first is cold, the rest find fonts and glyphs cached.
 const OPENS: usize = 5;
@@ -39,6 +39,10 @@ pub fn run(scenario: Scenario, deadline: Deadline) -> Result<Measured> {
         // The scans run no editor and open no window.
         Kind::Scan | Kind::ScanTouch | Kind::BurstIgnored | Kind::BurstTracked => {
             return scan::run(scenario, deadline);
+        }
+        // Nor do the file tree's rows.
+        Kind::RowsExpand | Kind::RowsCollapse | Kind::RowsUpdate | Kind::RowsReveal => {
+            return rows::run(scenario, deadline);
         }
     };
     let text = SharedString::from(fixture.read()?);
@@ -73,15 +77,10 @@ impl Run {
         count: usize,
         mut frame: impl FnMut(&mut Bench, usize) -> Result<Duration>,
     ) -> Result<()> {
-        for i in 0..count {
-            if let Some(at) = self.deadline.passed() {
-                self.measured.timed_out_at_s = Some(at);
-                break;
-            }
-            let took = frame(&mut self.bench, i)?;
-            self.measured.push(took);
-        }
-        Ok(())
+        let bench = &mut self.bench;
+        stats::sample(self.deadline, &mut self.measured, count, |i| {
+            frame(bench, i)
+        })
     }
 
     fn note(&mut self, note: String) {

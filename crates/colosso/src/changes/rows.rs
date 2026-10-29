@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 
 use colosso_git::{Content, FileDiff, Hunk};
 
-use super::state::{Key, key};
+use super::file_view::{Key, key};
 
 /// Unchanged lines shown before and after each change.
 const CONTEXT: u32 = 3;

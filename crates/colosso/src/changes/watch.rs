@@ -50,6 +50,7 @@ mod tests {
     use colosso_project::{Excludes, Feed, Git, GitDirs, Options, Project, Subscription};
 
     use super::*;
+    use crate::test_support::{git, scratch};
 
     #[test]
     fn writes_are_named_by_file_by_folder_or_not_at_all() {
@@ -86,30 +87,9 @@ mod tests {
 
     /// A repository made for one test under the target folder.
     fn repository(name: &str) -> PathBuf {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../target/test-repos")
-            .join(format!("{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(&root).unwrap();
+        let root = scratch(name);
         git(&root, &["init", "-q", "-b", "main"]);
-        std::fs::canonicalize(root).unwrap()
-    }
-
-    fn git(root: &Path, args: &[&str]) {
-        let status = std::process::Command::new("git")
-            .args(["-c", "user.name=Test", "-c", "user.email=test@example.com"])
-            .args([
-                "-c",
-                "commit.gpgsign=false",
-                "-c",
-                "core.hooksPath=/dev/null",
-            ])
-            .args(args)
-            .current_dir(root)
-            .output()
-            .unwrap()
-            .status;
-        assert!(status.success(), "git {args:?}");
+        root
     }
 
     /// The repository at `root` opened as the app opens it, with what it writes followed as

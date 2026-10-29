@@ -14,7 +14,36 @@ futures = "0.3"
 # TOML, Svelte and more. Pure-Rust regexes, so nothing to link.
 syntect = { version = "5.3", default-features = false, features = ["parsing", "dump-load", "regex-fancy"] }
 two-face = { version = "0.5", default-features = false, features = ["syntect-fancy"] }
-gpui-kit.workspace = true
+# The grammars the file tabs colour code with: picked by what a checkout usually holds. SQL's
+# isn't among them: it pins `cc` below the version GPUI locks.
+gpui-kit = { workspace = true, features = [
+  "tree-sitter",
+  "tree-sitter-rust",
+  "tree-sitter-typescript",
+  "tree-sitter-tsx",
+  "tree-sitter-javascript",
+  "tree-sitter-python",
+  "tree-sitter-go",
+  "tree-sitter-toml",
+  "tree-sitter-yaml",
+  "tree-sitter-markdown",
+  "tree-sitter-markdown-inline",
+  "tree-sitter-css",
+  "tree-sitter-html",
+  "tree-sitter-bash",
+  "tree-sitter-c",
+  "tree-sitter-cpp",
+  "tree-sitter-java",
+  "tree-sitter-swift",
+  "tree-sitter-kotlin",
+  "tree-sitter-ruby",
+  "tree-sitter-zig",
+  "tree-sitter-lua",
+  "tree-sitter-make",
+  "tree-sitter-proto",
+  "tree-sitter-graphql",
+  "tree-sitter-diff",
+] }
 # Only for the frames of bitmaps painted at runtime; the version GPUI already pulls in.
 image = { version = "0.25", default-features = false }
 # Settings on disk; all versions GPUI already pulls in.
@@ -40,6 +69,8 @@ objc = "0.2"
 # Debug builds only: lets `dx serve --hot-patch` swap render code into the running app.
 hot-reload = ["dep:gpui-pre", "gpui-pre/hot-reload"]
 inspector = ["gpui-kit/inspector"]
+# `--visual-check`: draws the Files panel in the real shell off screen and saves PNGs.
+visual-check = ["gpui-kit/test-support"]
 
 [lints]
 workspace = true

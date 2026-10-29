@@ -3,14 +3,14 @@
 
 use std::collections::HashSet;
 
-use colosso_git::{Change, Checkout, Discarding};
+use colosso_git::{Change, Checkout as Git, Discarding};
 use gpui_kit::{
     App, Context, Entity, IntoElement, ParentElement as _, Render, SharedString, Styled as _,
     Window, div,
 };
 
-use super::state::Changes;
 use super::view::split_path;
+use crate::checkout::Checkout;
 use crate::modal::{self, Button, LINE, SMALL_LINE, Tone, small_line};
 use crate::theme;
 
@@ -19,8 +19,8 @@ const WIDTH: f32 = 400.;
 const LISTED: usize = 5;
 const GAP: f32 = 8.;
 
-/// Asks over `window` before discarding `list`, of what `changes` shows.
-pub fn confirm(changes: Entity<Changes>, list: Vec<Change>, window: &mut Window, cx: &mut App) {
+/// Asks over `window` before discarding `list`, of what `checkout` shows.
+pub fn confirm(checkout: Entity<Checkout>, list: Vec<Change>, window: &mut Window, cx: &mut App) {
     // Conflicts are resolved, not discarded.
     let list: Vec<Change> = (list.into_iter())
         .filter(|change| change.discarding() != Discarding::Kept)
@@ -29,19 +29,19 @@ pub fn confirm(changes: Entity<Changes>, list: Vec<Change>, window: &mut Window,
         return;
     }
     // Some may be the unstaged half of a file partly staged, whose staged half stays.
-    let staged: HashSet<&str> = (changes.read(cx).files().iter())
+    let staged: HashSet<&str> = (checkout.read(cx).files().iter())
         .map(|file| &file.diff.change)
         .filter(|change| change.staged)
         .map(|change| change.path.as_str())
         .collect();
     let keeps_staged =
         (list.iter()).any(|change| !change.staged && staged.contains(change.path.as_str()));
-    let dialog = DiscardDialog::new(changes, list, keeps_staged);
+    let dialog = DiscardDialog::new(checkout, list, keeps_staged);
     modal::open(WIDTH, dialog.height(), window, cx, |_, _| dialog);
 }
 
 struct DiscardDialog {
-    changes: Entity<Changes>,
+    checkout: Entity<Checkout>,
     list: Vec<Change>,
     title: SharedString,
     /// The files named, when there's more than one.
@@ -52,7 +52,7 @@ struct DiscardDialog {
 }
 
 impl DiscardDialog {
-    fn new(changes: Entity<Changes>, list: Vec<Change>, keeps_staged: bool) -> Self {
+    fn new(checkout: Entity<Checkout>, list: Vec<Change>, keeps_staged: bool) -> Self {
         let trashed = (list.iter())
             .filter(|change| change.discarding() == Discarding::Trashed)
             .count();
@@ -90,7 +90,7 @@ impl DiscardDialog {
             names.push(format!("and {} more…", list.len() - LISTED).into());
         }
         DiscardDialog {
-            changes,
+            checkout,
             list,
             title: title.into(),
             names,
@@ -117,8 +117,7 @@ impl DiscardDialog {
         self.error = None;
         cx.notify();
         let list = self.list.clone();
-        let done =
-            (self.changes).update(cx, |changes, cx| changes.act(Checkout::discard, list, cx));
+        let done = (self.checkout).update(cx, |checkout, cx| checkout.act(Git::discard, list, cx));
         cx.spawn_in(window, async move |this, cx| {
             let done = done.await;
             this.update_in(cx, |this, window, cx| match done {

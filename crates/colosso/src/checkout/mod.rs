@@ -1,99 +1,58 @@
-//! A checkout's changed files, kept up to date while something writes to it. Only what the
-//! watcher says was touched is read again; every other file keeps the diff it had.
+//! One checkout as the app holds it while it's in the sidebar: git opened on it, its project
+//! listing and watching it, its changes read again as it's written to (only what the watcher
+//! says was touched; every other file keeps the diff it had), the marks the file tree tints
+//! with, and the files open from it. The panels showing it observe it; none reaches another.
 
-use std::collections::HashMap;
+mod documents;
+
 use std::mem;
-use std::ops::Range;
-use std::path::PathBuf;
-use std::sync::{Arc, OnceLock};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
-use colosso_git::{Change, Checkout, Content, FileDiff, changed_words};
-use colosso_project::{Feed, GitDirs};
+use colosso_git::{Change, Checkout as Git};
+use colosso_project::{Feed, GitDirs, Project};
 use futures::StreamExt as _;
-use gpui_kit::gpui::{AppContext as _, AsyncApp, Context, Subscription, Task, WeakEntity, Window};
+use gpui_kit::gpui::{
+    AppContext as _, AsyncApp, Context, Entity, Subscription, Task, WeakEntity, Window,
+};
 
-use super::highlight::{Highlights, highlight};
-use super::reread::{Read, Stale, read};
-use super::watch::{Touched, touched};
+use documents::Documents;
+#[cfg(test)]
+pub use documents::read_at_most;
+pub use documents::{Content, Document, MOST_BYTES};
+
+use crate::changes::{FileView, Marks, Read, Stale, Touched, read, touched};
 use crate::checkouts;
 
-/// A changed file as shown: its diff and, once worked out, its colours. The diff shows plain
-/// until then, as colouring takes longer than reading.
-#[derive(Debug)]
-pub struct FileView {
-    pub diff: FileDiff,
-    colours: OnceLock<Colours>,
-}
-
-/// What colouring a file works out ahead of drawing it, so drawing a line only looks it up.
-#[derive(Debug, Default)]
-pub struct Colours {
-    /// Its syntax, if its kind of file is known.
-    pub highlights: Option<Highlights>,
-    /// The words that changed in each replaced line, by side and line.
-    pub old_words: HashMap<u32, Vec<Range<usize>>>,
-    pub new_words: HashMap<u32, Vec<Range<usize>>>,
-}
-
-impl FileView {
-    pub(super) fn new(diff: FileDiff) -> Self {
-        FileView {
-            diff,
-            colours: OnceLock::new(),
-        }
-    }
-
-    pub fn key(&self) -> Key {
-        key(&self.diff.change)
-    }
-
-    pub fn colours(&self) -> Option<&Colours> {
-        self.colours.get()
-    }
-
-    fn colour(&self) {
-        self.colours.get_or_init(|| colours(&self.diff));
-    }
-}
-
-/// `diff`'s syntax, and the words each removed line and the line put in its place changed:
-/// the nth of a hunk's removed lines is paired with the nth of its added ones.
-fn colours(diff: &FileDiff) -> Colours {
-    let mut colours = Colours {
-        highlights: highlight(&diff.change.path, &diff.content),
-        ..Colours::default()
-    };
-    if let Content::Text { old, new, hunks } = &diff.content {
-        for hunk in hunks {
-            for (old_line, new_line) in hunk.old.clone().zip(hunk.new.clone()) {
-                let words = changed_words(old.line(old_line as usize), new.line(new_line as usize));
-                if let Some((removed, added)) = words {
-                    colours.old_words.insert(old_line, removed);
-                    colours.new_words.insert(new_line, added);
-                }
-            }
-        }
-    }
-    colours
-}
-
 /// Something done to some of a checkout's changes: staging, unstaging or discarding them.
-pub type GitAct = fn(&Checkout, &[Change]) -> colosso_git::Result<()>;
+pub type GitAct = fn(&Git, &[Change]) -> colosso_git::Result<()>;
 
-/// One checkout's changes.
-pub struct Changes {
+/// Why reading the changes waits, if it does; it catches up once nothing does.
+#[derive(Default)]
+struct Waits {
+    /// The window's out of sight.
+    hidden: bool,
+    /// Another checkout is selected.
+    unselected: bool,
+}
+
+pub struct Checkout {
     root: PathBuf,
-    checkout: Option<Arc<Checkout>>,
+    git: Option<Arc<Git>>,
+    /// Its project once git's open, which the file tree lists and the changes follow.
+    project: Option<Arc<Project>>,
+    documents: Documents,
     /// What status listed last, the files left out of `files` included.
     listed: Vec<Change>,
+    /// The same, as the file tree marks it.
+    marks: Arc<Marks>,
     files: Vec<Arc<FileView>>,
     /// Why the checkout couldn't be read, if it couldn't.
     error: Option<String>,
     /// Why changes aren't followed as they happen, if they aren't.
     unwatched: Option<String>,
     stale: Stale,
-    /// Whether the window is out of sight, so reading waits until it's back.
-    paused: bool,
+    waits: Waits,
     reading: Option<Task<()>>,
     /// Whether a read has finished, so an empty list means no changes rather than not yet.
     read_once: bool,
@@ -105,37 +64,41 @@ pub struct Changes {
     _following: Option<Task<()>>,
 }
 
-impl Changes {
-    /// Opens the checkout at `root` and starts reading and following its changes.
+impl Checkout {
+    /// Opens the checkout at `root`, selected, and starts reading and following its changes.
     pub fn new(root: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
         // Nothing is read while nobody can see it; what changed meanwhile is read on return.
         let _visibility = cx.observe_window_visibility(window, |this, visibility, _, cx| {
-            this.set_visible(visibility.is_visible(), cx);
+            this.waits.hidden = !visibility.is_visible();
+            this.read(cx);
         });
         let path = root.clone();
         let opening = cx.spawn(async move |this, cx| {
             let opened = cx
                 .background_spawn(async move {
-                    let checkout = Checkout::open(&path)?;
-                    let (git_dir, common_dir) = checkout.git_dirs();
-                    let git = GitDirs {
+                    let git = Git::open(&path)?;
+                    let (git_dir, common_dir) = git.git_dirs();
+                    let dirs = GitDirs {
                         git_dir,
                         common_dir,
                     };
-                    Ok::<_, colosso_git::GitError>((checkout, git))
+                    Ok::<_, colosso_git::GitError>((git, dirs))
                 })
                 .await;
             this.update(cx, |this, cx| this.opened(opened, cx)).ok();
         });
-        Changes {
+        Checkout {
             root,
-            checkout: None,
+            git: None,
+            project: None,
+            documents: Documents::default(),
             listed: Vec::new(),
+            marks: Arc::default(),
             files: Vec::new(),
             error: None,
             unwatched: None,
             stale: Stale::everything(),
-            paused: false,
+            waits: Waits::default(),
             reading: Some(opening),
             read_once: false,
             coloured: false,
@@ -149,8 +112,18 @@ impl Changes {
         &self.root
     }
 
+    /// Its project, once git's open on it.
+    pub fn project(&self) -> Option<&Arc<Project>> {
+        self.project.as_ref()
+    }
+
     pub fn files(&self) -> &[Arc<FileView>] {
         &self.files
+    }
+
+    /// Each changed file's mark, and each folder's above them, as last read.
+    pub fn marks(&self) -> &Arc<Marks> {
+        &self.marks
     }
 
     pub fn error(&self) -> Option<&str> {
@@ -159,6 +132,11 @@ impl Changes {
 
     pub fn unwatched(&self) -> Option<&str> {
         self.unwatched.as_deref()
+    }
+
+    /// The document for the file at `path`, absolute, read unless it's open already.
+    pub fn document(&mut self, path: &Path, cx: &mut Context<Self>) -> Entity<Document> {
+        self.documents.open(path, cx)
     }
 
     /// The lines added and removed across the files.
@@ -182,18 +160,29 @@ impl Changes {
         }
     }
 
+    /// Reads the changes only while the checkout is selected; what was written meanwhile is
+    /// read when it is again.
+    pub fn set_selected(&mut self, selected: bool, cx: &mut Context<Self>) {
+        self.waits.unselected = !selected;
+        self.read(cx);
+    }
+
     /// Changes already read as `files`, coloured, for measuring the panel without a checkout.
     #[cfg(test)]
-    pub fn read_as(files: Vec<FileDiff>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let mut changes = Changes::new(PathBuf::from("/nowhere"), window, cx);
-        changes.reading = None;
-        changes.stale = Stale::default();
-        changes.read_once = true;
-        changes.files = (files.into_iter())
+    pub fn read_as(
+        files: Vec<colosso_git::FileDiff>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let mut checkout = Checkout::new(PathBuf::from("/nowhere"), window, cx);
+        checkout.reading = None;
+        checkout.stale = Stale::default();
+        checkout.read_once = true;
+        checkout.files = (files.into_iter())
             .map(|diff| Arc::new(FileView::new(diff)))
             .inspect(|file| file.colour())
             .collect();
-        changes
+        checkout
     }
 
     /// Runs `act`, staging, unstaging or discarding, on `changes` in the background, then reads
@@ -204,14 +193,14 @@ impl Changes {
         changes: Vec<Change>,
         cx: &mut Context<Self>,
     ) -> Task<colosso_git::Result<()>> {
-        let Some(checkout) = self.checkout.clone() else {
+        let Some(git) = self.git.clone() else {
             return Task::ready(Ok(()));
         };
         let files = (changes.iter().flat_map(Change::paths)).map(|path| Touched::File(path.into()));
         let touched: Vec<Touched> = std::iter::once(Touched::Index).chain(files).collect();
         cx.spawn(async move |this, cx| {
             let done = cx
-                .background_spawn(async move { act(&checkout, &changes) })
+                .background_spawn(async move { act(&git, &changes) })
                 .await;
             // Even a failed command may have done part of it.
             this.update(cx, |this, cx| this.touched(touched, cx)).ok();
@@ -224,25 +213,20 @@ impl Changes {
         !self.read_once && self.error.is_none()
     }
 
-    /// Stops reading while the window is out of sight, and catches up when it's back.
-    fn set_visible(&mut self, visible: bool, cx: &mut Context<Self>) {
-        self.paused = !visible;
-        self.read(cx);
-    }
-
-    /// Starts following the checkout through its project, shared with every other panel
-    /// showing it, once it's open.
-    fn opened(&mut self, opened: colosso_git::Result<(Checkout, GitDirs)>, cx: &mut Context<Self>) {
+    /// Starts following the checkout through its project, shared with every other window
+    /// showing it, once git's open.
+    fn opened(&mut self, opened: colosso_git::Result<(Git, GitDirs)>, cx: &mut Context<Self>) {
         self.reading = None;
         match opened {
             Err(error) => self.failed(error.message),
-            Ok((checkout, git)) => {
-                let project = checkouts::project(checkout.root(), git, cx);
+            Ok((git, dirs)) => {
+                let project = checkouts::project(git.root(), dirs, cx);
                 log::info!("following the changes in {}", self.root.display());
                 let updates = project.subscribe(Feed::Written);
                 self._following =
                     Some(cx.spawn(async move |this, cx| follow(this, updates, cx).await));
-                self.checkout = Some(Arc::new(checkout));
+                self.project = Some(project);
+                self.git = Some(Arc::new(git));
             }
         }
         self.read(cx);
@@ -269,10 +253,11 @@ impl Changes {
 
     /// Reads what's stale, unless a read is under way, which reads again when it's done.
     fn read(&mut self, cx: &mut Context<Self>) {
-        if self.paused || self.reading.is_some() || self.stale.is_empty() {
+        let waits = self.waits.hidden || self.waits.unselected;
+        if waits || self.reading.is_some() || self.stale.is_empty() {
             return;
         }
-        let Some(checkout) = self.checkout.clone() else {
+        let Some(git) = self.git.clone() else {
             return;
         };
         let stale = mem::take(&mut self.stale);
@@ -280,7 +265,11 @@ impl Changes {
         let files = self.files.clone();
         self.reading = Some(cx.spawn(async move |this, cx| {
             let read = cx
-                .background_spawn(async move { read(&checkout, &stale, &listed, files) })
+                .background_spawn(async move {
+                    let read = read(&git, &stale, &listed, files)?;
+                    let marks = Arc::new(Marks::new(&read.listed));
+                    Ok::<_, colosso_git::GitError>((read, marks))
+                })
                 .await;
             this.update(cx, |this, cx| this.read_done(read, cx)).ok();
         }));
@@ -298,11 +287,12 @@ impl Changes {
         self.error = Some(error);
     }
 
-    fn read_done(&mut self, read: colosso_git::Result<Read>, cx: &mut Context<Self>) {
+    fn read_done(&mut self, read: colosso_git::Result<(Read, Arc<Marks>)>, cx: &mut Context<Self>) {
         self.reading = None;
         match read {
-            Ok(read) => {
+            Ok((read, marks)) => {
                 self.listed = read.listed;
+                self.marks = marks;
                 self.files = read.files;
                 self.error = None;
                 self.read_once = true;
@@ -324,7 +314,7 @@ impl Changes {
     /// on screen colours soonest.
     fn colour(&mut self, cx: &mut Context<Self>) {
         let uncoloured: Vec<Arc<FileView>> = (self.files.iter())
-            .filter(|file| file.colours.get().is_none())
+            .filter(|file| file.colours().is_none())
             .cloned()
             .collect();
         if uncoloured.is_empty() {
@@ -347,19 +337,11 @@ impl Changes {
     }
 }
 
-/// What tells a file's changes apart: whether it's staged, and its path. A file partly staged
-/// has a change on each side.
-pub type Key = (bool, String);
-
-pub fn key(change: &Change) -> Key {
-    (change.staged, change.path.clone())
-}
-
 /// Passes on what the checkout's project reports, as it hands it over: the project gathers a
 /// burst of writes into one update, and what comes while a read is under way is read once
 /// it's done.
 async fn follow(
-    this: WeakEntity<Changes>,
+    this: WeakEntity<Checkout>,
     mut updates: colosso_project::Subscription,
     cx: &mut AsyncApp,
 ) {

@@ -23,6 +23,8 @@ enum Source {
     /// A git repository of about `tracked` files in nested folders, and `ignored` more in
     /// `node_modules/` and `target/`: what the scan scenarios read.
     Repo { tracked: usize, ignored: usize },
+    /// A tree of folders held in memory, made afresh by each run of the rows scenarios.
+    Tree,
 }
 
 /// How a fixture's text is made.
@@ -56,9 +58,9 @@ pub struct Fixture {
 
 /// Every fixture, in the order the results list them. The two under 256 KB are where the
 /// highlighter parses on the main thread at every keystroke and scans the whole tree for
-/// injections; every larger file is parsed in the background. The last is a repository, for
-/// the scan scenarios only.
-pub const FIXTURES: [Fixture; 9] = [
+/// injections; every larger file is parsed in the background. Then a repository, for the
+/// scan scenarios only, and a tree held in memory, for the rows scenarios only.
+pub const FIXTURES: [Fixture; 10] = [
     fixture(
         "rust-4k",
         "rust-4k.rs",
@@ -138,6 +140,7 @@ pub const FIXTURES: [Fixture; 9] = [
         300,
         false,
     ),
+    fixture("tree-500k", "-", "-", Source::Tree, 500, false),
 ];
 
 const fn fixture(
@@ -167,6 +170,11 @@ impl Fixture {
     /// Whether it's the repository the scan scenarios read, rather than a file to edit.
     pub fn is_repo(&self) -> bool {
         matches!(self.source, Source::Repo { .. })
+    }
+
+    /// Whether it's the tree the rows scenarios work, which is never on disk.
+    pub fn is_tree(&self) -> bool {
+        self.source == Source::Tree
     }
 
     pub fn read(&self) -> Result<String> {
@@ -199,6 +207,19 @@ impl Fixture {
             longest_line_bytes: text.lines().map(str::len).max().unwrap_or(0),
             files: 1,
             hash: format!("{:016x}", fnv1a(text.as_bytes())),
+        }
+    }
+
+    fn describe_tree(&self) -> FixtureInfo {
+        FixtureInfo {
+            name: self.name,
+            file: "(in memory)".to_owned(),
+            language: self.language,
+            bytes: 0,
+            lines: 0,
+            longest_line_bytes: 0,
+            files: crate::rows::TREE_FILES,
+            hash: "-".to_owned(),
         }
     }
 
@@ -252,7 +273,8 @@ pub fn in_checkout(relative: &str) -> PathBuf {
 pub fn ensure() -> Result<Vec<FixtureInfo>> {
     let dir = in_checkout(FIXTURES_DIR);
     fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
-    let missing = (FIXTURES.iter()).any(|fixture| !fixture.is_repo() && !fixture.path().exists());
+    let missing = (FIXTURES.iter())
+        .any(|fixture| matches!(fixture.source, Source::Text(_)) && !fixture.path().exists());
     let corpus = if missing {
         Some(Corpus::load(&workspace_root())?)
     } else {
@@ -263,6 +285,7 @@ pub fn ensure() -> Result<Vec<FixtureInfo>> {
         .map(|fixture| {
             let text = match fixture.source {
                 Source::Repo { tracked, ignored } => return fixture.ensure_repo(tracked, ignored),
+                Source::Tree => return Ok(fixture.describe_tree()),
                 Source::Text(text) => text,
             };
             let path = fixture.path();

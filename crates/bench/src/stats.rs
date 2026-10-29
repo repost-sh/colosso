@@ -69,6 +69,24 @@ impl Deadline {
     }
 }
 
+/// Takes `count` samples into `measured`, each timed by `sample(i)` itself, stopping early
+/// once `deadline` passes.
+pub fn sample(
+    deadline: Deadline,
+    measured: &mut Measured,
+    count: usize,
+    mut sample: impl FnMut(usize) -> anyhow::Result<Duration>,
+) -> anyhow::Result<()> {
+    for i in 0..count {
+        if let Some(at) = deadline.passed() {
+            measured.timed_out_at_s = Some(at);
+            break;
+        }
+        measured.push(sample(i)?);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

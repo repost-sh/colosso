@@ -1,8 +1,10 @@
 mod arc;
 mod backdrop;
 mod changes;
+mod checkout;
 mod checkouts;
 mod delete_worktree;
+mod files;
 mod gradient;
 mod logs;
 mod menu;
@@ -14,30 +16,44 @@ mod orca;
 mod pane;
 mod picker;
 mod projects;
+mod right_panel;
 mod settings;
 mod settings_view;
 mod shell;
 mod sidebar;
+#[cfg(test)]
+mod test_support;
 mod theme;
+
+use std::process::ExitCode;
 
 use gpui_kit::base::Root;
 use gpui_kit::{
-    AppContext as _, Bounds, Styled as _, TitlebarOptions, WindowBackgroundAppearance,
+    App, AppContext as _, Bounds, Styled as _, TitlebarOptions, WindowBackgroundAppearance,
     WindowBounds, WindowOptions, point, px, size, transparent_black,
 };
 
-fn main() {
+/// What the app sets up before its first window, the visual check's included.
+fn init(cx: &mut App) {
+    gpui_kit::init(cx);
+    settings::init(cx);
+    theme::init(cx);
+    shell::init(cx);
+    right_panel::init(cx);
+    navigation::bind_keys(cx);
+}
+
+fn main() -> ExitCode {
     logs::init();
+    #[cfg(feature = "visual-check")]
+    if std::env::args().any(|arg| arg == "--visual-check") {
+        return files::visual::run();
+    }
     gpui_kit::application()
         // The full Lucide set: the default bundle leaves out icons we use, which then draw nothing.
         .with_assets(gpui_kit::assets::AllAssets)
         .run(|cx| {
-            gpui_kit::init(cx);
-            settings::init(cx);
-            theme::init(cx);
-            shell::init(cx);
-            changes::init(cx);
-            navigation::bind_keys(cx);
+            init(cx);
             // Most of the screen, so the chat, the sidebar and the changes fit side by side.
             let screen = cx
                 .primary_display()
@@ -71,4 +87,5 @@ fn main() {
             })
             .expect("failed to open window");
         });
+    ExitCode::SUCCESS
 }

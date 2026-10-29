@@ -1,4 +1,5 @@
-//! Placeholder tab contents: what each pane kind will roughly look like.
+//! Tab contents: a file opened from the file tree in its editor, and placeholders for what
+//! each other pane kind will roughly look like.
 
 use gpui_kit::assets::IconName;
 use gpui_kit::{AnyElement, IntoElement, ParentElement as _, Styled as _, div, px, relative};
@@ -25,7 +26,10 @@ fn pane(pane: &Pane, context: &str, p: Palette) -> AnyElement {
         PaneKind::Chat => chat(pane, context, p),
         PaneKind::Terminal => terminal(p),
         PaneKind::Browser => browser(pane, p),
-        PaneKind::Editor => editor(pane, p),
+        PaneKind::Editor => match &pane.file {
+            Some(file) => file.editor.clone().into_any_element(),
+            None => editor(pane, p),
+        },
     }
 }
 
