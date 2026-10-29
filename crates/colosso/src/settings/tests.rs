@@ -34,6 +34,11 @@ fn missing_fields_fall_back_to_defaults() {
     assert_eq!(settings.changes_width, theme::CHANGES_WIDTH);
     assert_eq!(settings.dark_theme, GradientTheme::default());
     assert_eq!(settings.branch_prefix, BranchPrefix::GitHubUser);
+    // As Zed and VS Code have them: previews on, and no limit to the language servers.
+    assert!(settings.preview_files);
+    assert_eq!(settings.most_language_servers, None);
+    let limited: Settings = serde_json::from_str(r#"{ "most_language_servers": 2 }"#).unwrap();
+    assert_eq!(limited.most_language_servers, Some(2));
 }
 
 #[gpui_kit::test]

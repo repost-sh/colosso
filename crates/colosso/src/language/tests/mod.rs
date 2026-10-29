@@ -241,7 +241,7 @@ async fn past_the_limit_the_least_recently_used_server_stops_an_idle_one_first(
     let [a, b, c, d] = [&roots[0], &roots[1], &roots[2], &roots[3]];
     let (launcher, _) = launcher(|root, _| Value::Array(started(root, "src/lib.rs")));
     let shell = shell(&[a, b, c, d], launcher, cx);
-    cx.update(|cx| settings::update(cx, |settings| settings.most_language_servers = 2));
+    cx.update(|cx| settings::update(cx, |settings| settings.most_language_servers = Some(2)));
     let ready = async |root: &Path, cx: &mut TestAppContext| {
         let server = server(root, cx).unwrap();
         assert_eq!(settled(&server, cx).await, State::Ready);
@@ -269,15 +269,22 @@ async fn past_the_limit_the_least_recently_used_server_stops_an_idle_one_first(
         cx.read(|cx| b_server.read(cx).state().clone()),
         State::Stopped
     );
-    let live = cx.read(|cx| {
-        let Languages(registry) = cx.global::<Languages>();
-        let servers = registry.read(cx).servers();
-        servers
-            .iter()
-            .filter(|server| server.read(cx).is_live())
-            .count()
-    });
-    assert_eq!(live, 2);
+    let live = |cx: &TestAppContext| {
+        cx.read(|cx| {
+            let Languages(registry) = cx.global::<Languages>();
+            let servers = registry.read(cx).servers();
+            servers
+                .iter()
+                .filter(|server| server.read(cx).is_live())
+                .count()
+        })
+    };
+    assert_eq!(live(cx), 2);
+    // With no limit, as Zed and VS Code have it, A starts again and nothing stops for it.
+    cx.update(|cx| settings::update(cx, |settings| settings.most_language_servers = None));
+    let _a = open(&shell, a, "src/lib.rs", cx);
+    ready(a, cx).await;
+    assert_eq!(live(cx), 3);
     for root in &roots {
         let _ = std::fs::remove_dir_all(root);
     }
