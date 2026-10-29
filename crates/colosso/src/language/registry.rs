@@ -174,7 +174,9 @@ impl Registry {
     /// Stops servers other than `key`'s until starting it keeps within the limit: the least
     /// recently used idle one first, and the least recently used of all when none is idle.
     fn make_room(&mut self, key: &Key, cx: &mut Context<Self>) {
-        let most = settings::get(cx).most_language_servers.max(1);
+        let Some(most) = settings::get(cx).most_language_servers.map(|most| most.max(1)) else {
+            return;
+        };
         loop {
             let live: Vec<(&Key, &Slot)> = (self.servers.iter())
                 .filter(|(other, slot)| *other != key && slot.server.read(cx).is_live())

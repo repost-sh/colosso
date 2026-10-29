@@ -72,6 +72,11 @@ pub enum BranchPrefix {
 #[action(namespace = settings, no_json)]
 pub struct SetPreviewFiles(pub bool);
 
+/// Picks how many language servers run at once, or no limit, from a menu.
+#[derive(Clone, Debug, PartialEq, Action)]
+#[action(namespace = settings, no_json)]
+pub struct SetMostLanguageServers(pub Option<usize>);
+
 /// Picks what new branches are named under, from a menu.
 #[derive(Clone, Debug, PartialEq, Action)]
 #[action(namespace = settings, no_json)]
@@ -100,9 +105,10 @@ pub struct Settings {
     /// `~/colosso/workspaces`.
     pub worktrees_dir: Option<PathBuf>,
     pub branch_prefix: BranchPrefix,
-    /// The most language servers running at once. rust-analyzer takes a gigabyte or more on
-    /// a big workspace; past this, the least recently used one stops for the next.
-    pub most_language_servers: usize,
+    /// The most language servers running at once, or `None` (`null`) for no limit, as in Zed
+    /// and VS Code. rust-analyzer takes a few gigabytes on a big workspace; past this, the
+    /// least recently used one stops for the next.
+    pub most_language_servers: Option<usize>,
     /// How a held arrow key repeats.
     pub key_repeat: KeyRepeat,
 }
@@ -161,7 +167,7 @@ impl Default for Settings {
             projects: Vec::new(),
             worktrees_dir: None,
             branch_prefix: BranchPrefix::default(),
-            most_language_servers: 4,
+            most_language_servers: None,
             key_repeat: KeyRepeat::default(),
         }
     }
@@ -227,6 +233,9 @@ pub fn init(cx: &mut App) {
     });
     cx.on_action(|SetPreviewFiles(on): &SetPreviewFiles, cx| {
         update(cx, |settings| settings.preview_files = *on);
+    });
+    cx.on_action(|SetMostLanguageServers(most): &SetMostLanguageServers, cx| {
+        update(cx, |settings| settings.most_language_servers = *most);
     });
     cx.on_action(|SetBranchPrefix(prefix): &SetBranchPrefix, cx| {
         update(cx, |settings| settings.branch_prefix = prefix.clone());
