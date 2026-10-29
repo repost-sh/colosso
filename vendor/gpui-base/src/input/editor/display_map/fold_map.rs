@@ -185,14 +185,32 @@ impl FoldMap {
         new_candidates: Vec<FoldRange>,
     ) {
         // Remove old candidates within the edit range (already done by adjust_folds_for_edit)
-        // But do it again in case adjust wasn't called or range differs
-        self.candidates
-            .retain(|c| c.start_line < edit_start_line || c.start_line > edit_end_line);
+        // But do it again in case adjust wasn't called or range differs.
+        // The candidates are sorted by start line, so the edited lines are one
+        // run of them: a keystroke costs a binary search, not a pass over the
+        // whole document's candidates.
+        let start = self
+            .candidates
+            .partition_point(|c| c.start_line < edit_start_line);
+        let end = self
+            .candidates
+            .partition_point(|c| c.start_line <= edit_end_line);
+        self.candidates.drain(start..end);
 
-        // Add new candidates
-        self.candidates.extend(new_candidates);
-        self.candidates.sort_by_key(|r| r.start_line);
-        self.candidates.dedup_by_key(|r| r.start_line);
+        // Add new candidates. A candidate already starting on the same line
+        // is kept, as the stable sort and dedup this replaces kept it.
+        for candidate in new_candidates {
+            let ix = self
+                .candidates
+                .partition_point(|c| c.start_line < candidate.start_line);
+            if self
+                .candidates
+                .get(ix)
+                .is_none_or(|c| c.start_line != candidate.start_line)
+            {
+                self.candidates.insert(ix, candidate);
+            }
+        }
     }
 
     /// Set a fold at the given start_line (must be in candidates)
@@ -227,7 +245,11 @@ impl FoldMap {
 
     /// Check if a line is a fold candidate
     pub(super) fn is_fold_candidate(&self, start_line: usize) -> bool {
-        self.candidates.iter().any(|c| c.start_line == start_line)
+        // Asked for every visible line on every frame: binary search the
+        // sorted candidates rather than scanning all of them.
+        self.candidates
+            .binary_search_by_key(&start_line, |c| c.start_line)
+            .is_ok()
     }
 
     /// Get all fold candidates

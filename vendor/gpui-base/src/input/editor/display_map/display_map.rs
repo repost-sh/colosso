@@ -12,7 +12,7 @@ use ropey::Rope;
 use super::fold_map::FoldMap;
 use super::folding::FoldRange;
 pub use super::text_wrapper::WrappingIndent;
-use super::text_wrapper::{LineItem, WrapDisplayPoint};
+use super::text_wrapper::{LineItem, WrapDisplayPoint, WrapJob, WrapParams, WrappedLines};
 use super::wrap_map::WrapMap;
 use super::{BufferPoint, DisplayPoint};
 use crate::input::Point as TreeSitterPoint;
@@ -212,64 +212,111 @@ impl DisplayMap {
             .merge_candidates_for_edit(new_start_line, new_end_line, new_candidates);
     }
 
-    /// Update text (incremental or full)
-    pub fn on_text_changed(
+    /// Bytes `range` of the text were replaced by `new_len` bytes, making
+    /// `changed_text`.
+    pub(crate) fn text_edited(
         &mut self,
         changed_text: &Rope,
         range: &Range<usize>,
-        new_text: &Rope,
+        new_len: usize,
         cx: &mut App,
     ) {
-        self.wrap_map
-            .on_text_changed(changed_text, range, new_text, cx);
+        self.wrap_map.on_text_changed(changed_text, range, new_len, cx);
         self.rebuild_fold_projection();
     }
 
-    /// Update layout parameters (wrap width or font)
+    /// Set the widths of the inline elements, wrapping the lines they're on again.
     pub(crate) fn set_inline_metrics(
         &mut self,
-        metrics: std::rc::Rc<[(std::ops::Range<usize>, Pixels)]>,
+        metrics: std::sync::Arc<[(std::ops::Range<usize>, Pixels)]>,
         cx: &mut App,
     ) {
         self.wrap_map.set_inline_metrics(metrics, cx);
         self.rebuild_fold_projection();
     }
 
-    pub fn on_layout_changed(&mut self, wrap_width: Option<Pixels>, cx: &mut App) {
-        self.wrap_map.on_layout_changed(wrap_width, cx);
-        self.rebuild_fold_projection();
+    /// What lines wrap by.
+    pub(crate) fn wrap_params(&self) -> &WrapParams {
+        self.wrap_map.params()
     }
 
-    /// Set the wrapping indent for continuation lines.
-    pub fn set_wrapping_indent(&mut self, wrapping_indent: WrappingIndent, cx: &mut App) {
-        self.wrap_map.set_wrapping_indent(wrapping_indent, cx);
-        self.rebuild_fold_projection();
-    }
-
-    /// Set the number of spaces per tab stop.
-    pub(crate) fn set_tab_size(&mut self, tab_size: usize, cx: &mut App) {
-        if self.wrap_map.set_tab_size(tab_size, cx) {
+    /// Set what lines wrap by — the font, the width, the wrapping indent and
+    /// the tab size — without wrapping any again: each keeps its earlier
+    /// wrapping, as an interpolation, until [`Self::wrap_stale_rows`] or a
+    /// background wrap wraps it again. Returns whether anything changed.
+    pub(crate) fn set_wrap_params(&mut self, params: WrapParams) -> bool {
+        let changed = self.wrap_map.set_params(params);
+        if changed {
             self.rebuild_fold_projection();
         }
+        changed
     }
 
-    /// Set font parameters
-    pub fn set_font(&mut self, font: Font, font_size: Pixels, cx: &mut App) {
-        self.wrap_map.set_font(font, font_size, cx);
-        self.rebuild_fold_projection();
+    /// Wraps every line at `wrap_width` at once.
+    #[cfg(test)]
+    pub(crate) fn wrap_now(&mut self, wrap_width: Option<Pixels>, cx: &mut App) {
+        self.set_wrap_params(WrapParams {
+            wrap_width,
+            ..self.wrap_params().clone()
+        });
+        self.wrap_stale_rows(0..usize::MAX, std::time::Duration::MAX, cx);
+    }
+
+    /// How many lines keep an earlier wrapping until they are wrapped again.
+    pub(crate) fn stale_wrap_rows(&self) -> usize {
+        self.wrap_map.stale_rows()
+    }
+
+    /// Wrap the stale lines among buffer `rows` again, then the other stale
+    /// lines too while they look like they fit in `budget`. Returns whether
+    /// any line was wrapped again.
+    pub(crate) fn wrap_stale_rows(
+        &mut self,
+        rows: Range<usize>,
+        budget: std::time::Duration,
+        cx: &mut App,
+    ) -> bool {
+        let changed = self.wrap_map.wrap_stale_rows(rows, budget, cx);
+        if changed {
+            self.rebuild_fold_projection();
+        }
+        changed
+    }
+
+    /// Schedule a wrap of the stale lines in the background, when there are
+    /// and none with the current parameters is already. Returns whether one is.
+    pub(crate) fn schedule_background_wrap(&mut self) -> bool {
+        self.wrap_map.schedule_background_wrap()
+    }
+
+    /// The scheduled background wrap, when it is still needed: the edits
+    /// made from here on are applied to what it wraps.
+    pub(crate) fn background_wrap(&mut self, cx: &App) -> Option<WrapJob> {
+        self.wrap_map.background_wrap(cx)
+    }
+
+    /// Take the lines a background wrap made, with the edits made since it
+    /// started, unless what lines wrap by changed since. Returns whether it
+    /// took them.
+    pub(crate) fn apply_background_wrap(&mut self, wrapped: WrappedLines) -> bool {
+        let applied = self.wrap_map.apply_background_wrap(wrapped);
+        if applied {
+            self.rebuild_fold_projection();
+        }
+        applied
     }
 
     /// Ensure text is prepared (initializes wrapper if needed)
-    pub fn ensure_text_prepared(&mut self, text: &Rope, cx: &mut App) {
-        let did_initialize = self.wrap_map.ensure_text_prepared(text, cx);
+    pub fn ensure_text_prepared(&mut self, text: &Rope) {
+        let did_initialize = self.wrap_map.ensure_text_prepared(text);
         if did_initialize {
             self.rebuild_fold_projection();
         }
     }
 
     /// Initialize with text
-    pub fn set_text(&mut self, text: &Rope, cx: &mut App) {
-        self.wrap_map.set_text(text, cx);
+    pub fn set_text(&mut self, text: &Rope) {
+        self.wrap_map.set_text(text);
         self.rebuild_fold_projection();
     }
 

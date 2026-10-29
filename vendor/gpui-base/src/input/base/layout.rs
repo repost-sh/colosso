@@ -2,7 +2,7 @@ use std::{ops::Range, rc::Rc};
 
 use gpui::{Bounds, Half, Pixels, ShapedLine, TextAlign, px};
 
-use super::{WrappingIndent, display_map::LineLayout};
+use super::display_map::LineLayout;
 
 #[derive(Clone, Default)]
 pub(crate) struct WhitespaceIndicators {
@@ -19,8 +19,6 @@ pub(super) struct LastLayout {
     pub(super) visible_range_offset: Range<usize>,
     pub(super) lines: Rc<Vec<LineLayout>>,
     pub(super) line_height: Pixels,
-    pub(super) wrap_width: Option<Pixels>,
-    pub(super) wrapping_indent: WrappingIndent,
     pub(super) line_number_width: Pixels,
     /// Width of one space in the editor font.
     ///

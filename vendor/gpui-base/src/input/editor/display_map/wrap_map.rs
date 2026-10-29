@@ -10,7 +10,9 @@ use gpui::{App, Font, Pixels};
 use ropey::Rope;
 
 use super::fold_map::FoldMap;
-use super::text_wrapper::{LineItem, TextWrapper, WrapDisplayPoint, WrappingIndent};
+use super::text_wrapper::{
+    LineItem, TextWrapper, WrapDisplayPoint, WrapJob, WrapParams, WrappedLines,
+};
 use super::{BufferPoint, WrapPoint};
 use crate::input::RopeExt;
 
@@ -104,50 +106,71 @@ impl WrapMap {
         &mut self,
         changed_text: &Rope,
         range: &Range<usize>,
-        new_text: &Rope,
+        new_len: usize,
         cx: &mut App,
     ) {
-        self.wrapper.adjust_inline_metrics(range, new_text.len());
-        self.wrapper.update(changed_text, range, new_text, cx);
+        self.wrapper.adjust_inline_metrics(range, new_len);
+        self.wrapper.update(changed_text, range, new_len, cx);
     }
 
-    /// Update layout parameters (wrap width or font)
+    /// Set the widths of the inline elements, wrapping the lines they're on again.
     pub(super) fn set_inline_metrics(
         &mut self,
-        metrics: std::rc::Rc<[(std::ops::Range<usize>, Pixels)]>,
+        metrics: std::sync::Arc<[(std::ops::Range<usize>, Pixels)]>,
         cx: &mut App,
     ) {
         self.wrapper.set_inline_metrics(metrics, cx);
     }
 
-    pub(super) fn on_layout_changed(&mut self, wrap_width: Option<Pixels>, cx: &mut App) {
-        self.wrapper.set_wrap_width(wrap_width, cx);
+    /// What lines wrap by.
+    pub(super) fn params(&self) -> &WrapParams {
+        self.wrapper.params()
     }
 
-    /// Set the wrapping indent mode for continuation lines.
-    pub(super) fn set_wrapping_indent(&mut self, wrapping_indent: WrappingIndent, cx: &mut App) {
-        self.wrapper.set_wrapping_indent(wrapping_indent, cx);
+    /// Set what lines wrap by, without wrapping any again.
+    pub(super) fn set_params(&mut self, params: WrapParams) -> bool {
+        self.wrapper.set_params(params)
     }
 
-    /// Set the number of spaces per tab stop. Returns whether it changed.
-    pub(super) fn set_tab_size(&mut self, tab_size: usize, cx: &mut App) -> bool {
-        self.wrapper.set_tab_size(tab_size, cx)
+    /// How many lines keep an earlier wrapping until they are wrapped again.
+    pub(super) fn stale_rows(&self) -> usize {
+        self.wrapper.stale_rows()
     }
 
-    /// Set font parameters
-    pub(super) fn set_font(&mut self, font: Font, font_size: Pixels, cx: &mut App) {
-        self.wrapper.set_font(font, font_size, cx);
+    /// Wrap the stale lines among `rows` again, and the rest if they fit in `budget`.
+    pub(super) fn wrap_stale_rows(
+        &mut self,
+        rows: Range<usize>,
+        budget: std::time::Duration,
+        cx: &mut App,
+    ) -> bool {
+        self.wrapper.wrap_stale_rows(rows, budget, cx)
+    }
+
+    /// Schedule a background wrap, if one is needed and none is already.
+    pub(super) fn schedule_background_wrap(&mut self) -> bool {
+        self.wrapper.schedule_background_wrap()
+    }
+
+    /// The scheduled background wrap, if it still is needed.
+    pub(super) fn background_wrap(&mut self, cx: &App) -> Option<WrapJob> {
+        self.wrapper.background_wrap(cx)
+    }
+
+    /// Take the lines a background wrap made. Returns whether it took them.
+    pub(super) fn apply_background_wrap(&mut self, wrapped: WrappedLines) -> bool {
+        self.wrapper.apply_background_wrap(wrapped)
     }
 
     /// Ensure text is prepared (initializes wrapper if needed)
-    pub(super) fn ensure_text_prepared(&mut self, text: &Rope, cx: &mut App) -> bool {
-        self.wrapper.prepare_if_need(text, cx)
+    pub(super) fn ensure_text_prepared(&mut self, text: &Rope) -> bool {
+        self.wrapper.prepare_if_need(text)
     }
 
     /// Initialize with text
-    pub(super) fn set_text(&mut self, text: &Rope, cx: &mut App) {
+    pub(super) fn set_text(&mut self, text: &Rope) {
         self.wrapper.set_default_text(text);
-        self.wrapper.prepare_if_need(text, cx);
+        self.wrapper.prepare_if_need(text);
     }
 
     /// Get access to the underlying wrapper (for rendering/hit-testing)

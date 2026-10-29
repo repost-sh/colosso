@@ -11,13 +11,17 @@ use gpui::{
     Point, Position, ShapedLine, SharedString, Size, Style, Styled as _, TextAlign, TextRun,
     TextStyle, TouchDragEvent, TouchPhase, UnderlineStyle, Window, fill, point, px, relative, size,
 };
-use ropey::Rope;
+use ropey::{Rope, RopeSlice};
 use smallvec::SmallVec;
-use std::{ops::Range, rc::Rc};
+use std::{ops::Range, rc::Rc, sync::Arc};
 
 use crate::{
     Scrollbar,
-    input::{RopeExt as _, blink_cursor::CURSOR_WIDTH, display_map::LineLayout},
+    input::{
+        RopeExt as _,
+        blink_cursor::CURSOR_WIDTH,
+        display_map::{InputLine, LineLayout, PartialColumns, WrapParams},
+    },
 };
 
 use super::{
@@ -962,21 +966,13 @@ impl<M: InputModeKind> TextElement<M> {
         if !state.search_session.is_active() {
             return vec![];
         }
-        let ranges = state.search_session.matcher.matched_ranges();
-        let current_match_ix = state.search_session.matcher.current_match_index();
+        let matcher = &state.search_session.matcher;
+        let current_match_ix = matcher.current_match_index();
 
-        // Matches are sorted and do not overlap, so only the ones that reach
-        // into the visible range need a layout.
-        let visible_range = &last_layout.visible_range_offset;
-        let first = ranges.partition_point(|range| range.end <= visible_range.start);
+        // Only the matches that reach into the visible range need a layout.
         let mut paths = Vec::new();
-        for (index, range) in ranges
-            .iter()
-            .enumerate()
-            .skip(first)
-            .take_while(|(_, range)| range.start < visible_range.end)
-        {
-            if let Some(path) = Self::layout_match_range(range.clone(), last_layout, bounds) {
+        for (index, range) in matcher.matches_in(last_layout.visible_range_offset.clone()) {
+            if let Some(path) = Self::layout_match_range(range, last_layout, bounds) {
                 paths.push((path, current_match_ix == index));
             }
         }
@@ -1746,7 +1742,7 @@ impl<M: InputModeKind> TextElement<M> {
                 return Default::default();
             }
             self.state.update(cx, |state, cx| {
-                state.display_map.set_inline_metrics(Rc::from([]), cx)
+                state.display_map.set_inline_metrics(Arc::from([]), cx)
             });
             let mut exit = self.state.update(cx, |state, _| {
                 state.token_bounds.clear();
@@ -2207,20 +2203,26 @@ impl<M: InputModeKind> TextElement<M> {
         // This is separate from the visible_text offset because runs from highlight_lines
         // only cover visible (non-folded) lines.
         let mut run_offset = 0;
+        // Where a row is shaped: the part in view and a view's width either
+        // side of it, which is all of it but for a long row, see
+        // `visible_part`.
+        let scroll_x = -state
+            .deferred_scroll_offset
+            .unwrap_or_else(|| state.scroll_handle.offset())
+            .x;
+        let view_width = last_layout.content_width.max(px(1.));
+        let shaped_x = (scroll_x - view_width).max(px(0.))..scroll_x + view_width * 2.;
 
         for (vi, &buffer_line) in last_layout.visible_buffer_lines.iter().enumerate() {
-            let line_text: String = display_text.slice_line(buffer_line).into();
+            let line = display_text.slice_line(buffer_line);
             let line_item = state
                 .display_map
                 .line(buffer_line)
                 .expect("line should exists in wrapper");
 
-            debug_assert_eq!(line_item.len(), line_text.len());
+            debug_assert_eq!(line_item.len(), line.len());
 
-            let mut wrapped_lines: SmallVec<[ShapedLine; 1]> = SmallVec::with_capacity(1);
-            let mut line_has_background = false;
-
-            for range in &line_item.wrapped_lines {
+            let shape_range = |range: Range<usize>, window: &mut Window| {
                 let line_runs = runs_for_range(runs, run_offset, &range);
                 let line_runs = if bg_segments.is_empty() {
                     line_runs
@@ -2232,39 +2234,64 @@ impl<M: InputModeKind> TextElement<M> {
                     )
                 };
 
-                let sub_line: SharedString = line_text[range.clone()].to_string().into();
+                let sub_line: SharedString = line.slice(range).to_string().into();
                 let line_runs =
                     align_runs_to_char_boundaries(&sub_line, &line_runs).unwrap_or(line_runs);
                 let mut shaped_line = window
                     .text_system()
                     .shape_line(sub_line, font_size, &line_runs, None);
                 expand_tabs(&mut shaped_line, tab_stop);
+                (shaped_line, has_background(&line_runs))
+            };
 
-                line_has_background |= has_background(&line_runs);
-                wrapped_lines.push(shaped_line);
+            let mut rows: SmallVec<[InputLine; 1]> =
+                SmallVec::with_capacity(line_item.wrapped_lines.len());
+            let mut line_has_background = false;
+            for range in &line_item.wrapped_lines {
+                let part = visible_part(
+                    line.slice(range.clone()),
+                    shaped_x.clone(),
+                    last_layout.space_width,
+                );
+                let shaped_range = part.as_ref().map_or(range.clone(), |(part, _)| {
+                    range.start + part.start..range.start + part.end
+                });
+                let (shaped, has_background) = shape_range(shaped_range, window);
+                line_has_background |= has_background;
+                rows.push(match part {
+                    Some((part, columns)) => InputLine::partly_shaped(
+                        range.len(),
+                        part,
+                        shaped,
+                        last_layout.space_width,
+                        columns,
+                    ),
+                    None => InputLine::from(shaped),
+                });
             }
 
             // Use the first visual line's indentation width for continuation lines.
-            let wrap_indent = if line_item.indent > 0 && wrapped_lines.len() > 1 {
-                let indent_byte_len = line_text
-                    .char_indices()
-                    .nth(line_item.indent as usize)
-                    .map(|(ix, _)| ix)
-                    .unwrap_or(line_text.len());
-                wrapped_lines[0].x_for_index(indent_byte_len)
+            let wrap_indent = if line_item.indent > 0 && rows.len() > 1 {
+                let indent_byte_len = line
+                    .chars()
+                    .take(line_item.indent as usize)
+                    .map(char::len_utf8)
+                    .sum();
+                rows[0].x_for_index(indent_byte_len)
             } else {
                 px(0.)
             };
 
-            let line_layout = LineLayout::new()
-                .lines(wrapped_lines)
-                .wrap_indent(wrap_indent)
-                .with_background(line_has_background)
-                .with_whitespaces(whitespace_indicators.clone());
-            lines.push(line_layout);
+            lines.push(
+                LineLayout::new()
+                    .inline_lines(rows)
+                    .wrap_indent(wrap_indent)
+                    .with_background(line_has_background)
+                    .with_whitespaces(whitespace_indicators.clone()),
+            );
 
             // +1 for the `\n`
-            run_offset += line_text.len() + 1;
+            run_offset += line.len() + 1;
         }
 
         lines
@@ -2693,10 +2720,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
         // to, inside the frame that clips it, and springs back over the next
         // frames. Scrolling and everything measured from it stay exact.
         let mut stretch = self.state.update(cx, |state, cx| {
-            state.display_map.set_font(font, text_size, cx);
-            let tab_size = state.mode.tab_size().tab_size;
-            state.display_map.set_tab_size(tab_size, cx);
-            state.display_map.ensure_text_prepared(&state.text, cx);
+            state.display_map.ensure_text_prepared(&state.text);
             if cx.reduce_motion() {
                 state.overscroll.reset();
             } else if state.overscroll.step(cx.background_executor().now()) {
@@ -2741,26 +2765,23 @@ impl<M: InputModeKind> Element for TextElement<M> {
         };
 
         let wrapping_indent = state.wrapping_indent;
-        let wrap_width_changed = state
-            .last_layout
-            .as_ref()
-            .map(|l| l.wrap_width != wrap_width)
-            .unwrap_or(true);
-
-        let wrapping_indent_changed = state
-            .last_layout
-            .as_ref()
-            .map(|l| l.wrapping_indent != wrapping_indent)
-            .unwrap_or(true);
-
-        if wrap_width_changed || wrapping_indent_changed {
-            self.state.update(cx, |state, cx| {
-                state.display_map.on_layout_changed(wrap_width, cx);
-                state.display_map.set_wrapping_indent(wrapping_indent, cx);
-            });
-        }
-
+        let tab_size = state.mode.tab_size().tab_size;
         let line_height = window.line_height();
+        // Lines out of view may wrap in the background, see `relayout_wrap`.
+        self.state.update(cx, |state, cx| {
+            state.relayout_wrap(
+                WrapParams {
+                    font,
+                    font_size: text_size,
+                    wrap_width,
+                    wrapping_indent,
+                    tab_size,
+                },
+                bounds.size.height,
+                line_height,
+                cx,
+            );
+        });
         let token_elements = self.measure_tokens(
             (bounds.size.width - line_number_width - RIGHT_MARGIN).max(px(1.)),
             line_height,
@@ -2815,8 +2836,6 @@ impl<M: InputModeKind> Element for TextElement<M> {
             visible_top,
             visible_range_offset,
             line_height,
-            wrap_width,
-            wrapping_indent,
             line_number_width,
             space_width,
             lines: Rc::new(vec![]),
@@ -2935,6 +2954,14 @@ impl<M: InputModeKind> Element for TextElement<M> {
                 .filter(|(cached_key, _)| *cached_key == key);
             longest_line_width = match cached {
                 Some((_, width)) => width.max(widest_laid_out_line),
+                // Measured as it's laid out out of view: a character a space wide.
+                None if wrap_width.is_none()
+                    && let Some((_, columns)) =
+                        visible_part(longest_line, px(0.)..px(0.), space_width) =>
+                {
+                    (space_width * (columns.before + columns.after) as f32)
+                        .max(widest_laid_out_line)
+                }
                 None => {
                     let longest_line: SharedString = longest_line.to_string().into();
                     let tab_stop =
@@ -3737,6 +3764,44 @@ fn split_run_for_ime_underline(
     .collect()
 }
 
+/// Rows longer than this many bytes are shaped only where they can be seen,
+/// and a view's width either side: shaping and painting all of a row on every
+/// frame costs as much as the row is long.
+const LONG_ROW_BYTES: usize = 4096;
+/// A long row's shaped part starts and ends on a multiple of this many
+/// characters, so it stays the same, and cached, while the view scrolls
+/// within it.
+const LONG_ROW_PART_STEP: usize = 256;
+
+/// The bytes of `row` to shape to cover `shaped_x`, counting each character
+/// `column_width` wide, and how many characters are before and after them;
+/// None for a row short enough to shape whole, which places every character
+/// where it is drawn, however wide.
+fn visible_part(
+    row: RopeSlice,
+    shaped_x: Range<Pixels>,
+    column_width: Pixels,
+) -> Option<(Range<usize>, PartialColumns)> {
+    if row.len() <= LONG_ROW_BYTES {
+        return None;
+    }
+    let chars = row.len_chars();
+    let column =
+        |x: Pixels| (f32::from(x) / f32::from(column_width.max(px(1.)))).max(0.) as usize;
+    let end = column(shaped_x.end)
+        .div_ceil(LONG_ROW_PART_STEP)
+        .saturating_mul(LONG_ROW_PART_STEP)
+        .min(chars);
+    let start = (column(shaped_x.start) / LONG_ROW_PART_STEP * LONG_ROW_PART_STEP).min(end);
+    Some((
+        row.char_to_byte_idx(start)..row.char_to_byte_idx(end),
+        PartialColumns {
+            before: start,
+            after: chars - end,
+        },
+    ))
+}
+
 /// Whether any of these runs paints a glyph background, used to skip the background
 /// paint pass for lines without highlights.
 fn has_background(runs: &[TextRun]) -> bool {
@@ -3807,6 +3872,7 @@ fn split_runs_by_bg_segments(
 
 #[cfg(test)]
 mod tests {
+    use super::super::state::BACKGROUND_WRAP_DELAY;
     use super::*;
     use crate::input::{EditorMode, EditorState, FoldRange, RangeDecoration, Redo, Undo};
     use gpui::{
@@ -3859,6 +3925,125 @@ mod tests {
             DecorationHarness(state)
         });
         (editor.unwrap(), window)
+    }
+
+    fn redraw(cx: &mut VisualTestContext) {
+        cx.update(|window, cx| {
+            window.refresh();
+            window.draw(cx).clear(cx);
+        });
+    }
+
+    /// The buffer line at the top of the editor's view.
+    fn top_buffer_line(state: &EditorState) -> usize {
+        let line_height = state.last_layout.as_ref().unwrap().line_height;
+        let row = (f32::from(-state.scroll_handle.offset().y) / f32::from(line_height)) as usize;
+        state.display_map.display_row_to_buffer_line(row)
+    }
+
+    /// A narrower view wraps the lines in view at once and the rest in the
+    /// background, the buffer line at the top staying there; once done, the
+    /// lines are wrapped as wrapping them all at once would.
+    #[gpui::test]
+    fn a_resize_wraps_out_of_view_lines_in_the_background(cx: &mut TestAppContext) {
+        let text = (0..400)
+            .map(|ix| format!("{ix} {}", "word ".repeat(30)))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let (editor, window) = decoration_editor(cx, &text, true);
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        redraw(&mut cx);
+        cx.executor().advance_clock(BACKGROUND_WRAP_DELAY);
+        cx.run_until_parked();
+        redraw(&mut cx);
+
+        cx.update(|_, cx| {
+            editor.update(cx, |state, _| {
+                assert_eq!(state.display_map.stale_wrap_rows(), 0);
+                // Nothing beyond the view fits in no time.
+                state.relayout_wrap_budget = std::time::Duration::ZERO;
+                let line_height = state.last_layout.as_ref().unwrap().line_height;
+                let top = state.display_map.buffer_line_to_display_row(200);
+                state
+                    .scroll_handle
+                    .set_offset(point(px(0.), -(line_height * top)));
+            })
+        });
+        redraw(&mut cx);
+        editor.read_with(&cx, |state, _| assert_eq!(top_buffer_line(state), 200));
+
+        cx.simulate_resize(size(px(180.), px(140.)));
+        redraw(&mut cx);
+        editor.read_with(&cx, |state, _| {
+            assert!(state.display_map.stale_wrap_rows() > 0);
+            assert!(state.display_map.stale_wrap_rows() < 400);
+            assert_eq!(top_buffer_line(state), 200);
+        });
+        // The rest waits for the width to stay put a while.
+        cx.run_until_parked();
+        editor.read_with(&cx, |state, _| {
+            assert!(state.display_map.stale_wrap_rows() > 0);
+        });
+
+        cx.executor().advance_clock(BACKGROUND_WRAP_DELAY);
+        cx.run_until_parked();
+        redraw(&mut cx);
+        cx.update(|_, cx| {
+            editor.update(cx, |state, cx| {
+                assert_eq!(state.display_map.stale_wrap_rows(), 0);
+                assert_eq!(top_buffer_line(state), 200);
+                let rows = |state: &EditorState| {
+                    (0..400)
+                        .map(|line| state.display_map.line(line).unwrap().wrapped_lines.clone())
+                        .collect::<Vec<_>>()
+                };
+                let wrapped = rows(state);
+                let width = state.display_map.wrap_params().wrap_width;
+                state.display_map.wrap_now(None, cx);
+                state.display_map.wrap_now(width, cx);
+                assert_eq!(wrapped, rows(state), "as wrapping all at once");
+            })
+        });
+    }
+
+    /// A row too long to shape whole is shaped where it can be seen, as the
+    /// view scrolls along it.
+    #[gpui::test]
+    fn a_long_row_is_shaped_where_it_can_be_seen(cx: &mut TestAppContext) {
+        let text = "a".repeat(20_000) + "\nb";
+        let (editor, window) = decoration_editor(cx, &text, false);
+        let mut cx = VisualTestContext::from_window(window.into(), cx);
+        redraw(&mut cx);
+        let shaped = |state: &EditorState| {
+            let row = &state.last_layout.as_ref().unwrap().lines[0].wrapped_lines[0];
+            assert_eq!(row.len, 20_000);
+            row.text_offset()..row.text_offset() + row.text.len()
+        };
+        editor.read_with(&cx, |state, _| {
+            let shaped = shaped(state);
+            assert_eq!(shaped.start, 0);
+            assert!(shaped.len() < 2_000, "{shaped:?}");
+        });
+
+        let space_width = editor.read_with(&cx, |state, _| {
+            state.last_layout.as_ref().unwrap().space_width
+        });
+        cx.update(|_, cx| {
+            editor.update(cx, |state, _| {
+                state
+                    .scroll_handle
+                    .set_offset(point(-(space_width * 10_000.), px(0.)));
+            })
+        });
+        redraw(&mut cx);
+        editor.read_with(&cx, |state, _| {
+            let shaped = shaped(state);
+            assert!(shaped.start > 0, "{shaped:?}");
+            assert!(shaped.contains(&10_000), "{shaped:?}");
+            let row = &state.last_layout.as_ref().unwrap().lines[0].wrapped_lines[0];
+            assert_eq!(row.x_for_index(shaped.start), space_width * shaped.start as f32);
+            assert_eq!(row.closest_index_for_x(px(0.)), shaped.start);
+        });
     }
 
     /// A list as tall as the window, whose second item is an input that

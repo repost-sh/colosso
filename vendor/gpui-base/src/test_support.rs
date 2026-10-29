@@ -406,7 +406,8 @@ impl<E: Element<PrepaintState = Option<Hitbox>> + InteractiveElement> Element fo
             indeterminate: toggled.map(|value| value == gpui::accesskit::Toggled::Mixed),
             selected: node.is_selected(),
             expanded: node.is_expanded(),
-            value: node.value().map(|value| value.to_owned().into()),
+            // One copy of the value, not two: it can be a whole document.
+            value: node.value().map(SharedString::from),
             bounds,
             visible: false,
             focused: None,

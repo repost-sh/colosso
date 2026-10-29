@@ -1,15 +1,7 @@
-use std::{
-    cell::RefCell,
-    ops::Range,
-    rc::Rc,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-    time::Duration,
-};
+use std::{cell::RefCell, ops::Range, rc::Rc, time::Duration};
 
 use gpui::{HighlightStyle, SharedString, Task};
+use gpui_base::async_util::{CancelOnDrop, cancelled};
 use gpui_base::input::{
     EditorState, FoldRange, HighlightStyleResolver, InputEdit as BaseInputEdit, InputHighlighter,
     InputHighlighterFactory,
@@ -27,8 +19,9 @@ pub(crate) fn input_highlighter_factory() -> InputHighlighterFactory {
     })
 }
 
-const SYNC_PARSE_TIMEOUT: Duration = Duration::from_millis(2);
-const SYNC_PARSE_MAX_BYTES: usize = 256 * 1024;
+/// The main thread's share of an edit's reparse, the injection layers it
+/// changed included. Past it the rest runs in the background.
+const SYNC_PARSE_TIMEOUT: Duration = Duration::from_millis(1);
 const PARSE_DEBOUNCE: Duration = Duration::from_millis(150);
 
 struct TreeSitterInputHighlighter {
@@ -64,21 +57,16 @@ impl TreeSitterInputHighlighter {
         let language = highlighter.borrow().language().clone();
         let old_tree = highlighter.borrow().tree().cloned();
         let injection_data = highlighter.borrow().injection_parse_data();
+        let stale = highlighter.borrow().stale_injections();
         let text = text.clone();
         let text_for_apply = text.clone();
-        let cancel = Arc::new(AtomicBool::new(false));
+        let cancel = CancelOnDrop::new();
+        let parse_cancel = cancel.flag();
 
         let task = cx.spawn_in(window, async move |entity, cx| {
-            struct CancelOnDrop(Arc<AtomicBool>);
-            impl Drop for CancelOnDrop {
-                fn drop(&mut self) {
-                    self.0.store(true, Ordering::Relaxed);
-                }
-            }
-            let _cancel_guard = CancelOnDrop(cancel.clone());
+            let _cancel = cancel;
             cx.background_executor().timer(PARSE_DEBOUNCE).await;
 
-            let parse_cancel = cancel.clone();
             let result = cx
                 .background_executor()
                 .spawn(async move {
@@ -86,7 +74,7 @@ impl TreeSitterInputHighlighter {
                         LanguageRegistry::singleton().parser(&language).ok()?;
                     parser.set_language(&grammar).ok()?;
                     let mut progress = |_: &tree_sitter::ParseState| {
-                        if parse_cancel.load(Ordering::Relaxed) {
+                        if cancelled(&parse_cancel) {
                             std::ops::ControlFlow::Break(())
                         } else {
                             std::ops::ControlFlow::Continue(())
@@ -98,12 +86,16 @@ impl TreeSitterInputHighlighter {
                         old_tree.as_ref(),
                         Some(options),
                     )?;
-                    if parse_cancel.load(Ordering::Relaxed) {
+                    if cancelled(&parse_cancel) {
                         return None;
                     }
-                    let injections = injection_data.map_or_else(Default::default, |data| {
-                        SyntaxHighlighter::compute_injection_layers(data, &tree, &text)
-                    });
+                    let injections = SyntaxHighlighter::background_injections(
+                        injection_data,
+                        old_tree.as_ref(),
+                        &tree,
+                        &text,
+                        stale,
+                    );
                     let folds = if folding {
                         extract_fold_ranges(&tree)
                     } else {
@@ -150,16 +142,11 @@ impl InputHighlighter for TreeSitterInputHighlighter {
         window: &mut gpui::Window,
         cx: &mut gpui::Context<EditorState>,
     ) {
-        let edit = edit.map(to_tree_sitter_edit);
-        let completed = {
-            let mut highlighter = self.inner.borrow_mut();
-            if text.len() > SYNC_PARSE_MAX_BYTES {
-                highlighter.edit_tree(edit, text);
-                false
-            } else {
-                highlighter.update(edit, text, Some(SYNC_PARSE_TIMEOUT))
-            }
-        };
+        let completed = self.inner.borrow_mut().update(
+            edit.map(to_tree_sitter_edit),
+            text,
+            Some(SYNC_PARSE_TIMEOUT),
+        );
         self.finish_update(completed, text, folding, window, cx);
     }
 
@@ -177,17 +164,10 @@ impl InputHighlighter for TreeSitterInputHighlighter {
             .iter()
             .map(|(edit, _)| to_tree_sitter_edit(*edit))
             .collect();
-        let completed = {
-            let mut highlighter = self.inner.borrow_mut();
-            if text.len() > SYNC_PARSE_MAX_BYTES {
-                for edit in edits {
-                    highlighter.edit_tree(Some(edit), text);
-                }
-                false
-            } else {
-                highlighter.update_edits(&edits, text, Some(SYNC_PARSE_TIMEOUT))
-            }
-        };
+        let completed =
+            self.inner
+                .borrow_mut()
+                .update_edits(&edits, text, Some(SYNC_PARSE_TIMEOUT));
         self.finish_update(completed, text, folding, window, cx);
     }
 
@@ -196,7 +176,11 @@ impl InputHighlighter for TreeSitterInputHighlighter {
         range: &Range<usize>,
         resolver: &dyn HighlightStyleResolver,
     ) -> Vec<(Range<usize>, HighlightStyle)> {
-        self.inner.borrow().styles(range, resolver)
+        self.inner.borrow().line_styles(range, resolver)
+    }
+
+    fn styles_changed(&mut self) {
+        self.inner.borrow_mut().clear_line_styles();
     }
     fn fold_ranges(&self, _: &Rope) -> Vec<FoldRange> {
         self.inner
@@ -234,7 +218,40 @@ fn extract_fold_ranges_in_range(
     tree: &tree_sitter::Tree,
     byte_range: Range<usize>,
 ) -> Vec<FoldRange> {
-    fn collect(node: tree_sitter::Node, bytes: &Range<usize>, ranges: &mut Vec<FoldRange>) {
+    /// Visit the named children of the node under `cursor` that intersect
+    /// `bytes`. The cursor jumps to the first child reaching past
+    /// `bytes.start` and stops after the last one starting before
+    /// `bytes.end`, so an edit costs the depth of the tree at it rather than
+    /// every top-level item of the document.
+    fn collect_children(
+        cursor: &mut tree_sitter::TreeCursor,
+        bytes: &Range<usize>,
+        ranges: &mut Vec<FoldRange>,
+    ) {
+        if cursor.goto_first_child_for_byte(bytes.start).is_none() {
+            return;
+        }
+        loop {
+            let node = cursor.node();
+            if node.start_byte() >= bytes.end {
+                break;
+            }
+            if node.is_named() {
+                collect(cursor, bytes, ranges);
+            }
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+        cursor.goto_parent();
+    }
+
+    fn collect(
+        cursor: &mut tree_sitter::TreeCursor,
+        bytes: &Range<usize>,
+        ranges: &mut Vec<FoldRange>,
+    ) {
+        let node = cursor.node();
         if node.end_byte() <= bytes.start || node.start_byte() >= bytes.end {
             return;
         }
@@ -244,18 +261,12 @@ fn extract_fold_ranges_in_range(
             return;
         }
         ranges.push(FoldRange::new(start, end));
-        let mut cursor = node.walk();
-        for child in node.named_children(&mut cursor) {
-            collect(child, bytes, ranges);
-        }
+        collect_children(cursor, bytes, ranges);
     }
 
-    let root = tree.root_node();
     let mut ranges = Vec::new();
-    let mut cursor = root.walk();
-    for child in root.named_children(&mut cursor) {
-        collect(child, &byte_range, &mut ranges);
-    }
+    let mut cursor = tree.root_node().walk();
+    collect_children(&mut cursor, &byte_range, &mut ranges);
     ranges.sort_by_key(|range| range.start_line);
     ranges.dedup_by_key(|range| range.start_line);
     ranges
