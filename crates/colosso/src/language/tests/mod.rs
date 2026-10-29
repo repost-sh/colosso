@@ -5,6 +5,7 @@
 
 mod completions;
 mod inlay_hints;
+mod locations;
 mod support;
 
 use std::path::{Path, PathBuf};
@@ -183,15 +184,12 @@ async fn hover_asks_the_server_and_a_definition_opens_its_file(cx: &mut TestAppC
         cx.executor().advance_clock(Duration::from_millis(500));
         cx.run_until_parked();
     }
-    let focused = cx.update_window(shell.0, |_, window, cx| {
-        window.draw(cx).clear(cx);
+    let shown = cx.read(|cx| {
         let files = shell.1.read(cx).right_panel.files()?.read(cx);
-        let editor = editor(&files.viewing()?.editor, cx)?;
-        Some(gpui_kit::Focusable::focus_handle(editor.read(cx), cx).is_focused(window))
+        editor(&files.viewing()?.editor, cx)
     });
-    assert_eq!(
-        focused.unwrap(),
-        Some(true),
+    assert!(
+        editor_focused(shell.0, &shown.unwrap(), cx),
         "the definition's editor has the keyboard"
     );
     // And it was opened on the server, with its text.

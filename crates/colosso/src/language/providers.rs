@@ -18,13 +18,14 @@ use colosso_lsp::lsp_types::{
 };
 use colosso_lsp::{Client, Encoding, uri};
 use gpui_kit::component::input::{
-    DefinitionProvider, EditorState, HoverProvider, InlayHintProvider, Rope,
+    DefinitionProvider, EditorState, HoverProvider, InlayHintProvider, PickDefinitionHandler, Rope,
 };
 use gpui_kit::{
     App, AppContext as _, Context, Entity, Subscription, Task, WeakEntity, Window, px,
 };
 
 use super::completions::Completions;
+use super::locations::Found;
 use super::navigate::show_document;
 use super::server::Server;
 use super::sync::Shown;
@@ -92,7 +93,9 @@ impl Attached {
             completions: Rc::default(),
         });
         let server = self.server.downgrade();
-        let show_document = show_document(server, self.checkout.clone(), self.path.clone(), view);
+        let show_document =
+            show_document(server, self.checkout.clone(), self.path.clone(), view.clone());
+        let pick_definition = pick_definition(hooks.clone(), view);
         editor.update(cx, |editor, _| {
             let lsp = editor.lsp_mut();
             lsp.definition_provider = Some(hooks.clone());
@@ -102,6 +105,7 @@ impl Attached {
             lsp.set_completion_highlighter(completions::highlighter());
             lsp.completion_menu.max_width = px(440.);
             lsp.show_document = Some(show_document);
+            lsp.pick_definition = Some(pick_definition);
         });
         self.server
             .update(cx, |server, cx| server.show(&self.path, editor, cx));
@@ -109,6 +113,19 @@ impl Attached {
         self.applied = None;
         self.hooks = Some(hooks);
         self.hints_followed = None;
+    }
+
+    /// Every reference to the symbol at `editor`'s caret, with its line, for the panel
+    /// listing them; nothing while the server isn't running.
+    pub fn references(&self, editor: &Entity<EditorState>, cx: &mut App) -> Task<Option<Found>> {
+        let Some(hooks) = &self.hooks else {
+            return Task::ready(None);
+        };
+        let (rope, offset) = {
+            let editor = editor.read(cx);
+            (editor.text().clone(), editor.cursor())
+        };
+        hooks.references(&rope, offset, cx)
     }
 
     /// `editor` edited the file's text: the server hears of the edits.
@@ -140,6 +157,15 @@ impl Attached {
             cx.notify();
         });
     }
+}
+
+/// What the editor calls with several definitions of a symbol: they're listed, with their
+/// lines, under `view`, for the user to pick from.
+fn pick_definition(hooks: Rc<Hooks>, view: WeakEntity<FileEditor>) -> PickDefinitionHandler {
+    Rc::new(move |links, rope, symbol, _, cx| {
+        let found = hooks.definitions(links, rope, symbol, cx);
+        view.update(cx, |view, cx| view.list(found, cx)).ok();
+    })
 }
 
 /// The providers of one file's editor. Cheap to clone, for a task to carry.

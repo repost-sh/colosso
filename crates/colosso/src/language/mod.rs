@@ -13,7 +13,9 @@
 //!   being typed, ranked here as it's typed on; `code_actions`, what could be done about the
 //!   code, and `edits`, the chosen one's edit applied; `inlay_hints`, the types and
 //!   parameter names the server infers, shown in the text; `navigate`, a definition in
-//!   another file turned into a place in it for the viewer.
+//!   another file turned into a place in it for the viewer; `locations`, a symbol's
+//!   references, or its several definitions, each with its line, for the panel listing
+//!   them.
 //! - `status`: the selected checkout's servers in the status bar, each with its menu;
 //!   `server_log`, each server's own log, which the menu shows.
 
@@ -22,6 +24,7 @@ mod completions;
 mod diagnostics;
 mod edits;
 mod inlay_hints;
+mod locations;
 mod navigate;
 mod providers;
 mod registry;
@@ -42,14 +45,17 @@ use std::time::Duration;
 use colosso_lsp::Launch;
 use colosso_lsp::servers::{BASEDPYRIGHT, Curl, NodeServer, NpmCli, RUST_ANALYZER, VTSLS, node};
 use gpui_kit::component::input::{GoToDefinition, ShowCompletions};
-use gpui_kit::{App, KeyBinding};
+use gpui_kit::{App, KeyBinding, actions};
 
+pub use locations::Found;
 pub use providers::Attached;
 pub use registry::{Languages, attach, forget, install, locate};
 pub use server::State;
 pub use status::ServersStatus;
 
 use crate::settings;
+
+actions!(language, [FindReferences]);
 
 /// A server stops once it has had no file open for this long, if the settings ask.
 const IDLE: Duration = Duration::from_mins(10);
@@ -153,8 +159,8 @@ impl From<String> for Failure {
 pub type Launcher = Arc<dyn Fn(Kind, &Path) -> Result<Launch, Failure> + Send + Sync>;
 
 /// Runs the language servers the app knows, fetched into its data folder when they aren't
-/// on PATH; binds F12 to go to a definition and ctrl-space to complete; and has the status
-/// bar's menus act.
+/// on PATH; binds F12 to go to a definition, shift-F12 to list a symbol's references and
+/// ctrl-space to complete; and has the status bar's menus act.
 pub fn init(cx: &mut App) {
     install(managed(true), cx);
     bind_keys(cx);
@@ -204,6 +210,7 @@ fn node_server(server: &NodeServer, data: &Path, root: &Path) -> Result<Launch, 
 fn bind_keys(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("f12", GoToDefinition, Some("Input")),
+        KeyBinding::new("shift-f12", FindReferences, Some("Input")),
         KeyBinding::new("ctrl-space", ShowCompletions, Some("Input")),
     ]);
 }

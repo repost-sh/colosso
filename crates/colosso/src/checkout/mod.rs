@@ -17,7 +17,6 @@ use gpui_kit::gpui::{
 };
 
 use documents::Documents;
-#[cfg(test)]
 pub use documents::read_at_most;
 pub use documents::{Content, Document, DocumentEvent, MOST_BYTES};
 

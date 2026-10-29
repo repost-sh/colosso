@@ -175,6 +175,19 @@ pub(super) fn draw(window: AnyWindowHandle, cx: &mut TestAppContext) {
     (cx.update_window(window, |_, window, cx| window.draw(cx).clear(cx))).unwrap();
 }
 
+/// Whether `editor` has the keyboard, once a frame is drawn.
+pub(super) fn editor_focused(
+    window: AnyWindowHandle,
+    editor: &Entity<EditorState>,
+    cx: &mut TestAppContext,
+) -> bool {
+    (cx.update_window(window, |_, window, cx| {
+        window.draw(cx).clear(cx);
+        gpui_kit::Focusable::focus_handle(editor.read(cx), cx).is_focused(window)
+    }))
+    .unwrap()
+}
+
 /// The file the Files panel shows, and its view.
 pub(super) fn shown(
     shell: &Entity<Shell>,

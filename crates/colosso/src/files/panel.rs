@@ -8,11 +8,13 @@ use std::sync::Arc;
 use colosso_project::{Feed, Kind, Project, Reveal, Rows, Update};
 use futures::StreamExt as _;
 use gpui_kit::{
-    App, Context, Entity, FocusHandle, ScrollStrategy, Subscription, Task,
+    App, AppContext as _, Context, Entity, FocusHandle, ScrollStrategy, Subscription, Task,
     UniformListScrollHandle, Window,
 };
 
 use super::Place;
+use super::locations::Locations;
+use crate::language::Found;
 use super::tabs::{Hand, Viewed};
 use super::render::ROW;
 use crate::changes::Marks;
@@ -43,6 +45,8 @@ pub struct FilesPanel {
     pub(super) shown: usize,
     /// The tab in hand, dragged along the strip.
     pub(super) hand: Rc<Hand>,
+    /// The places a symbol led to, listed under the file shown, while they are.
+    pub(super) locations: Option<Entity<Locations>>,
     /// The tree, and the file shown beside it.
     pub(super) split: Split,
     pub(super) focus: FocusHandle,
@@ -76,6 +80,7 @@ impl FilesPanel {
             tabs: Vec::new(),
             shown: 0,
             hand: Rc::default(),
+            locations: None,
             split: Split::new(&split::FILES),
             focus: cx.focus_handle(),
             scroll: UniformListScrollHandle::new(),
@@ -88,6 +93,33 @@ impl FilesPanel {
 
     pub fn focus_handle(&self) -> &FocusHandle {
         &self.focus
+    }
+
+    /// Lists `found` under the file shown, in place of any list there, and gives it the
+    /// keyboard.
+    pub(super) fn show_locations(&mut self, found: Found, window: &mut Window, cx: &mut Context<Self>) {
+        let files = cx.entity().downgrade();
+        let locations = cx.new(|cx| Locations::new(found, files, cx));
+        let focus = locations.read(cx).focus.clone();
+        window.focus(&focus, cx);
+        self.locations = Some(locations);
+        cx.notify();
+    }
+
+    /// Takes the list of places away, the keyboard going back to the file shown.
+    pub(super) fn close_locations(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.locations.take().is_some() {
+            if let Some(viewed) = self.viewing() {
+                (viewed.editor).update(cx, |editor, cx| editor.focus_editor(window, cx));
+            }
+            cx.notify();
+        }
+    }
+
+    /// The places listed under the file shown, while they are.
+    #[cfg(test)]
+    pub fn locations(&self) -> Option<&Entity<Locations>> {
+        self.locations.as_ref()
     }
 
     /// The checkout's project, once git's open on it.
@@ -292,12 +324,13 @@ impl FilesPanel {
         };
         match row.entry.kind {
             Kind::Dir => self.toggle(index, cx),
+            // The keyboard stays in the tree either way, to go on moving through it.
             Kind::File | Kind::Symlink { to_dir: false } => {
                 let place = Place::file(&*row.path);
                 if pinned {
-                    self.view(place, window, cx);
+                    self.open(place, true, false, window, cx);
                 } else {
-                    self.preview(place, window, cx);
+                    self.peek(place, window, cx);
                 }
             }
             // Nothing is read through a link to a folder.
@@ -313,7 +346,7 @@ impl FilesPanel {
             && settings::get(cx).preview_files
         {
             let place = Place::file(&*row.path);
-            self.preview(place, window, cx);
+            self.peek(place, window, cx);
         }
     }
 }

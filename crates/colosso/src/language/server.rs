@@ -11,7 +11,7 @@ use colosso_lsp::lsp_types::{
     NumberOrString, ProgressParams, ProgressParamsValue, PublishDiagnosticsParams, WorkDoneProgress,
 };
 use colosso_lsp::{
-    Client, Encoding, Event, Exit, Health, LspError, ServerStatus, ServerStatusParams,
+    Client, Encoding, Event, Exit, Health, IndexedText, LspError, ServerStatus, ServerStatusParams,
 };
 use futures::StreamExt as _;
 use futures::stream::{self, LocalBoxStream};
@@ -172,6 +172,11 @@ impl Server {
     /// Whether it has no file open.
     pub(super) fn is_idle(&self) -> bool {
         self.documents.is_empty()
+    }
+
+    /// The text the server has for the file at `path`, while a view has given it one.
+    pub(super) fn shown_text(&self, path: &Path) -> Option<Arc<IndexedText>> {
+        Some(self.documents.get(path)?.shown.as_ref()?.text.clone())
     }
 
     /// The running server, for tests that look at what it was sent.
