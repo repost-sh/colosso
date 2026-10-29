@@ -19,7 +19,7 @@ use strip::Strip;
 use super::panel::FilesPanel;
 use super::{FileEditor, Place, closing, file_icon};
 use crate::checkout::Document;
-use crate::language;
+use crate::language::{self, Found};
 use crate::pane::{close_button, tab_button};
 use crate::settings;
 use crate::shell::{ellipsized, icon, row};
@@ -40,6 +40,8 @@ pub struct Viewed {
     /// Kept open when another file is previewed, rather than giving way to it.
     pub pinned: bool,
     _going: Subscription,
+    /// The places a symbol in it led to are listed under it.
+    _found: Subscription,
     /// Drawn again as its document's state changes: unsaved, or saved.
     _document: Subscription,
 }
@@ -57,19 +59,35 @@ impl FilesPanel {
     }
 
     /// Shows the file `place` is in, in a tab of its own; picks it in the tree when it's in
-    /// the checkout; and puts the cursor where the place says.
+    /// the checkout; puts the cursor where the place says; and gives the editor the keyboard.
     pub fn view(&mut self, place: Place, window: &mut Window, cx: &mut Context<Self>) {
-        self.open(place, true, window, cx);
+        self.open(place, true, true, window, cx);
     }
 
     /// Shows the file `place` is in, in the preview tab, unless it's open already or
-    /// previews are turned off, when it's in a tab of its own.
+    /// previews are turned off, when it's in a tab of its own; and gives the editor the
+    /// keyboard.
     pub fn preview(&mut self, place: Place, window: &mut Window, cx: &mut Context<Self>) {
         let pinned = !settings::get(cx).preview_files;
-        self.open(place, pinned, window, cx);
+        self.open(place, pinned, true, window, cx);
     }
 
-    fn open(&mut self, place: Place, pinned: bool, window: &mut Window, cx: &mut Context<Self>) {
+    /// As `preview`, the keyboard staying where it is: for the tree and the lists, which
+    /// show what's moved over.
+    pub fn peek(&mut self, place: Place, window: &mut Window, cx: &mut Context<Self>) {
+        let pinned = !settings::get(cx).preview_files;
+        self.open(place, pinned, false, window, cx);
+    }
+
+    /// `focus` says whether the editor shown takes the keyboard.
+    pub(super) fn open(
+        &mut self,
+        place: Place,
+        pinned: bool,
+        focus: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let root = self.checkout.read(cx).root().clone();
         let path = root.join(&place.path);
         let at = if let Some(at) = self.tabs.iter().position(|tab| tab.path == path) {
@@ -88,9 +106,14 @@ impl FilesPanel {
                 at
             }
         };
-        if let Some(place) = place.at {
-            (self.tabs[at].editor).update(cx, |editor, cx| editor.reveal(place, window, cx));
-        }
+        self.tabs[at].editor.update(cx, |editor, cx| {
+            if let Some(at) = place.at {
+                editor.reveal(at, cx);
+            }
+            if focus {
+                editor.focus_editor(window, cx);
+            }
+        });
         self.show_tab(at, cx);
     }
 
@@ -116,6 +139,9 @@ impl FilesPanel {
         let _going = cx.subscribe_in(&editor, window, |this, _, place: &Place, window, cx| {
             this.preview(place.clone(), window, cx);
         });
+        let _found = cx.subscribe_in(&editor, window, |this, _, found: &Found, window, cx| {
+            this.show_locations(found.clone(), window, cx);
+        });
         // A preview typed into is kept: the next file previewed mustn't take its edits.
         let _document = cx.observe(&document, |this, document, cx| {
             if document.read(cx).is_dirty()
@@ -133,6 +159,7 @@ impl FilesPanel {
             editor,
             pinned,
             _going,
+            _found,
             _document,
         }
     }
@@ -286,7 +313,7 @@ impl FilesPanel {
 }
 
 /// A file's name, as its tab shows it: the whole path when it has none.
-fn name(path: &Path) -> String {
+pub(super) fn name(path: &Path) -> String {
     path.file_name().map_or_else(
         || path.display().to_string(),
         |name| name.to_string_lossy().into_owned(),

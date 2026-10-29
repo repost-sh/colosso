@@ -11,13 +11,14 @@ use std::path::Path;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::input::{Editor, EditorState, InputEvent, RopeExt as _};
 use gpui_kit::{
-    App, AppContext as _, Context, Entity, EventEmitter, IntoElement, ParentElement as _,
-    Render, SharedString, Styled as _, Subscription, Task, WeakEntity, Window, div,
+    App, AppContext as _, Context, Entity, EventEmitter, InteractiveElement as _, IntoElement,
+    ParentElement as _, Render, SharedString, Styled as _, Subscription, Task, WeakEntity,
+    Window, div,
 };
 
 use super::{At, Place};
 use crate::checkout::{Content, Document, DocumentEvent};
-use crate::language::Attached;
+use crate::language::{Attached, FindReferences, Found};
 use crate::modal::spinner;
 use crate::shell::icon;
 use crate::theme;
@@ -37,6 +38,10 @@ pub struct FileEditor {
     language: Option<Attached>,
     /// Where to put the cursor once the text is shown.
     reveal: Option<At>,
+    /// Whether the editor takes the keyboard once the text is shown.
+    focus_when_shown: bool,
+    /// Looking up the places a symbol leads to, while it goes on.
+    finding: Task<()>,
     _document: Subscription,
 }
 
@@ -48,6 +53,9 @@ struct Shown {
 
 /// A definition in another file, for the Files panel to show.
 impl EventEmitter<Place> for FileEditor {}
+
+/// The places a symbol in the file led to, for the Files panel to list under it.
+impl EventEmitter<Found> for FileEditor {}
 
 impl FileEditor {
     /// A view of `document`, shown once it's read, and typed into if `editable`.
@@ -69,6 +77,8 @@ impl FileEditor {
             editor: None,
             language: None,
             reveal: None,
+            focus_when_shown: false,
+            finding: Task::ready(()),
             _document,
         };
         view.show(window, cx);
@@ -140,15 +150,41 @@ impl FileEditor {
         document.update(cx, |document, cx| document.save(text, cx))
     }
 
-    /// Puts the cursor `at` a place, now if the text is shown, or once it is.
-    pub fn reveal(&mut self, at: At, window: &mut Window, cx: &mut Context<Self>) {
-        self.reveal = Some(at);
-        self.place(window, cx);
+    /// Gives the editor the keyboard, now if the text is shown, or once it is.
+    pub fn focus_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        match &self.editor {
+            Some(shown) => shown.editor.update(cx, |editor, cx| editor.focus(window, cx)),
+            None => self.focus_when_shown = true,
+        }
     }
 
-    /// Picks the place to reveal and gives the editor the keyboard; the editor scrolls a new
-    /// selection into view as it lays it out, so this works on one not drawn yet.
-    fn place(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Asks the server for every reference to the symbol at the caret, and has the panel
+    /// list what it says.
+    fn find_references(&mut self, _: &FindReferences, _: &mut Window, cx: &mut Context<Self>) {
+        if let (Some(attached), Some(shown)) = (&self.language, &self.editor) {
+            let found = attached.references(&shown.editor, cx);
+            self.list(found, cx);
+        }
+    }
+
+    /// Has the panel list what `found` brings, in place of any lookup still going on.
+    pub fn list(&mut self, found: Task<Option<Found>>, cx: &mut Context<Self>) {
+        self.finding = cx.spawn(async move |this, cx| {
+            if let Some(found) = found.await {
+                this.update(cx, |_, cx| cx.emit(found)).ok();
+            }
+        });
+    }
+
+    /// Puts the cursor `at` a place, now if the text is shown, or once it is.
+    pub fn reveal(&mut self, at: At, cx: &mut Context<Self>) {
+        self.reveal = Some(at);
+        self.place(cx);
+    }
+
+    /// Picks the place to reveal; the editor scrolls a new selection into view as it lays
+    /// it out, so this works on one not drawn yet.
+    fn place(&mut self, cx: &mut Context<Self>) {
         let Some(shown) = &self.editor else {
             return;
         };
@@ -166,7 +202,6 @@ impl FileEditor {
             };
             let end = range.end.min(text.len());
             editor.set_selected_range(range.start.min(end)..end, cx);
-            editor.focus(window, cx);
         });
     }
 
@@ -223,7 +258,10 @@ impl FileEditor {
         });
         self.editor = Some(Shown { editor, _changes });
         self.tell_dirty(cx);
-        self.place(window, cx);
+        self.place(cx);
+        if std::mem::take(&mut self.focus_when_shown) {
+            self.focus_editor(window, cx);
+        }
         cx.notify();
     }
 
@@ -243,7 +281,10 @@ impl FileEditor {
 impl Render for FileEditor {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = theme::palette(cx);
-        let content = div().size_full().relative();
+        let content = div()
+            .size_full()
+            .relative()
+            .on_action(cx.listener(Self::find_references));
         if let Some(shown) = &self.editor {
             let editor = Editor::new(&shown.editor)
                 .readonly(!self.editable)

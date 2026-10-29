@@ -99,6 +99,15 @@ impl FilesPanel {
                 .child("Pick a file to see it here.")
                 .into_any_element(),
         };
+        // The places a symbol led to, under the file, while they're listed.
+        let viewer = div()
+            .flex_1()
+            .min_w_0()
+            .min_h_0()
+            .flex()
+            .flex_col()
+            .child(viewer)
+            .children(self.locations.clone());
         let tree = div()
             .size_full()
             .flex()

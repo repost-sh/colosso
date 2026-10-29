@@ -1,7 +1,12 @@
-//! What every list moved through by keyboard shares: the same keys in each, and the same
-//! steps along it.
+//! What every list moved through by keyboard shares: the same keys in each, the same
+//! steps along it, and how a row shows the bytes that matched.
 
-use gpui_kit::{App, KeyBinding, UniformListScrollHandle, actions};
+use std::ops::Range;
+
+use gpui_kit::{
+    App, HighlightStyle, Hsla, KeyBinding, SharedString, StyledText, UniformListScrollHandle,
+    actions,
+};
 
 actions!(
     list,
@@ -49,6 +54,16 @@ pub fn stepped(at: Option<usize>, by: isize, len: usize) -> Option<usize> {
 pub fn page(scroll: &UniformListScrollHandle, row: f32) -> isize {
     let height = scroll.0.borrow().base_handle.bounds().size.height.as_f32();
     (height / row).floor().max(1.) as isize
+}
+
+/// `text` with its `matched` bytes in `colour`: what a search matched, or a place found.
+pub fn styled(text: &SharedString, matched: &[Range<usize>], colour: Hsla) -> StyledText {
+    let style = HighlightStyle {
+        color: Some(colour),
+        ..HighlightStyle::default()
+    };
+    let highlights = matched.iter().map(|range| (range.clone(), style));
+    StyledText::new(text.clone()).with_highlights(highlights)
 }
 
 #[cfg(test)]

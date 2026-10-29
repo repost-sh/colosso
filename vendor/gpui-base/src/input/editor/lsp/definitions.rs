@@ -127,9 +127,8 @@ impl InputBaseState<EditorMode> {
                 {
                     return;
                 }
-                if let Some(location) = locations.first() {
-                    editor.go_to_definition(location, window, cx);
-                }
+                let symbol = editor.text.word_range(offset).unwrap_or(offset..offset);
+                editor.go_to_definitions(locations, symbol, window, cx);
             })?;
             Ok(())
         });
@@ -154,13 +153,35 @@ impl InputBaseState<EditorMode> {
             return false;
         }
 
-        let Some(location) = self.extras.hover_definition.locations.first().cloned() else {
-            return false;
-        };
-
-        self.go_to_definition(&location, window, cx);
+        let locations = self.extras.hover_definition.locations.to_vec();
+        let symbol = self.extras.hover_definition.symbol_range.clone();
+        self.go_to_definitions(locations, symbol, window, cx);
 
         true
+    }
+
+    /// Goes to the one definition of the symbol at bytes `symbol`, or has the host pick
+    /// among several when it can; else goes to the first.
+    fn go_to_definitions(
+        &mut self,
+        locations: Vec<lsp_types::LocationLink>,
+        symbol: Range<usize>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if locations.len() > 1
+            && let Some(pick) = self.extras.lsp.pick_definition.clone()
+        {
+            // The server says which text it answered about, when it can.
+            let symbol = (locations.first().and_then(|link| link.origin_selection_range))
+                .map_or(symbol, |range| {
+                    self.text.position_to_offset(&range.start)..self.text.position_to_offset(&range.end)
+                });
+            return pick(locations, &self.text, symbol, window, cx);
+        }
+        if let Some(location) = locations.first() {
+            self.go_to_definition(location, window, cx);
+        }
     }
 
     pub(crate) fn go_to_definition(

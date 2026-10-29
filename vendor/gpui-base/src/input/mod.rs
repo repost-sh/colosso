@@ -116,7 +116,8 @@ pub use lsp::{
     CodeActionItem, CodeActionMenuState, CodeActionProvider, CompletionHighlighter,
     CompletionMenuOptions, CompletionMenuState, CompletionProvider, DefinitionProvider,
     DocumentColorProvider, DocumentRangeSemanticTokensProvider, HoverPopoverState, HoverProvider,
-    Inlay, InlayHintProvider, InputOverlayKind, Lsp, ShowDocumentHandler, highlight_characters,
+    Inlay, InlayHintProvider, InputOverlayKind, Lsp, PickDefinitionHandler, ShowDocumentHandler,
+    highlight_characters,
     highlight_contains, highlight_prefix,
 };
 pub use sum_tree::Bias;

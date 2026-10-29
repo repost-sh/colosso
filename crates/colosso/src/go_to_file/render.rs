@@ -11,13 +11,14 @@ use gpui_kit::component::Sizable as _;
 use gpui_kit::component::input::Input;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, Context, FontWeight, HighlightStyle, Hsla, InteractiveElement as _, IntoElement,
-    ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled as _,
-    StyledText, Window, div, px, uniform_list,
+    AnyElement, Context, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _,
+    Render, SharedString, StatefulInteractiveElement as _, Styled as _, Window, div, px,
+    uniform_list,
 };
 
 use super::view::GoToFile;
 use crate::files::{ROW, file_icon};
+use crate::list::styled;
 use crate::modal;
 use crate::right_panel::{PageDown, PageUp, SelectNext, SelectPrevious, note};
 use crate::shell::{self, ellipsized, icon};
@@ -169,14 +170,4 @@ fn within(matched: &[Range<usize>], part: &Range<usize>) -> Vec<Range<usize>> {
         .filter(|range| range.start < range.end)
         .map(|range| range.start - part.start..range.end - part.start)
         .collect()
-}
-
-/// `text` with its `matched` bytes in `colour`.
-fn styled(text: &SharedString, matched: &[Range<usize>], colour: Hsla) -> StyledText {
-    let style = HighlightStyle {
-        color: Some(colour),
-        ..HighlightStyle::default()
-    };
-    let highlights = matched.iter().map(|range| (range.clone(), style));
-    StyledText::new(text.clone()).with_highlights(highlights)
 }

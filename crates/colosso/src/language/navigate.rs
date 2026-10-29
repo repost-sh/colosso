@@ -75,12 +75,9 @@ fn bytes(
     let Content::Text(text) = document.content() else {
         return None;
     };
-    let server = server.upgrade();
-    let open = (server.as_ref())
-        .and_then(|server| server.read(cx).documents.get(document.path()))
-        .and_then(|open| open.shown.as_ref());
-    Some(match open {
-        Some(shown) => shown.text.offsets(range, encoding),
+    let shown = (server.upgrade()).and_then(|server| server.read(cx).shown_text(document.path()));
+    Some(match shown {
+        Some(shown) => shown.offsets(range, encoding),
         None => LineIndex::new(text).offsets(text, range, encoding),
     })
 }

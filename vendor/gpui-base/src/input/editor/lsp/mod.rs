@@ -1,6 +1,7 @@
 use anyhow::Result;
 use gpui::{App, Context, Hsla, SharedString, Task, Window};
 use ropey::Rope;
+use std::ops::Range;
 use std::rc::Rc;
 
 use crate::input::{EditorMode, InputBaseState, RopeExt};
@@ -37,6 +38,12 @@ pub(crate) use snippet::{Snippet, SnippetSession};
 pub type ShowDocumentHandler =
     Rc<dyn Fn(&lsp_types::ShowDocumentParams, &mut Window, &mut App) -> bool>;
 
+/// Host hook to pick among several definitions of a symbol: called instead of going to
+/// the first when Go to Definition's answer has more than one location, with the text and
+/// the bytes of the symbol asked about.
+pub type PickDefinitionHandler =
+    Rc<dyn Fn(Vec<lsp_types::LocationLink>, &Rope, Range<usize>, &mut Window, &mut App)>;
+
 /// LSP ServerCapabilities
 ///
 /// https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#serverCapabilities
@@ -60,6 +67,9 @@ pub struct Lsp {
     ///
     /// https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#window_showDocument
     pub show_document: Option<ShowDocumentHandler>,
+    /// Optional host hook to list several definitions for the user to pick from (see
+    /// [`PickDefinitionHandler`]); without one, the first is gone to.
+    pub pick_definition: Option<PickDefinitionHandler>,
 
     /// Display options for the completion popover.
     pub completion_menu: CompletionMenuOptions,
@@ -97,6 +107,7 @@ impl Default for Lsp {
             semantic_tokens_provider: None,
             inlay_hint_provider: None,
             show_document: None,
+            pick_definition: None,
             document_colors: vec![],
             semantic_tokens: vec![],
             inlays: Inlays::default(),
