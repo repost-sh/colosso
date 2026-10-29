@@ -1,6 +1,7 @@
 //! What a server published for each file: kept by path, so a file shown later shows it at
 //! once, and put into the editor showing the file with each range converted from the
-//! server's encoding to the editor's bytes.
+//! server's encoding to the editor's bytes. Once in, they follow the edits made to the
+//! text until the server publishes again.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -10,7 +11,7 @@ use colosso_lsp::lsp_types::{self, PublishDiagnosticsParams};
 use colosso_lsp::{Encoding, uri};
 use gpui_kit::Context;
 use gpui_kit::base::input::Diagnostic;
-use gpui_kit::component::input::{EditorState, RopeExt as _};
+use gpui_kit::component::input::EditorState;
 
 use super::server::Server;
 use super::sync::Shown;
@@ -74,22 +75,20 @@ pub(super) fn show(
     encoding: Encoding,
     cx: &mut Context<EditorState>,
 ) {
-    let rope = editor.text().clone();
-    let mut items: Vec<(usize, Diagnostic)> = (diagnostics.iter())
+    let mut items: Vec<_> = (diagnostics.iter())
         .map(|diagnostic| {
             let bytes = (shown.lines).offsets(&shown.text, diagnostic.range, encoding);
-            let mut item = Diagnostic::from(diagnostic.clone());
-            // The editor's positions count characters; they're made from the bytes.
-            item.range = rope.offset_to_position(bytes.start)..rope.offset_to_position(bytes.end);
-            (bytes.start, item)
+            (bytes, Diagnostic::from(diagnostic.clone()))
         })
         .collect();
     // The set seeks by where each starts, so it takes them in that order.
-    items.sort_by_key(|(start, _)| *start);
+    items.sort_by_key(|(bytes, _)| bytes.start);
     let Some(set) = editor.diagnostics_mut() else {
         return;
     };
-    set.reset(&rope);
-    set.extend(items.into_iter().map(|(_, item)| item));
+    set.clear();
+    for (bytes, item) in items {
+        set.push_range(bytes, item);
+    }
     cx.notify();
 }

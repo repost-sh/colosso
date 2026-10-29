@@ -373,7 +373,7 @@ impl InputBaseState<EditorMode> {
         cx: &mut Context<Self>,
     ) {
         let new_offset = self.cursor();
-        let revision = self.document_revision;
+        let revision = self.version();
         self.extras.context_menu_task = Task::ready(Ok(()));
         self.extras.context_menu_content.code_action.open = false;
         self.extras
@@ -400,7 +400,7 @@ impl InputBaseState<EditorMode> {
             editor
                 .update_in(cx, |editor, window, cx| {
                     if !editor.focus_handle.is_focused(window)
-                        || editor.document_revision != revision
+                        || editor.version() != revision
                         || editor.cursor() != new_offset
                         || editor.ime_marked_range.is_some()
                         || editor.disabled

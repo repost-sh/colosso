@@ -21,6 +21,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 use sum_tree::Bias;
+
+use super::edits::{Edit, EditLog, translate, translate_range};
 use unicode_segmentation::*;
 
 use super::{
@@ -373,6 +375,32 @@ struct PasteTarget {
     selections: Vec<CursorSelection>,
 }
 
+/// Where the cursors go after a batch of edits.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Cursors {
+    /// One cursor at the end of each edit's new text: what typing with
+    /// several cursors leaves.
+    AtEdits,
+    /// The selections as they were, moved along by the edits: for edits
+    /// nobody typed, a formatter's or a code action's.
+    Following,
+}
+
+/// `selection` moved along by `edits`, applied in that order: a cursor
+/// keeps left of text put in at it, a selection takes it in.
+fn follow_edits(mut selection: CursorSelection, edits: &[(Range<usize>, &str)]) -> CursorSelection {
+    for (old, new_text) in edits {
+        if selection.start == selection.end {
+            let offset = translate(selection.start, old, new_text.len(), Bias::Left);
+            (selection.start, selection.end) = (offset, offset);
+        } else {
+            let range = translate_range(selection.start..selection.end, old, new_text.len());
+            (selection.start, selection.end) = (range.start, range.end);
+        }
+    }
+    selection
+}
+
 /// Caret positioning geometry from the input's latest prepaint.
 ///
 /// Unlike `last_layout` (published at paint time), this is stashed during
@@ -451,7 +479,9 @@ pub struct InputBaseState<M: InputModeKind> {
     pub(super) pending_token: Option<super::InlineToken>,
     pub(super) replaying_history: bool,
     pub(super) validated_token_edit: bool,
-    pub(super) document_revision: u64,
+    /// The last edits made to the text, for what was computed against an
+    /// older version of it to catch up; see [`Self::edits_since`].
+    edits: EditLog,
     /// The text as one string for assistive technology, see
     /// [`Self::accessibility_value`].
     accessibility_value: Option<SharedString>,
@@ -1002,8 +1032,8 @@ impl<M: InputModeKind> InputBaseState<M> {
             inline_tokens: None,
             pending_token: None,
             replaying_history: false,
+            edits: EditLog::default(),
             validated_token_edit: false,
-            document_revision: 0,
             accessibility_value: None,
             accessibility_value_stale: false,
             accessibility_value_task: None,
@@ -1304,7 +1334,10 @@ impl<M: InputModeKind> InputBaseState<M> {
         self.reset_lsp_state();
         self.reset_scroll_to_start();
 
+        // The value is new text, not an edit of the old: what was computed
+        // against the old text doesn't carry over, as the history doesn't.
         self.undo_manager.clear();
+        self.edits.reset();
         cx.notify();
     }
 
@@ -1423,17 +1456,49 @@ impl<M: InputModeKind> InputBaseState<M> {
         self.accessibility_value_stale = false;
     }
 
-    /// Bytes `range` of the text were replaced by `new_len` bytes: what
-    /// follows the text keeps up with the edit.
-    fn text_edited(&mut self, range: &Range<usize>, new_len: usize) {
+    /// Replaces bytes `range` of the text with `new_text`: the one way the
+    /// text is edited. The version counts up, the edit is kept for what was
+    /// computed against the text before to catch up, and what is anchored
+    /// in the text follows it. Returns the text as it was.
+    fn edit_text(&mut self, range: &Range<usize>, new_text: &str) -> Rope {
+        let old_text = self.text.clone();
+        self.mode.adjust_auto_closed_pair(range, new_text.len());
+        let range = self.text.replace(range.clone(), new_text);
+        self.edits.push(range.clone(), new_text);
+        M::adjust_annotations(self, &range, new_text.len());
         self.accessibility_text_changed();
-        self.search_text_edited(range, new_len);
+        self.search_text_edited(&range, new_text.len());
+        old_text
     }
 
-    /// The text changed in a way no edit describes.
-    fn text_replaced(&mut self) {
+    /// Makes `text` the text, in a way no edit describes: what was computed
+    /// against the text before has to be computed again.
+    fn reset_text(&mut self, text: Rope) {
+        self.text = text;
+        self.edits.reset();
+        M::reset_annotations(self);
         self.accessibility_text_changed();
         self.search_text_replaced();
+    }
+
+    /// The version of the text: counted up by every edit, and by every
+    /// replacement no edit describes.
+    pub fn version(&self) -> u64 {
+        self.edits.version()
+    }
+
+    /// The edits made to the text since `version`, oldest first, each in the
+    /// text as the ones before it left it; `None` if `version` is too old
+    /// for the editor to still have them, or the text was replaced whole
+    /// since.
+    pub fn edits_since(&self, version: u64) -> Option<impl Iterator<Item = &Edit>> {
+        self.edits.since(version)
+    }
+
+    /// Where the bytes `range` of the text at `version` are now; `None` as
+    /// for [`Self::edits_since`].
+    pub fn translate_range(&self, range: Range<usize>, version: u64) -> Option<Range<usize>> {
+        self.edits.translate_range(range, version)
     }
 
     fn accessibility_text_changed(&mut self) {
@@ -1686,11 +1751,7 @@ impl<M: InputModeKind> InputBaseState<M> {
     /// Set the default value of the input field.
     pub fn default_value(mut self, value: impl Into<SharedString>) -> Self {
         let text: SharedString = value.into();
-        self.text = Rope::from(self.normalize_input(&text).as_ref());
-        self.text_replaced();
-        if let Some(diagnostics) = self.mode.diagnostics_mut() {
-            diagnostics.reset(&self.text)
-        }
+        self.reset_text(Rope::from(self.normalize_input(&text).as_ref()));
         // Note: We can't call display_map.set_text here because it needs cx.
         // The text will be set during prepare_if_need in element.rs
         self._pending_update = true;
@@ -2431,7 +2492,7 @@ impl<M: InputModeKind> InputBaseState<M> {
                     edits.push((sel.start..sel.end, format!("\n{}", indent)));
                 }
                 edits.sort_by_key(|(range, _)| range.start);
-                self.replace_text_in_ranges(&edits, window, cx);
+                self.replace_text_in_ranges(&edits, Cursors::AtEdits, window, cx);
                 self.pause_blink_cursor(cx);
             } else {
                 // Bracket split: Enter between `{|}` produces `{\n  \n}`
@@ -3289,7 +3350,7 @@ impl<M: InputModeKind> InputBaseState<M> {
     /// for one still applies to the other.
     fn paste_target(&self) -> PasteTarget {
         PasteTarget {
-            document_revision: self.document_revision,
+            document_revision: self.version(),
             selections: self.selections.iter().copied().collect(),
         }
     }
@@ -3333,7 +3394,7 @@ impl<M: InputModeKind> InputBaseState<M> {
                 .zip(lines)
                 .map(|(sel, line)| (sel.start..sel.end, line))
                 .collect();
-            self.replace_text_in_ranges(&edits, window, cx);
+            self.replace_text_in_ranges(&edits, Cursors::AtEdits, window, cx);
         } else {
             self.replace_text_in_range_silent(None, &new_text, window, cx);
         }
@@ -3397,7 +3458,6 @@ impl<M: InputModeKind> InputBaseState<M> {
         selection_before: CursorSelection,
         selection_after: Option<CursorSelection>,
     ) -> bool {
-        self.document_revision = self.document_revision.wrapping_add(1);
         let token_delta = self.edit_tokens(range, new_text.len());
         if self.undo_manager.is_ignoring() {
             return false;
@@ -4296,8 +4356,7 @@ impl<M: InputModeKind> InputBaseState<M> {
     /// The buffer line at the top of the view, for keeping it there while
     /// the lines above it are wrapped again.
     fn wrap_scroll_anchor(&self, line_height: Pixels) -> Option<WrapScrollAnchor> {
-        if !self.is_multi_line() || self.deferred_scroll_offset.is_some() || line_height <= px(0.)
-        {
+        if !self.is_multi_line() || self.deferred_scroll_offset.is_some() || line_height <= px(0.) {
             return None;
         }
         let display_rows = self.display_map.display_row_count();
@@ -4407,6 +4466,7 @@ impl<M: InputModeKind> InputBaseState<M> {
     pub(crate) fn replace_text_in_ranges(
         &mut self,
         edits: &[(Range<usize>, impl AsRef<str>)],
+        cursors: Cursors,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -4420,11 +4480,14 @@ impl<M: InputModeKind> InputBaseState<M> {
         M::clear_inline_completion(self, cx);
 
         // Sort descending by start so applying front-of-vec first edits the
-        // highest offsets first, leaving lower offsets unchanged.
+        // highest offsets first, leaving lower offsets unchanged. Edits at
+        // one position land in the order given: the last given goes in
+        // first, and the first given ends up first in the text.
         let mut sorted: Vec<(Range<usize>, &str)> = edits
             .iter()
             .map(|(range, text)| (self.normalize_token_range(range.clone()), text.as_ref()))
             .collect();
+        sorted.reverse();
         sorted.sort_by_key(|edit| std::cmp::Reverse(edit.0.start));
         if !self.token_spans().is_empty() {
             let mut merged: Vec<(Range<usize>, &str)> = Vec::with_capacity(sorted.len());
@@ -4481,12 +4544,7 @@ impl<M: InputModeKind> InputBaseState<M> {
         // once for the change instead of once per edit.
         let mut highlighter_edits = Vec::new();
         for (range, new_text) in &sorted {
-            let old_text = self.text.clone();
-            self.mode.adjust_auto_closed_pair(range, new_text.len());
-            self.text.replace(range.clone(), new_text);
-            self.text_edited(range, new_text.len());
-
-            M::adjust_annotations(self, range, new_text.len());
+            let old_text = self.edit_text(range, new_text);
             recorded |= self.push_history(
                 &old_text,
                 range,
@@ -4542,16 +4600,51 @@ impl<M: InputModeKind> InputBaseState<M> {
             self.undo_manager.commit_transaction();
         }
 
-        // One observable update per batch instead of one per edit.
-        if let Some(diagnostics) = self.mode.diagnostics_mut() {
-            diagnostics.reset(&self.text)
-        }
         M::refresh_language_features(self, window, cx);
         self.update_search(cx);
 
-        // Compute the resulting cursors.
-        // One collapsed cursor per edit, at the end of its inserted text.
-        let mut ascending: Vec<(Range<usize>, &str)> = sorted.clone();
+        let new_selections = match cursors {
+            Cursors::AtEdits => self.cursors_at_edits(&sorted, original_selections),
+            Cursors::Following => original_selections
+                .into_iter()
+                .map(|selection| follow_edits(selection, &sorted))
+                .collect(),
+        };
+        self.selections.replace_all(new_selections);
+        self.selections.merge_overlapping();
+
+        // Record the cursor snapshots for undo/redo restore.
+        let selections_after: Vec<CursorSelection> = self.selections.iter().copied().collect();
+        if recorded {
+            self.undo_manager.record_auto_closed_pairs(
+                auto_closed_pairs_before,
+                self.mode.auto_closed_pairs().clone(),
+            );
+            self.undo_manager
+                .record_selections(selections_before, selections_after);
+        }
+
+        self.ime_marked_range.take();
+        self.update_preferred_column();
+        self.dismiss_touch_selection(cx);
+        if self.is_multi_line() {
+            self.mode.update_auto_grow(&self.display_map);
+        }
+        if self.emit_events {
+            cx.emit(InputEvent::Change);
+        }
+        cx.notify();
+    }
+
+    /// One collapsed cursor per edit, at the end of its inserted text: an
+    /// edit made at a selection moves that selection, the others get new
+    /// cursors.
+    fn cursors_at_edits(
+        &mut self,
+        sorted: &[(Range<usize>, &str)],
+        original_selections: Vec<CursorSelection>,
+    ) -> Vec<CursorSelection> {
+        let mut ascending: Vec<(Range<usize>, &str)> = sorted.to_vec();
         ascending.sort_by_key(|edit| edit.0.start);
         let text_len = self.text.len();
         let mut delta: isize = 0;
@@ -4587,30 +4680,7 @@ impl<M: InputModeKind> InputBaseState<M> {
                 ));
             }
         }
-        self.selections.replace_all(new_selections);
-        self.selections.merge_overlapping();
-
-        // Record the cursor snapshots for undo/redo restore.
-        let selections_after: Vec<CursorSelection> = self.selections.iter().copied().collect();
-        if recorded {
-            self.undo_manager.record_auto_closed_pairs(
-                auto_closed_pairs_before,
-                self.mode.auto_closed_pairs().clone(),
-            );
-            self.undo_manager
-                .record_selections(selections_before, selections_after);
-        }
-
-        self.ime_marked_range.take();
-        self.update_preferred_column();
-        self.dismiss_touch_selection(cx);
-        if self.is_multi_line() {
-            self.mode.update_auto_grow(&self.display_map);
-        }
-        if self.emit_events {
-            cx.emit(InputEvent::Change);
-        }
-        cx.notify();
+        new_selections
     }
 
     /// Update fold candidates from tree-sitter syntax tree (full extraction).
@@ -4780,7 +4850,7 @@ impl<M: InputModeKind> EntityInputHandler for InputBaseState<M> {
                     requested_intent.unwrap_or_else(|| self.typing_intent(&edits, new_text));
                 self.undo_manager.begin_transaction_with(intent);
                 self.undo_manager.set_pending_intent(intent);
-                self.replace_text_in_ranges(&edits, window, cx);
+                self.replace_text_in_ranges(&edits, Cursors::AtEdits, window, cx);
                 self.undo_manager.commit_transaction();
             } else {
                 if range_utf16.is_some() {
@@ -4792,7 +4862,12 @@ impl<M: InputModeKind> EntityInputHandler for InputBaseState<M> {
                 if let Some((open_len, closer)) = self.auto_close_target(&range, new_text) {
                     // One edit keeps the pair atomic even at undo coalescing limits.
                     let replacement = format!("{new_text}{closer}");
-                    self.replace_text_in_ranges(&[(range.clone(), replacement)], window, cx);
+                    self.replace_text_in_ranges(
+                        &[(range.clone(), replacement)],
+                        Cursors::AtEdits,
+                        window,
+                        cx,
+                    );
                     let cursor = range.start + new_text.len();
                     self.mode.track_auto_closed_pair(
                         cursor - open_len..cursor,
@@ -4807,7 +4882,12 @@ impl<M: InputModeKind> EntityInputHandler for InputBaseState<M> {
                         self.selections.iter().copied().collect(),
                     );
                 } else {
-                    self.replace_text_in_ranges(&[(range.clone(), new_text)], window, cx);
+                    self.replace_text_in_ranges(
+                        &[(range.clone(), new_text)],
+                        Cursors::AtEdits,
+                        window,
+                        cx,
+                    );
                 }
             }
             if ends_composition {
@@ -4821,10 +4901,7 @@ impl<M: InputModeKind> EntityInputHandler for InputBaseState<M> {
         }
 
         // Single-line path
-        let old_text = self.text.clone();
-        self.mode.adjust_auto_closed_pair(&range, new_text.len());
-        self.text.replace(range.clone(), new_text);
-        self.text_edited(&range, new_text.len());
+        let old_text = self.edit_text(&range, new_text);
 
         let mut new_offset = (range.start + new_text.len()).min(self.text.len());
 
@@ -4844,29 +4921,22 @@ impl<M: InputModeKind> EntityInputHandler for InputBaseState<M> {
                 && !self.is_valid_input(&pending_text, cx)
                 && self.is_valid_input(&old_text.to_string(), cx)
             {
-                self.text = old_text;
-                self.text_replaced();
+                self.reset_text(old_text);
                 return;
             }
 
             if !self.replaying_history && !self.mask_pattern.is_none() {
                 let mask_text = self.mask_pattern.mask(&pending_text);
                 mask_changed = mask_text.as_str() != pending_text;
-                self.text = Rope::from(mask_text.as_str());
-                self.text_replaced();
+                if mask_changed {
+                    self.reset_text(Rope::from(mask_text.as_str()));
+                }
                 let new_text_len =
                     (new_text.len() + mask_text.len()).saturating_sub(pending_text.len());
                 new_offset = (range.start + new_text_len).min(mask_text.len());
             }
         }
 
-        if mask_changed {
-            // Masking rewrites the whole document, so ranges recorded against
-            // the old text no longer point at anything.
-            M::reset_annotations(self);
-        } else {
-            M::adjust_annotations(self, &range, new_text.len());
-        }
         if mask_changed {
             // A segment-based history entry no longer matches the masked
             // document, record a whole-document change instead, so that
@@ -4888,9 +4958,6 @@ impl<M: InputModeKind> EntityInputHandler for InputBaseState<M> {
                 selection_before,
                 None,
             );
-        }
-        if let Some(diagnostics) = self.mode.diagnostics_mut() {
-            diagnostics.reset(&self.text)
         }
         // Adjust folds before updating wrap map: remove overlapping folds and shift others
         self.display_map
@@ -4986,10 +5053,7 @@ impl<M: InputModeKind> EntityInputHandler for InputBaseState<M> {
         let range = self.normalize_token_range(range);
 
         let auto_closed_pairs_before = self.mode.auto_closed_pairs().clone();
-        let old_text = self.text.clone();
-        self.mode.adjust_auto_closed_pair(&range, new_text.len());
-        self.text.replace(range.clone(), new_text);
-        self.text_edited(&range, new_text.len());
+        let old_text = self.edit_text(&range, new_text);
 
         if self.is_single_line() {
             let pending_text = self.text.to_string();
@@ -4999,8 +5063,7 @@ impl<M: InputModeKind> EntityInputHandler for InputBaseState<M> {
                 && !self.is_valid_input(&pending_text, cx)
                 && self.is_valid_input(&old_text.to_string(), cx)
             {
-                self.text = old_text;
-                self.text_replaced();
+                self.reset_text(old_text);
                 if starts_composition {
                     self.undo_manager.commit_transaction();
                 }
@@ -5008,10 +5071,6 @@ impl<M: InputModeKind> EntityInputHandler for InputBaseState<M> {
             }
         }
 
-        M::adjust_annotations(self, &range, new_text.len());
-        if let Some(diagnostics) = self.mode.diagnostics_mut() {
-            diagnostics.reset(&self.text)
-        }
         // Adjust folds before updating wrap map: remove overlapping folds and shift others
         self.display_map
             .adjust_folds_for_edit(&old_text, &range, new_text);
@@ -8777,7 +8836,12 @@ mod tests {
 
         cx.update(|window, cx| {
             input.update(cx, |s, cx| {
-                s.replace_text_in_ranges(&[(0..5, "HELLO".to_string())], window, cx);
+                s.replace_text_in_ranges(
+                    &[(0..5, "HELLO".to_string())],
+                    Cursors::AtEdits,
+                    window,
+                    cx,
+                );
                 assert_eq!(s.value(), "HELLO world");
 
                 s.undo(&Undo, window, cx);
@@ -8803,6 +8867,7 @@ mod tests {
                 // coordinates and in arbitrary (non-sorted) order.
                 s.replace_text_in_ranges(
                     &[(0..3, "X".to_string()), (8..11, "Y".to_string())],
+                    Cursors::AtEdits,
                     window,
                     cx,
                 );
@@ -8897,6 +8962,7 @@ mod tests {
                 );
                 s.replace_text_in_ranges(
                     &[(0..3, "X".to_string()), (8..11, "Y".to_string())],
+                    Cursors::AtEdits,
                     window,
                     cx,
                 );

@@ -3,7 +3,7 @@ use gpui::{App, Context, Hsla, SharedString, Task, Window};
 use ropey::Rope;
 use std::rc::Rc;
 
-use crate::input::{EditorMode, InputBaseState, RopeExt};
+use crate::input::{Cursors, EditorMode, InputBaseState, RopeExt};
 
 mod code_actions;
 mod completions;
@@ -140,25 +140,66 @@ impl Lsp {
 
 impl InputBaseState<EditorMode> {
     /// Apply a list of [`lsp_types::TextEdit`] to mutate the text.
+    ///
+    /// As LSP has it, every range is in the text as it is now, and edits at
+    /// the same position land in the order given. They are applied as one
+    /// batch, so they undo as one, and the selection stays where it was,
+    /// moved along by the edits.
     pub fn apply_lsp_edits(
         &mut self,
         text_edits: &Vec<lsp_types::TextEdit>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        for edit in text_edits {
-            let start = self.text.position_to_offset(&edit.range.start);
-            let end = self.text.position_to_offset(&edit.range.end);
-
-            let range_utf16 = self.range_to_utf16(&(start..end));
-            self.replace_text_in_range_silent(Some(range_utf16), &edit.new_text, window, cx);
-        }
+        let edits: Vec<_> = text_edits
+            .iter()
+            .map(|edit| {
+                let start = self.text.position_to_offset(&edit.range.start);
+                let end = self.text.position_to_offset(&edit.range.end);
+                (start..end, edit.new_text.as_str())
+            })
+            .collect();
+        self.with_edits_allowed(|this| {
+            this.replace_text_in_ranges(&edits, Cursors::Following, window, cx);
+        });
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[gpui::test]
+    fn lsp_edits_at_one_position_land_in_their_order(cx: &mut gpui::TestAppContext) {
+        cx.update(crate::init);
+        let (state, cx) = cx.add_window_view(|window, cx| {
+            crate::input::EditorState::new(window, cx).default_value("abcdef")
+        });
+        let edit = |start: u32, end: u32, text: &str| lsp_types::TextEdit {
+            range: lsp_types::Range::new(
+                lsp_types::Position::new(0, start),
+                lsp_types::Position::new(0, end),
+            ),
+            new_text: text.into(),
+        };
+        cx.update(|window, cx| {
+            state.update(cx, |state, cx| {
+                state.set_selected_range(4..4, cx);
+                // Two inserts at one position, and a replacement after them.
+                state.apply_lsp_edits(
+                    &vec![edit(3, 3, "x"), edit(3, 3, "y"), edit(5, 6, "Z")],
+                    window,
+                    cx,
+                );
+                assert_eq!(state.value(), "abcxydeZ");
+                assert_eq!(state.selected_range(), 6..6);
+                // An insert followed by a replacement at the same position.
+                state.apply_lsp_edits(&vec![edit(3, 3, "["), edit(3, 5, "-")], window, cx);
+                assert_eq!(state.value(), "abc[-deZ");
+                assert_eq!(state.selected_range(), 6..6);
+            });
+        });
+    }
 
     #[test]
     fn test_lsp_builder() {

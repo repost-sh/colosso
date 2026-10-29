@@ -1646,8 +1646,7 @@ impl<M: InputModeKind> TextElement<M> {
                         && !event.modifiers.shift
                         && !event.modifiers.alt
                     {
-                        state.pressed_token =
-                            Some((start, state.document_revision, event.position));
+                        state.pressed_token = Some((start, state.version(), event.position));
                     }
                 });
             })
@@ -1663,7 +1662,7 @@ impl<M: InputModeKind> TextElement<M> {
             .on_click(move |event, window, cx| {
                 let activation = click_state.update(cx, |state, cx| {
                     let (pressed, revision, _) = state.pressed_token.take()?;
-                    if pressed != start || revision != state.document_revision {
+                    if pressed != start || revision != state.version() {
                         return None;
                     }
                     if event.modifiers().shift || event.modifiers().alt {
@@ -1756,7 +1755,7 @@ impl<M: InputModeKind> TextElement<M> {
             }
             return Default::default();
         }
-        let revision = state.document_revision;
+        let revision = state.version();
         let cache = state.token_layout_cache.as_ref();
         let all = cache.is_none_or(|cache| {
             cache.key.as_ref() != Some(&key)
@@ -2940,7 +2939,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
             let longest_row = state.display_map.longest_row();
             let longest_line = state.text.slice_line(longest_row);
             let key = LongestLineKey {
-                document_revision: state.document_revision,
+                document_revision: state.version(),
                 row: longest_row,
                 len: longest_line.len(),
                 font: style.font(),
@@ -3414,7 +3413,6 @@ impl<M: InputModeKind> Element for TextElement<M> {
             let ghost_lines = &prepaint.ghost_lines;
             let has_ghost_lines = !ghost_lines.is_empty();
 
-
             for (line, &buffer_line) in prepaint
                 .last_layout
                 .lines
@@ -3792,8 +3790,7 @@ fn visible_part(
         return None;
     }
     let chars = row.len_chars();
-    let column =
-        |x: Pixels| (f32::from(x) / f32::from(column_width.max(px(1.)))).max(0.) as usize;
+    let column = |x: Pixels| (f32::from(x) / f32::from(column_width.max(px(1.)))).max(0.) as usize;
     let end = column(shaped_x.end)
         .div_ceil(LONG_ROW_PART_STEP)
         .saturating_mul(LONG_ROW_PART_STEP)
@@ -4047,7 +4044,10 @@ mod tests {
             assert!(shaped.start > 0, "{shaped:?}");
             assert!(shaped.contains(&10_000), "{shaped:?}");
             let row = &state.last_layout.as_ref().unwrap().lines[0].wrapped_lines[0];
-            assert_eq!(row.x_for_index(shaped.start), space_width * shaped.start as f32);
+            assert_eq!(
+                row.x_for_index(shaped.start),
+                space_width * shaped.start as f32
+            );
             assert_eq!(row.closest_index_for_x(px(0.)), shaped.start);
         });
     }

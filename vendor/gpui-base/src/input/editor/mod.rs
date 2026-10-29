@@ -39,6 +39,10 @@ impl InputModeKind for EditorMode {
         state.extras.hover_popover = None;
         state.extras.decorations.clear();
         state.extras.range_decorations.clear();
+        let text = state.text().clone();
+        if let Some(diagnostics) = state.diagnostics_mut() {
+            diagnostics.reset(&text);
+        }
     }
 
     fn editing_syntax_context(state: &InputBaseState<Self>, offset: usize) -> super::SyntaxContext {
@@ -55,6 +59,10 @@ impl InputModeKind for EditorMode {
             .extras
             .range_decorations
             .adjust_for_edit(range, new_len);
+        let text = state.text().clone();
+        if let Some(diagnostics) = state.diagnostics_mut() {
+            diagnostics.edited(range, new_len, &text);
+        }
     }
 
     fn refresh_language_features(
