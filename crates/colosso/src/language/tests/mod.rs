@@ -5,7 +5,7 @@
 
 mod support;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
@@ -67,6 +67,51 @@ async fn a_rust_file_starts_its_server_which_gets_its_text_and_shows_diagnostics
     until(cx, watched, |cx| shown(cx).is_some()).await;
     let shown = cx.read(shown).unwrap();
     assert_eq!(shown, [(bytes, "mismatched types".into())]);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_file_s_server_and_language_go_by_its_extension() {
+    let of = |path: &str| Kind::of(Path::new(path));
+    assert_eq!(of("src/lib.rs"), Some(Kind::Rust));
+    for path in ["web/app.ts", "web/App.TSX", "lib/index.mjs", "old.jsx", "types.d.cts"] {
+        assert_eq!(of(path), Some(Kind::TypeScript), "{path}");
+    }
+    assert_eq!(of("tool.py"), Some(Kind::Python));
+    assert_eq!(of("stubs/tool.pyi"), Some(Kind::Python));
+    assert_eq!(of("README.md"), None);
+    assert_eq!(of("Makefile"), None);
+    let id = |path: &str| language_id(Path::new(path));
+    assert_eq!(id("a.ts"), "typescript");
+    assert_eq!(id("a.tsx"), "typescriptreact");
+    assert_eq!(id("a.js"), "javascript");
+    assert_eq!(id("a.jsx"), "javascriptreact");
+    assert_eq!(id("a.py"), "python");
+    assert_eq!(id("a.txt"), "plaintext");
+    assert_eq!(Kind::TypeScript.name(), "vtsls");
+    assert_eq!(Kind::Python.name(), "basedpyright");
+}
+
+#[gpui_kit::test]
+async fn a_typescript_file_starts_vtsls_which_is_ready_once_initialized(cx: &mut TestAppContext) {
+    const APP: &str = "export const said: string = greet(\"you\");\n";
+    let root = repo("language-typescript", &[("src/app.ts", APP), ("src/lib.rs", LIB)]);
+    let (launcher, _) = launcher(move |root, _| {
+        let app = uri(&root.join("src/app.ts"));
+        json!([
+            {"recv": "initialize"},
+            {"reply": 0, "result": {"capabilities": {}}},
+            {"recv": "initialized"},
+            {"expect": {"method": "textDocument/didOpen", "params": {"textDocument":
+                {"uri": app, "languageId": "typescript", "version": 0, "text": APP}}}},
+        ])
+    });
+    let shell = shell(&[&root], launcher, cx);
+    open(&shell, &root, "src/app.ts", cx);
+    let server = server(&root, cx).expect("a server for the checkout");
+    assert_eq!(cx.read(|cx| server.read(cx).kind()), Kind::TypeScript);
+    // It never says it's done loading, as rust-analyzer does: initialized, it's ready.
+    assert_eq!(settled(&server, cx).await, State::Ready);
     let _ = std::fs::remove_dir_all(&root);
 }
 

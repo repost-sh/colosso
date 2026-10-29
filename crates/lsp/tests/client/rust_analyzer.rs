@@ -8,7 +8,6 @@
 //! It downloads rust-analyzer the first time, so it runs only when asked:
 //! `COLOSSO_LSP_IT=1 COLOSSO_DATA_DIR=$PWD/.superpowers/data cargo test -p colosso-lsp -- --ignored`
 
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -26,7 +25,7 @@ use colosso_lsp::servers::{Curl, RUST_ANALYZER};
 use colosso_lsp::{Client, Document, Encoding, IndexedText, LineIndex, Notifications, uri};
 use futures::StreamExt;
 
-use crate::common::wait;
+use crate::common::{fixture, wait};
 
 const MANIFEST: &str = "[package]\nname = \"fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n\
     # A workspace of its own, not the checkout's it sits in.\n[workspace]\n";
@@ -53,7 +52,15 @@ fn rust_analyzer_answers_what_an_editor_asks() {
         .map(PathBuf::from)
         .expect("COLOSSO_DATA_DIR names a folder in the checkout to install into");
     let binary = RUST_ANALYZER.install(&data, &Curl).unwrap();
-    let root = fixture();
+    let root = fixture(
+        "rust",
+        &[
+            ("Cargo.toml", MANIFEST),
+            ("src/lib.rs", LIB),
+            ("src/a.rs", A),
+            ("src/b.rs", B),
+        ],
+    );
     let client = Client::start(&RUST_ANALYZER.launch(binary, &root)).unwrap();
     let mut diagnostics = client.subscribe::<PublishDiagnostics>();
 
@@ -222,25 +229,6 @@ impl Editor<'_> {
     fn position(&self, text: &str, offset: usize) -> Position {
         LineIndex::new(text).position(text, offset, self.encoding)
     }
-}
-
-/// The two-module crate, made afresh under the checkout's `target`.
-fn fixture() -> PathBuf {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target/lsp-fixtures")
-        .join(format!("rust-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&root);
-    fs::create_dir_all(root.join("src")).unwrap();
-    for (path, text) in [
-        ("Cargo.toml", MANIFEST),
-        ("src/lib.rs", LIB),
-        ("src/a.rs", A),
-        ("src/b.rs", B),
-    ] {
-        fs::write(root.join(path), text).unwrap();
-    }
-    // Spelled as the server will spell it, without the `..`.
-    fs::canonicalize(&root).unwrap()
 }
 
 fn at(document: &Document, position: Position) -> TextDocumentPositionParams {

@@ -1,6 +1,7 @@
-//! Language servers behind the Files panel's viewer: a rust-analyzer per checkout, started
-//! when the first Rust file of the checkout is shown, kept in step with the files shown, and
-//! asked where a symbol is defined, what it is, and what's wrong with the code.
+//! Language servers behind the Files panel's viewer: a rust-analyzer, a vtsls or a
+//! basedpyright per checkout, started when the first Rust, TypeScript or Python file of the
+//! checkout is shown, kept in step with the files shown, and asked where a symbol is defined,
+//! what it is, and what's wrong with the code.
 //!
 //! - [`Registry`]: the servers by kind and checkout, how many may run at once and which one
 //!   stops for another, and stopping one that has had no file open for a while.
@@ -32,7 +33,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use colosso_lsp::Launch;
-use colosso_lsp::servers::{Curl, RUST_ANALYZER};
+use colosso_lsp::servers::{BASEDPYRIGHT, Curl, NodeServer, NpmCli, RUST_ANALYZER, VTSLS, node};
 use gpui_kit::component::input::GoToDefinition;
 use gpui_kit::{App, KeyBinding};
 
@@ -62,19 +63,24 @@ fn backoff(crashes: usize) -> Duration {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Kind {
     Rust,
+    /// vtsls, for TypeScript and JavaScript both.
+    TypeScript,
+    /// basedpyright.
+    Python,
 }
 
 impl Kind {
     /// The server for the file at `path`, by its extension, if any knows it.
     pub fn of(path: &Path) -> Option<Kind> {
-        let extension = path.extension()?.to_str()?;
-        extension.eq_ignore_ascii_case("rs").then_some(Kind::Rust)
+        file(path).map(|(kind, _)| kind)
     }
 
     /// The server's name, as the status bar, the settings and the log say it.
     pub fn name(self) -> &'static str {
         match self {
-            Kind::Rust => "rust-analyzer",
+            Kind::Rust => RUST_ANALYZER.name,
+            Kind::TypeScript => VTSLS.name,
+            Kind::Python => BASEDPYRIGHT.name,
         }
     }
 
@@ -82,20 +88,62 @@ impl Kind {
     pub fn language(self) -> &'static str {
         match self {
             Kind::Rust => "Rust",
+            Kind::TypeScript => "TypeScript",
+            Kind::Python => "Python",
         }
     }
 
-    /// The language a file is opened on the server as.
-    fn language_id(self) -> &'static str {
-        match self {
-            Kind::Rust => "rust",
-        }
+    /// Whether the server says when it's done loading, with `experimental/serverStatus` as
+    /// rust-analyzer does; one that doesn't is taken as ready once it's initialized and
+    /// reports no work.
+    fn reports_status(self) -> bool {
+        matches!(self, Kind::Rust)
+    }
+}
+
+/// The server for the file at `path`, and the language the file is opened on it as, by
+/// the file's extension: the one table of both.
+fn file(path: &Path) -> Option<(Kind, &'static str)> {
+    const KNOWN: [(&str, Kind, &str); 11] = [
+        ("rs", Kind::Rust, "rust"),
+        ("ts", Kind::TypeScript, "typescript"),
+        ("mts", Kind::TypeScript, "typescript"),
+        ("cts", Kind::TypeScript, "typescript"),
+        ("tsx", Kind::TypeScript, "typescriptreact"),
+        ("js", Kind::TypeScript, "javascript"),
+        ("mjs", Kind::TypeScript, "javascript"),
+        ("cjs", Kind::TypeScript, "javascript"),
+        ("jsx", Kind::TypeScript, "javascriptreact"),
+        ("py", Kind::Python, "python"),
+        ("pyi", Kind::Python, "python"),
+    ];
+    let extension = path.extension()?.to_str()?;
+    (KNOWN.iter().find(|(known, ..)| known.eq_ignore_ascii_case(extension)))
+        .map(|&(_, kind, language_id)| (kind, language_id))
+}
+
+/// The language the file at `path` is opened on its server as.
+fn language_id(path: &Path) -> &'static str {
+    file(path).map_or("plaintext", |(_, language_id)| language_id)
+}
+
+/// Why a server couldn't be started: a few words for the status bar, when there are any
+/// short enough to say beside its name, and the whole story.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Failure {
+    pub words: Option<&'static str>,
+    pub why: String,
+}
+
+impl From<String> for Failure {
+    fn from(why: String) -> Failure {
+        Failure { words: None, why }
     }
 }
 
 /// Finds a kind's server and says how to start it for the checkout at a root. It may
 /// download the server, so it's called on a background thread.
-pub type Launcher = Arc<dyn Fn(Kind, &Path) -> Result<Launch, String> + Send + Sync>;
+pub type Launcher = Arc<dyn Fn(Kind, &Path) -> Result<Launch, Failure> + Send + Sync>;
 
 /// Runs the language servers the app knows, fetched into its data folder when they aren't
 /// on PATH; binds F12 to go to a definition; and has the status bar's menus act.
@@ -105,24 +153,42 @@ pub fn init(cx: &mut App) {
     status::register(cx);
 }
 
-/// Runs each server from PATH when there's a working one there and `path_first`, and else
-/// from the app's data folder, fetched into it the first time.
+/// Runs rust-analyzer from PATH when there's a working one there and `path_first`, and
+/// else from the app's data folder, fetched into it the first time; and the Node servers
+/// from the data folder, installed into it by npm the first time, with the machine's Node.
 fn managed(path_first: bool) -> Launcher {
     let data = settings::data_dir();
-    Arc::new(move |kind, root| match kind {
-        Kind::Rust => {
-            let data = data
-                .as_deref()
-                .ok_or("there's no folder to fetch it into")?;
-            let binary = if path_first {
-                RUST_ANALYZER.binary(data, &Curl)
-            } else {
-                RUST_ANALYZER.install(data, &Curl)
-            };
-            let binary = binary.map_err(|error| error.to_string())?;
-            Ok(RUST_ANALYZER.launch(binary, root))
+    Arc::new(move |kind, root| {
+        let data = (data.as_deref()).ok_or_else(|| "there's no folder to fetch it into".to_owned())?;
+        match kind {
+            Kind::Rust => rust_analyzer(data, path_first, root),
+            Kind::TypeScript => node_server(&VTSLS, data, root),
+            Kind::Python => node_server(&BASEDPYRIGHT, data, root),
         }
     })
+}
+
+fn rust_analyzer(data: &Path, path_first: bool, root: &Path) -> Result<Launch, Failure> {
+    let binary = if path_first {
+        RUST_ANALYZER.binary(data, &Curl)
+    } else {
+        RUST_ANALYZER.install(data, &Curl)
+    };
+    let binary = binary.map_err(|error| error.to_string())?;
+    Ok(RUST_ANALYZER.launch(binary, root))
+}
+
+/// `server` run by the machine's Node, installed into `data` by npm the first time.
+fn node_server(server: &NodeServer, data: &Path, root: &Path) -> Result<Launch, Failure> {
+    let node = node().ok_or(Failure {
+        words: Some("needs Node"),
+        why: "Node isn't on PATH, nor where Homebrew or the nodejs.org installer put it; \
+              install it from nodejs.org or with `brew install node`"
+            .to_owned(),
+    })?;
+    let npm = NpmCli { node: node.clone() };
+    let script = server.script(data, &npm).map_err(|error| error.to_string())?;
+    Ok(server.launch(node, &script, root))
 }
 
 /// F12 goes to the definition of what's under the cursor.

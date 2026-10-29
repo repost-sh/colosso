@@ -10,6 +10,7 @@
 mod common;
 mod lifecycle;
 mod messages;
+mod node_servers;
 mod rust_analyzer;
 mod server_requests;
 mod status;

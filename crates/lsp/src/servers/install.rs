@@ -28,7 +28,8 @@ pub struct Curl;
 
 impl Fetch for Curl {
     fn fetch(&self, url: &str, to: &Path) -> Result<(), String> {
-        let output = Command::new("curl")
+        let mut curl = Command::new("curl");
+        curl
             // First, so no `.curlrc` changes what's fetched.
             .arg("--disable")
             .args(["--fail", "--location", "--silent", "--show-error"])
@@ -43,16 +44,22 @@ impl Fetch for Curl {
             ])
             .arg("--output")
             .arg(to)
-            .arg(url)
-            .stdin(Stdio::null())
-            .output()
-            .map_err(|error| format!("couldn't run curl: {error}"))?;
-        if !output.status.success() {
-            let said = String::from_utf8_lossy(&output.stderr);
-            return Err(said.trim().to_owned());
-        }
-        Ok(())
+            .arg(url);
+        run(&mut curl, "curl")
     }
+}
+
+/// Runs `command` to its end, with nothing on its stdin; failed, what it said on stderr.
+pub(super) fn run(command: &mut Command, program: &str) -> Result<(), String> {
+    let output = command
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|error| format!("couldn't run {program}: {error}"))?;
+    if !output.status.success() {
+        let said = String::from_utf8_lossy(&output.stderr);
+        return Err(said.trim().to_owned());
+    }
+    Ok(())
 }
 
 pub(super) fn install(
@@ -86,13 +93,10 @@ pub(super) fn install(
         .replace("{target}", target);
 
     fs::create_dir_all(&folder).map_err(io_failed("create", &folder))?;
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |since| since.subsec_nanos());
-    let staging = folder.join(format!(".staging-{}-{nanos}", std::process::id()));
+    let staging = staging(&folder);
     log::info!("installing {name} {} from {url}", release.version);
-    let installed =
-        unpack(&staging, name, &url, sha256, fetch).and_then(|()| place(&staging, &version, name));
+    let installed = unpack(&staging, name, &url, sha256, fetch)
+        .and_then(|()| place(&staging, &version, Path::new(name)));
     // Gone already after the rename; what a failure left behind otherwise.
     let _ = fs::remove_dir_all(&staging);
     installed?;
@@ -125,14 +129,24 @@ fn unpack(
     Ok(())
 }
 
-/// Moves the unpacked folder into place in one step.
-fn place(staging: &Path, version: &Path, name: &str) -> Result<(), LspError> {
+/// A folder of `folder`'s own for one install, named so two at once don't meet.
+pub(super) fn staging(folder: &Path) -> PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| since.subsec_nanos());
+    folder.join(format!(".staging-{}-{nanos}", std::process::id()))
+}
+
+/// Moves the folder staged into place as `version` in one step; `proof`, a path under it,
+/// is what says an install there is whole.
+pub(super) fn place(staging: &Path, version: &Path, proof: &Path) -> Result<(), LspError> {
     match fs::rename(staging, version) {
         Ok(()) => Ok(()),
-        // Another install got there first, and its binary is the same.
-        Err(_) if version.join(name).is_file() => Ok(()),
+        // Another install got there first, and what it put there is the same.
+        Err(_) if version.join(proof).is_file() => Ok(()),
         Err(error) => Err(LspError::Install(format!(
-            "couldn't move {name} into {}: {error}",
+            "couldn't move {} into {}: {error}",
+            proof.display(),
             version.display()
         ))),
     }
@@ -171,7 +185,7 @@ fn make_executable(_binary: &Path) -> Result<(), LspError> {
     Ok(())
 }
 
-fn io_failed(action: &'static str, path: &Path) -> impl FnOnce(io::Error) -> LspError {
+pub(super) fn io_failed(action: &'static str, path: &Path) -> impl FnOnce(io::Error) -> LspError {
     let path = path.display().to_string();
     move |error| LspError::Install(format!("couldn't {action} {path}: {error}"))
 }

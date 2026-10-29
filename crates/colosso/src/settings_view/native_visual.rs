@@ -28,6 +28,8 @@ use objc2_app_kit::{
     NSView, NSWindow,
 };
 
+use colosso_lsp::servers::{BASEDPYRIGHT, RUST_ANALYZER, VTSLS};
+
 use crate::key_repeat::KeyRepeat;
 use crate::navigation::Route;
 use crate::settings;
@@ -270,14 +272,16 @@ fn fail<T>(why: &str, lines: &[String]) -> Result<T> {
     Err(format!("{why}:\n{}", lines.join("\n")))
 }
 
-/// The settings the page's switches turn on and off.
-fn switched(cx: &mut AsyncApp) -> [bool; 5] {
+/// The settings the page's switches turn on and off, in the switches' order.
+fn switched(cx: &mut AsyncApp) -> Vec<bool> {
     cx.update(|cx| {
         let settings = settings::get(cx);
-        [
+        vec![
             settings.sidebar_open_on_launch,
             settings.preview_files,
-            settings.runs_server("rust-analyzer", None),
+            settings.runs_server(RUST_ANALYZER.name, None),
+            settings.runs_server(VTSLS.name, None),
+            settings.runs_server(BASEDPYRIGHT.name, None),
             settings.stop_idle_language_servers,
             settings.key_repeat.enabled,
         ]
@@ -288,14 +292,15 @@ fn switched(cx: &mut AsyncApp) -> [bool; 5] {
 /// sets the settings back, and has the switch follow.
 async fn flip(window: &NSWindow, cx: &mut AsyncApp) -> Result<Vec<String>> {
     let switches = controls::<NSSwitch>(window);
-    let [switch, _, _, _, _] = switches.as_slice() else {
-        return Err(format!(
-            "{} switches on the General page, not 5",
-            switches.len()
-        ));
-    };
     let saved = cx.update(|cx| settings::get(cx).clone());
     let before = switched(cx);
+    let Some(switch) = switches.first().filter(|_| switches.len() == before.len()) else {
+        return Err(format!(
+            "{} switches on the General page, not {}",
+            switches.len(),
+            before.len()
+        ));
+    };
     let on = switch.state() != NSControlStateValueOn;
     switch.setState(if on {
         NSControlStateValueOn
