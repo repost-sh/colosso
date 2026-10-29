@@ -38,8 +38,8 @@ use std::process::ExitCode;
 
 use gpui_kit::base::Root;
 use gpui_kit::{
-    App, AppContext as _, Bounds, Styled as _, TitlebarOptions, WindowBackgroundAppearance,
-    WindowBounds, WindowOptions, point, px, size, transparent_black,
+    App, AppContext as _, Styled as _, TitlebarOptions, WindowBackgroundAppearance, WindowBounds,
+    WindowOptions, point, px, size, transparent_black,
 };
 
 /// What the app sets up before its first window, the visual check's included.
@@ -54,6 +54,43 @@ fn init(cx: &mut App) {
     go_to_file::init(cx);
     #[cfg(target_os = "macos")]
     native::init(cx);
+}
+
+/// The app's window: most of the screen, so the chat, the sidebar and the changes fit side
+/// by side.
+fn open_main_window(cx: &mut App) -> gpui_kit::Result<()> {
+    let screen = cx
+        .primary_display()
+        .map_or(size(px(1440.), px(900.)), |display| {
+            display.visible_bounds().size
+        });
+    let window = size(
+        (screen.width * 0.9).min(px(1920.)),
+        (screen.height * 0.9).min(px(1200.)),
+    );
+    let options = WindowOptions {
+        window_bounds: Some(WindowBounds::centered(window, cx)),
+        window_min_size: Some(size(px(820.), px(520.))),
+        window_background: WindowBackgroundAppearance::Blurred,
+        // The rails are custom chrome, so the shell moves the window itself.
+        app_owns_titlebar_drag: true,
+        titlebar: Some(TitlebarOptions {
+            title: Some("Colosso".into()),
+            appears_transparent: true,
+            traffic_light_position: Some(point(
+                px(12.),
+                px((theme::TITLE_BAR_HEIGHT - theme::TRAFFIC_LIGHT_SIZE) / 2.),
+            )),
+        }),
+        ..Default::default()
+    };
+    cx.open_window(options, |window, cx| {
+        theme::follow_window_appearance(window);
+        let shell = cx.new(|cx| shell::Shell::new(window, cx));
+        // gpui-kit's root paints the theme background by default, covering the blur.
+        cx.new(|cx| Root::new(shell, window, cx).bg(transparent_black()))
+    })
+    .map(|_| ())
 }
 
 fn main() -> ExitCode {
@@ -82,48 +119,25 @@ fn main() -> ExitCode {
     if std::env::args().any(|arg| arg == "--visual-check-accent") {
         return theme::visual::run();
     }
-    gpui_kit::application()
+    let app = gpui_kit::application()
         // The full Lucide set: the default bundle leaves out icons we use, which then draw nothing.
-        .with_assets(gpui_kit::assets::AllAssets)
-        .run(|cx| {
-            init(cx);
-            // Not in `init`, which tests and the visual check share: they run servers of
-            // their own, or none.
-            language::init(cx);
-            // Most of the screen, so the chat, the sidebar and the changes fit side by side.
-            let screen = cx
-                .primary_display()
-                .map_or(size(px(1440.), px(900.)), |display| {
-                    display.visible_bounds().size
-                });
-            let window = size(
-                (screen.width * 0.9).min(px(1920.)),
-                (screen.height * 0.9).min(px(1200.)),
-            );
-            let options = WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(Bounds::centered(None, window, cx))),
-                window_min_size: Some(size(px(820.), px(520.))),
-                window_background: WindowBackgroundAppearance::Blurred,
-                // The rails are custom chrome, so the shell moves the window itself.
-                app_owns_titlebar_drag: true,
-                titlebar: Some(TitlebarOptions {
-                    title: Some("Colosso".into()),
-                    appears_transparent: true,
-                    traffic_light_position: Some(point(
-                        px(12.),
-                        px((theme::TITLE_BAR_HEIGHT - theme::TRAFFIC_LIGHT_SIZE) / 2.),
-                    )),
-                }),
-                ..Default::default()
-            };
-            #[expect(clippy::expect_used, reason = "with no window there's no app to run")]
-            cx.open_window(options, |window, cx| {
-                theme::follow_window_appearance(window);
-                let shell = cx.new(|cx| shell::Shell::new(window, cx));
-                // gpui-kit's root paints the theme background by default, covering the blur.
-                cx.new(|cx| Root::new(shell, window, cx).bg(transparent_black()))
-            })
-            .expect("failed to open window");
-        });
+        .with_assets(gpui_kit::assets::AllAssets);
+    // The dock icon clicked once the window's closed opens it again. A minimised window
+    // isn't visible to macOS either, which restores it itself: hence the check.
+    app.on_reopen(|cx| {
+        if cx.windows().is_empty()
+            && let Err(error) = open_main_window(cx)
+        {
+            log::error!("couldn't open the window again: {error:#}");
+        }
+    });
+    app.run(|cx| {
+        init(cx);
+        // Not in `init`, which tests and the visual check share: they run servers of
+        // their own, or none.
+        language::init(cx);
+        #[expect(clippy::expect_used, reason = "with no window there's no app to run")]
+        open_main_window(cx).expect("failed to open window");
+    });
     ExitCode::SUCCESS
 }
