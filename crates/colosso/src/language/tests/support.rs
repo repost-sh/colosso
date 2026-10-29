@@ -20,6 +20,18 @@ use crate::language::*;
 use crate::shell::Shell;
 use crate::test_support::{select, shell_with};
 
+pub(super) fn at(line: u32, character: u32) -> Value {
+    json!({"line": line, "character": character})
+}
+
+/// The `didChange` the fake must be sent next: `version` of the file at `uri`, with `text`
+/// put over `range`.
+pub(super) fn change(version: u32, range: &Value, text: &str, uri: &str) -> Value {
+    json!({"expect": {"method": "textDocument/didChange", "params": {
+        "textDocument": {"uri": uri, "version": version},
+        "contentChanges": [{"range": range, "text": text}]}}})
+}
+
 pub(super) const LIB: &str = "pub mod other;\n\npub fn greet() -> u32 {\n    let s = \"héllo 🦀\"; let n: u32 = \"x\";\n    other::target()\n}\n";
 pub(super) const OTHER: &str =
     "// defined here\npub const S: &str = \"é🦀\"; pub fn target() -> u32 { 42 }\n";
@@ -63,9 +75,15 @@ pub(super) fn launcher(
 
 /// The start every script begins with: initialized, then the file at `path` opened.
 pub(super) fn started(root: &Path, path: &str) -> Vec<Value> {
+    started_with(root, path, json!({}))
+}
+
+/// The start, the server claiming `capabilities` besides UTF-16 positions.
+pub(super) fn started_with(root: &Path, path: &str, mut capabilities: Value) -> Vec<Value> {
+    capabilities["positionEncoding"] = json!("utf-16");
     vec![
         json!({"recv": "initialize"}),
-        json!({"reply": 0, "result": {"capabilities": {"positionEncoding": "utf-16"}}}),
+        json!({"reply": 0, "result": {"capabilities": capabilities}}),
         json!({"recv": "initialized"}),
         json!({"expect": {"method": "textDocument/didOpen",
             "params": {"textDocument": {"uri": uri(&root.join(path))}}}}),
@@ -132,6 +150,29 @@ pub(super) fn open(
     .unwrap();
     cx.run_until_parked();
     shown(shell, cx).unwrap().1
+}
+
+/// Puts the caret of `editor` at `offset`, gives it the keyboard and draws, so keys reach
+/// it.
+pub(super) fn place_caret(
+    window: AnyWindowHandle,
+    editor: &Entity<EditorState>,
+    offset: usize,
+    cx: &mut TestAppContext,
+) {
+    (cx.update_window(window, |_, window, cx| {
+        editor.update(cx, |editor, cx| {
+            editor.set_selected_range(offset..offset, cx);
+            editor.focus(window, cx);
+        });
+    }))
+    .unwrap();
+    draw(window, cx);
+}
+
+/// Draws a frame, so the views take in what changed.
+pub(super) fn draw(window: AnyWindowHandle, cx: &mut TestAppContext) {
+    (cx.update_window(window, |_, window, cx| window.draw(cx).clear(cx))).unwrap();
 }
 
 /// The file the Files panel shows, and its view.

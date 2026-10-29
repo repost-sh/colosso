@@ -3,8 +3,8 @@ use std::rc::Rc;
 use gpui::{
     Action, AnyElement, App, AppContext, Context, DismissEvent, Empty, Entity, EventEmitter,
     Half as _, InteractiveElement as _, IntoElement, ParentElement, Pixels, Render, RenderOnce,
-    Styled, StyledText, Subscription, WeakEntity, Window, deferred, div, prelude::FluentBuilder,
-    px, relative,
+    Styled, StyledText, Subscription, WeakEntity, Window,
+    deferred, div, prelude::FluentBuilder, px, relative,
 };
 use gpui_base::TestSupportExt as _;
 pub(crate) use gpui_base::input::CodeActionItem;
@@ -16,7 +16,7 @@ use crate::{
     ActiveTheme, IndexPath, Selectable, actions, h_flex,
     input::{
         self, EditorState,
-        popovers::{CaretAnchoredPopup, editor_popover},
+        popovers::{BoxBuilder, CaretAnchoredPopup, framed},
     },
     list::{List, ListDelegate, ListEvent, ListState},
 };
@@ -215,7 +215,8 @@ impl CodeActionMenu {
             return false;
         }
 
-        cx.propagate();
+        // Handled here, the key goes no further: not to the editor's parents,
+        // nor into the text.
         if input::Enter::is_primary(&*action) {
             self.on_action_enter(window, cx);
         } else if action.partial_eq(&input::Escape) {
@@ -295,38 +296,27 @@ impl Render for CodeActionMenu {
             return Empty.into_any_element();
         }
 
-        // The anchor is resolved in the popup's deferred prepaint from the
-        // input's current-frame geometry; the content below is built there.
+        // The box is built in the popup's deferred prepaint, placed from the
+        // input's current-frame geometry.
         let list = self.list.clone();
         let menu = cx.weak_entity();
-
-        deferred(CaretAnchoredPopup::new(
-            self.state.clone(),
-            move |anchor, window, cx| {
-                let max_width = MAX_MENU_WIDTH.min(window.bounds().size.width - anchor.x);
-
-                // A flex root measures to its contents; a block root would
-                // stretch its outside-click hitbox across the viewport.
-                div()
-                    .flex()
-                    .child(
-                        editor_popover("code-action-menu", cx)
-                            .test_support()
-                            .max_w(max_width)
-                            .min_w(px(120.))
-                            .child(List::new(&list).max_h(MAX_MENU_HEIGHT)),
-                    )
-                    .on_mouse_down_out({
-                        let menu = menu.clone();
-                        move |_, _, cx: &mut App| {
-                            if let Some(menu) = menu.upgrade() {
-                                menu.update(cx, |menu, cx| menu.hide(cx));
-                            }
-                        }
-                    })
-                    .into_any_element()
-            },
-        ))
+        let rows: BoxBuilder = Box::new(move |backdrop, _, cx| {
+            framed("code-action-menu", backdrop, cx)
+                .occlude()
+                .test_support()
+                .p_1()
+                .max_w(MAX_MENU_WIDTH)
+                .min_w(px(120.))
+                .child(List::new(&list).max_h(MAX_MENU_HEIGHT))
+                .into_any_element()
+        });
+        deferred(
+            CaretAnchoredPopup::new(self.state.clone(), vec![rows]).on_click_out(move |_, cx| {
+                if let Some(menu) = menu.upgrade() {
+                    menu.update(cx, |menu, cx| menu.hide(cx));
+                }
+            }),
+        )
         .into_any_element()
     }
 }

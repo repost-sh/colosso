@@ -233,6 +233,11 @@ impl Documents {
         document
     }
 
+    /// The document for the file at `path`, if a view has it.
+    pub fn find(&self, path: &Path) -> Option<Entity<Document>> {
+        self.open.get(path)?.upgrade()
+    }
+
     /// Reads again the open documents `touched` covers, by their paths under `root`.
     pub fn touched(&mut self, touched: &[Touched], root: &Path, cx: &mut App) {
         self.open.retain(|_, document| document.upgrade().is_some());

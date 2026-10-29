@@ -2608,6 +2608,13 @@ impl<M: InputModeKind> InputBaseState<M> {
         // Escape also dismisses a request whose popup has not arrived yet.
         M::hide_context_menu(self, cx);
 
+        // A snippet's stops are over, the cursor where it is.
+        if M::end_snippet(self) {
+            self.selections.remove_all_but_active();
+            cx.notify();
+            return;
+        }
+
         // Collapse extra cursors back to the active one first.
         if !self.selections.is_single() {
             self.undo_manager.break_transaction_coalescing();
@@ -3666,6 +3673,11 @@ impl<M: InputModeKind> InputBaseState<M> {
     /// in the underlying rope's byte units.
     pub fn selected_range(&self) -> std::ops::Range<usize> {
         (*self.selections.active()).into()
+    }
+
+    /// Every selection's range, in the order the cursors are in.
+    pub fn selected_ranges(&self) -> Vec<std::ops::Range<usize>> {
+        self.selections.iter().map(|selection| (*selection).into()).collect()
     }
 
     pub fn select_all(&mut self, _: &mut Window, cx: &mut Context<Self>) {
@@ -5671,10 +5683,12 @@ mod tests {
 
                     assert_eq!(state.value(), "中a中a");
                     assert_eq!(provider.starts.borrow().as_slice(), &[4]);
-                    assert_eq!(provider.queries.borrow().as_slice(), &[(7, "中".into())]);
                 });
             })
             .unwrap();
+        // The provider is asked once the editor's update is over.
+        cx.run_until_parked();
+        assert_eq!(provider.queries.borrow().as_slice(), &[(7, "中".into())]);
     }
 
     #[gpui::test]

@@ -24,6 +24,17 @@ pub(in crate::language) struct Converted {
     items: Vec<(Range<usize>, lsp_types::Diagnostic)>,
 }
 
+impl Converted {
+    /// The diagnostics touching `range` of the text they're in, as the server gave them,
+    /// to be handed back when asking what could be done about them.
+    pub(super) fn within(&self, range: &Range<usize>) -> Vec<lsp_types::Diagnostic> {
+        (self.items.iter())
+            .filter(|(bytes, _)| bytes.start <= range.end && range.start <= bytes.end)
+            .map(|(_, diagnostic)| diagnostic.clone())
+            .collect()
+    }
+}
+
 /// The diagnostics published for each file, each with the count at which it was published,
 /// so an editor can tell whether its copy is out of date.
 #[derive(Default)]

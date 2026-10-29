@@ -71,7 +71,8 @@ impl LineIndex {
         start
             + match encoding {
                 Encoding::Utf8 => line.floor_char_boundary(character),
-                Encoding::Utf16 if line.is_ascii() => character.min(line.len()),
+                Encoding::Utf16 | Encoding::Utf32 if line.is_ascii() => character.min(line.len()),
+                Encoding::Utf32 => (line.char_indices().nth(character)).map_or(line.len(), |(at, _)| at),
                 Encoding::Utf16 => {
                     let mut units = 0;
                     line.char_indices()
@@ -167,6 +168,10 @@ impl IndexedText {
     }
 
     /// As [`LineIndex::offsets`], in this text.
+    pub fn range(&self, range: Range<usize>, encoding: Encoding) -> lsp_types::Range {
+        self.lines.range(&self.text, range, encoding)
+    }
+
     pub fn offsets(&self, range: lsp_types::Range, encoding: Encoding) -> Range<usize> {
         self.lines.offsets(&self.text, range, encoding)
     }
@@ -214,6 +219,12 @@ mod tests {
         );
         assert_eq!(index.offset(text, Position::new(1, 5), Encoding::Utf8), b);
         assert_eq!(index.offset(text, Position::new(1, 3), Encoding::Utf16), b);
+        assert_eq!(
+            index.position(text, b, Encoding::Utf32),
+            Position::new(1, 2)
+        );
+        assert_eq!(index.offset(text, Position::new(1, 2), Encoding::Utf32), b);
+        assert_eq!(index.offset(text, Position::new(1, 9), Encoding::Utf32), text.len());
     }
 
     #[test]

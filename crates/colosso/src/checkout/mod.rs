@@ -139,6 +139,11 @@ impl Checkout {
         self.documents.open(path, cx)
     }
 
+    /// The document for the file at `path`, absolute, if a view has it open.
+    pub fn open_document(&self, path: &Path) -> Option<Entity<Document>> {
+        self.documents.find(path)
+    }
+
     /// The lines added and removed across the files.
     pub fn totals(&self) -> (u32, u32) {
         self.files.iter().fold((0, 0), |(added, removed), file| {

@@ -12,6 +12,7 @@ mod document_colors;
 mod hover;
 mod overlay;
 mod semantic_tokens;
+mod snippet;
 
 pub use code_actions::*;
 pub use completions::*;
@@ -20,6 +21,7 @@ pub use document_colors::*;
 pub use hover::*;
 pub use overlay::*;
 pub use semantic_tokens::*;
+pub(crate) use snippet::{Snippet, SnippetSession};
 
 /// Host hook to show a document when following an LSP location
 /// (Go to Definition), modeled after the `window/showDocument` request.
@@ -166,6 +168,7 @@ impl InputBaseState<EditorMode> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpui::EntityInputHandler as _;
 
     #[gpui::test]
     fn lsp_edits_at_one_position_land_in_their_order(cx: &mut gpui::TestAppContext) {
@@ -173,13 +176,6 @@ mod tests {
         let (state, cx) = cx.add_window_view(|window, cx| {
             crate::input::EditorState::new(window, cx).default_value("abcdef")
         });
-        let edit = |start: u32, end: u32, text: &str| lsp_types::TextEdit {
-            range: lsp_types::Range::new(
-                lsp_types::Position::new(0, start),
-                lsp_types::Position::new(0, end),
-            ),
-            new_text: text.into(),
-        };
         cx.update(|window, cx| {
             state.update(cx, |state, cx| {
                 state.set_selected_range(4..4, cx);
@@ -195,6 +191,108 @@ mod tests {
                 state.apply_lsp_edits(&vec![edit(3, 3, "["), edit(3, 5, "-")], window, cx);
                 assert_eq!(state.value(), "abc[-deZ");
                 assert_eq!(state.selected_range(), 6..6);
+            });
+        });
+    }
+
+    fn edit(start: u32, end: u32, text: &str) -> lsp_types::TextEdit {
+        lsp_types::TextEdit {
+            range: lsp_types::Range::new(
+                lsp_types::Position::new(0, start),
+                lsp_types::Position::new(0, end),
+            ),
+            new_text: text.into(),
+        }
+    }
+
+    #[gpui::test]
+    fn a_snippet_completion_goes_in_with_its_edits_and_tab_visits_its_stops(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        cx.update(crate::init);
+        let (state, cx) = cx.add_window_view(|window, cx| {
+            crate::input::EditorState::new(window, cx).default_value("gr")
+        });
+        let item = lsp_types::CompletionItem {
+            label: "greet".into(),
+            text_edit: Some(lsp_types::CompletionTextEdit::Edit(edit(
+                0,
+                2,
+                "greet(${1:name}, ${2:again})$0",
+            ))),
+            insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+            // An import above the word, as a server adds one.
+            additional_text_edits: Some(vec![edit(0, 0, "use hi;\n")]),
+            ..Default::default()
+        };
+        cx.update(|window, cx| {
+            state.update(cx, |state, cx| {
+                state.set_selected_range(2..2, cx);
+                state.insert_completion(&item, 0..2, window, cx);
+                assert_eq!(state.value(), "use hi;\ngreet(name, again)");
+                // The first stop is selected, after the import.
+                assert_eq!(state.selected_range(), 14..18);
+                // Typed over, as the user does.
+                state.replace_text_in_range(None, "you", window, cx);
+                assert_eq!(state.value(), "use hi;\ngreet(you, again)");
+                // Tab: the next stop, where it is now; Shift-Tab: back to the typed one.
+                state.indent_inline(&crate::input::IndentInline, window, cx);
+                assert_eq!(state.selected_range(), 19..24);
+                state.outdent_inline(&crate::input::OutdentInline, window, cx);
+                assert_eq!(state.selected_range(), 14..17);
+                state.indent_inline(&crate::input::IndentInline, window, cx);
+                assert_eq!(state.selected_range(), 19..24);
+                // Onto the last stop, and the snippet is over: Tab then indents.
+                state.indent_inline(&crate::input::IndentInline, window, cx);
+                assert_eq!(state.selected_range(), 25..25);
+                assert!(state.extras.snippet.is_none());
+                state.indent_inline(&crate::input::IndentInline, window, cx);
+                assert!(state.value().starts_with("use hi;\ngreet(you, again)"));
+                assert!(state.value().len() > "use hi;\ngreet(you, again)".len());
+                // One undo step for the completion and its import.
+                state.undo(&crate::input::Undo, window, cx);
+                state.undo(&crate::input::Undo, window, cx);
+                state.undo(&crate::input::Undo, window, cx);
+                assert_eq!(state.value(), "gr");
+            });
+        });
+    }
+
+    #[gpui::test]
+    fn escape_ends_a_snippet_and_so_does_a_text_replaced_whole(cx: &mut gpui::TestAppContext) {
+        cx.update(crate::init);
+        let (state, cx) = cx.add_window_view(|window, cx| {
+            crate::input::EditorState::new(window, cx).default_value("")
+        });
+        let item = lsp_types::CompletionItem {
+            label: "pair".into(),
+            insert_text: Some("${1:a} = $1; $2".into()),
+            insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+            ..Default::default()
+        };
+        cx.update(|window, cx| {
+            state.update(cx, |state, cx| {
+                state.insert_completion(&item, 0..0, window, cx);
+                assert_eq!(state.value(), "a = ; ");
+                // A repeated stop is selected everywhere it is.
+                assert_eq!(state.selected_ranges(), vec![0..1, 4..4]);
+                state.escape(&crate::input::Escape, window, cx);
+                assert_eq!(state.selected_ranges(), vec![0..1]);
+                assert!(state.extras.snippet.is_none());
+
+                state.set_value("", window, cx);
+                state.insert_completion(&item, 0..0, window, cx);
+                assert!(state.extras.snippet.is_some());
+                // Typing over a stop keeps the snippet, its other stops moved along.
+                state.replace_text_in_range(None, "xy", window, cx);
+                state.indent_inline(&crate::input::IndentInline, window, cx);
+                assert_eq!(state.value(), "xy = xy; ");
+                assert_eq!(state.selected_range(), 9..9);
+                // The text replaced whole, the snippet is over, and Tab indents.
+                state.set_value("new", window, cx);
+                assert!(state.extras.snippet.is_none());
+                state.indent_inline(&crate::input::IndentInline, window, cx);
+                assert_ne!(state.value(), "new");
             });
         });
     }

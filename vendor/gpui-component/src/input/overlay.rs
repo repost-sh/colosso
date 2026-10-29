@@ -70,6 +70,8 @@ pub(crate) struct LspOverlays {
     /// The diagnostic and hover cards.
     cards: Entity<EditorCards>,
     completion_signature: OverlaySignature,
+    /// The completion rows filled in last copied onto the menu.
+    completion_refreshed: u64,
     code_action_signature: OverlaySignature,
     hover_signature: Option<std::ops::Range<usize>>,
     diagnostic_signature: Option<std::rc::Rc<gpui_base::input::DiagnosticEntry>>,
@@ -88,6 +90,7 @@ pub(crate) struct LspOverlays {
 pub(crate) struct LspSnapshot {
     completion: OverlaySignature,
     completion_start: Option<usize>,
+    completion_refreshed: u64,
     code_action: OverlaySignature,
     hover: Option<std::ops::Range<usize>>,
     diagnostic: Option<std::rc::Rc<gpui_base::input::DiagnosticEntry>>,
@@ -175,6 +178,7 @@ impl OverlayMode for crate::input::EditorMode {
                 revision: completion.revision(),
             },
             completion_start: completion.trigger_start_offset,
+            completion_refreshed: completion.refreshed(),
             code_action: OverlaySignature {
                 open: code_actions.open,
                 revision: code_actions.revision(),
@@ -197,6 +201,7 @@ impl OverlayMode for crate::input::EditorMode {
             code_actions: CodeActionMenu::new(state.clone(), window, cx),
             cards: EditorCards::new(state.clone(), cx),
             completion_signature: OverlaySignature::default(),
+            completion_refreshed: 0,
             code_action_signature: OverlaySignature::default(),
             hover_signature: None,
             diagnostic_signature: None,
@@ -244,6 +249,15 @@ impl OverlayMode for crate::input::EditorMode {
                     menu.hide(cx);
                 }
             });
+            lsp.completion_refreshed = snapshot.completion_refreshed;
+        } else if snapshot.completion.open
+            && snapshot.completion_refreshed != lsp.completion_refreshed
+        {
+            // A row filled in where it is: the same list, its rows replaced.
+            lsp.completion_refreshed = snapshot.completion_refreshed;
+            let items = state.read(cx).completion_menu_state().items.clone();
+            lsp.completion
+                .update(cx, |menu, cx| menu.replace_items(items, cx));
         }
 
         if snapshot.code_action != lsp.code_action_signature {

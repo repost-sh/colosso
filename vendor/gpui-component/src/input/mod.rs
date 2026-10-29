@@ -39,6 +39,7 @@ pub use gpui_base::input::{
     SelectToStartOfLine, Selection, ShowCharacterPalette, ShowCompletions, ShowDocumentHandler,
     TabSize, TextDecoration, TextDecorationCollection, TextareaState, ToggleCodeActions, Undo,
     WrappingIndent, highlight_characters, highlight_contains, highlight_prefix,
+    is_identifier_char,
 };
 pub use gpui_base::input::{EditorMode, InputMode, InputModeKind, TextareaMode};
 #[doc(hidden)]

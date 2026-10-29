@@ -3,15 +3,14 @@ use std::{ops::Range, rc::Rc};
 use gpui::{
     Action, AnyElement, App, AppContext, Context, DismissEvent, Empty, Entity, EventEmitter,
     HighlightStyle, InteractiveElement as _, IntoElement, ParentElement, Pixels, Render,
-    RenderOnce, SharedString, Styled, StyledText, Subscription, WeakEntity, Window, deferred, div,
-    prelude::FluentBuilder, px, rems,
+    RenderOnce, SharedString, Styled, StyledText, Subscription,
+    WeakEntity, Window, deferred, prelude::FluentBuilder, px, rems,
 };
 use gpui_base::TestSupportExt as _;
 use gpui_base::input::CompletionHighlighter;
 use lsp_types::CompletionItem;
 
 const MAX_MENU_HEIGHT: Pixels = px(240.);
-const POPOVER_GAP: Pixels = px(4.);
 
 /// Drop ranges a custom highlighter cannot safely paint, then order the rest.
 ///
@@ -49,10 +48,10 @@ fn retained_highlight_ranges(
 }
 
 use crate::{
-    ActiveTheme, IndexPath, Selectable, ThemeStyled as _, actions, h_flex,
+    ActiveTheme, IndexPath, Selectable, actions, h_flex,
     input::{
         self, EditorState,
-        popovers::{CaretAnchoredPopup, editor_popover, render_markdown},
+        popovers::{BoxBuilder, CaretAnchoredPopup, card_body, framed, render_markdown},
     },
     label::Label,
     list::{List, ListDelegate, ListEvent, ListState},
@@ -62,6 +61,7 @@ use crate::{
 struct ContextMenuDelegate {
     query: SharedString,
     menu: Entity<CompletionMenu>,
+    editor: WeakEntity<EditorState>,
     items: Vec<Rc<CompletionItem>>,
     selected_ix: usize,
     highlight: Rc<CompletionHighlighter>,
@@ -202,16 +202,21 @@ impl ListDelegate for ContextMenuDelegate {
         cx: &mut Context<ListState<Self>>,
     ) {
         self.selected_ix = ix.map(|i| i.row).unwrap_or(0);
+        // The editor has the row filled in; deferred, as the list may be
+        // selecting it while the menu, or the editor, is being updated.
+        let selected = self.selected_ix;
+        let editor = self.editor.clone();
+        cx.spawn(async move |_, cx| {
+            let _ = editor.update(cx, |editor, cx| editor.select_completion(selected, cx));
+        })
+        .detach();
         cx.notify();
     }
 
     fn confirm(&mut self, _: bool, window: &mut Window, cx: &mut Context<ListState<Self>>) {
-        let Some(item) = self.selected_item() else {
-            return;
-        };
-
+        let selected = self.selected_ix;
         self.menu.update(cx, |this, cx| {
-            this.select_item(&item, window, cx);
+            this.select_item(selected, window, cx);
         });
     }
 }
@@ -243,6 +248,7 @@ impl CompletionMenu {
             let menu = ContextMenuDelegate {
                 query: SharedString::default(),
                 menu: view,
+                editor: editor.downgrade(),
                 items: vec![],
                 selected_ix: 0,
                 highlight: Rc::new(gpui_base::input::highlight_prefix),
@@ -275,15 +281,15 @@ impl CompletionMenu {
         })
     }
 
-    fn select_item(&mut self, item: &CompletionItem, window: &mut Window, cx: &mut Context<Self>) {
-        let item = item.clone();
+    /// Row `ix` is taken: the editor puts it in, filled in first if need be.
+    fn select_item(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
         let range = self.trigger_start_offset.unwrap_or(self.offset)..self.offset;
 
         let editor = self.editor.clone();
 
         cx.spawn_in(window, async move |_, cx| {
             editor.update_in(cx, |editor, window, cx| {
-                editor.insert_completion(&item, range, window, cx);
+                editor.accept_completion(ix, range, window, cx);
             })
         })
         .detach();
@@ -301,8 +307,9 @@ impl CompletionMenu {
             return false;
         }
 
-        cx.propagate();
-        if input::Enter::is_primary(&*action) {
+        // Handled here, the key goes no further: not to the editor's parents,
+        // nor into the text. Tab takes the row as Enter does.
+        if input::Enter::is_primary(&*action) || action.partial_eq(&input::IndentInline) {
             self.on_action_enter(window, cx);
         } else if action.partial_eq(&input::Escape) {
             self.on_action_escape(window, cx);
@@ -318,10 +325,8 @@ impl CompletionMenu {
     }
 
     fn on_action_enter(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(item) = self.list.read(cx).delegate().selected_item().cloned() else {
-            return;
-        };
-        self.select_item(&item, window, cx);
+        let selected = self.list.read(cx).delegate().selected_ix;
+        self.select_item(selected, window, cx);
     }
 
     fn on_action_escape(&mut self, _: &mut Window, cx: &mut Context<Self>) {
@@ -394,6 +399,16 @@ impl CompletionMenu {
         cx.notify();
     }
 
+    /// Replaces the rows with `items`, the same rows filled in, keeping
+    /// which is selected.
+    pub(crate) fn replace_items(&mut self, items: Vec<CompletionItem>, cx: &mut Context<Self>) {
+        self.list.update(cx, |list, cx| {
+            list.delegate_mut().items = items.into_iter().map(Rc::new).collect();
+            cx.notify();
+        });
+        cx.notify();
+    }
+
     /// Replace the label highlighter and repaint an open menu.
     pub(crate) fn set_highlight(
         &mut self,
@@ -424,75 +439,52 @@ impl Render for CompletionMenu {
         let Some(editor) = self.editor.upgrade() else {
             return Empty.into_any_element();
         };
-        // The anchor is resolved in the popup's deferred prepaint from the
-        // input's current-frame geometry; the content below is built there.
-        let configured_max = editor.read(cx).lsp().completion_menu.max_width;
+        // The boxes are built in the popup's deferred prepaint, placed from
+        // the input's current-frame geometry.
+        let max_width = editor.read(cx).lsp().completion_menu.max_width;
         let list = self.list.clone();
         let menu = cx.weak_entity();
+        let documentation = (list.read(cx).delegate().selected_item())
+            .and_then(|item| item.documentation.clone())
+            .map(|documentation| match documentation {
+                lsp_types::Documentation::String(text) => text,
+                lsp_types::Documentation::MarkupContent(markup) => markup.value,
+            });
 
-        deferred(CaretAnchoredPopup::new(
-            self.editor.clone(),
-            move |anchor, window, cx| {
-                // `anchor` is in window coordinates, from the current frame.
-                let max_width = configured_max.min(window.bounds().size.width - anchor.x);
-                let vertical_layout =
-                    anchor.x + configured_max + POPOVER_GAP + configured_max + POPOVER_GAP
-                        > window.bounds().size.width;
-
-                let selected_documentation = list
-                    .read(cx)
-                    .delegate()
-                    .selected_item()
-                    .and_then(|item| item.documentation.clone());
-
-                div()
-                    .flex()
-                    .flex_row()
-                    .gap(POPOVER_GAP)
-                    .items_start()
-                    .when(vertical_layout, |this| this.flex_col())
+        let rows: BoxBuilder = Box::new(move |backdrop, _, cx| {
+            framed("completion-menu", backdrop, cx)
+                .occlude()
+                .test_support()
+                .text_sm()
+                .p_1()
+                // Each virtual row includes the menu's inter-item gap.
+                .pb_0p5()
+                .max_w(max_width)
+                .min_w(px(120.))
+                .child(List::new(&list).max_h(MAX_MENU_HEIGHT))
+                .into_any_element()
+        });
+        let mut boxes = vec![rows];
+        if let Some(documentation) = documentation {
+            boxes.push(Box::new(move |backdrop, window, cx| {
+                framed("completion-docs", backdrop, cx)
+                    .occlude()
+                    .w(max_width)
                     .child(
-                        editor_popover("completion-menu", cx)
-                            .popover_style(cx)
-                            .text_sm()
-                            // Each virtual row includes the menu's inter-item gap.
-                            .pb_0p5()
-                            .test_support()
-                            .max_w(max_width)
-                            .min_w(px(120.))
-                            .child(List::new(&list).max_h(MAX_MENU_HEIGHT)),
+                        card_body("doc", cx)
+                            .max_h(MAX_MENU_HEIGHT)
+                            .child(render_markdown("doc", documentation.clone(), window, cx)),
                     )
-                    .when_some(selected_documentation, |this, documentation| {
-                        let mut doc = match documentation {
-                            lsp_types::Documentation::String(s) => s.clone(),
-                            lsp_types::Documentation::MarkupContent(mc) => mc.value.clone(),
-                        };
-                        if vertical_layout {
-                            doc = doc.split("\n").next().unwrap_or_default().to_string();
-                        }
-
-                        this.child(
-                            div().child(
-                                editor_popover("completion-menu", cx)
-                                    .popover_style(cx)
-                                    .text_sm()
-                                    .w(configured_max)
-                                    .px_2()
-                                    .child(render_markdown("doc", doc, window, cx)),
-                            ),
-                        )
-                    })
-                    .on_mouse_down_out({
-                        let menu = menu.clone();
-                        move |_, _, cx: &mut App| {
-                            if let Some(menu) = menu.upgrade() {
-                                menu.update(cx, |menu, cx| menu.dismiss(cx));
-                            }
-                        }
-                    })
                     .into_any_element()
-            },
-        ))
+            }));
+        }
+        deferred(
+            CaretAnchoredPopup::new(self.editor.clone(), boxes).on_click_out(move |_, cx| {
+                if let Some(menu) = menu.upgrade() {
+                    menu.update(cx, |menu, cx| menu.dismiss(cx));
+                }
+            }),
+        )
         .into_any_element()
     }
 }

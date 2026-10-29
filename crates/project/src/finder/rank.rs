@@ -129,16 +129,24 @@ pub(super) fn highlights(
     let searched = path.get(offset..).unwrap_or(path);
     indices.clear();
     pattern.indices(Utf32Str::new(searched, chars), matcher, indices);
+    (matched_bytes(searched, indices).into_iter())
+        .map(|range| offset + range.start..offset + range.end)
+        .collect()
+}
+
+/// The bytes of `text` at the character `indices` a pattern matched, as the matcher gives
+/// them (in any order, with repeats), merged where they touch.
+pub fn matched_bytes(text: &str, indices: &mut Vec<u32>) -> Vec<Range<usize>> {
     indices.sort_unstable();
     indices.dedup();
     let mut ranges: Vec<Range<usize>> = Vec::new();
     let mut wanted = indices.iter().copied().peekable();
-    for (nth, (at, char)) in searched.char_indices().enumerate() {
+    for (nth, (at, char)) in text.char_indices().enumerate() {
         if wanted.peek() != Some(&(nth as u32)) {
             continue;
         }
         wanted.next();
-        let range = offset + at..offset + at + char.len_utf8();
+        let range = at..at + char.len_utf8();
         match ranges.last_mut() {
             Some(last) if last.end == range.start => last.end = range.end,
             _ => ranges.push(range),

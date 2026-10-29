@@ -213,6 +213,10 @@ pub trait RopeExt {
     /// Get the word byte range at the given byte offset (0-based).
     fn word_range(&self, offset: usize) -> Option<Range<usize>>;
 
+    /// Where the identifier ending at byte `offset` begins: identifier
+    /// characters back from it, or `offset` itself when there are none.
+    fn identifier_start(&self, offset: usize) -> usize;
+
     /// Get word at the given byte offset (0-based).
     fn word_at(&self, offset: usize) -> String;
 
@@ -374,20 +378,12 @@ impl RopeExt for Rope {
             return None;
         }
 
-        let mut left = String::new();
         let offset = self.clip_offset(offset, Bias::Left);
-        for c in self.chars_at(offset).reversed() {
-            if c.is_alphanumeric() || c == '_' {
-                left.insert(0, c);
-            } else {
-                break;
-            }
-        }
-        let start = offset.saturating_sub(left.len());
+        let start = self.identifier_start(offset);
 
         let right = self
             .chars_at(offset)
-            .take_while(|c| c.is_alphanumeric() || *c == '_')
+            .take_while(|c| is_identifier_char(*c))
             .collect::<String>();
 
         let end = offset + right.len();
@@ -456,6 +452,21 @@ impl RopeExt for Rope {
         let offset = self.clip_offset(offset, Bias::Right);
         self.slice(..offset).chars().count()
     }
+
+    fn identifier_start(&self, offset: usize) -> usize {
+        let word: usize = self
+            .chars_at(offset)
+            .reversed()
+            .take_while(|c| is_identifier_char(*c))
+            .map(char::len_utf8)
+            .sum();
+        offset - word
+    }
+}
+
+/// Whether `ch` can be part of an identifier: a letter, a digit or `_`.
+pub fn is_identifier_char(ch: char) -> bool {
+    ch.is_alphanumeric() || ch == '_'
 }
 
 #[cfg(test)]
@@ -465,6 +476,16 @@ mod tests {
     use sum_tree::Bias;
 
     use crate::input::{Position, RopeExt};
+
+    #[test]
+    fn an_identifier_begins_at_its_first_identifier_character() {
+        let rope = Rope::from("let héllo_1 = x.gr");
+        assert_eq!(rope.identifier_start(rope.len()), rope.len() - 2);
+        let after_name = "let héllo_1".len();
+        assert_eq!(rope.identifier_start(after_name), 4);
+        assert_eq!(rope.identifier_start(4), 4);
+        assert_eq!(rope.identifier_start(0), 0);
+    }
 
     #[test]
     fn test_slice_line() {
