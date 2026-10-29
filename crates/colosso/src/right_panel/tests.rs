@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use gpui_kit::{
-    Entity, Modifiers, MouseButton, Pixels, Point, TestAppContext, VisualTestContext, point,
+    Action, AnyWindowHandle, Entity, Modifiers, MouseButton, Pixels, Point, TestAppContext, VisualTestContext, point,
 };
 
 use super::*;
@@ -115,4 +115,32 @@ fn a_dragged_edge_moves_as_it_goes_and_is_saved_once_let_go(cx: &mut TestAppCont
     });
     assert!((saved(cx).1 - (wide - 40.)).abs() < GRAB, "{:?}", saved(cx));
     let _ = std::fs::remove_dir_all(root);
+}
+
+/// What the top bar's buttons do: each opens the panel on its view and closes it, and the
+/// panel opens again after it's closed, though what had the keyboard went with it.
+#[gpui_kit::test]
+fn a_panel_closed_from_the_top_bar_opens_again(cx: &mut TestAppContext) {
+    let root = repo("right-panel-reopen", &[("a.txt", "a\n")]);
+    let (window, shell) = shell_with(&[&root], cx);
+    select(&shell, &root, cx);
+    toggles(&shell, window, View::Changes, &ToggleChanges, cx);
+    toggles(&shell, window, View::Files, &ToggleFiles, cx);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// Toggles `view` open and closed twice with `toggle`, as its button does.
+fn toggles(
+    shell: &Entity<Shell>,
+    window: AnyWindowHandle,
+    view: View,
+    toggle: &(impl Action + Clone),
+    cx: &mut TestAppContext,
+) {
+    for open in [true, false, true, false] {
+        cx.dispatch_action(window, toggle.clone());
+        cx.run_until_parked();
+        let shows = cx.read(|cx| shell.read(cx).right_panel.shows(view));
+        assert_eq!(shows, open, "{view:?} after toggling it to {open}");
+    }
 }

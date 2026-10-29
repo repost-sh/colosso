@@ -27,7 +27,7 @@ use crate::right_panel::RightPanel;
 use crate::settings::{self, Layout};
 use crate::settings_view::{self, EditBranchPrefix, SettingsSidebar};
 use crate::sidebar::{SidebarFrame, SidebarResize, slide_out};
-use crate::theme::{CycleTheme, Palette, ThemePreference};
+use crate::theme::Palette;
 use crate::{arc, backdrop, gradient, modal, orca, pane, picker, projects, theme};
 
 /// How long the sidebar takes to slide fully in or out.
@@ -80,7 +80,7 @@ pub struct Shell {
     pub search: Entity<InputState>,
     /// Where the rails were last right-clicked, for the theme picker their menu opens.
     rails_menu_at: Point<Pixels>,
-    _subscriptions: [Subscription; 5],
+    _subscriptions: [Subscription; 6],
 }
 
 impl Shell {
@@ -112,6 +112,10 @@ impl Shell {
             cx.observe_in(&cx.entity(), window, |this, _, window, cx| {
                 this.follow_selection(window, cx);
             }),
+            // What had the keyboard is gone, as a closed panel's list is: actions then start
+            // at the window's root, above the shell's, and the top bar's buttons and keys
+            // would do nothing until something else took the keyboard.
+            cx.on_focus_lost(window, |this, window, cx| window.focus(&this.focus, cx)),
         ];
         let mut shell = Shell {
             workspace: Workspace::new(&settings::get(cx).projects),
@@ -293,7 +297,7 @@ impl Shell {
                 ToggleSidebarMode,
                 cx,
             ))
-            .child(theme_toggle(theme::preference(cx), cx))
+            .child(theme::toggle(cx))
             .child(
                 action_button(
                     "rail-settings",
@@ -433,26 +437,6 @@ impl Render for Shell {
                     .child(card),
             )
     }
-}
-
-/// Click cycles System, Light and Dark; right-click picks one from a native menu.
-fn theme_toggle(preference: ThemePreference, cx: &App) -> impl IntoElement {
-    div()
-        .on_mouse_down(
-            MouseButton::Right,
-            move |event: &MouseDownEvent, window, cx| {
-                // This menu stands in for the one the rest of the rails open.
-                cx.stop_propagation();
-                preference.menu().show(event.position, window, cx);
-            },
-        )
-        .child(action_button(
-            "rail-theme",
-            preference.icon(),
-            format!("Theme: {}", preference.label()),
-            CycleTheme,
-            cx,
-        ))
 }
 
 fn new_tab_action(kind: PaneKind) -> Box<dyn Action> {

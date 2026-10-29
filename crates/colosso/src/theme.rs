@@ -3,10 +3,14 @@
 use gpui_kit::assets::IconName;
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::component::{ActiveTheme as _, Theme};
-use gpui_kit::{Action, App, Hsla, Window, WindowAppearance, actions};
+use gpui_kit::{
+    Action, App, Hsla, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent,
+    ParentElement as _, Window, WindowAppearance, actions, div,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::settings;
+use crate::shell::action_button;
 
 mod accent;
 #[cfg(target_os = "macos")]
@@ -284,4 +288,26 @@ fn set_preference(preference: ThemePreference, cx: &mut App) {
     let forced = preference.forced_appearance();
     cx.set_window_appearance(forced);
     Theme::change(forced.unwrap_or_else(|| cx.window_appearance()), None, cx);
+}
+
+/// The rail's theme button: a click cycles System, Light and Dark; a right-click picks one
+/// from a native menu.
+pub fn toggle(cx: &App) -> impl IntoElement {
+    let preference = preference(cx);
+    div()
+        .on_mouse_down(
+            MouseButton::Right,
+            move |event: &MouseDownEvent, window, cx| {
+                // This menu stands in for the one the rest of the rails open.
+                cx.stop_propagation();
+                preference.menu().show(event.position, window, cx);
+            },
+        )
+        .child(action_button(
+            "rail-theme",
+            preference.icon(),
+            format!("Theme: {}", preference.label()),
+            CycleTheme,
+            cx,
+        ))
 }
