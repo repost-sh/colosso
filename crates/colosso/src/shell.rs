@@ -27,6 +27,7 @@ use crate::right_panel::RightPanel;
 use crate::settings::{self, Layout};
 use crate::settings_view::{self, EditBranchPrefix, SettingsSidebar};
 use crate::sidebar::{SidebarFrame, SidebarResize, slide_out};
+use crate::pane::close_button;
 use crate::theme::Palette;
 use crate::{arc, backdrop, gradient, modal, orca, pane, picker, projects, theme};
 
@@ -547,21 +548,11 @@ pub fn tab_close_button(
     p: Palette,
     cx: &mut Context<Shell>,
 ) -> Stateful<Div> {
-    div()
-        .id(id)
-        .size(px(18.))
-        .flex_shrink_0()
-        .flex()
-        .items_center()
-        .justify_center()
-        .rounded(px(4.))
-        .hover(|style| style.bg(p.hover))
-        .on_click(cx.listener(move |this, _, _, cx| {
-            cx.stop_propagation();
-            this.workspace.close_tab(project, branch, tab);
-            cx.notify();
-        }))
-        .child(icon(IconName::X, 12.))
+    close_button(id, p).on_click(cx.listener(move |this, _, _, cx| {
+        cx.stop_propagation();
+        this.workspace.close_tab(project, branch, tab);
+        cx.notify();
+    }))
 }
 
 impl Shell {

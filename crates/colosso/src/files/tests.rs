@@ -125,7 +125,7 @@ fn a_file_is_coloured_by_its_name_its_extension_or_its_first_line() {
 }
 
 /// A checkout with a change and a file git doesn't know, and an ignored build folder.
-fn checkout(name: &str) -> std::path::PathBuf {
+pub(super) fn checkout(name: &str) -> std::path::PathBuf {
     let root = scratch(name);
     git(&root, &["init", "-q", "-b", "main"]);
     write(&root, ".gitignore", b"target/\n");
@@ -142,7 +142,7 @@ fn checkout(name: &str) -> std::path::PathBuf {
 }
 
 /// The panel for the checkout at `root`, in a window of its own.
-fn open(root: &Path, cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<FilesPanel>) {
+pub(super) fn open(root: &Path, cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<FilesPanel>) {
     // The project lists and watches the checkout on a thread of its own, which wakes the
     // panel's task from outside the test's scheduler.
     cx.executor().allow_parking();
@@ -195,7 +195,7 @@ fn shown(panel: &Entity<FilesPanel>, cx: &TestAppContext) -> Vec<String> {
     })
 }
 
-fn selected(panel: &Entity<FilesPanel>, cx: &TestAppContext) -> Option<String> {
+pub(super) fn selected(panel: &Entity<FilesPanel>, cx: &TestAppContext) -> Option<String> {
     cx.read(|cx| panel.read(cx).selected.as_ref().map(ToString::to_string))
 }
 

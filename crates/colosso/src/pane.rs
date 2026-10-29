@@ -2,11 +2,28 @@
 //! each other pane kind will roughly look like.
 
 use gpui_kit::assets::IconName;
-use gpui_kit::{AnyElement, IntoElement, ParentElement as _, Styled as _, div, px, relative};
+use gpui_kit::{
+    AnyElement, Div, ElementId, InteractiveElement as _, IntoElement, ParentElement as _,
+    Stateful, Styled as _, div, px, relative,
+};
 
 use crate::model::{Pane, PaneKind, Tab};
 use crate::shell::icon;
 use crate::theme::{MONO, Palette};
+
+/// A tab's close button: an X, lit when the pointer's over it.
+pub fn close_button(id: impl Into<ElementId>, p: Palette) -> Stateful<Div> {
+    div()
+        .id(id)
+        .size(px(18.))
+        .flex_shrink_0()
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded(px(4.))
+        .hover(|style| style.bg(p.hover))
+        .child(icon(IconName::X, 12.))
+}
 
 pub fn tab(tab: &Tab, context: &str, p: Palette) -> AnyElement {
     match tab {
