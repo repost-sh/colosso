@@ -6,6 +6,7 @@ mod icons;
 mod panel;
 mod place;
 mod render;
+mod tabs;
 #[cfg(test)]
 mod tests;
 #[cfg(feature = "visual-check")]

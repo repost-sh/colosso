@@ -1,19 +1,23 @@
 //! How the Files panel looks: its header with its title, then the tree with the file it
 //! shows beside it, or why there's no tree yet.
 
+use std::cell::Cell;
 use std::ops::Range;
+use std::rc::Rc;
 use std::path::Path;
 use std::sync::Arc;
 
 use colosso_project::{Kind, Row};
 use gpui_kit::assets::IconName;
+use gpui_kit::base::ElementExt as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, Context, Div, FontWeight, Hsla, InteractiveElement as _, IntoElement,
-    ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, StyleRefinement,
-    Styled as _, Window, div, px, uniform_list,
+    Action, AnyElement, App, Bounds, ClickEvent, Context, Div, FontWeight, Hsla,
+    InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Render, SharedString,
+    StatefulInteractiveElement as _, StyleRefinement, Styled as _, Window, div, point, px,
+    uniform_list,
 };
 
 use super::icons;
@@ -25,6 +29,7 @@ use crate::right_panel::{
     Activate, Collapse, Expand, NextFile, PageDown, PageUp, PreviousFile, SelectFirst, SelectLast,
     SelectNext, SelectPrevious, note, panel_header, title, wide_button,
 };
+use crate::settings::{self, SetPreviewFiles};
 use crate::shell::{ellipsized, icon, icon_button, row};
 use crate::theme::{self, Palette};
 
@@ -60,24 +65,12 @@ impl Render for FilesPanel {
 }
 
 impl FilesPanel {
-    /// Its title and the file shown, by its path in the checkout or else in full; while the
-    /// checkout's `opened` and not listed yet, so; and the button that widens the panel.
+    /// Its title and the tabs of the files open; while the checkout's `opened` and not
+    /// listed yet, so; and the button that widens the panel.
     fn header(&self, opened: bool, p: Palette, cx: &mut Context<Self>) -> Div {
-        let shown = self.viewing().map(|viewed| {
-            let root = self.checkout.read(cx).root();
-            let path = viewed.path.strip_prefix(root).unwrap_or(&viewed.path);
-            SharedString::from(path.display().to_string())
-        });
         panel_header(p)
             .child(title("Files", p))
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .text_xs()
-                    .text_color(p.muted)
-                    .children(shown.map(ellipsized)),
-            )
+            .child(self.tab_strip(p, cx))
             .when(opened && !self.scanned, |header| {
                 header.child(div().text_xs().text_color(p.muted).child("Listing…"))
             })
@@ -104,6 +97,12 @@ impl FilesPanel {
                 .child("Pick a file to see it here.")
                 .into_any_element(),
         };
+        let tree = div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .child(rail(p, cx))
+            .child(tree);
         (self.split).render(tree, viewer, |this: &mut Self| &mut this.split, cx)
     }
 
@@ -114,21 +113,21 @@ impl FilesPanel {
             .py_1()
             .track_focus(&self.focus)
             .key_context("FilesTree")
-            .on_action(cx.listener(|this, _: &SelectPrevious, _, cx| this.step(-1, cx)))
-            .on_action(cx.listener(|this, _: &SelectNext, _, cx| this.step(1, cx)))
-            .on_action(cx.listener(|this, _: &SelectFirst, _, cx| this.select(0, cx)))
-            .on_action(cx.listener(|this, _: &SelectLast, _, cx| {
+            .on_action(moving(cx, |this: &mut Self, _: &SelectPrevious, cx| this.step(-1, cx)))
+            .on_action(moving(cx, |this: &mut Self, _: &SelectNext, cx| this.step(1, cx)))
+            .on_action(moving(cx, |this: &mut Self, _: &SelectFirst, cx| this.select(0, cx)))
+            .on_action(moving(cx, |this: &mut Self, _: &SelectLast, cx| {
                 this.select(this.rows.len().saturating_sub(1), cx);
             }))
-            .on_action(cx.listener(|this, _: &PageUp, _, cx| this.page(-1, cx)))
-            .on_action(cx.listener(|this, _: &PageDown, _, cx| this.page(1, cx)))
-            .on_action(cx.listener(|this, _: &PreviousFile, _, cx| this.step_file(-1, cx)))
-            .on_action(cx.listener(|this, _: &NextFile, _, cx| this.step_file(1, cx)))
-            .on_action(cx.listener(|this, _: &Collapse, _, cx| this.close_or_parent(cx)))
-            .on_action(cx.listener(|this, _: &Expand, _, cx| this.open_or_child(cx)))
+            .on_action(moving(cx, |this: &mut Self, _: &PageUp, cx| this.page(-1, cx)))
+            .on_action(moving(cx, |this: &mut Self, _: &PageDown, cx| this.page(1, cx)))
+            .on_action(moving(cx, |this: &mut Self, _: &PreviousFile, cx| this.step_file(-1, cx)))
+            .on_action(moving(cx, |this: &mut Self, _: &NextFile, cx| this.step_file(1, cx)))
+            .on_action(moving(cx, |this: &mut Self, _: &Collapse, cx| this.close_or_parent(cx)))
+            .on_action(moving(cx, |this: &mut Self, _: &Expand, cx| this.open_or_child(cx)))
             .on_action(cx.listener(|this, _: &Activate, window, cx| {
                 if let Some(at) = this.cursor() {
-                    this.activate(at, window, cx);
+                    this.activate(at, true, window, cx);
                 }
             }))
             .child(
@@ -182,10 +181,16 @@ impl FilesPanel {
             // The file shown beside the tree stands out among the rest.
             .when(active && !selected, |row| row.bg(p.hover))
             .when(shown.entry.ignored, |row| row.opacity(0.55))
-            .on_click(cx.listener(move |this, _, window, cx| {
+            // A click previews a file, a double click keeps it open; a folder opens or closes
+            // on the first click only.
+            .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
                 window.focus(&this.focus, cx);
                 this.select(index, cx);
-                this.activate(index, window, cx);
+                let twice = event.click_count() > 1;
+                let folder = this.rows.get(index).is_some_and(|row| row.entry.is_folder());
+                if !(twice && folder) {
+                    this.activate(index, twice, window, cx);
+                }
             }))
             .child(div().w(px(12.)).flex_shrink_0().children(chevron))
             .child(icon(icons::icon(&shown.entry, shown.expanded), 14.).text_color(p.muted))
@@ -248,4 +253,43 @@ fn dot(colour: Hsla) -> Div {
         .flex_shrink_0()
         .rounded_full()
         .bg(colour)
+}
+
+/// A key that moves the pick, then previews the file it lands on.
+fn moving<A: Action>(
+    cx: &mut Context<FilesPanel>,
+    by: impl Fn(&mut FilesPanel, &A, &mut Context<FilesPanel>) + 'static,
+) -> impl Fn(&A, &mut Window, &mut App) + 'static {
+    cx.listener(move |this, action: &A, window, cx| {
+        by(this, action, cx);
+        this.preview_picked(window, cx);
+    })
+}
+
+/// A quiet strip over the tree, with a menu of how the tree shows files at its end.
+fn rail(p: Palette, cx: &mut Context<FilesPanel>) -> Div {
+    let bounds = Rc::new(Cell::new(Bounds::<Pixels>::default()));
+    let measured = bounds.clone();
+    let more = icon_button("files-more", IconName::Ellipsis, "More", cx)
+        .xsmall()
+        .on_click(move |_, window, cx| {
+            let below = bounds.get().bottom_left() + point(px(0.), px(4.));
+            let preview = settings::get(cx).preview_files;
+            NativeMenu::new()
+                .menu_with_check(
+                    "Preview Files",
+                    preview,
+                    Box::new(SetPreviewFiles(!preview)),
+                )
+                .show(below, window, cx);
+        });
+    div()
+        .h(px(26.))
+        .flex_shrink_0()
+        .px_1()
+        .flex()
+        .items_center()
+        .justify_end()
+        .child(div().on_prepaint(move |bounds, _, _| measured.set(bounds)).child(more))
+        .text_color(p.muted)
 }
