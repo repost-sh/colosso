@@ -6,22 +6,16 @@ use std::mem;
 use std::ops::Range;
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
-use std::time::{Duration, Instant};
 
 use colosso_git::{Change, Checkout, Content, FileDiff, changed_words};
+use colosso_project::{Feed, GitDirs};
 use futures::StreamExt as _;
-use futures::channel::mpsc::UnboundedReceiver;
 use gpui_kit::gpui::{AppContext as _, AsyncApp, Context, Subscription, Task, WeakEntity, Window};
 
 use super::highlight::{Highlights, highlight};
 use super::reread::{Read, Stale, read};
-use super::watch::{Touched, Watched, Watcher, Watching, watch};
-
-/// How long the watcher must be quiet before the changes are read again.
-const QUIET: Duration = Duration::from_millis(100);
-
-/// The longest a burst of writes holds back a read, so a long one still shows as it goes.
-const LONGEST_WAIT: Duration = Duration::from_secs(1);
+use super::watch::{Touched, touched};
+use crate::checkouts;
 
 /// A changed file as shown: its diff and, once worked out, its colours. The diff shows plain
 /// until then, as colouring takes longer than reading.
@@ -107,7 +101,7 @@ pub struct Changes {
     coloured: bool,
     colouring: Option<Task<()>>,
     _visibility: Subscription,
-    _watcher: Option<Watcher>,
+    /// Takes what the checkout's project reports, which keeps the project open meanwhile.
     _following: Option<Task<()>>,
 }
 
@@ -124,12 +118,11 @@ impl Changes {
                 .background_spawn(async move {
                     let checkout = Checkout::open(&path)?;
                     let (git_dir, common_dir) = checkout.git_dirs();
-                    let watched = watch(Watched {
-                        root: checkout.root().to_owned(),
+                    let git = GitDirs {
                         git_dir,
                         common_dir,
-                    });
-                    Ok::<_, colosso_git::GitError>((checkout, watched))
+                    };
+                    Ok::<_, colosso_git::GitError>((checkout, git))
                 })
                 .await;
             this.update(cx, |this, cx| this.opened(opened, cx)).ok();
@@ -148,7 +141,6 @@ impl Changes {
             coloured: false,
             colouring: None,
             _visibility,
-            _watcher: None,
             _following: None,
         }
     }
@@ -238,34 +230,35 @@ impl Changes {
         self.read(cx);
     }
 
-    fn opened(
-        &mut self,
-        opened: colosso_git::Result<(Checkout, Watching)>,
-        cx: &mut Context<Self>,
-    ) {
+    /// Starts following the checkout through its project, shared with every other panel
+    /// showing it, once it's open.
+    fn opened(&mut self, opened: colosso_git::Result<(Checkout, GitDirs)>, cx: &mut Context<Self>) {
         self.reading = None;
-        let root = self.root.display();
         match opened {
             Err(error) => self.failed(error.message),
-            Ok((checkout, watching)) => {
+            Ok((checkout, git)) => {
+                let project = checkouts::project(checkout.root(), git, cx);
+                log::info!("following the changes in {}", self.root.display());
+                let updates = project.subscribe(Feed::Written);
+                self._following =
+                    Some(cx.spawn(async move |this, cx| follow(this, updates, cx).await));
                 self.checkout = Some(Arc::new(checkout));
-                match watching {
-                    Ok((watcher, touched)) => {
-                        log::info!("following the changes in {root}");
-                        self._watcher = Some(watcher);
-                        self._following =
-                            Some(cx.spawn(async move |this, cx| follow(this, touched, cx).await));
-                    }
-                    Err(error) => {
-                        log::warn!(
-                            "can't follow the changes in {root}, so they're read once: {error}"
-                        );
-                        self.unwatched = Some(error.to_string());
-                    }
-                }
             }
         }
         self.read(cx);
+        cx.notify();
+    }
+
+    /// Reads the changes once rather than as they happen: the platform can't watch the
+    /// checkout.
+    fn set_unwatched(&mut self, why: String, cx: &mut Context<Self>) {
+        if self.unwatched.is_none() {
+            log::warn!(
+                "can't follow the changes in {}, so they're read once: {why}",
+                self.root.display()
+            );
+        }
+        self.unwatched = Some(why);
         cx.notify();
     }
 
@@ -362,28 +355,28 @@ pub fn key(change: &Change) -> Key {
     (change.staged, change.path.clone())
 }
 
-/// Passes on what the watcher reports, a burst at a time: once it has been quiet a moment, or
-/// has gone on for a while.
+/// Passes on what the checkout's project reports, as it hands it over: the project gathers a
+/// burst of writes into one update, and what comes while a read is under way is read once
+/// it's done.
 async fn follow(
     this: WeakEntity<Changes>,
-    mut touched: UnboundedReceiver<Vec<Touched>>,
+    mut updates: colosso_project::Subscription,
     cx: &mut AsyncApp,
 ) {
-    while let Some(first) = touched.next().await {
-        let mut burst = first;
-        let started = Instant::now();
-        loop {
-            cx.background_executor().timer(QUIET).await;
-            let mut quiet = true;
-            while let Ok(more) = touched.try_recv() {
-                burst.extend(more);
-                quiet = false;
-            }
-            if quiet || started.elapsed() >= LONGEST_WAIT {
-                break;
-            }
+    while let Some(first) = updates.next().await {
+        let mut burst = touched(&first);
+        let mut unwatched = first.unwatched;
+        while let Some(more) = updates.try_next() {
+            burst.extend(touched(&more));
+            unwatched = more.unwatched.or(unwatched);
         }
-        if this.update(cx, |this, cx| this.touched(burst, cx)).is_err() {
+        let passed = this.update(cx, |this, cx| {
+            if let Some(why) = unwatched {
+                this.set_unwatched(why, cx);
+            }
+            this.touched(burst, cx);
+        });
+        if passed.is_err() {
             return;
         }
     }

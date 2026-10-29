@@ -980,13 +980,13 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "colosso-git",
+ "colosso-project",
  "dirs 6.0.0",
  "futures",
  "gpui-kit",
  "gpui-pre",
  "image",
  "log",
- "notify",
  "objc",
  "serde",
  "serde_json",
@@ -1000,6 +1000,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "colosso-project",
  "gpui-kit",
  "serde",
  "serde_json",
@@ -1012,6 +1013,19 @@ dependencies = [
  "gix",
  "log",
  "trash",
+]
+
+[[package]]
+name = "colosso-project"
+version = "0.1.0"
+dependencies = [
+ "dispatch2",
+ "futures",
+ "ignore",
+ "log",
+ "notify",
+ "objc2-core-foundation",
+ "objc2-core-services",
 ]
 
 [[package]]
@@ -5729,6 +5743,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "583300ad934cba24ff5292aee751ecc070f7ca6b39a574cc21b7b5e588e06a0b"
 dependencies = [
+ "dispatch2",
  "libc",
  "objc2-core-foundation",
 ]

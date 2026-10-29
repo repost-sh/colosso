@@ -9,14 +9,25 @@ use anyhow::{Context as _, Result};
 use serde::Serialize;
 
 use crate::generate::{self, Corpus};
+use crate::repo;
 
 /// Where the bench keeps what it makes, relative to the checkout; both are gitignored.
 pub const FIXTURES_DIR: &str = ".superpowers/fixtures";
 pub const RESULTS_DIR: &str = ".superpowers/bench";
 
-/// How a fixture's text is made.
+/// How a fixture is made.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Source {
+    /// A file, of this text.
+    Text(Text),
+    /// A git repository of about `tracked` files in nested folders, and `ignored` more in
+    /// `node_modules/` and `target/`: what the scan scenarios read.
+    Repo { tracked: usize, ignored: usize },
+}
+
+/// How a fixture's text is made.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Text {
     /// This repository's Rust, repeated to `lines` lines.
     Rust { lines: usize },
     /// The same, with emoji, CJK and joined sequences sprinkled in.
@@ -45,13 +56,14 @@ pub struct Fixture {
 
 /// Every fixture, in the order the results list them. The two under 256 KB are where the
 /// highlighter parses on the main thread at every keystroke and scans the whole tree for
-/// injections; every larger file is parsed in the background.
-pub const FIXTURES: [Fixture; 8] = [
+/// injections; every larger file is parsed in the background. The last is a repository, for
+/// the scan scenarios only.
+pub const FIXTURES: [Fixture; 9] = [
     fixture(
         "rust-4k",
         "rust-4k.rs",
         "rust",
-        Source::Rust { lines: 4_000 },
+        Source::Text(Text::Rust { lines: 4_000 }),
         4,
         true,
     ),
@@ -59,7 +71,7 @@ pub const FIXTURES: [Fixture; 8] = [
         "rust-10k",
         "rust-10k.rs",
         "rust",
-        Source::Rust { lines: 10_000 },
+        Source::Text(Text::Rust { lines: 10_000 }),
         10,
         true,
     ),
@@ -67,7 +79,7 @@ pub const FIXTURES: [Fixture; 8] = [
         "rust-50k",
         "rust-50k.rs",
         "rust",
-        Source::Rust { lines: 50_000 },
+        Source::Text(Text::Rust { lines: 50_000 }),
         50,
         true,
     ),
@@ -75,7 +87,7 @@ pub const FIXTURES: [Fixture; 8] = [
         "rust-200k",
         "rust-200k.rs",
         "rust",
-        Source::Rust { lines: 200_000 },
+        Source::Text(Text::Rust { lines: 200_000 }),
         200,
         true,
     ),
@@ -83,7 +95,7 @@ pub const FIXTURES: [Fixture; 8] = [
         "markdown-5k",
         "markdown-5k.md",
         "markdown",
-        Source::Markdown { lines: 5_000 },
+        Source::Text(Text::Markdown { lines: 5_000 }),
         5,
         true,
     ),
@@ -91,7 +103,7 @@ pub const FIXTURES: [Fixture; 8] = [
         "markdown-20k",
         "markdown-20k.md",
         "markdown",
-        Source::Markdown { lines: 20_000 },
+        Source::Text(Text::Markdown { lines: 20_000 }),
         20,
         false,
     ),
@@ -99,7 +111,7 @@ pub const FIXTURES: [Fixture; 8] = [
         "unicode-50k",
         "unicode-50k.rs",
         "rust",
-        Source::Unicode { lines: 50_000 },
+        Source::Text(Text::Unicode { lines: 50_000 }),
         51,
         false,
     ),
@@ -110,11 +122,22 @@ pub const FIXTURES: [Fixture; 8] = [
             "json-1mb",
             "minified-1mb.json",
             "json",
-            Source::Json { bytes: 1 << 20 },
+            Source::Text(Text::Json { bytes: 1 << 20 }),
             1,
             false,
         )
     },
+    fixture(
+        "repo-300k",
+        "repo-300k",
+        "-",
+        Source::Repo {
+            tracked: 150_000,
+            ignored: 150_000,
+        },
+        300,
+        false,
+    ),
 ];
 
 const fn fixture(
@@ -141,6 +164,11 @@ impl Fixture {
         in_checkout(FIXTURES_DIR).join(self.file)
     }
 
+    /// Whether it's the repository the scan scenarios read, rather than a file to edit.
+    pub fn is_repo(&self) -> bool {
+        matches!(self.source, Source::Repo { .. })
+    }
+
     pub fn read(&self) -> Result<String> {
         let path = self.path();
         fs::read_to_string(&path).with_context(|| {
@@ -151,12 +179,13 @@ impl Fixture {
         })
     }
 
-    fn generate(&self, corpus: &Corpus) -> String {
-        match self.source {
-            Source::Rust { lines } => generate::rust(corpus, lines, self.seed),
-            Source::Unicode { lines } => generate::unicode(corpus, lines, self.seed),
-            Source::Markdown { lines } => generate::markdown(corpus, lines, self.seed),
-            Source::Json { bytes } => generate::json(bytes, self.seed),
+    /// The file's text.
+    fn generate(&self, text: Text, corpus: &Corpus) -> String {
+        match text {
+            Text::Rust { lines } => generate::rust(corpus, lines, self.seed),
+            Text::Unicode { lines } => generate::unicode(corpus, lines, self.seed),
+            Text::Markdown { lines } => generate::markdown(corpus, lines, self.seed),
+            Text::Json { bytes } => generate::json(bytes, self.seed),
         }
     }
 
@@ -168,8 +197,24 @@ impl Fixture {
             bytes: text.len(),
             lines: text.lines().count(),
             longest_line_bytes: text.lines().map(str::len).max().unwrap_or(0),
+            files: 1,
             hash: format!("{:016x}", fnv1a(text.as_bytes())),
         }
+    }
+
+    /// Makes the repository unless it's there, and describes it.
+    fn ensure_repo(&self, tracked: usize, ignored: usize) -> Result<FixtureInfo> {
+        let made = repo::ensure(&self.path(), tracked, ignored, self.seed)?;
+        Ok(FixtureInfo {
+            name: self.name,
+            file: self.path().display().to_string(),
+            language: self.language,
+            bytes: 0,
+            lines: 0,
+            longest_line_bytes: 0,
+            files: made.tracked + made.ignored,
+            hash: made.hash,
+        })
     }
 }
 
@@ -183,7 +228,9 @@ pub struct FixtureInfo {
     pub bytes: usize,
     pub lines: usize,
     pub longest_line_bytes: usize,
-    /// FNV-1a of the contents.
+    /// One for a file; every file in a repository, the ignored ones included.
+    pub files: usize,
+    /// FNV-1a of the contents, or of a repository's paths.
     pub hash: String,
 }
 
@@ -205,7 +252,7 @@ pub fn in_checkout(relative: &str) -> PathBuf {
 pub fn ensure() -> Result<Vec<FixtureInfo>> {
     let dir = in_checkout(FIXTURES_DIR);
     fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
-    let missing = FIXTURES.iter().any(|fixture| !fixture.path().exists());
+    let missing = (FIXTURES.iter()).any(|fixture| !fixture.is_repo() && !fixture.path().exists());
     let corpus = if missing {
         Some(Corpus::load(&workspace_root())?)
     } else {
@@ -214,14 +261,21 @@ pub fn ensure() -> Result<Vec<FixtureInfo>> {
     FIXTURES
         .iter()
         .map(|fixture| {
+            let text = match fixture.source {
+                Source::Repo { tracked, ignored } => return fixture.ensure_repo(tracked, ignored),
+                Source::Text(text) => text,
+            };
             let path = fixture.path();
-            let text = match &corpus {
-                Some(corpus) if !path.exists() => {
-                    let text = fixture.generate(corpus);
+            let generated = match &corpus {
+                Some(corpus) if !path.exists() => Some(fixture.generate(text, corpus)),
+                _ => None,
+            };
+            let text = match generated {
+                Some(text) => {
                     write_atomically(&path, &text)?;
                     text
                 }
-                _ => fixture.read()?,
+                None => fixture.read()?,
             };
             Ok(fixture.describe(&text))
         })
@@ -229,13 +283,13 @@ pub fn ensure() -> Result<Vec<FixtureInfo>> {
 }
 
 /// Through a temporary file, so a run cut short never leaves half a fixture to be measured.
-fn write_atomically(path: &Path, contents: &str) -> Result<()> {
+pub fn write_atomically(path: &Path, contents: &str) -> Result<()> {
     let partial = path.with_extension("partial");
     fs::write(&partial, contents).with_context(|| format!("writing {}", partial.display()))?;
     fs::rename(&partial, path).with_context(|| format!("moving {}", path.display()))
 }
 
-fn fnv1a(bytes: &[u8]) -> u64 {
+pub fn fnv1a(bytes: &[u8]) -> u64 {
     bytes.iter().fold(0xcbf2_9ce4_8422_2325, |hash, &byte| {
         (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
     })

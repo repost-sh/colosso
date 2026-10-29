@@ -21,6 +21,15 @@ cargo run -p colosso-bench --release -- list                # scenario ids; `run
 
 A scenario's id is its kind and its fixture, `type/rust-10k`. The long-line scenarios are `open`, `scroll` (sideways) and `type` on `json-1mb`, one 1 MiB line of minified JSON.
 
+The scan scenarios run `colosso-project` off the main thread, with no window, on `repo-300k`: a git checkout of 150,001 files in 3,000 folders of nested packages, and 150,000 more in `node_modules/` and `target/`, which its `.gitignore` ignores. It's made once, with empty files, in `.superpowers/fixtures/repo-300k/`.
+
+| Scenario | Each sample |
+| --- | --- |
+| `scan` | open the checkout until every folder git doesn't ignore is listed (3 times); notes the counts and resident memory after it |
+| `scan-touch` | a file made or removed in a tracked folder, until the listing a subscriber receives shows it (20) |
+| `burst-ignored` | 50,000 files written into `node_modules/`, then removed: the time the project spent taking them up; notes the reports, those dropped at the watcher, updates to consumers and folders read |
+| `burst-tracked` | 2,000 files written into 20 tracked folders, then removed (3 times each), until every listing shows it; notes batches and folders read |
+
 ## Budgets
 
 | What | Budget | Held against |
@@ -29,10 +38,14 @@ A scenario's id is its kind and its fixture, `type/rust-10k`. The long-line scen
 | Scroll frame | < 8.3 ms (120 Hz) | p95 |
 | Resize | never blocks > 5 ms | max |
 | Open a 1 MiB file, first paint | < 50 ms | max (files over 1 MiB have no budget) |
+| First scan of `repo-300k` | < 3 s | max |
+| One file written to its listing updated | < 100 ms | p95 |
 
 ## What the numbers leave out
 
 - Time stands still during a scenario, so nothing debounced fires: the highlighter's background parse (150 ms after the last edit) lands only between setup steps, as for a typist who never pauses. Work an event spawns runs between samples, untimed.
 - Presenting the frame to Metal isn't timed; GPUI only presents from the platform's frame callback.
 - `resize` changes the editor's width rather than the window's, which is what the editor sees of a resize.
+- The scan scenarios read a warm disk: the fixture was just made or read, so the file system's caches hold it.
+- `burst-ignored`'s removal (and now and then its writes) makes macOS drop reports ("user dropped", for the whole checkout): the project then reads every tracked folder again once the checkout has been quiet for 40 ms, or at most once a second while the burst goes on, and tells consumers anything may have changed.
 - `search-query` sets the query as the panel does on each change: typed into the panel itself, each keystroke replaces the whole query (the run notes it if that is still so).

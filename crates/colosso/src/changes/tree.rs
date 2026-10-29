@@ -3,6 +3,8 @@
 
 use std::collections::{BTreeMap, HashSet};
 
+use colosso_project::natural;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Entry {
     Folder {
@@ -22,8 +24,8 @@ struct Folder<'a> {
     files: Vec<(&'a str, usize)>,
 }
 
-/// The rows for `paths`, folders before files and each by name, leaving out what's in the
-/// folders `closed`.
+/// The rows for `paths`, folders before files and each by name as a person sorts names (as
+/// the checkout's file tree lists them), leaving out what's in the folders `closed`.
 pub fn entries<'a>(
     paths: impl IntoIterator<Item = &'a str>,
     closed: &HashSet<String>,
@@ -49,7 +51,9 @@ fn flatten(
     closed: &HashSet<String>,
     entries: &mut Vec<Entry>,
 ) {
-    for (name, mut inner) in &folder.folders {
+    let mut folders: Vec<(&&str, &Folder)> = folder.folders.iter().collect();
+    folders.sort_by(|(a, _), (b, _)| natural(a, b));
+    for (name, mut inner) in folders {
         let mut name = (*name).to_owned();
         while inner.files.is_empty()
             && inner.folders.len() == 1
@@ -74,7 +78,7 @@ fn flatten(
         }
     }
     let mut files = folder.files.clone();
-    files.sort_unstable();
+    files.sort_by(|(a, first), (b, second)| natural(a, b).then(first.cmp(second)));
     entries.extend(
         files
             .into_iter()
@@ -112,9 +116,9 @@ mod tests {
                 folder("crates/app/src", "crates/app/src", 0),
                 file(2, 1),
                 file(1, 1),
-                // By byte, as git sorts: capitals first.
-                file(3, 0),
+                // As a person sorts names, capitals with the rest.
                 file(0, 0),
+                file(3, 0),
             ]
         );
     }

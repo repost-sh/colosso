@@ -21,10 +21,18 @@ pub enum Kind {
     SearchQuery,
     /// Keystrokes into the file while a search query is active.
     SearchEdit,
+    /// A checkout opened until every folder git doesn't ignore is listed.
+    Scan,
+    /// A file made or removed, until the listing of its folder shows it.
+    ScanTouch,
+    /// Files written into an ignored folder: the work it costs, which should be none.
+    BurstIgnored,
+    /// Files written into tracked folders, until the listings show them all.
+    BurstTracked,
 }
 
 impl Kind {
-    const ALL: [Self; 7] = [
+    const ALL: [Self; 11] = [
         Self::Open,
         Self::Scroll,
         Self::Type,
@@ -32,6 +40,10 @@ impl Kind {
         Self::Resize,
         Self::SearchQuery,
         Self::SearchEdit,
+        Self::Scan,
+        Self::ScanTouch,
+        Self::BurstIgnored,
+        Self::BurstTracked,
     ];
 
     pub fn name(self) -> &'static str {
@@ -43,11 +55,23 @@ impl Kind {
             Self::Resize => "resize",
             Self::SearchQuery => "search-query",
             Self::SearchEdit => "search-edit",
+            Self::Scan => "scan",
+            Self::ScanTouch => "scan-touch",
+            Self::BurstIgnored => "burst-ignored",
+            Self::BurstTracked => "burst-tracked",
         }
     }
 
     pub fn soft_wrap(self) -> bool {
         matches!(self, Self::TypeWrap | Self::Resize)
+    }
+
+    /// Whether it reads a checkout's files rather than editing one of them.
+    pub fn scans(self) -> bool {
+        matches!(
+            self,
+            Self::Scan | Self::ScanTouch | Self::BurstIgnored | Self::BurstTracked
+        )
     }
 }
 
@@ -90,9 +114,13 @@ pub struct Scenario {
     pub fixture: &'static Fixture,
 }
 
-/// Whether `kind` is measured on `fixture`: the single line is opened, scrolled and typed
-/// in; search runs on the fixtures marked for it; everything else runs on every file.
+/// Whether `kind` is measured on `fixture`: the scans on the repository and only there; the
+/// single line is opened, scrolled and typed in; search runs on the fixtures marked for it;
+/// everything else runs on every file.
 fn applies(kind: Kind, fixture: &Fixture) -> bool {
+    if kind.scans() || fixture.is_repo() {
+        return kind.scans() && fixture.is_repo();
+    }
     if fixture.single_line {
         return matches!(kind, Kind::Open | Kind::Scroll | Kind::Type);
     }
@@ -126,15 +154,19 @@ impl Scenario {
     }
 
     /// Keystroke to paint under 4 ms, a scroll frame under 8.3 ms (120 Hz), a resize never
-    /// blocking over 5 ms, and the first paint of a mebibyte under 50 ms.
+    /// blocking over 5 ms, and the first paint of a mebibyte under 50 ms. A checkout listed
+    /// within 3 s, and a file written shown in its folder's listing within 100 ms.
     pub fn budget(self, fixture_bytes: usize) -> Option<Budget> {
         let (ms, stat) = match self.kind {
+            Kind::Scan => (3000., Stat::Max),
+            Kind::ScanTouch => (100., Stat::P95),
             Kind::Type | Kind::TypeWrap | Kind::SearchQuery | Kind::SearchEdit => (4., Stat::P95),
             Kind::Scroll => (8.3, Stat::P95),
             Kind::Resize => (5., Stat::Max),
             // The open budget is written for a mebibyte; bigger files have none.
             Kind::Open if fixture_bytes <= 1 << 20 => (50., Stat::Max),
-            Kind::Open => return None,
+            // Bursts are measured for what they cost, which nothing promises yet.
+            Kind::Open | Kind::BurstIgnored | Kind::BurstTracked => return None,
         };
         Some(Budget { ms, stat })
     }
@@ -150,7 +182,20 @@ mod tests {
         for scenario in &all {
             assert_eq!(Scenario::from_id(&scenario.id()), Some(*scenario));
         }
-        assert_eq!(all.len(), 48);
+        assert_eq!(all.len(), 52);
+        let scans: Vec<String> = (all.iter())
+            .filter(|scenario| scenario.kind.scans())
+            .map(|scenario| scenario.id())
+            .collect();
+        assert_eq!(
+            scans,
+            [
+                "scan/repo-300k",
+                "scan-touch/repo-300k",
+                "burst-ignored/repo-300k",
+                "burst-tracked/repo-300k"
+            ]
+        );
         let last: Vec<String> = all[all.len() - 3..].iter().map(|s| s.id()).collect();
         assert_eq!(last, ["open/json-1mb", "scroll/json-1mb", "type/json-1mb"]);
     }

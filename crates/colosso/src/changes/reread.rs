@@ -10,13 +10,13 @@ use colosso_git::{Change, Checkout, Status};
 use super::state::{FileView, Key, key};
 use super::watch::Touched;
 
-/// More touched files than this are read again as if everything was.
-const MOST_TOUCHED: usize = 1_000;
-
 /// What has to be read again.
 #[derive(Debug, Default)]
 pub(super) struct Stale {
     files: HashSet<String>,
+    /// Folders with too much written in them to name file by file: every file in them is
+    /// stale. The project keeps how many there are to a bound.
+    folders: Vec<String>,
     /// Whether the index changed, which is what staged changes, and the unstaged ones beside
     /// them, are diffed from.
     index: bool,
@@ -33,7 +33,7 @@ impl Stale {
     }
 
     pub(super) fn is_empty(&self) -> bool {
-        !self.everything && !self.index && self.files.is_empty()
+        !self.everything && !self.index && self.files.is_empty() && self.folders.is_empty()
     }
 
     pub(super) fn add(&mut self, touched: Vec<Touched>) {
@@ -42,19 +42,26 @@ impl Stale {
                 Touched::File(path) => {
                     self.files.insert(path);
                 }
+                Touched::Folder(folder) if folder.is_empty() => self.everything = true,
+                Touched::Folder(folder) => self.folders.push(folder),
                 Touched::Index => self.index = true,
-                Touched::Head => self.everything = true,
+                Touched::Head | Touched::Everything => self.everything = true,
             }
         }
-        if self.files.len() > MOST_TOUCHED {
-            self.files.clear();
-            self.everything = true;
-        }
+    }
+
+    /// Whether a write at `path` is stale: written itself, or in a folder written in.
+    fn touched(&self, path: &str) -> bool {
+        self.files.contains(path)
+            || (self.folders.iter()).any(|folder| {
+                path.strip_prefix(folder.as_str())
+                    .is_some_and(|rest| rest.starts_with('/'))
+            })
     }
 
     /// Whether `change` is stale; with the index changed, one of `staged`'s paths is.
     fn has(&self, change: &Change, staged: &HashSet<&str>) -> bool {
-        let touched = |path: &str| self.files.contains(path);
+        let touched = |path: &str| self.touched(path);
         self.everything
             || (self.index && staged.contains(change.path.as_str()))
             // Writing a file changes only what's unstaged of it.
@@ -196,7 +203,7 @@ mod tests {
     }
 
     #[test]
-    fn head_moving_or_a_flood_of_writes_reads_everything_again() {
+    fn head_moving_or_the_root_flooded_reads_everything_again() {
         let a = change("a.rs", Status::Modified);
         let mut head = Stale::default();
         head.add(vec![Touched::Index, Touched::Head]);
@@ -204,9 +211,24 @@ mod tests {
             unread(std::slice::from_ref(&a), std::slice::from_ref(&a), &head).len(),
             1
         );
-        let many: Vec<String> = (0..=MOST_TOUCHED).map(|n| format!("f{n}")).collect();
-        let flood = stale(&many.iter().map(String::as_str).collect::<Vec<_>>());
-        assert!(flood.everything && flood.files.is_empty());
+        let mut root = Stale::default();
+        root.add(vec![Touched::Folder(String::new())]);
+        assert!(root.everything);
+    }
+
+    #[test]
+    fn a_flooded_folder_reads_again_what_is_inside_it() {
+        let changes = [
+            change("src/a.rs", Status::Modified),
+            change("src/deep/b.rs", Status::Modified),
+            change("srcs/c.rs", Status::Modified),
+            change("d.rs", Status::Modified),
+        ];
+        let mut flooded = Stale::default();
+        flooded.add(vec![Touched::Folder("src".into())]);
+        let unread = unread(&changes, &changes, &flooded);
+        let paths: Vec<&str> = unread.iter().map(|change| change.path.as_str()).collect();
+        assert_eq!(paths, ["src/a.rs", "src/deep/b.rs"]);
     }
 
     #[test]
