@@ -9,13 +9,16 @@
 //!   (`diagnostics`), and the files it asked to hear about (`watch`).
 //! - `providers`: the editor's hooks, go to definition and hover, positions converted with
 //!   the encoding the server chose; `navigate`, a definition in another file turned into a
-//!   place in it for the viewer; `status`, the line under a Rust file saying what its server is doing.
+//!   place in it for the viewer.
+//! - `status`: the selected checkout's servers in the status bar, each with its menu;
+//!   `server_log`, each server's own log, which the menu shows.
 
 mod diagnostics;
 mod navigate;
 mod providers;
 mod registry;
 mod server;
+mod server_log;
 mod status;
 mod sync;
 #[cfg(test)]
@@ -34,13 +37,13 @@ use gpui_kit::component::input::GoToDefinition;
 use gpui_kit::{App, KeyBinding};
 
 pub use providers::Attached;
-pub use registry::{Languages, attach, forget, install};
+pub use registry::{Languages, attach, forget, install, locate};
 pub use server::State;
-pub use status::StatusLine;
+pub use status::ServersStatus;
 
 use crate::settings;
 
-/// A server stops once it has had no file open for this long.
+/// A server stops once it has had no file open for this long, if the settings ask.
 const IDLE: Duration = Duration::from_mins(10);
 /// A server that crashes is restarted up to this many times within [`CRASH_WINDOW`], and
 /// left crashed after that until the user retries.
@@ -68,10 +71,17 @@ impl Kind {
         extension.eq_ignore_ascii_case("rs").then_some(Kind::Rust)
     }
 
-    /// The server's name, as the status line and the log say it.
+    /// The server's name, as the status bar, the settings and the log say it.
     pub fn name(self) -> &'static str {
         match self {
             Kind::Rust => "rust-analyzer",
+        }
+    }
+
+    /// The language it's for, as the status bar says it.
+    pub fn language(self) -> &'static str {
+        match self {
+            Kind::Rust => "Rust",
         }
     }
 
@@ -88,10 +98,11 @@ impl Kind {
 pub type Launcher = Arc<dyn Fn(Kind, &Path) -> Result<Launch, String> + Send + Sync>;
 
 /// Runs the language servers the app knows, fetched into its data folder when they aren't
-/// on PATH, and binds F12 to go to a definition.
+/// on PATH; binds F12 to go to a definition; and has the status bar's menus act.
 pub fn init(cx: &mut App) {
     install(managed(true), cx);
     bind_keys(cx);
+    status::register(cx);
 }
 
 /// Runs each server from PATH when there's a working one there and `path_first`, and else

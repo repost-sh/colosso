@@ -55,10 +55,6 @@ impl Attached {
         }
     }
 
-    pub fn server(&self) -> &Entity<Server> {
-        &self.server
-    }
-
     /// Gives `editor`, just made for the file, its hooks into the server; `view` is the
     /// viewer showing it, which shows a definition found in another file.
     pub fn equip(

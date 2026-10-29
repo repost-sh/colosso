@@ -8,7 +8,7 @@ use futures::StreamExt;
 use futures::channel::mpsc::UnboundedReceiver;
 use serde_json::json;
 
-use crate::common::{Echo, Received, fake, root, wait};
+use crate::common::{Echo, Received, fake, fake_logged, root, wait};
 
 /// The end `events` reports next, which must be a crash.
 fn expect_crash(events: &mut UnboundedReceiver<Event>) -> Exit {
@@ -111,6 +111,30 @@ fn a_server_that_names_no_encoding_speaks_utf16() {
     ]));
     wait(5, client.initialize(root())).unwrap();
     assert_eq!(client.encoding(), Encoding::Utf16);
+}
+
+#[test]
+fn stderr_is_added_to_the_log_as_its_written() {
+    // In the checkout's own target folder, wherever cargo builds.
+    let log = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/test-tmp/lsp-log/fake.log");
+    std::fs::remove_file(&log).ok();
+    // A log there already is added to, its folder made the first time.
+    for said in ["first", "second"] {
+        let client = fake_logged(
+            &json!([{"stderr": format!("{said} line")}, {"exit": 0}]),
+            Some(log.clone()),
+        );
+        let mut events = client.events();
+        while let Some(event) = wait(5, events.next()) {
+            if matches!(event, Event::Ended(_)) {
+                break;
+            }
+        }
+    }
+    assert_eq!(
+        std::fs::read_to_string(&log).unwrap(),
+        "first line\nsecond line\n"
+    );
 }
 
 #[test]

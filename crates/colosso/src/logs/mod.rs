@@ -81,6 +81,18 @@ pub fn file() -> Option<&'static Path> {
     FILE.get().map(PathBuf::as_path)
 }
 
+/// The folder each language server's own log goes in: beside the app's log, wherever
+/// `COLOSSO_LOG_DIR` puts it; none in tests that don't say where.
+pub fn servers_dir() -> Option<PathBuf> {
+    let dir = asked_dir().or_else(|| (!cfg!(test)).then(logs_dir).flatten())?;
+    Some(dir.join("language-servers"))
+}
+
+/// The folder `COLOSSO_LOG_DIR` asks the logs into.
+fn asked_dir() -> Option<PathBuf> {
+    std::env::var_os("COLOSSO_LOG_DIR").map(PathBuf::from)
+}
+
 /// The filter the environment asks for, and the variable it's in.
 fn env_filter() -> Option<(&'static str, String)> {
     ["COLOSSO_LOG", "RUST_LOG"]
@@ -90,8 +102,8 @@ fn env_filter() -> Option<(&'static str, String)> {
 
 /// The file to log to, or `None` for the terminal.
 fn destination() -> Option<PathBuf> {
-    if let Some(dir) = std::env::var_os("COLOSSO_LOG_DIR") {
-        return Some(PathBuf::from(dir).join(NAME));
+    if let Some(dir) = asked_dir() {
+        return Some(dir.join(NAME));
     }
     if cfg!(debug_assertions) || std::io::stderr().is_terminal() {
         return None;

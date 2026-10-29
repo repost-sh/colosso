@@ -37,6 +37,8 @@ pub struct Launch {
     pub settings: Value,
     /// Sent with `initialize`, for servers that read their settings from there first.
     pub initialization_options: Option<Value>,
+    /// A file the server's stderr is added to, line by line as it writes it.
+    pub log: Option<PathBuf>,
 }
 
 /// What happens to a server, beyond the messages it sends.

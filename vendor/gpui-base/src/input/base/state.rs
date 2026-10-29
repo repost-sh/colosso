@@ -4023,8 +4023,11 @@ impl<M: InputModeKind> InputBaseState<M> {
         // NOTE: Do not cancel select, when blur.
         // Because maybe user want to copy the selected text by AppMenuBar (will take focus handle).
 
-        M::clear_hover_state(self, cx);
-        self.diagnostic_popover = None;
+        // Focus gone into one of its hover cards, to select text there, leaves them up.
+        if !self.focus_handle.contains_focused(window, cx) {
+            M::clear_hover_state(self, cx);
+            self.diagnostic_popover = None;
+        }
         M::clear_inline_completion(self, cx);
         self.dismiss_touch_selection(cx);
         self.blink_cursor.update(cx, |cursor, cx| {

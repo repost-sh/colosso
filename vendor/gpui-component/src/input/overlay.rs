@@ -6,7 +6,7 @@ use ropey::Rope;
 
 use super::{
     InputBaseState, InputModeKind,
-    popovers::{CodeActionMenu, CompletionMenu, DiagnosticPopover, HoverPopover},
+    popovers::{CodeActionMenu, CompletionMenu, EditorCards},
     search::SearchPanel,
 };
 use gpui_base::input::CompletionHighlighter;
@@ -67,8 +67,8 @@ struct OverlaySignature {
 pub(crate) struct LspOverlays {
     completion: Entity<CompletionMenu>,
     code_actions: Entity<CodeActionMenu>,
-    hover: Option<Entity<HoverPopover>>,
-    diagnostic: Option<Entity<DiagnosticPopover>>,
+    /// The diagnostic and hover cards.
+    cards: Entity<EditorCards>,
     completion_signature: OverlaySignature,
     code_action_signature: OverlaySignature,
     hover_signature: Option<std::ops::Range<usize>>,
@@ -195,8 +195,7 @@ impl OverlayMode for crate::input::EditorMode {
         Some(LspOverlays {
             completion: CompletionMenu::new(state.clone(), window, cx),
             code_actions: CodeActionMenu::new(state.clone(), window, cx),
-            hover: None,
-            diagnostic: None,
+            cards: EditorCards::new(state.clone(), cx),
             completion_signature: OverlaySignature::default(),
             code_action_signature: OverlaySignature::default(),
             hover_signature: None,
@@ -263,21 +262,9 @@ impl OverlayMode for crate::input::EditorMode {
             });
         }
 
-        // A hover popover is anchored to one symbol, so a new range means new
-        // content and the same range means the same content.
-        if snapshot.hover != lsp.hover_signature {
-            lsp.hover_signature = snapshot.hover.clone();
-            let popover = state
-                .read(cx)
-                .hover_popover()
-                .map(|popover| (popover.symbol_range.clone(), popover.hover.clone()));
-            lsp.hover = popover.map(|(symbol_range, hover)| {
-                HoverPopover::new(state.clone(), symbol_range, &hover, cx)
-            });
-        }
-
-        // The engine hands out the diagnostic behind an `Rc`, so pointer
-        // identity already answers "is this the same entry".
+        // A hover is anchored to one symbol, so a new range means new content and the
+        // same range means the same content. The engine hands out the diagnostic behind an
+        // `Rc`, so pointer identity already answers "is this the same entry".
         let diagnostic_changed = match (&snapshot.diagnostic, &lsp.diagnostic_signature) {
             (Some(new), Some(old)) => !std::rc::Rc::ptr_eq(new, old),
             (None, None) => false,
@@ -285,10 +272,18 @@ impl OverlayMode for crate::input::EditorMode {
         };
         if diagnostic_changed {
             lsp.diagnostic_signature = snapshot.diagnostic.clone();
-            lsp.diagnostic = snapshot
-                .diagnostic
-                .as_deref()
-                .map(|entry| DiagnosticPopover::new(entry, state.clone(), cx));
+            let diagnostic = snapshot.diagnostic.clone();
+            lsp.cards
+                .update(cx, |cards, cx| cards.show_diagnostic(diagnostic, cx));
+        }
+        if snapshot.hover != lsp.hover_signature {
+            lsp.hover_signature = snapshot.hover.clone();
+            let editor = state.read(cx);
+            let hover = (editor.hover_popover())
+                .map(|popover| (popover.symbol_range.clone(), popover.hover.clone()));
+            lsp.cards.update(cx, |cards, cx| {
+                cards.show_hover(hover.as_ref().map(|(range, hover)| (range.clone(), hover)), cx);
+            });
         }
     }
 }
@@ -312,6 +307,13 @@ impl InputOverlays {
 }
 
 impl<M: OverlayMode> InputOverlayHost<M> {
+    /// Whether a hover or diagnostic card is up, or still shrinking away.
+    fn has_card(&self, cx: &App) -> bool {
+        self.lsp
+            .as_ref()
+            .is_some_and(|lsp| lsp.cards.read(cx).is_up())
+    }
+
     fn new(state: Entity<InputBaseState<M>>, window: &mut Window, cx: &mut App) -> Self {
         Self {
             search: SearchPanel::new(state.clone(), window, cx),
@@ -398,11 +400,8 @@ impl<M: OverlayMode> InputOverlayHost<M> {
             if snapshot.code_action.open {
                 floating.push(lsp.code_actions.clone().into_any_element());
             }
-            if let Some(hover) = lsp.hover.as_ref() {
-                floating.push(hover.clone().into_any_element());
-            }
-            if let Some(diagnostic) = lsp.diagnostic.as_ref() {
-                floating.push(diagnostic.clone().into_any_element());
+            if lsp.cards.read(cx).is_up() {
+                floating.push(lsp.cards.clone().into_any_element());
             }
         }
         InputOverlays { search, floating }
@@ -419,7 +418,10 @@ pub(super) fn render_overlays<M: OverlayMode>(
         let state = state.read(cx);
         state.search_session().open
             || M::lsp_snapshot(state, cx).is_some_and(|lsp| lsp.has_overlay())
-    };
+    } || cx
+        .try_global::<InputOverlayRegistry<M>>()
+        .and_then(|registry| registry.hosts.get(&state.entity_id()))
+        .is_some_and(|(_, host)| host.has_card(cx));
     if !has_overlay {
         if cx.has_global::<InputOverlayRegistry<M>>() {
             let registry = cx.global_mut::<InputOverlayRegistry<M>>();
@@ -744,9 +746,9 @@ mod tests {
             let mut host = InputOverlayHost::new(state.clone(), window, cx);
             let overlays = host.sync(&state, window, cx);
             assert!(overlays.search.is_some());
-            assert_eq!(overlays.floating.len(), 4);
-            assert_eq!(overlays.len(), 5);
-            assert_eq!(render_overlays(&state, window, cx).len(), 5);
+            assert_eq!(overlays.floating.len(), 3);
+            assert_eq!(overlays.len(), 4);
+            assert_eq!(render_overlays(&state, window, cx).len(), 4);
             assert!(
                 cx.global::<InputOverlayRegistry<crate::input::EditorMode>>()
                     .hosts

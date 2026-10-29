@@ -1,5 +1,7 @@
 //! Sizes, the light and dark palettes, and the System/Light/Dark preference that picks one.
 
+use std::rc::Rc;
+
 use gpui_kit::assets::IconName;
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::component::{ActiveTheme as _, Theme};
@@ -255,10 +257,22 @@ pub fn init(cx: &mut App) {
     cx.on_action(|_: &UseSystemTheme, cx| set_preference(ThemePreference::System, cx));
     cx.on_action(|_: &UseLightTheme, cx| set_preference(ThemePreference::Light, cx));
     cx.on_action(|_: &UseDarkTheme, cx| set_preference(ThemePreference::Dark, cx));
+    lift_dark_popovers(cx);
     #[cfg(target_os = "macos")]
     system_accent::follow(cx);
     set_preference(settings::get(cx).appearance, cx);
 }
+
+/// gpui-kit's dark popovers are near black, a hole in the window under a hover card or a
+/// menu; they're lifted to a grey above the card instead, as the light ones sit white on it.
+fn lift_dark_popovers(cx: &mut App) {
+    let theme = Theme::global_mut(cx);
+    let mut dark = (*theme.dark_theme).clone();
+    dark.colors.popover = Some(accent::hex(DARK_POPOVER));
+    theme.dark_theme = Rc::new(dark);
+}
+
+const DARK_POPOVER: Hsla = gray(0.17, 1.);
 
 /// Keeps the theme on the window's appearance: the forced one while a preference forces
 /// it, the system's otherwise. gpui only reports appearance changes per window.

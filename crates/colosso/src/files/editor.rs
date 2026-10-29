@@ -13,7 +13,7 @@ use gpui_kit::{
 
 use super::{At, Place};
 use crate::checkout::{Content, Document};
-use crate::language::{Attached, StatusLine};
+use crate::language::Attached;
 use crate::modal::spinner;
 use crate::shell::icon;
 use crate::theme;
@@ -26,9 +26,8 @@ pub struct FileEditor {
     pub(super) document: Entity<Document>,
     /// The editor showing the document's text, and the document's version it holds.
     editor: Option<(Entity<EditorState>, u64)>,
-    /// The language server the file is given to, if one knows it, and the line under the
-    /// file saying what the server is doing.
-    language: Option<(Attached, Entity<StatusLine>)>,
+    /// The language server the file is given to, if one knows it.
+    language: Option<Attached>,
     /// Where to put the cursor once the text is shown.
     reveal: Option<At>,
     _document: Subscription,
@@ -58,21 +57,19 @@ impl FileEditor {
         &self.document
     }
 
-    /// Gives the file to its language's server: the editor's hooks, its diagnostics, and the
-    /// line saying what the server is doing.
+    /// Gives the file to its language's server: the editor's hooks, and its diagnostics.
     pub fn attach(&mut self, mut attached: Attached, cx: &mut Context<Self>) {
-        let status = cx.new(|cx| StatusLine::new(attached.server().clone(), cx));
         if let Some((editor, version)) = &self.editor {
             attached.equip(editor, cx.entity().downgrade(), cx);
             attached.refresh(editor, *version, cx);
         }
-        self.language = Some((attached, status));
+        self.language = Some(attached);
         cx.notify();
     }
 
     /// The server changed what it has for the file: its diagnostics, perhaps.
     pub fn language_changed(&mut self, cx: &mut Context<Self>) {
-        if let (Some((attached, _)), Some((editor, version))) = (&mut self.language, &self.editor) {
+        if let (Some(attached), Some((editor, version))) = (&mut self.language, &self.editor) {
             attached.refresh(editor, *version, cx);
         }
     }
@@ -135,7 +132,7 @@ impl FileEditor {
                 .soft_wrap(false)
         });
         editor.update(cx, |editor, cx| editor.set_value(text, window, cx));
-        if let Some((attached, _)) = &mut self.language {
+        if let Some(attached) = &mut self.language {
             attached.equip(&editor, cx.entity().downgrade(), cx);
             attached.refresh(&editor, version, cx);
         }
@@ -167,15 +164,7 @@ impl Render for FileEditor {
                 .appearance(false)
                 .bordered(false)
                 .h_full();
-            let Some((_, status)) = &self.language else {
-                return content.child(editor);
-            };
-            // The line goes under the text, which takes the rest.
-            return content
-                .flex()
-                .flex_col()
-                .child(div().flex_1().min_h_0().child(editor))
-                .child(status.clone());
+            return content.child(editor);
         }
         let note: SharedString = match self.document.read(cx).content() {
             Content::Reading | Content::Text(_) => return content.child(spinner(p.muted)),

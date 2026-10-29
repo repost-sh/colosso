@@ -7,8 +7,10 @@
 //! Adapted from `Glass-HQ/gpui` (Apache-2.0), `crates/gpui_macos/src/native_controls/`: the
 //! targets controls send their actions to, ported to objc2 and to gpui-fast's native surfaces.
 
+mod glass;
 mod host;
 mod surface;
 mod target;
 
+pub use glass::init;
 pub use host::{Control, host};

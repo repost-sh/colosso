@@ -1,7 +1,9 @@
 //! The server's process: started with its three pipes, each served by a thread of its own,
 //! and a fourth thread that waits for it to end and says how.
 
+use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
+use std::path::Path;
 use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, ExitStatus, Stdio};
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
@@ -70,8 +72,9 @@ pub(crate) fn start(launch: &Launch) -> Result<(Arc<Shared>, Sender<Signal>), Ls
     let started = (|| {
         spawn(&name, "write", move || write(stdin, &outgoing))?;
         let errors = Arc::clone(&shared);
+        let log = launch.log.as_deref().and_then(|log| open_log(log, &name));
         spawn(&name, "stderr", move || {
-            read_stderr(stderr, &errors, &stderr_done);
+            read_stderr(stderr, &errors, log, &stderr_done);
         })?;
         let reader = Arc::clone(&shared);
         let closed = signal.clone();
@@ -262,14 +265,36 @@ fn dispatch(shared: &Arc<Shared>, body: Vec<u8>) {
 }
 
 /// Logs the server's stderr line by line, keeping the last lines for a crash report.
-fn read_stderr(stderr: ChildStderr, shared: &Shared, done: &Sender<()>) {
+fn read_stderr(stderr: ChildStderr, shared: &Shared, mut log: Option<File>, done: &Sender<()>) {
     for line in BufReader::new(stderr).split(b'\n').map_while(Result::ok) {
         let line = String::from_utf8_lossy(&line);
         let line = line.trim_end();
         if !line.is_empty() {
             log::info!("{}: {line}", shared.name);
+            // In one write, so the app's own lines in the same log don't land inside it. A log
+            // that can't be written to anymore is let go of; the app's log still has the line.
+            let whole = format!("{line}\n");
+            if log.as_mut().is_some_and(|file| file.write_all(whole.as_bytes()).is_err()) {
+                log = None;
+            }
             shared.stderr_line(line.to_owned());
         }
     }
     let _ = done.send(());
+}
+
+/// The server's own log, opened to add to, its folder made; none, said once in the app's
+/// log, when it can't be.
+fn open_log(path: &Path, name: &str) -> Option<File> {
+    let opened = path
+        .parent()
+        .map_or(Ok(()), fs::create_dir_all)
+        .and_then(|()| OpenOptions::new().create(true).append(true).open(path));
+    match opened {
+        Ok(file) => Some(file),
+        Err(error) => {
+            log::warn!("{name}: couldn't open its log {}: {error}", path.display());
+            None
+        }
+    }
 }

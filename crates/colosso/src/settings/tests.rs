@@ -34,9 +34,12 @@ fn missing_fields_fall_back_to_defaults() {
     assert_eq!(settings.changes_width, theme::CHANGES_WIDTH);
     assert_eq!(settings.dark_theme, GradientTheme::default());
     assert_eq!(settings.branch_prefix, BranchPrefix::GitHubUser);
-    // As Zed and VS Code have them: previews on, and no limit to the language servers.
+    // As Zed and VS Code have them: previews on, no limit to the language servers, and none
+    // stopped for being idle.
     assert!(settings.preview_files);
     assert_eq!(settings.most_language_servers, None);
+    assert!(!settings.stop_idle_language_servers);
+    assert!(settings.runs_server("rust-analyzer", None));
     let limited: Settings = serde_json::from_str(r#"{ "most_language_servers": 2 }"#).unwrap();
     assert_eq!(limited.most_language_servers, Some(2));
 }
@@ -114,4 +117,34 @@ fn worktrees_go_in_a_folder_per_project() {
             .worktrees_dir("app")
             .ends_with("colosso/workspaces/app")
     );
+}
+
+#[test]
+fn a_language_server_is_turned_off_and_on_everywhere_or_in_a_project() {
+    let (app, other) = (Path::new("/src/app"), Path::new("/src/other"));
+    let mut settings = Settings::default();
+    // Listed in the file for whoever edits it, and on.
+    assert!(serde_json::to_string(&settings).unwrap().contains(r#""rust-analyzer":{"enabled":true"#));
+    assert!(settings.runs_server("rust-analyzer", Some(app)));
+
+    settings.set_server("rust-analyzer", &Scope::Project(app.into()), false);
+    assert!(!settings.runs_server("rust-analyzer", Some(app)));
+    assert!(settings.runs_server("rust-analyzer", Some(other)));
+    // Off in a project twice, it's listed once.
+    settings.set_server("rust-analyzer", &Scope::Project(app.into()), false);
+    assert_eq!(settings.language_servers["rust-analyzer"].off_in.len(), 1);
+
+    settings.set_server("rust-analyzer", &Scope::Everywhere, false);
+    assert!(!settings.runs_server("rust-analyzer", Some(other)));
+    assert!(!settings.runs_server("rust-analyzer", None));
+    // Turned on in a project while off everywhere, it's on everywhere it wasn't turned off.
+    settings.set_server("rust-analyzer", &Scope::Project(other.into()), true);
+    assert!(settings.runs_server("rust-analyzer", Some(other)));
+    assert!(!settings.runs_server("rust-analyzer", Some(app)));
+    settings.set_server("rust-analyzer", &Scope::Project(app.into()), true);
+    assert!(settings.runs_server("rust-analyzer", Some(app)));
+
+    // A server the file doesn't name runs.
+    let named: Settings = serde_json::from_str(r#"{ "language_servers": {} }"#).unwrap();
+    assert!(named.runs_server("rust-analyzer", Some(app)));
 }

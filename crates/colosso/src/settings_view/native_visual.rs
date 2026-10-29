@@ -270,13 +270,15 @@ fn fail<T>(why: &str, lines: &[String]) -> Result<T> {
     Err(format!("{why}:\n{}", lines.join("\n")))
 }
 
-/// The three settings the page's switches turn on and off.
-fn switched(cx: &mut AsyncApp) -> [bool; 3] {
+/// The settings the page's switches turn on and off.
+fn switched(cx: &mut AsyncApp) -> [bool; 5] {
     cx.update(|cx| {
         let settings = settings::get(cx);
         [
-            settings.preview_files,
             settings.sidebar_open_on_launch,
+            settings.preview_files,
+            settings.runs_server("rust-analyzer", None),
+            settings.stop_idle_language_servers,
             settings.key_repeat.enabled,
         ]
     })
@@ -286,9 +288,9 @@ fn switched(cx: &mut AsyncApp) -> [bool; 3] {
 /// sets the settings back, and has the switch follow.
 async fn flip(window: &NSWindow, cx: &mut AsyncApp) -> Result<Vec<String>> {
     let switches = controls::<NSSwitch>(window);
-    let [switch, _, _] = switches.as_slice() else {
+    let [switch, _, _, _, _] = switches.as_slice() else {
         return Err(format!(
-            "{} switches on the General page, not 3",
+            "{} switches on the General page, not 5",
             switches.len()
         ));
     };

@@ -80,6 +80,7 @@ impl ServerSpec {
             cwd: root.to_owned(),
             settings: self.settings(),
             initialization_options: self.settings_at_initialize.then(self.defaults),
+            log: None,
         }
     }
 }

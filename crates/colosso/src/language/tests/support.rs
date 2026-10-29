@@ -55,6 +55,7 @@ pub(super) fn launcher(
             cwd: root.to_owned(),
             settings: json!({}),
             initialization_options: None,
+            log: None,
         })
     });
     (launcher, starts)

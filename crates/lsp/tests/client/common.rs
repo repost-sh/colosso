@@ -44,6 +44,11 @@ pub fn settings() -> Value {
 
 /// A fake server running `script`.
 pub fn fake(script: &Value) -> Client {
+    fake_logged(script, None)
+}
+
+/// A fake server running `script`, its stderr added to `log` if there's one.
+pub fn fake_logged(script: &Value, log: Option<PathBuf>) -> Client {
     let launch = Launch {
         name: "fake".to_owned(),
         program: PathBuf::from(env!("CARGO_BIN_EXE_fake-lsp")),
@@ -52,6 +57,7 @@ pub fn fake(script: &Value) -> Client {
         cwd: root().to_owned(),
         settings: settings(),
         initialization_options: Some(json!({"from": "launch"})),
+        log,
     };
     Client::start(&launch).unwrap()
 }
