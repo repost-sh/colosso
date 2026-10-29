@@ -7,12 +7,12 @@ use std::time::Instant;
 
 use colosso_git::{Change, Checkout, Status};
 
-use super::state::{FileView, Key, key};
+use super::file_view::{FileView, Key, key};
 use super::watch::Touched;
 
 /// What has to be read again.
 #[derive(Debug, Default)]
-pub(super) struct Stale {
+pub struct Stale {
     files: HashSet<String>,
     /// Folders with too much written in them to name file by file: every file in them is
     /// stale. The project keeps how many there are to a bound.
@@ -25,18 +25,18 @@ pub(super) struct Stale {
 
 impl Stale {
     /// Everything, as before the first read.
-    pub(super) fn everything() -> Self {
+    pub fn everything() -> Self {
         Stale {
             everything: true,
             ..Stale::default()
         }
     }
 
-    pub(super) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         !self.everything && !self.index && self.files.is_empty() && self.folders.is_empty()
     }
 
-    pub(super) fn add(&mut self, touched: Vec<Touched>) {
+    pub fn add(&mut self, touched: Vec<Touched>) {
         for touched in touched {
             match touched {
                 Touched::File(path) => {
@@ -72,14 +72,14 @@ impl Stale {
 }
 
 /// What a read found, to put in place of what was shown.
-pub(super) struct Read {
+pub struct Read {
     pub listed: Vec<Change>,
     pub files: Vec<Arc<FileView>>,
 }
 
 /// Lists the changes again and diffs the files that are new, changed in status, or `stale`,
 /// keeping the rest of `files` as they are.
-pub(super) fn read(
+pub fn read(
     checkout: &Checkout,
     stale: &Stale,
     listed: &[Change],

@@ -8,6 +8,7 @@ mod generate;
 mod harness;
 mod repo;
 mod report;
+mod rows;
 mod run;
 mod scan;
 mod scenarios;

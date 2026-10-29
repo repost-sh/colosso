@@ -81,6 +81,7 @@ pub struct Settings {
     pub sidebar_width: f32,
     pub changes_width: f32,
     pub changes_files_width: f32,
+    pub files_width: f32,
     pub sidebar_open_on_launch: bool,
     /// The main checkouts of the projects in the sidebar, in order.
     pub projects: Vec<PathBuf>,
@@ -139,6 +140,12 @@ impl Settings {
         self.changes_width
             .clamp(theme::CHANGES_MIN_WIDTH, theme::CHANGES_MAX_WIDTH)
     }
+
+    /// The Files panel's width, kept within its limits.
+    pub fn files_width(&self) -> f32 {
+        self.files_width
+            .clamp(theme::FILES_MIN_WIDTH, theme::FILES_MAX_WIDTH)
+    }
 }
 
 impl Default for Settings {
@@ -151,6 +158,7 @@ impl Default for Settings {
             sidebar_width: theme::SIDEBAR_WIDTH,
             changes_width: theme::CHANGES_WIDTH,
             changes_files_width: theme::CHANGES_FILES_WIDTH,
+            files_width: theme::FILES_WIDTH,
             sidebar_open_on_launch: true,
             projects: Vec::new(),
             worktrees_dir: None,

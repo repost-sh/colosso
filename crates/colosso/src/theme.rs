@@ -29,7 +29,11 @@ pub const CHANGES_FILES_MIN_WIDTH: f32 = 180.;
 pub const CHANGES_FILES_MAX_WIDTH: f32 = 640.;
 /// What the file list leaves of the changes panel for the diffs, at its widest.
 pub const DIFFS_MIN_WIDTH: f32 = 360.;
-/// What the changes panel leaves of the card for the chat beside it, at its widest.
+/// The Files panel's width beside the chat.
+pub const FILES_WIDTH: f32 = 300.;
+pub const FILES_MIN_WIDTH: f32 = 200.;
+pub const FILES_MAX_WIDTH: f32 = 640.;
+/// What the right panel leaves of the card for the chat beside it, at its widest.
 pub const CHAT_MIN_WIDTH: f32 = 320.;
 pub const TAB_STRIP_HEIGHT: f32 = 38.;
 pub const ROW_HEIGHT: f32 = 30.;

@@ -29,10 +29,18 @@ pub enum Kind {
     BurstIgnored,
     /// Files written into tracked folders, until the listings show them all.
     BurstTracked,
+    /// The file tree's 10,000-file folder opened, among half a million rows open.
+    RowsExpand,
+    /// The same folder closed.
+    RowsCollapse,
+    /// A folder near the top of the open tree listed anew, with a file more or less.
+    RowsUpdate,
+    /// A file 25 folders deep revealed, every folder above it closed.
+    RowsReveal,
 }
 
 impl Kind {
-    const ALL: [Self; 11] = [
+    const ALL: [Self; 15] = [
         Self::Open,
         Self::Scroll,
         Self::Type,
@@ -44,6 +52,10 @@ impl Kind {
         Self::ScanTouch,
         Self::BurstIgnored,
         Self::BurstTracked,
+        Self::RowsExpand,
+        Self::RowsCollapse,
+        Self::RowsUpdate,
+        Self::RowsReveal,
     ];
 
     pub fn name(self) -> &'static str {
@@ -59,6 +71,10 @@ impl Kind {
             Self::ScanTouch => "scan-touch",
             Self::BurstIgnored => "burst-ignored",
             Self::BurstTracked => "burst-tracked",
+            Self::RowsExpand => "rows-expand",
+            Self::RowsCollapse => "rows-collapse",
+            Self::RowsUpdate => "rows-update",
+            Self::RowsReveal => "rows-reveal",
         }
     }
 
@@ -71,6 +87,14 @@ impl Kind {
         matches!(
             self,
             Self::Scan | Self::ScanTouch | Self::BurstIgnored | Self::BurstTracked
+        )
+    }
+
+    /// Whether it works the file tree's rows rather than a file or a checkout.
+    pub fn lists(self) -> bool {
+        matches!(
+            self,
+            Self::RowsExpand | Self::RowsCollapse | Self::RowsUpdate | Self::RowsReveal
         )
     }
 }
@@ -115,9 +139,12 @@ pub struct Scenario {
 }
 
 /// Whether `kind` is measured on `fixture`: the scans on the repository and only there; the
-/// single line is opened, scrolled and typed in; search runs on the fixtures marked for it;
-/// everything else runs on every file.
+/// rows on the tree and only there; the single line is opened, scrolled and typed in; search
+/// runs on the fixtures marked for it; everything else runs on every file.
 fn applies(kind: Kind, fixture: &Fixture) -> bool {
+    if kind.lists() || fixture.is_tree() {
+        return kind.lists() && fixture.is_tree();
+    }
     if kind.scans() || fixture.is_repo() {
         return kind.scans() && fixture.is_repo();
     }
@@ -155,9 +182,13 @@ impl Scenario {
 
     /// Keystroke to paint under 4 ms, a scroll frame under 8.3 ms (120 Hz), a resize never
     /// blocking over 5 ms, and the first paint of a mebibyte under 50 ms. A checkout listed
-    /// within 3 s, and a file written shown in its folder's listing within 100 ms.
+    /// within 3 s, and a file written shown in its folder's listing within 100 ms. The file
+    /// tree's rows never take 2 ms, well inside a frame.
     pub fn budget(self, fixture_bytes: usize) -> Option<Budget> {
         let (ms, stat) = match self.kind {
+            Kind::RowsExpand | Kind::RowsCollapse | Kind::RowsUpdate | Kind::RowsReveal => {
+                (2., Stat::Max)
+            }
             Kind::Scan => (3000., Stat::Max),
             Kind::ScanTouch => (100., Stat::P95),
             Kind::Type | Kind::TypeWrap | Kind::SearchQuery | Kind::SearchEdit => (4., Stat::P95),
@@ -182,7 +213,7 @@ mod tests {
         for scenario in &all {
             assert_eq!(Scenario::from_id(&scenario.id()), Some(*scenario));
         }
-        assert_eq!(all.len(), 52);
+        assert_eq!(all.len(), 56);
         let scans: Vec<String> = (all.iter())
             .filter(|scenario| scenario.kind.scans())
             .map(|scenario| scenario.id())
@@ -194,6 +225,19 @@ mod tests {
                 "scan-touch/repo-300k",
                 "burst-ignored/repo-300k",
                 "burst-tracked/repo-300k"
+            ]
+        );
+        let rows: Vec<String> = (all.iter())
+            .filter(|scenario| scenario.kind.lists())
+            .map(|scenario| scenario.id())
+            .collect();
+        assert_eq!(
+            rows,
+            [
+                "rows-expand/tree-500k",
+                "rows-collapse/tree-500k",
+                "rows-update/tree-500k",
+                "rows-reveal/tree-500k"
             ]
         );
         let last: Vec<String> = all[all.len() - 3..].iter().map(|s| s.id()).collect();

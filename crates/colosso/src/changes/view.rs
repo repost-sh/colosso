@@ -11,74 +11,43 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use colosso_git::{Change, Checkout, Content, Discarding, Status};
+use colosso_git::{Change, Checkout as Git, Content, Discarding, Status};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::{Selectable as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, Context, Div, DragMoveEvent, Empty, Entity, FocusHandle, Font, FontWeight, Hsla,
-    InteractiveElement as _, IntoElement, KeyBinding, ListAlignment, ListOffset, ListScrollEvent,
-    ListState, ParentElement as _, Pixels, Render, ScrollStrategy, SharedString,
+    InteractiveElement as _, IntoElement, ListAlignment, ListOffset, ListScrollEvent, ListState,
+    ParentElement as _, Pixels, Render, ScrollStrategy, SharedString,
     StatefulInteractiveElement as _, Styled, Subscription, UniformListScrollHandle, Window,
     actions, div, font, list, px, uniform_list,
 };
 
 use super::discard;
+use super::file_view::{FileView, Key};
 use super::highlight::Token;
 use super::line::{CodeLine, Half, Look, runs};
+use super::marks::Mark;
 use super::rows::{Layout, Row, Shown, rows};
-use super::state::{Changes, FileView, GitAct, Key};
 use super::tree::{self, entries};
+use crate::checkout::{Checkout, GitAct};
 use crate::modal::{self, spinner};
+use crate::right_panel::{
+    Activate, Collapse, Expand, NextFile, PageDown, PageUp, PreviousFile, SelectFirst, SelectLast,
+    SelectNext, SelectPrevious, View, note, page, panel_header, switch,
+};
 use crate::settings;
 use crate::shell::{ellipsized, icon, icon_button, row};
 use crate::sidebar::resize_handle;
 use crate::theme::{self, Palette};
 
-actions!(
-    changes,
-    [
-        ToggleChangesWidth,
-        SelectNext,
-        SelectPrevious,
-        NextFile,
-        PreviousFile,
-        OpenFolder,
-        CloseFolder,
-        ToggleFolder
-    ]
-);
-
-/// The keys that move through the file list while it has focus.
-pub fn init(cx: &mut gpui_kit::App) {
-    let files = Some("ChangesFiles");
-    cx.bind_keys([
-        KeyBinding::new("down", SelectNext, files),
-        KeyBinding::new("up", SelectPrevious, files),
-        KeyBinding::new("j", NextFile, files),
-        KeyBinding::new("k", PreviousFile, files),
-        KeyBinding::new("right", OpenFolder, files),
-        KeyBinding::new("left", CloseFolder, files),
-        KeyBinding::new("enter", ToggleFolder, files),
-        KeyBinding::new("space", ToggleFolder, files),
-    ]);
-}
+actions!(changes, [ToggleChangesWidth]);
 
 /// The drag payload while the border between the file list and the diffs is being dragged.
 #[derive(Clone)]
 pub struct FilesResize;
 
 impl Render for FilesResize {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        Empty
-    }
-}
-
-/// The drag payload while the panel's left border is being dragged.
-#[derive(Clone)]
-pub struct ChangesResize;
-
-impl Render for ChangesResize {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         Empty
     }
@@ -204,7 +173,7 @@ struct Glide {
 }
 
 pub struct ChangesPanel {
-    changes: Entity<Changes>,
+    checkout: Entity<Checkout>,
     /// What the rows were built from, so a file read again shows as changed rows.
     files: Vec<Arc<FileView>>,
     rows: Vec<Row>,
@@ -228,17 +197,17 @@ pub struct ChangesPanel {
     folder: Option<Key>,
     focus: FocusHandle,
     files_scroll: UniformListScrollHandle,
-    _subscriptions: [Subscription; 3],
+    _subscriptions: [Subscription; 2],
 }
 
 impl ChangesPanel {
-    /// The panel showing `changes`, which it colours while it's open.
-    pub fn new(changes: Entity<Changes>, cx: &mut Context<Self>) -> Self {
+    /// The panel showing `checkout`'s changes; the right panel has them coloured while it's shown.
+    pub fn new(checkout: Entity<Checkout>, cx: &mut Context<Self>) -> Self {
         let _subscriptions = [
             settings::observe(cx),
-            cx.observe(&changes, |this, changes, cx| {
+            cx.observe(&checkout, |this, checkout, cx| {
                 // Colouring files says so too; the same files only need drawing again.
-                let files = changes.read(cx).files();
+                let files = checkout.read(cx).files();
                 let same = files.len() == this.files.len()
                     && files
                         .iter()
@@ -250,12 +219,7 @@ impl ChangesPanel {
                     this.rebuild(cx);
                 }
             }),
-            // Its colours aren't needed while nothing shows them.
-            cx.on_release(|this, cx| {
-                (this.changes).update(cx, |changes, cx| changes.set_coloured(false, cx));
-            }),
         ];
-        changes.update(cx, |changes, cx| changes.set_coloured(true, cx));
         let list = ListState::new(0, ListAlignment::Top, px(400.));
         // Scrolling by hand takes over from a glide, and the keyboard follows to the file in
         // view. The list is mid-update when it calls this, so it's asked where it is after.
@@ -265,7 +229,7 @@ impl ChangesPanel {
             cx.defer_in(window, |this, _, cx| this.follow_scroll(cx));
         }));
         let mut panel = ChangesPanel {
-            changes,
+            checkout,
             files: Vec::new(),
             rows: Vec::new(),
             headers: Vec::new(),
@@ -287,10 +251,6 @@ impl ChangesPanel {
         // What was read before the panel opened.
         panel.rebuild(cx);
         panel
-    }
-
-    pub fn changes(&self) -> &Entity<Changes> {
-        &self.changes
     }
 
     /// The file list's, which the arrow keys move through.
@@ -321,7 +281,7 @@ impl ChangesPanel {
 
     /// Builds the rows again from the files, telling the list which rows differ.
     fn rebuild(&mut self, cx: &mut Context<Self>) {
-        let files = self.changes.read(cx).files().to_vec();
+        let files = self.checkout.read(cx).files().to_vec();
         let rows = rows(
             files.iter().map(|file| &file.diff),
             self.layout,
@@ -497,6 +457,14 @@ impl ChangesPanel {
         }
     }
 
+    /// Moves the keyboard a page of entries down the file list, or up, stopping at its ends.
+    fn page(&mut self, direction: isize, cx: &mut Context<Self>) {
+        let last = self.entries.len().saturating_sub(1);
+        let at = self.cursor().unwrap_or(0);
+        let by = direction * page(&self.files_scroll, FILE_ROW_HEIGHT);
+        self.select(at.saturating_add_signed(by).min(last), cx);
+    }
+
     /// Moves the keyboard `step` entries down the file list, or up if it's negative, stopping
     /// at its ends. With `files_only`, folders are passed over.
     fn step(&mut self, step: isize, files_only: bool, cx: &mut Context<Self>) {
@@ -566,14 +534,14 @@ impl Render for ChangesPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = theme::palette(cx);
         self.glide(window);
-        let changes = self.changes.read(cx);
-        let body = if changes.is_loading() {
+        let checkout = self.checkout.read(cx);
+        let body = if checkout.is_loading() {
             div()
                 .flex_1()
                 .relative()
                 .child(spinner(p.muted))
                 .into_any_element()
-        } else if let Some(error) = changes.error()
+        } else if let Some(error) = checkout.error()
             && self.files.is_empty()
         {
             note(p)
@@ -635,18 +603,10 @@ impl ChangesPanel {
         let toggle = |id: &'static str, glyph: IconName, tip: &'static str, on: bool| {
             icon_button(id, glyph, tip, cx).xsmall().selected(on)
         };
-        div()
-            .h(px(theme::TAB_STRIP_HEIGHT))
-            .flex_shrink_0()
-            .px_2()
-            .flex()
-            .items_center()
-            .gap_2()
-            .border_b_1()
-            .border_color(p.hairline)
-            // The rail's button and the file list's top row already say what's here and how big.
-            .child(div().flex_1())
-            .when_some(self.changes.read(cx).unwatched(), |header, reason| {
+        // The switch to the files says what's here; the file list's top row, how big.
+        panel_header(p)
+            .child(div().flex_1().child(switch(View::Changes, cx)))
+            .when_some(self.checkout.read(cx).unwatched(), |header, reason| {
                 let tip = format!("Not following changes as they happen: {reason}");
                 header.child(
                     icon_button("changes-unwatched", IconName::TriangleAlert, tip, cx).xsmall(),
@@ -712,13 +672,15 @@ impl ChangesPanel {
             .on_action(cx.listener(|this, _: &SelectPrevious, _, cx| this.step(-1, false, cx)))
             .on_action(cx.listener(|this, _: &NextFile, _, cx| this.step(1, true, cx)))
             .on_action(cx.listener(|this, _: &PreviousFile, _, cx| this.step(-1, true, cx)))
-            .on_action(
-                cx.listener(|this, _: &OpenFolder, _, cx| this.open_or_close(Some(true), cx)),
-            )
-            .on_action(
-                cx.listener(|this, _: &CloseFolder, _, cx| this.open_or_close(Some(false), cx)),
-            )
-            .on_action(cx.listener(|this, _: &ToggleFolder, _, cx| this.open_or_close(None, cx)))
+            .on_action(cx.listener(|this, _: &SelectFirst, _, cx| this.select(0, cx)))
+            .on_action(cx.listener(|this, _: &SelectLast, _, cx| {
+                this.select(this.entries.len().saturating_sub(1), cx);
+            }))
+            .on_action(cx.listener(|this, _: &PageUp, _, cx| this.page(-1, cx)))
+            .on_action(cx.listener(|this, _: &PageDown, _, cx| this.page(1, cx)))
+            .on_action(cx.listener(|this, _: &Expand, _, cx| this.open_or_close(Some(true), cx)))
+            .on_action(cx.listener(|this, _: &Collapse, _, cx| this.open_or_close(Some(false), cx)))
+            .on_action(cx.listener(|this, _: &Activate, _, cx| this.open_or_close(None, cx)))
             .child(
                 uniform_list(
                     "changes-files",
@@ -898,11 +860,11 @@ impl ChangesPanel {
             .map(|file| self.files[file].diff.change.clone())
             .collect();
         let (run, failed): (GitAct, _) = match act {
-            Act::Stage => (Checkout::stage, "Couldn't stage"),
-            Act::Unstage => (Checkout::unstage, "Couldn't unstage"),
-            Act::Discard => return discard::confirm(self.changes.clone(), list, window, cx),
+            Act::Stage => (Git::stage, "Couldn't stage"),
+            Act::Unstage => (Git::unstage, "Couldn't unstage"),
+            Act::Discard => return discard::confirm(self.checkout.clone(), list, window, cx),
         };
-        let done = (self.changes).update(cx, |changes, cx| changes.act(run, list, cx));
+        let done = (self.checkout).update(cx, |checkout, cx| checkout.act(run, list, cx));
         cx.spawn_in(window, async move |_, cx| {
             if let Err(error) = done.await {
                 cx.update(|window, cx| modal::alert(failed, error.message, window, cx))
@@ -1087,16 +1049,6 @@ enum Side {
     New,
 }
 
-fn note(p: Palette) -> Div {
-    div()
-        .flex_1()
-        .flex()
-        .items_center()
-        .justify_center()
-        .text_sm()
-        .text_color(p.muted)
-}
-
 /// What a file's card says in place of lines it has none to show.
 fn note_for(file: &FileView) -> String {
     match (&file.diff.content, &file.diff.change.status) {
@@ -1128,14 +1080,8 @@ fn renamed_from(status: &Status) -> Option<&str> {
 }
 
 fn status_letter(status: &Status, p: Palette) -> Div {
-    let (letter, colour) = match status {
-        Status::Added => ("A", p.added),
-        Status::Deleted => ("D", p.removed),
-        Status::Modified => ("M", p.modified),
-        Status::Untracked => ("U", p.added),
-        Status::Renamed { .. } => ("R", p.accent),
-        Status::Conflicted => ("!", p.danger),
-    };
+    let mark = Mark::of(status);
+    let (letter, colour) = (mark.letter(), mark.colour(p));
     div()
         .w(px(12.))
         .flex_shrink_0()
@@ -1389,7 +1335,7 @@ mod tests {
                 ..WindowOptions::default()
             };
             gpui_kit::open_window(options, cx, |window, cx| {
-                let changes = cx.new(|cx| Changes::read_as(files, window, cx));
+                let changes = cx.new(|cx| Checkout::read_as(files, window, cx));
                 cx.new(|cx| ChangesPanel::new(changes, cx))
             })
             .unwrap()
@@ -1467,6 +1413,39 @@ mod tests {
             assert_eq!(top.offset_in_item, px(0.));
             assert_eq!(panel.current, Some(12));
         });
+    }
+
+    #[gpui_kit::test]
+    fn the_file_list_takes_the_keys_the_file_tree_takes(cx: &mut TestAppContext) {
+        let files = (0..80)
+            .map(|n| edited(&format!("src/module_{n:03}.rs"), 4))
+            .collect();
+        let (handle, panel) = open_with(files, cx);
+        cx.update(crate::right_panel::init);
+        let draw = |cx: &mut TestAppContext| {
+            cx.update_window(handle, |_, window, cx| window.draw(cx).clear(cx))
+                .unwrap();
+        };
+        cx.update_window(handle, |_, window, cx| {
+            let focus = panel.read(cx).focus_handle().clone();
+            window.focus(&focus, cx);
+        })
+        .unwrap();
+        draw(cx);
+        let press = |keys: &str, cx: &mut TestAppContext| {
+            cx.simulate_keystrokes(handle, keys);
+            draw(cx);
+            cx.read(|cx| panel.read(cx).cursor())
+        };
+        let last = cx.read(|cx| panel.read(cx).entries.len() - 1);
+        assert_eq!(press("end", cx), Some(last));
+        assert_eq!(press("home", cx), Some(0));
+        let paged = press("pagedown", cx).unwrap();
+        assert!(
+            1 < paged && paged < last,
+            "a page is the rows in sight: {paged}"
+        );
+        assert_eq!(press("pageup", cx), Some(0));
     }
 
     /// How long a frame takes to draw the diffs after jumping from file to file of a large

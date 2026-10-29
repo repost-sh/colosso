@@ -30,6 +30,15 @@ The scan scenarios run `colosso-project` off the main thread, with no window, on
 | `burst-ignored` | 50,000 files written into `node_modules/`, then removed: the time the project spent taking them up; notes the reports, those dropped at the watcher, updates to consumers and folders read |
 | `burst-tracked` | 2,000 files written into 20 tracked folders, then removed (3 times each), until every listing shows it; notes batches and folders read |
 
+The rows scenarios time the Files panel's rows model (`colosso_project::Rows`) on `tree-500k`, a tree of 510,003 files held in memory: `big/` with 10,000 files, `deep/` 24 folders deep, and `src/` with 100 packages of 50 modules of 100 files. Every folder of `src/` is open, which shows 505,105 rows, before the samples are taken. Nothing is read from disk and no window opens.
+
+| Scenario | Each sample |
+| --- | --- |
+| `rows-expand` | `big/` opened, its 10,000 rows put in among the others (60) |
+| `rows-collapse` | `big/` closed again (60) |
+| `rows-update` | a listing of `src/pkg-000/mod-00` with a file added or taken away, applied as an update brings it, before every other open row (60) |
+| `rows-reveal` | the file at the bottom of `deep/` revealed with every folder above it closed (60) |
+
 ## Budgets
 
 | What | Budget | Held against |
@@ -40,6 +49,7 @@ The scan scenarios run `colosso-project` off the main thread, with no window, on
 | Open a 1 MiB file, first paint | < 50 ms | max (files over 1 MiB have no budget) |
 | First scan of `repo-300k` | < 3 s | max |
 | One file written to its listing updated | < 100 ms | p95 |
+| A folder of the file tree opened or closed, a listing applied, a path revealed | < 2 ms | max |
 
 ## What the numbers leave out
 
