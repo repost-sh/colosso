@@ -1,22 +1,14 @@
-use std::cell::RefCell;
 use std::path::Path;
-use std::rc::Rc;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use colosso_git::{Head, Worktree};
 use colosso_project::Feed;
-use gpui_kit::{
-    AnyWindowHandle, App, AppContext as _, Bounds, Entity, Point, Render, TestAppContext, Window,
-    WindowBounds, WindowOptions, px, size,
-};
+use gpui_kit::{AnyWindowHandle, AppContext as _, Entity, TestAppContext, px, size};
 
 use super::editor::language;
 use super::*;
 use crate::changes::Mark;
 use crate::checkout::{Checkout, Content, read_at_most};
-use crate::model::{FileTab, PaneKind, Workspace};
-use crate::test_support::{git, scratch, write};
+use crate::test_support::{git, in_window, scratch, write};
 use crate::{right_panel, settings};
 
 #[test]
@@ -34,8 +26,8 @@ fn files_are_read_as_text_unless_binary_or_too_large() {
 }
 
 #[gpui_kit::test]
-fn a_file_opens_in_one_tab_over_one_document(cx: &mut TestAppContext) {
-    let root = checkout("files-tabs");
+fn a_file_is_read_once_however_many_views_show_it(cx: &mut TestAppContext) {
+    let root = checkout("files-documents");
     let (window, panel) = open(&root, cx);
     let checkout = cx.read(|cx| panel.read(cx).checkout.clone());
     let (lib, readme) = (root.join("src/lib.rs"), root.join("README.md"));
@@ -60,39 +52,62 @@ fn a_file_opens_in_one_tab_over_one_document(cx: &mut TestAppContext) {
         let text = cx.read(|cx| editor.read(cx).text(cx));
         assert_eq!(text.as_deref(), Some("pub fn a() {}\npub fn b() {}\n"));
     }
+    let _ = std::fs::remove_dir_all(&root);
+}
 
-    let mut workspace = Workspace::new(std::slice::from_ref(&root));
-    let main = Worktree {
-        path: root.clone(),
-        head: Head::Branch("main".into()),
-        is_main: true,
-    };
-    workspace.set_worktrees(0, vec![main]);
-    workspace.new_tab(PaneKind::Chat);
-    for (path, editor) in [
-        (&lib, &lib_editor),
-        (&readme, &readme_editor),
-        (&lib, &lib_again),
-    ] {
-        if !workspace.select_file(path) {
-            let editor = editor.clone();
-            workspace.open_file(FileTab {
-                path: path.clone(),
-                editor,
+#[gpui_kit::test]
+fn a_file_viewed_again_is_shown_in_the_editor_it_had(cx: &mut TestAppContext) {
+    let root = checkout("files-viewed");
+    let (window, panel) = open(&root, cx);
+    let view = |path: &str, cx: &mut TestAppContext| {
+        (cx.update_window(window, |_, window, cx| {
+            panel.update(cx, |panel, cx| {
+                panel.view(Place::file(path), window, cx);
             });
-        }
-    }
-    // Opened again, it's the tab it's in that's selected, with the editor it had.
-    let unit = workspace.branch().unwrap();
-    assert_eq!((unit.tabs.len(), unit.active_tab), (3, 1));
-    assert_eq!(unit.tabs[1].title(), "lib.rs");
-    let editor = unit.tabs[1].file().map(|file| &file.editor);
-    assert_eq!(editor, Some(&lib_editor));
-    assert_eq!(workspace.active_file(), Some(lib.as_path()));
-    assert!(!workspace.select_file(&root.join("src/main.rs")));
-    // A tab that shows no file.
-    workspace.select_tab(0, 0, 0);
-    assert_eq!(workspace.active_file(), None);
+        }))
+        .unwrap();
+        cx.read(|cx| {
+            let viewed = panel.read(cx).viewing().unwrap();
+            (viewed.path.clone(), viewed.editor.clone())
+        })
+    };
+    let (lib, lib_editor) = view("src/lib.rs", cx);
+    assert_eq!(lib, root.join("src/lib.rs"));
+    let (readme, readme_editor) = view("README.md", cx);
+    assert_eq!(readme, root.join("README.md"));
+    assert_ne!(lib_editor, readme_editor);
+    // Back to the first, by its full path: the same editor, and it's picked in the tree.
+    let (again, again_editor) = view(root.join("src/lib.rs").to_str().unwrap(), cx);
+    assert_eq!((again, again_editor), (lib, lib_editor));
+    assert_eq!(selected(&panel, cx).as_deref(), Some("src/lib.rs"));
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[gpui_kit::test]
+fn a_place_puts_the_cursor_on_its_line_or_its_bytes(cx: &mut TestAppContext) {
+    let root = checkout("files-place");
+    let (window, panel) = open(&root, cx);
+    let go = |at: At, cx: &mut TestAppContext| {
+        (cx.update_window(window, |_, window, cx| {
+            let place = Place {
+                path: "src/lib.rs".into(),
+                at: Some(at),
+            };
+            panel.update(cx, |panel, cx| panel.view(place, window, cx));
+        }))
+        .unwrap();
+        cx.run_until_parked();
+        cx.read(|cx| {
+            let viewed = panel.read(cx).viewing()?;
+            let editor = viewed.editor.read(cx).editor()?;
+            Some(editor.read(cx).selected_range())
+        })
+    };
+    // "pub fn a() {}\npub fn b() {}\n": the second line starts at 14, its `b` is at 21.
+    assert_eq!(go(At::Line(1), cx), Some(14..14));
+    assert_eq!(go(At::Bytes(21..22), cx), Some(21..22));
+    // Past the end, the end.
+    assert_eq!(go(At::Line(9), cx), Some(28..28));
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -126,34 +141,16 @@ fn checkout(name: &str) -> std::path::PathBuf {
     root
 }
 
-/// What `build` makes, in a window of its own the size of the right panel.
-fn in_window<V: Render>(
-    cx: &mut TestAppContext,
-    build: impl FnOnce(&mut Window, &mut App) -> Entity<V>,
-) -> (AnyWindowHandle, Entity<V>) {
-    cx.update(gpui_kit::init);
-    cx.update(settings::init);
-    cx.update(right_panel::init);
-    cx.update(|cx| {
-        let bounds = Bounds {
-            origin: Point::default(),
-            size: size(px(320.), px(600.)),
-        };
-        let options = WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(bounds)),
-            ..WindowOptions::default()
-        };
-        gpui_kit::open_window(options, cx, build).unwrap()
-    })
-}
-
 /// The panel for the checkout at `root`, in a window of its own.
 fn open(root: &Path, cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<FilesPanel>) {
     // The project lists and watches the checkout on a thread of its own, which wakes the
     // panel's task from outside the test's scheduler.
     cx.executor().allow_parking();
     let root = root.to_owned();
-    let (window, panel) = in_window(cx, |window, cx| {
+    cx.update(gpui_kit::init);
+    cx.update(settings::init);
+    cx.update(right_panel::init);
+    let (window, panel) = in_window(size(px(320.), px(600.)), cx, |window, cx| {
         let checkout = cx.new(|cx| Checkout::new(root, window, cx));
         cx.new(|cx| FilesPanel::new(checkout, cx))
     });
@@ -229,16 +226,9 @@ fn the_tree_lists_the_checkout_and_marks_what_changed(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn the_keyboard_walks_the_tree_and_opens_files(cx: &mut TestAppContext) {
+fn the_keyboard_walks_the_tree_and_shows_files(cx: &mut TestAppContext) {
     let root = checkout("files-keys");
     let (window, panel) = open(&root, cx);
-    let opened = Rc::new(RefCell::new(Vec::<String>::new()));
-    let _opening = cx.update(|cx| {
-        let opened = opened.clone();
-        cx.subscribe(&panel, move |_, OpenFile(path), _| {
-            opened.borrow_mut().push(path.to_string());
-        })
-    });
     cx.update_window(window, |_, window, cx| {
         let focus = panel.read(cx).focus_handle().clone();
         window.focus(&focus, cx);
@@ -255,7 +245,8 @@ fn the_keyboard_walks_the_tree_and_opens_files(cx: &mut TestAppContext) {
     assert_eq!(press("right", cx).as_deref(), Some("src/nested"));
     assert_eq!(press("down down", cx).as_deref(), Some("src/main.rs"));
     press("enter", cx);
-    assert_eq!(*opened.borrow(), ["src/main.rs"]);
+    let viewed = cx.read(|cx| panel.read(cx).viewing().map(|viewed| viewed.path.clone()));
+    assert_eq!(viewed, Some(root.join("src/main.rs")));
     assert_eq!(press("left", cx).as_deref(), Some("src"));
     assert_eq!(press("left", cx).as_deref(), Some("src"));
     assert_eq!(shown(&panel, cx).len(), 5, "src closed again");
@@ -277,12 +268,14 @@ fn the_keyboard_walks_the_tree_and_opens_files(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn the_active_tabs_file_is_revealed_and_picked(cx: &mut TestAppContext) {
+fn the_file_shown_is_revealed_and_picked(cx: &mut TestAppContext) {
     let root = checkout("files-reveal");
-    let (_, panel) = open(&root, cx);
-    panel.update(cx, |panel, cx| {
-        panel.set_active(Some(Arc::from("src/nested/deep.rs")), cx);
-    });
+    let (window, panel) = open(&root, cx);
+    (cx.update_window(window, |_, window, cx| {
+        let path = Path::new("src/nested/deep.rs");
+        panel.update(cx, |panel, cx| panel.view(Place::file(path), window, cx));
+    }))
+    .unwrap();
     assert_eq!(selected(&panel, cx).as_deref(), Some("src/nested/deep.rs"));
     assert_eq!(
         shown(&panel, cx)[..4],

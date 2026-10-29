@@ -26,10 +26,7 @@ fn pane(pane: &Pane, context: &str, p: Palette) -> AnyElement {
         PaneKind::Chat => chat(pane, context, p),
         PaneKind::Terminal => terminal(p),
         PaneKind::Browser => browser(pane, p),
-        PaneKind::Editor => match &pane.file {
-            Some(file) => file.editor.clone().into_any_element(),
-            None => editor(pane, p),
-        },
+        PaneKind::Editor => editor(pane, p),
     }
 }
 

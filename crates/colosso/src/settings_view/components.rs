@@ -148,6 +148,7 @@ pub struct SettingRow {
     title: SharedString,
     description: Option<SharedString>,
     controls: Vec<AnyElement>,
+    disabled: bool,
 }
 
 impl SettingRow {
@@ -156,6 +157,7 @@ impl SettingRow {
             title: title.into(),
             description: None,
             controls: Vec::new(),
+            disabled: false,
         }
     }
 
@@ -167,6 +169,12 @@ impl SettingRow {
     /// Adds a control after any added before it.
     pub fn control(mut self, control: impl IntoElement) -> Self {
         self.controls.push(control.into_any_element());
+        self
+    }
+
+    /// Whether it's dimmed, as a setting another turns off is; its controls say so too.
+    pub fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
         self
     }
 }
@@ -188,7 +196,12 @@ impl RenderOnce for SettingRow {
                     .flex()
                     .flex_col()
                     .gap(px(2.))
-                    .child(div().text_sm().child(self.title))
+                    .child(
+                        div()
+                            .text_sm()
+                            .when(self.disabled, |title| title.text_color(p.muted))
+                            .child(self.title),
+                    )
                     .when_some(self.description, |text, description| {
                         text.child(div().text_xs().text_color(p.muted).child(description))
                     }),

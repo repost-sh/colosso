@@ -1,9 +1,10 @@
 //! The Files panel: the selected checkout's files as a tree, in the right panel in place of
-//! the changes, and the editor tabs it opens files in.
+//! the changes, and beside the tree the file picked in it, in an editor.
 
 mod editor;
 mod icons;
 mod panel;
+mod place;
 mod render;
 #[cfg(test)]
 mod tests;
@@ -11,4 +12,7 @@ mod tests;
 pub mod visual;
 
 pub use editor::FileEditor;
-pub use panel::{FilesPanel, OpenFile};
+pub use icons::file as file_icon;
+pub use panel::FilesPanel;
+pub use place::{At, Place};
+pub use render::ROW;

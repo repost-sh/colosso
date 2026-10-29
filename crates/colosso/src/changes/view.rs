@@ -16,11 +16,11 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::{Selectable as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, Context, Div, DragMoveEvent, Empty, Entity, FocusHandle, Font, FontWeight, Hsla,
+    AnyElement, Context, Div, Empty, Entity, FocusHandle, Font, FontWeight, Hsla,
     InteractiveElement as _, IntoElement, ListAlignment, ListOffset, ListScrollEvent, ListState,
     ParentElement as _, Pixels, Render, ScrollStrategy, SharedString,
-    StatefulInteractiveElement as _, Styled, Subscription, UniformListScrollHandle, Window,
-    actions, div, font, list, px, uniform_list,
+    StatefulInteractiveElement as _, Styled, Subscription, UniformListScrollHandle, Window, div,
+    font, list, px, uniform_list,
 };
 
 use super::discard;
@@ -32,26 +32,14 @@ use super::rows::{Layout, Row, Shown, rows};
 use super::tree::{self, entries};
 use crate::checkout::{Checkout, GitAct};
 use crate::modal::{self, spinner};
+use crate::right_panel::split::{self, Split};
 use crate::right_panel::{
     Activate, Collapse, Expand, NextFile, PageDown, PageUp, PreviousFile, SelectFirst, SelectLast,
-    SelectNext, SelectPrevious, View, note, page, panel_header, switch,
+    SelectNext, SelectPrevious, note, page, panel_header, title, wide_button,
 };
 use crate::settings;
 use crate::shell::{ellipsized, icon, icon_button, row};
-use crate::sidebar::resize_handle;
 use crate::theme::{self, Palette};
-
-actions!(changes, [ToggleChangesWidth]);
-
-/// The drag payload while the border between the file list and the diffs is being dragged.
-#[derive(Clone)]
-pub struct FilesResize;
-
-impl Render for FilesResize {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        Empty
-    }
-}
 
 /// The file list's groups, as Zed shows them grouped by staging: what's staged, then what
 /// isn't. A file partly staged is in both.
@@ -185,8 +173,8 @@ pub struct ChangesPanel {
     layout: Layout,
     wrap: bool,
     tree: bool,
-    /// How wide the panel is beside the chat, or `None` if it has the card to itself.
-    width: Option<f32>,
+    /// The file list, and the diffs beside it.
+    split: Split,
     shown: Shown,
     /// The file list's closed folders.
     closed: HashSet<Key>,
@@ -238,7 +226,7 @@ impl ChangesPanel {
             layout: Layout::default(),
             wrap: true,
             tree: true,
-            width: None,
+            split: Split::new(&split::CHANGES),
             shown: Shown::default(),
             closed: HashSet::new(),
             current: None,
@@ -258,25 +246,16 @@ impl ChangesPanel {
         &self.focus
     }
 
-    pub fn set_width(&mut self, width: Option<f32>, cx: &mut Context<Self>) {
-        if self.width != width {
-            self.width = width;
+    /// Whether the panel has the card to itself.
+    pub fn is_wide(&self) -> bool {
+        self.split.is_wide()
+    }
+
+    /// Says whether the panel has the card to itself.
+    pub fn set_wide(&mut self, wide: bool, cx: &mut Context<Self>) {
+        if self.split.set_wide(wide) {
             cx.notify();
         }
-    }
-
-    /// The widest the file list can be beside the diffs and leave them room.
-    fn widest_files(&self) -> f32 {
-        self.width
-            .map_or(f32::MAX, |width| width - theme::DIFFS_MIN_WIDTH)
-    }
-
-    /// The file list's width beside the diffs: as set, unless the panel is too narrow for it.
-    fn files_width(&self, cx: &gpui_kit::App) -> f32 {
-        settings::get(cx)
-            .changes_files_width()
-            .min(self.widest_files())
-            .max(theme::CHANGES_FILES_MIN_WIDTH)
     }
 
     /// Builds the rows again from the files, telling the list which rows differ.
@@ -459,10 +438,10 @@ impl ChangesPanel {
 
     /// Moves the keyboard a page of entries down the file list, or up, stopping at its ends.
     fn page(&mut self, direction: isize, cx: &mut Context<Self>) {
-        let last = self.entries.len().saturating_sub(1);
-        let at = self.cursor().unwrap_or(0);
         let by = direction * page(&self.files_scroll, FILE_ROW_HEIGHT);
-        self.select(at.saturating_add_signed(by).min(last), cx);
+        if let Some(at) = crate::list::stepped(self.cursor(), by, self.entries.len()) {
+            self.select(at, cx);
+        }
     }
 
     /// Moves the keyboard `step` entries down the file list, or up if it's negative, stopping
@@ -566,27 +545,13 @@ impl Render for ChangesPanel {
                 )
                 .size_full(),
             );
-            div()
-                .flex_1()
-                .min_h_0()
-                .flex()
-                .on_drag_move(
-                    cx.listener(|this, event: &DragMoveEvent<FilesResize>, _, cx| {
-                        let width = event.event.position.x - event.bounds.left();
-                        let width = width.as_f32().min(this.widest_files());
-                        settings::update(cx, |settings| settings.changes_files_width = width);
-                    }),
+            (self.split)
+                .render(
+                    files.size_full(),
+                    diffs,
+                    |this: &mut Self| &mut this.split,
+                    cx,
                 )
-                .child(
-                    div()
-                        .relative()
-                        .flex_shrink_0()
-                        .w(px(self.files_width(cx)))
-                        .h_full()
-                        .child(files.size_full().border_r_1())
-                        .child(resize_handle("changes-files-resize", FilesResize).right_0()),
-                )
-                .child(diffs)
                 .into_any_element()
         };
         div()
@@ -603,9 +568,9 @@ impl ChangesPanel {
         let toggle = |id: &'static str, glyph: IconName, tip: &'static str, on: bool| {
             icon_button(id, glyph, tip, cx).xsmall().selected(on)
         };
-        // The switch to the files says what's here; the file list's top row, how big.
+        // The title says what's here; the file list's top row, how big.
         panel_header(p)
-            .child(div().flex_1().child(switch(View::Changes, cx)))
+            .child(div().flex_1().child(title("Changes", p)))
             .when_some(self.checkout.read(cx).unwatched(), |header, reason| {
                 let tip = format!("Not following changes as they happen: {reason}");
                 header.child(
@@ -648,17 +613,7 @@ impl ChangesPanel {
                     }),
                 ),
             )
-            .child({
-                let (glyph, tip) = match self.width {
-                    None => (IconName::Minimize2, "Back beside the chat"),
-                    Some(_) => (IconName::Maximize2, "Use the whole card"),
-                };
-                icon_button("changes-width", glyph, tip, cx)
-                    .xsmall()
-                    .on_click(|_, window, cx| {
-                        window.dispatch_action(Box::new(ToggleChangesWidth), cx);
-                    })
-            })
+            .child(wide_button("changes-width", self.split.is_wide(), cx))
     }
 
     fn file_list(&self, p: Palette, cx: &mut Context<Self>) -> Div {

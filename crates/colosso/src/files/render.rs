@@ -1,5 +1,5 @@
-//! How the Files panel looks: its header with the switch to the changes, then the tree, or
-//! why there's no tree yet.
+//! How the Files panel looks: its header with its title, then the tree with the file it
+//! shows beside it, or why there's no tree yet.
 
 use std::ops::Range;
 use std::path::Path;
@@ -12,8 +12,8 @@ use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, Context, Div, FontWeight, Hsla, InteractiveElement as _, IntoElement,
-    ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled as _, Window,
-    div, px, uniform_list,
+    ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, StyleRefinement,
+    Styled as _, Window, div, px, uniform_list,
 };
 
 use super::icons;
@@ -23,7 +23,7 @@ use crate::modal::spinner;
 use crate::projects::{CopyPath, RevealInFinder, with_menu};
 use crate::right_panel::{
     Activate, Collapse, Expand, NextFile, PageDown, PageUp, PreviousFile, SelectFirst, SelectLast,
-    SelectNext, SelectPrevious, View, note, panel_header, switch,
+    SelectNext, SelectPrevious, note, panel_header, title, wide_button,
 };
 use crate::shell::{ellipsized, icon, icon_button, row};
 use crate::theme::{self, Palette};
@@ -39,14 +39,16 @@ impl Render for FilesPanel {
         let checkout = self.checkout.read(cx);
         let opened = checkout.project().is_some();
         let failed = checkout.error().filter(|_| !opened);
+        // A file can be shown before the tree is listed, opened from elsewhere.
         let body = if let Some(error) = failed {
             note(p).text_color(p.danger).child(error.to_owned())
         } else if !opened || self.rows.is_empty() && !self.scanned {
-            div().flex_1().relative().child(spinner(p.muted))
+            self.beside(div().flex_1().relative().child(spinner(p.muted)), p, cx)
         } else if self.rows.is_empty() {
-            note(p).child("This checkout has no files.")
+            self.beside(note(p).child("This checkout has no files."), p, cx)
         } else {
-            self.tree(cx)
+            let tree = self.tree(cx);
+            self.beside(tree, p, cx)
         };
         div()
             .size_full()
@@ -58,11 +60,24 @@ impl Render for FilesPanel {
 }
 
 impl FilesPanel {
-    /// The switch to the changes, and while the checkout's `opened` and not listed yet, so.
+    /// Its title and the file shown, by its path in the checkout or else in full; while the
+    /// checkout's `opened` and not listed yet, so; and the button that widens the panel.
     fn header(&self, opened: bool, p: Palette, cx: &mut Context<Self>) -> Div {
+        let shown = self.viewing().map(|viewed| {
+            let root = self.checkout.read(cx).root();
+            let path = viewed.path.strip_prefix(root).unwrap_or(&viewed.path);
+            SharedString::from(path.display().to_string())
+        });
         panel_header(p)
-            .child(switch(View::Files, cx))
-            .child(div().flex_1())
+            .child(title("Files", p))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .text_xs()
+                    .text_color(p.muted)
+                    .children(shown.map(ellipsized)),
+            )
             .when(opened && !self.scanned, |header| {
                 header.child(div().text_xs().text_color(p.muted).child("Listing…"))
             })
@@ -72,6 +87,24 @@ impl FilesPanel {
                     icon_button("files-unwatched", IconName::TriangleAlert, tip, cx).xsmall(),
                 )
             })
+            .child(wide_button("files-width", self.is_wide(), cx))
+    }
+
+    /// The `tree`, or what's there until there is one, its edge dragged to widen it; and
+    /// beside it the file shown.
+    fn beside(&self, tree: Div, p: Palette, cx: &mut Context<Self>) -> Div {
+        let viewer = match self.viewing() {
+            // Drawn again only when it changes, not each time the tree does: a held arrow key
+            // draws the panel once a row, and the editor's most of that frame otherwise. It's
+            // as big as the room beside the tree, whatever it shows.
+            Some(viewed) => (viewed.editor.clone())
+                .cached(StyleRefinement::default().flex_1().min_w_0().min_h_0())
+                .into_any_element(),
+            None => note(p)
+                .child("Pick a file to see it here.")
+                .into_any_element(),
+        };
+        (self.split).render(tree, viewer, |this: &mut Self| &mut this.split, cx)
     }
 
     fn tree(&self, cx: &mut Context<Self>) -> Div {
@@ -93,9 +126,9 @@ impl FilesPanel {
             .on_action(cx.listener(|this, _: &NextFile, _, cx| this.step_file(1, cx)))
             .on_action(cx.listener(|this, _: &Collapse, _, cx| this.close_or_parent(cx)))
             .on_action(cx.listener(|this, _: &Expand, _, cx| this.open_or_child(cx)))
-            .on_action(cx.listener(|this, _: &Activate, _, cx| {
+            .on_action(cx.listener(|this, _: &Activate, window, cx| {
                 if let Some(at) = this.cursor() {
-                    this.activate(at, cx);
+                    this.activate(at, window, cx);
                 }
             }))
             .child(
@@ -146,13 +179,13 @@ impl FilesPanel {
             .pl(px(4. + shown.depth as f32 * INDENT))
             .gap_1p5()
             .rounded(px(5.))
-            // The file the active tab shows stands out among the rest.
+            // The file shown beside the tree stands out among the rest.
             .when(active && !selected, |row| row.bg(p.hover))
             .when(shown.entry.ignored, |row| row.opacity(0.55))
             .on_click(cx.listener(move |this, _, window, cx| {
                 window.focus(&this.focus, cx);
                 this.select(index, cx);
-                this.activate(index, cx);
+                this.activate(index, window, cx);
             }))
             .child(div().w(px(12.)).flex_shrink_0().children(chevron))
             .child(icon(icons::icon(&shown.entry, shown.expanded), 14.).text_color(p.muted))

@@ -7,11 +7,13 @@
 //! consumer asks, and writes inside them are dropped where the platform reports them, so an
 //! `npm install` or a `cargo build` wakes nobody.
 //!
-//! `Rows` turns the listings into the rows a file tree draws, through the folders it opens.
+//! `Rows` turns the listings into the rows a file tree draws, through the folders it opens;
+//! `Finder` searches the files git doesn't ignore by fuzzy path, as Go to File does.
 
 mod entry;
 mod feed;
 mod files;
+mod finder;
 mod ignores;
 mod paths;
 mod places;
@@ -24,10 +26,12 @@ mod watcher;
 mod worker;
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 pub use entry::{Entry, Kind, natural, order};
 pub use feed::{Counts, Feed, Git, Scanned, Subscription, Update};
+pub use files::Folder;
+pub use finder::{Finder, Found, MOST_FOUND, Query, Results};
 pub use ignores::Excludes;
 pub use paths::Written;
 pub use rows::{Listings, Reveal, Row, Rows};
@@ -38,6 +42,12 @@ use crate::shared::Shared;
 /// How many written paths are kept by name before the folders they're in stand for them,
 /// and how many folders before everything does.
 const MOST_WRITTEN: usize = 10_000;
+
+/// Takes a lock whoever held it last, even a thread that panicked: everything behind this
+/// crate's locks is whole between statements.
+pub(crate) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
+}
 
 /// A checkout's git folders.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -137,6 +147,12 @@ impl Project {
     /// asked for, and shared until then.
     pub fn files(&self) -> Arc<[Arc<str>]> {
         self.shared.files()
+    }
+
+    /// The same files by the folder they're in, for a consumer that takes up only what
+    /// changed: a folder's `files` stay the same `Arc` until its listing changes.
+    pub fn files_by_folder(&self) -> Arc<[Folder]> {
+        self.shared.folders()
     }
 
     /// The first scan's counts, once it's done.

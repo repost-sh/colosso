@@ -1,15 +1,16 @@
 //! General: how the sidebar opens, which layout holds it, and how wide it is; where new
-//! worktrees go and what their branches are named under.
+//! worktrees go and what their branches are named under; and how a held arrow key repeats.
 
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::component::switch::Switch;
 use gpui_kit::{
-    App, AppContext as _, Context, Entity, Focusable as _, IntoElement, ParentElement as _, Render,
-    Styled as _, Subscription, Window, actions, div, px,
+    App, AppContext as _, Context, Entity, Focusable as _, InteractiveElement as _, IntoElement,
+    ParentElement as _, Render, Styled as _, Subscription, Window, actions, div, px,
 };
 
 use super::components::{MenuButton, PillButton, SettingRow, SettingsSection};
+use super::ticked_slider::TickedSlider;
 use crate::modal::{self, Button, Tone};
 use crate::projects::{display_path, pick_folder};
 use crate::settings::{self, BranchPrefix, SetBranchPrefix};
@@ -17,8 +18,15 @@ use crate::theme;
 
 actions!(settings, [EditBranchPrefix]);
 
+/// The speeds a held arrow can repeat at, in rows a second: each a like step faster than the
+/// one before, to the eye, and the default among them.
+const SPEEDS: [f32; 10] = [30., 40., 52., 66., 80., 96., 120., 150., 190., 240.];
+/// How long an arrow is held before it repeats, in milliseconds: the longest first, at the
+/// left, as macOS has it, and the default among them.
+const DELAYS: [f32; 8] = [500., 400., 320., 250., 200., 150., 110., 80.];
+
 pub fn sections(cx: &App) -> Vec<SettingsSection> {
-    vec![sidebar(cx), worktrees(cx)]
+    vec![sidebar(cx), worktrees(cx), keyboard(cx)]
 }
 
 fn sidebar(cx: &App) -> SettingsSection {
@@ -121,6 +129,56 @@ fn worktrees(cx: &App) -> SettingsSection {
                     prefix_label(&current.branch_prefix),
                     |cx| prefix_menu(&settings::get(cx).branch_prefix),
                 )),
+        )
+}
+
+fn keyboard(cx: &App) -> SettingsSection {
+    let p = theme::palette(cx);
+    let repeat = settings::get(cx).key_repeat;
+    let off = !repeat.enabled;
+    SettingsSection::new("Keyboard")
+        .row(
+            SettingRow::new("App-controlled arrow repeat")
+                .description(
+                    "Holding an arrow key repeats at the speed below instead of macOS's key \
+                     repeat.",
+                )
+                .control(
+                    div().debug_selector(|| "arrow-repeat".into()).child(
+                        Switch::new("arrow-repeat")
+                            .checked(repeat.enabled)
+                            .color(p.accent)
+                            .on_click(|on, _, cx| {
+                                settings::update(cx, |settings| {
+                                    settings.key_repeat.enabled = *on;
+                                });
+                            }),
+                    ),
+                ),
+        )
+        .row(
+            SettingRow::new("Arrow repeat speed").disabled(off).control(
+                TickedSlider::new(
+                    "arrow-repeat-speed",
+                    &SPEEDS,
+                    |settings| settings.key_repeat.per_second,
+                    |settings, speed| settings.key_repeat.per_second = speed,
+                )
+                .ends("Slow", "Fast")
+                .disabled(off),
+            ),
+        )
+        .row(
+            SettingRow::new("Delay until repeat").disabled(off).control(
+                TickedSlider::new(
+                    "arrow-repeat-delay",
+                    &DELAYS,
+                    |settings| settings.key_repeat.delay_ms as f32,
+                    |settings, delay| settings.key_repeat.delay_ms = delay as u64,
+                )
+                .ends("Long", "Short")
+                .disabled(off),
+            ),
         )
 }
 

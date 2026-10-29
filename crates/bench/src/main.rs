@@ -3,6 +3,7 @@
 //! the full frame drawn after it. The numbers are the baseline later editor work is judged
 //! against; see README.md for the scenarios and their budgets.
 
+mod finder;
 mod fixtures;
 mod generate;
 mod harness;

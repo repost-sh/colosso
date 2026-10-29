@@ -9,6 +9,11 @@ publish.workspace = true
 colosso-git = { path = "../git" }
 # Each checkout's files, scanned and watched once for every panel that shows it.
 colosso-project = { path = "../project" }
+# The language servers behind the file tabs: rust-analyzer, found or fetched, and talked to.
+colosso-lsp = { path = "../lsp" }
+# The files a language server asked to hear about, matched by its globs: ripgrep's matcher,
+# already in the lockfile.
+globset = "0.4"
 futures = "0.3"
 # Syntax highlighting for diffs: syntect's parser with bat's syntaxes, which add TypeScript,
 # TOML, Svelte and more. Pure-Rust regexes, so nothing to link.
@@ -64,6 +69,27 @@ gpui-kit = { workspace = true, features = ["test-support"] }
 [target.'cfg(target_os = "macos")'.dependencies]
 # Haptic ticks on the theme picker's detents; the version GPUI already pulls in.
 objc = "0.2"
+# The system's accent colour, under each appearance, and word when System Settings changes
+# it; all versions GPUI already pulls in, with every feature named here already built.
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = [
+  "std",
+  "block2",
+  "objc2-core-foundation",
+  "NSAppearance",
+  "NSColor",
+  "NSColorSpace",
+] }
+objc2-foundation = { version = "0.3", default-features = false, features = [
+  "std",
+  "block2",
+  "NSArray",
+  "NSGeometry",
+  "NSNotification",
+  "NSOperation",
+  "NSString",
+] }
+block2 = "0.6"
 
 [features]
 # Debug builds only: lets `dx serve --hot-patch` swap render code into the running app.

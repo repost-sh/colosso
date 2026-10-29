@@ -30,7 +30,6 @@ fn unit_with_tabs(count: usize, active: usize) -> Workspace {
             Tab::Single(Pane {
                 kind: PaneKind::Chat,
                 title: "chat".into(),
-                file: None,
             })
         })
         .collect();

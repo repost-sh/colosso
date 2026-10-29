@@ -11,9 +11,9 @@ use std::time::{Duration, Instant};
 use futures::Stream;
 use futures::task::AtomicWaker;
 
-use crate::Project;
 use crate::entry::Entry;
 use crate::paths::Written;
+use crate::{Project, lock};
 
 /// What a subscriber wants to hear.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -24,6 +24,21 @@ pub enum Feed {
     /// The listings, as they're read, and the first scan's end as well: for one that shows
     /// the folders.
     Everything,
+    /// The listings and the first scan's end alone: for one that only needs to know which
+    /// files there are, as Go to File does.
+    Listings,
+}
+
+impl Feed {
+    /// Whether it's told the listings.
+    pub(crate) fn listed(self) -> bool {
+        self != Feed::Written
+    }
+
+    /// Whether it's told what's written.
+    fn written(self) -> bool {
+        self != Feed::Listings
+    }
 }
 
 /// What happened since a subscriber last took an update.
@@ -94,16 +109,20 @@ impl Update {
 
     /// What `feed` wants of it.
     fn wanted(&self, feed: Feed) -> Update {
-        let everything = feed == Feed::Everything;
+        let (listed, written) = (feed.listed(), feed.written());
         Update {
-            listings: if everything {
+            listings: if listed {
                 self.listings.clone()
             } else {
                 HashMap::new()
             },
-            written: self.written.clone(),
-            git: self.git,
-            scanned: self.scanned.filter(|_| everything),
+            written: if written {
+                self.written.clone()
+            } else {
+                Written::default()
+            },
+            git: if written { self.git } else { Git::default() },
+            scanned: self.scanned.filter(|_| listed),
             unwatched: self.unwatched.clone(),
         }
     }
@@ -114,14 +133,17 @@ impl Update {
             *self = other.wanted(feed);
             return !self.is_empty();
         }
-        let mut added = !other.written.is_empty() || !other.git.is_empty();
-        self.written.merge(&other.written, most);
-        self.git.merge(other.git);
+        let mut added = false;
+        if feed.written() {
+            added = !other.written.is_empty() || !other.git.is_empty();
+            self.written.merge(&other.written, most);
+            self.git.merge(other.git);
+        }
         if let Some(why) = &other.unwatched {
             self.unwatched = Some(why.clone());
             added = true;
         }
-        if feed == Feed::Everything {
+        if feed.listed() {
             for (dir, listing) in &other.listings {
                 self.listings.insert(dir.clone(), listing.clone());
                 added = true;
@@ -168,7 +190,7 @@ impl Inbox {
     }
 
     fn update(&self) -> MutexGuard<'_, Update> {
-        self.update.lock().unwrap_or_else(PoisonError::into_inner)
+        lock(&self.update)
     }
 
     fn take(update: &mut Update) -> Option<Update> {

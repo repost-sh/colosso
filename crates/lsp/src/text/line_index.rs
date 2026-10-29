@@ -92,6 +92,13 @@ impl LineIndex {
         )
     }
 
+    /// The bytes the protocol's `range` stands for, as [`Self::offset`] finds each end; a
+    /// range ending before it starts is empty where it starts.
+    pub fn offsets(&self, text: &str, range: lsp_types::Range, encoding: Encoding) -> Range<usize> {
+        let start = self.offset(text, range.start, encoding);
+        start..self.offset(text, range.end, encoding).max(start)
+    }
+
     /// Keeps the index in step with the bytes `range` of its text replaced by `new_text`:
     /// the lines that started inside the range go, those `new_text` starts come, and those
     /// after move by the difference in length. Only the lines from the edit on are touched.
@@ -229,6 +236,20 @@ mod tests {
             index.position(text, 2, Encoding::Utf16),
             Position::new(0, 0)
         );
+    }
+
+    #[test]
+    fn ranges_come_back_as_the_bytes_they_stand_for() {
+        let text = "x\na😀b\r\nc";
+        let index = LineIndex::new(text);
+        let emoji = "x\na".len().."x\na😀".len();
+        let range = index.range(text, emoji.clone(), Encoding::Utf16);
+        assert_eq!(index.offsets(text, range, Encoding::Utf16), emoji);
+        // Backwards, it's empty where it starts; past the line's end, before its `\r\n`.
+        let backwards = lsp_types::Range::new(Position::new(1, 3), Position::new(0, 0));
+        assert_eq!(index.offsets(text, backwards, Encoding::Utf16), emoji.end..emoji.end);
+        let past = lsp_types::Range::new(Position::new(1, 0), Position::new(1, 99));
+        assert_eq!(index.offsets(text, past, Encoding::Utf8), 2.."x\na😀b".len());
     }
 
     #[test]

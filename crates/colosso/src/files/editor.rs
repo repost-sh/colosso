@@ -1,17 +1,19 @@
-//! A file open in an editor tab, read-only for now: a view over the checkout's document for
-//! it, shown in its language's colours, or a note saying why it isn't shown. The editor
+//! A file shown beside the Files panel's tree, read-only for now: a view over the checkout's
+//! document for it, shown in its language's colours, or a note saying why it isn't shown. The editor
 //! behind it is gpui-kit's, which is to be replaced; nothing outside this file knows it.
 
 use std::path::Path;
 
 use gpui_kit::assets::IconName;
-use gpui_kit::component::input::{Editor, EditorState};
+use gpui_kit::component::input::{Editor, EditorState, RopeExt as _};
 use gpui_kit::{
-    AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, SharedString,
-    Styled as _, Subscription, Window, div,
+    AppContext as _, Context, Entity, EventEmitter, IntoElement, ParentElement as _, Render,
+    SharedString, Styled as _, Subscription, Window, div,
 };
 
+use super::{At, Place};
 use crate::checkout::{Content, Document};
+use crate::language::{Attached, StatusLine};
 use crate::modal::spinner;
 use crate::shell::icon;
 use crate::theme;
@@ -24,8 +26,16 @@ pub struct FileEditor {
     pub(super) document: Entity<Document>,
     /// The editor showing the document's text, and the document's version it holds.
     editor: Option<(Entity<EditorState>, u64)>,
+    /// The language server the file is given to, if one knows it, and the line under the
+    /// file saying what the server is doing.
+    language: Option<(Attached, Entity<StatusLine>)>,
+    /// Where to put the cursor once the text is shown.
+    reveal: Option<At>,
     _document: Subscription,
 }
+
+/// A definition in another file, for the Files panel to show.
+impl EventEmitter<Place> for FileEditor {}
 
 impl FileEditor {
     /// A view of `document`, shown once it's read.
@@ -36,10 +46,65 @@ impl FileEditor {
         let mut view = FileEditor {
             document,
             editor: None,
+            language: None,
+            reveal: None,
             _document,
         };
         view.show(window, cx);
         view
+    }
+
+    pub fn document(&self) -> &Entity<Document> {
+        &self.document
+    }
+
+    /// Gives the file to its language's server: the editor's hooks, its diagnostics, and the
+    /// line saying what the server is doing.
+    pub fn attach(&mut self, mut attached: Attached, cx: &mut Context<Self>) {
+        let status = cx.new(|cx| StatusLine::new(attached.server().clone(), cx));
+        if let Some((editor, version)) = &self.editor {
+            attached.equip(editor, cx.entity().downgrade(), cx);
+            attached.refresh(editor, *version, cx);
+        }
+        self.language = Some((attached, status));
+        cx.notify();
+    }
+
+    /// The server changed what it has for the file: its diagnostics, perhaps.
+    pub fn language_changed(&mut self, cx: &mut Context<Self>) {
+        if let (Some((attached, _)), Some((editor, version))) = (&mut self.language, &self.editor) {
+            attached.refresh(editor, *version, cx);
+        }
+    }
+
+    /// Puts the cursor `at` a place, now if the text is shown, or once it is.
+    pub fn reveal(&mut self, at: At, window: &mut Window, cx: &mut Context<Self>) {
+        self.reveal = Some(at);
+        self.place(window, cx);
+    }
+
+    /// Picks the place to reveal and gives the editor the keyboard; the editor scrolls a new
+    /// selection into view as it lays it out, so this works on one not drawn yet.
+    fn place(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some((editor, _)) = &self.editor else {
+            return;
+        };
+        let Some(at) = self.reveal.take() else {
+            return;
+        };
+        editor.update(cx, |editor, cx| {
+            let text = editor.text();
+            let range = match at {
+                At::Bytes(range) => range,
+                At::Line(line) => {
+                    let start = text.line_start_offset(line as usize);
+                    start..start
+                }
+            };
+            let end = range.end.min(text.len());
+            editor.set_selected_range(range.start.min(end)..end, cx);
+            editor.focus(window, cx);
+        });
     }
 
     /// Puts the document's text in the editor, unless it holds that version already.
@@ -70,8 +135,19 @@ impl FileEditor {
                 .soft_wrap(false)
         });
         editor.update(cx, |editor, cx| editor.set_value(text, window, cx));
+        if let Some((attached, _)) = &mut self.language {
+            attached.equip(&editor, cx.entity().downgrade(), cx);
+            attached.refresh(&editor, version, cx);
+        }
         self.editor = Some((editor, version));
+        self.place(window, cx);
         cx.notify();
+    }
+
+    /// The editor showing the text, once it's shown.
+    #[cfg(any(test, feature = "visual-check"))]
+    pub fn editor(&self) -> Option<&Entity<EditorState>> {
+        self.editor.as_ref().map(|(editor, _)| editor)
     }
 
     /// The text it shows, if it's read and shown as text.
@@ -86,13 +162,20 @@ impl Render for FileEditor {
         let p = theme::palette(cx);
         let content = div().size_full().relative();
         if let Some((editor, _)) = &self.editor {
-            return content.child(
-                Editor::new(editor)
-                    .readonly(true)
-                    .appearance(false)
-                    .bordered(false)
-                    .h_full(),
-            );
+            let editor = Editor::new(editor)
+                .readonly(true)
+                .appearance(false)
+                .bordered(false)
+                .h_full();
+            let Some((_, status)) = &self.language else {
+                return content.child(editor);
+            };
+            // The line goes under the text, which takes the rest.
+            return content
+                .flex()
+                .flex_col()
+                .child(div().flex_1().min_h_0().child(editor))
+                .child(status.clone());
         }
         let note: SharedString = match self.document.read(cx).content() {
             Content::Reading | Content::Text(_) => return content.child(spinner(p.muted)),

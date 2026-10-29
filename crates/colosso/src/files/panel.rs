@@ -1,23 +1,38 @@
 //! The Files panel's state: the checkout's files as rows, opened folder by folder and kept
-//! in step with the disk through the checkout's project; the row picked; and the file the
-//! active editor tab shows, which is revealed as it changes.
+//! in step with the disk through the checkout's project; the row picked; and the files
+//! viewed beside the tree, the one shown revealed in it.
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use colosso_project::{Feed, Kind, Project, Reveal, Rows, Update};
 use futures::StreamExt as _;
 use gpui_kit::{
-    App, Context, Entity, EventEmitter, FocusHandle, ScrollStrategy, Subscription, Task,
-    UniformListScrollHandle,
+    App, AppContext as _, Context, Entity, FocusHandle, ScrollStrategy, Subscription, Task,
+    UniformListScrollHandle, Window,
 };
 
+use super::FileEditor;
+use super::Place;
 use super::render::ROW;
 use crate::changes::Marks;
 use crate::checkout::Checkout;
-use crate::right_panel::page;
+use crate::language;
+use crate::list::{page, stepped};
+use crate::right_panel::split::{self, Split};
 
-/// Asks for the file at the path, relative to the checkout, to be opened in a tab.
-pub struct OpenFile(pub Arc<str>);
+/// How many files viewed lately keep their editors, so going back to one shows it as it was
+/// left without reading it again. The rest let go of theirs, and their language servers of
+/// them.
+const KEPT: usize = 8;
+
+/// A file viewed, and the editor showing it.
+pub struct Viewed {
+    /// Its absolute path.
+    pub path: PathBuf,
+    pub editor: Entity<FileEditor>,
+    _going: Subscription,
+}
 
 pub struct FilesPanel {
     pub(super) checkout: Entity<Checkout>,
@@ -30,17 +45,20 @@ pub struct FilesPanel {
     marks: Arc<Marks>,
     /// The row picked, by its path, so it stays picked as rows come and go.
     pub(super) selected: Option<Arc<str>>,
-    /// The file the active editor tab shows, relative to the checkout.
+    /// The file shown beside the tree, as the tree names it; `None` for one outside the
+    /// checkout.
     pub(super) active: Option<Arc<str>>,
     /// A path to show once the listings of the folders above it come.
     revealing: Option<Arc<str>>,
+    /// The files viewed lately, the one shown first.
+    viewed: Vec<Viewed>,
+    /// The tree, and the file shown beside it.
+    pub(super) split: Split,
     pub(super) focus: FocusHandle,
     pub(super) scroll: UniformListScrollHandle,
     _checkout: Subscription,
     _following: Option<Task<()>>,
 }
-
-impl EventEmitter<OpenFile> for FilesPanel {}
 
 impl FilesPanel {
     pub fn new(checkout: Entity<Checkout>, cx: &mut Context<Self>) -> Self {
@@ -64,6 +82,8 @@ impl FilesPanel {
             selected: None,
             active: None,
             revealing: None,
+            viewed: Vec::new(),
+            split: Split::new(&split::FILES),
             focus: cx.focus_handle(),
             scroll: UniformListScrollHandle::new(),
             _checkout,
@@ -128,9 +148,60 @@ impl FilesPanel {
         }
     }
 
-    /// Follows the file the active editor tab shows, relative to the checkout: it's
-    /// revealed and picked when it changes.
-    pub fn set_active(&mut self, active: Option<Arc<str>>, cx: &mut Context<Self>) {
+    /// The file shown beside the tree, and the editor showing it.
+    pub fn viewing(&self) -> Option<&Viewed> {
+        self.viewed.first()
+    }
+
+    /// Shows the file `place` is in beside the tree, in the editor it had if it was viewed
+    /// lately; picks it in the tree when it's in the checkout; and puts the cursor where the
+    /// place says. A definition the file leads to in another file is shown so in turn.
+    pub fn view(&mut self, place: Place, window: &mut Window, cx: &mut Context<Self>) {
+        let checkout = self.checkout.clone();
+        let root = checkout.read(cx).root().clone();
+        let path = root.join(&place.path);
+        let viewed = if let Some(at) = self.viewed.iter().position(|viewed| viewed.path == path) {
+            self.viewed.remove(at)
+        } else {
+            let document = checkout.update(cx, |checkout, cx| checkout.document(&path, cx));
+            let editor = cx.new(|cx| FileEditor::new(document, window, cx));
+            language::attach(&checkout, &editor, cx);
+            let _going = cx.subscribe_in(&editor, window, |this, _, place: &Place, window, cx| {
+                this.view(place.clone(), window, cx);
+            });
+            Viewed {
+                path: path.clone(),
+                editor,
+                _going,
+            }
+        };
+        if let Some(at) = place.at {
+            (viewed.editor).update(cx, |editor, cx| editor.reveal(at, window, cx));
+        }
+        self.viewed.insert(0, viewed);
+        self.viewed.truncate(KEPT);
+        let relative = (path.strip_prefix(&root).ok())
+            .and_then(Path::to_str)
+            .map(Arc::from);
+        self.set_active(relative, cx);
+        cx.notify();
+    }
+
+    /// Whether the panel has the card to itself.
+    pub fn is_wide(&self) -> bool {
+        self.split.is_wide()
+    }
+
+    /// Says whether the panel has the card to itself.
+    pub fn set_wide(&mut self, wide: bool, cx: &mut Context<Self>) {
+        if self.split.set_wide(wide) {
+            cx.notify();
+        }
+    }
+
+    /// Picks the file shown, as the tree names it, and reveals it: its folders opened and
+    /// it scrolled to.
+    pub(super) fn set_active(&mut self, active: Option<Arc<str>>, cx: &mut Context<Self>) {
         if self.active == active {
             return;
         }
@@ -177,15 +248,9 @@ impl FilesPanel {
     /// Moves the pick `by` rows, stopping at either end; from nothing, to the first or the
     /// last row.
     pub(super) fn step(&mut self, by: isize, cx: &mut Context<Self>) {
-        let Some(last) = self.rows.len().checked_sub(1) else {
-            return;
-        };
-        let index = match self.cursor() {
-            Some(at) => at.saturating_add_signed(by).min(last),
-            None if by > 0 => 0,
-            None => last,
-        };
-        self.select(index, cx);
+        if let Some(index) = stepped(self.cursor(), by, self.rows.len()) {
+            self.select(index, cx);
+        }
     }
 
     /// Moves the pick a page of rows down, or up.
@@ -258,14 +323,17 @@ impl FilesPanel {
         cx.notify();
     }
 
-    /// Enter, or a click: opens a file in a tab, or opens or closes a folder.
-    pub(super) fn activate(&mut self, index: usize, cx: &mut Context<Self>) {
+    /// Enter, or a click: shows a file beside the tree, or opens or closes a folder.
+    pub(super) fn activate(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
         let Some(row) = self.rows.get(index) else {
             return;
         };
         match row.entry.kind {
             Kind::Dir => self.toggle(index, cx),
-            Kind::File | Kind::Symlink { to_dir: false } => cx.emit(OpenFile(row.path.clone())),
+            Kind::File | Kind::Symlink { to_dir: false } => {
+                let place = Place::file(&*row.path);
+                self.view(place, window, cx);
+            }
             // Nothing is read through a link to a folder.
             Kind::Symlink { to_dir: true } => {}
         }
