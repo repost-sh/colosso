@@ -84,12 +84,14 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
   "NSAppearance",
   "NSColor",
   "NSColorSpace",
-  # The Keyboard settings' sliders, which AppKit draws (settings_view/native_slider).
+  # The settings' sliders and switches, which AppKit draws (native, settings_view/native_*).
   "NSApplication",
   "NSControl",
   "NSResponder",
   "NSSlider",
   "NSSliderCell",
+  "NSSwitch",
+  "NSCell",
   "NSView",
   "NSWindow",
 ] }

@@ -14,6 +14,8 @@ mod logs;
 mod menu;
 mod modal;
 mod model;
+#[cfg(target_os = "macos")]
+mod native;
 mod navigation;
 mod new_worktree;
 mod orca;
@@ -70,8 +72,8 @@ fn main() -> ExitCode {
         return settings_view::visual::run();
     }
     #[cfg(all(target_os = "macos", feature = "visual-check"))]
-    if std::env::args().any(|arg| arg == "--visual-check-native-slider") {
-        return settings_view::native_slider_visual::run();
+    if std::env::args().any(|arg| arg == "--visual-check-native-controls") {
+        return settings_view::native_visual::run();
     }
     #[cfg(feature = "visual-check")]
     if std::env::args().any(|arg| arg == "--visual-check-accent") {
