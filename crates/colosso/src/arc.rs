@@ -185,6 +185,7 @@ fn branch_group(
     cx: &mut Context<Shell>,
 ) -> impl IntoElement + use<> {
     let (path, is_main) = (branch.worktree.path.clone(), branch.is_main());
+    let selected = active_tab.is_some();
     div()
         .mt_2()
         .flex()
@@ -192,7 +193,17 @@ fn branch_group(
         .gap_px()
         .child(with_menu(
             section_label(p)
+                .id(("arc-branch", branch_index))
                 .pr_0()
+                .rounded(px(6.))
+                .cursor_pointer()
+                .hover(|style| style.bg(p.hover))
+                .when(selected, |header| header.text_color(p.text))
+                // Selecting the branch unit points the changes panel at its checkout.
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.workspace.select_branch(project_index, branch_index);
+                    cx.notify();
+                }))
                 .child(icon(IconName::GitBranch, 12.))
                 .child(ellipsized(branch.name()))
                 .when(is_main, |header| header.child("checkout"))
