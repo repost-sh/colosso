@@ -21,6 +21,23 @@ pub enum Touched {
     Everything,
 }
 
+impl Touched {
+    /// Whether the file at `relative`, a path under the checkout, may have been written.
+    pub fn covers(&self, relative: &str) -> bool {
+        match self {
+            Touched::File(file) => file == relative,
+            Touched::Folder(folder) => {
+                folder.is_empty()
+                    || relative
+                        .strip_prefix(folder.as_str())
+                        .is_some_and(|rest| rest.starts_with('/'))
+            }
+            Touched::Everything => true,
+            Touched::Index | Touched::Head => false,
+        }
+    }
+}
+
 /// What `update` means for the diff.
 pub fn touched(update: &Update) -> Vec<Touched> {
     let mut touched: Vec<Touched> = match &update.written {

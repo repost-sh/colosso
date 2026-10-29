@@ -52,7 +52,7 @@ actions!(
 
 pub fn init(cx: &mut App) {
     cx.bind_keys([
-        KeyBinding::new("cmd-s", ToggleSidebar, None),
+        KeyBinding::new("cmd-b", ToggleSidebar, None),
         KeyBinding::new("cmd-alt-b", ToggleRightPanel, None),
         KeyBinding::new("cmd-j", ToggleBottomPanel, None),
         KeyBinding::new("cmd-t", NewChat, None),

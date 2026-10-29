@@ -84,7 +84,9 @@ pub fn attach(checkout: &Entity<Checkout>, view: &Entity<FileEditor>, cx: &mut A
     let Some(Languages(registry)) = cx.try_global::<Languages>().cloned() else {
         return;
     };
-    let document = view.read(cx).document().clone();
+    let Some(document) = view.read(cx).document() else {
+        return;
+    };
     let path = document.read(cx).path().clone();
     let Some(kind) = Kind::of(&path) else {
         return;

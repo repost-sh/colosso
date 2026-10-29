@@ -166,6 +166,11 @@ impl IndexedText {
         self.lines.offset(&self.text, position, encoding)
     }
 
+    /// As [`LineIndex::offsets`], in this text.
+    pub fn offsets(&self, range: lsp_types::Range, encoding: Encoding) -> Range<usize> {
+        self.lines.offsets(&self.text, range, encoding)
+    }
+
     /// Replaces the bytes `range` with `new_text`, and returns the same edit as the protocol
     /// has it, its range in the text as it was. Edits made one after another and sent in
     /// that order, as [`Document::change`](super::Document::change) does, make the same text

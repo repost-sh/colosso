@@ -404,3 +404,49 @@ async fn a_server_the_user_stopped_waits_for_them_to_start_it(cx: &mut TestAppCo
     assert_eq!(starts.load(Ordering::SeqCst), 2);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[gpui_kit::test]
+async fn edits_reach_the_server_as_they_happen_and_a_save_is_told(cx: &mut TestAppContext) {
+    let root = repo("language-edits", &[("src/lib.rs", LIB)]);
+    // After the crab: on line 3, past 21 UTF-16 units, where the crab counts two.
+    let after_crab = LIB.find("🦀").unwrap() + "🦀".len();
+    let (launcher, _) = launcher(move |root, _| {
+        let mut script = started(root, "src/lib.rs");
+        let lib = uri(&root.join("src/lib.rs"));
+        let at = json!({"line": 3, "character": 21});
+        script.extend([
+            json!({"expect": {"method": "textDocument/didChange", "params": {
+                "textDocument": {"uri": lib, "version": 1},
+                "contentChanges": [{"range": {"start": at, "end": at}, "text": "y"}]}}}),
+            status("warning", Some("changed")),
+            json!({"expect": {"method": "textDocument/didSave",
+                "params": {"textDocument": {"uri": lib}}}}),
+            status("warning", Some("saved")),
+        ]);
+        Value::Array(script)
+    });
+    let shell = shell(&[&root], launcher, cx);
+    let lib = open(&shell, &root, "src/lib.rs", cx);
+    let server = server(&root, cx).unwrap();
+    assert_eq!(settled(&server, cx).await, State::Ready);
+    let lib_editor = cx.read(|cx| editor(&lib, cx)).unwrap();
+    (cx.update_window(shell.0, |_, window, cx| {
+        lib_editor.update(cx, |editor, cx| {
+            editor.set_selected_range(after_crab..after_crab, cx);
+            editor.insert("y", window, cx);
+        });
+    }))
+    .unwrap();
+    let health = |cx: &App| server.read(cx).health().cloned();
+    let watched = vec![changes(&server, cx)];
+    until(cx, watched, |cx| health(cx).as_deref() == Some("changed")).await;
+    // Saved, the server hears so once the file's written.
+    lib.update(cx, |view, cx| view.save(cx).detach());
+    let watched = vec![changes(&server, cx)];
+    until(cx, watched, |cx| health(cx).as_deref() == Some("saved")).await;
+    assert_eq!(
+        std::fs::read_to_string(root.join("src/lib.rs")).unwrap(),
+        LIB.replacen("🦀", "🦀y", 1)
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}

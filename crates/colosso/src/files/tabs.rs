@@ -1,6 +1,7 @@
 //! The files open beside the tree, each in a tab: one of them may be a preview, shown in
 //! italics, which the next file previewed takes the place of until it's pinned by a double
-//! click on it or on its tab, or by Enter in the tree.
+//! click on it or on its tab, or by Enter in the tree. A tab whose file has unsaved edits
+//! shows a dot in place of its close button, and asks before it closes.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -9,15 +10,17 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AppContext as _, ClickEvent, Context, Div, EmptyView, Entity, EntityId,
     InteractiveElement as _, IntoElement as _, MouseButton, ParentElement as _, SharedString,
-    Stateful, StatefulInteractiveElement as _, Styled, Subscription, Window, div, px,
+    Stateful, StatefulInteractiveElement as _, Styled, Subscription, TaskExt as _, Window, div,
+    px,
 };
 pub use strip::Hand;
 use strip::Strip;
 
 use super::panel::FilesPanel;
-use super::{FileEditor, Place, file_icon};
+use super::{FileEditor, Place, closing, file_icon};
+use crate::checkout::Document;
 use crate::language;
-use crate::pane::close_button;
+use crate::pane::{close_button, tab_button};
 use crate::settings;
 use crate::shell::{ellipsized, icon, row};
 use crate::theme::Palette;
@@ -31,10 +34,14 @@ pub struct Viewed {
     pub path: PathBuf,
     /// Its path as the tree names it; `None` for a file outside the checkout.
     pub relative: Option<Arc<str>>,
+    /// The checkout's document for it, held open by the tab.
+    pub document: Entity<Document>,
     pub editor: Entity<FileEditor>,
     /// Kept open when another file is previewed, rather than giving way to it.
     pub pinned: bool,
     _going: Subscription,
+    /// Drawn again as its document's state changes: unsaved, or saved.
+    _document: Subscription,
 }
 
 impl FilesPanel {
@@ -99,21 +106,34 @@ impl FilesPanel {
     ) -> Viewed {
         let checkout = self.checkout.clone();
         let document = checkout.update(cx, |checkout, cx| checkout.document(&path, cx));
-        let editor = cx.new(|cx| FileEditor::new(document, window, cx));
+        let relative = (path.strip_prefix(root).ok())
+            .and_then(Path::to_str)
+            .map(Arc::from);
+        // A file of the checkout is edited in place; one outside it is only read.
+        let editable = relative.is_some();
+        let editor = cx.new(|cx| FileEditor::new(&document, editable, window, cx));
         language::attach(&checkout, &editor, cx);
         let _going = cx.subscribe_in(&editor, window, |this, _, place: &Place, window, cx| {
             this.preview(place.clone(), window, cx);
         });
-        let relative = (path.strip_prefix(root).ok())
-            .and_then(Path::to_str)
-            .map(Arc::from);
+        // A preview typed into is kept: the next file previewed mustn't take its edits.
+        let _document = cx.observe(&document, |this, document, cx| {
+            if document.read(cx).is_dirty()
+                && let Some(tab) = this.tabs.iter_mut().find(|tab| tab.document == document)
+            {
+                tab.pinned = true;
+            }
+            cx.notify();
+        });
         Viewed {
             key: editor.entity_id(),
             path,
             relative,
+            document,
             editor,
             pinned,
             _going,
+            _document,
         }
     }
 
@@ -133,11 +153,37 @@ impl FilesPanel {
         }
     }
 
-    /// Closes the tab at `at`, showing the one after it, or else the one before.
-    pub(super) fn close(&mut self, at: usize, cx: &mut Context<Self>) {
-        if at >= self.tabs.len() {
+    /// Closes the tab at `at`, asking first when its file has unsaved edits.
+    pub(super) fn close(&mut self, at: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(tab) = self.tabs.get(at) else {
             return;
+        };
+        if tab.document.read(cx).is_dirty() {
+            let editor = tab.editor.clone();
+            closing::ask(cx.entity(), editor, &name(&tab.path), window, cx);
+        } else {
+            self.remove(at, cx);
         }
+    }
+
+    /// Closes the tab showing `editor`, if it's still open, whatever its file has: what was
+    /// asked about it is answered.
+    pub(super) fn remove_view(&mut self, editor: &Entity<FileEditor>, cx: &mut Context<Self>) {
+        if let Some(at) = self.tabs.iter().position(|tab| tab.editor == *editor) {
+            self.remove(at, cx);
+        }
+    }
+
+    /// Writes the file shown, when it has unsaved edits.
+    pub(super) fn save_shown(&self, cx: &mut Context<Self>) {
+        if let Some(tab) = self.viewing() {
+            (tab.editor.update(cx, FileEditor::save)).detach_and_log_err(cx);
+        }
+    }
+
+    /// Closes the tab at `at`, showing the one after it, or else the one before. Its
+    /// document goes with it, unless another tab shows the file.
+    fn remove(&mut self, at: usize, cx: &mut Context<Self>) {
         self.tabs.remove(at);
         if at < self.shown || self.shown == self.tabs.len() {
             self.shown = self.shown.saturating_sub(1);
@@ -190,19 +236,21 @@ impl FilesPanel {
         let shown = at == self.shown;
         let key = tab.key;
         let lifted = self.hand.holding() == Some(key);
-        let name = (tab.path.file_name())
-            .map_or_else(|| tab.path.display().to_string(), |name| {
-                name.to_string_lossy().into_owned()
-            });
-        let close = close_button(("files-tab-close", key.as_u64()), p).on_click(cx.listener(
-            move |this, _, _, cx| {
-                cx.stop_propagation();
-                // Let go of a tab taken up by its button, it's not a click.
-                if !cx.has_active_drag() {
-                    this.close(at, cx);
-                }
-            },
-        ));
+        let name = name(&tab.path);
+        let dirty = tab.document.read(cx).is_dirty();
+        let close = if dirty {
+            tab_button(("files-tab-close", key.as_u64()), p)
+                .child(div().size(px(7.)).rounded_full().bg(p.text))
+        } else {
+            close_button(("files-tab-close", key.as_u64()), p)
+        };
+        let close = close.on_click(cx.listener(move |this, _, window, cx| {
+            cx.stop_propagation();
+            // Let go of a tab taken up by its button, it's not a click.
+            if !cx.has_active_drag() {
+                this.close(at, window, cx);
+            }
+        }));
         let hand = self.hand.clone();
         row(("files-tab", key.as_u64()), shown, p)
             .h(px(TAB))
@@ -224,7 +272,7 @@ impl FilesPanel {
             }))
             .on_mouse_down(
                 MouseButton::Middle,
-                cx.listener(move |this, _, _, cx| this.close(at, cx)),
+                cx.listener(move |this, _, window, cx| this.close(at, window, cx)),
             )
             // The tab itself follows the mouse; nothing else is drawn under it.
             .on_drag(DraggedTab, move |_, grab, _, cx| {
@@ -235,6 +283,14 @@ impl FilesPanel {
             .child(ellipsized(SharedString::from(name)).when(!tab.pinned, Styled::italic))
             .child(close)
     }
+}
+
+/// A file's name, as its tab shows it: the whole path when it has none.
+fn name(path: &Path) -> String {
+    path.file_name().map_or_else(
+        || path.display().to_string(),
+        |name| name.to_string_lossy().into_owned(),
+    )
 }
 
 /// A tab's height, in the header.

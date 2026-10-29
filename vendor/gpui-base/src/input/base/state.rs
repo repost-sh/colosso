@@ -1364,6 +1364,22 @@ impl<M: InputModeKind> InputBaseState<M> {
         cx.notify();
     }
 
+    /// Replaces each of `edits`' byte ranges, disjoint and in the text as it
+    /// is now, with its text: one undo step, the selections moved along by
+    /// the edits rather than left at them. For edits nobody typed, a file
+    /// read again from disk or a formatter's, so a read-only editor takes
+    /// them too.
+    pub fn edit(
+        &mut self,
+        edits: &[(Range<usize>, impl AsRef<str>)],
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.with_edits_allowed(|this| {
+            this.replace_text_in_ranges(edits, Cursors::Following, window, cx);
+        });
+    }
+
     /// Perform `f` with the user-facing edit restrictions lifted.
     ///
     /// The `disabled` and `readonly` modes only reject the changes made by the
