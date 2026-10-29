@@ -7,10 +7,12 @@ use std::sync::Arc;
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AppContext as _, ClickEvent, Context, Div, Entity, InteractiveElement as _, MouseButton,
-    ParentElement as _, SharedString, Stateful, StatefulInteractiveElement as _, Styled,
-    Subscription, Window, div, px,
+    AppContext as _, ClickEvent, Context, Div, EmptyView, Entity, EntityId,
+    InteractiveElement as _, IntoElement as _, MouseButton, ParentElement as _, SharedString,
+    Stateful, StatefulInteractiveElement as _, Styled, Subscription, Window, div, px,
 };
+pub use strip::Hand;
+use strip::Strip;
 
 use super::panel::FilesPanel;
 use super::{FileEditor, Place, file_icon};
@@ -22,6 +24,9 @@ use crate::theme::Palette;
 
 /// A file open in a tab, and the editor showing it.
 pub struct Viewed {
+    /// Tells the tab apart for as long as it's open: the preview tab keeps its key as its
+    /// file changes.
+    pub key: EntityId,
     /// Its absolute path.
     pub path: PathBuf,
     /// Its path as the tree names it; `None` for a file outside the checkout.
@@ -67,7 +72,8 @@ impl FilesPanel {
             let viewed = self.viewed(path, &root, pinned, window, cx);
             let preview = self.tabs.iter().position(|tab| !tab.pinned);
             if let Some(at) = preview.filter(|_| !pinned) {
-                self.tabs[at] = viewed;
+                let key = self.tabs[at].key;
+                self.tabs[at] = Viewed { key, ..viewed };
                 at
             } else {
                 let at = (self.shown + 1).min(self.tabs.len());
@@ -102,6 +108,7 @@ impl FilesPanel {
             .and_then(Path::to_str)
             .map(Arc::from);
         Viewed {
+            key: editor.entity_id(),
             path,
             relative,
             editor,
@@ -138,11 +145,34 @@ impl FilesPanel {
         self.show_tab(self.shown, cx);
     }
 
+    /// Moves the tab at `from` to `to`, the tab shown staying shown.
+    fn reorder(&mut self, from: usize, to: usize, cx: &mut Context<Self>) {
+        if from >= self.tabs.len() || to >= self.tabs.len() || from == to {
+            return;
+        }
+        let shown = self.viewing().map(|tab| tab.key);
+        let tab = self.tabs.remove(from);
+        self.tabs.insert(to, tab);
+        self.shown = (self.tabs.iter().position(|tab| Some(tab.key) == shown)).unwrap_or(0);
+        cx.notify();
+    }
+
+    /// Lets go of the tab in hand, in the slot it's over.
+    fn let_go(&mut self, cx: &mut Context<Self>) {
+        if let Some((key, to)) = self.hand.release()
+            && let Some(from) = self.tabs.iter().position(|tab| tab.key == key)
+        {
+            self.reorder(from, to, cx);
+        }
+    }
+
     /// The tabs, in the panel's header, scrolled sideways when they don't fit.
     pub(super) fn tab_strip(&self, p: Palette, cx: &mut Context<Self>) -> Stateful<Div> {
-        let tabs: Vec<_> = (self.tabs.iter().enumerate())
-            .map(|(at, tab)| self.tab(at, tab, p, cx))
+        let tabs = (self.tabs.iter().enumerate())
+            .map(|(at, tab)| (tab.key, self.tab(at, tab, p, cx).into_any_element()))
             .collect();
+        // While a tab's in hand the window's drawn on each move of the mouse, which the
+        // strip reads for itself. Let go wherever the pointer is.
         div()
             .id("files-tabs")
             .flex_1()
@@ -150,24 +180,31 @@ impl FilesPanel {
             .h_full()
             .flex()
             .items_center()
-            .gap_0p5()
             .overflow_x_scroll()
-            .children(tabs)
+            .capture_any_mouse_up(cx.listener(|this, _, _, cx| this.let_go(cx)))
+            .on_mouse_up_out(MouseButton::Left, cx.listener(|this, _, _, cx| this.let_go(cx)))
+            .child(Strip::new(tabs, self.hand.clone(), px(GAP)))
     }
 
     fn tab(&self, at: usize, tab: &Viewed, p: Palette, cx: &mut Context<Self>) -> Stateful<Div> {
         let shown = at == self.shown;
+        let key = tab.key;
+        let lifted = self.hand.holding() == Some(key);
         let name = (tab.path.file_name())
             .map_or_else(|| tab.path.display().to_string(), |name| {
                 name.to_string_lossy().into_owned()
             });
-        let close = close_button(("files-tab-close", at), p).on_click(cx.listener(
+        let close = close_button(("files-tab-close", key.as_u64()), p).on_click(cx.listener(
             move |this, _, _, cx| {
                 cx.stop_propagation();
-                this.close(at, cx);
+                // Let go of a tab taken up by its button, it's not a click.
+                if !cx.has_active_drag() {
+                    this.close(at, cx);
+                }
             },
         ));
-        row(("files-tab", at), shown, p)
+        let hand = self.hand.clone();
+        row(("files-tab", key.as_u64()), shown, p)
             .h(px(TAB))
             .flex_shrink_0()
             .max_w(px(200.))
@@ -177,6 +214,8 @@ impl FilesPanel {
             .rounded(px(5.))
             .text_xs()
             .when(!shown, |tab| tab.text_color(p.muted))
+            // In hand, it's lifted off the strip, over the tabs it passes.
+            .when(lifted, |tab| tab.bg(p.hover).shadow_sm())
             .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
                 if event.click_count() > 1 {
                     this.pin(at, cx);
@@ -187,6 +226,11 @@ impl FilesPanel {
                 MouseButton::Middle,
                 cx.listener(move |this, _, _, cx| this.close(at, cx)),
             )
+            // The tab itself follows the mouse; nothing else is drawn under it.
+            .on_drag(DraggedTab, move |_, grab, _, cx| {
+                hand.take(key, at, grab.x);
+                cx.new(|_| EmptyView)
+            })
             .child(icon(file_icon(&name), 13.).text_color(p.muted))
             .child(ellipsized(SharedString::from(name)).when(!tab.pinned, Styled::italic))
             .child(close)
@@ -195,6 +239,13 @@ impl FilesPanel {
 
 /// A tab's height, in the header.
 const TAB: f32 = 26.;
+/// The space between tabs.
+const GAP: f32 = 2.;
+
+/// What gpui carries while a tab's dragged: nothing, the strip drawing the tab itself.
+struct DraggedTab;
+
+mod strip;
 
 #[cfg(test)]
 mod tests;

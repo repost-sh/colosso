@@ -2,6 +2,7 @@
 //! in step with the disk through the checkout's project; the row picked; and the files
 //! viewed beside the tree, the one shown revealed in it.
 
+use std::rc::Rc;
 use std::sync::Arc;
 
 use colosso_project::{Feed, Kind, Project, Reveal, Rows, Update};
@@ -12,7 +13,7 @@ use gpui_kit::{
 };
 
 use super::Place;
-use super::tabs::Viewed;
+use super::tabs::{Hand, Viewed};
 use super::render::ROW;
 use crate::changes::Marks;
 use crate::checkout::Checkout;
@@ -40,6 +41,8 @@ pub struct FilesPanel {
     pub(super) tabs: Vec<Viewed>,
     /// The tab shown.
     pub(super) shown: usize,
+    /// The tab in hand, dragged along the strip.
+    pub(super) hand: Rc<Hand>,
     /// The tree, and the file shown beside it.
     pub(super) split: Split,
     pub(super) focus: FocusHandle,
@@ -72,6 +75,7 @@ impl FilesPanel {
             revealing: None,
             tabs: Vec::new(),
             shown: 0,
+            hand: Rc::default(),
             split: Split::new(&split::FILES),
             focus: cx.focus_handle(),
             scroll: UniformListScrollHandle::new(),

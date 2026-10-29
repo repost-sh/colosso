@@ -122,3 +122,29 @@ fn the_arrow_keys_preview_each_file_they_land_on(cx: &mut TestAppContext) {
     assert_eq!(tabs(&panel, cx), [".gitignore", "new.txt*", "[README.md]"]);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[gpui_kit::test]
+fn a_tab_dragged_to_another_slot_leaves_the_one_shown_shown(cx: &mut TestAppContext) {
+    let root = checkout("files-tabs-reorder");
+    let (window, panel) = open(&root, cx);
+    for path in ["README.md", "new.txt", "src/lib.rs"] {
+        with(window, &panel, cx, |panel, window, cx| {
+            panel.view(Place::file(path), window, cx);
+        });
+    }
+    // The first tab dragged to the end: the one shown moves up a slot.
+    with(window, &panel, cx, |panel, _, cx| panel.reorder(0, 2, cx));
+    assert_eq!(tabs(&panel, cx), ["new.txt", "[src/lib.rs]", "README.md"]);
+    // The one shown dragged to the front.
+    with(window, &panel, cx, |panel, _, cx| panel.reorder(1, 0, cx));
+    assert_eq!(tabs(&panel, cx), ["[src/lib.rs]", "new.txt", "README.md"]);
+    // The last dragged before it: the one shown moves down a slot.
+    with(window, &panel, cx, |panel, _, cx| panel.reorder(2, 0, cx));
+    assert_eq!(tabs(&panel, cx), ["README.md", "[src/lib.rs]", "new.txt"]);
+    assert_eq!(selected(&panel, cx).as_deref(), Some("src/lib.rs"));
+    // Slots past the end, or the same slot, change nothing.
+    with(window, &panel, cx, |panel, _, cx| panel.reorder(1, 3, cx));
+    with(window, &panel, cx, |panel, _, cx| panel.reorder(1, 1, cx));
+    assert_eq!(tabs(&panel, cx), ["README.md", "[src/lib.rs]", "new.txt"]);
+    let _ = std::fs::remove_dir_all(&root);
+}
