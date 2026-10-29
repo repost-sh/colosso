@@ -71,7 +71,12 @@ gpui-kit = { workspace = true, features = ["test-support"] }
 objc = "0.2"
 # The system's accent colour, under each appearance, and word when System Settings changes
 # it; all versions GPUI already pulls in, with every feature named here already built.
-objc2 = "0.6"
+objc2 = { version = "0.6", features = [
+  # gpui-fast-apple reads a layer's colour space as a `void *` where the runtime says
+  # `CGColorSpaceRef`; debug builds check message types, and would stop the app as soon as
+  # a native view (the settings' sliders) turns window composition on.
+  "relax-void-encoding",
+] }
 objc2-app-kit = { version = "0.3", default-features = false, features = [
   "std",
   "block2",
@@ -79,6 +84,14 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
   "NSAppearance",
   "NSColor",
   "NSColorSpace",
+  # The Keyboard settings' sliders, which AppKit draws (settings_view/native_slider).
+  "NSApplication",
+  "NSControl",
+  "NSResponder",
+  "NSSlider",
+  "NSSliderCell",
+  "NSView",
+  "NSWindow",
 ] }
 objc2-foundation = { version = "0.3", default-features = false, features = [
   "std",
