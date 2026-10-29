@@ -1,0 +1,28 @@
+[package]
+name = "colosso-bench"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The editor under measurement. `test-support` brings the off-screen windows on the real
+# macOS platform, so text is shaped and painted as the app does it; the grammars are the
+# fixtures' languages, with Markdown's inline grammar for what its code blocks inject. Only
+# this crate turns them on.
+gpui-kit = { workspace = true, features = [
+  "test-support",
+  "tree-sitter",
+  "tree-sitter-rust",
+  "tree-sitter-markdown",
+  "tree-sitter-markdown-inline",
+] }
+anyhow = "1"
+# The results file and the scenario reports passed from each run back to the harness; the
+# versions GPUI already pulls in.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+
+[lints]
+workspace = true

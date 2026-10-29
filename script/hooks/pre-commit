@@ -1,0 +1,4 @@
+#!/bin/sh
+# Lints what's about to be committed; script/check adds the tests.
+set -eu
+exec "$(git rev-parse --show-toplevel)/script/lint"

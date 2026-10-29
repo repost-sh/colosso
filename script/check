@@ -1,13 +1,11 @@
 #!/bin/sh
-# The checks a change passes before it's committed: Clippy under the workspace lint policy
-# with every warning an error, the file-size limit, and the tests.
+# The checks a change passes before it's committed: the lints in script/lint, then the tests.
 set -eu
 cd "$(dirname "$0")/.."
 
 # The same cargo home as script/dev, so the two share what's built.
 export CARGO_HOME="${CARGO_HOME:-$PWD/.cargo-home}"
 
-cargo clippy --workspace --all-targets -- -D warnings
-script/hygiene
+script/lint
 # Tests keep their settings in the checkout, away from the app's own.
 COLOSSO_CONFIG_DIR="$PWD/target/test-config" cargo test --workspace
