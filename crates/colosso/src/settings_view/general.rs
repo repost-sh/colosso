@@ -11,7 +11,7 @@ use gpui_kit::{
 };
 
 use super::components::{MenuButton, PillButton, SettingRow, SettingsSection};
-use super::ticked_slider::TickedSlider;
+use super::native_slider::NativeSlider;
 use crate::modal::{self, Button, Tone};
 use crate::projects::{display_path, pick_folder};
 use crate::settings::{self, BranchPrefix, SetBranchPrefix, SetMostLanguageServers};
@@ -21,10 +21,10 @@ actions!(settings, [EditBranchPrefix]);
 
 /// The speeds a held arrow can repeat at, in rows a second: each a like step faster than the
 /// one before, to the eye, and the default among them.
-const SPEEDS: [f32; 10] = [30., 40., 52., 66., 80., 96., 120., 150., 190., 240.];
+pub(super) const SPEEDS: [f32; 10] = [30., 40., 52., 66., 80., 96., 120., 150., 190., 240.];
 /// How long an arrow is held before it repeats, in milliseconds: the longest first, at the
 /// left, as macOS has it, and the default among them.
-const DELAYS: [f32; 8] = [500., 400., 320., 250., 200., 150., 110., 80.];
+pub(super) const DELAYS: [f32; 8] = [500., 400., 320., 250., 200., 150., 110., 80.];
 
 pub fn sections(cx: &App) -> Vec<SettingsSection> {
     vec![sidebar(cx), worktrees(cx), code(cx), keyboard(cx)]
@@ -210,7 +210,7 @@ fn keyboard(cx: &App) -> SettingsSection {
         )
         .row(
             SettingRow::new("Arrow repeat speed").disabled(off).control(
-                TickedSlider::new(
+                NativeSlider::new(
                     "arrow-repeat-speed",
                     &SPEEDS,
                     |settings| settings.key_repeat.per_second,
@@ -222,7 +222,7 @@ fn keyboard(cx: &App) -> SettingsSection {
         )
         .row(
             SettingRow::new("Delay until repeat").disabled(off).control(
-                TickedSlider::new(
+                NativeSlider::new(
                     "arrow-repeat-delay",
                     &DELAYS,
                     |settings| settings.key_repeat.delay_ms as f32,

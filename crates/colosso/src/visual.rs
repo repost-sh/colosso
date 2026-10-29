@@ -33,19 +33,36 @@ const FRAME: Duration = Duration::from_millis(100);
 /// Runs a check: says each line `draw` returns, the pictures it saved and what it measured,
 /// or why it couldn't.
 pub fn run(draw: impl FnOnce() -> Result<Vec<String>>) -> ExitCode {
-    let mut out = std::io::stdout().lock();
-    let written = match draw() {
-        Ok(lines) => (lines.iter()).try_for_each(|line| writeln!(out, "{line}")),
-        Err(why) => {
-            let _ = writeln!(std::io::stderr().lock(), "visual check failed: {why}");
-            return ExitCode::FAILURE;
-        }
-    };
-    if written.is_ok() {
+    if report(draw()) {
         ExitCode::SUCCESS
     } else {
         ExitCode::FAILURE
     }
+}
+
+/// Says each line a check `found`, or why it failed; whether it passed and was said whole.
+pub fn report(found: Result<Vec<String>>) -> bool {
+    match found {
+        Ok(lines) => {
+            let mut out = std::io::stdout().lock();
+            (lines.iter()).try_for_each(|line| writeln!(out, "{line}")).is_ok()
+        }
+        Err(why) => {
+            let _ = writeln!(std::io::stderr().lock(), "visual check failed: {why}");
+            false
+        }
+    }
+}
+
+/// Where a check's pictures go: `out` under the checkout, made if it isn't there. The check
+/// may change the settings, so they must be its own, in `COLOSSO_CONFIG_DIR`.
+pub fn out_dir(out: &str) -> Result<PathBuf> {
+    if std::env::var_os("COLOSSO_CONFIG_DIR").is_none() {
+        return Err("set COLOSSO_CONFIG_DIR, so the check's settings stay out of the app's".into());
+    }
+    let out = checkout()?.join(out);
+    std::fs::create_dir_all(&out).map_err(|error| error.to_string())?;
+    Ok(out)
 }
 
 /// This repository's checkout.
@@ -95,14 +112,7 @@ impl Drawn {
     /// The shell off screen, its pictures going to `out` under the checkout, and its
     /// settings, which the check may change, to `COLOSSO_CONFIG_DIR` rather than the app's.
     pub fn open_in(out: &str) -> Result<Drawn> {
-        if std::env::var_os("COLOSSO_CONFIG_DIR").is_none() {
-            return Err(
-                "set COLOSSO_CONFIG_DIR, so the check's settings stay out of the app's".into(),
-            );
-        }
-        let out = checkout()?.join(out);
-        std::fs::create_dir_all(&out).map_err(|error| error.to_string())?;
-        Drawn::open(out)
+        Drawn::open(out_dir(out)?)
     }
 
     /// The shell off screen with this repository's checkout selected and `more` beside it

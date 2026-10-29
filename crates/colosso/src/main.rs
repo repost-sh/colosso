@@ -69,6 +69,10 @@ fn main() -> ExitCode {
     if std::env::args().any(|arg| arg == "--visual-check-settings") {
         return settings_view::visual::run();
     }
+    #[cfg(all(target_os = "macos", feature = "visual-check"))]
+    if std::env::args().any(|arg| arg == "--visual-check-native-slider") {
+        return settings_view::native_slider_visual::run();
+    }
     #[cfg(feature = "visual-check")]
     if std::env::args().any(|arg| arg == "--visual-check-accent") {
         return theme::visual::run();
