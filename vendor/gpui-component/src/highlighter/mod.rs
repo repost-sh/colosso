@@ -1,7 +1,7 @@
 mod language_name;
 pub use gpui_base::input::{
     Diagnostic, DiagnosticEntry, DiagnosticRelatedInformation, DiagnosticSet, DiagnosticSeverity,
-    DiagnosticSummary, DiagnosticTag, RelatedInformation,
+    DiagnosticTag, RelatedInformation,
 };
 pub(crate) use language_name::language_name;
 

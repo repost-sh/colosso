@@ -1,12 +1,9 @@
-use std::{
-    cmp::Ordering,
-    ops::{Deref, Range},
-};
+use std::ops::{Deref, Range};
 
 use gpui::SharedString;
 use ropey::Rope;
-use sum_tree::{Bias, SeekTarget, SumTree};
 
+use crate::input::edits::translate_range;
 use crate::input::{Position, RopeExt as _};
 
 pub type DiagnosticRelatedInformation = lsp_types::DiagnosticRelatedInformation;
@@ -16,9 +13,9 @@ pub type DiagnosticTag = lsp_types::DiagnosticTag;
 
 #[derive(Debug, Eq, PartialEq, Clone, Default)]
 pub struct Diagnostic {
-    /// The range [`Position`] at which the message applies.
-    ///
-    /// This is the column, character range within a single line.
+    /// The range [`Position`] at which the message applies, as published:
+    /// what [`DiagnosticSet::push`] converts to bytes. The entry's byte
+    /// range is the one that follows edits.
     pub range: Range<Position>,
 
     /// The diagnostic's severity. Can be omitted. If omitted it is up to the
@@ -134,65 +131,18 @@ impl Deref for DiagnosticEntry {
     }
 }
 
-#[derive(Debug, Default, Clone)]
-pub struct DiagnosticSummary {
-    count: usize,
-    start: usize,
-    end: usize,
-}
-
-impl sum_tree::Item for DiagnosticEntry {
-    type Summary = DiagnosticSummary;
-    fn summary(&self, _cx: &()) -> Self::Summary {
-        DiagnosticSummary {
-            count: 1,
-            start: self.range.start,
-            end: self.range.end,
-        }
-    }
-}
-
-impl sum_tree::Summary for DiagnosticSummary {
-    type Context<'a> = &'a ();
-    fn zero(_: Self::Context<'_>) -> Self {
-        DiagnosticSummary {
-            count: 0,
-            start: usize::MIN,
-            end: usize::MIN,
-        }
-    }
-
-    fn add_summary(&mut self, other: &Self, _: Self::Context<'_>) {
-        self.start = other.start;
-        self.end = other.end;
-        self.count += other.count;
-    }
-}
-
-/// For seeking by byte range.
-impl SeekTarget<'_, DiagnosticSummary, DiagnosticSummary> for usize {
-    fn cmp(&self, other: &DiagnosticSummary, _: &()) -> Ordering {
-        if *self < other.start {
-            Ordering::Less
-        } else if *self > other.end {
-            Ordering::Greater
-        } else {
-            Ordering::Equal
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct DiagnosticSet {
     text: Rope,
-    diagnostics: SumTree<DiagnosticEntry>,
+    /// In the order of their ranges.
+    diagnostics: Vec<DiagnosticEntry>,
 }
 
 impl DiagnosticSet {
     pub fn new(text: &Rope) -> Self {
         Self {
             text: text.clone(),
-            diagnostics: SumTree::new(&()),
+            diagnostics: Vec::new(),
         }
     }
 
@@ -201,18 +151,39 @@ impl DiagnosticSet {
         self.clear();
     }
 
+    /// The bytes `old` of the text were replaced by `new_len` bytes, making
+    /// `text`: the diagnostics' ranges follow the edit, as
+    /// [`translate_range`] has them, until the server sends diagnostics for
+    /// the new text. One whose bytes were all replaced is about text that is
+    /// gone, and goes with it.
+    pub fn edited(&mut self, old: &Range<usize>, new_len: usize, text: &Rope) {
+        self.text = text.clone();
+        self.diagnostics.retain_mut(|entry| {
+            let replaced =
+                !old.is_empty() && old.start <= entry.range.start && entry.range.end <= old.end;
+            if !replaced {
+                entry.range = translate_range(entry.range.clone(), old, new_len);
+            }
+            !replaced
+        });
+    }
+
+    /// Adds a diagnostic at the byte `range` of the text, clipped to it, for
+    /// a caller that has the range already; diagnostics are added in the
+    /// order of their ranges.
+    pub fn push_range(&mut self, range: Range<usize>, diagnostic: impl Into<Diagnostic>) {
+        let range = self.text.clip_range(range);
+        self.diagnostics.push(DiagnosticEntry {
+            range,
+            diagnostic: diagnostic.into(),
+        });
+    }
+
     pub fn push(&mut self, diagnostic: impl Into<Diagnostic>) {
         let diagnostic = diagnostic.into();
         let start = self.text.position_to_offset(&diagnostic.range.start);
         let end = self.text.position_to_offset(&diagnostic.range.end);
-
-        self.diagnostics.push(
-            DiagnosticEntry {
-                range: start..end,
-                diagnostic,
-            },
-            &(),
-        );
+        self.push_range(start..end, diagnostic);
     }
 
     pub fn extend<D, I>(&mut self, diagnostics: D)
@@ -226,29 +197,26 @@ impl DiagnosticSet {
     }
 
     pub fn len(&self) -> usize {
-        self.diagnostics.summary().count
+        self.diagnostics.len()
     }
 
     pub fn clear(&mut self) {
-        self.diagnostics = SumTree::new(&());
+        self.diagnostics.clear();
     }
 
     pub fn is_empty(&self) -> bool {
         self.diagnostics.is_empty()
     }
 
+    /// The diagnostics reaching `range`, in order: from the first ending at
+    /// or past its start, while they start before its end.
     pub fn range(&self, range: Range<usize>) -> impl Iterator<Item = &DiagnosticEntry> {
-        let mut cursor = self.diagnostics.cursor::<DiagnosticSummary>(&());
-        cursor.seek(&range.start, Bias::Left);
-        std::iter::from_fn(move || {
-            if let Some(entry) = cursor.item() {
-                if entry.range.start < range.end {
-                    cursor.next();
-                    return Some(entry);
-                }
-            }
-            None
-        })
+        let first = self
+            .diagnostics
+            .partition_point(|entry| entry.range.end < range.start);
+        self.diagnostics[first..]
+            .iter()
+            .take_while(move |entry| entry.range.start < range.end)
     }
 
     pub fn for_offset(&self, offset: usize) -> Option<&DiagnosticEntry> {
@@ -263,7 +231,57 @@ impl DiagnosticSet {
 
 #[cfg(test)]
 mod tests {
-    use crate::input::Position;
+    use crate::input::{Edit, Position};
+
+    use super::*;
+
+    fn at(range: Range<Position>, message: &str) -> Diagnostic {
+        Diagnostic {
+            range,
+            message: message.into(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn diagnostics_follow_the_edits_made_around_them() {
+        let mut text = Rope::from("let x = 1;\nlet y = x;\n");
+        let mut set = DiagnosticSet::new(&text);
+        set.extend([
+            at(Position::new(0, 4)..Position::new(0, 5), "x"),
+            at(Position::new(1, 8)..Position::new(1, 9), "use"),
+        ]);
+        let ranges = |set: &DiagnosticSet| -> Vec<Range<usize>> {
+            set.iter().map(|entry| entry.range.clone()).collect()
+        };
+        let mut apply = |set: &mut DiagnosticSet, edit: Edit| {
+            text.replace(edit.old.clone(), &edit.new_text);
+            set.edited(&edit.old, edit.new_len(), &text);
+        };
+        assert_eq!(ranges(&set), [4..5, 19..20]);
+        // Typing before both moves both; typing at the first's end grows it.
+        apply(&mut set, Edit::new(0..0, "  "));
+        assert_eq!(ranges(&set), [6..7, 21..22]);
+        apply(&mut set, Edit::new(7..7, "y"));
+        assert_eq!(ranges(&set), [6..8, 22..23]);
+        assert_eq!(
+            set.for_offset(7).map(|entry| entry.message.as_ref()),
+            Some("x")
+        );
+        // Deleting the second's text takes it along; the first follows a
+        // replacement that only reaches into it.
+        apply(&mut set, Edit::new(22..23, ""));
+        assert_eq!(ranges(&set), [6..8]);
+        apply(&mut set, Edit::new(7..10, "zz"));
+        assert_eq!(ranges(&set), [6..9]);
+        // Pushed by byte range, a diagnostic needs no conversion, only
+        // clipping.
+        set.push_range(
+            30..40,
+            at(Position::new(1, 9)..Position::new(1, 10), "late"),
+        );
+        assert_eq!(ranges(&set), [6..9, 23..23]);
+    }
 
     #[test]
     fn test_diagnostic() {

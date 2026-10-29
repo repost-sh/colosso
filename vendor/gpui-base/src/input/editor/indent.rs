@@ -1,4 +1,4 @@
-use crate::input::InputModeKind;
+use crate::input::{Cursors, InputModeKind};
 use crate::input::{
     Indent, IndentInline, InputBaseState, Outdent, OutdentInline, RopeExt, cursor::CursorSelection,
     element::TextElement, layout::LastLayout, mode::LayoutMode,
@@ -279,7 +279,7 @@ impl<M: InputModeKind> InputBaseState<M> {
         }
 
         self.undo_manager.begin_transaction();
-        self.replace_text_in_ranges(&edits, window, cx);
+        self.replace_text_in_ranges(&edits, Cursors::AtEdits, window, cx);
         self.selections.replace_all(new_selections);
         let after: Vec<CursorSelection> = self.selections.iter().copied().collect();
         self.undo_manager.record_selections(before, after);

@@ -1,4 +1,5 @@
 use crate::input::EditorMode;
+use crate::input::edits::translate;
 use std::{collections::BTreeMap, ops::Range};
 
 use gpui::{App, Context, HighlightStyle, Hsla, WeakEntity};
@@ -427,48 +428,25 @@ impl<T: TrackedDecoration> DecorationCollections<T> {
     }
 }
 
+/// Where a decoration's `range` is once the bytes `edited_range` are replaced
+/// by `inserted_len` bytes. A decoration doesn't grow with typing at its
+/// edges: its start keeps right of text put in at it, its end keeps left of
+/// an edit starting at it.
 fn adjust_range_for_edit(
     range: &Range<usize>,
     edited_range: &Range<usize>,
     inserted_len: usize,
 ) -> Range<usize> {
-    let removed_len = edited_range.end.saturating_sub(edited_range.start);
-    let shift = |offset: usize| {
-        if inserted_len >= removed_len {
-            offset.saturating_add(inserted_len - removed_len)
-        } else {
-            offset.saturating_sub(removed_len - inserted_len)
-        }
-    };
-
-    if edited_range.is_empty() {
-        let start = if range.start < edited_range.start {
-            range.start
-        } else {
-            shift(range.start)
-        };
-        let end = if range.end <= edited_range.start {
-            range.end
-        } else {
-            shift(range.end)
-        };
-        return start..end;
-    }
-
-    let inserted_end = edited_range.start + inserted_len;
-    let start = if range.start <= edited_range.start {
-        range.start
-    } else if range.start >= edited_range.end {
-        shift(range.start)
+    let start_bias = if edited_range.is_empty() {
+        Bias::Right
     } else {
-        edited_range.start
+        Bias::Left
     };
+    let start = translate(range.start, edited_range, inserted_len, start_bias);
     let end = if range.end <= edited_range.start {
         range.end
-    } else if range.end >= edited_range.end {
-        shift(range.end)
     } else {
-        inserted_end
+        translate(range.end, edited_range, inserted_len, Bias::Right)
     };
     start..end
 }

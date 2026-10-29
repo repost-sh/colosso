@@ -179,7 +179,10 @@ pub trait RopeExt {
     /// rope.replace(6..11, "Universe");
     /// assert_eq!(rope.to_string(), "Hello\nUniverse\r\nThis is a test 中文\nRope");
     /// ```
-    fn replace(&mut self, range: Range<usize>, new_text: &str);
+    ///
+    /// Returns the range replaced, clipped as [`clip_range`](Self::clip_range)
+    /// has it.
+    fn replace(&mut self, range: Range<usize>, new_text: &str) -> Range<usize>;
 
     /// Get char at the given offset (byte).
     ///
@@ -240,6 +243,10 @@ pub trait RopeExt {
     /// assert_eq!(rope.clip_offset(7, Bias::Right), 9);
     /// ```
     fn clip_offset(&self, offset: usize, bias: Bias) -> usize;
+
+    /// Clip `range` to the text and to character boundaries, its start to
+    /// the left and its end to the right.
+    fn clip_range(&self, range: Range<usize>) -> Range<usize>;
 
     /// Convert offset in characters to byte offset (0-based).
     ///
@@ -414,11 +421,15 @@ impl RopeExt for Rope {
         self.byte_to_utf16_idx(offset)
     }
 
-    fn replace(&mut self, range: Range<usize>, new_text: &str) {
-        let range =
-            self.clip_offset(range.start, Bias::Left)..self.clip_offset(range.end, Bias::Right);
+    fn replace(&mut self, range: Range<usize>, new_text: &str) -> Range<usize> {
+        let range = self.clip_range(range);
         self.remove(range.clone());
         self.insert(range.start, new_text);
+        range
+    }
+
+    fn clip_range(&self, range: Range<usize>) -> Range<usize> {
+        self.clip_offset(range.start, Bias::Left)..self.clip_offset(range.end, Bias::Right)
     }
 
     fn clip_offset(&self, offset: usize, bias: Bias) -> usize {
