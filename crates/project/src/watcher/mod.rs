@@ -192,7 +192,7 @@ impl Target {
     /// Sorts what's about this checkout in `batches`, and puts what's worth taking up with
     /// what's waiting for its worker. Its listings are only looked at for a report about it.
     fn take(&self, batches: &VecDeque<Batch>) {
-        let (mut heard, mut dropped, mut seen) = (0, 0, Vec::new());
+        let (mut heard, mut dropped, mut lost_track, mut seen) = (0, 0, 0, Vec::new());
         let mut tree = None;
         for (path, lost) in batches.iter().flat_map(Batch::iter) {
             if !self.places.hears(path, lost) {
@@ -206,7 +206,10 @@ impl Target {
                 self.places.seen(tree, path)
             };
             match sorted {
-                Some(sorted) => seen.push(sorted),
+                Some(sorted) => {
+                    lost_track += u64::from(lost);
+                    seen.push(sorted);
+                }
                 None => dropped += 1,
             }
         }
@@ -217,6 +220,8 @@ impl Target {
         let counters = &self.shared.counters;
         Counters::add(&counters.events, heard);
         Counters::add(&counters.dropped, dropped);
+        // Counted before it's taken up, so whoever is told of it can see why.
+        Counters::add(&counters.lost, lost_track);
         self.shared.heard(seen);
     }
 }
@@ -250,7 +255,39 @@ fn write<T>(lock: &RwLock<T>) -> RwLockWriteGuard<'_, T> {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use super::*;
+    use crate::entry::{Entry, Kind};
+    use crate::ignores::Ignores;
+    use crate::tree::Dir;
+
+    #[test]
+    fn a_lost_track_is_counted_lost_only_where_a_consumer_reads() {
+        let shared = Arc::new(Shared::new("/work/app".into(), 10));
+        let node_modules = Entry {
+            name: "node_modules".into(),
+            kind: Kind::Dir,
+            ignored: true,
+        };
+        let root = Dir {
+            entries: Arc::from([node_modules]),
+            ignored: false,
+            rules: Ignores::excludes(Path::new("/work/app"), &[]),
+        };
+        shared.tree_mut().put("".into(), root);
+        let target = Target {
+            places: Places::new(Path::new("/work/app"), None),
+            shared: shared.clone(),
+        };
+        let mut batch = Batch::default();
+        batch.push("/work/app/node_modules/react", true);
+        batch.push("/work/app/src/a.rs", false);
+        batch.push("/work/app", true);
+        target.take(&VecDeque::from([batch]));
+        let stats = shared.stats();
+        assert_eq!((stats.events, stats.dropped, stats.lost), (3, 1, 1));
+    }
 
     #[test]
     fn folders_inside_others_are_watched_through_them() {
