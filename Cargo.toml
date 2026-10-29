@@ -84,6 +84,13 @@ used_underscore_binding = "allow"
 # notified view is drawn without rebuilding everything around it.
 gpui-kit = { version = "0.8.1", features = ["gpui-fast"] }
 
+# gpui-kit's editor, forked to be made fast: gpui-base and gpui-component as published at
+# 0.8.1, kept in vendor/ (see vendor/README.md). The gpui-kit facade stays the registry's;
+# patching both crates it re-exports leaves one copy of each in the build.
+[patch.crates-io]
+gpui-base = { path = "vendor/gpui-base" }
+gpui-component = { path = "vendor/gpui-component" }
+
 # The macOS renderer, platform layer and rasterizers stay optimized in debug builds
 # so the dev app's frame times resemble a release build.
 [profile.dev.package]
