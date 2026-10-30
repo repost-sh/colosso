@@ -6,7 +6,7 @@
 
 use std::time::Instant;
 
-use colosso_lsp::servers::{NpmCli, VTSLS, node};
+use colosso_lsp::servers::{NpmCli, VTSLS, node, vtsls_settings};
 
 use crate::common::{GREET_TS, data_dir, fixture, probe};
 
@@ -20,5 +20,9 @@ fn vtsls_says_what_a_call_is() {
     let script = VTSLS.script(&data, &npm).unwrap();
     eprintln!("{}: installed, {:.1} s", VTSLS.name, took.elapsed().as_secs_f64());
     let root = fixture(VTSLS.name, &[(GREET_TS.file, GREET_TS.text)]);
-    probe(&VTSLS.launch(node, &script, &root), &root, &GREET_TS);
+    // Run on the TypeScript vtsls brought along, named as a project's would be.
+    let typescript = script.ancestors().nth(4).unwrap().join("typescript");
+    assert!(typescript.join("lib/tsserver.js").is_file(), "{}", typescript.display());
+    let launch = VTSLS.launch(node, &script, &root, vtsls_settings(&typescript));
+    probe(&launch, &root, &GREET_TS);
 }
