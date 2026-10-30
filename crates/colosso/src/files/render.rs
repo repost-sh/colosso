@@ -36,6 +36,8 @@ use crate::theme::{self, Palette};
 
 /// A row's height: tighter than the sidebar's, as a tree shows many.
 pub const ROW: f32 = 24.;
+/// How high the bars over the tree and over the file shown are, so the two line up.
+pub(super) const BAR: f32 = 26.;
 /// How far each folder deeper is set in.
 const INDENT: f32 = 14.;
 
@@ -89,24 +91,26 @@ impl FilesPanel {
     /// The `tree`, or what's there until there is one, its edge dragged to widen it; and
     /// beside it the file shown.
     fn beside(&self, tree: Div, p: Palette, cx: &mut Context<Self>) -> Div {
-        let viewer = match self.viewing() {
-            // Drawn again only when it changes, not each time the tree does: a held arrow key
-            // draws the panel once a row, and the editor's most of that frame otherwise. It's
-            // as big as the room beside the tree, whatever it shows.
-            Some(viewed) => (viewed.editor.clone())
+        // The editor is drawn again only when it changes, not each time the tree does: a
+        // held arrow key draws the panel once a row, and the editor's most of that frame
+        // otherwise. It's as big as the room beside the tree, whatever it shows.
+        let (crumbs, viewer) = if let Some(viewed) = self.viewing() {
+            let editor = (viewed.editor.clone())
                 .cached(StyleRefinement::default().flex_1().min_w_0().min_h_0())
-                .into_any_element(),
-            None => note(p)
-                .child("Pick a file to see it here.")
-                .into_any_element(),
+                .into_any_element();
+            (Some(self.breadcrumb(viewed, p, cx)), editor)
+        } else {
+            let note = note(p).child("Pick a file to see it here.");
+            (None, note.into_any_element())
         };
-        // The places a symbol led to, under the file, while they're listed.
+        // Where the file is over it, and the places a symbol led to under it, while listed.
         let viewer = div()
             .flex_1()
             .min_w_0()
             .min_h_0()
             .flex()
             .flex_col()
+            .children(crumbs)
             .child(viewer)
             .children(self.locations.clone());
         let tree = div()
@@ -296,7 +300,7 @@ fn rail(p: Palette, cx: &mut Context<FilesPanel>) -> Div {
                 .show(below, window, cx);
         });
     div()
-        .h(px(26.))
+        .h(px(BAR))
         .flex_shrink_0()
         .px_1()
         .flex()
