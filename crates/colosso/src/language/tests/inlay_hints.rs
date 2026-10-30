@@ -2,34 +2,16 @@
 //! moved with the text as it's typed, asked again after the pause, taken out and put back
 //! as the setting turns them off and on, and asked again when the server says they changed.
 
-use std::time::Duration;
-
-use gpui_kit::component::input::{Bias, EditorState, Inlay};
-use gpui_kit::{AnyWindowHandle, App, Entity, TestAppContext};
+use gpui_kit::component::input::{Bias, Inlay};
+use gpui_kit::{App, TestAppContext};
 use serde_json::{Value, json};
 
 use super::support::*;
 use crate::language::State;
-use crate::language::server::Server;
 use crate::settings;
 use crate::test_support::repo;
 
 const MAIN: &str = "fn main() {\n    let x = greet(1);\n}\n";
-
-/// Lets the pause before the server is asked go by, then waits until `done`.
-async fn after_the_pause(
-    window: AnyWindowHandle,
-    server: &Entity<Server>,
-    editor: &Entity<EditorState>,
-    cx: &mut TestAppContext,
-    done: impl Fn(&App) -> bool,
-) {
-    draw(window, cx);
-    cx.executor().advance_clock(Duration::from_millis(200));
-    cx.run_until_parked();
-    let watched = vec![changes(server, cx), changes(editor, cx)];
-    until(cx, watched, done).await;
-}
 
 #[gpui_kit::test]
 async fn inlay_hints_show_what_the_server_infers_and_follow_the_text(cx: &mut TestAppContext) {

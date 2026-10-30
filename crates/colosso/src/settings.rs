@@ -106,6 +106,10 @@ pub struct Settings {
     /// Whether the types and parameter names a language server infers are shown greyed in
     /// the code where they'd go (inlay hints). On, as in Zed and VS Code.
     pub inlay_hints: bool,
+    /// Whether a language server's own reading of the code colours it over the grammar's
+    /// (semantic tokens): methods, fields, parameters, types in macros, doc comments; and
+    /// the names in a language with no grammar here. On, as in VS Code.
+    pub semantic_colouring: bool,
     pub sidebar_open_on_launch: bool,
     /// The main checkouts of the projects in the sidebar, in order.
     pub projects: Vec<PathBuf>,
@@ -178,6 +182,7 @@ impl Default for Settings {
             files_tree_width: theme::FILES_TREE_WIDTH,
             preview_files: true,
             inlay_hints: true,
+            semantic_colouring: true,
             sidebar_open_on_launch: true,
             projects: Vec::new(),
             worktrees_dir: None,

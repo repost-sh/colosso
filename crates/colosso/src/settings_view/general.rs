@@ -41,8 +41,7 @@ fn most_label(most: Option<usize>) -> String {
 }
 
 fn code(cx: &App) -> SettingsSection {
-    let current = settings::get(cx);
-    SettingsSection::new("Code")
+    let editing = SettingsSection::new("Code")
         .row(
             SettingRow::new("Preview files")
                 .description(
@@ -67,6 +66,26 @@ fn code(cx: &App) -> SettingsSection {
                     |settings, on| settings.inlay_hints = on,
                 )),
         )
+        .row(
+            SettingRow::new("Semantic colouring")
+                .description(
+                    "The language server's own reading of the code colours it over the \
+                     grammar's: methods, fields, parameters, types in macros, doc comments.",
+                )
+                .control(NativeSwitch::new(
+                    "semantic-colouring",
+                    |settings| settings.semantic_colouring,
+                    |settings, on| settings.semantic_colouring = on,
+                )),
+        );
+    servers(editing, cx)
+}
+
+/// The language servers' rows of the Code section: each server on or off, and how they're
+/// stopped.
+fn servers(section: SettingsSection, cx: &App) -> SettingsSection {
+    let current = settings::get(cx);
+    section
         .row(
             SettingRow::new("rust-analyzer")
                 .description(

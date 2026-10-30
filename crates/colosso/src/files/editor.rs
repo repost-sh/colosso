@@ -28,7 +28,7 @@ use crate::theme;
 
 /// Past this size a file's shown without colours: setting up its colours costs the main
 /// thread too, 38 ms (44 at worst) to open a 1 MB Rust file against 13 ms for 1.5 MB plain.
-const MOST_COLOURED: usize = 1 << 20;
+pub const MOST_COLOURED: usize = 1 << 20;
 
 pub struct FileEditor {
     document: WeakEntity<Document>,

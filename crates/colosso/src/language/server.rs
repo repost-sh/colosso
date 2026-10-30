@@ -6,18 +6,12 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
-use colosso_lsp::lsp_types::notification::{Progress, PublishDiagnostics};
-use colosso_lsp::lsp_types::{
-    NumberOrString, ProgressParams, ProgressParamsValue, PublishDiagnosticsParams, WorkDoneProgress,
-};
-use colosso_lsp::{
-    Client, Encoding, Event, Exit, Health, IndexedText, LspError, ServerStatus, ServerStatusParams,
-};
-use futures::StreamExt as _;
-use futures::stream::{self, LocalBoxStream};
-use gpui_kit::{AppContext as _, AsyncApp, Context, EventEmitter, SharedString, Task, WeakEntity};
+use colosso_lsp::lsp_types::{NumberOrString, ProgressParams, ProgressParamsValue, WorkDoneProgress};
+use colosso_lsp::{Client, Encoding, Event, Exit, Health, IndexedText, LspError};
+use gpui_kit::{AppContext as _, Context, EventEmitter, SharedString, Task};
 
 use super::diagnostics::Published;
+use super::heard::{Heard, follow, hear};
 use super::server_log::Log;
 use super::sync::Open;
 use super::watch::Watch;
@@ -50,14 +44,6 @@ pub enum State {
 pub enum Activity {
     Idle,
     Busy,
-}
-
-/// Something the server sent, or that happened to it.
-enum Heard {
-    Progress(Arc<ProgressParams>),
-    Status(Arc<ServerStatusParams>),
-    Diagnostics(Arc<PublishDiagnosticsParams>),
-    Event(Event),
 }
 
 /// A piece of work the server reported it's doing.
@@ -99,6 +85,8 @@ pub struct Server {
     /// again, it was first ready to answer for them, or what it said was forgotten. The
     /// files shown follow it.
     pub(super) hints_refreshed: u64,
+    /// The same for the semantic tokens.
+    pub(super) tokens_refreshed: u64,
     pub(super) watch: Watch,
     /// Its own log, begun when it first starts.
     log: Log,
@@ -128,6 +116,7 @@ impl Server {
             documents: HashMap::new(),
             published: Published::default(),
             hints_refreshed: 0,
+            tokens_refreshed: 0,
             watch: Watch::default(),
             logging: false,
         }
@@ -272,6 +261,7 @@ impl Server {
         self.health = None;
         self.published.clear();
         self.hints_refreshed += 1;
+        self.tokens_refreshed += 1;
         self.watch.clear();
         for open in self.documents.values_mut() {
             open.sent = false;
@@ -311,7 +301,7 @@ impl Server {
         cx.notify();
     }
 
-    fn heard(&mut self, heard: Heard, cx: &mut Context<Self>) {
+    pub(super) fn heard(&mut self, heard: Heard, cx: &mut Context<Self>) {
         match heard {
             Heard::Progress(params) => self.progressed(&params),
             Heard::Status(status) => {
@@ -329,6 +319,10 @@ impl Server {
             Heard::Diagnostics(params) => return self.published(&params, cx),
             Heard::Event(Event::InlayHintsRefresh) => {
                 self.hints_refreshed += 1;
+                return cx.notify();
+            }
+            Heard::Event(Event::SemanticTokensRefresh) => {
+                self.tokens_refreshed += 1;
                 return cx.notify();
             }
             Heard::Event(Event::RegistrationsChanged) => return self.registrations_changed(cx),
@@ -389,9 +383,10 @@ impl Server {
         };
         if state == State::Ready && !self.ready_once {
             self.ready_once = true;
-            // A file shown before now got no hints, or hints from before it had read
-            // everything: fetched again.
+            // A file shown before now got no hints or colours, or ones from before it had
+            // read everything: fetched again.
             self.hints_refreshed += 1;
+            self.tokens_refreshed += 1;
             let took = (self.started).map(|started| {
                 cx.background_executor()
                     .now()
@@ -462,33 +457,6 @@ impl Work {
         let total: String = rest.chars().take_while(char::is_ascii_digit).collect();
         if let (Ok(done), Ok(total)) = (done.trim().parse(), total.parse()) {
             (self.done, self.total) = (done, total);
-        }
-    }
-}
-
-/// Everything the server says that the app follows, as one stream.
-fn hear(client: &Client) -> LocalBoxStream<'static, Heard> {
-    stream::select_all([
-        (client.subscribe::<Progress>().map(Heard::Progress)).boxed_local(),
-        (client.subscribe::<ServerStatus>().map(Heard::Status)).boxed_local(),
-        (client.subscribe::<PublishDiagnostics>())
-            .map(Heard::Diagnostics)
-            .boxed_local(),
-        client.events().map(Heard::Event).boxed_local(),
-    ])
-    .boxed_local()
-}
-
-/// Passes on what the server says until it ends.
-async fn follow(
-    this: WeakEntity<Server>,
-    mut heard: LocalBoxStream<'static, Heard>,
-    cx: &mut AsyncApp,
-) {
-    while let Some(heard) = heard.next().await {
-        let ended = matches!(heard, Heard::Event(Event::Ended(_)));
-        if this.update(cx, |this, cx| this.heard(heard, cx)).is_err() || ended {
-            return;
         }
     }
 }

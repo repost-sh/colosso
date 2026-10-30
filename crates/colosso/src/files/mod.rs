@@ -16,7 +16,7 @@ mod tests;
 #[cfg(feature = "visual-check")]
 pub mod visual;
 
-pub use editor::FileEditor;
+pub use editor::{FileEditor, MOST_COLOURED};
 pub use icons::file as file_icon;
 pub use panel::FilesPanel;
 pub use place::{At, Place, relative};

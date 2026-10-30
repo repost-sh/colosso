@@ -18,7 +18,8 @@ use colosso_lsp::lsp_types::{
 };
 use colosso_lsp::{Client, Encoding, uri};
 use gpui_kit::component::input::{
-    DefinitionProvider, EditorState, HoverProvider, InlayHintProvider, PickDefinitionHandler, Rope,
+    DefinitionProvider, DocumentRangeSemanticTokensProvider, EditorState, HoverProvider,
+    InlayHintProvider, PickDefinitionHandler, Rope,
 };
 use gpui_kit::{
     App, AppContext as _, Context, Entity, Subscription, Task, WeakEntity, Window, px,
@@ -33,7 +34,7 @@ use super::server::Server;
 use super::sync::Shown;
 use super::{Kind, completions, diagnostics};
 use crate::checkout::Checkout;
-use crate::files::FileEditor;
+use crate::files::{FileEditor, MOST_COLOURED};
 use crate::settings;
 
 /// A file shown in the viewer, given to its language's server: the hooks its editor is
@@ -46,12 +47,13 @@ pub struct Attached {
     /// When the diagnostics put into the editor were published; once in, the editor moves
     /// them along with its edits.
     applied: Option<u64>,
-    /// The hooks its editor was equipped with, to put the inlay hint provider in and
-    /// take it out as the setting says.
+    /// The hooks its editor was equipped with, to put the inlay hint and semantic token
+    /// providers in and take them out as the settings say.
     hooks: Option<Rc<Hooks>>,
-    /// The inlay hints setting and the server's count of their going out of date, as last
-    /// followed into the editor; `None` before an editor has them.
-    hints_followed: Option<(bool, u64)>,
+    /// The inlay hints and the semantic colouring, each its setting and the server's count
+    /// of its going out of date, as last followed into the editor; `None` before an editor
+    /// has them.
+    followed: Option<((bool, u64), (bool, u64))>,
     _server: Subscription,
     _settings: Subscription,
 }
@@ -71,7 +73,7 @@ impl Attached {
             path,
             applied: None,
             hooks: None,
-            hints_followed: None,
+            followed: None,
             _server,
             _settings,
         }
@@ -109,10 +111,11 @@ impl Attached {
         });
         self.server
             .update(cx, |server, cx| server.show(&self.path, editor, cx));
-        // The inlay hint provider goes in with the next `refresh`, as the setting says.
+        // The inlay hint and semantic token providers go in with the next `refresh`, as
+        // the settings say.
         self.applied = None;
         self.hooks = Some(hooks);
-        self.hints_followed = None;
+        self.followed = None;
     }
 
     /// Every reference to the symbol at `editor`'s caret, with its line, for the panel
@@ -168,25 +171,39 @@ impl Attached {
     }
 
     /// Puts the diagnostics published for the file into `editor`, unless it has them
-    /// already; and has its inlay hints fetched again when the server's went out of date,
-    /// or the setting turned them on or off.
+    /// already; and has its inlay hints, and its semantic tokens, fetched again when the
+    /// server's went out of date, or the setting turned them on or off.
     pub fn refresh(&mut self, editor: &Entity<EditorState>, cx: &mut App) {
         let (published, diagnostics) = self.server.read(cx).published.get(&self.path);
         if self.applied != Some(published) {
             editor.update(cx, |editor, cx| diagnostics::show(editor, &diagnostics, cx));
             self.applied = Some(published);
         }
-        let hints = settings::get(cx).inlay_hints;
-        let followed = (hints, self.server.read(cx).hints_refreshed);
-        if self.hints_followed == Some(followed) {
+        let (settings, server) = (settings::get(cx), self.server.read(cx));
+        let hints = (settings.inlay_hints, server.hints_refreshed);
+        let tokens = (settings.semantic_colouring, server.tokens_refreshed);
+        let before = self.followed.replace((hints, tokens));
+        let hints_changed = before.map(|(hints, _)| hints) != Some(hints);
+        let tokens_changed = before.map(|(_, tokens)| tokens) != Some(tokens);
+        if !hints_changed && !tokens_changed {
             return;
         }
-        self.hints_followed = Some(followed);
-        let hooks = self.hooks.clone().filter(|_| hints);
+        let hooks = self.hooks.clone();
         editor.update(cx, |editor, cx| {
+            // A file too big for the grammar's colours gets none from the server either.
+            let coloured = tokens.0 && editor.text().len() <= MOST_COLOURED;
             let lsp = editor.lsp_mut();
-            lsp.inlay_hint_provider = hooks.map(|hooks| -> Rc<dyn InlayHintProvider> { hooks });
-            lsp.refresh_inlay_hints();
+            if hints_changed {
+                let hooks = hooks.clone().filter(|_| hints.0);
+                lsp.inlay_hint_provider = hooks.map(|hooks| -> Rc<dyn InlayHintProvider> { hooks });
+                lsp.refresh_inlay_hints();
+            }
+            if tokens_changed {
+                let hooks = hooks.filter(|_| coloured);
+                lsp.semantic_tokens_provider =
+                    hooks.map(|hooks| -> Rc<dyn DocumentRangeSemanticTokensProvider> { hooks });
+                lsp.refresh_semantic_tokens();
+            }
             cx.notify();
         });
     }

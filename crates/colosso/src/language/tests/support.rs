@@ -152,6 +152,21 @@ pub(super) fn open(
     shown(shell, cx).unwrap().1
 }
 
+/// Lets the pause before the server is asked go by, then waits until `done`.
+pub(super) async fn after_the_pause(
+    window: AnyWindowHandle,
+    server: &Entity<Server>,
+    editor: &Entity<EditorState>,
+    cx: &mut TestAppContext,
+    done: impl Fn(&App) -> bool,
+) {
+    draw(window, cx);
+    cx.executor().advance_clock(Duration::from_millis(200));
+    cx.run_until_parked();
+    let watched = vec![changes(server, cx), changes(editor, cx)];
+    until(cx, watched, done).await;
+}
+
 /// What a test starts from: the window and the shell in it, the file's view, its server
 /// and the editor over its text.
 pub(super) type Ready = (

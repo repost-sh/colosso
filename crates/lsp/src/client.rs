@@ -50,6 +50,9 @@ pub enum Event {
     /// The server asked for every inlay hint shown to be fetched again
     /// (`workspace/inlayHint/refresh`); its request was answered already.
     InlayHintsRefresh,
+    /// The server asked for every file's semantic tokens to be fetched again
+    /// (`workspace/semanticTokens/refresh`); its request was answered already.
+    SemanticTokensRefresh,
     /// The server's process ended; [`Exit::crashed`] says whether it was meant to. Nothing
     /// restarts it; the app decides whether to.
     Ended(Exit),
