@@ -20,7 +20,7 @@ use gpui_kit::{
 
 use crate::changes::ChangesPanel;
 use crate::checkout::Checkout;
-use crate::files::{FilesPanel, Place};
+use crate::files::{FileEditor, FilesPanel, Place};
 use crate::go_to_file;
 use crate::language;
 use crate::navigation::Route;
@@ -141,6 +141,15 @@ impl RightPanel {
         self.shown()?.files.as_ref()
     }
 
+    /// The editors of the files open in the window with unsaved edits, in every checkout's
+    /// panel.
+    pub fn unsaved(&self, cx: &App) -> Vec<Entity<FileEditor>> {
+        (self.checkouts.values())
+            .filter_map(|panels| panels.files.as_ref())
+            .flat_map(|files| files.read(cx).unsaved(cx))
+            .collect()
+    }
+
     /// Drops the Files panel of the checkout at `root`, and the files it showed with it.
     #[cfg(test)]
     pub fn forget_files(&mut self, root: &Path, cx: &mut App) {
@@ -257,6 +266,7 @@ impl Shell {
         .on_action(cx.listener(|this, _: &ToggleFiles, _, cx| this.toggle(View::Files, cx)))
         .map(|root| Self::handle_go_to_file(root, cx))
         .map(|root| Self::handle_symbols(root, cx))
+        .map(|root| Self::handle_files(root, cx))
         .on_drag_move(cx.listener(Self::resize_right_panel))
         // The root's everywhere, so it hears the edge let go wherever that is.
         .capture_any_mouse_up(cx.listener(|this, _, _, cx| {

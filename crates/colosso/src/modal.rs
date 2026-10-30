@@ -159,14 +159,12 @@ pub fn close(cx: &mut App) {
 }
 
 /// What the dialog on screen shows, if one is open and shows a `T`.
-#[cfg(any(test, feature = "visual-check"))]
 pub fn current<T: 'static>(cx: &App) -> Option<Entity<T>> {
     let surface = window(cx)?.downcast::<Surface>()?.read(cx).ok()?;
     surface.content.clone().downcast::<T>().ok()
 }
 
 /// The window of the dialog on screen, if one is open.
-#[cfg(any(test, feature = "visual-check"))]
 pub fn window(cx: &App) -> Option<AnyWindowHandle> {
     cx.try_global::<OpenModal>()?.0
 }

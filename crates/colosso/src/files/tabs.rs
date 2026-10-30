@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AppContext as _, ClickEvent, Context, Div, EmptyView, Entity, EntityId,
+    App, AppContext as _, ClickEvent, Context, Div, EmptyView, Entity, EntityId,
     InteractiveElement as _, IntoElement as _, MouseButton, ParentElement as _, SharedString,
     Stateful, StatefulInteractiveElement as _, Styled, Subscription, TaskExt as _, Window, div,
     px,
@@ -180,14 +180,22 @@ impl FilesPanel {
         }
     }
 
+    /// The editors of the files open with unsaved edits.
+    pub fn unsaved(&self, cx: &App) -> Vec<Entity<FileEditor>> {
+        (self.tabs.iter())
+            .filter(|tab| tab.document.read(cx).is_dirty())
+            .map(|tab| tab.editor.clone())
+            .collect()
+    }
+
     /// Closes the tab at `at`, asking first when its file has unsaved edits.
     pub(super) fn close(&mut self, at: usize, window: &mut Window, cx: &mut Context<Self>) {
         let Some(tab) = self.tabs.get(at) else {
             return;
         };
         if tab.document.read(cx).is_dirty() {
-            let editor = tab.editor.clone();
-            closing::ask(cx.entity(), editor, &name(&tab.path), window, cx);
+            let (editors, then) = (vec![tab.editor.clone()], closing::Then::CloseTab(cx.entity()));
+            closing::ask(editors, then, window, cx);
         } else {
             self.remove(at, cx);
         }
