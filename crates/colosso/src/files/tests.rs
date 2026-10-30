@@ -15,7 +15,8 @@ use crate::modal;
 use crate::checkout::{Checkout, Content, Document, read_at_most};
 use crate::shell::Shell;
 use crate::test_support::{git, in_window, scratch, select, shell_with, write};
-use crate::{right_panel, settings};
+use crate::right_panel;
+use crate::settings::{self, SaveScope};
 
 #[test]
 fn files_are_read_as_text_unless_binary_or_too_large() {
@@ -109,10 +110,40 @@ fn a_place_puts_the_cursor_on_its_line_or_its_bytes(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn cmd_s_saves_the_file_shown_or_every_unsaved_one_as_set(cx: &mut TestAppContext) {
+    let root = checkout("files-save-scope");
+    let (window, shell, files) = shell_showing(&root, cx);
+    let edit = |path: &str, text: &str, cx: &mut TestAppContext| {
+        let (_, editor, _) = editing(window, &files, path, At::Bytes(0..0), cx);
+        typed(window, &editor, text, cx);
+    };
+    let save = |cx: &mut TestAppContext| {
+        press(window, "cmd-s", cx);
+        cx.run_until_parked();
+    };
+    let on_disk = |path: &str| std::fs::read_to_string(root.join(path)).unwrap();
+    // As set at first, ⌘S writes the file shown, from wherever the keyboard is: lib.rs keeps
+    // its unsaved edit.
+    edit("src/lib.rs", "// lib\n", cx);
+    edit("src/main.rs", "// main\n", cx);
+    let shell_root = cx.read(|cx| shell.read(cx).focus.clone());
+    (cx.update_window(window, |_, window, cx| window.focus(&shell_root, cx))).unwrap();
+    save(cx);
+    assert_eq!(on_disk("src/main.rs"), "// main\nfn main() {}\n");
+    assert_eq!(on_disk("src/lib.rs"), "pub fn a() {}\npub fn b() {}\n");
+    // Set to every file, ⌘S writes lib.rs too, from the keyboard in main.rs.
+    cx.update(|cx| settings::update(cx, |settings| settings.save_scope = SaveScope::All));
+    edit("src/main.rs", "// again\n", cx);
+    save(cx);
+    assert_eq!(on_disk("src/lib.rs"), "// lib\npub fn a() {}\npub fn b() {}\n");
+    assert_eq!(on_disk("src/main.rs"), "// again\n// main\nfn main() {}\n");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[gpui_kit::test]
 fn typing_marks_the_file_unsaved_until_cmd_s_writes_it(cx: &mut TestAppContext) {
     let root = checkout("files-save");
-    let (window, panel) = open(&root, cx);
-    cx.update(init);
+    let (window, _, panel) = shell_showing(&root, cx);
     let (_, editor, document) = editing(window, &panel, "src/lib.rs", At::Bytes(14..14), cx);
     let lib = root.join("src/lib.rs");
     typed(window, &editor, "// typed\n", cx);

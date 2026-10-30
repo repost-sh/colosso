@@ -1,6 +1,6 @@
 //! General: how the sidebar opens, which layout holds it, and how wide it is; where new
-//! worktrees go and what their branches are named under; how files open and how many
-//! language servers run; and how a held arrow key repeats.
+//! worktrees go and what their branches are named under; which language servers run and how
+//! many; and how a held arrow key repeats.
 
 use colosso_lsp::servers::{BASEDPYRIGHT, RUST_ANALYZER, VTSLS};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
@@ -28,7 +28,7 @@ pub(super) const SPEEDS: [f32; 10] = [30., 40., 52., 66., 80., 96., 120., 150., 
 pub(super) const DELAYS: [f32; 8] = [500., 400., 320., 250., 200., 150., 110., 80.];
 
 pub fn sections(cx: &App) -> Vec<SettingsSection> {
-    vec![sidebar(cx), worktrees(cx), code(cx), keyboard(cx)]
+    vec![sidebar(cx), worktrees(cx), servers(cx), keyboard(cx)]
 }
 
 /// The choices for how many language servers run at once, no limit first.
@@ -40,52 +40,10 @@ fn most_label(most: Option<usize>) -> String {
     most.map_or_else(|| "No limit".to_owned(), |most| most.to_string())
 }
 
-fn code(cx: &App) -> SettingsSection {
-    let editing = SettingsSection::new("Code")
-        .row(
-            SettingRow::new("Preview files")
-                .description(
-                    "A file picked in the Files panel, by a click or the arrow keys, opens in \
-                     a preview tab the next one takes over. A double click keeps it open.",
-                )
-                .control(NativeSwitch::new(
-                    "preview-files",
-                    |settings| settings.preview_files,
-                    |settings, on| settings.preview_files = on,
-                )),
-        )
-        .row(
-            SettingRow::new("Inlay hints")
-                .description(
-                    "The types and parameter names the language server infers, shown greyed \
-                     in the code where they'd go. They aren't in the file.",
-                )
-                .control(NativeSwitch::new(
-                    "inlay-hints",
-                    |settings| settings.inlay_hints,
-                    |settings, on| settings.inlay_hints = on,
-                )),
-        )
-        .row(
-            SettingRow::new("Semantic colouring")
-                .description(
-                    "The language server's own reading of the code colours it over the \
-                     grammar's: methods, fields, parameters, types in macros, doc comments.",
-                )
-                .control(NativeSwitch::new(
-                    "semantic-colouring",
-                    |settings| settings.semantic_colouring,
-                    |settings, on| settings.semantic_colouring = on,
-                )),
-        );
-    servers(editing, cx)
-}
-
-/// The language servers' rows of the Code section: each server on or off, and how they're
-/// stopped.
-fn servers(section: SettingsSection, cx: &App) -> SettingsSection {
+/// The language servers: each on or off, and how they're stopped.
+fn servers(cx: &App) -> SettingsSection {
     let current = settings::get(cx);
-    section
+    SettingsSection::new("Language servers")
         .row(
             SettingRow::new("rust-analyzer")
                 .description(
@@ -120,7 +78,7 @@ fn servers(section: SettingsSection, cx: &App) -> SettingsSection {
                 )),
         )
         .row(
-            SettingRow::new("Stop idle language servers")
+            SettingRow::new("Stop when idle")
                 .description(
                     "Stop a language server ten minutes after the last file it knows is \
                      closed. It starts, and indexes, again with the next one.",
@@ -132,7 +90,7 @@ fn servers(section: SettingsSection, cx: &App) -> SettingsSection {
                 )),
         )
         .row(
-            SettingRow::new("Language servers at once")
+            SettingRow::new("Running at once")
                 .description(
                     "Each worktree with a Rust, TypeScript or Python file open runs its own \
                      server; rust-analyzer can take several GB of memory on a large project. \
@@ -144,12 +102,8 @@ fn servers(section: SettingsSection, cx: &App) -> SettingsSection {
                     most_label(current.most_language_servers),
                     |cx| {
                         let most = settings::get(cx).most_language_servers;
-                        (MOST_SERVERS.iter()).fold(NativeMenu::new(), |menu, &choice| {
-                            menu.menu_with_check(
-                                most_label(choice),
-                                choice == most,
-                                Box::new(SetMostLanguageServers(choice)),
-                            )
+                        settings::checked_menu(MOST_SERVERS, most, most_label, |choice| {
+                            Box::new(SetMostLanguageServers(choice))
                         })
                     },
                 )),

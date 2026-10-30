@@ -278,7 +278,6 @@ fn switched(cx: &mut AsyncApp) -> Vec<bool> {
         let settings = settings::get(cx);
         vec![
             settings.sidebar_open_on_launch,
-            settings.preview_files,
             settings.runs_server(RUST_ANALYZER.name, None),
             settings.runs_server(VTSLS.name, None),
             settings.runs_server(BASEDPYRIGHT.name, None),
