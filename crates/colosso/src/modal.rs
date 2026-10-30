@@ -42,9 +42,11 @@ const MOST_HEADING_LINES: usize = 3;
 const FIELD: f32 = 34.;
 /// Between the pieces of a [`palette`].
 const GAP: f32 = 8.;
-/// The width of a palette, and the most rows it shows at once.
+/// The width of a palette, the most rows it shows at once, and the room round its pieces:
+/// less than a dialog's, a palette being a list to scan rather than a question to read.
 const PALETTE_WIDTH: f32 = 640.;
 const PALETTE_ROWS: usize = 14;
+const PALETTE_PADDING: f32 = 12.;
 
 /// Opens the palette `build` makes over `parent`: a dialog a [`palette`] with a field and a
 /// status line fills, sized to show the most rows.
@@ -53,7 +55,8 @@ pub fn open_palette<V: Render>(
     cx: &mut App,
     build: impl FnOnce(&mut Window, &mut Context<V>) -> V,
 ) {
-    open(PALETTE_WIDTH, palette_height(true, true, PALETTE_ROWS), parent, cx, build);
+    let height = palette_height(true, true, PALETTE_ROWS);
+    open_padded(PALETTE_WIDTH, height, PALETTE_PADDING, parent, cx, build);
 }
 
 /// Opens the list `build` makes over `parent`: a dialog a [`palette`] of rows alone fills,
@@ -64,7 +67,8 @@ pub fn open_list<V: Render>(
     cx: &mut App,
     build: impl FnOnce(&mut Window, &mut Context<V>) -> V,
 ) {
-    open(PALETTE_WIDTH, palette_height(false, false, rows), parent, cx, build);
+    let height = palette_height(false, false, rows);
+    open_padded(PALETTE_WIDTH, height, PALETTE_PADDING, parent, cx, build);
 }
 
 /// How high a palette is with `rows` rows, a field over them if `field` and a line under
@@ -73,7 +77,7 @@ fn palette_height(field: bool, status: bool, rows: usize) -> f32 {
     let field = if field { FIELD + GAP } else { 0. };
     let status = if status { GAP + SMALL_LINE } else { 0. };
     let rows = rows.min(PALETTE_ROWS) as f32 * crate::files::ROW;
-    2. * PADDING + field + rows + status
+    2. * PALETTE_PADDING + field + rows + status
 }
 
 /// A palette: its field, if it has one, over `list`, what it finds, and under that
@@ -116,6 +120,18 @@ pub fn open<V: Render>(
     cx: &mut App,
     build: impl FnOnce(&mut Window, &mut Context<V>) -> V,
 ) {
+    open_padded(width, height, PADDING, parent, cx, build);
+}
+
+/// [`open`], with `padding` round the view instead of a dialog's.
+fn open_padded<V: Render>(
+    width: f32,
+    height: f32,
+    padding: f32,
+    parent: &mut Window,
+    cx: &mut App,
+    build: impl FnOnce(&mut Window, &mut Context<V>) -> V,
+) {
     close(cx);
     let frame = parent.bounds();
     let origin = frame.origin
@@ -143,6 +159,7 @@ pub fn open<V: Render>(
         let content = cx.new(|cx| build(window, cx));
         cx.new(|cx| Surface {
             content: content.into(),
+            padding,
             _subscriptions: [
                 cx.observe_window_activation(parent, move |_, _, cx| {
                     close_once_left(parent_handle, cx);
@@ -226,6 +243,8 @@ fn close_once_left(parent: AnyWindowHandle, cx: &mut App) {
 /// The glass a dialog's view sits on.
 struct Surface {
     content: AnyView,
+    /// The room round the view.
+    padding: f32,
     _subscriptions: [Subscription; 3],
 }
 
@@ -234,7 +253,7 @@ impl Render for Surface {
         let p = theme::palette(cx);
         crate::key_repeat::track(div(), window, cx)
             .size_full()
-            .p(px(PADDING))
+            .p(px(self.padding))
             .bg(p.menu)
             .text_color(p.text)
             .text_sm()
