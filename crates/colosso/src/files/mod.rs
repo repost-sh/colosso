@@ -2,6 +2,7 @@
 //! the changes, and beside the tree the file picked in it, in an editor; under the editor,
 //! when a symbol's references or definitions were asked for, the list of them.
 
+mod breadcrumb;
 mod closing;
 mod editor;
 mod icons;

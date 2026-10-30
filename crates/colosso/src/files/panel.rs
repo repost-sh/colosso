@@ -202,7 +202,7 @@ impl FilesPanel {
 
     /// Opens the folders above `path`, then picks it and scrolls to it; if a folder on the
     /// way isn't read yet, once it is; and not at all if it's not there.
-    fn reveal(&mut self, path: &Arc<str>, cx: &mut Context<Self>) {
+    pub(super) fn reveal(&mut self, path: &Arc<str>, cx: &mut Context<Self>) {
         let Some(project) = self.project(cx) else {
             self.revealing = Some(path.clone());
             return;
