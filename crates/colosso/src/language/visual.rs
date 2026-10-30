@@ -11,14 +11,17 @@
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use colosso_lsp::servers::{Curl, RUST_ANALYZER};
 use gpui_kit::component::input::EditorState;
 use gpui_kit::{Entity, Modifiers, MouseButton};
 
 use super::server::{Server, State};
-use super::{Languages, install, managed};
+use super::{Languages, Launcher, install};
 use crate::files::{FileEditor, Place};
+use crate::settings;
 use crate::test_support::try_git;
 use crate::visual::{Drawn, Result, checkout};
 
@@ -46,8 +49,14 @@ fn draw() -> Result<Vec<String>> {
     let fixture = fixture(&root.join(OUT))?;
     let mut drawn = Drawn::open_on_checkout(OUT, &[&fixture])?;
     drawn.cx.update(|cx| {
-        // The managed server, not whatever PATH has.
-        install(managed(false), cx);
+        // The managed rust-analyzer, not whatever PATH has, so the check draws the same
+        // everywhere.
+        let launcher: Launcher = Arc::new(|_, root| {
+            let data = settings::data_dir().ok_or_else(|| "there's no folder to fetch it into".to_owned())?;
+            let binary = RUST_ANALYZER.install(&data, &Curl).map_err(|error| error.to_string())?;
+            Ok(RUST_ANALYZER.launch(binary, root))
+        });
+        install(launcher, cx);
         super::bind_keys(cx);
     });
     let mut lines = Vec::new();
@@ -89,7 +98,7 @@ fn ready(drawn: &mut Drawn, root: &Path, lines: &mut Vec<String>) -> Result<Enti
         let state = drawn.cx.read(|cx| repo.read(cx).state().clone());
         match state {
             State::Ready => Ok(true),
-            State::Failed(failure) => Err(format!("rust-analyzer: {}", failure.why)),
+            State::Failed(why) => Err(format!("rust-analyzer: {why}")),
             State::Crashed(why) => Err(format!("rust-analyzer: {why}")),
             State::Stopped => Err("rust-analyzer stopped".into()),
             State::Indexing { total, .. } if total > 0 && indexing.is_none() => {
@@ -281,7 +290,7 @@ fn hover(drawn: &mut Drawn, editor: &Entity<EditorState>, at: usize) -> Result<(
 
 /// The memory each rust-analyzer run from the data folder holds.
 fn rss() -> Result<String> {
-    let data = crate::settings::data_dir().ok_or("no data folder")?;
+    let data = settings::data_dir().ok_or("no data folder")?;
     let binary = data.join("servers/rust-analyzer");
     let found = Command::new("pgrep")
         .arg("-f")

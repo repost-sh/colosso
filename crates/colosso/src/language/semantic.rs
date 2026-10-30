@@ -186,14 +186,13 @@ fn index(name: &str) -> Option<u32> {
 }
 
 /// A server's token type as the theme names it: the protocol's, rust-analyzer's and
-/// basedpyright's own names for what the theme names otherwise, the rest as they are.
+/// Pyrefly's own names for what the theme names otherwise, the rest as they are.
 fn named(kind: &str) -> &str {
     match kind {
         "class" | "enum" | "interface" | "struct" | "typeParameter" | "typeAlias" | "union"
         | "builtinType" | "selfTypeKeyword" => "type",
-        "parameter" | "selfParameter" | "clsParameter" => "variable.parameter",
-        "const" | "static" | "enumMember" | "builtinConstant" => "constant",
-        "magicFunction" => "function",
+        "parameter" | "selfParameter" => "variable.parameter",
+        "const" | "static" | "enumMember" => "constant",
         "method" => "function.method",
         "macro" | "procMacro" => "function.macro",
         "selfKeyword" | "modifier" => "keyword",

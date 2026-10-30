@@ -8,7 +8,7 @@
 //! It downloads rust-analyzer the first time, so it runs only when asked:
 //! `COLOSSO_LSP_IT=1 COLOSSO_DATA_DIR=$PWD/.superpowers/data cargo test -p colosso-lsp -- --ignored`
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use colosso_lsp::lsp_types::notification::{
@@ -25,7 +25,7 @@ use colosso_lsp::servers::{Curl, RUST_ANALYZER};
 use colosso_lsp::{Client, Document, Encoding, IndexedText, LineIndex, Notifications, uri};
 use futures::StreamExt;
 
-use crate::common::{fixture, wait};
+use crate::common::{data_dir, fixture, wait};
 
 const MANIFEST: &str = "[package]\nname = \"fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n\
     # A workspace of its own, not the checkout's it sits in.\n[workspace]\n";
@@ -44,13 +44,7 @@ const MORE: &str =
 #[test]
 #[ignore = "downloads and runs rust-analyzer; see this file's header"]
 fn rust_analyzer_answers_what_an_editor_asks() {
-    if std::env::var("COLOSSO_LSP_IT").as_deref() != Ok("1") {
-        eprintln!("skipped: set COLOSSO_LSP_IT=1 to run against rust-analyzer");
-        return;
-    }
-    let data = std::env::var_os("COLOSSO_DATA_DIR")
-        .map(PathBuf::from)
-        .expect("COLOSSO_DATA_DIR names a folder in the checkout to install into");
+    let Some(data) = data_dir("rust-analyzer") else { return };
     let binary = RUST_ANALYZER.install(&data, &Curl).unwrap();
     let root = fixture(
         "rust",

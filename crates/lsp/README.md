@@ -25,10 +25,13 @@ served on the client's own threads, and the app polls futures on any executor.
 - `shutdown(timeout)` asks, then sends `exit`, then kills.
 - `Document` sends LSP edits, and borrows the text for `open` and `replace`. `IndexedText`
   turns byte edits into LSP edits for a caller without a rope.
-- `servers::RUST_ANALYZER.binary(data, &Curl)` uses a working `rust-analyzer` on PATH if
-  there is one. Otherwise it fetches the pinned release, checks its SHA-256, and moves it
-  into `<data>/servers/rust-analyzer/<version>/` with a single rename. `Fetch` is the seam
-  for the app's own HTTP client. Its settings give rust-analyzer its own target folder.
+- `servers::RUST_ANALYZER`, `TYPESCRIPT` (TypeScript 7's native `tsc --lsp`) and `PYREFLY`
+  are `ServerSpec`s. `binary(root, data, &Curl)` uses the project's own binary or a working
+  one on PATH if there is one. Otherwise it fetches the pinned release, checks its SHA-256,
+  unpacks it (a gzipped binary, or a tarball whole) and moves it into
+  `<data>/servers/<name>/<version>/` with a single rename. `Fetch` is the seam for the app's
+  own HTTP client. `servers::VTSLS` is an npm package installed by `Npm` and run with the
+  machine's Node, for a project still on TypeScript 5 or 6.
 
 ## Tests
 
@@ -44,7 +47,3 @@ prints each request's latency:
 COLOSSO_LSP_IT=1 COLOSSO_DATA_DIR=$PWD/.superpowers/data \
   cargo test -p colosso-lsp -- --ignored --nocapture
 ```
-
-## To do
-
-- `vtsls` (TypeScript) and `basedpyright` (Python) specs, installed with npm under the app's Node.

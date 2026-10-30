@@ -1,8 +1,9 @@
-//! Servers that are npm packages run by Node: vtsls for TypeScript and JavaScript, and
-//! basedpyright for Python. Node is the machine's, found on PATH; each package is installed
-//! by npm into the app's data folder at a pinned version, staged and moved into place as a
-//! downloaded server is, and run as `node script --stdio`, so neither the script's shebang
-//! nor the PATH it would need matter.
+//! Servers that are npm packages run by Node: vtsls, VS Code's TypeScript service as a
+//! language server, for a project still on TypeScript 5 or 6, which TypeScript 7's own
+//! server would read differently than the project's build does. Node is the machine's,
+//! found on PATH; the package is installed by npm into the app's data folder at a pinned
+//! version, staged and moved into place as a downloaded server is, and run as
+//! `node script --stdio`, so neither the script's shebang nor the PATH it would need matter.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -10,8 +11,9 @@ use std::process::Command;
 
 use serde_json::{Value, json};
 
-use super::install::{io_failed, place, run, staging};
 use super::first_that_runs;
+use super::install::{io_failed, place, run, staging};
+use super::typescript;
 use crate::client::Launch;
 use crate::error::LspError;
 
@@ -133,61 +135,20 @@ pub static VTSLS: NodeServer = NodeServer {
 };
 
 fn vtsls_settings() -> Value {
-    json!({
-        // The project's own TypeScript when it has one in `node_modules`, so what the
-        // editor says agrees with what the project builds with.
-        "vtsls": { "autoUseWorkspaceTsdk": true },
-        // TypeScript's inlay hints are all off unless asked for.
-        "typescript": { "inlayHints": inlay_hints() },
-        "javascript": { "inlayHints": inlay_hints() },
-    })
-}
-
-/// Every kind of inlay hint TypeScript offers, parameter names where the argument is a
-/// literal (VS Code's "literals"), which is where a name tells the most.
-fn inlay_hints() -> Value {
-    json!({
-        "parameterNames": { "enabled": "literals" },
-        "parameterTypes": { "enabled": true },
-        "variableTypes": { "enabled": true },
-        "propertyDeclarationTypes": { "enabled": true },
-        "functionLikeReturnTypes": { "enabled": true },
-        "enumMemberValues": { "enabled": true },
-    })
-}
-
-pub static BASEDPYRIGHT: NodeServer = NodeServer {
-    name: "basedpyright",
-    package: "basedpyright",
-    version: "1.40.2",
-    script: "langserver.index.js",
-    settings: basedpyright_settings,
-};
-
-fn basedpyright_settings() -> Value {
-    json!({
-        // Pyright's own strictness; basedpyright's `recommended` adds checks that flood a
-        // project that wasn't written for them.
-        "basedpyright": { "analysis": { "typeCheckingMode": "standard" } },
-        "python": {},
-    })
+    let mut settings = typescript::settings();
+    // The project's own TypeScript when it has one in `node_modules`, so what the editor
+    // says agrees with what the project builds with.
+    settings["vtsls"] = json!({ "autoUseWorkspaceTsdk": true });
+    settings
 }
 
 #[cfg(test)]
 mod tests {
     use std::cell::Cell;
 
+    use super::super::install::make_executable;
+    use super::super::tests::scratch;
     use super::*;
-
-    /// A folder of this crate's `target` for one test.
-    fn scratch(name: &str) -> PathBuf {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../target/node-tests")
-            .join(name);
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(&root).unwrap();
-        root
-    }
 
     /// An npm that writes vtsls's script where the package would have it, and counts.
     #[derive(Default)]
@@ -247,11 +208,7 @@ mod tests {
         assert_eq!(first_that_runs([folder.clone()], "node"), None);
         let node = folder.join("node");
         fs::write(&node, "#!/bin/sh\nexit 0\n").unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&node, fs::Permissions::from_mode(0o755)).unwrap();
-        }
+        make_executable(&node).unwrap();
         let folders = [PathBuf::from("/nowhere"), folder.clone()];
         assert_eq!(first_that_runs(folders, "node"), Some(node));
         let _ = fs::remove_dir_all(&folder);
@@ -265,5 +222,6 @@ mod tests {
         assert_eq!(launch.args, ["/data/vtsls.js", "--stdio"]);
         assert_eq!(launch.cwd, PathBuf::from("/work"));
         assert!(launch.settings.get("vtsls").is_some());
+        assert!(launch.settings.get("typescript").is_some());
     }
 }

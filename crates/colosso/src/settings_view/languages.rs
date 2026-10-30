@@ -1,7 +1,7 @@
 //! The Languages settings page: which languages get a language server, for go to definition,
 //! hover, diagnostics, completions and the rest, and how the servers are run.
 
-use colosso_lsp::servers::{BASEDPYRIGHT, RUST_ANALYZER, VTSLS};
+use colosso_lsp::servers::{PYREFLY, RUST_ANALYZER, TYPESCRIPT};
 use gpui_kit::App;
 
 use super::components::{MenuButton, SettingRow, SettingsSection};
@@ -42,25 +42,28 @@ fn servers() -> SettingsSection {
         .row(
             SettingRow::new("TypeScript and JavaScript")
                 .description(
-                    "The same in TypeScript and JavaScript files, from vtsls, run by the Node \
-                     on PATH and installed into the app's data folder the first time.",
+                    "The same in TypeScript and JavaScript files, from TypeScript 7's own \
+                     server: the project's own, when it has TypeScript 7 or newer in \
+                     node_modules, else one downloaded the first time. A project on an older \
+                     TypeScript gets vtsls instead, run by the machine's Node when there is \
+                     one, so what the editor says agrees with what the project builds.",
                 )
                 .control(NativeSwitch::new(
-                    "vtsls",
-                    |settings| settings.runs_server(VTSLS.name, None),
-                    |settings, on| settings.set_server(VTSLS.name, &Scope::Everywhere, on),
+                    "typescript",
+                    |settings| settings.runs_server(TYPESCRIPT.name, None),
+                    |settings, on| settings.set_server(TYPESCRIPT.name, &Scope::Everywhere, on),
                 )),
         )
         .row(
             SettingRow::new("Python")
                 .description(
-                    "The same in Python files, from basedpyright, run and installed the same \
-                     way.",
+                    "The same in Python files, from Pyrefly: the project's own in its .venv, \
+                     else the one on PATH, else one downloaded the first time.",
                 )
                 .control(NativeSwitch::new(
-                    "basedpyright",
-                    |settings| settings.runs_server(BASEDPYRIGHT.name, None),
-                    |settings, on| settings.set_server(BASEDPYRIGHT.name, &Scope::Everywhere, on),
+                    "pyrefly",
+                    |settings| settings.runs_server(PYREFLY.name, None),
+                    |settings, on| settings.set_server(PYREFLY.name, &Scope::Everywhere, on),
                 )),
         )
 }
