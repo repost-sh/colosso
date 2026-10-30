@@ -13,10 +13,11 @@ use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::{Sizable as _, Size};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyView, AnyWindowHandle, App, AppContext as _, ClickEvent, Context, Entity, FontWeight,
-    Global, Hsla, InteractiveElement as _, IntoElement, ParentElement as _, Render, RenderOnce,
-    SharedString, StatefulInteractiveElement as _, Styled, Subscription, TextStyle, Window,
-    WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions, div, point, px, size,
+    AnyElement, AnyView, AnyWindowHandle, App, AppContext as _, ClickEvent, Context, Entity,
+    FontWeight, Global, Hsla, InteractiveElement as _, IntoElement, ParentElement as _, Render,
+    RenderOnce, SharedString, StatefulInteractiveElement as _, Styled, Subscription, TextStyle,
+    Window, WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions, div, point, px,
+    size,
 };
 
 use crate::shell::icon;
@@ -45,41 +46,43 @@ const GAP: f32 = 8.;
 const PALETTE_WIDTH: f32 = 640.;
 const PALETTE_ROWS: usize = 14;
 
-/// Opens the palette `build` makes over `parent`: a dialog a [`palette`] with a field
-/// fills, sized to show the most rows.
+/// Opens the palette `build` makes over `parent`: a dialog a [`palette`] with a field and a
+/// status line fills, sized to show the most rows.
 pub fn open_palette<V: Render>(
     parent: &mut Window,
     cx: &mut App,
     build: impl FnOnce(&mut Window, &mut Context<V>) -> V,
 ) {
-    open(PALETTE_WIDTH, palette_height(true, PALETTE_ROWS), parent, cx, build);
+    open(PALETTE_WIDTH, palette_height(true, true, PALETTE_ROWS), parent, cx, build);
 }
 
-/// Opens the list `build` makes over `parent`: a dialog a [`palette`] without a field
-/// fills, sized to its `rows`, up to the most a palette shows.
+/// Opens the list `build` makes over `parent`: a dialog a [`palette`] of rows alone fills,
+/// sized to its `rows`, up to the most a palette shows.
 pub fn open_list<V: Render>(
     rows: usize,
     parent: &mut Window,
     cx: &mut App,
     build: impl FnOnce(&mut Window, &mut Context<V>) -> V,
 ) {
-    open(PALETTE_WIDTH, palette_height(false, rows), parent, cx, build);
+    open(PALETTE_WIDTH, palette_height(false, false, rows), parent, cx, build);
 }
 
-/// How high a palette is with `rows` rows, and a field if it has one.
-fn palette_height(field: bool, rows: usize) -> f32 {
+/// How high a palette is with `rows` rows, a field over them if `field` and a line under
+/// them if `status`.
+fn palette_height(field: bool, status: bool, rows: usize) -> f32 {
     let field = if field { FIELD + GAP } else { 0. };
+    let status = if status { GAP + SMALL_LINE } else { 0. };
     let rows = rows.min(PALETTE_ROWS) as f32 * crate::files::ROW;
-    2. * PADDING + field + rows + GAP + SMALL_LINE
+    2. * PADDING + field + rows + status
 }
 
-/// A palette: its field, if it has one, over `list`, what it finds, and under that `status`,
-/// a small muted line on how much; the pieces [`open_palette`] and [`open_list`] size the
-/// dialog for.
+/// A palette: its field, if it has one, over `list`, what it finds, and under that
+/// `status`, if it has one, a small muted line on how much; the pieces [`open_palette`] and
+/// [`open_list`] size the dialog for.
 pub fn palette(
     input: Option<&Entity<InputState>>,
     list: impl IntoElement,
-    status: impl IntoElement,
+    status: Option<AnyElement>,
     p: Palette,
 ) -> gpui_kit::Div {
     let field = input.map(|input| {
@@ -95,7 +98,7 @@ pub fn palette(
         .gap(px(GAP))
         .children(field)
         .child(list)
-        .child(small_line().text_color(p.muted).child(status))
+        .children(status.map(|status| small_line().text_color(p.muted).child(status)))
 }
 
 /// The dialog on screen, if any.

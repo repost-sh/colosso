@@ -61,7 +61,8 @@ impl Render for GoToFile {
             });
             list::scrolling("go-to-file", self.results.found.len(), &self.scroll, rows)
         };
-        modal::palette(Some(&self.input), list, self.status.clone(), p)
+        let status = Some(self.status.clone().into_any_element());
+        modal::palette(Some(&self.input), list, status, p)
             .key_context("GoToFile")
             .on_action(cx.listener(|this, _: &SelectPrevious, _, cx| this.step(-1, cx)))
             .on_action(cx.listener(|this, _: &SelectNext, _, cx| this.step(1, cx)))

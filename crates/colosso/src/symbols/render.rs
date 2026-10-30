@@ -35,7 +35,8 @@ impl Render for Symbols {
             });
             list::scrolling("symbols", self.shown.len(), &self.scroll, rows)
         };
-        modal::palette(Some(&self.input), list, self.status(), p)
+        let status = Some(self.status().into_any_element());
+        modal::palette(Some(&self.input), list, status, p)
             .key_context("Symbols")
             .on_action(cx.listener(|this, _: &SelectPrevious, _, cx| this.step(-1, cx)))
             .on_action(cx.listener(|this, _: &SelectNext, _, cx| this.step(1, cx)))
