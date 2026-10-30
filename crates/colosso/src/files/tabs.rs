@@ -39,6 +39,9 @@ pub struct Viewed {
     pub editor: Entity<FileEditor>,
     /// Kept open when another file is previewed, rather than giving way to it.
     pub pinned: bool,
+    /// Its turn the last time it was shown, later tabs' higher: the switcher lists the latest
+    /// first.
+    pub shown_at: u64,
     _going: Subscription,
     /// The places a symbol in it led to are listed under it.
     _found: Subscription,
@@ -158,6 +161,7 @@ impl FilesPanel {
             document,
             editor,
             pinned,
+            shown_at: 0,
             _going,
             _found,
             _document,
@@ -167,9 +171,21 @@ impl FilesPanel {
     /// Shows the tab at `at`, its file picked in the tree.
     pub(super) fn show_tab(&mut self, at: usize, cx: &mut Context<Self>) {
         self.shown = at;
+        let latest = self.tabs.iter().map(|tab| tab.shown_at).max().unwrap_or(0);
+        if let Some(tab) = self.tabs.get_mut(at) {
+            tab.shown_at = latest + 1;
+        }
         let relative = self.viewing().and_then(|viewed| viewed.relative.clone());
         self.set_active(relative, cx);
         cx.notify();
+    }
+
+    /// Shows the tab whose key is `key`, if it's still open, and gives its editor the keyboard.
+    pub(super) fn switch_to(&mut self, key: EntityId, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(at) = self.tabs.iter().position(|tab| tab.key == key) {
+            self.show_tab(at, cx);
+            (self.tabs[at].editor).update(cx, |editor, cx| editor.focus_editor(window, cx));
+        }
     }
 
     /// Keeps the tab at `at` open when another file's previewed.
@@ -274,8 +290,7 @@ impl FilesPanel {
         let name = name(&tab.path);
         let dirty = tab.document.read(cx).is_dirty();
         let close = if dirty {
-            tab_button(("files-tab-close", key.as_u64()), p)
-                .child(div().size(px(7.)).rounded_full().bg(p.text))
+            tab_button(("files-tab-close", key.as_u64()), p).child(unsaved_dot(p))
         } else {
             close_button(("files-tab-close", key.as_u64()), p)
         };
@@ -318,6 +333,11 @@ impl FilesPanel {
             .child(ellipsized(SharedString::from(name)).when(!tab.pinned, Styled::italic))
             .child(close)
     }
+}
+
+/// The dot that marks a file with unsaved edits, on its tab and in the switcher.
+pub(super) fn unsaved_dot(p: Palette) -> Div {
+    div().size(px(7.)).flex_shrink_0().rounded_full().bg(p.text)
 }
 
 /// A file's name, as its tab shows it: the whole path when it has none.

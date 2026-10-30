@@ -4,7 +4,7 @@ use gpui_kit::component::kbd::Kbd;
 use gpui_kit::{Action, App, AsKeystroke as _, IntoElement, ParentElement as _, Styled as _, div};
 
 use super::components::{SettingRow, SettingsSection};
-use crate::files::{CloseTab, Save};
+use crate::files::{CloseTab, Save, SwitchTab};
 use crate::go_to_file::GoToFile;
 use crate::navigation::{CloseSettings, GoBack, GoForward, OpenSettings};
 use crate::projects::NewWorktree;
@@ -44,6 +44,7 @@ const SECTIONS: &[(&str, &[Command])] = &[
         "Files",
         &[
             ("Go to file", &GoToFile),
+            ("Switch between the open files", &SwitchTab),
             ("Save", &Save),
             ("Close the file shown, or else the window", &CloseTab),
         ],

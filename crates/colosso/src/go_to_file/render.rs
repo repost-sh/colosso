@@ -9,17 +9,15 @@ use colosso_project::Results;
 use gpui_kit::assets::IconName;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, Context, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _,
-    Render, SharedString, StatefulInteractiveElement as _, Styled as _, Window, div, px,
-    uniform_list,
+    AnyElement, Context, InteractiveElement as _, IntoElement, ParentElement as _, Render,
+    SharedString, StatefulInteractiveElement as _, Styled as _, Window, div,
 };
 
 use super::view::GoToFile;
-use crate::files::{ROW, file_icon};
-use crate::list::styled;
+use crate::files::{file_icon, file_row};
+use crate::list::{self, styled};
 use crate::modal;
 use crate::right_panel::{PageDown, PageUp, SelectNext, SelectPrevious, note};
-use crate::shell::{self, ellipsized, icon};
 use crate::theme::{self, Palette};
 
 /// A file found, as its row draws it: its icon, its name and its folder, each with the
@@ -58,22 +56,12 @@ impl Render for GoToFile {
         let list = if self.results.found.is_empty() {
             note(p).child(self.note())
         } else {
-            div().flex_1().min_h_0().child(
-                uniform_list(
-                    "go-to-file",
-                    self.results.found.len(),
-                    cx.processor(|this, range: Range<usize>, _, cx| {
-                        let p = theme::palette(cx);
-                        range
-                            .map(|index| this.row(index, p, cx))
-                            .collect::<Vec<_>>()
-                    }),
-                )
-                .track_scroll(&self.scroll)
-                .size_full(),
-            )
+            let rows = cx.processor(move |this: &mut Self, range: Range<usize>, _, cx| {
+                range.map(|index| this.row(index, p, cx)).collect()
+            });
+            list::scrolling("go-to-file", self.results.found.len(), &self.scroll, rows)
         };
-        modal::palette(&self.input, list, self.status.clone(), p)
+        modal::palette(Some(&self.input), list, self.status.clone(), p)
             .key_context("GoToFile")
             .on_action(cx.listener(|this, _: &SelectPrevious, _, cx| this.step(-1, cx)))
             .on_action(cx.listener(|this, _: &SelectNext, _, cx| this.step(1, cx)))
@@ -94,24 +82,10 @@ impl GoToFile {
         let Some(row) = slot.as_ref() else {
             return div().into_any_element();
         };
-        shell::row(("go-to-file-row", index), selected, p)
-            .w_full()
-            .h(px(ROW))
-            .gap_1p5()
-            .rounded(px(5.))
+        let name = styled(&row.name, &row.name_matched, p.accent);
+        let folder = styled(&row.folder, &row.folder_matched, p.accent);
+        file_row(("go-to-file-row", index), selected, row.icon, name, folder, p)
             .on_click(cx.listener(move |this, _, window, cx| this.open(index, window, cx)))
-            .child(icon(row.icon, 14.).text_color(p.muted))
-            .child(
-                div()
-                    .flex_shrink_0()
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child(styled(&row.name, &row.name_matched, p.accent)),
-            )
-            .child(
-                ellipsized(styled(&row.folder, &row.folder_matched, p.accent))
-                    .flex_1()
-                    .text_color(p.muted),
-            )
             .when(row.recent, |row| {
                 row.child(div().text_xs().text_color(p.muted).child("recent"))
             })
