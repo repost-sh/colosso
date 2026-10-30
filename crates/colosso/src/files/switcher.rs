@@ -39,7 +39,6 @@ pub(super) fn switch(files: Entity<FilesPanel>, by: isize, window: &mut Window, 
         window.focus(&focus, cx);
         let mut switcher = Switcher {
             files,
-            status: format!("{} files open, the latest shown first", rows.len()).into(),
             rows,
             selected: 0,
             behind,
@@ -104,8 +103,6 @@ pub(super) struct Switcher {
     files: Entity<FilesPanel>,
     rows: Vec<Row>,
     selected: usize,
-    /// How many files are open, under the list.
-    status: SharedString,
     /// The window the switcher sits over, where the file picked is shown.
     behind: AnyWindowHandle,
     focus: FocusHandle,
@@ -172,7 +169,7 @@ impl Render for Switcher {
             range.map(|index| this.row(index, p, cx)).collect()
         });
         let list = list::scrolling("tab-switcher", self.rows.len(), &self.scroll, rows);
-        modal::palette(None, list, self.status.clone(), p)
+        modal::palette(None, list, None, p)
             .track_focus(&self.focus)
             .key_context("TabSwitcher")
             .on_action(cx.listener(|this, _: &SelectPrevious, _, cx| this.step(-1, cx)))
