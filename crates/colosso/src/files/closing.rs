@@ -8,12 +8,11 @@ use gpui_kit::{
 
 use super::FileEditor;
 use super::panel::FilesPanel;
-use crate::modal::{self, Button, LINE, SMALL_LINE, Tone};
+use crate::modal::{self, Button, SMALL_LINE, Tone};
 use crate::theme;
 
 const WIDTH: f32 = 400.;
 const GAP: f32 = 8.;
-const HEIGHT: f32 = 2. * modal::PADDING + LINE + GAP + SMALL_LINE + 2. * GAP + modal::FOOTER;
 
 /// Asks over `window` what to do with the unsaved edits in `editor`, the view in a tab of
 /// `panel` showing the file called `name`: the tab closes unless it's kept.
@@ -24,14 +23,18 @@ pub fn ask(
     window: &mut Window,
     cx: &mut App,
 ) {
+    let title: SharedString = format!("Save the changes to {name}?").into();
+    // Sized for the title as it wraps: a long file name takes it onto a second line.
+    let heading = modal::heading_height(&title, WIDTH, window);
+    let height = 2. * modal::PADDING + heading + GAP + SMALL_LINE + 2. * GAP + modal::FOOTER;
     let dialog = SaveDialog {
         panel,
         editor,
-        title: format!("Save the changes to {name}?").into(),
+        title,
         saving: false,
         error: None,
     };
-    modal::open(WIDTH, HEIGHT, window, cx, |_, _| dialog);
+    modal::open(WIDTH, height, window, cx, |_, _| dialog);
 }
 
 pub(super) struct SaveDialog {

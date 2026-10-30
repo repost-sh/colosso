@@ -11,7 +11,7 @@ use gpui_kit::{
 
 use super::view::split_path;
 use crate::checkout::Checkout;
-use crate::modal::{self, Button, LINE, SMALL_LINE, Tone, small_line};
+use crate::modal::{self, Button, SMALL_LINE, Tone, small_line};
 use crate::theme;
 
 const WIDTH: f32 = 400.;
@@ -37,7 +37,8 @@ pub fn confirm(checkout: Entity<Checkout>, list: Vec<Change>, window: &mut Windo
     let keeps_staged =
         (list.iter()).any(|change| !change.staged && staged.contains(change.path.as_str()));
     let dialog = DiscardDialog::new(checkout, list, keeps_staged);
-    modal::open(WIDTH, dialog.height(), window, cx, |_, _| dialog);
+    let height = dialog.height(window);
+    modal::open(WIDTH, height, window, cx, |_, _| dialog);
 }
 
 struct DiscardDialog {
@@ -100,13 +101,14 @@ impl DiscardDialog {
         }
     }
 
-    /// The window height that fits what the dialog says.
-    fn height(&self) -> f32 {
+    /// The window height that fits what the dialog says, its title as it wraps.
+    fn height(&self, window: &Window) -> f32 {
         let names = match self.names.len() {
             0 => 0.,
             lines => GAP + lines as f32 * SMALL_LINE,
         };
-        2. * modal::PADDING + LINE + GAP + SMALL_LINE + names + 2. * GAP + modal::FOOTER
+        let title = modal::heading_height(&self.title, WIDTH, window);
+        2. * modal::PADDING + title + GAP + SMALL_LINE + names + 2. * GAP + modal::FOOTER
     }
 
     fn discard(&mut self, window: &mut Window, cx: &mut Context<Self>) {

@@ -1,10 +1,11 @@
-use gpui_kit::{Entity, TestAppContext};
+use gpui_kit::{AnyWindowHandle, Entity, TestAppContext, VisualTestContext, px};
 
 use super::super::At;
 use super::super::closing::SaveDialog;
 use super::super::tests::{checkout, editing, open, selected, typed, with};
 use super::*;
 use crate::modal;
+use crate::test_support::write;
 
 /// The tabs open, by their paths in the checkout, a preview's ending in `*` and the one shown
 /// in brackets.
@@ -172,9 +173,6 @@ fn a_tab_with_unsaved_edits_asks_before_it_closes(cx: &mut TestAppContext) {
         with(window, &panel, cx, |panel, window, cx| panel.close(0, window, cx));
         cx.run_until_parked();
     };
-    let asked = |cx: &mut TestAppContext| {
-        cx.read(|cx| Some((modal::window(cx)?, modal::current::<SaveDialog>(cx)?)))
-    };
     // Answers the question, keeping no hold on the dialog, which goes with its window.
     let answer = |cx: &mut TestAppContext,
                   act: fn(&mut SaveDialog, &mut Window, &mut Context<SaveDialog>)| {
@@ -205,5 +203,40 @@ fn a_tab_with_unsaved_edits_asks_before_it_closes(cx: &mut TestAppContext) {
     close(cx);
     assert!(tabs(&panel, cx).is_empty());
     assert!(asked(cx).is_none());
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// The question asked about a tab's unsaved edits, if one is: its window and the dialog in it.
+fn asked(cx: &mut TestAppContext) -> Option<(AnyWindowHandle, Entity<SaveDialog>)> {
+    cx.read(|cx| Some((modal::window(cx)?, modal::current::<SaveDialog>(cx)?)))
+}
+
+#[gpui_kit::test]
+fn the_question_fits_a_file_name_that_wraps_its_title(cx: &mut TestAppContext) {
+    let root = checkout("files-tabs-long-name");
+    let long = "src/attempt-log-check-newer.usecase.rs";
+    write(&root, long, b"// long\n");
+    let (window, panel) = open(&root, cx);
+    // Types into the file at `path`, closes its tab, and says how tall the question asked
+    // is and where its buttons end, before answering it.
+    let asked_about = |path: &str, cx: &mut TestAppContext| {
+        let (_, editor, _) = editing(window, &panel, path, At::Bytes(0..0), cx);
+        typed(window, &editor, "// edit\n", cx);
+        with(window, &panel, cx, |panel, window, cx| panel.close(0, window, cx));
+        cx.run_until_parked();
+        let (dialog, question) = asked(cx).expect("asked");
+        let cx = &mut VisualTestContext::from_window(dialog, cx);
+        cx.run_until_parked();
+        let buttons = cx.debug_bounds("dialog-footer").expect("the buttons");
+        let height = cx.update(|window, _| window.bounds().size.height);
+        cx.update(|window, cx| question.update(cx, |question, cx| question.close_tab(window, cx)));
+        (height, buttons.bottom())
+    };
+    let padding = px(modal::PADDING);
+    let (short, buttons) = asked_about("src/lib.rs", cx);
+    assert_eq!(buttons, short - padding, "the buttons end at the padding");
+    let (tall, buttons) = asked_about(long, cx);
+    assert!(tall > short, "a line more for the name");
+    assert_eq!(buttons, tall - padding, "the buttons keep their padding");
     let _ = std::fs::remove_dir_all(&root);
 }
