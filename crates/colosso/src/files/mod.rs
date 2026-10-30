@@ -31,6 +31,7 @@ use gpui_kit::{
 };
 
 use crate::modal;
+use crate::navigation::Route;
 use crate::right_panel::View;
 use crate::shell::{self, Shell};
 use crate::theme::Palette;
@@ -38,9 +39,10 @@ use crate::theme::Palette;
 gpui_kit::actions!(files, [Save, CloseTab, SwitchTab, SwitchTabBack, CloseLocations]);
 
 /// Binds the keys the file shown answers to, wherever the keyboard is (⌘S saves it, ⌘W
-/// closes its tab, ⌃⇥ switches to another); in the switcher, the keys that move its pick;
-/// and, while the list of places under the file has the keyboard, the keys that move along
-/// it, Enter to open the place picked and Escape to close it.
+/// closes its tab, or else what's looked at instead, ⌃⇥ switches to another); in the
+/// switcher, the keys that move its pick; and, while the list of places under the file has
+/// the keyboard, the keys that move along it, Enter to open the place picked and Escape to
+/// close it.
 pub fn init(cx: &mut App) {
     use crate::list::{Activate, SelectFirst, SelectLast};
     use gpui_kit::KeyBinding;
@@ -68,7 +70,8 @@ pub fn asking(cx: &App) -> bool {
 }
 
 impl Shell {
-    /// What the window does with the files' actions, wherever the keyboard is.
+    /// What the window does with the files' actions when the keyboard is outside the Files
+    /// panel, which answers them itself otherwise.
     pub fn handle_files(root: Div, cx: &mut Context<Self>) -> Div {
         root.on_action(cx.listener(|this, _: &CloseTab, window, cx| this.close_tab(window, cx)))
             .on_action(cx.listener(|this, _: &SwitchTab, window, cx| this.switch_tab(1, window, cx)))
@@ -88,12 +91,16 @@ impl Shell {
             .cloned()
     }
 
-    /// ⌘W: closes the tab shown in the Files panel, asking about unsaved edits first; with no
-    /// tab to close, the window, as a browser's last tab does.
+    /// ⌘W closes what's looked at: the settings, or the file shown in the Files panel,
+    /// asking about unsaved edits first; with neither, it's left to the shell, which closes
+    /// the tab in the middle. Never the window.
     fn close_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        match self.files_shown(cx) {
-            Some(files) => files.update(cx, |files, cx| files.close(files.shown, window, cx)),
-            None => self.close_window(window, cx),
+        if matches!(self.route(cx), Route::Settings(_)) {
+            self.navigate(Route::Workspace, cx);
+        } else if let Some(files) = self.files_shown(cx) {
+            files.update(cx, |files, cx| files.close_shown(window, cx));
+        } else {
+            cx.propagate();
         }
     }
 

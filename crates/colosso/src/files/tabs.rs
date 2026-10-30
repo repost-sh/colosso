@@ -232,6 +232,11 @@ impl FilesPanel {
         }
     }
 
+    /// Closes the tab shown, if one is, asking about unsaved edits first.
+    pub(super) fn close_shown(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.close(self.shown, window, cx);
+    }
+
     /// Closes the tab at `at`, showing the one after it, or else the one before. Its
     /// document goes with it, unless another tab shows the file.
     fn remove(&mut self, at: usize, cx: &mut Context<Self>) {

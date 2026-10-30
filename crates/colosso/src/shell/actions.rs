@@ -7,7 +7,7 @@ use gpui_kit::{
 };
 
 use super::Shell;
-use crate::files;
+use crate::files::{self, CloseTab};
 use crate::model::PaneKind;
 use crate::navigation::{CloseSettings, GoBack, GoForward, Navigate, NavigationHistory, Route};
 use crate::projects::{self, NewWorktree};
@@ -26,8 +26,7 @@ actions!(
         NewTerminal,
         NewBrowserTab,
         NewEditorTab,
-        EditTheme,
-        CloseWindow
+        EditTheme
     ]
 );
 
@@ -39,7 +38,6 @@ pub fn init(cx: &mut App) {
         KeyBinding::new("cmd-t", NewChat, None),
         KeyBinding::new("cmd-shift-m", ToggleSidebarMode, None),
         KeyBinding::new("cmd-n", NewWorktree, None),
-        KeyBinding::new("cmd-shift-w", CloseWindow, None),
     ]);
     // The layout is a setting, so this works from any window or menu.
     cx.on_action(|_: &ToggleSidebarMode, cx| {
@@ -65,7 +63,12 @@ impl Shell {
             .map(|root| Self::handle_right_panel(root, cx))
             .on_action(cx.listener(Self::toggle_bottom_panel))
             .on_action(cx.listener(|this, _: &NewChat, _, cx| this.new_tab(PaneKind::Chat, cx)))
-            .on_action(cx.listener(|this, _: &CloseWindow, window, cx| this.close_window(window, cx)))
+            // ⌘W closes the tab in the middle once the Files panel, heard first, has passed
+            // on it: no settings page or file shown to close instead.
+            .on_action(cx.listener(|this, _: &CloseTab, _, cx| {
+                this.workspace.close_active_tab();
+                cx.notify();
+            }))
             .on_action(
                 cx.listener(|this, _: &NewTerminal, _, cx| this.new_tab(PaneKind::Terminal, cx)),
             )
@@ -95,20 +98,13 @@ impl Shell {
 }
 
 impl Shell {
-    /// Has `window`'s red button ask about unsaved edits, as ⌘⇧W does.
+    /// Has `window`'s red button ask about unsaved edits. No key closes the window: ⌘W closes
+    /// what's shown in it, and the dock icon opens it again once closed.
     pub(super) fn guard_closing(window: &Window, cx: &mut Context<Self>) {
         let shell = cx.entity().downgrade();
         window.on_window_should_close(cx, move |window, cx| {
             (shell.update(cx, |shell, cx| shell.may_close(window, cx))).unwrap_or(true)
         });
-    }
-
-    /// Closes the window, once what's unsaved in it is saved or let go. The dock icon opens
-    /// it again.
-    pub fn close_window(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.may_close(window, cx) {
-            window.remove_window();
-        }
     }
 
     /// Whether the window may close now: with unsaved edits in it, it asks about them
