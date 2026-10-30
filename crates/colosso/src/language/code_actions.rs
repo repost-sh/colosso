@@ -16,7 +16,6 @@ use gpui_kit::{App, AppContext as _, Entity, SharedString, Task, Window};
 
 use super::edits;
 use super::providers::Hooks;
-use crate::checkout::Document;
 
 impl CodeActionProvider for Hooks {
     fn id(&self) -> SharedString {
@@ -76,8 +75,7 @@ impl CodeActionProvider for Hooks {
                     if options.resolve_provider == Some(true)
             )
         });
-        let (path, checkout) = (self.path.clone(), self.checkout.clone());
-        let editor = state.downgrade();
+        let (hooks, editor) = (self.clone(), state.downgrade());
         window.spawn(cx, async move |cx| {
             let title = action.title.clone();
             let (asked, action) = cx
@@ -94,46 +92,7 @@ impl CodeActionProvider for Hooks {
                 log::warn!("{title}: nothing to apply; a command isn't run yet");
                 return Ok(());
             };
-            let elsewhere = cx.update(|window, cx| {
-                edits::apply(edit, &asked, &path, &editor, &checkout, window, cx)
-            })?;
-            let files = match elsewhere {
-                Ok(files) => files,
-                Err(why) => {
-                    log::warn!("{title}: {why}");
-                    return Ok(());
-                }
-            };
-            if files.is_empty() {
-                return Ok(());
-            }
-            let encoding = asked.encoding;
-            let written = cx
-                .background_spawn(async move {
-                    (files.into_iter())
-                        .filter_map(|(file, edits)| match edits::on_disk(&file, &edits, encoding) {
-                            Ok(()) => Some(file),
-                            Err(error) => {
-                                log::warn!("{title}: couldn't edit {}: {error}", file.display());
-                                None
-                            }
-                        })
-                        .collect::<Vec<_>>()
-                })
-                .await;
-            // A file shown reads again now, rather than once the watcher says it changed.
-            cx.update(|_, cx| {
-                let Some(checkout) = checkout.upgrade() else {
-                    return;
-                };
-                for file in written {
-                    log::info!("edited {}", file.display());
-                    if let Some(document) = checkout.read(cx).open_document(&file) {
-                        document.update(cx, Document::reread);
-                    }
-                }
-            })?;
-            Ok(())
+            edits::land(&title, edit, &asked, &hooks, &editor, cx).await
         })
     }
 }

@@ -15,7 +15,7 @@
 //!   parameter names the server infers, shown in the text; `navigate`, a definition in
 //!   another file turned into a place in it for the viewer; `locations`, a symbol's
 //!   references, or its several definitions, each with its line, for the panel listing
-//!   them.
+//!   them; `rename`, a symbol renamed in place, here and in the other files.
 //! - `status`: the selected checkout's servers in the status bar, each with its menu;
 //!   `server_log`, each server's own log, which the menu shows.
 
@@ -28,6 +28,7 @@ mod locations;
 mod navigate;
 mod providers;
 mod registry;
+mod rename;
 mod server;
 mod server_log;
 mod status;
@@ -49,13 +50,14 @@ use gpui_kit::{App, KeyBinding, actions};
 
 pub use locations::Found;
 pub use providers::Attached;
+pub use rename::Prepared;
 pub use registry::{Languages, attach, forget, install, locate};
 pub use server::State;
 pub use status::ServersStatus;
 
 use crate::settings;
 
-actions!(language, [FindReferences]);
+actions!(language, [FindReferences, Rename]);
 
 /// A server stops once it has had no file open for this long, if the settings ask.
 const IDLE: Duration = Duration::from_mins(10);
@@ -205,12 +207,13 @@ fn node_server(server: &NodeServer, data: &Path, root: &Path) -> Result<Launch, 
     Ok(server.launch(node, &script, root))
 }
 
-/// F12 goes to the definition of what's under the cursor; ctrl-space asks for completions
-/// without typing.
+/// F12 goes to the definition of what's under the cursor, shift-F12 lists its references,
+/// F2 renames it; ctrl-space asks for completions without typing.
 fn bind_keys(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("f12", GoToDefinition, Some("Input")),
         KeyBinding::new("shift-f12", FindReferences, Some("Input")),
+        KeyBinding::new("f2", Rename, Some("Input")),
         KeyBinding::new("ctrl-space", ShowCompletions, Some("Input")),
     ]);
 }

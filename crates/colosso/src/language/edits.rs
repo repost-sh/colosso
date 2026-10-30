@@ -12,15 +12,66 @@ use colosso_lsp::lsp_types::{
 };
 use colosso_lsp::{Encoding, IndexedText, uri};
 use gpui_kit::component::input::EditorState;
-use gpui_kit::{App, WeakEntity, Window};
+use gpui_kit::{App, AppContext as _, AsyncWindowContext, WeakEntity, Window};
 
-use super::providers::Asked;
-use crate::checkout::Checkout;
+use super::providers::{Asked, Hooks};
+use crate::checkout::{Checkout, Document};
+
+/// Lands `edit`, `what` in the log: `hooks`' file's part in `editor`, as `apply` does, the
+/// other files' on disk, which a view showing one reads again now, rather than once the
+/// watcher says it changed. A refusal is logged, and nothing's done.
+pub(super) async fn land(
+    what: &str,
+    edit: WorkspaceEdit,
+    asked: &Asked,
+    hooks: &Hooks,
+    editor: &WeakEntity<EditorState>,
+    cx: &mut AsyncWindowContext,
+) -> gpui_kit::Result<()> {
+    let (path, checkout) = (&hooks.path, &hooks.checkout);
+    let elsewhere =
+        cx.update(|window, cx| apply(edit, asked, path, editor, checkout, window, cx))?;
+    let files = match elsewhere {
+        Ok(files) => files,
+        Err(why) => {
+            log::warn!("{what}: {why}");
+            return Ok(());
+        }
+    };
+    if files.is_empty() {
+        return Ok(());
+    }
+    let (encoding, what) = (asked.encoding, what.to_owned());
+    let written = cx
+        .background_spawn(async move {
+            (files.into_iter())
+                .filter_map(|(file, edits)| match on_disk(&file, &edits, encoding) {
+                    Ok(()) => Some(file),
+                    Err(error) => {
+                        log::warn!("{what}: couldn't edit {}: {error}", file.display());
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+        })
+        .await;
+    cx.update(|_, cx| {
+        let Some(checkout) = checkout.upgrade() else {
+            return;
+        };
+        for file in written {
+            log::info!("edited {}", file.display());
+            if let Some(document) = checkout.read(cx).open_document(&file) {
+                document.update(cx, Document::reread);
+            }
+        }
+    })
+}
 
 /// Applies `edit` to `path` through `editor`, which shows it as `asked` knows it, and
 /// says which other files get which edits, on disk; none when one of them has unsaved
 /// edits in `checkout`, so an edit lands whole or not at all.
-pub(super) fn apply(
+fn apply(
     edit: WorkspaceEdit,
     asked: &Asked,
     path: &Path,
@@ -123,7 +174,7 @@ fn disjoint(edits: &[(Range<usize>, &str)]) -> bool {
 }
 
 /// Puts `edits`, in `encoding`, into the file at `path`.
-pub(super) fn on_disk(path: &Path, edits: &[TextEdit], encoding: Encoding) -> io::Result<()> {
+fn on_disk(path: &Path, edits: &[TextEdit], encoding: Encoding) -> io::Result<()> {
     let indexed = IndexedText::new(fs::read_to_string(path)?);
     let text = indexed.as_str();
     let mut edited = String::with_capacity(text.len());
