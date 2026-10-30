@@ -27,22 +27,23 @@ pub use render::ROW;
 use gpui_kit::assets::IconName;
 use gpui_kit::{
     App, Context, Div, ElementId, Entity, FontWeight, InteractiveElement as _, IntoElement,
-    ModifiersChangedEvent, ParentElement as _, Stateful, Styled as _, Window, div, px,
+    ModifiersChangedEvent, ParentElement as _, Stateful, Styled as _, TaskExt as _, Window, div, px,
 };
 
 use crate::modal;
 use crate::navigation::Route;
 use crate::right_panel::View;
+use crate::settings::{self, SaveScope};
 use crate::shell::{self, Shell};
 use crate::theme::Palette;
 
 gpui_kit::actions!(files, [Save, CloseTab, SwitchTab, SwitchTabBack, CloseLocations]);
 
-/// Binds the keys the file shown answers to, wherever the keyboard is (⌘S saves it, ⌘W
-/// closes its tab, or else what's looked at instead, ⌃⇥ switches to another); in the
-/// switcher, the keys that move its pick; and, while the list of places under the file has
-/// the keyboard, the keys that move along it, Enter to open the place picked and Escape to
-/// close it.
+/// Binds the keys the file shown answers to, wherever the keyboard is (⌘S saves it, or every
+/// file as set; ⌘W closes its tab, or else what's looked at instead; ⌃⇥ switches to
+/// another); in the switcher, the keys that move its pick; and, while the list of places
+/// under the file has the keyboard, the keys that move along it, Enter to open the place
+/// picked and Escape to close it.
 pub fn init(cx: &mut App) {
     use crate::list::{Activate, SelectFirst, SelectLast};
     use gpui_kit::KeyBinding;
@@ -70,10 +71,11 @@ pub fn asking(cx: &App) -> bool {
 }
 
 impl Shell {
-    /// What the window does with the files' actions when the keyboard is outside the Files
-    /// panel, which answers them itself otherwise.
+    /// What the window does with the files' actions, wherever the keyboard is; only ⌘W is
+    /// the Files panel's own while the keyboard is in it.
     pub fn handle_files(root: Div, cx: &mut Context<Self>) -> Div {
         root.on_action(cx.listener(|this, _: &CloseTab, window, cx| this.close_tab(window, cx)))
+            .on_action(cx.listener(|this, _: &Save, _, cx| this.save(cx)))
             .on_action(cx.listener(|this, _: &SwitchTab, window, cx| this.switch_tab(1, window, cx)))
             .on_action(cx.listener(|this, _: &SwitchTabBack, window, cx| this.switch_tab(-1, window, cx)))
             // ⌃ let go before the switcher's window has the keyboard is heard here.
@@ -89,6 +91,26 @@ impl Shell {
         (self.right_panel.files())
             .filter(|files| self.right_panel.shows(View::Files) && files.read(cx).viewing().is_some())
             .cloned()
+    }
+
+    /// ⌘S saves the file shown in the Files panel or, as set, every file with unsaved edits
+    /// in the window; on a settings page, with no file in sight, nothing.
+    fn save(&mut self, cx: &mut Context<Self>) {
+        if matches!(self.route(cx), Route::Settings(_)) {
+            return;
+        }
+        match settings::get(cx).save_scope {
+            SaveScope::Shown => {
+                if let Some(files) = self.files_shown(cx) {
+                    files.update(cx, |files, cx| files.save_shown(cx));
+                }
+            }
+            SaveScope::All => {
+                for editor in self.right_panel.unsaved(cx) {
+                    (editor.update(cx, FileEditor::save)).detach_and_log_err(cx);
+                }
+            }
+        }
     }
 
     /// ⌘W closes what's looked at: the settings, or the file shown in the Files panel,

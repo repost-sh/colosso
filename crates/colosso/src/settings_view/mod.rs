@@ -4,6 +4,7 @@
 mod about;
 mod appearance;
 mod components;
+mod editor;
 mod general;
 mod keyboard_shortcuts;
 mod native_slider;
@@ -26,6 +27,7 @@ use components::{SettingsPageColumn, SettingsSection};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SettingsPage {
     General,
+    Editor,
     Appearance,
     KeyboardShortcuts,
     About,
@@ -37,6 +39,7 @@ const SIDEBAR_GROUPS: [(&str, &[SettingsPage]); 2] = [
         "Preferences",
         &[
             SettingsPage::General,
+            SettingsPage::Editor,
             SettingsPage::Appearance,
             SettingsPage::KeyboardShortcuts,
         ],
@@ -48,6 +51,7 @@ impl SettingsPage {
     pub fn title(self) -> &'static str {
         match self {
             SettingsPage::General => "General",
+            SettingsPage::Editor => "Editor",
             SettingsPage::Appearance => "Appearance",
             SettingsPage::KeyboardShortcuts => "Keyboard shortcuts",
             SettingsPage::About => "About",
@@ -57,6 +61,7 @@ impl SettingsPage {
     fn icon(self) -> IconName {
         match self {
             SettingsPage::General => IconName::Settings,
+            SettingsPage::Editor => IconName::SquarePen,
             SettingsPage::Appearance => IconName::SunMoon,
             SettingsPage::KeyboardShortcuts => IconName::Keyboard,
             SettingsPage::About => IconName::Info,
@@ -66,6 +71,7 @@ impl SettingsPage {
     fn sections(self, cx: &App) -> Vec<SettingsSection> {
         match self {
             SettingsPage::General => general::sections(cx),
+            SettingsPage::Editor => editor::sections(cx),
             SettingsPage::Appearance => appearance::sections(cx),
             SettingsPage::KeyboardShortcuts => keyboard_shortcuts::sections(cx),
             SettingsPage::About => about::sections(cx),
@@ -172,6 +178,7 @@ mod tests {
             .collect();
         for page in [
             SettingsPage::General,
+            SettingsPage::Editor,
             SettingsPage::Appearance,
             SettingsPage::KeyboardShortcuts,
             SettingsPage::About,

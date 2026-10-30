@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use gpui_kit::component::native_menu::NativeMenu;
-use gpui_kit::{Action, App, Context, Global, Subscription, Task, Window};
+use gpui_kit::{Action, App, Context, Global, SharedString, Subscription, Task, Window};
 use serde::{Deserialize, Serialize};
 
 mod language_servers;
@@ -53,12 +53,21 @@ impl Layout {
 
     /// A menu of the layouts with `self` checked.
     pub fn menu(self) -> NativeMenu {
-        Layout::ALL
-            .into_iter()
-            .fold(NativeMenu::new(), |menu, layout| {
-                menu.menu_with_check(layout.label(), layout == self, Box::new(SetLayout(layout)))
-            })
+        checked_menu(Layout::ALL, self, Layout::label, |layout| Box::new(SetLayout(layout)))
     }
+}
+
+/// A menu of `choices` with `current` checked, each named by `label` and, picked, setting
+/// itself through `action`.
+pub fn checked_menu<T: Copy + PartialEq, L: Into<SharedString>>(
+    choices: impl IntoIterator<Item = T>,
+    current: T,
+    label: impl Fn(T) -> L,
+    action: impl Fn(T) -> Box<dyn Action>,
+) -> NativeMenu {
+    choices.into_iter().fold(NativeMenu::new(), |menu, choice| {
+        menu.menu_with_check(label(choice), choice == current, action(choice))
+    })
 }
 
 /// What the branches of new worktrees are named under: `<prefix>/<name>`.
@@ -75,6 +84,35 @@ pub enum BranchPrefix {
 #[derive(Clone, Debug, PartialEq, Action)]
 #[action(namespace = settings, no_json)]
 pub struct SetPreviewFiles(pub bool);
+
+/// What ⌘S saves: the file shown, as most editors do, or every file with unsaved edits.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum SaveScope {
+    #[default]
+    Shown,
+    All,
+}
+
+/// Sets what ⌘S saves, from the Editor settings' menu.
+#[derive(Clone, Debug, PartialEq, Action)]
+#[action(namespace = settings, no_json)]
+pub struct SetSaveScope(pub SaveScope);
+
+impl SaveScope {
+    pub const ALL: [SaveScope; 2] = [SaveScope::Shown, SaveScope::All];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            SaveScope::Shown => "The file shown",
+            SaveScope::All => "Every file with unsaved edits",
+        }
+    }
+
+    /// A menu of what ⌘S can save, with `self` checked.
+    pub fn menu(self) -> NativeMenu {
+        checked_menu(SaveScope::ALL, self, SaveScope::label, |scope| Box::new(SetSaveScope(scope)))
+    }
+}
 
 /// Picks how many language servers run at once, or no limit, from a menu.
 #[derive(Clone, Debug, PartialEq, Action)]
@@ -103,6 +141,8 @@ pub struct Settings {
     /// Whether a file picked in the Files panel's tree, by a click or the arrow keys, opens in
     /// a preview tab the next one picked takes over, rather than in a tab of its own.
     pub preview_files: bool,
+    /// What ⌘S saves: the file shown, or every file with unsaved edits in the window.
+    pub save_scope: SaveScope,
     /// Whether the types and parameter names a language server infers are shown greyed in
     /// the code where they'd go (inlay hints). On, as in Zed and VS Code.
     pub inlay_hints: bool,
@@ -181,6 +221,7 @@ impl Default for Settings {
             files_panel_width: theme::FILES_WIDTH,
             files_tree_width: theme::FILES_TREE_WIDTH,
             preview_files: true,
+            save_scope: SaveScope::default(),
             inlay_hints: true,
             semantic_colouring: true,
             sidebar_open_on_launch: true,
@@ -257,6 +298,9 @@ pub fn init(cx: &mut App) {
     });
     cx.on_action(|SetPreviewFiles(on): &SetPreviewFiles, cx| {
         update(cx, |settings| settings.preview_files = *on);
+    });
+    cx.on_action(|SetSaveScope(scope): &SetSaveScope, cx| {
+        update(cx, |settings| settings.save_scope = *scope);
     });
     cx.on_action(|SetMostLanguageServers(most): &SetMostLanguageServers, cx| {
         update(cx, |settings| settings.most_language_servers = *most);

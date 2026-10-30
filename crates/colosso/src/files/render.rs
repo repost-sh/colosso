@@ -22,7 +22,7 @@ use gpui_kit::{
 
 use super::icons;
 use super::panel::FilesPanel;
-use super::{CloseTab, Save};
+use super::CloseTab;
 use crate::changes::{Mark, Marks};
 use crate::modal::spinner;
 use crate::projects::{CopyPath, RevealInFinder, with_menu};
@@ -60,7 +60,6 @@ impl Render for FilesPanel {
             .size_full()
             .flex()
             .flex_col()
-            .on_action(cx.listener(|this, _: &Save, _, cx| this.save_shown(cx)))
             // With the keyboard in the panel, ⌘W closes the file shown and nothing else.
             .on_action(cx.listener(|this, _: &CloseTab, window, cx| this.close_shown(window, cx)))
             .child(self.header(opened, p, cx))
