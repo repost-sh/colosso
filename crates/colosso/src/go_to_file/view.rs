@@ -22,11 +22,6 @@ use crate::list::{page, stepped};
 use crate::modal;
 use crate::shell::Shell;
 
-const WIDTH: f32 = 640.;
-/// Rows shown at once.
-pub(super) const ROWS: f32 = 14.;
-/// The field, the rows and the line under them, between the dialog's padding.
-const HEIGHT: f32 = 2. * modal::PADDING + 34. + 8. + ROWS * ROW + 8. + modal::SMALL_LINE;
 /// How often the checkout's files are taken up again while its first scan lists them, when
 /// listings come by the hundred.
 const WHILE_SCANNING: Duration = Duration::from_millis(300);
@@ -42,7 +37,7 @@ pub fn open(
     cx: &mut App,
 ) {
     let behind = window.window_handle();
-    modal::open(WIDTH, HEIGHT, window, cx, |window, cx| {
+    modal::open_palette(window, cx, |window, cx| {
         GoToFile::new(shell, checkout, finder, recent, behind, window, cx)
     });
 }
@@ -207,21 +202,14 @@ impl GoToFile {
         let Some(found) = self.results.found.get(index) else {
             return;
         };
-        let path = found.path.clone();
         // Lines are counted from 1 as typed, from 0 as the editor's told.
         let at = (self.results.query.line).map(|line| At::Line(line.saturating_sub(1)));
         let place = Place {
-            path: Path::new(&*path).to_owned(),
+            path: Path::new(&*found.path).to_owned(),
             at,
         };
-        let shell = self.shell.clone();
         modal::dismiss(window, cx);
-        let opened = self.behind.update(cx, |_, window, cx| {
-            shell.update(cx, |shell, cx| shell.view_file(place, window, cx))
-        });
-        if let Err(error) = opened.and_then(|opened| opened) {
-            log::warn!("couldn't open {path} from Go to File: {error}");
-        }
+        Shell::view_behind(&self.shell, self.behind, place, cx);
     }
 }
 

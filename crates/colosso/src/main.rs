@@ -28,6 +28,7 @@ mod settings;
 mod settings_view;
 mod shell;
 mod sidebar;
+mod symbols;
 #[cfg(any(test, feature = "visual-check"))]
 mod test_support;
 mod theme;
@@ -53,6 +54,7 @@ fn init(cx: &mut App) {
     files::init(cx);
     navigation::bind_keys(cx);
     go_to_file::init(cx);
+    symbols::init(cx);
     #[cfg(target_os = "macos")]
     native::init(cx);
 }

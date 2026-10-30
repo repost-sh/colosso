@@ -18,7 +18,7 @@ use lsp_types::{
     SignatureInformationSettings, TagSupport, TextDocumentClientCapabilities,
     TextDocumentSyncClientCapabilities, TokenFormat, WindowClientCapabilities,
     WorkspaceClientCapabilities, WorkspaceEditClientCapabilities,
-    WorkspaceSymbolClientCapabilities, WorkspaceSymbolResolveSupportCapability,
+    WorkspaceSymbolClientCapabilities,
 };
 use serde_json::json;
 
@@ -75,12 +75,9 @@ fn workspace() -> WorkspaceClientCapabilities {
             dynamic_registration: Some(true),
             relative_pattern_support: Some(true),
         }),
-        symbol: Some(WorkspaceSymbolClientCapabilities {
-            resolve_support: Some(WorkspaceSymbolResolveSupportCapability {
-                properties: vec!["location.range".to_owned()],
-            }),
-            ..WorkspaceSymbolClientCapabilities::default()
-        }),
+        // A `workspace/symbol` answer is taken as it comes: nothing of a symbol is resolved
+        // after, so the server has to name each one's range.
+        symbol: Some(WorkspaceSymbolClientCapabilities::default()),
         workspace_folders: Some(true),
         configuration: Some(true),
         // It may ask for every inlay hint to be fetched again.

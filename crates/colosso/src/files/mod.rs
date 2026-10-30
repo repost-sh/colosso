@@ -19,7 +19,7 @@ pub mod visual;
 pub use editor::FileEditor;
 pub use icons::file as file_icon;
 pub use panel::FilesPanel;
-pub use place::{At, Place};
+pub use place::{At, Place, relative};
 pub use render::ROW;
 
 gpui_kit::actions!(files, [Save, CloseLocations]);

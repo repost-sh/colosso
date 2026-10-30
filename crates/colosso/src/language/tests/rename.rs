@@ -6,7 +6,6 @@ use gpui_kit::{App, TestAppContext};
 use serde_json::{Value, json};
 
 use super::support::*;
-use crate::language::State;
 use crate::test_support::repo;
 
 #[gpui_kit::test]
@@ -35,11 +34,7 @@ async fn f2_renames_the_symbol_here_and_in_the_other_file_and_escape_leaves_it(c
         ]);
         Value::Array(script)
     });
-    let shell = shell(&[&root], launcher, cx);
-    let lib = open(&shell, &root, "src/lib.rs", cx);
-    let server = server(&root, cx).unwrap();
-    assert_eq!(settled(&server, cx).await, State::Ready);
-    let lib_editor = cx.read(|cx| editor(&lib, cx)).unwrap();
+    let (shell, lib, server, lib_editor) = ready(&root, "src/lib.rs", launcher, cx).await;
     let field = |cx: &App| lib.read(cx).rename_field().cloned();
 
     // F2 on the name: the field's over it, with the name selected, and has the keyboard.

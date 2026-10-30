@@ -8,17 +8,18 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use gpui_kit::assets::IconName;
-use gpui_kit::component::input::Input;
+use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::component::{Sizable as _, Size};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyView, AnyWindowHandle, App, AppContext as _, ClickEvent, Context, FontWeight, Global, Hsla,
-    InteractiveElement as _, IntoElement, ParentElement as _, Render, RenderOnce, SharedString,
-    StatefulInteractiveElement as _, Styled, Subscription, Window, WindowBackgroundAppearance,
-    WindowBounds, WindowKind, WindowOptions, div, point, px, size,
+    AnyView, AnyWindowHandle, App, AppContext as _, ClickEvent, Context, Entity, FontWeight,
+    Global, Hsla, InteractiveElement as _, IntoElement, ParentElement as _, Render, RenderOnce,
+    SharedString, StatefulInteractiveElement as _, Styled, Subscription, Window,
+    WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions, div, point, px, size,
 };
 
+use crate::shell::icon;
 use crate::theme::{self, Palette};
 
 /// How far below the top of the window behind it a dialog sits.
@@ -30,6 +31,48 @@ pub const FOOTER: f32 = 32.;
 /// Every line in a dialog is one of these high, so its height is known before it opens.
 pub const LINE: f32 = 20.;
 pub const SMALL_LINE: f32 = 18.;
+
+/// The height of a dialog's text [`field`].
+const FIELD: f32 = 34.;
+/// Between the pieces of a [`palette`].
+const GAP: f32 = 8.;
+/// The width of a palette, and the rows it shows at once.
+const PALETTE_WIDTH: f32 = 640.;
+const PALETTE_ROWS: f32 = 14.;
+
+/// Opens the palette `build` makes over `parent`: a dialog a [`palette`] fills, sized to
+/// its rows.
+pub fn open_palette<V: Render>(
+    parent: &mut Window,
+    cx: &mut App,
+    build: impl FnOnce(&mut Window, &mut Context<V>) -> V,
+) {
+    let height = 2. * PADDING + FIELD + GAP + PALETTE_ROWS * crate::files::ROW + GAP + SMALL_LINE;
+    open(PALETTE_WIDTH, height, parent, cx, build);
+}
+
+/// A palette: its field over `list`, what it finds, and under that `status`, a small muted
+/// line on how much; the pieces [`open_palette`] sizes the dialog for.
+pub fn palette(
+    input: &Entity<InputState>,
+    list: impl IntoElement,
+    status: impl IntoElement,
+    p: Palette,
+) -> gpui_kit::Div {
+    div()
+        .size_full()
+        .flex()
+        .flex_col()
+        .gap(px(GAP))
+        .child(field(
+            Input::new(input)
+                .small()
+                .prefix(icon(IconName::Search, 14.).text_color(p.muted)),
+            p,
+        ))
+        .child(list)
+        .child(small_line().text_color(p.muted).child(status))
+}
 
 /// The dialog on screen, if any.
 #[derive(Default)]
@@ -112,7 +155,7 @@ pub fn close(cx: &mut App) {
 
 /// What the dialog on screen shows, if one is open and shows a `T`.
 #[cfg(any(test, feature = "visual-check"))]
-pub fn current<T: 'static>(cx: &App) -> Option<gpui_kit::Entity<T>> {
+pub fn current<T: 'static>(cx: &App) -> Option<Entity<T>> {
     let surface = window(cx)?.downcast::<Surface>()?.read(cx).ok()?;
     surface.content.clone().downcast::<T>().ok()
 }
@@ -261,7 +304,7 @@ pub fn cancel(id: &'static str) -> Button {
 /// A text field on the glass, around an `input` that draws none of its own.
 pub fn field(input: Input, p: Palette) -> gpui_kit::Div {
     div()
-        .h(px(34.))
+        .h(px(FIELD))
         // The input pads its own text, so the field only adds a little.
         .px(px(4.))
         .flex()
