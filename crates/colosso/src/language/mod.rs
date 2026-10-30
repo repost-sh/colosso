@@ -16,7 +16,8 @@
 //!   another file turned into a place in it for the viewer; `locations`, a symbol's
 //!   references, or its several definitions, each with its line, for the panel listing
 //!   them; `rename`, a symbol renamed in place, here and in the other files; `symbols`,
-//!   the file's or the checkout's, for the palettes that go to one.
+//!   the file's or the checkout's, for the palettes that go to one; `semantic`, the
+//!   server's own reading of the code colouring it over the grammar's.
 //! - `status`: the selected checkout's servers in the status bar, each with its menu;
 //!   `server_log`, each server's own log, which the menu shows.
 
@@ -24,12 +25,14 @@ mod code_actions;
 mod completions;
 mod diagnostics;
 mod edits;
+mod heard;
 mod inlay_hints;
 mod locations;
 mod navigate;
 mod providers;
 mod registry;
 mod rename;
+mod semantic;
 mod server;
 mod server_log;
 mod status;

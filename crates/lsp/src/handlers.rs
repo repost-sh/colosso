@@ -10,8 +10,9 @@ use std::sync::{Arc, mpsc};
 use lsp_types::error_codes::REQUEST_FAILED;
 use lsp_types::notification::{DidChangeWatchedFiles, Notification};
 use lsp_types::request::{
-    ApplyWorkspaceEdit, InlayHintRefreshRequest, RegisterCapability, Request, ShowDocument,
-    ShowMessageRequest, UnregisterCapability, WorkDoneProgressCreate, WorkspaceConfiguration,
+    ApplyWorkspaceEdit, InlayHintRefreshRequest, RegisterCapability, Request, SemanticTokensRefresh,
+    ShowDocument, ShowMessageRequest, UnregisterCapability, WorkDoneProgressCreate,
+    WorkspaceConfiguration,
 };
 use lsp_types::{
     ConfigurationParams, DidChangeWatchedFilesRegistrationOptions, FileSystemWatcher, Registration,
@@ -124,6 +125,10 @@ pub(crate) fn answer(shared: &Arc<Shared>, params: &Payload, responder: Responde
         InlayHintRefreshRequest::METHOD => {
             responder.send(Ok(&()));
             shared.emit(&Event::InlayHintsRefresh);
+        }
+        SemanticTokensRefresh::METHOD => {
+            responder.send(Ok(&()));
+            shared.emit(&Event::SemanticTokensRefresh);
         }
         method => match shared.handler(method) {
             Some(handler) => handler(params, responder, &Peer::new(shared)),

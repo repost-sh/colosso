@@ -85,6 +85,9 @@ pub struct Lsp {
     /// names. Color is resolved from the name at paint time so theme switches
     /// take effect without a refetch.
     pub(crate) semantic_tokens: Vec<(lsp_types::Range, SharedString)>,
+    /// Whether the semantic tokens are to be fetched again at the next layout: the host
+    /// asked for it, see [`Lsp::refresh_semantic_tokens`].
+    pub(crate) semantic_tokens_outdated: bool,
     /// The inlay hints of the text in view, see [`Inlays`].
     pub(crate) inlays: Inlays,
     pub(crate) _hover_task: Task<Result<()>>,
@@ -110,6 +113,7 @@ impl Default for Lsp {
             pick_definition: None,
             document_colors: vec![],
             semantic_tokens: vec![],
+            semantic_tokens_outdated: false,
             inlays: Inlays::default(),
             _hover_task: Task::ready(Ok(())),
             _definition_task: Task::ready(Ok(())),

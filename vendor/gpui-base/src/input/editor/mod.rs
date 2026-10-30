@@ -85,6 +85,10 @@ impl InputModeKind for EditorMode {
         else {
             return;
         };
+        if state.extras.lsp.semantic_tokens_outdated {
+            let text = state.text().clone();
+            state.extras.lsp.update_semantic_tokens(&text, window, cx);
+        }
         state.extras.lsp.viewport_shown(viewport, window, cx);
     }
 

@@ -14,7 +14,8 @@ use lsp_types::{
     PrepareSupportDefaultBehavior, PublishDiagnosticsClientCapabilities, RenameClientCapabilities,
     ResourceOperationKind, SemanticTokenModifier, SemanticTokenType,
     SemanticTokensClientCapabilities, SemanticTokensClientCapabilitiesRequests,
-    SemanticTokensFullOptions, ShowDocumentClientCapabilities, SignatureHelpClientCapabilities,
+    SemanticTokensFullOptions, SemanticTokensWorkspaceClientCapabilities,
+    ShowDocumentClientCapabilities, SignatureHelpClientCapabilities,
     SignatureInformationSettings, TagSupport, TextDocumentClientCapabilities,
     TextDocumentSyncClientCapabilities, TokenFormat, WindowClientCapabilities,
     WorkspaceClientCapabilities, WorkspaceEditClientCapabilities,
@@ -82,6 +83,9 @@ fn workspace() -> WorkspaceClientCapabilities {
         configuration: Some(true),
         // It may ask for every inlay hint to be fetched again.
         inlay_hint: Some(InlayHintWorkspaceClientCapabilities {
+            refresh_support: Some(true),
+        }),
+        semantic_tokens: Some(SemanticTokensWorkspaceClientCapabilities {
             refresh_support: Some(true),
         }),
         ..WorkspaceClientCapabilities::default()

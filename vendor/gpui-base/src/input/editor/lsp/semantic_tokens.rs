@@ -105,12 +105,30 @@ impl Lsp {
             .collect()
     }
 
+    /// Every semantic token cached, as a position range and the theme name its type
+    /// resolves to, sorted by start position.
+    pub fn semantic_tokens(&self) -> &[(lsp_types::Range, SharedString)] {
+        &self.semantic_tokens
+    }
+
+    /// Fetch the tokens again at the next layout: the server said they changed, or the
+    /// provider was put in or taken out. A fetch under way is dropped; without a provider,
+    /// so is what was cached. Notify the editor so a frame comes.
+    pub fn refresh_semantic_tokens(&mut self) {
+        if self.semantic_tokens_provider.is_none() {
+            self.semantic_tokens.clear();
+        }
+        self._semantic_tokens_task = Task::ready(());
+        self.semantic_tokens_outdated = true;
+    }
+
     pub(crate) fn update_semantic_tokens(
         &mut self,
         text: &Rope,
         window: &mut Window,
         cx: &mut Context<InputBaseState<EditorMode>>,
     ) {
+        self.semantic_tokens_outdated = false;
         let Some(provider) = self.semantic_tokens_provider.as_ref() else {
             return;
         };

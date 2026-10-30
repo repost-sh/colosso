@@ -7,6 +7,7 @@ mod completions;
 mod inlay_hints;
 mod locations;
 mod rename;
+mod semantic;
 mod support;
 mod symbols;
 
