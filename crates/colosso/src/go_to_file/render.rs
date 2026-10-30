@@ -7,8 +7,6 @@ use std::ops::Range;
 
 use colosso_project::Results;
 use gpui_kit::assets::IconName;
-use gpui_kit::component::Sizable as _;
-use gpui_kit::component::input::Input;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, Context, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _,
@@ -75,28 +73,12 @@ impl Render for GoToFile {
                 .size_full(),
             )
         };
-        div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .gap_2()
+        modal::palette(&self.input, list, self.status.clone(), p)
             .key_context("GoToFile")
             .on_action(cx.listener(|this, _: &SelectPrevious, _, cx| this.step(-1, cx)))
             .on_action(cx.listener(|this, _: &SelectNext, _, cx| this.step(1, cx)))
             .on_action(cx.listener(|this, _: &PageUp, _, cx| this.page(-1, cx)))
             .on_action(cx.listener(|this, _: &PageDown, _, cx| this.page(1, cx)))
-            .child(modal::field(
-                Input::new(&self.input)
-                    .small()
-                    .prefix(icon(IconName::Search, 14.).text_color(p.muted)),
-                p,
-            ))
-            .child(list)
-            .child(
-                modal::small_line()
-                    .text_color(p.muted)
-                    .child(self.status.clone()),
-            )
     }
 }
 

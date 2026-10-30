@@ -6,14 +6,12 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::future::Future;
 use std::io::Read as _;
 use std::ops::Range;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use futures::channel::oneshot;
 use gpui_kit::{
     App, AppContext as _, Context, Entity, EventEmitter, SharedString, Task, WeakEntity,
 };
@@ -58,8 +56,6 @@ pub struct Document {
     dirty: bool,
     /// Whether the file is to be read again once the read under way is done.
     again: bool,
-    /// Those waiting for it to be read.
-    waiting: Vec<oneshot::Sender<()>>,
     _reading: Option<Task<()>>,
 }
 
@@ -83,7 +79,6 @@ impl Document {
             generation: 0,
             dirty: false,
             again: false,
-            waiting: Vec::new(),
             _reading: None,
         };
         document.start_reading(cx);
@@ -172,19 +167,6 @@ impl Document {
         &self.content
     }
 
-    /// Done once the file's read, at once if it is; or once the document's gone.
-    pub fn read(&mut self) -> impl Future<Output = ()> + use<> {
-        let (read, waiting) = oneshot::channel();
-        if self.content == Content::Reading {
-            self.waiting.push(read);
-        } else {
-            let _: Result<(), ()> = read.send(());
-        }
-        async move {
-            let _: Result<(), oneshot::Canceled> = waiting.await;
-        }
-    }
-
     /// Takes what a read begun at `generation` found, unless the text moved under it, when
     /// it's read over; and reads it over too when asked to while it was read.
     fn set_content(
@@ -204,11 +186,6 @@ impl Document {
         }
         if (stale || std::mem::take(&mut self.again)) && !self.dirty {
             self.start_reading(cx);
-        }
-        if self.content != Content::Reading {
-            for read in self.waiting.drain(..) {
-                let _: Result<(), ()> = read.send(());
-            }
         }
     }
 }

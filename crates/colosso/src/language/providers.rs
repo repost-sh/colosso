@@ -13,7 +13,7 @@ use std::time::Instant;
 
 use colosso_lsp::lsp_types::request::{GotoDefinition, HoverRequest, Request};
 use colosso_lsp::lsp_types::{
-    self, GotoDefinitionParams, GotoDefinitionResponse, HoverParams, LocationLink,
+    self, GotoDefinitionParams, GotoDefinitionResponse, HoverParams, LocationLink, OneOf,
     ServerCapabilities, TextDocumentIdentifier, TextDocumentPositionParams,
 };
 use colosso_lsp::{Client, Encoding, uri};
@@ -28,6 +28,7 @@ use super::completions::Completions;
 use super::locations::Found;
 use super::navigate::show_document;
 use super::rename::Prepared;
+use super::symbols::Symbol;
 use super::server::Server;
 use super::sync::Shown;
 use super::{Kind, completions, diagnostics};
@@ -39,8 +40,7 @@ use crate::settings;
 /// equipped with, and the diagnostics last put into it.
 pub struct Attached {
     server: Entity<Server>,
-    /// The checkout the file is in, where a definition in another file is read, and an
-    /// edit to another file is made.
+    /// The checkout the file is in, where an edit to another file is made.
     checkout: WeakEntity<Checkout>,
     path: Arc<Path>,
     /// When the diagnostics put into the editor were published; once in, the editor moves
@@ -94,8 +94,7 @@ impl Attached {
             completions: Rc::default(),
         });
         let server = self.server.downgrade();
-        let show_document =
-            show_document(server, self.checkout.clone(), self.path.clone(), view.clone());
+        let show_document = show_document(server, self.path.clone(), view.clone());
         let pick_definition = pick_definition(hooks.clone(), view);
         editor.update(cx, |editor, _| {
             let lsp = editor.lsp_mut();
@@ -152,6 +151,14 @@ impl Attached {
         if let Some(hooks) = &self.hooks {
             hooks.rename(editor, offset, name, window, cx);
         }
+    }
+
+    /// The file's symbols, for the palette; none while the server isn't running.
+    pub fn document_symbols(&self, editor: &Entity<EditorState>, cx: &App) -> Task<Vec<Symbol>> {
+        let Some(hooks) = &self.hooks else {
+            return Task::ready(Vec::new());
+        };
+        hooks.document_symbols(editor.read(cx).text(), cx)
     }
 
     /// `editor` edited the file's text: the server hears of the edits.
@@ -243,6 +250,29 @@ impl Hooks {
     }
 }
 
+/// Whether a server's say on a provider is yes: `true`, or its options.
+pub(super) fn provided<T>(provider: Option<&OneOf<bool, T>>) -> bool {
+    matches!(provider, Some(OneOf::Left(true) | OneOf::Right(_)))
+}
+
+/// Asks `client` `R`, again while the server says the workspace changed under it, and logs
+/// how long the answer took. A failure is logged and taken as no answer.
+pub(super) async fn ask<R: Request>(client: &Client, params: &R::Params) -> Option<R::Result> {
+    let asked = Instant::now();
+    let answer = client.request_retrying::<R>(params).await;
+    let took = asked.elapsed().as_secs_f64() * 1000.;
+    match answer {
+        Ok(answer) => {
+            log::debug!("{} answered in {took:.0} ms", R::METHOD);
+            Some(answer)
+        }
+        Err(error) => {
+            log::debug!("{} failed after {took:.0} ms: {error}", R::METHOD);
+            None
+        }
+    }
+}
+
 impl Asked {
     /// How long the text the server has is, in bytes.
     fn len(&self) -> usize {
@@ -267,22 +297,9 @@ impl Asked {
         }
     }
 
-    /// Asks `R`, again while the server says the workspace changed under it, and logs how
-    /// long the answer took. A failure is logged and taken as no answer.
+    /// Asks the server `R`, as [`ask`] does.
     pub(super) async fn ask<R: Request>(&self, params: &R::Params) -> Option<R::Result> {
-        let asked = Instant::now();
-        let answer = self.client.request_retrying::<R>(params).await;
-        let took = asked.elapsed().as_secs_f64() * 1000.;
-        match answer {
-            Ok(answer) => {
-                log::debug!("{} answered in {took:.0} ms", R::METHOD);
-                Some(answer)
-            }
-            Err(error) => {
-                log::debug!("{} failed after {took:.0} ms: {error}", R::METHOD);
-                None
-            }
-        }
+        ask::<R>(&self.client, params).await
     }
 
     /// The bytes `range` of the text, as the server knows it.

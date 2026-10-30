@@ -15,7 +15,8 @@
 //!   parameter names the server infers, shown in the text; `navigate`, a definition in
 //!   another file turned into a place in it for the viewer; `locations`, a symbol's
 //!   references, or its several definitions, each with its line, for the panel listing
-//!   them; `rename`, a symbol renamed in place, here and in the other files.
+//!   them; `rename`, a symbol renamed in place, here and in the other files; `symbols`,
+//!   the file's or the checkout's, for the palettes that go to one.
 //! - `status`: the selected checkout's servers in the status bar, each with its menu;
 //!   `server_log`, each server's own log, which the menu shows.
 
@@ -32,6 +33,7 @@ mod rename;
 mod server;
 mod server_log;
 mod status;
+mod symbols;
 mod sync;
 #[cfg(test)]
 mod tests;
@@ -51,6 +53,7 @@ use gpui_kit::{App, KeyBinding, actions};
 pub use locations::Found;
 pub use providers::Attached;
 pub use rename::Prepared;
+pub use symbols::{Symbol, serves, workspace_symbols};
 pub use registry::{Languages, attach, forget, install, locate};
 pub use server::State;
 pub use status::ServersStatus;

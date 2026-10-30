@@ -9,6 +9,7 @@
 use std::ops::Range;
 use std::path::Path;
 
+use colosso_lsp::LineIndex;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::input::{Editor, EditorState, InputEvent, RopeExt as _};
 use gpui_kit::{
@@ -20,7 +21,7 @@ use gpui_kit::{
 use super::rename::Renaming;
 use super::{At, Place};
 use crate::checkout::{Content, Document, DocumentEvent};
-use crate::language::{Attached, FindReferences, Found};
+use crate::language::{Attached, FindReferences, Found, Symbol};
 use crate::modal::spinner;
 use crate::shell::icon;
 use crate::theme;
@@ -173,6 +174,12 @@ impl FileEditor {
         }
     }
 
+    /// The file's symbols, for the palette, while the text's shown and a server knows it.
+    pub fn document_symbols(&self, cx: &App) -> Option<Task<Vec<Symbol>>> {
+        let (attached, shown) = (self.language.as_ref()?, self.editor.as_ref()?);
+        Some(attached.document_symbols(&shown.editor, cx))
+    }
+
     /// Has the panel list what `found` brings, in place of any lookup still going on.
     pub fn list(&mut self, found: Task<Option<Found>>, cx: &mut Context<Self>) {
         self.asking = cx.spawn(async move |this, cx| {
@@ -204,6 +211,10 @@ impl FileEditor {
                 At::Line(line) => {
                     let start = text.line_start_offset(line as usize);
                     start..start
+                }
+                At::Server(range, encoding) => {
+                    let text = text.to_string();
+                    LineIndex::new(&text).offsets(&text, range, encoding)
                 }
             };
             let end = range.end.min(text.len());

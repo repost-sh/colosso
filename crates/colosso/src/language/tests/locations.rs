@@ -7,7 +7,6 @@ use serde_json::{Value, json};
 
 use super::support::*;
 use crate::files::At;
-use crate::language::State;
 use crate::test_support::repo;
 
 #[gpui_kit::test]
@@ -31,11 +30,7 @@ async fn several_definitions_are_listed_and_the_one_picked_opens_its_file(cx: &m
         ]);
         Value::Array(script)
     });
-    let shell = shell(&[&root], launcher, cx);
-    let lib = open(&shell, &root, "src/lib.rs", cx);
-    let server = server(&root, cx).unwrap();
-    assert_eq!(settled(&server, cx).await, State::Ready);
-    let lib_editor = cx.read(|cx| editor(&lib, cx)).unwrap();
+    let (shell, _, server, lib_editor) = ready(&root, "src/lib.rs", launcher, cx).await;
     let files = cx.read(|cx| shell.1.read(cx).right_panel.files().cloned()).unwrap();
     let listed = |cx: &App| {
         let list = files.read(cx).locations()?.read(cx);
@@ -101,11 +96,7 @@ async fn references_are_listed_by_file_and_escape_closes_the_list(cx: &mut TestA
         ]);
         Value::Array(script)
     });
-    let shell = shell(&[&root], launcher, cx);
-    let lib = open(&shell, &root, "src/lib.rs", cx);
-    let server = server(&root, cx).unwrap();
-    assert_eq!(settled(&server, cx).await, State::Ready);
-    let lib_editor = cx.read(|cx| editor(&lib, cx)).unwrap();
+    let (shell, _, server, lib_editor) = ready(&root, "src/lib.rs", launcher, cx).await;
     let files = cx.read(|cx| shell.1.read(cx).right_panel.files().cloned()).unwrap();
     let listed = |cx: &App| Some(files.read(cx).locations()?.read(cx).found().clone());
 

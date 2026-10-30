@@ -6,12 +6,12 @@ use std::ops::Range;
 
 use colosso_lsp::lsp_types::request::InlayHintRequest;
 use colosso_lsp::lsp_types::{
-    InlayHint, InlayHintKind, InlayHintLabel, InlayHintParams, OneOf, WorkDoneProgressParams,
+    InlayHint, InlayHintKind, InlayHintLabel, InlayHintParams, WorkDoneProgressParams,
 };
 use gpui_kit::component::input::{Bias, Inlay, InlayHintProvider, Rope};
 use gpui_kit::{App, AppContext as _, SharedString, Task, Window};
 
-use super::providers::Hooks;
+use super::providers::{Hooks, provided};
 
 impl InlayHintProvider for Hooks {
     fn inlay_hints(
@@ -21,12 +21,8 @@ impl InlayHintProvider for Hooks {
         _: &mut Window,
         cx: &mut App,
     ) -> Task<gpui_kit::Result<Vec<Inlay>>> {
-        let offers = (self.capabilities(cx)).is_some_and(|capabilities| {
-            !matches!(
-                capabilities.inlay_hint_provider,
-                None | Some(OneOf::Left(false))
-            )
-        });
+        let offers = (self.capabilities(cx))
+            .is_some_and(|capabilities| provided(capabilities.inlay_hint_provider.as_ref()));
         let Some(asked) = self.ask(text, cx).filter(|_| offers) else {
             return Task::ready(Ok(Vec::new()));
         };

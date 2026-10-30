@@ -13,9 +13,9 @@ use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::Button;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Div, DragMoveEvent, Empty, Entity, FocusHandle,
-    InteractiveElement as _, IntoElement, KeyBinding, ParentElement as _, Render, Styled,
-    Subscription, Window, actions, div, px,
+    AnyElement, AnyWindowHandle, App, AppContext as _, Context, Div, DragMoveEvent, Empty, Entity,
+    FocusHandle, InteractiveElement as _, IntoElement, KeyBinding, ParentElement as _, Render,
+    Styled, Subscription, WeakEntity, Window, actions, div, px,
 };
 
 use crate::changes::ChangesPanel;
@@ -137,7 +137,6 @@ impl RightPanel {
     }
 
     /// The selected checkout's file tree, once it's been shown.
-    #[cfg(any(test, feature = "visual-check"))]
     pub fn files(&self) -> Option<&Entity<FilesPanel>> {
         self.shown()?.files.as_ref()
     }
@@ -257,6 +256,7 @@ impl Shell {
         .on_action(cx.listener(|this, _: &ToggleChanges, _, cx| this.toggle(View::Changes, cx)))
         .on_action(cx.listener(|this, _: &ToggleFiles, _, cx| this.toggle(View::Files, cx)))
         .map(|root| Self::handle_go_to_file(root, cx))
+        .map(|root| Self::handle_symbols(root, cx))
         .on_drag_move(cx.listener(Self::resize_right_panel))
         // The root's everywhere, so it hears the edge let go wherever that is.
         .capture_any_mouse_up(cx.listener(|this, _, _, cx| {
@@ -369,6 +369,17 @@ impl Shell {
             return;
         };
         files.update(cx, |files, cx| files.view(place, window, cx));
+    }
+
+    /// Shows the file `place` is in from a dialog over `behind`: as [`Self::view_file`]
+    /// does, in that window.
+    pub fn view_behind(shell: &WeakEntity<Shell>, behind: AnyWindowHandle, place: Place, cx: &mut App) {
+        let shown = behind.update(cx, |_, window, cx| {
+            shell.update(cx, |shell, cx| shell.view_file(place, window, cx))
+        });
+        if let Err(error) = shown.and_then(|shown| shown) {
+            log::warn!("couldn't show the file picked: {error}");
+        }
     }
 
     fn resize_right_panel(

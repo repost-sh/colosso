@@ -152,6 +152,26 @@ pub(super) fn open(
     shown(shell, cx).unwrap().1
 }
 
+/// What a test starts from: the window and the shell in it, the file's view, its server
+/// and the editor over its text.
+pub(super) type Ready = (
+    (AnyWindowHandle, Entity<Shell>),
+    Entity<FileEditor>,
+    Entity<Server>,
+    Entity<EditorState>,
+);
+
+/// Shows the file at `path` of the checkout at `root` in a window, with the fake `launcher`
+/// runs as its server, and waits for the server to be ready.
+pub(super) async fn ready(root: &Path, path: &str, launcher: Launcher, cx: &mut TestAppContext) -> Ready {
+    let shell = shell(&[root], launcher, cx);
+    let view = open(&shell, root, path, cx);
+    let server = server(root, cx).unwrap();
+    assert_eq!(settled(&server, cx).await, State::Ready);
+    let editor = cx.read(|cx| editor(&view, cx)).unwrap();
+    (shell, view, server, editor)
+}
+
 /// Puts the caret of `editor` at `offset`, gives it the keyboard and draws, so keys reach
 /// it.
 pub(super) fn place_caret(

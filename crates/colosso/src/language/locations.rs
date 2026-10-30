@@ -20,7 +20,7 @@ use gpui_kit::{App, AppContext as _, AsyncApp, SharedString, Task, WeakEntity};
 use super::providers::Hooks;
 use super::server::Server;
 use crate::checkout::{Content, MOST_BYTES, read_at_most};
-use crate::files::At;
+use crate::files::{At, relative};
 
 /// What a symbol led to, as the panel lists it. Cheap to clone.
 #[derive(Clone, Debug)]
@@ -187,11 +187,11 @@ async fn located(
                     .map(|range| locate(text.as_deref(), range, encoding))
                     .collect();
                 rows.sort_by_key(|row| (row.line, row.matched.start));
-                let relative = (root.as_deref())
-                    .and_then(|root| path.strip_prefix(root).ok())
-                    .unwrap_or(path.as_path());
                 FileLocations {
-                    relative: relative.display().to_string().into(),
+                    relative: match &root {
+                        Some(root) => relative(root, &path),
+                        None => path.display().to_string().into(),
+                    },
                     path,
                     rows,
                 }

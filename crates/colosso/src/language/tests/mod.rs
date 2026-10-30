@@ -8,6 +8,7 @@ mod inlay_hints;
 mod locations;
 mod rename;
 mod support;
+mod symbols;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
