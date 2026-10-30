@@ -27,6 +27,7 @@ use gpui_kit::{
 use super::completions::Completions;
 use super::locations::Found;
 use super::navigate::show_document;
+use super::rename::Prepared;
 use super::server::Server;
 use super::sync::Shown;
 use super::{Kind, completions, diagnostics};
@@ -126,6 +127,31 @@ impl Attached {
             (editor.text().clone(), editor.cursor())
         };
         hooks.references(&rope, offset, cx)
+    }
+
+    /// What's at `editor`'s caret to rename, and what it's called; nothing while the
+    /// server isn't running, or doesn't rename, or says there's nothing there.
+    pub fn prepare_rename(&self, editor: &Entity<EditorState>, cx: &App) -> Task<Option<Prepared>> {
+        let Some(hooks) = &self.hooks else {
+            return Task::ready(None);
+        };
+        let editor = editor.read(cx);
+        hooks.prepare_rename(editor.text(), editor.cursor(), cx)
+    }
+
+    /// Renames what's at `offset` of `editor`'s text to `name`: here, in the editor, and
+    /// in the other files, on disk; on its own, once begun.
+    pub fn rename(
+        &self,
+        editor: &Entity<EditorState>,
+        offset: usize,
+        name: String,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        if let Some(hooks) = &self.hooks {
+            hooks.rename(editor, offset, name, window, cx);
+        }
     }
 
     /// `editor` edited the file's text: the server hears of the edits.
@@ -257,6 +283,11 @@ impl Asked {
                 None
             }
         }
+    }
+
+    /// The bytes `range` of the text, as the server knows it.
+    pub(super) fn slice(&self, range: Range<usize>) -> Option<&str> {
+        self.shown.text.as_str().get(range)
     }
 
     /// A range of bytes of the text, as the server knows it.

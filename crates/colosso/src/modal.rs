@@ -259,7 +259,7 @@ pub fn cancel(id: &'static str) -> Button {
 }
 
 /// A text field on the glass, around an `input` that draws none of its own.
-pub fn field(input: Input, p: Palette) -> impl IntoElement {
+pub fn field(input: Input, p: Palette) -> gpui_kit::Div {
     div()
         .h(px(34.))
         // The input pads its own text, so the field only adds a little.

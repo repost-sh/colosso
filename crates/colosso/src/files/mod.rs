@@ -9,6 +9,7 @@ mod locations;
 mod panel;
 mod place;
 mod render;
+mod rename;
 mod tabs;
 #[cfg(test)]
 mod tests;

@@ -6,6 +6,7 @@
 mod completions;
 mod inlay_hints;
 mod locations;
+mod rename;
 mod support;
 
 use std::path::{Path, PathBuf};

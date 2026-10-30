@@ -4,6 +4,7 @@
 //! from the document's, which is the file's: it tells the document so, and gives it the
 //! text to save. The tab holds the document; the view only looks at it. The editor behind
 //! the view is gpui-kit's, which is to be replaced; nothing outside this file knows it.
+//! `rename` puts a field over a symbol, for the name it's given.
 
 use std::ops::Range;
 use std::path::Path;
@@ -16,6 +17,7 @@ use gpui_kit::{
     Window, div,
 };
 
+use super::rename::Renaming;
 use super::{At, Place};
 use crate::checkout::{Content, Document, DocumentEvent};
 use crate::language::{Attached, FindReferences, Found};
@@ -33,21 +35,24 @@ pub struct FileEditor {
     /// read.
     editable: bool,
     /// The editor showing the document's text, once it's read.
-    editor: Option<Shown>,
+    pub(super) editor: Option<Shown>,
     /// The language server the file is given to, if one knows it.
-    language: Option<Attached>,
+    pub(super) language: Option<Attached>,
     /// Where to put the cursor once the text is shown.
     reveal: Option<At>,
     /// Whether the editor takes the keyboard once the text is shown.
     focus_when_shown: bool,
-    /// Looking up the places a symbol leads to, while it goes on.
-    finding: Task<()>,
+    /// The field over the symbol being renamed, while it's typed into.
+    pub(super) renaming: Option<Renaming>,
+    /// The server asked about the symbol at the caret, while the answer's awaited: one
+    /// question at a time; what the answer does is on its own.
+    pub(super) asking: Task<()>,
     _document: Subscription,
 }
 
 /// The editor showing the document's text.
-struct Shown {
-    editor: Entity<EditorState>,
+pub(super) struct Shown {
+    pub(super) editor: Entity<EditorState>,
     _changes: Subscription,
 }
 
@@ -78,7 +83,8 @@ impl FileEditor {
             language: None,
             reveal: None,
             focus_when_shown: false,
-            finding: Task::ready(()),
+            renaming: None,
+            asking: Task::ready(()),
             _document,
         };
         view.show(window, cx);
@@ -169,7 +175,7 @@ impl FileEditor {
 
     /// Has the panel list what `found` brings, in place of any lookup still going on.
     pub fn list(&mut self, found: Task<Option<Found>>, cx: &mut Context<Self>) {
-        self.finding = cx.spawn(async move |this, cx| {
+        self.asking = cx.spawn(async move |this, cx| {
             if let Some(found) = found.await {
                 this.update(cx, |_, cx| cx.emit(found)).ok();
             }
@@ -279,19 +285,23 @@ impl FileEditor {
 }
 
 impl Render for FileEditor {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = theme::palette(cx);
         let content = div()
             .size_full()
             .relative()
-            .on_action(cx.listener(Self::find_references));
-        if let Some(shown) = &self.editor {
-            let editor = Editor::new(&shown.editor)
+            .on_action(cx.listener(Self::find_references))
+            .on_action(cx.listener(Self::rename));
+        let shown = (self.editor.as_ref()).map(|shown| {
+            Editor::new(&shown.editor)
                 .readonly(!self.editable)
                 .appearance(false)
                 .bordered(false)
-                .h_full();
-            return content.child(editor);
+                .h_full()
+        });
+        if let Some(editor) = shown {
+            let field = self.rename_field_over(p, window, cx);
+            return content.child(editor).children(field);
         }
         let document = self.document.upgrade();
         let note: SharedString = match document.as_ref().map(|document| document.read(cx).content()) {
