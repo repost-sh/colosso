@@ -32,7 +32,7 @@ mod actions;
 mod elements;
 
 pub use actions::{
-    EditTheme, NewBrowserTab, NewChat, NewEditorTab, NewTerminal, ToggleBottomPanel,
+    CloseWindow, EditTheme, NewBrowserTab, NewChat, NewEditorTab, NewTerminal, ToggleBottomPanel,
     ToggleRightPanel, ToggleSidebar, ToggleSidebarMode, init,
 };
 pub use elements::{
@@ -96,6 +96,7 @@ impl Shell {
             // would do nothing until something else took the keyboard.
             cx.on_focus_lost(window, |this, window, cx| window.focus(&this.focus, cx)),
         ];
+        Self::guard_closing(window, cx);
         let mut shell = Shell {
             workspace: Workspace::new(&settings::get(cx).projects),
             history,

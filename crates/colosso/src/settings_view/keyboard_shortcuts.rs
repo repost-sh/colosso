@@ -4,10 +4,12 @@ use gpui_kit::component::kbd::Kbd;
 use gpui_kit::{Action, App, AsKeystroke as _, IntoElement, ParentElement as _, Styled as _, div};
 
 use super::components::{SettingRow, SettingsSection};
+use crate::files::{CloseTab, Save};
+use crate::go_to_file::GoToFile;
 use crate::navigation::{CloseSettings, GoBack, GoForward, OpenSettings};
 use crate::projects::NewWorktree;
 use crate::shell::{
-    NewChat, ToggleBottomPanel, ToggleRightPanel, ToggleSidebar, ToggleSidebarMode,
+    CloseWindow, NewChat, ToggleBottomPanel, ToggleRightPanel, ToggleSidebar, ToggleSidebarMode,
 };
 use crate::theme::{self, CycleTheme};
 
@@ -15,7 +17,7 @@ use crate::theme::{self, CycleTheme};
 type Command = (&'static str, &'static dyn Action);
 
 /// Each section's commands, in the order the page lists them.
-const SECTIONS: [(&str, &[Command]); 4] = [
+const SECTIONS: &[(&str, &[Command])] = &[
     (
         "Navigation",
         &[
@@ -33,10 +35,19 @@ const SECTIONS: [(&str, &[Command]); 4] = [
             ("Toggle right panel", &ToggleRightPanel),
             ("Toggle bottom panel", &ToggleBottomPanel),
             ("Cycle theme", &CycleTheme),
+            ("Close window", &CloseWindow),
         ],
     ),
     ("Worktrees", &[("New worktree", &NewWorktree)]),
     ("Tabs", &[("New chat", &NewChat)]),
+    (
+        "Files",
+        &[
+            ("Go to file", &GoToFile),
+            ("Save", &Save),
+            ("Close the file shown, or else the window", &CloseTab),
+        ],
+    ),
 ];
 
 pub fn sections(cx: &App) -> Vec<SettingsSection> {

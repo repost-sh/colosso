@@ -7,9 +7,11 @@ use gpui_kit::{
     AnyWindowHandle, AppContext as _, Context, Entity, TestAppContext, Window, px, size,
 };
 
+use super::closing::SaveDialog;
 use super::editor::language;
 use super::*;
 use crate::changes::{Mark, Touched};
+use crate::modal;
 use crate::checkout::{Checkout, Content, Document, read_at_most};
 use crate::test_support::{git, in_window, scratch, write};
 use crate::{right_panel, settings};
@@ -306,6 +308,25 @@ pub(super) fn typed(
 ) {
     (cx.update_window(window, |_, window, cx| {
         editor.update(cx, |editor, cx| editor.insert(text.to_owned(), window, cx));
+    }))
+    .unwrap();
+    cx.run_until_parked();
+}
+
+/// The question asked about unsaved edits, if one is: its window and the dialog in it.
+pub(super) fn asked(cx: &mut TestAppContext) -> Option<(AnyWindowHandle, Entity<SaveDialog>)> {
+    cx.read(|cx| Some((modal::window(cx)?, modal::current::<SaveDialog>(cx)?)))
+}
+
+/// Answers the question asked with `act`, keeping no hold on the dialog, which goes with its
+/// window.
+pub(super) fn answer(
+    cx: &mut TestAppContext,
+    act: fn(&mut SaveDialog, &mut Window, &mut Context<SaveDialog>),
+) {
+    let (dialog_window, dialog) = asked(cx).expect("asked");
+    (cx.update_window(dialog_window, |_, window, cx| {
+        dialog.update(cx, |dialog, cx| act(dialog, window, cx));
     }))
     .unwrap();
     cx.run_until_parked();

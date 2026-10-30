@@ -2,9 +2,12 @@
 //! the window's root that hear them wherever the keyboard is.
 
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::{App, Context, Div, InteractiveElement as _, KeyBinding, MouseButton, actions};
+use gpui_kit::{
+    App, Context, Div, InteractiveElement as _, KeyBinding, MouseButton, Window, actions,
+};
 
 use super::Shell;
+use crate::files;
 use crate::model::PaneKind;
 use crate::navigation::{CloseSettings, GoBack, GoForward, Navigate, NavigationHistory, Route};
 use crate::projects::{self, NewWorktree};
@@ -23,7 +26,8 @@ actions!(
         NewTerminal,
         NewBrowserTab,
         NewEditorTab,
-        EditTheme
+        EditTheme,
+        CloseWindow
     ]
 );
 
@@ -35,6 +39,7 @@ pub fn init(cx: &mut App) {
         KeyBinding::new("cmd-t", NewChat, None),
         KeyBinding::new("cmd-shift-m", ToggleSidebarMode, None),
         KeyBinding::new("cmd-n", NewWorktree, None),
+        KeyBinding::new("cmd-shift-w", CloseWindow, None),
     ]);
     // The layout is a setting, so this works from any window or menu.
     cx.on_action(|_: &ToggleSidebarMode, cx| {
@@ -60,6 +65,7 @@ impl Shell {
             .map(|root| Self::handle_right_panel(root, cx))
             .on_action(cx.listener(Self::toggle_bottom_panel))
             .on_action(cx.listener(|this, _: &NewChat, _, cx| this.new_tab(PaneKind::Chat, cx)))
+            .on_action(cx.listener(|this, _: &CloseWindow, window, cx| this.close_window(window, cx)))
             .on_action(
                 cx.listener(|this, _: &NewTerminal, _, cx| this.new_tab(PaneKind::Terminal, cx)),
             )
@@ -85,5 +91,37 @@ impl Shell {
                 picker::open(this.rails_menu_at, window, cx);
             }))
             .on_mouse_down(MouseButton::Right, cx.listener(Self::show_rails_menu))
+    }
+}
+
+impl Shell {
+    /// Has `window`'s red button ask about unsaved edits, as ⌘⇧W does.
+    pub(super) fn guard_closing(window: &Window, cx: &mut Context<Self>) {
+        let shell = cx.entity().downgrade();
+        window.on_window_should_close(cx, move |window, cx| {
+            (shell.update(cx, |shell, cx| shell.may_close(window, cx))).unwrap_or(true)
+        });
+    }
+
+    /// Closes the window, once what's unsaved in it is saved or let go. The dock icon opens
+    /// it again.
+    pub fn close_window(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.may_close(window, cx) {
+            window.remove_window();
+        }
+    }
+
+    /// Whether the window may close now: with unsaved edits in it, it asks about them
+    /// instead, and the answer closes it; asked already, it waits for the answer.
+    fn may_close(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if files::asking(cx) {
+            return false;
+        }
+        let unsaved = self.right_panel.unsaved(cx);
+        if unsaved.is_empty() {
+            return true;
+        }
+        files::ask_before_closing(unsaved, window, cx);
+        false
     }
 }

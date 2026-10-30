@@ -1,8 +1,8 @@
-use gpui_kit::{AnyWindowHandle, Entity, TestAppContext, VisualTestContext, px};
+use gpui_kit::{Entity, TestAppContext, VisualTestContext, px};
 
 use super::super::At;
 use super::super::closing::SaveDialog;
-use super::super::tests::{checkout, editing, open, selected, typed, with};
+use super::super::tests::{answer, asked, checkout, editing, open, selected, typed, with};
 use super::*;
 use crate::modal;
 use crate::test_support::write;
@@ -173,16 +173,6 @@ fn a_tab_with_unsaved_edits_asks_before_it_closes(cx: &mut TestAppContext) {
         with(window, &panel, cx, |panel, window, cx| panel.close(0, window, cx));
         cx.run_until_parked();
     };
-    // Answers the question, keeping no hold on the dialog, which goes with its window.
-    let answer = |cx: &mut TestAppContext,
-                  act: fn(&mut SaveDialog, &mut Window, &mut Context<SaveDialog>)| {
-        let (dialog_window, dialog) = asked(cx).expect("asked");
-        (cx.update_window(dialog_window, |_, window, cx| {
-            dialog.update(cx, |dialog, cx| act(dialog, window, cx));
-        }))
-        .unwrap();
-        cx.run_until_parked();
-    };
     // Saved: the file's written, then the tab closes.
     edit("// kept\n", cx);
     close(cx);
@@ -195,7 +185,7 @@ fn a_tab_with_unsaved_edits_asks_before_it_closes(cx: &mut TestAppContext) {
     // Not saved: the tab closes, the file as it was.
     edit("// lost\n", cx);
     close(cx);
-    answer(cx, SaveDialog::close_tab);
+    answer(cx, SaveDialog::close);
     assert!(tabs(&panel, cx).is_empty());
     assert_eq!(on_disk(), "// kept\npub fn a() {}\npub fn b() {}\n");
     // Clean, a tab closes without a word.
@@ -204,11 +194,6 @@ fn a_tab_with_unsaved_edits_asks_before_it_closes(cx: &mut TestAppContext) {
     assert!(tabs(&panel, cx).is_empty());
     assert!(asked(cx).is_none());
     let _ = std::fs::remove_dir_all(&root);
-}
-
-/// The question asked about a tab's unsaved edits, if one is: its window and the dialog in it.
-fn asked(cx: &mut TestAppContext) -> Option<(AnyWindowHandle, Entity<SaveDialog>)> {
-    cx.read(|cx| Some((modal::window(cx)?, modal::current::<SaveDialog>(cx)?)))
 }
 
 #[gpui_kit::test]
@@ -229,7 +214,7 @@ fn the_question_fits_a_file_name_that_wraps_its_title(cx: &mut TestAppContext) {
         cx.run_until_parked();
         let buttons = cx.debug_bounds("dialog-footer").expect("the buttons");
         let height = cx.update(|window, _| window.bounds().size.height);
-        cx.update(|window, cx| question.update(cx, |question, cx| question.close_tab(window, cx)));
+        cx.update(|window, cx| question.update(cx, |question, cx| question.close(window, cx)));
         (height, buttons.bottom())
     };
     let padding = px(modal::PADDING);
