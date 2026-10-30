@@ -32,7 +32,7 @@ mod actions;
 mod elements;
 
 pub use actions::{
-    CloseWindow, EditTheme, NewBrowserTab, NewChat, NewEditorTab, NewTerminal, ToggleBottomPanel,
+    EditTheme, NewBrowserTab, NewChat, NewEditorTab, NewTerminal, ToggleBottomPanel,
     ToggleRightPanel, ToggleSidebar, ToggleSidebarMode, init,
 };
 pub use elements::{
@@ -120,7 +120,7 @@ impl Shell {
         settings::get(cx).layout
     }
 
-    fn route(&self, cx: &App) -> Route {
+    pub fn route(&self, cx: &App) -> Route {
         self.history.read(cx).current()
     }
 

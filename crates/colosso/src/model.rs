@@ -90,6 +90,17 @@ pub struct BranchUnit {
 }
 
 impl BranchUnit {
+    /// Closes the tab at `at`: the one shown stays shown, or its left neighbour takes over.
+    fn close(&mut self, at: usize) {
+        if at >= self.tabs.len() {
+            return;
+        }
+        self.tabs.remove(at);
+        if self.active_tab > at || self.active_tab >= self.tabs.len() {
+            self.active_tab = self.active_tab.saturating_sub(1);
+        }
+    }
+
     fn new(worktree: Worktree) -> Self {
         BranchUnit {
             worktree,
@@ -322,15 +333,15 @@ impl Workspace {
         self.active_project = self.active_project.saturating_add_signed(delta).min(last);
     }
 
+    /// Closes the tab shown on the selected checkout, if it has one.
+    pub fn close_active_tab(&mut self) {
+        if let Some(unit) = self.branch_mut() {
+            unit.close(unit.active_tab);
+        }
+    }
+
     pub fn close_tab(&mut self, project: usize, branch: usize, tab: usize) {
-        let unit = &mut self.projects[project].branches[branch];
-        if tab >= unit.tabs.len() {
-            return;
-        }
-        unit.tabs.remove(tab);
-        if unit.active_tab > tab || unit.active_tab >= unit.tabs.len() {
-            unit.active_tab = unit.active_tab.saturating_sub(1);
-        }
+        self.projects[project].branches[branch].close(tab);
     }
 
     /// Opens a tab of `kind` on the selected checkout, if there is one.
