@@ -28,8 +28,6 @@ use objc2_app_kit::{
     NSView, NSWindow,
 };
 
-use colosso_lsp::servers::{BASEDPYRIGHT, RUST_ANALYZER, VTSLS};
-
 use crate::key_repeat::KeyRepeat;
 use crate::navigation::Route;
 use crate::settings;
@@ -276,14 +274,7 @@ fn fail<T>(why: &str, lines: &[String]) -> Result<T> {
 fn switched(cx: &mut AsyncApp) -> Vec<bool> {
     cx.update(|cx| {
         let settings = settings::get(cx);
-        vec![
-            settings.sidebar_open_on_launch,
-            settings.runs_server(RUST_ANALYZER.name, None),
-            settings.runs_server(VTSLS.name, None),
-            settings.runs_server(BASEDPYRIGHT.name, None),
-            settings.stop_idle_language_servers,
-            settings.key_repeat.enabled,
-        ]
+        vec![settings.sidebar_open_on_launch, settings.key_repeat.enabled]
     })
 }
 
