@@ -7,6 +7,7 @@ mod components;
 mod editor;
 mod general;
 mod keyboard_shortcuts;
+mod languages;
 mod native_slider;
 mod native_switch;
 #[cfg(all(target_os = "macos", feature = "visual-check"))]
@@ -28,6 +29,7 @@ use components::{SettingsPageColumn, SettingsSection};
 pub enum SettingsPage {
     General,
     Editor,
+    Languages,
     Appearance,
     KeyboardShortcuts,
     About,
@@ -40,6 +42,7 @@ const SIDEBAR_GROUPS: [(&str, &[SettingsPage]); 2] = [
         &[
             SettingsPage::General,
             SettingsPage::Editor,
+            SettingsPage::Languages,
             SettingsPage::Appearance,
             SettingsPage::KeyboardShortcuts,
         ],
@@ -52,6 +55,7 @@ impl SettingsPage {
         match self {
             SettingsPage::General => "General",
             SettingsPage::Editor => "Editor",
+            SettingsPage::Languages => "Languages",
             SettingsPage::Appearance => "Appearance",
             SettingsPage::KeyboardShortcuts => "Keyboard shortcuts",
             SettingsPage::About => "About",
@@ -62,6 +66,7 @@ impl SettingsPage {
         match self {
             SettingsPage::General => IconName::Settings,
             SettingsPage::Editor => IconName::SquarePen,
+            SettingsPage::Languages => IconName::Languages,
             SettingsPage::Appearance => IconName::SunMoon,
             SettingsPage::KeyboardShortcuts => IconName::Keyboard,
             SettingsPage::About => IconName::Info,
@@ -72,6 +77,7 @@ impl SettingsPage {
         match self {
             SettingsPage::General => general::sections(cx),
             SettingsPage::Editor => editor::sections(cx),
+            SettingsPage::Languages => languages::sections(cx),
             SettingsPage::Appearance => appearance::sections(cx),
             SettingsPage::KeyboardShortcuts => keyboard_shortcuts::sections(cx),
             SettingsPage::About => about::sections(cx),
@@ -141,7 +147,7 @@ mod tests {
                 };
             });
         });
-        // Tall enough for the whole page, two server rows more than it had.
+        // Tall enough for the whole page.
         let (window, _) = in_window(size(px(900.), px(1700.)), cx, |_, cx| cx.new(|_| General));
         let cx = &mut VisualTestContext::from_window(window, cx);
         cx.run_until_parked();
@@ -179,6 +185,7 @@ mod tests {
         for page in [
             SettingsPage::General,
             SettingsPage::Editor,
+            SettingsPage::Languages,
             SettingsPage::Appearance,
             SettingsPage::KeyboardShortcuts,
             SettingsPage::About,

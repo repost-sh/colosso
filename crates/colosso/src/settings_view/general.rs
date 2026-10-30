@@ -1,8 +1,6 @@
 //! General: how the sidebar opens, which layout holds it, and how wide it is; where new
-//! worktrees go and what their branches are named under; which language servers run and how
-//! many; and how a held arrow key repeats.
+//! worktrees go and what their branches are named under; and how a held arrow key repeats.
 
-use colosso_lsp::servers::{BASEDPYRIGHT, RUST_ANALYZER, VTSLS};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::{
@@ -15,7 +13,7 @@ use super::native_slider::NativeSlider;
 use super::native_switch::NativeSwitch;
 use crate::modal::{self, Button, Tone};
 use crate::projects::{display_path, pick_folder};
-use crate::settings::{self, BranchPrefix, Scope, SetBranchPrefix, SetMostLanguageServers};
+use crate::settings::{self, BranchPrefix, SetBranchPrefix};
 use crate::theme;
 
 actions!(settings, [EditBranchPrefix]);
@@ -28,86 +26,7 @@ pub(super) const SPEEDS: [f32; 10] = [30., 40., 52., 66., 80., 96., 120., 150., 
 pub(super) const DELAYS: [f32; 8] = [500., 400., 320., 250., 200., 150., 110., 80.];
 
 pub fn sections(cx: &App) -> Vec<SettingsSection> {
-    vec![sidebar(cx), worktrees(cx), servers(cx), keyboard(cx)]
-}
-
-/// The choices for how many language servers run at once, no limit first.
-const MOST_SERVERS: [Option<usize>; 7] =
-    [None, Some(1), Some(2), Some(3), Some(4), Some(6), Some(8)];
-
-/// How a choice of how many language servers run at once reads.
-fn most_label(most: Option<usize>) -> String {
-    most.map_or_else(|| "No limit".to_owned(), |most| most.to_string())
-}
-
-/// The language servers: each on or off, and how they're stopped.
-fn servers(cx: &App) -> SettingsSection {
-    let current = settings::get(cx);
-    SettingsSection::new("Language servers")
-        .row(
-            SettingRow::new("rust-analyzer")
-                .description(
-                    "Go to definition, hover and diagnostics in Rust files. Its menu in the \
-                     status bar turns it off for one project only.",
-                )
-                .control(NativeSwitch::new(
-                    "rust-analyzer",
-                    |settings| settings.runs_server(RUST_ANALYZER.name, None),
-                    |settings, on| settings.set_server(RUST_ANALYZER.name, &Scope::Everywhere, on),
-                )),
-        )
-        .row(
-            SettingRow::new("vtsls")
-                .description(
-                    "The same in TypeScript and JavaScript files, run by the Node on PATH \
-                     and installed into the app's data folder the first time.",
-                )
-                .control(NativeSwitch::new(
-                    "vtsls",
-                    |settings| settings.runs_server(VTSLS.name, None),
-                    |settings, on| settings.set_server(VTSLS.name, &Scope::Everywhere, on),
-                )),
-        )
-        .row(
-            SettingRow::new("basedpyright")
-                .description("The same in Python files, run and installed the same way.")
-                .control(NativeSwitch::new(
-                    "basedpyright",
-                    |settings| settings.runs_server(BASEDPYRIGHT.name, None),
-                    |settings, on| settings.set_server(BASEDPYRIGHT.name, &Scope::Everywhere, on),
-                )),
-        )
-        .row(
-            SettingRow::new("Stop when idle")
-                .description(
-                    "Stop a language server ten minutes after the last file it knows is \
-                     closed. It starts, and indexes, again with the next one.",
-                )
-                .control(NativeSwitch::new(
-                    "stop-idle-language-servers",
-                    |settings| settings.stop_idle_language_servers,
-                    |settings, on| settings.stop_idle_language_servers = on,
-                )),
-        )
-        .row(
-            SettingRow::new("Running at once")
-                .description(
-                    "Each worktree with a Rust, TypeScript or Python file open runs its own \
-                     server; rust-analyzer can take several GB of memory on a large project. \
-                     With a limit, the one used least recently stops, and indexes again when \
-                     it's next needed.",
-                )
-                .control(MenuButton::new(
-                    "most-language-servers",
-                    most_label(current.most_language_servers),
-                    |cx| {
-                        let most = settings::get(cx).most_language_servers;
-                        settings::checked_menu(MOST_SERVERS, most, most_label, |choice| {
-                            Box::new(SetMostLanguageServers(choice))
-                        })
-                    },
-                )),
-        )
+    vec![sidebar(cx), worktrees(cx), keyboard(cx)]
 }
 
 fn sidebar(cx: &App) -> SettingsSection {
