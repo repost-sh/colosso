@@ -3,38 +3,52 @@
 
 use serde_json::{Value, json};
 
-use super::{Release, ServerSpec};
+use super::ServerSpec;
+use super::release::{Archive, Release};
 
 pub static RUST_ANALYZER: ServerSpec = ServerSpec {
     name: "rust-analyzer",
+    // rustup's, or whichever the user keeps current.
+    on_path: true,
+    project: |_| None,
     release: Release {
         version: "2026-10-26",
         url: "https://github.com/rust-lang/rust-analyzer/releases/download/{version}/rust-analyzer-{target}.gz",
-        // Computed from the downloads, and the same as the digests GitHub lists for them.
+        // Digests computed from the downloads, and the same as GitHub lists for them.
         assets: &[
             (
+                ("aarch64", "macos"),
                 "aarch64-apple-darwin",
                 "8fb90cb58f5910d8d8b24ac1a93cca49f053365cbf0eb3c682144ad0a0027dcf",
             ),
             (
+                ("x86_64", "macos"),
                 "x86_64-apple-darwin",
                 "b3e4904877bcf7013a4a342c449cff1bf0ea0b91d5a1a30ac8df3d32142519c0",
             ),
             (
+                ("aarch64", "linux"),
                 "aarch64-unknown-linux-gnu",
                 "1b225c4c9ae329ca96e8a75a5bbcb5562a7f1d25c57c8b55d3e02299a3dbe836",
             ),
             (
+                ("x86_64", "linux"),
                 "x86_64-unknown-linux-gnu",
                 "4c83773525f93b636ed79761389568b4d2a89c05fa7ecc440245032d49ad80ce",
             ),
         ],
+        archive: Archive::Gzip,
+        binary: "rust-analyzer",
     },
-    section: "rust-analyzer",
-    defaults,
+    args: &[],
+    settings,
     // It reads its settings from `initialize` first, and asks for them only later.
-    settings_at_initialize: true,
+    initialization_options: Some(defaults),
 };
+
+fn settings() -> Value {
+    json!({ "rust-analyzer": defaults() })
+}
 
 fn defaults() -> Value {
     json!({

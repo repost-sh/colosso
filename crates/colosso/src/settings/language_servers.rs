@@ -10,7 +10,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use colosso_lsp::servers::{BASEDPYRIGHT, RUST_ANALYZER, VTSLS};
+use colosso_lsp::servers::{PYREFLY, RUST_ANALYZER, TYPESCRIPT};
 use gpui_kit::Action;
 use serde::{Deserialize, Serialize};
 
@@ -40,7 +40,7 @@ pub type LanguageServers = BTreeMap<String, ServerSettings>;
 
 /// Every server the app runs, each on: so the file lists them for whoever edits it.
 pub fn every_server() -> LanguageServers {
-    ([RUST_ANALYZER.name, VTSLS.name, BASEDPYRIGHT.name].into_iter())
+    ([RUST_ANALYZER.name, TYPESCRIPT.name, PYREFLY.name].into_iter())
         .map(|name| (name.to_owned(), ServerSettings::default()))
         .collect()
 }

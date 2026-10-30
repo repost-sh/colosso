@@ -94,12 +94,12 @@ fn a_file_s_server_and_language_go_by_its_extension() {
     assert_eq!(id("a.jsx"), "javascriptreact");
     assert_eq!(id("a.py"), "python");
     assert_eq!(id("a.txt"), "plaintext");
-    assert_eq!(Kind::TypeScript.name(), "vtsls");
-    assert_eq!(Kind::Python.name(), "basedpyright");
+    assert_eq!(Kind::TypeScript.name(), "typescript");
+    assert_eq!(Kind::Python.name(), "pyrefly");
 }
 
 #[gpui_kit::test]
-async fn a_typescript_file_starts_vtsls_which_is_ready_once_initialized(cx: &mut TestAppContext) {
+async fn a_typescript_file_starts_its_server_which_is_ready_once_initialized(cx: &mut TestAppContext) {
     const APP: &str = "export const said: string = greet(\"you\");\n";
     let root = repo("language-typescript", &[("src/app.ts", APP), ("src/lib.rs", LIB)]);
     let (launcher, _) = launcher(move |root, _| {

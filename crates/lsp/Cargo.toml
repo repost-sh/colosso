@@ -15,9 +15,11 @@ serde_json = { version = "1", features = ["raw_value"] }
 # Replies and subscriptions are futures and streams, so any executor can wait on them.
 futures = "0.3"
 log = "0.4"
-# A downloaded server is checked against its pinned digest and unpacked in-process.
+# A downloaded server is checked against its pinned digest and unpacked in-process: a gzipped
+# binary (rust-analyzer) or a gzipped tar (TypeScript's npm package, Pyrefly's release).
 sha2 = "0.10"
 flate2 = "1"
+tar = "0.4"
 
 [lints]
 workspace = true

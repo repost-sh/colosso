@@ -1,5 +1,5 @@
-//! Language servers behind the Files panel's viewer: a rust-analyzer, a vtsls or a
-//! basedpyright per checkout, started when the first Rust, TypeScript or Python file of the
+//! Language servers behind the Files panel's viewer: a rust-analyzer, a TypeScript server or
+//! a Pyrefly per checkout, started when the first Rust, TypeScript or Python file of the
 //! checkout is shown, kept in step with the files shown, and asked where a symbol is defined,
 //! what it is, and what's wrong with the code.
 //!
@@ -49,7 +49,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use colosso_lsp::Launch;
-use colosso_lsp::servers::{BASEDPYRIGHT, Curl, NodeServer, NpmCli, RUST_ANALYZER, VTSLS, node};
+use colosso_lsp::servers::{
+    Curl, NpmCli, PYREFLY, RUST_ANALYZER, ServerSpec, TYPESCRIPT, VTSLS, node, typescript,
+};
 use gpui_kit::component::input::{GoToDefinition, ShowCompletions};
 use gpui_kit::{App, KeyBinding, actions};
 
@@ -84,9 +86,10 @@ fn backoff(crashes: usize) -> Duration {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Kind {
     Rust,
-    /// vtsls, for TypeScript and JavaScript both.
+    /// TypeScript's own server, or vtsls for an older project, for TypeScript and JavaScript
+    /// both.
     TypeScript,
-    /// basedpyright.
+    /// Pyrefly.
     Python,
 }
 
@@ -96,12 +99,13 @@ impl Kind {
         file(path).map(|(kind, _)| kind)
     }
 
-    /// The server's name, as the status bar, the settings and the log say it.
+    /// The name the status bar, the settings and the log know the kind's server by: the
+    /// server's own, or "typescript" whichever of its two engines runs.
     pub fn name(self) -> &'static str {
         match self {
             Kind::Rust => RUST_ANALYZER.name,
-            Kind::TypeScript => VTSLS.name,
-            Kind::Python => BASEDPYRIGHT.name,
+            Kind::TypeScript => TYPESCRIPT.name,
+            Kind::Python => PYREFLY.name,
         }
     }
 
@@ -148,69 +152,51 @@ fn language_id(path: &Path) -> &'static str {
     file(path).map_or("plaintext", |(_, language_id)| language_id)
 }
 
-/// Why a server couldn't be started: a few words for the status bar, when there are any
-/// short enough to say beside its name, and the whole story.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Failure {
-    pub words: Option<&'static str>,
-    pub why: String,
-}
+/// Finds a kind's server and says how to start it for the checkout at a root, or says why
+/// it couldn't. It may download the server, so it's called on a background thread.
+pub type Launcher = Arc<dyn Fn(Kind, &Path) -> Result<Launch, String> + Send + Sync>;
 
-impl From<String> for Failure {
-    fn from(why: String) -> Failure {
-        Failure { words: None, why }
-    }
-}
-
-/// Finds a kind's server and says how to start it for the checkout at a root. It may
-/// download the server, so it's called on a background thread.
-pub type Launcher = Arc<dyn Fn(Kind, &Path) -> Result<Launch, Failure> + Send + Sync>;
-
-/// Runs the language servers the app knows, fetched into its data folder when they aren't
-/// on PATH; binds F12 to go to a definition, shift-F12 to list a symbol's references and
-/// ctrl-space to complete; and has the status bar's menus act.
+/// Runs the language servers the app knows, each the project's own or PATH's when there's
+/// a working one and else fetched into the app's data folder; binds F12 to go to a
+/// definition, shift-F12 to list a symbol's references and ctrl-space to complete; and has
+/// the status bar's menus act.
 pub fn init(cx: &mut App) {
-    install(managed(true), cx);
+    install(managed(), cx);
     bind_keys(cx);
     status::register(cx);
 }
 
-/// Runs rust-analyzer from PATH when there's a working one there and `path_first`, and
-/// else from the app's data folder, fetched into it the first time; and the Node servers
-/// from the data folder, installed into it by npm the first time, with the machine's Node.
-fn managed(path_first: bool) -> Launcher {
+/// Runs each kind's server from the project or PATH when there's a working one there, and
+/// else from the app's data folder, fetched into it the first time; but a project still on
+/// TypeScript 5 or 6 gets vtsls, installed by npm and run with the machine's Node.
+fn managed() -> Launcher {
     let data = settings::data_dir();
     Arc::new(move |kind, root| {
         let data = (data.as_deref()).ok_or_else(|| "there's no folder to fetch it into".to_owned())?;
         match kind {
-            Kind::Rust => rust_analyzer(data, path_first, root),
-            Kind::TypeScript => node_server(&VTSLS, data, root),
-            Kind::Python => node_server(&BASEDPYRIGHT, data, root),
+            Kind::Rust => binary_server(&RUST_ANALYZER, data, root),
+            Kind::TypeScript => typescript_server(data, root),
+            Kind::Python => binary_server(&PYREFLY, data, root),
         }
     })
 }
 
-fn rust_analyzer(data: &Path, path_first: bool, root: &Path) -> Result<Launch, Failure> {
-    let binary = if path_first {
-        RUST_ANALYZER.binary(data, &Curl)
-    } else {
-        RUST_ANALYZER.install(data, &Curl)
-    };
-    let binary = binary.map_err(|error| error.to_string())?;
-    Ok(RUST_ANALYZER.launch(binary, root))
+/// `server`'s binary: the project's own or PATH's when one runs, else the managed one.
+fn binary_server(server: &ServerSpec, data: &Path, root: &Path) -> Result<Launch, String> {
+    let binary = server.binary(root, data, &Curl).map_err(|error| error.to_string())?;
+    Ok(server.launch(binary, root))
 }
 
-/// `server` run by the machine's Node, installed into `data` by npm the first time.
-fn node_server(server: &NodeServer, data: &Path, root: &Path) -> Result<Launch, Failure> {
-    let node = node().ok_or(Failure {
-        words: Some("needs Node"),
-        why: "Node isn't on PATH, nor where Homebrew or the nodejs.org installer put it; \
-              install it from nodejs.org or with `brew install node`"
-            .to_owned(),
-    })?;
-    let npm = NpmCli { node: node.clone() };
-    let script = server.script(data, &npm).map_err(|error| error.to_string())?;
-    Ok(server.launch(node, &script, root))
+/// TypeScript's own server, the project's or the managed one; but a project still on
+/// TypeScript 5 or 6 keeps vtsls, installed by npm the first time, when there's a Node to
+/// run it, so what the editor says agrees with what the project builds with.
+fn typescript_server(data: &Path, root: &Path) -> Result<Launch, String> {
+    if typescript::project_is_older(root) && let Some(node) = node() {
+        let npm = NpmCli { node: node.clone() };
+        let script = VTSLS.script(data, &npm).map_err(|error| error.to_string())?;
+        return Ok(VTSLS.launch(node, &script, root));
+    }
+    binary_server(&TYPESCRIPT, data, root)
 }
 
 /// F12 goes to the definition of what's under the cursor, shift-F12 lists its references,

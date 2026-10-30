@@ -10,8 +10,10 @@ use gpui_kit::{Action, App, Context, Global, SharedString, Subscription, Task, W
 use serde::{Deserialize, Serialize};
 
 mod language_servers;
+mod migration;
 
 pub use language_servers::{LanguageServers, Scope, SetLanguageServer};
+use migration::migrate;
 
 use crate::gradient::GradientTheme;
 use crate::key_repeat::KeyRepeat;
@@ -417,33 +419,6 @@ fn read(path: &Path) -> Result<Settings, String> {
     let mut settings: Settings = serde_json::from_value(value).map_err(|error| error.to_string())?;
     settings.list_every_server();
     Ok(settings)
-}
-
-/// Settings a file may hold that the app no longer has, each where it was and why it went.
-/// A key that's renamed, or changes what it means, goes here under its old name.
-const RETIRED: [(&[&str], &str); 5] = [
-    // The Files panel's tree's width, from before the panel showed a file beside its tree:
-    // too narrow for both, it gave way to `files_panel_width` and `files_tree_width`.
-    (&[], "files_width"),
-    // A held arrow sped up the longer it was held, in steps a frame; it now has one speed,
-    // `per_second`, the same whatever the display's rate.
-    (&["key_repeat"], "start_per_frame"),
-    (&["key_repeat"], "accelerate_after_ms"),
-    (&["key_repeat"], "full_speed_after_ms"),
-    (&["key_repeat"], "most_per_frame"),
-];
-
-/// Brings settings read from a file to what the app has now: retired keys are dropped, so
-/// what they meant isn't taken for what a key of the same name means later.
-fn migrate(value: &mut serde_json::Value) {
-    for (within, key) in RETIRED {
-        let object = within
-            .iter()
-            .try_fold(&mut *value, |value, key| value.get_mut(*key));
-        if let Some(serde_json::Value::Object(object)) = object {
-            object.remove(key);
-        }
-    }
 }
 
 fn load(path: &Path) -> Settings {

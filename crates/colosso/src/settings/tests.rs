@@ -90,6 +90,10 @@ fn a_file_with_retired_keys_reads_without_them() {
             "accelerate_after_ms": 500,
             "full_speed_after_ms": 1500,
             "most_per_frame": 30.0
+        },
+        "language_servers": {
+            "rust-analyzer": { "enabled": false },
+            "vtsls": { "enabled": false, "off_in": ["/old/project"] }
         }
     }"#;
     std::fs::write(&path, old).unwrap();
@@ -104,6 +108,14 @@ fn a_file_with_retired_keys_reads_without_them() {
         ..KeyRepeat::default()
     };
     assert_eq!(settings.key_repeat, repeat);
+    // The TypeScript switch keeps what was set under vtsls's name; the servers that came
+    // since are listed, on.
+    let servers: Vec<_> = settings.language_servers.keys().map(String::as_str).collect();
+    assert_eq!(servers, ["pyrefly", "rust-analyzer", "typescript"]);
+    assert!(!settings.runs_server("rust-analyzer", None));
+    assert!(!settings.runs_server("typescript", None));
+    assert_eq!(settings.language_servers["typescript"].off_in, [PathBuf::from("/old/project")]);
+    assert!(settings.runs_server("pyrefly", None));
 }
 
 #[test]
