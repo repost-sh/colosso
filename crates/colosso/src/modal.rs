@@ -15,7 +15,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyView, AnyWindowHandle, App, AppContext as _, ClickEvent, Context, Entity, FontWeight,
     Global, Hsla, InteractiveElement as _, IntoElement, ParentElement as _, Render, RenderOnce,
-    SharedString, StatefulInteractiveElement as _, Styled, Subscription, Window,
+    SharedString, StatefulInteractiveElement as _, Styled, Subscription, TextStyle, Window,
     WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions, div, point, px, size,
 };
 
@@ -31,6 +31,11 @@ pub const FOOTER: f32 = 32.;
 /// Every line in a dialog is one of these high, so its height is known before it opens.
 pub const LINE: f32 = 20.;
 pub const SMALL_LINE: f32 = 18.;
+/// A [`heading`]'s text is this big, each of its lines this high, and it has at most this
+/// many: a long file name wraps it, a silly one is cut short.
+const HEADING_SIZE: f32 = 16.;
+const HEADING_LINE: f32 = 24.;
+const MOST_HEADING_LINES: usize = 3;
 
 /// The height of a dialog's text [`field`].
 const FIELD: f32 = 34.;
@@ -265,17 +270,40 @@ impl Render for Alert {
     }
 }
 
+/// A dialog's title; a dialog that puts a name in it is sized by [`heading_height`].
 pub fn heading(text: impl Into<SharedString>) -> impl IntoElement {
     div()
-        .text_base()
+        .text_size(px(HEADING_SIZE))
+        .line_height(px(HEADING_LINE))
         .font_weight(FontWeight::SEMIBOLD)
+        .line_clamp(MOST_HEADING_LINES)
         .child(text.into())
+}
+
+/// How high the [`heading`] `text` is across a dialog `width` wide, measured before the
+/// dialog opens, as its window has to be sized then. The dialog's text is the window's
+/// default, the heading's weight apart.
+pub fn heading_height(text: &SharedString, width: f32, window: &Window) -> f32 {
+    let style = TextStyle {
+        font_weight: FontWeight::SEMIBOLD,
+        ..TextStyle::default()
+    };
+    let (run, wrap) = (style.to_run(text.len()), Some(px(width - 2. * PADDING)));
+    let shaped = (window.text_system()).shape_text(text.clone(), px(HEADING_SIZE), &[run], wrap, None);
+    let lines: usize = shaped.map_or(1, |lines| (lines.iter()).map(|line| 1 + line.wrap_boundaries().len()).sum());
+    lines.min(MOST_HEADING_LINES) as f32 * HEADING_LINE
 }
 
 /// The row of buttons at the bottom of a dialog, against its right edge, with what went
 /// wrong, if anything, to their left.
 pub fn footer(error: Option<SharedString>, p: Palette) -> gpui_kit::Div {
-    div().h(px(FOOTER)).flex().items_center().gap_2().child(
+    div()
+        .debug_selector(|| "dialog-footer".into())
+        .h(px(FOOTER))
+        .flex()
+        .items_center()
+        .gap_2()
+        .child(
         div()
             .flex_1()
             .min_w_0()

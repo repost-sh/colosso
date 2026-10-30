@@ -70,7 +70,8 @@ fn ask(
                         deleting: false,
                         error: notice,
                     };
-                    modal::open(WIDTH, dialog.height(), window, cx, |_, _| dialog);
+                    let height = dialog.height(window);
+                    modal::open(WIDTH, height, window, cx, |_, _| dialog);
                 }
                 Err(error) => modal::alert("Couldn't read the worktree", error.message, window, cx),
             })
@@ -110,9 +111,13 @@ impl DeleteWorktreeDialog {
         self.loss.changes.len() - self.listed_changes()
     }
 
-    /// The window height that fits what the dialog says.
-    fn height(&self) -> f32 {
-        let title = LINE + SMALL_LINE;
+    fn title(&self) -> SharedString {
+        format!("Delete {}?", folder_name(&self.path)).into()
+    }
+
+    /// The window height that fits what the dialog says, its title as it wraps.
+    fn height(&self, window: &Window) -> f32 {
+        let title = modal::heading_height(&self.title(), WIDTH, window) + SMALL_LINE;
         let changes = if self.loss.changes.is_empty() {
             LINE
         } else {
@@ -347,16 +352,7 @@ impl Render for DeleteWorktreeDialog {
             .size_full()
             .flex()
             .flex_col()
-            .child(
-                div()
-                    .h(px(LINE))
-                    .flex()
-                    .items_center()
-                    .child(modal::heading(format!(
-                        "Delete {}?",
-                        folder_name(&self.path)
-                    ))),
-            )
+            .child(modal::heading(self.title()))
             .child(
                 // Cut from the start, so the folder's own name stays in view.
                 div()
