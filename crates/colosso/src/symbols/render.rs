@@ -10,12 +10,12 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, Context, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _,
     Render, SharedString, StatefulInteractiveElement as _, Styled as _, Window, div, px,
-    uniform_list,
 };
 
 use super::view::Symbols;
 use crate::files::ROW;
 use crate::list::styled;
+use crate::list;
 use crate::modal;
 use crate::right_panel::{PageDown, PageUp, SelectNext, SelectPrevious, note};
 use crate::shell::{self, ellipsized};
@@ -30,22 +30,12 @@ impl Render for Symbols {
         let list = if self.shown.is_empty() {
             note(p).child(self.note())
         } else {
-            div().flex_1().min_h_0().child(
-                uniform_list(
-                    "symbols",
-                    self.shown.len(),
-                    cx.processor(|this, range: Range<usize>, _, cx| {
-                        let p = theme::palette(cx);
-                        range
-                            .map(|index| this.row(index, p, cx))
-                            .collect::<Vec<_>>()
-                    }),
-                )
-                .track_scroll(&self.scroll)
-                .size_full(),
-            )
+            let rows = cx.processor(move |this: &mut Self, range: Range<usize>, _, cx| {
+                range.map(|index| this.row(index, p, cx)).collect()
+            });
+            list::scrolling("symbols", self.shown.len(), &self.scroll, rows)
         };
-        modal::palette(&self.input, list, self.status(), p)
+        modal::palette(Some(&self.input), list, self.status(), p)
             .key_context("Symbols")
             .on_action(cx.listener(|this, _: &SelectPrevious, _, cx| this.step(-1, cx)))
             .on_action(cx.listener(|this, _: &SelectNext, _, cx| this.step(1, cx)))

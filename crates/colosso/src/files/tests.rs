@@ -13,7 +13,8 @@ use super::*;
 use crate::changes::{Mark, Touched};
 use crate::modal;
 use crate::checkout::{Checkout, Content, Document, read_at_most};
-use crate::test_support::{git, in_window, scratch, write};
+use crate::shell::Shell;
+use crate::test_support::{git, in_window, scratch, select, shell_with, write};
 use crate::{right_panel, settings};
 
 #[test]
@@ -313,9 +314,32 @@ pub(super) fn typed(
     cx.run_until_parked();
 }
 
-/// The question asked about unsaved edits, if one is: its window and the dialog in it.
-pub(super) fn asked(cx: &mut TestAppContext) -> Option<(AnyWindowHandle, Entity<SaveDialog>)> {
-    cx.read(|cx| Some((modal::window(cx)?, modal::current::<SaveDialog>(cx)?)))
+/// A shell over the checkout at `root`, README.md shown in its Files panel, which that makes:
+/// the window, the shell and the panel.
+pub(super) fn shell_showing(
+    root: &Path,
+    cx: &mut TestAppContext,
+) -> (AnyWindowHandle, Entity<Shell>, Entity<FilesPanel>) {
+    let (window, shell) = shell_with(&[root], cx);
+    select(&shell, root, cx);
+    (cx.update_window(window, |_, window, cx| {
+        shell.update(cx, |shell, cx| shell.view_file(Place::file("README.md"), window, cx));
+    }))
+    .unwrap();
+    cx.run_until_parked();
+    let files = cx.read(|cx| shell.read(cx).right_panel.files().cloned()).expect("the Files panel");
+    (window, shell, files)
+}
+
+/// Presses `keys` in `window`, drawn first so the keyboard is where the last change left it.
+pub(super) fn press(window: AnyWindowHandle, keys: &str, cx: &mut TestAppContext) {
+    (cx.update_window(window, |_, window, cx| window.draw(cx).clear(cx))).unwrap();
+    cx.simulate_keystrokes(window, keys);
+}
+
+/// The dialog on screen, if one is and it shows a `T`: its window and the `T`.
+pub(super) fn dialog<T: 'static>(cx: &mut TestAppContext) -> Option<(AnyWindowHandle, Entity<T>)> {
+    cx.read(|cx| Some((modal::window(cx)?, modal::current::<T>(cx)?)))
 }
 
 /// Answers the question asked with `act`, keeping no hold on the dialog, which goes with its
@@ -324,7 +348,7 @@ pub(super) fn answer(
     cx: &mut TestAppContext,
     act: fn(&mut SaveDialog, &mut Window, &mut Context<SaveDialog>),
 ) {
-    let (dialog_window, dialog) = asked(cx).expect("asked");
+    let (dialog_window, dialog) = dialog::<SaveDialog>(cx).expect("asked");
     (cx.update_window(dialog_window, |_, window, cx| {
         dialog.update(cx, |dialog, cx| act(dialog, window, cx));
     }))

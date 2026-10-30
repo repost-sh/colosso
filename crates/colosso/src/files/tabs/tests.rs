@@ -2,7 +2,7 @@ use gpui_kit::{Entity, TestAppContext, VisualTestContext, px};
 
 use super::super::At;
 use super::super::closing::SaveDialog;
-use super::super::tests::{answer, asked, checkout, editing, open, selected, typed, with};
+use super::super::tests::{answer, checkout, dialog, editing, open, selected, typed, with};
 use super::*;
 use crate::modal;
 use crate::test_support::write;
@@ -179,7 +179,7 @@ fn a_tab_with_unsaved_edits_asks_before_it_closes(cx: &mut TestAppContext) {
     assert_eq!(tabs(&panel, cx), ["[src/lib.rs]"], "still open, asked");
     answer(cx, SaveDialog::save);
     assert!(tabs(&panel, cx).is_empty(), "closed once saved");
-    assert!(asked(cx).is_none(), "the question's answered");
+    assert!(dialog::<SaveDialog>(cx).is_none(), "the question's answered");
     let on_disk = || std::fs::read_to_string(&lib).unwrap();
     assert_eq!(on_disk(), "// kept\npub fn a() {}\npub fn b() {}\n");
     // Not saved: the tab closes, the file as it was.
@@ -192,7 +192,7 @@ fn a_tab_with_unsaved_edits_asks_before_it_closes(cx: &mut TestAppContext) {
     editing(window, &panel, "src/lib.rs", At::Bytes(0..0), cx);
     close(cx);
     assert!(tabs(&panel, cx).is_empty());
-    assert!(asked(cx).is_none());
+    assert!(dialog::<SaveDialog>(cx).is_none());
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -209,8 +209,8 @@ fn the_question_fits_a_file_name_that_wraps_its_title(cx: &mut TestAppContext) {
         typed(window, &editor, "// edit\n", cx);
         with(window, &panel, cx, |panel, window, cx| panel.close(0, window, cx));
         cx.run_until_parked();
-        let (dialog, question) = asked(cx).expect("asked");
-        let cx = &mut VisualTestContext::from_window(dialog, cx);
+        let (asked, question) = dialog::<SaveDialog>(cx).expect("asked");
+        let cx = &mut VisualTestContext::from_window(asked, cx);
         cx.run_until_parked();
         let buttons = cx.debug_bounds("dialog-footer").expect("the buttons");
         let height = cx.update(|window, _| window.bounds().size.height);

@@ -41,40 +41,59 @@ const MOST_HEADING_LINES: usize = 3;
 const FIELD: f32 = 34.;
 /// Between the pieces of a [`palette`].
 const GAP: f32 = 8.;
-/// The width of a palette, and the rows it shows at once.
+/// The width of a palette, and the most rows it shows at once.
 const PALETTE_WIDTH: f32 = 640.;
-const PALETTE_ROWS: f32 = 14.;
+const PALETTE_ROWS: usize = 14;
 
-/// Opens the palette `build` makes over `parent`: a dialog a [`palette`] fills, sized to
-/// its rows.
+/// Opens the palette `build` makes over `parent`: a dialog a [`palette`] with a field
+/// fills, sized to show the most rows.
 pub fn open_palette<V: Render>(
     parent: &mut Window,
     cx: &mut App,
     build: impl FnOnce(&mut Window, &mut Context<V>) -> V,
 ) {
-    let height = 2. * PADDING + FIELD + GAP + PALETTE_ROWS * crate::files::ROW + GAP + SMALL_LINE;
-    open(PALETTE_WIDTH, height, parent, cx, build);
+    open(PALETTE_WIDTH, palette_height(true, PALETTE_ROWS), parent, cx, build);
 }
 
-/// A palette: its field over `list`, what it finds, and under that `status`, a small muted
-/// line on how much; the pieces [`open_palette`] sizes the dialog for.
+/// Opens the list `build` makes over `parent`: a dialog a [`palette`] without a field
+/// fills, sized to its `rows`, up to the most a palette shows.
+pub fn open_list<V: Render>(
+    rows: usize,
+    parent: &mut Window,
+    cx: &mut App,
+    build: impl FnOnce(&mut Window, &mut Context<V>) -> V,
+) {
+    open(PALETTE_WIDTH, palette_height(false, rows), parent, cx, build);
+}
+
+/// How high a palette is with `rows` rows, and a field if it has one.
+fn palette_height(field: bool, rows: usize) -> f32 {
+    let field = if field { FIELD + GAP } else { 0. };
+    let rows = rows.min(PALETTE_ROWS) as f32 * crate::files::ROW;
+    2. * PADDING + field + rows + GAP + SMALL_LINE
+}
+
+/// A palette: its field, if it has one, over `list`, what it finds, and under that `status`,
+/// a small muted line on how much; the pieces [`open_palette`] and [`open_list`] size the
+/// dialog for.
 pub fn palette(
-    input: &Entity<InputState>,
+    input: Option<&Entity<InputState>>,
     list: impl IntoElement,
     status: impl IntoElement,
     p: Palette,
 ) -> gpui_kit::Div {
+    let field = input.map(|input| {
+        let input = Input::new(input)
+            .small()
+            .prefix(icon(IconName::Search, 14.).text_color(p.muted));
+        field(input, p)
+    });
     div()
         .size_full()
         .flex()
         .flex_col()
         .gap(px(GAP))
-        .child(field(
-            Input::new(input)
-                .small()
-                .prefix(icon(IconName::Search, 14.).text_color(p.muted)),
-            p,
-        ))
+        .children(field)
         .child(list)
         .child(small_line().text_color(p.muted).child(status))
 }

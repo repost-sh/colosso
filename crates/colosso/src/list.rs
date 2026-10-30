@@ -4,8 +4,9 @@
 use std::ops::Range;
 
 use gpui_kit::{
-    App, HighlightStyle, Hsla, KeyBinding, SharedString, StyledText, UniformListScrollHandle,
-    actions,
+    AnyElement, App, Div, ElementId, HighlightStyle, Hsla, KeyBinding, ParentElement as _,
+    SharedString, Styled as _, StyledText, UniformListScrollHandle, Window, actions, div,
+    uniform_list,
 };
 
 actions!(
@@ -48,6 +49,21 @@ pub fn stepped(at: Option<usize>, by: isize, len: usize) -> Option<usize> {
         None if by > 0 => 0,
         None => last,
     })
+}
+
+/// A list of `count` rows that scrolls, filling the room it's given, `rows` making those in
+/// a range as they come on screen.
+pub fn scrolling(
+    id: impl Into<ElementId>,
+    count: usize,
+    scroll: &UniformListScrollHandle,
+    rows: impl Fn(Range<usize>, &mut Window, &mut App) -> Vec<AnyElement> + 'static,
+) -> Div {
+    div().flex_1().min_h_0().child(
+        uniform_list(id, count, rows)
+            .track_scroll(scroll)
+            .size_full(),
+    )
 }
 
 /// How many of a list's rows, `row` high, fit in it: a page's step.

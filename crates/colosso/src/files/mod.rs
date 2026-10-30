@@ -10,6 +10,7 @@ mod panel;
 mod place;
 mod render;
 mod rename;
+mod switcher;
 mod tabs;
 #[cfg(test)]
 mod tests;
@@ -23,24 +24,34 @@ pub use place::{At, Place, relative};
 pub use closing::ask_before_closing;
 pub use render::ROW;
 
-use gpui_kit::{App, Context, Div, InteractiveElement as _, Window};
+use gpui_kit::assets::IconName;
+use gpui_kit::{
+    App, Context, Div, ElementId, Entity, FontWeight, InteractiveElement as _, IntoElement,
+    ModifiersChangedEvent, ParentElement as _, Stateful, Styled as _, Window, div, px,
+};
 
 use crate::modal;
 use crate::right_panel::View;
-use crate::shell::Shell;
+use crate::shell::{self, Shell};
+use crate::theme::Palette;
 
-gpui_kit::actions!(files, [Save, CloseTab, CloseLocations]);
+gpui_kit::actions!(files, [Save, CloseTab, SwitchTab, SwitchTabBack, CloseLocations]);
 
 /// Binds the keys the file shown answers to, wherever the keyboard is (⌘S saves it, ⌘W
-/// closes its tab); and, while the list of places under it has the keyboard, the keys that
-/// move along it, Enter to open the place picked and Escape to close it.
+/// closes its tab, ⌃⇥ switches to another); in the switcher, the keys that move its pick;
+/// and, while the list of places under the file has the keyboard, the keys that move along
+/// it, Enter to open the place picked and Escape to close it.
 pub fn init(cx: &mut App) {
     use crate::list::{Activate, SelectFirst, SelectLast};
     use gpui_kit::KeyBinding;
     cx.bind_keys([
         KeyBinding::new("cmd-s", Save, None),
         KeyBinding::new("cmd-w", CloseTab, None),
+        KeyBinding::new("ctrl-tab", SwitchTab, None),
+        KeyBinding::new("ctrl-shift-tab", SwitchTabBack, None),
     ]);
+    crate::list::bind_keys("TabSwitcher", cx);
+    cx.bind_keys([KeyBinding::new("enter", Activate, Some("TabSwitcher"))]);
     crate::list::bind_keys("Locations", cx);
     let list = Some("Locations");
     cx.bind_keys([
@@ -60,18 +71,58 @@ impl Shell {
     /// What the window does with the files' actions, wherever the keyboard is.
     pub fn handle_files(root: Div, cx: &mut Context<Self>) -> Div {
         root.on_action(cx.listener(|this, _: &CloseTab, window, cx| this.close_tab(window, cx)))
+            .on_action(cx.listener(|this, _: &SwitchTab, window, cx| this.switch_tab(1, window, cx)))
+            .on_action(cx.listener(|this, _: &SwitchTabBack, window, cx| this.switch_tab(-1, window, cx)))
+            // ⌃ let go before the switcher's window has the keyboard is heard here.
+            .on_modifiers_changed(|event: &ModifiersChangedEvent, window, cx| {
+                if !event.modifiers.control {
+                    switcher::released(window, cx);
+                }
+            })
+    }
+
+    /// The Files panel, while it's shown with a file in it.
+    fn files_shown(&self, cx: &App) -> Option<Entity<FilesPanel>> {
+        (self.right_panel.files())
+            .filter(|files| self.right_panel.shows(View::Files) && files.read(cx).viewing().is_some())
+            .cloned()
     }
 
     /// ⌘W: closes the tab shown in the Files panel, asking about unsaved edits first; with no
     /// tab to close, the window, as a browser's last tab does.
     fn close_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.right_panel.shows(View::Files)
-            && let Some(files) = self.right_panel.files().cloned()
-            && files.read(cx).viewing().is_some()
-        {
-            files.update(cx, |files, cx| files.close(files.shown, window, cx));
-        } else {
-            self.close_window(window, cx);
+        match self.files_shown(cx) {
+            Some(files) => files.update(cx, |files, cx| files.close(files.shown, window, cx)),
+            None => self.close_window(window, cx),
         }
     }
+
+    /// ⌃⇥: lists the Files panel's tabs to switch between, or moves the list's pick `by`
+    /// rows. With no file shown, the key is left to whatever else listens for it.
+    fn switch_tab(&mut self, by: isize, window: &mut Window, cx: &mut Context<Self>) {
+        match self.files_shown(cx) {
+            Some(files) => switcher::switch(files, by, window, cx),
+            None => cx.propagate(),
+        }
+    }
+}
+
+/// A row that names a file, as the palettes list them: its icon, its `name` in bold and its
+/// `folder` dimmed after it, with room for what the caller adds after that.
+pub fn file_row(
+    id: impl Into<ElementId>,
+    selected: bool,
+    icon: IconName,
+    name: impl IntoElement,
+    folder: impl IntoElement,
+    p: Palette,
+) -> Stateful<Div> {
+    shell::row(id, selected, p)
+        .w_full()
+        .h(px(ROW))
+        .gap_1p5()
+        .rounded(px(5.))
+        .child(shell::icon(icon, 14.).text_color(p.muted))
+        .child(div().flex_shrink_0().font_weight(FontWeight::SEMIBOLD).child(name))
+        .child(shell::ellipsized(folder).flex_1().text_color(p.muted))
 }
