@@ -26,8 +26,6 @@ pub struct NodeServer {
     pub version: &'static str,
     /// The script in the package that is the server, which Node runs.
     pub script: &'static str,
-    /// The settings its `workspace/configuration` requests are answered from, by section.
-    pub settings: fn() -> Value,
 }
 
 /// Runs npm to install a package.
@@ -103,15 +101,16 @@ impl NodeServer {
         Ok(version.join(script))
     }
 
-    /// How to start the server: `node` running `script` for the workspace at `root`.
-    pub fn launch(&self, node: PathBuf, script: &Path, root: &Path) -> Launch {
+    /// How to start the server: `node` running `script` for the workspace at `root`, with
+    /// `settings` by section, which its `workspace/configuration` requests are answered from.
+    pub fn launch(&self, node: PathBuf, script: &Path, root: &Path, settings: Value) -> Launch {
         Launch {
             name: self.name.to_owned(),
             program: node,
             args: vec![script.to_string_lossy().into_owned(), "--stdio".to_owned()],
             env: Vec::new(),
             cwd: root.to_owned(),
-            settings: (self.settings)(),
+            settings,
             initialization_options: None,
             log: None,
         }
@@ -131,13 +130,15 @@ pub static VTSLS: NodeServer = NodeServer {
     package: "@vtsls/language-server",
     version: "0.3.0",
     script: "bin/vtsls.js",
-    settings: vtsls_settings,
 };
 
-fn vtsls_settings() -> Value {
+/// vtsls's settings, running the TypeScript at `typescript`, a `typescript` package's
+/// folder, in place of the one it bundles, so what the editor says agrees with what the
+/// project builds with: VS Code's `typescript.tsdk` names the package's `lib`, which with
+/// `autoUseWorkspaceTsdk` on is taken as the workspace's without asking.
+pub fn vtsls_settings(typescript: &Path) -> Value {
     let mut settings = typescript::settings();
-    // The project's own TypeScript when it has one in `node_modules`, so what the editor
-    // says agrees with what the project builds with.
+    settings["typescript"]["tsdk"] = json!(typescript.join("lib"));
     settings["vtsls"] = json!({ "autoUseWorkspaceTsdk": true });
     settings
 }
@@ -215,13 +216,15 @@ mod tests {
     }
 
     #[test]
-    fn a_launch_runs_the_script_with_node() {
+    fn a_launch_runs_the_script_with_node_on_the_typescript_named() {
         let node = PathBuf::from("/usr/local/bin/node");
-        let launch = VTSLS.launch(node.clone(), Path::new("/data/vtsls.js"), Path::new("/work"));
+        let settings = vtsls_settings(Path::new("/work/api/node_modules/typescript"));
+        let launch = VTSLS.launch(node.clone(), Path::new("/data/vtsls.js"), Path::new("/work"), settings);
         assert_eq!(launch.program, node);
         assert_eq!(launch.args, ["/data/vtsls.js", "--stdio"]);
         assert_eq!(launch.cwd, PathBuf::from("/work"));
-        assert!(launch.settings.get("vtsls").is_some());
-        assert!(launch.settings.get("typescript").is_some());
+        assert_eq!(launch.settings["typescript"]["tsdk"], "/work/api/node_modules/typescript/lib");
+        assert_eq!(launch.settings["vtsls"]["autoUseWorkspaceTsdk"], true);
+        assert!(launch.settings["typescript"].get("inlayHints").is_some());
     }
 }

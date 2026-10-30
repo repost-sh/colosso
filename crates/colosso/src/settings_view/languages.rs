@@ -43,10 +43,11 @@ fn servers() -> SettingsSection {
             SettingRow::new("TypeScript and JavaScript")
                 .description(
                     "The same in TypeScript and JavaScript files, from TypeScript 7's own \
-                     server: the project's own, when it has TypeScript 7 or newer in \
-                     node_modules, else one downloaded the first time. A project on an older \
-                     TypeScript gets vtsls instead, run by the machine's Node when there is \
-                     one, so what the editor says agrees with what the project builds.",
+                     server: the project's own, when TypeScript 7 or newer is installed in \
+                     the folder, else one downloaded the first time. A folder with a project \
+                     on an older TypeScript anywhere in it gets vtsls instead, running that \
+                     TypeScript by the machine's Node when there is one, so what the editor \
+                     says agrees with what the project builds.",
                 )
                 .control(NativeSwitch::new(
                     "typescript",

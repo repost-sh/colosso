@@ -31,7 +31,8 @@ served on the client's own threads, and the app polls futures on any executor.
   unpacks it (a gzipped binary, or a tarball whole) and moves it into
   `<data>/servers/<name>/<version>/` with a single rename. `Fetch` is the seam for the app's
   own HTTP client. `servers::VTSLS` is an npm package installed by `Npm` and run with the
-  machine's Node, for a project still on TypeScript 5 or 6.
+  machine's Node, for a checkout with a project still on TypeScript 5 or 6 anywhere in it,
+  running that project's TypeScript (`typescript::engine` chooses, `vtsls_settings` names it).
 
 ## Tests
 

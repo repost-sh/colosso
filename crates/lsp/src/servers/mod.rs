@@ -16,7 +16,7 @@ use std::process::{Command, Stdio};
 use serde_json::Value;
 
 pub use install::{Curl, Fetch};
-pub use node::{NodeServer, Npm, NpmCli, VTSLS, node};
+pub use node::{NodeServer, Npm, NpmCli, VTSLS, node, vtsls_settings};
 pub use pyrefly::PYREFLY;
 pub use release::{Archive, Release};
 pub use rust_analyzer::RUST_ANALYZER;

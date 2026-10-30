@@ -1,23 +1,28 @@
 //! TypeScript's own language server: the native `tsc` of TypeScript 7's npm package for this
 //! platform, which is the language server too (`tsc --lsp`), with no Node to run it. The
-//! project's own when it has TypeScript 7 or newer in `node_modules`, so what the editor says
-//! agrees with what the project builds with; else the pinned release, from the npm registry.
-//! A project on an older TypeScript is better served by vtsls, VS Code's service, which runs
-//! the project's own TypeScript; [`project_is_older`] says when.
+//! project's own when TypeScript 7 or newer is installed in the checkout, so what the editor
+//! says agrees with what the project builds with; else the pinned release, from the npm
+//! registry. A checkout with a project on an older TypeScript anywhere in it is better served
+//! by vtsls, VS Code's service, running that TypeScript: TypeScript 7 dropped `baseUrl`,
+//! `moduleResolution: node` and more, so its server can't even follow such a project's
+//! imports. [`engine`] chooses, from every TypeScript installed in the checkout.
 
+use std::collections::VecDeque;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
-use super::ServerSpec;
 use super::release::{Archive, Release};
+use super::{ServerSpec, runs};
 
 pub static TYPESCRIPT: ServerSpec = ServerSpec {
     name: "typescript",
     // A `tsc` on PATH is as likely TypeScript 5's or 6's, a script with no `--lsp`.
     on_path: false,
-    project: project_binary,
+    // The project's own is found by [`engine`], among every TypeScript installed in the
+    // checkout.
+    project: |_| None,
     release: Release {
         version: "7.0.2",
         // The platform package `typescript` depends on: the binary and its library files.
@@ -53,30 +58,95 @@ pub static TYPESCRIPT: ServerSpec = ServerSpec {
     initialization_options: None,
 };
 
-/// The TypeScript the project at `root` has in `node_modules`: the package's real folder
-/// (pnpm keeps it in a store and links it) and its major version.
-fn project_typescript(root: &Path) -> Option<(PathBuf, u64)> {
-    let package = fs::canonicalize(root.join("node_modules/typescript")).ok()?;
+/// Which server serves the TypeScript of a checkout.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Engine {
+    /// vtsls, running the TypeScript at this `typescript` package folder: a project still on
+    /// 5 or 6 is in the checkout, the newest such being this one. Any such project decides
+    /// for the whole checkout, since TypeScript 7's server can't read it at all, while
+    /// TypeScript 5 or 6 reads a TypeScript 7 project near enough as 7 does.
+    Vtsls { typescript: PathBuf },
+    /// TypeScript's own server, the project's own `tsc` when one runs: the newest TypeScript
+    /// 7 or newer installed, in the platform package `typescript` depends on, beside it.
+    Native { tsc: Option<PathBuf> },
+}
+
+/// The engine for the checkout at `root`, from every TypeScript installed in it.
+pub fn engine(root: &Path) -> Engine {
+    let installed = installed(root);
+    if let Some(older) = installed.iter().find(|typescript| typescript.version.0 < 7) {
+        return Engine::Vtsls { typescript: older.package.clone() };
+    }
+    let tsc = TYPESCRIPT.release.target().and_then(|target| {
+        let platform = format!("@typescript/typescript-{target}/lib/tsc");
+        (installed.iter().filter(|typescript| typescript.version.0 >= 7))
+            .find_map(|typescript| {
+                let tsc = typescript.package.parent()?.join(&platform);
+                runs(&tsc).then_some(tsc)
+            })
+    });
+    Engine::Native { tsc }
+}
+
+/// How deep below the root TypeScript projects are looked for: a monorepo keeps its packages
+/// a folder or two down (`packages/*`, `apps/*`), an example a third.
+const DEPTH: usize = 3;
+
+/// How many folders are looked into at most, the shallower first: a root with more within
+/// reach is no checkout of a few packages but a home folder or the like, and the time is
+/// better spent starting the server.
+const FOLDERS: usize = 1000;
+
+/// Whether a folder of the name may hold a project of the checkout's own: dependencies,
+/// builds and hidden folders don't.
+fn looked_into(name: &str) -> bool {
+    !name.starts_with('.') && !["node_modules", "target", "dist", "build"].contains(&name)
+}
+
+/// A TypeScript installed in the checkout.
+struct Installed {
+    /// The package's real folder: pnpm keeps it in a store and links it from `node_modules`.
+    package: PathBuf,
+    version: (u64, u64, u64),
+}
+
+/// Every TypeScript installed in the checkout at `root`, newest first: each project's
+/// `node_modules/typescript`, the root's and those within [`DEPTH`] folders of it.
+fn installed(root: &Path) -> Vec<Installed> {
+    let mut found = Vec::new();
+    let mut folders = VecDeque::from([(root.to_path_buf(), 0)]);
+    let mut looked = 0;
+    while let Some((folder, depth)) = folders.pop_front() {
+        found.extend(installed_in(&folder));
+        looked += 1;
+        if depth == DEPTH || looked == FOLDERS {
+            continue;
+        }
+        let Ok(entries) = fs::read_dir(&folder) else { continue };
+        for entry in entries.flatten() {
+            let is_folder = entry.file_type().is_ok_and(|kind| kind.is_dir());
+            if is_folder && looked_into(&entry.file_name().to_string_lossy()) {
+                folders.push_back((entry.path(), depth + 1));
+            }
+        }
+    }
+    found.sort_by(|a, b| b.version.cmp(&a.version).then_with(|| a.package.cmp(&b.package)));
+    found
+}
+
+/// The TypeScript the project at `folder` has in its `node_modules`.
+fn installed_in(folder: &Path) -> Option<Installed> {
+    let package = fs::canonicalize(folder.join("node_modules/typescript")).ok()?;
     let manifest = fs::read_to_string(package.join("package.json")).ok()?;
     let manifest: Value = serde_json::from_str(&manifest).ok()?;
-    let version = manifest.get("version")?.as_str()?;
-    let major = version.split('.').next()?.parse().ok()?;
-    Some((package, major))
+    let version = version(manifest.get("version")?.as_str()?)?;
+    Some(Installed { package, version })
 }
 
-/// The project's own `tsc`, when its TypeScript is 7 or newer: in the platform package
-/// `typescript` depends on, beside it.
-fn project_binary(root: &Path) -> Option<PathBuf> {
-    let (package, major) = project_typescript(root)?;
-    let target = TYPESCRIPT.release.target()?;
-    let tsc = (package.parent()?).join(format!("@typescript/typescript-{target}/lib/tsc"));
-    (major >= 7 && tsc.is_file()).then_some(tsc)
-}
-
-/// Whether the project at `root` is on a TypeScript older than its own native server, 5 or
-/// 6, which vtsls, running that TypeScript, serves as the project's build reads it.
-pub fn project_is_older(root: &Path) -> bool {
-    project_typescript(root).is_some_and(|(_, major)| major < 7)
+/// The three numbers of a version like `5.9.3`, or of `7.0.0-beta`'s before its dash.
+fn version(text: &str) -> Option<(u64, u64, u64)> {
+    let mut numbers = text.split('-').next()?.split('.').map(str::parse);
+    Some((numbers.next()?.ok()?, numbers.next()?.ok()?, numbers.next()?.ok()?))
 }
 
 /// The server's settings, the same for both languages: every inlay hint on. The names are
@@ -103,6 +173,7 @@ fn inlay_hints() -> Value {
 
 #[cfg(test)]
 mod tests {
+    use super::super::install::make_executable;
     use super::super::tests::scratch;
     use super::*;
 
@@ -128,38 +199,68 @@ mod tests {
         let lib = typescript.parent().unwrap().join(format!("@typescript/typescript-{target}/lib"));
         fs::create_dir_all(&lib).unwrap();
         fs::write(lib.join("tsc"), "#!/bin/sh\nexit 0\n").unwrap();
+        make_executable(&lib.join("tsc")).unwrap();
         lib.join("tsc")
     }
 
     #[test]
-    fn the_project_s_typescript_is_known_by_its_real_folder_and_major_version() {
-        let root = scratch("typescript-major");
-        assert_eq!(project_typescript(&root), None);
-        assert!(!project_is_older(&root));
-        let package = with_typescript(&root, "5.9.3", None);
-        assert_eq!(project_typescript(&root), Some((fs::canonicalize(package).unwrap(), 5)));
-        assert!(project_is_older(&root));
+    fn every_typescript_installed_within_three_folders_is_found_and_the_newest_older_one_runs() {
+        let root = scratch("typescript-installed");
+        assert!(installed(&root).is_empty());
+        assert_eq!(engine(&root), Engine::Native { tsc: None });
+        let at_root = with_typescript(&root, "5.9.3", None);
+        let in_api = with_typescript(&root.join("packages/api"), "4.9.5", None);
         // Linked as pnpm links it: the package where it really is.
-        let root = scratch("typescript-pnpm");
-        let package = with_typescript(&root, "7.0.2", Some(".pnpm/typescript@7.0.2"));
-        assert_eq!(project_typescript(&root), Some((fs::canonicalize(package).unwrap(), 7)));
-        assert!(!project_is_older(&root));
-        // Unreadable: no TypeScript known.
-        fs::write(root.join("node_modules/typescript/package.json"), "not json").unwrap();
-        assert_eq!(project_typescript(&root), None);
+        let store = Some(".pnpm/typescript@7.0.2");
+        let in_web = with_typescript(&root.join("packages/web"), "7.0.2", store);
+        let deep = with_typescript(&root.join("examples/typescript/web"), "6.0.0", None);
+        // Four folders down, under a dependency, under a build, hidden: not looked into.
+        with_typescript(&root.join("a/b/c/d"), "7.1.0", None);
+        with_typescript(&root.join("node_modules/dep"), "7.1.0", None);
+        with_typescript(&root.join("dist/app"), "7.1.0", None);
+        with_typescript(&root.join(".cache/app"), "7.1.0", None);
+        let real = |package: &Path| fs::canonicalize(package).unwrap();
+        let found: Vec<_> = (installed(&root).iter())
+            .map(|typescript| (typescript.package.clone(), typescript.version))
+            .collect();
+        let expected = [
+            (real(&in_web), (7, 0, 2)),
+            (real(&deep), (6, 0, 0)),
+            (real(&at_root), (5, 9, 3)),
+            (real(&in_api), (4, 9, 5)),
+        ];
+        assert_eq!(found, expected);
+        // The newest older than 7 is the one vtsls runs, wherever it is.
+        assert_eq!(engine(&root), Engine::Vtsls { typescript: real(&deep) });
+        // Unreadable: not known.
+        fs::write(at_root.join("package.json"), "not json").unwrap();
+        assert_eq!(installed(&root).len(), 3);
     }
 
     #[test]
-    fn the_project_s_own_tsc_is_the_platform_package_s_beside_its_typescript_7() {
+    fn a_version_is_its_three_numbers_before_any_dash() {
+        assert_eq!(version("5.9.3"), Some((5, 9, 3)));
+        assert_eq!(version("7.0.0-beta"), Some((7, 0, 0)));
+        assert_eq!(version("7.0"), None);
+        assert_eq!(version("seven"), None);
+    }
+
+    #[test]
+    fn the_project_s_own_tsc_is_the_platform_package_s_beside_its_typescript_7_when_it_runs() {
         let root = scratch("typescript-own");
-        let package = with_typescript(&root, "7.0.2", Some(".pnpm/typescript@7.0.2"));
-        assert_eq!(project_binary(&root), None);
+        let store = Some(".pnpm/typescript@7.0.2");
+        let package = with_typescript(&root.join("packages/web"), "7.0.2", store);
+        assert_eq!(engine(&root), Engine::Native { tsc: None });
         let tsc = with_platform_package(&package);
-        assert_eq!(project_binary(&root), Some(fs::canonicalize(&tsc).unwrap()));
+        assert_eq!(engine(&root), Engine::Native { tsc: Some(fs::canonicalize(&tsc).unwrap()) });
+        // One that doesn't run is no server.
+        fs::write(&tsc, "#!/bin/sh\nexit 1\n").unwrap();
+        assert_eq!(engine(&root), Engine::Native { tsc: None });
         // TypeScript 5's, even with a platform package beside it, isn't the project's server.
         let root = scratch("typescript-own-older");
         let package = with_typescript(&root, "5.9.3", None);
         with_platform_package(&package);
-        assert_eq!(project_binary(&root), None);
+        let typescript = fs::canonicalize(&package).unwrap();
+        assert_eq!(engine(&root), Engine::Vtsls { typescript });
     }
 }

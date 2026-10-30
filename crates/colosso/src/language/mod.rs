@@ -49,8 +49,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use colosso_lsp::Launch;
+use colosso_lsp::servers::typescript::{self, Engine};
 use colosso_lsp::servers::{
-    Curl, NpmCli, PYREFLY, RUST_ANALYZER, ServerSpec, TYPESCRIPT, VTSLS, node, typescript,
+    Curl, NpmCli, PYREFLY, RUST_ANALYZER, ServerSpec, TYPESCRIPT, VTSLS, node, vtsls_settings,
 };
 use gpui_kit::component::input::{GoToDefinition, ShowCompletions};
 use gpui_kit::{App, KeyBinding, actions};
@@ -187,16 +188,23 @@ fn binary_server(server: &ServerSpec, data: &Path, root: &Path) -> Result<Launch
     Ok(server.launch(binary, root))
 }
 
-/// TypeScript's own server, the project's or the managed one; but a project still on
-/// TypeScript 5 or 6 keeps vtsls, installed by npm the first time, when there's a Node to
-/// run it, so what the editor says agrees with what the project builds with.
+/// TypeScript's own server, the project's or the managed one; but a checkout with a project
+/// still on TypeScript 5 or 6 anywhere in it gets vtsls, installed by npm the first time and
+/// running the newest such TypeScript, when there's a Node to run it: TypeScript 7's server
+/// can't follow such a project's imports, and so what the editor says agrees with what the
+/// project builds with.
 fn typescript_server(data: &Path, root: &Path) -> Result<Launch, String> {
-    if typescript::project_is_older(root) && let Some(node) = node() {
+    let engine = typescript::engine(root);
+    if let Engine::Vtsls { typescript } = &engine && let Some(node) = node() {
         let npm = NpmCli { node: node.clone() };
         let script = VTSLS.script(data, &npm).map_err(|error| error.to_string())?;
-        return Ok(VTSLS.launch(node, &script, root));
+        return Ok(VTSLS.launch(node, &script, root, vtsls_settings(typescript)));
     }
-    binary_server(&TYPESCRIPT, data, root)
+    let tsc = match engine {
+        Engine::Native { tsc: Some(tsc) } => tsc,
+        _ => TYPESCRIPT.install(data, &Curl).map_err(|error| error.to_string())?,
+    };
+    Ok(TYPESCRIPT.launch(tsc, root))
 }
 
 /// F12 goes to the definition of what's under the cursor, shift-F12 lists its references,
