@@ -194,7 +194,10 @@ impl Shell {
         }
         *shown = read.number;
         match read.worktrees {
-            Ok(worktrees) => self.workspace.set_worktrees(project, worktrees),
+            Ok(worktrees) => {
+                self.workspace.set_worktrees(project, worktrees);
+                self.restore_terminals(cx);
+            }
             Err(error) => self.workspace.set_error(project, error.message),
         }
         cx.notify();

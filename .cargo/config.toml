@@ -1,6 +1,13 @@
-# What the browser host's CEF build needs, so plain cargo commands build the workspace: where
-# cef-dll-sys keeps the CEF distribution (fetched there on the first build, under a versioned
-# folder), and the cmake script/cmake fetches on first use.
+# What the build needs from outside cargo, so plain cargo commands build the workspace.
 [env]
+# The Zig that builds libghostty-vt (ghostty-vt-sys's build script), pinned by script/zig into
+# .tools so a build never depends on the machine's Zig. A ZIG already in the environment wins.
+ZIG = { value = ".tools/zig-0.17.0/zig", relative = true }
+# The build script gives Zig a local cache only, so Zig would keep its global cache (the
+# compiled standard library, fetched packages) in ~/.cache/zig. It stays in the checkout.
+ZIG_GLOBAL_CACHE_DIR = { value = ".tools/zig-cache", relative = true }
+# What the browser host's CEF build needs: where cef-dll-sys keeps the CEF distribution
+# (fetched there on the first build, under a versioned folder), and the cmake script/cmake
+# fetches on first use.
 CEF_PATH = { value = ".superpowers/cef", relative = true }
 CMAKE = { value = "script/cmake", relative = true }

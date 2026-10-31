@@ -11,7 +11,7 @@ use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::component::{Disableable as _, Selectable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, DragMoveEvent, Entity, FocusHandle,
+    AnyElement, App, AppContext as _, Context, DragMoveEvent, Entity, FocusHandle, Focusable as _,
     InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, ParentElement as _, Pixels,
     Point, Render, SharedString, Styled, Subscription, Window, div, ease_in_out, px,
 };
@@ -65,6 +65,8 @@ pub struct Shell {
     pub right_panel: RightPanel,
     bottom_panel_open: bool,
     pub status_bar: StatusBar,
+    /// The terminals the tabs show.
+    pub terminals: crate::terminals::Terminals,
     /// Horizontal travel of a two-finger swipe in progress over the Arc sidebar.
     pub swipe: Option<f32>,
     pub focus: FocusHandle,
@@ -109,6 +111,8 @@ impl Shell {
             cx.observe_in(&cx.entity(), window, |this, _, window, cx| {
                 this.workspace.stamp_shown();
                 this.follow_selection(window, cx);
+                // Closed terminal tabs let their views go, which detaches them.
+                this.terminals.retain(&this.workspace);
             }),
             // What had the keyboard is gone, as a closed panel's list is: actions then start
             // at the window's root, above the shell's, and the top bar's buttons and keys
@@ -125,6 +129,7 @@ impl Shell {
             right_panel: RightPanel::default(),
             bottom_panel_open: false,
             status_bar: StatusBar::new(cx),
+            terminals: crate::terminals::Terminals::default(),
             swipe: None,
             focus,
             search,
@@ -199,7 +204,11 @@ impl Shell {
     }
 
     pub fn new_tab(&mut self, kind: PaneKind, cx: &mut Context<Self>) {
-        self.workspace.new_tab(kind);
+        if kind == PaneKind::Terminal {
+            self.new_terminal(cx);
+        } else {
+            self.workspace.new_tab(kind);
+        }
         // A new tab is something to look at, so leave settings for it.
         self.navigate(Route::Workspace, cx);
         cx.notify();
@@ -324,25 +333,47 @@ impl Shell {
     }
 
     /// What the card shows beside the sidebar on the current route.
-    fn main(&self, route: Route, layout: Layout, cx: &mut Context<Self>) -> AnyElement {
+    fn main(
+        &mut self,
+        route: Route,
+        layout: Layout,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let p = theme::palette(cx);
         let column = div().flex_1().min_w_0().flex().flex_col();
         match route {
             Route::Settings(page) => column
                 .child(settings_view::page(page, cx))
                 .into_any_element(),
-            Route::Workspace => column
-                .when(layout == Layout::Orca, |main| {
-                    main.child(orca::tab_strip(self, cx))
-                })
-                .child(self.workspace_content(p, cx))
-                .children(self.locations.clone())
-                .when(self.bottom_panel_open, |main| main.child(bottom::panel(p)))
-                .into_any_element(),
+            Route::Workspace => {
+                let content = self.workspace_content(p, window, cx);
+                column
+                    .when(layout == Layout::Orca, |main| {
+                        main.child(orca::tab_strip(self, cx))
+                    })
+                    .child(content)
+                    .children(self.locations.clone())
+                    .when(self.bottom_panel_open, |main| main.child(bottom::panel(p)))
+                    .into_any_element()
+            }
         }
     }
 
-    fn workspace_content(&self, p: Palette, cx: &mut Context<Self>) -> impl IntoElement {
+    fn workspace_content(
+        &mut self,
+        p: Palette,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        // The shown tab's terminal panes have their views before the panes draw them.
+        if let Some(view) = self.make_shown_terminals(window, cx) {
+            // Shown with nothing else holding the keyboard, a terminal takes it.
+            if self.focus.is_focused(window) {
+                let focus = view.focus_handle(cx);
+                cx.defer_in(window, move |_, window, cx| window.focus(&focus, cx));
+            }
+        }
         let workspace = &self.workspace;
         let note = |text: &'static str| {
             div()
@@ -391,6 +422,7 @@ impl Render for Shell {
         };
         let shown = route == Route::Workspace;
         let right_panel = (self.right_panel).render(shown, self.sidebar_open, window, cx);
+        let main = self.main(route, layout, window, cx);
         let card = div()
             .flex_1()
             .min_w_0()
@@ -402,7 +434,7 @@ impl Render for Shell {
             .overflow_hidden()
             .flex()
             .children(card_sidebar)
-            .child(self.main(route, layout, cx))
+            .child(main)
             .children(right_panel)
             // The rails' menu belongs to the rails, not the card.
             .on_mouse_down(MouseButton::Right, |_, _, cx| {

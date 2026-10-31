@@ -1,0 +1,94 @@
+use super::*;
+
+#[test]
+fn feeds_bytes_and_reads_them_back() {
+    let mut engine = Engine::new(Size::cells(20, 4), 1 << 20).unwrap();
+    engine.write(b"Hello, \x1b[1;32mworld\x1b[0m!\r\nsecond");
+    let frame = engine.frame().unwrap();
+    assert_eq!(frame.cols, 20);
+    assert_eq!(frame.row_count(), 4);
+    assert_eq!(frame.text(), "Hello, world!\nsecond");
+    let world = &frame.rows[0].cells[7];
+    assert_eq!(world.grapheme, Grapheme::Char('w'));
+    assert!(world.attrs.contains(Attrs::BOLD));
+    assert!(world.fg.is_some());
+    let cursor = frame.cursor.unwrap();
+    assert_eq!((cursor.col, cursor.row), (6, 1));
+    assert_eq!(frame.dirty, Dirty::Full);
+}
+
+#[test]
+fn a_second_frame_reuses_clean_rows() {
+    let mut engine = Engine::new(Size::cells(10, 3), 1 << 20).unwrap();
+    engine.write(b"one\r\ntwo\r\n");
+    let first = engine.frame().unwrap();
+    engine.write(b"x");
+    let second = engine.frame().unwrap();
+    assert_eq!(second.dirty, Dirty::Partial);
+    assert!(Arc::ptr_eq(&first.rows[0], &second.rows[0]));
+    assert!(!Arc::ptr_eq(&first.rows[2], &second.rows[2]));
+    assert_eq!(second.text(), "one\ntwo\nx");
+    let third = engine.frame().unwrap();
+    assert_eq!(third.dirty, Dirty::Clean);
+}
+
+#[test]
+fn effects_come_out_in_order() {
+    let mut engine = Engine::new(Size::cells(10, 3), 1 << 20).unwrap();
+    engine.write(b"\x1b]2;a title\x07\x07\x1b[c");
+    let effects = engine.take_effects();
+    assert_eq!(effects[0], Effect::Title("a title".into()));
+    assert_eq!(effects[1], Effect::Bell);
+    assert!(matches!(&effects[2], Effect::WriteBack(bytes) if bytes.starts_with(b"\x1b[?")));
+    assert_eq!(engine.title(), "a title");
+    assert!(engine.take_effects().is_empty());
+}
+
+#[test]
+fn snapshots_round_trip() {
+    let mut engine = Engine::new(Size::cells(12, 3), 1 << 20).unwrap();
+    engine.write(b"keep \x1b[31mthis\x1b[0m\r\n> ");
+    let bytes = engine.snapshot().unwrap();
+    let mut restored = Engine::restore(&bytes).unwrap();
+    assert_eq!(restored.cols(), 12);
+    assert_eq!(
+        restored.screen_text(TextFormat::Plain).unwrap(),
+        engine.screen_text(TextFormat::Plain).unwrap()
+    );
+    assert_eq!(restored.rows(), 3);
+    let frame = restored.frame().unwrap();
+    assert_eq!(frame.text(), "keep this\n>");
+    assert_eq!(
+        frame.rows[0].cells[5].fg,
+        engine.frame().unwrap().rows[0].cells[5].fg
+    );
+}
+
+#[test]
+fn an_empty_screen_formats_to_nothing() {
+    let engine = Engine::new(Size::cells(12, 3), 1 << 20).unwrap();
+    assert_eq!(engine.screen_text(TextFormat::Plain).unwrap(), "");
+    let restored = Engine::restore(&engine.snapshot().unwrap()).unwrap();
+    assert_eq!(restored.screen_text(TextFormat::Plain).unwrap(), "");
+}
+
+#[test]
+fn formats_the_screen_as_text() {
+    let mut engine = Engine::new(Size::cells(12, 3), 1 << 20).unwrap();
+    engine.write(b"a\r\nb\r\n");
+    let text = engine.screen_text(TextFormat::Plain).unwrap();
+    assert!(text.starts_with("a\nb"), "{text:?}");
+}
+
+#[test]
+fn scrolls_the_viewport_into_history() {
+    let mut engine = Engine::new(Size::cells(8, 2), 1 << 20).unwrap();
+    engine.write(b"1\r\n2\r\n3\r\n4");
+    assert_eq!(engine.frame().unwrap().text(), "3\n4");
+    assert!(engine.scrollbar().at_bottom());
+    engine.scroll(Scroll::Top);
+    assert_eq!(engine.frame().unwrap().text(), "1\n2");
+    assert!(!engine.scrollbar().at_bottom());
+    engine.scroll(Scroll::Bottom);
+    assert_eq!(engine.frame().unwrap().text(), "3\n4");
+}

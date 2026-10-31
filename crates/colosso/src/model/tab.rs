@@ -29,6 +29,8 @@ pub struct Pane {
     /// The workspace's turn when its tab was last shown, later turns higher: ⌃⇥ lists the
     /// latest first.
     pub shown_at: u64,
+    /// A terminal pane's terminal, by the number `crate::terminals` knows it by.
+    pub terminal: Option<u64>,
 }
 
 impl Pane {
@@ -42,6 +44,7 @@ impl Pane {
             file: None,
             changes: None,
             shown_at: 0,
+            terminal: None,
         }
     }
 
