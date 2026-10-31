@@ -3,11 +3,11 @@
 
 use gpui_kit::assets::IconName;
 use gpui_kit::{
-    AnyElement, Div, ElementId, InteractiveElement as _, IntoElement, ParentElement as _,
-    Stateful, Styled as _, div, px, relative,
+    AnyElement, Div, ElementId, InteractiveElement as _, IntoElement, ParentElement as _, Stateful,
+    Styled as _, div, px, relative,
 };
 
-use crate::model::{Pane, PaneKind, Tab};
+use crate::model::{Pane, PaneKind};
 use crate::shell::icon;
 use crate::theme::{MONO, Palette};
 
@@ -29,24 +29,12 @@ pub fn tab_button(id: impl Into<ElementId>, p: Palette) -> Stateful<Div> {
         .hover(|style| style.bg(p.hover))
 }
 
-pub fn tab(tab: &Tab, context: &str, p: Palette) -> AnyElement {
-    match tab {
-        Tab::Single(pane) => self::pane(pane, context, p),
-        Tab::Split(left, right) => div()
-            .size_full()
-            .flex()
-            .child(div().flex_1().min_w_0().child(pane(left, context, p)))
-            .child(div().w(px(1.)).h_full().bg(p.hairline))
-            .child(div().flex_1().min_w_0().child(pane(right, context, p)))
-            .into_any_element(),
-    }
-}
-
-fn pane(pane: &Pane, context: &str, p: Palette) -> AnyElement {
+/// What a pane shows: its chat, terminal, page or file.
+pub fn pane(pane: &Pane, context: &str, p: Palette) -> AnyElement {
     match pane.kind {
         PaneKind::Chat => chat(pane, context, p),
         PaneKind::Terminal => terminal(p),
-        PaneKind::Browser => browser(pane, p),
+        PaneKind::Browser => browser(pane),
         PaneKind::Editor => editor(pane, p),
     }
 }
@@ -176,46 +164,12 @@ fn terminal(p: Palette) -> AnyElement {
         .into_any_element()
 }
 
-fn browser(pane: &Pane, p: Palette) -> AnyElement {
-    div()
-        .size_full()
-        .flex()
-        .flex_col()
-        .child(
-            div()
-                .h(px(40.))
-                .px_3()
-                .flex()
-                .items_center()
-                .border_b_1()
-                .border_color(p.hairline)
-                .child(
-                    div()
-                        .flex_1()
-                        .h(px(26.))
-                        .px_3()
-                        .flex()
-                        .items_center()
-                        .gap_2()
-                        .rounded(px(8.))
-                        .bg(p.raised)
-                        .text_sm()
-                        .text_color(p.muted)
-                        .child(icon(IconName::Globe, 13.))
-                        .child(pane.title.clone()),
-                ),
-        )
-        .child(
-            div()
-                .flex_1()
-                .flex()
-                .items_center()
-                .justify_center()
-                .text_sm()
-                .text_color(p.muted)
-                .child("Browser pane: arrives with CEF"),
-        )
-        .into_any_element()
+/// A browser pane is its page's view; the app makes none without one.
+fn browser(pane: &Pane) -> AnyElement {
+    (pane.browser.clone()).map_or_else(
+        || gpui_kit::Empty.into_any_element(),
+        IntoElement::into_any_element,
+    )
 }
 
 fn editor(pane: &Pane, p: Palette) -> AnyElement {

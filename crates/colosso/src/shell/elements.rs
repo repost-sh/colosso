@@ -129,8 +129,7 @@ pub fn tab_close_button(
 ) -> Stateful<Div> {
     close_button(id, p).on_click(cx.listener(move |this, _, _, cx| {
         cx.stop_propagation();
-        this.workspace.close_tab(project, branch, tab);
-        cx.notify();
+        this.close_tab_at((project, branch, tab), cx);
     }))
 }
 

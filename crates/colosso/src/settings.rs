@@ -171,6 +171,8 @@ pub struct Settings {
     pub language_servers: LanguageServers,
     /// How a held arrow key repeats.
     pub key_repeat: KeyRepeat,
+    /// Where a page's `DevTools` open, and the room they take docked.
+    pub devtools: crate::browser::DevtoolsPlace,
 }
 
 impl Settings {
@@ -234,6 +236,7 @@ impl Default for Settings {
             stop_idle_language_servers: false,
             language_servers: language_servers::every_server(),
             key_repeat: KeyRepeat::default(),
+            devtools: crate::browser::DevtoolsPlace::default(),
         }
     }
 }

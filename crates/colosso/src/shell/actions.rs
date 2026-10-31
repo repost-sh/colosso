@@ -3,7 +3,8 @@
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    App, Context, Div, InteractiveElement as _, KeyBinding, MouseButton, Window, actions,
+    App, Context, Div, InteractiveElement as _, KeyBinding, MouseButton, NavigationDirection,
+    Window, actions,
 };
 
 use super::Shell;
@@ -13,7 +14,7 @@ use crate::navigation::{CloseSettings, GoBack, GoForward, Navigate, NavigationHi
 use crate::projects::{self, NewWorktree};
 use crate::settings;
 use crate::settings_view::{self, EditBranchPrefix};
-use crate::{modal, picker};
+use crate::{browser, modal, picker};
 
 actions!(
     colosso,
@@ -26,6 +27,7 @@ actions!(
         NewTerminal,
         NewBrowserTab,
         NewEditorTab,
+        ReopenClosedTab,
         EditTheme
     ]
 );
@@ -36,6 +38,7 @@ pub fn init(cx: &mut App) {
         KeyBinding::new("cmd-alt-b", ToggleRightPanel, None),
         KeyBinding::new("cmd-j", ToggleBottomPanel, None),
         KeyBinding::new("cmd-t", NewChat, None),
+        KeyBinding::new("cmd-shift-t", ReopenClosedTab, None),
         KeyBinding::new("cmd-shift-m", ToggleSidebarMode, None),
         KeyBinding::new("cmd-n", NewWorktree, None),
     ]);
@@ -59,6 +62,20 @@ impl Shell {
             .on_action(cx.listener(|this, _: &GoForward, _, cx| {
                 this.update_history(NavigationHistory::go_forward, cx);
             }))
+            // The mouse's side buttons step through the app's history wherever a browser pane,
+            // heard first, didn't take them for its page.
+            .on_mouse_down(
+                MouseButton::Navigate(NavigationDirection::Back),
+                cx.listener(|this, _, _, cx| {
+                    this.update_history(NavigationHistory::go_back, cx);
+                }),
+            )
+            .on_mouse_down(
+                MouseButton::Navigate(NavigationDirection::Forward),
+                cx.listener(|this, _, _, cx| {
+                    this.update_history(NavigationHistory::go_forward, cx);
+                }),
+            )
             .on_action(cx.listener(Self::toggle_sidebar))
             .map(|root| Self::handle_right_panel(root, cx))
             .on_action(cx.listener(Self::toggle_bottom_panel))
@@ -66,19 +83,24 @@ impl Shell {
             // ⌘W closes the tab in the middle once the Files panel, heard first, has passed
             // on it: no settings page or file shown to close instead.
             .on_action(cx.listener(|this, _: &CloseTab, _, cx| {
-                this.workspace.close_active_tab();
-                cx.notify();
+                if let Some(at) = this.workspace.shown_tab() {
+                    this.close_tab_at(at, cx);
+                }
             }))
             .on_action(
                 cx.listener(|this, _: &NewTerminal, _, cx| this.new_tab(PaneKind::Terminal, cx)),
             )
-            .on_action(
-                cx.listener(|this, _: &NewBrowserTab, _, cx| this.new_tab(PaneKind::Browser, cx)),
-            )
+            .on_action(cx.listener(|this, _: &ReopenClosedTab, window, cx| {
+                this.reopen_closed_tab(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &NewBrowserTab, window, cx| {
+                this.open_browser(None, window, cx);
+            }))
             .on_action(
                 cx.listener(|this, _: &NewEditorTab, _, cx| this.new_tab(PaneKind::Editor, cx)),
             )
             .map(|root| projects::handle_actions(root, cx))
+            .map(browser::handle_actions)
             .on_action(|_: &EditBranchPrefix, window, cx| {
                 settings_view::edit_branch_prefix(window, cx);
             })

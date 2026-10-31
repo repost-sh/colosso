@@ -1,0 +1,6 @@
+# What the browser host's CEF build needs, so plain cargo commands build the workspace: where
+# cef-dll-sys keeps the CEF distribution (fetched there on the first build, under a versioned
+# folder), and the cmake script/cmake fetches on first use.
+[env]
+CEF_PATH = { value = ".superpowers/cef", relative = true }
+CMAKE = { value = "script/cmake", relative = true }

@@ -39,7 +39,7 @@ const HEADING_LINE: f32 = 24.;
 const MOST_HEADING_LINES: usize = 3;
 
 /// The height of a dialog's text [`field`].
-const FIELD: f32 = 34.;
+pub const FIELD: f32 = 34.;
 /// Between the pieces of a [`palette`].
 const GAP: f32 = 8.;
 /// The width of a palette, the most rows it shows at once, and the room round its pieces:

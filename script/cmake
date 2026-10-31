@@ -1,0 +1,42 @@
+#!/bin/sh
+# The cmake that builds CEF's C++ wrapper library for the browser host (cef-dll-sys runs it,
+# and ninja through it, as .cargo/config.toml's CMAKE). Neither is installed on a machine as a
+# rule, so pinned builds are fetched into .tools/ on first use, as script/dev fetches dx.
+set -eu
+cd "$(dirname "$0")/.."
+
+CMAKE_VERSION=4.4.5
+CMAKE_SHA256=679e77a96b9ef9484cc6c1445255fc4f84206b48a65420efbedf16bdab55fbff
+CMAKE_DIR=".tools/cmake-$CMAKE_VERSION"
+CMAKE_BIN="$CMAKE_DIR/cmake-$CMAKE_VERSION-macos-universal/CMake.app/Contents/bin/cmake"
+
+NINJA_VERSION=1.13.2
+NINJA_SHA256=c99048673aa765960a99cf10c6ddb9f1fad506099ff0a0e137ad8960a88f321b
+NINJA_DIR=".tools/ninja-$NINJA_VERSION"
+NINJA_BIN="$NINJA_DIR/ninja"
+
+# Fetches $1 to $3 and checks it against the sha256 in $2.
+fetch() {
+  curl -fsSL -o "$3" "$1"
+  echo "$2  $3" | shasum -a 256 -c - >/dev/null
+}
+
+if [ ! -x "$CMAKE_BIN" ]; then
+  echo "Installing cmake $CMAKE_VERSION into $CMAKE_DIR" >&2
+  mkdir -p "$CMAKE_DIR"
+  fetch "https://github.com/Kitware/CMake/releases/download/v$CMAKE_VERSION/cmake-$CMAKE_VERSION-macos-universal.tar.gz" \
+    "$CMAKE_SHA256" "$CMAKE_DIR/cmake.tar.gz"
+  tar -xzf "$CMAKE_DIR/cmake.tar.gz" -C "$CMAKE_DIR"
+  rm "$CMAKE_DIR/cmake.tar.gz"
+fi
+
+if [ ! -x "$NINJA_BIN" ]; then
+  echo "Installing ninja $NINJA_VERSION into $NINJA_DIR" >&2
+  mkdir -p "$NINJA_DIR"
+  fetch "https://github.com/ninja-build/ninja/releases/download/v$NINJA_VERSION/ninja-mac.zip" \
+    "$NINJA_SHA256" "$NINJA_DIR/ninja.zip"
+  unzip -oq "$NINJA_DIR/ninja.zip" -d "$NINJA_DIR"
+  rm "$NINJA_DIR/ninja.zip"
+fi
+
+PATH="$PWD/$NINJA_DIR:$PATH" exec "$CMAKE_BIN" "$@"

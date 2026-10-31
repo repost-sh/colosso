@@ -3,6 +3,7 @@
 
 mod about;
 mod appearance;
+mod browser;
 mod components;
 mod editor;
 mod general;
@@ -31,6 +32,7 @@ pub enum SettingsPage {
     Editor,
     Languages,
     Appearance,
+    Browser,
     KeyboardShortcuts,
     About,
 }
@@ -44,6 +46,7 @@ const SIDEBAR_GROUPS: [(&str, &[SettingsPage]); 2] = [
             SettingsPage::Editor,
             SettingsPage::Languages,
             SettingsPage::Appearance,
+            SettingsPage::Browser,
             SettingsPage::KeyboardShortcuts,
         ],
     ),
@@ -57,6 +60,7 @@ impl SettingsPage {
             SettingsPage::Editor => "Editor",
             SettingsPage::Languages => "Languages",
             SettingsPage::Appearance => "Appearance",
+            SettingsPage::Browser => "Browser",
             SettingsPage::KeyboardShortcuts => "Keyboard shortcuts",
             SettingsPage::About => "About",
         }
@@ -68,6 +72,7 @@ impl SettingsPage {
             SettingsPage::Editor => IconName::SquarePen,
             SettingsPage::Languages => IconName::Languages,
             SettingsPage::Appearance => IconName::SunMoon,
+            SettingsPage::Browser => IconName::Globe,
             SettingsPage::KeyboardShortcuts => IconName::Keyboard,
             SettingsPage::About => IconName::Info,
         }
@@ -79,6 +84,7 @@ impl SettingsPage {
             SettingsPage::Editor => editor::sections(cx),
             SettingsPage::Languages => languages::sections(cx),
             SettingsPage::Appearance => appearance::sections(cx),
+            SettingsPage::Browser => browser::sections(cx),
             SettingsPage::KeyboardShortcuts => keyboard_shortcuts::sections(cx),
             SettingsPage::About => about::sections(cx),
         }

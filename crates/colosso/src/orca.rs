@@ -176,6 +176,10 @@ pub fn tab_strip(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
                         .select_tab(project_index, branch_index, tab_index);
                     cx.notify();
                 }))
+                .map(|row| {
+                    let at = (project_index, branch_index, tab_index);
+                    crate::shell::tab_drag(row, at, tab, p, cx)
+                })
                 .child(icon(tab.icon(), 13.))
                 .child(ellipsized(tab.title()))
                 .child(tab_close_button(

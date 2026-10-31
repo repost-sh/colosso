@@ -1,6 +1,7 @@
 mod arc;
 mod backdrop;
 mod bottom;
+mod browser;
 mod changes;
 mod checkout;
 mod checkouts;
@@ -50,6 +51,7 @@ fn init(cx: &mut App) {
     key_repeat::init(cx);
     theme::init(cx);
     shell::init(cx);
+    browser::init(cx);
     right_panel::init(cx);
     files::init(cx);
     navigation::bind_keys(cx);
@@ -109,6 +111,10 @@ fn main() -> ExitCode {
     #[cfg(feature = "visual-check")]
     if std::env::args().any(|arg| arg == "--visual-check-lsp") {
         return language::visual::run();
+    }
+    #[cfg(feature = "visual-check")]
+    if std::env::args().any(|arg| arg == "--visual-check-browser") {
+        return browser::visual::run();
     }
     #[cfg(feature = "visual-check")]
     if std::env::args().any(|arg| arg == "--visual-check-settings") {

@@ -1,0 +1,184 @@
+#!/bin/sh
+# Packages the browser engine the app runs its browser panes on: the browser host
+# (crates/browser-host), the Chromium Embedded Framework and CEF's helper apps, laid out as
+# macOS wants them, under target/browser-engine/<cef version>/ with an engine.json beside:
+#
+#   script/browser-engine [--release] [--out <dir>] [--cef <dir>] [--locales en,de]
+#                         [--sign <identity>]
+#
+# A debug app finds the engine there; a bundled app carries the host app in its own
+# Contents/Frameworks (see crates/colosso/src/browser/engine.rs). script/dev runs this
+# before the app, and it does nothing when the packaged host is as new as the built one.
+# Without --sign the bundle gets an ad-hoc signature, enough to run locally; a release
+# identity gets the hardened runtime notarization needs.
+set -eu
+cd "$(dirname "$0")/.."
+
+export CARGO_HOME="${CARGO_HOME:-$PWD/.cargo-home}"
+
+HOST_NAME="Colosso Browser Host"
+BUNDLE_ID="dev.colosso.desktop.browser-host"
+FRAMEWORK="Chromium Embedded Framework.framework"
+# The protocol the host speaks, read from where it's defined so the two can't drift.
+IPC_PROTOCOL=$(sed -n 's/^pub const PROTOCOL: u32 = \([0-9][0-9]*\);$/\1/p' \
+  crates/browser-ipc/src/lib.rs)
+if [ -z "$IPC_PROTOCOL" ]; then
+  echo "script/browser-engine: no PROTOCOL in crates/browser-ipc/src/lib.rs" >&2
+  exit 1
+fi
+
+profile=debug
+cargo_profile=dev
+out="target/browser-engine"
+cef=""
+locales=""
+sign=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --release) profile=release; cargo_profile=release ;;
+    --out) out="$2"; shift ;;
+    --cef) cef="$2"; shift ;;
+    --locales) locales="$2"; shift ;;
+    --sign) sign="$2"; shift ;;
+    *) echo "unknown option $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+# The CEF version is the lockfile's: the `+` part of cef-dll-sys's version.
+version=$(awk '/^name = "cef-dll-sys"$/ { getline; sub(/^version = "[^+]*\+/, ""); sub(/"$/, ""); print }' Cargo.lock)
+if [ -z "$version" ]; then
+  echo "cef-dll-sys is not in Cargo.lock" >&2
+  exit 1
+fi
+case "$(uname -m)" in
+  arm64) arch=aarch64 ;;
+  *) arch=x86_64 ;;
+esac
+target="$arch-apple-darwin"
+# Where cef-dll-sys keeps the distribution (.cargo/config.toml's CEF_PATH).
+cef="${cef:-${CEF_PATH:-.superpowers/cef}/$version/cef_macos_$arch}"
+
+cargo build -p colosso-browser-host --profile "$cargo_profile"
+binary="target/$profile/colosso-browser-host"
+
+dir="$out/$version"
+app="$dir/$HOST_NAME.app/Contents"
+packaged="$app/MacOS/$HOST_NAME"
+if [ -f "$packaged" ] && [ -f "$dir/engine.json" ] && ! [ "$binary" -nt "$packaged" ]; then
+  echo "Browser engine $version is packaged in $dir"
+  exit 0
+fi
+if [ ! -d "$cef/$FRAMEWORK" ]; then
+  echo "no CEF distribution at $cef: build crates/browser-host first" >&2
+  exit 1
+fi
+
+# The host's Info.plist, and the helpers': background-only agents, no dock icon or menu bar
+# for any of them, the app composing the panes. An ad-hoc build keeps cookies under a fixed
+# key rather than asking for Keychain access after every rebuild; the signature seals this.
+plist() { # executable identifier helper(yes|no)
+  cat <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleDisplayName</key>
+  <string>$1</string>
+  <key>CFBundleExecutable</key>
+  <string>$1</string>
+  <key>CFBundleIdentifier</key>
+  <string>$2</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>$1</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>$version</string>
+  <key>CFBundleVersion</key>
+  <string>$version</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>12.0</string>
+  <key>LSUIElement</key>
+  <true/>
+  <key>NSSupportsAutomaticGraphicsSwitching</key>
+  <true/>
+PLIST
+  if [ "$3" = no ]; then
+    cat <<PLIST
+  <key>LSEnvironment</key>
+  <dict>
+    <key>MallocNanoZone</key>
+    <string>0</string>
+  </dict>
+PLIST
+    if [ -z "$sign" ]; then
+      cat <<PLIST
+  <key>ColossoMockKeychain</key>
+  <true/>
+PLIST
+    fi
+  fi
+  cat <<PLIST
+</dict>
+</plist>
+PLIST
+}
+
+rm -rf "$dir"
+frameworks="$app/Frameworks"
+mkdir -p "$app/MacOS" "$frameworks"
+cp "$binary" "$packaged"
+plist "$HOST_NAME" "$BUNDLE_ID" no > "$app/Info.plist"
+# -R keeps the framework's symlinks as they are.
+cp -R "$cef/$FRAMEWORK" "$frameworks/$FRAMEWORK"
+if [ -n "$locales" ]; then
+  keep=",$(echo "$locales" | tr 'A-Z' 'a-z'),"
+  for lproj in "$frameworks/$FRAMEWORK/Resources/"*.lproj; do
+    name=$(basename "$lproj" .lproj | tr 'A-Z' 'a-z')
+    language=${name%%[_-]*}
+    case "$keep" in
+      *",$name,"*|*",$language,"*) ;;
+      *) rm -rf "$lproj" ;;
+    esac
+  done
+fi
+
+# Every helper is the same binary; CEF tells it its role with --type and finds each beside
+# its framework, by name.
+for suffix in "" " (GPU)" " (Renderer)" " (Plugin)" " (Alerts)"; do
+  name="$HOST_NAME Helper$suffix"
+  contents="$frameworks/$name.app/Contents"
+  mkdir -p "$contents/MacOS"
+  cp "$binary" "$contents/MacOS/$name"
+  chmod 755 "$contents/MacOS/$name"
+  role=$(echo "$suffix" | tr -cd 'A-Za-z' | tr 'A-Z' 'a-z')
+  plist "$name" "$BUNDLE_ID.helper${role:+.$role}" yes > "$contents/Info.plist"
+done
+
+# Inside out: framework, helpers, then the host.
+if [ -n "$sign" ]; then
+  set -- --force --timestamp --options runtime --sign "$sign"
+else
+  set -- --force --timestamp=none --sign -
+fi
+codesign "$@" "$frameworks/$FRAMEWORK"
+for suffix in "" " (GPU)" " (Renderer)" " (Plugin)" " (Alerts)"; do
+  codesign "$@" "$frameworks/$HOST_NAME Helper$suffix.app"
+done
+codesign "$@" "$dir/$HOST_NAME.app"
+
+cat > "$dir/engine.json" <<JSON
+{
+  "version": "$version",
+  "cef": "$version",
+  "ipc": $IPC_PROTOCOL,
+  "target": "$target",
+  "host": "$HOST_NAME.app/Contents/MacOS/$HOST_NAME"
+}
+JSON
+echo "Browser engine $version packaged in $dir"

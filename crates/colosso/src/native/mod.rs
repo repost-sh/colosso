@@ -14,3 +14,4 @@ mod target;
 
 pub use glass::init;
 pub use host::{Control, host};
+pub use surface::Surface;
