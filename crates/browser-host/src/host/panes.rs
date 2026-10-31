@@ -302,16 +302,20 @@ pub(crate) fn loading_changed(pane: PaneId, loading: bool) {
     }
 }
 
-pub(crate) fn page_changed(pane: PaneId, change: impl FnOnce(&mut PageState)) {
+/// Makes `change` to `pane`'s page, telling the app of it if it changed anything; whether
+/// it did.
+pub(crate) fn page_changed(pane: PaneId, change: impl FnOnce(&mut PageState)) -> bool {
     let state = with_pane(pane, |p| {
         let before = p.page.clone();
         change(&mut p.page);
         (p.page != before).then(|| p.page.clone())
     })
     .flatten();
-    if let Some(state) = state {
-        send(&HostEvent::Page { pane, state });
-    }
+    let Some(state) = state else {
+        return false;
+    };
+    send(&HostEvent::Page { pane, state });
+    true
 }
 
 pub(crate) fn cursor_changed(pane: PaneId, cursor: Cursor) {

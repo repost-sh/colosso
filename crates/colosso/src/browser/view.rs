@@ -3,6 +3,7 @@
 
 use std::collections::VecDeque;
 use std::path::Path;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use colosso_browser_ipc::{self as ipc, AppRequest, Cursor, Go, PageState, PaneId, Viewport};
@@ -10,7 +11,7 @@ use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, AppContext as _, Context, Div, ElementId, Entity, EventEmitter, FocusHandle, Focusable,
-    InteractiveElement as _, ParentElement as _, Pixels, Point, Stateful, Styled as _,
+    Image, InteractiveElement as _, ParentElement as _, Pixels, Point, Stateful, Styled as _,
     Subscription, WeakEntity, Window, div, white,
 };
 
@@ -127,6 +128,8 @@ pub struct BrowserView {
     /// The find bar, while it's open, and the zoom, in percent.
     pub(super) find: Option<FindBar>,
     pub(super) zoom: u32,
+    /// The page's own icon, once the host has fetched it.
+    pub(super) favicon: Option<Arc<Image>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -243,6 +246,7 @@ impl BrowserView {
             history_hold: None,
             find: None,
             zoom: ACTUAL_SIZE,
+            favicon: None,
             _subscriptions: subscriptions,
         }
     }
@@ -358,7 +362,8 @@ impl BrowserView {
     }
 
     pub(super) fn page_changed(&mut self, page: PageState, cx: &mut Context<Self>) {
-        let changed = page.url != self.page.url || page.title != self.page.title;
+        let gone = self.favicon_named(&page.favicon);
+        let changed = gone || page.url != self.page.url || page.title != self.page.title;
         if self.page.loading && !page.loading && self.zoom != ACTUAL_SIZE {
             self.send_zoom(cx);
         }

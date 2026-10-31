@@ -18,6 +18,7 @@ mod control;
 mod dialog;
 mod dock;
 mod engine;
+mod favicon;
 mod find;
 mod frames;
 mod history;

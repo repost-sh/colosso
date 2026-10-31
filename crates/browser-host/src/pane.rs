@@ -2,12 +2,12 @@
 //! reports to [`crate::host`], which owns the pane's state on the UI thread.
 use crate::host;
 use cef::{
-    AcceleratedPaintInfo, Browser, BrowserSettings, CefString, Client, ContextMenuHandler,
-    ContextMenuParams, CursorInfo, CursorType, DialogHandler, DictionaryValue, DisplayHandler,
-    FindHandler, Frame, ImplClient, ImplContextMenuHandler, ImplDisplayHandler, ImplFindHandler,
-    ImplLifeSpanHandler, ImplLoadHandler, ImplRenderHandler, JsdialogHandler, LifeSpanHandler,
-    LoadHandler, MenuModel, PaintElementType, PermissionHandler, PopupFeatures, Rect,
-    RenderHandler, RequestHandler, RunContextMenuCallback, ScreenInfo, WindowInfo,
+    AcceleratedPaintInfo, Browser, BrowserSettings, CefString, CefStringList, Client,
+    ContextMenuHandler, ContextMenuParams, CursorInfo, CursorType, DialogHandler, DictionaryValue,
+    DisplayHandler, FindHandler, Frame, ImplClient, ImplContextMenuHandler, ImplDisplayHandler,
+    ImplFindHandler, ImplLifeSpanHandler, ImplLoadHandler, ImplRenderHandler, JsdialogHandler,
+    LifeSpanHandler, LoadHandler, MenuModel, PaintElementType, PermissionHandler, PopupFeatures,
+    Rect, RenderHandler, RequestHandler, RunContextMenuCallback, ScreenInfo, WindowInfo,
     WindowOpenDisposition, WrapClient, WrapContextMenuHandler, WrapDisplayHandler, WrapFindHandler,
     WrapLifeSpanHandler, WrapLoadHandler, WrapRenderHandler, rc::Rc, wrap_client,
     wrap_context_menu_handler, wrap_display_handler, wrap_find_handler, wrap_life_span_handler,
@@ -16,6 +16,7 @@ use cef::{
 use colosso_browser_ipc::{Cursor, HostEvent, PaneId};
 use std::os::raw::c_int;
 
+mod favicon;
 mod prompts;
 
 /// The client a pane's browser is created with; `devtools` for a `DevTools`
@@ -225,6 +226,20 @@ wrap_display_handler! {
             host::page_changed(self.pane, |page| {
                 page.title = title.map(ToString::to_string).unwrap_or_default();
             });
+        }
+
+        fn on_favicon_urlchange(
+            &self,
+            browser: Option<&mut Browser>,
+            icon_urls: Option<&mut CefStringList>,
+        ) {
+            // Best first. The icon the page showed already, it shows still.
+            let urls = crate::dialogs::strings(icon_urls);
+            let first = urls.first().cloned().unwrap_or_default();
+            let named = host::page_changed(self.pane, |page| page.favicon = first);
+            if let (true, Some(browser)) = (named, browser) {
+                favicon::fetch(self.pane, browser, urls);
+            }
         }
 
         fn on_cursor_change(
