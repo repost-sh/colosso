@@ -235,6 +235,10 @@ fn branch_group(
                         .select_tab(project_index, branch_index, tab_index);
                     cx.notify();
                 }))
+                .map(|row| {
+                    let at = (project_index, branch_index, tab_index);
+                    crate::shell::tab_drag(row, at, tab, p, cx)
+                })
                 .child(icon(tab.icon(), 13.).text_color(p.muted))
                 .child(ellipsized(tab.title()).flex_1())
                 // Shown on the active tab, and on the others while hovered.

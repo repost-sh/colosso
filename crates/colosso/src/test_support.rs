@@ -77,6 +77,14 @@ pub fn repo(name: &str, files: &[(&str, &str)]) -> PathBuf {
     root
 }
 
+/// Draws `window` once what's pending has run, then runs what drawing it started.
+#[cfg(test)]
+pub fn draw(window: AnyWindowHandle, cx: &mut TestAppContext) {
+    cx.run_until_parked();
+    (cx.update_window(window, |_, window, cx| window.draw(cx).clear(cx))).unwrap();
+    cx.run_until_parked();
+}
+
 /// What `build` makes, in a window of its own of `size`.
 #[cfg(test)]
 pub fn in_window<V: Render>(

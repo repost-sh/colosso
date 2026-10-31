@@ -1,0 +1,31 @@
+[package]
+name = "colosso-browser-host"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Colosso's browser host: a CEF app that renders browser panes off screen and serves them to the app over colosso-browser-ipc."
+
+[[bin]]
+name = "colosso-browser-host"
+path = "src/main.rs"
+
+[dependencies]
+colosso-browser-ipc = { path = "../browser-ipc" }
+# Chromium, embedded: the exact version the distribution under .superpowers/cef matches
+# (script/cef fetches it; cef-dll-sys builds its C++ wrapper with script/cmake).
+cef = { version = "=156.2.0", default-features = false, features = ["sandbox"] }
+# The DevTools bridge: a websocket to Chromium's remote debugging port.
+tungstenite = { version = "0.26", default-features = false, features = ["handshake"] }
+serde_json = "1"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSObject", "NSString", "NSBundle", "NSValue"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSEvent", "NSResponder", "NSRunningApplication", "NSScreen"] }
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFDictionary", "CFNumber", "CFString", "CFBase"] }
+objc2-io-surface = { version = "0.3", default-features = false, features = ["std", "IOSurfaceRef", "IOSurfaceTypes", "libc", "objc2", "objc2-core-foundation"] }
+objc2-metal = { version = "0.3", default-features = false, features = ["std", "MTLDevice", "MTLTexture", "MTLCommandQueue", "MTLCommandBuffer", "MTLCommandEncoder", "MTLBlitCommandEncoder", "MTLResource", "MTLAllocation", "MTLBuffer", "MTLPixelFormat", "MTLTypes", "objc2-io-surface"] }
+
+[lints]
+workspace = true

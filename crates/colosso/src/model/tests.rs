@@ -28,8 +28,8 @@ fn unit_with_tabs(count: usize, active: usize) -> Workspace {
     unit.tabs = (0..count)
         .map(|_| {
             Tab::Single(Pane {
-                kind: PaneKind::Chat,
                 title: "chat".into(),
+                ..Pane::new(PaneKind::Chat)
             })
         })
         .collect();
@@ -65,6 +65,69 @@ fn closing_the_last_active_tab_activates_its_left_neighbour() {
     let mut workspace = unit_with_tabs(3, 2);
     workspace.close_tab(0, 0, 2);
     assert_eq!(workspace.branch().unwrap().active_tab, 1);
+}
+
+#[test]
+fn a_closed_tab_comes_back_where_it_was_and_shows() {
+    let mut workspace = unit_with_tabs(3, 0);
+    let ids = |workspace: &Workspace| {
+        let tabs = &workspace.branch().unwrap().tabs;
+        tabs.iter().map(|tab| tab.panes()[0].id).collect::<Vec<_>>()
+    };
+    let before = ids(&workspace);
+    let tab = workspace.close_tab(0, 0, 1).unwrap();
+    workspace.remember_closed(ClosedTab {
+        checkout: "/src/app".into(),
+        at: 1,
+        tab,
+        addresses: Vec::new(),
+    });
+    let (closed, at) = workspace.take_closed().unwrap();
+    assert_eq!(at, (0, 0, 1));
+    workspace.restore_tab(at, closed.tab);
+    assert_eq!(ids(&workspace), before);
+    assert_eq!(workspace.branch().unwrap().active_tab, 1);
+    assert!(
+        workspace.take_closed().is_none(),
+        "each closed tab comes back once"
+    );
+}
+
+#[test]
+fn closed_tabs_of_a_checkout_gone_since_are_let_go() {
+    let mut workspace = unit_with_tabs(2, 0);
+    for (checkout, at) in [("/src/app", 0), ("/work/gone", 0)] {
+        let tab = workspace.close_tab(0, 0, 0).unwrap();
+        workspace.remember_closed(ClosedTab {
+            checkout: checkout.into(),
+            at,
+            tab,
+            addresses: Vec::new(),
+        });
+    }
+    // The newest is of a checkout no longer listed, so the one before it comes back.
+    let (_, at) = workspace.take_closed().unwrap();
+    assert_eq!(at, (0, 0, 0));
+    assert!(workspace.take_closed().is_none());
+}
+
+#[test]
+fn only_the_newest_closed_tabs_are_kept() {
+    let mut workspace = unit_with_tabs(1, 0);
+    let tab = workspace.branch().unwrap().tabs[0].clone();
+    for at in 0..closed::KEPT + 5 {
+        workspace.remember_closed(ClosedTab {
+            checkout: "/src/app".into(),
+            at,
+            tab: tab.clone(),
+            addresses: Vec::new(),
+        });
+    }
+    let mut kept = 0;
+    while workspace.take_closed().is_some() {
+        kept += 1;
+    }
+    assert_eq!(kept, closed::KEPT);
 }
 
 #[test]

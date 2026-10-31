@@ -25,4 +25,7 @@ if [ ! -x "$DX" ]; then
   rm "$DX_DIR/dx.tar.gz"
 fi
 
+# The browser panes' engine, packaged beside the app's build (see script/browser-engine).
+script/browser-engine
+
 exec "$DX" serve --hot-patch --package colosso --features hot-reload,inspector --platform macos "$@"

@@ -7,6 +7,12 @@ use colosso_git::{Head, Worktree};
 use gpui_kit::SharedString;
 use gpui_kit::assets::IconName;
 
+mod closed;
+mod moves;
+mod tab;
+pub use closed::ClosedTab;
+pub use tab::{Edge, Pane, SPLIT_MIN, Split, SplitAxis, Tab};
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PaneKind {
     Chat,
@@ -33,7 +39,7 @@ impl PaneKind {
         }
     }
 
-    fn new_tab_title(self) -> &'static str {
+    pub(crate) fn new_tab_title(self) -> &'static str {
         match self {
             PaneKind::Chat => "New chat",
             PaneKind::Terminal => "zsh",
@@ -52,35 +58,6 @@ impl PaneKind {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct Pane {
-    pub kind: PaneKind,
-    pub title: SharedString,
-}
-
-#[derive(Clone, Debug)]
-pub enum Tab {
-    Single(Pane),
-    #[expect(dead_code, reason = "drawn already, but nothing splits a tab yet")]
-    Split(Pane, Pane),
-}
-
-impl Tab {
-    pub fn title(&self) -> SharedString {
-        match self {
-            Tab::Single(pane) => pane.title.clone(),
-            Tab::Split(left, right) => format!("{} | {}", left.title, right.title).into(),
-        }
-    }
-
-    pub fn icon(&self) -> IconName {
-        match self {
-            Tab::Single(pane) => pane.kind.icon(),
-            Tab::Split(..) => IconName::Columns2,
-        }
-    }
-}
-
 /// A checkout or worktree of a project, as git last reported it; tabs belong to it.
 #[derive(Clone, Debug)]
 pub struct BranchUnit {
@@ -90,15 +67,17 @@ pub struct BranchUnit {
 }
 
 impl BranchUnit {
-    /// Closes the tab at `at`: the one shown stays shown, or its left neighbour takes over.
-    fn close(&mut self, at: usize) {
+    /// Closes the tab at `at`, handing it back: the one shown stays shown, or its left
+    /// neighbour takes over.
+    fn close(&mut self, at: usize) -> Option<Tab> {
         if at >= self.tabs.len() {
-            return;
+            return None;
         }
-        self.tabs.remove(at);
+        let closed = self.tabs.remove(at);
         if self.active_tab > at || self.active_tab >= self.tabs.len() {
             self.active_tab = self.active_tab.saturating_sub(1);
         }
+        Some(closed)
     }
 
     fn new(worktree: Worktree) -> Self {
@@ -192,6 +171,8 @@ impl Project {
 pub struct Workspace {
     pub projects: Vec<Project>,
     pub active_project: usize,
+    /// Tabs closed lately, the newest last.
+    closed: Vec<ClosedTab>,
 }
 
 impl Workspace {
@@ -200,6 +181,7 @@ impl Workspace {
         Workspace {
             projects: paths.iter().cloned().map(Project::new).collect(),
             active_project: 0,
+            closed: Vec::new(),
         }
     }
 
@@ -211,7 +193,7 @@ impl Workspace {
         self.project()?.branch()
     }
 
-    fn branch_mut(&mut self) -> Option<&mut BranchUnit> {
+    pub fn branch_mut(&mut self) -> Option<&mut BranchUnit> {
         let project = self.projects.get_mut(self.active_project)?;
         project.branches.get_mut(project.active_branch)
     }
@@ -333,27 +315,63 @@ impl Workspace {
         self.active_project = self.active_project.saturating_add_signed(delta).min(last);
     }
 
-    /// Closes the tab shown on the selected checkout, if it has one.
-    pub fn close_active_tab(&mut self) {
-        if let Some(unit) = self.branch_mut() {
-            unit.close(unit.active_tab);
-        }
-    }
-
-    pub fn close_tab(&mut self, project: usize, branch: usize, tab: usize) {
-        self.projects[project].branches[branch].close(tab);
+    /// Closes the tab at `tab` on `branch` of `project`, handing it back.
+    pub fn close_tab(&mut self, project: usize, branch: usize, tab: usize) -> Option<Tab> {
+        self.projects[project].branches[branch].close(tab)
     }
 
     /// Opens a tab of `kind` on the selected checkout, if there is one.
     pub fn new_tab(&mut self, kind: PaneKind) {
+        self.push_tab(Tab::Single(Pane::new(kind)));
+    }
+
+    /// Opens `tab` on the selected checkout, if there is one, and shows it.
+    pub fn push_tab(&mut self, tab: Tab) {
         let Some(unit) = self.branch_mut() else {
             return;
         };
-        unit.tabs.push(Tab::Single(Pane {
-            kind,
-            title: kind.new_tab_title().into(),
-        }));
+        unit.tabs.push(tab);
         unit.active_tab = unit.tabs.len() - 1;
+    }
+
+    /// Opens `tab` right after the tab at `(project, branch, at)`, without showing it.
+    pub fn insert_tab_after(&mut self, (project, branch, at): (usize, usize, usize), tab: Tab) {
+        let Some(unit) = self.unit_mut(project, branch) else {
+            return;
+        };
+        let at = (at + 1).min(unit.tabs.len());
+        unit.tabs.insert(at, tab);
+        if unit.active_tab >= at {
+            unit.active_tab += 1;
+        }
+    }
+
+    /// The first pane that is `found`: where its tab is, as `(project, branch, tab)`, and
+    /// the pane's id.
+    pub fn find_pane(&self, found: impl Fn(&Pane) -> bool) -> Option<((usize, usize, usize), u64)> {
+        self.projects.iter().enumerate().find_map(|(p, project)| {
+            project.branches.iter().enumerate().find_map(|(b, unit)| {
+                unit.tabs.iter().enumerate().find_map(|(t, tab)| {
+                    let pane = tab.panes().into_iter().find(|pane| found(pane))?;
+                    Some(((p, b, t), pane.id))
+                })
+            })
+        })
+    }
+
+    /// Where the tab shown is, as `(project, branch, tab)`.
+    pub fn shown_tab(&self) -> Option<(usize, usize, usize)> {
+        let project = self.project()?;
+        let unit = project.branch()?;
+        Some((self.active_project, project.active_branch, unit.active_tab))
+    }
+
+    pub fn unit_mut(&mut self, project: usize, branch: usize) -> Option<&mut BranchUnit> {
+        self.projects.get_mut(project)?.branches.get_mut(branch)
+    }
+
+    pub fn tab_mut(&mut self, (project, branch, tab): (usize, usize, usize)) -> Option<&mut Tab> {
+        self.unit_mut(project, branch)?.tabs.get_mut(tab)
     }
 }
 

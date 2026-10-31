@@ -8,7 +8,9 @@ use crate::files::{CloseTab, Save, SwitchTab};
 use crate::go_to_file::GoToFile;
 use crate::navigation::{CloseSettings, GoBack, GoForward, OpenSettings};
 use crate::projects::NewWorktree;
-use crate::shell::{NewChat, ToggleBottomPanel, ToggleRightPanel, ToggleSidebar, ToggleSidebarMode};
+use crate::shell::{
+    NewChat, ReopenClosedTab, ToggleBottomPanel, ToggleRightPanel, ToggleSidebar, ToggleSidebarMode,
+};
 use crate::theme::{self, CycleTheme};
 
 /// A command as the page names it, and the action it runs.
@@ -40,7 +42,11 @@ const SECTIONS: &[(&str, &[Command])] = &[
         "Tabs",
         &[
             ("New chat", &NewChat),
-            ("Close the settings, the file shown, or else the tab in the middle", &CloseTab),
+            ("Reopen the tab closed last", &ReopenClosedTab),
+            (
+                "Close the settings, the file shown, or else the tab in the middle",
+                &CloseTab,
+            ),
         ],
     ),
     (

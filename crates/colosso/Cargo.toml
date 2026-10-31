@@ -11,6 +11,11 @@ colosso-git = { path = "../git" }
 colosso-project = { path = "../project" }
 # The language servers behind the file tabs: rust-analyzer, found or fetched, and talked to.
 colosso-lsp = { path = "../lsp" }
+# The browser panes' host process (crates/browser-host), talked to over this.
+colosso-browser-ipc = { path = "../browser-ipc" }
+# A search typed into a browser tab's address, encoded as a query: the version `url` (in
+# GPUI's tree) already pulls in.
+form_urlencoded = "1.2"
 # The files a language server asked to hear about, matched by its globs: ripgrep's matcher,
 # already in the lockfile.
 globset = "0.4"
@@ -113,6 +118,11 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
   "NSString",
 ] }
 block2 = "0.6"
+# The browser panes' frames: the host's `IOSurface`s, found from the mach ports it sends,
+# shown as the contents of a layer. All versions GPUI already pulls in.
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFBase", "CFCGTypes", "objc2"] }
+objc2-io-surface = { version = "0.3", default-features = false, features = ["std", "IOSurfaceRef", "IOSurfaceTypes", "libc", "objc2", "objc2-core-foundation"] }
+objc2-quartz-core = { version = "0.3", default-features = false, features = ["std", "CALayer", "objc2-core-foundation"] }
 
 [features]
 # Debug builds only: lets `dx serve --hot-patch` swap render code into the running app.

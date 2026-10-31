@@ -15,6 +15,7 @@ use gpui_kit::{
     Point, Render, SharedString, Styled, Subscription, Window, div, ease_in_out, px,
 };
 
+use crate::bottom::StatusBar;
 use crate::model::{PaneKind, Workspace};
 use crate::navigation::{GoBack, GoForward, Navigate, NavigationHistory, OpenSettings, Route};
 use crate::right_panel::RightPanel;
@@ -22,24 +23,27 @@ use crate::settings::{self, Layout};
 use crate::settings_view::{self, SettingsSidebar};
 use crate::sidebar::{SidebarFrame, SidebarResize, slide_out};
 use crate::theme::Palette;
-use crate::bottom::StatusBar;
-use crate::{arc, backdrop, bottom, gradient, orca, pane, picker, theme};
+use crate::{arc, backdrop, bottom, gradient, orca, picker, theme};
 
 /// How long the sidebar takes to slide fully in or out.
 const SIDEBAR_SLIDE: Duration = Duration::from_millis(180);
 
 mod actions;
+mod browser_tabs;
 mod elements;
+mod reopen;
+mod splits;
 
 pub use actions::{
-    EditTheme, NewBrowserTab, NewChat, NewEditorTab, NewTerminal, ToggleBottomPanel,
-    ToggleRightPanel, ToggleSidebar, ToggleSidebarMode, init,
+    EditTheme, NewBrowserTab, NewChat, NewEditorTab, NewTerminal, ReopenClosedTab,
+    ToggleBottomPanel, ToggleRightPanel, ToggleSidebar, ToggleSidebarMode, init,
 };
+use elements::drag_area;
 pub use elements::{
     action_button, add_project_row, ellipsized, glass, icon, icon_button, new_tab_menu, no_matches,
     project_error, row, search_field, section_label, tab_close_button,
 };
-use elements::drag_area;
+pub use splits::{divider, tab_drag};
 
 pub struct Shell {
     pub workspace: Workspace,
@@ -314,13 +318,13 @@ impl Shell {
                 .when(layout == Layout::Orca, |main| {
                     main.child(orca::tab_strip(self, cx))
                 })
-                .child(self.workspace_content(p))
+                .child(self.workspace_content(p, cx))
                 .when(self.bottom_panel_open, |main| main.child(bottom::panel(p)))
                 .into_any_element(),
         }
     }
 
-    fn workspace_content(&self, p: Palette) -> impl IntoElement {
+    fn workspace_content(&self, p: Palette, cx: &mut Context<Self>) -> impl IntoElement {
         let workspace = &self.workspace;
         let note = |text: &'static str| {
             div()
@@ -339,7 +343,7 @@ impl Shell {
             (Some(project), Some(branch)) => match branch.tabs.get(branch.active_tab) {
                 Some(tab) => {
                     let context = format!("{} / {}", project.name, branch.name());
-                    pane::tab(tab, &context, p)
+                    self.tab_content(tab, &context, cx)
                 }
                 None => note("No tabs on this branch. ⌘T starts a chat."),
             },
