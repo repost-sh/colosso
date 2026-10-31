@@ -21,7 +21,7 @@ use super::reorder::TabHand;
 use super::tab_face::Face;
 use super::{Shell, icon};
 use crate::model::{Edge, Pane, SPLIT_MIN, Split, SplitAxis, Tab};
-use crate::pane::{self, tab_button};
+use crate::pane::tab_button;
 use crate::theme::{self, Palette};
 
 /// What's in hand, to split a pane with or to put in the strip.
@@ -268,7 +268,7 @@ impl Shell {
                     .flex_1()
                     .min_h_0()
                     .min_w_0()
-                    .child(pane::pane(pane, context, p)),
+                    .child(self.pane_content(pane, context, p)),
             )
             .when(in_hand, |part| {
                 // Among the window's overlays, as a page's native layer hides what's under it.

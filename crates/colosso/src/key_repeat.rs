@@ -4,7 +4,7 @@
 //! a press acts once, at once, as before; held, the arrow acts again after a short delay, then
 //! at a steady rate a second, as many steps on each frame as the time since the last is worth.
 //! Every other key repeats as macOS repeats it, and so do the arrows with the repeat turned
-//! off in the settings.
+//! off in the settings, and every key in a terminal, whose program sets its own pace.
 //!
 //! macOS hands an arrow's repeats to the app as presses like the first (they come through the
 //! input method's `doCommandBySelector:`, which says nothing of a repeat), so a repeat is
@@ -113,8 +113,15 @@ fn pressed(event: &KeystrokeEvent, window: &mut Window, cx: &mut App) {
     let window_handle = window.window_handle();
     let now = cx.background_executor().now();
     let repeat = settings::get(cx).key_repeat;
+    // A terminal's program hears keys repeat as macOS repeats them, as in any terminal.
+    let in_terminal =
+        (window.context_stack().iter()).any(|context| context.contains(colosso_term::CONTEXT));
     let repeater = cx.default_global::<Repeater>();
     if repeater.pressing {
+        return;
+    }
+    if in_terminal {
+        repeater.held = None;
         return;
     }
     if !is_arrow(keystroke) || !repeat.enabled {

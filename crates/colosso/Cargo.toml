@@ -7,6 +7,12 @@ publish.workspace = true
 
 [dependencies]
 colosso-git = { path = "../git" }
+# Terminals: the view and its client, the protocol's types, the engine's colours, and the
+# daemon itself, which the app runs from its own executable as `colosso termd`.
+colosso-term = { path = "../term" }
+colosso-term-control = { path = "../term-control" }
+colosso-term-engine = { path = "../term-engine" }
+colosso-termd = { path = "../termd" }
 # Each checkout's files, scanned and watched once for every panel that shows it.
 colosso-project = { path = "../project" }
 # The language servers behind the file tabs: rust-analyzer, found or fetched, and talked to.

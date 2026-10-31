@@ -1,0 +1,26 @@
+[package]
+name = "colosso-term-control"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# Frames are split off the socket's buffer and handed on without a copy.
+bytes = "1"
+# Control frames are CBOR: self-describing like JSON, so a field can be added behind a
+# feature flag, and compact enough for the mobile path.
+ciborium = "0.2"
+# The client's inbox and the channels answers come back on.
+crossbeam-channel = "0.5"
+log = "0.4"
+parking_lot = "0.12"
+# The platform's data folder, the version the app already uses.
+dirs = "6"
+# The random half of a handle's ULID.
+fastrand = "2"
+serde = { version = "1", features = ["derive"] }
+serde_bytes = "0.11"
+
+[lints]
+workspace = true

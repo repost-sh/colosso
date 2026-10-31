@@ -30,6 +30,7 @@ mod settings_view;
 mod shell;
 mod sidebar;
 mod symbols;
+mod terminals;
 #[cfg(any(test, feature = "visual-check"))]
 mod test_support;
 mod theme;
@@ -57,6 +58,7 @@ fn init(cx: &mut App) {
     navigation::bind_keys(cx);
     go_to_file::init(cx);
     symbols::init(cx);
+    colosso_term::init(cx);
     #[cfg(target_os = "macos")]
     native::init(cx);
 }
@@ -99,6 +101,12 @@ fn open_main_window(cx: &mut App) -> gpui_kit::Result<()> {
 }
 
 fn main() -> ExitCode {
+    // `colosso termd`: the terminal daemon, which the app runs from its own executable so
+    // the two never come apart. It keeps its own log, and needs nothing of the app's.
+    let mut args = std::env::args().skip(1);
+    if args.next().as_deref() == Some("termd") {
+        return colosso_termd::main(args);
+    }
     logs::init();
     #[cfg(feature = "visual-check")]
     if std::env::args().any(|arg| arg == "--visual-check") {
@@ -127,6 +135,10 @@ fn main() -> ExitCode {
     #[cfg(feature = "visual-check")]
     if std::env::args().any(|arg| arg == "--visual-check-accent") {
         return theme::visual::run();
+    }
+    #[cfg(feature = "visual-check")]
+    if std::env::args().any(|arg| arg == "--visual-check-terminal") {
+        return terminals::visual::run();
     }
     let app = gpui_kit::application()
         // The full Lucide set: the default bundle leaves out icons we use, which then draw nothing.

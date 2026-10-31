@@ -101,3 +101,10 @@ opt-level = 3
 
 [profile.dev.package.colosso-project]
 opt-level = 3
+
+# A terminal paints every cell of every frame and parses everything a program prints.
+[profile.dev.package.colosso-term]
+opt-level = 3
+
+[profile.dev.package.colosso-term-engine]
+opt-level = 3

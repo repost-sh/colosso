@@ -11,6 +11,7 @@ use gpui_kit::assets::IconName;
 mod closed;
 mod moves;
 mod tab;
+mod terminals;
 pub use closed::ClosedTab;
 pub use tab::{Edge, Pane, SPLIT_MIN, Split, SplitAxis, Tab};
 

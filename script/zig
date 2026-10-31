@@ -1,0 +1,24 @@
+#!/bin/sh
+# Pins the Zig that builds libghostty-vt (through the ghostty-vt-sys crate) into .tools, so a
+# build never depends on whatever Zig the machine has. Prints the binary's path, which
+# .cargo/config.toml gives cargo as ZIG; run it once before the first build.
+set -eu
+cd "$(dirname "$0")/.."
+
+# ghostty-vt-sys 0.8.0+ghostty.1.4.0-main.83fb956 needs Zig 0.17.x.
+ZIG_VERSION=0.17.0
+ZIG_SHA256=b607e9b9234790a008116ae5bdb71c6243b84b9fb42a53a9e70fde41c06c536a
+ZIG_DIR=".tools/zig-$ZIG_VERSION"
+ZIG="$ZIG_DIR/zig"
+
+if [ ! -x "$ZIG" ]; then
+  echo "Installing zig $ZIG_VERSION into $ZIG_DIR" >&2
+  mkdir -p "$ZIG_DIR"
+  curl -fsSL -o "$ZIG_DIR/zig.tar.xz" \
+    "https://ziglang.org/download/$ZIG_VERSION/zig-aarch64-macos-$ZIG_VERSION.tar.xz"
+  echo "$ZIG_SHA256  $ZIG_DIR/zig.tar.xz" | shasum -a 256 -c - >&2
+  tar -xJf "$ZIG_DIR/zig.tar.xz" -C "$ZIG_DIR" --strip-components=1
+  rm "$ZIG_DIR/zig.tar.xz"
+fi
+
+echo "$PWD/$ZIG"
