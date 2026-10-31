@@ -5,7 +5,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Context, Div, FocusHandle, FontWeight, InteractiveElement as _, IntoElement, MouseButton,
+    Axis, Context, Div, FontWeight, InteractiveElement as _, IntoElement, MouseButton,
     ParentElement as _, ScrollDelta, ScrollEvent, StatefulInteractiveElement as _, Styled as _,
     TouchPhase, Window, div, px,
 };
@@ -14,7 +14,7 @@ use crate::model::BranchUnit;
 use crate::projects::{AddProject, NewWorktreeIn, project_menu, with_menu, worktree_menu};
 use crate::shell::{
     Shell, action_button, add_project_row, ellipsized, icon, icon_button, new_tab_menu, no_matches,
-    project_error, row, search_field, section_label, tab_close_button,
+    project_error, row, search_field, section_label, tab_close_button, tab_list, tab_row,
 };
 use crate::theme::{self, Palette};
 
@@ -97,7 +97,7 @@ pub fn sidebar(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
                         let active_tab =
                             (branch_index == project.active_branch).then_some(branch.active_tab);
                         branch_group(
-                            &shell.focus,
+                            shell,
                             project_index,
                             branch_index,
                             branch,
@@ -176,7 +176,7 @@ fn switcher(shell: &Shell, p: Palette, cx: &mut Context<Shell>) -> Div {
 
 /// A branch unit's header and its tabs; `active_tab` is set only on the selected branch.
 fn branch_group(
-    focus: &FocusHandle,
+    shell: &Shell,
     project_index: usize,
     branch_index: usize,
     branch: &BranchUnit,
@@ -186,6 +186,33 @@ fn branch_group(
 ) -> impl IntoElement + use<> {
     let (path, is_main) = (branch.worktree.path.clone(), branch.is_main());
     let selected = active_tab.is_some();
+    let rows = (branch.tabs.iter().enumerate())
+        .map(|(tab_index, tab)| {
+            let active = active_tab == Some(tab_index);
+            let at = (project_index, branch_index, tab_index);
+            let row = row(("arc-tab", branch_index * 100 + tab_index), active, p)
+                .group("arc-tab")
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.workspace
+                        .select_tab(project_index, branch_index, tab_index);
+                    cx.notify();
+                }));
+            let list = (Axis::Vertical, active, &shell.tab_hand);
+            tab_row(row, (at, tab), list, p, cx, |row, face, cx| {
+                let close = ("arc-tab-close", branch_index * 100 + tab_index);
+                row.pr_1()
+                    .child(div().text_color(p.muted).child(face.icon(13.)))
+                    .child(ellipsized(face.title.clone()).flex_1())
+                    // Shown on the active tab, and on the others while hovered.
+                    .child(tab_close_button(close, at, p, cx).when(!active, |close| {
+                        close
+                            .opacity(0.)
+                            .group_hover("arc-tab", |style| style.opacity(1.))
+                    }))
+            })
+        })
+        .collect();
+    let list = ((project_index, branch_index), Axis::Vertical);
     div()
         .mt_2()
         .flex()
@@ -221,39 +248,9 @@ fn branch_group(
                                 cx.notify();
                             }),
                         ),
-                    focus.clone(),
+                    shell.focus.clone(),
                 )),
             move || worktree_menu(&path, is_main),
         ))
-        .children(branch.tabs.iter().enumerate().map(|(tab_index, tab)| {
-            let active = active_tab == Some(tab_index);
-            row(("arc-tab", branch_index * 100 + tab_index), active, p)
-                .group("arc-tab")
-                .pr_1()
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.workspace
-                        .select_tab(project_index, branch_index, tab_index);
-                    cx.notify();
-                }))
-                .map(|row| {
-                    let at = (project_index, branch_index, tab_index);
-                    crate::shell::tab_drag(row, at, tab, p, cx)
-                })
-                .child(icon(tab.icon(), 13.).text_color(p.muted))
-                .child(ellipsized(tab.title()).flex_1())
-                // Shown on the active tab, and on the others while hovered.
-                .child(
-                    tab_close_button(
-                        ("arc-tab-close", branch_index * 100 + tab_index),
-                        (project_index, branch_index, tab_index),
-                        p,
-                        cx,
-                    )
-                    .when(!active, |close| {
-                        close
-                            .opacity(0.)
-                            .group_hover("arc-tab", |style| style.opacity(1.))
-                    }),
-                )
-        }))
+        .child(tab_list(&shell.tab_hand, list, rows, px(1.), p, cx))
 }

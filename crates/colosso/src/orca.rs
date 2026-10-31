@@ -5,7 +5,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Context, InteractiveElement as _, IntoElement, ParentElement as _,
+    Axis, Context, InteractiveElement as _, IntoElement, ParentElement as _,
     StatefulInteractiveElement as _, Styled as _, div, px,
 };
 
@@ -13,7 +13,7 @@ use crate::model::BranchUnit;
 use crate::projects::{AddProject, NewWorktreeIn, project_menu, with_menu, worktree_menu};
 use crate::shell::{
     Shell, action_button, add_project_row, ellipsized, icon, icon_button, new_tab_menu, no_matches,
-    project_error, row, search_field, section_label, tab_close_button,
+    project_error, row, search_field, section_label, tab_close_button, tab_list, tab_row,
 };
 use crate::theme::{self, Palette};
 
@@ -153,6 +153,31 @@ pub fn tab_strip(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
     let branch = workspace.branch();
     let tabs = branch.map_or(&[][..], |branch| &branch.tabs);
     let active_tab = branch.map_or(0, |branch| branch.active_tab);
+    let rows = (tabs.iter().enumerate())
+        .map(|(tab_index, tab)| {
+            let active = tab_index == active_tab;
+            let at = (project_index, branch_index, tab_index);
+            let row = row(("orca-tab", tab_index), active, p)
+                .h(px(28.))
+                .min_w_0()
+                .when(!active, |tab| tab.text_color(p.muted))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.workspace
+                        .select_tab(project_index, branch_index, tab_index);
+                    cx.notify();
+                }));
+            let list = (Axis::Horizontal, active, &shell.tab_hand);
+            tab_row(row, (at, tab), list, p, cx, |row, face, cx| {
+                row.max_w(px(220.))
+                    .pl_2()
+                    .pr_1()
+                    .child(face.icon(13.))
+                    .child(ellipsized(face.title.clone()))
+                    .child(tab_close_button(("orca-tab-close", tab_index), at, p, cx))
+            })
+        })
+        .collect();
+    let list = ((project_index, branch_index), Axis::Horizontal);
     div()
         .h(px(theme::TAB_STRIP_HEIGHT))
         .flex_shrink_0()
@@ -162,33 +187,7 @@ pub fn tab_strip(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
         .gap_1()
         .border_b_1()
         .border_color(p.hairline)
-        .children(tabs.iter().enumerate().map(|(tab_index, tab)| {
-            let active = tab_index == active_tab;
-            row(("orca-tab", tab_index), active, p)
-                .h(px(28.))
-                .min_w_0()
-                .max_w(px(220.))
-                .pl_2()
-                .pr_1()
-                .when(!active, |tab| tab.text_color(p.muted))
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.workspace
-                        .select_tab(project_index, branch_index, tab_index);
-                    cx.notify();
-                }))
-                .map(|row| {
-                    let at = (project_index, branch_index, tab_index);
-                    crate::shell::tab_drag(row, at, tab, p, cx)
-                })
-                .child(icon(tab.icon(), 13.))
-                .child(ellipsized(tab.title()))
-                .child(tab_close_button(
-                    ("orca-tab-close", tab_index),
-                    (project_index, branch_index, tab_index),
-                    p,
-                    cx,
-                ))
-        }))
+        .child(tab_list(&shell.tab_hand, list, rows, px(4.), p, cx))
         .when(branch.is_some(), |strip| {
             strip.child(new_tab_menu(
                 "orca-new-tab-menu",

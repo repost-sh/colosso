@@ -133,6 +133,23 @@ pub fn tab_close_button(
     }))
 }
 
+/// The × that closes pane `id` alone, out of its split, `name` naming it beside the pane;
+/// pressed, it doesn't take up what it's on.
+pub fn pane_close_button(
+    name: &'static str,
+    id: u64,
+    p: Palette,
+    cx: &mut Context<Shell>,
+) -> Stateful<Div> {
+    close_button((name, id), p)
+        .debug_selector(move || format!("{name}-{id}"))
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .on_click(cx.listener(move |this, _, _, cx| {
+            cx.stop_propagation();
+            this.close_pane(id, cx);
+        }))
+}
+
 /// The sidebar's search field, which narrows its worktrees as it's typed in.
 pub fn search_field(search: &Entity<InputState>, p: Palette) -> Div {
     div()

@@ -1,6 +1,6 @@
 //! Moving tabs and panes on a checkout: a tab dropped on a side of a pane splits with it,
-//! a pane dragged out of its split goes to another pane or a tab of its own, and tabs
-//! reorder in the strip.
+//! a pane dragged out of its split goes to another pane or a tab of its own, a tab dropped
+//! on another joins it side by side, and tabs reorder in the strip.
 
 use super::{BranchUnit, Edge, Tab};
 
@@ -78,6 +78,27 @@ impl BranchUnit {
         self.active_tab = to;
     }
 
+    /// Joins the tab at `from` to the tab at `onto`, side by side, on its right when
+    /// `after`, every column sharing the room evenly, and shows them; the tab joined leaves
+    /// the strip. False when either is missing, or they're the same.
+    pub fn join_tabs(&mut self, from: usize, onto: usize, after: bool) -> bool {
+        let count = self.tabs.len();
+        if from == onto || from >= count || onto >= count {
+            return false;
+        }
+        let incoming = self.tabs.remove(from);
+        let onto = if from < onto { onto - 1 } else { onto };
+        let here = self.tabs.remove(onto);
+        let row = if after {
+            Tab::beside(here, incoming)
+        } else {
+            Tab::beside(incoming, here)
+        };
+        self.tabs.insert(onto, row);
+        self.active_tab = onto;
+        true
+    }
+
     /// Closes pane `id`: out of its split, or with its tab when it's the tab's only pane.
     pub fn close_pane(&mut self, id: u64) {
         let Some(at) = self.tab_with(id) else {
@@ -134,6 +155,32 @@ mod tests {
         assert!(unit.pane_to_tab(ids[2], 0));
         assert_eq!(layout(&unit), [vec![ids[2]], vec![ids[0]], vec![ids[1]]]);
         assert_eq!(unit.active_tab, 0);
+    }
+
+    #[test]
+    fn a_tab_dropped_on_another_joins_it_side_by_side_on_the_side_it_was_held() {
+        let (mut unit, ids) = unit(4);
+        assert!(unit.join_tabs(0, 2, true));
+        assert_eq!(
+            layout(&unit),
+            [vec![ids[1]], vec![ids[2], ids[0]], vec![ids[3]]]
+        );
+        assert_eq!(unit.active_tab, 1, "the pair shows");
+        // Joining a row adds a column to it rather than splitting one of its sides.
+        assert!(unit.join_tabs(2, 1, false));
+        assert_eq!(layout(&unit), [vec![ids[1]], vec![ids[3], ids[2], ids[0]]]);
+        let Tab::Split(row) = &unit.tabs[1] else {
+            panic!("a split");
+        };
+        assert!(
+            (row.ratio - 1. / 3.).abs() < f32::EPSILON,
+            "columns share evenly"
+        );
+        assert!(!unit.join_tabs(1, 1, true), "not with itself");
+        assert!(
+            !unit.join_tabs(0, 5, true),
+            "not with a tab that isn't there"
+        );
     }
 
     #[test]
