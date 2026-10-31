@@ -4,18 +4,24 @@
 //! pane is in hand, the sides of each pane it can be dropped on, the one under the pointer
 //! lit as far as it would reach.
 
+use std::rc::Rc;
+
 use gpui_kit::assets::IconName;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, AppContext as _, Context, Div, DragMoveEvent, ElementId, EmptyView,
-    InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, Render, SharedString,
-    Stateful, StatefulInteractiveElement as _, Styled, Window, deferred, div, px, relative,
+    InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, Pixels, Point, Render,
+    SharedString, StatefulInteractiveElement as _, Styled, Window, deferred, div, point, px,
+    relative,
 };
 
-use super::{Shell, elements::ellipsized, icon};
+use super::elements::{ellipsized, pane_close_button};
+use super::reorder::TabHand;
+use super::tab_face::Face;
+use super::{Shell, icon};
 use crate::model::{Edge, Pane, SPLIT_MIN, Split, SplitAxis, Tab};
-use crate::pane::{self, close_button, tab_button};
+use crate::pane::{self, tab_button};
 use crate::theme::{self, Palette};
 
 /// What's in hand, to split a pane with or to put in the strip.
@@ -27,33 +33,62 @@ pub enum Dragged {
     Pane(u64),
 }
 
-/// A tab or pane in hand, drawn under the pointer as its icon and title.
+/// Where the chip sits from the pointer: just up and left of it, the pointer over its icon.
+const CHIP_AT: Point<Pixels> = point(px(12.), px(14.));
+
+/// A tab or pane in hand, drawn under the pointer as its panes' icons and titles: a tab
+/// only once it's off its list, as on it the tab itself is drawn under the pointer.
 #[derive(Clone)]
 pub struct DraggedPane {
     pub what: Dragged,
-    pub title: SharedString,
-    pub icon: IconName,
+    pub faces: Vec<Face>,
+    /// For a tab, what says whether it's off its list.
+    pub hand: Option<Rc<TabHand>>,
+    /// Where in what was taken up the pointer took hold, so the chip is drawn by the pointer
+    /// rather than as far into it.
+    pub grab: Point<Pixels>,
+}
+
+impl DraggedPane {
+    /// The chip under the pointer, for what was taken up `grab` in from its corner.
+    pub fn chip(&self, grab: Point<Pixels>) -> Self {
+        DraggedPane {
+            grab,
+            ..self.clone()
+        }
+    }
 }
 
 impl Render for DraggedPane {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = theme::palette(cx);
-        div()
-            .h(px(28.))
-            .max_w(px(240.))
-            .px_2()
-            .flex()
-            .items_center()
-            .gap_2()
-            .rounded(px(6.))
-            .border_1()
-            .border_color(p.hairline)
-            .bg(p.raised)
-            .shadow_md()
-            .text_sm()
-            .text_color(p.text)
-            .child(icon(self.icon, 13.))
-            .child(ellipsized(self.title.clone()))
+        let chip = div();
+        if self.hand.as_ref().is_some_and(|hand| !hand.chip_shows()) {
+            return chip;
+        }
+        // Drawn from where the pointer is less how far in it took hold, so set back by that.
+        let by = (self.grab - CHIP_AT).max(&Point::default());
+        // A split's panes each in a chip of their own, as its tab shows them.
+        let split = self.faces.len() > 1;
+        let faces = self.faces.iter().map(|face| {
+            (face.chip().max_w(px(200.)).px_1p5()).when(split, |chip| chip.bg(p.hover))
+        });
+        chip.pl(by.x).pt(by.y).child(
+            div()
+                .h(px(28.))
+                .px_1()
+                .flex()
+                .items_center()
+                .gap_1()
+                .rounded(px(6.))
+                .border_1()
+                .border_color(p.hairline)
+                .bg(p.raised)
+                .shadow_md()
+                .text_sm()
+                .text_color(p.text)
+                .children(faces),
+        )
     }
 }
 
@@ -244,11 +279,13 @@ impl Shell {
 
     /// The header over a pane of a split: dragged, it moves the pane.
     fn pane_header(&self, pane: &Pane, p: Palette, cx: &mut Context<Self>) -> impl IntoElement {
-        let id = pane.id;
+        let (id, face) = (pane.id, Face::of(pane, cx));
+        let icon_of_pane = face.icon(12.);
         let held = DraggedPane {
             what: Dragged::Pane(id),
-            title: pane.title.clone(),
-            icon: pane.kind.icon(),
+            faces: vec![face],
+            hand: None,
+            grab: Point::default(),
         };
         let button_press =
             |_: &gpui_kit::MouseDownEvent, _: &mut Window, cx: &mut gpui_kit::App| {
@@ -267,12 +304,12 @@ impl Shell {
             .text_xs()
             .text_color(p.muted)
             .cursor_grab()
-            .on_drag(held, |held, _, _, cx| {
-                let held = held.clone();
-                cx.new(|_| held)
+            .on_drag(held, |held, grab, _, cx| {
+                let chip = held.chip(grab);
+                cx.new(|_| chip)
             })
             .child(icon(IconName::GripVertical, 12.))
-            .child(icon(pane.kind.icon(), 12.))
+            .child(icon_of_pane)
             .child(ellipsized(pane.title.clone()).flex_1())
             .child(
                 tab_button(("pane-own-tab", id), p)
@@ -287,15 +324,7 @@ impl Shell {
                         this.pane_to_own_tab(id, cx);
                     })),
             )
-            .child(
-                close_button(("pane-close", id), p)
-                    .debug_selector(move || format!("pane-close-{id}"))
-                    .on_mouse_down(MouseButton::Left, button_press)
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        cx.stop_propagation();
-                        this.close_pane(id, cx);
-                    })),
-            )
+            .child(pane_close_button("pane-close", id, p, cx))
     }
 
     /// Takes pane `id` out of its split into a tab right after the one shown.
@@ -326,7 +355,8 @@ impl Shell {
         }
     }
 
-    /// `held` dropped on the tab at `at` in the strip: it goes where that tab is.
+    /// `held` dropped on the tab at `at` in the strip: a pane of a split goes where that tab
+    /// is. A tab is its list's to place, as it's let go.
     pub(super) fn drop_on_strip(
         &mut self,
         held: Dragged,
@@ -334,24 +364,14 @@ impl Shell {
         cx: &mut Context<Self>,
     ) {
         let (project, branch, to) = at;
-        if self.selected_branch() != Some((project, branch)) {
-            return;
-        }
-        let Some(unit) = self.workspace.branch_mut() else {
+        let Dragged::Pane(id) = held else {
             return;
         };
-        match held {
-            Dragged::Tab(from_project, from_branch, from)
-                if (from_project, from_branch) == (project, branch) =>
-            {
-                unit.move_tab(from, to);
-            }
-            Dragged::Tab(..) => return,
-            Dragged::Pane(id) => {
-                unit.pane_to_tab(id, to);
-            }
+        if let Some(unit) = self.workspace.unit_mut(project, branch)
+            && unit.pane_to_tab(id, to)
+        {
+            cx.notify();
         }
-        cx.notify();
     }
 
     /// The selected checkout, as `(project, branch)`.
@@ -361,57 +381,13 @@ impl Shell {
     }
 }
 
-/// A tab in the strip, `at` as `(project, branch, tab)`: dragged, it goes onto a pane's side
-/// or elsewhere in the strip; what's dropped on it goes where it is.
-pub fn tab_drag(
-    row: Stateful<Div>,
-    at: (usize, usize, usize),
-    tab: &Tab,
-    p: Palette,
-    cx: &mut Context<Shell>,
-) -> Stateful<Div> {
-    let held = DraggedPane {
-        what: Dragged::Tab(at.0, at.1, at.2),
-        title: tab.title(),
-        icon: tab.icon(),
-    };
-    row.debug_selector(move || format!("tab-{}-{}-{}", at.0, at.1, at.2))
-        .on_drag(held, |held, _, _, cx| {
-            let held = held.clone();
-            cx.new(|_| held)
-        })
-        .drag_over::<DraggedPane>(move |style, _, _, _| style.bg(p.hover))
-        .on_drop(cx.listener(move |this, held: &DraggedPane, _, cx| {
-            this.drop_on_strip(held.what, at, cx);
-        }))
-}
-
 /// Over a pane while something's in hand: a strip along each side to drop it on, and under
 /// them how far it would reach, lit while it's over that side.
 fn drop_zones(target: u64, p: Palette, cx: &mut Context<Shell>) -> Vec<AnyElement> {
     let lit = p.accent.opacity(0.16);
     let line = p.accent.opacity(0.6);
-    // Drawn again on every move while something's in hand, so each side's name is made once.
-    let groups = Edge::ALL.map(|edge| SharedString::from(format!("drop-{target}-{edge:?}")));
-    let mut parts = Vec::new();
-    for (edge, group) in Edge::ALL.into_iter().zip(groups.clone()) {
-        // Where it would go: the half of the pane on that side.
-        let reach = div().absolute().map(|reach| match edge {
-            Edge::Left => reach.left_0().top_0().bottom_0().w(relative(0.5)),
-            Edge::Right => reach.right_0().top_0().bottom_0().w(relative(0.5)),
-            Edge::Top => reach.left_0().right_0().top_0().h(relative(0.5)),
-            Edge::Bottom => reach.left_0().right_0().bottom_0().h(relative(0.5)),
-        });
-        parts.push(
-            reach
-                .rounded(px(6.))
-                .group_drag_over::<DraggedPane>(group, move |style| {
-                    style.bg(lit).border_2().border_color(line)
-                })
-                .into_any_element(),
-        );
-    }
-    for (edge, group) in Edge::ALL.into_iter().zip(groups) {
+    let zones = Edge::ALL.into_iter().map(|edge| {
+        let group = SharedString::from(format!("drop-{target}-{edge:?}"));
         // Where it's dropped: a quarter along the sides, the middle split top and bottom.
         let zone = div().absolute().map(|zone| match edge {
             Edge::Left => zone.left_0().top_0().bottom_0().w(relative(0.25)),
@@ -427,20 +403,38 @@ fn drop_zones(target: u64, p: Palette, cx: &mut Context<Shell>) -> Vec<AnyElemen
                 .bottom_0()
                 .h(relative(0.5)),
         });
-        parts.push(
-            zone.id(group.clone())
-                .debug_selector({
-                    let group = group.clone();
-                    move || group.to_string()
-                })
-                .group(group)
-                .on_drop(cx.listener(move |this, held: &DraggedPane, _, cx| {
-                    this.drop_on_pane(held.what, target, edge, cx);
-                }))
-                .into_any_element(),
-        );
-    }
-    parts
+        // Where it would go, the half of the pane on that side, twice the zone's width. It's
+        // drawn from inside the zone, as only what's in a group finds the group.
+        let reach = div()
+            .absolute()
+            .top_0()
+            .h_full()
+            .w(relative(2.))
+            .map(|reach| match edge {
+                Edge::Left => reach.left_0(),
+                Edge::Right => reach.right_0(),
+                Edge::Top | Edge::Bottom => reach.left(relative(-0.5)),
+            })
+            .rounded(px(6.))
+            .group_drag_over::<DraggedPane>(group.clone(), move |style| {
+                style.bg(lit).border_2().border_color(line)
+            })
+            // gpui styles only what has a hitbox, which a drag-over style gives it; one that
+            // doesn't block the zone under it, which still takes the drop.
+            .drag_over::<DraggedPane>(|style, _, _, _| style);
+        zone.id(group.clone())
+            .debug_selector({
+                let group = group.clone();
+                move || group.to_string()
+            })
+            .group(group)
+            .child(reach)
+            .on_drop(cx.listener(move |this, held: &DraggedPane, _, cx| {
+                this.drop_on_pane(held.what, target, edge, cx);
+            }))
+            .into_any_element()
+    });
+    zones.collect()
 }
 
 #[cfg(test)]

@@ -2,6 +2,7 @@
 //! sidebar slot and the card show whichever route the navigation history is on: the
 //! workspace, or a settings page.
 
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use gpui_kit::assets::IconName;
@@ -32,7 +33,10 @@ mod actions;
 mod browser_tabs;
 mod elements;
 mod reopen;
+mod reorder;
 mod splits;
+mod tab_face;
+mod tab_list;
 
 pub use actions::{
     EditTheme, NewBrowserTab, NewChat, NewEditorTab, NewTerminal, ReopenClosedTab,
@@ -43,7 +47,9 @@ pub use elements::{
     action_button, add_project_row, ellipsized, glass, icon, icon_button, new_tab_menu, no_matches,
     project_error, row, search_field, section_label, tab_close_button,
 };
-pub use splits::{divider, tab_drag};
+pub use reorder::TabHand;
+pub use splits::divider;
+pub use tab_list::{tab_list, tab_row};
 
 pub struct Shell {
     pub workspace: Workspace,
@@ -63,6 +69,8 @@ pub struct Shell {
     pub search: Entity<InputState>,
     /// Where the rails were last right-clicked, for the theme picker their menu opens.
     rails_menu_at: Point<Pixels>,
+    /// The tab being dragged along its list, shared by every list of tabs.
+    pub tab_hand: Rc<TabHand>,
     _subscriptions: [Subscription; 6],
 }
 
@@ -114,6 +122,7 @@ impl Shell {
             focus,
             search,
             rails_menu_at: Point::default(),
+            tab_hand: Rc::default(),
             _subscriptions,
         };
         shell.reload_projects(cx);

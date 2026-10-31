@@ -4,7 +4,6 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use gpui_kit::assets::IconName;
 use gpui_kit::{App, Entity, SharedString};
 
 use super::PaneKind;
@@ -107,6 +106,44 @@ impl Tab {
         }))
     }
 
+    /// Two tabs side by side, every column of either sharing the room evenly.
+    pub fn beside(first: Tab, second: Tab) -> Tab {
+        let (columns, last) = Tab::split(SplitAxis::Row, first, second).into_columns();
+        // From the right: each column takes its share of the room it and those after it have.
+        (columns.into_iter().rev().enumerate()).fold(last, |row, (after, column)| {
+            Tab::Split(Box::new(Split {
+                axis: SplitAxis::Row,
+                first: column,
+                second: row,
+                ratio: 1. / (after + 2) as f32,
+            }))
+        })
+    }
+
+    /// The tab's columns but its last, left to right, and its last: a row split's sides,
+    /// each a row split's again, and any other tab itself.
+    fn into_columns(self) -> (Vec<Tab>, Tab) {
+        match self {
+            Tab::Split(split) if split.axis == SplitAxis::Row => {
+                let Split { first, second, .. } = *split;
+                let (mut columns, first) = first.into_columns();
+                let (rest, last) = second.into_columns();
+                columns.push(first);
+                columns.extend(rest);
+                (columns, last)
+            }
+            tab => (Vec::new(), tab),
+        }
+    }
+
+    /// The first pane, left or top.
+    pub fn first(&self) -> &Pane {
+        match self {
+            Tab::Single(pane) => pane,
+            Tab::Split(split) => split.first.first(),
+        }
+    }
+
     /// The panes, left to right and top to bottom.
     pub fn panes(&self) -> Vec<&Pane> {
         match self {
@@ -133,23 +170,6 @@ impl Tab {
 
     pub fn has_pane(&self, id: u64) -> bool {
         self.panes().iter().any(|pane| pane.id == id)
-    }
-
-    pub fn title(&self) -> SharedString {
-        match self {
-            Tab::Single(pane) => pane.title.clone(),
-            Tab::Split(split) => {
-                format!("{} | {}", split.first.title(), split.second.title()).into()
-            }
-        }
-    }
-
-    pub fn icon(&self) -> IconName {
-        match self {
-            Tab::Single(pane) => pane.kind.icon(),
-            Tab::Split(split) if split.axis == SplitAxis::Row => IconName::Columns2,
-            Tab::Split(_) => IconName::Rows2,
-        }
     }
 
     /// Puts `incoming` at `edge` of the pane `target`, the two sharing its room. False, and
@@ -239,7 +259,30 @@ mod tests {
             tab.split_at_mut(&[true])
                 .is_some_and(|split| split.axis == SplitAxis::Column)
         );
-        assert_eq!(tab.icon(), gpui_kit::assets::IconName::Columns2);
+    }
+
+    #[test]
+    fn a_row_of_tabs_shares_the_room_evenly_taking_in_rows_column_by_column() {
+        let (mut pair, a) = single();
+        let (right, b) = single();
+        pair.place(a, Edge::Right, right);
+        let (mut stack, c) = single();
+        let (below, d) = single();
+        stack.place(c, Edge::Bottom, below);
+        let row = Tab::beside(pair, stack);
+        assert_eq!(ids(&row), [a, b, c, d]);
+        let Tab::Split(split) = &row else {
+            panic!("a split");
+        };
+        // The row gives up its two columns; the column split is one.
+        assert!((split.ratio - 1. / 3.).abs() < f32::EPSILON);
+        let Tab::Split(rest) = &split.second else {
+            panic!("a split");
+        };
+        assert!((rest.ratio - 0.5).abs() < f32::EPSILON);
+        assert_eq!(rest.axis, SplitAxis::Row);
+        let whole = matches!(&rest.second, Tab::Split(split) if split.axis == SplitAxis::Column);
+        assert!(whole, "the column split stays whole");
     }
 
     #[test]
