@@ -47,6 +47,10 @@ pub struct PageState {
     pub can_go_back: bool,
     /// History has an entry ahead.
     pub can_go_forward: bool,
+    /// The address of the page's icon, when it names one; the icon itself follows in
+    /// [`HostEvent::Favicon`].
+    #[serde(default)]
+    pub favicon: String,
 }
 
 /// An event from the host to the app.
@@ -99,6 +103,15 @@ pub enum HostEvent {
         pane: PaneId,
         /// Its state.
         state: PageState,
+    },
+    /// The page's icon at `url` was fetched, through the engine and its cache.
+    Favicon {
+        /// The pane.
+        pane: PaneId,
+        /// Where the page said its icon is.
+        url: String,
+        /// The icon as a PNG, at most 64 pixels a side; empty when it couldn't be fetched.
+        png: Vec<u8>,
     },
     /// The page asks for another pointer.
     Cursor {

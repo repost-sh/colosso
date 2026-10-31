@@ -37,7 +37,8 @@ pub use requests::{AppRequest, Edit, Go, Ime, ViewAction};
 /// [`HostEvent::OpenUrl`]).
 /// 3: agent control over the page's `DevTools` protocol session
 /// ([`AppRequest::Cdp`], [`HostEvent::CdpReply`], [`HostEvent::CdpEvent`]).
-pub const PROTOCOL: u32 = 5;
+/// 6: page icons ([`PageState::favicon`], [`HostEvent::Favicon`]).
+pub const PROTOCOL: u32 = 6;
 
 /// Frames larger than this are refused, so a confused peer cannot make the
 /// other side allocate without bound.

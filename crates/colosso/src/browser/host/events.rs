@@ -70,6 +70,9 @@ impl Browsers {
             HostEvent::Page { pane, state } => {
                 self.update_view(pane, cx, |view, cx| view.page_changed(state, cx));
             }
+            HostEvent::Favicon { pane, url, png } => {
+                self.update_view(pane, cx, |view, cx| view.favicon_fetched(&url, png, cx));
+            }
             HostEvent::Cursor { pane, cursor } => {
                 self.update_view(pane, cx, |view, cx| view.cursor_changed(cursor, cx));
             }

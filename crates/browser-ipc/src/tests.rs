@@ -187,3 +187,24 @@ fn viewports_round_to_device_pixels() {
         }
     );
 }
+
+#[test]
+fn a_page_icon_travels_as_its_address_then_its_png() {
+    let page: PageState = serde_json::from_value(serde_json::json!({
+        "url": "https://example.com/", "title": "", "loading": false, "progress": 100,
+        "canGoBack": false, "canGoForward": false,
+    }))
+    .expect("an older page state, without an icon");
+    assert_eq!(page.favicon, "");
+    let mut buf = Vec::new();
+    let icon = HostEvent::Favicon {
+        pane: 3,
+        url: "https://example.com/favicon.ico".into(),
+        png: vec![0x89, b'P', b'N', b'G'],
+    };
+    write_frame(&mut buf, &icon).expect("write");
+    assert_eq!(
+        read_frame::<HostEvent>(&mut buf.as_slice()).expect("read"),
+        Some(icon)
+    );
+}
