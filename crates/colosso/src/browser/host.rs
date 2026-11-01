@@ -1,11 +1,12 @@
 //! The app's browser host and the panes it serves. One host process serves every pane: it
-//! starts with the first page, and [`Browsers`] routes what it says to the pane views: page
+//! starts as the app launches, or with the first page where nothing launched it, starts
+//! again when it fails or stops, and [`Browsers`] routes what it says to the pane views: page
 //! state, cursors, questions, menus and frames. Frames are shared surfaces the views show
 //! directly; after showing a new one, a view hands the previous slot back to the host.
 
 use std::collections::HashMap;
 use std::sync::mpsc::Sender;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use colosso_browser_ipc::client::{Connection, Incoming};
 use colosso_browser_ipc::{self as ipc, AppRequest, PaneId, PixelSize};
@@ -21,6 +22,15 @@ mod events;
 
 /// How long a quitting host may take to close its pages.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
+/// How long a host may take to start before its panes say so: a start this quick shows as
+/// the blank page it is anyway.
+const STARTING_QUIETLY: Duration = Duration::from_millis(1500);
+/// How many times a host that failed to start is started again before the person is told.
+const START_RETRIES: u32 = 1;
+/// A host that stops is started again for its pages, unless it stopped this often lately:
+/// then it would only stop again, and the person is told.
+const RESTARTS: usize = 3;
+const RESTARTS_WITHIN: Duration = Duration::from_secs(60);
 
 /// Where the host process is.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -52,6 +62,12 @@ pub struct Browsers {
     host: Host,
     /// Bumped each time a host is ready, so views reopen their pages after a restart.
     epoch: u64,
+    /// When the host now starting was asked for.
+    starting_since: Option<Instant>,
+    /// Starts of the host that failed since it last ran.
+    failed_starts: u32,
+    /// When a running host stopped on its own, lately.
+    stops: Vec<Instant>,
     views: HashMap<PaneId, WeakEntity<BrowserView>>,
     rings: HashMap<PaneId, Ring>,
     /// The newest frame of a pane whose ring has not arrived yet.
@@ -94,6 +110,9 @@ impl Browsers {
         let browsers = cx.new(|_| Self {
             host: Host::Idle,
             epoch: 0,
+            starting_since: None,
+            failed_starts: 0,
+            stops: Vec::new(),
             views: HashMap::new(),
             rings: HashMap::new(),
             pending: HashMap::new(),
@@ -132,6 +151,14 @@ impl Browsers {
         self.epoch
     }
 
+    /// Whether the host has been starting long enough that its panes say so.
+    pub fn starting_long(&self) -> bool {
+        matches!(self.host, Host::Starting)
+            && self
+                .starting_since
+                .is_none_or(|since| since.elapsed() >= STARTING_QUIETLY)
+    }
+
     /// A view joins; once shown, it starts the host.
     pub fn attach(&mut self, pane: PaneId, view: WeakEntity<BrowserView>) {
         self.views.insert(pane, view);
@@ -162,9 +189,11 @@ impl Browsers {
         }
     }
 
-    /// Tries again after the host failed or stopped.
+    /// Tries again after the host failed or stopped, as the person asked.
     pub fn restart(&mut self, cx: &mut Context<Self>) {
         if matches!(self.host, Host::Failed(_) | Host::Idle) {
+            self.failed_starts = 0;
+            self.stops.clear();
             self.start(cx);
         }
     }
@@ -282,6 +311,7 @@ impl Browsers {
             }
         };
         self.host = Host::Starting;
+        self.starting_since = Some(Instant::now());
         self.notify_views(cx);
         let (events, mut incoming) = mpsc::unbounded::<Incoming>();
         let started = cx.background_executor().spawn(async move {
@@ -289,8 +319,17 @@ impl Browsers {
                 (events.unbounded_send(message).err()).map(mpsc::TrySendError::into_inner)
             })
         });
+        let quietly = cx.background_executor().timer(STARTING_QUIETLY);
         self._events = Some(cx.spawn(async move |this, cx| {
-            let started = started.await;
+            // Panes say the host is starting once it has taken a while.
+            let started = futures::future::select(started, quietly).await;
+            let started = match started {
+                futures::future::Either::Left((started, _)) => started,
+                futures::future::Either::Right(((), started)) => {
+                    let _ = this.update(cx, |this, cx| this.notify_views(cx));
+                    started.await
+                }
+            };
             let running = this
                 .update(cx, |this, cx| this.started(started, cx))
                 .ok()
@@ -322,7 +361,16 @@ impl Browsers {
         let (connection, writer) = match writer {
             Ok(started) => started,
             Err(error) => {
-                self.fail(format!("The browser engine did not start: {error}"), cx);
+                let message = format!("The browser engine did not start: {error}");
+                // Another app's host holding the profiles won't let go for a retry.
+                let busy = error.kind() == std::io::ErrorKind::ResourceBusy;
+                if !busy && self.failed_starts < START_RETRIES {
+                    self.failed_starts += 1;
+                    log::warn!("{message}; starting it again");
+                    self.start(cx);
+                } else {
+                    self.fail(message, cx);
+                }
                 return None;
             }
         };
@@ -351,13 +399,38 @@ impl Browsers {
             connection,
             requests,
         };
+        self.starting_since = None;
+        self.failed_starts = 0;
         self.epoch += 1;
         self.notify_views(cx);
         Some(())
     }
 
+    /// The running host went away on its own: it is started again for the pages, which
+    /// reopen, unless it keeps stopping.
+    pub(super) fn stopped(&mut self, cx: &mut Context<Self>) {
+        if !matches!(self.host, Host::Running { .. }) {
+            return;
+        }
+        let now = Instant::now();
+        self.stops
+            .retain(|stop| now.duration_since(*stop) < RESTARTS_WITHIN);
+        self.stops.push(now);
+        if self.stops.len() > RESTARTS {
+            self.fail("The browser engine stopped.".into(), cx);
+            return;
+        }
+        log::warn!("the browser engine stopped; starting it again");
+        self.drop_calls("The browser engine stopped.");
+        self.rings.clear();
+        self.pending.clear();
+        self.host = Host::Idle;
+        self.start(cx);
+    }
+
     fn fail(&mut self, message: String, cx: &mut Context<Self>) {
         log::warn!("{message}");
+        self.starting_since = None;
         self.drop_calls(&message);
         self.host = Host::Failed(message);
         self.queued.clear();
@@ -411,13 +484,11 @@ impl Browsers {
         });
         self._events = Some(cx.spawn(async move |this, cx| {
             cleared.await;
+            // Started again whether or not a page is open, as at launch, so the next
+            // page needn't wait for it.
             let _ = this.update(cx, |this, cx| {
                 this.host = Host::Idle;
-                if this.views.values().any(|view| view.upgrade().is_some()) {
-                    this.start(cx);
-                } else {
-                    this.notify_views(cx);
-                }
+                this.start(cx);
             });
         }));
     }

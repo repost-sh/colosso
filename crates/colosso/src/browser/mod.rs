@@ -3,9 +3,10 @@
 //!
 //! The engine (`engine`) is the browser host of `crates/browser-host` with CEF beside it,
 //! packaged by `script/browser-engine` and carried with the app. One host serves every pane
-//! of the app: `host` starts it with the first page and routes what it says to the pane
-//! views. A page is a [`BrowserView`] in a tab: its frames are shared surfaces the host
-//! paints into, shown in a native view over the pane (`frames`, `page`); the person's
+//! of the app: `host` starts it as the app launches, so no page waits for it, starts it
+//! again when it stops, and routes what it says to the pane views. A page is a
+//! [`BrowserView`] in a tab: its frames are shared surfaces the host paints into, shown in
+//! a native view over the pane (`frames`, `page`); the person's
 //! pointer and keys go to it (`input`); its questions are asked in the app's dialogs
 //! (`dialog`) and its context menu shown as the app's (`menu`); and who drives it, the
 //! person or an agent, is a lease (`control`) the person always wins.
@@ -41,8 +42,13 @@ pub use dock::{DevtoolsPlace, Dock, SetDevtoolsDock};
 pub use menu::handle_actions;
 pub use view::{BrowserEvent, BrowserView};
 
-/// Stops the engine, deletes every project's browsing data, and starts it again for the
-/// pages open.
+/// Starts the engine, so the first page opens as quickly as the next.
+pub fn warm_up(cx: &mut App) {
+    let browsers = host::Browsers::global(cx);
+    browsers.update(cx, host::Browsers::start_if_idle);
+}
+
+/// Stops the engine, deletes every project's browsing data, and starts it again.
 pub fn clear_data(cx: &mut App) {
     let browsers = host::Browsers::global(cx);
     browsers.update(cx, host::Browsers::clear_data);

@@ -170,6 +170,8 @@ fn main() -> ExitCode {
         language::init(cx);
         #[expect(clippy::expect_used, reason = "with no window there's no app to run")]
         open_main_window(cx).expect("failed to open window");
+        // Ready before the first page asks for it.
+        browser::warm_up(cx);
     });
     ExitCode::SUCCESS
 }

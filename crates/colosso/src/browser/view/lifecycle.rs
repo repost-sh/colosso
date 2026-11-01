@@ -12,6 +12,11 @@ impl BrowserView {
         self.browsers.read(cx).status()
     }
 
+    /// Whether the host has been starting long enough to say so.
+    pub(in crate::browser) fn starting_long(&self, cx: &App) -> bool {
+        self.browsers.read(cx).starting_long()
+    }
+
     pub(in crate::browser) fn restart_host(&mut self, cx: &mut Context<Self>) {
         self.browsers.update(cx, Browsers::restart);
     }

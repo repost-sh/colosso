@@ -41,7 +41,7 @@ impl Browsers {
                     self.show(pane, generation, slot, size, cx);
                 }
             }
-            Incoming::Closed => self.fail("The browser engine stopped.".into(), cx),
+            Incoming::Closed => self.stopped(cx),
         }
     }
 
