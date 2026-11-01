@@ -19,6 +19,7 @@ pub mod client;
 pub mod inherit;
 #[cfg(target_os = "macos")]
 pub mod mach;
+pub mod profiles;
 
 mod dialogs;
 mod events;

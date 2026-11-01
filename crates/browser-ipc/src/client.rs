@@ -132,10 +132,17 @@ impl Connection {
     /// Starts the host and completes the handshake; from then on events
     /// and rings go to `sink`, in arrival order per source.
     ///
+    /// A host left behind by an app that died, still holding the profiles,
+    /// is stopped first ([`crate::profiles`]).
+    ///
     /// # Errors
-    /// When the host cannot be started, does not connect in time, or speaks
-    /// another protocol.
+    /// When another running app's host holds the profiles, or the host
+    /// cannot be started, does not connect in time, or speaks another
+    /// protocol.
     pub fn start(launch: &Launch, sink: impl Sink) -> io::Result<Self> {
+        if let Some(name) = launch.executable.file_name() {
+            crate::profiles::free(&launch.profiles, &name.to_string_lossy())?;
+        }
         let (mut stream, host_end) = UnixStream::pair()?;
         let token = token()?;
         let mut command = Command::new(&launch.executable);

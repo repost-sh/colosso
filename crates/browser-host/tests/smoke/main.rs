@@ -474,3 +474,28 @@ fn zoom(session: &mut Session, settled: impl Fn([f64; 3]) -> bool) -> [f64; 3] {
         });
     }
 }
+
+#[test]
+#[ignore = "Needs a packaged browser engine; see the module docs"]
+fn a_host_left_holding_the_profiles_gives_way_to_the_next() {
+    let launch = launch("left");
+    let first = Session::start(&launch);
+    let stuck = first.host.pid();
+    // Stopped, it answers no one, as a host whose app died mid-shutdown may not: Chromium
+    // would make the next host wait 20 seconds for it, past the hello.
+    let stopped = std::process::Command::new("kill")
+        .args(["-STOP", &stuck.to_string()])
+        .status()
+        .expect("kill");
+    assert!(stopped.success());
+    let started = Instant::now();
+    let next = Connection::start(&launch, |_| None).expect("the next host starts");
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "took {:?}",
+        started.elapsed()
+    );
+    assert_ne!(next.pid(), stuck);
+    drop(first);
+    next.shutdown(Duration::from_secs(5));
+}

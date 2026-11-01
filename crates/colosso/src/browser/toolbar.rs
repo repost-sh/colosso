@@ -290,7 +290,8 @@ pub(super) fn overlay(
             )
         }
         (Some(Notice::Failed(message)), _) => (message.clone(), None),
-        (None, HostStatus::Starting | HostStatus::Idle) if !start => {
+        // A host starting quickly leaves the page blank, as it would be while loading.
+        (None, HostStatus::Starting) if !start && view.starting_long(cx) => {
             ("Starting the browser…".to_owned(), None)
         }
         _ => return None,
