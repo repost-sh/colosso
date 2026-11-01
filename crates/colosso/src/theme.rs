@@ -50,7 +50,7 @@ pub const MONO: &str = "Menlo";
 pub struct Palette {
     /// The window's blur shows through this, so its alpha sets how glassy the rails look.
     pub rail_tint: Hsla,
-    /// Painted over `rail_tint`, which covers the whole window, so the two alphas stack.
+    /// The content card and the panels in it: solid, so the glass shows only in the rails.
     pub card: Hsla,
     pub sunken: Hsla,
     pub raised: Hsla,
@@ -79,7 +79,7 @@ pub struct Palette {
 
 impl Palette {
     /// The fill of what floats over a page in a native layer: the card's colour, solid, as
-    /// the page under it is no blurred glass that `card`'s tint would read on.
+    /// the page under it is no glass for a tint to read on.
     pub fn floating(self) -> Hsla {
         Hsla { a: 1., ..self.card }
     }
@@ -137,7 +137,7 @@ const LIGHT_CODE: Code = Code {
 
 const DARK: Palette = Palette {
     rail_tint: gray(0.08, 0.55),
-    card: gray(0.1, 0.6),
+    card: gray(0.1, 1.),
     sunken: gray(0., 0.2),
     raised: gray(1., 0.05),
     hairline: gray(1., 0.08),
@@ -157,7 +157,7 @@ const DARK: Palette = Palette {
 
 const LIGHT: Palette = Palette {
     rail_tint: gray(0.96, 0.55),
-    card: gray(1., 0.65),
+    card: gray(1., 1.),
     sunken: gray(0., 0.03),
     raised: gray(0., 0.05),
     hairline: gray(0., 0.09),
