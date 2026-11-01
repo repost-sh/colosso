@@ -132,7 +132,7 @@ impl Browsers {
         self.epoch
     }
 
-    /// A view joins. The host starts once a page needs it.
+    /// A view joins; once shown, it starts the host.
     pub fn attach(&mut self, pane: PaneId, view: WeakEntity<BrowserView>) {
         self.views.insert(pane, view);
     }

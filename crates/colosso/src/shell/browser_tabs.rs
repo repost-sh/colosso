@@ -24,7 +24,6 @@ impl Shell {
         };
         let url = url.unwrap_or_default();
         let start = url.is_empty();
-        crate::browser::warm_up(cx);
         let view = self.browser_view(url, &project, window, cx);
         let pane = Pane::browser(view.clone(), cx);
         self.workspace.push_tab(Tab::Single(pane));
