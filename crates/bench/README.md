@@ -46,6 +46,13 @@ The finder scenarios time Go to File's search (`colosso_project::Finder`) over t
 | `finder-query` | one keystroke of `modfil` typed a letter at a time, then erased to nothing, from a finder just opened each time (240); every prefix matches all 500,000 files of `src/` |
 | `finder-update` | a folder of 1,000 files the query matches added while `modfil` is typed, to the results with them; it's taken away again between samples, untimed (60) |
 
+The terminal scenarios run the terminal daemon in `.superpowers/tb/` (the bench run again as `colosso-bench termd`, as the app runs itself as `colosso termd`) and a client of it that attaches as the app's view does and writes the output into the same engine, Ghostty's VT through `colosso-term-engine`. Each sample is wall time from the input written to the daemon's socket to the client's engine having taken what came back; the GPU's paint isn't in it, since the view takes a frame from the engine at most once a refresh. Each run stops its daemon and removes the folder; one a timeout killed leaves its daemon, which the next terminal scenario stops first.
+
+| Scenario | Each sample |
+| --- | --- |
+| `term-echo` | `/bin/cat` in a 120×40 terminal: `x` or Backspace typed in turn, until the frame the view would paint has the cursor one column on or back (1,000). The terminal's line discipline echoes, so the time is the PTY, the daemon and the socket, both ways |
+| `term-cat` | `cat-150mb`, 150 MiB of this repository's Rust, `cat` by a shell loop in the terminal, until the line the loop prints after it is in the client's engine (5). Before each sample a bare PTY carries the same file (`cat` in it, its master read as fast as macOS allows, non-blocking as Ghostty reads it, nothing parsed: no terminal is quicker), so a busy machine slows both alike; notes the rate, the bare PTY's median, the output frames and the longest the engine took over one |
+
 ## Budgets
 
 | What | Budget | Held against |
@@ -58,6 +65,8 @@ The finder scenarios time Go to File's search (`colosso_project::Finder`) over t
 | One file written to its listing updated | < 100 ms | p95 |
 | A folder of the file tree opened or closed, a listing applied, a path revealed | < 2 ms | max |
 | Go to File's results after a keystroke or a folder added, off the main thread | < 16 ms | p95 |
+| A key's echo in the terminal's engine | < 8.3 ms (120 Hz) | p95 |
+| 150 MiB `cat` through the terminal | within 1.3 times a bare PTY's median in the same run | p50 |
 
 ## What the numbers leave out
 
@@ -67,3 +76,4 @@ The finder scenarios time Go to File's search (`colosso_project::Finder`) over t
 - The scan scenarios read a warm disk: the fixture was just made or read, so the file system's caches hold it.
 - `burst-ignored`'s removal (and now and then its writes) makes macOS drop reports ("user dropped", for the whole checkout): the project then reads every tracked folder again once the checkout has been quiet for 40 ms, or at most once a second while the burst goes on, and tells consumers anything may have changed.
 - `search-query` sets the query as the panel does on each change: typed into the panel itself, each keystroke replaces the whole query (the run notes it if that is still so).
+- The terminal scenarios end in the client's engine, at the frame the view would take from it: GPUI laying it out and painting it isn't timed, nor is idle CPU (each terminal's thread in the daemon wakes four times a second, to keep its screen and end leases, whether or not anything happened).

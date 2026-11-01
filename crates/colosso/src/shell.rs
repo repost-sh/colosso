@@ -45,6 +45,8 @@ pub use actions::{
     SwitchTab, SwitchTabBack, ToggleBottomPanel, ToggleRightPanel, ToggleSidebar,
     ToggleSidebarMode, init,
 };
+#[cfg(feature = "visual-check")]
+pub use actions::StopTerminal;
 use elements::drag_area;
 pub use elements::{
     action_button, add_project_row, ellipsized, glass, icon, icon_button, new_tab_menu, no_matches,

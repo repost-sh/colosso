@@ -144,7 +144,9 @@ pub enum ActorKind {
 }
 
 /// What the program in the terminal is up to, derived in the daemon (5.7).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum Status {
     #[default]
@@ -153,6 +155,19 @@ pub enum Status {
     Idle,
     NeedsInput,
     Exited,
+}
+
+impl Status {
+    /// How a person reads it: in the app's tab and panel, and in what the MCP's tools say.
+    pub fn words(self) -> &'static str {
+        match self {
+            Status::Unknown => "starting",
+            Status::Running => "running",
+            Status::Idle => "idle",
+            Status::NeedsInput => "needs input",
+            Status::Exited => "exited",
+        }
+    }
 }
 
 /// A progress bar a program reports (OSC 9;4), shown on the tab until it's removed.

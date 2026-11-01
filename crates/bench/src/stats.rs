@@ -13,6 +13,10 @@ pub struct Measured {
     /// Anything that makes the numbers mean less than they seem.
     pub notes: Vec<String>,
     pub scale_factor: f32,
+    /// What the run measured to hold a relative budget to, in ms: for `term-cat`, the bare
+    /// PTY's median.
+    #[serde(default)]
+    pub reference_ms: Option<f64>,
 }
 
 impl Measured {

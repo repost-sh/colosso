@@ -18,8 +18,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use colosso_term_control::{
-    AttachMode, Auth, ClientInfo, ClientKind, Connection, DaemonCommand, EventKind, Handle, Hello,
-    IfExists, Message, OpenRequest, PROTOCOL, RequestBody, ResponseBody, Selector, Size, TermDir,
+    AttachMode, ClientKind, Connection, DaemonCommand, EventKind, Handle, Hello, IfExists, Message,
+    OpenRequest, RequestBody, ResponseBody, Selector, Size, TermDir,
 };
 use colosso_term_engine::{Engine, TextFormat};
 use crossbeam_channel::Receiver;
@@ -74,18 +74,10 @@ fn run(args: &[String]) -> Result<(), Failure> {
 
 fn hello() -> Hello {
     Hello {
-        protocol: PROTOCOL,
-        client: ClientInfo {
-            kind: ClientKind::Cli,
-            name: "colosso-term".into(),
-            version: env!("CARGO_PKG_VERSION").into(),
-            pid: std::process::id(),
-            session: None,
-        },
-        auth: Auth::None,
         // The terminal this runs in answers the program's queries itself.
         capabilities: vec!["answers_queries".into()],
         cwd: std::env::current_dir().ok(),
+        ..Hello::new(ClientKind::Cli, "colosso-term", env!("CARGO_PKG_VERSION"))
     }
 }
 

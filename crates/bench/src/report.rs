@@ -70,7 +70,11 @@ pub fn rows(outcomes: Vec<(Scenario, Outcome)>, fixtures: &[FixtureInfo]) -> Vec
                 .iter()
                 .find(|info| info.name == scenario.fixture.name)
                 .map_or(0, |info| info.bytes);
-            let budget = scenario.budget(bytes);
+            let reference = match &outcome {
+                Outcome::Measured(measured) => measured.reference_ms,
+                _ => None,
+            };
+            let budget = scenario.budget(bytes, reference);
             let (summary, status, notes, samples_ms) = match outcome {
                 Outcome::Measured(measured) => {
                     let summary = measured.summary();
@@ -157,7 +161,12 @@ pub fn table(results: &Results) -> Result<String, std::fmt::Error> {
                 .map_or_else(|| "-".to_owned(), |s| format!("{:.2}", pick(s)))
         };
         let budget = row.budget.map_or_else(String::new, |budget| {
-            format!("{} < {}", budget.stat.name(), budget.ms)
+            // A relative budget is whatever the run measured: a tenth of a ms says enough.
+            format!(
+                "{} < {}",
+                budget.stat.name(),
+                (budget.ms * 10.).round() / 10.
+            )
         });
         writeln!(
             out,

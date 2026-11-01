@@ -11,8 +11,8 @@ use colosso_term_control::{Exit, Handle, OpenRequest, Size, TerminalRecord};
 use colosso_term_engine::{Cursor, Frame, OptionAsAlt};
 use gpui_kit::{
     App, Bounds, Context, EventEmitter, FocusHandle, Focusable, InteractiveElement as _,
-    IntoElement, KeyBinding, ParentElement as _, Pixels, Render, SharedString, Styled as _, Task,
-    Window, actions, div, point, size,
+    IntoElement, KeyBinding, ParentElement as _, Pixels, Render, SharedString,
+    StatefulInteractiveElement as _, Styled as _, Task, Window, actions, div, point, px, size,
 };
 
 use crate::client::TermClient;
@@ -68,6 +68,8 @@ pub enum TerminalEvent {
     Exited(Exit),
     /// The terminal was closed and forgotten.
     Closed,
+    /// The daemon of another build was replaced: views it turned away may try again.
+    DaemonReplaced,
 }
 
 pub(crate) enum Link {
@@ -80,6 +82,11 @@ pub(crate) enum Link {
         vt: Vt,
         index: u32,
     },
+    /// The daemon is another build's: the notice offers to replace it (`docs/terminals.md`
+    /// 5.1).
+    OtherBuild,
+    /// Stopping the other build's daemon.
+    Replacing,
     Failed(SharedString),
 }
 
@@ -87,6 +94,8 @@ pub struct TerminalView {
     pub(crate) client: Arc<TermClient>,
     /// `None` while the terminal is being opened.
     pub(crate) handle: Option<Handle>,
+    /// What opens the terminal, kept until it's open so it can be asked again.
+    request: Option<Box<OpenRequest>>,
     name: String,
     pub(crate) link: Link,
     pub(crate) frame: Option<Arc<Frame>>,
@@ -130,17 +139,18 @@ impl TerminalView {
             cx.on_focus(&focus, window, |this, _, cx| this.focused(true, cx)),
             cx.on_blur(&focus, window, |this, _, cx| this.focused(false, cx)),
         ];
-        let (handle, name, link) = match source {
-            Source::Existing { handle, name } => (Some(handle), name, Link::Waiting),
+        let (handle, name, link, request) = match source {
+            Source::Existing { handle, name } => (Some(handle), name, Link::Waiting, None),
             Source::Open(request) => {
                 let name = request.name.clone();
-                Self::open(Arc::clone(&client), *request, cx);
-                (None, name, Link::Opening)
+                Self::open(Arc::clone(&client), (*request).clone(), cx);
+                (None, name, Link::Opening, Some(request))
             }
         };
         TerminalView {
             client,
             handle,
+            request,
             name,
             link,
             frame: None,
@@ -308,8 +318,10 @@ impl Render for TerminalView {
         };
         let notice = match &self.link {
             Link::Failed(message) => Some(message.clone()),
+            Link::Replacing => Some("Restarting the terminals…".into()),
             _ => None,
         };
+        let other_build = matches!(self.link, Link::OtherBuild).then(|| self.other_build(cx));
         div()
             .track_focus(&self.focus)
             .key_context(CONTEXT)
@@ -325,5 +337,59 @@ impl Render for TerminalView {
             .on_action(cx.listener(Self::scroll_to_bottom))
             .child(element)
             .children(notice.map(|message| div().absolute().top_2().left_2().child(message)))
+            .children(other_build)
+    }
+}
+
+impl TerminalView {
+    /// Whether the daemon turned the view away as another build's.
+    pub fn is_other_build(&self) -> bool {
+        matches!(self.link, Link::OtherBuild)
+    }
+
+    /// 5.1's notice: the terminals are another build's, and a button replaces its daemon.
+    fn other_build(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let foreground = crate::paint::hsla(self.look.foreground);
+        let background = crate::paint::hsla(self.look.background);
+        let restart = div()
+            .id("restart-terminals")
+            .px_3()
+            .py_1()
+            .rounded_md()
+            .border_1()
+            .border_color(foreground.opacity(0.5))
+            .cursor_pointer()
+            .hover(move |style| style.bg(foreground.opacity(0.1)))
+            .child("Restart terminals")
+            .on_click(cx.listener(|this, _, _, cx| this.replace_daemon(cx)));
+        div()
+            .absolute()
+            .inset_0()
+            .flex()
+            .items_center()
+            .justify_center()
+            .p_4()
+            // As wide as the tab allows, up to a comfortable line.
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .items_start()
+                    .gap_3()
+                    .p_4()
+                    .w_full()
+                    .max_w(px(440.))
+                    .rounded_md()
+                    .border_1()
+                    .border_color(foreground.opacity(0.3))
+                    .bg(background)
+                    .text_color(foreground)
+                    .child(
+                        "Terminals are served by another build of Colosso; restart them to \
+                         use this one. Their programs end, and the shells you opened start \
+                         again.",
+                    )
+                    .child(restart),
+            )
     }
 }

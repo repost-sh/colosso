@@ -15,6 +15,7 @@ mod scan;
 mod scenarios;
 mod stats;
 mod suite;
+mod term;
 
 use std::io::Write as _;
 use std::process::ExitCode;
@@ -31,10 +32,10 @@ const USAGE: &str = "\
 usage: colosso-bench <command>
 
   all [--only TEXT,..] [--timeout SECS]
-                                       make the fixtures, run every scenario (or those whose
-                                       id contains one of the TEXTs), print the table, write
-                                       the JSON
-  fixtures                             make the fixtures only
+                                       run every scenario (or those whose id contains one of
+                                       the TEXTs), making the fixtures they run on first,
+                                       print the table, write the JSON
+  fixtures                             make every fixture only
   list                                 list the scenario ids
   run ID [--timeout SECS]              run one scenario here and print its samples as JSON
 
@@ -44,6 +45,11 @@ Build with --release: that's the reference.";
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
 
 fn main() -> ExitCode {
+    // The terminal scenarios' daemon: this program run again, as the app runs itself.
+    let mut args = std::env::args().skip(1);
+    if args.next().as_deref() == Some("termd") {
+        return colosso_termd::main(args);
+    }
     match cli() {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
@@ -63,7 +69,7 @@ fn cli() -> Result<()> {
     match args.first().map(String::as_str) {
         Some("all") => all(flag(&args, "--only")?.unwrap_or(""), timeout),
         Some("fixtures") => {
-            let infos = fixtures::ensure()?;
+            let infos = fixtures::ensure(|_| true)?;
             let mut out = std::io::stdout().lock();
             for info in infos {
                 writeln!(
@@ -114,7 +120,6 @@ fn flag<'a>(args: &'a [String], name: &str) -> Result<Option<&'a str>> {
 }
 
 fn all(only: &str, timeout: Duration) -> Result<()> {
-    let fixtures = fixtures::ensure()?;
     let scenarios: Vec<Scenario> = Scenario::all()
         .into_iter()
         .filter(|scenario| only.split(',').any(|text| scenario.id().contains(text)))
@@ -122,6 +127,9 @@ fn all(only: &str, timeout: Duration) -> Result<()> {
     if scenarios.is_empty() {
         bail!("no scenario id contains {only:?}; see `list`");
     }
+    // Only what the scenarios run on: the repository alone takes minutes to make.
+    let fixtures =
+        fixtures::ensure(|fixture| (scenarios.iter()).any(|scenario| scenario.fixture == fixture))?;
     let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let outcomes = suite::run_all(&scenarios, timeout)?;
     // The scans open no window, so leave the scale at 0.

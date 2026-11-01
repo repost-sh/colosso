@@ -8,11 +8,14 @@
 
 mod claim;
 mod connection;
+mod journal;
 mod listen;
 mod logfile;
 mod open;
 mod outbound;
+mod plain;
 mod registry;
+mod route;
 mod server;
 mod session;
 mod worktree;

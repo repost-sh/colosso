@@ -40,8 +40,12 @@ impl Session {
                         );
                     }
                 }
-                Effect::Bell => self.daemon.broadcast(&self.record.handle, &EventKind::Bell),
+                Effect::Bell => {
+                    self.status.bell(std::time::Instant::now());
+                    self.daemon.broadcast(&self.record.handle, &EventKind::Bell);
+                }
                 Effect::Notification { title, body } => {
+                    self.status.notification(&title, &body);
                     self.daemon.broadcast(
                         &self.record.handle,
                         &EventKind::Notification { title, body },
@@ -71,8 +75,12 @@ impl Session {
     }
 }
 
-/// `file://host/path` to the path, percent-decoded.
+/// `file://host/path` to the path, percent-decoded; or zsh's `kitty-shell-cwd://host/path`,
+/// which Ghostty's integration sends as it is.
 fn file_uri_path(uri: &str) -> Option<std::path::PathBuf> {
+    if let Some(rest) = uri.strip_prefix("kitty-shell-cwd://") {
+        return Some(rest[rest.find('/')?..].into());
+    }
     let rest = uri.strip_prefix("file://")?;
     let path = &rest[rest.find('/')?..];
     let mut bytes = Vec::with_capacity(path.len());
@@ -123,6 +131,10 @@ mod tests {
             Some("/Users/x/a b".into())
         );
         assert_eq!(file_uri_path("file:///tmp"), Some("/tmp".into()));
+        assert_eq!(
+            file_uri_path("kitty-shell-cwd://mac.local/Users/x/a b"),
+            Some("/Users/x/a b".into())
+        );
         assert_eq!(file_uri_path("https://x"), None);
     }
 }

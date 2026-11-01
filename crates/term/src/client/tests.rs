@@ -1,5 +1,7 @@
 use super::*;
 
+use colosso_term_control::PROTOCOL;
+
 fn output(offset: u64, text: &'static str) -> Stream {
     Stream::Output(Output {
         index: 0,
@@ -71,7 +73,11 @@ fn an_unknown_terminal_expects_nothing() {
 #[test]
 fn a_client_that_stopped_the_daemon_starts_it_no_more() {
     // No daemon runs in a folder that isn't there, and none is started in it.
-    let dir = TermDir::at(std::env::current_dir().unwrap().join("target/no-such-daemon"));
+    let dir = TermDir::at(
+        std::env::current_dir()
+            .unwrap()
+            .join("target/no-such-daemon"),
+    );
     let client = TermClient::new(dir, DaemonCommand::binary("colosso"));
     client.shutdown().unwrap();
     let asked = client.request(RequestBody::ListTerminals {
@@ -79,5 +85,32 @@ fn a_client_that_stopped_the_daemon_starts_it_no_more() {
         status: None,
     });
     assert!(matches!(asked, Err(ClientError::Closed)), "{asked:?}");
-    assert!(!std::env::current_dir().unwrap().join("target/no-such-daemon").exists());
+    assert!(
+        !std::env::current_dir()
+            .unwrap()
+            .join("target/no-such-daemon")
+            .exists()
+    );
+}
+
+#[test]
+fn a_daemon_of_another_engine_is_another_builds() {
+    let welcome = |engine_commit: &str, snapshot_format| Welcome {
+        protocol: PROTOCOL,
+        daemon_version: "0.1.0".into(),
+        engine_commit: engine_commit.into(),
+        snapshot_format,
+        client_id: 1,
+        actor: colosso_term_control::Actor::system(),
+        features: Vec::new(),
+    };
+    let ours = colosso_term_engine::GHOSTTY_COMMIT;
+    assert!(this_build(&welcome(ours, SNAPSHOT_FORMAT)).is_ok());
+    let older = this_build(&welcome("0123456789abcdef", SNAPSHOT_FORMAT)).unwrap_err();
+    assert!(is_other_build(&older));
+    assert!(older.to_string().ends_with("on Ghostty 0123456789ab"));
+    assert!(is_other_build(
+        &this_build(&welcome(ours, SNAPSHOT_FORMAT + 1)).unwrap_err()
+    ));
+    assert!(!is_other_build(&ClientError::Closed));
 }

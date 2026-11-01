@@ -25,6 +25,9 @@ enum Source {
     Repo { tracked: usize, ignored: usize },
     /// A tree of folders held in memory, made afresh by each run of the rows scenarios.
     Tree,
+    /// What the terminal scenarios run: a program in a terminal, and the file it shows when
+    /// there's one.
+    Terminal(Option<Text>),
 }
 
 /// How a fixture's text is made.
@@ -38,6 +41,8 @@ enum Text {
     Markdown { lines: usize },
     /// One line of minified JSON, at most `bytes` long.
     Json { bytes: usize },
+    /// This repository's Rust repeated to at least `bytes`: what `cat` shows.
+    Output { bytes: usize },
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -59,8 +64,9 @@ pub struct Fixture {
 /// Every fixture, in the order the results list them. The two under 256 KB are where the
 /// highlighter parses on the main thread at every keystroke and scans the whole tree for
 /// injections; every larger file is parsed in the background. Then a repository, for the
-/// scan scenarios only, and a tree held in memory, for the rows scenarios only.
-pub const FIXTURES: [Fixture; 10] = [
+/// scan scenarios only, a tree held in memory, for the rows scenarios only, and the terminal's
+/// two: a program typed into, and 150 MiB of text to `cat`.
+pub const FIXTURES: [Fixture; 12] = [
     fixture(
         "rust-4k",
         "rust-4k.rs",
@@ -141,6 +147,15 @@ pub const FIXTURES: [Fixture; 10] = [
         false,
     ),
     fixture("tree-500k", "-", "-", Source::Tree, 500, false),
+    fixture("pty", "-", "-", Source::Terminal(None), 7, false),
+    fixture(
+        "cat-150mb",
+        "cat-150mb.txt",
+        "-",
+        Source::Terminal(Some(Text::Output { bytes: 150 << 20 })),
+        150,
+        false,
+    ),
 ];
 
 const fn fixture(
@@ -177,6 +192,16 @@ impl Fixture {
         self.source == Source::Tree
     }
 
+    /// Whether the terminal scenarios run on it, rather than the editor.
+    pub fn is_terminal(&self) -> bool {
+        matches!(self.source, Source::Terminal(_))
+    }
+
+    /// Whether it's a file the terminal shows, rather than a program typed into.
+    pub fn is_shown(&self) -> bool {
+        matches!(self.source, Source::Terminal(Some(_)))
+    }
+
     pub fn read(&self) -> Result<String> {
         let path = self.path();
         fs::read_to_string(&path).with_context(|| {
@@ -194,6 +219,14 @@ impl Fixture {
             Text::Unicode { lines } => generate::unicode(corpus, lines, self.seed),
             Text::Markdown { lines } => generate::markdown(corpus, lines, self.seed),
             Text::Json { bytes } => generate::json(bytes, self.seed),
+            Text::Output { bytes } => {
+                let page = generate::rust(corpus, 20_000, self.seed);
+                let mut text = String::with_capacity(bytes + page.len());
+                while text.len() < bytes {
+                    text.push_str(&page);
+                }
+                text
+            }
         }
     }
 
@@ -219,6 +252,19 @@ impl Fixture {
             lines: 0,
             longest_line_bytes: 0,
             files: crate::rows::TREE_FILES,
+            hash: "-".to_owned(),
+        }
+    }
+
+    fn describe_program(&self) -> FixtureInfo {
+        FixtureInfo {
+            name: self.name,
+            file: "(a program in a terminal)".to_owned(),
+            language: self.language,
+            bytes: 0,
+            lines: 0,
+            longest_line_bytes: 0,
+            files: 0,
             hash: "-".to_owned(),
         }
     }
@@ -269,24 +315,28 @@ pub fn in_checkout(relative: &str) -> PathBuf {
     workspace_root().join(relative)
 }
 
-/// Writes every fixture that isn't there yet, and describes them all.
-pub fn ensure() -> Result<Vec<FixtureInfo>> {
+/// Writes every `wanted` fixture that isn't there yet, and describes them.
+pub fn ensure(wanted: impl Fn(&Fixture) -> bool) -> Result<Vec<FixtureInfo>> {
     let dir = in_checkout(FIXTURES_DIR);
     fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
-    let missing = (FIXTURES.iter())
-        .any(|fixture| matches!(fixture.source, Source::Text(_)) && !fixture.path().exists());
+    let wanted: Vec<&Fixture> = FIXTURES.iter().filter(|fixture| wanted(fixture)).collect();
+    let missing = (wanted.iter()).any(|fixture| {
+        matches!(fixture.source, Source::Text(_) | Source::Terminal(Some(_)))
+            && !fixture.path().exists()
+    });
     let corpus = if missing {
         Some(Corpus::load(&workspace_root())?)
     } else {
         None
     };
-    FIXTURES
-        .iter()
+    wanted
+        .into_iter()
         .map(|fixture| {
             let text = match fixture.source {
                 Source::Repo { tracked, ignored } => return fixture.ensure_repo(tracked, ignored),
                 Source::Tree => return Ok(fixture.describe_tree()),
-                Source::Text(text) => text,
+                Source::Terminal(None) => return Ok(fixture.describe_program()),
+                Source::Text(text) | Source::Terminal(Some(text)) => text,
             };
             let path = fixture.path();
             let generated = match &corpus {

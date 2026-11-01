@@ -25,6 +25,7 @@ actions!(
         ToggleBottomPanel,
         NewChat,
         NewTerminal,
+        StopTerminal,
         NewBrowserTab,
         NewEditorTab,
         ReopenClosedTab,
@@ -111,6 +112,9 @@ impl Shell {
             .on_action(
                 cx.listener(|this, _: &NewTerminal, _, cx| this.new_tab(PaneKind::Terminal, cx)),
             )
+            .on_action(cx.listener(|this, _: &StopTerminal, window, cx| {
+                this.stop_shown_terminal(window, cx);
+            }))
             .on_action(cx.listener(|this, _: &ReopenClosedTab, window, cx| {
                 this.reopen_closed_tab(window, cx);
             }))

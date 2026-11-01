@@ -248,6 +248,35 @@ impl Frame {
         self.rows.len() as u16
     }
 
+    /// Row `row`'s text from column `from`, trailing blanks trimmed; empty past the screen.
+    pub fn row_text(&self, row: u16, from: u16) -> String {
+        let Some(row) = self.rows.get(usize::from(row)) else {
+            return String::new();
+        };
+        let text: String = (row.cells.iter().skip(usize::from(from)))
+            .filter(|cell| cell.width != Width::SpacerTail)
+            .map(|cell| match &cell.grapheme {
+                Grapheme::Empty => std::borrow::Cow::Borrowed(" "),
+                other => other.text(),
+            })
+            .collect();
+        text.trim_end().to_owned()
+    }
+
+    /// The first row of the line row `row` is part of, following soft wraps up.
+    pub fn line_start(&self, row: u16) -> u16 {
+        let mut start = row;
+        while start > 0
+            && self
+                .rows
+                .get(usize::from(start - 1))
+                .is_some_and(|row| row.wrapped)
+        {
+            start -= 1;
+        }
+        start
+    }
+
     /// The text of the viewport, one line per row, trailing blanks and blank rows trimmed.
     pub fn text(&self) -> String {
         let lines: Vec<String> = self

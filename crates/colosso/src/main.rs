@@ -59,6 +59,7 @@ fn init(cx: &mut App) {
     go_to_file::init(cx);
     symbols::init(cx);
     colosso_term::init(cx);
+    terminals::init(cx);
     #[cfg(target_os = "macos")]
     native::init(cx);
 }
@@ -104,8 +105,18 @@ fn main() -> ExitCode {
     // `colosso termd`: the terminal daemon, which the app runs from its own executable so
     // the two never come apart. It keeps its own log, and needs nothing of the app's.
     let mut args = std::env::args().skip(1);
-    if args.next().as_deref() == Some("termd") {
-        return colosso_termd::main(args);
+    match args.next().as_deref() {
+        Some("termd") => return colosso_termd::main(args),
+        // `colosso mcp`: the terminals' MCP server an agent starts over stdio, which starts
+        // the daemon from this executable when none runs.
+        Some("mcp") => {
+            let daemon = colosso_term_control::DaemonCommand {
+                program: std::env::current_exe().unwrap_or_else(|_| "colosso".into()),
+                args: vec!["termd".into()],
+            };
+            return colosso_term_mcp::main(args, daemon);
+        }
+        _ => {}
     }
     logs::init();
     #[cfg(feature = "visual-check")]

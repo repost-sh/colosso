@@ -2,20 +2,21 @@
 //! registry and the sessions. Its life, the accept loop and the signals, are `listen`'s.
 //! `docs/terminals.md` 5.1 and 5.4.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::io::Write as _;
 use std::os::unix::net::UnixStream;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use colosso_term_control::{
-    ErrorCode, Event, EventKind, Handle, Input, Message, ProtocolError, Request, RequestBody,
-    ResponseBody, Selector, Status, TermDir, TerminalSummary,
+    ActorKind, ErrorCode, Event, EventKind, Handle, Input, Message, ProtocolError, Request,
+    RequestBody, ResponseBody, Selector, Status, TermDir, TerminalSummary,
 };
 use parking_lot::Mutex;
 
-use crate::connection::{self, Client, done};
+use crate::connection::{Client, done};
 use crate::registry::Registry;
+use crate::route::{Route, route};
 use crate::session::{Cmd, Ended, Reply, SessionHandle};
 use crate::worktree;
 
@@ -60,12 +61,21 @@ impl Daemon {
 
     pub fn remove_client(&self, client: &Arc<Client>) {
         self.clients.lock().remove(&client.id);
+        // An agent may hold terminals it never attached to, whose leases end with it too.
+        let sessions: Vec<Arc<SessionHandle>> = if client.actor.kind == ActorKind::Agent {
+            self.sessions.lock().values().cloned().collect()
+        } else {
+            (client.attached().iter())
+                .filter_map(|handle| self.session(handle))
+                .collect()
+        };
+        for session in sessions {
+            let _ = session.tx.send(Cmd::ClientGone {
+                client_id: client.id,
+                actor: client.actor.clone(),
+            });
+        }
         for handle in client.attached() {
-            if let Some(session) = self.session(&handle) {
-                let _ = session.tx.send(Cmd::ClientGone {
-                    client_id: client.id,
-                });
-            }
             client.detach(&handle);
         }
     }
@@ -78,14 +88,20 @@ impl Daemon {
         self.sessions.lock().get(handle).cloned()
     }
 
-    /// Tells every client.
+    /// Tells every client, the event encoded once for all of them.
     pub fn broadcast(&self, handle: &Handle, kind: &EventKind) {
         let message = Message::Event(Event {
             handle: handle.clone(),
             kind: kind.clone(),
         });
+        let mut out = Vec::new();
+        if let Err(error) = message.encode(&mut out) {
+            log::error!("couldn't encode a {:?}: {error}", message.kind());
+            return;
+        }
+        let out = bytes::Bytes::from(out);
         for client in self.clients() {
-            client.send(&message);
+            client.outbound.send(out.clone());
         }
     }
 
@@ -93,9 +109,11 @@ impl Daemon {
     /// go to its session, which answers in its own time.
     pub fn request(self: &Arc<Self>, client: &Arc<Client>, request: Request) {
         let req = request.req;
-        let reply = || Reply::new(Arc::clone(client), req);
-        let to_session = |handle: &Handle, cmd: Cmd| self.to_session(client, req, handle, cmd);
-        match request.body {
+        let body = match route(request.body, || Reply::new(Arc::clone(client), req)) {
+            Route::Session(handle, cmd) => return self.to_session(client, req, &handle, cmd),
+            Route::Daemon(body) => body,
+        };
+        match body {
             RequestBody::ListWorktrees => {
                 let worktrees = self.registry.lock().worktrees();
                 client.respond(req, Ok(ResponseBody::Worktrees { worktrees }));
@@ -109,76 +127,59 @@ impl Daemon {
                 Ok(None) => {}
                 Err(error) => client.respond(req, Err(error)),
             },
-            RequestBody::Attach {
-                handle,
-                size,
-                mode,
-                since_offset,
-            } => {
-                to_session(
-                    &handle,
-                    Cmd::Attach {
-                        reply: reply(),
-                        size,
-                        mode,
-                        since_offset,
-                    },
-                );
-            }
-            RequestBody::Detach { handle } => to_session(&handle, Cmd::Detach { reply: reply() }),
-            RequestBody::Resize { handle, size } => to_session(
-                &handle,
-                Cmd::Resize {
-                    reply: reply(),
-                    size,
-                },
-            ),
             RequestBody::Rename {
                 handle,
                 name,
                 title,
                 labels,
-            } => {
-                if let Some(name) = &name
-                    && let Err(error) = self.check_name(&handle, name)
-                {
-                    return client.respond(req, Err(error));
-                }
-                if self.session(&handle).is_none() {
-                    return client.respond(req, self.rename_remembered(&handle, name, title, labels));
-                }
-                let reply = reply();
-                to_session(&handle, Cmd::Rename { reply, name, title, labels });
-            }
-            RequestBody::Signal { handle, signal } => to_session(
-                &handle,
-                Cmd::Signal {
-                    reply: reply(),
-                    signal,
-                },
-            ),
-            RequestBody::Close { handle, force: _ } => {
-                if self.session(&handle).is_none() {
-                    return client.respond(req, self.forget(&handle));
-                }
-                to_session(&handle, Cmd::Close { reply: Some(reply()) });
-            }
-            RequestBody::Paste { handle, text } => to_session(
-                &handle,
-                Cmd::Paste {
-                    reply: reply(),
-                    text,
-                },
-            ),
+            } => self.rename(client, req, &handle, name, title, labels),
+            RequestBody::Close { handle, force: _ } => self.close(client, req, &handle),
             RequestBody::Shutdown => {
                 log::info!("client {} asked the daemon to shut down", client.id);
                 client.respond(req, done());
                 self.stop();
             }
-            RequestBody::Claim { .. } => client.respond(req, connection::unsupported("claim")),
-            RequestBody::Release { .. } => client.respond(req, connection::unsupported("release")),
-            RequestBody::Renew { .. } => client.respond(req, connection::unsupported("renew")),
+            // `route` sent the rest to their terminals.
+            _ => {}
         }
+    }
+
+    /// Renames a terminal, its session if it runs, else the registry's record of it; a name
+    /// another terminal of the worktree has is refused.
+    fn rename(
+        &self,
+        client: &Arc<Client>,
+        req: u32,
+        handle: &Handle,
+        name: Option<String>,
+        title: Option<String>,
+        labels: Option<BTreeSet<String>>,
+    ) {
+        if let Some(name) = &name
+            && let Err(error) = self.check_name(handle, name)
+        {
+            return client.respond(req, Err(error));
+        }
+        if self.session(handle).is_none() {
+            return client.respond(req, self.rename_remembered(handle, name, title, labels));
+        }
+        let reply = Reply::new(Arc::clone(client), req);
+        let cmd = Cmd::Rename {
+            reply,
+            name,
+            title,
+            labels,
+        };
+        self.to_session(client, req, handle, cmd);
+    }
+
+    /// Closes a running terminal through its session; forgets one that isn't running.
+    fn close(&self, client: &Arc<Client>, req: u32, handle: &Handle) {
+        if self.session(handle).is_none() {
+            return client.respond(req, self.forget(handle));
+        }
+        let reply = Some(Reply::new(Arc::clone(client), req));
+        self.to_session(client, req, handle, Cmd::Close { reply });
     }
 
     /// Hands `cmd` to the session of `handle`, which answers `req` itself; says why not when
@@ -190,6 +191,17 @@ impl Daemon {
                     return;
                 }
                 ProtocolError::new(ErrorCode::Internal, "the terminal's thread is gone")
+            }
+            // A terminal remembered from before a restart reads as its kept screen.
+            Err(error) if matches!(cmd, Cmd::ReadScreen { .. }) => {
+                let record = self.registry.lock().get(handle).cloned();
+                let dir = self.dir.terminal(handle);
+                match record.and_then(|record| crate::session::kept_screen(&dir, &record)) {
+                    Some(screen) => {
+                        return client.respond(req, Ok(ResponseBody::Screen(Box::new(screen))));
+                    }
+                    None => error,
+                }
             }
             Err(error) => error,
         };
@@ -288,7 +300,7 @@ impl Daemon {
         handle: &Handle,
         name: Option<String>,
         title: Option<String>,
-        labels: Option<std::collections::BTreeSet<String>>,
+        labels: Option<BTreeSet<String>>,
     ) -> Result<ResponseBody, ProtocolError> {
         let mut registry = self.registry.lock();
         let mut record = registry.get(handle).cloned().ok_or_else(|| {
@@ -344,6 +356,8 @@ impl Daemon {
         match ended {
             Ended::Closed => {
                 self.registry.lock().remove(handle);
+                let _ =
+                    std::fs::remove_file(crate::session::snapshot_path(&self.dir.terminal(handle)));
                 self.persist();
                 self.broadcast(handle, &EventKind::Closed);
                 log::info!("{handle} closed");

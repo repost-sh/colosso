@@ -10,7 +10,7 @@ use futures::StreamExt as _;
 use gpui_kit::{AppContext as _, Context};
 
 use super::{Link, TerminalEvent, TerminalView};
-use crate::client::TermClient;
+use crate::client::{TermClient, is_other_build};
 use crate::element::Grid;
 use crate::vt::{Command, Update, Vt};
 
@@ -41,6 +41,11 @@ impl TerminalView {
                     Link::Failed("The daemon answered the open with something else.".into());
                 return cx.notify();
             }
+            Err(error) if is_other_build(&error) => {
+                log::warn!("couldn't open the terminal {}: {error}", self.name);
+                self.link = Link::OtherBuild;
+                return cx.notify();
+            }
             Err(error) => {
                 log::warn!("couldn't open the terminal {}: {error}", self.name);
                 self.link = Link::Failed(format!("Couldn't open the terminal: {error}").into());
@@ -48,6 +53,7 @@ impl TerminalView {
             }
         };
         self.handle = Some(record.handle.clone());
+        self.request = None;
         self.name.clone_from(&record.name);
         self.exited = record.exit;
         self.link = Link::Waiting;
@@ -82,7 +88,12 @@ impl TerminalView {
                     this.update(cx, |this, _| this.requested = Some(size)).ok();
                 }));
             }
-            Link::Opening | Link::Attaching | Link::Attached { .. } | Link::Failed(_) => {}
+            Link::Opening
+            | Link::Attaching
+            | Link::Attached { .. }
+            | Link::OtherBuild
+            | Link::Replacing
+            | Link::Failed(_) => {}
         }
     }
 
@@ -90,7 +101,12 @@ impl TerminalView {
         let Some(handle) = self.handle.clone() else {
             return;
         };
-        log::debug!("{}: attaching {handle} at {}x{}", self.name, size.cols, size.rows);
+        log::debug!(
+            "{}: attaching {handle} at {}x{}",
+            self.name,
+            size.cols,
+            size.rows
+        );
         self.link = Link::Attaching;
         self.requested = Some(size);
         let client = Arc::clone(&self.client);
@@ -110,6 +126,11 @@ impl TerminalView {
     ) {
         let attachment = match attached {
             Ok(attachment) => attachment,
+            Err(error) if is_other_build(&error) => {
+                log::warn!("couldn't attach {}: {error}", self.name);
+                self.link = Link::OtherBuild;
+                return cx.notify();
+            }
             Err(error) => {
                 log::warn!("couldn't attach {}: {error}", self.name);
                 self.link = Link::Failed(format!("Couldn't attach the terminal: {error}").into());
@@ -149,6 +170,62 @@ impl TerminalView {
                 }
             }
         }));
+    }
+
+    /// What the notice's button does: stops the daemon of another build, then opens or
+    /// attaches again, which starts this build's.
+    pub fn replace_daemon(&mut self, cx: &mut Context<Self>) {
+        if !self.is_other_build() {
+            return;
+        }
+        self.link = Link::Replacing;
+        cx.notify();
+        let client = Arc::clone(&self.client);
+        cx.spawn(async move |this, cx| {
+            let replaced = cx
+                .background_spawn(async move { client.replace_daemon() })
+                .await;
+            this.update(cx, |this, cx| match replaced {
+                Ok(()) => {
+                    cx.emit(TerminalEvent::DaemonReplaced);
+                    this.link_again(cx);
+                }
+                Err(error) => {
+                    log::warn!("couldn't stop the other build's terminal daemon: {error}");
+                    this.link = Link::Failed(
+                        format!("Couldn't stop the other build's terminals: {error}").into(),
+                    );
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Opens or attaches again, once the daemon of another build that turned the view away
+    /// was replaced.
+    pub fn try_again(&mut self, cx: &mut Context<Self>) {
+        if self.is_other_build() {
+            self.link_again(cx);
+        }
+    }
+
+    fn link_again(&mut self, cx: &mut Context<Self>) {
+        match (&self.handle, self.request.clone()) {
+            (Some(_), _) => {
+                self.link = Link::Waiting;
+                if let Some(grid) = self.grid.get() {
+                    self.attach(size_of(grid), cx);
+                }
+            }
+            (None, Some(request)) => {
+                self.link = Link::Opening;
+                Self::open(Arc::clone(&self.client), *request, cx);
+            }
+            (None, None) => self.link = Link::Failed("There's no terminal to open again.".into()),
+        }
+        cx.notify();
     }
 
     fn on_update(&mut self, update: Update, cx: &mut Context<Self>) {

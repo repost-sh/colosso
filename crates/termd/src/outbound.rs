@@ -107,6 +107,18 @@ impl Outbound {
         self.closed.load(Ordering::Acquire)
     }
 
+    /// Ends the connection once what's queued is written, or at `deadline`, whichever is
+    /// first: the daemon's last answers reach their clients before it goes.
+    pub fn close_after(&self, deadline: std::time::Instant) {
+        while self.queued.load(Ordering::Acquire) > 0
+            && !self.is_closed()
+            && std::time::Instant::now() < deadline
+        {
+            std::thread::park_timeout(std::time::Duration::from_millis(2));
+        }
+        self.close();
+    }
+
     /// Ends the connection: the writer stops, and the reader on the other half sees EOF.
     pub fn close(&self) {
         if !self.closed.swap(true, Ordering::AcqRel) {

@@ -7,8 +7,9 @@ use colosso_term_control::{
     Actor, ActorKind, AttachMode, Auth, ClientInfo, ClientKind, Control, ControlChange, Controller,
     Decoder, ErrorCode, ErrorDetails, Event, EventKind, Exit, Handle, Hello, IfExists, Input,
     Lagging, Message, OpenRequest, Outcome, Output, PROTOCOL, Progress, ProtocolError, Request,
-    RequestBody, Response, ResponseBody, SNAPSHOT_FORMAT, Selector, Signal, Size, SnapshotChunk,
-    Status, TerminalRecord, TerminalSummary, Welcome, WorktreeRef, WorktreeSummary,
+    RequestBody, Response, ResponseBody, SNAPSHOT_FORMAT, ScreenCursor, ScreenRead, Selector,
+    SendRequest, Signal, Size, SnapshotChunk, Status, TerminalRecord, TerminalSummary, Welcome,
+    WorktreeRef, WorktreeSummary,
 };
 
 fn agent() -> Actor {
@@ -143,6 +144,20 @@ fn requests() -> Vec<RequestBody> {
         },
         RequestBody::Release { handle: handle() },
         RequestBody::Renew { handle: handle() },
+        RequestBody::Send(SendRequest {
+            handle: handle(),
+            text: Some("ls -la".into()),
+            paste: None,
+            keys: vec!["ctrl+c".into(), "up".into()],
+            enter: true,
+            interrupt: false,
+        }),
+        RequestBody::ReadScreen { handle: handle() },
+        RequestBody::ReadStream {
+            handle: handle(),
+            since: Some(1 << 33),
+            max_bytes: None,
+        },
         RequestBody::Shutdown,
     ]
 }
@@ -177,6 +192,29 @@ fn responses() -> Vec<Outcome> {
         }),
         Outcome::Ok(ResponseBody::Resized {
             size: Size::default(),
+        }),
+        Outcome::Ok(ResponseBody::Sent { bytes: 7 }),
+        Outcome::Ok(ResponseBody::Screen(Box::new(ScreenRead {
+            name: "dev".into(),
+            title: "vim".into(),
+            cols: 80,
+            rows: 2,
+            alt_screen: true,
+            mouse: false,
+            cursor: Some(ScreenCursor {
+                row: 1,
+                col: 4,
+                visible: true,
+            }),
+            frame: 9,
+            status: Status::Idle,
+            lines: vec!["$ ls".into(), String::new()],
+        }))),
+        Outcome::Ok(ResponseBody::Stream {
+            text: "ok\n".into(),
+            next: 1 << 33,
+            oldest: 7,
+            truncated: true,
         }),
         Outcome::Ok(ResponseBody::Done),
         Outcome::Err(

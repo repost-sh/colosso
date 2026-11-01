@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crossbeam_channel::{Receiver, Sender, bounded};
 use parking_lot::Mutex;
@@ -79,7 +79,8 @@ pub struct Connection {
 
 impl Connection {
     /// Connects to the daemon at `socket`, says hello, and starts the reader thread, which
-    /// sends every frame that isn't an answer to `inbox`.
+    /// sends every frame that isn't an answer to `inbox`, and drops them once its receiver
+    /// is gone; answers come either way.
     pub fn connect(
         socket: &Path,
         hello: &Hello,
@@ -220,10 +221,10 @@ impl Connection {
                                 let _ = tx.send(response);
                             }
                         }
+                        // A client that let its inbox go still gets its answers; what
+                        // else comes is dropped.
                         Ok(message) => {
-                            if inbox.send(message).is_err() {
-                                return;
-                            }
+                            let _ = inbox.send(message);
                         }
                         Err(error) => log::warn!("dropping a frame the client can't read: {error}"),
                     },
@@ -295,6 +296,57 @@ pub fn start_daemon(dir: &TermDir, daemon: &DaemonCommand) -> io::Result<()> {
         )));
     }
     Ok(())
+}
+
+/// How long a daemon told to stop may take to stop listening.
+const STOP_WAIT: Duration = Duration::from_secs(10);
+
+/// Stops the daemon in `dir` so another build's can start in its place (`docs/terminals.md`
+/// 5.1): asked to shut down when it takes `hello`, else sent SIGTERM through the pid its
+/// lock holds, and only while the lock is held, so a pid a daemon gone left there is never
+/// signalled. Returns once nothing listens in `dir`; nothing listening is nothing to do.
+pub fn stop_daemon(dir: &TermDir, hello: &Hello) -> Result<(), ClientError> {
+    let (tx, _inbox) = inbox();
+    match Connection::connect(&dir.socket(), hello, tx) {
+        Ok((connection, _)) => match connection.request(RequestBody::Shutdown) {
+            // It may hang up before it answers.
+            Ok(_) | Err(ClientError::Closed) => {}
+            Err(error) => return Err(error),
+        },
+        Err(ClientError::Io(error)) if not_running(&error) => return Ok(()),
+        // Another protocol refuses the hello; only the signal reaches it.
+        Err(_) => terminate(dir)?,
+    }
+    let until = Instant::now() + STOP_WAIT;
+    while UnixStream::connect(dir.socket()).is_ok() {
+        if Instant::now() >= until {
+            return Err(ClientError::Timeout);
+        }
+        std::thread::park_timeout(Duration::from_millis(50));
+    }
+    Ok(())
+}
+
+/// Sends SIGTERM to the daemon whose pid `dir`'s lock holds, if one still holds it.
+fn terminate(dir: &TermDir) -> io::Result<()> {
+    let mut lock = std::fs::File::open(dir.lock())?;
+    match lock.try_lock() {
+        // No daemon holds it, so the pid in it is stale.
+        Ok(()) => return Ok(()),
+        Err(std::fs::TryLockError::WouldBlock) => {}
+        Err(std::fs::TryLockError::Error(error)) => return Err(error),
+    }
+    let mut pid = String::new();
+    lock.read_to_string(&mut pid)?;
+    let pid: libc::pid_t = pid.trim().parse().map_err(|error| {
+        io::Error::other(format!("{} holds no pid: {error}", dir.lock().display()))
+    })?;
+    // SAFETY: `kill` takes a pid and a signal number, and borrows nothing.
+    if unsafe { libc::kill(pid, libc::SIGTERM) } == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
 }
 
 /// An inbox and its receiving end, for `Connection::connect`.

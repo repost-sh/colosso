@@ -29,6 +29,11 @@ pub struct NewWorktreeIn(pub PathBuf);
 #[action(namespace = projects, no_json)]
 pub struct RemoveProject(pub PathBuf);
 
+/// Asks to stop every terminal of the checkout at the path.
+#[derive(Clone, Debug, PartialEq, Action)]
+#[action(namespace = projects, no_json)]
+pub struct StopTerminals(pub PathBuf);
+
 /// Asks to delete the worktree at the path.
 #[derive(Clone, Debug, PartialEq, Action)]
 #[action(namespace = projects, no_json)]
@@ -65,8 +70,11 @@ pub fn project_menu(path: &Path) -> NativeMenu {
 }
 
 /// The menu a checkout's row opens. Git can't delete a main checkout.
-pub fn worktree_menu(path: &Path, is_main: bool) -> NativeMenu {
-    let menu = path_items(NativeMenu::new(), path);
+pub fn worktree_menu(path: &Path, is_main: bool, terminals: bool) -> NativeMenu {
+    let mut menu = path_items(NativeMenu::new(), path);
+    if terminals {
+        menu = (menu.separator()).menu("Stop Terminals…", Box::new(StopTerminals(path.to_owned())));
+    }
     if is_main {
         return menu;
     }
@@ -118,6 +126,11 @@ pub fn handle_actions(root: Div, cx: &mut Context<Shell>) -> Div {
                     let project = project.path.clone();
                     delete_worktree::open(cx.weak_entity(), project, path.clone(), window, cx);
                 }
+            }),
+        )
+        .on_action(
+            cx.listener(|this, StopTerminals(path): &StopTerminals, window, cx| {
+                this.stop_terminals_of(path, window, cx);
             }),
         )
         .on_action(

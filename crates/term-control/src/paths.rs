@@ -61,6 +61,27 @@ impl TermDir {
         self.root.join("registry.json")
     }
 
+    /// Whether the registry remembers terminals, which a daemon started now would list, as
+    /// after a restart; reading the file needs no daemon.
+    pub fn remembers_terminals(&self) -> bool {
+        !self.remembered().is_empty()
+    }
+
+    /// The terminals the registry remembers, as written: another build may have written
+    /// them, so they're read as JSON rather than as this build's records.
+    pub fn remembered(&self) -> Vec<serde_json::Value> {
+        let Ok(text) = std::fs::read_to_string(self.registry()) else {
+            return Vec::new();
+        };
+        match serde_json::from_str::<serde_json::Value>(&text) {
+            Ok(serde_json::Value::Object(mut stored)) => match stored.remove("terminals") {
+                Some(serde_json::Value::Array(terminals)) => terminals,
+                _ => Vec::new(),
+            },
+            _ => Vec::new(),
+        }
+    }
+
     /// The secret app-launched agents present over HTTP.
     pub fn mcp_token(&self) -> PathBuf {
         self.root.join("mcp.token")
@@ -69,6 +90,11 @@ impl TermDir {
     /// A terminal's own folder: its logs, screenshots and saved snapshot.
     pub fn terminal(&self, handle: &Handle) -> PathBuf {
         self.root.join("terminals").join(handle.as_str())
+    }
+
+    /// One of a terminal's logs.
+    pub fn journal(&self, handle: &Handle, kind: crate::log::LogKind) -> PathBuf {
+        self.terminal(handle).join(kind.file_name())
     }
 }
 

@@ -13,12 +13,21 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use colosso_term_control::{
-    AttachMode, Auth, ClientError, ClientInfo, ClientKind, Connection, DaemonCommand, ErrorCode,
-    EventKind, Handle, Hello, IfExists, Message, OpenRequest, PROTOCOL, RequestBody, ResponseBody,
-    Selector, Size, Status, TermDir, TerminalRecord, TerminalSummary, Welcome,
+    AttachMode, ClientError, ClientKind, Connection, DaemonCommand, ErrorCode, EventKind, Handle,
+    Hello, IfExists, Message, OpenRequest, PROTOCOL, RequestBody, ResponseBody, Selector, Size,
+    Status, TermDir, TerminalRecord, TerminalSummary, Welcome,
 };
 use colosso_term_engine::{Engine, TextFormat};
 use crossbeam_channel::Receiver;
+
+mod catalog;
+mod catchup;
+mod control;
+mod logs;
+mod mcp;
+mod send;
+mod status;
+mod upgrade;
 
 const DAEMON: &str = env!("CARGO_BIN_EXE_colosso-termd");
 const WAIT: Duration = Duration::from_secs(20);
@@ -36,17 +45,9 @@ fn test_dir(name: &str) -> TermDir {
 
 fn hello(kind: ClientKind, cwd: Option<PathBuf>) -> Hello {
     Hello {
-        protocol: PROTOCOL,
-        client: ClientInfo {
-            kind,
-            name: "test".into(),
-            version: "0".into(),
-            pid: std::process::id(),
-            session: None,
-        },
-        auth: Auth::None,
         capabilities: vec!["answers_queries".into()],
         cwd,
+        ..Hello::new(kind, "test", "0")
     }
 }
 
@@ -61,19 +62,19 @@ struct StopOnDrop(TermDir);
 
 impl Drop for StopOnDrop {
     fn drop(&mut self) {
-        let (tx, _inbox) = colosso_term_control::client::inbox();
-        if let Ok((connection, _)) =
-            Connection::connect(&self.0.socket(), &hello(ClientKind::Cli, None), tx)
-        {
-            let _ = connection.request(RequestBody::Shutdown);
-        }
+        let _ = colosso_term_control::client::stop_daemon(&self.0, &hello(ClientKind::Cli, None));
     }
 }
 
 fn connect(dir: &TermDir, kind: ClientKind) -> Client {
+    connect_from(dir, kind, None)
+}
+
+/// Connects as a client running in `cwd`, which the daemon takes `current` to mean.
+fn connect_from(dir: &TermDir, kind: ClientKind, cwd: Option<PathBuf>) -> Client {
     let (tx, inbox) = colosso_term_control::client::inbox();
     let (connection, welcome) =
-        Connection::connect_or_start(dir, &DaemonCommand::binary(DAEMON), &hello(kind, None), tx)
+        Connection::connect_or_start(dir, &DaemonCommand::binary(DAEMON), &hello(kind, cwd), tx)
             .unwrap();
     Client {
         connection,
@@ -118,6 +119,17 @@ impl Client {
             ResponseBody::Attached { index, offset, .. } => (index, offset),
             other => panic!("{other:?}"),
         }
+    }
+
+    /// Attaches to a program that prints `ready`, and waits for it: in the snapshot when
+    /// the program was quicker than the attach, else in the output after it.
+    fn attach_ready(&self, handle: &Handle) -> u32 {
+        let (index, _) = self.attach(handle, None);
+        let (_, screen) = self.snapshot_text(index);
+        if !screen.contains("ready") {
+            self.output_until(index, "ready");
+        }
+        index
     }
 
     /// Output on `index` until the text seen so far contains `needle`; the text and the
@@ -238,9 +250,12 @@ fn a_terminal_outlives_its_client_and_reattaches_from_a_snapshot() {
     let handle = terminal.handle;
 
     let (index, offset) = a.attach(&handle, None);
-    let (snapshot_offset, _) = a.snapshot_text(index);
+    let (snapshot_offset, screen) = a.snapshot_text(index);
     assert_eq!(snapshot_offset, offset);
-    a.output_until(index, "ready");
+    // A program quicker than the attach printed into the snapshot.
+    if !screen.contains("ready") {
+        a.output_until(index, "ready");
+    }
     a.connection.input(index, b"abc\r").unwrap();
     let (_, reached) = a.output_until(index, "got:abc");
     a.connection.close();
@@ -310,8 +325,9 @@ fn the_registry_survives_a_restart_and_respawns() {
     );
     let handle = terminal.handle;
     let (index, _) = a.attach(&handle, None);
-    a.snapshot_text(index);
-    a.output_until(index, "up");
+    if !a.snapshot_text(index).1.contains("up") {
+        a.output_until(index, "up");
+    }
     a.connection.request(RequestBody::Shutdown).unwrap();
     wait_until("the socket to go", || !dir.socket().exists());
 
@@ -335,14 +351,39 @@ fn the_registry_survives_a_restart_and_respawns() {
         "{error:?}"
     );
 
+    // Its last screen reads as it was, kept across the restart.
+    let read = RequestBody::ReadScreen {
+        handle: handle.clone(),
+    };
+    let ResponseBody::Screen(kept) = b.connection.request(read).unwrap() else {
+        panic!("not a screen");
+    };
+    assert!(
+        kept.lines.iter().any(|line| line == "up"),
+        "{:?}",
+        kept.lines
+    );
+
     let (again, existed) = b.open("sleeper", &cwd, &[], true);
     assert!(existed);
     assert_eq!(again.handle, handle);
     assert_eq!(again.incarnation, 2);
     assert!(again.pid.is_some());
+    // Run again, it starts from the screen it had, then its program prints anew.
     let (index, _) = b.attach(&handle, None);
-    b.snapshot_text(index);
-    b.output_until(index, "up");
+    let (_, screen) = b.snapshot_text(index);
+    assert!(
+        screen.contains("[restored after the terminal daemon restarted]"),
+        "{screen}"
+    );
+    if screen
+        .lines()
+        .filter(|line| line.trim_end() == "up")
+        .count()
+        < 2
+    {
+        b.output_until(index, "up");
+    }
     b.connection.request(RequestBody::Shutdown).unwrap();
     wait_until("the socket to go", || !dir.socket().exists());
 }

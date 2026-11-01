@@ -59,16 +59,23 @@ impl PromptScanner {
         }
     }
 
-    /// Scans `bytes`, appending every mark they complete to `out`.
-    pub fn feed(&mut self, bytes: &[u8], out: &mut Vec<Mark>) {
-        for &byte in bytes {
+    /// Scans `bytes`, appending every mark they complete to `out` with where in `bytes` it
+    /// ends: the index just past its terminator, so `bytes[..end]` is everything up to and
+    /// including the mark.
+    pub fn feed(&mut self, bytes: &[u8], out: &mut Vec<(usize, Mark)>) {
+        let mut index = 0;
+        while let Some(&byte) = bytes.get(index) {
+            let end = index + 1;
+            index = end;
             self.state = match self.state {
+                // Plain text, nearly all of a stream, can't hold a mark: on to just past the
+                // next ESC, this byte's included.
                 State::Ground => {
-                    if byte == ESC {
-                        State::Escape
-                    } else {
-                        State::Ground
-                    }
+                    let Some(skip) = memchr::memchr(ESC, &bytes[end - 1..]) else {
+                        return;
+                    };
+                    index += skip;
+                    State::Escape
                 }
                 State::Escape => {
                     if byte == b']' {
@@ -82,7 +89,7 @@ impl PromptScanner {
                 }
                 State::Osc { keep } => match byte {
                     BEL => {
-                        self.finish(keep, out);
+                        self.finish(keep, end, out);
                         State::Ground
                     }
                     ESC => State::OscEscape { keep },
@@ -92,7 +99,7 @@ impl PromptScanner {
                 },
                 State::OscEscape { keep } => {
                     if byte == b'\\' {
-                        self.finish(keep, out);
+                        self.finish(keep, end, out);
                     }
                     // Anything else: the OSC was cut off; the byte after ESC isn't ours.
                     State::Ground
@@ -113,9 +120,9 @@ impl PromptScanner {
         self.buf[..n] == prefix[..n]
     }
 
-    fn finish(&mut self, keep: bool, out: &mut Vec<Mark>) {
+    fn finish(&mut self, keep: bool, end: usize, out: &mut Vec<(usize, Mark)>) {
         if keep && let Some(mark) = parse(&self.buf) {
-            out.push(mark);
+            out.push((end, mark));
         }
         self.buf.clear();
     }
@@ -155,7 +162,7 @@ mod tests {
         for piece in pieces {
             scanner.feed(piece, &mut out);
         }
-        out
+        out.into_iter().map(|(_, mark)| mark).collect()
     }
 
     #[test]
@@ -171,6 +178,15 @@ mod tests {
                 Mark::CommandDone { exit: Some(0) }
             ]
         );
+    }
+
+    #[test]
+    fn says_where_each_mark_ends() {
+        let bytes = b"$ \x1b]133;B\x07ls\r\n\x1b]133;C\x1b\\out";
+        let mut found = Vec::new();
+        PromptScanner::new().feed(bytes, &mut found);
+        assert_eq!(found, [(10, Mark::InputStart), (23, Mark::OutputStart)]);
+        assert_eq!(&bytes[23..], b"out");
     }
 
     #[test]
