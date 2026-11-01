@@ -105,6 +105,9 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
   "NSSliderCell",
   "NSSwitch",
   "NSCell",
+  # A browser page's trackpad pinches, which AppKit hands out apart from the pointer
+  # (native/pinch.rs).
+  "NSEvent",
   "NSView",
   "NSWindow",
 ] }

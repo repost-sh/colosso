@@ -27,7 +27,9 @@ mod requests;
 
 pub use dialogs::{Answer, Dialog, FileMode, MenuEntry, MenuTarget, Permission};
 pub use events::{Cursor, HostEvent, PageState};
-pub use input::{KeyKind, Modifiers, MouseButton, MouseKind, PixelSize, Point, Viewport};
+pub use input::{
+    KeyKind, Modifiers, MouseButton, MouseKind, PinchPhase, PixelSize, Point, Viewport,
+};
 pub use requests::{AppRequest, Edit, Go, Ime, ViewAction};
 
 /// The protocol version. The app only starts engines whose `engine.json`
@@ -38,7 +40,8 @@ pub use requests::{AppRequest, Edit, Go, Ime, ViewAction};
 /// 3: agent control over the page's `DevTools` protocol session
 /// ([`AppRequest::Cdp`], [`HostEvent::CdpReply`], [`HostEvent::CdpEvent`]).
 /// 6: page icons ([`PageState::favicon`], [`HostEvent::Favicon`]).
-pub const PROTOCOL: u32 = 6;
+/// 7: trackpad pinches ([`AppRequest::Pinch`]).
+pub const PROTOCOL: u32 = 7;
 
 /// Frames larger than this are refused, so a confused peer cannot make the
 /// other side allocate without bound.

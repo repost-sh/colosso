@@ -26,7 +26,6 @@ mod panes;
 
 use frames::release;
 pub(crate) use frames::{accelerated_frame, logical_size, popup_moved, popup_shown, scale};
-use input::{edit, ime, key, mouse, wheel};
 use inspect::{cdp, frontend_message, open_dev_tools, to_page};
 pub(crate) use inspect::{from_frontend, from_page};
 pub(crate) use panes::{
@@ -89,9 +88,8 @@ struct Pane {
     /// A frame came while every slot was in use.
     missed: bool,
     software: bool,
-    /// Wheel motion below a whole pixel, kept for the next event: trackpads
-    /// send many small fractional steps, and rounding each loses them.
-    wheel_rest: (f32, f32),
+    /// What the trackpad's last events leave for its next.
+    trackpad: input::Trackpad,
     /// A page's open `DevTools`.
     inspected: Option<crate::devtools::Inspected>,
     /// A `DevTools` pane's page, and the bridge its frontend talks over.
@@ -132,7 +130,7 @@ impl Pane {
             free: Vec::new(),
             missed: false,
             software: false,
-            wheel_rest: (0., 0.),
+            trackpad: input::Trackpad::default(),
             inspected: None,
             inspector: None,
             waiting: Vec::new(),
@@ -408,49 +406,17 @@ fn handle(request: AppRequest) {
                 host.set_focus(i32::from(focused));
             }
         }
-        AppRequest::Mouse {
-            pane,
-            kind,
-            x,
-            y,
-            button,
-            click_count,
-            modifiers,
-        } => {
-            mouse(pane, kind, x, y, button, click_count, modifiers);
-        }
-        AppRequest::Wheel {
-            pane,
-            x,
-            y,
-            dx,
-            dy,
-            modifiers,
-        } => wheel(pane, x, y, dx, dy, modifiers),
-        AppRequest::Key {
-            pane,
-            kind,
-            key_code,
-            native_key_code,
-            text,
-            modifiers,
-        } => {
-            key(
-                pane,
-                kind,
-                key_code,
-                native_key_code,
-                text.as_deref(),
-                modifiers,
-            );
-        }
-        AppRequest::Ime { pane, action } => ime(pane, action),
+        request @ (AppRequest::Mouse { .. }
+        | AppRequest::Wheel { .. }
+        | AppRequest::Pinch { .. }
+        | AppRequest::Key { .. }
+        | AppRequest::Ime { .. }
+        | AppRequest::Edit { .. }) => input::handle(request),
         AppRequest::Release {
             pane,
             generation,
             slot,
         } => release(pane, generation, slot),
-        AppRequest::Edit { pane, command } => edit(pane, command),
         AppRequest::Answer {
             pane,
             dialog,

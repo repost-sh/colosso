@@ -2,6 +2,7 @@
 //! shown only as far as the page shows it, and taken out of the window with the page.
 
 use std::cell::Cell;
+use std::rc::Rc;
 
 use gpui_kit::{
     AnyWindowHandle, App, Bounds, DevicePixels, DispatchEventResult, Pixels, PlatformInput,
@@ -12,8 +13,10 @@ use objc2::rc::Retained;
 use objc2_app_kit::NSView;
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 
+use super::pinch::{self, Pinches};
+
 /// Where a windowless surface's pointer goes.
-type Pointer = Box<dyn FnMut(&PlatformInput)>;
+pub type Pointer = Rc<dyn Fn(&PlatformInput)>;
 
 pub struct Surface {
     window: AnyWindowHandle,
@@ -28,6 +31,8 @@ pub struct Surface {
     visible: Cell<Option<bool>>,
     /// Where the view was last put in its surface.
     frame: Cell<Option<NSRect>>,
+    /// A windowless view's pinches, which reach it apart from the rest of the pointer.
+    _pinches: Option<Pinches>,
 }
 
 impl Surface {
@@ -39,16 +44,17 @@ impl Surface {
     }
 
     /// `view` in a native surface of `window`'s composition, drawn by something outside the
-    /// window. Every press, release, move, exit and scroll over it goes to `pointer`, in the
-    /// window's logical pixels, a drag that started on it included: `AppKit` would hand them
-    /// to the surface's container, which does nothing, and GPUI's elements under it don't
-    /// see them, since native content hides what's behind it from GPUI's hit testing.
+    /// window. Every press, release, move, exit, scroll and pinch over it goes to `pointer`,
+    /// in the window's logical pixels, a drag that started on it included: `AppKit` would
+    /// hand them to the surface's container, which does nothing, and GPUI's elements under
+    /// it don't see them, since native content hides what's behind it from GPUI's hit
+    /// testing.
     pub fn windowless(
         window: &Window,
         view: &NSView,
-        pointer: impl FnMut(&PlatformInput) + 'static,
+        pointer: impl Fn(&PlatformInput) + 'static,
     ) -> Result<Surface, String> {
-        Self::make(window, view, Some(Box::new(pointer)))
+        Self::make(window, view, Some(Rc::new(pointer)))
     }
 
     fn make(window: &Window, view: &NSView, pointer: Option<Pointer>) -> Result<Surface, String> {
@@ -68,17 +74,14 @@ impl Surface {
         // surface keeps for as long as it lives; `Surface` holds the surface past this borrow.
         let container = unsafe { &*(*container as *const NSView) };
         container.addSubview(view);
-        let forwarded = |mut pointer: Pointer| {
-            composition.on_input(surface.id(), move |event| {
+        if let Some(pointer) = pointer.clone()
+            && let Err(error) = composition.on_input(surface.id(), move |event| {
                 pointer(event);
                 DispatchEventResult {
                     propagate: false,
                     default_prevented: false,
                 }
             })
-        };
-        if let Some(pointer) = pointer
-            && let Err(error) = forwarded(pointer)
         {
             composition.remove_surface(surface.id()).ok();
             return Err(format!("the pointer can't reach a native view: {error:#}"));
@@ -90,6 +93,7 @@ impl Surface {
             placed: Cell::new(None),
             visible: Cell::new(None),
             frame: Cell::new(None),
+            _pinches: pointer.and_then(|pointer| pinch::watch(container, pointer)),
         })
     }
 
