@@ -1,6 +1,7 @@
-//! The right panel beside the chat: the selected checkout's changes, or its file tree, each
-//! opened and closed by its own button in the top bar; files picked in the tree open in the
-//! workspace's tabs. Each checkout in the sidebar keeps
+//! The right panel beside the chat: the selected checkout's changed files, or its file tree,
+//! each opened and closed by its own button in the top bar; a file picked in either opens in
+//! the workspace's tabs, its diff in the checkout's Changes tab or the file in a tab of its
+//! own. Each checkout in the sidebar keeps
 //! its panels while it's there, so leaving it and coming back finds its open folders, its
 //! pick and its scroll as they were. The panel follows the shell after each change to it
 //! rather than while it's drawn, so nothing is made or swapped mid-frame.
@@ -9,9 +10,6 @@ use std::collections::HashMap;
 use std::mem;
 use std::path::{Path, PathBuf};
 
-use gpui_kit::assets::IconName;
-use gpui_kit::component::Sizable as _;
-use gpui_kit::component::button::Button;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, AnyWindowHandle, App, AppContext as _, Context, Div, DragMoveEvent, Empty, Entity,
@@ -25,13 +23,13 @@ use crate::files::{FilesPanel, Place};
 use crate::language;
 use crate::navigation::Route;
 use crate::settings;
-use crate::shell::{Shell, ToggleRightPanel, icon_button};
+use crate::shell::{Shell, ToggleRightPanel};
 use crate::sidebar::resize_handle;
 use crate::theme::{self, Palette};
 
 actions!(
     right_panel,
-    [ShowFiles, ToggleChanges, ToggleFiles, ToggleWide]
+    [ShowFiles, ToggleChanges, ToggleFiles]
 );
 
 pub use crate::list::{
@@ -72,9 +70,9 @@ impl View {
     fn widths(self, settings: &settings::Settings) -> (f32, f32, f32) {
         match self {
             View::Changes => (
-                theme::CHANGES_MIN_WIDTH,
-                theme::CHANGES_MAX_WIDTH,
-                settings.changes_width,
+                theme::CHANGES_FILES_MIN_WIDTH,
+                theme::CHANGES_FILES_MAX_WIDTH,
+                settings.changes_files_width,
             ),
             View::Files => (
                 theme::FILES_TREE_MIN_WIDTH,
@@ -103,13 +101,24 @@ struct Panels {
     _subscriptions: Vec<Subscription>,
 }
 
+impl Panels {
+    /// The changes panel, made now if it isn't: a file picked in its list shows the diffs.
+    fn changes(&mut self, window: &mut Window, cx: &mut Context<Shell>) -> Entity<ChangesPanel> {
+        if let Some(changes) = &self.changes {
+            return changes.clone();
+        }
+        let checkout = self.checkout.clone();
+        let changes = cx.new(|cx| ChangesPanel::new(checkout, cx));
+        (self._subscriptions).push(cx.subscribe_in(&changes, window, Shell::changes_event));
+        self.changes = Some(changes.clone());
+        changes
+    }
+}
+
 #[derive(Default)]
 pub struct RightPanel {
     open: bool,
     view: View,
-    /// Whether the changes have the card to themselves, the chat out of sight. The tree
-    /// never does.
-    wide: bool,
     /// Whether the panel takes the keyboard once it's next shown, as it does when opened.
     focus: bool,
     /// The panels of each checkout in the sidebar, by its path.
@@ -137,6 +146,12 @@ impl RightPanel {
         Some(&self.shown()?.checkout)
     }
 
+    /// The selected checkout's changed files, once they've been shown.
+    #[cfg(test)]
+    pub fn changes(&self) -> Option<&Entity<ChangesPanel>> {
+        self.shown()?.changes.as_ref()
+    }
+
     /// The selected checkout's file tree, once it's been shown.
     pub fn files(&self) -> Option<&Entity<FilesPanel>> {
         self.shown()?.files.as_ref()
@@ -147,20 +162,16 @@ impl RightPanel {
         (self.checkout()).map_or((0, 0), |checkout| checkout.read(cx).totals())
     }
 
-    /// The right panel as the card shows it, if it's open while it's `shown`; and whether the
-    /// changes have the card to themselves.
+    /// The right panel as the card shows it, if it's open while it's `shown`.
     pub fn render(
         &mut self,
         shown: bool,
         sidebar_open: bool,
         window: &mut Window,
         cx: &mut App,
-    ) -> (Option<Div>, bool) {
+    ) -> Option<Div> {
         self.widest = widest(sidebar_open, window, cx);
-        let Some(panels) = self.shown().filter(|_| shown && self.open) else {
-            return (None, false);
-        };
-        let wide = self.wide && self.view == View::Changes;
+        let panels = self.shown().filter(|_| shown && self.open)?;
         let panel: AnyElement = match self.view {
             View::Changes => panels.changes.clone().map(Entity::into_any_element),
             View::Files => panels.files.clone().map(Entity::into_any_element),
@@ -171,22 +182,15 @@ impl RightPanel {
         let panel = div()
             .h_full()
             .min_w_0()
-            .when(wide, Styled::flex_1)
-            .when(!wide, |panel| {
-                panel
-                    .relative()
-                    .w(px(width))
-                    .flex_shrink_0()
-                    .border_l_1()
-                    .border_color(p.hairline)
-            })
+            .relative()
+            .w(px(width))
+            .flex_shrink_0()
+            .border_l_1()
+            .border_color(p.hairline)
             .child(panel)
             // Over the panel's edge, so it's grabbed before what's under it.
-            .when(!wide, |panel| {
-                let handle = resize_handle("right-panel-resize", RightPanelResize);
-                panel.child(handle.left_0())
-            });
-        (Some(panel), wide)
+            .child(resize_handle("right-panel-resize", RightPanelResize).left_0());
+        Some(panel)
     }
 
     /// The panel's width as set for what it shows, or as its edge is being dragged, within
@@ -209,7 +213,7 @@ impl RightPanel {
         self.dragged = None;
         let view = self.view;
         settings::update(cx, |settings| match view {
-            View::Changes => settings.changes_width = width,
+            View::Changes => settings.changes_files_width = width,
             View::Files => settings.files_tree_width = width,
         });
     }
@@ -238,10 +242,6 @@ impl Shell {
             let panel = &mut this.right_panel;
             panel.open = !panel.open;
             panel.focus = panel.open;
-            cx.notify();
-        }))
-        .on_action(cx.listener(|this, _: &ToggleWide, _, cx| {
-            this.right_panel.wide = !this.right_panel.wide;
             cx.notify();
         }))
         .on_action(cx.listener(|this, _: &ShowFiles, _, cx| this.show(View::Files, cx)))
@@ -277,8 +277,9 @@ impl Shell {
     }
 
     /// Points the right panel at the selected checkout, and its file tree at the file the
-    /// shown tab shows; makes what it shows now if it isn't made; lets go of the panels of
-    /// checkouts gone from the sidebar. Runs after each change to the shell.
+    /// shown tab shows; makes what it shows now if it isn't made; colours the checkout's
+    /// diffs while its Changes tab is shown; lets go of the panels of checkouts gone from
+    /// the sidebar. Runs after each change to the shell.
     pub fn follow_selection(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let (panel, workspace) = (&mut self.right_panel, &self.workspace);
         let mut gone = Vec::new();
@@ -312,7 +313,10 @@ impl Shell {
         let Some(root) = selected else {
             return;
         };
-        let (open, view, wide) = (panel.open, panel.view, panel.wide);
+        let (open, view) = (panel.open, panel.view);
+        let diffs_shown = (workspace.branch())
+            .and_then(|unit| unit.tabs.get(unit.active_tab))
+            .is_some_and(|tab| tab.panes().iter().any(|pane| pane.changes.is_some()));
         let mut focus = mem::take(&mut panel.focus);
         panel.make_panels(root, window, cx);
         let Some(panels) = panel.checkouts.get_mut(root) else {
@@ -321,16 +325,10 @@ impl Shell {
         let checkout = panels.checkout.clone();
         checkout.update(cx, |checkout, cx| {
             checkout.set_selected(true, cx);
-            checkout.set_coloured(open && view == View::Changes, cx);
+            checkout.set_coloured(diffs_shown, cx);
         });
-        // What's shown is told whether it has the card to itself as that changes, rather
-        // than as it's drawn.
         if open && view == View::Changes {
-            let changes = (panels.changes)
-                .get_or_insert_with(|| cx.new(|cx| ChangesPanel::new(checkout.clone(), cx)));
-            if changes.read(cx).is_wide() != wide {
-                changes.update(cx, |changes, cx| changes.set_wide(wide, cx));
-            }
+            let changes = panels.changes(window, cx);
             let handle = changes.read(cx).focus_handle().clone();
             focus_once(&mut focus, &handle, window, cx);
         }
@@ -348,6 +346,14 @@ impl Shell {
                 focus_once(&mut focus, &handle, window, cx);
             }
         }
+    }
+
+    /// The selected checkout's changes panel, made now if it isn't, as the panel would be on
+    /// it.
+    pub(crate) fn changes_panel(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<Entity<ChangesPanel>> {
+        let root = self.right_panel.selected.clone()?;
+        let panels = self.right_panel.checkouts.get_mut(&root)?;
+        Some(panels.changes(window, cx))
     }
 
     /// Shows the file `place` is in from a dialog over `behind`, in a tab: as
@@ -398,19 +404,6 @@ fn focus_once(pending: &mut bool, handle: &FocusHandle, window: &mut Window, cx:
     }
 }
 
-/// The button at the right of either panel's header that gives the panel the whole card, or
-/// puts it back beside the chat.
-pub fn wide_button(id: &'static str, wide: bool, cx: &App) -> Button {
-    let (glyph, tip) = if wide {
-        (IconName::Minimize2, "Back beside the chat")
-    } else {
-        (IconName::Maximize2, "Use the whole card")
-    };
-    icon_button(id, glyph, tip, cx)
-        .xsmall()
-        .on_click(|_, window, cx| window.dispatch_action(Box::new(ToggleWide), cx))
-}
-
 /// What either panel's header says it shows, at its left.
 pub fn title(label: &'static str, p: Palette) -> Div {
     div().text_sm().text_color(p.text).child(label)
@@ -442,6 +435,5 @@ pub fn note(p: Palette) -> Div {
 }
 
 mod buttons;
-pub mod split;
 #[cfg(test)]
 mod tests;

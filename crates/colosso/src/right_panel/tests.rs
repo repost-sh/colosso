@@ -102,27 +102,6 @@ fn a_dragged_edge_moves_as_it_goes_and_is_saved_once_let_go(cx: &mut TestAppCont
     let _ = std::fs::remove_dir_all(root);
 }
 
-/// The tree is beside the tabs, never in their place: widening, as the changes do, leaves
-/// it as it is.
-#[gpui_kit::test]
-fn the_tree_never_takes_the_card(cx: &mut TestAppContext) {
-    let root = repo("right-panel-tree-narrow", &[("a.txt", "a\n")]);
-    let (window, shell) = shell_with(&[&root], cx);
-    select(&shell, &root, cx);
-    cx.dispatch_action(window, ShowFiles);
-    cx.dispatch_action(window, ToggleWide);
-    cx.run_until_parked();
-    let tabs_shown = |cx: &mut VisualTestContext| cx.debug_bounds("right-panel-resize").is_some();
-    let cx = &mut VisualTestContext::from_window(window, cx);
-    cx.run_until_parked();
-    assert!(tabs_shown(cx), "the tree keeps its edge beside the tabs");
-    // The changes, set wide, take the card.
-    cx.dispatch_action(ToggleChanges);
-    cx.run_until_parked();
-    assert!(!tabs_shown(cx), "the changes have the card");
-    let _ = std::fs::remove_dir_all(root);
-}
-
 /// What the top bar's buttons do: each opens the panel on its view and closes it, and the
 /// panel opens again after it's closed, though what had the keyboard went with it.
 #[gpui_kit::test]

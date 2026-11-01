@@ -34,15 +34,16 @@ pub fn tab_button(id: impl Into<ElementId>, p: Palette) -> Stateful<Div> {
         .hover(|style| style.bg(p.hover))
 }
 
-/// What a pane shows: its chat, terminal, page or file.
+/// What a pane shows: its chat, terminal, page, file or the checkout's diffs.
 pub fn pane(pane: &Pane, context: &str, p: Palette) -> AnyElement {
     match pane.kind {
         PaneKind::Chat => chat(pane, context, p),
         PaneKind::Terminal => terminal(p),
         PaneKind::Browser => browser(pane),
-        PaneKind::Editor => match &pane.file {
-            Some(file) => file.clone().into_any_element(),
-            None => editor(pane, p),
+        PaneKind::Editor => match (&pane.file, &pane.changes) {
+            (Some(file), _) => file.clone().into_any_element(),
+            (None, Some(changes)) => changes.clone().into_any_element(),
+            (None, None) => editor(pane, p),
         },
     }
 }

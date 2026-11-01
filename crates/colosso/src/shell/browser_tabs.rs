@@ -224,6 +224,10 @@ impl Shell {
         let files = (tab.panes().into_iter())
             .filter_map(|pane| Some((pane.id, pane.file.as_ref()?.read(cx).path.clone())))
             .collect();
+        let changes = (tab.panes().into_iter())
+            .filter(|pane| pane.changes.is_some())
+            .map(|pane| pane.id)
+            .collect();
         let panes: Vec<_> = tab
             .panes()
             .into_iter()
@@ -250,6 +254,7 @@ impl Shell {
                 tab,
                 addresses,
                 files,
+                changes,
             });
         }
         cx.notify();

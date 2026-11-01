@@ -8,6 +8,7 @@ use gpui_kit::{App, Entity, SharedString};
 
 use super::PaneKind;
 use crate::browser::BrowserView;
+use crate::changes::ChangesTab;
 use crate::files::{FileEditor, FilePane};
 
 /// Ids for panes, never reused while the app runs.
@@ -23,6 +24,8 @@ pub struct Pane {
     pub browser: Option<Entity<BrowserView>>,
     /// The file an editor pane shows, once the shell has opened one in it.
     pub file: Option<Entity<FilePane>>,
+    /// The checkout's diffs, when it's an editor pane showing them rather than a file.
+    pub changes: Option<Entity<ChangesTab>>,
     /// The workspace's turn when its tab was last shown, later turns higher: ⌃⇥ lists the
     /// latest first.
     pub shown_at: u64,
@@ -37,6 +40,7 @@ impl Pane {
             title: kind.new_tab_title().into(),
             browser: None,
             file: None,
+            changes: None,
             shown_at: 0,
         }
     }
@@ -55,6 +59,15 @@ impl Pane {
         Pane {
             title: file.read(cx).name().into(),
             file: Some(file),
+            ..Pane::new(PaneKind::Editor)
+        }
+    }
+
+    /// An editor pane showing the checkout's diffs, titled for them.
+    pub fn changes(changes: Entity<ChangesTab>) -> Self {
+        Pane {
+            title: "Changes".into(),
+            changes: Some(changes),
             ..Pane::new(PaneKind::Editor)
         }
     }
