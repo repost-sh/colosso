@@ -1,5 +1,5 @@
-//! The view in a window: a start page nobody holds, the lease once the person acts, and the
-//! questions it asks one at a time.
+//! The view in a window: a start page nobody holds that starts the host, the lease once the
+//! person acts, and the questions it asks one at a time.
 
 use colosso_browser_ipc::Dialog;
 use gpui_kit::{AnyWindowHandle, TestAppContext, px, size};
@@ -8,7 +8,8 @@ use super::*;
 // Drawing the window is when the view asks its questions.
 use crate::test_support::{draw, in_window};
 
-/// A start page in a window of its own; no host starts for it.
+/// A start page in a window of its own. A test names no engine, so the host it starts
+/// fails to.
 fn start_page(cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<BrowserView>) {
     cx.update(crate::init);
     let (window, view) = in_window(size(px(800.), px(600.)), cx, |window, cx| {
@@ -31,6 +32,15 @@ fn a_new_tab_is_a_start_page_nobody_holds_until_the_person_acts(cx: &mut TestApp
     view.read_with(cx, |view, _| assert!(view.control.person_holds()));
     view.update(cx, BrowserView::give_back);
     view.read_with(cx, |view, _| assert!(view.control.holder.is_none()));
+}
+
+#[gpui_kit::test]
+fn a_start_page_shown_starts_the_host_before_any_address_is_asked_for(cx: &mut TestAppContext) {
+    let (_, view) = start_page(cx);
+    view.read_with(cx, |view, cx| {
+        assert!(view.is_start_page());
+        assert_ne!(view.status(cx), HostStatus::Idle);
+    });
 }
 
 #[gpui_kit::test]

@@ -46,13 +46,14 @@ impl BrowserView {
         browsers.status() == HostStatus::Running && self.opened == Some(browsers.epoch())
     }
 
-    /// Opens the page once the host runs and the pane has a size.
+    /// Opens the page once the host runs and the pane has a size. A start page starts the
+    /// host all the same, so the page asked for there needn't wait for it.
     pub(super) fn ensure_open(&mut self, cx: &mut Context<Self>) {
         let (status, epoch) = {
             let browsers = self.browsers.read(cx);
             (browsers.status(), browsers.epoch())
         };
-        if self.target.is_empty() || self.opened == Some(epoch) {
+        if self.opened == Some(epoch) {
             return;
         }
         match status {
@@ -63,6 +64,9 @@ impl BrowserView {
             }
             HostStatus::Starting | HostStatus::Failed(_) => return,
             HostStatus::Running => {}
+        }
+        if self.target.is_empty() {
+            return;
         }
         let Some(viewport) = self.viewport else {
             return;

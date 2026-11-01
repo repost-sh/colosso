@@ -471,6 +471,9 @@ impl BrowserView {
         let status = self.status(cx);
         let start = self.is_start_page();
         let inspector = self.is_inspector();
+        // The pane's own colour until the page's first frame is in, so a page never opens on
+        // a blank white one; DevTools keep it.
+        let blank = self.frame.is_none() || inspector;
         let overlay = toolbar::overlay(self, &status, cx);
         let bar = toolbar::control_bar(self, cx);
         let page = div()
@@ -480,8 +483,7 @@ impl BrowserView {
             .size_full()
             .relative()
             .overflow_hidden()
-            // DevTools wait in the pane's own colour until they are drawn.
-            .bg(if start || inspector { p.card } else { white() })
+            .bg(if blank { p.card } else { white() })
             .child(PageSurface {
                 view: cx.entity(),
                 focused: self.focus.is_focused(window),

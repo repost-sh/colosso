@@ -53,12 +53,6 @@ pub fn versions(cx: &App) -> Option<(String, String)> {
     browsers.0.read(cx).versions()
 }
 
-/// Starts the engine ahead of the first page, while the person types its address.
-pub fn warm_up(cx: &mut App) {
-    let browsers = host::Browsers::global(cx);
-    browsers.update(cx, host::Browsers::start_if_idle);
-}
-
 actions!(
     browser,
     [
