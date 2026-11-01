@@ -8,8 +8,8 @@ use colosso_browser_ipc::{self as ipc, AppRequest, Cursor, Go, Ime, KeyKind, Mou
 use gpui_kit::{
     Bounds, Context, CursorStyle, Div, EntityInputHandler, InteractiveElement as _, KeyDownEvent,
     KeyUpEvent, Keystroke, Modifiers, ModifiersChangedEvent, MouseButton, MouseDownEvent,
-    MouseMoveEvent, MouseUpEvent, NavigationDirection, Pixels, PlatformInput, Point, ScrollDelta,
-    ScrollEvent, Stateful, UTF16Selection, Window, point, px, size,
+    MouseMoveEvent, MouseUpEvent, NavigationDirection, Pixels, PlatformInput, Point, Stateful,
+    UTF16Selection, Window, point, px, size,
 };
 
 use super::control::Mode;
@@ -19,9 +19,6 @@ use super::{
     Back, Copy, Cut, FocusAddress, Forward, Paste, Redo, Reload, SelectAll, SendBackTab,
     SendEscape, SendTab, ToggleDevTools, Undo,
 };
-
-/// Chromium scrolls about this many pixels per line.
-const LINE_PIXELS: f32 = 40.;
 
 impl BrowserView {
     /// A press on the page: it takes the keyboard, and the button stays the page's until
@@ -97,6 +94,7 @@ impl BrowserView {
                 self.moved_to(&moved, false, cx);
             }
             PlatformInput::Scroll(event) => self.wheel(event, cx),
+            PlatformInput::Pinch(event) => self.pinch(event, cx),
             _ => {}
         }
     }
@@ -124,25 +122,6 @@ impl BrowserView {
                 button,
                 click_count: u32::try_from(click_count).unwrap_or(1),
                 modifiers: modifiers_of(modifiers),
-            },
-            cx,
-        );
-    }
-
-    pub(super) fn wheel(&mut self, event: &ScrollEvent, cx: &mut Context<Self>) {
-        let (dx, dy) = match event.delta {
-            ScrollDelta::Pixels(delta) => (delta.x.as_f32(), delta.y.as_f32()),
-            ScrollDelta::Lines(delta) => (delta.x * LINE_PIXELS, delta.y * LINE_PIXELS),
-        };
-        let at = event.position - self.origin;
-        self.send_to_page(
-            AppRequest::Wheel {
-                pane: self.pane,
-                x: at.x.as_f32(),
-                y: at.y.as_f32(),
-                dx,
-                dy,
-                modifiers: modifiers_of(event.modifiers),
             },
             cx,
         );

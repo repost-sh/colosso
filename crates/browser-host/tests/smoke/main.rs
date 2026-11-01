@@ -15,7 +15,7 @@
 mod support;
 
 use colosso_browser_ipc::client::{Connection, Incoming};
-use colosso_browser_ipc::{AppRequest, HostEvent, Viewport};
+use colosso_browser_ipc::{AppRequest, HostEvent, PinchPhase, Viewport};
 use objc2_io_surface::IOSurfaceRef;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -383,4 +383,94 @@ fn reply(session: &mut Session, call: u64) -> (Option<serde_json::Value>, Option
         false
     });
     answer.expect("answered")
+}
+
+#[test]
+#[ignore = "Needs a packaged browser engine; see the module docs"]
+fn a_trackpad_pinch_zooms_the_page_around_it_and_back_out() {
+    let launch = launch("pinch");
+    let mut session = Session::start(&launch);
+    let viewport = Viewport {
+        width: 400,
+        height: 300,
+        scale: 2.,
+    };
+    let page = "data:text/html,<body style='margin:0;width:3000px;height:3000px'>";
+    session
+        .host
+        .send(&AppRequest::Open {
+            pane: 1,
+            url: page.into(),
+            viewport,
+            profile: "smoke-pinch".into(),
+        })
+        .expect("open");
+    let unzoomed = |[scale, left, top]: [f64; 3]| {
+        (scale - 1.).abs() < 1e-3 && left.abs() < 1. && top.abs() < 1.
+    };
+    assert!(unzoomed(zoom(&mut session, |_| true)));
+    pinch(&mut session, 0.1, 10);
+    let [scale, left, top] = zoom(&mut session, |[scale, ..]| scale > 2.);
+    // The point under the pinch stays where it was.
+    assert!(
+        (left - 300. * (1. - 1. / scale)).abs() < 10.,
+        "{scale} {left}"
+    );
+    assert!(
+        (top - 200. * (1. - 1. / scale)).abs() < 10.,
+        "{scale} {top}"
+    );
+    pinch(&mut session, -0.1, 30);
+    assert!(unzoomed(zoom(&mut session, unzoomed)));
+    session.host.shutdown(Duration::from_secs(10));
+    let _ = std::fs::remove_dir_all(launch.profiles.parent().expect("scratch"));
+}
+
+/// A whole pinch on pane 1 around (300, 200): `steps` events of `delta` each, each played
+/// on its own as a trackpad's come, the host answering in between.
+fn pinch(session: &mut Session, delta: f32, steps: usize) {
+    let phases = std::iter::once((PinchPhase::Started, 0.))
+        .chain(std::iter::repeat_n((PinchPhase::Moved, delta), steps))
+        .chain([(PinchPhase::Ended, 0.)]);
+    for (call, (phase, delta)) in (2000..).zip(phases) {
+        session
+            .host
+            .send(&AppRequest::Pinch {
+                pane: 1,
+                x: 300.,
+                y: 200.,
+                delta,
+                phase,
+            })
+            .expect("pinch");
+        cdp(
+            session,
+            call,
+            "Runtime.evaluate",
+            serde_json::json!({"expression": "0"}),
+        );
+        reply(session, call);
+    }
+}
+
+/// Pane 1's visual viewport, `[scale, left, top]`, once `settled` holds of it: asked again
+/// each time the page is drawn anew.
+fn zoom(session: &mut Session, settled: impl Fn([f64; 3]) -> bool) -> [f64; 3] {
+    let expression = "[visualViewport.scale, visualViewport.offsetLeft, visualViewport.offsetTop]";
+    let mut call = 1000;
+    loop {
+        call += 1;
+        let params = serde_json::json!({"expression": expression, "returnByValue": true});
+        cdp(session, call, "Runtime.evaluate", params);
+        let (result, error) = reply(session, call);
+        assert_eq!(error, None);
+        let value = result.expect("a result")["result"]["value"].clone();
+        let zoom = serde_json::from_value(value).expect("three numbers");
+        if settled(zoom) {
+            return zoom;
+        }
+        session.wait("the page drawn anew", |event, _| {
+            matches!(event, HostEvent::Frame { .. })
+        });
+    }
 }

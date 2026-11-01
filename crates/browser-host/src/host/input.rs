@@ -1,10 +1,79 @@
-//! The person's input, as CEF takes it: pointer, wheel, keys, composition and edits.
+//! The person's input, as CEF takes it: pointer, wheel, pinch, keys, composition and edits.
 use super::{browser_of, host_of, with_pane};
 use cef::sys::cef_event_flags_t as Flag;
 use cef::{
     ImplBrowser, ImplBrowserHost, ImplFrame, KeyEvent, KeyEventType, MouseButtonType, MouseEvent,
+    PointerType, TouchEvent, TouchEventType,
 };
-use colosso_browser_ipc::{self as ipc, Ime, KeyKind, Modifiers, MouseButton, MouseKind, PaneId};
+use colosso_browser_ipc::{
+    self as ipc, AppRequest, Ime, KeyKind, Modifiers, MouseButton, MouseKind, PaneId, PinchPhase,
+};
+
+/// Half the span between the two fingers a pinch is played with as it starts, in logical
+/// pixels. The engine stops pinching once fingers come closer than 125 apart, so they start
+/// far enough apart to zoom a page all the way out in one pinch.
+const PINCH_REACH: f32 = 400.;
+/// The closest the two fingers playing a pinch come: just short of where the engine would
+/// stop pinching.
+const PINCH_CLOSEST: f32 = 64.;
+
+/// What the trackpad's last events leave for its next.
+#[derive(Debug, Default)]
+pub(super) struct Trackpad {
+    /// Wheel motion below a whole pixel: trackpads send many small fractional steps, and
+    /// rounding each loses them.
+    wheel_rest: (f32, f32),
+    /// Half the span between the fingers playing a pinch, while one is on.
+    pinch: Option<f32>,
+}
+
+/// Plays the person's input to their pane's page; anything else is left alone.
+pub(super) fn handle(request: AppRequest) {
+    match request {
+        AppRequest::Mouse {
+            pane,
+            kind,
+            x,
+            y,
+            button,
+            click_count,
+            modifiers,
+        } => mouse(pane, kind, x, y, button, click_count, modifiers),
+        AppRequest::Wheel {
+            pane,
+            x,
+            y,
+            dx,
+            dy,
+            modifiers,
+        } => wheel(pane, x, y, dx, dy, modifiers),
+        AppRequest::Pinch {
+            pane,
+            x,
+            y,
+            delta,
+            phase,
+        } => pinch(pane, x, y, delta, phase),
+        AppRequest::Key {
+            pane,
+            kind,
+            key_code,
+            native_key_code,
+            text,
+            modifiers,
+        } => key(
+            pane,
+            kind,
+            key_code,
+            native_key_code,
+            text.as_deref(),
+            modifiers,
+        ),
+        AppRequest::Ime { pane, action } => ime(pane, action),
+        AppRequest::Edit { pane, command } => edit(pane, command),
+        _ => {}
+    }
+}
 
 fn flags(modifiers: Modifiers, button: Option<MouseButton>) -> u32 {
     let mut flags = 0;
@@ -35,7 +104,7 @@ fn mouse_event(x: f32, y: f32, modifiers: Modifiers, button: Option<MouseButton>
     }
 }
 
-pub(super) fn mouse(
+fn mouse(
     pane: PaneId,
     kind: MouseKind,
     x: f32,
@@ -65,7 +134,7 @@ pub(super) fn mouse(
     }
 }
 
-pub(super) fn key(
+fn key(
     pane: PaneId,
     kind: KeyKind,
     key_code: i32,
@@ -114,7 +183,7 @@ pub(super) fn key(
     }
 }
 
-pub(super) fn ime(pane: PaneId, action: Ime) {
+fn ime(pane: PaneId, action: Ime) {
     let Some(host) = host_of(pane) else {
         return;
     };
@@ -131,7 +200,7 @@ pub(super) fn ime(pane: PaneId, action: Ime) {
     }
 }
 
-pub(super) fn edit(pane: PaneId, command: ipc::Edit) {
+fn edit(pane: PaneId, command: ipc::Edit) {
     let Some(frame) = browser_of(pane).and_then(|b| b.focused_frame()) else {
         return;
     };
@@ -155,10 +224,10 @@ fn wheel_steps(rest: (f32, f32), delta: (f32, f32)) -> ((f32, f32), (f32, f32)) 
 }
 /// Scrolls by whole pixels, keeping what is left below one for the next
 /// event.
-pub(super) fn wheel(pane: PaneId, x: f32, y: f32, dx: f32, dy: f32, modifiers: Modifiers) {
+fn wheel(pane: PaneId, x: f32, y: f32, dx: f32, dy: f32, modifiers: Modifiers) {
     let steps = with_pane(pane, |p| {
-        let (steps, rest) = wheel_steps(p.wheel_rest, (dx, dy));
-        p.wheel_rest = rest;
+        let (steps, rest) = wheel_steps(p.trackpad.wheel_rest, (dx, dy));
+        p.trackpad.wheel_rest = rest;
         steps
     });
     if let (Some(host), Some((sx, sy))) = (host_of(pane), steps)
@@ -169,6 +238,59 @@ pub(super) fn wheel(pane: PaneId, x: f32, y: f32, dx: f32, dy: f32, modifiers: M
             sx as i32,
             sy as i32,
         );
+    }
+}
+
+/// A touch of the two fingers playing a pinch, with half their span.
+type Touch = (TouchEventType, f32);
+
+/// The touches a pinch event makes of the fingers playing it, given half their span while
+/// they're down, and half their span after. Starting puts them down; going on spreads or
+/// closes them by the event's delta; ending lifts them. A pinch still on as another starts
+/// ends first, and one going on that was never seen to start starts.
+fn pinch_touches(held: Option<f32>, delta: f32, phase: PinchPhase) -> (Vec<Touch>, Option<f32>) {
+    let up = held.map(|reach| (TouchEventType::RELEASED, reach));
+    match phase {
+        PinchPhase::Started => {
+            let touches = up
+                .into_iter()
+                .chain([(TouchEventType::PRESSED, PINCH_REACH)]);
+            (touches.collect(), Some(PINCH_REACH))
+        }
+        PinchPhase::Moved => {
+            let from = held.unwrap_or(PINCH_REACH);
+            let to = (from * (1. + delta)).max(PINCH_CLOSEST);
+            let down = held.is_none().then_some((TouchEventType::PRESSED, from));
+            let touches = down.into_iter().chain([(TouchEventType::MOVED, to)]);
+            (touches.collect(), Some(to))
+        }
+        PinchPhase::Ended => (up.into_iter().collect(), None),
+    }
+}
+
+/// A pinch on the trackpad, centred at `(x, y)`. The engine pinch-zooms a page it draws off
+/// screen only for touches, so it's played as two fingers either side of the centre,
+/// spreading or closing as the pinch does.
+fn pinch(pane: PaneId, x: f32, y: f32, delta: f32, phase: PinchPhase) {
+    let touches = with_pane(pane, |p| {
+        let (touches, held) = pinch_touches(p.trackpad.pinch, delta, phase);
+        p.trackpad.pinch = held;
+        touches
+    });
+    let (Some(host), Some(touches)) = (host_of(pane), touches) else {
+        return;
+    };
+    for (type_, reach) in touches {
+        for (id, side) in [(0, -1.), (1, 1.)] {
+            host.send_touch_event(Some(&TouchEvent {
+                id,
+                x: x + side * reach,
+                y,
+                type_,
+                pointer_type: PointerType::TOUCH,
+                ..TouchEvent::default()
+            }));
+        }
     }
 }
 
@@ -207,5 +329,50 @@ mod tests {
             1 << 6
         );
         assert_eq!(flags(Modifiers::default(), None), 0);
+    }
+
+    #[test]
+    fn a_pinch_puts_two_fingers_down_spreads_them_by_its_delta_and_lifts_them() {
+        let (touches, held) = pinch_touches(None, 0., PinchPhase::Started);
+        assert_eq!(touches, [(TouchEventType::PRESSED, PINCH_REACH)]);
+        let (touches, held) = pinch_touches(held, 0.5, PinchPhase::Moved);
+        assert_eq!(touches, [(TouchEventType::MOVED, 600.)]);
+        let (touches, held) = pinch_touches(held, -0.5, PinchPhase::Moved);
+        assert_eq!(touches, [(TouchEventType::MOVED, 300.)]);
+        let (touches, held) = pinch_touches(held, -1., PinchPhase::Moved);
+        assert_eq!(
+            touches,
+            [(TouchEventType::MOVED, PINCH_CLOSEST)],
+            "never close enough to stop"
+        );
+        let (touches, held) = pinch_touches(held, 0., PinchPhase::Ended);
+        assert_eq!(
+            (touches, held),
+            (vec![(TouchEventType::RELEASED, PINCH_CLOSEST)], None)
+        );
+    }
+
+    #[test]
+    fn a_pinch_missing_its_start_or_end_still_plays_whole() {
+        let (touches, held) = pinch_touches(None, 0.25, PinchPhase::Moved);
+        assert_eq!(
+            touches,
+            [
+                (TouchEventType::PRESSED, PINCH_REACH),
+                (TouchEventType::MOVED, 500.)
+            ]
+        );
+        let (touches, _) = pinch_touches(held, 0., PinchPhase::Started);
+        assert_eq!(
+            touches,
+            [
+                (TouchEventType::RELEASED, 500.),
+                (TouchEventType::PRESSED, PINCH_REACH)
+            ]
+        );
+        assert_eq!(
+            pinch_touches(None, 0., PinchPhase::Ended),
+            (Vec::new(), None)
+        );
     }
 }

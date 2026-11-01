@@ -30,6 +30,7 @@ mod keys;
 mod menu;
 mod page;
 mod toolbar;
+mod trackpad;
 mod view;
 #[cfg(feature = "visual-check")]
 pub mod visual;

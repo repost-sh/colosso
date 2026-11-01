@@ -9,6 +9,7 @@
 
 mod glass;
 mod host;
+mod pinch;
 mod surface;
 mod target;
 

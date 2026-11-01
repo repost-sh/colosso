@@ -1,6 +1,8 @@
 //! What the app asks of the host: panes opened, sized and closed, and what the person does
 //! in them.
-use crate::{Answer, KeyKind, Modifiers, MouseButton, MouseKind, PaneId, Point, Viewport};
+use crate::{
+    Answer, KeyKind, Modifiers, MouseButton, MouseKind, PaneId, PinchPhase, Point, Viewport,
+};
 use serde::{Deserialize, Serialize};
 
 /// A request from the app to the host.
@@ -101,6 +103,19 @@ pub enum AppRequest {
         dy: f32,
         /// Held modifiers.
         modifiers: Modifiers,
+    },
+    /// A pinch on the trackpad, which zooms the page in or out around it.
+    Pinch {
+        /// The pane.
+        pane: PaneId,
+        /// Left edge offset of the pinch's centre.
+        x: f32,
+        /// Top edge offset of the pinch's centre.
+        y: f32,
+        /// How much it zoomed since the last event: 0.1 for a tenth more.
+        delta: f32,
+        /// Where it is in its course.
+        phase: PinchPhase,
     },
     /// A key event.
     Key {
@@ -212,6 +227,7 @@ impl AppRequest {
             | Self::View { pane, .. }
             | Self::Mouse { pane, .. }
             | Self::Wheel { pane, .. }
+            | Self::Pinch { pane, .. }
             | Self::Key { pane, .. }
             | Self::Ime { pane, .. }
             | Self::Release { pane, .. }

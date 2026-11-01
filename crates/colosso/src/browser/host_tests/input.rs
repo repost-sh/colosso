@@ -1,11 +1,11 @@
-//! The person's pointer, wheel and keys reach the page: links followed, fields typed into,
-//! pages scrolled, popups answered, addresses entered.
+//! The person's pointer, trackpad and keys reach the page: links followed, fields typed
+//! into, pages scrolled and pinched, popups answered, addresses entered.
 
 use std::time::Duration;
 
 use gpui_kit::{
-    KeyUpEvent, Keystroke, Modifiers, ScrollDelta, ScrollEvent, ScrollSource, TestAppContext,
-    TouchPhase, VisualTestContext, point, px,
+    KeyUpEvent, Keystroke, Modifiers, PinchEvent, PlatformInput, ScrollDelta, ScrollEvent,
+    ScrollSource, TestAppContext, TouchPhase, VisualTestContext, point, px,
 };
 
 use super::{click, finish, open, page_origin, pause, pixel, serve, wait_for, wait_for_title};
@@ -24,6 +24,12 @@ fn site(name: &str) -> Option<String> {
             "<title>long</title><body style='margin:0;height:5000px;\
              background:linear-gradient(red,blue)'>\
              <script>addEventListener('scroll',()=>document.title='at '+scrollY)</script>"
+                .into(),
+        ),
+        "wide" => Some(
+            "<title>wide</title><body style='margin:0;width:3000px;height:3000px'>\
+             <script>visualViewport.onresize=()=>document.title='scale '+visualViewport.scale\
+             </script>"
                 .into(),
         ),
         _ => None,
@@ -77,6 +83,42 @@ fn the_wheel_scrolls_the_page(cx: &mut TestAppContext) {
             .strip_prefix("at ")
             .and_then(|at| at.parse::<f32>().ok())
             .is_some_and(|at| at > 100.)
+    });
+    finish(cx, scratch);
+}
+
+#[gpui_kit::test]
+#[ignore = "needs the engine script/browser-engine packages"]
+fn a_trackpad_pinch_zooms_the_page(cx: &mut TestAppContext) {
+    let port = serve(site);
+    let (view, cx, scratch) = open("pinch", &format!("http://127.0.0.1:{port}/wide"), cx);
+    wait_for(cx, &view, "the wide page", |view| {
+        view.page.title == "wide" && view.frame.is_some()
+    });
+    let (x, y) = page_origin(cx, &view);
+    let at = point(px(x + 200.), px(y + 200.));
+    let phases = std::iter::once((TouchPhase::Started, 0.))
+        .chain(std::iter::repeat_n((TouchPhase::Moved, 0.1), 10))
+        .chain([(TouchPhase::Ended, 0.)]);
+    for (phase, delta) in phases {
+        // As the page's native view hands it on, a test's window having none.
+        let pinch = PlatformInput::Pinch(PinchEvent {
+            position: at,
+            delta,
+            modifiers: Modifiers::default(),
+            phase,
+        });
+        view.update_in(cx, |view, window, cx| {
+            view.native_pointer(&pinch, window, cx);
+        });
+        pause(Duration::from_millis(16));
+    }
+    wait_for(cx, &view, "the page zoomed in", |view| {
+        view.page
+            .title
+            .strip_prefix("scale ")
+            .and_then(|scale| scale.parse::<f32>().ok())
+            .is_some_and(|scale| scale > 1.5)
     });
     finish(cx, scratch);
 }

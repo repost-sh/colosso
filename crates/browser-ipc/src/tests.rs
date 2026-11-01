@@ -24,6 +24,13 @@ fn frames_round_trip_and_a_clean_end_is_none() {
                 ..Modifiers::default()
             },
         },
+        AppRequest::Pinch {
+            pane: 7,
+            x: 120.,
+            y: 80.5,
+            delta: -0.25,
+            phase: PinchPhase::Moved,
+        },
         AppRequest::Shutdown,
     ];
     let mut buf = Vec::new();

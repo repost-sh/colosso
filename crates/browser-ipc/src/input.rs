@@ -87,6 +87,18 @@ pub enum MouseKind {
     Leave,
 }
 
+/// Where a pinch on the trackpad is in its course.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PinchPhase {
+    /// The fingers came down.
+    Started,
+    /// They spread or closed.
+    Moved,
+    /// They lifted.
+    Ended,
+}
+
 /// What a key event is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
