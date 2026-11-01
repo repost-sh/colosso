@@ -1,5 +1,5 @@
-//! Tabs dragged into a new order, along the strip or down the sidebar, moving as the Files
-//! panel's tabs do: the tab in hand follows the pointer, the others slide out of its way
+//! Tabs dragged into a new order, along the strip or down the sidebar: the tab in hand
+//! follows the pointer, the others slide out of its way
 //! into the slot it left once its middle has passed theirs, and let go it slides into the
 //! slot it's over. Held over the middle of another tab it joins that one instead, side by
 //! side, the half the pointer is over lit for the side it takes. Pulled off the list it
@@ -21,7 +21,7 @@ use hand::List;
 
 mod hand;
 
-/// How long a tab takes to slide into place, as in the Files panel.
+/// How long a tab takes to slide into place.
 const MOTION: Duration = Duration::from_millis(240);
 /// The corners of a tab, and of the light over one being joined.
 const RADIUS: f32 = 6.;

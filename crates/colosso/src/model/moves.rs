@@ -2,12 +2,24 @@
 //! a pane dragged out of its split goes to another pane or a tab of its own, a tab dropped
 //! on another joins it side by side, and tabs reorder in the strip.
 
-use super::{BranchUnit, Edge, Tab};
+use super::{BranchUnit, Edge, Pane, Tab};
 
 impl BranchUnit {
     /// The tab holding pane `id`.
     pub fn tab_with(&self, id: u64) -> Option<usize> {
         self.tabs.iter().position(|tab| tab.has_pane(id))
+    }
+
+    /// Pane `id`, in whichever tab holds it.
+    pub fn pane(&self, id: u64) -> Option<&Pane> {
+        let tab = &self.tabs[self.tab_with(id)?];
+        tab.panes().into_iter().find(|pane| pane.id == id)
+    }
+
+    /// Pane `id`, in whichever tab holds it, to change.
+    pub fn pane_mut(&mut self, id: u64) -> Option<&mut Pane> {
+        let at = self.tab_with(id)?;
+        self.tabs[at].panes_mut().into_iter().find(|pane| pane.id == id)
     }
 
     /// Puts the tab at `from` at `edge` of pane `target`, in whichever tab holds it, and

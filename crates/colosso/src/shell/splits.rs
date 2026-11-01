@@ -16,7 +16,7 @@ use gpui_kit::{
     relative,
 };
 
-use super::elements::{ellipsized, pane_close_button};
+use super::elements::pane_close_button;
 use super::reorder::TabHand;
 use super::tab_face::Face;
 use super::{Shell, icon};
@@ -280,7 +280,7 @@ impl Shell {
     /// The header over a pane of a split: dragged, it moves the pane.
     fn pane_header(&self, pane: &Pane, p: Palette, cx: &mut Context<Self>) -> impl IntoElement {
         let (id, face) = (pane.id, Face::of(pane, cx));
-        let icon_of_pane = face.icon(12.);
+        let (icon_of_pane, label, dirty) = (face.icon(12.), face.label(), face.dirty);
         let held = DraggedPane {
             what: Dragged::Pane(id),
             faces: vec![face],
@@ -310,7 +310,7 @@ impl Shell {
             })
             .child(icon(IconName::GripVertical, 12.))
             .child(icon_of_pane)
-            .child(ellipsized(pane.title.clone()).flex_1())
+            .child(label.flex_1())
             .child(
                 tab_button(("pane-own-tab", id), p)
                     .debug_selector(move || format!("pane-own-tab-{id}"))
@@ -324,7 +324,7 @@ impl Shell {
                         this.pane_to_own_tab(id, cx);
                     })),
             )
-            .child(pane_close_button("pane-close", id, p, cx))
+            .child(pane_close_button("pane-close", id, dirty, p, cx))
     }
 
     /// Takes pane `id` out of its split into a tab right after the one shown.

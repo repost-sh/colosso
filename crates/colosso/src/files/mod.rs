@@ -1,61 +1,54 @@
-//! The Files panel: the selected checkout's files as a tree, in the right panel in place of
-//! the changes, and beside the tree the file picked in it, in an editor; under the editor,
-//! when a symbol's references or definitions were asked for, the list of them.
+//! Files: the selected checkout's files as a tree, in the right panel in place of the
+//! changes; each file opened from it, or from elsewhere, in a workspace tab of its own, in
+//! an editor; and under the tabs, when a symbol's references or definitions were asked
+//! for, the list of them.
 
 mod breadcrumb;
 mod closing;
 mod editor;
+mod file_pane;
 mod icons;
 mod locations;
+mod open;
 mod panel;
 mod place;
 mod render;
 mod rename;
-mod switcher;
-mod tabs;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 #[cfg(feature = "visual-check")]
 pub mod visual;
 
+pub use closing::{Then, ask, ask_before_closing};
 pub use editor::{FileEditor, MOST_COLOURED};
+pub use file_pane::FilePane;
 pub use icons::file as file_icon;
+pub use locations::Locations;
 pub use panel::FilesPanel;
 pub use place::{At, Place, relative};
-pub use closing::ask_before_closing;
 pub use render::ROW;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::{
-    App, Context, Div, ElementId, Entity, FontWeight, InteractiveElement as _, IntoElement,
-    ModifiersChangedEvent, ParentElement as _, Stateful, Styled as _, TaskExt as _, Window, div, px,
+    App, Context, Div, ElementId, FontWeight, InteractiveElement as _, IntoElement,
+    ParentElement as _, Stateful, Styled as _, TaskExt as _, Window, div, px,
 };
 
 use crate::modal;
 use crate::navigation::Route;
-use crate::right_panel::View;
 use crate::settings::{self, SaveScope};
 use crate::shell::{self, Shell};
 use crate::theme::Palette;
 
-gpui_kit::actions!(files, [Save, CloseTab, SwitchTab, SwitchTabBack, CloseLocations]);
+gpui_kit::actions!(files, [Save, CloseLocations]);
 
-/// Binds the keys the file shown answers to, wherever the keyboard is (⌘S saves it, or every
-/// file as set; ⌘W closes its tab, or else what's looked at instead; ⌃⇥ switches to
-/// another); in the switcher, the keys that move its pick; and, while the list of places
-/// under the file has the keyboard, the keys that move along it, Enter to open the place
-/// picked and Escape to close it.
+/// Binds ⌘S, which saves the file shown, or every file as set, wherever the keyboard is;
+/// and, while the list of places under the tabs has the keyboard, the keys that move along
+/// it, Enter to open the place picked and Escape to close it.
 pub fn init(cx: &mut App) {
     use crate::list::{Activate, SelectFirst, SelectLast};
     use gpui_kit::KeyBinding;
-    cx.bind_keys([
-        KeyBinding::new("cmd-s", Save, None),
-        KeyBinding::new("cmd-w", CloseTab, None),
-        KeyBinding::new("ctrl-tab", SwitchTab, None),
-        KeyBinding::new("ctrl-shift-tab", SwitchTabBack, None),
-    ]);
-    crate::list::bind_keys("TabSwitcher", cx);
-    cx.bind_keys([KeyBinding::new("enter", Activate, Some("TabSwitcher"))]);
+    cx.bind_keys([KeyBinding::new("cmd-s", Save, None)]);
     crate::list::bind_keys("Locations", cx);
     let list = Some("Locations");
     cx.bind_keys([
@@ -72,67 +65,25 @@ pub fn asking(cx: &App) -> bool {
 }
 
 impl Shell {
-    /// What the window does with the files' actions, wherever the keyboard is; only ⌘W is
-    /// the Files panel's own while the keyboard is in it.
+    /// What the window does with the files' actions, wherever the keyboard is.
     pub fn handle_files(root: Div, cx: &mut Context<Self>) -> Div {
-        root.on_action(cx.listener(|this, _: &CloseTab, window, cx| this.close_tab(window, cx)))
-            .on_action(cx.listener(|this, _: &Save, _, cx| this.save(cx)))
-            .on_action(cx.listener(|this, _: &SwitchTab, window, cx| this.switch_tab(1, window, cx)))
-            .on_action(cx.listener(|this, _: &SwitchTabBack, window, cx| this.switch_tab(-1, window, cx)))
-            // ⌃ let go before the switcher's window has the keyboard is heard here.
-            .on_modifiers_changed(|event: &ModifiersChangedEvent, window, cx| {
-                if !event.modifiers.control {
-                    switcher::released(window, cx);
-                }
-            })
+        root.on_action(cx.listener(|this, _: &Save, window, cx| this.save(window, cx)))
     }
 
-    /// The Files panel, while it's shown with a file in it.
-    fn files_shown(&self, cx: &App) -> Option<Entity<FilesPanel>> {
-        (self.right_panel.files())
-            .filter(|files| self.right_panel.shows(View::Files) && files.read(cx).viewing().is_some())
-            .cloned()
-    }
-
-    /// ⌘S saves the file shown in the Files panel or, as set, every file with unsaved edits
-    /// in the window; on a settings page, with no file in sight, nothing.
-    fn save(&mut self, cx: &mut Context<Self>) {
+    /// ⌘S saves the file shown or, as set, every file with unsaved edits in the window; on
+    /// a settings page, with no file in sight, nothing.
+    fn save(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if matches!(self.route(cx), Route::Settings(_)) {
             return;
         }
-        match settings::get(cx).save_scope {
-            SaveScope::Shown => {
-                if let Some(files) = self.files_shown(cx) {
-                    files.update(cx, |files, cx| files.save_shown(cx));
-                }
-            }
-            SaveScope::All => {
-                for editor in self.right_panel.unsaved(cx) {
-                    (editor.update(cx, FileEditor::save)).detach_and_log_err(cx);
-                }
-            }
-        }
-    }
-
-    /// ⌘W closes what's looked at: the settings, or the file shown in the Files panel,
-    /// asking about unsaved edits first; with neither, it's left to the shell, which closes
-    /// the tab in the middle. Never the window.
-    fn close_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if matches!(self.route(cx), Route::Settings(_)) {
-            self.navigate(Route::Workspace, cx);
-        } else if let Some(files) = self.files_shown(cx) {
-            files.update(cx, |files, cx| files.close_shown(window, cx));
-        } else {
-            cx.propagate();
-        }
-    }
-
-    /// ⌃⇥: lists the Files panel's tabs to switch between, or moves the list's pick `by`
-    /// rows. With no file shown, the key is left to whatever else listens for it.
-    fn switch_tab(&mut self, by: isize, window: &mut Window, cx: &mut Context<Self>) {
-        match self.files_shown(cx) {
-            Some(files) => switcher::switch(files, by, window, cx),
-            None => cx.propagate(),
+        let editors = match settings::get(cx).save_scope {
+            SaveScope::Shown => (self.shown_file(window, cx).into_iter())
+                .map(|file| file.read(cx).editor.clone())
+                .collect(),
+            SaveScope::All => self.unsaved(cx),
+        };
+        for editor in editors {
+            (editor.update(cx, FileEditor::save)).detach_and_log_err(cx);
         }
     }
 }

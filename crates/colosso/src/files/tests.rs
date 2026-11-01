@@ -1,22 +1,17 @@
 use std::path::Path;
-use std::time::{Duration, Instant};
 
-use colosso_project::Feed;
-use gpui_kit::component::input::EditorState;
-use gpui_kit::{
-    AnyWindowHandle, AppContext as _, Context, Entity, TestAppContext, Window, px, size,
-};
+use gpui_kit::{AppContext as _, TestAppContext};
 
-use super::closing::SaveDialog;
 use super::editor::language;
+use super::panel::FilesEvent;
 use super::*;
 use crate::changes::{Mark, Touched};
-use crate::modal;
-use crate::checkout::{Checkout, Content, Document, read_at_most};
-use crate::shell::Shell;
-use crate::test_support::{git, in_window, scratch, select, shell_with, write};
-use crate::right_panel;
+use crate::checkout::{Content, read_at_most};
 use crate::settings::{self, SaveScope};
+use crate::test_support::{scratch, write};
+
+mod support;
+pub(crate) use support::*;
 
 #[test]
 fn files_are_read_as_text_unless_binary_or_too_large() {
@@ -68,17 +63,17 @@ fn a_file_is_read_once_however_many_views_show_it(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn a_file_viewed_again_is_shown_in_the_editor_it_had(cx: &mut TestAppContext) {
     let root = checkout("files-viewed");
-    let (window, panel) = open(&root, cx);
+    let (window, shell, files) = shell_showing(&root, cx);
     let view = |path: &str, cx: &mut TestAppContext| {
         (cx.update_window(window, |_, window, cx| {
-            panel.update(cx, |panel, cx| {
-                panel.view(Place::file(path), window, cx);
-            });
+            shell.update(cx, |shell, cx| shell.view_file(Place::file(path), window, cx));
         }))
         .unwrap();
+        cx.run_until_parked();
         cx.read(|cx| {
-            let viewed = panel.read(cx).viewing().unwrap();
-            (viewed.path.clone(), viewed.editor.clone())
+            let file = shell.read(cx).viewing().unwrap();
+            let file = file.read(cx);
+            (file.path.clone(), file.editor.clone())
         })
     };
     let (lib, lib_editor) = view("src/lib.rs", cx);
@@ -89,16 +84,16 @@ fn a_file_viewed_again_is_shown_in_the_editor_it_had(cx: &mut TestAppContext) {
     // Back to the first, by its full path: the same editor, and it's picked in the tree.
     let (again, again_editor) = view(root.join("src/lib.rs").to_str().unwrap(), cx);
     assert_eq!((again, again_editor), (lib, lib_editor));
-    assert_eq!(selected(&panel, cx).as_deref(), Some("src/lib.rs"));
+    assert_eq!(selected(&files, cx).as_deref(), Some("src/lib.rs"));
     let _ = std::fs::remove_dir_all(&root);
 }
 
 #[gpui_kit::test]
 fn a_place_puts_the_cursor_on_its_line_or_its_bytes(cx: &mut TestAppContext) {
     let root = checkout("files-place");
-    let (window, panel) = open(&root, cx);
+    let (window, shell, _) = shell_showing(&root, cx);
     let go = |at: At, cx: &mut TestAppContext| {
-        let (_, editor, _) = editing(window, &panel, "src/lib.rs", at, cx);
+        let (_, editor, _) = editing(window, &shell, "src/lib.rs", at, cx);
         cx.read(|cx| editor.read(cx).selected_range())
     };
     // "pub fn a() {}\npub fn b() {}\n": the second line starts at 14, its `b` is at 21.
@@ -112,9 +107,9 @@ fn a_place_puts_the_cursor_on_its_line_or_its_bytes(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn cmd_s_saves_the_file_shown_or_every_unsaved_one_as_set(cx: &mut TestAppContext) {
     let root = checkout("files-save-scope");
-    let (window, shell, files) = shell_showing(&root, cx);
+    let (window, shell, _) = shell_showing(&root, cx);
     let edit = |path: &str, text: &str, cx: &mut TestAppContext| {
-        let (_, editor, _) = editing(window, &files, path, At::Bytes(0..0), cx);
+        let (_, editor, _) = editing(window, &shell, path, At::Bytes(0..0), cx);
         typed(window, &editor, text, cx);
     };
     let save = |cx: &mut TestAppContext| {
@@ -143,8 +138,8 @@ fn cmd_s_saves_the_file_shown_or_every_unsaved_one_as_set(cx: &mut TestAppContex
 #[gpui_kit::test]
 fn typing_marks_the_file_unsaved_until_cmd_s_writes_it(cx: &mut TestAppContext) {
     let root = checkout("files-save");
-    let (window, _, panel) = shell_showing(&root, cx);
-    let (_, editor, document) = editing(window, &panel, "src/lib.rs", At::Bytes(14..14), cx);
+    let (window, shell, _) = shell_showing(&root, cx);
+    let (_, editor, document) = editing(window, &shell, "src/lib.rs", At::Bytes(14..14), cx);
     let lib = root.join("src/lib.rs");
     typed(window, &editor, "// typed\n", cx);
     let dirty = |cx: &TestAppContext| cx.read(|cx| document.read(cx).is_dirty());
@@ -175,9 +170,9 @@ fn typing_marks_the_file_unsaved_until_cmd_s_writes_it(cx: &mut TestAppContext) 
 #[gpui_kit::test]
 fn a_file_read_again_goes_into_its_editor_as_edits(cx: &mut TestAppContext) {
     let root = checkout("files-reread");
-    let (window, panel) = open(&root, cx);
+    let (window, shell, panel) = shell_showing(&root, cx);
     // The cursor on `b`, 21 bytes in.
-    let (view, editor, document) = editing(window, &panel, "src/lib.rs", At::Bytes(21..21), cx);
+    let (view, editor, document) = editing(window, &shell, "src/lib.rs", At::Bytes(21..21), cx);
     let touch = |cx: &mut TestAppContext| {
         let checkout = cx.read(|cx| panel.read(cx).checkout.clone());
         checkout.update(cx, |checkout, cx| {
@@ -217,176 +212,6 @@ fn a_file_is_coloured_by_its_name_its_extension_or_its_first_line() {
     assert_eq!(of("data.unknown", ""), "text");
 }
 
-/// A checkout with a change and a file git doesn't know, and an ignored build folder.
-pub(super) fn checkout(name: &str) -> std::path::PathBuf {
-    let root = scratch(name);
-    git(&root, &["init", "-q", "-b", "main"]);
-    write(&root, ".gitignore", b"target/\n");
-    write(&root, "README.md", b"# Test\n");
-    write(&root, "src/lib.rs", b"pub fn a() {}\n");
-    write(&root, "src/main.rs", b"fn main() {}\n");
-    write(&root, "src/nested/deep.rs", b"// deep\n");
-    git(&root, &["add", "-A"]);
-    git(&root, &["commit", "-q", "-m", "first"]);
-    write(&root, "src/lib.rs", b"pub fn a() {}\npub fn b() {}\n");
-    write(&root, "new.txt", b"new\n");
-    write(&root, "target/debug/app", b"\0binary");
-    root
-}
-
-/// The panel for the checkout at `root`, in a window of its own.
-pub(super) fn open(root: &Path, cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<FilesPanel>) {
-    // The project lists and watches the checkout on a thread of its own, which wakes the
-    // panel's task from outside the test's scheduler.
-    cx.executor().allow_parking();
-    let root = root.to_owned();
-    cx.update(gpui_kit::init);
-    cx.update(settings::init);
-    cx.update(right_panel::init);
-    let (window, panel) = in_window(size(px(320.), px(600.)), cx, |window, cx| {
-        let checkout = cx.new(|cx| Checkout::new(root, window, cx));
-        cx.new(|cx| FilesPanel::new(checkout, cx))
-    });
-    settle(&panel, cx, |panel| panel.scanned);
-    (window, panel)
-}
-
-/// Lets the panel take what the checkout's project publishes until it's `done`, waiting
-/// for the project between looks.
-fn settle(panel: &Entity<FilesPanel>, cx: &mut TestAppContext, done: impl Fn(&FilesPanel) -> bool) {
-    // The checkout opens git, and with it the project the panel lists.
-    cx.run_until_parked();
-    let project = cx.read(|cx| panel.read(cx).checkout.read(cx).project().cloned());
-    // Subscribed before looking, so whatever's published after the look wakes the wait.
-    let updates = project
-        .expect("the checkout opened")
-        .subscribe(Feed::Everything);
-    // The checkouts of the tests running at once each restart the process's one file
-    // watcher, which takes the platform a while each time.
-    let deadline = Instant::now() + Duration::from_secs(30);
-    loop {
-        cx.run_until_parked();
-        if cx.read(|cx| done(panel.read(cx))) {
-            return;
-        }
-        let left = deadline.checked_duration_since(Instant::now());
-        updates.next_within(left.expect("the panel never got there"));
-    }
-}
-
-/// The rows shown, indented by depth, a folder's name ending in `/`.
-fn shown(panel: &Entity<FilesPanel>, cx: &TestAppContext) -> Vec<String> {
-    cx.read(|cx| {
-        (panel.read(cx).rows.rows().iter())
-            .map(|row| {
-                let slash = if row.entry.is_folder() { "/" } else { "" };
-                format!(
-                    "{}{}{slash}",
-                    "  ".repeat(row.depth as usize),
-                    row.entry.name
-                )
-            })
-            .collect()
-    })
-}
-
-pub(super) fn selected(panel: &Entity<FilesPanel>, cx: &TestAppContext) -> Option<String> {
-    cx.read(|cx| panel.read(cx).selected.as_ref().map(ToString::to_string))
-}
-
-/// Changes `panel` in its `window`.
-pub(super) fn with(
-    window: AnyWindowHandle,
-    panel: &Entity<FilesPanel>,
-    cx: &mut TestAppContext,
-    change: impl FnOnce(&mut FilesPanel, &mut Window, &mut Context<FilesPanel>),
-) {
-    (cx.update_window(window, |_, window, cx| {
-        panel.update(cx, |panel, cx| change(panel, window, cx));
-    }))
-    .unwrap();
-}
-
-/// Shows the file at `path` with the cursor `at` a place, and what's behind the tab: its
-/// view, the editor in it, and its document.
-pub(super) fn editing(
-    window: AnyWindowHandle,
-    panel: &Entity<FilesPanel>,
-    path: &str,
-    at: At,
-    cx: &mut TestAppContext,
-) -> (Entity<FileEditor>, Entity<EditorState>, Entity<Document>) {
-    with(window, panel, cx, |panel, window, cx| {
-        let place = Place {
-            path: path.into(),
-            at: Some(at),
-        };
-        panel.view(place, window, cx);
-    });
-    cx.run_until_parked();
-    cx.read(|cx| {
-        let viewed = panel.read(cx).viewing().unwrap();
-        let editor = viewed.editor.read(cx).editor().unwrap().clone();
-        (viewed.editor.clone(), editor, viewed.document.clone())
-    })
-}
-
-/// Types `text` into `editor` at its cursor, and lets the typing be heard.
-pub(super) fn typed(
-    window: AnyWindowHandle,
-    editor: &Entity<EditorState>,
-    text: &str,
-    cx: &mut TestAppContext,
-) {
-    (cx.update_window(window, |_, window, cx| {
-        editor.update(cx, |editor, cx| editor.insert(text.to_owned(), window, cx));
-    }))
-    .unwrap();
-    cx.run_until_parked();
-}
-
-/// A shell over the checkout at `root`, README.md shown in its Files panel, which that makes:
-/// the window, the shell and the panel.
-pub(super) fn shell_showing(
-    root: &Path,
-    cx: &mut TestAppContext,
-) -> (AnyWindowHandle, Entity<Shell>, Entity<FilesPanel>) {
-    let (window, shell) = shell_with(&[root], cx);
-    select(&shell, root, cx);
-    (cx.update_window(window, |_, window, cx| {
-        shell.update(cx, |shell, cx| shell.view_file(Place::file("README.md"), window, cx));
-    }))
-    .unwrap();
-    cx.run_until_parked();
-    let files = cx.read(|cx| shell.read(cx).right_panel.files().cloned()).expect("the Files panel");
-    (window, shell, files)
-}
-
-/// Presses `keys` in `window`, drawn first so the keyboard is where the last change left it.
-pub(super) fn press(window: AnyWindowHandle, keys: &str, cx: &mut TestAppContext) {
-    (cx.update_window(window, |_, window, cx| window.draw(cx).clear(cx))).unwrap();
-    cx.simulate_keystrokes(window, keys);
-}
-
-/// The dialog on screen, if one is and it shows a `T`: its window and the `T`.
-pub(super) fn dialog<T: 'static>(cx: &mut TestAppContext) -> Option<(AnyWindowHandle, Entity<T>)> {
-    cx.read(|cx| Some((modal::window(cx)?, modal::current::<T>(cx)?)))
-}
-
-/// Answers the question asked with `act`, keeping no hold on the dialog, which goes with its
-/// window.
-pub(super) fn answer(
-    cx: &mut TestAppContext,
-    act: fn(&mut SaveDialog, &mut Window, &mut Context<SaveDialog>),
-) {
-    let (dialog_window, dialog) = dialog::<SaveDialog>(cx).expect("asked");
-    (cx.update_window(dialog_window, |_, window, cx| {
-        dialog.update(cx, |dialog, cx| act(dialog, window, cx));
-    }))
-    .unwrap();
-    cx.run_until_parked();
-}
-
 #[gpui_kit::test]
 fn the_tree_lists_the_checkout_and_marks_what_changed(cx: &mut TestAppContext) {
     let root = checkout("files-marks");
@@ -423,6 +248,15 @@ fn the_keyboard_walks_the_tree_and_shows_files(cx: &mut TestAppContext) {
         window.draw(cx).clear(cx);
     })
     .unwrap();
+    // What the tree asks the shell to open, as each file's path and whether it's kept.
+    let asked = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let heard = asked.clone();
+    let _asking = cx.update(|cx| {
+        cx.subscribe(&panel, move |_, event: &FilesEvent, _| {
+            let FilesEvent::Open { place, kept } = event;
+            heard.borrow_mut().push((place.path.display().to_string(), *kept));
+        })
+    });
     let press = |keys: &str, cx: &mut TestAppContext| {
         cx.simulate_keystrokes(window, keys);
         cx.run_until_parked();
@@ -431,10 +265,17 @@ fn the_keyboard_walks_the_tree_and_shows_files(cx: &mut TestAppContext) {
     assert_eq!(press("down", cx).as_deref(), Some("src"));
     assert_eq!(press("right", cx).as_deref(), Some("src"));
     assert_eq!(press("right", cx).as_deref(), Some("src/nested"));
+    // Each file moved over is previewed; Enter keeps the one picked.
     assert_eq!(press("down down", cx).as_deref(), Some("src/main.rs"));
     press("enter", cx);
-    let viewed = cx.read(|cx| panel.read(cx).viewing().map(|viewed| viewed.path.clone()));
-    assert_eq!(viewed, Some(root.join("src/main.rs")));
+    assert_eq!(
+        asked.borrow()[..],
+        [
+            ("src/lib.rs".to_owned(), false),
+            ("src/main.rs".to_owned(), false),
+            ("src/main.rs".to_owned(), true),
+        ]
+    );
     assert_eq!(press("left", cx).as_deref(), Some("src"));
     assert_eq!(press("left", cx).as_deref(), Some("src"));
     assert_eq!(shown(&panel, cx).len(), 5, "src closed again");
@@ -458,12 +299,11 @@ fn the_keyboard_walks_the_tree_and_shows_files(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn the_file_shown_is_revealed_and_picked(cx: &mut TestAppContext) {
     let root = checkout("files-reveal");
-    let (window, panel) = open(&root, cx);
-    (cx.update_window(window, |_, window, cx| {
-        let path = Path::new("src/nested/deep.rs");
-        panel.update(cx, |panel, cx| panel.view(Place::file(path), window, cx));
-    }))
-    .unwrap();
+    let (window, shell, panel) = shell_showing(&root, cx);
+    with_shell(window, &shell, cx, |shell, window, cx| {
+        shell.view_file(Place::file(Path::new("src/nested/deep.rs")), window, cx);
+    });
+    cx.run_until_parked();
     assert_eq!(selected(&panel, cx).as_deref(), Some("src/nested/deep.rs"));
     assert_eq!(
         shown(&panel, cx)[..4],

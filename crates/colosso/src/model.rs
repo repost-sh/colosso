@@ -1,5 +1,6 @@
 //! What the shell shows: the projects the user added, the checkouts git reports for each,
-//! and the tabs open on each checkout. Tab contents are placeholders until agents exist.
+//! and the tabs open on each checkout: pages, files, and placeholders for the kinds still
+//! to come.
 
 use std::path::{Path, PathBuf};
 
@@ -173,6 +174,9 @@ pub struct Workspace {
     pub active_project: usize,
     /// Tabs closed lately, the newest last.
     closed: Vec<ClosedTab>,
+    /// The turn the tab shown last was stamped with: each tab shown after another takes the
+    /// next.
+    turn: u64,
 }
 
 impl Workspace {
@@ -182,6 +186,7 @@ impl Workspace {
             projects: paths.iter().cloned().map(Project::new).collect(),
             active_project: 0,
             closed: Vec::new(),
+            turn: 0,
         }
     }
 
@@ -334,6 +339,34 @@ impl Workspace {
         unit.active_tab = unit.tabs.len() - 1;
     }
 
+    /// Opens `tab` right after the tab shown on the selected checkout, or first when it has
+    /// none, and shows it.
+    pub fn open_beside_shown(&mut self, tab: Tab) {
+        let Some(unit) = self.branch_mut() else {
+            return;
+        };
+        // With no tabs, that's first.
+        let at = (unit.active_tab + 1).min(unit.tabs.len());
+        unit.tabs.insert(at, tab);
+        unit.active_tab = at;
+    }
+
+    /// Stamps the tab shown with the next turn, unless it was the last one shown: so the
+    /// tabs order by when they were last looked at.
+    pub fn stamp_shown(&mut self) {
+        let turn = self.turn;
+        let Some(tab) = self.shown_tab().and_then(|at| self.tab_mut(at)) else {
+            return;
+        };
+        if turn > 0 && tab.shown_at() == turn {
+            return;
+        }
+        for pane in tab.panes_mut() {
+            pane.shown_at = turn + 1;
+        }
+        self.turn = turn + 1;
+    }
+
     /// Opens `tab` right after the tab at `(project, branch, at)`, without showing it.
     pub fn insert_tab_after(&mut self, (project, branch, at): (usize, usize, usize), tab: Tab) {
         let Some(unit) = self.unit_mut(project, branch) else {
@@ -368,6 +401,10 @@ impl Workspace {
 
     pub fn unit_mut(&mut self, project: usize, branch: usize) -> Option<&mut BranchUnit> {
         self.projects.get_mut(project)?.branches.get_mut(branch)
+    }
+
+    pub fn tab(&self, (project, branch, tab): (usize, usize, usize)) -> Option<&Tab> {
+        self.projects.get(project)?.branches.get(branch)?.tabs.get(tab)
     }
 
     pub fn tab_mut(&mut self, (project, branch, tab): (usize, usize, usize)) -> Option<&mut Tab> {

@@ -1,6 +1,7 @@
-//! ⌃⇥ lists the files open in the Files panel, the latest shown first, in a palette where
-//! ⌘P's opens; each ⌃⇥ moves the pick on and ⌃⇧⇥ back, round the ends, as the arrows do,
-//! and letting go of ⌃ shows the file picked, as Enter or a click does.
+//! ⌃⇥ lists the selected checkout's tabs, the latest shown first, in a palette where ⌘P's
+//! opens: chats, terminals, pages and files alike, a split as one row naming its panes.
+//! Each ⌃⇥ moves the pick on and ⌃⇧⇥ back, round the ends, as the arrows do, and letting
+//! go of ⌃ shows the tab picked, as Enter or a click does.
 
 use std::ops::Range;
 use std::path::Path;
@@ -8,28 +9,41 @@ use std::path::Path;
 use gpui_kit::assets::IconName;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, AnyWindowHandle, App, Context, Entity, EntityId, FocusHandle,
-    InteractiveElement as _, IntoElement, ModifiersChangedEvent, ParentElement as _, Render,
-    ScrollStrategy, SharedString, StatefulInteractiveElement as _, Styled, UniformListScrollHandle,
-    Window, div,
+    AnyElement, AnyWindowHandle, App, Context, Entity, FocusHandle, InteractiveElement as _,
+    IntoElement, KeyBinding, ModifiersChangedEvent, ParentElement as _, Render, ScrollStrategy,
+    SharedString, StatefulInteractiveElement as _, Styled, UniformListScrollHandle, Window, div,
 };
 
-use super::panel::FilesPanel;
-use super::tabs::{name, unsaved_dot};
-use super::{ROW, SwitchTab, SwitchTabBack, file_icon, file_row};
+use super::tab_face::Face;
+use super::{Shell, SwitchTab, SwitchTabBack};
+use crate::files::{ROW, file_row};
 use crate::list::{self, Activate, PageDown, PageUp, SelectNext, SelectPrevious};
+use crate::model::Tab;
 use crate::modal;
+use crate::pane::unsaved_dot;
 use crate::theme::{self, Palette};
 
-/// Opens the switcher over `files`\' tabs with the pick moved `by` rows from the file shown,
-/// or moves the open switcher's pick `by` rows. With one file open there's nothing to switch
-/// to.
-pub(super) fn switch(files: Entity<FilesPanel>, by: isize, window: &mut Window, cx: &mut App) {
+/// The keys that move the switcher's pick, and Enter to show the tab picked.
+pub(super) fn init(cx: &mut App) {
+    list::bind_keys("TabSwitcher", cx);
+    cx.bind_keys([KeyBinding::new("enter", Activate, Some("TabSwitcher"))]);
+}
+
+/// Opens the switcher over the selected checkout's tabs with the pick moved `by` rows from
+/// the tab shown, or moves the open switcher's pick `by` rows. With one tab open there's
+/// nothing to switch to.
+pub(super) fn switch(
+    shell: &Shell,
+    entity: Entity<Shell>,
+    by: isize,
+    window: &mut Window,
+    cx: &mut App,
+) {
     if let Some(open) = modal::current::<Switcher>(cx) {
         open.update(cx, |switcher, cx| switcher.step(by, cx));
         return;
     }
-    let rows = rows(files.read(cx), cx);
+    let rows = rows(shell, cx);
     if rows.len() < 2 {
         return;
     }
@@ -38,7 +52,7 @@ pub(super) fn switch(files: Entity<FilesPanel>, by: isize, window: &mut Window, 
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
         let mut switcher = Switcher {
-            files,
+            shell: entity,
             rows,
             selected: 0,
             behind,
@@ -51,59 +65,93 @@ pub(super) fn switch(files: Entity<FilesPanel>, by: isize, window: &mut Window, 
 }
 
 /// ⌃ let go in `window`, the one behind the switcher, before the switcher's own window had
-/// the keyboard: shows the file picked and closes the switcher. It's done from here because
+/// the keyboard: shows the tab picked and closes the switcher. It's done from here because
 /// a window handling an event can't be reached from another.
 pub(super) fn released(window: &mut Window, cx: &mut App) {
     let Some(switcher) = modal::current::<Switcher>(cx) else {
         return;
     };
-    let (files, picked) = {
+    let (shell, picked) = {
         let switcher = switcher.read(cx);
-        (switcher.files.clone(), switcher.picked())
+        (switcher.shell.clone(), switcher.picked())
     };
     modal::close(cx);
     if let Some(key) = picked {
-        files.update(cx, |files, cx| files.switch_to(key, window, cx));
+        shell.update(cx, |shell, cx| shell.switch_to(key, window, cx));
     }
 }
 
 /// A tab as its row shows it.
 struct Row {
-    key: EntityId,
+    /// Its first pane's id, which finds it wherever it's moved.
+    key: u64,
     icon: IconName,
     name: SharedString,
+    /// For a file alone in its tab, the folder it's in.
     folder: SharedString,
-    pinned: bool,
+    preview: bool,
     dirty: bool,
 }
 
-/// `files`\' tabs as rows, the latest shown first.
-fn rows(files: &FilesPanel, cx: &App) -> Vec<Row> {
-    let mut tabs: Vec<_> = files.tabs.iter().collect();
-    tabs.sort_by_key(|tab| std::cmp::Reverse(tab.shown_at));
+/// The selected checkout's tabs as rows, the latest shown first.
+fn rows(shell: &Shell, cx: &App) -> Vec<Row> {
+    let Some(unit) = shell.workspace.branch() else {
+        return Vec::new();
+    };
+    let mut tabs: Vec<&Tab> = unit.tabs.iter().collect();
+    tabs.sort_by_key(|tab| std::cmp::Reverse(tab.shown_at()));
     (tabs.into_iter())
         .map(|tab| {
-            let name = name(&tab.path);
-            // The path as the tree names it, or whole outside the checkout: its folder.
-            let shown = tab.relative.as_deref().map_or(tab.path.as_path(), Path::new);
-            let folder = (shown.parent()).map_or(String::new(), |folder| folder.display().to_string());
+            let faces = Face::all(tab, cx);
+            let titles: Vec<&str> = faces.iter().map(|face| face.title.as_ref()).collect();
+            let folder = match (tab, tab.files().as_slice()) {
+                (Tab::Single(_), [file]) => {
+                    let file = file.read(cx);
+                    // The path as the tree names it, or whole outside the checkout: its folder.
+                    let shown = file.relative.as_deref().map_or(file.path.as_path(), Path::new);
+                    (shown.parent()).map_or(String::new(), |folder| folder.display().to_string())
+                }
+                _ => String::new(),
+            };
             Row {
-                key: tab.key,
-                icon: file_icon(&name),
-                name: name.into(),
+                key: tab.first().id,
+                icon: faces.first().map_or(IconName::File, |face| face.icon),
+                name: titles.join("  ·  ").into(),
                 folder: folder.into(),
-                pinned: tab.pinned,
-                dirty: tab.document.read(cx).is_dirty(),
+                preview: faces.len() == 1 && faces.iter().all(|face| face.preview),
+                dirty: faces.iter().any(|face| face.dirty),
             }
         })
         .collect()
 }
 
+impl Shell {
+    /// Shows the tab holding pane `key` on the selected checkout, if it's still open, and
+    /// gives the keyboard to its file, or else to the window.
+    fn switch_to(&mut self, key: u64, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(unit) = self.workspace.branch_mut() else {
+            return;
+        };
+        let Some(at) = unit.tab_with(key) else {
+            return;
+        };
+        unit.active_tab = at;
+        match unit.tabs[at].files().first() {
+            Some(file) => {
+                let editor = file.read(cx).editor.clone();
+                editor.update(cx, |editor, cx| editor.focus_editor(window, cx));
+            }
+            None => window.focus(&self.focus, cx),
+        }
+        cx.notify();
+    }
+}
+
 pub(super) struct Switcher {
-    files: Entity<FilesPanel>,
+    shell: Entity<Shell>,
     rows: Vec<Row>,
     selected: usize,
-    /// The window the switcher sits over, where the file picked is shown.
+    /// The window the switcher sits over, where the tab picked is shown.
     behind: AnyWindowHandle,
     focus: FocusHandle,
     scroll: UniformListScrollHandle,
@@ -111,7 +159,7 @@ pub(super) struct Switcher {
 
 impl Switcher {
     /// The key of the tab picked.
-    fn picked(&self) -> Option<EntityId> {
+    fn picked(&self) -> Option<u64> {
         self.rows.get(self.selected).map(|row| row.key)
     }
 
@@ -135,12 +183,12 @@ impl Switcher {
         cx.notify();
     }
 
-    /// Shows the file picked in the window behind, with the keyboard, and closes the switcher.
+    /// Shows the tab picked in the window behind, and closes the switcher.
     fn pick(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(key) = self.picked() {
-            let files = &self.files;
+            let shell = &self.shell;
             (self.behind.update(cx, |_, window, cx| {
-                files.update(cx, |files, cx| files.switch_to(key, window, cx));
+                shell.update(cx, |shell, cx| shell.switch_to(key, window, cx));
             }))
             .ok();
         }
@@ -151,8 +199,9 @@ impl Switcher {
         let Some(row) = self.rows.get(index) else {
             return div().into_any_element();
         };
-        let name = div().when(!row.pinned, Styled::italic).child(row.name.clone());
-        file_row(("tab-switcher-row", index), index == self.selected, row.icon, name, row.folder.clone(), p)
+        let name = div().when(row.preview, Styled::italic).child(row.name.clone());
+        let selected = index == self.selected;
+        file_row(("tab-switcher-row", index), selected, row.icon, name, row.folder.clone(), p)
             .on_click(cx.listener(move |this, _, window, cx| {
                 this.selected = index;
                 this.pick(window, cx);
@@ -179,7 +228,7 @@ impl Render for Switcher {
             .on_action(cx.listener(|this, _: &SwitchTab, _, cx| this.step(1, cx)))
             .on_action(cx.listener(|this, _: &SwitchTabBack, _, cx| this.step(-1, cx)))
             .on_action(cx.listener(|this, _: &Activate, window, cx| this.pick(window, cx)))
-            // Letting go of ⌃ shows the file picked.
+            // Letting go of ⌃ shows the tab picked.
             .on_modifiers_changed(cx.listener(|this, event: &ModifiersChangedEvent, window, cx| {
                 if !event.modifiers.control {
                     this.pick(window, cx);

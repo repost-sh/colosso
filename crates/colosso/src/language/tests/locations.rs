@@ -31,13 +31,13 @@ async fn several_definitions_are_listed_and_the_one_picked_opens_its_file(cx: &m
         Value::Array(script)
     });
     let (shell, _, server, lib_editor) = ready(&root, "src/lib.rs", launcher, cx).await;
-    let files = cx.read(|cx| shell.1.read(cx).right_panel.files().cloned()).unwrap();
+    let files = shell.1.clone();
     let listed = |cx: &App| {
-        let list = files.read(cx).locations()?.read(cx);
+        let list = files.read(cx).locations.as_ref()?.read(cx);
         Some((list.found().clone(), list.selected()))
     };
 
-    // F12 on the call, with two definitions: they're listed under the file, this file's
+    // F12 on the call, with two definitions: they're listed under the tabs, this file's
     // line from the editor's text and the other's from the disk, the first picked.
     place_caret(shell.0, &lib_editor, call, cx);
     cx.simulate_keystrokes(shell.0, "f12");
@@ -63,13 +63,14 @@ async fn several_definitions_are_listed_and_the_one_picked_opens_its_file(cx: &m
     let other = root.join("src/other.rs");
     let selected = |cx: &App| {
         let viewed = files.read(cx).viewing()?;
+        let viewed = viewed.read(cx);
         let editor = editor(&viewed.editor, cx)?;
         (viewed.path == other).then(|| editor.read(cx).selected_range())
     };
     let watched = vec![changes(&server, cx), changes(&files, cx)];
     until(cx, watched, |cx| selected(cx).is_some()).await;
     assert_eq!(cx.read(selected), Some(target));
-    let shown = cx.read(|cx| editor(&files.read(cx).viewing()?.editor, cx)).unwrap();
+    let shown = cx.read(|cx| editor(&files.read(cx).viewing()?.read(cx).editor, cx)).unwrap();
     assert!(editor_focused(shell.0, &shown, cx));
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -97,8 +98,8 @@ async fn references_are_listed_by_file_and_escape_closes_the_list(cx: &mut TestA
         Value::Array(script)
     });
     let (shell, _, server, lib_editor) = ready(&root, "src/lib.rs", launcher, cx).await;
-    let files = cx.read(|cx| shell.1.read(cx).right_panel.files().cloned()).unwrap();
-    let listed = |cx: &App| Some(files.read(cx).locations()?.read(cx).found().clone());
+    let files = shell.1.clone();
+    let listed = |cx: &App| Some(files.read(cx).locations.as_ref()?.read(cx).found().clone());
 
     place_caret(shell.0, &lib_editor, call.start, cx);
     cx.simulate_keystrokes(shell.0, "shift-f12");
@@ -124,7 +125,7 @@ async fn references_are_listed_by_file_and_escape_closes_the_list(cx: &mut TestA
     let list_focused = |cx: &mut TestAppContext| {
         cx.update_window(shell.0, |_, window, cx| {
             window.draw(cx).clear(cx);
-            let list = files.read(cx).locations()?;
+            let list = files.read(cx).locations.as_ref()?;
             Some(list.read(cx).has_focus(window))
         })
         .unwrap()

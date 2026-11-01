@@ -1,6 +1,6 @@
 //! Go to Symbol: ⌘⇧O opens a palette over the window that lists the symbols of the file
 //! shown, narrowed as a name's typed; ⌘⌥O one that finds a symbol of the selected checkout
-//! by name, as its servers know them. The one picked is shown in the Files panel, its name
+//! by name, as its servers know them. The one picked opens in a tab, its name
 //! selected, as Go to File shows a file.
 
 mod render;
@@ -36,8 +36,8 @@ impl Shell {
     /// Opens the palette on the symbols of the file shown, while one is and a server
     /// knows it.
     fn document_symbols(&mut self, _: &DocumentSymbols, window: &mut Window, cx: &mut Context<Self>) {
-        let symbols = (self.right_panel.files())
-            .and_then(|files| files.read(cx).viewing()?.editor.read(cx).document_symbols(cx));
+        let symbols = (self.shown_file(window, cx))
+            .and_then(|file| file.read(cx).editor.read(cx).document_symbols(cx));
         let Some(symbols) = symbols else {
             return;
         };

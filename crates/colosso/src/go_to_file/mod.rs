@@ -1,5 +1,5 @@
 //! Go to File: ⌘P opens a palette over the window that finds any file of the selected
-//! checkout by fuzzy path, and shows the one picked in the Files panel, as clicking it there does.
+//! checkout by fuzzy path, and opens the one picked in a tab, as double-clicking it in the tree does.
 //! The search runs off the main thread (`colosso_project::Finder`); each checkout keeps its
 //! finder and the files opened from it lately while the app runs, so the palette opens on
 //! what it found the last time, with the latest files first.

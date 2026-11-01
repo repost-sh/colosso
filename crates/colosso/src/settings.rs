@@ -82,7 +82,7 @@ pub enum BranchPrefix {
     None,
 }
 
-/// Turns the Files panel's preview tab on or off, from its menu.
+/// Turns the preview tab of files picked in the tree on or off, from the tree's menu.
 #[derive(Clone, Debug, PartialEq, Action)]
 #[action(namespace = settings, no_json)]
 pub struct SetPreviewFiles(pub bool);
@@ -137,11 +137,10 @@ pub struct Settings {
     pub sidebar_width: f32,
     pub changes_width: f32,
     pub changes_files_width: f32,
-    /// The Files panel's width, its tree and the file shown beside it.
-    pub files_panel_width: f32,
+    /// The Files panel's width, its tree's.
     pub files_tree_width: f32,
-    /// Whether a file picked in the Files panel's tree, by a click or the arrow keys, opens in
-    /// a preview tab the next one picked takes over, rather than in a tab of its own.
+    /// Whether a file picked in the tree, by a click or the arrow keys, opens in a preview
+    /// tab the next one picked takes over, rather than in a tab of its own.
     pub preview_files: bool,
     /// What ⌘S saves: the file shown, or every file with unsaved edits in the window.
     pub save_scope: SaveScope,
@@ -222,7 +221,6 @@ impl Default for Settings {
             sidebar_width: theme::SIDEBAR_WIDTH,
             changes_width: theme::CHANGES_WIDTH,
             changes_files_width: theme::CHANGES_FILES_WIDTH,
-            files_panel_width: theme::FILES_WIDTH,
             files_tree_width: theme::FILES_TREE_WIDTH,
             preview_files: true,
             save_scope: SaveScope::default(),

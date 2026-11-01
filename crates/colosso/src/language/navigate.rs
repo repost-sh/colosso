@@ -1,5 +1,5 @@
 //! A definition in another file, as the server names it, turned into a place in that file
-//! for the Files panel: its range in the server's encoding, made bytes of the file's text
+//! for the shell to open: its range in the server's encoding, made bytes of the file's text
 //! once the file's shown.
 
 use std::path::Path;

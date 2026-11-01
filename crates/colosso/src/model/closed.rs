@@ -1,5 +1,6 @@
 //! Tabs closed lately, to bring back with ⌘⇧T, the newest first: each on its checkout at its
-//! place, its panes split as they were, a page pane at the address it showed.
+//! place, its panes split as they were, a page pane at the address it showed and a file
+//! pane on the file it showed.
 
 use std::path::PathBuf;
 
@@ -18,13 +19,17 @@ pub struct ClosedTab {
     pub tab: Tab,
     /// The address each page showed, by its pane's id.
     pub addresses: Vec<(u64, String)>,
+    /// The file each file pane showed, by its pane's id.
+    pub files: Vec<(u64, PathBuf)>,
 }
 
 impl Workspace {
-    /// Keeps `closed` to bring back, letting the oldest go past [`KEPT`].
+    /// Keeps `closed` to bring back, letting the oldest go past [`KEPT`]. Its pages and
+    /// files are let go: what a file had unsaved is gone with it.
     pub fn remember_closed(&mut self, mut closed: ClosedTab) {
         for pane in closed.tab.panes_mut() {
             pane.browser = None;
+            pane.file = None;
         }
         self.closed.push(closed);
         if self.closed.len() > KEPT {

@@ -1,27 +1,32 @@
 //! The Files panel's state: the checkout's files as rows, opened folder by folder and kept
-//! in step with the disk through the checkout's project; the row picked; and the files
-//! viewed beside the tree, the one shown revealed in it.
+//! in step with the disk through the checkout's project; the row picked; and the file the
+//! shown tab shows, revealed in the tree. Files picked open in the workspace's tabs, which
+//! the shell sees to as the panel asks.
 
-use std::rc::Rc;
 use std::sync::Arc;
 
 use colosso_project::{Feed, Kind, Project, Reveal, Rows, Update};
 use futures::StreamExt as _;
 use gpui_kit::{
-    App, AppContext as _, Context, Entity, FocusHandle, ScrollStrategy, Subscription, Task,
+    App, Context, Entity, EventEmitter, FocusHandle, ScrollStrategy, Subscription, Task,
     UniformListScrollHandle, Window,
 };
 
 use super::Place;
-use super::locations::Locations;
-use crate::language::Found;
-use super::tabs::{Hand, Viewed};
 use super::render::ROW;
 use crate::changes::Marks;
 use crate::checkout::Checkout;
 use crate::list::{page, stepped};
 use crate::settings;
-use crate::right_panel::split::{self, Split};
+
+/// What the panel asks of the shell.
+#[derive(Clone, Debug)]
+pub enum FilesEvent {
+    /// Open the file `place` is in, in a tab of its own if `kept`, else as the preview.
+    Open { place: Place, kept: bool },
+}
+
+impl EventEmitter<FilesEvent> for FilesPanel {}
 
 pub struct FilesPanel {
     pub(super) checkout: Entity<Checkout>,
@@ -34,21 +39,11 @@ pub struct FilesPanel {
     marks: Arc<Marks>,
     /// The row picked, by its path, so it stays picked as rows come and go.
     pub(super) selected: Option<Arc<str>>,
-    /// The file shown beside the tree, as the tree names it; `None` for one outside the
-    /// checkout.
+    /// The file the shown tab shows, as the tree names it; `None` for none, or one outside
+    /// the checkout.
     pub(super) active: Option<Arc<str>>,
     /// A path to show once the listings of the folders above it come.
     revealing: Option<Arc<str>>,
-    /// The files open beside the tree, in their tabs' order.
-    pub(super) tabs: Vec<Viewed>,
-    /// The tab shown.
-    pub(super) shown: usize,
-    /// The tab in hand, dragged along the strip.
-    pub(super) hand: Rc<Hand>,
-    /// The places a symbol led to, listed under the file shown, while they are.
-    pub(super) locations: Option<Entity<Locations>>,
-    /// The tree, and the file shown beside it.
-    pub(super) split: Split,
     pub(super) focus: FocusHandle,
     pub(super) scroll: UniformListScrollHandle,
     _checkout: Subscription,
@@ -77,11 +72,6 @@ impl FilesPanel {
             selected: None,
             active: None,
             revealing: None,
-            tabs: Vec::new(),
-            shown: 0,
-            hand: Rc::default(),
-            locations: None,
-            split: Split::new(&split::FILES),
             focus: cx.focus_handle(),
             scroll: UniformListScrollHandle::new(),
             _checkout,
@@ -93,33 +83,6 @@ impl FilesPanel {
 
     pub fn focus_handle(&self) -> &FocusHandle {
         &self.focus
-    }
-
-    /// Lists `found` under the file shown, in place of any list there, and gives it the
-    /// keyboard.
-    pub(super) fn show_locations(&mut self, found: Found, window: &mut Window, cx: &mut Context<Self>) {
-        let files = cx.entity().downgrade();
-        let locations = cx.new(|cx| Locations::new(found, files, cx));
-        let focus = locations.read(cx).focus.clone();
-        window.focus(&focus, cx);
-        self.locations = Some(locations);
-        cx.notify();
-    }
-
-    /// Takes the list of places away, the keyboard going back to the file shown.
-    pub(super) fn close_locations(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.locations.take().is_some() {
-            if let Some(viewed) = self.viewing() {
-                (viewed.editor).update(cx, |editor, cx| editor.focus_editor(window, cx));
-            }
-            cx.notify();
-        }
-    }
-
-    /// The places listed under the file shown, while they are.
-    #[cfg(test)]
-    pub fn locations(&self) -> Option<&Entity<Locations>> {
-        self.locations.as_ref()
     }
 
     /// The checkout's project, once git's open on it.
@@ -173,21 +136,9 @@ impl FilesPanel {
         }
     }
 
-    /// Whether the panel has the card to itself.
-    pub fn is_wide(&self) -> bool {
-        self.split.is_wide()
-    }
-
-    /// Says whether the panel has the card to itself.
-    pub fn set_wide(&mut self, wide: bool, cx: &mut Context<Self>) {
-        if self.split.set_wide(wide) {
-            cx.notify();
-        }
-    }
-
-    /// Picks the file shown, as the tree names it, and reveals it: its folders opened and
-    /// it scrolled to.
-    pub(super) fn set_active(&mut self, active: Option<Arc<str>>, cx: &mut Context<Self>) {
+    /// Picks the file the shown tab shows, as the tree names it, and reveals it: its
+    /// folders opened and it scrolled to.
+    pub fn set_active(&mut self, active: Option<Arc<str>>, cx: &mut Context<Self>) {
         if self.active == active {
             return;
         }
@@ -217,6 +168,13 @@ impl FilesPanel {
             Reveal::Missing => self.revealing = None,
         }
         cx.notify();
+    }
+
+    /// Picks `path` in the tree, opening the folders above it, and gives the tree the
+    /// keyboard.
+    pub fn pick_in_tree(&mut self, path: &Arc<str>, window: &mut Window, cx: &mut Context<Self>) {
+        self.reveal(path, cx);
+        window.focus(&self.focus, cx);
     }
 
     /// The picked row's place, if it's shown.
@@ -310,28 +268,17 @@ impl FilesPanel {
         cx.notify();
     }
 
-    /// Enter, or a click: shows a file beside the tree, in a tab of its own if `pinned` and
-    /// else as a preview, or opens or closes a folder.
-    pub(super) fn activate(
-        &mut self,
-        index: usize,
-        pinned: bool,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    /// Enter, or a click: opens a file in a tab, of its own if `kept` and else as the
+    /// preview, or opens or closes a folder.
+    pub(super) fn activate(&mut self, index: usize, kept: bool, cx: &mut Context<Self>) {
         let Some(row) = self.rows.get(index) else {
             return;
         };
         match row.entry.kind {
             Kind::Dir => self.toggle(index, cx),
-            // The keyboard stays in the tree either way, to go on moving through it.
             Kind::File | Kind::Symlink { to_dir: false } => {
                 let place = Place::file(&*row.path);
-                if pinned {
-                    self.open(place, true, false, window, cx);
-                } else {
-                    self.peek(place, window, cx);
-                }
+                cx.emit(FilesEvent::Open { place, kept });
             }
             // Nothing is read through a link to a folder.
             Kind::Symlink { to_dir: true } => {}
@@ -340,13 +287,13 @@ impl FilesPanel {
 
     /// Previews the picked file, as the arrow keys do once they've moved the pick; a folder
     /// stays as it is.
-    pub(super) fn preview_picked(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn preview_picked(&mut self, cx: &mut Context<Self>) {
         let picked = (self.cursor()).and_then(|at| self.rows.get(at));
         if let Some(row) = picked.filter(|row| !row.entry.is_folder())
             && settings::get(cx).preview_files
         {
             let place = Place::file(&*row.path);
-            self.peek(place, window, cx);
+            cx.emit(FilesEvent::Open { place, kept: false });
         }
     }
 }

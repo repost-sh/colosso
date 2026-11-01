@@ -1,7 +1,7 @@
 //! The symbols a server names, for the palettes that go to one: the file's, nested ones
 //! after what they're in (`textDocument/documentSymbol`); and the checkout's whose name
 //! has what's typed in it, as each of its servers says (`workspace/symbol`). Each comes
-//! with its place as the server names it, for the Files panel to find in the file's text.
+//! with its place as the server names it, for the shell to find in the file's text.
 
 use std::path::Path;
 use std::sync::Arc;

@@ -1,11 +1,13 @@
 //! Browser tabs in the shell: opened with a page of the selected checkout's project, titled
 //! as their page is, links from them opened beside them, and a page's detached `DevTools`
-//! split into its tab, closing with it.
+//! split into its tab, closing with it. And closing tabs and panes of any kind, asking
+//! first about a file's unsaved edits.
 
-use gpui_kit::{AppContext as _, Context, Entity, Window};
+use gpui_kit::{App, AppContext as _, Context, Entity, Window};
 
 use super::Shell;
 use crate::browser::{BrowserEvent, BrowserView, Dock};
+use crate::files::{self, FileEditor, Then};
 use crate::model::{ClosedTab, Edge, Pane, Tab};
 use crate::navigation::Route;
 
@@ -145,19 +147,23 @@ impl Shell {
         }
     }
 
-    /// Closes pane `id`, and its tab when it's the tab's only pane. Detached `DevTools`
-    /// close for their page, and a page's detached `DevTools` close with it.
-    pub(super) fn close_pane(&mut self, id: u64, cx: &mut Context<Self>) {
-        let view = self
-            .workspace
-            .branch()
-            .and_then(|unit| {
-                unit.tabs
-                    .iter()
-                    .flat_map(Tab::panes)
-                    .find(|pane| pane.id == id)
-            })
-            .and_then(|pane| pane.browser.clone());
+    /// Closes pane `id`, and its tab when it's the tab's only pane, asking first when its
+    /// file has unsaved edits.
+    pub fn close_pane(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        let pane = self.workspace.branch().and_then(|unit| unit.pane(id));
+        let editors = (pane.and_then(|pane| pane.file.as_ref()))
+            .filter(|file| file.read(cx).is_dirty())
+            .map(|file| vec![file.read(cx).editor.clone()])
+            .unwrap_or_default();
+        self.ask_then(editors, move |shell, cx| shell.close_pane_now(id, cx), window, cx);
+    }
+
+    /// Closes pane `id`, and its tab when it's the tab's only pane, whatever its file has.
+    /// Detached `DevTools` close for their page, and a page's detached `DevTools` close
+    /// with it.
+    fn close_pane_now(&mut self, id: u64, cx: &mut Context<Self>) {
+        let unit = self.workspace.branch();
+        let view = unit.and_then(|unit| unit.pane(id)?.browser.clone());
         if let Some(view) = view {
             self.let_devtools_go(view, cx);
         }
@@ -167,13 +173,57 @@ impl Shell {
         cx.notify();
     }
 
-    /// Closes the tab at `at`, as `(project, branch, tab)`, and the detached `DevTools` of
-    /// its pages wherever they are, keeping it to open again.
-    pub(super) fn close_tab_at(&mut self, at: (usize, usize, usize), cx: &mut Context<Self>) {
+    /// Closes the tab at `at`, as `(project, branch, tab)`, asking first when its files have
+    /// unsaved edits.
+    pub fn close_tab_at(
+        &mut self,
+        at: (usize, usize, usize),
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(tab) = self.workspace.tab(at) else {
+            return;
+        };
+        let editors = tab.unsaved(cx);
+        // Found again by a pane of it once answered: tabs may have moved meanwhile.
+        let id = tab.first().id;
+        let close = move |shell: &mut Self, cx: &mut Context<Self>| {
+            if let Some((at, _)) = shell.workspace.find_pane(|pane| pane.id == id) {
+                shell.close_tab_now(at, cx);
+            }
+        };
+        self.ask_then(editors, close, window, cx);
+    }
+
+    /// Does `close` now when `editors` have no unsaved edits, and otherwise asks about them
+    /// first: once they're saved or let go.
+    fn ask_then(
+        &mut self,
+        editors: Vec<Entity<FileEditor>>,
+        close: impl FnOnce(&mut Self, &mut Context<Self>) + 'static,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if editors.is_empty() {
+            return close(self, cx);
+        }
+        let shell = cx.entity().downgrade();
+        let then = move |cx: &mut App| {
+            (shell.update(cx, close)).ok();
+        };
+        files::ask(editors, Then::Close(Box::new(then)), window, cx);
+    }
+
+    /// Closes the tab at `at`, as `(project, branch, tab)`, whatever its files have, and
+    /// the detached `DevTools` of its pages wherever they are, keeping it to open again.
+    pub(crate) fn close_tab_now(&mut self, at: (usize, usize, usize), cx: &mut Context<Self>) {
         let (project, branch, _) = at;
         let Some(tab) = self.workspace.tab_mut(at) else {
             return;
         };
+        let files = (tab.panes().into_iter())
+            .filter_map(|pane| Some((pane.id, pane.file.as_ref()?.read(cx).path.clone())))
+            .collect();
         let panes: Vec<_> = tab
             .panes()
             .into_iter()
@@ -199,6 +249,7 @@ impl Shell {
                 at: now,
                 tab,
                 addresses,
+                files,
             });
         }
         cx.notify();

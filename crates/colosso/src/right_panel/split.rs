@@ -1,5 +1,5 @@
-//! What both of the right panel's views are made of: a list at the left, the changed files or
-//! the file tree, as wide as set, and what it shows beside it. Dragging the list's edge
+//! What the changes view is made of: a list at the left, the changed files, as wide as set,
+//! and what it shows beside it. Dragging the list's edge
 //! widens it as the pointer goes, and the width is saved once the edge is let go. The list
 //! is as wide as set unless that leaves what's beside it too little room, which the layout
 //! sees to, so a view needn't know how wide the right panel is.
@@ -34,16 +34,6 @@ pub const CHANGES: Spec = Spec {
     min: theme::CHANGES_FILES_MIN_WIDTH,
     max: theme::CHANGES_FILES_MAX_WIDTH,
     beside_min: theme::DIFFS_MIN_WIDTH,
-};
-
-/// The Files panel's: the tree, and the file shown beside it.
-pub const FILES: Spec = Spec {
-    id: "files-tree-resize",
-    width: |settings| settings.files_tree_width,
-    set_width: |settings, width| settings.files_tree_width = width,
-    min: theme::FILES_TREE_MIN_WIDTH,
-    max: theme::FILES_TREE_MAX_WIDTH,
-    beside_min: theme::VIEWER_MIN_WIDTH,
 };
 
 /// The drag payload while a list's edge is dragged, naming the split it widens.

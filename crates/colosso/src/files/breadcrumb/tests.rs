@@ -1,5 +1,6 @@
-//! The breadcrumb over the file shown names its folders and the file; a crumb clicked is
-//! picked in the tree, its folders opened, and the tree takes the keyboard.
+//! The breadcrumb over a file names its folders and the file; a crumb clicked is picked in
+//! the tree, its folders opened, the tree opened if it's closed, and the tree takes the
+//! keyboard.
 
 use std::path::Path;
 
@@ -7,7 +8,7 @@ use gpui_kit::{Modifiers, TestAppContext, VisualTestContext};
 
 use super::{Crumb, crumbs};
 use crate::files::At;
-use crate::files::tests::{checkout, editing, open, with};
+use crate::files::tests::{checkout, editing, shell_showing, with};
 
 #[test]
 fn the_crumbs_are_the_folders_as_the_tree_names_them_then_the_file() {
@@ -31,8 +32,8 @@ fn the_crumbs_are_the_folders_as_the_tree_names_them_then_the_file() {
 #[gpui_kit::test]
 fn a_crumb_clicked_is_picked_in_the_tree_with_its_folders_opened(cx: &mut TestAppContext) {
     let root = checkout("files-breadcrumb");
-    let (window, panel) = open(&root, cx);
-    editing(window, &panel, "src/nested/deep.rs", At::Bytes(0..0), cx);
+    let (window, shell, panel) = shell_showing(&root, cx);
+    editing(window, &shell, "src/nested/deep.rs", At::Bytes(0..0), cx);
     // `src` closed again, nothing under it is listed.
     with(window, &panel, cx, |panel, _, cx| {
         let src = panel.rows.position("src").expect("src listed");
@@ -59,5 +60,12 @@ fn a_crumb_clicked_is_picked_in_the_tree_with_its_folders_opened(cx: &mut TestAp
     // The file's name picks the file.
     click("crumb-2", cx);
     assert_eq!(selected(cx).as_deref(), Some("src/nested/deep.rs"));
+    // With the tree closed, a crumb clicked opens it.
+    cx.dispatch_action(crate::right_panel::ToggleFiles);
+    cx.run_until_parked();
+    assert!(!cx.read(|cx| shell.read(cx).right_panel.shows(crate::right_panel::View::Files)));
+    click("crumb-1", cx);
+    assert!(cx.read(|cx| shell.read(cx).right_panel.shows(crate::right_panel::View::Files)));
+    assert_eq!(selected(cx).as_deref(), Some("src/nested"));
     let _ = std::fs::remove_dir_all(&root);
 }

@@ -134,7 +134,7 @@ pub(super) fn shell(
     shell
 }
 
-/// Selects the checkout at `root`, and shows its file at `path` in the Files panel.
+/// Selects the checkout at `root`, and shows its file at `path` in a tab.
 pub(super) fn open(
     (window, shell): &(AnyWindowHandle, Entity<Shell>),
     root: &Path,
@@ -223,22 +223,22 @@ pub(super) fn editor_focused(
     .unwrap()
 }
 
-/// The file the Files panel shows, and its view.
+/// The file the shown tab shows, and its view.
 pub(super) fn shown(
     shell: &Entity<Shell>,
     cx: &TestAppContext,
 ) -> Option<(PathBuf, Entity<FileEditor>)> {
     cx.read(|cx| {
-        let files = shell.read(cx).right_panel.files()?.read(cx);
-        let viewed = files.viewing()?;
+        let viewed = shell.read(cx).viewing()?;
+        let viewed = viewed.read(cx);
         Some((viewed.path.clone(), viewed.editor.clone()))
     })
 }
 
-/// Lets go of every file the checkout at `root` showed: it leaves the sidebar's selection,
-/// and its Files panel with its views goes with it.
+/// Lets go of every file open on the checkout at `root`: their tabs close, and their views
+/// go with them.
 pub(super) fn close_files(shell: &Entity<Shell>, root: &Path, cx: &mut TestAppContext) {
-    shell.update(cx, |shell, cx| shell.right_panel.forget_files(root, cx));
+    shell.update(cx, |shell, cx| shell.forget_files(root, cx));
     cx.run_until_parked();
 }
 

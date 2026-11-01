@@ -1,4 +1,5 @@
-//! The Files panel drawn as the app draws it, on this repository's own checkout, saved as PNGs
+//! The Files panel's tree and the files it opens in tabs, drawn as the app draws them, on this
+//! repository's own checkout, saved as PNGs
 //! in `.superpowers/qa/files/`:
 //!
 //! ```sh
@@ -13,7 +14,7 @@ use gpui_kit::component::input::RopeExt as _;
 use gpui_kit::{Context, KeyUpEvent, Keystroke, PlatformInput};
 
 use super::{FilesPanel, Place};
-use crate::right_panel::{ShowFiles, ToggleChanges, ToggleWide};
+use crate::right_panel::{ShowFiles, ToggleChanges};
 use crate::visual::{Drawn, Result};
 
 /// Where the pictures go, relative to the checkout.
@@ -22,8 +23,8 @@ const OUT: &str = ".superpowers/qa/files";
 const PATIENCE: Duration = Duration::from_secs(20);
 /// How many keystrokes each way the tree's pick is timed over, as many as there are rows.
 const STEPS: usize = 150;
-/// The file shown beside the tree while the arrow keys are held: one of this repository's
-/// longest, coloured as Rust.
+/// The file shown in a tab while the arrow keys are held: one of this repository's longest,
+/// coloured as Rust.
 const HELD_BESIDE: &str = "crates/colosso/src/changes/view.rs";
 /// How long an arrow's held in the tree and in the file.
 const HOLD: Duration = Duration::from_millis(1500);
@@ -38,25 +39,18 @@ fn draw() -> Result<Vec<String>> {
     drawn.cx.dispatch_action(drawn.window, ShowFiles);
     settle(&mut drawn, |panel| panel.scanned)?;
 
-    // The arrow keys pressed in the tree, a long file shown beside it; then held, in the
-    // tree and in the file.
+    // The arrow keys pressed in the tree, a long file shown in a tab; then held, in the tree,
+    // which previews each file it lands on, and in the file.
     view(&mut drawn, HELD_BESIDE)?;
     drawn.pause()?;
     let mut timed = held(&mut drawn)?;
     timed.extend(repeated(&mut drawn)?);
 
-    // A file shown beside the tree, beside the chat: its folders are revealed, and it's
-    // picked.
+    // A file shown in a tab, the tree beside it: its folders are revealed, and it's picked.
     view(&mut drawn, "crates/project/src/lib.rs")?;
     toggle(&mut drawn, "script")?;
     drawn.pause()?;
     let tree = drawn.save("files-panel.png")?;
-
-    // The same with the whole card, the chat out of sight.
-    drawn.cx.dispatch_action(drawn.window, ToggleWide);
-    drawn.pause()?;
-    let wide = drawn.save("files-wide.png")?;
-    drawn.cx.dispatch_action(drawn.window, ToggleWide);
 
     // An ignored folder opened: read once asked for, and shown dimmed.
     toggle(&mut drawn, "crates")?;
@@ -74,7 +68,7 @@ fn draw() -> Result<Vec<String>> {
     drawn.cx.dispatch_action(drawn.window, ToggleChanges);
     drawn.pause()?;
     let changes = drawn.save("changes-switch.png")?;
-    let saved = [tree, wide, ignored, changes];
+    let saved = [tree, ignored, changes];
     let mut lines: Vec<_> = saved
         .iter()
         .map(|path| path.display().to_string())
@@ -83,7 +77,7 @@ fn draw() -> Result<Vec<String>> {
     Ok(lines)
 }
 
-/// The arrow keys held in the tree with a file shown beside it, down then up, as key repeat
+/// The arrow keys held in the tree with a file shown in a tab, down then up, as key repeat
 /// sends them: each keystroke timed to its frame drawn (the event, then layout, prepaint and
 /// paint), and what the frames built again rather than drew from the last.
 fn held(drawn: &mut Drawn) -> Result<Vec<String>> {
@@ -190,10 +184,10 @@ fn repeated(drawn: &mut Drawn) -> Result<Vec<String>> {
     })?;
     let pick = |drawn: &mut Drawn| panel(drawn, |panel, _| panel.cursor().unwrap_or(0));
     let tree = drawn.hold(&format!("tree of {rows} rows"), "down", HOLD, pick)?;
-    let editor = panel(drawn, |panel, cx| {
-        let viewed = panel.viewing()?;
-        viewed.editor.read(cx).editor().cloned()
-    })?;
+    let editor = (drawn.cx).read(|cx| {
+        let viewed = drawn.shell.read(cx).viewing()?;
+        viewed.read(cx).editor.read(cx).editor().cloned()
+    });
     let editor = editor.ok_or("the file isn't shown in an editor")?;
     (drawn.cx)
         .update_window(drawn.window, |_, window, cx| {
@@ -213,7 +207,7 @@ fn repeated(drawn: &mut Drawn) -> Result<Vec<String>> {
     Ok(vec![tree, file])
 }
 
-/// Shows the checkout's file at `path` beside the tree.
+/// Shows the checkout's file at `path` in a tab.
 fn view(drawn: &mut Drawn, path: &str) -> Result<()> {
     let (window, shell) = (drawn.window, drawn.shell.clone());
     (drawn.cx)
