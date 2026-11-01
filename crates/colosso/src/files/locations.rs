@@ -1,4 +1,4 @@
-//! The places a symbol led to, listed under the editor: a header per file, then a row per
+//! The places a symbol led to, listed under the workspace's tabs: a header per file, then a row per
 //! place with its line number and its line, the place itself in the accent colour. A click
 //! previews the place, a double click or Enter keeps it open, Escape closes the list. The
 //! arrows move over the places, skipping the headers.
@@ -6,6 +6,7 @@
 use std::ops::Range;
 use std::time::Duration;
 
+use gpui_kit::AppContext as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::prelude::FluentBuilder as _;
@@ -16,9 +17,8 @@ use gpui_kit::{
     Window, div, px, uniform_list,
 };
 
-use super::panel::FilesPanel;
+use super::file_pane::name;
 use super::render::ROW;
-use super::tabs::name;
 use super::{CloseLocations, Place, file_icon};
 use crate::language::Found;
 use crate::list::{page, stepped, styled};
@@ -26,7 +26,7 @@ use crate::right_panel::{
     Activate, PageDown, PageUp, SelectFirst, SelectLast, SelectNext, SelectPrevious, note,
     panel_header,
 };
-use crate::shell::{ellipsized, icon, icon_button, row};
+use crate::shell::{Shell, ellipsized, icon, icon_button, row};
 use crate::theme::{self, Palette};
 
 /// How tall the list is, under the editor.
@@ -54,7 +54,7 @@ pub struct Locations {
     places: Vec<usize>,
     /// The place picked, as an index into `places`.
     selected: usize,
-    files: WeakEntity<FilesPanel>,
+    shell: WeakEntity<Shell>,
     pub(super) focus: FocusHandle,
     scroll: UniformListScrollHandle,
     /// Showing the place picked, once the pick has rested on it.
@@ -62,7 +62,7 @@ pub struct Locations {
 }
 
 impl Locations {
-    pub(super) fn new(found: Found, files: WeakEntity<FilesPanel>, cx: &mut Context<Self>) -> Self {
+    pub(super) fn new(found: Found, shell: WeakEntity<Shell>, cx: &mut Context<Self>) -> Self {
         let (mut items, mut places) = (Vec::new(), Vec::new());
         for (file, locations) in found.files.iter().enumerate() {
             items.push(Item::File(file));
@@ -76,7 +76,7 @@ impl Locations {
             items,
             places,
             selected: 0,
-            files,
+            shell,
             focus: cx.focus_handle(),
             scroll: UniformListScrollHandle::new(),
             peeking: Task::ready(()),
@@ -125,9 +125,9 @@ impl Locations {
         self.focus.is_focused(window)
     }
 
-    /// Shows the place picked in the Files panel: peeked at, the keyboard staying here, or
-    /// `pinned` in a tab of its own and given the keyboard.
-    fn open(&self, pinned: bool, window: &mut Window, cx: &mut Context<Self>) {
+    /// Shows the place picked in a tab: peeked at, the keyboard staying here, or `kept` in
+    /// a tab of its own and given the keyboard.
+    fn open(&self, kept: bool, window: &mut Window, cx: &mut Context<Self>) {
         let Some((file, row)) = self.selected() else {
             return;
         };
@@ -136,18 +136,35 @@ impl Locations {
             path: file.path.clone(),
             at: Some(file.rows[row].at.clone()),
         };
-        (self.files.update(cx, |files, cx| {
-            if pinned {
-                files.view(place, window, cx);
-            } else {
-                files.peek(place, window, cx);
-            }
-        }))
-        .ok();
+        // Kept, it takes the keyboard; previewed, the list keeps it to go on stepping.
+        (self.shell.update(cx, |shell, cx| shell.open_file(place, kept, kept, window, cx))).ok();
     }
 
     fn close(&self, window: &mut Window, cx: &mut Context<Self>) {
-        (self.files.update(cx, |files, cx| files.close_locations(window, cx))).ok();
+        (self.shell.update(cx, |shell, cx| shell.close_locations(window, cx))).ok();
+    }
+}
+
+impl Shell {
+    /// Lists `found` under the tabs, in place of any list there, and gives it the keyboard.
+    pub(super) fn show_locations(&mut self, found: Found, window: &mut Window, cx: &mut Context<Self>) {
+        let shell = cx.entity().downgrade();
+        let locations = cx.new(|cx| Locations::new(found, shell, cx));
+        let focus = locations.read(cx).focus.clone();
+        window.focus(&focus, cx);
+        self.locations = Some(locations);
+        cx.notify();
+    }
+
+    /// Takes the list of places away, the keyboard going back to the file shown.
+    pub(super) fn close_locations(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.locations.take().is_some() {
+            if let Some(file) = self.shown_file(window, cx) {
+                let editor = file.read(cx).editor.clone();
+                editor.update(cx, |editor, cx| editor.focus_editor(window, cx));
+            }
+            cx.notify();
+        }
     }
 }
 

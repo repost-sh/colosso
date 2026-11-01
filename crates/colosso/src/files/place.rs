@@ -1,4 +1,4 @@
-//! A place in a file to show: what the Files panel is asked to show by the tree, by Go to
+//! A place in a file to show: what a tab is opened on by the tree, by Go to
 //! File, and by a language server's definitions and symbols, each turned into this where
 //! it's made.
 

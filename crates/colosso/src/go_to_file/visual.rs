@@ -84,12 +84,12 @@ fn draw() -> Result<Vec<String>> {
     )?);
     lines.push(save_over(&mut drawn, palette, "finder-line.png")?);
 
-    // Enter shows the file picked in the Files panel behind, at the line typed.
+    // Enter opens the file picked in a tab behind, at the line typed.
     drawn.cx.simulate_keystrokes(palette, "enter");
     drawn.pause()?;
     let viewed = drawn.cx.read(|cx| {
-        let files = drawn.shell.read(cx).right_panel.files().cloned()?;
-        Some(files.read(cx).viewing()?.path.clone())
+        let file = drawn.shell.read(cx).viewing()?;
+        Some(file.read(cx).path.clone())
     });
     lines.push(format!("shown after enter: {viewed:?}"));
     lines.push(drawn.save("finder-opened.png")?.display().to_string());

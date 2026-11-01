@@ -1,4 +1,4 @@
-//! Language servers behind the Files panel's viewer: a rust-analyzer, a TypeScript server or
+//! Language servers behind the files open in tabs: a rust-analyzer, a TypeScript server or
 //! a Pyrefly per checkout, started when the first Rust, TypeScript or Python file of the
 //! checkout is shown, kept in step with the files shown, and asked where a symbol is defined,
 //! what it is, and what's wrong with the code.

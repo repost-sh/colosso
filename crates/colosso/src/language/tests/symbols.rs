@@ -99,10 +99,11 @@ async fn a_symbol_of_the_checkout_is_found_by_name_and_its_file_opened_at_it(cx:
 
     // Enter: the file's opened with the name selected, its bytes found in the text shown.
     cx.simulate_keystrokes(window, "enter");
-    let files = cx.read(|cx| shell.1.read(cx).right_panel.files().cloned()).unwrap();
+    let files = shell.1.clone();
     let other = root.join("src/other.rs");
     let selected = |cx: &App| {
         let viewed = files.read(cx).viewing()?;
+        let viewed = viewed.read(cx);
         let editor = editor(&viewed.editor, cx)?;
         (viewed.path == other).then(|| editor.read(cx).selected_range())
     };

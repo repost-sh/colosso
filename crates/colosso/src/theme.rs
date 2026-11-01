@@ -41,18 +41,10 @@ pub const CHANGES_FILES_MIN_WIDTH: f32 = 180.;
 pub const CHANGES_FILES_MAX_WIDTH: f32 = 640.;
 /// What the file list leaves of the changes panel for the diffs, at its widest.
 pub const DIFFS_MIN_WIDTH: f32 = 360.;
-/// The Files panel's width beside the chat, unless widened to the whole card: the tree and
-/// the file it shows.
-pub const FILES_WIDTH: f32 = 960.;
-/// Room for the narrowest tree beside the narrowest viewer.
-pub const FILES_MIN_WIDTH: f32 = FILES_TREE_MIN_WIDTH + VIEWER_MIN_WIDTH;
-pub const FILES_MAX_WIDTH: f32 = 1400.;
-/// The Files panel's tree, beside the file it shows.
+/// The Files panel's width beside the chat: its tree's.
 pub const FILES_TREE_WIDTH: f32 = 300.;
 pub const FILES_TREE_MIN_WIDTH: f32 = 180.;
 pub const FILES_TREE_MAX_WIDTH: f32 = 640.;
-/// What the tree leaves of the Files panel for the file it shows, at its widest.
-pub const VIEWER_MIN_WIDTH: f32 = 360.;
 /// What the right panel leaves of the card for the chat beside it, at its widest.
 pub const CHAT_MIN_WIDTH: f32 = 320.;
 pub const TAB_STRIP_HEIGHT: f32 = 38.;

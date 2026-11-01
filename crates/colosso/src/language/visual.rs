@@ -1,4 +1,4 @@
-//! Rust in the Files panel's viewer with the real rust-analyzer, the managed one fetched into
+//! Rust in a file tab's editor with the real rust-analyzer, the managed one fetched into
 //! the data folder: the shell off screen on this repository's own checkout, `main.rs` shown
 //! until its server is ready, then a hover, a definition in another file gone to with F12,
 //! and a fixture crate's type error underlined. Saved as PNGs in `.superpowers/qa/lsp/`,
@@ -222,7 +222,7 @@ fn underlined(drawn: &mut Drawn, fixture: &Path, lines: &mut Vec<String>) -> Res
     Ok(())
 }
 
-/// Shows the selected checkout's file at `path` in the Files panel, and its view.
+/// Shows the selected checkout's file at `path` in a tab, and its view.
 fn view(drawn: &mut Drawn, path: &Path) -> Result<Entity<FileEditor>> {
     let shell = drawn.shell.clone();
     (drawn.cx)
@@ -238,11 +238,11 @@ fn view(drawn: &mut Drawn, path: &Path) -> Result<Entity<FileEditor>> {
         .ok_or_else(|| format!("{} isn't shown", path.display()))
 }
 
-/// The file the Files panel shows, and its view.
+/// The file the shown tab shows, and its view.
 fn viewing(drawn: &Drawn) -> Option<(PathBuf, Entity<FileEditor>)> {
     drawn.cx.read(|cx| {
-        let files = drawn.shell.read(cx).right_panel.files()?.read(cx);
-        let viewed = files.viewing()?;
+        let viewed = drawn.shell.read(cx).viewing()?;
+        let viewed = viewed.read(cx);
         Some((viewed.path.clone(), viewed.editor.clone()))
     })
 }

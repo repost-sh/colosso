@@ -5,8 +5,8 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Axis, Context, InteractiveElement as _, IntoElement, ParentElement as _,
-    StatefulInteractiveElement as _, Styled as _, div, px,
+    Axis, ClickEvent, Context, InteractiveElement as _, IntoElement, MouseButton,
+    ParentElement as _, StatefulInteractiveElement as _, Styled as _, div, px,
 };
 
 use crate::model::BranchUnit;
@@ -161,19 +161,28 @@ pub fn tab_strip(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
                 .h(px(28.))
                 .min_w_0()
                 .when(!active, |tab| tab.text_color(p.muted))
-                .on_click(cx.listener(move |this, _, _, cx| {
+                .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
                     this.workspace
                         .select_tab(project_index, branch_index, tab_index);
+                    // A second click keeps a previewed file open.
+                    if event.click_count() > 1 {
+                        this.keep_tab(at, cx);
+                    }
                     cx.notify();
-                }));
+                }))
+                .on_mouse_down(
+                    MouseButton::Middle,
+                    cx.listener(move |this, _, window, cx| this.close_tab_at(at, window, cx)),
+                );
             let list = (Axis::Horizontal, active, &shell.tab_hand);
             tab_row(row, (at, tab), list, p, cx, |row, face, cx| {
+                let close = ("orca-tab-close", tab_index);
                 row.max_w(px(220.))
                     .pl_2()
                     .pr_1()
                     .child(face.icon(13.))
-                    .child(ellipsized(face.title.clone()))
-                    .child(tab_close_button(("orca-tab-close", tab_index), at, p, cx))
+                    .child(face.label())
+                    .child(tab_close_button(close, at, face.dirty, p, cx))
             })
         })
         .collect();

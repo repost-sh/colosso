@@ -16,6 +16,11 @@ pub fn close_button(id: impl Into<ElementId>, p: Palette) -> Stateful<Div> {
     tab_button(id, p).child(icon(IconName::X, 12.))
 }
 
+/// The dot that marks a file with unsaved edits, on its tab and in the switcher.
+pub fn unsaved_dot(p: Palette) -> Div {
+    div().size(px(7.)).flex_shrink_0().rounded_full().bg(p.text)
+}
+
 /// A small square button in a tab, lit when hovered, without what's drawn in it.
 pub fn tab_button(id: impl Into<ElementId>, p: Palette) -> Stateful<Div> {
     div()
@@ -35,7 +40,10 @@ pub fn pane(pane: &Pane, context: &str, p: Palette) -> AnyElement {
         PaneKind::Chat => chat(pane, context, p),
         PaneKind::Terminal => terminal(p),
         PaneKind::Browser => browser(pane),
-        PaneKind::Editor => editor(pane, p),
+        PaneKind::Editor => match &pane.file {
+            Some(file) => file.clone().into_any_element(),
+            None => editor(pane, p),
+        },
     }
 }
 

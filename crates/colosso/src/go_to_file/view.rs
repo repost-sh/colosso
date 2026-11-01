@@ -196,8 +196,8 @@ impl GoToFile {
         self.step(direction * page(&self.scroll, ROW), cx);
     }
 
-    /// Shows the file at row `index` in the window behind as the Files panel shows the files
-    /// picked in it, closing the palette; at the line typed after a colon, if one was.
+    /// Opens the file at row `index` in a tab in the window behind, closing the palette; at
+    /// the line typed after a colon, if one was.
     pub(super) fn open(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
         let Some(found) = self.results.found.get(index) else {
             return;

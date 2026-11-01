@@ -1,5 +1,5 @@
-//! How the Files panel looks: its header with its title, then the tree with the file it
-//! shows beside it, or why there's no tree yet.
+//! How the Files panel looks: its header with its title, then the tree, or why there's no
+//! tree yet.
 
 use std::cell::Cell;
 use std::ops::Range;
@@ -16,19 +16,18 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Action, AnyElement, App, Bounds, ClickEvent, Context, Div, FontWeight, Hsla,
     InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Render, SharedString,
-    StatefulInteractiveElement as _, StyleRefinement, Styled as _, Window, div, point, px,
+    StatefulInteractiveElement as _, Styled as _, Window, div, point, px,
     uniform_list,
 };
 
 use super::icons;
 use super::panel::FilesPanel;
-use super::CloseTab;
 use crate::changes::{Mark, Marks};
 use crate::modal::spinner;
 use crate::projects::{CopyPath, RevealInFinder, with_menu};
 use crate::right_panel::{
     Activate, Collapse, Expand, NextFile, PageDown, PageUp, PreviousFile, SelectFirst, SelectLast,
-    SelectNext, SelectPrevious, note, panel_header, title, wide_button,
+    SelectNext, SelectPrevious, note, panel_header, title,
 };
 use crate::settings::{self, SetPreviewFiles};
 use crate::shell::{ellipsized, icon, icon_button, row};
@@ -36,7 +35,7 @@ use crate::theme::{self, Palette};
 
 /// A row's height: tighter than the sidebar's, as a tree shows many.
 pub const ROW: f32 = 24.;
-/// How high the bars over the tree and over the file shown are, so the two line up.
+/// How high the bars over the tree and over a file are, so the two line up.
 pub(super) const BAR: f32 = 26.;
 /// How far each folder deeper is set in.
 const INDENT: f32 = 14.;
@@ -47,35 +46,32 @@ impl Render for FilesPanel {
         let checkout = self.checkout.read(cx);
         let opened = checkout.project().is_some();
         let failed = checkout.error().filter(|_| !opened);
-        // A file can be shown before the tree is listed, opened from elsewhere.
         let body = if let Some(error) = failed {
             note(p).text_color(p.danger).child(error.to_owned())
         } else if !opened || self.rows.is_empty() && !self.scanned {
-            self.beside(div().flex_1().relative().child(spinner(p.muted)), p, cx)
+            div().flex_1().relative().child(spinner(p.muted))
         } else if self.rows.is_empty() {
-            self.beside(note(p).child("This checkout has no files."), p, cx)
+            note(p).child("This checkout has no files.")
         } else {
-            let tree = self.tree(cx);
-            self.beside(tree, p, cx)
+            self.tree(cx)
         };
         div()
             .size_full()
             .flex()
             .flex_col()
-            // With the keyboard in the panel, ⌘W closes the file shown and nothing else.
-            .on_action(cx.listener(|this, _: &CloseTab, window, cx| this.close_shown(window, cx)))
             .child(self.header(opened, p, cx))
+            .child(rail(p, cx))
             .child(body)
     }
 }
 
 impl FilesPanel {
-    /// Its title and the tabs of the files open; while the checkout's `opened` and not
-    /// listed yet, so; and the button that widens the panel.
+    /// Its title; while the checkout's `opened` and not listed yet, so; and whether files
+    /// are followed as they change.
     fn header(&self, opened: bool, p: Palette, cx: &mut Context<Self>) -> Div {
         panel_header(p)
             .child(title("Files", p))
-            .child(self.tab_strip(p, cx))
+            .child(div().flex_1())
             .when(opened && !self.scanned, |header| {
                 header.child(div().text_xs().text_color(p.muted).child("Listing…"))
             })
@@ -85,41 +81,6 @@ impl FilesPanel {
                     icon_button("files-unwatched", IconName::TriangleAlert, tip, cx).xsmall(),
                 )
             })
-            .child(wide_button("files-width", self.is_wide(), cx))
-    }
-
-    /// The `tree`, or what's there until there is one, its edge dragged to widen it; and
-    /// beside it the file shown.
-    fn beside(&self, tree: Div, p: Palette, cx: &mut Context<Self>) -> Div {
-        // The editor is drawn again only when it changes, not each time the tree does: a
-        // held arrow key draws the panel once a row, and the editor's most of that frame
-        // otherwise. It's as big as the room beside the tree, whatever it shows.
-        let (crumbs, viewer) = if let Some(viewed) = self.viewing() {
-            let editor = (viewed.editor.clone())
-                .cached(StyleRefinement::default().flex_1().min_w_0().min_h_0())
-                .into_any_element();
-            (Some(self.breadcrumb(viewed, p, cx)), editor)
-        } else {
-            let note = note(p).child("Pick a file to see it here.");
-            (None, note.into_any_element())
-        };
-        // Where the file is over it, and the places a symbol led to under it, while listed.
-        let viewer = div()
-            .flex_1()
-            .min_w_0()
-            .min_h_0()
-            .flex()
-            .flex_col()
-            .children(crumbs)
-            .child(viewer)
-            .children(self.locations.clone());
-        let tree = div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .child(rail(p, cx))
-            .child(tree);
-        (self.split).render(tree, viewer, |this: &mut Self| &mut this.split, cx)
     }
 
     fn tree(&self, cx: &mut Context<Self>) -> Div {
@@ -141,9 +102,9 @@ impl FilesPanel {
             .on_action(moving(cx, |this: &mut Self, _: &NextFile, cx| this.step_file(1, cx)))
             .on_action(moving(cx, |this: &mut Self, _: &Collapse, cx| this.close_or_parent(cx)))
             .on_action(moving(cx, |this: &mut Self, _: &Expand, cx| this.open_or_child(cx)))
-            .on_action(cx.listener(|this, _: &Activate, window, cx| {
+            .on_action(cx.listener(|this, _: &Activate, _, cx| {
                 if let Some(at) = this.cursor() {
-                    this.activate(at, true, window, cx);
+                    this.activate(at, true, cx);
                 }
             }))
             .child(
@@ -194,7 +155,7 @@ impl FilesPanel {
             .pl(px(4. + shown.depth as f32 * INDENT))
             .gap_1p5()
             .rounded(px(5.))
-            // The file shown beside the tree stands out among the rest.
+            // The file the shown tab shows stands out among the rest.
             .when(active && !selected, |row| row.bg(p.hover))
             .when(shown.entry.ignored, |row| row.opacity(0.55))
             // A click previews a file, a double click keeps it open; a folder opens or closes
@@ -205,7 +166,7 @@ impl FilesPanel {
                 let twice = event.click_count() > 1;
                 let folder = this.rows.get(index).is_some_and(|row| row.entry.is_folder());
                 if !(twice && folder) {
-                    this.activate(index, twice, window, cx);
+                    this.activate(index, twice, cx);
                 }
             }))
             .child(div().w(px(12.)).flex_shrink_0().children(chevron))
@@ -276,9 +237,9 @@ fn moving<A: Action>(
     cx: &mut Context<FilesPanel>,
     by: impl Fn(&mut FilesPanel, &A, &mut Context<FilesPanel>) + 'static,
 ) -> impl Fn(&A, &mut Window, &mut App) + 'static {
-    cx.listener(move |this, action: &A, window, cx| {
+    cx.listener(move |this, action: &A, _, cx| {
         by(this, action, cx);
-        this.preview_picked(window, cx);
+        this.preview_picked(cx);
     })
 }
 

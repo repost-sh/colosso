@@ -8,6 +8,7 @@ use gpui_kit::{App, Entity, SharedString};
 
 use super::PaneKind;
 use crate::browser::BrowserView;
+use crate::files::{FileEditor, FilePane};
 
 /// Ids for panes, never reused while the app runs.
 static NEXT_PANE: AtomicU64 = AtomicU64::new(1);
@@ -20,6 +21,11 @@ pub struct Pane {
     pub title: SharedString,
     /// The page a browser pane shows, once the shell has made it.
     pub browser: Option<Entity<BrowserView>>,
+    /// The file an editor pane shows, once the shell has opened one in it.
+    pub file: Option<Entity<FilePane>>,
+    /// The workspace's turn when its tab was last shown, later turns higher: ⌃⇥ lists the
+    /// latest first.
+    pub shown_at: u64,
 }
 
 impl Pane {
@@ -30,6 +36,8 @@ impl Pane {
             kind,
             title: kind.new_tab_title().into(),
             browser: None,
+            file: None,
+            shown_at: 0,
         }
     }
 
@@ -39,6 +47,15 @@ impl Pane {
             title: view.read(cx).title().into(),
             browser: Some(view),
             ..Pane::new(PaneKind::Browser)
+        }
+    }
+
+    /// An editor pane showing `file`, titled with its name.
+    pub fn file(file: Entity<FilePane>, cx: &App) -> Self {
+        Pane {
+            title: file.read(cx).name().into(),
+            file: Some(file),
+            ..Pane::new(PaneKind::Editor)
         }
     }
 }
@@ -166,6 +183,24 @@ impl Tab {
                 panes
             }
         }
+    }
+
+    /// The latest turn any of its panes was shown at.
+    pub fn shown_at(&self) -> u64 {
+        (self.panes().iter()).map(|pane| pane.shown_at).max().unwrap_or(0)
+    }
+
+    /// The files its panes show, left to right and top to bottom.
+    pub fn files(&self) -> Vec<&Entity<FilePane>> {
+        self.panes().into_iter().filter_map(|pane| pane.file.as_ref()).collect()
+    }
+
+    /// The editors of its files with unsaved edits.
+    pub fn unsaved(&self, cx: &App) -> Vec<Entity<FileEditor>> {
+        (self.files().into_iter())
+            .filter(|file| file.read(cx).is_dirty())
+            .map(|file| file.read(cx).editor.clone())
+            .collect()
     }
 
     pub fn has_pane(&self, id: u64) -> bool {

@@ -3,12 +3,12 @@
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    App, Context, Div, InteractiveElement as _, KeyBinding, MouseButton, NavigationDirection,
-    Window, actions,
+    App, Context, Div, InteractiveElement as _, KeyBinding, ModifiersChangedEvent, MouseButton,
+    NavigationDirection, Window, actions,
 };
 
-use super::Shell;
-use crate::files::{self, CloseTab};
+use super::{Shell, switcher};
+use crate::files;
 use crate::model::PaneKind;
 use crate::navigation::{CloseSettings, GoBack, GoForward, Navigate, NavigationHistory, Route};
 use crate::projects::{self, NewWorktree};
@@ -28,6 +28,9 @@ actions!(
         NewBrowserTab,
         NewEditorTab,
         ReopenClosedTab,
+        CloseTab,
+        SwitchTab,
+        SwitchTabBack,
         EditTheme
     ]
 );
@@ -41,7 +44,11 @@ pub fn init(cx: &mut App) {
         KeyBinding::new("cmd-shift-t", ReopenClosedTab, None),
         KeyBinding::new("cmd-shift-m", ToggleSidebarMode, None),
         KeyBinding::new("cmd-n", NewWorktree, None),
+        KeyBinding::new("cmd-w", CloseTab, None),
+        KeyBinding::new("ctrl-tab", SwitchTab, None),
+        KeyBinding::new("ctrl-shift-tab", SwitchTabBack, None),
     ]);
+    switcher::init(cx);
     // The layout is a setting, so this works from any window or menu.
     cx.on_action(|_: &ToggleSidebarMode, cx| {
         settings::update(cx, |settings| settings.layout = settings.layout.other());
@@ -80,13 +87,27 @@ impl Shell {
             .map(|root| Self::handle_right_panel(root, cx))
             .on_action(cx.listener(Self::toggle_bottom_panel))
             .on_action(cx.listener(|this, _: &NewChat, _, cx| this.new_tab(PaneKind::Chat, cx)))
-            // ⌘W closes the tab in the middle once the Files panel, heard first, has passed
-            // on it: no settings page or file shown to close instead.
-            .on_action(cx.listener(|this, _: &CloseTab, _, cx| {
-                if let Some(at) = this.workspace.shown_tab() {
-                    this.close_tab_at(at, cx);
+            // ⌘W closes what's looked at: the settings, or else the tab shown, asking about
+            // its unsaved edits first. Never the window.
+            .on_action(cx.listener(|this, _: &CloseTab, window, cx| {
+                if matches!(this.route(cx), Route::Settings(_)) {
+                    this.navigate(Route::Workspace, cx);
+                } else if let Some(at) = this.workspace.shown_tab() {
+                    this.close_tab_at(at, window, cx);
                 }
             }))
+            .on_action(cx.listener(|this, _: &SwitchTab, window, cx| {
+                switcher::switch(this, cx.entity(), 1, window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &SwitchTabBack, window, cx| {
+                switcher::switch(this, cx.entity(), -1, window, cx);
+            }))
+            // ⌃ let go before the switcher's window has the keyboard is heard here.
+            .on_modifiers_changed(|event: &ModifiersChangedEvent, window, cx| {
+                if !event.modifiers.control {
+                    switcher::released(window, cx);
+                }
+            })
             .on_action(
                 cx.listener(|this, _: &NewTerminal, _, cx| this.new_tab(PaneKind::Terminal, cx)),
             )
@@ -135,7 +156,7 @@ impl Shell {
         if files::asking(cx) {
             return false;
         }
-        let unsaved = self.right_panel.unsaved(cx);
+        let unsaved = self.unsaved(cx);
         if unsaved.is_empty() {
             return true;
         }

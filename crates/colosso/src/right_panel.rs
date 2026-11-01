@@ -1,5 +1,6 @@
-//! The right panel beside the chat: the selected checkout's changes, or its files, each
-//! opened and closed by its own button in the top bar. Each checkout in the sidebar keeps
+//! The right panel beside the chat: the selected checkout's changes, or its file tree, each
+//! opened and closed by its own button in the top bar; files picked in the tree open in the
+//! workspace's tabs. Each checkout in the sidebar keeps
 //! its panels while it's there, so leaving it and coming back finds its open folders, its
 //! pick and its scroll as they were. The panel follows the shell after each change to it
 //! rather than while it's drawn, so nothing is made or swapped mid-frame.
@@ -20,8 +21,7 @@ use gpui_kit::{
 
 use crate::changes::ChangesPanel;
 use crate::checkout::Checkout;
-use crate::files::{FileEditor, FilesPanel, Place};
-use crate::go_to_file;
+use crate::files::{FilesPanel, Place};
 use crate::language;
 use crate::navigation::Route;
 use crate::settings;
@@ -77,9 +77,9 @@ impl View {
                 settings.changes_width,
             ),
             View::Files => (
-                theme::FILES_MIN_WIDTH,
-                theme::FILES_MAX_WIDTH,
-                settings.files_panel_width,
+                theme::FILES_TREE_MIN_WIDTH,
+                theme::FILES_TREE_MAX_WIDTH,
+                settings.files_tree_width,
             ),
         }
     }
@@ -107,7 +107,8 @@ struct Panels {
 pub struct RightPanel {
     open: bool,
     view: View,
-    /// Whether the panel has the card to itself, the chat out of sight, whichever it shows.
+    /// Whether the changes have the card to themselves, the chat out of sight. The tree
+    /// never does.
     wide: bool,
     /// Whether the panel takes the keyboard once it's next shown, as it does when opened.
     focus: bool,
@@ -141,24 +142,6 @@ impl RightPanel {
         self.shown()?.files.as_ref()
     }
 
-    /// The editors of the files open in the window with unsaved edits, in every checkout's
-    /// panel.
-    pub fn unsaved(&self, cx: &App) -> Vec<Entity<FileEditor>> {
-        (self.checkouts.values())
-            .filter_map(|panels| panels.files.as_ref())
-            .flat_map(|files| files.read(cx).unsaved(cx))
-            .collect()
-    }
-
-    /// Drops the Files panel of the checkout at `root`, and the files it showed with it.
-    #[cfg(test)]
-    pub fn forget_files(&mut self, root: &Path, cx: &mut App) {
-        if let Some(panels) = self.checkouts.get_mut(root) {
-            panels.files = None;
-        }
-        cx.refresh_windows();
-    }
-
     /// The lines the selected checkout's changes add and remove, once they've been read.
     pub fn totals(&self, cx: &App) -> (u32, u32) {
         (self.checkout()).map_or((0, 0), |checkout| checkout.read(cx).totals())
@@ -177,7 +160,7 @@ impl RightPanel {
         let Some(panels) = self.shown().filter(|_| shown && self.open) else {
             return (None, false);
         };
-        let wide = self.wide;
+        let wide = self.wide && self.view == View::Changes;
         let panel: AnyElement = match self.view {
             View::Changes => panels.changes.clone().map(Entity::into_any_element),
             View::Files => panels.files.clone().map(Entity::into_any_element),
@@ -227,7 +210,7 @@ impl RightPanel {
         let view = self.view;
         settings::update(cx, |settings| match view {
             View::Changes => settings.changes_width = width,
-            View::Files => settings.files_panel_width = width,
+            View::Files => settings.files_tree_width = width,
         });
     }
 
@@ -276,7 +259,7 @@ impl Shell {
     }
 
     /// Shows `view` in the right panel, opening it if it's closed, and gives it the keyboard.
-    fn show(&mut self, view: View, cx: &mut Context<Self>) {
+    pub(crate) fn show(&mut self, view: View, cx: &mut Context<Self>) {
         let panel = &mut self.right_panel;
         (panel.open, panel.view, panel.focus) = (true, view, true);
         self.navigate(Route::Workspace, cx);
@@ -294,8 +277,8 @@ impl Shell {
     }
 
     /// Points the right panel at the selected checkout, and its file tree at the file the
-    /// active tab shows; makes what it shows now if it isn't made; and lets go of the panels
-    /// of checkouts gone from the sidebar. Runs after each change to the shell.
+    /// shown tab shows; makes what it shows now if it isn't made; lets go of the panels of
+    /// checkouts gone from the sidebar. Runs after each change to the shell.
     pub fn follow_selection(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let (panel, workspace) = (&mut self.right_panel, &self.workspace);
         let mut gone = Vec::new();
@@ -351,38 +334,24 @@ impl Shell {
             let handle = changes.read(cx).focus_handle().clone();
             focus_once(&mut focus, &handle, window, cx);
         }
-        if open && view == View::Files {
-            let files = (panels.files)
-                .get_or_insert_with(|| cx.new(|cx| FilesPanel::new(checkout.clone(), cx)));
-            if files.read(cx).is_wide() != wide {
-                files.update(cx, |files, cx| files.set_wide(wide, cx));
+        if open && view == View::Files && panels.files.is_none() {
+            let files = cx.new(|cx| FilesPanel::new(checkout.clone(), cx));
+            (panels._subscriptions).push(cx.subscribe_in(&files, window, Self::files_event));
+            panels.files = Some(files);
+        }
+        if let Some(files) = panels.files.clone() {
+            let shown = self.shown_file(window, cx);
+            let active = shown.and_then(|file| file.read(cx).relative.clone());
+            files.update(cx, |files, cx| files.set_active(active, cx));
+            if open && view == View::Files {
+                let handle = files.read(cx).focus_handle().clone();
+                focus_once(&mut focus, &handle, window, cx);
             }
-            let handle = files.read(cx).focus_handle().clone();
-            focus_once(&mut focus, &handle, window, cx);
         }
     }
 
-    /// Shows the selected checkout's file `place` is in, in the Files panel, opening the
-    /// panel on its files if it isn't, and puts the cursor where the place says.
-    pub fn view_file(&mut self, place: Place, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(checkout) = self.right_panel.checkout().cloned() {
-            go_to_file::opened(&checkout.read(cx).root().clone(), &place.path, cx);
-        }
-        self.show(View::Files, cx);
-        // Made now rather than after this change, to be shown the file.
-        self.follow_selection(window, cx);
-        let Some(files) = self
-            .right_panel
-            .shown()
-            .and_then(|panels| panels.files.clone())
-        else {
-            return;
-        };
-        files.update(cx, |files, cx| files.view(place, window, cx));
-    }
-
-    /// Shows the file `place` is in from a dialog over `behind`: as [`Self::view_file`]
-    /// does, in that window.
+    /// Shows the file `place` is in from a dialog over `behind`, in a tab: as
+    /// [`Self::view_file`] does, in that window.
     pub fn view_behind(shell: &WeakEntity<Shell>, behind: AnyWindowHandle, place: Place, cx: &mut App) {
         let shown = behind.update(cx, |_, window, cx| {
             shell.update(cx, |shell, cx| shell.view_file(place, window, cx))

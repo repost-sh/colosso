@@ -4,12 +4,13 @@ use gpui_kit::component::kbd::Kbd;
 use gpui_kit::{Action, App, AsKeystroke as _, IntoElement, ParentElement as _, Styled as _, div};
 
 use super::components::{SettingRow, SettingsSection};
-use crate::files::{CloseTab, Save, SwitchTab};
+use crate::files::Save;
 use crate::go_to_file::GoToFile;
 use crate::navigation::{CloseSettings, GoBack, GoForward, OpenSettings};
 use crate::projects::NewWorktree;
 use crate::shell::{
-    NewChat, ReopenClosedTab, ToggleBottomPanel, ToggleRightPanel, ToggleSidebar, ToggleSidebarMode,
+    CloseTab, NewChat, ReopenClosedTab, SwitchTab, ToggleBottomPanel, ToggleRightPanel,
+    ToggleSidebar, ToggleSidebarMode,
 };
 use crate::theme::{self, CycleTheme};
 
@@ -43,17 +44,14 @@ const SECTIONS: &[(&str, &[Command])] = &[
         &[
             ("New chat", &NewChat),
             ("Reopen the tab closed last", &ReopenClosedTab),
-            (
-                "Close the settings, the file shown, or else the tab in the middle",
-                &CloseTab,
-            ),
+            ("Close the settings, or else the tab shown", &CloseTab),
+            ("Switch between tabs, the latest shown first", &SwitchTab),
         ],
     ),
     (
         "Files",
         &[
             ("Go to file", &GoToFile),
-            ("Switch between the open files", &SwitchTab),
             ("Save", &Save),
         ],
     ),

@@ -17,6 +17,7 @@ use gpui_kit::{
 };
 
 use crate::bottom::StatusBar;
+use crate::files::Locations;
 use crate::model::{PaneKind, Workspace};
 use crate::navigation::{GoBack, GoForward, Navigate, NavigationHistory, OpenSettings, Route};
 use crate::right_panel::RightPanel;
@@ -35,12 +36,14 @@ mod elements;
 mod reopen;
 mod reorder;
 mod splits;
+mod switcher;
 mod tab_face;
 mod tab_list;
 
 pub use actions::{
-    EditTheme, NewBrowserTab, NewChat, NewEditorTab, NewTerminal, ReopenClosedTab,
-    ToggleBottomPanel, ToggleRightPanel, ToggleSidebar, ToggleSidebarMode, init,
+    CloseTab, EditTheme, NewBrowserTab, NewChat, NewEditorTab, NewTerminal, ReopenClosedTab,
+    SwitchTab, SwitchTabBack, ToggleBottomPanel, ToggleRightPanel, ToggleSidebar,
+    ToggleSidebarMode, init,
 };
 use elements::drag_area;
 pub use elements::{
@@ -71,6 +74,8 @@ pub struct Shell {
     rails_menu_at: Point<Pixels>,
     /// The tab being dragged along its list, shared by every list of tabs.
     pub tab_hand: Rc<TabHand>,
+    /// The places a symbol led to, listed under the tabs, while they are.
+    pub locations: Option<Entity<Locations>>,
     _subscriptions: [Subscription; 6],
 }
 
@@ -99,8 +104,10 @@ impl Shell {
                     cx.notify();
                 }
             }),
-            // The right panel follows what's selected, after each change rather than mid-frame.
+            // The tab shown is noted as the latest, for ⌃⇥, and the right panel follows what's
+            // selected: after each change rather than mid-frame.
             cx.observe_in(&cx.entity(), window, |this, _, window, cx| {
+                this.workspace.stamp_shown();
                 this.follow_selection(window, cx);
             }),
             // What had the keyboard is gone, as a closed panel's list is: actions then start
@@ -123,6 +130,7 @@ impl Shell {
             search,
             rails_menu_at: Point::default(),
             tab_hand: Rc::default(),
+            locations: None,
             _subscriptions,
         };
         shell.reload_projects(cx);
@@ -328,6 +336,7 @@ impl Shell {
                     main.child(orca::tab_strip(self, cx))
                 })
                 .child(self.workspace_content(p, cx))
+                .children(self.locations.clone())
                 .when(self.bottom_panel_open, |main| main.child(bottom::panel(p)))
                 .into_any_element(),
         }
@@ -354,7 +363,7 @@ impl Shell {
                     let context = format!("{} / {}", project.name, branch.name());
                     self.tab_content(tab, &context, cx)
                 }
-                None => note("No tabs on this branch. ⌘T starts a chat."),
+                None => note("No tabs on this branch. ⌘T starts a chat, ⌘P opens a file."),
             },
         };
         div().flex_1().min_h_0().child(content)

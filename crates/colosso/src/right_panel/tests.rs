@@ -86,34 +86,40 @@ fn a_dragged_edge_moves_as_it_goes_and_is_saved_once_let_go(cx: &mut TestAppCont
     cx.dispatch_action(window, ShowFiles);
     cx.run_until_parked();
     let cx = &mut VisualTestContext::from_window(window, cx);
-    let saved = |cx: &mut VisualTestContext| {
-        cx.read(|cx| {
-            let settings = settings::get(cx);
-            (settings.files_tree_width, settings.files_panel_width)
-        })
-    };
-    let (tree, panel) = saved(cx);
+    let saved = |cx: &mut VisualTestContext| cx.read(|cx| settings::get(cx).files_tree_width);
+    let set = saved(cx);
     let edge = |selector, cx: &mut VisualTestContext| {
         cx.debug_bounds(selector).unwrap().center().x.as_f32()
     };
-    // The tree's edge, beside the file.
-    let before = edge("files-tree-resize", cx);
-    drag("files-tree-resize", 60., cx, |cx| {
-        let after = edge("files-tree-resize", cx);
-        assert!((after - before - 60.).abs() < GRAB, "{before} to {after}");
-        assert_eq!(saved(cx), (tree, panel), "nothing's saved mid-drag");
-    });
-    assert!((saved(cx).0 - tree - 60.).abs() < GRAB, "{:?}", saved(cx));
-    // The panel's own edge, beside the chat, as wide as the window lets it be: dragged
-    // right, it's narrower.
-    let wide = cx.read(|cx| shell.read(cx).right_panel.width(cx));
+    // The panel's own edge, beside the tabs: dragged left, the tree is wider.
     let before = edge("right-panel-resize", cx);
-    drag("right-panel-resize", 40., cx, |cx| {
+    drag("right-panel-resize", -60., cx, |cx| {
         let after = edge("right-panel-resize", cx);
-        assert!((after - before - 40.).abs() < GRAB, "{before} to {after}");
-        assert_eq!(saved(cx).1, panel, "nothing's saved mid-drag");
+        assert!((before - after - 60.).abs() < GRAB, "{before} to {after}");
+        assert_eq!(saved(cx), set, "nothing's saved mid-drag");
     });
-    assert!((saved(cx).1 - (wide - 40.)).abs() < GRAB, "{:?}", saved(cx));
+    assert!((saved(cx) - set - 60.).abs() < GRAB, "{set} to {}", saved(cx));
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// The tree is beside the tabs, never in their place: widening, as the changes do, leaves
+/// it as it is.
+#[gpui_kit::test]
+fn the_tree_never_takes_the_card(cx: &mut TestAppContext) {
+    let root = repo("right-panel-tree-narrow", &[("a.txt", "a\n")]);
+    let (window, shell) = shell_with(&[&root], cx);
+    select(&shell, &root, cx);
+    cx.dispatch_action(window, ShowFiles);
+    cx.dispatch_action(window, ToggleWide);
+    cx.run_until_parked();
+    let tabs_shown = |cx: &mut VisualTestContext| cx.debug_bounds("right-panel-resize").is_some();
+    let cx = &mut VisualTestContext::from_window(window, cx);
+    cx.run_until_parked();
+    assert!(tabs_shown(cx), "the tree keeps its edge beside the tabs");
+    // The changes, set wide, take the card.
+    cx.dispatch_action(ToggleChanges);
+    cx.run_until_parked();
+    assert!(!tabs_shown(cx), "the changes have the card");
     let _ = std::fs::remove_dir_all(root);
 }
 

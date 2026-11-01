@@ -15,7 +15,7 @@ use gpui_kit::{
 use super::{NewBrowserTab, NewChat, NewEditorTab, NewTerminal, Shell};
 use crate::menu::{self, MenuItem};
 use crate::model::PaneKind;
-use crate::pane::close_button;
+use crate::pane::{close_button, tab_button, unsaved_dot};
 use crate::projects::AddProject;
 use crate::theme::{self, Palette};
 
@@ -120,33 +120,46 @@ pub fn row(id: impl Into<ElementId>, selected: bool, p: Palette) -> Stateful<Div
         .when(!selected, |row| row.hover(|style| style.bg(p.hover)))
 }
 
-/// The × that closes the tab at `(project, branch, tab)` without selecting it.
+/// The × that closes the tab at `(project, branch, tab)` without selecting it, asking
+/// first about unsaved edits; a dot in its place while its files have them.
 pub fn tab_close_button(
     id: impl Into<ElementId>,
     (project, branch, tab): (usize, usize, usize),
+    dirty: bool,
     p: Palette,
     cx: &mut Context<Shell>,
 ) -> Stateful<Div> {
-    close_button(id, p).on_click(cx.listener(move |this, _, _, cx| {
+    close_or_dot(id, dirty, p).on_click(cx.listener(move |this, _, window, cx| {
         cx.stop_propagation();
-        this.close_tab_at((project, branch, tab), cx);
+        this.close_tab_at((project, branch, tab), window, cx);
     }))
 }
 
-/// The × that closes pane `id` alone, out of its split, `name` naming it beside the pane;
-/// pressed, it doesn't take up what it's on.
+/// A tab's ×, or its dot while its files have unsaved edits.
+fn close_or_dot(id: impl Into<ElementId>, dirty: bool, p: Palette) -> Stateful<Div> {
+    if dirty {
+        tab_button(id, p).child(unsaved_dot(p))
+    } else {
+        close_button(id, p)
+    }
+}
+
+/// The × that closes pane `id` alone, out of its split, `name` naming it beside the pane,
+/// asking first about unsaved edits; a dot in its place while its file has them. Pressed,
+/// it doesn't take up what it's on.
 pub fn pane_close_button(
     name: &'static str,
     id: u64,
+    dirty: bool,
     p: Palette,
     cx: &mut Context<Shell>,
 ) -> Stateful<Div> {
-    close_button((name, id), p)
+    close_or_dot((name, id), dirty, p)
         .debug_selector(move || format!("{name}-{id}"))
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-        .on_click(cx.listener(move |this, _, _, cx| {
+        .on_click(cx.listener(move |this, _, window, cx| {
             cx.stop_propagation();
-            this.close_pane(id, cx);
+            this.close_pane(id, window, cx);
         }))
 }
 

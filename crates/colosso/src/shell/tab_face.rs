@@ -1,6 +1,7 @@
-//! How a tab shows in a list: its pane's icon, a page's own icon for a browser, and its
-//! title; a split shows each of its panes as a chip in one capsule, side by side, each
-//! with its own button that closes that pane alone.
+//! How a tab shows in a list: its pane's icon, a page's own icon for a browser or the
+//! file's for a file, and its title, in italics for a preview; a split shows each of its
+//! panes as a chip in one capsule, side by side, each with its own button that closes that
+//! pane alone, a dot in its place while the pane's file has unsaved edits.
 
 use std::sync::Arc;
 
@@ -8,11 +9,12 @@ use gpui_kit::assets::IconName;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, Axis, Context, Div, Image, InteractiveElement as _, IntoElement,
-    ParentElement as _, SharedString, Styled as _, div, img, px,
+    ParentElement as _, SharedString, Styled, div, img, px,
 };
 
 use super::Shell;
 use super::elements::{ellipsized, icon, pane_close_button};
+use crate::files::{FilePane, file_icon};
 use crate::model::{Pane, Tab};
 use crate::theme::Palette;
 
@@ -27,16 +29,29 @@ pub struct Face {
     pub icon: IconName,
     pub favicon: Option<Arc<Image>>,
     pub title: SharedString,
+    /// Whether it's a file the next file previewed takes the place of.
+    pub preview: bool,
+    /// Whether it's a file with unsaved edits.
+    pub dirty: bool,
 }
 
 impl Face {
     pub fn of(pane: &Pane, cx: &App) -> Self {
+        let file = pane.file.as_ref().map(|file| file.read(cx));
         Face {
             id: pane.id,
-            icon: pane.kind.icon(),
+            // A file's pane is titled with its name.
+            icon: file.map_or(pane.kind.icon(), |_| file_icon(&pane.title)),
             favicon: (pane.browser.as_ref()).and_then(|view| view.read(cx).favicon()),
             title: pane.title.clone(),
+            preview: file.is_some_and(FilePane::is_preview),
+            dirty: file.is_some_and(FilePane::is_dirty),
         }
+    }
+
+    /// Its title, cut short to fit, in italics for a preview.
+    pub fn label(&self) -> Div {
+        ellipsized(self.title.clone()).when(self.preview, Styled::italic)
     }
 
     /// Each pane of `tab`, left to right.
@@ -68,7 +83,7 @@ impl Face {
             .gap_1p5()
             .rounded(px(5.))
             .child(self.icon(13.))
-            .child(ellipsized(self.title.clone()).flex_grow(1.))
+            .child(self.label().flex_grow(1.))
     }
 }
 
@@ -83,7 +98,7 @@ pub fn split_chips(
     cx: &mut Context<Shell>,
 ) -> Div {
     let chips = faces.iter().map(|face| {
-        let close = pane_close_button("pane-chip-close", face.id, p, cx).when(
+        let close = pane_close_button("pane-chip-close", face.id, face.dirty, p, cx).when(
             axis == Axis::Vertical && !active,
             |close| {
                 close

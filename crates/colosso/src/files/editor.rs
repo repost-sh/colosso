@@ -1,4 +1,4 @@
-//! A file shown beside the Files panel's tree: a view over the checkout's document for it,
+//! A file shown in a workspace tab: a view over the checkout's document for it,
 //! shown in its language's colours and typed into when it's one of the checkout's, or a
 //! note saying why it isn't shown. The view's text is the one that counts once it differs
 //! from the document's, which is the file's: it tells the document so, and gives it the
@@ -13,7 +13,8 @@ use colosso_lsp::LineIndex;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::input::{Editor, EditorState, InputEvent, RopeExt as _};
 use gpui_kit::{
-    App, AppContext as _, Context, Entity, EventEmitter, InteractiveElement as _, IntoElement,
+    App, AppContext as _, Context, Entity, EventEmitter, Focusable as _, InteractiveElement as _,
+    IntoElement,
     ParentElement as _, Render, SharedString, Styled as _, Subscription, Task, WeakEntity,
     Window, div,
 };
@@ -57,10 +58,10 @@ pub(super) struct Shown {
     _changes: Subscription,
 }
 
-/// A definition in another file, for the Files panel to show.
+/// A definition in another file, for the shell to preview.
 impl EventEmitter<Place> for FileEditor {}
 
-/// The places a symbol in the file led to, for the Files panel to list under it.
+/// The places a symbol in the file led to, for the shell to list under the tabs.
 impl EventEmitter<Found> for FileEditor {}
 
 impl FileEditor {
@@ -163,6 +164,12 @@ impl FileEditor {
             Some(shown) => shown.editor.update(cx, |editor, cx| editor.focus(window, cx)),
             None => self.focus_when_shown = true,
         }
+    }
+
+    /// Whether the editor has the keyboard.
+    pub fn has_focus(&self, window: &Window, cx: &App) -> bool {
+        (self.editor.as_ref())
+            .is_some_and(|shown| shown.editor.read(cx).focus_handle(cx).contains_focused(window, cx))
     }
 
     /// Asks the server for every reference to the symbol at the caret, and has the panel

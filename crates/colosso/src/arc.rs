@@ -5,7 +5,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Axis, Context, Div, FontWeight, InteractiveElement as _, IntoElement, MouseButton,
+    Axis, ClickEvent, Context, Div, FontWeight, InteractiveElement as _, IntoElement, MouseButton,
     ParentElement as _, ScrollDelta, ScrollEvent, StatefulInteractiveElement as _, Styled as _,
     TouchPhase, Window, div, px,
 };
@@ -192,23 +192,35 @@ fn branch_group(
             let at = (project_index, branch_index, tab_index);
             let row = row(("arc-tab", branch_index * 100 + tab_index), active, p)
                 .group("arc-tab")
-                .on_click(cx.listener(move |this, _, _, cx| {
+                .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
                     this.workspace
                         .select_tab(project_index, branch_index, tab_index);
+                    // A second click keeps a previewed file open.
+                    if event.click_count() > 1 {
+                        this.keep_tab(at, cx);
+                    }
                     cx.notify();
-                }));
+                }))
+                .on_mouse_down(
+                    MouseButton::Middle,
+                    cx.listener(move |this, _, window, cx| this.close_tab_at(at, window, cx)),
+                );
             let list = (Axis::Vertical, active, &shell.tab_hand);
             tab_row(row, (at, tab), list, p, cx, |row, face, cx| {
                 let close = ("arc-tab-close", branch_index * 100 + tab_index);
                 row.pr_1()
                     .child(div().text_color(p.muted).child(face.icon(13.)))
-                    .child(ellipsized(face.title.clone()).flex_1())
-                    // Shown on the active tab, and on the others while hovered.
-                    .child(tab_close_button(close, at, p, cx).when(!active, |close| {
-                        close
-                            .opacity(0.)
-                            .group_hover("arc-tab", |style| style.opacity(1.))
-                    }))
+                    .child(face.label().flex_1())
+                    // Shown on the active tab, and on the others while hovered; a dot for
+                    // unsaved edits always.
+                    .child(tab_close_button(close, at, face.dirty, p, cx).when(
+                        !active && !face.dirty,
+                        |close| {
+                            close
+                                .opacity(0.)
+                                .group_hover("arc-tab", |style| style.opacity(1.))
+                        },
+                    ))
             })
         })
         .collect();

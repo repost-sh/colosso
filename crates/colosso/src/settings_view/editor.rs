@@ -1,4 +1,4 @@
-//! The Editor settings page: how the Files panel opens files and what ⌘S saves, and what
+//! The Editor settings page: how files open from the tree and what ⌘S saves, and what
 //! the code shows over its text.
 
 use gpui_kit::App;
@@ -17,8 +17,9 @@ fn files(cx: &App) -> SettingsSection {
         .row(
             SettingRow::new("Preview files")
                 .description(
-                    "A file picked in the Files panel, by a click or the arrow keys, opens in \
-                     a preview tab the next one takes over. A double click keeps it open.",
+                    "A file picked in the file tree, by a click or the arrow keys, opens in a \
+                     preview tab the next one takes over. A double click, on the file or \
+                     its tab, keeps it open.",
                 )
                 .control(NativeSwitch::new(
                     "preview-files",

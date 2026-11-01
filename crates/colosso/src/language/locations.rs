@@ -1,4 +1,4 @@
-//! The places a symbol leads to, for the Files panel to list under the editor: every
+//! The places a symbol leads to, for the shell to list under the tabs: every
 //! reference to it (`textDocument/references`), or its several definitions. Each place comes
 //! with the line it's on, taken from the text the server has for the file when the file's
 //! open on it, and else from the disk, off the main thread.

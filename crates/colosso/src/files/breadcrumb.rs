@@ -8,13 +8,12 @@ use std::sync::Arc;
 use gpui_kit::assets::IconName;
 use gpui_kit::{
     Context, Div, InteractiveElement as _, ParentElement as _, SharedString,
-    StatefulInteractiveElement as _, Styled as _, Window, div, px,
+    StatefulInteractiveElement as _, Styled as _, div, px,
 };
 
 use super::file_icon;
-use super::panel::FilesPanel;
+use super::file_pane::{FilePane, FilePaneEvent, name};
 use super::render::BAR;
-use super::tabs::{Viewed, name};
 use crate::projects::display_path;
 use crate::shell::{ellipsized, icon};
 use crate::theme::Palette;
@@ -53,11 +52,11 @@ pub(super) fn crumbs(path: &Path, relative: Option<&str>) -> Vec<Crumb> {
     crumbs
 }
 
-impl FilesPanel {
-    /// The bar over `viewed`'s editor. Narrow, the folders give way, cut short; the file's
-    /// name never does.
-    pub(super) fn breadcrumb(&self, viewed: &Viewed, p: Palette, cx: &mut Context<Self>) -> Div {
-        let crumbs = crumbs(&viewed.path, viewed.relative.as_deref());
+impl FilePane {
+    /// The bar over the editor. Narrow, the folders give way, cut short; the file's name
+    /// never does.
+    pub(super) fn breadcrumb(&self, p: Palette, cx: &mut Context<Self>) -> Div {
+        let crumbs = crumbs(&self.path, self.relative.as_deref());
         let last = crumbs.len() - 1;
         let mut bar = div()
             .h(px(BAR))
@@ -98,19 +97,13 @@ impl FilesPanel {
                 piece = piece
                     .cursor_pointer()
                     .hover(|style| style.text_color(p.text))
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.pick_in_tree(&path, window, cx);
+                    .on_click(cx.listener(move |_, _, _, cx| {
+                        cx.emit(FilePaneEvent::PickInTree(path.clone()));
                     }));
             }
             bar = bar.child(piece);
         }
         bar
-    }
-
-    /// Picks `path` in the tree, opening the folders above it, and gives the tree the keyboard.
-    fn pick_in_tree(&mut self, path: &Arc<str>, window: &mut Window, cx: &mut Context<Self>) {
-        self.reveal(path, cx);
-        window.focus(&self.focus, cx);
     }
 }
 
