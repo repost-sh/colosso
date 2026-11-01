@@ -50,8 +50,10 @@ pub fn run(dir: TermDir, foreground: bool) -> io::Result<()> {
 
     log::info!("shutting down");
     daemon.shutdown_sessions();
+    // The answer to a client's `Shutdown` is likely still queued.
+    let deadline = std::time::Instant::now() + Duration::from_millis(500);
     for client in daemon.clients() {
-        client.outbound.close();
+        client.outbound.close_after(deadline);
     }
     daemon.persist();
     SIGNAL_FD.store(-1, Ordering::Relaxed);

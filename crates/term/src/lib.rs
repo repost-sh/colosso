@@ -12,7 +12,7 @@ mod sprite;
 mod view;
 mod vt;
 
-pub use client::{Attachment, Notice, Stream, TermClient};
+pub use client::{Attachment, Notice, Stream, TermClient, is_other_build};
 pub use glyphs::Look;
 pub use view::{
     CONTEXT, Copy, Paste, ScrollPageDown, ScrollPageUp, ScrollToBottom, ScrollToTop, Source,

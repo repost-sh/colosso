@@ -165,7 +165,8 @@ offers two transports (loopback Streamable HTTP and a stdio relay).** Why: termi
 the window; mobile arrives later; monocode's catalog pattern generates tools from one
 registry; stdio is what most MCP clients want and it carries the caller's cwd. App-level tools
 (browser, editor) can later federate into the same server (section 8.1); start with
-terminals only.
+terminals only. **As implemented (M4):** the server runs in the stdio relay, not in the
+daemon, which runs the operations behind it; HTTP is deferred (4, 8.1).
 
 **D10 [decided] Terminal input is exposed to agents.** monocode's MCP lists terminal input
 under "never exposed". Colosso reverses that on purpose, mitigated by scopes and grants,
@@ -182,11 +183,15 @@ alone and open another one in the worktree", not as something to wait out.
 **D12 [decided] Protocol and snapshot versions are explicit from day one; daemon and app ship
 as one unit; an older daemon keeps running when the app updates and the app degrades rather
 than killing sessions.** Why: zmx's IPC upgrades kill live sessions; libghostty-vt's snapshot
-format v1 "does not yet carry a binary-compatibility guarantee".
+format v1 "does not yet carry a binary-compatibility guarantee". **As implemented (M5):** an
+app finding a daemon of another build leaves it running and says so in the tab, whose
+"Restart terminals" stops it and starts its own (5.1).
 
 **D13 [decided 2026-10-31] A terminal lives in a tab, and only in a tab.** The bottom panel
 holds no terminal; it stays the stand-in `bottom.rs` had. Why: the owner never asked for a
-terminal there. Pane splitting is not planned yet (see 14).
+terminal there. Splits came with the browser work merged on 2026-10-31: a tab is a nested
+split tree (`Tab::Split`, rows and columns, a ratio each), and a terminal sits on any side of
+it as any pane does (O8).
 
 ---
 
@@ -286,10 +291,10 @@ PR 1006; dev.to "What it takes to embed libghostty in a Swift app".
 ```
                     ┌──────────────────────────── machine ────────────────────────────┐
                     │                                                                 │
-  Claude Code ──stdio──▶ colosso mcp (relay) ──┐                                      │
-  Codex / others ─HTTP 127.0.0.1──────────────▶│  colosso-termd (one per user)        │
+  Claude Code ──stdio──▶ colosso mcp (MCP) ────┐                                      │
+  (HTTP 127.0.0.1 deferred, 8.1)               │  colosso-termd (one per user)        │
                                                │  ├─ registry (worktrees, terminals)  │
-  Colosso.app ◀──unix socket (frames v1)──────▶│  ├─ MCP server (term-control)        │
+  Colosso.app ◀──unix socket (frames v1)──────▶│  ├─ operations behind the MCP        │
    ├─ crates/term: engine + GPUI element       │  ├─ control leases, status, activity │
    └─ branch units ─ terminal tabs             │  └─ sessions[n]: thread {            │
                                                │        PTY ⇄ child process          │
@@ -303,6 +308,10 @@ Data flow for one keystroke: GPUI key event → ghostty key encoder in the app �
 → daemon session thread → PTY write. For output: PTY read → session thread → fed to the
 daemon's headless engine (status, snapshot, queries) and fanned out as `Output` frames →
 app → app engine `vt_write` → render state → GPUI paint on the next frame if dirty.
+
+**As implemented (M5):** the MCP server is the relay `colosso mcp` (crates/term-mcp), one per
+agent, over stdio; it reaches the daemon by the same unix socket and frames as the app, and
+the daemon runs the operations (8.1). Loopback HTTP is deferred.
 
 ---
 
@@ -336,6 +345,23 @@ app → app engine `vt_write` → render state → GPUI paint on the next frame 
   compares `protocol` in `Welcome`; if compatible it keeps using the old daemon; if not, the
   app shows "Terminals are served by an older build; restart them to upgrade" and offers
   `Shutdown` + restart. (Fd-passing handover is a later improvement.)
+
+**As implemented (M5):** "compatible" means the daemon's protocol and also its engine: the
+views restore its snapshots, so the app's client (`term/src/client.rs`, `this_build`) turns
+away a daemon whose Ghostty commit or snapshot format isn't its own, and the daemon refuses a
+hello of another protocol, answering `daemon_version_mismatch` before it hangs up. A tab the
+daemon turned away shows the notice ("Terminals are served by another build of Colosso;
+restart them to use this one. Their programs end, and the shells you opened start again."),
+worded for either direction, since an older app meets a newer daemon too, with a "Restart
+terminals" button. The button runs `stop_daemon` (`term-control/src/client.rs`): `Shutdown`
+when the daemon still takes the hello, else SIGTERM to the pid in `daemon.lock`, sent only
+while that lock is held so a stale pid is never signalled; the tab then opens or attaches
+again, which starts this build's daemon, and every other tab turned away tries again. When the
+app starts on another build's daemon, the person's shells the registry remembers (read as
+JSON, since another build wrote it) get those tabs. Tests: `upgrade::*` in the daemon tests
+stop a real daemon both ways and find its terminals in the next; the in-app check puts a
+stand-in daemon with another engine under the app, sees the notice, presses the button and
+gets the shell back on this build's daemon.
 
 ### 5.2 Terminal model [decided]
 
@@ -390,6 +416,24 @@ Terminal {
   `WRITE_PTY` replies to the PTY when **no client is attached**; when clients are attached,
   the app's engine answers queries, as boo does, to avoid duplicate replies), (c) enqueued to
   every attached client. No coalescing beyond the read itself.
+
+  **As implemented (M5):** the read runs on a thread of its own that does little but read
+  (`session/handoff.rs`). macOS's PTY gives a flood about a kilobyte a read, and the program
+  writing waits on each. Any other call on the way between reads (a `poll` to read on, an
+  `ioctl(FIONREAD)`, waking the session thread) slows the flood by about a quarter, and so
+  does sleeping in a blocking read: the reader sleeps on each empty queue and the program's
+  next write has to wake it. So the master is non-blocking, and once a read comes back full
+  the reader reads again at once on an empty queue, up to 16 times, before it waits in
+  `poll`, as Ghostty's reader does (a bare PTY on an M4 Max: 122 MiB/s read blocking, 183 to
+  192 read so; 64, 256 or more tries were no faster, nor was a higher thread priority).
+  Writes to the program wait for room in `poll` likewise, the flag being the open PTY's. The
+  reader appends what it reads to a buffer the session thread takes, and wakes that thread
+  only after it said it sleeps. While output flows the session thread takes what's there
+  every 0.5 ms, in frames of up to 64 KiB, and goes to sleep when a take finds nothing;
+  anything written to the program has the next output wake it, so a keystroke's echo goes on
+  at once, even during a flood. Past 4 MiB not yet taken the reader stops reading, and the
+  program waits. A `cat` goes in frames of about 55 KiB (`term-cat` in 7.5: 120 MiB/s with a
+  blocking reader, 145 to 163 with this one).
 - Raw ring: bounded (default 8 MiB per terminal). Each byte has a monotonically increasing
   **stream offset** (u64). Clients track the offset they have received.
 - Snapshot cache: the session thread encodes a snapshot on demand (attach, catch-up, MCP
@@ -453,6 +497,11 @@ Input { handle, bytes, request_id?: u128 }          // already encoded by the cl
 Paste { handle, text }                              // daemon brackets it per the engine's mode
 ```
 
+**As implemented (M5):** the binary frames (`Output`, `Snapshot`, `Input`) name the
+attachment by the index `Attached` returned, not the handle (`term-control/src/framing.rs`),
+and `Input` carries no request id: a repeated `requestId` is answered from the relay's
+receipts (8.2). `Paste` is a control request, not a binary frame.
+
 Attach algorithm: the session thread records the client's `since_offset` (0 for a fresh
 attach). It encodes a snapshot at the current offset `S`, sends `Snapshot(S)`, then streams
 `Output` from `S` on. A client that already holds state at offset `O ≥ ring.start` may ask
@@ -466,8 +515,15 @@ fresh snapshot and resumes streaming from its offset. The client resets its engi
 snapshot (`decoder_ready` first so the screen is usable before history arrives). This bounds
 bandwidth and memory for slow links; locally it should never trigger.
 
+**Tested (M5):** `a_client_that_falls_behind_catches_up_from_a_snapshot` attaches a client
+on the bare socket that stops reading while about 15 MB go by; it is told `Lagging`, gets a
+fresh snapshot once it reads again, its screen then the live one, and the stream goes on
+from the snapshot's offset with nothing missing.
+
 Size negotiation: a terminal has one size. Policy, in order: the size of the client holding
 control; else the smallest of the attached `control`-mode clients; observers never resize.
+**As implemented (M5):** always the smallest `control`-mode client, whoever holds control
+(`session/stream.rs`, `negotiate_size`); observers never resize.
 Changes emit `Event{size}` so other clients can letterbox.
 
 Multi-client: any number of clients per terminal. Every attached client receives the same
@@ -492,7 +548,13 @@ sides must link the same Ghostty revision (CI check: compare `ghostty-vt-sys` bu
   resolved worktree; else, if the worktree has exactly one terminal, that one; else an error
   listing the candidates. Never pick another actor's terminal implicitly.
 - Worktree deletion (`crates/colosso/src/delete_worktree.rs`) calls `Close` for each terminal
-  of that worktree after confirmation naming running processes.
+  of that worktree after confirmation naming running processes. **As implemented (M5):**
+  the dialog names each terminal with its status ("Its terminal stops: server (running,
+  output)") and closes them in the daemon before git removes the folder, so none of their
+  programs is left in it; the in-app check deletes a worktree with a running terminal and
+  finds the daemon without it.
+- **Not built (M5 audit):** the outside-worktree marker in the UI (the MCP reports
+  `outsideWorktree`).
 - Drift: when OSC 7 reports a cwd outside the terminal's worktree, `Event{cwd}` carries
   `outside_worktree: true`; the UI shows a subtle marker; MCP `terminal_list` shows it.
 
@@ -543,6 +605,35 @@ Rules:
 
 Events: `control: claimed|released|lost|taken|human_took{mode}|human_released|expired`.
 
+As implemented [2026-10-31, `termd/src/session/control.rs`, tests in
+`termd/tests/daemon/control.rs`]:
+
+- Typing, pasting or signalling in a terminal **no one holds** takes nothing: the person
+  just uses it, and an agent may still claim it. Only input while an agent holds is the
+  implicit takeover (7.3). "Take control" (a person's `Claim`) holds the terminal whoever
+  held it.
+- A person's focus reports (`CSI I`, `CSI O`, sent when the view gains or loses focus in a
+  program that asked for them) and wheel reports (SGR buttons 64 to 67, in a program
+  tracking the mouse) are delivered but take nothing and don't clear `needs_input`: looking
+  at or scrolling a terminal isn't typing in it. Arrows the wheel sends in alternate scroll
+  mode can't be told from typed ones and do take control.
+- The app, mobile and `colosso-term` clients are the person (one actor, `human`); a relay
+  is the agent `<client name>:<connection id>`.
+- Every agent write (input, paste, resize, signal, close) is checked against its lease and
+  renews it; the lease moves in lists at most once a second. A person's resize or close
+  takes nothing from an agent; a person's signal is input and does.
+- `control_taken_by` answers a displaced agent until it claims again, even after the taker
+  let go; `person_has_control` answers every agent while a person holds, `Claim` with
+  `takeover` included; `control_required` answers an agent that never claimed, and one whose
+  claim met another agent's lease without `takeover`. Each names the holder in `details`.
+- `Release` of something the caller doesn't hold changes nothing and answers the control
+  state, so it's safe to repeat. `Claim`, `Release` and `Renew` all answer
+  `Control { control }`.
+- An agent's lease ends when its connection closes, attached to the terminal or not; a
+  person's hold survives the app quitting. Neither survives a daemon restart, which ends the
+  programs too (the registry clears control on load).
+- `observers` lists the clients attached to observe. The `queue` is not kept yet.
+
 Summary of who can take control from whom:
 
 | holder → claimant | agent (plain claim) | agent (takeover) | human |
@@ -575,12 +666,31 @@ Signals (engine callbacks on the daemon's headless terminal) → transitions:
 The daemon emits `Event{status}` on every change with the reason, so clients and the MCP's
 `wait` resolve from events, not polling. The heuristic timers run on the session thread.
 
-Shell integration: for shells the daemon injects OSC 133 and OSC 7 marks when the user's
-shell lacks them, by the mechanism Ghostty uses (`ZDOTDIR` hop for zsh, `--rcfile` for bash,
-`XDG_DATA_DIRS` vendor conf for fish). Ghostty's shell-integration scripts are MIT and can be
-bundled; `ghostty-vt`'s `shell_integration` module exists to help (check its contents at the
-pinned version). agent-terminal's own zsh hook is at
-`cli/src/native/shell/agent-terminal.zsh:22-47` for comparison.
+Shell integration [implemented 2026-10-31, `termd/src/session/integration.rs`]: the daemon
+injects Ghostty's scripts, which `ghostty-vt`'s `shell_integration::resources_dir()` writes out
+once, by Ghostty's own mechanism: zsh through a `ZDOTDIR` hop (the person's `ZDOTDIR`, if any,
+goes in `GHOSTTY_ZSH_ZDOTDIR` and Ghostty's `.zshenv` restores it before reading their files),
+fish through `XDG_DATA_DIRS` (plus `GHOSTTY_SHELL_INTEGRATION_XDG_DIR`, which the script takes
+back out). bash is not injected: Ghostty's script needs bash 4.4 and macOS ships 3.2. No
+`GHOSTTY_SHELL_FEATURES` are set, so the scripts add marks and OSC 7 only, no title or cursor
+changes. A terminal whose environment says `COLOSSO_SHELL_INTEGRATION=off` is left alone. zsh
+reports its folder as `kitty-shell-cwd://host/path` (raw), which the daemon reads beside
+`file://` (percent-encoded).
+
+**License note (needs the owner's decision):** Ghostty's zsh and bash scripts say they derive
+from Kitty's and are GPLv3 (fish's carries no such header). `ghostty-vt` embeds them in the
+binary whether or not they are injected. They run as separate programs in the shell, but a
+distributed Colosso carries their text, so their license has to be honoured or the scripts
+replaced with Colosso's own (the marks are a few lines per shell; agent-terminal's zsh hook at
+`cli/src/native/shell/agent-terminal.zsh:22-47` shows the size).
+
+Status as implemented (`termd/src/session/status.rs`): reasons are `started`, `prompt`,
+`command running`, `output`, `quiet`, `bell`, `notification: <title>`, `exited <code>`. With
+marks seen the marks decide (between `133;C` and `133;D` it is `running` however quiet), so a
+TUI run from an integrated shell reads `command running` and asks for the person only through
+a bell or a notification; the output heuristics apply to terminals without marks. A bell at a
+shell prompt (the shell answering the person's keys) asks for no one. `last_exit` comes from
+`133;D`.
 
 ### 5.8 Activity, commands and screenshots logs [decided 2026-10-30]
 
@@ -662,6 +772,37 @@ Colosso terminals live for weeks, so each JSONL file is capped at 64 MB and rota
 and QA evidence; "Clear log" in the UI only hides rows in the view (see 7.4), the files are
 never truncated from the UI.
 
+As implemented [2026-10-31; types and the reader in `term-control/src/log.rs`, the writer in
+`termd/src/journal.rs`, the lines in `termd/src/session/{activity,commands,keys}.rs`, tests
+in `termd/tests/daemon/logs.rs`]:
+
+- `frame` is `offset` instead: the byte offset in the terminal's output stream when the line
+  was written (`first_offset`/`last_offset` for a command's output). The daemon keeps no frame
+  counter, and an offset is what a stream read resumes from.
+- `human` is `{"typed": "…"}`, `{"pressed": {"key": "enter", "times": 3}}`, `{"pasted":
+  "…"}` or `{"raw": 14}`, and only on a person's lines; an agent's input reads the same in
+  `action` and `command` without it. Focus and wheel reports (5.6) aren't logged.
+- Typing is one line per run of text, ended by a pause of 1 s, another key, another writer,
+  or any other line; a key pressed again is counted (`pressed enter 3 times`). Refused writes
+  are one line each, `tried to write: …`, with `exit` 4 for `person_has_control`, 1 otherwise.
+- Lines are also written for the terminal opening (`opened /bin/zsh -i in feat-x`, by its
+  opener) and starting again, the program exiting, signals, closes, an agent's resizes, and
+  every control change (`took control from codex:12b0 by typing`, `gave back`, `the lease of
+  codex:12b0 ended`).
+- A command's text is read off the screen: Ghostty's zsh integration sends a bare `133;C`,
+  so the daemon writes output to its engine cut at each mark and, at `133;C`, takes the
+  soft-wrapped line above the cursor less the prompt's width at `133;B`. A multi-line command
+  keeps its last line; a right prompt is dropped when the line reaches the screen's edge after
+  a gap of three blanks or more. `by` is the last writer before `133;C`. `output` is the bytes
+  between `133;C` and `133;D` with escapes removed, carriage returns and backspaces applied.
+- Each append is announced as `Event::Logged { log, end }`, so a reader re-reads only then.
+  A file past 64 MB is renamed to `.1` (the older `.1` dropped); `read_since` reports
+  `rotated` when the file is shorter than the reader's offset and starts it over.
+- Not yet: pending calls, and `request_id`, `output`, `screenshots` and `duration_ms` (filled
+  by MCP calls, M4); `screenshots.jsonl` has its type and reader, and gets lines once something
+  captures (the MCP's `terminal_screenshot`, the app's "Save screenshot"); the screenshots
+  folder's cap comes with them.
+
 ### 5.9 Persistence and restart [proposed]
 
 - `registry.json` holds every terminal's record minus live fields; written on every change.
@@ -672,6 +813,20 @@ never truncated from the UI.
   and on shutdown, so the last screen and scrollback are readable after a restart. Guarded
   by the snapshot format version; discarded on mismatch.
 - The ring and live state are memory only.
+
+**As implemented (M5):** each session keeps `terminals/<handle>/snapshot.bin`
+(`termd/src/session/persist.rs`): a format line naming the Ghostty commit, then the engine's
+snapshot, written whole through a rename when the screen changed and 30 s went by, when the
+program exits, and on `Shutdown` before the program is hung up; a file another engine wrote
+is removed, and closing a terminal removes its file. After a restart, `ReadScreen` on a
+remembered terminal answers from the file, and a respawn starts its engine from it, the
+dead program's modes reset (alternate screen, mouse, bracketed paste, `DECSTR`) and a dim
+line `[restored after the terminal daemon restarted]` under the old text. The app, bringing
+terminals back as it starts, starts the daemon when the registry remembers terminals
+(`TermDir::remembers_terminals`) and runs again the shells the person opened (no command,
+created by the person); other ended terminals stay closed. Tests: the restart test reads
+the kept screen and the respawned one; the in-app check stops the daemon under the app and
+sees the shell back from its screen, idle at its prompt.
 
 ### 5.10 Security [decided]
 
@@ -714,6 +869,13 @@ never truncated from the UI.
 - Queries: when the app is attached, the **app's** engine answers DA/DSR/color queries
   through `on_pty_write` → `Input`; the daemon's engine answers only when no client is
   attached. The daemon tracks "attached" per terminal to switch this (boo's rule).
+- **As implemented (M5):** the engine is the `crates/term-engine` crate (11), not a module of
+  `crates/term`; it pins `ghostty-vt = "=0.8.0"` and reads the Ghostty commit from the
+  binding (`GHOSTTY_COMMIT`), which the daemon's hello carries and the app compares (5.1).
+  The sys crate needs Zig 0.17.0 (`script/zig`). No `GHOSTTY.lock` or `GHOSTTY_SOURCE_DIR`
+  offline source yet: a clean build fetches Ghostty's source. The daemon's engine answers
+  every query, attached or not: the app asks for no `answers_queries` capability, since two
+  windows on one terminal would answer twice (`term/src/client.rs`).
 
 ---
 
@@ -730,6 +892,11 @@ never truncated from the UI.
   ("2 waiting"). Project rows roll up their branches.
 - The window's "New Terminal" action opens a shell in the selected branch unit's worktree
   with the next free name (`zsh`, `zsh-2`, ...), per `model.rs`'s current default label.
+- **As implemented (M5):** the terminal's bar has Stop (Close once the program ended), and
+  ⌥-clicking a terminal tab's × stops its terminals; a busy program asks first, then the
+  daemon closes the terminal and its tab goes when the daemon says so, from whichever
+  client stopped it. A person may stop a terminal an agent holds. The tab has no menu yet.
+  Branch rows show the waiting count; project rows don't roll up yet.
 
 ### 7.2 Render pipeline [decided]
 
@@ -792,6 +959,18 @@ never truncated from the UI.
   none) and observer count. The chip's menu: Take control (when an agent or nobody holds) /
   Give back (when you hold) / Show activity. A human-held terminal shows the chip as "yours"
   with a distinct tint so it is obvious agents are locked out of it.
+- As implemented [2026-10-31, `colosso/src/terminals/{states,watch,header}.rs`]: the app keeps
+  every terminal's status and control from one `ListTerminals` and then the daemon's events
+  (all clients get every terminal's events), listing again after the daemon comes back. A
+  tab with terminals shows a dot for the most urgent of their statuses (needs input, then
+  running, idle, exited: amber, green, grey, red). Over a terminal pane a 26 px bar shows the
+  dot, the status and its reason, "watching: N" when observers are attached, the holder as a
+  chip ("yours" in the accent, an agent's label in amber, "no one controls it" in grey) and
+  one button: "Take control" or "Give back", sent to the daemon from the click. The toast of
+  an implicit takeover is a notice in that bar, "You took over from claude-code", for 12 s
+  or until control changes again; the chip's "Give back" undoes it. The sidebar shows beside
+  each branch how many of its terminals need input, in both layouts. A chip menu and "Show
+  activity" come with the panel below.
 - The log history is a **toggleable side panel** beside the terminal (owner's requirement,
   2026-10-30): a header button and a shortcut (⌘⇧L proposed) show or hide it; the state is
   remembered per terminal; new terminals follow Settings → Terminals → "Show the activity
@@ -814,6 +993,28 @@ never truncated from the UI.
   says "Activity cleared" until new rows arrive; a screenshot a call took opens in the
   lightbox from the row.
 - The same panel exists on mobile later, reading the same files through the same offsets.
+- As implemented [2026-10-31, `colosso/src/terminals/{panel,beside}.rs`, `panel/rows.rs`]:
+  the bar's "Activity" button and ⌘⇧L (bound in the terminal's key context, so editors keep
+  the key) show or hide a terminal's panel at the pane's right, 30% of it and dragged by its
+  left edge between 15% and 70%; the width is shared by every panel while the app runs.
+  Hidden, the panel is dropped, so nothing reads or listens. Opened, it reads each log's
+  newest 2 MB (`log::tail_start`, then `read_since` to the end) and then reads on from its
+  offsets whenever the daemon announces a `Logged` append; a tab keeps its newest 2000 rows,
+  and a rotated log starts over. Activity, Commands (with "Failed only") and Info are as
+  above; rows expand by a click. Follow, "Jump to latest" and Clear work as in the dashboard.
+  Output sets its mark with "Set mark" and reads on once a second while the tab is shown,
+  through the daemon's `ReadStream` (below), keeping the newest 256 KiB. Screenshots shows
+  thumbnails from `screenshots.jsonl`; nothing writes it until the MCP's screenshot tool
+  exists. Not yet: the setting for new terminals, remembering the panel and its width across
+  restarts, jump-to-output from a command, the lightbox, pending "waiting" rows and a look
+  per kind of call.
+- `ReadStream { handle, since?, max_bytes? }` answers `Stream { text, next, oldest,
+  truncated }`: the ring's bytes from `since` as plain text (escapes stripped, a carriage
+  return starting its line over), or its newest `max_bytes` (64 KiB unless asked, 1 MiB at
+  most) starting at a line when `since` is absent. A read the limit cuts ends after its last
+  whole line, and no read ends inside an escape sequence or a UTF-8 character, so the next
+  starts clean. `truncated` says output between `since` and `oldest` is gone. Anyone may
+  read; it is the MCP's `terminal_read` stream mode too.
 
 ### 7.5 Performance budget [decided]
 
@@ -822,11 +1023,45 @@ never truncated from the UI.
   bench suite like the editor scenarios.
 - `cat` of a 150 MB file: the view must stay responsive (frames ≤ 16 ms) while throughput
   is bounded by the engine (Ghostty reports 566 ms for 150 MB on its own stack; ours adds a
-  socket hop and a second parse; target < 1.5 s).
+  socket hop and a second parse). Target: within 1.3 times the time a bare PTY takes to
+  carry the same file, read as fast as macOS allows, measured in the same run. The 1.5 s
+  first written here is met on an idle M4 Max (about 1 s) but depends on the machine; the
+  relative target doesn't.
 - Idle: zero CPU when nothing changes (no timers besides cursor blink, which pauses when
   the window is hidden).
 - Memory: engine scrollback limit default 50 MB per terminal (Ghostty's default), compressed
   incrementally during idle (`compress` incremental mode on the VT thread).
+
+**As measured (M5):** `colosso-bench` runs `term-echo` and `term-cat` (`crates/bench/README.md`):
+the daemon, a client attached as the view attaches, and its engine; each sample ends in the
+client's engine, at the frame the view would take, the paint not timed. Release build, Apple
+M4 Max:
+
+| | p50 | p95 | max | budget |
+| --- | --- | --- | --- | --- |
+| `term-echo`: a key into `/bin/cat`, its echo in the client's engine (1,000) | 0.09 ms | 0.14 ms | 0.23 ms | p95 < 8.3 ms, met |
+| `term-cat`: 150 MiB `cat`, until the line after it is in the client's engine (5) | 955 ms | 966 ms | 966 ms | p50 within 1.3 times a bare PTY (800 ms), met |
+
+A bare PTY, `cat` in it and its master read with nothing parsed, as fast as macOS allows, is
+what no terminal beats. macOS hands the master a kilobyte a read, whatever the read size, baud
+rate or setting (`kern.tty.ptmx_max` only sets how many PTYs there can be); how fast those
+reads go depends on the reader never sleeping while the program writes. Read blocking, it
+carries 122 MiB/s on an idle M4 Max; non-blocking and reading again on an empty queue before
+waiting, as Ghostty does, 183 to 192 (a C program, `cat` of the same file). `term-cat` reads
+its bare PTY that second way, before each of its samples, so a busy machine slows both alike,
+and holds the median sample to 1.3 times the median bare one. The daemon's path takes 1.14 to
+1.25 times it: 145 to 163 MiB/s, where a blocking reader made it 120 (the same runs). The rest
+is the PTY itself: the daemon's reader drains it at about 160 MiB/s, its `cat` refilling the
+queue more slowly than the bare one's while the daemon and the client parse alongside
+(skipping the daemon's parse gives 3 to 4% back). Ghostty 1.4.0's 566 ms for 150 MB, 253
+MiB/s, wasn't matched by any reader here. Machine load moves every one of these numbers by
+half or more (another app's background work held a bare PTY at 73 MiB/s for days); only
+ratios taken in the same run compare. The longest the client's engine takes over one output
+frame is under a millisecond, so a view's thread is never held for anything near a frame.
+The prompt scanner finds OSC 133 marks by jumping from one ESC to the next (`memchr`); read
+byte by byte it cost the session thread as much as the VT parse. Idle CPU isn't measured
+yet: each terminal's thread in the daemon wakes four times a second for its timers (keeping
+its screen, ending leases), whether or not anything happened.
 
 ---
 
@@ -854,6 +1089,19 @@ never truncated from the UI.
 - Federation (later): app-level tools (browser, editor, workspace) register in the same
   catalog with an executor that forwards to the app's control socket; when the app is not
   running they fail with `app_not_running`. Agents then configure one server.
+- **As implemented (M4):** the MCP server runs in `colosso mcp`, not inside the daemon.
+  The relay carries out the catalog itself (`term-control/src/exec.rs`) over its ordinary
+  protocol connection, as a `Relay` client whose actor is the MCP client's name from
+  `initialize` (`claude-code:…`), and serves it with `rmcp` 3.8 over stdio
+  (`crates/term-mcp`). The daemon keeps one protocol and no MCP code; the relay runs as
+  the user, which is the trust the socket already checks (peer uid), so grants are
+  enforced there. The connection is made on the first call and made again when the daemon
+  went away. Streamable HTTP is deferred: it would serve the same handler from the daemon
+  or the app. Tools are listed from `CATALOG`, filtered by the client's grants
+  (`--scopes`, default read + write + manage). A result is the summary line, the JSON as
+  text for clients that read only text, and `structuredContent`; an error is an `isError`
+  result whose structured content is `{ code, message, retryable, details }`.
+  `terminal_resize` and `terminal_screenshot` aren't in the catalog yet.
 
 ### 8.2 Naming and conventions [decided]
 
@@ -889,6 +1137,13 @@ claim, release, resize, rename), `terminal.manage` (close exited terminals, sign
 shutdown). Defaults for app-launched agents: read + write + manage. External clients: a
 first-connection Allow/Deny prompt in the app (name, pid, requested scopes), stored per
 client name; destructive always confirms in the app unless granted.
+
+**As implemented (M4):** grants are the relay's `--scopes` (default read + write + manage);
+tools outside them aren't listed, and calling one answers `scope_denied`. Closing a terminal
+whose program runs answers `confirmation_required` unless `terminal.destructive` was
+granted. The app's first-connection Allow/Deny prompt for external clients isn't built:
+the relay runs as the user, who could reach the socket directly, so the prompt would be
+consent rather than a boundary; it waits on the app's settings for external clients.
 
 ### 8.5 Tool catalog [decided; schemas proposed]
 
@@ -969,6 +1224,13 @@ worktree_list      { project?: path } → { worktrees: [{ path, branch, project,
 `ControlState = { holder: null | { kind, id, label, since, leaseUntil?, reason? },
 observers: [Actor], youHold: bool }`.
 
+**Not built (M5 audit)**, against `term-control/src/catalog/args.rs`: `terminal_list` has no
+`project` and `worktree_list` takes no arguments; `terminal_read` has `screen` and `stream`
+but no `scrollback` mode, no `format` (text only) and no `withRefs`; `terminal_open` has no
+`reveal` (the app reveals every agent's terminal, 9); `terminal_close` closes one terminal,
+with no `worktree`, `all` or `force`; `terminal_resize` and `terminal_screenshot` are
+missing (8.1). `requestId` is kept by the relay, not the daemon (5.4's input ids).
+
 ### 8.6 Resources and subscriptions [decided]
 
 ```
@@ -985,6 +1247,15 @@ per-connection queues (monocode `hub.rs`). Screen updates are rate-limited to 4/
 subscriber. MCP `logging` notifications carry `Event{status|control}` for clients that
 prefer a push without a re-read.
 
+**As implemented (M4):** the relay serves these resources (`term-mcp/src/resources.rs`;
+`{path}` percent-encoded), lists the worktrees plus each terminal of the caller's worktree
+and its screen, and takes subscriptions both as `resources/subscribe` and as
+`subscriptions/listen` streams. The daemon's events on the relay's own connection drive
+the updates, gathered for 100 ms and said once each (`term-mcp/src/watch.rs`); a screen
+has no event, so a watched one is looked at four times a second and said when its frame
+number moved since the subscription. Opening or closing a terminal says the resource
+list changed. The `logging` push isn't sent: SEP-2577 deprecates logging notifications.
+
 ### 8.7 Server instructions and the agent guide [decided]
 
 The MCP `instructions` field and a `terminal_guide` prompt ship **inside the daemon binary**
@@ -998,6 +1269,14 @@ open or pick another terminal in the worktree for your own work. Return to it on
 `human_released` event or when the person tells you to.**
 A Claude skill in `~/.claude/skills/colosso-terminals` is a two-line stub pointing at the
 prompt (so the guide is never stale).
+
+**As implemented (M4):** both ship in the app binary that runs the daemon and the relay
+(`term-mcp/src/guide.rs`): the instructions say the loop, waits and the human rule in a
+few lines, and `terminal_guide` says it at length (waits, full-screen programs and keys,
+control and takeover, logs, errors and `requestId`). The skill stub isn't written: it
+lives in the person's home folder. Accepted from the official TypeScript SDK's client
+(1.32): tools, a zsh driven through `less` by keys, resources, a subscription's update,
+the guide, and the refusals, against `colosso mcp` from the built app.
 
 ### 8.8 App-side consumption
 
@@ -1025,7 +1304,10 @@ onto `for: text|gone|stable|idle|exit|prompt`; its `snapshot -i` refs onto
 ## 9. Human and agent UX in Colosso
 
 - Opening a branch unit shows its terminals as tabs with status dots; a terminal an agent
-  opened appears automatically (reveal `tab`) without stealing focus.
+  opened appears automatically (reveal `tab`) without stealing focus. **As implemented
+  (M5):** an agent's terminal gets a tab in its checkout as the daemon says it opened, if
+  the checkout is listed, without the focus; `reveal` is not a parameter of
+  `terminal_open` yet, so every agent's terminal is revealed.
 - The human can watch an agent drive a terminal (observer), take it over by typing or by
   "Take control" (D11), and later "Give back". A terminal the human took stays theirs: the
   displaced agent is told, stops using it, and works in another terminal of the branch. An
@@ -1034,10 +1316,14 @@ onto `for: text|gone|stable|idle|exit|prompt`; its `snapshot -i` refs onto
   notification routed from OSC 9/777 with the terminal and branch in its title.
 - Terminals are not closed by closing tabs or the window. Quitting the app shows nothing
   special; the daemon keeps everything. A "Stop all terminals of this branch" exists in the
-  branch menu, with confirmation listing processes.
+  branch menu, with confirmation listing processes. **As implemented (M5):** "Stop
+  Terminals…" in the checkout row's menu, shown while it has terminals, asks with each
+  terminal's name and status.
 - Settings → Terminals: font, scrollback, MCP HTTP on/off and port, external client grants,
   "Show the activity panel in new terminals", log and screenshot retention caps, "Export
   trace", `TERM` choice.
+- **Not built (M5 audit):** the Settings → Terminals page, system notifications from OSC
+  9/777, and the dock badge.
 
 ---
 
@@ -1110,6 +1396,16 @@ crates/colosso        wires TerminalView into tabs (`terminals.rs`); the
 - Real-surface QA with `agent-terminal`/`agent-tui` driving Claude Code inside a Colosso
   terminal, and with the MCP from a real Claude Code session in a worktree.
 
+**As implemented (M5):** `crates/termd/tests/daemon/` runs the daemon end to end (attach,
+snapshots, catch-up, control, status, logs, persistence, upgrade); `term-control/tests`
+round-trips the frames; the app's `--visual-check-terminal` drives the window (typing,
+keys, selection, scrollback, full screen, resize, control and takeover, the activity
+panel, agents' tabs, Stop, deleting a worktree, restart and upgrade); `crates/bench` times
+echo and `cat`. **Not built:** decoder fuzzing, the engine conformance corpus, MCP contract
+tests against this document's tables, and the real-surface QA from a Claude Code session
+(it writes to `~/.claude`, which needs the owner's approval). The MCP was driven by the
+official TypeScript SDK's client instead (8.7).
+
 ---
 
 ## 13. Milestones and acceptance
@@ -1136,8 +1432,33 @@ that terminal fails with `person_has_control` for as long as the human holds it,
 continues in another terminal of the branch, and "Give back" is the only thing that reopens it
 to agents.
 
+**Accepted (M4):** daemon end-to-end tests prove the scoping
+(`each_agent_sees_its_own_worktrees_terminals`: two checkouts, each agent lists, names and
+finds only its own), the handover between agents and the person's takeover until Give
+back (`agents_hold_by_lease_and_a_person_takes_over_until_giving_back`), and
+`person_has_control` through the catalog (`an_agent_drives_a_shell_through_the_catalog`);
+the in-app check shows the same in the window. The official TypeScript SDK's client drove
+`colosso mcp` from the built app. Not done: Claude Code *launched by Colosso* with the
+relay injected, since Colosso launches no agents yet; until it does, an agent adds the
+server itself (`claude mcp add colosso -- <app>/colosso mcp`). Loopback HTTP is deferred
+(8.1).
+
 M5 **Hardening**: catch-up under a throttled client, daemon upgrade path, persistence of
 snapshots across daemon restart, bench suite, docs and the skill stub.
+
+**Accepted (M5):** catch-up by `a_client_that_falls_behind_catches_up_from_a_snapshot` (5.4);
+the upgrade path by `daemon/upgrade.rs` (a daemon refusing the hello is stopped by its pid,
+one taking it is asked to stop) and in the window, where a stand-in daemon of another
+engine is replaced from the tab's notice (5.1); persistence by the restart tests and the
+window's "restored after the terminal daemon restarted" (5.9). The bench meets the typing
+budget (`term-echo` p95 0.14 ms against 8.3 ms) and the `cat` one, restated against a bare
+PTY in the same run since what a PTY carries depends on the machine and its load (`term-cat`
+within 1.3 times a bare PTY, about 1 s for 150 MiB on an idle M4 Max); idle CPU is not
+measured (7.5).
+The audit closed the lifecycle gaps it found: agents' terminals appear as tabs (9), Stop
+and "Stop Terminals…" (7.1, 9), and deleting a worktree stops its terminals (5.5). Not
+done: the skill stub, which lives in the person's home folder (8.7), and the items marked
+**Not built (M5 audit)** in 5.5, 6, 7, 8.5, 9 and 12.
 
 M6 **Remote**: loopback TCP listener + SSH forward, then QUIC; mobile client scaffold.
 
@@ -1168,7 +1489,9 @@ O6 **`TERM` value.** Default `xterm-ghostty` with bundled terminfo, else `xterm-
 O7 **Daemon per user vs per app build.** Default per user; the upgrade rule in 5.1 covers
 build changes.
 
-O8 **Pane splitting.** Open, raised by the owner 2026-10-31. The app's tab model has only
+O8 **Pane splitting.** Resolved 2026-10-31 by the merge of the browser work: a tab is a
+nested split tree (`Tab::Split { axis, first, second, ratio }`), and terminals sit in it like
+any pane (`model/terminals.rs`, D13). As first raised: the app's tab model had only
 `Tab::Split(Pane, Pane)`, two panes side by side, and terminals don't use it yet. Choices: a
 terminal on either side of that split, or a split tree (nested horizontal and vertical
 splits, draggable dividers, focus by direction, layout kept per branch), which reshapes the

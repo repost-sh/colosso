@@ -190,7 +190,8 @@ fn handshake(daemon: &Arc<Daemon>, stream: &mut UnixStream, id: u32) -> io::Resu
         {
             outbound.send(Bytes::from(out));
         }
-        outbound.close();
+        // Written before the hang-up, so the client learns why.
+        outbound.close_after(std::time::Instant::now() + Duration::from_secs(1));
         return Err(io::Error::other(format!(
             "client speaks protocol {}",
             hello.protocol
@@ -257,14 +258,6 @@ fn actor_for(info: &ClientInfo, id: u32) -> Actor {
             label: info.name.clone(),
         },
     }
-}
-
-/// The reply every request that isn't implemented yet gets.
-pub fn unsupported(what: &str) -> Outcome {
-    Outcome::Err(ProtocolError::new(
-        ErrorCode::Unsupported,
-        format!("{what} isn't supported by this daemon yet"),
-    ))
 }
 
 /// A quick way to say a request succeeded with nothing to add.

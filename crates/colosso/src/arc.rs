@@ -185,6 +185,7 @@ fn branch_group(
     cx: &mut Context<Shell>,
 ) -> impl IntoElement + use<> {
     let (path, is_main) = (branch.worktree.path.clone(), branch.is_main());
+    let terminals = shell.has_terminals(&path);
     let selected = active_tab.is_some();
     let rows = (branch.tabs.iter().enumerate())
         .map(|(tab_index, tab)| {
@@ -206,10 +207,13 @@ fn branch_group(
                     cx.listener(move |this, _, window, cx| this.close_tab_at(at, window, cx)),
                 );
             let list = (Axis::Vertical, active, &shell.tab_hand);
+            let (dot, split_dot) = shell.tab_dots(tab, p);
+            let row = row.children(split_dot);
             tab_row(row, (at, tab), list, p, cx, |row, face, cx| {
                 let close = ("arc-tab-close", branch_index * 100 + tab_index);
                 row.pr_1()
                     .child(div().text_color(p.muted).child(face.icon(13.)))
+                    .children(dot)
                     .child(face.label().flex_1())
                     // Shown on the active tab, and on the others while hovered; a dot for
                     // unsaved edits always.
@@ -247,6 +251,12 @@ fn branch_group(
                 .child(ellipsized(branch.name()))
                 .when(is_main, |header| header.child("checkout"))
                 .child(div().flex_1())
+                .map(|header| {
+                    let waiting = shell.terminals_needing_input(&branch.worktree.path);
+                    header.when(waiting > 0, |header| {
+                        header.child(crate::terminals::waiting_badge(waiting, p))
+                    })
+                })
                 .child(new_tab_menu(
                     ("arc-new-tab-menu", branch_index),
                     icon_button(("arc-new-tab", branch_index), IconName::Plus, "New tab", cx)
@@ -262,7 +272,7 @@ fn branch_group(
                         ),
                     shell.focus.clone(),
                 )),
-            move || worktree_menu(&path, is_main),
+            move || worktree_menu(&path, is_main, terminals),
         ))
         .child(tab_list(&shell.tab_hand, list, rows, px(1.), p, cx))
 }

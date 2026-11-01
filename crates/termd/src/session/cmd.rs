@@ -7,7 +7,8 @@ use std::time::Instant;
 
 use bytes::Bytes;
 use colosso_term_control::{
-    AttachMode, ErrorCode, EventKind, ProtocolError, ResponseBody, Signal, Size,
+    Actor, ActorKind, AttachMode, ErrorCode, EventKind, ProtocolError, ResponseBody, SendRequest,
+    Signal, Size,
 };
 
 use super::{CLOSE_GRACE, Ended, Session, pty};
@@ -66,8 +67,10 @@ pub enum Cmd {
     Detach {
         reply: Reply,
     },
+    /// The client's connection closed: it's detached, and an agent's lease ends.
     ClientGone {
         client_id: u32,
+        actor: Actor,
     },
     Input {
         client_id: u32,
@@ -90,6 +93,29 @@ pub enum Cmd {
     Signal {
         reply: Reply,
         signal: Signal,
+    },
+    Claim {
+        reply: Reply,
+        takeover: bool,
+        reason: Option<String>,
+    },
+    Release {
+        reply: Reply,
+    },
+    Renew {
+        reply: Reply,
+    },
+    ReadStream {
+        reply: Reply,
+        since: Option<u64>,
+        max_bytes: Option<u32>,
+    },
+    Send {
+        reply: Reply,
+        send: SendRequest,
+    },
+    ReadScreen {
+        reply: Reply,
     },
     /// Start the program again after it exited.
     Respawn {
@@ -126,78 +152,70 @@ impl Session {
                 self.detach(reply.client.id);
                 reply.ok(ResponseBody::Done);
             }
-            Cmd::ClientGone { client_id } => self.detach(client_id),
+            Cmd::ClientGone { client_id, actor } => {
+                self.detach(client_id);
+                self.client_gone(&actor);
+            }
+            Cmd::Claim {
+                reply,
+                takeover,
+                reason,
+            } => match self.claim(&reply.client.actor, takeover, reason) {
+                Ok(()) => reply.ok(self.control()),
+                Err(error) => {
+                    let command = if takeover {
+                        "claim --takeover"
+                    } else {
+                        "claim"
+                    };
+                    let action = "tried to take control".to_owned();
+                    let actor = reply.client.actor.clone();
+                    self.log(&actor, command.into(), action, Err(&error));
+                    reply.err(error);
+                }
+            },
+            Cmd::Release { reply } => {
+                self.release(&reply.client.actor);
+                reply.ok(self.control());
+            }
+            Cmd::Renew { reply } => {
+                self.expire_lease();
+                match self.renew(&reply.client.actor) {
+                    Ok(()) => reply.ok(self.control()),
+                    Err(error) => reply.err(error),
+                }
+            }
             Cmd::Input { client_id, bytes } => self.input(client_id, &bytes),
             Cmd::Paste { reply, text } => self.paste(&reply, &text),
-            Cmd::Resize { reply, size } => match self.clients.get_mut(&reply.client.id) {
-                Some(attached) if attached.mode == AttachMode::Control => {
-                    attached.size = Some(size);
-                    self.negotiate_size();
-                    reply.ok(ResponseBody::Resized {
-                        size: self.record.size,
-                    });
-                }
-                Some(_) => reply.err(ProtocolError::new(
-                    ErrorCode::ControlRequired,
-                    "observers don't size the terminal",
-                )),
-                None => reply.err(not_attached()),
-            },
+            Cmd::Resize { reply, size } => self.resize(&reply, size),
             Cmd::Rename {
                 reply,
                 name,
                 title,
                 labels,
-            } => {
-                if let Some(name) = name {
-                    self.record.name = name;
-                }
-                if let Some(title) = title {
-                    self.record.title = Some(title);
-                }
-                if let Some(labels) = labels {
-                    self.record.labels = labels;
-                }
-                self.publish(true);
-                self.daemon.broadcast(
-                    &self.record.handle,
-                    &EventKind::Renamed {
-                        name: self.record.name.clone(),
-                        title: self.record.title.clone(),
-                        labels: self.record.labels.clone(),
-                    },
-                );
-                reply.ok(ResponseBody::Done);
-            }
-            Cmd::Signal { reply, signal } => match self.pty.as_ref() {
-                Some(pty) => match pty::signal_group(pty.pid, signal.number()) {
-                    Ok(()) => reply.ok(ResponseBody::Done),
-                    Err(error) => reply.err(ProtocolError::new(
-                        ErrorCode::Internal,
-                        format!("couldn't send {}: {error}", signal.name()),
-                    )),
-                },
-                None => reply.err(exited()),
-            },
-            Cmd::Respawn { reply } => {
-                if self.pty.is_some() {
-                    reply.err(ProtocolError::new(
-                        ErrorCode::InvalidArgument,
-                        "the program is still running",
-                    ));
-                } else {
-                    self.record.incarnation += 1;
-                    match self.spawn() {
-                        Ok(()) => reply.ok(ResponseBody::Opened {
-                            terminal: Box::new(self.record.clone()),
-                            existed: true,
-                        }),
-                        Err(error) => reply.err(error),
-                    }
-                }
+            } => self.rename(&reply, name, title, labels),
+            Cmd::Signal { reply, signal } => self.signal(&reply, signal),
+            Cmd::Respawn { reply } => self.respawn(&reply),
+            Cmd::ReadStream {
+                reply,
+                since,
+                max_bytes,
+            } => self.read_stream(&reply, since, max_bytes),
+            Cmd::Send { reply, send } => self.send(&reply, &send),
+            Cmd::ReadScreen { reply } => self.read_screen(&reply),
+            Cmd::Close { reply: Some(reply) }
+                if let Err(error) = self.agent_may_act(&reply.client.actor) =>
+            {
+                let actor = reply.client.actor.clone();
+                let action = "tried to close the terminal".to_owned();
+                self.log(&actor, "close".into(), action, Err(&error));
+                reply.err(error);
             }
             Cmd::Close { reply } => {
                 if let Some(reply) = reply {
+                    let actor = reply.client.actor.clone();
+                    let action = "closed the terminal".to_owned();
+                    self.log(&actor, "close".into(), action, Ok(()));
                     reply.ok(ResponseBody::Done);
                 }
                 if self.pty.is_none() {
@@ -207,6 +225,7 @@ impl Session {
                 self.closing = Some(Instant::now());
             }
             Cmd::Shutdown => {
+                self.keep();
                 self.end_program(CLOSE_GRACE);
                 return Some(Ended::Shutdown);
             }
@@ -214,6 +233,144 @@ impl Session {
         None
     }
 }
+
+impl Session {
+    /// Sizes the terminal for a client that writes to it; a person's resize takes nothing
+    /// from an agent.
+    fn resize(&mut self, reply: &Reply, size: Size) {
+        let actor = reply.client.actor.clone();
+        let outcome = self.agent_may_act(&actor);
+        // A person's view sizes the terminal as its window does, which isn't news.
+        if actor.kind == ActorKind::Agent {
+            let command = format!("resize {}x{}", size.cols, size.rows);
+            let action = format!("resized to {}x{}", size.cols, size.rows);
+            self.log(&actor, command, action, outcome.as_ref().copied());
+        }
+        if let Err(error) = outcome {
+            return reply.err(error);
+        }
+        match self.clients.get_mut(&reply.client.id) {
+            Some(attached) if attached.mode == AttachMode::Control => {
+                attached.size = Some(size);
+                self.negotiate_size();
+                reply.ok(ResponseBody::Resized {
+                    size: self.record.size,
+                });
+            }
+            Some(_) => reply.err(ProtocolError::new(
+                ErrorCode::ControlRequired,
+                "observers don't size the terminal",
+            )),
+            None => reply.err(not_attached()),
+        }
+    }
+
+    fn rename(
+        &mut self,
+        reply: &Reply,
+        name: Option<String>,
+        title: Option<String>,
+        labels: Option<BTreeSet<String>>,
+    ) {
+        if let Some(name) = name {
+            self.record.name = name;
+        }
+        if let Some(title) = title {
+            self.record.title = Some(title);
+        }
+        if let Some(labels) = labels {
+            self.record.labels = labels;
+        }
+        self.publish(true);
+        self.daemon.broadcast(
+            &self.record.handle,
+            &EventKind::Renamed {
+                name: self.record.name.clone(),
+                title: self.record.title.clone(),
+                labels: self.record.labels.clone(),
+            },
+        );
+        reply.ok(ResponseBody::Done);
+    }
+
+    /// A signal is writing to the terminal: a person's takes it from an agent, an agent's
+    /// needs its lease.
+    fn signal(&mut self, reply: &Reply, signal: Signal) {
+        let actor = reply.client.actor.clone();
+        let outcome = self.may_act(&actor);
+        let command = format!(
+            "signal {}",
+            signal.name().trim_start_matches("SIG").to_lowercase()
+        );
+        let action = format!("sent {}", signal.name());
+        self.log(&actor, command, action, outcome.as_ref().copied());
+        if let Err(error) = outcome {
+            return reply.err(error);
+        }
+        match self.pty.as_ref() {
+            Some(pty) => match pty::signal_group(pty.pid, signal.number()) {
+                Ok(()) => reply.ok(ResponseBody::Done),
+                Err(error) => reply.err(ProtocolError::new(
+                    ErrorCode::Internal,
+                    format!("couldn't send {}: {error}", signal.name()),
+                )),
+            },
+            None => reply.err(exited()),
+        }
+    }
+
+    fn read_stream(&self, reply: &Reply, since: Option<u64>, max_bytes: Option<u32>) {
+        let max = max_bytes.map_or(STREAM_READ, |max| max as usize);
+        match self.ring.read_text(since, max.clamp(1, MAX_STREAM_READ)) {
+            Some(read) => reply.ok(ResponseBody::Stream {
+                text: read.text,
+                next: read.next,
+                oldest: self.ring.start(),
+                truncated: read.truncated,
+            }),
+            None => reply.err(ProtocolError::new(
+                ErrorCode::InvalidArgument,
+                format!("the output ends at {}", self.ring.end()),
+            )),
+        }
+    }
+
+    fn respawn(&mut self, reply: &Reply) {
+        if self.pty.is_some() {
+            return reply.err(ProtocolError::new(
+                ErrorCode::InvalidArgument,
+                "the program is still running",
+            ));
+        }
+        self.record.incarnation += 1;
+        match self.spawn() {
+            Ok(()) => reply.ok(ResponseBody::Opened {
+                terminal: Box::new(self.record.clone()),
+                existed: true,
+            }),
+            Err(error) => reply.err(error),
+        }
+    }
+
+    /// An agent writes under its lease; a person's resize or close takes nothing from it.
+    fn agent_may_act(&mut self, actor: &Actor) -> Result<(), ProtocolError> {
+        if actor.kind == ActorKind::Agent {
+            self.may_act(actor)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn control(&self) -> ResponseBody {
+        ResponseBody::Control {
+            control: self.record.control.clone(),
+        }
+    }
+}
+
+/// A stream read's bytes when the caller doesn't say (`docs/terminals.md` 8.5), and the most.
+const STREAM_READ: usize = 64 * 1024;
+const MAX_STREAM_READ: usize = 1 << 20;
 
 pub(super) fn not_attached() -> ProtocolError {
     ProtocolError::new(ErrorCode::NotAttached, "attach to the terminal first")

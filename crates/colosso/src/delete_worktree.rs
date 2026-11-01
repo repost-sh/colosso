@@ -1,7 +1,9 @@
 //! Deleting a worktree. Git first says what deleting would lose: uncommitted changes, ignored
 //! files, and commits that no branch, remote branch or tag holds. The dialog says so before
 //! anything is deleted, and only offers to take the branch along by default when nothing goes
-//! with it. Git checks again just before deleting, and refuses if more would go by then.
+//! with it. Git checks again just before deleting, and refuses if more would go by then. The
+//! worktree's terminals are named too, and stopped first, so no program is left in a folder
+//! that's gone.
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -18,7 +20,7 @@ use gpui_kit::{
 
 use crate::modal::{self, Button, LINE, SMALL_LINE, Tone, small_line};
 use crate::projects::{display_path, read_worktrees};
-use crate::shell::{Shell, icon};
+use crate::shell::{Shell, ellipsized, icon};
 use crate::theme;
 
 const WIDTH: f32 = 420.;
@@ -58,6 +60,9 @@ fn ask(
         parent
             .update(cx, |_, window, cx| match inspected {
                 Ok(loss) => {
+                    let terminals = (shell.upgrade())
+                        .map(|shell| shell.read(cx).terminals_listed(&path))
+                        .unwrap_or_default();
                     let dialog = DeleteWorktreeDialog {
                         // Only a branch made with its worktree goes with it by default, and
                         // never one holding commits that aren't anywhere else.
@@ -66,6 +71,7 @@ fn ask(
                         project,
                         path,
                         loss,
+                        terminals,
                         parent,
                         deleting: false,
                         error: notice,
@@ -80,12 +86,14 @@ fn ask(
     .detach();
 }
 
-struct DeleteWorktreeDialog {
+pub(crate) struct DeleteWorktreeDialog {
     shell: WeakEntity<Shell>,
     project: PathBuf,
     path: PathBuf,
     /// What git said deleting loses, which is what deleting is held to.
     loss: Loss,
+    /// The worktree's terminals, which deleting stops.
+    terminals: Vec<SharedString>,
     /// The window the dialog sits over, which hears how deleting went even if the dialog was
     /// closed meanwhile.
     parent: AnyWindowHandle,
@@ -95,6 +103,18 @@ struct DeleteWorktreeDialog {
 }
 
 impl DeleteWorktreeDialog {
+    /// The terminals the dialog says stop.
+    #[cfg(feature = "visual-check")]
+    pub fn named_terminals(&self) -> &[SharedString] {
+        &self.terminals
+    }
+
+    /// Deletes, as the Delete button does.
+    #[cfg(feature = "visual-check")]
+    pub fn confirm(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.delete(window, cx);
+    }
+
     /// Commits that go with the worktree itself, which only a detached one has.
     fn lost_commits(&self) -> usize {
         match self.loss.head {
@@ -134,6 +154,11 @@ impl DeleteWorktreeDialog {
         } else {
             8. + SMALL_LINE
         };
+        let terminals = if self.terminals.is_empty() {
+            0.
+        } else {
+            8. + SMALL_LINE
+        };
         let branch = match self.loss.head.branch() {
             Some(_) => GAP + LINE + SMALL_LINE,
             None => 0.,
@@ -144,6 +169,7 @@ impl DeleteWorktreeDialog {
             + changes
             + commits
             + ignored
+            + terminals
             + branch
             + GAP
             + 4.
@@ -159,11 +185,15 @@ impl DeleteWorktreeDialog {
         cx.notify();
         let (project, path, loss) = (self.project.clone(), self.path.clone(), self.loss.clone());
         let (shell, parent, delete_branch) = (self.shell.clone(), self.parent, self.delete_branch);
+        let stop_terminals = (shell.update(cx, |shell, _| shell.closing_terminals_of(&path))).ok();
         cx.spawn_in(window, async move |this, cx| {
             let (deleted, read, still_there) = cx
                 .background_spawn({
                     let (project, path) = (project.clone(), path.clone());
                     async move {
+                        if let Some(stop_terminals) = stop_terminals {
+                            stop_terminals();
+                        }
                         let deleted = Repo::open(&project)
                             .and_then(|repo| repo.remove_worktree(&path, &loss, delete_branch));
                         // The worktree may be gone even if its branch couldn't go, so the
@@ -260,6 +290,20 @@ impl DeleteWorktreeDialog {
             .text_color(p.muted)
             .child(icon(IconName::EyeOff, 12.))
             .child(format!("Ignored files go too: {names}"))
+    }
+
+    /// Names the terminals that stop with the worktree.
+    fn terminals(&self, p: theme::Palette) -> impl IntoElement {
+        let names = self.terminals.join(", ");
+        let said = match self.terminals.len() {
+            1 => format!("Its terminal stops: {names}"),
+            count => format!("Its {count} terminals stop: {names}"),
+        };
+        small_line()
+            .gap_2()
+            .text_color(p.muted)
+            .child(icon(IconName::SquareTerminal, 12.))
+            .child(ellipsized(said))
     }
 
     fn branch_switch(
@@ -375,6 +419,9 @@ impl Render for DeleteWorktreeDialog {
             })
             .when(!self.loss.ignored.is_empty(), |dialog| {
                 dialog.child(div().mt(px(8.)).child(self.ignored(p)))
+            })
+            .when(!self.terminals.is_empty(), |dialog| {
+                dialog.child(div().mt(px(8.)).child(self.terminals(p)))
             })
             .when_some(branch, |dialog, branch| {
                 dialog.child(div().mt(px(GAP)).child(self.branch_switch(&branch, p, cx)))

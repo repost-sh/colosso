@@ -1,10 +1,12 @@
 //! A terminal tab drawn as the app draws it, on a shell the daemon runs in a scratch
 //! repository, saved as PNGs in `.superpowers/qa/terminal/`: the prompt, a command and its
-//! output, history and Ctrl-C, text through the input method, colours and box drawing, a
+//! output, history and Ctrl-C, text through the input method, the status and control bar as
+//! an agent holds the terminal and the person takes it, colours and box drawing, a
 //! selection by mouse, the history scrolled back, a full-screen program, the tab narrowed by
 //! the right panel, and the tab closed with ⌘W and opened again with ⌘⇧T, then brought back
-//! from the daemon as the app does when it starts. It says how long the prompt and a long
-//! output took to show.
+//! from the daemon as the app does when it starts, after the daemon restarted, and from
+//! under a daemon of another build. It says how long the prompt and a long output took to
+//! show.
 //!
 //! The daemon, its shell and what they write stay in the checkout: the shell's home is a
 //! scratch folder, and the daemon's folder is short, as a socket's path can't be long. The
@@ -17,18 +19,24 @@
 //!   cargo run -p colosso --features visual-check -- --visual-check-terminal
 //! ```
 
+mod control;
 mod drive;
+mod delete;
+mod panel;
+mod stop;
+mod upgrade;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
 use colosso_term::{ScrollPageUp, ScrollToBottom, TermClient};
-use colosso_term_control::{DaemonCommand, TermDir};
+use colosso_term_control::{
+    ClientKind, DaemonCommand, Hello, TermDir,
+};
 
 use crate::projects::read_worktrees;
-use crate::files::CloseTab;
-use crate::shell::{NewTerminal, ReopenClosedTab, Shell, ToggleRightPanel};
+use crate::shell::{CloseTab, NewTerminal, ReopenClosedTab, Shell, ToggleRightPanel};
 use crate::test_support::try_git;
 use crate::visual::{Drawn, Result, checkout};
 use drive::{
@@ -101,6 +109,10 @@ fn run_shell(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     wait(drawn, "echo's output", |text| text.matches("hello-colosso").count() >= 2)?;
     said.push(format!("{}", drawn.save("shell.png")?.display()));
     keys(drawn)?;
+    control::control(drawn, said)?;
+    panel::panel(drawn, said)?;
+    stop::stop(drawn, said)?;
+    delete::delete(drawn, said)?;
 
     // Held no longer than this: the check later waits for the tab's view to go.
     let view = terminal(drawn)?;
@@ -116,7 +128,9 @@ fn run_shell(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     scrollback(drawn, said)?;
     full_screen(drawn, said)?;
     resized(drawn, said)?;
-    reattached(drawn, said)
+    reattached(drawn, said)?;
+    after_restart(drawn, said)?;
+    upgrade::other_build(drawn, said)
 }
 
 /// The shell's history and Ctrl-C, and text the input method delivers.
@@ -250,6 +264,41 @@ fn reattached(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     wait(drawn, "the terminal back from the daemon", as_it_was)?;
     said.push(format!("{}", drawn.save("restored.png")?.display()));
     Ok(())
+}
+
+/// The daemon stopped under the app, as a reboot stops it, and the terminals brought back as
+/// the app does when it starts: the person's shell runs again from the screen it had.
+fn after_restart(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
+    const RESTORED: &str = "[restored after the terminal daemon restarted]";
+    let shell = drawn.shell.clone();
+    let closed = terminal(drawn)?.downgrade();
+    (drawn.cx).update(|cx| shell.update(cx, Shell::close_shown_terminal));
+    wait_until(drawn, "the tab to close", |drawn| Ok(terminal(drawn).is_err()))?;
+    wait_until(drawn, "its view to go", |_| Ok(closed.upgrade().is_none()))?;
+    let client = drawn.cx.update(|cx| shell.update(cx, |shell, _| shell.terminal_client()));
+    let dir = client.ok_or("the app has no terminal client")?.dir().clone();
+    stop_daemon(&dir)?;
+    wait_until(drawn, "the daemon to stop", |_| Ok(!dir.socket().exists()))?;
+    (drawn.cx).update(|cx| shell.update(cx, Shell::restore_terminals_again));
+    // The tab is narrow by now, so lines wrap.
+    wait(drawn, "the shell run again from its screen", |text| {
+        let text = text.replace('\n', "");
+        let (before, after) = text.split_once(RESTORED).unwrap_or_default();
+        before.contains("% stty size") && after.contains('%')
+    })?;
+    control::holds(drawn, "the shell run again to be at its prompt", |state| {
+        state.status == colosso_term_control::Status::Idle && state.reason == "prompt"
+    })?;
+    said.push(format!("{}", drawn.save("after-restart.png")?.display()));
+    said.push("after the daemon restarted, the shell ran again from the screen it had".into());
+    Ok(())
+}
+
+/// Stops the daemon as the command line does; the app's own client wouldn't start it again.
+fn stop_daemon(dir: &TermDir) -> Result<()> {
+    let hello = Hello::new(ClientKind::Cli, "visual-check", "0");
+    colosso_term_control::client::stop_daemon(dir, &hello)
+        .map_err(|error| format!("the daemon didn't stop: {error}"))
 }
 
 /// A repository of one commit under the check's folder, made afresh.

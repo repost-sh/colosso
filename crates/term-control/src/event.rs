@@ -63,6 +63,11 @@ pub enum EventKind {
         body: String,
     },
     Bell,
+    /// A line went into one of the terminal's logs, which now ends at `end`.
+    Logged {
+        log: crate::log::LogKind,
+        end: u64,
+    },
     /// Only to the client whose `Input` or `Paste` the daemon refused, since those frames
     /// carry no request number to answer.
     Refused {

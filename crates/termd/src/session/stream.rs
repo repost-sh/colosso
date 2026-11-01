@@ -6,12 +6,12 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use colosso_term_control::{
-    AttachMode, ErrorCode, EventKind, Lagging, Message, Output, ProtocolError, ResponseBody,
-    SNAPSHOT_FORMAT, Size, SnapshotChunk,
+    ActorKind, AttachMode, ErrorCode, EventKind, Lagging, Message, Output, ProtocolError,
+    ResponseBody, SNAPSHOT_FORMAT, Size, SnapshotChunk,
 };
 
 use super::cmd::{Attached, Reply, exited, not_attached};
-use super::{Session, engine_size, pty};
+use super::{Session, control, engine_size, pty};
 
 /// Snapshots go out in pieces of this size.
 const SNAPSHOT_CHUNK: usize = 4 << 20;
@@ -44,6 +44,7 @@ impl Session {
                 lagging: false,
             },
         );
+        self.refresh_observers();
         self.negotiate_size();
         self.publish(false);
         if let Some(since) = since_offset
@@ -73,6 +74,7 @@ impl Session {
             log::info!("{}: client {client_id} detached", self.record.handle);
             attached.client.detach(&self.record.handle);
             attached.lane.bump();
+            self.refresh_observers();
             self.negotiate_size();
             self.publish(false);
         }
@@ -96,11 +98,25 @@ impl Session {
         } else {
             None
         };
+        let client = Arc::clone(&attached.client);
+        // A person's view reporting focus or a wheel turn writes without taking anything.
+        let passive = client.actor.kind == ActorKind::Human && control::is_passive(bytes);
+        let refused = refused.or_else(|| {
+            if passive {
+                None
+            } else {
+                self.may_act(&client.actor).err()
+            }
+        });
         if let Some(error) = refused {
-            attached
-                .client
-                .event(&self.record.handle, EventKind::Refused { error });
+            self.log_refused_input(&client.actor, bytes, &error);
+            client.event(&self.record.handle, EventKind::Refused { error });
             return;
+        }
+        if !passive {
+            self.status.input();
+            self.commands.last_writer = Some(client.actor.clone());
+            self.log_input(&client.actor, bytes);
         }
         self.write_pty(bytes);
     }
@@ -119,19 +135,31 @@ impl Session {
         if self.pty.is_none() {
             return reply.err(exited());
         }
-        // Line ends become carriage returns, as a keyboard sends them; the end marker can't
-        // appear inside a bracketed paste.
+        let actor = reply.client.actor.clone();
+        if let Err(error) = self.may_act(&actor) {
+            self.log_paste(&actor, text, Err(&error));
+            return reply.err(error);
+        }
+        self.commands.last_writer = Some(actor.clone());
+        self.log_paste(&actor, text, Ok(()));
+        let bytes = self.paste_bytes(text);
+        self.status.input();
+        self.write_pty(&bytes);
+        reply.ok(ResponseBody::Done);
+    }
+
+    /// What pasting `text` writes: line ends as carriage returns, as a keyboard sends them,
+    /// bracketed when the program asked; the end marker can't appear inside the brackets.
+    pub(super) fn paste_bytes(&self, text: &str) -> Vec<u8> {
         let text = text
             .replace("\r\n", "\r")
             .replace('\n', "\r")
             .replace("\x1b[201~", "");
-        let bytes = if self.engine.is_bracketed_paste() {
-            format!("\x1b[200~{text}\x1b[201~")
+        if self.engine.is_bracketed_paste() {
+            format!("\x1b[200~{text}\x1b[201~").into_bytes()
         } else {
-            text
-        };
-        self.write_pty(bytes.as_bytes());
-        reply.ok(ResponseBody::Done);
+            text.into_bytes()
+        }
     }
 
     /// One chunk of output, starting at `offset`, to every attached client.

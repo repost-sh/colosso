@@ -268,7 +268,7 @@ impl Shell {
                     .flex_1()
                     .min_h_0()
                     .min_w_0()
-                    .child(self.pane_content(pane, context, p)),
+                    .child(self.pane_content(pane, context, p, cx)),
             )
             .when(in_hand, |part| {
                 // Among the window's overlays, as a page's native layer hides what's under it.

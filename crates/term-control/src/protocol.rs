@@ -29,6 +29,26 @@ pub struct Hello {
     pub cwd: Option<PathBuf>,
 }
 
+impl Hello {
+    /// A hello from this process as `kind`, named `name` at `version`: no session, no
+    /// authentication, no capabilities, no folder.
+    pub fn new(kind: ClientKind, name: impl Into<String>, version: impl Into<String>) -> Self {
+        Hello {
+            protocol: PROTOCOL,
+            client: ClientInfo {
+                kind,
+                name: name.into(),
+                version: version.into(),
+                pid: std::process::id(),
+                session: None,
+            },
+            auth: Auth::None,
+            capabilities: Vec::new(),
+            cwd: None,
+        }
+    }
+}
+
 /// Who connected.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClientInfo {
@@ -92,7 +112,7 @@ pub enum IfExists {
     Error,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Signal {
     Int,
@@ -143,6 +163,47 @@ pub struct OpenRequest {
     pub if_exists: IfExists,
     /// Start the process again when the terminal exists but its process has exited.
     pub respawn: bool,
+}
+
+/// `Send`: what to write, in this order: Ctrl-C when `interrupt`, the text, the paste, the
+/// keys, then Enter when `enter`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SendRequest {
+    pub handle: Handle,
+    /// Typed as is, a newline sent as Enter.
+    pub text: Option<String>,
+    /// Bracketed when the program asked for bracketed paste.
+    pub paste: Option<String>,
+    /// Keys by name, with modifiers: `enter`, `ctrl+c`, `shift+tab`, `up`, `f5`.
+    #[serde(default)]
+    pub keys: Vec<String>,
+    #[serde(default)]
+    pub enter: bool,
+    #[serde(default)]
+    pub interrupt: bool,
+}
+
+/// The screen as `ReadScreen` answers it: a line a row, trailing blanks trimmed.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScreenRead {
+    pub name: String,
+    pub title: String,
+    pub cols: u16,
+    pub rows: u16,
+    pub alt_screen: bool,
+    pub mouse: bool,
+    pub cursor: Option<ScreenCursor>,
+    /// Counts the daemon's reads of this screen.
+    pub frame: u64,
+    pub status: Status,
+    pub lines: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScreenCursor {
+    pub row: u16,
+    pub col: u16,
+    pub visible: bool,
 }
 
 /// A request and its number, which the response echoes.
@@ -214,6 +275,20 @@ pub enum RequestBody {
     Renew {
         handle: Handle,
     },
+    /// Writes as typing does, without attaching: a person takes the terminal, an agent needs
+    /// its lease. Answered with `Sent`.
+    Send(SendRequest),
+    /// The screen as text with what's around it; anyone may read. Answered with `Screen`.
+    ReadScreen {
+        handle: Handle,
+    },
+    /// The program's output as text, escape sequences stripped, from offset `since` on, or
+    /// its newest `max_bytes` when `None`; answered with `Stream`. Anyone may read.
+    ReadStream {
+        handle: Handle,
+        since: Option<u64>,
+        max_bytes: Option<u32>,
+    },
     Shutdown,
 }
 
@@ -230,7 +305,10 @@ impl RequestBody {
             | RequestBody::Paste { handle, .. }
             | RequestBody::Claim { handle, .. }
             | RequestBody::Release { handle }
-            | RequestBody::Renew { handle } => Some(handle),
+            | RequestBody::Renew { handle }
+            | RequestBody::ReadScreen { handle }
+            | RequestBody::ReadStream { handle, .. } => Some(handle),
+            RequestBody::Send(send) => Some(&send.handle),
             RequestBody::ListWorktrees
             | RequestBody::ListTerminals { .. }
             | RequestBody::Open(_)
@@ -294,6 +372,18 @@ pub enum ResponseBody {
     },
     Resized {
         size: Size,
+    },
+    Sent {
+        bytes: u32,
+    },
+    Screen(Box<ScreenRead>),
+    /// `next` is where the following read starts; `oldest` the oldest offset still held;
+    /// `truncated` says output between `since` and `oldest` is gone.
+    Stream {
+        text: String,
+        next: u64,
+        oldest: u64,
+        truncated: bool,
     },
     Done,
 }

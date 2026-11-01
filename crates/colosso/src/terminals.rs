@@ -10,12 +10,11 @@ use std::sync::Arc;
 
 use colosso_term::{Look, Source, TermClient, TerminalEvent, TerminalView};
 use colosso_term_control::{
-    DaemonCommand, IfExists, OpenRequest, RequestBody, ResponseBody, Selector, TermDir,
-    TerminalSummary,
+    DaemonCommand, Handle, IfExists, OpenRequest, RequestBody, ResponseBody, Selector, TermDir,
 };
 use gpui_kit::{
-    AnyElement, AppContext as _, Context, Entity, Focusable as _, Hsla, IntoElement as _, Rgba,
-    Subscription, Window, px,
+    AnyElement, AppContext as _, Context, Entity, Focusable as _, Hsla, InteractiveElement as _,
+    IntoElement as _, ParentElement as _, Rgba, Styled as _, Subscription, Task, Window, div, px,
 };
 
 use crate::model::{Pane, Workspace};
@@ -23,8 +22,15 @@ use crate::settings;
 use crate::shell::Shell;
 use crate::theme::{self, Palette};
 
+mod beside;
+mod header;
+mod panel;
+mod restore;
+pub(crate) mod states;
+mod stop;
 #[cfg(feature = "visual-check")]
 pub mod visual;
+mod watch;
 
 #[derive(Default)]
 pub struct Terminals {
@@ -37,6 +43,17 @@ pub struct Terminals {
     restored: HashSet<PathBuf>,
     /// The tab whose view takes the keyboard once it's made: the terminal just opened.
     focus_next: Option<u64>,
+    /// What the daemon says of every terminal, and the task that keeps it current.
+    states: states::States,
+    watching: Option<Task<()>>,
+    /// The activity panels shown, by terminal tab, and their share of the pane once dragged.
+    panels: HashMap<u64, Entity<panel::ActivityPanel>>,
+    panel_share: Option<f32>,
+}
+
+/// Binds the terminals' keys; call once when the app starts.
+pub fn init(cx: &mut gpui_kit::App) {
+    beside::init(cx);
 }
 
 impl Terminals {
@@ -64,6 +81,22 @@ impl Terminals {
         self.client.clone()
     }
 
+    /// The terminal tab `id` shows, once it's known.
+    fn handle_of(&self, id: u64) -> Option<&Handle> {
+        match self.sources.get(&id)? {
+            Source::Existing { handle, .. } => Some(handle),
+            Source::Open(_) => None,
+        }
+    }
+
+    /// The tab that shows terminal `handle`, if one does.
+    fn tab_of(&self, handle: &Handle) -> Option<u64> {
+        (self.sources.iter()).find_map(|(id, source)| match source {
+            Source::Existing { handle: shown, .. } if shown == handle => Some(*id),
+            _ => None,
+        })
+    }
+
     fn add(&mut self, source: Source) -> u64 {
         self.next += 1;
         self.sources.insert(self.next, source);
@@ -78,8 +111,20 @@ impl Terminals {
             .chain(workspace.closed_terminals())
             .collect();
         self.views.retain(|id, _| shown.contains(id));
+        self.panels.retain(|id, _| shown.contains(id));
         self.sources.retain(|id, _| known.contains(id));
     }
+}
+
+/// The count of a checkout's terminals waiting for the person, beside its name.
+pub fn waiting_badge(count: usize, p: Palette) -> gpui_kit::Div {
+    div()
+        .px_1p5()
+        .rounded_full()
+        .bg(p.modified.opacity(0.2))
+        .text_color(p.modified)
+        .text_xs()
+        .child(count.to_string())
 }
 
 /// How terminals look in the theme `p`.
@@ -158,6 +203,7 @@ impl Shell {
         let Some(client) = self.terminals.client() else {
             return;
         };
+        self.watch_terminals(cx);
         cx.spawn(async move |this, cx| {
             let listed = cx
                 .background_spawn({
@@ -199,67 +245,6 @@ impl Shell {
                 this.terminals.focus_next = Some(id);
                 this.workspace
                     .add_terminal_tab(&worktree, id, name.into(), true);
-                cx.notify();
-            })
-            .ok();
-        })
-        .detach();
-    }
-
-    /// Brings back as tabs the terminals the daemon keeps for checkouts listed for the first
-    /// time.
-    pub fn restore_terminals(&mut self, cx: &mut Context<Self>) {
-        let fresh: Vec<PathBuf> = (self.workspace.projects.iter())
-            .flat_map(|project| {
-                project
-                    .branches
-                    .iter()
-                    .map(|unit| unit.worktree.path.clone())
-            })
-            .filter(|path| !self.terminals.restored.contains(path))
-            .collect();
-        if fresh.is_empty() {
-            return;
-        }
-        let Some(client) = self.terminals.client() else {
-            return;
-        };
-        self.terminals.restored.extend(fresh.iter().cloned());
-        cx.spawn(async move |this, cx| {
-            let listed = cx
-                .background_spawn(async move {
-                    client.request_if_running(RequestBody::ListTerminals {
-                        worktree: None,
-                        status: None,
-                    })
-                })
-                .await;
-            let terminals: Vec<TerminalSummary> = match listed {
-                Ok(Some(ResponseBody::Terminals { terminals })) => terminals,
-                Ok(_) => return,
-                Err(error) => return log::warn!("couldn't list the running terminals: {error}"),
-            };
-            this.update(cx, |this, cx| {
-                for summary in terminals {
-                    let record = summary.record;
-                    let Some(worktree) = record
-                        .worktree
-                        .as_ref()
-                        .map(|worktree| worktree.path.clone())
-                    else {
-                        continue;
-                    };
-                    if !fresh.contains(&worktree) || record.exit.is_some() {
-                        continue;
-                    }
-                    let name = record.name.clone();
-                    let id = this.terminals.add(Source::Existing {
-                        handle: record.handle,
-                        name: name.clone(),
-                    });
-                    this.workspace
-                        .add_terminal_tab(&worktree, id, name.into(), false);
-                }
                 cx.notify();
             })
             .ok();
@@ -318,15 +303,33 @@ impl Shell {
 
     /// What `pane` shows: its terminal when it's a terminal pane whose view is made, else what
     /// `crate::pane` draws for its kind.
-    pub fn pane_content(&self, pane: &Pane, context: &str, p: Palette) -> AnyElement {
-        match pane.terminal.and_then(|id| self.terminals.views.get(&id)) {
-            Some((view, _)) => view.clone().into_any_element(),
-            None => crate::pane::pane(pane, context, p),
-        }
+    pub fn pane_content(
+        &self,
+        pane: &Pane,
+        context: &str,
+        p: Palette,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let Some((id, (view, _))) = (pane.terminal)
+            .and_then(|id| Some((id, self.terminals.views.get(&id)?)))
+        else {
+            return crate::pane::pane(pane, context, p);
+        };
+        let view = self.beside_panel(id, view.clone().into_any_element(), p, cx);
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            // ⌘⇧L in the terminal, heard on its way up.
+            .on_action(cx.listener(move |this, _: &beside::ToggleActivity, _, cx| {
+                this.toggle_activity(id, cx);
+            }))
+            .children(self.terminal_bar(id, p, cx))
+            .child(div().flex_1().min_h_0().child(view))
+            .into_any_element()
     }
 
     /// The shown tab's first terminal pane: its terminal's id and view, if it's made.
-    #[cfg(feature = "visual-check")]
     fn shown(&self) -> Option<(u64, Option<Entity<TerminalView>>)> {
         let branch = self.workspace.branch()?;
         let tab = branch.tabs.get(branch.active_tab)?;
@@ -365,6 +368,7 @@ impl Shell {
         let title = match event {
             TerminalEvent::Title(title) if !title.is_empty() => title.clone(),
             TerminalEvent::Opened(record) => {
+                self.terminals.states.upsert(record);
                 // Opened again, as ⌘⇧T does, the pane attaches to this very terminal.
                 let name = record.name.clone();
                 (self.terminals.sources).insert(
@@ -378,6 +382,13 @@ impl Shell {
             }
             TerminalEvent::Closed => {
                 self.close_terminal_tab(id, cx);
+                return;
+            }
+            TerminalEvent::DaemonReplaced => {
+                // The other tabs it turned away try again, with this build's daemon.
+                for (view, _) in self.terminals.views.values() {
+                    view.update(cx, TerminalView::try_again);
+                }
                 return;
             }
             TerminalEvent::Title(_) | TerminalEvent::Bell | TerminalEvent::Exited(_) => return,

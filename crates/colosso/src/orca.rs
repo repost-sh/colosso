@@ -108,7 +108,9 @@ pub fn sidebar(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
                     let branch = &project.branches[branch_index];
                     let selected = project_index == workspace.active_project
                         && branch_index == project.active_branch;
-                    branch_row(project_index, branch_index, branch, selected, p, cx)
+                    let waiting = shell.terminals_needing_input(&branch.worktree.path);
+                    let has_terminals = shell.has_terminals(&branch.worktree.path);
+                    branch_row(project_index, branch_index, branch, selected, (waiting, has_terminals), p, cx)
                 }))
         }))
 }
@@ -118,17 +120,19 @@ fn branch_row(
     branch_index: usize,
     branch: &BranchUnit,
     selected: bool,
+    (waiting, has_terminals): (usize, bool),
     p: Palette,
     cx: &mut Context<Shell>,
 ) -> impl IntoElement + use<> {
     let (path, is_main) = (branch.worktree.path.clone(), branch.is_main());
+    let terminals = has_terminals;
     with_menu(
         row(
             ("orca-branch", project_index * 100 + branch_index),
             selected,
             p,
         ),
-        move || worktree_menu(&path, is_main),
+        move || worktree_menu(&path, is_main, terminals),
     )
     .pl_6()
     .when(!selected, |row| row.text_color(p.muted))
@@ -141,6 +145,7 @@ fn branch_row(
     .when(is_main, |row| {
         row.child(div().text_xs().text_color(p.muted).child("checkout"))
     })
+    .when(waiting > 0, |row| row.child(crate::terminals::waiting_badge(waiting, p)))
 }
 
 pub fn tab_strip(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
@@ -175,12 +180,15 @@ pub fn tab_strip(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
                     cx.listener(move |this, _, window, cx| this.close_tab_at(at, window, cx)),
                 );
             let list = (Axis::Horizontal, active, &shell.tab_hand);
+            let (dot, split_dot) = shell.tab_dots(tab, p);
+            let row = row.children(split_dot);
             tab_row(row, (at, tab), list, p, cx, |row, face, cx| {
                 let close = ("orca-tab-close", tab_index);
                 row.max_w(px(220.))
                     .pl_2()
                     .pr_1()
                     .child(face.icon(13.))
+                    .children(dot)
                     .child(face.label())
                     .child(tab_close_button(close, at, face.dirty, p, cx))
             })

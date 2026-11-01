@@ -2,16 +2,17 @@
 //! daemon when none runs, and a dispatcher thread hands each attached terminal's stream to
 //! that terminal's VT thread and every event to whoever subscribed. The connection is made
 //! again after the daemon goes away; the views attached through it learn they must reattach.
-//! A daemon the client stopped itself isn't started again.
+//! A daemon the client stopped itself isn't started again, and one of another build isn't
+//! used until the person replaces it (5.1).
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use colosso_term_control::{
-    AttachMode, Auth, ClientError, ClientInfo, ClientKind, Connection, DaemonCommand, Event,
-    EventKind, Handle, Hello, Message, Output, PROTOCOL, RequestBody, ResponseBody, Size,
-    SnapshotChunk, TermDir, TerminalRecord, Welcome,
+    AttachMode, ClientError, ClientKind, Connection, DaemonCommand, ErrorCode, Event, EventKind,
+    Handle, Hello, Message, Output, ProtocolError, RequestBody, ResponseBody, SNAPSHOT_FORMAT,
+    Size, SnapshotChunk, TermDir, TerminalRecord, Welcome,
 };
 use crossbeam_channel::{Receiver, Sender};
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
@@ -227,9 +228,21 @@ impl TermClient {
         connection.request(RequestBody::Shutdown).map(drop)
     }
 
+    /// Stops a daemon of another build, so the next request starts this build's in its place
+    /// (`docs/terminals.md` 5.1). Its programs end; the registry keeps its terminals. A
+    /// daemon of this build is left as it is. Blocks like `request`.
+    pub fn replace_daemon(&self) -> Result<(), ClientError> {
+        match self.welcome() {
+            Err(error) if is_other_build(&error) => {}
+            other => return other.map(drop),
+        }
+        colosso_term_control::client::stop_daemon(&self.dir, &hello())
+    }
+
     fn is_running(&self) -> bool {
         let live = self.live.lock();
-        live.as_ref().is_some_and(|live| !live.connection.is_closed())
+        live.as_ref()
+            .is_some_and(|live| !live.connection.is_closed())
             || std::os::unix::net::UnixStream::connect(self.dir.socket()).is_ok()
     }
 
@@ -242,7 +255,11 @@ impl TermClient {
     ) -> Result<Attachment, ClientError> {
         let (connection, routes, serial) = self.with_live(|live| {
             let routes = Arc::clone(&live.routes);
-            Ok((Arc::clone(&live.connection), routes, Arc::clone(&live.serial)))
+            Ok((
+                Arc::clone(&live.connection),
+                routes,
+                Arc::clone(&live.serial),
+            ))
         })?;
         let _serial = serial.lock();
         let shared = routes.lock().expect(handle);
@@ -279,7 +296,11 @@ impl TermClient {
     pub fn detach(&self, handle: &Handle, index: u32) {
         let live = self.live.lock().as_ref().map(|live| {
             let routes = Arc::clone(&live.routes);
-            (Arc::clone(&live.connection), routes, Arc::clone(&live.serial))
+            (
+                Arc::clone(&live.connection),
+                routes,
+                Arc::clone(&live.serial),
+            )
         });
         let Some((connection, routes, serial)) = live else {
             return;
@@ -318,6 +339,10 @@ impl TermClient {
         let (inbox, received) = colosso_term_control::client::inbox();
         let (connection, welcome) =
             Connection::connect_or_start(&self.dir, &self.daemon, &hello(), inbox)?;
+        if let Err(error) = this_build(&welcome) {
+            connection.close();
+            return Err(error);
+        }
         log::info!(
             "connected to the terminal daemon {} (engine {})",
             welcome.daemon_version,
@@ -374,22 +399,37 @@ fn dispatch(
         .retain(|tx| tx.unbounded_send(Notice::Disconnected).is_ok());
 }
 
-fn hello() -> Hello {
-    Hello {
-        protocol: PROTOCOL,
-        client: ClientInfo {
-            kind: ClientKind::App,
-            name: "colosso".into(),
-            version: env!("CARGO_PKG_VERSION").into(),
-            pid: std::process::id(),
-            session: None,
-        },
-        auth: Auth::None,
-        // The daemon's engine answers the programs' queries: two windows on one terminal
-        // would otherwise answer twice.
-        capabilities: Vec::new(),
-        cwd: None,
+/// Whether this build can use the daemon that sent `welcome` (`docs/terminals.md` 5.1): the
+/// views restore its snapshots, so its engine and their format must be this build's. A
+/// daemon of another protocol refuses the hello itself.
+pub fn this_build(welcome: &Welcome) -> Result<(), ClientError> {
+    if welcome.engine_commit == colosso_term_engine::GHOSTTY_COMMIT
+        && welcome.snapshot_format == SNAPSHOT_FORMAT
+    {
+        return Ok(());
     }
+    let engine = welcome
+        .engine_commit
+        .get(..12)
+        .unwrap_or(&welcome.engine_commit);
+    Err(ClientError::Protocol(ProtocolError::new(
+        ErrorCode::DaemonVersionMismatch,
+        format!(
+            "the terminals are served by another build, {} on Ghostty {engine}",
+            welcome.daemon_version
+        ),
+    )))
+}
+
+/// Whether `error` says the daemon is another build's, which `replace_daemon` replaces.
+pub fn is_other_build(error: &ClientError) -> bool {
+    matches!(error, ClientError::Protocol(error) if error.code == ErrorCode::DaemonVersionMismatch)
+}
+
+fn hello() -> Hello {
+    // No `answers_queries`: the daemon's engine answers the programs' queries, as two windows
+    // on one terminal would otherwise answer twice.
+    Hello::new(ClientKind::App, "colosso", env!("CARGO_PKG_VERSION"))
 }
 
 #[cfg(test)]

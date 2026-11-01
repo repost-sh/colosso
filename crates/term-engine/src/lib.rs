@@ -9,6 +9,7 @@
 mod engine;
 mod frame;
 mod input;
+mod names;
 mod semantic;
 
 pub use engine::{Effect, Engine, Progress, Scroll, Size, TextFormat};
@@ -20,6 +21,7 @@ pub use input::{
     Geometry, GridPoint, Key, KeyAction, KeyInput, Mods, MouseAction, MouseButton, MouseInput,
     OptionAsAlt, SelectUnit, paste_is_safe,
 };
+pub use names::{Chord, chord, key_named};
 pub use semantic::{Mark, PromptScanner};
 
 /// What the engine reports when a call into libghostty-vt fails. These are rare: feeding

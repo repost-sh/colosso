@@ -13,6 +13,7 @@ colosso-term = { path = "../term" }
 colosso-term-control = { path = "../term-control" }
 colosso-term-engine = { path = "../term-engine" }
 colosso-termd = { path = "../termd" }
+colosso-term-mcp = { path = "../term-mcp" }
 # Each checkout's files, scanned and watched once for every panel that shows it.
 colosso-project = { path = "../project" }
 # The language servers behind the file tabs: rust-analyzer, found or fetched, and talked to.

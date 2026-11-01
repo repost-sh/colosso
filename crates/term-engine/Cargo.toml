@@ -12,6 +12,8 @@ publish.workspace = true
 # source tarball with the Zig that script/zig pins (see .cargo/config.toml).
 ghostty-vt = { version = "=0.8.0", features = ["log"] }
 log = "0.4"
+# The prompt scanner skips plain text to the next ESC with it, many bytes at a time.
+memchr = "2"
 
 [lints]
 workspace = true

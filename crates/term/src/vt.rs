@@ -52,7 +52,10 @@ pub enum Command {
     Copy(Sender<Option<String>>),
     /// Text pasted, which the daemon brackets as the program asked. It goes from here so it
     /// reaches the program in order with the keys around it.
-    Paste { handle: Handle, text: String },
+    Paste {
+        handle: Handle,
+        text: String,
+    },
     Focus(bool),
     Colors {
         foreground: Rgb,
@@ -197,7 +200,11 @@ impl Thread {
         };
         match engine.frame() {
             Ok(frame) => {
-                log::trace!("attach {}: a frame of {} rows", self.index, frame.rows.len());
+                log::trace!(
+                    "attach {}: a frame of {} rows",
+                    self.index,
+                    frame.rows.len()
+                );
                 *self.slot.frame.lock() = Some(Arc::new(frame));
                 if !self.slot.signalled.swap(true, Ordering::AcqRel) {
                     let _ = self.updates.unbounded_send(Update::Frame);
@@ -279,7 +286,11 @@ impl Thread {
         };
         match restored {
             Ok(engine) => {
-                log::debug!("attach {}: restored a snapshot at {}", self.index, chunk.offset);
+                log::debug!(
+                    "attach {}: restored a snapshot at {}",
+                    self.index,
+                    chunk.offset
+                );
                 self.engine = Some(engine);
                 self.offset = chunk.offset;
                 self.apply_colors();

@@ -2,34 +2,49 @@
 //! (which can't leave it), the byte ring and the clients attached, and acts on commands from
 //! the connections. `docs/terminals.md` 5.3.
 
+mod activity;
 mod cmd;
+mod commands;
+mod control;
 mod effects;
+mod handoff;
+mod integration;
+mod keys;
+mod persist;
 mod pty;
 mod ring;
+mod send;
+mod status;
 mod stream;
 
 use std::collections::HashMap;
-use std::io::Write as _;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use bytes::Bytes;
 use colosso_term_control::{
-    ErrorCode, EventKind, Exit, ProtocolError, Size, Status, TerminalRecord, now_ms,
+    Actor, Controller, ErrorCode, EventKind, Exit, ProtocolError, Size, Status, TerminalRecord,
+    now_ms,
 };
 use colosso_term_engine::{Engine, PromptScanner};
-use crossbeam_channel::{Receiver, Sender, bounded, never, tick, unbounded};
+use crossbeam_channel::{Receiver, Sender, after, bounded, never, tick, unbounded};
 use parking_lot::Mutex;
 
+use crate::journal::Journal;
 use crate::server::Daemon;
 pub use cmd::{Attached, Cmd, Reply};
 use effects::signal_number;
+use handoff::{Handoff, LOOK_AGAIN};
+pub use persist::{path as snapshot_path, screen as kept_screen};
+use pty::Pty;
 use ring::Ring;
 
 /// How much raw output a terminal keeps for catch-up and stream reads.
 const RING_BYTES: usize = 8 << 20;
 /// How much history the engine keeps, in bytes of cells.
 const SCROLLBACK_BYTES: usize = 10_000 * 256;
+/// The most output taken in at once.
+pub(super) const FRAME_BYTES: usize = 64 * 1024;
 /// After a close, how long the program gets to end on SIGHUP before SIGKILL.
 pub(super) const CLOSE_GRACE: Duration = Duration::from_secs(5);
 
@@ -47,12 +62,6 @@ pub struct Live {
     pub preview: Mutex<String>,
 }
 
-pub(super) struct Pty {
-    pub(super) master: Box<dyn portable_pty::MasterPty + Send>,
-    pub(super) writer: Box<dyn std::io::Write + Send>,
-    pub(super) pid: u32,
-}
-
 pub struct Session {
     pub(super) daemon: Arc<Daemon>,
     pub(super) record: TerminalRecord,
@@ -60,13 +69,25 @@ pub struct Session {
     pub(super) engine: Engine,
     pub(super) ring: Ring,
     scanner: PromptScanner,
+    status: status::Tracker,
+    /// Agents another agent took the terminal from, by actor id, and who took it: their
+    /// writes say so until they claim again.
+    taken: HashMap<String, Controller>,
+    journal: Journal,
+    commands: commands::Commands,
+    typing: Option<activity::Typing>,
     pub(super) pty: Option<Pty>,
     pub(super) clients: HashMap<u32, Attached>,
-    pty_rx: Receiver<Vec<u8>>,
+    /// The program's output, from the PTY's reader, and what wakes the thread for it.
+    handoff: Option<Arc<Handoff>>,
+    woken: Receiver<()>,
+    /// Output came at the last look: look again soon, rather than be woken for it.
+    flowing: bool,
     exit_rx: Receiver<Exit>,
     /// Set by `Close`: the program was told to go, and is killed after the grace period.
     pub(super) closing: Option<Instant>,
     preview_dirty: bool,
+    kept: persist::Kept,
 }
 
 /// What ends the session's loop.
@@ -134,33 +155,38 @@ pub fn start(daemon: &Arc<Daemon>, record: TerminalRecord) -> Result<SessionHand
 impl Session {
     fn new(
         daemon: Arc<Daemon>,
-        mut record: TerminalRecord,
+        record: TerminalRecord,
         live: Arc<Live>,
     ) -> Result<Session, ProtocolError> {
-        let engine = Engine::new(engine_size(record.size), SCROLLBACK_BYTES).map_err(|error| {
-            ProtocolError::new(
-                ErrorCode::Internal,
-                format!("couldn't make a terminal engine: {error}"),
-            )
-        })?;
+        let dir = daemon.dir.terminal(&record.handle);
+        let engine = persist::engine(&dir, engine_size(record.size), SCROLLBACK_BYTES)?;
+        let journal = Journal::new(dir);
+        let commands = commands::Commands::new(&journal);
         let mut session = Session {
             daemon,
             record: TerminalRecord {
                 pid: None,
-                ..record.clone()
+                ..record
             },
             live,
             engine,
             ring: Ring::new(RING_BYTES),
             scanner: PromptScanner::new(),
+            status: status::Tracker::default(),
+            taken: HashMap::new(),
+            journal,
+            commands,
+            typing: None,
             pty: None,
             clients: HashMap::new(),
-            pty_rx: never(),
+            handoff: None,
+            woken: never(),
+            flowing: false,
             exit_rx: never(),
             closing: None,
             preview_dirty: false,
+            kept: persist::Kept::default(),
         };
-        record.incarnation = record.incarnation.max(1);
         session.spawn()?;
         Ok(session)
     }
@@ -181,26 +207,10 @@ impl Session {
                 format!("couldn't start the program: {error}"),
             )
         })?;
-        let pid = spawned.pid.unwrap_or(0);
-        let (pty_tx, pty_rx) = bounded::<Vec<u8>>(256);
-        let mut reader = spawned.reader;
+        let pid = spawned.pty.pid;
         let name = self.record.name.clone();
-        let spawned_reader = std::thread::Builder::new()
-            .name(format!("term-{name}-read"))
-            .spawn(move || {
-                loop {
-                    let mut buf = vec![0u8; 64 * 1024];
-                    match reader.read(&mut buf) {
-                        Ok(0) | Err(_) => break,
-                        Ok(n) => {
-                            buf.truncate(n);
-                            if pty_tx.send(buf).is_err() {
-                                break;
-                            }
-                        }
-                    }
-                }
-            });
+        let (handoff, woken) = Handoff::new();
+        let spawned_reader = handoff.read(spawned.reader, format!("term-{name}-read"));
         let (exit_tx, exit_rx) = bounded::<Exit>(1);
         let mut child = spawned.child;
         let spawned_waiter = std::thread::Builder::new()
@@ -231,15 +241,14 @@ impl Session {
                 format!("couldn't start the terminal's threads: {error}"),
             ));
         }
-        self.pty = Some(Pty {
-            master: spawned.master,
-            writer: spawned.writer,
-            pid,
-        });
-        self.pty_rx = pty_rx;
+        self.pty = Some(spawned.pty);
+        self.handoff = Some(handoff);
+        self.woken = woken;
+        self.flowing = false;
         self.exit_rx = exit_rx;
         self.record.pid = Some(pid);
         self.record.exit = None;
+        self.status = status::Tracker::default();
         self.set_status(Status::Running, "started");
         self.publish(true);
         self.daemon.broadcast(
@@ -249,17 +258,42 @@ impl Session {
                 incarnation: self.record.incarnation,
             },
         );
+        self.log_spawn();
         Ok(())
+    }
+
+    /// The activity line for the program starting: opened by whoever opened the terminal,
+    /// started again by the daemon.
+    fn log_spawn(&mut self) {
+        let program = if self.record.command.is_empty() {
+            "the login shell".to_owned()
+        } else {
+            self.record.command.join(" ")
+        };
+        if self.record.incarnation > 1 {
+            let action = format!("started {program} again");
+            self.log(&Actor::system(), "respawn".into(), action, Ok(()));
+            return;
+        }
+        let place = (self.record.worktree.as_ref())
+            .map(|worktree| format!(" in {}", worktree.display_name()))
+            .unwrap_or_default();
+        let command = format!("open {}", activity::quoted(&self.record.name, 80));
+        let by = self.record.created_by.clone();
+        self.log(&by, command, format!("opened {program}{place}"), Ok(()));
     }
 
     fn run(mut self, cmd_rx: &Receiver<Cmd>) {
         let ticker = tick(Duration::from_millis(250));
         let ended = loop {
+            let look = if self.flowing {
+                after(LOOK_AGAIN)
+            } else {
+                never()
+            };
             crossbeam_channel::select! {
-                recv(self.pty_rx) -> chunk => match chunk {
-                    Ok(chunk) => self.output(chunk),
-                    Err(_) => self.pty_rx = never(),
-                },
+                recv(self.woken) -> _ => self.take_output(),
+                recv(look) -> _ => self.take_output(),
                 recv(self.exit_rx) -> exit => {
                     self.exit_rx = never();
                     if let Ok(exit) = exit {
@@ -276,28 +310,31 @@ impl Session {
                 recv(ticker) -> _ => self.tick(),
             }
         };
+        self.flush_typing();
         self.daemon.session_ended(&self.record.handle, &ended);
     }
 
     /// Raw bytes from the program: into the ring, the engine, and out to every client.
-    fn output(&mut self, chunk: Vec<u8>) {
+    pub(super) fn output(&mut self, chunk: &Bytes) {
         self.record.last_output_ms = now_ms();
-        self.ring.append(&chunk);
-        self.engine.write(&chunk);
-        let mut marks = Vec::new();
-        self.scanner.feed(&chunk, &mut marks);
+        let start = self.ring.end();
+        self.ring.append(chunk);
+        let marks = self.write_marked(chunk, start);
+        self.status.output(Instant::now(), &marks);
         self.effects();
+        self.follow_status();
         self.preview_dirty = true;
-        let offset = self.ring.end() - chunk.len() as u64;
-        self.fan_out(offset, &Bytes::from(chunk));
+        self.kept.changed = true;
+        self.fan_out(start, chunk);
     }
 
     pub(super) fn write_pty(&mut self, bytes: &[u8]) {
+        // Its echo, or the program's answer, wakes the thread even while output flows.
+        if let Some(handoff) = &self.handoff {
+            handoff.expect_output();
+        }
         if let Some(pty) = self.pty.as_mut()
-            && let Err(error) = pty
-                .writer
-                .write_all(bytes)
-                .and_then(|()| pty.writer.flush())
+            && let Err(error) = pty::write_all(pty, bytes)
         {
             log::warn!(
                 "{}: couldn't write to the program: {error}",
@@ -307,6 +344,8 @@ impl Session {
     }
 
     fn exited(&mut self, exit: Exit) {
+        // What the program wrote last comes before its end.
+        self.take_output();
         self.pty = None;
         self.record.pid = None;
         self.record.exit = Some(exit);
@@ -316,12 +355,20 @@ impl Session {
             (None, None) => "exited".to_owned(),
         };
         self.set_status(Status::Exited, &reason);
+        self.keep();
         self.publish(true);
         self.daemon
             .broadcast(&self.record.handle, &EventKind::Exited { exit });
+        let action = format!(
+            "the program {}",
+            reason.replacen("exited ", "exited with ", 1)
+        );
+        self.log(&Actor::system(), String::new(), action, Ok(()));
     }
 
     fn tick(&mut self) {
+        self.expire_lease();
+        self.flush_idle_typing();
         if let Some(since) = self.closing
             && since.elapsed() > CLOSE_GRACE
             && let Some(pty) = &self.pty
@@ -329,6 +376,8 @@ impl Session {
             let _ = pty::signal_group(pty.pid, libc::SIGKILL);
         }
         self.resume_lagging();
+        self.keep_if_due();
+        self.follow_status();
         if self.preview_dirty {
             self.preview_dirty = false;
             self.refresh_preview();
@@ -341,24 +390,13 @@ impl Session {
         }
     }
 
-    /// SIGHUP, a wait of up to `grace`, then SIGKILL.
-    pub(super) fn end_program(&mut self, grace: Duration) {
-        let Some(pty) = &self.pty else { return };
-        let pid = pty.pid;
-        let _ = pty::signal_group(pid, libc::SIGHUP);
-        if self.exit_rx.recv_timeout(grace).is_err() {
-            let _ = pty::signal_group(pid, libc::SIGKILL);
-            let _ = self.exit_rx.recv_timeout(Duration::from_secs(1));
-        }
-        self.pty = None;
-    }
-
     pub(super) fn set_status(&mut self, status: Status, reason: &str) {
         if self.record.status == status && self.record.status_reason == reason {
             return;
         }
         self.record.status = status;
         reason.clone_into(&mut self.record.status_reason);
+        self.publish(false);
         self.daemon.broadcast(
             &self.record.handle,
             &EventKind::Status {
@@ -367,6 +405,20 @@ impl Session {
                 progress: self.record.progress,
             },
         );
+    }
+
+    /// The status as the tracker reads it now, while the program runs.
+    fn follow_status(&mut self) {
+        if self.pty.is_none() {
+            return;
+        }
+        if self.record.last_exit != self.status.last_exit {
+            self.record.last_exit = self.status.last_exit;
+            self.publish(false);
+        }
+        if let Some((status, reason)) = self.status.status(Instant::now()) {
+            self.set_status(status, &reason);
+        }
     }
 
     /// Copies the record where lists read it; `durable` also hands it to the registry.
