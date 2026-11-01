@@ -1,5 +1,6 @@
 //! ⌘⇧T: the tab closed last comes back where it was, its pages opening again at the
-//! addresses they showed and its files on the files they showed, as they are on disk.
+//! addresses they showed, its files on the files they showed, as they are on disk, and the
+//! diffs' pane on the checkout's diffs.
 
 use std::path::PathBuf;
 
@@ -30,6 +31,7 @@ impl Shell {
         }
         self.workspace.restore_tab(at, tab);
         self.reopen_files(at, &closed.files, window, cx);
+        self.reopen_changes(at, &closed.changes, window, cx);
         self.navigate(Route::Workspace, cx);
         cx.notify();
     }

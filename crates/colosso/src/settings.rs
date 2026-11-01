@@ -135,7 +135,6 @@ pub struct Settings {
     pub dark_theme: GradientTheme,
     pub layout: Layout,
     pub sidebar_width: f32,
-    pub changes_width: f32,
     pub changes_files_width: f32,
     /// The Files panel's width, its tree's.
     pub files_tree_width: f32,
@@ -219,7 +218,6 @@ impl Default for Settings {
             dark_theme: GradientTheme::default(),
             layout: Layout::default(),
             sidebar_width: theme::SIDEBAR_WIDTH,
-            changes_width: theme::CHANGES_WIDTH,
             changes_files_width: theme::CHANGES_FILES_WIDTH,
             files_tree_width: theme::FILES_TREE_WIDTH,
             preview_files: true,

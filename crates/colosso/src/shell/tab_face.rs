@@ -41,7 +41,11 @@ impl Face {
         Face {
             id: pane.id,
             // A file's pane is titled with its name.
-            icon: file.map_or(pane.kind.icon(), |_| file_icon(&pane.title)),
+            icon: match (file, &pane.changes) {
+                (Some(_), _) => file_icon(&pane.title),
+                (None, Some(_)) => IconName::FileDiff,
+                (None, None) => pane.kind.icon(),
+            },
             favicon: (pane.browser.as_ref()).and_then(|view| view.read(cx).favicon()),
             title: pane.title.clone(),
             preview: file.is_some_and(FilePane::is_preview),

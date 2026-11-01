@@ -30,17 +30,10 @@ pub const CARD_RADIUS: f32 = 10.;
 pub const SIDEBAR_WIDTH: f32 = 260.;
 pub const SIDEBAR_MIN_WIDTH: f32 = 200.;
 pub const SIDEBAR_MAX_WIDTH: f32 = 480.;
-/// The changes panel's width beside the chat, unless widened to the whole card.
-pub const CHANGES_WIDTH: f32 = 960.;
-/// Room for the narrowest file list beside the narrowest diffs.
-pub const CHANGES_MIN_WIDTH: f32 = CHANGES_FILES_MIN_WIDTH + DIFFS_MIN_WIDTH;
-pub const CHANGES_MAX_WIDTH: f32 = 1400.;
-/// The changes panel's file list, beside the diffs.
+/// The changes panel's width beside the chat: its file list's.
 pub const CHANGES_FILES_WIDTH: f32 = 320.;
 pub const CHANGES_FILES_MIN_WIDTH: f32 = 180.;
 pub const CHANGES_FILES_MAX_WIDTH: f32 = 640.;
-/// What the file list leaves of the changes panel for the diffs, at its widest.
-pub const DIFFS_MIN_WIDTH: f32 = 360.;
 /// The Files panel's width beside the chat: its tree's.
 pub const FILES_TREE_WIDTH: f32 = 300.;
 pub const FILES_TREE_MIN_WIDTH: f32 = 180.;

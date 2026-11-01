@@ -9,7 +9,7 @@ fn settings_survive_a_round_trip() {
         appearance: ThemePreference::Dark,
         layout: Layout::Arc,
         sidebar_width: 320.,
-        changes_width: 700.,
+        changes_files_width: 400.,
         projects: vec!["/src/app".into()],
         worktrees_dir: Some("/work".into()),
         branch_prefix: BranchPrefix::Custom("me".into()),
@@ -31,7 +31,7 @@ fn missing_fields_fall_back_to_defaults() {
     let settings: Settings = serde_json::from_str(r#"{ "layout": "Arc" }"#).unwrap();
     assert_eq!(settings.layout, Layout::Arc);
     assert_eq!(settings.sidebar_width, theme::SIDEBAR_WIDTH);
-    assert_eq!(settings.changes_width, theme::CHANGES_WIDTH);
+    assert_eq!(settings.changes_files_width, theme::CHANGES_FILES_WIDTH);
     assert_eq!(settings.dark_theme, GradientTheme::default());
     assert_eq!(settings.branch_prefix, BranchPrefix::GitHubUser);
     // As Zed and VS Code have them: previews on, no limit to the language servers, and none

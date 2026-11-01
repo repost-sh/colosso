@@ -390,9 +390,7 @@ impl Render for Shell {
             Layout::Arc => (None, sidebar),
         };
         let shown = route == Route::Workspace;
-        let (right_panel, wide) = self
-            .right_panel
-            .render(shown, self.sidebar_open, window, cx);
+        let right_panel = (self.right_panel).render(shown, self.sidebar_open, window, cx);
         let card = div()
             .flex_1()
             .min_w_0()
@@ -404,7 +402,7 @@ impl Render for Shell {
             .overflow_hidden()
             .flex()
             .children(card_sidebar)
-            .when(!wide, |card| card.child(self.main(route, layout, cx)))
+            .child(self.main(route, layout, cx))
             .children(right_panel)
             // The rails' menu belongs to the rails, not the card.
             .on_mouse_down(MouseButton::Right, |_, _, cx| {

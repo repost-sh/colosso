@@ -1,6 +1,6 @@
 //! Tabs closed lately, to bring back with ⌘⇧T, the newest first: each on its checkout at its
-//! place, its panes split as they were, a page pane at the address it showed and a file
-//! pane on the file it showed.
+//! place, its panes split as they were, a page pane at the address it showed, a file pane on
+//! the file it showed and the diffs' pane on the checkout's diffs.
 
 use std::path::PathBuf;
 
@@ -21,6 +21,8 @@ pub struct ClosedTab {
     pub addresses: Vec<(u64, String)>,
     /// The file each file pane showed, by its pane's id.
     pub files: Vec<(u64, PathBuf)>,
+    /// The panes that showed the checkout's diffs, by their ids.
+    pub changes: Vec<u64>,
 }
 
 impl Workspace {
@@ -30,6 +32,7 @@ impl Workspace {
         for pane in closed.tab.panes_mut() {
             pane.browser = None;
             pane.file = None;
+            pane.changes = None;
         }
         self.closed.push(closed);
         if self.closed.len() > KEPT {

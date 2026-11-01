@@ -6,13 +6,16 @@ use serde_json::{Map, Value};
 /// Settings a file may hold that the app no longer has, each where it was and why it went.
 /// A key that changes what it means goes here under its old name; one that only changes
 /// its name goes in [`RENAMED`].
-const RETIRED: [(&[&str], &str); 6] = [
+const RETIRED: [(&[&str], &str); 7] = [
     // The Files panel's tree's width, from before the panel showed a file beside its tree:
     // too narrow for both, it gave way to `files_panel_width` and `files_tree_width`.
     (&[], "files_width"),
     // The Files panel's width while it showed a file beside its tree; files open in the
     // workspace's tabs now, and the panel's as wide as its tree, `files_tree_width`.
     (&[], "files_panel_width"),
+    // The changes panel's width while it showed the diffs beside its file list; the diffs
+    // open in a workspace tab now, and the panel's as wide as its list, `changes_files_width`.
+    (&[], "changes_width"),
     // A held arrow sped up the longer it was held, in steps a frame; it now has one speed,
     // `per_second`, the same whatever the display's rate.
     (&["key_repeat"], "start_per_frame"),
