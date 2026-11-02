@@ -4,8 +4,8 @@
 
 use colosso_browser_ipc::{PixelSize, Viewport};
 use gpui_kit::{
-    Bounds, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, PlatformInput, TestAppContext,
-    VisualTestContext, point, px, size,
+    Bounds, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PlatformInput,
+    TestAppContext, VisualTestContext, point, px, size,
 };
 
 use super::super::devices::{self, find};
@@ -183,6 +183,54 @@ fn a_grip_let_go_outside_the_window_sizes_nothing_more(cx: &mut TestAppContext) 
 }
 
 #[gpui_kit::test]
+fn a_grip_held_is_told_as_a_drag_and_its_let_go_too(cx: &mut TestAppContext) {
+    let (window, view) = page(cx);
+    view.update(cx, BrowserView::toggle_responsive);
+    draw(window, cx);
+    let (grip, before) = view.read_with(cx, |view, _| {
+        let mode = view.responsive.mode.as_ref().unwrap();
+        let fit = view.responsive.fit;
+        let shown = size(px(mode.width as f32 * fit), px(mode.height as f32 * fit));
+        let right = Grip::Right.bounds(Bounds::new(view.origin, shown));
+        (right.center(), view.viewport.unwrap())
+    });
+    let press = MouseDownEvent {
+        position: grip,
+        button: MouseButton::Left,
+        modifiers: Modifiers::default(),
+        click_count: 1,
+        first_mouse: false,
+    };
+    view.update(cx, |view, cx| view.take_grip(Grip::Right, &press, cx));
+    let moved = PlatformInput::MouseMove(MouseMoveEvent {
+        position: grip - point(px(50.), px(0.)),
+        pressed_button: Some(MouseButton::Left),
+        modifiers: Modifiers::default(),
+    });
+    view.update(cx, |view, cx| assert!(view.grip_pointer(&moved, cx)));
+    let dragged = view.read_with(cx, |view, _| view.responsive.mode.as_ref().unwrap().width);
+    assert_ne!(dragged, before.width, "the grip sized the mode");
+    // The page is told as the pane is drawn (a test's window draws once the update is over).
+    draw(window, cx);
+    view.read_with(cx, |view, _| {
+        assert_eq!(view.viewport.map(|viewport| viewport.width), Some(dragged));
+        assert!(view.drag_sent, "told as a drag");
+    });
+    let released = PlatformInput::MouseUp(MouseUpEvent {
+        button: MouseButton::Left,
+        position: grip - point(px(50.), px(0.)),
+        modifiers: Modifiers::default(),
+        click_count: 1,
+    });
+    view.update(cx, |view, cx| assert!(view.grip_pointer(&released, cx)));
+    draw(window, cx);
+    view.read_with(cx, |view, _| {
+        assert_eq!(view.viewport.map(|viewport| viewport.width), Some(dragged));
+        assert!(!view.drag_sent, "let go: told again at the size it ended at");
+    });
+}
+
+#[gpui_kit::test]
 fn a_free_size_stays_within_what_a_denser_screen_shows(cx: &mut TestAppContext) {
     let (window, view) = page(cx);
     cx.simulate_window_scale_factor_change(window, 1.);
@@ -215,6 +263,8 @@ fn a_free_size_stays_within_what_a_denser_screen_shows(cx: &mut TestAppContext) 
     let taller = view.update(cx, |view, cx| view.agent_viewport(&agent, &taller, cx));
     assert!(taller.is_ok(), "later changes still go: {taller:?}");
     view.update(cx, |view, cx| view.person_sizes(4000, 900, cx));
+    // The person's size goes to the page as the pane is drawn.
+    draw(window, cx);
     let width = view.read_with(cx, |view, _| view.viewport.map(|viewport| viewport.width));
     assert_eq!(width, Some(4000), "and so do the person's");
 }

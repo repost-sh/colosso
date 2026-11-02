@@ -16,12 +16,14 @@ use crate::client::{TermClient, is_other_build};
 use crate::element::Grid;
 use crate::vt::{Command, Update, Vt};
 
-/// What's to be sent the daemon next, and whether a send is under way: at most one is, so
-/// what's asked for as a pane or a grip is dragged goes at every frame the daemon keeps up
-/// with, and what's asked for last goes last.
+/// What's to be sent the daemon next, whether a send is under way, and what was sent last:
+/// at most one send is under way, so what's asked for as a pane or a grip is dragged goes at
+/// every frame the daemon keeps up with, and what's asked for last goes last; what was sent
+/// last isn't sent again, unless it failed.
 pub(super) struct Latest<T> {
     wanted: Option<T>,
     sending: bool,
+    pub(super) sent: Option<T>,
 }
 
 impl<T> Default for Latest<T> {
@@ -29,6 +31,7 @@ impl<T> Default for Latest<T> {
         Latest {
             wanted: None,
             sending: false,
+            sent: None,
         }
     }
 }
@@ -98,23 +101,22 @@ impl TerminalView {
     /// Tells the daemon of `size` now, or, while it's being told of another, once that's
     /// answered: whichever size is the latest then, unless it's the one sent last.
     fn send_size(&mut self, size: Size, cx: &mut Context<Self>) {
-        let request = |this: &mut Self, handle, size| {
-            (this.requested != Some(size)).then(|| {
-                this.requested = Some(size);
-                RequestBody::Resize { handle, size }
-            })
-        };
-        self.send_latest(size, |this| &mut this.resize, request, "resize", cx);
+        let request = |handle, size| RequestBody::Resize { handle, size };
+        let failed = |_: &mut Self, _, _: &mut Context<Self>| {};
+        self.send_latest(size, |this| &mut this.resize, request, failed, "resize", cx);
     }
 
     /// Sends the daemon `value` now, or, while the last is being sent, once that's answered:
-    /// whichever is the latest then. `latest` is where it waits, `request` makes what's sent
-    /// of it (`None` to send nothing), and `what` says what a failure couldn't do.
-    pub(super) fn send_latest<T: 'static>(
+    /// whichever is the latest then, unless it's the one sent last. `latest` is where it
+    /// waits, `request` makes what's sent of it, `failed` hears of one that didn't go
+    /// through, which is sent again when it's asked for again, and `what` says what a
+    /// failure couldn't do.
+    pub(super) fn send_latest<T: Copy + PartialEq + 'static>(
         &mut self,
         value: T,
         latest: fn(&mut Self) -> &mut Latest<T>,
-        request: fn(&mut Self, Handle, T) -> Option<RequestBody>,
+        request: fn(Handle, T) -> RequestBody,
+        failed: fn(&mut Self, T, &mut Context<Self>),
         what: &'static str,
         cx: &mut Context<Self>,
     ) {
@@ -131,20 +133,32 @@ impl TerminalView {
         cx.spawn(async move |this, cx| {
             loop {
                 let next = this.update(cx, |this, _| {
-                    let wanted = latest(this).wanted.take();
-                    let body = wanted.and_then(|value| request(this, handle.clone(), value));
-                    latest(this).sending = body.is_some();
-                    body
+                    let pending = latest(this);
+                    let wanted =
+                        (pending.wanted.take()).filter(|value| pending.sent != Some(*value));
+                    pending.sending = wanted.is_some();
+                    pending.sent = wanted.or(pending.sent);
+                    wanted
                 });
-                let Ok(Some(body)) = next else {
+                let Ok(Some(value)) = next else {
                     break;
                 };
-                let client = Arc::clone(&client);
+                let (client, body) = (Arc::clone(&client), request(handle.clone(), value));
                 let sent = cx
                     .background_spawn(async move { client.request(body) })
                     .await;
                 if let Err(error) = sent {
                     log::warn!("couldn't {what} the terminal: {error}");
+                    let heard = this.update(cx, |this, cx| {
+                        let pending = latest(this);
+                        if pending.sent == Some(value) {
+                            pending.sent = None;
+                        }
+                        failed(this, value, cx);
+                    });
+                    if heard.is_err() {
+                        break;
+                    }
                 }
             }
         })
@@ -162,7 +176,7 @@ impl TerminalView {
             size.rows
         );
         self.link = Link::Attaching;
-        self.requested = Some(size);
+        self.resize.sent = Some(size);
         let client = Arc::clone(&self.client);
         cx.spawn(async move |this, cx| {
             let attached = cx

@@ -10,16 +10,14 @@ use std::time::{Duration, Instant};
 
 use colosso_browser_ipc::client::{Connection, Incoming};
 use colosso_browser_ipc::{self as ipc, AppRequest, PaneId, PixelSize};
-use futures::StreamExt as _;
-use futures::channel::{mpsc, oneshot};
-use gpui_kit::{App, AppContext as _, Context, Entity, Global, Task, WeakEntity};
+use futures::{StreamExt as _, channel::{mpsc, oneshot}};
+use gpui_kit::{AnyWindowHandle, App, AppContext as _, Context, Entity, Global, Task, WeakEntity};
 
 use super::frames::Ring;
 use super::view::BrowserView;
 
 mod events;
 mod inbox;
-
 use inbox::Inbox;
 
 /// How long a quitting host may take to close its pages.
@@ -81,6 +79,8 @@ pub struct Browsers {
     next_call: u64,
     /// What the host now starting or running says, until it's handled.
     inbox: Option<std::sync::Arc<Inbox>>,
+    /// Until when the frame a window is drawing waits for its pages' frames (`view/sized.rs`).
+    frame_deadline: Option<(AnyWindowHandle, Instant)>,
     /// Every protocol command asked for, for a test to read: the page, method and params.
     #[cfg(test)]
     pub(super) asked: Vec<(PaneId, String, serde_json::Value)>,
@@ -127,6 +127,7 @@ impl Browsers {
             calls: HashMap::new(),
             next_call: 0,
             inbox: None,
+            frame_deadline: None,
             #[cfg(test)]
             asked: Vec::new(),
             _events: None,

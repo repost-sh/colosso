@@ -147,19 +147,57 @@ pub(super) fn cdp(page: PaneId, call: u64, method: &str, params: serde_json::Val
     if held.is_some() {
         return;
     }
-    let Some(host) = host_of(page) else {
-        cdp_failed(page, call, "The page is closed.");
-        return;
-    };
-    if !observing(page, &host) {
-        cdp_failed(page, call, "The page's DevTools session is unavailable.");
-        return;
-    }
     let (method, params) = super::live::drive::app_command(page, method, params);
-    let method = method.as_str();
+    if let Err(unsent) = send_in_session(page, &method, params, Whose::Agent(call)) {
+        let why = match unsent {
+            Unsent::Closed => "The page is closed.",
+            Unsent::NoSession => "The page's DevTools session is unavailable.",
+            Unsent::Refused => "The page did not take the command.",
+        };
+        cdp_failed(page, call, why);
+    }
+}
+
+/// Whose a command in a page's own session is, for its answer to reach.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Whose {
+    /// The host's own (live sizing's).
+    Host(super::live::drive::Own),
+    /// The app's or an agent's, by the app's number for the call.
+    Agent(u64),
+}
+
+/// Why a command didn't go to a page's own session.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Unsent {
+    /// The page is closed.
+    Closed,
+    /// Its session can't be observed.
+    NoSession,
+    /// Chromium didn't take it.
+    Refused,
+}
+
+/// Sends `method` with `params` in `page`'s own session under an id of the host's, kept as
+/// `whose` until it's answered.
+pub(crate) fn send_in_session(
+    page: PaneId,
+    method: &str,
+    params: serde_json::Value,
+    whose: Whose,
+) -> Result<(), Unsent> {
+    let host = host_of(page).ok_or(Unsent::Closed)?;
+    if !observing(page, &host) {
+        return Err(Unsent::NoSession);
+    }
     let id = crate::devtools::host_id();
-    with_pane(page, |p| {
-        p.agent.get_or_insert_default().insert(id, call);
+    with_pane(page, |p| match whose {
+        Whose::Host(own) => {
+            p.own.insert(id, own);
+        }
+        Whose::Agent(call) => {
+            p.agent.get_or_insert_default().insert(id, call);
+        }
     });
     let params = if params.is_null() {
         serde_json::Value::Object(serde_json::Map::new())
@@ -168,9 +206,13 @@ pub(super) fn cdp(page: PaneId, call: u64, method: &str, params: serde_json::Val
     };
     let message = serde_json::json!({"id": id, "method": method, "params": params}).to_string();
     if host.send_dev_tools_message(Some(message.as_bytes())) == 0 {
-        with_pane(page, |p| p.agent.as_mut().map(|calls| calls.remove(&id)));
-        cdp_failed(page, call, "The page did not take the command.");
+        with_pane(page, |p| {
+            p.own.remove(&id);
+            p.agent.as_mut().map(|calls| calls.remove(&id));
+        });
+        return Err(Unsent::Refused);
     }
+    Ok(())
 }
 
 /// A message of `page`'s own session for the app's agent commands: the

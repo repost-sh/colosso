@@ -4,7 +4,9 @@
 //! by the pointer while one is in hand. What they size is the pane's: a page's pixels, a
 //! terminal's cells (`Resizable`).
 
+use std::cell::Cell;
 use std::ops::RangeInclusive;
+use std::rc::Rc;
 
 use gpui_kit::{
     AnyElement, App, Bounds, Context, CursorStyle, DispatchPhase, Entity, Hitbox, HitboxBehavior,
@@ -103,8 +105,8 @@ pub trait Resizable: Sized + 'static {
     fn filling_size(&self, cx: &App) -> Option<(u32, u32)>;
     /// The person sized the content to `width` × `height`.
     fn grip_sized(&mut self, width: u32, height: u32, cx: &mut Context<Self>);
-    /// A grip was taken or let go.
-    fn grip_held(&mut self, _held: bool, _cx: &mut Context<Self>) {}
+    /// A grip was taken or let go: `drag` says which.
+    fn grip_held(&mut self, _cx: &mut Context<Self>) {}
 
     /// A press on `grip`: a double click fits that side to the area, a single one takes it.
     fn take_grip(&mut self, grip: Grip, event: &MouseDownEvent, cx: &mut Context<Self>) {
@@ -113,7 +115,7 @@ pub trait Resizable: Sized + 'static {
         };
         if event.click_count >= 2 {
             if self.drag().take().is_some() {
-                self.grip_held(false, cx);
+                self.grip_held(cx);
             }
             let Some((wide, tall)) = self.filling_size(cx) else {
                 return;
@@ -134,7 +136,7 @@ pub trait Resizable: Sized + 'static {
             height,
             unit,
         });
-        self.grip_held(true, cx);
+        self.grip_held(cx);
         cx.notify();
     }
 
@@ -158,7 +160,7 @@ pub trait Resizable: Sized + 'static {
 
     fn let_go_of_grip(&mut self, cx: &mut Context<Self>) {
         if self.drag().take().is_some() {
-            self.grip_held(false, cx);
+            self.grip_held(cx);
             cx.notify();
         }
     }
@@ -185,6 +187,9 @@ pub fn paint<V: Resizable>(
     p: Palette,
     window: &mut Window,
 ) {
+    // Whether a grip is in hand: as this frame was drawn, or taken by a press since, so the
+    // moves before the next frame drag it too.
+    let holding = Rc::new(Cell::new(held.is_some()));
     for (grip, hitbox) in grips {
         let lit = held == Some(*grip) || hitbox.is_hovered(window);
         window.paint_quad(
@@ -192,16 +197,21 @@ pub fn paint<V: Resizable>(
         );
         window.set_cursor_style(grip.cursor(), hitbox);
         let (grip, hitbox, pressed) = (*grip, hitbox.clone(), view.downgrade());
+        let taken = Rc::clone(&holding);
         window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
             if phase == DispatchPhase::Bubble && hitbox.is_hovered(window) {
                 let _ = pressed.update(cx, |view, cx| view.take_grip(grip, event, cx));
+                taken.set(true);
                 cx.stop_propagation();
             }
         });
     }
+    // Heard wherever the pointer is, so a grip let go where its release went unheard (a
+    // trackpad's tap) is let go at the next move; with none in hand, a move is nothing to
+    // the view.
     let moved = view.downgrade();
     window.on_mouse_event(move |event: &MouseMoveEvent, phase, _, cx: &mut App| {
-        if phase == DispatchPhase::Capture {
+        if phase == DispatchPhase::Capture && holding.get() {
             let _ = moved.update(cx, |view, cx| view.drag_grip(event, cx));
         }
     });

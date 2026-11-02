@@ -11,7 +11,7 @@ use gpui_kit::{
 };
 
 use super::devices::DEVICES;
-use super::{Change, SetBy, Zoom};
+use super::{Change, Zoom};
 use crate::browser::view::BrowserView;
 use crate::responsive::bar::{Bar, Fields};
 use crate::theme::{self, Palette};
@@ -41,7 +41,9 @@ pub fn device_bar(
     window: &mut Window,
     cx: &mut Context<BrowserView>,
 ) -> Option<Div> {
-    let mode = view.responsive.mode.clone()?;
+    let mode = view.responsive.mode.as_ref()?;
+    let (agent, zoom) = (mode.set_by.agent().map(str::to_owned), mode.zoom);
+    let preset = (mode.device).and_then(|device| DEVICES.iter().position(|row| row.id == device.id));
     if view.responsive.fields.is_none() {
         view.responsive.fields = Some(Fields::new(BrowserView::size_typed, window, cx));
     }
@@ -68,14 +70,13 @@ pub fn device_bar(
         .then(|| reload_hint(theme::palette(cx), cx).into_any_element());
     let bar = Bar {
         ids: "browser",
-        agent: agent_of(&mode.set_by),
+        agent,
+        // The shared bar owns its names; each is the device's static name, not a copy of it.
         presets: DEVICES.iter().map(|device| device.name.into()).collect(),
-        preset: mode
-            .device
-            .and_then(|device| DEVICES.iter().position(|row| row.id == device.id)),
+        preset,
         pick_preset: Rc::new(move |device| Box::new(PickDevice { pane, device })),
         fields,
-        zoom: mode.zoom,
+        zoom,
         shown_percent: view.shown_percent(),
         pick_zoom: Rc::new(move |zoom| Box::new(PickZoom { pane, zoom })),
         restore,
@@ -84,14 +85,6 @@ pub fn device_bar(
         close: Rc::new(close),
     };
     Some(bar.render(cx))
-}
-
-/// The agent's name when an agent set the size.
-fn agent_of(set_by: &SetBy) -> Option<String> {
-    match set_by {
-        SetBy::Agent(agent) => Some(agent.clone()),
-        SetBy::Person => None,
-    }
 }
 
 /// The offer to reload the page, for a site that picks its pages by the user agent.

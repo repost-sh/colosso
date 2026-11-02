@@ -45,7 +45,7 @@ impl Session {
             },
         );
         self.refresh_observers();
-        self.negotiate_size();
+        self.settle_size(false);
         self.publish(false);
         if let Some(since) = since_offset
             && let Some(bytes) = self.ring.read(since, usize::MAX)
@@ -75,7 +75,7 @@ impl Session {
             attached.client.detach(&self.record.handle);
             attached.lane.bump();
             self.refresh_observers();
-            self.negotiate_size();
+            self.settle_size(false);
             self.publish(false);
         }
     }
@@ -284,19 +284,15 @@ impl Session {
         }
     }
 
-    /// The terminal takes its pin while one is set, else the smallest size among the
-    /// clients attached in control mode; observers never size it.
-    pub(super) fn negotiate_size(&mut self) {
-        self.settle_size(false);
-    }
-
-    /// Sizes the pty and the engine as `negotiate_size` says, and tells every client when the
-    /// size changed, or when `announce`, as a pin set or gone is news even at the same size.
+    /// Sizes the terminal: its pin while one is set, else the smallest size among the clients
+    /// attached in control mode; observers never size it. The pty and the engine take the
+    /// size, and every client is told when it changed, or when `announce`, as a pin set or
+    /// gone is news even at the same size.
     pub(super) fn settle_size(&mut self, announce: bool) {
         let clients = self.clients_size();
-        let size = match (&self.record.pinned, clients) {
+        let size = match &self.record.pinned {
             // The pin's cells, in the cells the clients draw.
-            (Some(pinned), clients) => {
+            Some(pinned) => {
                 let cell = clients.unwrap_or(self.record.size);
                 Size {
                     cols: pinned.cols,
@@ -305,8 +301,7 @@ impl Session {
                     cell_height_px: cell.cell_height_px,
                 }
             }
-            (None, Some(size)) => size,
-            (None, None) => self.record.size,
+            None => clients.unwrap_or(self.record.size),
         };
         let changed = size != self.record.size && size.cols != 0 && size.rows != 0;
         if changed {

@@ -36,11 +36,11 @@ pub fn route(body: RequestBody, reply: impl Fn() -> Reply) -> Route {
                 size,
             },
         ),
-        RequestBody::Pin { handle, size } => (
+        RequestBody::Pin { handle, cells } => (
             handle,
             Cmd::Pin {
                 reply: reply(),
-                size,
+                cells,
             },
         ),
         RequestBody::Signal { handle, signal } => (

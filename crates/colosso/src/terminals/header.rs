@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use colosso_term::TermClient;
+use colosso_term::{TermClient, ToggleResponsive};
 use colosso_term_control::{RequestBody, Status};
 use gpui_kit::component::button::Button;
 use gpui_kit::component::tooltip::Tooltip;
@@ -180,11 +180,16 @@ impl Shell {
         let responsive = made.responsive.clone();
         let pinned = made.view.read(cx).pinned().is_some();
         Some(
-            toggle_button(("terminal-responsive", key), pinned, cx).on_click(
-                move |_, _, cx: &mut App| {
-                    responsive.update(cx, ResponsiveTerminal::toggle);
-                },
-            ),
+            toggle_button(
+                ("terminal-responsive", key),
+                pinned,
+                &ToggleResponsive,
+                colosso_term::CONTEXT,
+                cx,
+            )
+            .on_click(move |_, _, cx: &mut App| {
+                responsive.update(cx, ResponsiveTerminal::toggle);
+            }),
         )
     }
 }

@@ -145,7 +145,8 @@ impl Resizable for Sized {
         self.size = (width, height);
     }
 
-    fn grip_held(&mut self, held: bool, _: &mut Context<Self>) {
+    fn grip_held(&mut self, _: &mut Context<Self>) {
+        let held = self.drag.is_some();
         self.held.push(held);
     }
 }

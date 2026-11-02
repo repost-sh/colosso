@@ -1,7 +1,6 @@
 //! What's drawn round a pinned terminal, over its area: the outline round the grid as the
 //! terminal last laid it out, and its grips while it's a free size, as round a page.
 
-use colosso_term::TerminalView;
 use gpui_kit::{
     App, Bounds, Element, ElementId, Entity, GlobalElementId, Hitbox, InspectorElementId,
     IntoElement, LayoutId, Pixels, Position, Style, Window, px, relative,
@@ -9,15 +8,13 @@ use gpui_kit::{
 
 use super::ResponsiveTerminal;
 use crate::responsive::{self, Grip, grips};
-use crate::theme::Palette;
+use crate::theme;
 
 /// Laid over the whole area, after the terminal, so the grid's bounds are this frame's.
 pub struct Frame {
     pub host: Entity<ResponsiveTerminal>,
-    pub view: Entity<TerminalView>,
     /// Whether the grips show: a free size, not a preset.
     pub free: bool,
-    pub palette: Palette,
 }
 
 impl IntoElement for Frame {
@@ -67,7 +64,7 @@ impl Element for Frame {
         window: &mut Window,
         cx: &mut App,
     ) -> Self::PrepaintState {
-        let (shown, _) = self.view.read(cx).pinned_grid()?;
+        let (shown, _) = self.host.read(cx).view.read(cx).pinned_grid()?;
         let grips = if self.free {
             grips::hitboxes(shown, window)
         } else {
@@ -89,8 +86,9 @@ impl Element for Frame {
         let Some((shown, grips)) = laid else {
             return;
         };
-        responsive::paint_outline(*shown, self.palette, window);
+        let p = theme::palette(cx);
+        responsive::paint_outline(*shown, p, window);
         let held = self.host.read(cx).drag.as_ref().map(|drag| drag.grip);
-        grips::paint(grips, held, &self.host, self.palette, window);
+        grips::paint(grips, held, &self.host, p, window);
     }
 }

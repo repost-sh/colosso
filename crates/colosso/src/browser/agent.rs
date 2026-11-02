@@ -3,7 +3,7 @@
 //! it, under the page's lease when they act.
 
 use colosso_app_control::ops::browser::{
-    DeviceName, FitWord, Orientation, Viewport as ViewportFacts, ViewportMode, ViewportZoom,
+    DeviceName, Orientation, Viewport as ViewportFacts, ViewportMode,
 };
 use colosso_browser_ipc::AppRequest;
 pub use colosso_browser_ipc::{Go, Viewport};
@@ -15,7 +15,7 @@ pub use super::control::{Actor, Refused};
 use super::host::Browsers;
 pub use super::host::CdpResult;
 pub use super::responsive::devices::find as find_device;
-use super::responsive::{self, SetBy};
+use super::responsive;
 pub use super::responsive::{Change as ViewportChange, Choice, ViewportRefused, Zoom};
 use super::view::BrowserView;
 
@@ -79,7 +79,7 @@ impl BrowserView {
                 touch: false,
                 user_agent: None,
                 orientation: orientation(viewport.width > viewport.height),
-                zoom: ViewportZoom::Fit(FitWord::Fit),
+                zoom: Zoom::Fit.into(),
                 shown_percent,
                 set_by: None,
             };
@@ -102,15 +102,9 @@ impl BrowserView {
             touch: mode.touch,
             user_agent: emulated.agent.map(|agent| agent.user_agent),
             orientation: orientation(mode.landscape()),
-            zoom: match mode.zoom {
-                Zoom::Fit => ViewportZoom::Fit(FitWord::Fit),
-                Zoom::Percent(percent) => ViewportZoom::Percent(percent),
-            },
+            zoom: mode.zoom.into(),
             shown_percent,
-            set_by: Some(match &mode.set_by {
-                SetBy::Person => "person".to_owned(),
-                SetBy::Agent(agent) => agent.clone(),
-            }),
+            set_by: Some(mode.set_by.agent().unwrap_or("person").to_owned()),
         }
     }
 

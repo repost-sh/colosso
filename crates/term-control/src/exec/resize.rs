@@ -8,8 +8,7 @@ use serde_json::{Value, json};
 use super::{Done, Executor, invalid, shape, unexpected};
 use crate::catalog::args::{CellsArg, ReadSpec, ResizeArgs, Then, WaitFor, WaitSpec};
 use crate::{
-    ErrorCode, Handle, Pinned, ProtocolError, RequestBody, ResponseBody, Size, TerminalRecord,
-    pin_cells_error,
+    Handle, Pinned, ProtocolError, RequestBody, ResponseBody, Size, TerminalRecord, pin_cells_error,
 };
 
 /// How long the screen holds still before a resize's answer reads it, and the most it waits:
@@ -66,21 +65,9 @@ impl Executor {
     ) -> Result<(Size, Option<Pinned>), ProtocolError> {
         let pin = || RequestBody::Pin {
             handle: handle.clone(),
-            size: cells.map(|(cols, rows)| Size::cells(cols, rows)),
+            cells,
         };
-        let answer = match self.request(pin()) {
-            Err(error) if error.code == ErrorCode::ControlRequired && free => {
-                let claim = RequestBody::Claim {
-                    handle: handle.clone(),
-                    takeover: false,
-                    reason: None,
-                };
-                self.request(claim)?;
-                self.request(pin())?
-            }
-            answer => answer?,
-        };
-        match answer {
+        match self.request_claiming(handle, free, pin)? {
             ResponseBody::Pinned { size, pinned } => Ok((size, pinned)),
             other => Err(unexpected(&other)),
         }
@@ -153,6 +140,7 @@ fn settle() -> Then {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ErrorCode;
 
     fn args(value: Value) -> ResizeArgs {
         serde_json::from_value(value).unwrap_or_default()

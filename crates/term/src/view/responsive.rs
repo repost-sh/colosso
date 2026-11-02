@@ -1,21 +1,14 @@
 //! A terminal pinned at a size of the person's choosing (`docs/responsive.md` 3.2, 3.3): the
 //! pin as the daemon says it, pins asked for as a grip is dragged (one at a time: the latest
-//! once the daemon has answered the last), the font the pinned grid is drawn at, and where it was drawn. The pin
-//! is the daemon's, so every view of the terminal shows the same one; what's drawn round it
-//! (the bar, the grips) is the app's.
+//! once the daemon has answered the last, and not the one sent last again), the font the
+//! pinned grid is drawn at, and where it was drawn. The pin is the daemon's, so every view of
+//! the terminal shows the same one; what's drawn round it (the bar, the grips) is the app's.
 
 use colosso_term_control::{Pinned, RequestBody, Size, clamp_pin_cells};
 use gpui_kit::{Bounds, Context, Pixels};
 
 use super::{TerminalEvent, TerminalView};
 use crate::fit::{self, Scale};
-
-/// What the daemon is to be asked next: a pin at these cells, or none.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Wanted {
-    At(u16, u16),
-    Fill,
-}
 
 impl TerminalView {
     /// The pin, while there is one.
@@ -70,24 +63,34 @@ impl TerminalView {
     /// Pins the terminal at `cols` × `rows`, kept within the daemon's limits: the cells it
     /// asks for.
     pub fn pin(&mut self, cols: u16, rows: u16, cx: &mut Context<Self>) -> (u16, u16) {
-        let (cols, rows) = clamp_pin_cells(cols, rows);
-        self.send_pin(Wanted::At(cols, rows), cx);
-        (cols, rows)
+        let cells = clamp_pin_cells(cols, rows);
+        self.send_pin(Some(cells), cx);
+        cells
     }
 
     /// Unpins it: the pane's size is its size again, whoever pinned it.
     pub fn unpin(&mut self, cx: &mut Context<Self>) {
-        self.send_pin(Wanted::Fill, cx);
+        self.send_pin(None, cx);
     }
 
-    /// The daemon said the terminal's size, and the pin it comes from.
+    /// The daemon said the terminal's size, and the pin it comes from. Unpinned, the size
+    /// draws nothing: the grid the pane holds is drawn, and redrawn once it's resized.
     pub(crate) fn sized(&mut self, size: Size, pinned: Option<Pinned>, cx: &mut Context<Self>) {
         self.size = Some(size);
-        if self.pinned != pinned {
+        let cells = pinned.as_ref().map(|pinned| (pinned.cols, pinned.rows));
+        // A pin other than the one sent last (another's, or one gone with the connection)
+        // makes that one worth sending again.
+        if self.pin.sent != Some(cells) {
+            self.pin.sent = None;
+        }
+        let changed = self.pinned != pinned;
+        if changed {
             self.pinned = pinned;
             cx.emit(TerminalEvent::Responsive);
         }
-        cx.notify();
+        if changed || self.pinned.is_some() {
+            cx.notify();
+        }
     }
 
     /// The element fitted the font anew, or forgot it.
@@ -95,16 +98,16 @@ impl TerminalView {
         cx.emit(TerminalEvent::Responsive);
     }
 
-    /// Sends `wanted` to the daemon now, or, while another pin is being sent, once that's
-    /// answered: whichever is the latest then.
-    fn send_pin(&mut self, wanted: Wanted, cx: &mut Context<Self>) {
-        let request = |_: &mut Self, handle, wanted| {
-            let size = match wanted {
-                Wanted::At(cols, rows) => Some(Size::cells(cols, rows)),
-                Wanted::Fill => None,
-            };
-            Some(RequestBody::Pin { handle, size })
+    /// Sends the pin at `cells` (`None` unpins) to the daemon now, or, while another is
+    /// being sent, once that's answered: whichever is the latest then, unless it's the one
+    /// sent last. A pin that didn't take is said, for what showed it asked.
+    fn send_pin(&mut self, cells: Option<(u16, u16)>, cx: &mut Context<Self>) {
+        let request = |handle, cells| RequestBody::Pin { handle, cells };
+        let failed = |_: &mut Self, cells: Option<(u16, u16)>, cx: &mut Context<Self>| {
+            if let Some((cols, rows)) = cells {
+                cx.emit(TerminalEvent::PinRefused(cols, rows));
+            }
         };
-        self.send_latest(wanted, |this| &mut this.pin, request, "size", cx);
+        self.send_latest(cells, |this| &mut this.pin, request, failed, "size", cx);
     }
 }

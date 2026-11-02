@@ -55,15 +55,32 @@ impl Sizing {
         self.resized = Some(now);
     }
 
-    /// The page painted at `size`: the size to tell Chromium next, if it was the one being
-    /// laid out and another was asked for meanwhile.
-    pub(super) fn painted(&mut self, size: PixelSize) -> Option<Viewport> {
-        let (laying_out, _) = self.laying_out?;
+    /// The page painted at `size`: whether another size is due, it being the one laid out
+    /// and another having been asked for meanwhile. The one due is taken by [`Self::take_next`]
+    /// once the paint is done with, so a size asked for in between replaces it.
+    pub(super) fn painted(&mut self, size: PixelSize) -> bool {
+        let Some((laying_out, _)) = self.laying_out else {
+            return false;
+        };
         if !size.near(laying_out) {
-            return None;
+            return false;
         }
         self.laying_out = None;
+        self.next.is_some()
+    }
+
+    /// The size to tell Chromium now that a paint made way for it: the latest asked for,
+    /// unless another is being laid out already.
+    pub(super) fn take_next(&mut self) -> Option<Viewport> {
+        if self.laying_out.is_some() {
+            return None;
+        }
         self.next.take()
+    }
+
+    /// Live sizing takes the sizes from now on: none kept is told.
+    pub(super) fn forget_next(&mut self) {
+        self.next = None;
     }
 
     /// [`PAINT_WAIT`] went by since a size was laid out: the size to tell Chromium next, if
@@ -121,13 +138,30 @@ mod tests {
         let soon = start + Duration::from_millis(16);
         assert!(!sizing.ask(at(608), soon), "kept while 604 lays out");
         assert!(!sizing.ask(at(612), soon), "612 replaces 608");
-        assert_eq!(
-            sizing.painted(at(600).pixels()),
-            None,
-            "not the size laid out"
+        assert!(!sizing.painted(at(600).pixels()), "not the size laid out");
+        assert!(sizing.painted(at(604).pixels()));
+        assert!(!sizing.painted(at(604).pixels()), "once");
+        assert_eq!(sizing.take_next(), Some(at(612)));
+        assert_eq!(sizing.take_next(), None);
+    }
+
+    #[test]
+    fn a_size_asked_for_after_a_paint_is_never_followed_by_an_older_one() {
+        let start = Instant::now();
+        let mut sizing = Sizing::default();
+        assert!(sizing.ask(at(604), start), "A goes at once");
+        sizing.told(at(604), start);
+        assert!(!sizing.ask(at(608), start), "B is kept while A lays out");
+        assert!(sizing.painted(at(604).pixels()), "A painted: B is due");
+        // C, asked before the drain gets to B, goes at once and replaces it.
+        assert!(
+            sizing.ask(at(612), start),
+            "nothing lays out: C goes at once"
         );
-        assert_eq!(sizing.painted(at(604).pixels()), Some(at(612)));
-        assert_eq!(sizing.painted(at(604).pixels()), None, "once");
+        sizing.told(at(612), start);
+        assert_eq!(sizing.take_next(), None, "B is gone: C is the last size");
+        assert!(!sizing.painted(at(612).pixels()), "nothing after C");
+        assert_eq!(sizing.take_next(), None);
     }
 
     #[test]

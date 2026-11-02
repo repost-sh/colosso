@@ -126,11 +126,11 @@ fn requests() -> Vec<RequestBody> {
         },
         RequestBody::Pin {
             handle: handle(),
-            size: Some(Size::cells(120, 40)),
+            cells: Some((120, 40)),
         },
         RequestBody::Pin {
             handle: handle(),
-            size: None,
+            cells: None,
         },
         RequestBody::Rename {
             handle: handle(),

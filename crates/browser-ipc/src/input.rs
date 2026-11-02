@@ -31,20 +31,41 @@ pub struct Viewport {
     pub scale: f32,
 }
 
+/// The largest side of a page's surface, in device pixels.
+pub const MAX_SURFACE_SIDE: f32 = 16384.;
+
 impl Viewport {
     /// The surface size the host renders at.
     #[must_use]
     pub fn pixels(&self) -> PixelSize {
-        let scale = if self.scale.is_finite() && self.scale > 0. {
-            self.scale
-        } else {
-            1.
-        };
+        let scale = self.device_scale();
         let scaled = |v: u32| ((v as f32) * scale).round().max(1.) as u32;
         PixelSize {
             width: scaled(self.width),
             height: scaled(self.height),
         }
+    }
+
+    /// Device pixels per logical pixel: the scale, or 1 where it's none (not positive, or not
+    /// a number).
+    #[must_use]
+    pub fn device_scale(&self) -> f32 {
+        usable_scale(self.scale)
+    }
+
+    /// The most logical pixels a side has at `scale` for its surface to stay within
+    /// [`MAX_SURFACE_SIDE`] device pixels.
+    #[must_use]
+    pub fn max_side(scale: f32) -> u32 {
+        (MAX_SURFACE_SIDE / usable_scale(scale)).floor() as u32
+    }
+}
+
+fn usable_scale(scale: f32) -> f32 {
+    if scale.is_finite() && scale > 0. {
+        scale
+    } else {
+        1.
     }
 }
 

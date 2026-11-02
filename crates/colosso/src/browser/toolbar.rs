@@ -94,9 +94,15 @@ pub(super) fn toolbar(view: &BrowserView, window: &Window, cx: &mut Context<Brow
         .children(view.zoom_chip(cx))
         .child(chip(view, p))
         .child(
-            toggle_button("browser-responsive", view.responsive.mode.is_some(), cx)
-                .disabled(view.is_start_page())
-                .on_click(cx.listener(|this, _, _, cx| this.toggle_responsive(cx))),
+            toggle_button(
+                "browser-responsive",
+                view.responsive.mode.is_some(),
+                &super::ToggleResponsive,
+                "BrowserPage",
+                cx,
+            )
+            .disabled(view.is_start_page())
+            .on_click(cx.listener(|this, _, _, cx| this.toggle_responsive(cx))),
         )
         .child(
             icon_button(

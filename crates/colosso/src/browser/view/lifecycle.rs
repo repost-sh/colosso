@@ -4,6 +4,7 @@
 use colosso_browser_ipc::{AppRequest, Viewport};
 use gpui_kit::{App, Context};
 
+use super::sized::Dragging;
 use super::{BrowserView, Kind};
 use crate::browser::host::{Browsers, HostStatus};
 
@@ -139,21 +140,28 @@ impl BrowserView {
         cx.notify();
     }
 
-    /// The page's size is `viewport`: sent to the host when it's new.
+    /// The page's size is `viewport`, as `dragging` drags the pane's edge: sent to the host
+    /// when it's new, and once more as a held drag is let go, at the size it ended at, so the
+    /// host settles the page at once.
     pub(in crate::browser) fn viewport_changed(
         &mut self,
         viewport: Viewport,
+        dragging: Dragging,
         cx: &mut Context<Self>,
     ) {
-        if self.viewport == Some(viewport) {
+        let resized = self.viewport != Some(viewport);
+        let let_go = self.drag_sent && dragging != Dragging::Held;
+        if !resized && !let_go {
             return;
         }
         self.viewport = Some(viewport);
-        self.frame_due = true;
+        self.drag_sent = dragging == Dragging::Held;
+        self.frame_due |= resized;
         self.send_or_open(
             AppRequest::Resize {
                 pane: self.pane,
                 viewport,
+                dragging: dragging != Dragging::No,
             },
             cx,
         );

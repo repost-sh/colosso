@@ -100,15 +100,33 @@ pub(super) fn create(
     }
 }
 
-/// The app asks for `viewport`: Chromium lays it out now, or once the size it's laying out
-/// has painted (`sizing.rs`).
-pub(super) fn resize(pane: PaneId, viewport: Viewport) {
-    if super::live::drive::ask(pane, viewport) {
+/// The app asks for `viewport`, `dragging` whether a drag of the pane's edge is under way:
+/// the page follows it live (`live.rs`), or Chromium lays it out now, or once the size it's
+/// laying out has painted (`sizing.rs`).
+pub(super) fn resize(pane: PaneId, viewport: Viewport, dragging: bool) {
+    if super::live::drive::ask(pane, viewport, dragging) {
         return;
     }
     let now = std::time::Instant::now();
-    if with_pane(pane, |p| p.sizing.ask(viewport, now)) == Some(true) {
+    let tell = with_pane(pane, |p| {
+        // The size Chromium has (a drag's last, said again as it ends): nothing to tell, and
+        // a size kept for later isn't wanted any more.
+        if p.viewport == viewport {
+            p.sizing.forget_next();
+            return false;
+        }
+        p.sizing.ask(viewport, now)
+    });
+    if tell == Some(true) {
         lay_out(pane, viewport);
+    }
+}
+
+/// `pane` painted at the size it was laid out at: the latest size asked for meanwhile goes
+/// now, unless one asked for since went already.
+pub(super) fn size_next(pane: PaneId) {
+    if let Some(Some(next)) = with_pane(pane, |p| p.sizing.take_next()) {
+        lay_out(pane, next);
     }
 }
 

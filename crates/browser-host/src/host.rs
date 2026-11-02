@@ -34,7 +34,7 @@ pub(crate) use panes::{
     browser_closed, browser_created, cursor_changed, found, loading_changed, navigate_later,
     page_changed, renderer_gone, software_frame,
 };
-use panes::{close, navigate, open, resize, view, visible};
+use panes::{close, navigate, open, resize, size_next, view, visible};
 
 /// Work for the UI thread: the app's requests, decoded by the reader
 /// thread, and what `DevTools` frontends send.
@@ -55,6 +55,11 @@ enum Queued {
     Live {
         pane: PaneId,
         todo: Vec<live::Do>,
+    },
+    /// `pane` painted at the size it was laid out at: the latest size asked for meanwhile, if
+    /// any is still kept by then, is laid out (`sizing.rs`).
+    SizeNext {
+        pane: PaneId,
     },
 }
 
@@ -324,11 +329,6 @@ wrap_task! {
     }
 }
 
-/// Handles `request` on the UI thread after what it is doing now.
-fn later(request: AppRequest) {
-    enqueue(Queued::App(request));
-}
-
 /// Queues `work` for the UI thread, after what it is doing now.
 fn enqueue(work: Queued) {
     if let Ok(mut queue) = QUEUE.lock() {
@@ -381,6 +381,7 @@ fn drain() {
             Some(Queued::Frontend { pane, text }) => frontend_message(pane, &text),
             Some(Queued::ToPage { page, messages }) => to_page(page, &messages),
             Some(Queued::Live { pane, todo }) => live::drive::run(pane, &todo),
+            Some(Queued::SizeNext { pane }) => size_next(pane),
             None => {}
         }
     }
@@ -410,7 +411,11 @@ fn handle(request: AppRequest) {
             viewport,
             profile,
         } => open(pane, &url, viewport, &profile),
-        AppRequest::Resize { pane, viewport } => resize(pane, viewport),
+        AppRequest::Resize {
+            pane,
+            viewport,
+            dragging,
+        } => resize(pane, viewport, dragging),
         AppRequest::Navigate { pane, url } => navigate(pane, &url),
         AppRequest::Go { pane, to } => {
             if let Some(browser) = browser_of(pane) {

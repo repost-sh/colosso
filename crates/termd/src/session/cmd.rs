@@ -84,10 +84,10 @@ pub enum Cmd {
         reply: Reply,
         size: Size,
     },
-    /// Pins the terminal's size for every viewer, or unpins it with `None`.
+    /// Pins the terminal's cells for every viewer, or unpins it with `None`.
     Pin {
         reply: Reply,
-        size: Option<Size>,
+        cells: Option<(u16, u16)>,
     },
     Rename {
         reply: Reply,
@@ -194,7 +194,7 @@ impl Session {
             Cmd::Input { client_id, bytes } => self.input(client_id, &bytes),
             Cmd::Paste { reply, text } => self.paste(&reply, &text),
             Cmd::Resize { reply, size } => self.resize(&reply, size),
-            Cmd::Pin { reply, size } => self.pin(&reply, size),
+            Cmd::Pin { reply, cells } => self.pin(&reply, cells),
             Cmd::Rename {
                 reply,
                 name,
@@ -246,13 +246,13 @@ impl Session {
     /// from an agent.
     fn resize(&mut self, reply: &Reply, size: Size) {
         let actor = reply.client.actor.clone();
-        if let Err(error) = self.may_resize(&actor, Some(size)) {
+        if let Err(error) = self.may_resize(&actor, Some((size.cols, size.rows))) {
             return reply.err(error);
         }
         match self.clients.get_mut(&reply.client.id) {
             Some(attached) if attached.mode == AttachMode::Control => {
                 attached.size = Some(size);
-                self.negotiate_size();
+                self.settle_size(false);
                 reply.ok(ResponseBody::Resized {
                     size: self.record.size,
                 });

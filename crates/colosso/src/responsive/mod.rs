@@ -8,6 +8,7 @@
 pub mod bar;
 pub mod grips;
 
+use colosso_app_control::ops::browser::{FitWord, ViewportZoom};
 use gpui_kit::{BorderStyle, Bounds, Pixels, Size, Window, outline, point, px, size};
 
 pub use grips::{Drag, Grip, Resizable};
@@ -48,6 +49,26 @@ impl Zoom {
         match self {
             Zoom::Fit => "Fit".to_owned(),
             Zoom::Percent(percent) => format!("{percent}%"),
+        }
+    }
+}
+
+/// A zoom as `browser_viewport` names it.
+impl From<Zoom> for ViewportZoom {
+    fn from(zoom: Zoom) -> Self {
+        match zoom {
+            Zoom::Fit => ViewportZoom::Fit(FitWord::Fit),
+            Zoom::Percent(percent) => ViewportZoom::Percent(percent),
+        }
+    }
+}
+
+/// A zoom `browser_viewport` names, whatever its percent: the menu's are checked apart.
+impl From<ViewportZoom> for Zoom {
+    fn from(zoom: ViewportZoom) -> Self {
+        match zoom {
+            ViewportZoom::Fit(_) => Zoom::Fit,
+            ViewportZoom::Percent(percent) => Zoom::Percent(percent),
         }
     }
 }

@@ -12,8 +12,9 @@ use crate::terminal::{
     TerminalSummary, WorktreeRef,
 };
 
-/// The protocol this crate speaks; a daemon speaks exactly one. 2 added `Pin`.
-pub const PROTOCOL: u32 = 2;
+/// The protocol this crate speaks; a daemon speaks exactly one. 2 added `Pin`; 3 pins at
+/// `cells` rather than a `size`.
+pub const PROTOCOL: u32 = 3;
 /// The engine snapshot format carried in `Snapshot` frames.
 pub const SNAPSHOT_FORMAT: u16 = 1;
 
@@ -239,11 +240,12 @@ pub enum RequestBody {
         handle: Handle,
         size: Size,
     },
-    /// Pins the terminal at `size`'s cells for every viewer, or with `None` lets the
-    /// clients' sizes decide again; the pin goes with this connection. Answered `Pinned`.
+    /// Pins the terminal at `cells`, its columns and rows, for every viewer (the cells
+    /// drawn at the clients' cell size), or with `None` lets the clients' sizes decide
+    /// again; the pin goes with this connection. Answered `Pinned`.
     Pin {
         handle: Handle,
-        size: Option<Size>,
+        cells: Option<(u16, u16)>,
     },
     Rename {
         handle: Handle,
