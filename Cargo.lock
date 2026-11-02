@@ -1150,8 +1150,10 @@ checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
 name = "colosso"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "block2 0.6.2",
  "chrono",
+ "colosso-app-control",
  "colosso-browser-ipc",
  "colosso-git",
  "colosso-lsp",
@@ -1177,11 +1179,27 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "objc2-io-surface",
  "objc2-quartz-core 0.3.2",
+ "percent-encoding",
  "serde",
  "serde_json",
  "similar",
  "syntect",
  "two-face",
+]
+
+[[package]]
+name = "colosso-app-control"
+version = "0.1.0"
+dependencies = [
+ "colosso-term-control",
+ "crossbeam-channel",
+ "dirs 6.0.0",
+ "libc",
+ "parking_lot",
+ "schemars",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
 ]
 
 [[package]]
@@ -1310,13 +1328,19 @@ dependencies = [
 name = "colosso-term-mcp"
 version = "0.1.0"
 dependencies = [
+ "bytes",
+ "colosso-app-control",
  "colosso-term-control",
  "crossbeam-channel",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
  "log",
  "parking_lot",
  "rmcp",
  "serde_json",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]
@@ -1325,6 +1349,7 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "chrono",
+ "colosso-app-control",
  "colosso-term-control",
  "colosso-term-engine",
  "colosso-term-mcp",
@@ -4792,6 +4817,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87"
 
 [[package]]
+name = "httpdate"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
+
+[[package]]
 name = "hybrid-array"
 version = "0.4.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4814,6 +4845,7 @@ dependencies = [
  "http",
  "http-body",
  "httparse",
+ "httpdate",
  "itoa",
  "pin-project-lite",
  "smallvec",
@@ -7570,18 +7602,28 @@ version = "3.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8be15815186873ea063bf005011d16c356804973489e40c39116ae3a2878d1f"
 dependencies = [
+ "async-trait",
+ "base64 0.23.1",
+ "bytes",
  "chrono",
  "futures",
+ "http",
+ "http-body",
+ "http-body-util",
  "indexmap",
  "libc",
  "pastey 0.2.3",
  "pin-project-lite",
+ "rand 0.10.3",
  "schemars",
  "serde",
  "serde_json",
+ "sse-stream",
  "thiserror 2.0.21",
  "tokio",
+ "tokio-stream",
  "tokio-util",
+ "tower-service",
  "tracing",
  "uuid",
 ]
@@ -8332,6 +8374,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "sse-stream"
+version = "0.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c25ac7aff0abd1dbc474536e40416e1102c7dd9bfba0b9861c6d357f835dcfb4"
+dependencies = [
+ "bytes",
+ "futures-util",
+ "http-body",
+ "http-body-util",
+ "pin-project-lite",
+]
+
+[[package]]
 name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8849,6 +8904,17 @@ dependencies = [
  "either",
  "futures-util",
  "thiserror 1.0.69",
+ "tokio",
+]
+
+[[package]]
+name = "tokio-stream"
+version = "0.1.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a3d06f0b082ba57c26b79407372e57cf2a1e28124f78e9479fe80322cf53420b"
+dependencies = [
+ "futures-core",
+ "pin-project-lite",
  "tokio",
 ]
 

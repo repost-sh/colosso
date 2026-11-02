@@ -14,7 +14,6 @@ use futures::StreamExt as _;
 use futures::channel::{mpsc, oneshot};
 use gpui_kit::{App, AppContext as _, Context, Entity, Global, Task, WeakEntity};
 
-use super::control::Actor;
 use super::frames::Ring;
 use super::view::BrowserView;
 
@@ -228,36 +227,6 @@ impl Browsers {
         if kept && matches!(self.host, Host::Starting) {
             self.queued.push(request);
         }
-    }
-
-    /// Runs a Chrome `DevTools` protocol command on `pane`'s page for `actor`, an agent:
-    /// the answer arrives on the returned channel, also when the host stops first. Refused
-    /// where the page is the person's, or another agent's.
-    #[expect(
-        dead_code,
-        reason = "the agents' side of the lease, used once agents drive pages"
-    )]
-    pub fn cdp(
-        &mut self,
-        pane: PaneId,
-        actor: &Actor,
-        method: &str,
-        params: serde_json::Value,
-        cx: &mut Context<Self>,
-    ) -> oneshot::Receiver<CdpResult> {
-        let claimed = self
-            .view(pane)
-            .map_or(Err("The page is gone.".to_owned()), |view| {
-                view.update(cx, |view, cx| {
-                    view.agent_claims(actor.clone(), false, None, cx)
-                })
-            });
-        if let Err(why) = claimed {
-            let (answer, answered) = oneshot::channel();
-            let _ = answer.send(Err(why));
-            return answered;
-        }
-        self.call(pane, method, params)
     }
 
     /// Runs a Chrome `DevTools` protocol command on `pane`'s page for the app itself, such

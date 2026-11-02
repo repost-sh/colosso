@@ -1,25 +1,47 @@
-//! What the server tells agents about using it (`docs/terminals.md` 8.7), shipped in the
-//! binary so it always matches the daemon it runs with.
+//! What the server tells agents about using it (`docs/app-control.md` 8, `docs/terminals.md`
+//! 8.7), shipped in the binary so it always matches the app and daemon it runs with: the
+//! MCP `instructions`, and the `colosso_guide` and `terminal_guide` prompts.
+
+use rmcp::ErrorData;
+use rmcp::model::{GetPromptResult, Prompt, PromptMessage, Role};
 
 /// The MCP `instructions`.
 pub const INSTRUCTIONS: &str = "\
-Terminals in the worktree you run in, kept by Colosso's terminal daemon; the person sees \
-them in the app's tabs and can take any of them over.
+You are connected to Colosso, the app the person works in. These tools see and drive its \
+window as the person would: projects, worktrees, tabs, split panes, files, browser pages, \
+panels, layout and settings, and the terminals of the worktree you run in. Changes appear \
+in the window as if the person made them. Drive Colosso only through these tools: never \
+edit its settings, data or other files.
 
-The loop: terminal_open (or terminal_list to find one), then terminal_send with \
+Start with app_status (what the window shows and what is selected) or project_list (the \
+projects and their worktrees). Pane ids come from tab_list; the pane, tab and browser \
+tools take them. Changing tools accept a `requestId`: a repeat with the same id returns \
+the first result instead of acting again.
+
+The terminal loop: terminal_open (or terminal_list to find one), then terminal_send with \
 `then: { wait: { for: \"prompt\" }, read: {} }` to act, wait and read in one call. \
 Prefer waiting for text, the prompt or quiet over fixed sleeps, and never poll faster \
-than once a second. A call that names no terminal means the one you last acted on.
+than once a second. A call that names no terminal means the one you last acted on. Read \
+`mode: \"screen\"` for what a full-screen program shows, `mode: \"stream\"` for a \
+command's output from a cursor on; terminal_log reads what happened.
 
-Read `mode: \"screen\"` for what a full-screen program shows, `mode: \"stream\"` for a \
-command's output from a cursor on. terminal_log reads what happened: actions, commands \
-with exit codes, and notices.
+The person comes first. `person_has_control` means the person took that terminal or \
+browser page: do not wait for it, do not retry, do not take it over. Read it if you need \
+its content, and open or pick another terminal or page for your own work; return to it \
+only when the person gives it back or tells you to.
 
-Writing needs control: terminal_open claims a free terminal, and terminal_send claims one \
-no one holds. `person_has_control` means the person took the terminal: do not wait for \
-it, do not retry, do not claim with takeover. Read it if you need its output, and open \
-or pick another terminal for your own work; return to it only when the person gives it \
-back or tells you to.";
+Failures are results with `{ code, message, retryable }`. `app_not_running` means \
+Colosso isn't running: call app_launch, then try again. `control_disabled` means the \
+person has to turn on Settings → MCP server, `scope_denied` that the person hasn't \
+allowed this client that kind of change, and `user_declined` that the person refused (or \
+didn't answer within two minutes) the confirmation Colosso shows before deleting or \
+discarding, so nothing changed. The colosso_guide and terminal_guide prompts say more.";
+
+/// The app guide's name.
+pub const COLOSSO_GUIDE_NAME: &str = "colosso_guide";
+
+/// The `colosso_guide` prompt: how to drive the app, at length.
+pub const COLOSSO_GUIDE: &str = include_str!("guide/colosso.md");
 
 /// The prompt's name.
 pub const GUIDE_NAME: &str = "terminal_guide";
@@ -91,3 +113,35 @@ arguments returns the first answer instead of acting again.
 
 terminal_close closes a terminal whose program has ended; one still running needs \
 stopping first (terminal_signal, or terminal_send with `interrupt`) or the person.";
+
+/// The prompts, for `prompts/list`.
+pub fn prompts() -> Vec<Prompt> {
+    vec![
+        Prompt::new(
+            COLOSSO_GUIDE_NAME,
+            Some("How to drive Colosso: projects, worktrees, tabs, panes, browser pages, settings"),
+            None,
+        )
+        .with_title("Colosso guide"),
+        Prompt::new(
+            GUIDE_NAME,
+            Some("How to work in Colosso's terminals: the loop, waits, control, logs"),
+            None,
+        )
+        .with_title("Terminal guide"),
+    ]
+}
+
+/// The prompt called `name`.
+pub fn prompt(name: &str) -> Result<GetPromptResult, ErrorData> {
+    let (text, description) = match name {
+        COLOSSO_GUIDE_NAME => (COLOSSO_GUIDE, "How to drive Colosso"),
+        GUIDE_NAME => (GUIDE, "How to work in Colosso's terminals"),
+        _ => {
+            let message = format!("there is no prompt called {name}");
+            return Err(ErrorData::invalid_params(message, None));
+        }
+    };
+    let message = PromptMessage::new_text(Role::User, text);
+    Ok(GetPromptResult::new(vec![message]).with_description(description))
+}

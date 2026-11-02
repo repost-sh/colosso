@@ -96,6 +96,7 @@ fn an_agent_drives_a_shell_over_mcp() {
         grants: Scope::AGENT.to_vec(),
         cwd: Some(checkout),
         session: None,
+        client: None,
     };
     let home = dir.root().parent().unwrap().join("home");
     std::fs::create_dir_all(&home).unwrap();
@@ -107,7 +108,12 @@ fn an_agent_drives_a_shell_over_mcp() {
         .unwrap();
     runtime.block_on(async move {
         let (ours, theirs) = tokio::io::duplex(1 << 20);
-        let server = tokio::spawn(colosso_term_mcp::serve(config, tokio::io::split(theirs)));
+        // No app runs in this test: the app's tools answer that it isn't running.
+        let connect = colosso_term_mcp::socket_backend(Err(
+            colosso_app_control::ControlError::app_not_running(),
+        ));
+        let server = colosso_term_mcp::Server::new(config, &connect, None);
+        let server = tokio::spawn(colosso_term_mcp::serve(server, tokio::io::split(theirs)));
         let (reader, writer) = tokio::io::split(ours);
         let mut client = Client {
             lines: BufReader::new(reader).lines(),

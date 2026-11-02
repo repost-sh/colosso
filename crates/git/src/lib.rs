@@ -25,7 +25,7 @@ pub use changes::{
 };
 use command::Git;
 pub use command::{GitError, Result};
-pub use create::{NewWorktree, Start};
+pub use create::{NewWorktree, Start, slugify};
 pub use refs::Ref;
 pub use remove::Loss;
 pub use worktree::{Head, Worktree};

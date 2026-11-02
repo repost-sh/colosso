@@ -1,17 +1,15 @@
 //! General: how the sidebar opens, which layout holds it, and how wide it is; where new
 //! worktrees go and what their branches are named under; and how a held arrow key repeats.
 
-use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::{
-    App, AppContext as _, Context, Entity, Focusable as _, InteractiveElement as _, IntoElement,
-    ParentElement as _, Render, Styled as _, Subscription, Window, actions, div, px,
+    App, InteractiveElement as _, ParentElement as _, Styled as _, Window, actions, div, px,
 };
 
 use super::components::{MenuButton, PillButton, SettingRow, SettingsSection};
+use super::field_dialog::{self, Field};
 use super::native_slider::NativeSlider;
 use super::native_switch::NativeSwitch;
-use crate::modal::{self, Button, Tone};
 use crate::projects::{display_path, pick_folder};
 use crate::settings::{self, BranchPrefix, SetBranchPrefix};
 use crate::theme;
@@ -202,80 +200,27 @@ fn prefix_menu(current: &BranchPrefix) -> NativeMenu {
 
 /// Asks for a prefix of the user's own. Saving it empty means no prefix.
 pub fn edit_branch_prefix(window: &mut Window, cx: &mut App) {
-    modal::open(380., 212., window, cx, BranchPrefixDialog::new);
-}
-
-struct BranchPrefixDialog {
-    input: Entity<InputState>,
-    _subscription: Subscription,
-}
-
-impl BranchPrefixDialog {
-    fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let current = match &settings::get(cx).branch_prefix {
-            BranchPrefix::Custom(prefix) => prefix.clone(),
-            _ => String::new(),
-        };
-        let input = cx.new(|cx| {
-            InputState::new(window, cx)
-                .placeholder("e.g. your initials")
-                .default_value(current)
-        });
-        input.focus_handle(cx).focus(window, cx);
-        let _subscription = cx.subscribe_in(&input, window, |this, _, event, window, cx| {
-            if let InputEvent::PressEnter { .. } = event {
-                this.save(window, cx);
-            }
-        });
-        BranchPrefixDialog {
-            input,
-            _subscription,
-        }
-    }
-
-    fn save(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let prefix = self
-            .input
-            .read(cx)
-            .value()
-            .trim()
-            .trim_matches('/')
-            .to_owned();
-        settings::update(cx, |settings| {
-            settings.branch_prefix = if prefix.is_empty() {
-                BranchPrefix::None
-            } else {
-                BranchPrefix::Custom(prefix)
-            }
-        });
-        modal::dismiss(window, cx);
-    }
-}
-
-impl Render for BranchPrefixDialog {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let p = theme::palette(cx);
-        div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .child(modal::heading("Branch prefix"))
-            .child(div().mt(px(4.)).text_xs().text_color(p.muted).child(
-                "New branches go under it, as in prefix/fix-login. Leave it empty for none.",
-            ))
-            .child(
-                div()
-                    .mt(px(14.))
-                    .child(modal::field(Input::new(&self.input), p)),
-            )
-            .child(div().flex_1())
-            .child(
-                modal::footer(None, p)
-                    .child(modal::cancel("branch-prefix-cancel"))
-                    .child(
-                        Button::new("branch-prefix-save", "Save", Tone::Primary)
-                            .on_click(cx.listener(|this, _, window, cx| this.save(window, cx))),
-                    ),
-            )
-    }
+    let value = match &settings::get(cx).branch_prefix {
+        BranchPrefix::Custom(prefix) => prefix.clone(),
+        _ => String::new(),
+    };
+    let field = Field {
+        ids: ["branch-prefix-cancel", "branch-prefix-save"],
+        title: "Branch prefix",
+        note: "New branches go under it, as in prefix/fix-login. Leave it empty for none.".into(),
+        placeholder: Some("e.g. your initials"),
+        value,
+        save: |value, cx| {
+            let prefix = value.trim_matches('/').to_owned();
+            settings::update(cx, |settings| {
+                settings.branch_prefix = if prefix.is_empty() {
+                    BranchPrefix::None
+                } else {
+                    BranchPrefix::Custom(prefix)
+                }
+            });
+            Ok(())
+        },
+    };
+    field_dialog::open(field, window, cx);
 }

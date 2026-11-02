@@ -10,7 +10,7 @@ use crate::checkout::{Content, read_at_most};
 use crate::settings::{self, SaveScope};
 use crate::test_support::{scratch, write};
 
-mod support;
+pub(crate) mod support;
 pub(crate) use support::*;
 
 #[test]

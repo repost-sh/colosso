@@ -15,6 +15,7 @@ use std::path::Path;
 
 use gpui_kit::{App, KeyBinding, actions};
 
+pub mod agent;
 mod control;
 mod dialog;
 mod dock;
@@ -27,7 +28,7 @@ mod host;
 #[cfg(test)]
 mod host_tests;
 mod input;
-mod keys;
+pub(crate) mod keys;
 mod menu;
 mod page;
 mod toolbar;
@@ -36,7 +37,6 @@ mod view;
 #[cfg(feature = "visual-check")]
 pub mod visual;
 
-#[cfg(test)]
 pub use dock::DOCK_MIN;
 pub use dock::{DevtoolsPlace, Dock, SetDevtoolsDock};
 pub use menu::handle_actions;

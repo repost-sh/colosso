@@ -8,20 +8,24 @@
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
-use colosso_git::{Head, Loss, Repo};
+use colosso_git::{Head, Loss};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::Disableable as _;
 use gpui_kit::component::switch::Switch;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyWindowHandle, App, AppContext as _, Context, IntoElement, ParentElement as _, Render,
-    SharedString, Styled as _, WeakEntity, Window, div, px,
+    AnyWindowHandle, App, Context, IntoElement, ParentElement as _, Render, SharedString,
+    Styled as _, WeakEntity, Window, div, px,
 };
 
 use crate::modal::{self, Button, LINE, SMALL_LINE, Tone, small_line};
-use crate::projects::{display_path, read_worktrees};
+use crate::projects::display_path;
 use crate::shell::{Shell, ellipsized, icon};
 use crate::theme;
+
+mod removal;
+
+pub(crate) use removal::{delete, inspect};
 
 const WIDTH: f32 = 420.;
 /// How many changed files the dialog names before summing up the rest.
@@ -51,12 +55,9 @@ fn ask(
     parent: AnyWindowHandle,
     cx: &mut App,
 ) {
-    let inspect = cx.background_spawn({
-        let (project, path) = (project.clone(), path.clone());
-        async move { Repo::open(&project)?.inspect_removal(&path) }
-    });
+    let inspecting = inspect(project.clone(), path.clone(), cx);
     cx.spawn(async move |cx| {
-        let inspected = inspect.await;
+        let inspected = inspecting.await;
         parent
             .update(cx, |_, window, cx| match inspected {
                 Ok(loss) => {
@@ -185,26 +186,16 @@ impl DeleteWorktreeDialog {
         cx.notify();
         let (project, path, loss) = (self.project.clone(), self.path.clone(), self.loss.clone());
         let (shell, parent, delete_branch) = (self.shell.clone(), self.parent, self.delete_branch);
-        let stop_terminals = (shell.update(cx, |shell, _| shell.closing_terminals_of(&path))).ok();
+        let deleting = delete(
+            shell.clone(),
+            project.clone(),
+            path.clone(),
+            loss,
+            delete_branch,
+            cx,
+        );
         cx.spawn_in(window, async move |this, cx| {
-            let (deleted, read, still_there) = cx
-                .background_spawn({
-                    let (project, path) = (project.clone(), path.clone());
-                    async move {
-                        if let Some(stop_terminals) = stop_terminals {
-                            stop_terminals();
-                        }
-                        let deleted = Repo::open(&project)
-                            .and_then(|repo| repo.remove_worktree(&path, &loss, delete_branch));
-                        // The worktree may be gone even if its branch couldn't go, so the
-                        // shell looks again whatever happened.
-                        (deleted, read_worktrees(&project), path.exists())
-                    }
-                })
-                .await;
-            shell
-                .update(cx, |shell, cx| shell.show_worktrees(&project, read, cx))
-                .ok();
+            let (deleted, still_there) = deleting.await;
             this.update_in(cx, |_, window, cx| modal::dismiss(window, cx))
                 .ok();
             let Err(error) = deleted else {

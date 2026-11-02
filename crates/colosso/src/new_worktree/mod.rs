@@ -5,7 +5,7 @@
 
 use std::path::PathBuf;
 
-use colosso_git::{NewWorktree, Ref, Repo, Start};
+use colosso_git::{NewWorktree, Ref};
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::{
     AnyWindowHandle, App, AppContext as _, Context, Entity, Focusable as _, ScrollHandle,
@@ -13,11 +13,13 @@ use gpui_kit::{
 };
 
 use crate::modal;
-use crate::projects::read_worktrees;
-use crate::settings::{self, BranchPrefix};
+use crate::settings;
 use crate::shell::Shell;
 
+mod create;
 mod render;
+
+pub(crate) use create::{Bases, create, read_branches, request};
 
 const WIDTH: f32 = 480.;
 const HEIGHT: f32 = 520.;
@@ -28,17 +30,6 @@ pub fn open(shell: WeakEntity<Shell>, project: PathBuf, window: &mut Window, cx:
     modal::open(WIDTH, HEIGHT, window, cx, |window, cx| {
         NewWorktreeDialog::new(shell, project, behind, window, cx)
     });
-}
-
-/// What git said about the project when the dialog opened.
-struct Project {
-    repo: Repo,
-    /// What new branches go under, if anything.
-    prefix: Option<String>,
-    /// Newest first.
-    branches: Vec<Ref>,
-    /// The branch new work starts from unless the user picks another.
-    default: Option<Ref>,
 }
 
 struct NewWorktreeDialog {
@@ -57,8 +48,8 @@ struct NewWorktreeDialog {
     /// Work on the picked branch instead of starting a new one from it.
     existing: bool,
     branch_list: ScrollHandle,
-    /// Unset until git has listed the branches.
-    project: Option<Project>,
+    /// What git said about the project when the dialog opened; unset until it has.
+    project: Option<Bases>,
     creating: bool,
     error: Option<SharedString>,
     _subscriptions: [Subscription; 3],
@@ -109,23 +100,7 @@ impl NewWorktreeDialog {
         let parent = settings::get(cx).worktrees_dir(&project_name);
         let load = {
             let project_path = project_path.clone();
-            cx.background_spawn(async move {
-                let repo = Repo::open(&project_path)?;
-                let branches = repo.branches()?;
-                let default = repo.default_base(&branches);
-                let prefix = match prefix {
-                    BranchPrefix::GitHubUser => repo.user_branch_prefix(),
-                    BranchPrefix::Custom(prefix) => Some(prefix.trim().to_owned()),
-                    BranchPrefix::None => None,
-                }
-                .filter(|prefix| !prefix.is_empty());
-                Ok::<_, colosso_git::GitError>(Project {
-                    repo,
-                    prefix,
-                    branches,
-                    default,
-                })
-            })
+            cx.background_spawn(async move { read_branches(&project_path, prefix) })
         };
         cx.spawn(async move |this, cx| {
             let loaded = load.await;
@@ -237,20 +212,13 @@ impl NewWorktreeDialog {
     /// The request the dialog's fields make, if they make one.
     fn request(&self, cx: &App) -> Option<NewWorktree> {
         let project = self.project.as_ref()?;
-        let branch = self.picked.clone()?;
-        let start = if self.existing {
-            Start::Existing(branch)
-        } else {
-            Start::NewBranch {
-                base: branch,
-                prefix: project.prefix.clone(),
-            }
-        };
-        Some(NewWorktree {
-            name: self.name.read(cx).value().to_string(),
-            start,
-            parent: self.parent.clone(),
-        })
+        Some(request(
+            self.name.read(cx).value().to_string(),
+            self.picked.clone()?,
+            self.existing,
+            project.prefix.clone(),
+            self.parent.clone(),
+        ))
     }
 
     /// The request creating would make now, if the dialog is ready to make one.
@@ -269,26 +237,13 @@ impl NewWorktreeDialog {
         self.creating = true;
         self.error = None;
         cx.notify();
+        let creating = create(shell, project_path, repo, request, true, cx);
         cx.spawn_in(window, async move |this, cx| {
-            let created = cx
-                .background_spawn(async move {
-                    let worktree = repo.create_worktree(&request)?;
-                    Ok::<_, colosso_git::GitError>((worktree.path, read_worktrees(repo.path())))
-                })
-                .await;
             // The shell hears about the worktree even if the dialog was closed meanwhile.
-            let error = match created {
-                Ok((path, read)) => {
-                    shell
-                        .update(cx, |shell, cx| {
-                            shell.show_new_worktree(&project_path, &path, read, cx);
-                        })
-                        .ok();
-                    this.update_in(cx, |_, window, cx| modal::dismiss(window, cx))
-                        .ok();
-                    return;
-                }
-                Err(error) => error,
+            let Err(error) = creating.await else {
+                this.update_in(cx, |_, window, cx| modal::dismiss(window, cx))
+                    .ok();
+                return;
             };
             let shown = this.update(cx, |this, cx| {
                 this.creating = false;

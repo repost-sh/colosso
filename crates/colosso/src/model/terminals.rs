@@ -9,14 +9,15 @@ use gpui_kit::SharedString;
 use super::{Pane, PaneKind, Tab, Workspace};
 
 impl Workspace {
-    /// Adds a tab for terminal `id` on the checkout at `worktree`, shown when `select`.
+    /// Adds a tab for terminal `id` on the checkout at `worktree`, shown when `select`: its
+    /// pane, unless no such checkout is listed.
     pub fn add_terminal_tab(
         &mut self,
         worktree: &Path,
         id: u64,
         title: SharedString,
         select: bool,
-    ) {
+    ) -> Option<u64> {
         let found = self
             .projects
             .iter()
@@ -26,19 +27,20 @@ impl Workspace {
                     .position(|unit| unit.worktree.path == worktree)
                     .map(|branch| (project, branch))
             });
-        let Some((project, branch)) = found else {
-            return;
-        };
+        let (project, branch) = found?;
         let unit = &mut self.projects[project].branches[branch];
-        unit.tabs.push(Tab::Single(Pane {
+        let pane = Pane {
             title,
             terminal: Some(id),
             ..Pane::new(PaneKind::Terminal)
-        }));
+        };
+        let pane_id = pane.id;
+        unit.tabs.push(Tab::Single(pane));
         if select {
             unit.active_tab = unit.tabs.len() - 1;
             self.select_branch(project, branch);
         }
+        Some(pane_id)
     }
 
     /// Every terminal pane's terminal, with its checkout, split or not.

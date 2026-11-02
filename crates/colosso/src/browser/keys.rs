@@ -6,7 +6,7 @@ use gpui_kit::Keystroke;
 
 /// Chromium keys events by Windows virtual key code, and fills in `KeyboardEvent.code`
 /// from the macOS key code.
-pub(super) fn key_codes(key: &str) -> (i32, i32) {
+pub(crate) fn key_codes(key: &str) -> (i32, i32) {
     // ANSI layout positions, as kVK_ANSI_*.
     const LETTERS: [i32; 26] = [
         0x00, 0x0B, 0x08, 0x02, 0x0E, 0x03, 0x05, 0x04, 0x22, 0x26, 0x28, 0x25, 0x2E, 0x2D, 0x1F,
