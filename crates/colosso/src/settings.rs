@@ -171,6 +171,11 @@ pub struct Settings {
     pub key_repeat: KeyRepeat,
     /// Where a page's `DevTools` open, and the room they take docked.
     pub devtools: crate::browser::DevtoolsPlace,
+    /// Whether clients outside Colosso's terminals may control the app, on which port the
+    /// MCP server listens for them, and the clients the person allowed. Only the person
+    /// changes it, in Settings: no app-control operation reads or sets it.
+    #[serde(rename = "externalControl")]
+    pub external_control: crate::control::Policy,
 }
 
 impl Settings {
@@ -233,6 +238,7 @@ impl Default for Settings {
             language_servers: language_servers::every_server(),
             key_repeat: KeyRepeat::default(),
             devtools: crate::browser::DevtoolsPlace::default(),
+            external_control: crate::control::Policy::default(),
         }
     }
 }
@@ -343,6 +349,11 @@ pub fn on_change<V: 'static>(
     cx: &mut Context<V>,
     changed: impl FnMut(&mut V, &mut Context<V>) + 'static,
 ) -> Subscription {
+    cx.observe_global::<Store>(changed)
+}
+
+/// Calls `changed` whenever a setting changes, for as long as the subscription is kept.
+pub fn observe_app(cx: &mut App, changed: impl FnMut(&mut App) + 'static) -> Subscription {
     cx.observe_global::<Store>(changed)
 }
 

@@ -11,11 +11,14 @@ use crate::model::PaneKind;
 use crate::navigation::Route;
 
 impl Shell {
-    /// Opens the tab closed last again, on its checkout at its place, and shows it.
-    pub(super) fn reopen_closed_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some((closed, at)) = self.workspace.take_closed() else {
-            return;
-        };
+    /// Opens the tab closed last again, on its checkout at its place, and shows it: where
+    /// it went back, as `(project, branch, tab)`, unless no tab was closed.
+    pub(crate) fn reopen_closed_tab(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<(usize, usize, usize)> {
+        let (closed, at) = self.workspace.take_closed()?;
         let project = self.workspace.projects[at.0].path.clone();
         let mut tab = closed.tab;
         for pane in tab.panes_mut() {
@@ -34,6 +37,7 @@ impl Shell {
         self.reopen_changes(at, &closed.changes, window, cx);
         self.navigate(Route::Workspace, cx);
         cx.notify();
+        Some(at)
     }
 
     /// The file panes of the tab back at `at`, as `(project, branch, tab)`, which is shown,

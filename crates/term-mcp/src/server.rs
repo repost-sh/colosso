@@ -1,57 +1,71 @@
-//! The MCP server: tools listed from the catalog and resources over the terminals, carried
-//! out through the executor on a connection made when first needed, as the client that
-//! named itself in `initialize`; resource subscriptions both as `resources/subscribe` and
-//! as `subscriptions/listen` streams.
+//! The MCP server (`docs/app-control.md` 2): one handler for the whole app, whatever
+//! transport carries it. Tools come from both catalogs. Terminal tools and resources are
+//! carried out through the executor on a daemon connection made when first needed; app tools
+//! and resources go to the session's [`Backend`](crate::Backend), and `app_launch` to the
+//! launcher. Both speak as the client that named itself in `initialize`, unless `--client`
+//! names it.
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use colosso_term_control::catalog::{CATALOG, Operation};
+use colosso_app_control::{APP_LAUNCH, ClientInfo, info};
 use colosso_term_control::exec::{Done, Executor};
 use colosso_term_control::{ClientKind, Connection, ErrorCode, Hello, ProtocolError};
 use parking_lot::Mutex;
 use rmcp::model::{
-    CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock, GetPromptRequestParams,
-    GetPromptResponse, GetPromptResult, Implementation, ListPromptsResult,
-    ListResourceTemplatesResult, ListResourcesResult, ListToolsResult, PaginatedRequestParams,
-    Prompt, PromptMessage, ReadResourceRequestParams, ReadResourceResponse, ReadResourceResult,
-    ResourceUpdatedNotificationParam, Role, ServerCapabilities, ServerConfig,
-    SubscribeRequestParams, SubscriptionFilter, Tool, ToolAnnotations, UnsubscribeRequestParams,
+    CallToolRequestParams, CallToolResponse, CallToolResult, GetPromptRequestParams,
+    GetPromptResponse, Implementation, ListPromptsResult, ListResourceTemplatesResult,
+    ListResourcesResult, ListToolsResult, PaginatedRequestParams, ReadResourceRequestParams,
+    ReadResourceResponse, ReadResourceResult, ResourceContents, ServerCapabilities, ServerConfig,
+    SubscribeRequestParams, SubscriptionFilter, Tool, UnsubscribeRequestParams,
 };
-use rmcp::service::{Peer, RequestContext, RoleServer, SubscriptionContext};
+use rmcp::service::{RequestContext, RoleServer, SubscriptionContext};
 use rmcp::transport::IntoTransport;
 use rmcp::{ErrorData, ServerHandler, ServiceExt};
 use serde_json::Value;
-use tokio::sync::broadcast::error::RecvError;
 
 use crate::Config;
-use crate::guide::{GUIDE, GUIDE_NAME, INSTRUCTIONS};
-use crate::resources::{self, Uri};
-use crate::watch::{Update, Watch};
+use crate::app::App;
+use crate::backend::Connect;
+use crate::guide::{self, INSTRUCTIONS};
+use crate::launch::Launcher;
+use crate::resources::{self, JSON, Uri};
+use crate::subscriptions::subscribable;
+use crate::tools;
+use crate::watch::Watch;
 
-/// The server; clones share one connection to the daemon.
+/// One MCP session's server; clones share its connections.
 #[derive(Clone)]
-pub struct Terminals {
-    inner: Arc<Inner>,
+pub struct Server {
+    pub(crate) inner: Arc<Inner>,
 }
 
-struct Inner {
-    config: Config,
+pub(crate) struct Inner {
+    pub(crate) config: Config,
+    tools: Vec<Tool>,
     /// The executor on the daemon connection, made again when the daemon went away.
     executor: Mutex<Option<Arc<Executor>>>,
-    watch: Arc<Watch>,
+    pub(crate) app: App,
+    pub(crate) watch: Arc<Watch>,
     /// The resources subscribed to with `resources/subscribe`.
-    subscribed: Mutex<BTreeSet<Uri>>,
+    pub(crate) subscribed: Mutex<BTreeSet<Uri>>,
     /// Whether updates are forwarded to those subscriptions yet.
-    forwarding: Mutex<bool>,
+    pub(crate) forwarding: Mutex<bool>,
 }
 
-impl Terminals {
-    pub fn new(config: Config) -> Terminals {
-        Terminals {
+impl Server {
+    /// A session's server: the terminals `config` reaches, with its grants, and the app
+    /// through the backend `connect` makes for this session. With a `launcher` (the stdio
+    /// relay) `app_launch` is listed and starts the app; without one (the app's own HTTP
+    /// server) it isn't.
+    pub fn new(config: Config, connect: &Connect, launcher: Option<Launcher>) -> Server {
+        let app = App::new(connect, launcher);
+        Server {
             inner: Arc::new(Inner {
+                tools: tools::list(&config.grants, app.launches()),
                 config,
                 executor: Mutex::new(None),
+                app,
                 watch: Arc::new(Watch::new()),
                 subscribed: Mutex::default(),
                 forwarding: Mutex::new(false),
@@ -60,13 +74,13 @@ impl Terminals {
     }
 }
 
-/// Serves `transport` until the client goes.
-pub async fn serve<T, E, A>(config: Config, transport: T) -> Result<(), String>
+/// Serves `server` on `transport` until the client goes.
+pub async fn serve<T, E, A>(server: Server, transport: T) -> Result<(), String>
 where
     T: IntoTransport<RoleServer, E, A>,
     E: std::error::Error + Send + Sync + 'static,
 {
-    let running = (Terminals::new(config).serve(transport).await)
+    let running = (server.serve(transport).await)
         .map_err(|error| format!("the client didn't start: {error}"))?;
     running
         .waiting()
@@ -117,24 +131,29 @@ impl Inner {
         Ok(executor)
     }
 
-    fn call(&self, client: &str, name: &str, args: Value) -> CallToolResult {
+    /// Carries out tool `name`: an app operation through the app, anything else through the
+    /// terminals' executor, which refuses what it doesn't know.
+    fn call(&self, client: &ClientInfo, name: &str, args: Value) -> CallToolResult {
+        if info(name).is_some() && !tools::is_terminal(name) {
+            return self.app.call(client, name, args);
+        }
         match self
-            .executor(client)
+            .executor(&client.name)
             .and_then(|executor| executor.call(name, args))
         {
             Ok(done) => success(done),
-            Err(error) => failure(&error),
+            Err(error) => tools::terminal_failure(&error),
         }
     }
 }
 
-impl Terminals {
+impl Server {
     /// The executor, connecting on a blocking thread when there's none yet.
-    async fn executor(
+    pub(crate) async fn executor(
         &self,
         context: &RequestContext<RoleServer>,
     ) -> Result<Arc<Executor>, ErrorData> {
-        let client = client_name(context);
+        let client = self.identity(context).name;
         let inner = Arc::clone(&self.inner);
         tokio::task::spawn_blocking(move || inner.executor(&client))
             .await
@@ -142,56 +161,19 @@ impl Terminals {
             .map_err(resources::error)
     }
 
-    /// Watches `uris`, on the daemon connection whose events say what changed.
-    async fn watch(
-        &self,
-        uris: Vec<Uri>,
-        context: &RequestContext<RoleServer>,
-    ) -> Result<(), ErrorData> {
-        let executor = self.executor(context).await?;
-        let watch = Arc::clone(&self.inner.watch);
-        tokio::task::spawn_blocking(move || {
-            for uri in &uris {
-                watch.add(uri, &executor);
-            }
-        })
-        .await
-        .map_err(joined)
-    }
-
-    /// Forwards updates to the `resources/subscribe` subscriptions, from the first one on.
-    fn forward(&self, peer: Peer<RoleServer>) {
-        let mut forwarding = self.inner.forwarding.lock();
-        if *forwarding {
-            return;
-        }
-        *forwarding = true;
-        let inner = Arc::clone(&self.inner);
-        let mut updates = inner.watch.updates();
-        tokio::spawn(async move {
-            loop {
-                let sent = match updates.recv().await {
-                    Ok(Update::List) => peer.notify_resource_list_changed().await,
-                    Ok(Update::Resource(uri)) => {
-                        let wanted = inner.subscribed.lock().contains(&uri);
-                        if !wanted {
-                            continue;
-                        }
-                        let update = ResourceUpdatedNotificationParam::new(uri.text());
-                        peer.notify_resource_updated(update).await
-                    }
-                    Err(RecvError::Lagged(_)) => continue,
-                    Err(RecvError::Closed) => return,
-                };
-                if sent.is_err() {
-                    return;
-                }
-            }
-        });
+    /// Who the request comes from: `--client`, else the client's own name, else `agent`.
+    pub(crate) fn identity(&self, context: &RequestContext<RoleServer>) -> ClientInfo {
+        let peer = context.client_info();
+        let name = (self.inner.config.client.clone())
+            .or_else(|| peer.as_ref().map(|peer| peer.name.clone()))
+            .filter(|name| !name.trim().is_empty())
+            .unwrap_or_else(|| "agent".to_owned());
+        let version = peer.map_or_else(|| env!("CARGO_PKG_VERSION").to_owned(), |p| p.version);
+        ClientInfo { name, version }
     }
 }
 
-impl ServerHandler for Terminals {
+impl ServerHandler for Server {
     fn get_info(&self) -> ServerConfig {
         let capabilities = ServerCapabilities::builder()
             .enable_prompts()
@@ -201,10 +183,9 @@ impl ServerHandler for Terminals {
             .enable_resources_list_changed()
             .build();
         ServerConfig::new(capabilities)
-            .with_server_info(Implementation::new(
-                "colosso-terminals",
-                env!("CARGO_PKG_VERSION"),
-            ))
+            .with_server_info(
+                Implementation::new("colosso", env!("CARGO_PKG_VERSION")).with_title("Colosso"),
+            )
             .with_instructions(INSTRUCTIONS)
     }
 
@@ -213,12 +194,16 @@ impl ServerHandler for Terminals {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> impl Future<Output = Result<ListToolsResult, ErrorData>> + Send + '_ {
-        let grants = &self.inner.config.grants;
-        let tools = (CATALOG.iter())
-            .filter(|operation| grants.contains(&operation.scope))
-            .map(tool)
-            .collect();
+        let tools = self.inner.tools.clone();
         std::future::ready(Ok(ListToolsResult::with_all_items(tools)))
+    }
+
+    fn get_tool(&self, name: &str) -> Option<Tool> {
+        self.inner
+            .tools
+            .iter()
+            .find(|tool| tool.name == name)
+            .cloned()
     }
 
     async fn call_tool(
@@ -226,8 +211,13 @@ impl ServerHandler for Terminals {
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
-        let client = client_name(&context);
+        let client = self.identity(&context);
         let name = request.name.into_owned();
+        if name == APP_LAUNCH
+            && let Some(launched) = self.inner.app.launch().await
+        {
+            return Ok(launched.into());
+        }
         let args = request.arguments.map_or(Value::Null, Value::Object);
         let inner = Arc::clone(&self.inner);
         let result = tokio::task::spawn_blocking(move || inner.call(&client, &name, args))
@@ -241,13 +231,7 @@ impl ServerHandler for Terminals {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> impl Future<Output = Result<ListPromptsResult, ErrorData>> + Send + '_ {
-        let guide = Prompt::new(
-            GUIDE_NAME,
-            Some("How to work in Colosso's terminals: the loop, waits, control, logs"),
-            None,
-        )
-        .with_title("Terminal guide");
-        std::future::ready(Ok(ListPromptsResult::with_all_items(vec![guide])))
+        std::future::ready(Ok(ListPromptsResult::with_all_items(guide::prompts())))
     }
 
     fn get_prompt(
@@ -255,16 +239,7 @@ impl ServerHandler for Terminals {
         request: GetPromptRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> impl Future<Output = Result<GetPromptResponse, ErrorData>> + Send + '_ {
-        let answer = if request.name == GUIDE_NAME {
-            let message = PromptMessage::new_text(Role::User, GUIDE);
-            let guide = GetPromptResult::new(vec![message])
-                .with_description("How to work in Colosso's terminals");
-            Ok(guide.into())
-        } else {
-            let message = format!("there is no prompt called {}", request.name);
-            Err(ErrorData::invalid_params(message, None))
-        };
-        std::future::ready(answer)
+        std::future::ready(guide::prompt(&request.name).map(Into::into))
     }
 
     async fn list_resources(
@@ -273,9 +248,11 @@ impl ServerHandler for Terminals {
         context: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, ErrorData> {
         let executor = self.executor(&context).await?;
-        let listed = tokio::task::spawn_blocking(move || resources::list(&executor))
+        let terminals = tokio::task::spawn_blocking(move || resources::list(&executor))
             .await
             .map_err(joined)??;
+        let mut listed = resources::app_resources();
+        listed.extend(terminals);
         Ok(ListResourcesResult::with_all_items(listed))
     }
 
@@ -293,11 +270,20 @@ impl ServerHandler for Terminals {
         request: ReadResourceRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResponse, ErrorData> {
-        let executor = self.executor(&context).await?;
-        let contents =
+        let contents = if let Some(Uri::App(resource)) = Uri::parse(&request.uri) {
+            let client = self.identity(&context);
+            let inner = Arc::clone(&self.inner);
+            let output = tokio::task::spawn_blocking(move || inner.app.read(&client, resource))
+                .await
+                .map_err(joined)?
+                .map_err(|error| resources::app_error(&error))?;
+            ResourceContents::text(output.to_string(), request.uri).with_mime_type(JSON)
+        } else {
+            let executor = self.executor(&context).await?;
             tokio::task::spawn_blocking(move || resources::read(&executor, &request.uri))
                 .await
-                .map_err(joined)??;
+                .map_err(joined)??
+        };
         Ok(ReadResourceResult::new(vec![contents]).into())
     }
 
@@ -307,24 +293,29 @@ impl ServerHandler for Terminals {
         context: RequestContext<RoleServer>,
     ) -> Result<(), ErrorData> {
         let uri = subscribable(&request.uri)?;
-        if self.inner.subscribed.lock().insert(uri.clone()) {
-            self.watch(vec![uri], &context).await?;
-        }
+        // Forwarding starts first, so an update that comes as soon as the resource is
+        // followed reaches the client.
         self.forward(context.peer.clone());
+        if self.inner.subscribed.lock().insert(uri.clone())
+            && let Err(error) = self.watch(vec![uri.clone()], false, &context).await
+        {
+            self.inner.subscribed.lock().remove(&uri);
+            return Err(error);
+        }
         Ok(())
     }
 
-    fn unsubscribe(
+    async fn unsubscribe(
         &self,
         request: UnsubscribeRequestParams,
         _context: RequestContext<RoleServer>,
-    ) -> impl Future<Output = Result<(), ErrorData>> + Send + '_ {
-        let unsubscribed = subscribable(&request.uri).map(|uri| {
-            if self.inner.subscribed.lock().remove(&uri) {
-                self.inner.watch.remove(&uri);
-            }
-        });
-        std::future::ready(unsubscribed)
+    ) -> Result<(), ErrorData> {
+        let uri = subscribable(&request.uri)?;
+        let removed = self.inner.subscribed.lock().remove(&uri);
+        if removed {
+            self.unwatch(&[uri]).await;
+        }
+        Ok(())
     }
 
     fn accepted_subscription_filter(
@@ -343,81 +334,16 @@ impl ServerHandler for Terminals {
     }
 
     async fn listen(&self, context: SubscriptionContext) -> Result<(), ErrorData> {
-        let accepted = context.accepted();
-        let list = accepted.resources_list_changed == Some(true);
-        let uris: Vec<Uri> = (accepted.resource_subscriptions.iter().flatten())
-            .filter_map(|uri| Uri::parse(uri))
-            .collect();
-        let mut updates = self.inner.watch.updates();
-        self.watch(uris.clone(), context.request_context()).await?;
-        loop {
-            let update = tokio::select! {
-                () = context.cancelled() => break,
-                update = updates.recv() => update,
-            };
-            let sent = match update {
-                Ok(Update::List) if list => context.sink().notify_resource_list_changed().await,
-                Ok(Update::Resource(uri)) if uris.contains(&uri) => {
-                    context.sink().notify_resource_updated(uri.text()).await
-                }
-                Ok(_) | Err(RecvError::Lagged(_)) => Ok(()),
-                Err(RecvError::Closed) => break,
-            };
-            if sent.is_err() {
-                break;
-            }
-        }
-        for uri in &uris {
-            self.inner.watch.remove(uri);
-        }
-        Ok(())
+        self.listen_until_cancelled(&context).await
     }
 }
 
-fn client_name(context: &RequestContext<RoleServer>) -> String {
-    (context.peer.peer_info())
-        .map_or_else(|| "agent".to_owned(), |info| info.client_info.name.clone())
-}
-
-fn subscribable(uri: &str) -> Result<Uri, ErrorData> {
-    (Uri::parse(uri).filter(Uri::subscribable))
-        .ok_or_else(|| ErrorData::invalid_params(format!("{uri} can't be subscribed to"), None))
-}
-
 #[expect(clippy::needless_pass_by_value, reason = "it's `map_err`'s function")]
-fn joined(error: tokio::task::JoinError) -> ErrorData {
+pub(crate) fn joined(error: tokio::task::JoinError) -> ErrorData {
     ErrorData::internal_error(error.to_string(), None)
 }
 
-fn tool(operation: &Operation) -> Tool {
-    let schema = match operation.input_schema() {
-        Value::Object(schema) => schema,
-        _ => serde_json::Map::new(),
-    };
-    let hints = operation.hints;
-    let annotations = ToolAnnotations::with_title(operation.title)
-        .read_only(hints.read_only)
-        .destructive(hints.destructive)
-        .idempotent(hints.idempotent)
-        .open_world(false);
-    Tool::new(operation.name, operation.description, schema)
-        .with_title(operation.title)
-        .with_annotations(annotations)
-}
-
-/// The summary for the reader, then the structured answer, also as text for the clients
-/// that read only text.
+/// The summary for the reader, then the structured answer, also as text.
 fn success(done: Done) -> CallToolResult {
-    let mut result = CallToolResult::structured(done.structured);
-    result.content.insert(0, ContentBlock::text(done.summary));
-    result
-}
-
-fn failure(error: &ProtocolError) -> CallToolResult {
-    let structured = serde_json::to_value(error).unwrap_or_default();
-    let mut result = CallToolResult::structured_error(structured);
-    result
-        .content
-        .insert(0, ContentBlock::text(error.message.clone()));
-    result
+    tools::success(done.summary, done.structured)
 }

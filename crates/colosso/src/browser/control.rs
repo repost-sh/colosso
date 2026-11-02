@@ -32,13 +32,6 @@ pub enum Holder {
         since: Instant,
         mode: Mode,
     },
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the agents' side of the lease, used once agents drive pages"
-        )
-    )]
     Agent {
         actor: Actor,
         since: Instant,
@@ -47,13 +40,6 @@ pub enum Holder {
 }
 
 /// Why an agent may not act on a page.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the agents' side of the lease, used once agents drive pages"
-    )
-)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Refused {
     /// The person holds the page: agents stay out until they give it back. Not something
@@ -61,34 +47,6 @@ pub enum Refused {
     PersonHasControl { since: Instant, mode: Mode },
     /// Another agent holds the page; a claim with takeover would succeed.
     ControlRequired { holder: Actor },
-}
-
-impl Refused {
-    /// Said to the agent, in the words the terminals' control layer uses.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the agents' side of the lease, used once agents drive pages"
-        )
-    )]
-    pub fn message(&self) -> String {
-        match self {
-            Refused::PersonHasControl { mode, .. } => {
-                let how = match mode {
-                    Mode::Implicit => "by using it",
-                    Mode::Explicit => "with Take control",
-                };
-                format!(
-                    "person_has_control: the person took this page {how}; use another page \
-                     rather than waiting for it."
-                )
-            }
-            Refused::ControlRequired { holder } => {
-                format!("control_required: {} holds this page.", holder.label)
-            }
-        }
-    }
 }
 
 /// A page's lease.
@@ -102,13 +60,6 @@ pub struct Control {
 impl Control {
     /// `actor` asks to drive the page: granted with nobody holding it or its own lease,
     /// with `takeover` over another agent's, never over the person's.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the agents' side of the lease, used once agents drive pages"
-        )
-    )]
     pub fn agent_claims(
         &mut self,
         actor: Actor,
@@ -180,13 +131,6 @@ impl Control {
     }
 
     /// `actor` is done with the page.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the agents' side of the lease, used once agents drive pages"
-        )
-    )]
     pub fn agent_releases(&mut self, actor: &Actor) {
         if matches!(&self.holder, Some(Holder::Agent { actor: holder, .. }) if holder == actor) {
             self.holder = None;
@@ -224,31 +168,20 @@ impl BrowserView {
         cx.notify();
     }
 
-    /// `actor`, an agent, asks to drive the page; refused in the control layer's words.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the agents' side of the lease, used once agents drive pages"
-        )
-    )]
+    /// `actor`, an agent, asks to drive the page.
     pub fn agent_claims(
         &mut self,
         actor: Actor,
         takeover: bool,
         reason: Option<String>,
         cx: &mut Context<Self>,
-    ) -> Result<(), String> {
+    ) -> Result<(), Refused> {
         let claimed = self.control.agent_claims(actor, takeover, reason);
         cx.notify();
-        claimed.map_err(|refused| refused.message())
+        claimed
     }
 
     /// `actor` is done with the page.
-    #[expect(
-        dead_code,
-        reason = "the agents' side of the lease, used once agents drive pages"
-    )]
     pub fn agent_releases(&mut self, actor: &Actor, cx: &mut Context<Self>) {
         self.control.agent_releases(actor);
         cx.notify();
@@ -323,13 +256,5 @@ mod tests {
         assert!(control.person_holds());
         assert_eq!(control.displaced, None, "nobody to name");
         assert!(control.agent_claims(agent("a"), false, None).is_err());
-        assert!(
-            Refused::PersonHasControl {
-                since: Instant::now(),
-                mode: Mode::Implicit
-            }
-            .message()
-            .starts_with("person_has_control")
-        );
     }
 }

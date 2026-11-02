@@ -39,6 +39,8 @@ serde_json = "1"
 [dev-dependencies]
 # The MCP server end to end, over a pipe, against the daemon the tests start.
 colosso-term-mcp = { path = "../term-mcp" }
+# The error the server's app tools answer with when no app runs.
+colosso-app-control = { path = "../app-control" }
 tokio = { version = "1", features = ["rt-multi-thread", "io-util", "time"] }
 
 [lints]

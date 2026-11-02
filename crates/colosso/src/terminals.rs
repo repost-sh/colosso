@@ -9,9 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use colosso_term::{Look, Source, TermClient, TerminalEvent, TerminalView};
-use colosso_term_control::{
-    DaemonCommand, Handle, IfExists, OpenRequest, RequestBody, ResponseBody, Selector, TermDir,
-};
+use colosso_term_control::{DaemonCommand, Handle, IfExists, OpenRequest, Selector, TermDir};
 use gpui_kit::{
     AnyElement, AppContext as _, Context, Entity, Focusable as _, Hsla, InteractiveElement as _,
     IntoElement as _, ParentElement as _, Rgba, Styled as _, Subscription, Task, Window, div, px,
@@ -24,6 +22,7 @@ use crate::theme::{self, Palette};
 
 mod beside;
 mod header;
+mod open;
 mod panel;
 mod restore;
 pub(crate) mod states;
@@ -51,6 +50,30 @@ pub struct Terminals {
     panel_share: Option<f32>,
 }
 
+/// A client of the terminal daemon: the daemon is this executable run as `colosso termd`,
+/// started when none runs and a request needs it. Tests start no daemon and read none, as
+/// the user's terminals aren't theirs.
+pub(crate) fn daemon_client() -> Option<Arc<TermClient>> {
+    let dir = term_dir().filter(|_| !cfg!(test))?;
+    Some(TermClient::new(dir, daemon_command()))
+}
+
+/// The terminal daemon's folder in the app's data folder.
+pub(crate) fn term_dir() -> Option<TermDir> {
+    settings::data_dir().map(|data| TermDir::at(data.join("term")))
+}
+
+/// The terminal daemon as this executable runs it: `colosso termd`.
+pub(crate) fn daemon_command() -> DaemonCommand {
+    DaemonCommand {
+        program: std::env::current_exe().unwrap_or_else(|error| {
+            log::error!("can't find this executable to run the terminal daemon: {error}");
+            "colosso".into()
+        }),
+        args: vec!["termd".into()],
+    }
+}
+
 /// Binds the terminals' keys; call once when the app starts.
 pub fn init(cx: &mut gpui_kit::App) {
     beside::init(cx);
@@ -61,22 +84,7 @@ impl Terminals {
     /// `colosso termd`, started when none runs.
     fn client(&mut self) -> Option<Arc<TermClient>> {
         if self.client.is_none() {
-            // Tests start no daemon and read none: the user's terminals aren't theirs.
-            let dir = settings::data_dir()
-                .filter(|_| !cfg!(test))
-                .map(|data| TermDir::at(data.join("term")))?;
-            let program = match std::env::current_exe() {
-                Ok(program) => program,
-                Err(error) => {
-                    log::error!("can't find this executable to run the terminal daemon: {error}");
-                    return None;
-                }
-            };
-            let daemon = DaemonCommand {
-                program,
-                args: vec!["termd".into()],
-            };
-            self.client = Some(TermClient::new(dir, daemon));
+            self.client = daemon_client();
         }
         self.client.clone()
     }
@@ -190,68 +198,6 @@ fn open_request(worktree: &Path, name: String) -> OpenRequest {
 }
 
 impl Shell {
-    /// Opens a shell in the selected checkout, in a new tab, named after the shell and the
-    /// next free number.
-    pub fn new_terminal(&mut self, cx: &mut Context<Self>) {
-        let Some(worktree) = self
-            .workspace
-            .branch()
-            .map(|unit| unit.worktree.path.clone())
-        else {
-            return;
-        };
-        let Some(client) = self.terminals.client() else {
-            return;
-        };
-        self.watch_terminals(cx);
-        cx.spawn(async move |this, cx| {
-            let listed = cx
-                .background_spawn({
-                    let worktree = worktree.clone();
-                    async move {
-                        client.request(RequestBody::ListTerminals {
-                            worktree: Some(Selector::Path(worktree)),
-                            status: None,
-                        })
-                    }
-                })
-                .await;
-            let taken: BTreeSet<String> = match listed {
-                Ok(ResponseBody::Terminals { terminals }) => terminals
-                    .into_iter()
-                    .map(|summary| summary.record.name)
-                    .collect(),
-                Ok(_) => BTreeSet::new(),
-                Err(error) => {
-                    log::warn!(
-                        "couldn't list the terminals of {}: {error}",
-                        worktree.display()
-                    );
-                    BTreeSet::new()
-                }
-            };
-            this.update(cx, |this, cx| {
-                // Names the open tabs hold count too: their terminals may not be open yet.
-                let mut taken = taken;
-                taken.extend(
-                    this.terminals
-                        .views
-                        .values()
-                        .map(|(view, _)| view.read(cx).name().to_owned()),
-                );
-                let name = free_name(&shell_name(), &taken);
-                let request = open_request(&worktree, name.clone());
-                let id = this.terminals.add(Source::Open(Box::new(request)));
-                this.terminals.focus_next = Some(id);
-                this.workspace
-                    .add_terminal_tab(&worktree, id, name.into(), true);
-                cx.notify();
-            })
-            .ok();
-        })
-        .detach();
-    }
-
     /// The view for terminal tab `id`, made now if it hasn't been.
     pub fn terminal_view(
         &mut self,

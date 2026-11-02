@@ -36,6 +36,7 @@ mod elements;
 mod reopen;
 mod reorder;
 mod splits;
+mod state;
 mod switcher;
 mod tab_face;
 mod tab_list;
@@ -170,16 +171,11 @@ impl Shell {
     }
 
     fn open_settings(&mut self, _: &OpenSettings, _: &mut Window, cx: &mut Context<Self>) {
-        let page = self.history.read(cx).last_settings_page();
-        self.navigate(Route::Settings(page), cx);
+        self.open_settings_page(None, cx);
     }
 
     fn toggle_sidebar(&mut self, _: &ToggleSidebar, _: &mut Window, cx: &mut Context<Self>) {
-        // Turning around mid-slide starts from wherever the sidebar is now.
-        let (reveal, _) = self.sidebar_reveal();
-        self.sidebar_open = !self.sidebar_open;
-        self.sidebar_slide = Some((reveal, Instant::now()));
-        cx.notify();
+        self.set_sidebar_open(!self.sidebar_open, cx);
     }
 
     /// How far out the sidebar is, from 0 hidden to 1 fully out, and whether it is still sliding.
@@ -201,8 +197,7 @@ impl Shell {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.bottom_panel_open = !self.bottom_panel_open;
-        cx.notify();
+        self.set_bottom_panel_open(!self.bottom_panel_open, cx);
     }
 
     pub fn new_tab(&mut self, kind: PaneKind, cx: &mut Context<Self>) {

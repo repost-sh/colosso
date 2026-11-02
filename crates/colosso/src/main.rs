@@ -5,6 +5,7 @@ mod browser;
 mod changes;
 mod checkout;
 mod checkouts;
+mod control;
 mod delete_worktree;
 mod files;
 mod go_to_file;
@@ -49,6 +50,7 @@ use gpui_kit::{
 fn init(cx: &mut App) {
     gpui_kit::init(cx);
     settings::init(cx);
+    settings_view::init(cx);
     key_repeat::init(cx);
     theme::init(cx);
     shell::init(cx);
@@ -107,15 +109,12 @@ fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
     match args.next().as_deref() {
         Some("termd") => return colosso_termd::main(args),
+        // `colosso app`: the app's operations from a shell, called on the running app's
+        // control socket (docs/app-control.md).
+        Some("app") => return colosso_app_control::cli_main(args),
         // `colosso mcp`: the terminals' MCP server an agent starts over stdio, which starts
         // the daemon from this executable when none runs.
-        Some("mcp") => {
-            let daemon = colosso_term_control::DaemonCommand {
-                program: std::env::current_exe().unwrap_or_else(|_| "colosso".into()),
-                args: vec!["termd".into()],
-            };
-            return colosso_term_mcp::main(args, daemon);
-        }
+        Some("mcp") => return colosso_term_mcp::main(args, terminals::daemon_command()),
         _ => {}
     }
     logs::init();
@@ -168,6 +167,8 @@ fn main() -> ExitCode {
         // Not in `init`, which tests and the visual check share: they run servers of
         // their own, or none.
         language::init(cx);
+        // Not in `init` either: tests drive app control without its socket.
+        control::start(cx);
         #[expect(clippy::expect_used, reason = "with no window there's no app to run")]
         open_main_window(cx).expect("failed to open window");
         // Ready before the first page asks for it.

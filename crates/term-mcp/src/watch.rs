@@ -1,11 +1,13 @@
-//! What tells subscribers a resource changed (`docs/terminals.md` 8.6): the daemon's events
-//! for the terminals and their activity, gathered for 100 ms and said once each, and the
-//! screens watched, looked at four times a second.
+//! What tells subscribers a resource changed (`docs/terminals.md` 8.6, `docs/app-control.md`
+//! 7): the daemon's events for the terminals and their activity, gathered for 100 ms and
+//! said once each; the screens watched, looked at four times a second; and the app's topic
+//! events, which the app gathers itself, for the app's resources.
 
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use colosso_app_control::Topic;
 use colosso_term_control::exec::Executor;
 use colosso_term_control::{Event, EventKind, Handle, LogKind, Message};
 use crossbeam_channel::{Receiver, RecvTimeoutError};
@@ -47,10 +49,11 @@ impl Watch {
         self.updates.subscribe()
     }
 
-    /// Watches `uri`; a screen's frame is taken now, so a change from here on is said.
-    pub fn add(&self, uri: &Uri, executor: &Executor) {
+    /// Watches `uri`; a screen's frame is taken now, on the daemon connection, so a change
+    /// from here on is said. The app's resources need no connection here.
+    pub fn add(&self, uri: &Uri, executor: Option<&Executor>) {
         *self.watched.lock().entry(uri.clone()).or_default() += 1;
-        if let Uri::Screen(handle) = uri
+        if let (Uri::Screen(handle), Some(executor)) = (uri, executor)
             && let Ok(frame) = executor.frame(&Handle(handle.clone()))
         {
             self.frames.lock().entry(handle.clone()).or_insert(frame);
@@ -65,6 +68,33 @@ impl Watch {
                 watched.remove(uri);
             }
         }
+    }
+
+    /// The app topics the watched resources need followed.
+    pub fn app_topics(&self) -> BTreeSet<Topic> {
+        (self.watched.lock().keys())
+            .filter_map(|uri| match uri {
+                Uri::App(resource) => Some(resource.topic()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The app said `topic` changed: so did the resources it covers.
+    pub fn topic_changed(&self, topic: Topic) {
+        let covered = topic.resources().iter().filter_map(|uri| Uri::parse(uri));
+        self.say(covered.map(Update::Resource).collect());
+    }
+
+    /// The app is followed again after it went away: what changed meanwhile is unknown, so
+    /// every watched app resource may have.
+    pub fn resumed(&self) {
+        let watched: BTreeSet<Update> = (self.watched.lock().keys())
+            .filter(|uri| matches!(uri, Uri::App(_)))
+            .cloned()
+            .map(Update::Resource)
+            .collect();
+        self.say(watched);
     }
 
     fn say(&self, updates: BTreeSet<Update>) {

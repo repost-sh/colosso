@@ -137,6 +137,11 @@ impl RightPanel {
         self.open && self.view == view
     }
 
+    /// What the panel shows, while it's open.
+    pub fn shown_view(&self) -> Option<View> {
+        self.open.then_some(self.view)
+    }
+
     fn shown(&self) -> Option<&Panels> {
         self.checkouts.get(self.selected.as_deref()?)
     }
@@ -269,10 +274,17 @@ impl Shell {
     /// Closes the right panel if it shows `view`, and shows `view` otherwise.
     fn toggle(&mut self, view: View, cx: &mut Context<Self>) {
         if self.right_panel.shows(view) {
-            self.right_panel.open = false;
-            cx.notify();
+            self.close_right_panel(cx);
         } else {
             self.show(view, cx);
+        }
+    }
+
+    /// Closes the right panel, whatever it shows.
+    pub(crate) fn close_right_panel(&mut self, cx: &mut Context<Self>) {
+        if self.right_panel.open {
+            self.right_panel.open = false;
+            cx.notify();
         }
     }
 

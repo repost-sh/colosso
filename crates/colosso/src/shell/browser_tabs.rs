@@ -20,21 +20,40 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.open_browser_tab(url, false, window, cx);
+    }
+
+    /// Opens a browser tab on the selected checkout, at `url` or on the start page with the
+    /// address ready to type in, after its last tab or, when `beside`, right after the tab
+    /// shown; shows it, and gives back its pane.
+    pub(crate) fn open_browser_tab(
+        &mut self,
+        url: Option<String>,
+        beside: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<u64> {
         let Some(project) = self.workspace.project().map(|project| project.path.clone()) else {
             log::warn!("no checkout is selected to open a browser tab on");
-            return;
+            return None;
         };
         let url = url.unwrap_or_default();
         let start = url.is_empty();
         let view = self.browser_view(url, &project, window, cx);
         let pane = Pane::browser(view.clone(), cx);
-        self.workspace.push_tab(Tab::Single(pane));
+        let id = pane.id;
+        if beside {
+            self.workspace.open_beside_shown(Tab::Single(pane));
+        } else {
+            self.workspace.push_tab(Tab::Single(pane));
+        }
         if start {
             view.update(cx, |view, cx| view.focus_address(window, cx));
         }
         // A new tab is something to look at, so leave settings for it.
         self.navigate(Route::Workspace, cx);
         cx.notify();
+        Some(id)
     }
 
     /// A page of `project`'s profile at `url`, the shell hearing what it says.
@@ -158,16 +177,19 @@ impl Shell {
         self.ask_then(editors, move |shell, cx| shell.close_pane_now(id, cx), window, cx);
     }
 
-    /// Closes pane `id`, and its tab when it's the tab's only pane, whatever its file has.
-    /// Detached `DevTools` close for their page, and a page's detached `DevTools` close
-    /// with it.
-    fn close_pane_now(&mut self, id: u64, cx: &mut Context<Self>) {
-        let unit = self.workspace.branch();
+    /// Closes pane `id`, on whichever checkout it is, and its tab when it's the tab's only
+    /// pane, whatever its file has. Detached `DevTools` close for their page, and a page's
+    /// detached `DevTools` close with it.
+    pub(crate) fn close_pane_now(&mut self, id: u64, cx: &mut Context<Self>) {
+        let Some(((project, branch, _), _)) = self.workspace.find_pane(|pane| pane.id == id) else {
+            return;
+        };
+        let unit = self.workspace.unit_mut(project, branch);
         let view = unit.and_then(|unit| unit.pane(id)?.browser.clone());
         if let Some(view) = view {
             self.let_devtools_go(view, cx);
         }
-        if let Some(unit) = self.workspace.branch_mut() {
+        if let Some(unit) = self.workspace.unit_mut(project, branch) {
             unit.close_pane(id);
         }
         cx.notify();

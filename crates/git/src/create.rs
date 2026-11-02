@@ -188,7 +188,7 @@ fn github_cli_user(dir: &Path) -> Option<String> {
 /// Turns what the user typed into a folder and branch name: lowercase, with every run of
 /// characters other than letters, digits, `.`, `_` and `-` made one `-`, and nothing git
 /// refuses in a branch name (`..`, leading or trailing `.` and `-`, a `.lock` ending).
-fn slugify(name: &str) -> String {
+pub fn slugify(name: &str) -> String {
     let mut slug = String::new();
     for c in name.to_lowercase().chars() {
         let c = if c.is_alphanumeric() || matches!(c, '.' | '_' | '-') {

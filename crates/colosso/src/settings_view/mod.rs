@@ -6,9 +6,12 @@ mod appearance;
 mod browser;
 mod components;
 mod editor;
+mod field_dialog;
 mod general;
 mod keyboard_shortcuts;
 mod languages;
+mod mcp_clients;
+mod mcp_server;
 mod native_slider;
 mod native_switch;
 #[cfg(all(target_os = "macos", feature = "visual-check"))]
@@ -34,6 +37,7 @@ pub enum SettingsPage {
     Appearance,
     Browser,
     KeyboardShortcuts,
+    McpServer,
     About,
 }
 
@@ -48,6 +52,7 @@ const SIDEBAR_GROUPS: [(&str, &[SettingsPage]); 2] = [
             SettingsPage::Appearance,
             SettingsPage::Browser,
             SettingsPage::KeyboardShortcuts,
+            SettingsPage::McpServer,
         ],
     ),
     ("Colosso", &[SettingsPage::About]),
@@ -62,6 +67,7 @@ impl SettingsPage {
             SettingsPage::Appearance => "Appearance",
             SettingsPage::Browser => "Browser",
             SettingsPage::KeyboardShortcuts => "Keyboard shortcuts",
+            SettingsPage::McpServer => "MCP server",
             SettingsPage::About => "About",
         }
     }
@@ -74,6 +80,7 @@ impl SettingsPage {
             SettingsPage::Appearance => IconName::SunMoon,
             SettingsPage::Browser => IconName::Globe,
             SettingsPage::KeyboardShortcuts => IconName::Keyboard,
+            SettingsPage::McpServer => IconName::Plug,
             SettingsPage::About => IconName::Info,
         }
     }
@@ -86,6 +93,7 @@ impl SettingsPage {
             SettingsPage::Appearance => appearance::sections(cx),
             SettingsPage::Browser => browser::sections(cx),
             SettingsPage::KeyboardShortcuts => keyboard_shortcuts::sections(cx),
+            SettingsPage::McpServer => mcp_server::sections(cx),
             SettingsPage::About => about::sections(cx),
         }
     }
@@ -100,6 +108,11 @@ impl SettingsPage {
                 .iter()
                 .any(|section| section.matches(query))
     }
+}
+
+/// Sets up what the pages answer outside their own views: the MCP server page's menus.
+pub fn init(cx: &mut App) {
+    mcp_clients::init(cx);
 }
 
 /// The page's contents for the card.
@@ -194,6 +207,7 @@ mod tests {
             SettingsPage::Languages,
             SettingsPage::Appearance,
             SettingsPage::KeyboardShortcuts,
+            SettingsPage::McpServer,
             SettingsPage::About,
         ] {
             assert_eq!(listed.iter().filter(|&&&listed| listed == page).count(), 1);

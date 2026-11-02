@@ -25,7 +25,7 @@ impl Shell {
 
     /// Shows the selected checkout's Changes tab, opening it on `panel`'s diffs right after
     /// the tab shown if it isn't open.
-    fn show_changes(&mut self, panel: &Entity<ChangesPanel>, cx: &mut Context<Self>) {
+    pub(crate) fn show_changes(&mut self, panel: &Entity<ChangesPanel>, cx: &mut Context<Self>) {
         let Some((project, branch, _)) = self.workspace.shown_tab() else {
             return;
         };

@@ -9,7 +9,7 @@ use colosso_git::{Repo, Worktree};
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::{
     Action, App, AppContext as _, ClipboardItem, Context, Div, InteractiveElement, MouseButton,
-    MouseDownEvent, PathPromptOptions, Window, actions,
+    MouseDownEvent, PathPromptOptions, Task, Window, actions,
 };
 
 use crate::model::PaneKind;
@@ -223,25 +223,45 @@ impl Shell {
             let Some(folder) = picked.await else {
                 return;
             };
-            let opened = cx
+            let Ok(adding) = this.update(cx, |this, cx| this.add_project_at(folder, cx)) else {
+                return;
+            };
+            if let Err(error) = adding.await {
+                this.update_in(cx, |_, window, cx| {
+                    modal::alert("Couldn't add the project", error, window, cx);
+                })
+                .ok();
+            }
+        })
+        .detach();
+    }
+
+    /// Adds the repository `folder` is in, by its main checkout, once git has listed its
+    /// worktrees off the main thread, and selects it. Done with the main checkout's path, or
+    /// with why it couldn't be added.
+    pub fn add_project_at(
+        &mut self,
+        folder: PathBuf,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<PathBuf, String>> {
+        cx.spawn(async move |this, cx| {
+            let (path, worktrees) = cx
                 .background_spawn(async move {
                     let repo = Repo::open(&folder)?;
                     let worktrees = repo.worktrees()?;
                     Ok::<_, colosso_git::GitError>((repo.path().to_owned(), worktrees))
                 })
-                .await;
-            this.update_in(cx, |this, window, cx| match opened {
-                Ok((path, worktrees)) => {
-                    let project = this.workspace.add_project(path);
-                    this.workspace.set_worktrees(project, worktrees);
-                    this.save_projects(cx);
-                    cx.notify();
-                }
-                Err(error) => modal::alert("Couldn't add the project", error.message, window, cx),
+                .await
+                .map_err(|error| error.message)?;
+            this.update(cx, |this, cx| {
+                let project = this.workspace.add_project(path.clone());
+                this.workspace.set_worktrees(project, worktrees);
+                this.save_projects(cx);
+                cx.notify();
             })
-            .ok();
+            .map_err(|error| format!("The window closed: {error}"))?;
+            Ok(path)
         })
-        .detach();
     }
 
     /// Shows the worktree just created at `path` in the project at `project`, with a chat open
@@ -271,7 +291,7 @@ impl Shell {
         }
     }
 
-    fn save_projects(&self, cx: &mut Context<Self>) {
+    pub(crate) fn save_projects(&self, cx: &mut Context<Self>) {
         let paths = self.workspace.paths();
         settings::update(cx, |settings| settings.projects = paths);
     }
