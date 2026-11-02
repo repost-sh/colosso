@@ -22,7 +22,9 @@ use std::sync::{Mutex, OnceLock};
 mod frames;
 mod input;
 mod inspect;
+mod live;
 mod panes;
+mod sizing;
 
 use frames::release;
 pub(crate) use frames::{accelerated_frame, logical_size, popup_moved, popup_shown, scale};
@@ -48,6 +50,11 @@ enum Queued {
     ToPage {
         page: PaneId,
         messages: Vec<String>,
+    },
+    /// What live sizing does next, decided within a paint or an answer.
+    Live {
+        pane: PaneId,
+        todo: Vec<live::Do>,
     },
 }
 
@@ -96,8 +103,14 @@ struct Pane {
     inspector: Option<(PaneId, crate::devtools::Bridge)>,
     /// Requests that need the browser, made before it was created.
     waiting: Vec<AppRequest>,
-    /// When the page last changed size, until it paints at the new one.
-    resized: Option<std::time::Instant>,
+    /// What the page is being sized to, while its pane's edge is dragged.
+    sizing: sizing::Sizing,
+    /// A drag the page follows by device metrics on a view of its own size (`live.rs`).
+    live: Option<live::Live>,
+    /// The host's own commands in the page's session, until answered.
+    own: HashMap<i64, live::drive::Own>,
+    /// The app's own device metrics for the page (a responsive mode's), which a drag keeps.
+    app_metrics: Option<serde_json::Value>,
     /// Keeps the page's `DevTools` protocol messages coming, once `DevTools`
     /// or the app's agent commands need them.
     observer: Option<cef::Registration>,
@@ -134,7 +147,10 @@ impl Pane {
             inspected: None,
             inspector: None,
             waiting: Vec::new(),
-            resized: None,
+            sizing: sizing::Sizing::default(),
+            live: None,
+            own: HashMap::new(),
+            app_metrics: None,
             observer: None,
             agent: None,
             loaded: false,
@@ -291,10 +307,7 @@ fn read_requests(reader: UnixStream) {
             Ok(None) | Err(_) => AppRequest::Shutdown,
         };
         let last = request == AppRequest::Shutdown;
-        if let Ok(mut queue) = QUEUE.lock() {
-            queue.push_back(Queued::App(request));
-        }
-        post_drain();
+        enqueue(Queued::App(request));
         if last {
             return;
         }
@@ -309,6 +322,19 @@ wrap_task! {
             drain();
         }
     }
+}
+
+/// Handles `request` on the UI thread after what it is doing now.
+fn later(request: AppRequest) {
+    enqueue(Queued::App(request));
+}
+
+/// Queues `work` for the UI thread, after what it is doing now.
+fn enqueue(work: Queued) {
+    if let Ok(mut queue) = QUEUE.lock() {
+        queue.push_back(work);
+    }
+    post_drain();
 }
 
 /// A drain is queued on the UI thread and has not started yet.
@@ -354,6 +380,7 @@ fn drain() {
             Some(Queued::App(request)) => handle(request),
             Some(Queued::Frontend { pane, text }) => frontend_message(pane, &text),
             Some(Queued::ToPage { page, messages }) => to_page(page, &messages),
+            Some(Queued::Live { pane, todo }) => live::drive::run(pane, &todo),
             None => {}
         }
     }

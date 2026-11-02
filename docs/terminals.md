@@ -475,6 +475,8 @@ Attach { handle, size?, mode: control|observe, since_offset?: u64 }
        → AttachOk { terminal, offset: u64 } then Snapshot{...} then Output{...}* 
 Detach { handle }
 Resize { handle, cols, rows, cell_w_px, cell_h_px }
+Pin    { handle, size? }                           → Pinned { size, pinned }   (protocol 2;
+         a size every viewer shows, owned by the connection; `docs/responsive.md` 3.1)
 Rename { handle, name? , title? , labels? }
 Signal { handle, signal }
 Close  { handle, force?: bool }                    → requires control or manage scope
@@ -912,7 +914,8 @@ sees the shell back from its screen, idle at its prompt.
    Frames are published at most once per display refresh; the thread coalesces.
 3. `TerminalElement` (a GPUI element implementing `Element`):
    - layout: cell size from the font's advance and line height, grid = floor(size / cell),
-     a resize request is sent to the daemon when the grid changes (debounced ~50 ms).
+     a resize request is sent to the daemon when the grid changes, one at a time (the latest
+     once the last is answered), so a dragged pane resizes the program at every frame.
    - prepaint: for dirty rows build runs of equal background → quads; for each cell with a
      grapheme, look up a shaped glyph in a cache keyed `(font_id, grapheme, bold, italic)`
      (shape through GPUI's text system once, store glyph ids and offsets), and queue
@@ -1155,7 +1158,8 @@ terminal_list
   TerminalSummary = { terminal: handle, name, title?, worktree: { path, branch?, project },
     cwd, outsideWorktree: bool, command: [string], status, statusReason, lastExit?,
     progress?, controller?: Actor, observers: int, attachedClients: int, lastOutputAt,
-    createdAt, createdBy: Actor, labels, preview: string (last non-empty screen line) }
+    createdAt, createdBy: Actor, labels, pinned: null | { cols, rows, by: Actor },
+    preview: string (last non-empty screen line) }
 
 terminal_open
   { worktree?: selector, name: string, command?: [string] | string, cwd?: path,
@@ -1163,7 +1167,10 @@ terminal_open
     ifExists?: "attach" | "error" (default attach), respawn?: bool (default false),
     reveal?: "none" | "tab" | "focus" (default "tab": a tab appears without stealing focus),
     claim?: bool (default true: take control if free), requestId? }
-  → { terminal: TerminalSummary, existed: bool, control: ControlState }
+  → { terminal: TerminalSummary, existed: bool, control: ControlState,
+      pinned?: null | { cols, rows, by }, pinRefused?: { code, message } }
+  // `size` pins that size while the relay's connection lasts (`pinned`; `pinned: null` and
+  // `pinRefused` when the lease refused it); with `claim: false` it's only the starting size
 
 terminal_read
   { terminal?: handle, mode?: "screen" | "stream" | "scrollback" (default screen),
@@ -1205,7 +1212,13 @@ terminal_claim     { terminal?: handle, takeover?: bool, reason?: string, reques
                    → { control: ControlState }  // errors: person_has_control, control_taken_by
 terminal_release   { terminal?: handle } → { control }
 terminal_control   { terminal?: handle } → { control, queue, activityTail: [..5] }
-terminal_resize    { terminal?: handle, cols, rows } → { size }
+terminal_resize    { terminal?: handle, cols, rows } | { terminal?, fill: true },
+                   then?: { wait?: WaitSpec, read?: ReadSpec }, requestId?
+                   → { size: { cols, rows }, pinned: null | { cols, rows, by },
+                       wait?: WaitResult, read?: ReadResult }
+                   // pins the size for every viewer while the relay's connection lasts;
+                   // without `then` waits for a still screen (300 ms, 25 s) and reads it
+                   // (`docs/responsive.md` 3.1, 4.2)
 terminal_rename    { terminal?: handle, name?: string, title?: string, labels?: [string] }
 terminal_signal    { terminal?: handle, signal: "int" | "term" | "hup" | "kill" | "tstp" | "cont" }
 terminal_close     { terminal?: handle, worktree?: selector, all?: bool, force?: bool, requestId? }
@@ -1228,8 +1241,10 @@ observers: [Actor], youHold: bool }`.
 `project` and `worktree_list` takes no arguments; `terminal_read` has `screen` and `stream`
 but no `scrollback` mode, no `format` (text only) and no `withRefs`; `terminal_open` has no
 `reveal` (the app reveals every agent's terminal, 9); `terminal_close` closes one terminal,
-with no `worktree`, `all` or `force`; `terminal_resize` and `terminal_screenshot` are
-missing (8.1). `requestId` is kept by the relay, not the daemon (5.4's input ids).
+with no `worktree`, `all` or `force`; `terminal_screenshot` is missing (8.1).
+`terminal_resize` is built (2026-11-02, `term-control/src/exec/resize.rs`) as the daemon's
+`Pin` (`docs/responsive.md`); `terminal_open`'s `size` pins that size for the agent that
+claims it, and is only the starting size with `claim: false`. `requestId` is kept by the relay, not the daemon (5.4's input ids).
 
 ### 8.6 Resources and subscriptions [decided]
 

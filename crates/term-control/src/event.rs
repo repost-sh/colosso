@@ -8,7 +8,9 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::protocol::ProtocolError;
-use crate::terminal::{Actor, Control, Exit, Handle, Progress, Size, Status, TerminalRecord};
+use crate::terminal::{
+    Actor, Control, Exit, Handle, Pinned, Progress, Size, Status, TerminalRecord,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Event {
@@ -53,9 +55,12 @@ pub enum EventKind {
         change: ControlChange,
         control: Control,
     },
-    /// The terminal's one size changed, so other clients letterbox.
+    /// The terminal's one size changed, or the pin it comes from, so other clients
+    /// letterbox and the app's views lay the pinned grid out.
     Size {
         size: Size,
+        #[serde(default)]
+        pinned: Option<Pinned>,
     },
     /// OSC 9 or 777: a program asks for attention.
     Notification {

@@ -31,7 +31,8 @@ pub use protocol::{
     SNAPSHOT_FORMAT, ScreenCursor, ScreenRead, SendRequest, Signal, Welcome, WorktreeSummary,
 };
 pub use terminal::{
-    Actor, ActorKind, Control, Controller, Exit, Handle, Progress, Selector, Size, Status,
-    TerminalRecord, TerminalSummary, WorktreeRef, worktree_root,
+    Actor, ActorKind, Control, Controller, Exit, Handle, PIN_CELLS, Pinned, Progress, Selector,
+    Size, Status, TerminalRecord, TerminalSummary, WorktreeRef, clamp_pin_cells, pin_cells_error,
+    worktree_root,
 };
 pub use ulid::now_ms;

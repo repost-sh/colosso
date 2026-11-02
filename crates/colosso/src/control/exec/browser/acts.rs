@@ -97,6 +97,34 @@ pub(crate) fn snapshot(
     })
 }
 
+/// An image of the page as the pane shows it, or the whole page: the image, base64-encoded.
+pub(super) async fn capture(
+    page: &Page,
+    format: ImageFormat,
+    full_page: bool,
+    cx: &mut AsyncApp,
+) -> Result<String, ControlError> {
+    let mut params = json!({
+        "format": match format { ImageFormat::Png => "png", ImageFormat::Jpeg => "jpeg" },
+    });
+    if full_page {
+        let metrics = call(page, None, "Page.getLayoutMetrics", json!({}), cx).await?;
+        let size = metrics.get("cssContentSize").cloned().unwrap_or_default();
+        params["captureBeyondViewport"] = json!(true);
+        params["clip"] = json!({
+            "x": 0, "y": 0,
+            "width": size.get("width").and_then(Value::as_f64).unwrap_or(1280.),
+            "height": size.get("height").and_then(Value::as_f64).unwrap_or(800.),
+            "scale": 1,
+        });
+    }
+    let mut shot = call(page, None, "Page.captureScreenshot", params, cx).await?;
+    let Value::String(data) = shot["data"].take() else {
+        return Err(ControlError::browser_unavailable("The page gave no image."));
+    };
+    Ok(data)
+}
+
 pub(crate) fn screenshot(
     caller: &Caller,
     input: &BrowserScreenshotInput,
@@ -105,24 +133,7 @@ pub(crate) fn screenshot(
     let format = input.format.unwrap_or(ImageFormat::Png);
     let full_page = input.full_page.unwrap_or(false);
     on_page(caller, input.pane, false, cx, async move |page, _, cx| {
-        let mut params = json!({
-            "format": match format { ImageFormat::Png => "png", ImageFormat::Jpeg => "jpeg" },
-        });
-        if full_page {
-            let metrics = call(&page, None, "Page.getLayoutMetrics", json!({}), cx).await?;
-            let size = metrics.get("cssContentSize").cloned().unwrap_or_default();
-            params["captureBeyondViewport"] = json!(true);
-            params["clip"] = json!({
-                "x": 0, "y": 0,
-                "width": size.get("width").and_then(Value::as_f64).unwrap_or(1280.),
-                "height": size.get("height").and_then(Value::as_f64).unwrap_or(800.),
-                "scale": 1,
-            });
-        }
-        let mut shot = call(&page, None, "Page.captureScreenshot", params, cx).await?;
-        let Value::String(data) = shot["data"].take() else {
-            return Err(ControlError::browser_unavailable("The page gave no image."));
-        };
+        let data = capture(&page, format, full_page, cx).await?;
         let at = cx.update(|cx| now(&page, cx));
         output(&BrowserScreenshotOutput {
             pane: at.pane,

@@ -298,13 +298,18 @@ pub fn start_daemon(dir: &TermDir, daemon: &DaemonCommand) -> io::Result<()> {
     Ok(())
 }
 
-/// How long a daemon told to stop may take to stop listening.
-const STOP_WAIT: Duration = Duration::from_secs(10);
+/// How long a daemon told to stop may take to stop listening before it's killed.
+const STOP_WAIT: Duration = Duration::from_secs(5);
+/// How long a killed daemon may take to let go of its socket.
+const KILL_WAIT: Duration = Duration::from_secs(5);
 
 /// Stops the daemon in `dir` so another build's can start in its place (`docs/terminals.md`
 /// 5.1): asked to shut down when it takes `hello`, else sent SIGTERM through the pid its
 /// lock holds, and only while the lock is held, so a pid a daemon gone left there is never
-/// signalled. Returns once nothing listens in `dir`; nothing listening is nothing to do.
+/// signalled. A daemon still listening after [`STOP_WAIT`] is killed, the same way: its
+/// programs end either way, and an old build that doesn't stop would keep the person's
+/// terminals from ever coming back. Returns once nothing listens in `dir`; nothing listening
+/// is nothing to do.
 pub fn stop_daemon(dir: &TermDir, hello: &Hello) -> Result<(), ClientError> {
     let (tx, _inbox) = inbox();
     match Connection::connect(&dir.socket(), hello, tx) {
@@ -315,20 +320,37 @@ pub fn stop_daemon(dir: &TermDir, hello: &Hello) -> Result<(), ClientError> {
         },
         Err(ClientError::Io(error)) if not_running(&error) => return Ok(()),
         // Another protocol refuses the hello; only the signal reaches it.
-        Err(_) => terminate(dir)?,
+        Err(_) => signal(dir, libc::SIGTERM)?,
     }
-    let until = Instant::now() + STOP_WAIT;
+    if stopped_within(dir, STOP_WAIT) {
+        return Ok(());
+    }
+    log::warn!(
+        "the terminal daemon in {} didn't stop when asked; killing it",
+        dir.root().display()
+    );
+    signal(dir, libc::SIGKILL)?;
+    if stopped_within(dir, KILL_WAIT) {
+        Ok(())
+    } else {
+        Err(ClientError::Timeout)
+    }
+}
+
+/// Whether nothing listens in `dir` within `wait`.
+fn stopped_within(dir: &TermDir, wait: Duration) -> bool {
+    let until = Instant::now() + wait;
     while UnixStream::connect(dir.socket()).is_ok() {
         if Instant::now() >= until {
-            return Err(ClientError::Timeout);
+            return false;
         }
         std::thread::park_timeout(Duration::from_millis(50));
     }
-    Ok(())
+    true
 }
 
-/// Sends SIGTERM to the daemon whose pid `dir`'s lock holds, if one still holds it.
-fn terminate(dir: &TermDir) -> io::Result<()> {
+/// Sends `signal` to the daemon whose pid `dir`'s lock holds, if one still holds it.
+fn signal(dir: &TermDir, signal: libc::c_int) -> io::Result<()> {
     let mut lock = std::fs::File::open(dir.lock())?;
     match lock.try_lock() {
         // No daemon holds it, so the pid in it is stale.
@@ -342,7 +364,7 @@ fn terminate(dir: &TermDir) -> io::Result<()> {
         io::Error::other(format!("{} holds no pid: {error}", dir.lock().display()))
     })?;
     // SAFETY: `kill` takes a pid and a signal number, and borrows nothing.
-    if unsafe { libc::kill(pid, libc::SIGTERM) } == 0 {
+    if unsafe { libc::kill(pid, signal) } == 0 {
         Ok(())
     } else {
         Err(io::Error::last_os_error())

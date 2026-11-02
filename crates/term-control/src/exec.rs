@@ -4,6 +4,7 @@
 
 mod log;
 mod read;
+mod resize;
 mod shape;
 
 use std::collections::VecDeque;
@@ -82,6 +83,12 @@ impl Executor {
         self.connection.is_closed()
     }
 
+    /// Ends the daemon connection, though others still hold it: the daemon ends this
+    /// client's pins and leases, and whoever reads it learns it's closed.
+    pub fn disconnect(&self) {
+        self.connection.close();
+    }
+
     /// Carries out operation `name` with `args`, as the MCP's `tools/call` asks.
     pub fn call(&self, name: &str, args: Value) -> Result<Done, ProtocolError> {
         let operation = operation(name)
@@ -114,6 +121,7 @@ impl Executor {
             "terminal_claim" => self.claim(parse(&args)?),
             "terminal_release" => self.release(&parse(&args)?),
             "terminal_control" => self.control(&parse(&args)?),
+            "terminal_resize" => self.resize(parse(&args)?),
             "terminal_rename" => self.rename(parse(&args)?),
             "terminal_signal" => self.signal(&parse(&args)?),
             "terminal_close" => self.close(&parse(&args)?),
@@ -301,7 +309,8 @@ impl Executor {
         };
         self.remember(&record.handle);
         let mut control = record.control.clone();
-        if args.claim.unwrap_or(true) && control.holder.is_none() {
+        let claiming = args.claim.unwrap_or(true);
+        if claiming && control.holder.is_none() {
             let claim = RequestBody::Claim {
                 handle: record.handle.clone(),
                 takeover: false,
@@ -312,18 +321,26 @@ impl Executor {
             }
         }
         let verb = if existed { "found" } else { "opened" };
-        let summary = format!(
+        let mut summary = format!(
             "{verb} {} ({}); {}",
             record.name,
             record.handle,
             shape::holder(&control, &self.actor)
         );
+        let mut record = record;
+        // Without the claim the size is only the one it starts at: a pin needs the hold.
+        let pinned =
+            (args.size.filter(|_| claiming)).map(|size| self.pin_opened(&mut record, size));
+        let mut structured = json!({
+            "terminal": shape::record(&record, ""),
+            "existed": existed,
+            "control": shape::control(&control, &self.actor),
+        });
+        if let Some(pinned) = pinned {
+            summary.push_str(&resize::opened(&mut structured, &record, pinned));
+        }
         Ok(Done {
-            structured: json!({
-                "terminal": shape::record(&record, ""),
-                "existed": existed,
-                "control": shape::control(&control, &self.actor),
-            }),
+            structured,
             summary,
         })
     }

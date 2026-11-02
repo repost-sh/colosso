@@ -9,8 +9,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use colosso_term_control::{
-    ActorKind, ErrorCode, Event, EventKind, Handle, Input, Message, ProtocolError, Request,
-    RequestBody, ResponseBody, Selector, Status, TermDir, TerminalSummary,
+    ErrorCode, Event, EventKind, Handle, Input, Message, ProtocolError, Request, RequestBody,
+    ResponseBody, Selector, Status, TermDir, TerminalSummary,
 };
 use parking_lot::Mutex;
 
@@ -61,14 +61,9 @@ impl Daemon {
 
     pub fn remove_client(&self, client: &Arc<Client>) {
         self.clients.lock().remove(&client.id);
-        // An agent may hold terminals it never attached to, whose leases end with it too.
-        let sessions: Vec<Arc<SessionHandle>> = if client.actor.kind == ActorKind::Agent {
-            self.sessions.lock().values().cloned().collect()
-        } else {
-            (client.attached().iter())
-                .filter_map(|handle| self.session(handle))
-                .collect()
-        };
+        // A client may hold leases or pins on terminals it never attached to, which end
+        // with it too.
+        let sessions: Vec<Arc<SessionHandle>> = self.sessions.lock().values().cloned().collect();
         for session in sessions {
             let _ = session.tx.send(Cmd::ClientGone {
                 client_id: client.id,

@@ -34,10 +34,21 @@ use crate::subscriptions::subscribable;
 use crate::tools;
 use crate::watch::Watch;
 
-/// One MCP session's server; clones share its connections.
-#[derive(Clone)]
+/// One MCP session's server. The transport drops it when the session ends, and its daemon
+/// connection ends with it.
 pub struct Server {
     pub(crate) inner: Arc<Inner>,
+}
+
+impl Drop for Server {
+    /// Shuts the daemon connection down, so the daemon lets go of what it keeps for this
+    /// session (its pins, its leases): the threads that read the connection hold it open
+    /// otherwise, and an HTTP session's end isn't the process's.
+    fn drop(&mut self) {
+        if let Some(executor) = self.inner.executor.lock().take() {
+            executor.disconnect();
+        }
+    }
 }
 
 pub(crate) struct Inner {

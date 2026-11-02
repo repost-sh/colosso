@@ -92,6 +92,10 @@ gpui-pre = { version = "=0.3.10", default-features = false, optional = true }
 gpui-kit = { workspace = true, features = ["test-support"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+# GPUI's Metal renderer, for presenting frames in Core Animation's transaction, so a browser
+# page's native layer and what GPUI draws around it reach the screen together
+# (`vendor/README.md`).
+gpui-fast-apple = "0.1.12"
 # Haptic ticks on the theme picker's detents; the version GPUI already pulls in.
 objc = "0.2"
 # The system's accent colour, under each appearance, and word when System Settings changes

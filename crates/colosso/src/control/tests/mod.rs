@@ -10,6 +10,7 @@ mod projects;
 mod settings;
 mod socket;
 mod tabs;
+mod viewport;
 mod worktrees;
 
 use std::path::{Path, PathBuf};

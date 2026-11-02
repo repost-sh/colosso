@@ -25,6 +25,7 @@ mod orca;
 mod pane;
 mod picker;
 mod projects;
+mod responsive;
 mod right_panel;
 mod settings;
 mod settings_view;

@@ -1,7 +1,7 @@
 //! A page inspected: Chrome `DevTools` in a pane of their own, joined to the page's session,
 //! and the app's own protocol commands on it.
 use super::panes::create;
-use super::{Pane, QUEUE, Queued, host_of, post_drain, send, with, with_pane};
+use super::{Pane, Queued, enqueue, host_of, send, with, with_pane};
 use cef::{BrowserHost, ImplBrowserHost};
 use colosso_browser_ipc::{self as ipc, AppRequest, HostEvent, PaneId, Viewport};
 
@@ -103,7 +103,7 @@ pub(super) fn open_dev_tools(
 }
 
 /// Makes sure `page`'s protocol messages reach the host.
-fn observing(page: PaneId, host: &BrowserHost) -> bool {
+pub(crate) fn observing(page: PaneId, host: &BrowserHost) -> bool {
     let observed = with_pane(page, |p| p.observer.is_some()) == Some(true);
     if observed {
         return true;
@@ -155,6 +155,8 @@ pub(super) fn cdp(page: PaneId, call: u64, method: &str, params: serde_json::Val
         cdp_failed(page, call, "The page's DevTools session is unavailable.");
         return;
     }
+    let (method, params) = super::live::drive::app_command(page, method, params);
+    let method = method.as_str();
     let id = crate::devtools::host_id();
     with_pane(page, |p| {
         p.agent.get_or_insert_default().insert(id, call);
@@ -179,6 +181,11 @@ fn agent_message(page: PaneId, fields: &mut crate::devtools::Fields) -> bool {
         return false;
     }
     let id = fields.get("id").and_then(serde_json::Value::as_i64);
+    if let Some(id) = id
+        && super::live::drive::answered(page, id, fields.contains_key("error"))
+    {
+        return true;
+    }
     let (agent, call) = with_pane(page, |p| match p.agent.as_mut() {
         Some(calls) => (true, id.and_then(|id| calls.remove(&id))),
         None => (false, None),
@@ -275,21 +282,15 @@ pub(crate) fn from_page(page: PaneId, text: &str) {
     .flatten()
     .unwrap_or_default();
     if !to_send.is_empty() {
-        if let Ok(mut queue) = QUEUE.lock() {
-            queue.push_back(Queued::ToPage {
-                page,
-                messages: to_send,
-            });
-        }
-        post_drain();
+        enqueue(Queued::ToPage {
+            page,
+            messages: to_send,
+        });
     }
 }
 
 /// A `DevTools` frontend sent `text`; the page's session gets it on the UI
 /// thread.
 pub(crate) fn from_frontend(pane: PaneId, text: String) {
-    if let Ok(mut queue) = QUEUE.lock() {
-        queue.push_back(Queued::Frontend { pane, text });
-    }
-    post_drain();
+    enqueue(Queued::Frontend { pane, text });
 }

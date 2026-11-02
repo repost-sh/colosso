@@ -18,6 +18,9 @@ use super::frames::Ring;
 use super::view::BrowserView;
 
 mod events;
+mod inbox;
+
+use inbox::Inbox;
 
 /// How long a quitting host may take to close its pages.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
@@ -76,6 +79,11 @@ pub struct Browsers {
     /// Protocol commands under way, the app's and agents', by the app's number for each.
     calls: HashMap<u64, oneshot::Sender<CdpResult>>,
     next_call: u64,
+    /// What the host now starting or running says, until it's handled.
+    inbox: Option<std::sync::Arc<Inbox>>,
+    /// Every protocol command asked for, for a test to read: the page, method and params.
+    #[cfg(test)]
+    pub(super) asked: Vec<(PaneId, String, serde_json::Value)>,
     _events: Option<Task<()>>,
 }
 
@@ -118,6 +126,9 @@ impl Browsers {
             queued: Vec::new(),
             calls: HashMap::new(),
             next_call: 0,
+            inbox: None,
+            #[cfg(test)]
+            asked: Vec::new(),
             _events: None,
         });
         let quitting = browsers.downgrade();
@@ -239,6 +250,8 @@ impl Browsers {
         params: serde_json::Value,
     ) -> oneshot::Receiver<CdpResult> {
         let (answer, answered) = oneshot::channel();
+        #[cfg(test)]
+        self.asked.push((pane, method.to_owned(), params.clone()));
         if !matches!(self.host, Host::Running { .. } | Host::Starting) {
             let _ = answer.send(Err("The browser engine is not running.".into()));
             return answered;
@@ -282,10 +295,19 @@ impl Browsers {
         self.host = Host::Starting;
         self.starting_since = Some(Instant::now());
         self.notify_views(cx);
-        let (events, mut incoming) = mpsc::unbounded::<Incoming>();
+        // Each message goes in the inbox; the first since a drain rings the loop below's bell.
+        let inbox = Inbox::new();
+        self.inbox = Some(inbox.clone());
+        let (bell, mut rung) = mpsc::unbounded::<()>();
         let started = cx.background_executor().spawn(async move {
-            Connection::start(&launch, move |message| {
-                (events.unbounded_send(message).err()).map(mpsc::TrySendError::into_inner)
+            Connection::start(&launch, move |message: Incoming| {
+                if bell.is_closed() {
+                    return Some(message);
+                }
+                if inbox.put(message) {
+                    let _ = bell.unbounded_send(());
+                }
+                None
             })
         });
         let quietly = cx.background_executor().timer(STARTING_QUIETLY);
@@ -306,11 +328,8 @@ impl Browsers {
             if running.is_none() {
                 return;
             }
-            while let Some(message) = incoming.next().await {
-                if this
-                    .update(cx, |this, cx| this.receive(message, cx))
-                    .is_err()
-                {
+            while rung.next().await.is_some() {
+                if this.update(cx, Self::drain).is_err() {
                     return;
                 }
             }
@@ -428,6 +447,12 @@ impl Browsers {
             }
             _ => None,
         }
+    }
+
+    /// The running engine's Chromium major version.
+    pub fn chromium_major(&self) -> Option<String> {
+        let (_, chromium) = self.versions()?;
+        chromium.split('.').next().map(str::to_owned)
     }
 
     /// Stops the host, deletes what every project's pages keep (cookies, sign-ins, caches,

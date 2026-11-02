@@ -6,10 +6,10 @@ use bytes::Bytes;
 use colosso_term_control::{
     Actor, ActorKind, AttachMode, Auth, ClientInfo, ClientKind, Control, ControlChange, Controller,
     Decoder, ErrorCode, ErrorDetails, Event, EventKind, Exit, Handle, Hello, IfExists, Input,
-    Lagging, Message, OpenRequest, Outcome, Output, PROTOCOL, Progress, ProtocolError, Request,
-    RequestBody, Response, ResponseBody, SNAPSHOT_FORMAT, ScreenCursor, ScreenRead, Selector,
-    SendRequest, Signal, Size, SnapshotChunk, Status, TerminalRecord, TerminalSummary, Welcome,
-    WorktreeRef, WorktreeSummary,
+    Lagging, Message, OpenRequest, Outcome, Output, PROTOCOL, Pinned, Progress, ProtocolError,
+    Request, RequestBody, Response, ResponseBody, SNAPSHOT_FORMAT, ScreenCursor, ScreenRead,
+    Selector, SendRequest, Signal, Size, SnapshotChunk, Status, TerminalRecord, TerminalSummary,
+    Welcome, WorktreeRef, WorktreeSummary,
 };
 
 fn agent() -> Actor {
@@ -72,6 +72,11 @@ fn record() -> TerminalRecord {
         },
         attached_clients: 2,
         last_output_ms: 1_793_377_725_999,
+        pinned: Some(Pinned {
+            cols: 120,
+            rows: 40,
+            by: agent(),
+        }),
     }
 }
 
@@ -118,6 +123,14 @@ fn requests() -> Vec<RequestBody> {
                 cell_width_px: 0,
                 cell_height_px: 0,
             },
+        },
+        RequestBody::Pin {
+            handle: handle(),
+            size: Some(Size::cells(120, 40)),
+        },
+        RequestBody::Pin {
+            handle: handle(),
+            size: None,
         },
         RequestBody::Rename {
             handle: handle(),
@@ -192,6 +205,14 @@ fn responses() -> Vec<Outcome> {
         }),
         Outcome::Ok(ResponseBody::Resized {
             size: Size::default(),
+        }),
+        Outcome::Ok(ResponseBody::Pinned {
+            size: Size::cells(120, 40),
+            pinned: Some(Pinned {
+                cols: 120,
+                rows: 40,
+                by: human(),
+            }),
         }),
         Outcome::Ok(ResponseBody::Sent { bytes: 7 }),
         Outcome::Ok(ResponseBody::Screen(Box::new(ScreenRead {
@@ -305,6 +326,15 @@ fn events() -> Vec<EventKind> {
         },
         EventKind::Size {
             size: Size::default(),
+            pinned: None,
+        },
+        EventKind::Size {
+            size: Size::cells(200, 60),
+            pinned: Some(Pinned {
+                cols: 200,
+                rows: 60,
+                by: agent(),
+            }),
         },
         EventKind::Notification {
             title: "Claude Code".into(),

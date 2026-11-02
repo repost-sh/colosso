@@ -284,9 +284,58 @@ impl Session {
         }
     }
 
-    /// The terminal takes the smallest size among the clients attached in control mode;
-    /// observers never size it.
+    /// The terminal takes its pin while one is set, else the smallest size among the
+    /// clients attached in control mode; observers never size it.
     pub(super) fn negotiate_size(&mut self) {
+        self.settle_size(false);
+    }
+
+    /// Sizes the pty and the engine as `negotiate_size` says, and tells every client when the
+    /// size changed, or when `announce`, as a pin set or gone is news even at the same size.
+    pub(super) fn settle_size(&mut self, announce: bool) {
+        let clients = self.clients_size();
+        let size = match (&self.record.pinned, clients) {
+            // The pin's cells, in the cells the clients draw.
+            (Some(pinned), clients) => {
+                let cell = clients.unwrap_or(self.record.size);
+                Size {
+                    cols: pinned.cols,
+                    rows: pinned.rows,
+                    cell_width_px: cell.cell_width_px,
+                    cell_height_px: cell.cell_height_px,
+                }
+            }
+            (None, Some(size)) => size,
+            (None, None) => self.record.size,
+        };
+        let changed = size != self.record.size && size.cols != 0 && size.rows != 0;
+        if changed {
+            if let Some(pty) = &self.pty
+                && let Err(error) = pty.master.resize(pty::pty_size(size))
+            {
+                log::warn!("{}: couldn't resize the pty: {error}", self.record.handle);
+            }
+            if let Err(error) = self.engine.resize(engine_size(size)) {
+                log::warn!(
+                    "{}: couldn't resize the engine: {error}",
+                    self.record.handle
+                );
+            }
+            self.record.size = size;
+        }
+        if !changed && !announce {
+            return;
+        }
+        self.publish(true);
+        let event = EventKind::Size {
+            size: self.record.size,
+            pinned: self.record.pinned.clone(),
+        };
+        self.daemon.broadcast(&self.record.handle, &event);
+    }
+
+    /// The smallest size among the clients attached in control mode.
+    fn clients_size(&self) -> Option<Size> {
         let mut best: Option<Size> = None;
         for attached in self.clients.values() {
             if attached.mode != AttachMode::Control {
@@ -298,25 +347,7 @@ impl Session {
                 Some(other) => smaller(other, size),
             });
         }
-        let Some(size) = best else { return };
-        if size == self.record.size || size.cols == 0 || size.rows == 0 {
-            return;
-        }
-        if let Some(pty) = &self.pty
-            && let Err(error) = pty.master.resize(pty::pty_size(size))
-        {
-            log::warn!("{}: couldn't resize the pty: {error}", self.record.handle);
-        }
-        if let Err(error) = self.engine.resize(engine_size(size)) {
-            log::warn!(
-                "{}: couldn't resize the engine: {error}",
-                self.record.handle
-            );
-        }
-        self.record.size = size;
-        self.publish(true);
-        self.daemon
-            .broadcast(&self.record.handle, &EventKind::Size { size });
+        best
     }
 }
 

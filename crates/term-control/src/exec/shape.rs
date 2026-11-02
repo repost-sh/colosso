@@ -3,7 +3,7 @@
 
 use serde_json::{Value, json};
 
-use crate::{Actor, Control, Controller, TerminalRecord, TerminalSummary, WorktreeSummary};
+use crate::{Actor, Control, Controller, Pinned, TerminalRecord, TerminalSummary, WorktreeSummary};
 
 pub fn summary(summary: &TerminalSummary) -> Value {
     record(&summary.record, &summary.preview)
@@ -32,8 +32,14 @@ pub fn record(record: &TerminalRecord, preview: &str) -> Value {
         "createdAt": record.created_ms,
         "createdBy": record.created_by,
         "labels": record.labels,
+        "pinned": record.pinned.as_ref().map(pinned),
         "preview": preview,
     })
+}
+
+/// A pinned size and who pinned it (`docs/responsive.md` 4.2).
+pub fn pinned(pinned: &Pinned) -> Value {
+    json!({ "cols": pinned.cols, "rows": pinned.rows, "by": pinned.by })
 }
 
 /// `ControlState`: who holds the terminal, who watches, and whether it's `me`.

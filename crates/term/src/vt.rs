@@ -223,7 +223,10 @@ impl Thread {
             Stream::Lagging => {
                 let _ = self.updates.unbounded_send(Update::Lagging);
             }
-            Stream::Event(EventKind::Size { size }) => {
+            Stream::Event(EventKind::Size { size, pinned }) => {
+                // The view lays a pinned grid out from it.
+                let event = EventKind::Size { size, pinned };
+                let _ = self.updates.unbounded_send(Update::Event(Box::new(event)));
                 if let Some(engine) = &mut self.engine
                     && (engine.cols(), engine.rows()) != (size.cols, size.rows)
                 {

@@ -8,8 +8,12 @@ use std::time::{Duration, Instant};
 
 use colosso_project::{Entry, Excludes, Feed, GitDirs, Options, Project, Subscription, Update};
 
-/// How long a test waits for the watcher before it fails.
-const PATIENCE: Duration = Duration::from_secs(10);
+/// How long a test waits for the watcher before it fails. A test's first write is reported
+/// once the platform's watcher covers its checkout, and `fseventsd` takes 1.7 to 1.9 s to start
+/// one on a quiet machine (measured), several times that under a workspace's tests, with a
+/// restart for each batch of checkouts opened together. A test that passes waits only as long
+/// as the report takes.
+const PATIENCE: Duration = Duration::from_secs(30);
 
 /// A folder of files for one test, removed when it ends.
 pub struct Checkout {

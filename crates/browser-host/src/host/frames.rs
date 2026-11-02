@@ -1,34 +1,8 @@
 //! A pane's frames: the ring of shared surfaces it paints into, each GPU paint composed
 //! into a free slot and announced, and the slots the app hands back.
-use super::{Pane, send, with, with_pane};
+use super::{send, with, with_pane};
 use cef::{AcceleratedPaintInfo, Rect};
-use colosso_browser_ipc::{self as ipc, HostEvent, PaneId, PixelSize};
-
-/// How long paints at a size other than the pane's are dropped after a
-/// resize, in case the page never paints at the exact size asked for.
-#[cfg(target_os = "macos")]
-const RESIZE_SETTLE: std::time::Duration = std::time::Duration::from_millis(500);
-
-#[cfg(target_os = "macos")]
-impl Pane {
-    /// Whether a page paint of `size` should be dropped. Right after a
-    /// resize Chromium paints once more at the old size, with the new layout
-    /// scaled into it between black bars; showing it flashes the pane.
-    fn stale_paint(&mut self, size: PixelSize) -> bool {
-        let Some(at) = self.resized else {
-            return false;
-        };
-        let want = self.viewport.pixels();
-        let near = |a: u32, b: u32| a.abs_diff(b) <= 1;
-        if (near(size.width, want.width) && near(size.height, want.height))
-            || at.elapsed() > RESIZE_SETTLE
-        {
-            self.resized = None;
-            return false;
-        }
-        true
-    }
-}
+use colosso_browser_ipc::{self as ipc, AppRequest, HostEvent, PaneId};
 
 /// A fresh ring at the pane's current pixel size, announced to the app.
 pub(super) fn new_ring(pane: PaneId) {
@@ -108,17 +82,34 @@ pub(crate) fn accelerated_frame(
         let frame = with(|host| {
             let gpu = host.gpu.as_ref()?;
             let p = host.panes.get_mut(&pane)?;
-            if layer == crate::surfaces::Layer::Page
-                && p.stale_paint(crate::surfaces::size_of(info.shared_texture_io_surface)?)
-            {
-                return None;
+            if layer == crate::surfaces::Layer::Page {
+                let now = std::time::Instant::now();
+                let scaled = super::sizing::scaled(info);
+                if p.sizing.drops(scaled, now) {
+                    return None;
+                }
+                let size = crate::surfaces::size_of(info.shared_texture_io_surface)?;
+                if !scaled {
+                    super::live::drive::painted(p, pane, size);
+                }
+                if let Some(next) = p.sizing.painted(size) {
+                    // Laid out once this paint is done with, not from within it.
+                    super::later(AppRequest::Resize {
+                        pane,
+                        viewport: next,
+                    });
+                }
             }
             let ring = p.ring.as_ref()?;
             let slot = p.free.pop();
             let target = slot.map(|slot| (ring, slot));
             let painted = gpu.paint(info.shared_texture_io_surface, layer, &mut p.layers, target);
             match slot {
-                Some(slot) if painted => Some((p.generation, slot, p.layers.page_size()?)),
+                Some(slot) if painted => Some((
+                    p.generation,
+                    slot,
+                    super::live::drive::filled(p, p.layers.page_size()?),
+                )),
                 Some(slot) => {
                     p.free.push(slot);
                     None
@@ -159,7 +150,11 @@ fn present(pane: PaneId) {
                 return None;
             };
             if gpu.recompose(&p.layers, ring, slot) {
-                Some((p.generation, slot, p.layers.page_size()?))
+                Some((
+                    p.generation,
+                    slot,
+                    super::live::drive::filled(p, p.layers.page_size()?),
+                ))
             } else {
                 p.free.push(slot);
                 None

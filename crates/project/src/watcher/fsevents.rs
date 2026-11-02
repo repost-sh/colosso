@@ -58,9 +58,18 @@ pub(crate) struct Platform {
 }
 
 impl Platform {
-    pub(crate) fn start(folders: Vec<PathBuf>) -> Result<Platform, String> {
+    /// A stream reports what changed since a moment past, so nothing waits for one to start.
+    pub(crate) const REPLAYS: bool = true;
+
+    /// The latest report's id: a stream started from it reports everything after.
+    pub(crate) fn now() -> u64 {
+        // SAFETY: takes nothing, and only reads the system's latest id.
+        unsafe { fs::FSEventsGetCurrentEventId() }
+    }
+
+    pub(crate) fn start(folders: Vec<PathBuf>, since: u64) -> Result<Platform, String> {
         Ok(Platform {
-            stream: Stream::start(&folders)?,
+            stream: Stream::start(&folders, since)?,
             folders,
         })
     }
@@ -69,11 +78,11 @@ impl Platform {
         &self.folders
     }
 
-    /// Watches `folders` from now on. A stream's folders are fixed, so a new one starts
-    /// before the old one stops: nothing written in between is missed, though some of it may
-    /// be reported twice, which reads a folder again for nothing.
-    pub(crate) fn cover(&mut self, folders: Vec<PathBuf>) -> Result<(), String> {
-        self.stream = Stream::start(&folders)?;
+    /// Watches `folders` from the moment `since`. A stream's folders are fixed, so a new one
+    /// starts before the old one stops: nothing written in between is missed, though some of
+    /// it may be reported twice, which reads a folder again for nothing.
+    pub(crate) fn cover(&mut self, folders: Vec<PathBuf>, since: u64) -> Result<(), String> {
+        self.stream = Stream::start(&folders, since)?;
         self.folders = folders;
         Ok(())
     }
@@ -87,7 +96,7 @@ struct Stream(fs::FSEventStreamRef);
 unsafe impl Send for Stream {}
 
 impl Stream {
-    fn start(folders: &[PathBuf]) -> Result<Stream, String> {
+    fn start(folders: &[PathBuf], since: u64) -> Result<Stream, String> {
         let paths: Vec<CFRetained<CFString>> = (folders.iter())
             .map(|folder| CFString::from_str(&text(folder)))
             .collect();
@@ -95,14 +104,16 @@ impl Stream {
         // Every file's own report, rather than the folder's it's in, handed over at once.
         let flags = fs::kFSEventStreamCreateFlagFileEvents | fs::kFSEventStreamCreateFlagNoDefer;
         // SAFETY: the callback matches what FSEvents calls; no context is passed, which it
-        // allows; the paths are an array of strings, which the stream copies.
+        // allows; the paths are an array of strings, which the stream copies. Started from
+        // `since`, it reports what was written after it before what's written from now on,
+        // then a report that it has (`HistoryDone`), which is left out.
         let stream = unsafe {
             fs::FSEventStreamCreate(
                 None,
                 Some(callback),
                 ptr::null_mut(),
                 paths.as_opaque(),
-                fs::kFSEventStreamEventIdSinceNow,
+                since,
                 0.0,
                 flags,
             )

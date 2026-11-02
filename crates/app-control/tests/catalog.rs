@@ -28,7 +28,7 @@ fn names_are_valid_unique_and_clear_of_the_terminals() {
         );
         assert_ne!(terminal.name, APP_LAUNCH);
     }
-    assert_eq!(names.len(), 44);
+    assert_eq!(names.len(), 45);
 }
 
 #[test]
@@ -290,5 +290,71 @@ fn ids_are_the_wire_names() {
             Scope::Browser,
             Scope::Settings
         ]
+    );
+}
+
+#[test]
+fn browser_viewport_takes_the_presets_by_name_a_zoom_and_a_request_id() {
+    let descriptor = catalog()
+        .into_iter()
+        .find(|descriptor| descriptor.name == "browser_viewport")
+        .expect("browser_viewport is in the catalog");
+    assert_eq!(descriptor.scope, Scope::Browser);
+    assert!(descriptor.hints.idempotent && !descriptor.hints.read_only);
+    let properties = &descriptor.input_schema["properties"];
+    assert_eq!(properties[REQUEST_ID]["pattern"], REQUEST_ID_PATTERN);
+    // The presets are listed, under the schema's definitions.
+    let schema = serde_json::to_string(&descriptor.input_schema).unwrap();
+    for name in [
+        "responsive",
+        "iphone-se",
+        "iphone-15",
+        "pixel-8",
+        "ipad-pro-11",
+    ] {
+        assert!(
+            schema.contains(&format!("\"{name}\"")),
+            "{name} in {schema}"
+        );
+    }
+    for field in [
+        "width",
+        "height",
+        "zoom",
+        "fill",
+        "screenshot",
+        "orientation",
+    ] {
+        assert!(properties.get(field).is_some(), "{field}");
+    }
+    let output = serde_json::to_string(&descriptor.output_schema).unwrap();
+    assert!(output.contains("settled") && output.contains("shownPercent"));
+    for input in [
+        json!({ "device": "iphone-15", "orientation": "landscape", "zoom": "fit" }),
+        json!({ "width": 390, "zoom": 75, "screenshot": true }),
+        json!({ "fill": true }),
+    ] {
+        let parsed = Command::parse("browser_viewport", input.clone());
+        assert!(parsed.is_ok(), "{input}: {parsed:?}");
+    }
+    for input in [
+        json!({ "device": "nokia-3310" }),
+        json!({ "zoom": "half" }),
+        json!({ "width": -1 }),
+    ] {
+        let error = Command::parse("browser_viewport", input.clone()).unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidInput, "{input}");
+    }
+    let listed = serde_json::to_string(
+        &catalog()
+            .into_iter()
+            .find(|descriptor| descriptor.name == "browser_list")
+            .unwrap()
+            .output_schema,
+    )
+    .unwrap();
+    assert!(
+        listed.contains("viewport"),
+        "browser_list's pages carry their viewport"
     );
 }

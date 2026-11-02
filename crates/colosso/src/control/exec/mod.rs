@@ -95,6 +95,7 @@ pub(crate) fn run(caller: &Caller, command: Command, cx: &mut App) -> Exec {
         C::BrowserType(input) => browser::type_text(caller, input, cx).into(),
         C::BrowserPressKey(input) => browser::press_key(caller, &input, cx).into(),
         C::BrowserScroll(input) => browser::scroll(caller, input, cx).into(),
+        C::BrowserViewport(input) => browser::viewport(caller, &input, cx).into(),
     }
 }
 

@@ -7,7 +7,8 @@
 //! again when it stops, and routes what it says to the pane views. A page is a
 //! [`BrowserView`] in a tab: its frames are shared surfaces the host paints into, shown in
 //! a native view over the pane (`frames`, `page`); the person's
-//! pointer and keys go to it (`input`); its questions are asked in the app's dialogs
+//! pointer and keys go to it (`input`); it can be shown at a chosen size or as a device
+//! (`responsive`); its questions are asked in the app's dialogs
 //! (`dialog`) and its context menu shown as the app's (`menu`); and who drives it, the
 //! person or an agent, is a lease (`control`) the person always wins.
 
@@ -31,6 +32,7 @@ mod input;
 pub(crate) mod keys;
 mod menu;
 mod page;
+mod responsive;
 mod toolbar;
 mod trackpad;
 mod view;
@@ -77,6 +79,7 @@ actions!(
         SendBackTab,
         SendEscape,
         ToggleDevTools,
+        ToggleResponsive,
         TakeControl,
         GiveBack,
         FindInPage,
@@ -115,6 +118,8 @@ pub fn init(cx: &mut App) {
             KeyBinding::new("cmd-]", Forward, context),
             KeyBinding::new("cmd-alt-i", ToggleDevTools, context),
             KeyBinding::new("f12", ToggleDevTools, context),
+            // Chrome's ⇧⌘M is the sidebar's here.
+            KeyBinding::new("cmd-alt-r", ToggleResponsive, context),
             KeyBinding::new("cmd-f", FindInPage, context),
             KeyBinding::new("cmd-g", FindNext, context),
             KeyBinding::new("cmd-shift-g", FindPrevious, context),

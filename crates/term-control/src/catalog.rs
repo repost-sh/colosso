@@ -100,7 +100,10 @@ pub const CATALOG: &[Operation] = &[
         title: "Open a terminal",
         description: "Opens a terminal named `name` in a worktree, or returns the one that \
                       has the name already, and takes control of it when it's free. It \
-                      appears as a tab in Colosso.",
+                      appears as a tab in Colosso. `size` pins it at that size for every \
+                      viewer while you're connected (`pinned`, or `pinned: null` and \
+                      `pinRefused` when that was refused); with `claim: false` it's only the \
+                      size it starts at.",
         scope: Scope::Write,
         hints: WRITES,
         schema: schema::<args::OpenArgs>,
@@ -161,6 +164,18 @@ pub const CATALOG: &[Operation] = &[
         scope: Scope::Read,
         hints: READS,
         schema: schema::<args::TerminalArgs>,
+    },
+    Operation {
+        name: "terminal_resize",
+        title: "Resize a terminal",
+        description: "Pins the terminal at `cols` × `rows` (2 to 1000 each) for every viewer, \
+                      or with `fill: true` lets it fill the person's pane again, then waits \
+                      for the screen to settle and reads it: a program redraws after the \
+                      resize. `then: {}` skips the wait and the read. The size lasts while \
+                      you are connected; the person sees it and may change it.",
+        scope: Scope::Write,
+        hints: SETS,
+        schema: schema::<args::ResizeArgs>,
     },
     Operation {
         name: "terminal_rename",
@@ -232,5 +247,31 @@ mod tests {
         assert!(send["properties"]["requestId"].is_object());
         let wait = operation("terminal_wait").unwrap().input_schema();
         assert_eq!(wait["required"], serde_json::json!(["for"]));
+    }
+
+    #[test]
+    fn resize_takes_a_size_or_fill_a_then_and_a_request_id() {
+        let resize = operation("terminal_resize").unwrap();
+        assert_eq!(resize.scope, Scope::Write);
+        assert!(!resize.hints.read_only && resize.hints.idempotent);
+        let schema = resize.input_schema();
+        for field in ["terminal", "cols", "rows", "fill", "then", "requestId"] {
+            assert!(schema["properties"][field].is_object(), "{field}: {schema}");
+        }
+        assert!(schema.get("required").is_none(), "{schema}");
+        let parse = |args: Value| serde_json::from_value::<args::ResizeArgs>(args);
+        let sized = parse(serde_json::json!({ "cols": 120, "rows": 40 })).unwrap();
+        assert_eq!(
+            (sized.cols, sized.rows, sized.fill),
+            (Some(120), Some(40), None)
+        );
+        let quick = parse(serde_json::json!({ "fill": true, "then": {} })).unwrap();
+        assert!(
+            quick
+                .then
+                .is_some_and(|then| then.wait.is_none() && then.read.is_none())
+        );
+        assert!(parse(serde_json::json!({ "cols": 80, "rows": 24, "size": 1 })).is_err());
+        assert!(parse(serde_json::json!({ "cols": 70000, "rows": 24 })).is_err());
     }
 }

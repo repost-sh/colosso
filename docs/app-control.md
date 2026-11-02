@@ -198,7 +198,8 @@ claimed on the first act; `person_has_control` means the person took the page: d
 retry or wait, open another page.
 
 ```
-browser_list     [read] R {} → { pages: [{ pane, url, title, loading, worktree, controller? }] }
+browser_list     [read] R {} → { pages: [{ pane, url, title, loading, worktree, controller?,
+                   viewport }] }
 browser_navigate [browser] C { pane?, url, wait?: "load"|"none" (default load), timeoutMs? }
 browser_go       [browser] C { pane?, action: "back"|"forward"|"reload" }
 browser_read     [read] R { pane?, format?: "text"|"markdown"|"html" (default text),
@@ -214,6 +215,10 @@ browser_scroll   [browser] C { pane?, dx?, dy?, ref? | selector? (scroll into vi
 browser_wait     [read] R { pane?, for: "load"|"selector"|"text"|"url", value?, timeoutMs? }
                    → { met, elapsedMs }
 browser_claim    [browser] I { pane?, takeover?, reason? } ; browser_release [browser] I { pane? }
+browser_viewport [browser] I { pane?, device?, width?, height?, scale?, mobile?, touch?,
+                   userAgent?, orientation?, zoom?, fill?: true, screenshot?: bool }
+                   → { viewport, settled } (+ image block with `screenshot`); responsive mode,
+                   `docs/responsive.md` 4.1
 ```
 
 ### Settings
@@ -299,13 +304,13 @@ per-scope switches and Revoke, clients denied lately with Allow, and Recent acti
 
 ## 11. As implemented (2026-11-02)
 
-- Crates: `crates/app-control` (44 operations, frames, socket, client, `colosso app`),
+- Crates: `crates/app-control` (45 operations, frames, socket, client, `colosso app`),
   `crates/colosso/src/control/` (listener, gate, approval, confirmations, receipts, activity,
   topics, in-process client, HTTP server in `control/http.rs`, executors in `control/exec/`,
   browser executors in `control/exec/browser/`), `crates/term-mcp` (the unified server:
   `backend.rs`, `socket.rs`, `app.rs`, `tools.rs`, `launch.rs`, `subscriptions.rs`,
   `http.rs`), the Settings page in `settings_view/mcp_server.rs` and `mcp_clients.rs`.
-- `colosso mcp` lists 58 tools (13 terminal, 44 app, `app_launch`); HTTP lists 57 (no
+- `colosso mcp` lists 60 tools (14 terminal, 45 app, `app_launch`); HTTP lists 59 (no
   `app_launch`). The server is named `colosso`.
 - Browser tools run over CDP through `browser/agent.rs`, its refusals typed (`AgentError`). A
   page the host hasn't opened yet (a tab never shown) answers `browser_unavailable` until it's
@@ -314,6 +319,13 @@ per-scope switches and Revoke, clients denied lately with Allow, and Recent acti
   carries `data` empty. Keys carry the same key codes the person's own typing does. Snapshot
   refs are `data-colosso-ref` attributes set by the snapshot's script. Editing shortcuts
   (⌘A, ⌘C, ⌘X, ⌘V, ⌘Z, ⇧⌘Z) carry their editing command, as Chromium on macOS needs.
+- `browser_viewport` (responsive mode, `docs/responsive.md`; executor in
+  `control/exec/browser/viewport.rs`, the mode in `browser/responsive/`) answers once the page
+  showed a frame of the new size (a page out of sight paints none, so there only its report
+  counts) and reported it as `innerWidth`/`innerHeight` (polled every 100 ms, 5 s at most,
+  else `settled: false`). With `screenshot: true` its output carries
+  `mimeType` and `data` at the top, which the relay turns into an image block as
+  `browser_screenshot`'s.
 - Agents in terminals get `read navigate manage browser settings`, never `destructive`
   without the confirmation prompt; every destructive call is confirmed in the window.
 - `tab_close` on a terminal tab leaves the terminal running, as the tab's × does.

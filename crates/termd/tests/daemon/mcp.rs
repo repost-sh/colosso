@@ -127,7 +127,7 @@ fn an_agent_drives_a_shell_over_mcp() {
             "clientInfo": { "name": "mcp-test", "version": "0" },
         });
         let welcome = client.ask("initialize", init).await;
-        assert_eq!(welcome["serverInfo"]["name"], "colosso-terminals");
+        assert_eq!(welcome["serverInfo"]["name"], "colosso");
         assert!(
             welcome["instructions"]
                 .as_str()
@@ -230,7 +230,13 @@ async fn resources(client: &mut Client, handle: &str) {
 /// The guide among the prompts, and the catalog's tools with their hints and schemas.
 async fn what_it_offers(client: &mut Client) {
     let prompts = client.ask("prompts/list", json!({})).await;
-    assert_eq!(prompts["prompts"][0]["name"], "terminal_guide");
+    let names: Vec<&str> = prompts["prompts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|prompt| prompt["name"].as_str())
+        .collect();
+    assert!(names.contains(&"terminal_guide"), "{names:?}");
     let guide = client
         .ask("prompts/get", json!({ "name": "terminal_guide" }))
         .await;

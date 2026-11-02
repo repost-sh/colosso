@@ -17,7 +17,7 @@ use super::keys::{characters, key_codes};
 use super::view::BrowserView;
 use super::{
     Back, Copy, Cut, FocusAddress, Forward, Paste, Redo, Reload, SelectAll, SendBackTab,
-    SendEscape, SendTab, ToggleDevTools, Undo,
+    SendEscape, SendTab, ToggleDevTools, ToggleResponsive, Undo,
 };
 
 impl BrowserView {
@@ -81,6 +81,10 @@ impl BrowserView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // A responsive page's grip in hand takes the pointer, wherever it goes.
+        if self.grip_pointer(event, cx) {
+            return;
+        }
         match event {
             PlatformInput::MouseDown(event) => self.pressed_at(event, window, cx),
             PlatformInput::MouseUp(event) => self.released_at(event, cx),
@@ -112,7 +116,7 @@ impl BrowserView {
             self.person_acts(Mode::Implicit, cx);
             self.resolve_menu(cx);
         }
-        let at = position - self.origin;
+        let at = self.page_point(position);
         self.send_to_page(
             AppRequest::Mouse {
                 pane: self.pane,
@@ -280,6 +284,7 @@ pub(super) fn steer(view: Div, cx: &mut Context<BrowserView>) -> Div {
             this.focus_address(window, cx);
         }))
         .on_action(cx.listener(|this, _: &ToggleDevTools, _, cx| this.inspect(None, cx)))
+        .on_action(cx.listener(|this, _: &ToggleResponsive, _, cx| this.toggle_responsive(cx)))
 }
 
 impl EntityInputHandler for BrowserView {

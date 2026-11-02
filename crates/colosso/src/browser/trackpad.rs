@@ -16,7 +16,7 @@ impl BrowserView {
             ScrollDelta::Pixels(delta) => (delta.x.as_f32(), delta.y.as_f32()),
             ScrollDelta::Lines(delta) => (delta.x * LINE_PIXELS, delta.y * LINE_PIXELS),
         };
-        let at = event.position - self.origin;
+        let at = self.page_point(event.position);
         self.send_to_page(
             AppRequest::Wheel {
                 pane: self.pane,
@@ -31,7 +31,7 @@ impl BrowserView {
     }
 
     pub(super) fn pinch(&mut self, event: &PinchEvent, cx: &mut Context<Self>) {
-        let at = event.position - self.origin;
+        let at = self.page_point(event.position);
         let phase = match event.phase {
             TouchPhase::Started => PinchPhase::Started,
             TouchPhase::Moved => PinchPhase::Moved,

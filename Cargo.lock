@@ -1167,6 +1167,7 @@ dependencies = [
  "form_urlencoded",
  "futures",
  "globset",
+ "gpui-fast-apple",
  "gpui-kit",
  "gpui-pre",
  "image",
@@ -3829,8 +3830,6 @@ dependencies = [
 [[package]]
 name = "gpui-fast-apple"
 version = "0.1.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c5f0aff0a75a63953782a609bf023c68cdb71c3dbd74478223db9bbd1b744795"
 dependencies = [
  "anyhow",
  "async-task",

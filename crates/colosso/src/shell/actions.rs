@@ -14,7 +14,7 @@ use crate::navigation::{CloseSettings, GoBack, GoForward, Navigate, NavigationHi
 use crate::projects::{self, NewWorktree};
 use crate::settings;
 use crate::settings_view::{self, EditBranchPrefix};
-use crate::{browser, modal, picker};
+use crate::{browser, modal, picker, terminals};
 
 actions!(
     colosso,
@@ -126,6 +126,7 @@ impl Shell {
             )
             .map(|root| projects::handle_actions(root, cx))
             .map(browser::handle_actions)
+            .map(|root| terminals::handle_actions(root, cx))
             .on_action(|_: &EditBranchPrefix, window, cx| {
                 settings_view::edit_branch_prefix(window, cx);
             })

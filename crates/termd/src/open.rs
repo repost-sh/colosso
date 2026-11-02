@@ -83,6 +83,7 @@ pub fn open(
         control: Control::default(),
         attached_clients: 0,
         last_output_ms: 0,
+        pinned: None,
     };
     let handle = record.handle.clone();
     let session = session::start(daemon, record)?;

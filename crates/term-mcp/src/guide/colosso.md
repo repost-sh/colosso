@@ -101,6 +101,14 @@ snapshot again after the page navigates, since refs don't outlive it. `browser_c
 `person_has_control` means the person took the page. Do not wait for it, do not retry, do
 not claim it with takeover: open another page for your own work.
 
+`browser_viewport` shows a page as a phone or tablet (`device`: `iphone-se`, `iphone-15`,
+`iphone-15-pro-max`, `pixel-8`, `galaxy-s24`, `ipad-mini`, `ipad-pro-11`, with its user
+agent, touch and mobile layout) or at a free `width` × `height`, scaled down to fit the
+pane, under the page's lease like any act. It answers once the page has laid out at the new
+size (`settled: false` after 5 seconds means it hadn't), and `screenshot: true` adds an
+image of it. To check a layout, set the size, screenshot, then `fill: true`; the person
+sees what you do, and their own change wins. `browser_list` shows each page's `viewport`.
+
 ## The window and settings
 
 - `app_focus` brings the window forward, opening it when it's closed.

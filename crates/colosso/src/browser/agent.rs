@@ -2,8 +2,11 @@
 //! and the ways an agent moves it; and the Chrome `DevTools` protocol commands it runs on
 //! it, under the page's lease when they act.
 
+use colosso_app_control::ops::browser::{
+    DeviceName, FitWord, Orientation, Viewport as ViewportFacts, ViewportMode, ViewportZoom,
+};
 use colosso_browser_ipc::AppRequest;
-pub use colosso_browser_ipc::Go;
+pub use colosso_browser_ipc::{Go, Viewport};
 use futures::channel::oneshot;
 use gpui_kit::{App, Context, Entity};
 
@@ -11,6 +14,9 @@ use super::control::Holder;
 pub use super::control::{Actor, Refused};
 use super::host::Browsers;
 pub use super::host::CdpResult;
+pub use super::responsive::devices::find as find_device;
+use super::responsive::{self, SetBy};
+pub use super::responsive::{Change as ViewportChange, Choice, ViewportRefused, Zoom};
 use super::view::BrowserView;
 
 /// Why a protocol command didn't run for an agent.
@@ -23,7 +29,7 @@ pub enum AgentError {
 }
 
 /// A page as an agent sees it.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PageFacts {
     pub url: String,
     pub title: String,
@@ -32,6 +38,8 @@ pub struct PageFacts {
     pub controller: Option<String>,
     /// Whether the host has it open, so commands reach it.
     pub open: bool,
+    /// The size and device it's laid out at.
+    pub viewport: ViewportFacts,
 }
 
 impl BrowserView {
@@ -47,7 +55,82 @@ impl BrowserView {
                 None => None,
             },
             open: self.is_open(cx),
+            viewport: self.viewport_facts(cx),
         }
+    }
+
+    /// The page's viewport as an agent sees it: responsive mode's, or the pane's size.
+    pub fn viewport_facts(&self, cx: &App) -> ViewportFacts {
+        let window = self.window_scale();
+        let shown_percent = self.shown_percent();
+        let Some(mode) = &self.responsive.mode else {
+            let viewport = self.viewport.unwrap_or(Viewport {
+                width: 0,
+                height: 0,
+                scale: window,
+            });
+            return ViewportFacts {
+                mode: ViewportMode::Fill,
+                device: None,
+                width: viewport.width,
+                height: viewport.height,
+                scale: f64::from(viewport.scale),
+                mobile: false,
+                touch: false,
+                user_agent: None,
+                orientation: orientation(viewport.width > viewport.height),
+                zoom: ViewportZoom::Fit(FitWord::Fit),
+                shown_percent,
+                set_by: None,
+            };
+        };
+        let major = self.browsers.read(cx).chromium_major().unwrap_or_default();
+        let emulated = mode.emulation(&major);
+        ViewportFacts {
+            mode: if mode.device.is_some() {
+                ViewportMode::Device
+            } else {
+                ViewportMode::Responsive
+            },
+            device: mode
+                .device
+                .and_then(|device| DeviceName::from_id(device.id)),
+            width: mode.width,
+            height: mode.height,
+            scale: f64::from(mode.scale_at(self.window_scale())),
+            mobile: mode.mobile,
+            touch: mode.touch,
+            user_agent: emulated.agent.map(|agent| agent.user_agent),
+            orientation: orientation(mode.landscape()),
+            zoom: match mode.zoom {
+                Zoom::Fit => ViewportZoom::Fit(FitWord::Fit),
+                Zoom::Percent(percent) => ViewportZoom::Percent(percent),
+            },
+            shown_percent,
+            set_by: Some(match &mode.set_by {
+                SetBy::Person => "person".to_owned(),
+                SetBy::Agent(agent) => agent.clone(),
+            }),
+        }
+    }
+
+    /// Whether the page can be asked the size it lays out at, as at `target`: it was told
+    /// `target`, and it shows a frame of it, unless it's out of sight, where the host paints
+    /// nothing and the page's own report is all there is.
+    pub fn ready_to_measure(&self, target: Viewport) -> bool {
+        self.viewport == Some(target)
+            && (self.visible == Some(false) || self.shows_frame_of(target.pixels()))
+    }
+
+    /// Whether a page reporting `inner` (`innerWidth`, `innerHeight`) has laid out at
+    /// `target`, at the page's zoom.
+    pub fn laid_out_at(&self, target: Viewport, inner: (f64, f64)) -> bool {
+        let mobile = self
+            .responsive
+            .mode
+            .as_ref()
+            .is_some_and(|mode| mode.mobile);
+        responsive::laid_out(target.width, target.height, self.zoom, mobile, inner)
     }
 
     /// Loads `url` for `actor`, which must hold the page or find it free.
@@ -76,6 +159,15 @@ impl BrowserView {
         self.send_to_page(AppRequest::Go { pane, to }, cx);
         cx.notify();
         Ok(())
+    }
+}
+
+/// `portrait`, or `landscape` when wider than tall.
+fn orientation(landscape: bool) -> Orientation {
+    if landscape {
+        Orientation::Landscape
+    } else {
+        Orientation::Portrait
     }
 }
 

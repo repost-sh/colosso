@@ -3,6 +3,8 @@
 //! the frame's surface, in a native surface of the window's composition, placed where the
 //! page element lays it out.
 
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use colosso_browser_ipc::{PixelSize, mach};
 use futures::StreamExt as _;
 use futures::channel::mpsc;
@@ -51,6 +53,8 @@ pub struct Frame {
     pub slot: u8,
     /// The page's size in device pixels; the surface can be larger.
     pub size: PixelSize,
+    /// The device pixels per logical pixel it was painted at.
+    pub scale: f32,
     pub surface: CFRetained<IOSurfaceRef>,
     /// Which of the page's paints this is, counting from its first.
     pub serial: u64,
@@ -89,6 +93,10 @@ pub struct Shown {
     serial: Option<u64>,
     /// The slot it shows, by generation and slot, and the page's size in it.
     frame: Option<(u32, u8, PixelSize)>,
+    /// The scale of the frame it shows, and how much of its true size the page shows at:
+    /// together, the layer's device pixels to a point.
+    painted: f32,
+    fit: f32,
     scale: f64,
     /// Hands the page what the pointer does over its native view, in order.
     _pointer: Option<Task<()>>,
@@ -97,6 +105,33 @@ pub struct Shown {
 struct Native {
     surface: Surface,
     layer: Retained<CALayer>,
+    _presents: InTransaction,
+}
+
+/// How many pages have a native view. While any does, GPUI presents its frames in Core
+/// Animation's transaction, the one a page's layer changes in, rather than when the GPU is
+/// done, a frame later: a pane's new edge, drawn by GPUI, and the page laid out to it, in its
+/// own layer, then reach the screen together, with nothing between them.
+static PAGE_VIEWS: AtomicUsize = AtomicUsize::new(0);
+
+/// One page's share of [`PAGE_VIEWS`], for as long as its native view lives.
+struct InTransaction;
+
+impl InTransaction {
+    fn new() -> Self {
+        if PAGE_VIEWS.fetch_add(1, Ordering::Relaxed) == 0 {
+            gpui_apple::metal_renderer::present_in_transaction(true);
+        }
+        InTransaction
+    }
+}
+
+impl Drop for InTransaction {
+    fn drop(&mut self) {
+        if PAGE_VIEWS.fetch_sub(1, Ordering::Relaxed) == 1 {
+            gpui_apple::metal_renderer::present_in_transaction(false);
+        }
+    }
 }
 
 impl Shown {
@@ -146,6 +181,8 @@ impl Shown {
             native,
             serial: None,
             frame: None,
+            painted: 1.,
+            fit: 1.,
             scale: 0.,
             _pointer: pointer,
         }
@@ -157,30 +194,47 @@ impl Shown {
         self.native.is_some()
     }
 
-    /// Puts the view over `bounds`, showing only what of it lies within `clip`, at the
-    /// window's scale.
-    pub fn place(&mut self, bounds: Bounds<Pixels>, clip: Bounds<Pixels>, window: &Window) {
+    /// Puts the view over `bounds`, showing only what of it lies within `clip`, the page at
+    /// `fit` of its true size: in responsive mode, scaled to fit.
+    pub fn place(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        clip: Bounds<Pixels>,
+        fit: f32,
+        window: &Window,
+    ) {
+        self.fit = fit;
+        self.rescale();
+        if let Some(native) = &self.native {
+            native.surface.place(bounds, clip, window);
+        }
+    }
+
+    /// Has the layer show its frame at the frame's own scale, over the share of its size the
+    /// page shows at: an old frame shows at its true size until a new one comes.
+    fn rescale(&mut self) {
         let Some(native) = &self.native else {
             return;
         };
-        let scale = f64::from(window.scale_factor());
+        let scale = f64::from(self.painted / self.fit);
         if (self.scale - scale).abs() > f64::EPSILON {
             self.scale = scale;
             native.layer.setContentsScale(scale);
         }
-        native.surface.place(bounds, clip, window);
     }
 
     /// Shows `frame`, unless it shows already: its surface becomes the layer's contents,
     /// as far as the page fills it. A slot painted again is set again, by way of nothing, or
     /// Core Animation wouldn't look at it afresh.
     pub fn show(&mut self, frame: &Frame) {
+        if self.native.is_none() || self.serial.replace(frame.serial) == Some(frame.serial) {
+            return;
+        }
+        self.painted = frame.scale;
+        self.rescale();
         let Some(native) = &self.native else {
             return;
         };
-        if self.serial.replace(frame.serial) == Some(frame.serial) {
-            return;
-        }
         let shown = (frame.generation, frame.slot, frame.size);
         let previous = self.frame.replace(shown);
         if previous == Some(shown) {
@@ -225,6 +279,10 @@ impl Native {
         let surface = Surface::windowless(window, &view, move |event| {
             let _ = pointer.unbounded_send(event.clone());
         })?;
-        Ok(Native { surface, layer })
+        Ok(Native {
+            surface,
+            layer,
+            _presents: InTransaction::new(),
+        })
     }
 }
