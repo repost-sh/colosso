@@ -298,10 +298,7 @@ impl Shell {
         let branch = self.workspace.branch()?;
         let tab = branch.tabs.get(branch.active_tab)?;
         let id = tab.panes().iter().find_map(|pane| pane.terminal)?;
-        Some((
-            id,
-            self.terminals.views.get(&id).map(|made| made.view.clone()),
-        ))
+        Some((id, self.terminals.view(id)))
     }
 
     /// The view of the terminal tab shown, if it's made.
@@ -370,7 +367,10 @@ impl Shell {
                 }
                 return;
             }
-            TerminalEvent::Title(_) | TerminalEvent::Bell | TerminalEvent::Exited(_) => return,
+            TerminalEvent::Title(_)
+            | TerminalEvent::Bell
+            | TerminalEvent::Exited(_)
+            | TerminalEvent::PinRefused(..) => return,
         };
         if self.workspace.retitle_terminal(id, title.into()) {
             cx.notify();

@@ -76,6 +76,9 @@ pub enum TerminalEvent {
     /// Its pin, or the font it's fitted at, changed: what `pinned` and `font_percent` say is
     /// new.
     Responsive,
+    /// The pin at these columns and rows didn't take: the daemon refused it, or couldn't be
+    /// reached.
+    PinRefused(u16, u16),
     /// The daemon of another build was replaced: views it turned away may try again.
     DaemonReplaced,
 }
@@ -122,13 +125,12 @@ pub struct TerminalView {
     pinned_look: PinnedLook,
     /// How large the pinned grid's font is: the pane's say.
     pub(crate) scale: Scale,
-    /// The pin to send next, one at a time.
-    pin: link::Latest<responsive::Wanted>,
+    /// The pin to send next, one at a time (`None` unpins), and the one sent last.
+    pin: link::Latest<Option<(u16, u16)>>,
     pub(crate) focus: FocusHandle,
-    /// The size last sent to the daemon, and the one to send next, one at a time: a pane
+    /// The size to send the daemon next, one at a time, and the one sent last: a pane
     /// dragged resizes the program at every frame the daemon keeps up with, and at the size
     /// it's dragged to last.
-    requested: Option<Size>,
     resize: link::Latest<Size>,
     updates: Option<Task<()>>,
     blink: Option<Task<()>>,
@@ -190,7 +192,6 @@ impl TerminalView {
             scale: Scale::Fit,
             pin: link::Latest::default(),
             focus,
-            requested: None,
             resize: link::Latest::default(),
             updates: None,
             blink: None,

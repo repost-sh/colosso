@@ -2,7 +2,7 @@
 //! into a free slot and announced, and the slots the app hands back.
 use super::{send, with, with_pane};
 use cef::{AcceleratedPaintInfo, Rect};
-use colosso_browser_ipc::{self as ipc, AppRequest, HostEvent, PaneId};
+use colosso_browser_ipc::{self as ipc, HostEvent, PaneId};
 
 /// A fresh ring at the pane's current pixel size, announced to the app.
 pub(super) fn new_ring(pane: PaneId) {
@@ -65,9 +65,7 @@ pub(crate) fn logical_size(pane: PaneId) -> (i32, i32) {
 }
 
 pub(crate) fn scale(pane: PaneId) -> f32 {
-    with_pane(pane, |p| p.viewport.scale)
-        .filter(|s| s.is_finite() && *s > 0.)
-        .unwrap_or(1.)
+    with_pane(pane, |p| p.viewport.device_scale()).unwrap_or(1.)
 }
 
 /// A GPU paint of the page or its popup: kept, composed into a free slot,
@@ -92,12 +90,10 @@ pub(crate) fn accelerated_frame(
                 if !scaled {
                     super::live::drive::painted(p, pane, size);
                 }
-                if let Some(next) = p.sizing.painted(size) {
-                    // Laid out once this paint is done with, not from within it.
-                    super::later(AppRequest::Resize {
-                        pane,
-                        viewport: next,
-                    });
+                if p.sizing.painted(size) {
+                    // Laid out once this paint is done with, not from within it: the size
+                    // asked for last by then.
+                    super::enqueue(super::Queued::SizeNext { pane });
                 }
             }
             let ring = p.ring.as_ref()?;

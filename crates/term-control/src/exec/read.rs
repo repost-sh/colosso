@@ -166,22 +166,8 @@ impl Executor {
             interrupt: args.interrupt.unwrap_or(false),
         };
         let commands_before = self.log_len(&handle, LogKind::Commands);
-        let sent = match self.request(RequestBody::Send(request.clone())) {
-            // A free terminal is taken first, as an agent takes one to write to it.
-            Err(error)
-                if error.code == ErrorCode::ControlRequired
-                    && terminal.record.control.holder.is_none() =>
-            {
-                let claim = RequestBody::Claim {
-                    handle: handle.clone(),
-                    takeover: false,
-                    reason: None,
-                };
-                self.request(claim)?;
-                self.request(RequestBody::Send(request))?
-            }
-            sent => sent?,
-        };
+        let free = terminal.record.control.holder.is_none();
+        let sent = self.request_claiming(&handle, free, || RequestBody::Send(request.clone()))?;
         let ResponseBody::Sent { bytes } = sent else {
             return Err(unexpected(&sent));
         };
@@ -214,6 +200,28 @@ impl Executor {
             }),
             summary,
         })
+    }
+
+    /// Asks the daemon `body` for `handle`; a terminal no one holds (`free`) that needs
+    /// control for it is claimed first, as an agent takes one to write to it, and asked again.
+    pub(super) fn request_claiming(
+        &self,
+        handle: &Handle,
+        free: bool,
+        body: impl Fn() -> RequestBody,
+    ) -> Result<ResponseBody, ProtocolError> {
+        match self.request(body()) {
+            Err(error) if error.code == ErrorCode::ControlRequired && free => {
+                let claim = RequestBody::Claim {
+                    handle: handle.clone(),
+                    takeover: false,
+                    reason: None,
+                };
+                self.request(claim)?;
+                self.request(body())
+            }
+            answer => answer,
+        }
     }
 
     pub(super) fn wait(&self, args: &WaitArgs) -> Result<Done, ProtocolError> {

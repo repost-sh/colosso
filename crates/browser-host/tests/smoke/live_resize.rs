@@ -43,6 +43,7 @@ fn a_page_dragged_wider_lays_out_again_every_frame() {
             .send(&AppRequest::Resize {
                 pane: 1,
                 viewport: at(width),
+                dragging: true,
             })
             .expect("resize");
         let next = start + Duration::from_micros(16_667 * u64::from(step + 1));
@@ -59,6 +60,15 @@ fn a_page_dragged_wider_lays_out_again_every_frame() {
         });
     }
     let last = 600 + 4 * 119;
+    // Let go: the app says so at the last size, and the page settles at once.
+    session
+        .host
+        .send(&AppRequest::Resize {
+            pane: 1,
+            viewport: at(last),
+            dragging: false,
+        })
+        .expect("let go");
     let mut settled = None;
     session.pump(Instant::now() + Duration::from_secs(2), |event, seen| {
         if let (HostEvent::Frame { size, .. }, Some(seen)) = (event, seen) {

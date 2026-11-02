@@ -37,10 +37,11 @@ a `Responsive` state and the page element:
 
 1. Computes the emulated viewport: `width × height` logical px at `scale` (the device's
    pixel ratio for a preset; the window's scale factor for free sizes).
-2. Sends `AppRequest::Resize { viewport }` with *that* viewport, not the element's bounds.
+2. Sends `AppRequest::Resize { viewport, dragging }` with *that* viewport, not the
+   element's bounds (`dragging` is live sizing's, section 8: whether a grip is held).
    The host renders at `width·scale × height·scale` device pixels, so the page's
-   `innerWidth`, `devicePixelRatio` and media queries are the device's. No change to the
-   host or `browser-ipc`.
+   `innerWidth`, `devicePixelRatio` and media queries are the device's. Responsive mode
+   needs nothing more of the host or `browser-ipc`.
 3. Lays the page out centred horizontally and at the top of the area under the device
    bar, with a 16 px gutter, at `fit = min(1, room_w / width, room_h / height)` (or the
    person's chosen zoom). The native layer is placed at the scaled bounds; Core Animation
@@ -123,17 +124,17 @@ at the limit.
 
 A terminal has one size for every viewer (`docs/terminals.md` 5.4): the daemon takes the
 smallest of the control-mode clients' sizes (`termd/src/session/stream.rs`
-`negotiate_size`). Agents never attach; they send. So responsive mode is a size *pinned*
+`settle_size`). Agents never attach; they send. So responsive mode is a size *pinned*
 in the daemon, set by the app for the person or by a relay for an agent:
 
-- `term-control`: `RequestBody::Pin { handle, size: Option<Size> }` (cols and rows; cell
-  px from the negotiated size), answered `ResponseBody::Pinned { size, pinned }`.
+- `term-control`: `RequestBody::Pin { handle, cells: Option<(u16, u16)> }` (cols and rows;
+  the cell px are the clients'), answered `ResponseBody::Pinned { size, pinned }`.
   `TerminalRecord` gains `pinned: Option<Pinned>`, `Pinned { cols, rows, by: Actor }`.
   `PROTOCOL` 1 → 2, so an app of this build replaces an older daemon through the existing
   "other build" notice.
-- `termd`: while a pin is set, `negotiate_size` uses it instead of the clients' sizes; it
+- `termd`: while a pin is set, `settle_size` uses it instead of the clients' sizes; it
   resizes the pty and the engine and broadcasts `Event{size}` and the record as today.
-  `Pin { size: None }` unpins and negotiates again. A pin belongs to the connection that set
+  `Pin { cells: None }` unpins and negotiates again. A pin belongs to the connection that set
   it: when that client goes (`ClientGone`, the app quitting, the relay ending), the pin goes
   and the size is negotiated again. That is "not remembered across restarts" for both the
   person and agents. A later pin replaces an earlier one whoever set it.
@@ -180,8 +181,9 @@ grips and the drag label for both, so they are the same pixels. What differs is 
 pane gives it: units (pixels, cells), presets, limits, and how content is fitted.
 
 - **Toggle**: the browser toolbar's button, on the terminal bar (`terminals/header.rs`): a
-  phone-and-tablet icon, tooltip "Responsive  ⌥⌘R", shown selected while the terminal is
-  pinned; and ⌥⌘R in the terminal's key context (a terminal has no context menu yet).
+  phone-and-tablet icon, tooltip "Responsive" with the key bound in the terminal's key
+  context (⌥⌘R), shown selected while the terminal is pinned; and ⌥⌘R in the terminal's key
+  context (a terminal has no context menu yet).
   Turning the mode on pins the cells the room under the bar holds at the person's font, so
   the terminal shows at 100 %.
 - **Device bar** (2.3's, 32 px): the preset menu (`Responsive ▾` for a free size; `80 × 24`,
@@ -196,7 +198,9 @@ pane gives it: units (pixels, cells), presets, limits, and how content is fitted
   twice the pointer's move, the grid staying centred); the size live in the fields and in
   the `120 × 40` label under the pointer while dragging; the pin is sent as the grip
   moves, one at a time (the latest once the daemon has answered the last), so the program
-  follows every frame the daemon keeps up with, as a terminal window's does. Under Fit, a
+  follows every frame the daemon keeps up with, as a terminal window's does. The cells
+  sent last aren't sent again until another pin replaces them; a pin that fails is sent
+  again when it's asked for again, and the size shown goes back to the daemon's. Under Fit, a
   grip in hand holds the font, so the edge stays under the pointer; it fits again on
   release. Double-clicking a grip fits that side to the room at the person's font.
 - **Pinned by an agent**: the bar starts with "Set by claude-code:7f3a" (muted), its size is
@@ -320,13 +324,17 @@ Where the build differs from the sections above, or settles what they left open:
   `orientation` alone keep the current preset; a width, height or customisation on a
   preset switches to Responsive with desktop behaviour; an agent's viewport reaches a page
   out of sight at once. A free size follows the window's scale and is kept within 16384
-  device px at whatever scale the window has.
+  device px at whatever scale the window has (`Viewport::max_side` in `browser-ipc`, the
+  limit the host's live sizing keeps to as well). A pane knows its window's scale from the
+  moment it's made, before it's drawn.
 - Browser UI details: turning the mode on starts at the area under the device bar, so the
   page shows at 100 %; a drag keeps the fit it started with, so the edge stays under the
   pointer; a page wider than its area keeps its left edge at the gutter; ⌥⌘R also works in
   the find bar; the context menu row is checked while on; the reload hint reads "Some
   sites switch only once the page loads again. Reload". Grip drags end when the button is
-  found up, as a selection drag does.
+  found up, as a selection drag does. A size dragged or typed changes the mode only; the
+  page is told it as the pane is next drawn, so a grip sends one size a frame however fast
+  the pointer moves, and the window waits for the page's frame at it (section 8).
 - Terminal limits answer `invalid_argument` (the terminal catalog's code), not
   `invalid_input`. A pin carries cells only; the cell's pixel size comes from the
   clients' smallest size, or the record's. An agent's unpin is logged "let it fill the views
@@ -353,31 +361,47 @@ Where the build differs from the sections above, or settles what they left open:
 A page follows a drag of its pane's edge (a split's divider, a responsive grip, the window)
 with a new layout every frame, as a Chrome window does. This is the browser host's job
 (`crates/browser-host/src/host/{sizing.rs,live.rs,live/drive.rs}`); the app keeps sending
-one size per frame.
+one size per frame, and says whether a drag is under way (`AppRequest::Resize { dragging }`).
 
 - Why: resizing Chromium's off-screen view restarts its capture, which first paints the
   new layout scaled into the old size between bars. The host used to drop every paint not
   at the latest size, so a drag showed about one frame in two seconds.
-- How: while sizes keep coming, the view keeps a size with room to spare (the drag's size
+- How: while a drag goes on, the view keeps a size with room to spare (the drag's size
   plus 512 px, within 16384 device px) and the page is laid out at each size by
   `Emulation.setDeviceMetricsOverride`, in the page's own session under ids of the host's.
   This is the same technique as DevTools' device mode, and costs one frame. The app is
   shown the top-left of each frame, the part the page fills. A drag past the view first
-  pins the layout at what the view holds, then grows the view under it. 150 ms after the
-  last size, the view is given that size for real and, once the page has painted at it
-  (or 500 ms passed), the override goes.
+  pins the layout at what the view holds, then grows the view under it. When the app says
+  the drag is over, the view is given its last size for real (once grown, if it's growing)
+  and, once the page has painted at it (or 500 ms passed), the override goes.
+- Which drags the app tells of (`browser/page.rs`, prepaint; `view/sized.rs` `Dragging`):
+  a drag in hand in GPUI (a split's divider, the sidebar's and right panel's edges, docked
+  DevTools' divider) and a responsive grip held, which the app sees end: as one is let go
+  the app sends its size once more with `dragging: false`, even when it didn't change. And
+  the window's edge, seen as the window's size changing since the page was last placed:
+  GPUI has no live-resize state to say when that ends, so the host ends it 150 ms after its
+  last size (`SETTLE`), as it ended every drag before. That timer stays on every drag, as a
+  fallback.
+- A size of its own (`dragging: false` with no drag under way: an agent's
+  `browser_viewport`, a preset, the mode turned on, the sidebar shown) is laid out as on a
+  page not loaded yet, below: one resize of the view, no override and no 150 ms settle. A
+  size Chromium already has is not told again.
 - The app's own device metrics (responsive mode) are kept: the host rewrites the app's
   `set`/`clearDeviceMetricsOverride` to the drag's size while one is under way, merges
   them into its own overrides, and puts them back when the drag ends.
 - Pages that aren't loaded yet and DevTools are resized as before. There, one size is laid
   out at a time and only letterboxed paints (`content_rect` or `source_size` differing
-  from the visible rect) are dropped.
+  from the visible rect) are dropped. The paint at the size laid out lets the next go
+  (`Queued::SizeNext`): it is the latest asked for when the host's queue gets to it, so a
+  size asked for meanwhile replaces it and an older one is never laid out after it.
 - The view grows once per drag, at its start and whichever way it goes, to the largest
   display (`largest_screen`), so a fast drag never has it grow again partway.
 - The pane's edge and the page reach the screen together, as in a Chrome window
   (`crates/colosso/src/browser/view/sized.rs`): when a page's pane changes size, the page
-  element sends the size and waits, up to 250 ms, for the page's frame at it before the
-  window is drawn, handling what the host says meanwhile (`browser/host/inbox.rs`). A heavy
+  element sends the size and waits for the page's frame at it before the window is drawn,
+  handling what the host says meanwhile (`browser/host/inbox.rs`). The pages resized in one
+  frame wait until the same deadline, 250 ms after the first began (`frame_deadline`), so a
+  frame waits 250 ms at most however many pages changed size. A heavy
   page dragged fast then goes at its own pace (openai.com: mostly under 50 ms, at most about
   120 ms). A page that misses five waits in a row isn't waited for until a frame catches up.
 - And GPUI presents its frames in Core Animation's transaction while any page has a native

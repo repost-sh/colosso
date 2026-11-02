@@ -6,11 +6,11 @@
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use colosso_browser_ipc::client::Incoming;
 use colosso_browser_ipc::{PaneId, PixelSize};
-use gpui_kit::Context;
+use gpui_kit::{Context, Window};
 
 use super::{Browsers, Host};
 
@@ -75,6 +75,24 @@ impl Browsers {
                 return;
             }
         }
+    }
+
+    /// Until when the frame `window` is drawing waits for its pages' frames: `wait` from the
+    /// first page that waits in it, so pages resized together wait `wait` at most between them.
+    /// The next frame has a deadline of its own.
+    pub fn frame_deadline(&mut self, window: &Window, wait: Duration) -> Instant {
+        let drawing = window.window_handle();
+        if let Some((of, until)) = self.frame_deadline
+            && of == drawing
+        {
+            return until;
+        }
+        let until = Instant::now() + wait;
+        self.frame_deadline = Some((drawing, until));
+        window.on_next_frame(|_, cx| {
+            Browsers::global(cx).update(cx, |browsers, _| browsers.frame_deadline = None);
+        });
+        until
     }
 
     /// Handles what the host says until `pane` shows a frame of `size`, or `until` passes:

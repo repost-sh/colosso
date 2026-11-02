@@ -475,7 +475,7 @@ Attach { handle, size?, mode: control|observe, since_offset?: u64 }
        → AttachOk { terminal, offset: u64 } then Snapshot{...} then Output{...}* 
 Detach { handle }
 Resize { handle, cols, rows, cell_w_px, cell_h_px }
-Pin    { handle, size? }                           → Pinned { size, pinned }   (protocol 2;
+Pin    { handle, cells?: (cols, rows) }            → Pinned { size, pinned }   (protocol 3;
          a size every viewer shows, owned by the connection; `docs/responsive.md` 3.1)
 Rename { handle, name? , title? , labels? }
 Signal { handle, signal }
@@ -525,7 +525,7 @@ from the snapshot's offset with nothing missing.
 Size negotiation: a terminal has one size. Policy, in order: the size of the client holding
 control; else the smallest of the attached `control`-mode clients; observers never resize.
 **As implemented (M5):** always the smallest `control`-mode client, whoever holds control
-(`session/stream.rs`, `negotiate_size`); observers never resize.
+(`session/stream.rs`, `settle_size`); observers never resize.
 Changes emit `Event{size}` so other clients can letterbox.
 
 Multi-client: any number of clients per terminal. Every attached client receives the same

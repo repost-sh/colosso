@@ -1,23 +1,16 @@
 //! The device presets of responsive mode (`docs/responsive.md` 2.2): each one's size,
 //! scale and user agent, and the limits every size keeps to.
 
+use colosso_browser_ipc::Viewport;
 use serde_json::{Value, json};
 
 /// The fewest logical pixels a side has.
 pub const MIN_SIDE: u32 = 50;
-/// The most device pixels a surface's side has.
-const MAX_DEVICE_SIDE: f32 = 16384.;
 
-/// The most logical pixels a side has at `scale`, so its surface stays within
-/// [`MAX_DEVICE_SIDE`] device pixels.
+/// The most logical pixels a side has at `scale`, so its surface stays within the host's
+/// largest ([`Viewport::max_side`]), and never fewer than [`MIN_SIDE`].
 pub fn max_side(scale: f32) -> u32 {
-    let scale = if scale.is_finite() && scale > 0. {
-        scale
-    } else {
-        1.
-    };
-    let most = (MAX_DEVICE_SIDE / scale).floor() as u32;
-    most.max(MIN_SIDE)
+    Viewport::max_side(scale).max(MIN_SIDE)
 }
 
 /// Whether `side` logical pixels are within the limits at `scale`.

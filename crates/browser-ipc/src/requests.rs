@@ -31,6 +31,11 @@ pub enum AppRequest {
         pane: PaneId,
         /// Its new size.
         viewport: Viewport,
+        /// Whether a drag of the pane's edge is under way (a split's divider, a responsive
+        /// grip, the window's edge): the host lays the page out live while it is, and settles
+        /// once the app says it's over, sending this `false` at the last size.
+        #[serde(default)]
+        dragging: bool,
     },
     /// Load a page.
     Navigate {

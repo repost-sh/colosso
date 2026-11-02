@@ -249,6 +249,7 @@ fn a_page_that_grows_or_shrinks_never_shows_a_letterboxed_frame() {
             .send(&AppRequest::Resize {
                 pane: 1,
                 viewport: at(height),
+                dragging: false,
             })
             .expect("resize");
         let want = at(height).pixels();

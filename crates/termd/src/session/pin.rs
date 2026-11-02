@@ -4,16 +4,16 @@
 //! its lease and is logged as one; a person's takes nothing from an agent.
 
 use colosso_term_control::{
-    Actor, ActorKind, ErrorCode, Pinned, ProtocolError, ResponseBody, Size, pin_cells_error,
+    Actor, ActorKind, ErrorCode, Pinned, ProtocolError, ResponseBody, pin_cells_error,
 };
 
 use super::Session;
 use super::cmd::{Reply, exited};
 
 impl Session {
-    pub(super) fn pin(&mut self, reply: &Reply, size: Option<Size>) {
-        if let Some(size) = size {
-            if let Some(message) = pin_cells_error(size.cols, size.rows) {
+    pub(super) fn pin(&mut self, reply: &Reply, cells: Option<(u16, u16)>) {
+        if let Some((cols, rows)) = cells {
+            if let Some(message) = pin_cells_error(cols, rows) {
                 return reply.err(ProtocolError::new(ErrorCode::InvalidArgument, message));
             }
             if self.pty.is_none() {
@@ -21,12 +21,12 @@ impl Session {
             }
         }
         let actor = reply.client.actor.clone();
-        if let Err(error) = self.may_resize(&actor, size) {
+        if let Err(error) = self.may_resize(&actor, cells) {
             return reply.err(error);
         }
-        let pinned = size.map(|size| Pinned {
-            cols: size.cols,
-            rows: size.rows,
+        let pinned = cells.map(|(cols, rows)| Pinned {
+            cols,
+            rows,
             by: actor,
         });
         let news = pinned != self.record.pinned;
@@ -38,7 +38,7 @@ impl Session {
         };
         log::log!(level, "{}: pinned at {pinned:?}", self.record.handle);
         self.record.pinned = pinned;
-        self.pinned_by = size.map(|_| reply.client.id);
+        self.pinned_by = cells.map(|_| reply.client.id);
         self.settle_size(news);
         reply.ok(ResponseBody::Pinned {
             size: self.record.size,
@@ -61,20 +61,20 @@ impl Session {
         self.settle_size(true);
     }
 
-    /// Whether `actor` may size the terminal to `size` (`None`: to fill the views), an
+    /// Whether `actor` may size the terminal to `cells` (`None`: to fill the views), an
     /// agent's sizing logged as its resize; a person's sizes it as a window does, which
     /// isn't news.
     pub(super) fn may_resize(
         &mut self,
         actor: &Actor,
-        size: Option<Size>,
+        cells: Option<(u16, u16)>,
     ) -> Result<(), ProtocolError> {
         let outcome = self.agent_may_act(actor);
         if actor.kind == ActorKind::Agent {
-            let (command, action) = match size {
-                Some(size) => (
-                    format!("resize {}x{}", size.cols, size.rows),
-                    format!("resized to {}x{}", size.cols, size.rows),
+            let (command, action) = match cells {
+                Some((cols, rows)) => (
+                    format!("resize {cols}x{rows}"),
+                    format!("resized to {cols}x{rows}"),
                 ),
                 None => (
                     "resize --fill".to_owned(),

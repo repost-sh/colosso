@@ -32,6 +32,16 @@ pub enum SetBy {
     Agent(String),
 }
 
+impl SetBy {
+    /// The agent's name, when an agent set it.
+    pub fn agent(&self) -> Option<&str> {
+        match self {
+            SetBy::Agent(agent) => Some(agent),
+            SetBy::Person => None,
+        }
+    }
+}
+
 /// A page's responsive mode while it's on.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Responsive {
@@ -86,12 +96,10 @@ impl Responsive {
         self.width > self.height
     }
 
-    /// The page's device pixels per logical pixel, in a window at `window`'s.
+    /// The page's device pixels per logical pixel, in a window at `window`'s: a preset's is
+    /// its device's, kept in `scale` as it's made.
     pub fn scale_at(&self, window: f32) -> f32 {
-        self.device
-            .map(|device| device.scale)
-            .or(self.scale)
-            .unwrap_or(window)
+        self.scale.unwrap_or(window)
     }
 
     /// The mode brought within the largest page a window at scale `window` shows, when it

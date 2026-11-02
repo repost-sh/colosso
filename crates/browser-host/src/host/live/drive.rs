@@ -4,11 +4,12 @@
 
 use std::time::Instant;
 
-use cef::{ImplBrowserHost, ImplTask, Task, ThreadId, WrapTask, rc::Rc, wrap_task};
+use cef::{ImplTask, Task, ThreadId, WrapTask, rc::Rc, wrap_task};
 use colosso_browser_ipc::{PaneId, PixelSize, Viewport};
 
 use super::{Do, Live, metrics};
-use crate::host::{Pane, Queued, enqueue, host_of, inspect, panes, with_pane};
+use crate::host::inspect::{self, Unsent, Whose};
+use crate::host::{Pane, Queued, enqueue, panes, with_pane};
 
 /// The host's own commands in a page's session, by id, until they're answered.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -25,9 +26,10 @@ fn can_live(p: &Pane) -> bool {
     p.browser.is_some() && p.loaded && p.inspector.is_none()
 }
 
-/// The app asks for `viewport`: whether live sizing took it. When not, it's an ordinary
-/// resize, and a drag under way is cleared.
-pub(crate) fn ask(pane: PaneId, viewport: Viewport) -> bool {
+/// The app asks for `viewport`, `dragging` whether a drag of the pane's edge is under way:
+/// whether live sizing took it. A drag starts it; the size that says the drag is over ends
+/// it. When not taken, it's an ordinary resize, and a drag under way is cleared.
+pub(crate) fn ask(pane: PaneId, viewport: Viewport, dragging: bool) -> bool {
     let now = Instant::now();
     let taken = with_pane(pane, |p| {
         if !can_live(p) {
@@ -39,8 +41,12 @@ pub(crate) fn ask(pane: PaneId, viewport: Viewport) -> bool {
                 p.live = None;
                 Err(true)
             }
-            Some(live) => Ok(live.ask(viewport, now)),
+            Some(live) => Ok(live.ask(viewport, dragging, now)),
+            // A size of its own (an agent's, a preset, the mode turned on): laid out as it is.
+            None if !dragging => Err(false),
             None => {
+                // The sizes come here from now on: one kept from before is never told.
+                p.sizing.forget_next();
                 let screen = crate::largest_screen();
                 let (live, todo) = Live::start(p.viewport, viewport, screen, now);
                 p.live = Some(live);
@@ -93,7 +99,7 @@ fn run_later(pane: PaneId, todo: Vec<Do>) {
 /// The page painted at `size`, edge to edge, from within its paint.
 pub(crate) fn painted(p: &mut Pane, pane: PaneId, size: PixelSize) {
     if let Some(live) = p.live.as_mut() {
-        run_later(pane, live.painted(size));
+        run_later(pane, live.painted(size, Instant::now()));
     }
 }
 
@@ -160,7 +166,7 @@ pub(crate) fn app_command(
 fn override_at(pane: PaneId, size: Viewport, own: Own) {
     let params = with_pane(pane, |p| metrics(p.app_metrics.as_ref(), size));
     if let Some(params) = params {
-        send(pane, "Emulation.setDeviceMetricsOverride", &params, own);
+        send(pane, "Emulation.setDeviceMetricsOverride", params, own);
     }
 }
 
@@ -170,32 +176,22 @@ fn own_metrics(pane: PaneId) {
         Some(params) => send(
             pane,
             "Emulation.setDeviceMetricsOverride",
-            &params,
+            params,
             Own::Other,
         ),
         None => send(
             pane,
             "Emulation.clearDeviceMetricsOverride",
-            &serde_json::json!({}),
+            serde_json::json!({}),
             Own::Other,
         ),
     }
 }
 
-fn send(pane: PaneId, method: &str, params: &serde_json::Value, own: Own) {
-    let Some(host) = host_of(pane) else {
-        return;
-    };
-    if !inspect::observing(pane, &host) {
-        give_up(pane);
-        return;
-    }
-    let id = crate::devtools::host_id();
-    with_pane(pane, |p| p.own.insert(id, own));
-    let message = serde_json::json!({"id": id, "method": method, "params": params}).to_string();
-    if host.send_dev_tools_message(Some(message.as_bytes())) == 0 {
-        with_pane(pane, |p| p.own.remove(&id));
-        give_up(pane);
+fn send(pane: PaneId, method: &str, params: serde_json::Value, own: Own) {
+    match inspect::send_in_session(pane, method, params, Whose::Host(own)) {
+        Ok(()) | Err(Unsent::Closed) => {}
+        Err(Unsent::NoSession | Unsent::Refused) => give_up(pane),
     }
 }
 

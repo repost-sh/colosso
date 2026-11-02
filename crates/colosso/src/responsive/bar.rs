@@ -21,7 +21,7 @@ use gpui_kit::{
 };
 
 use super::Zoom;
-use crate::shell::{icon, icon_button};
+use crate::shell::{glass, icon, icon_button};
 use crate::theme::{self, Palette};
 
 /// The bar's height.
@@ -34,9 +34,17 @@ pub type Click = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
 pub type Restore = Rc<dyn Fn(&mut Window, &mut App)>;
 
 /// Responsive mode's toggle in a pane's toolbar, the browser's and a terminal's: selected
-/// while the mode is `on`.
-pub fn toggle_button(id: impl Into<ElementId>, on: bool, cx: &App) -> Button {
-    icon_button(id, IconName::TabletSmartphone, "Responsive  ⌥⌘R", cx)
+/// while the mode is `on`, its tooltip showing the key `action` is bound to in the pane's
+/// key `context`.
+pub fn toggle_button(
+    id: impl Into<ElementId>,
+    on: bool,
+    action: &dyn Action,
+    context: &str,
+    cx: &App,
+) -> Button {
+    (glass(id, theme::palette(cx).text, cx).icon(IconName::TabletSmartphone))
+        .tooltip_with_action("Responsive", action, Some(context))
         .small()
         .selected(on)
 }

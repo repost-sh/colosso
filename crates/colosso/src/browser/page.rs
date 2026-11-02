@@ -16,6 +16,7 @@ use super::input::{self, cursor_style};
 use super::responsive::Grip;
 use super::toolbar;
 use super::view::BrowserView;
+use super::view::sized::Dragging;
 use crate::responsive::{self, grips};
 use crate::theme::{self, Palette};
 
@@ -83,26 +84,38 @@ impl Element for PageSurface {
         window: &mut Window,
         cx: &mut App,
     ) -> Placed {
-        let scale = window.scale_factor();
-        let (laid, responsive, free) = {
+        let (scale, window_size) = (window.scale_factor(), window.viewport_size());
+        let (laid, responsive, free, dragging, placed) = {
             let view = self.view.read(cx);
             let mode = view.responsive.mode.as_ref();
-            (
-                view.lay_out(bounds, scale),
-                mode.is_some(),
-                mode.is_some_and(|mode| mode.device.is_none()),
-            )
+            let laid = view.lay_out(bounds, scale);
+            // What drags the pane's edge (`Dragging`): a drag in hand or a grip held, else the
+            // window's edge if its size changed since the page was last placed.
+            let dragging = if cx.has_active_drag() || view.responsive.drag.is_some() {
+                Dragging::Held
+            } else if view.window_size.is_some_and(|size| size != window_size) {
+                Dragging::Window
+            } else {
+                Dragging::No
+            };
+            // A held drag let go is told even at the size it ended at.
+            let placed = view.is_placed(&laid, bounds.size, scale)
+                && view.window_size == Some(window_size)
+                && (dragging == Dragging::Held || !view.drag_sent);
+            let free = mode.is_some_and(|mode| mode.device.is_none());
+            (laid, mode.is_some(), free, dragging, placed)
         };
         let (shown, fit) = (laid.1, laid.2);
         // An update counts as a change to the view, so it's made only when one happened.
-        if !self.view.read(cx).is_placed(&laid, bounds.size, scale) {
-            self.view
-                .update(cx, |view, cx| view.place_page(laid, bounds.size, scale, cx));
+        if !placed {
+            self.view.update(cx, |view, cx| {
+                view.place_page(laid, bounds.size, window, dragging, cx);
+            });
         }
         // A new size, sent from here or since the last frame, shows with the page laid out
         // to it.
         if self.view.read(cx).frame_due {
-            super::view::sized::await_frame(&self.view, cx);
+            super::view::sized::await_frame(&self.view, window, cx);
         }
         let hitbox = window.insert_hitbox(shown, HitboxBehavior::Normal);
         let grips = if free {

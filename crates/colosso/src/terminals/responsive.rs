@@ -60,10 +60,10 @@ pub struct ResponsiveTerminal {
 
 impl ResponsiveTerminal {
     pub fn new(id: u64, view: Entity<TerminalView>, cx: &mut Context<Self>) -> Self {
-        let events = cx.subscribe(&view, |this, _, event, cx| {
-            if *event == TerminalEvent::Responsive {
-                this.pin_changed(cx);
-            }
+        let events = cx.subscribe(&view, |this, _, event, cx| match *event {
+            TerminalEvent::Responsive => this.pin_changed(cx),
+            TerminalEvent::PinRefused(cols, rows) => this.pin_refused((cols, rows), cx),
+            _ => {}
         });
         ResponsiveTerminal {
             id,
@@ -88,8 +88,8 @@ impl ResponsiveTerminal {
         preset_at(self.preset, self.size(cx)?)
     }
 
-    /// The room the terminal has at its true size, under the bar (`barred`, or as it will
-    /// be once the bar shows) and inside the gutters.
+    /// The room the terminal has at its true size, under the bar (as it's laid out while
+    /// pinned, or as it will be once the bar shows) and inside the gutters.
     fn room(&self, cx: &App) -> Option<(Pixels, Pixels)> {
         let view = self.view.read(cx);
         let laid = view.laid_out_in()?;
@@ -132,11 +132,23 @@ impl ResponsiveTerminal {
         cx.notify();
     }
 
-    /// Asks the daemon for `cells`, shown at once as the view keeps them within its limits.
+    /// Asks the daemon for `cells`, shown at once as the view keeps them within its limits;
+    /// the cells asked for last aren't asked again.
     fn ask(&mut self, (cols, rows): (u16, u16), cx: &mut Context<Self>) {
-        let asked = self.view.update(cx, |view, cx| view.pin(cols, rows, cx));
-        self.asked = Some(asked);
+        if self.asked != Some((cols, rows)) {
+            let asked = self.view.update(cx, |view, cx| view.pin(cols, rows, cx));
+            self.asked = Some(asked);
+        }
         cx.notify();
+    }
+
+    /// The pin at `cells` didn't take: the size shown is the daemon's again, unless another
+    /// was asked for since.
+    fn pin_refused(&mut self, cells: (u16, u16), cx: &mut Context<Self>) {
+        if self.asked == Some(cells) {
+            self.asked = None;
+            cx.notify();
+        }
     }
 
     /// The daemon's pin changed, or the font the terminal's fitted at.
@@ -297,7 +309,7 @@ impl Resizable for ResponsiveTerminal {
         self.ask(cells(width, height), cx);
     }
 
-    fn grip_held(&mut self, _held: bool, cx: &mut Context<Self>) {
+    fn grip_held(&mut self, cx: &mut Context<Self>) {
         self.set_scale(cx);
     }
 }
@@ -325,9 +337,7 @@ impl Render for ResponsiveTerminal {
             .child(div().size_full().p(px(GUTTER)).child(self.view.clone()))
             .child(frame::Frame {
                 host: cx.entity(),
-                view: self.view.clone(),
                 free,
-                palette: p,
             })
             .children(grips::label(self.drag.as_ref(), cols.into(), rows.into(), p));
         root.children(bar).child(area)

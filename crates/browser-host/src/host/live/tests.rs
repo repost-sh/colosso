@@ -14,7 +14,7 @@ fn grow(live: &mut Live) -> Viewport {
         panic!("not pinning: {:?}", live.phase);
     };
     assert_eq!(live.pinned(), vec![Do::Resize(room)]);
-    live.painted(room.pixels());
+    live.painted(room.pixels(), Instant::now());
     room
 }
 
@@ -26,7 +26,7 @@ fn a_drag_grows_the_view_at_once_under_the_layout_whichever_way_it_goes() {
     assert_eq!(todo, vec![Do::Pin(at(996, 600))], "laid out, then grown");
     assert_eq!(live.phase, Phase::Pinning { room });
     assert_eq!(
-        live.ask(at(990, 600), start + Duration::from_millis(16)),
+        live.ask(at(990, 600), true, start + Duration::from_millis(16)),
         vec![Do::Override(at(990, 600))]
     );
     assert_eq!(
@@ -36,12 +36,12 @@ fn a_drag_grows_the_view_at_once_under_the_layout_whichever_way_it_goes() {
     );
     assert_eq!(live.pinned(), vec![Do::Resize(room)]);
     assert_eq!(
-        live.painted(at(1000, 600).pixels()),
+        live.painted(at(1000, 600).pixels(), start),
         vec![],
         "not grown yet"
     );
     assert_eq!(
-        live.painted(room.pixels()),
+        live.painted(room.pixels(), start),
         vec![Do::Override(at(990, 600))],
         "grown: the latest size"
     );
@@ -55,13 +55,13 @@ fn a_drag_past_the_view_is_capped_until_the_view_has_grown() {
     assert_eq!(todo, vec![Do::Pin(at(1000, 600))]);
     assert_eq!(live.phase, Phase::Pinning { room });
     assert_eq!(
-        live.ask(at(1008, 600), start),
+        live.ask(at(1008, 600), true, start),
         vec![Do::Override(at(1000, 600))],
         "still capped while pinning"
     );
     assert_eq!(grow(&mut live), room);
     assert_eq!(
-        live.ask(at(1400, 900), start),
+        live.ask(at(1400, 900), true, start),
         vec![Do::Override(at(1400, 900))]
     );
 }
@@ -73,14 +73,14 @@ fn a_drag_past_the_room_grows_it_again() {
     let room = grow(&mut live);
     let wider = at(2100, 600);
     assert_eq!(
-        live.ask(wider, start),
+        live.ask(wider, true, start),
         vec![
             Do::Override(at(room.width, 600)),
             Do::Resize(at(2612, 1624))
         ]
     );
     assert_eq!(
-        live.painted(at(2612, 1624).pixels()),
+        live.painted(at(2612, 1624).pixels(), start),
         vec![Do::Override(wider)]
     );
 }
@@ -94,7 +94,7 @@ fn the_room_reaches_the_largest_display_so_a_fast_drag_grows_the_view_once() {
     assert_eq!(live.phase, Phase::Pinning { room });
     grow(&mut live);
     assert_eq!(
-        live.ask(at(1700, 900), start),
+        live.ask(at(1700, 900), true, start),
         vec![Do::Override(at(1700, 900))],
         "within the display: laid out, the view as it is"
     );
@@ -111,11 +111,52 @@ fn a_drag_ends_with_the_view_at_its_last_size_and_the_override_gone() {
     );
     let quiet = start + SETTLE;
     assert_eq!(live.settle(quiet), Ok(vec![Do::Resize(at(900, 600))]));
-    assert_eq!(live.painted(room.pixels()), vec![], "still the grown view");
+    assert_eq!(
+        live.painted(room.pixels(), start),
+        vec![],
+        "still the grown view"
+    );
     assert!(!live.done());
-    assert_eq!(live.painted(at(900, 600).pixels()), vec![Do::Clear]);
+    assert_eq!(live.painted(at(900, 600).pixels(), start), vec![Do::Clear]);
     assert!(live.done());
     assert_eq!(live.laid().pixels(), at(900, 600).pixels());
+}
+
+#[test]
+fn a_drag_the_app_says_is_over_ends_at_once() {
+    let start = Instant::now();
+    let (mut live, _) = Live::start(at(1000, 600), at(990, 600), None, start);
+    grow(&mut live);
+    assert_eq!(
+        live.ask(at(900, 600), false, start),
+        vec![Do::Override(at(900, 600)), Do::Resize(at(900, 600))],
+        "laid out at the last size and the view given it, not after SETTLE"
+    );
+    assert_eq!(
+        live.ask(at(900, 600), false, start),
+        vec![],
+        "said again: it ends as it is"
+    );
+    assert_eq!(live.painted(at(900, 600).pixels(), start), vec![Do::Clear]);
+    assert!(live.done());
+}
+
+#[test]
+fn a_drag_over_while_the_view_grows_ends_once_it_has_grown() {
+    let start = Instant::now();
+    let (mut live, _) = Live::start(at(1000, 600), at(996, 600), None, start);
+    let room = at(1512, 1112);
+    assert_eq!(
+        live.ask(at(990, 600), false, start),
+        vec![Do::Override(at(990, 600))],
+        "the view is growing: it ends after"
+    );
+    assert_eq!(live.pinned(), vec![Do::Resize(room)]);
+    assert_eq!(
+        live.painted(room.pixels(), start),
+        vec![Do::Override(at(990, 600)), Do::Resize(at(990, 600))]
+    );
+    assert_eq!(live.painted(at(990, 600).pixels(), start), vec![Do::Clear]);
 }
 
 #[test]
@@ -124,7 +165,7 @@ fn a_drag_on_a_view_that_cant_grow_ends_at_once_back_at_its_size() {
     let most = at(8192, 8192);
     let (mut live, todo) = Live::start(most, at(8000, 8192), Some((8192, 8192)), start);
     assert_eq!(todo, vec![Do::Override(at(8000, 8192))], "no room to grow");
-    live.ask(most, start);
+    live.ask(most, true, start);
     assert_eq!(live.settle(start + SETTLE), Ok(vec![Do::Clear]));
     assert!(live.done());
 }
@@ -153,11 +194,11 @@ fn a_size_while_the_drag_ends_takes_it_up_again() {
     live.settle(start + SETTLE).ok();
     let later = start + SETTLE + Duration::from_millis(20);
     assert_eq!(
-        live.ask(at(880, 600), later),
+        live.ask(at(880, 600), true, later),
         vec![Do::Override(at(880, 600))]
     );
     assert_eq!(
-        live.ask(at(950, 600), later),
+        live.ask(at(950, 600), true, later),
         vec![Do::Override(at(900, 600)), Do::Resize(at(1462, 1112))],
         "the view is 900 wide now: past it, it grows"
     );

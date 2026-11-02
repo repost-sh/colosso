@@ -30,14 +30,12 @@ pub(super) fn change(input: &BrowserViewportInput) -> Result<ViewportChange, Con
         )?)),
     };
     let zoom = match input.zoom {
-        None => None,
-        Some(ViewportZoom::Fit(_)) => Some(Zoom::Fit),
-        Some(ViewportZoom::Percent(percent @ (50 | 75 | 100))) => Some(Zoom::Percent(percent)),
-        Some(ViewportZoom::Percent(other)) => {
+        Some(ViewportZoom::Percent(other)) if !matches!(other, 50 | 75 | 100) => {
             return Err(ControlError::invalid_input(format!(
                 "`zoom` is `fit`, 50, 75 or 100, not {other}."
             )));
         }
+        zoom => zoom.map(Zoom::from),
     };
     Ok(ViewportChange {
         fill: input.fill == Some(true),

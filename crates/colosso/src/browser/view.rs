@@ -10,7 +10,7 @@ use colosso_browser_ipc::{self as ipc, AppRequest, Cursor, Go, PageState, PaneId
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::{
     App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Focusable, Image, Pixels,
-    Point, Subscription, WeakEntity, Window,
+    Point, Size, Subscription, WeakEntity, Window,
 };
 
 use super::control::{Control, Mode};
@@ -96,8 +96,12 @@ pub struct BrowserView {
     /// How many waits in a row for the page's frame at a new size it missed (`sized.rs`).
     pub(super) frames_missed: u8,
     /// A new size went to the host and the window hasn't waited for its frame yet: sent from
-    /// layout (a divider, the window) or from a handler (a grip, the size fields, an agent).
+    /// layout (a divider, the window, a grip, the size fields) or from a handler (an agent).
     pub(super) frame_due: bool,
+    /// Whether the host was last told a held drag of the pane's edge is under way, and the
+    /// window's size the page was last placed in, which changes as the window's edge is.
+    pub(super) drag_sent: bool,
+    pub(super) window_size: Option<Size<Pixels>>,
     pub(super) cursor: Cursor,
     pub(super) focus: FocusHandle,
     pub(super) address: Entity<InputState>,
@@ -213,6 +217,9 @@ impl BrowserView {
             releasing.update(cx, |browsers, _| browsers.detach(pane));
         })
         .detach();
+        // The window's scale is known before the pane is drawn.
+        let mut responsive = super::responsive::State::default();
+        responsive.window_scale = window.scale_factor();
         Self {
             pane,
             browsers,
@@ -230,6 +237,8 @@ impl BrowserView {
             frames_shown: 0,
             frames_missed: 0,
             frame_due: false,
+            drag_sent: false,
+            window_size: None,
             shown: None,
             visible: None,
             cursor: Cursor::Arrow,
@@ -253,7 +262,7 @@ impl BrowserView {
             find: None,
             zoom: ACTUAL_SIZE,
             favicon: None,
-            responsive: super::responsive::State::default(),
+            responsive,
             _subscriptions: subscriptions,
         }
     }

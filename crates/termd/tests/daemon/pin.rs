@@ -37,7 +37,7 @@ impl Client {
     ) -> Result<(Size, Option<Pinned>), ProtocolError> {
         let request = RequestBody::Pin {
             handle: handle.clone(),
-            size: cells.map(|(cols, rows)| Size::cells(cols, rows)),
+            cells,
         };
         match self.connection.request(request) {
             Ok(ResponseBody::Pinned { size, pinned }) => Ok((size, pinned)),

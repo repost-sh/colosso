@@ -1,20 +1,22 @@
 //! Responsive mode in a pane's view: its state, the person's changes and an agent's, the
-//! page's new size sent to the host at once (a tab out of sight resizes too), its emulation
-//! sent to the page's session, and the one mapping between the window and the page shown
-//! scaled in it.
+//! page's new size sent to the host at once (a tab out of sight resizes too) or, for a size
+//! the person drags or types, as the pane is next drawn, its emulation sent to the page's
+//! session, and the one mapping between the window and the page shown scaled in it.
 
 use colosso_browser_ipc::{self as ipc, Viewport};
-use gpui_kit::{Bounds, Context, Pixels, Point, Size, point, px, size};
+use gpui_kit::{Bounds, Context, Pixels, Point, Size, Window, point, px, size};
 
 use super::bar::HEIGHT as BAR;
 use super::devices::{self, Device};
 use super::{Emulation, Responsive, SetBy, Zoom, commands, place, to_page, to_window};
 use crate::browser::control::{Actor, Refused};
 use crate::browser::view::BrowserView;
+use crate::browser::view::sized::Dragging;
 use crate::responsive::Drag;
 use crate::responsive::bar::Fields;
 
-/// The scale a pane assumes before it's drawn and knows its window's.
+/// The scale a pane assumes when it knows no window's, as a last resort: it's made with the
+/// window's.
 const SCALE_UNDRAWN: f32 = 2.;
 /// The size a pane assumes for "the pane's" before it's drawn.
 const PANE_UNDRAWN: (u32, u32) = (1280, 800);
@@ -236,18 +238,22 @@ impl BrowserView {
             && state.barred == state.mode.is_some()
     }
 
-    /// Places the page as `laid` lays it out, telling the host its size when it changed.
+    /// Places the page as `laid` lays it out in `window`, telling the host its size when it
+    /// changed, as `dragging` drags the pane's edge.
     pub(in crate::browser) fn place_page(
         &mut self,
         laid: (Viewport, Bounds<Pixels>, f32),
         room: Size<Pixels>,
-        scale: f32,
+        window: &Window,
+        dragging: Dragging,
         cx: &mut Context<Self>,
     ) {
         let (viewport, shown, fit) = laid;
+        let scale = window.scale_factor();
         self.origin = shown.origin;
         (self.responsive.fit, self.responsive.room) = (fit, room);
         self.responsive.window_scale = scale;
+        self.window_size = Some(window.viewport_size());
         // The bar is there exactly while the mode is on.
         self.responsive.barred = self.responsive.mode.is_some();
         // The size laid out at a new scale is the mode's from now on, and the bar's.
@@ -256,7 +262,7 @@ impl BrowserView {
             self.responsive.mode = Some(kept);
             cx.notify();
         }
-        self.viewport_changed(viewport, cx);
+        self.viewport_changed(viewport, dragging, cx);
     }
 
     /// The window's scale as last drawn, or a likely one before.
@@ -332,7 +338,9 @@ impl BrowserView {
         }
     }
 
-    /// The person sizes a free page to `width` × `height`, within the limits.
+    /// The person sizes a free page to `width` × `height`, within the limits. The page is told
+    /// as the pane is next drawn, so a grip dragged faster than the window draws sends one
+    /// size a frame, and the window waits for the page's frame at it (`view/sized.rs`).
     pub(in crate::browser) fn person_sizes(
         &mut self,
         width: u32,
@@ -340,21 +348,18 @@ impl BrowserView {
         cx: &mut Context<Self>,
     ) {
         let window = self.window_scale();
-        let Some(mode) = self
-            .responsive
-            .mode
-            .as_ref()
-            .filter(|mode| mode.device.is_none())
+        let Some(mode) = (self.responsive.mode.as_mut()).filter(|mode| mode.device.is_none())
         else {
             return;
         };
         let scale = mode.scale_at(window);
-        let mut sized = mode.clone();
-        (sized.width, sized.height) = (devices::clamp(width, scale), devices::clamp(height, scale));
-        sized.set_by = SetBy::Person;
-        if Some(&sized) != self.responsive.mode.as_ref() {
-            self.resize_responsive(sized, cx);
+        let sized = (devices::clamp(width, scale), devices::clamp(height, scale));
+        if sized == (mode.width, mode.height) && mode.set_by == SetBy::Person {
+            return;
         }
+        (mode.width, mode.height) = sized;
+        mode.set_by = SetBy::Person;
+        cx.notify();
     }
 
     /// `actor` sets the page's viewport, holding the page or finding it free: the viewport
@@ -389,22 +394,9 @@ impl BrowserView {
         }
         self.responsive.mode = mode;
         if let Some(viewport) = self.wanted_viewport() {
-            self.viewport_changed(viewport, cx);
+            self.viewport_changed(viewport, Dragging::No, cx);
         }
         self.emulate(cx);
-        cx.notify();
-    }
-
-    /// Puts the page in `mode`, the mode on at another size: its new size goes to the host
-    /// now, and its session emulates what it did, which a size takes no part in.
-    fn resize_responsive(&mut self, mode: Responsive, cx: &mut Context<Self>) {
-        if self.is_inspector() {
-            return;
-        }
-        self.responsive.mode = Some(mode);
-        if let Some(viewport) = self.wanted_viewport() {
-            self.viewport_changed(viewport, cx);
-        }
         cx.notify();
     }
 
