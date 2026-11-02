@@ -46,9 +46,20 @@ impl BrowserView {
         }
     }
 
+    /// Whether the page was opened in the host running now, whatever it's doing.
+    pub(in crate::browser) fn opened_now(&self, cx: &App) -> bool {
+        self.opened == Some(self.browsers.read(cx).epoch())
+    }
+
+    /// Has the page count as opened in the host now, as a test without an engine needs.
+    #[cfg(test)]
+    pub(in crate::browser) fn pretend_opened(&mut self, cx: &mut Context<Self>) {
+        self.opened = Some(self.browsers.read(cx).epoch());
+        self.session_opened(cx);
+    }
+
     pub(in crate::browser) fn is_open(&self, cx: &App) -> bool {
-        let browsers = self.browsers.read(cx);
-        browsers.status() == HostStatus::Running && self.opened == Some(browsers.epoch())
+        self.status(cx) == HostStatus::Running && self.opened_now(cx)
     }
 
     /// Opens the page once the host runs and the pane has a size. A start page starts the
@@ -98,10 +109,15 @@ impl BrowserView {
                 }
             }
         };
+        let page = matches!(request, AppRequest::Open { .. });
         self.opened = Some(epoch);
         // A page opens on screen; the next draw says so again, or that it isn't.
         self.visible = None;
         self.send(request, cx);
+        if page {
+            // Its session is new: what responsive mode emulates is told it again.
+            self.session_opened(cx);
+        }
     }
 
     /// The host started, stopped or failed.
@@ -123,6 +139,7 @@ impl BrowserView {
         cx.notify();
     }
 
+    /// The page's size is `viewport`: sent to the host when it's new.
     pub(in crate::browser) fn viewport_changed(
         &mut self,
         viewport: Viewport,
@@ -132,6 +149,7 @@ impl BrowserView {
             return;
         }
         self.viewport = Some(viewport);
+        self.frame_due = true;
         self.send_or_open(
             AppRequest::Resize {
                 pane: self.pane,

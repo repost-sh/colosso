@@ -84,6 +84,11 @@ pub enum Cmd {
         reply: Reply,
         size: Size,
     },
+    /// Pins the terminal's size for every viewer, or unpins it with `None`.
+    Pin {
+        reply: Reply,
+        size: Option<Size>,
+    },
     Rename {
         reply: Reply,
         name: Option<String>,
@@ -155,6 +160,7 @@ impl Session {
             Cmd::ClientGone { client_id, actor } => {
                 self.detach(client_id);
                 self.client_gone(&actor);
+                self.pin_gone(client_id);
             }
             Cmd::Claim {
                 reply,
@@ -188,6 +194,7 @@ impl Session {
             Cmd::Input { client_id, bytes } => self.input(client_id, &bytes),
             Cmd::Paste { reply, text } => self.paste(&reply, &text),
             Cmd::Resize { reply, size } => self.resize(&reply, size),
+            Cmd::Pin { reply, size } => self.pin(&reply, size),
             Cmd::Rename {
                 reply,
                 name,
@@ -239,14 +246,7 @@ impl Session {
     /// from an agent.
     fn resize(&mut self, reply: &Reply, size: Size) {
         let actor = reply.client.actor.clone();
-        let outcome = self.agent_may_act(&actor);
-        // A person's view sizes the terminal as its window does, which isn't news.
-        if actor.kind == ActorKind::Agent {
-            let command = format!("resize {}x{}", size.cols, size.rows);
-            let action = format!("resized to {}x{}", size.cols, size.rows);
-            self.log(&actor, command, action, outcome.as_ref().copied());
-        }
-        if let Err(error) = outcome {
+        if let Err(error) = self.may_resize(&actor, Some(size)) {
             return reply.err(error);
         }
         match self.clients.get_mut(&reply.client.id) {
@@ -353,7 +353,7 @@ impl Session {
     }
 
     /// An agent writes under its lease; a person's resize or close takes nothing from it.
-    fn agent_may_act(&mut self, actor: &Actor) -> Result<(), ProtocolError> {
+    pub(super) fn agent_may_act(&mut self, actor: &Actor) -> Result<(), ProtocolError> {
         if actor.kind == ActorKind::Agent {
             self.may_act(actor)
         } else {

@@ -160,4 +160,36 @@ mod tests {
         assert!(result.content[1].as_image().is_some());
         assert_eq!(result.content.len(), 2);
     }
+
+    #[test]
+    fn a_viewport_set_with_a_screenshot_brings_its_image_as_a_block() {
+        let viewport = serde_json::json!({
+            "mode": "device", "device": "iphone-15", "width": 393, "height": 852, "scale": 3.0,
+            "mobile": true, "touch": true, "orientation": "portrait", "zoom": "fit",
+            "shownPercent": 83, "setBy": "claude-code:7f3a"
+        });
+        let output = serde_json::json!({
+            "viewport": viewport, "settled": true, "mimeType": "image/png", "data": "iVBORw0KGgo="
+        });
+        let result = app_success("browser_viewport", output);
+        assert_eq!(result.content.len(), 2);
+        let summary = result.content[0].as_text().unwrap();
+        assert!(
+            summary.text.starts_with("iphone-15, 393 × 852"),
+            "{}",
+            summary.text
+        );
+        assert!(result.content[1].as_image().is_some());
+        let structured = result.structured_content.unwrap();
+        assert_eq!(structured["data"], "", "the image goes once, as a block");
+        assert_eq!(structured["settled"], true);
+        let plain = serde_json::json!({ "viewport": structured["viewport"], "settled": false });
+        let result = app_success("browser_viewport", plain);
+        assert!(
+            result
+                .content
+                .iter()
+                .all(|block| block.as_image().is_none())
+        );
+    }
 }

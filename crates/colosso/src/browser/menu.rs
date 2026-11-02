@@ -5,8 +5,8 @@
 use colosso_browser_ipc::{self as ipc, AppRequest, MenuEntry, MenuTarget, MouseKind, PaneId};
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::{
-    Action, App, ClipboardItem, Context, Div, InteractiveElement as _, MouseUpEvent, Pixels,
-    PlatformInput, Point, Window, point, px,
+    Action, App, ClipboardItem, Context, Div, InteractiveElement as _, MouseUpEvent, PlatformInput,
+    Window,
 };
 
 use super::control::Mode;
@@ -24,6 +24,8 @@ pub enum Pick {
     Copy(String),
     /// Show the element under the pointer in the page's `DevTools`.
     Inspect,
+    /// Turn responsive mode on or off.
+    Responsive,
 }
 
 /// A row picked from the context menu `menu` of the page `pane`.
@@ -117,9 +119,10 @@ fn command(entry: &MenuEntry) -> Option<Row> {
     })
 }
 
-/// Every row of the menu, with no leading, trailing or doubled rules. Pages that can be
-/// `inspectable` end with Inspect, as Chrome's menus do.
-fn rows(entries: &[MenuEntry], target: &MenuTarget, inspectable: bool) -> Vec<Row> {
+/// Every row of the menu, with no leading, trailing or doubled rules. A page (`Some`,
+/// saying whether it's in responsive mode) ends with Responsive mode and Inspect, as
+/// Chrome's menus end with Inspect; `DevTools` (`None`) have neither.
+fn rows(entries: &[MenuEntry], target: &MenuTarget, page: Option<bool>) -> Vec<Row> {
     let mut rows = own_rows(target);
     rows.extend(entries.iter().map(|entry| match entry {
         MenuEntry::Separator => Row::Separator,
@@ -129,8 +132,14 @@ fn rows(entries: &[MenuEntry], target: &MenuTarget, inspectable: bool) -> Vec<Ro
             rows: entries.iter().filter_map(command).collect(),
         },
     }));
-    if inspectable {
+    if let Some(responsive) = page {
         rows.push(Row::Separator);
+        rows.push(Row::Item {
+            label: "Responsive mode".into(),
+            disabled: false,
+            checked: Some(responsive),
+            pick: Pick::Responsive,
+        });
         rows.push(Row::Item {
             label: "Inspect".into(),
             disabled: false,
@@ -226,12 +235,13 @@ impl BrowserView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let rows = rows(&request.entries, &request.target, !self.is_inspector());
+        let page = (!self.is_inspector()).then_some(self.responsive.mode.is_some());
+        let rows = rows(&request.entries, &request.target, page);
         if rows.is_empty() {
             self.menu_command(request.id, None, cx);
             return;
         }
-        let at: Point<Pixels> = self.origin + point(px(request.page_at.x), px(request.page_at.y));
+        let at = self.window_point(request.page_at);
         self.open_menu = Some((request.id, request.page_at));
         self.end_press(window, cx);
         // The visual check runs unattended, where the menu's tracking would wait for a pick.
@@ -291,6 +301,7 @@ impl BrowserView {
             Pick::OpenTab(url) => cx.emit(BrowserEvent::OpenTab(url)),
             Pick::Copy(text) => cx.write_to_clipboard(ClipboardItem::new_string(text)),
             Pick::Inspect => self.inspect(Some(page_at), cx),
+            Pick::Responsive => self.toggle_responsive(cx),
         }
         cx.notify();
     }
@@ -311,6 +322,7 @@ impl BrowserView {
 /// What the window does with the menus' picks, history lists' included, and the lease
 /// chip's choices: routes them to the page they name, wherever the keyboard is.
 pub fn handle_actions(root: Div) -> Div {
+    let root = super::responsive::bar::handle_actions(root);
     root.on_action(|pick: &MenuPick, _, cx| {
         with_view(pick.pane, cx, |view, cx| {
             view.picked(pick.menu, pick.pick.clone(), cx);
@@ -330,7 +342,7 @@ pub fn handle_actions(root: Div) -> Div {
     })
 }
 
-fn with_view(
+pub(super) fn with_view(
     pane: PaneId,
     cx: &mut App,
     update: impl FnOnce(&mut BrowserView, &mut Context<BrowserView>),
@@ -380,7 +392,7 @@ mod tests {
             ..MenuTarget::default()
         };
         assert_eq!(
-            picks(&rows(&entries, &target, true)),
+            picks(&rows(&entries, &target, Some(false))),
             [
                 "OpenTab(\"https://example.com/a\")",
                 "Copy(\"https://example.com/a\")",
@@ -389,15 +401,28 @@ mod tests {
                 "-",
                 "Engine(132)",
                 "-",
+                "Responsive",
                 "Inspect"
             ]
         );
         assert_eq!(
-            picks(&rows(&entries, &target, false))
+            picks(&rows(&entries, &target, None))
                 .last()
                 .map(String::as_str),
             Some("Engine(132)"),
-            "DevTools have no inspector of their own"
+            "DevTools have no inspector of their own, nor responsive mode"
+        );
+        let on = rows(&entries, &target, Some(true));
+        assert!(
+            on.iter().any(|row| matches!(
+                row,
+                Row::Item {
+                    pick: Pick::Responsive,
+                    checked: Some(true),
+                    ..
+                }
+            )),
+            "the row is checked while the mode is on"
         );
     }
 
@@ -407,7 +432,7 @@ mod tests {
             selection: "  the quick\nbrown fox jumps over the lazy dog again ".into(),
             ..MenuTarget::default()
         };
-        let menu = rows(&[], &target, false);
+        let menu = rows(&[], &target, None);
         let Some(Row::Item { label, .. }) = menu.first() else {
             panic!("a search row");
         };
@@ -416,6 +441,6 @@ mod tests {
             editable: true,
             ..target
         };
-        assert!(rows(&[], &editable, false).is_empty());
+        assert!(rows(&[], &editable, None).is_empty());
     }
 }

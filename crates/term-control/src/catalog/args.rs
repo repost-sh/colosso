@@ -240,6 +240,25 @@ pub struct TerminalArgs {
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ResizeArgs {
+    /// The terminal: its handle (`term_…`) or its name in your worktree; left out, the one
+    /// you last acted on there, else its only terminal.
+    pub terminal: TerminalArg,
+    /// Columns, 2 to 1000, with `rows`.
+    pub cols: Option<u16>,
+    /// Rows, 2 to 1000, with `cols`.
+    pub rows: Option<u16>,
+    /// `true` unpins: the terminal fills the person's pane again. Not with `cols`/`rows`.
+    pub fill: Option<bool>,
+    /// What to do after: left out, wait for the screen to hold still 300 ms (25 s at most)
+    /// and read it; `{}` does neither.
+    pub then: Option<Then>,
+    /// Sent again with the same arguments, the first answer comes back and nothing is redone.
+    pub request_id: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RenameArgs {
     /// The terminal: its handle (`term_…`) or its name in your worktree; left out, the one
     /// you last acted on there, else its only terminal.

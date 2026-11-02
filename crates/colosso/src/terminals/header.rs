@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use colosso_term::TermClient;
 use colosso_term_control::{RequestBody, Status};
+use gpui_kit::component::button::Button;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -14,8 +15,10 @@ use gpui_kit::{
     SharedString, Stateful, StatefulInteractiveElement as _, Styled as _, div, px,
 };
 
+use super::responsive::ResponsiveTerminal;
 use super::states::{State, most_urgent};
 use crate::model::Tab;
+use crate::responsive::bar::toggle_button;
 use crate::shell::{Shell, ellipsized};
 use crate::theme::Palette;
 
@@ -146,6 +149,7 @@ impl Shell {
                     request,
                     p,
                 ))
+                .children(self.responsive_toggle(id, key, cx))
                 .child(
                     div()
                         .id(("terminal-activity", key))
@@ -163,6 +167,24 @@ impl Shell {
                         .on_click(cx.listener(move |this, _, _, cx| this.toggle_activity(id, cx))),
                 )
                 .child(stop_button(id, key, state.status == Status::Exited, p, cx)),
+        )
+    }
+}
+
+impl Shell {
+    /// The toggle of responsive mode (`docs/responsive.md` 3.3), the browser toolbar's: pins
+    /// the terminal at what the pane holds, or lets it fill the pane again; selected while
+    /// it's pinned.
+    fn responsive_toggle(&self, id: u64, key: usize, cx: &App) -> Option<Button> {
+        let made = self.terminals.views.get(&id)?;
+        let responsive = made.responsive.clone();
+        let pinned = made.view.read(cx).pinned().is_some();
+        Some(
+            toggle_button(("terminal-responsive", key), pinned, cx).on_click(
+                move |_, _, cx: &mut App| {
+                    responsive.update(cx, ResponsiveTerminal::toggle);
+                },
+            ),
         )
     }
 }

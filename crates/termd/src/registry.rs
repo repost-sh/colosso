@@ -48,6 +48,8 @@ impl Registry {
                     record.status = Status::Exited;
                     record.attached_clients = 0;
                     record.control = Control::default();
+                    // A pin lasts as long as the connection that set it, gone with the daemon.
+                    record.pinned = None;
                     if record.exit.is_none() {
                         record.exit = Some(Exit {
                             code: None,
@@ -209,6 +211,7 @@ mod tests {
             control: Control::default(),
             attached_clients: 1,
             last_output_ms: 1,
+            pinned: None,
         }
     }
 
@@ -218,7 +221,14 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let path = dir.join("registry.json");
         let mut registry = Registry::load(path.clone());
-        let a = record("a", "/w/feat-a");
+        let a = TerminalRecord {
+            pinned: Some(colosso_term_control::Pinned {
+                cols: 120,
+                rows: 40,
+                by: Actor::system(),
+            }),
+            ..record("a", "/w/feat-a")
+        };
         let b = record("b", "/w/feat-a");
         registry.put(a.clone());
         registry.put(b);
@@ -241,5 +251,15 @@ mod tests {
         assert_eq!(a_again.pid, None);
         assert!(a_again.exit.is_some_and(|exit| exit.daemon_restart));
         assert_eq!(a_again.attached_clients, 0);
+        // A pin goes with the connection that set it, so with the daemon too.
+        assert_eq!(a_again.pinned, None);
+    }
+
+    #[test]
+    fn a_record_kept_before_pins_existed_still_reads() {
+        let mut kept = serde_json::to_value(record("old", "/w/feat-a")).unwrap();
+        kept.as_object_mut().unwrap().remove("pinned");
+        let read: TerminalRecord = serde_json::from_value(kept).unwrap();
+        assert_eq!(read.pinned, None);
     }
 }

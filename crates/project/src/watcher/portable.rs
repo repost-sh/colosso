@@ -15,13 +15,20 @@ pub(crate) struct Platform {
 }
 
 impl Platform {
-    pub(crate) fn start(folders: Vec<PathBuf>) -> Result<Platform, String> {
+    /// `notify` reports only what's written once it watches, so a checkout waits for it.
+    pub(crate) const REPLAYS: bool = false;
+
+    pub(crate) fn now() -> u64 {
+        0
+    }
+
+    pub(crate) fn start(folders: Vec<PathBuf>, _since: u64) -> Result<Platform, String> {
         let watcher = notify::recommended_watcher(take).map_err(|error| error.to_string())?;
         let mut platform = Platform {
             watcher,
             folders: Vec::new(),
         };
-        platform.cover(folders)?;
+        platform.cover(folders, 0)?;
         Ok(platform)
     }
 
@@ -31,7 +38,7 @@ impl Platform {
 
     /// Watches `folders` from now on: those not watched yet are added, and those no longer
     /// wanted taken away.
-    pub(crate) fn cover(&mut self, folders: Vec<PathBuf>) -> Result<(), String> {
+    pub(crate) fn cover(&mut self, folders: Vec<PathBuf>, _since: u64) -> Result<(), String> {
         for folder in folders
             .iter()
             .filter(|folder| !self.folders.contains(folder))

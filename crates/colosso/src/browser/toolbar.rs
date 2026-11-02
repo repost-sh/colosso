@@ -1,5 +1,5 @@
-//! The toolbar over a page: history, reload, the address, who drives the page and the
-//! inspector. And what's shown over the page itself: the start page, a notice when the
+//! The toolbar over a page: history, reload, the address, who drives the page, responsive
+//! mode and the inspector. And what's shown over the page itself: the start page, a notice when the
 //! engine or the page failed, and the bar that says who has the page when it's contested.
 
 use colosso_browser_ipc::{Go, PageState};
@@ -18,6 +18,7 @@ use super::control::{Holder, Mode};
 use super::host::HostStatus;
 use super::menu::Lease;
 use super::view::{BrowserView, Notice};
+use crate::responsive::bar::toggle_button;
 use crate::shell::{icon, icon_button};
 use crate::theme::{self, Palette};
 
@@ -92,6 +93,11 @@ pub(super) fn toolbar(view: &BrowserView, window: &Window, cx: &mut Context<Brow
         .child(address(view, editing, p))
         .children(view.zoom_chip(cx))
         .child(chip(view, p))
+        .child(
+            toggle_button("browser-responsive", view.responsive.mode.is_some(), cx)
+                .disabled(view.is_start_page())
+                .on_click(cx.listener(|this, _, _, cx| this.toggle_responsive(cx))),
+        )
         .child(
             icon_button(
                 "browser-inspect",

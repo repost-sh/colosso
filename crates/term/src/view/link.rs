@@ -1,11 +1,13 @@
 //! The view's link to its terminal: opened in the daemon if need be, attached with the size
 //! its first layout gives, its VT thread started and listened to, and the daemon told of
-//! each size the grid settles at. A lost daemon is attached again, which starts it.
+//! each size the grid is laid out at, as it goes: a pane dragged resizes the program at every
+//! frame, as a terminal window does. A lost daemon is attached again, which starts it.
 
 use std::sync::Arc;
-use std::time::Duration;
 
-use colosso_term_control::{AttachMode, EventKind, OpenRequest, RequestBody, ResponseBody, Size};
+use colosso_term_control::{
+    AttachMode, EventKind, Handle, OpenRequest, RequestBody, ResponseBody, Size,
+};
 use futures::StreamExt as _;
 use gpui_kit::{AppContext as _, Context};
 
@@ -14,9 +16,22 @@ use crate::client::{TermClient, is_other_build};
 use crate::element::Grid;
 use crate::vt::{Command, Update, Vt};
 
-/// How long the size settles before the daemon hears it, so a window being dragged
-/// doesn't reflow the program at every step.
-const RESIZE_SETTLE: Duration = Duration::from_millis(50);
+/// What's to be sent the daemon next, and whether a send is under way: at most one is, so
+/// what's asked for as a pane or a grip is dragged goes at every frame the daemon keeps up
+/// with, and what's asked for last goes last.
+pub(super) struct Latest<T> {
+    wanted: Option<T>,
+    sending: bool,
+}
+
+impl<T> Default for Latest<T> {
+    fn default() -> Self {
+        Latest {
+            wanted: None,
+            sending: false,
+        }
+    }
+}
 
 impl TerminalView {
     pub(super) fn open(client: Arc<TermClient>, request: OpenRequest, cx: &mut Context<Self>) {
@@ -59,42 +74,81 @@ impl TerminalView {
         self.link = Link::Waiting;
         cx.emit(TerminalEvent::Opened(record));
         // Laid out already while the daemon opened it.
-        if let Some(grid) = self.grid.get() {
+        if let Some(grid) = self.fill.get() {
             self.attach(size_of(grid), cx);
         }
     }
 
-    /// The element laid the grid out anew: attach with it, or tell the daemon.
+    /// The element laid the grid out anew at the person's font: attach with it, or tell the
+    /// daemon, which keeps it for when the terminal isn't pinned.
     pub(crate) fn grid_changed(&mut self, grid: Grid, cx: &mut Context<Self>) {
         let size = size_of(grid);
         log::debug!("{}: laid out {}x{}", self.name, size.cols, size.rows);
         match self.link {
             Link::Waiting => self.attach(size, cx),
-            Link::Attached { .. } if self.requested != Some(size) => {
-                let Some(handle) = self.handle.clone() else {
-                    return;
-                };
-                let client = Arc::clone(&self.client);
-                self.resize = Some(cx.spawn(async move |this, cx| {
-                    cx.background_executor().timer(RESIZE_SETTLE).await;
-                    let sent = cx
-                        .background_spawn(async move {
-                            client.request(RequestBody::Resize { handle, size })
-                        })
-                        .await;
-                    if let Err(error) = sent {
-                        log::warn!("couldn't resize the terminal: {error}");
-                    }
-                    this.update(cx, |this, _| this.requested = Some(size)).ok();
-                }));
-            }
+            Link::Attached { .. } => self.send_size(size, cx),
             Link::Opening
             | Link::Attaching
-            | Link::Attached { .. }
             | Link::OtherBuild
             | Link::Replacing
             | Link::Failed(_) => {}
         }
+    }
+
+    /// Tells the daemon of `size` now, or, while it's being told of another, once that's
+    /// answered: whichever size is the latest then, unless it's the one sent last.
+    fn send_size(&mut self, size: Size, cx: &mut Context<Self>) {
+        let request = |this: &mut Self, handle, size| {
+            (this.requested != Some(size)).then(|| {
+                this.requested = Some(size);
+                RequestBody::Resize { handle, size }
+            })
+        };
+        self.send_latest(size, |this| &mut this.resize, request, "resize", cx);
+    }
+
+    /// Sends the daemon `value` now, or, while the last is being sent, once that's answered:
+    /// whichever is the latest then. `latest` is where it waits, `request` makes what's sent
+    /// of it (`None` to send nothing), and `what` says what a failure couldn't do.
+    pub(super) fn send_latest<T: 'static>(
+        &mut self,
+        value: T,
+        latest: fn(&mut Self) -> &mut Latest<T>,
+        request: fn(&mut Self, Handle, T) -> Option<RequestBody>,
+        what: &'static str,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(handle) = self.handle.clone() else {
+            return;
+        };
+        let pending = latest(self);
+        pending.wanted = Some(value);
+        if pending.sending {
+            return;
+        }
+        pending.sending = true;
+        let client = Arc::clone(&self.client);
+        cx.spawn(async move |this, cx| {
+            loop {
+                let next = this.update(cx, |this, _| {
+                    let wanted = latest(this).wanted.take();
+                    let body = wanted.and_then(|value| request(this, handle.clone(), value));
+                    latest(this).sending = body.is_some();
+                    body
+                });
+                let Ok(Some(body)) = next else {
+                    break;
+                };
+                let client = Arc::clone(&client);
+                let sent = cx
+                    .background_spawn(async move { client.request(body) })
+                    .await;
+                if let Err(error) = sent {
+                    log::warn!("couldn't {what} the terminal: {error}");
+                }
+            }
+        })
+        .detach();
     }
 
     fn attach(&mut self, size: Size, cx: &mut Context<Self>) {
@@ -138,6 +192,7 @@ impl TerminalView {
             }
         };
         self.exited = attachment.record.exit;
+        self.sized(attachment.record.size, attachment.record.pinned.clone(), cx);
         let (updates, mut received) = futures::channel::mpsc::unbounded();
         let index = attachment.index;
         let vt = match Vt::start(
@@ -215,7 +270,7 @@ impl TerminalView {
         match (&self.handle, self.request.clone()) {
             (Some(_), _) => {
                 self.link = Link::Waiting;
-                if let Some(grid) = self.grid.get() {
+                if let Some(grid) = self.fill.get() {
                     self.attach(size_of(grid), cx);
                 }
             }
@@ -258,6 +313,7 @@ impl TerminalView {
                 }
                 EventKind::Closed => cx.emit(TerminalEvent::Closed),
                 EventKind::Bell => cx.emit(TerminalEvent::Bell),
+                EventKind::Size { size, pinned } => self.sized(size, pinned, cx),
                 EventKind::Refused { error } => {
                     log::info!("{}: input refused: {}", self.name, error.message);
                 }
@@ -268,7 +324,7 @@ impl TerminalView {
                 // The daemon went away; attach again, which starts it if need be.
                 self.link = Link::Waiting;
                 self.updates = None;
-                if let Some(grid) = self.grid.get() {
+                if let Some(grid) = self.fill.get() {
                     self.attach(size_of(grid), cx);
                 }
             }

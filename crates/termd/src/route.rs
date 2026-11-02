@@ -36,6 +36,13 @@ pub fn route(body: RequestBody, reply: impl Fn() -> Reply) -> Route {
                 size,
             },
         ),
+        RequestBody::Pin { handle, size } => (
+            handle,
+            Cmd::Pin {
+                reply: reply(),
+                size,
+            },
+        ),
         RequestBody::Signal { handle, signal } => (
             handle,
             Cmd::Signal {

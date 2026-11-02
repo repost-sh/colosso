@@ -60,6 +60,10 @@ pub struct Glyphs {
     metrics: Option<Metrics>,
     chars: HashMap<(char, Style), Rc<[Piece]>>,
     clusters: HashMap<(Box<str>, Style), Rc<[Piece]>>,
+    /// Metrics at the font sizes a pinned grid was fitted with, by the size's bits, for the
+    /// font, line height and scale they were measured in.
+    sized_for: Option<(Font, u32, u32)>,
+    sized: HashMap<u32, Metrics>,
 }
 
 impl Glyphs {
@@ -77,6 +81,30 @@ impl Glyphs {
         let metrics = measure(look, window);
         self.built_for = Some((look.clone(), scale));
         self.metrics = Some(metrics);
+        metrics
+    }
+
+    /// The metrics `look` would have at `font_size`, without starting the glyphs over.
+    pub fn metrics_at(&mut self, look: &Look, font_size: Pixels, window: &Window) -> Metrics {
+        let key = (
+            look.font.clone(),
+            look.line_height.to_bits(),
+            window.scale_factor().to_bits(),
+        );
+        if self.sized_for.as_ref() != Some(&key) {
+            self.sized_for = Some(key);
+            self.sized.clear();
+        }
+        let bits = f32::from(font_size).to_bits();
+        if let Some(metrics) = self.sized.get(&bits) {
+            return *metrics;
+        }
+        let sized = Look {
+            font_size,
+            ..look.clone()
+        };
+        let metrics = measure(&sized, window);
+        self.sized.insert(bits, metrics);
         metrics
     }
 

@@ -39,7 +39,7 @@ impl Shell {
     /// Terminal action does.
     pub fn stop_shown_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let focused = (self.terminals.views.iter())
-            .find(|(_, (view, _))| view.focus_handle(cx).contains_focused(window, cx))
+            .find(|(_, made)| made.view.focus_handle(cx).contains_focused(window, cx))
             .map(|(id, _)| *id);
         if let Some(id) = focused.or_else(|| Some(self.shown()?.0)) {
             self.stop_terminal(id, window, cx);

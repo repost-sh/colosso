@@ -3,6 +3,7 @@
 //! `person_has_control` means the person took the page, so the agent leaves it.
 
 mod act;
+mod viewport;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -13,6 +14,10 @@ pub use act::{
     BrowserNavigateInput, BrowserPressKey, BrowserPressKeyInput, BrowserRelease, BrowserScroll,
     BrowserScrollInput, BrowserType, BrowserTypeInput, GoAction, Lease, MouseButton, PageInput,
     WaitUntil,
+};
+pub use viewport::{
+    BrowserViewport, BrowserViewportInput, BrowserViewportOutput, DeviceName, FitWord, Orientation,
+    Viewport, ViewportMode, ViewportZoom,
 };
 
 use super::shared::{PaneId, count};
@@ -44,7 +49,7 @@ impl PageOutput {
 }
 
 /// One browser page of the window.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PageInfo {
     /// The browser pane, which every browser tool takes as `pane`.
@@ -60,10 +65,13 @@ pub struct PageInfo {
     /// Who holds its lease: an agent's name, or `person`; absent when free.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub controller: Option<String>,
+    /// The size and device it's laid out at (`browser_viewport`); `fill` when it fills its
+    /// pane.
+    pub viewport: Viewport,
 }
 
 /// The window's pages.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct BrowserListOutput {
     /// Every browser pane of every worktree.
@@ -78,7 +86,7 @@ impl Operation for BrowserList {
     const NAME: &'static str = "browser_list";
     const TITLE: &'static str = "List browser pages";
     const SCOPE: Scope = Scope::Read;
-    const DESCRIPTION: &'static str = "Every browser pane in the window: pane id, address, title, whether it's loading, its worktree and who controls it. A page the person controls isn't yours to drive.";
+    const DESCRIPTION: &'static str = "Every browser pane in the window: pane id, address, title, whether it's loading, its worktree, who controls it and its viewport. A page the person controls isn't yours to drive.";
     const HINTS: Hints = Hints::READ;
     type Input = super::shared::NoInput;
     type Output = BrowserListOutput;

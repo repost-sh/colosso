@@ -3,6 +3,13 @@
 //! however many checkouts are open, one watcher covers them all; checkouts registering at
 //! once are covered by one restart.
 //!
+//! Where the platform can report what changed since a moment past (macOS: every report has
+//! an id, and a stream can start from one), a checkout doesn't wait for the watcher: it's
+//! registered with the moment it was, its first scan starts at once, and the watcher is
+//! started meanwhile from that moment, so what's written while it starts is reported too.
+//! Measured: `fseventsd` answering a stream's start in 1.7 to 1.9 s on a busy machine, which
+//! every checkout's first listing used to wait for, and each one opened after it as well.
+//!
 //! What the platform reports is copied off its thread at once and sorted on a thread of
 //! the hub's own: the platform drops reports it can't hand over, and sorting them waits on
 //! each checkout's listings, which its worker may be filing.
@@ -57,6 +64,8 @@ impl Batch {
 struct Target {
     places: Places,
     shared: Arc<Shared>,
+    /// The platform's moment when it was registered: what's written from then on is reported.
+    since: u64,
 }
 
 struct Hub {
@@ -96,18 +105,36 @@ pub(crate) struct Watching {
     target: Arc<Target>,
 }
 
-/// Watches `places` for `shared`: whatever the platform reports about them goes, sorted, to
-/// the writes waiting for its worker. Returns once the platform is watching them.
-pub(crate) fn watch(shared: &Arc<Shared>, places: Places) -> Result<Watching, String> {
+/// Watches `places` for `shared`: whatever the platform reports about them from now on goes,
+/// sorted, to the writes waiting for its worker. Returns at once where the platform reports
+/// from a moment past, which it's started from, and once it's watching them elsewhere; when
+/// it can't watch, the checkout is told it's unwatched.
+pub(crate) fn watch(shared: &Arc<Shared>, places: Places) -> Watching {
     let target = Arc::new(Target {
         places,
         shared: shared.clone(),
+        since: Platform::now(),
     });
     write(&HUB.targets).push(target.clone());
-    // Dropped if the platform can't watch, which takes the target back out.
-    let watching = Watching { target };
-    HUB.cover()?;
-    Ok(watching)
+    let cover = {
+        let shared = shared.clone();
+        move || {
+            if let Err(error) = HUB.cover() {
+                shared.set_unwatched(error);
+            }
+        }
+    };
+    if Platform::REPLAYS {
+        let started = std::thread::Builder::new()
+            .name("project watch".to_owned())
+            .spawn(cover);
+        if let Err(error) = started {
+            shared.set_unwatched(format!("couldn't start watching the checkout: {error}"));
+        }
+    } else {
+        cover();
+    }
+    Watching { target }
 }
 
 impl Drop for Watching {
@@ -151,17 +178,25 @@ impl Hub {
     /// opened together wait on one start, not one each.
     fn cover(&self) -> Result<(), String> {
         let mut platform = lock(&self.platform);
-        let folders = outermost(read(&self.targets).iter().flat_map(|t| t.places.folders()));
-        let watched = platform.as_ref().map_or(&[][..], Platform::folders);
-        let covered =
-            (folders.iter()).all(|folder| watched.iter().any(|outer| folder.starts_with(outer)));
-        if covered {
+        let (folders, since) = {
+            let targets = read(&self.targets);
+            let watched = platform.as_ref().map_or(&[][..], Platform::folders);
+            let within = |folder: &PathBuf| watched.iter().any(|outer| folder.starts_with(outer));
+            // From the earliest moment a checkout not watched yet was registered.
+            let since = (targets.iter())
+                .filter(|target| !target.places.folders().all(|folder| within(&folder)))
+                .map(|target| target.since)
+                .min();
+            let folders = outermost(targets.iter().flat_map(|t| t.places.folders()));
+            (folders, since)
+        };
+        let Some(since) = since else {
             return Ok(());
-        }
+        };
         if let Some(platform) = platform.as_mut() {
-            return platform.cover(folders);
+            return platform.cover(folders, since);
         }
-        *platform = Some(Platform::start(folders)?);
+        *platform = Some(Platform::start(folders, since)?);
         Ok(())
     }
 
@@ -279,6 +314,7 @@ mod tests {
         let target = Target {
             places: Places::new(Path::new("/work/app"), None),
             shared: shared.clone(),
+            since: 0,
         };
         let mut batch = Batch::default();
         batch.push("/work/app/node_modules/react", true);

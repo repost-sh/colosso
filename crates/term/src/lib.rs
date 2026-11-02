@@ -4,6 +4,7 @@
 
 mod client;
 mod element;
+mod fit;
 mod glyphs;
 mod input;
 mod keys;
@@ -13,10 +14,11 @@ mod view;
 mod vt;
 
 pub use client::{Attachment, Notice, Stream, TermClient, is_other_build};
+pub use fit::Scale;
 pub use glyphs::Look;
 pub use view::{
     CONTEXT, Copy, Paste, ScrollPageDown, ScrollPageUp, ScrollToBottom, ScrollToTop, Source,
-    TerminalEvent, TerminalView,
+    TerminalEvent, TerminalView, ToggleResponsive,
 };
 
 /// Binds the terminal view's keys; call once when the app starts.

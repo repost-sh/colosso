@@ -15,7 +15,7 @@ use crate::shell::Shell;
 impl Terminals {
     /// The view of terminal tab `id`, once it's made.
     pub fn view(&self, id: u64) -> Option<Entity<TerminalView>> {
-        self.views.get(&id).map(|(view, _)| view.clone())
+        self.views.get(&id).map(|made| made.view.clone())
     }
 
     /// The terminal tab `id` shows, by its daemon handle, once it's known.
@@ -98,7 +98,7 @@ impl Shell {
                         this.terminals
                             .views
                             .values()
-                            .map(|(view, _)| view.read(cx).name().to_owned()),
+                            .map(|made| made.view.read(cx).name().to_owned()),
                     );
                     free_name(&shell_name(), &taken)
                 });

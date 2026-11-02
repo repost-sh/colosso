@@ -54,6 +54,8 @@ fn pixels(surface: &IOSurfaceRef, points: &[(usize, usize)]) -> Vec<[u8; 4]> {
 pub struct Seen {
     pub centre: [u8; 4],
     pub grid: Vec<[u8; 4]>,
+    /// Every 4th pixel along the middle row, left to right.
+    pub row: Vec<[u8; 4]>,
 }
 
 impl Seen {
@@ -62,9 +64,11 @@ impl Seen {
         let points: Vec<_> = (0..5)
             .flat_map(|i| (0..5).map(move |j| (4 + i * (width - 8) / 4, 4 + j * (height - 8) / 4)))
             .collect();
+        let across: Vec<_> = (0..width / 4).map(|i| (i * 4, height / 2)).collect();
         Self {
             centre: centre(surface),
             grid: pixels(surface, &points),
+            row: pixels(surface, &across),
         }
     }
 }
@@ -91,10 +95,24 @@ impl Session {
 
     /// Waits for the event `want` accepts, keeping rings, handing frame
     /// slots back and failing on host errors meanwhile.
-    pub fn wait(&mut self, what: &str, mut want: impl FnMut(&HostEvent, Option<&Seen>) -> bool) {
+    pub fn wait(&mut self, what: &str, want: impl FnMut(&HostEvent, Option<&Seen>) -> bool) {
         let deadline = Instant::now() + Duration::from_secs(30);
+        assert!(self.pump(deadline, want), "timed out waiting for {what}");
+    }
+
+    /// Handles what the host sends until `deadline`, or until `want` accepts an event:
+    /// whether it did.
+    pub fn pump(
+        &mut self,
+        deadline: Instant,
+        mut want: impl FnMut(&HostEvent, Option<&Seen>) -> bool,
+    ) -> bool {
         while Instant::now() < deadline {
-            let Ok(incoming) = self.incoming.recv_timeout(Duration::from_millis(500)) else {
+            let left = deadline.saturating_duration_since(Instant::now());
+            let Ok(incoming) = self
+                .incoming
+                .recv_timeout(left.min(Duration::from_millis(500)))
+            else {
                 continue;
             };
             match incoming {
@@ -135,7 +153,7 @@ impl Session {
                             .expect("release");
                     }
                     if want(&event, seen.as_ref()) {
-                        return;
+                        return true;
                     }
                     if let HostEvent::Error { pane, message } = &event {
                         panic!("host error on pane {pane:?}: {message}");
@@ -144,7 +162,7 @@ impl Session {
                 Incoming::Closed => panic!("the host went away"),
             }
         }
-        panic!("timed out waiting for {what}");
+        false
     }
 }
 

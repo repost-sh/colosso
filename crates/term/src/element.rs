@@ -17,9 +17,14 @@ use gpui_kit::{
     size,
 };
 
+use crate::fit::{Fitting, Scale};
 use crate::glyphs::{Glyphs, Look, Metrics};
 use crate::paint::{Painter, hsla};
 use crate::view::TerminalView;
+
+mod pinned;
+
+pub use pinned::PinnedLook;
 
 /// Where the grid sits and how big its cells are, as last laid out.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -67,7 +72,18 @@ pub struct TerminalElement {
     pub frame: Option<Arc<Frame>>,
     pub look: Rc<Look>,
     pub glyphs: Rc<RefCell<Glyphs>>,
+    /// The grid as drawn: the pinned one when the terminal is pinned.
     pub grid: Rc<Shared<Option<Grid>>>,
+    /// The grid the pane would hold at the person's font: the size the view sends.
+    pub fill: Rc<Shared<Option<Grid>>>,
+    /// The element's bounds as last laid out, which a pin is fitted to.
+    pub pane: Rc<Shared<Option<Bounds<Pixels>>>>,
+    /// The cells pinned on the terminal, drawn instead of the pane's own (`docs/responsive.md`
+    /// 3.2), how large their font is, and the font size they're fitted at.
+    pub pinned: Option<(u16, u16)>,
+    pub scale: Scale,
+    pub fitting: Rc<Shared<Fitting>>,
+    pub pinned_look: PinnedLook,
     pub focus: FocusHandle,
     pub focused: bool,
     /// The cursor's blink phase: `false` while a blinking cursor is off.
@@ -87,6 +103,10 @@ impl IntoElement for TerminalElement {
 pub struct Prepainted {
     grid: Grid,
     hitbox: Hitbox,
+    /// The look the cells are drawn in: the person's, or a smaller font for a pinned grid.
+    look: Rc<Look>,
+    /// Where a pinned grid is drawn.
+    pinned: Option<Bounds<Pixels>>,
 }
 
 impl Element for TerminalElement {
@@ -123,37 +143,56 @@ impl Element for TerminalElement {
         window: &mut Window,
         cx: &mut App,
     ) -> Prepainted {
-        let metrics = self.glyphs.borrow_mut().prepare(&self.look, window);
         let padding = self.look.padding;
+        // The person's metrics: unpinned, the glyphs are made for the person's look, which
+        // gives them; pinned, they're made for the pinned grid's, so they're measured aside.
+        let person = if self.pinned.is_some() {
+            (self.glyphs.borrow_mut()).metrics_at(&self.look, self.look.font_size, window)
+        } else {
+            self.glyphs.borrow_mut().prepare(&self.look, window)
+        };
         let (width, height) = (
             bounds.size.width - padding * 2.,
             bounds.size.height - padding * 2.,
         );
-        let cols = (f32::from(width) / f32::from(metrics.cell_width))
+        let cols = (f32::from(width) / f32::from(person.cell_width))
             .floor()
             .max(1.) as u16;
-        let rows = (f32::from(height) / f32::from(metrics.cell_height))
+        let rows = (f32::from(height) / f32::from(person.cell_height))
             .floor()
             .max(1.) as u16;
-        let grid = Grid {
+        let fill = Grid {
             origin: bounds.origin + point(padding, padding),
-            metrics,
+            metrics: person,
             cols,
             rows,
             scale: window.scale_factor(),
         };
-        let before = self.grid.replace(Some(grid));
+        self.pane.set(Some(bounds));
+        let before = self.fill.replace(Some(fill));
         let resized = before.is_none_or(|before| {
-            (before.cols, before.rows, before.metrics) != (cols, rows, metrics)
+            (before.cols, before.rows, before.metrics) != (cols, rows, person)
         });
         if resized {
             let view = self.view.clone();
             // Not while drawing: the view sends the daemon its new size.
-            cx.defer(move |cx| view.update(cx, |view, cx| view.grid_changed(grid, cx)));
+            cx.defer(move |cx| view.update(cx, |view, cx| view.grid_changed(fill, cx)));
         }
+        let (grid, look, pinned) = if let Some(cells) = self.pinned {
+            let (grid, look, drawn) = self.lay_out_pinned(bounds, cells, window, cx);
+            (grid, look, Some(drawn))
+        } else {
+            self.unfit(cx);
+            (fill, Rc::clone(&self.look), None)
+        };
+        self.grid.set(Some(grid));
+        // A pinned grid is pointed at where it's drawn; the pane clips what runs past it.
+        let hitbox = window.insert_hitbox(pinned.unwrap_or(bounds), HitboxBehavior::Normal);
         Prepainted {
             grid,
-            hitbox: window.insert_hitbox(bounds, HitboxBehavior::Normal),
+            hitbox,
+            look,
+            pinned,
         }
     }
 
@@ -189,21 +228,28 @@ impl Element for TerminalElement {
             .frame
             .as_ref()
             .map_or(self.look.background, |frame| frame.background);
-        window.paint_quad(fill(bounds, hsla(background)));
-        let Some(frame) = self.frame.clone() else {
-            return;
+        // A pinned grid has its own background, on what the pane draws round it; its cells
+        // clip to it.
+        let cells = if let Some(drawn) = prepainted.pinned {
+            window.paint_quad(fill(drawn, hsla(background)));
+            drawn
+        } else {
+            window.paint_quad(fill(bounds, hsla(background)));
+            bounds
         };
-        window.with_content_mask(Some(ContentMask { bounds }), |window| {
-            let painter = Painter {
-                frame: &frame,
-                grid: prepainted.grid,
-                look: &self.look,
-                glyphs: &self.glyphs,
-            };
-            painter.backgrounds(window);
-            painter.text(window);
-            self.paint_cursor(&painter, window, cx);
-        });
+        if let Some(frame) = self.frame.clone() {
+            window.with_content_mask(Some(ContentMask { bounds: cells }), |window| {
+                let painter = Painter {
+                    frame: &frame,
+                    grid: prepainted.grid,
+                    look: &prepainted.look,
+                    glyphs: &self.glyphs,
+                };
+                painter.backgrounds(window);
+                painter.text(window);
+                self.paint_cursor(&painter, window, cx);
+            });
+        }
     }
 }
 

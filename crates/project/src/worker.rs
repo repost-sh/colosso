@@ -37,14 +37,8 @@ const PUBLISH_EVERY: Duration = Duration::from_millis(100);
 /// Watches and scans the checkout `options` names until the project is dropped.
 pub(crate) fn run(shared: Arc<Shared>, options: &Options) {
     let places = Places::new(&options.root, options.git.as_ref());
-    // Watching starts first, so nothing written while the scan goes on is missed.
-    let watching = match watch(&shared, places) {
-        Ok(watching) => Some(watching),
-        Err(error) => {
-            shared.set_unwatched(error);
-            None
-        }
-    };
+    // Watching is registered first, so nothing written while the scan goes on is missed.
+    let watching = watch(&shared, places);
     let mut worker = Worker::new(shared, options);
     worker.first_scan();
     while let Some(batch) = worker.shared.next_batch(WINDOW, LONGEST) {

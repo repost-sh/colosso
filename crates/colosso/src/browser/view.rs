@@ -8,11 +8,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use colosso_browser_ipc::{self as ipc, AppRequest, Cursor, Go, PageState, PaneId, Viewport};
 use gpui_kit::component::input::{InputEvent, InputState};
-use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    App, AppContext as _, Context, Div, ElementId, Entity, EventEmitter, FocusHandle, Focusable,
-    Image, InteractiveElement as _, ParentElement as _, Pixels, Point, Stateful, Styled as _,
-    Subscription, WeakEntity, Window, div, white,
+    App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Focusable, Image, Pixels,
+    Point, Subscription, WeakEntity, Window,
 };
 
 use super::control::{Control, Mode};
@@ -23,10 +21,9 @@ use super::frames::{Frame, Shown};
 use super::host::{Browsers, HostStatus};
 
 mod lifecycle;
+pub(super) mod sized;
 use super::menu::MenuRequest;
-use super::page::PageSurface;
-use super::{input, toolbar};
-use crate::theme;
+use super::toolbar;
 
 pub enum BrowserEvent {
     /// The address or title changed.
@@ -96,6 +93,11 @@ pub struct BrowserView {
     pub(super) shown: Option<WeakEntity<Shown>>,
     /// Whether the host was last told the page is on screen.
     pub(super) visible: Option<bool>,
+    /// How many waits in a row for the page's frame at a new size it missed (`sized.rs`).
+    pub(super) frames_missed: u8,
+    /// A new size went to the host and the window hasn't waited for its frame yet: sent from
+    /// layout (a divider, the window) or from a handler (a grip, the size fields, an agent).
+    pub(super) frame_due: bool,
     pub(super) cursor: Cursor,
     pub(super) focus: FocusHandle,
     pub(super) address: Entity<InputState>,
@@ -130,6 +132,8 @@ pub struct BrowserView {
     pub(super) zoom: u32,
     /// The page's own icon, once the host has fetched it.
     pub(super) favicon: Option<Arc<Image>>,
+    /// Responsive mode: the page at a chosen size or as a device, and how it shows.
+    pub(super) responsive: super::responsive::State,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -224,6 +228,8 @@ impl BrowserView {
             frame: None,
             behind: None,
             frames_shown: 0,
+            frames_missed: 0,
+            frame_due: false,
             shown: None,
             visible: None,
             cursor: Cursor::Arrow,
@@ -247,6 +253,7 @@ impl BrowserView {
             find: None,
             zoom: ACTUAL_SIZE,
             favicon: None,
+            responsive: super::responsive::State::default(),
             _subscriptions: subscriptions,
         }
     }
@@ -367,6 +374,8 @@ impl BrowserView {
         if self.page.loading && !page.loading && self.zoom != ACTUAL_SIZE {
             self.send_zoom(cx);
         }
+        // Loading again, the page has what the offered reload would give it.
+        self.responsive.reload_hint &= !page.loading;
         self.page = page;
         if !self.page.url.is_empty() {
             self.target.clone_from(&self.page.url);
@@ -404,6 +413,9 @@ impl BrowserView {
         let shown = (frame.generation, frame.slot);
         self.frames_shown += 1;
         frame.serial = self.frames_shown;
+        self.frame_came(&frame);
+        let before = self.frame.as_ref().map(|before| before.scale);
+        frame.scale = super::responsive::frame_scale(frame.size, self.viewport, before);
         // A frame needs no layout: once the page's layer is up, it goes straight to it, and
         // the window isn't drawn again for it.
         match self.shown.as_ref().and_then(WeakEntity::upgrade) {
@@ -459,40 +471,6 @@ impl BrowserView {
                     .update(cx, |address, cx| address.set_value(url, window, cx));
             }
         }
-    }
-
-    /// The page itself under its notices, taking the keys bound to it.
-    pub(super) fn page_element(
-        &mut self,
-        window: &Window,
-        cx: &mut Context<Self>,
-    ) -> Stateful<Div> {
-        let p = theme::palette(cx);
-        let status = self.status(cx);
-        let start = self.is_start_page();
-        let inspector = self.is_inspector();
-        // The pane's own colour until the page's first frame is in, so a page never opens on
-        // a blank white one; DevTools keep it.
-        let blank = self.frame.is_none() || inspector;
-        let overlay = toolbar::overlay(self, &status, cx);
-        let bar = toolbar::control_bar(self, cx);
-        let page = div()
-            .id(ElementId::NamedInteger("browser-page".into(), self.pane))
-            .key_context("BrowserPage")
-            .track_focus(&self.focus)
-            .size_full()
-            .relative()
-            .overflow_hidden()
-            .bg(if blank { p.card } else { white() })
-            .child(PageSurface {
-                view: cx.entity(),
-                focused: self.focus.is_focused(window),
-                covered: overlay.is_some(),
-            })
-            .when(start, |page| page.child(toolbar::start_page(p)))
-            .children(bar)
-            .children(overlay);
-        input::listen(page, cx)
     }
 }
 

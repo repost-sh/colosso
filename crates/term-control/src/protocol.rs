@@ -8,12 +8,12 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::terminal::{
-    Actor, Control, Controller, Handle, Selector, Size, Status, TerminalRecord, TerminalSummary,
-    WorktreeRef,
+    Actor, Control, Controller, Handle, Pinned, Selector, Size, Status, TerminalRecord,
+    TerminalSummary, WorktreeRef,
 };
 
-/// The protocol this crate speaks; a daemon speaks exactly one.
-pub const PROTOCOL: u32 = 1;
+/// The protocol this crate speaks; a daemon speaks exactly one. 2 added `Pin`.
+pub const PROTOCOL: u32 = 2;
 /// The engine snapshot format carried in `Snapshot` frames.
 pub const SNAPSHOT_FORMAT: u16 = 1;
 
@@ -239,6 +239,12 @@ pub enum RequestBody {
         handle: Handle,
         size: Size,
     },
+    /// Pins the terminal at `size`'s cells for every viewer, or with `None` lets the
+    /// clients' sizes decide again; the pin goes with this connection. Answered `Pinned`.
+    Pin {
+        handle: Handle,
+        size: Option<Size>,
+    },
     Rename {
         handle: Handle,
         name: Option<String>,
@@ -299,6 +305,7 @@ impl RequestBody {
             RequestBody::Attach { handle, .. }
             | RequestBody::Detach { handle }
             | RequestBody::Resize { handle, .. }
+            | RequestBody::Pin { handle, .. }
             | RequestBody::Rename { handle, .. }
             | RequestBody::Signal { handle, .. }
             | RequestBody::Close { handle, .. }
@@ -372,6 +379,11 @@ pub enum ResponseBody {
     },
     Resized {
         size: Size,
+    },
+    /// The terminal's size after a `Pin`, and the pin, `None` once unpinned.
+    Pinned {
+        size: Size,
+        pinned: Option<Pinned>,
     },
     Sent {
         bytes: u32,

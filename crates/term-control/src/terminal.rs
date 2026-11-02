@@ -115,6 +115,37 @@ impl Default for Size {
     }
 }
 
+/// The columns and the rows a pinned size may have, each: agent-terminal's limits, so a size
+/// that works there works here (`docs/responsive.md` 3.1).
+pub const PIN_CELLS: std::ops::RangeInclusive<u16> = 2..=1000;
+
+/// Why `cols` × `rows` can't be pinned, when a side is outside `PIN_CELLS`.
+pub fn pin_cells_error(cols: u16, rows: u16) -> Option<String> {
+    if PIN_CELLS.contains(&cols) && PIN_CELLS.contains(&rows) {
+        return None;
+    }
+    Some(format!(
+        "cols and rows are each {} to {}; {cols}x{rows} isn't",
+        PIN_CELLS.start(),
+        PIN_CELLS.end()
+    ))
+}
+
+/// `cols` × `rows`, each side brought within `PIN_CELLS`.
+pub fn clamp_pin_cells(cols: u16, rows: u16) -> (u16, u16) {
+    let within = |count: u16| count.clamp(*PIN_CELLS.start(), *PIN_CELLS.end());
+    (within(cols), within(rows))
+}
+
+/// A size pinned on a terminal for every viewer, and who pinned it: the person in the app or
+/// an agent through its relay. It lasts as long as the connection that set it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Pinned {
+    pub cols: u16,
+    pub rows: u16,
+    pub by: Actor,
+}
+
 /// Who did something: a person at the app, an agent through the MCP, or the daemon itself.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Actor {
@@ -253,6 +284,10 @@ pub struct TerminalRecord {
     pub control: Control,
     pub attached_clients: u32,
     pub last_output_ms: u64,
+    /// The size pinned on it, which every viewer shows, while the connection that set it
+    /// lasts.
+    #[serde(default)]
+    pub pinned: Option<Pinned>,
 }
 
 impl TerminalRecord {

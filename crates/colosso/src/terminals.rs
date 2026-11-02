@@ -24,6 +24,7 @@ mod beside;
 mod header;
 mod open;
 mod panel;
+mod responsive;
 mod restore;
 pub(crate) mod states;
 mod stop;
@@ -31,13 +32,15 @@ mod stop;
 pub mod visual;
 mod watch;
 
+pub use responsive::handle_actions;
+
 #[derive(Default)]
 pub struct Terminals {
     client: Option<Arc<TermClient>>,
     next: u64,
     /// What each terminal tab shows, until its view is made.
     sources: HashMap<u64, Source>,
-    views: HashMap<u64, (Entity<TerminalView>, Subscription)>,
+    views: HashMap<u64, Made>,
     /// Checkouts whose running terminals were looked for, so they're restored once.
     restored: HashSet<PathBuf>,
     /// The tab whose view takes the keyboard once it's made: the terminal just opened.
@@ -48,6 +51,16 @@ pub struct Terminals {
     /// The activity panels shown, by terminal tab, and their share of the pane once dragged.
     panels: HashMap<u64, Entity<panel::ActivityPanel>>,
     panel_share: Option<f32>,
+}
+
+/// A terminal tab's view once it's made, and responsive mode round it, made with it.
+struct Made {
+    view: Entity<TerminalView>,
+    responsive: Entity<responsive::ResponsiveTerminal>,
+    /// Whether the terminal was pinned when the view last said its pin changed: the terminal
+    /// bar's toggle shows it, so the shell draws again when it flips.
+    pinned: bool,
+    _events: Subscription,
 }
 
 /// A client of the terminal daemon: the daemon is this executable run as `colosso termd`,
@@ -206,20 +219,25 @@ impl Shell {
         cx: &mut Context<Self>,
     ) -> Option<Entity<TerminalView>> {
         let look = look(theme::palette(cx));
-        if let Some((view, _)) = self.terminals.views.get(&id) {
-            let view = view.clone();
+        if let Some(made) = self.terminals.views.get(&id) {
+            let view = made.view.clone();
             view.update(cx, |view, cx| view.set_look(look, cx));
             return Some(view);
         }
         let source = self.terminals.sources.get(&id)?.clone();
         let client = self.terminals.client()?;
         let view = cx.new(|cx| TerminalView::new(client, source, look, window, cx));
-        let subscription = cx.subscribe(&view, move |this, _, event, cx| {
+        let events = cx.subscribe(&view, move |this, _, event, cx| {
             this.terminal_event(id, event, cx);
         });
-        self.terminals
-            .views
-            .insert(id, (view.clone(), subscription));
+        let responsive = cx.new(|cx| responsive::ResponsiveTerminal::new(id, view.clone(), cx));
+        let made = Made {
+            view: view.clone(),
+            responsive,
+            pinned: false,
+            _events: events,
+        };
+        self.terminals.views.insert(id, made);
         if self.terminals.focus_next.take() == Some(id) {
             let focus = view.focus_handle(cx);
             cx.defer_in(window, move |_, window, cx| window.focus(&focus, cx));
@@ -256,8 +274,8 @@ impl Shell {
         p: Palette,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let Some((id, (view, _))) = (pane.terminal)
-            .and_then(|id| Some((id, self.terminals.views.get(&id)?)))
+        let Some((id, view)) =
+            (pane.terminal).and_then(|id| Some((id, &self.terminals.views.get(&id)?.responsive)))
         else {
             return crate::pane::pane(pane, context, p);
         };
@@ -280,7 +298,10 @@ impl Shell {
         let branch = self.workspace.branch()?;
         let tab = branch.tabs.get(branch.active_tab)?;
         let id = tab.panes().iter().find_map(|pane| pane.terminal)?;
-        Some((id, self.terminals.views.get(&id).map(|(view, _)| view.clone())))
+        Some((
+            id,
+            self.terminals.views.get(&id).map(|made| made.view.clone()),
+        ))
     }
 
     /// The view of the terminal tab shown, if it's made.
@@ -332,8 +353,20 @@ impl Shell {
             }
             TerminalEvent::DaemonReplaced => {
                 // The other tabs it turned away try again, with this build's daemon.
-                for (view, _) in self.terminals.views.values() {
-                    view.update(cx, TerminalView::try_again);
+                for made in self.terminals.views.values() {
+                    made.view.update(cx, TerminalView::try_again);
+                }
+                return;
+            }
+            // The terminal bar's toggle shows whether it's pinned; the rest is responsive
+            // mode's, which hears it too.
+            TerminalEvent::Responsive => {
+                if let Some(made) = self.terminals.views.get_mut(&id) {
+                    let pinned = made.view.read(cx).pinned().is_some();
+                    if made.pinned != pinned {
+                        made.pinned = pinned;
+                        cx.notify();
+                    }
                 }
                 return;
             }

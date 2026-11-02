@@ -7,7 +7,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
-use colosso_term_control::{Exit, Handle, OpenRequest, Size, TerminalRecord};
+use colosso_term_control::{Exit, Handle, OpenRequest, Pinned, Size, TerminalRecord};
 use colosso_term_engine::{Cursor, Frame, OptionAsAlt};
 use gpui_kit::{
     App, Bounds, Context, EventEmitter, FocusHandle, Focusable, InteractiveElement as _,
@@ -16,11 +16,14 @@ use gpui_kit::{
 };
 
 use crate::client::TermClient;
-use crate::element::{Grid, TerminalElement};
+use crate::element::{Grid, PinnedLook, TerminalElement};
+use crate::fit::{Fitting, Scale};
 use crate::glyphs::{Glyphs, Look};
 use crate::vt::{Command, Vt};
 
 mod link;
+mod responsive;
+
 
 actions!(
     terminal,
@@ -30,7 +33,8 @@ actions!(
         ScrollPageUp,
         ScrollPageDown,
         ScrollToTop,
-        ScrollToBottom
+        ScrollToBottom,
+        ToggleResponsive
     ]
 );
 
@@ -45,6 +49,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("shift-pagedown", ScrollPageDown, Some(CONTEXT)),
         KeyBinding::new("cmd-home", ScrollToTop, Some(CONTEXT)),
         KeyBinding::new("cmd-end", ScrollToBottom, Some(CONTEXT)),
+        KeyBinding::new("cmd-alt-r", ToggleResponsive, Some(CONTEXT)),
     ]);
 }
 
@@ -68,6 +73,9 @@ pub enum TerminalEvent {
     Exited(Exit),
     /// The terminal was closed and forgotten.
     Closed,
+    /// Its pin, or the font it's fitted at, changed: what `pinned` and `font_percent` say is
+    /// new.
+    Responsive,
     /// The daemon of another build was replaced: views it turned away may try again.
     DaemonReplaced,
 }
@@ -102,10 +110,26 @@ pub struct TerminalView {
     look: Rc<Look>,
     glyphs: Rc<RefCell<Glyphs>>,
     pub(crate) grid: Rc<Shared<Option<Grid>>>,
+    /// The grid the pane holds at the person's font, whose size the daemon is sent.
+    pub(crate) fill: Rc<Shared<Option<Grid>>>,
+    /// The element's bounds as last laid out, which a pin is fitted to.
+    pub(crate) pane: Rc<Shared<Option<Bounds<Pixels>>>>,
+    /// The terminal's size in the daemon, and the pin it comes from (`docs/responsive.md`).
+    pub(crate) size: Option<Size>,
+    pub(crate) pinned: Option<Pinned>,
+    pub(crate) fitting: Rc<Shared<Fitting>>,
+    /// The look the pinned grid is drawn in at a smaller font, kept across frames.
+    pinned_look: PinnedLook,
+    /// How large the pinned grid's font is: the pane's say.
+    pub(crate) scale: Scale,
+    /// The pin to send next, one at a time.
+    pin: link::Latest<responsive::Wanted>,
     pub(crate) focus: FocusHandle,
-    /// The size last sent to the daemon.
+    /// The size last sent to the daemon, and the one to send next, one at a time: a pane
+    /// dragged resizes the program at every frame the daemon keeps up with, and at the size
+    /// it's dragged to last.
     requested: Option<Size>,
-    resize: Option<Task<()>>,
+    resize: link::Latest<Size>,
     updates: Option<Task<()>>,
     blink: Option<Task<()>>,
     cursor_on: bool,
@@ -157,9 +181,17 @@ impl TerminalView {
             look: Rc::new(look),
             glyphs: Rc::default(),
             grid: Rc::default(),
+            fill: Rc::default(),
+            pane: Rc::default(),
+            size: None,
+            pinned: None,
+            fitting: Rc::default(),
+            pinned_look: Rc::default(),
+            scale: Scale::Fit,
+            pin: link::Latest::default(),
             focus,
             requested: None,
-            resize: None,
+            resize: link::Latest::default(),
             updates: None,
             blink: None,
             cursor_on: true,
@@ -311,6 +343,15 @@ impl Render for TerminalView {
             look: Rc::clone(&self.look),
             glyphs: Rc::clone(&self.glyphs),
             grid: Rc::clone(&self.grid),
+            fill: Rc::clone(&self.fill),
+            pane: Rc::clone(&self.pane),
+            pinned: self
+                .pinned
+                .as_ref()
+                .map(|pinned| (pinned.cols, pinned.rows)),
+            scale: self.scale,
+            fitting: Rc::clone(&self.fitting),
+            pinned_look: Rc::clone(&self.pinned_look),
             focus: self.focus.clone(),
             focused: self.focus.is_focused(window),
             cursor_on: self.cursor_on,
@@ -335,6 +376,7 @@ impl Render for TerminalView {
             .on_action(cx.listener(Self::scroll_page_down))
             .on_action(cx.listener(Self::scroll_to_top))
             .on_action(cx.listener(Self::scroll_to_bottom))
+            // ⌥⌘R goes on up, to the pane that shows the terminal responsive.
             .child(element)
             .children(notice.map(|message| div().absolute().top_2().left_2().child(message)))
             .children(other_build)

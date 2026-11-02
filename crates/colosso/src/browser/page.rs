@@ -1,17 +1,23 @@
 //! The page itself, as an element: its latest frame in a native view over the pane, at the
-//! pane's size, and every pointer event over it. The native view lives in the element's
-//! state, so a pane that isn't drawn takes its page out of the window.
+//! pane's size (or, in responsive mode, at the size chosen, scaled to fit and centred), and
+//! every pointer event over it. The native view lives in the element's state, so a pane that
+//! isn't drawn takes its page out of the window.
 
-use colosso_browser_ipc::Viewport;
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    App, Bounds, DispatchPhase, Element, ElementId, ElementInputHandler, Entity, GlobalElementId,
-    Hitbox, HitboxBehavior, InspectorElementId, IntoElement, LayoutId, MouseDownEvent,
-    MouseMoveEvent, MouseUpEvent, Pixels, ScrollEvent, Style, Window, relative,
+    App, Bounds, Context, DispatchPhase, Div, Element, ElementId, ElementInputHandler, Entity,
+    GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, InteractiveElement as _,
+    IntoElement, LayoutId, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _,
+    Pixels, ScrollEvent, Stateful, Style, Styled as _, Window, div, fill, relative, white,
 };
 
 use super::frames::Shown;
-use super::input::cursor_style;
+use super::input::{self, cursor_style};
+use super::responsive::Grip;
+use super::toolbar;
 use super::view::BrowserView;
+use crate::responsive::{self, grips};
+use crate::theme::{self, Palette};
 
 pub struct PageSurface {
     pub view: Entity<BrowserView>,
@@ -19,6 +25,21 @@ pub struct PageSurface {
     /// Whether a notice covers the page, which then isn't shown: drawn over the page's
     /// native layer, the notice would be under it.
     pub covered: bool,
+    /// What a page in responsive mode shows on before its frame is in, and its outline.
+    pub blank: bool,
+    pub palette: Palette,
+}
+
+/// Where the page shows in the element, and what's there to point at.
+pub struct Placed {
+    hitbox: Hitbox,
+    /// The page's bounds in the window: the element's, or in responsive mode the page's
+    /// scaled and centred in it.
+    shown: Bounds<Pixels>,
+    /// How much of its true size the page shows at.
+    fit: f32,
+    responsive: bool,
+    grips: Vec<(Grip, Hitbox)>,
 }
 
 impl IntoElement for PageSurface {
@@ -30,7 +51,7 @@ impl IntoElement for PageSurface {
 
 impl Element for PageSurface {
     type RequestLayoutState = ();
-    type PrepaintState = Hitbox;
+    type PrepaintState = Placed;
 
     fn id(&self) -> Option<ElementId> {
         None
@@ -61,36 +82,62 @@ impl Element for PageSurface {
         (): &mut (),
         window: &mut Window,
         cx: &mut App,
-    ) -> Hitbox {
-        let viewport = Viewport {
-            width: bounds.size.width.as_f32().round().max(1.) as u32,
-            height: bounds.size.height.as_f32().round().max(1.) as u32,
-            scale: window.scale_factor(),
-        };
-        // An update counts as a change to the view, so it's made only when one happened.
-        let placed = {
+    ) -> Placed {
+        let scale = window.scale_factor();
+        let (laid, responsive, free) = {
             let view = self.view.read(cx);
-            view.origin == bounds.origin && view.viewport == Some(viewport)
+            let mode = view.responsive.mode.as_ref();
+            (
+                view.lay_out(bounds, scale),
+                mode.is_some(),
+                mode.is_some_and(|mode| mode.device.is_none()),
+            )
         };
-        if !placed {
-            self.view.update(cx, |view, cx| {
-                view.origin = bounds.origin;
-                view.viewport_changed(viewport, cx);
-            });
+        let (shown, fit) = (laid.1, laid.2);
+        // An update counts as a change to the view, so it's made only when one happened.
+        if !self.view.read(cx).is_placed(&laid, bounds.size, scale) {
+            self.view
+                .update(cx, |view, cx| view.place_page(laid, bounds.size, scale, cx));
         }
-        window.insert_hitbox(bounds, HitboxBehavior::Normal)
+        // A new size, sent from here or since the last frame, shows with the page laid out
+        // to it.
+        if self.view.read(cx).frame_due {
+            super::view::sized::await_frame(&self.view, cx);
+        }
+        let hitbox = window.insert_hitbox(shown, HitboxBehavior::Normal);
+        let grips = if free {
+            grips::hitboxes(shown, window)
+        } else {
+            Vec::new()
+        };
+        Placed {
+            hitbox,
+            shown,
+            fit,
+            responsive,
+            grips,
+        }
     }
 
     fn paint(
         &mut self,
         _: Option<&GlobalElementId>,
         _: Option<&InspectorElementId>,
-        bounds: Bounds<Pixels>,
+        _: Bounds<Pixels>,
         (): &mut (),
-        hitbox: &mut Hitbox,
+        placed: &mut Placed,
         window: &mut Window,
         cx: &mut App,
     ) {
+        let (hitbox, bounds) = (&placed.hitbox, placed.shown);
+        if placed.responsive {
+            let p = self.palette;
+            let page = if self.blank { p.card } else { white() };
+            responsive::paint_outline(bounds, p, window);
+            window.paint_quad(fill(bounds, page));
+            let held = (self.view.read(cx).responsive.drag.as_ref()).map(|drag| drag.grip);
+            grips::paint(&placed.grips, held, &self.view, p, window);
+        }
         let (pane, frame, cursor, open, hovered) = {
             let view = self.view.read(cx);
             let frame = (view.frame.clone()).filter(|_| view.shows_frames() && !self.covered);
@@ -110,7 +157,7 @@ impl Element for PageSurface {
             let shown = window.use_keyed_state(key, cx, |window, cx| Shown::new(owner, window, cx));
             native = shown.update(cx, |shown, _| {
                 shown.show(&frame);
-                shown.place(bounds, hitbox.content_mask.bounds, window);
+                shown.place(bounds, hitbox.content_mask.bounds, placed.fit, window);
                 shown.takes_pointer()
             });
             let layer = shown.downgrade();
@@ -187,5 +234,53 @@ impl PageSurface {
             let _ = scrolled.update(cx, |view, cx| view.wheel(event, cx));
             cx.stop_propagation();
         });
+    }
+}
+
+impl BrowserView {
+    /// The page itself under its notices, taking the keys bound to it. In responsive mode
+    /// it shows on the sunken area round it, with the size by the pointer while a grip is in
+    /// hand.
+    pub(super) fn page_element(
+        &mut self,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let p = theme::palette(cx);
+        let status = self.status(cx);
+        let start = self.is_start_page();
+        let inspector = self.is_inspector();
+        let responsive = self.responsive.mode.is_some();
+        // The pane's own colour until the page's first frame is in, so a page never opens on
+        // a blank white one; DevTools keep it.
+        let blank = self.frame.is_none() || inspector;
+        let overlay = toolbar::overlay(self, &status, cx);
+        let bar = toolbar::control_bar(self, cx);
+        let page = div()
+            .id(ElementId::NamedInteger("browser-page".into(), self.pane))
+            .key_context("BrowserPage")
+            .track_focus(&self.focus)
+            .size_full()
+            .relative()
+            .overflow_hidden()
+            .bg(match (responsive, blank) {
+                (true, _) => p.sunken,
+                (false, true) => p.card,
+                (false, false) => white(),
+            })
+            .child(PageSurface {
+                view: cx.entity(),
+                focused: self.focus.is_focused(window),
+                covered: overlay.is_some(),
+                blank,
+                palette: p,
+            })
+            .when(start, |page| page.child(toolbar::start_page(p)))
+            .children(bar)
+            .children(overlay)
+            .children(self.responsive.mode.as_ref().and_then(|mode| {
+                grips::label(self.responsive.drag.as_ref(), mode.width, mode.height, p)
+            }));
+        input::listen(page, cx)
     }
 }

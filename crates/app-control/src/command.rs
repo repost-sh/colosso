@@ -191,6 +191,7 @@ registry! {
     BrowserPressKey => ops::browser::BrowserPressKey,
     BrowserScroll => ops::browser::BrowserScroll,
     BrowserWait => ops::browser::BrowserWait,
+    BrowserViewport => ops::browser::BrowserViewport,
     BrowserClaim => ops::browser::BrowserClaim,
     BrowserRelease => ops::browser::BrowserRelease,
     SettingsGet => ops::settings::SettingsGet,

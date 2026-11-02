@@ -185,15 +185,19 @@ impl BrowserView {
         self.devtools.as_ref().map(|tools| &tools.view)
     }
 
-    /// The page under the toolbar, with its `DevTools` beside it while they're docked.
-    fn body(&mut self, page: Stateful<Div>, cx: &mut Context<Self>) -> Div {
+    /// The page under the toolbar, under the device bar in responsive mode, with its
+    /// `DevTools` beside it while they're docked.
+    fn body(&mut self, page: Stateful<Div>, device: Option<Div>, cx: &mut Context<Self>) -> Div {
         let body = div().flex_1().min_h_0().min_w_0().w_full().flex();
         let page = div()
             .relative()
             .flex_1()
             .min_w_0()
             .min_h_0()
-            .child(page)
+            .flex()
+            .flex_col()
+            .children(device)
+            .child(div().flex_1().min_h_0().w_full().child(page))
             // Among the window's overlays: the page's native layer hides what's under it.
             .children(self.find_bar(cx).map(deferred));
         let docked = self
@@ -374,7 +378,8 @@ impl Render for BrowserView {
                 .child(div().flex_1().min_h_0().w_full().child(page));
         }
         let toolbar = toolbar::toolbar(self, window, cx);
-        let body = self.body(page, cx);
+        let device = super::responsive::bar::device_bar(self, window, cx);
+        let body = self.body(page, device, cx);
         column
             .on_action(cx.listener(|this, _: &FindInPage, window, cx| this.open_find(window, cx)))
             .on_action(cx.listener(|this, _: &FindNext, _, cx| this.find_again(true, cx)))

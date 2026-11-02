@@ -62,6 +62,28 @@ pub(crate) fn frame_rate() -> i32 {
     60
 }
 
+/// The largest display's size in points, which no pane outgrows: what a page's view grows to
+/// while its pane's edge is dragged, so a drag never has it grow twice.
+#[cfg(target_os = "macos")]
+pub(crate) fn largest_screen() -> Option<(u32, u32)> {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::NSScreen;
+    let mtm = MainThreadMarker::new()?;
+    let points = |side: f64| side.max(0.).round() as u32;
+    NSScreen::screens(mtm)
+        .iter()
+        .map(|screen| {
+            let size = screen.frame().size;
+            (points(size.width), points(size.height))
+        })
+        .max_by_key(|(width, height)| u64::from(*width) * u64::from(*height))
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn largest_screen() -> Option<(u32, u32)> {
+    None
+}
+
 #[expect(
     clippy::print_stderr,
     reason = "the host has no log of its own before CEF is up: its stderr is the app's"

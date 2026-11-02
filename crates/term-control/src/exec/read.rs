@@ -19,7 +19,7 @@ const POLL: Duration = Duration::from_millis(100);
 const SETTLE: Duration = Duration::from_secs(2);
 
 /// What a wait saw.
-struct Waited {
+pub(super) struct Waited {
     met: bool,
     until: WaitFor,
     elapsed_ms: u64,
@@ -30,7 +30,7 @@ struct Waited {
 }
 
 impl Waited {
-    fn json(&self) -> Value {
+    pub(super) fn json(&self) -> Value {
         json!({
             "met": self.met,
             "condition": self.until,
@@ -41,7 +41,7 @@ impl Waited {
         })
     }
 
-    fn words(&self) -> String {
+    pub(super) fn words(&self) -> String {
         let condition = serde_json::to_value(self.until)
             .ok()
             .and_then(|value| value.as_str().map(str::to_owned))
@@ -236,7 +236,7 @@ impl Executor {
     /// Waits until `spec` holds or its time runs out. Right after input (`after_send`, the
     /// commands log's length before it), a wait for the prompt or quiet first sees the
     /// input taken: the program running, a command logged, or a moment gone by.
-    fn wait_for(
+    pub(super) fn wait_for(
         &self,
         handle: &Handle,
         spec: &WaitSpec,

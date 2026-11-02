@@ -11,6 +11,7 @@ mod handoff;
 mod integration;
 mod keys;
 mod persist;
+mod pin;
 mod pty;
 mod ring;
 mod send;
@@ -78,6 +79,8 @@ pub struct Session {
     typing: Option<activity::Typing>,
     pub(super) pty: Option<Pty>,
     pub(super) clients: HashMap<u32, Attached>,
+    /// The connection whose pin `record.pinned` is, which takes it with it when it goes.
+    pub(super) pinned_by: Option<u32>,
     /// The program's output, from the PTY's reader, and what wakes the thread for it.
     handoff: Option<Arc<Handoff>>,
     woken: Receiver<()>,
@@ -166,6 +169,7 @@ impl Session {
             daemon,
             record: TerminalRecord {
                 pid: None,
+                pinned: None,
                 ..record
             },
             live,
@@ -179,6 +183,7 @@ impl Session {
             typing: None,
             pty: None,
             clients: HashMap::new(),
+            pinned_by: None,
             handoff: None,
             woken: never(),
             flowing: false,

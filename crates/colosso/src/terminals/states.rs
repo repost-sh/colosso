@@ -216,6 +216,7 @@ mod tests {
             control: Control::default(),
             attached_clients: 1,
             last_output_ms: 1,
+            pinned: None,
         };
         let (server, shell) = (record("server", "/w/feat"), record("shell", "/w/feat"));
         let mut states = States::default();

@@ -96,6 +96,17 @@ control. Do not wait for it, do not retry, do not claim it with takeover. Read i
 need its output, and open or pick another terminal for your own work. Return to it only \
 after the person gives it back (terminal_control shows who holds it) or tells you to.
 
+## Sizes
+
+terminal_resize pins a terminal at `cols` × `rows` (2 to 1000 each) for every viewer, the \
+person's pane included, and answers once the program has redrawn: it waits for the screen \
+to hold still 300 ms and reads it (`then: {}` skips both; a wait that runs out answers \
+`met: false` with the screen as it is). To check how a program lays out at a size, resize \
+it, read its screen (the answer has it), then resize with `fill: true` to give it back \
+to the person's pane. terminal_open with `size` opens it pinned at that size. The person \
+sees the size you set and can change it, and their change wins; your size goes when your \
+connection does.
+
 ## What happened
 
 terminal_log reads a terminal's logs from a `cursor` on: `activity` (who did what), \

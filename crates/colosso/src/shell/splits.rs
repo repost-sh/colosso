@@ -116,15 +116,15 @@ pub fn divider<T: Clone + 'static>(
                 handle
                     .top_0()
                     .bottom_0()
-                    .left(px(-3.))
-                    .w(px(7.))
+                    .left(px(-6.))
+                    .w(px(13.))
                     .cursor_col_resize()
             } else {
                 handle
                     .left_0()
                     .right_0()
-                    .top(px(-3.))
-                    .h(px(7.))
+                    .top(px(-6.))
+                    .h(px(13.))
                     .cursor_row_resize()
             }
         })

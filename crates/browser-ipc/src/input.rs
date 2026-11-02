@@ -11,6 +11,14 @@ pub struct PixelSize {
     pub height: u32,
 }
 
+impl PixelSize {
+    /// Whether `other` is this size, give or take a device pixel of rounding on each side.
+    #[must_use]
+    pub fn near(self, other: PixelSize) -> bool {
+        self.width.abs_diff(other.width) <= 1 && self.height.abs_diff(other.height) <= 1
+    }
+}
+
 /// The view a pane is laid out at.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

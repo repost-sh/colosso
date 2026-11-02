@@ -191,6 +191,7 @@ impl Browsers {
             generation,
             slot,
             size,
+            scale: 1.,
             surface,
             serial: 0,
         };

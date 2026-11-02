@@ -120,7 +120,7 @@ pub(super) fn actor(caller: &Caller) -> Actor {
 }
 
 /// A refusal of the page's lease, in app control's words.
-fn refused(refused: Refused) -> ControlError {
+pub(super) fn refused(refused: Refused) -> ControlError {
     match refused {
         Refused::PersonHasControl { .. } => ControlError::person_has_control(),
         Refused::ControlRequired { holder } => ControlError::control_required(format!(
@@ -182,6 +182,7 @@ pub(crate) fn list(cx: &mut App) -> Result<Value, ControlError> {
                 loading: facts.loading,
                 worktree: page.worktree.display().to_string(),
                 controller: facts.controller,
+                viewport: facts.viewport,
             }
         })
         .collect();

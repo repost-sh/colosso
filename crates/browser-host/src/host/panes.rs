@@ -2,10 +2,10 @@
 //! page reports meanwhile.
 use super::frames::new_ring;
 use super::inspect::{cdp_failed, to_page};
-use super::{Pane, QUEUE, Queued, browser_of, handle, host_of, post_drain, send, with, with_pane};
+use super::{Pane, Queued, browser_of, enqueue, handle, host_of, send, with, with_pane};
 use cef::{
-    Browser, BrowserSettings, ImplBrowser, ImplBrowserHost, ImplFrame, RequestContext,
-    RequestContextSettings, WindowInfo,
+    Browser, BrowserSettings, ImplBrowser, ImplBrowserHost, ImplFrame, ImplTask, RequestContext,
+    RequestContextSettings, Task, ThreadId, WindowInfo, WrapTask, rc::Rc, wrap_task,
 };
 use colosso_browser_ipc::{AppRequest, Cursor, HostEvent, PageState, PaneId, ViewAction, Viewport};
 
@@ -100,11 +100,41 @@ pub(super) fn create(
     }
 }
 
+/// The app asks for `viewport`: Chromium lays it out now, or once the size it's laying out
+/// has painted (`sizing.rs`).
 pub(super) fn resize(pane: PaneId, viewport: Viewport) {
-    let Some((fits, scale_changed)) = with_pane(pane, |p| {
+    if super::live::drive::ask(pane, viewport) {
+        return;
+    }
+    let now = std::time::Instant::now();
+    if with_pane(pane, |p| p.sizing.ask(viewport, now)) == Some(true) {
+        lay_out(pane, viewport);
+    }
+}
+
+wrap_task! {
+    struct SizeDue {
+        pane: PaneId,
+    }
+
+    impl Task {
+        fn execute(&self) {
+            let now = std::time::Instant::now();
+            if let Some(Some(next)) = with_pane(self.pane, |p| p.sizing.overdue(now)) {
+                lay_out(self.pane, next);
+            }
+        }
+    }
+}
+
+/// Tells Chromium the page is now `viewport`.
+pub(crate) fn lay_out(pane: PaneId, viewport: Viewport) {
+    let now = std::time::Instant::now();
+    let Some((fits, scale_changed, resized)) = with_pane(pane, |p| {
         let scale_changed = (p.viewport.scale - viewport.scale).abs() > f32::EPSILON;
-        if p.viewport.pixels() != viewport.pixels() {
-            p.resized = Some(std::time::Instant::now());
+        let resized = p.viewport.pixels() != viewport.pixels();
+        if resized {
+            p.sizing.told(viewport, now);
         }
         p.viewport = viewport;
         #[cfg(target_os = "macos")]
@@ -114,10 +144,15 @@ pub(super) fn resize(pane: PaneId, viewport: Viewport) {
             .is_some_and(|ring| crate::surfaces::fits(ring.size, viewport.pixels()));
         #[cfg(not(target_os = "macos"))]
         let fits = true;
-        (fits, scale_changed)
+        (fits, scale_changed, resized)
     }) else {
         return;
     };
+    if resized {
+        let mut due = SizeDue::new(pane);
+        let wait = delay_ms(super::sizing::PAINT_WAIT);
+        cef::post_delayed_task(ThreadId::UI, Some(&mut due), wait);
+    }
     // Within the ring's room the page just paints at its new size.
     if !fits {
         new_ring(pane);
@@ -176,10 +211,12 @@ pub(super) fn navigate(pane: PaneId, url: &str) {
 
 /// A popup's address, loaded once the current callback has returned.
 pub(crate) fn navigate_later(pane: PaneId, url: String) {
-    if let Ok(mut queue) = QUEUE.lock() {
-        queue.push_back(Queued::App(AppRequest::Navigate { pane, url }));
-    }
-    post_drain();
+    enqueue(Queued::App(AppRequest::Navigate { pane, url }));
+}
+
+/// `wait` as the milliseconds `cef::post_delayed_task` takes: at least one.
+pub(crate) fn delay_ms(wait: std::time::Duration) -> i64 {
+    i64::try_from(wait.as_millis()).unwrap_or(i64::MAX).max(1)
 }
 
 pub(super) fn close(pane: PaneId) {
