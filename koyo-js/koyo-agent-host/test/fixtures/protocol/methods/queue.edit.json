@@ -1,0 +1,22 @@
+{
+  "request": {
+    "id": 18,
+    "method": "queue.edit",
+    "params": {
+      "threadId": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
+      "runId": "0193a2f1-2200-7c11-8d22-3e4f5a6b7c83",
+      "text": "Then update CHANGELOG.md.",
+      "attachments": [
+        {
+          "file": "0193a2f0-79fe-7000-9000-00000000000a.png",
+          "name": "failure.png",
+          "mime": "image/png"
+        }
+      ]
+    }
+  },
+  "response": {
+    "id": 18,
+    "result": {}
+  }
+}

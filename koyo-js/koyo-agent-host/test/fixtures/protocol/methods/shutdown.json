@@ -1,0 +1,11 @@
+{
+  "request": {
+    "id": 2,
+    "method": "shutdown",
+    "params": {}
+  },
+  "response": {
+    "id": 2,
+    "result": {}
+  }
+}

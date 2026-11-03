@@ -1,0 +1,52 @@
+{
+  "request": {
+    "id": 5,
+    "method": "catalog",
+    "params": {
+      "provider": "claude",
+      "cwd": "/Users/ana/code/ledger"
+    }
+  },
+  "response": {
+    "id": 5,
+    "result": {
+      "models": [
+        {
+          "id": "claude-opus-5-5",
+          "name": "Opus 5.5",
+          "description": "Most capable",
+          "efforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "fast": true,
+          "auto": true
+        },
+        {
+          "id": "claude-haiku-5-5",
+          "name": "Haiku 5.5",
+          "description": "Fastest",
+          "efforts": [],
+          "fast": false,
+          "auto": false
+        }
+      ],
+      "commands": [
+        {
+          "name": "review",
+          "description": "Review the current diff",
+          "argumentHint": "[target]"
+        },
+        {
+          "name": "compact",
+          "description": "Summarize the conversation",
+          "argumentHint": null
+        }
+      ],
+      "defaultMode": null
+    }
+  }
+}

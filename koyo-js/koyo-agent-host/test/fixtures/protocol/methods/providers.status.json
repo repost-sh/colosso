@@ -1,0 +1,33 @@
+{
+  "request": {
+    "id": 4,
+    "method": "providers.status",
+    "params": {
+      "refresh": false
+    }
+  },
+  "response": {
+    "id": 4,
+    "result": [
+      {
+        "provider": "claude",
+        "state": "ready",
+        "executable": "/Users/ana/.local/bin/claude",
+        "version": "2.1.317",
+        "account": {
+          "email": "ana@example.com",
+          "plan": "max"
+        },
+        "message": null
+      },
+      {
+        "provider": "fake",
+        "state": "missing",
+        "executable": null,
+        "version": null,
+        "account": null,
+        "message": "Not installed."
+      }
+    ]
+  }
+}

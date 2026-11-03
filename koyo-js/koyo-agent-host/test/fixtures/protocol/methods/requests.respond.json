@@ -1,0 +1,18 @@
+{
+  "request": {
+    "id": 21,
+    "method": "requests.respond",
+    "params": {
+      "threadId": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
+      "requestId": "0193a2f1-0500-7d00-a000-000000000003",
+      "response": {
+        "kind": "plan",
+        "decision": "implement"
+      }
+    }
+  },
+  "response": {
+    "id": 21,
+    "result": {}
+  }
+}

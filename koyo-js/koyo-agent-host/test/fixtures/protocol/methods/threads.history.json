@@ -1,0 +1,19 @@
+{
+  "request": {
+    "id": 9,
+    "method": "threads.history",
+    "params": {
+      "threadId": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
+      "before": "0193a2f0-7a00-7c11-8d22-3e4f5a6b7c81",
+      "runs": 20
+    }
+  },
+  "response": {
+    "id": 9,
+    "result": {
+      "runs": [],
+      "items": [],
+      "requests": []
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "request": {
+    "id": 1,
+    "method": "hello",
+    "params": {
+      "client": {
+        "kind": "app"
+      },
+      "version": 1
+    }
+  },
+  "response": {
+    "id": 1,
+    "result": {
+      "version": 1,
+      "pid": 48213,
+      "busy": true
+    }
+  }
+}

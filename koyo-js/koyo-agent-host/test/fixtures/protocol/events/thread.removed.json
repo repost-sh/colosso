@@ -1,0 +1,6 @@
+{
+  "event": "thread.removed",
+  "params": {
+    "threadId": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192"
+  }
+}

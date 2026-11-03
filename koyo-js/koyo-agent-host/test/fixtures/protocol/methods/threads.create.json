@@ -1,0 +1,35 @@
+{
+  "request": {
+    "id": 7,
+    "method": "threads.create",
+    "params": {
+      "cwd": "/Users/ana/code/ledger",
+      "provider": "claude",
+      "model": null,
+      "effort": null,
+      "permission": null,
+      "plan": false
+    }
+  },
+  "response": {
+    "id": 7,
+    "result": {
+      "id": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
+      "cwd": "/Users/ana/code/ledger",
+      "title": "",
+      "titleSource": "seed",
+      "provider": "claude",
+      "model": null,
+      "effort": null,
+      "fast": false,
+      "permission": null,
+      "plan": false,
+      "sessionId": null,
+      "queueHeld": false,
+      "createdAt": "2026-11-03T18:02:11.204Z",
+      "updatedAt": "2026-11-03T18:02:11.204Z",
+      "readAt": null,
+      "seq": 0
+    }
+  }
+}

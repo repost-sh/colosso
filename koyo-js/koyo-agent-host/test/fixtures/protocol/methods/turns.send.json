@@ -1,0 +1,22 @@
+{
+  "request": {
+    "id": 14,
+    "method": "turns.send",
+    "params": {
+      "threadId": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
+      "delivery": "queue",
+      "prompt": {
+        "messageId": "0193a2f1-21ff-7e00-b100-000000000003",
+        "text": "Then update the changelog.",
+        "attachments": []
+      }
+    }
+  },
+  "response": {
+    "id": 14,
+    "result": {
+      "runId": "0193a2f1-2200-7c11-8d22-3e4f5a6b7c83",
+      "delivered": "queued"
+    }
+  }
+}

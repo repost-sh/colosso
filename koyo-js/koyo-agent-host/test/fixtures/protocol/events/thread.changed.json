@@ -1,0 +1,38 @@
+{
+  "event": "thread.changed",
+  "params": {
+    "threadId": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
+    "seq": 42,
+    "thread": null,
+    "runs": [
+      {
+        "id": "0193a2f1-0400-7c11-8d22-3e4f5a6b7c82",
+        "threadId": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
+        "status": "stopping",
+        "prompt": {
+          "messageId": "0193a2f1-03ff-7e00-b100-000000000002",
+          "text": "Now make the retry configurable.",
+          "attachments": []
+        },
+        "model": "claude-opus-5-5",
+        "effort": "high",
+        "permission": "ask",
+        "plan": true,
+        "requestedAt": "2026-11-03T18:08:00.010Z",
+        "startedAt": "2026-11-03T18:08:00.530Z",
+        "endedAt": null,
+        "stop": {
+          "requestedAt": "2026-11-03T18:09:40.877Z",
+          "by": "person",
+          "force": false
+        },
+        "failure": null,
+        "usage": null,
+        "files": [],
+        "seq": 42
+      }
+    ],
+    "items": [],
+    "requests": []
+  }
+}

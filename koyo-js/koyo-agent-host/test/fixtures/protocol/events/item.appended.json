@@ -1,0 +1,8 @@
+{
+  "event": "item.appended",
+  "params": {
+    "threadId": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
+    "itemId": "0193a2f0-7a01-7000-8000-000000000014",
+    "text": " to `Config`"
+  }
+}

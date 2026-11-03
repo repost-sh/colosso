@@ -1,0 +1,15 @@
+{
+  "event": "thread.summary",
+  "params": {
+    "id": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
+    "cwd": "/Users/ana/code/ledger",
+    "title": "Fix the flaky ledger test",
+    "provider": "claude",
+    "model": "claude-opus-5-5",
+    "status": "working",
+    "needs": "plan",
+    "queued": 1,
+    "unread": false,
+    "updatedAt": "2026-11-03T18:09:40.877Z"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "event": "host.notice",
+  "params": {
+    "level": "error",
+    "message": "Claude Code isn't at /Users/ana/.local/bin/claude anymore."
+  }
+}
