@@ -21,5 +21,9 @@ uuid = { version = "1", features = ["v7"] }
 log = "0.4"
 parking_lot = "0.12"
 
+[dev-dependencies]
+# Blocking signals as the app's background threads do, to start a host from such a thread.
+libc = "0.2"
+
 [lints]
 workspace = true

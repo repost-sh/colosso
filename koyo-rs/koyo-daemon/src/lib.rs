@@ -89,6 +89,17 @@ pub fn start(dir: &DaemonDir, mut command: Command) -> io::Result<()> {
         .create(true)
         .append(true)
         .open(dir.log())?;
+    // A child inherits its thread's blocked signals, and the app's background threads are GCD's,
+    // with nearly all of them blocked: a daemon started from one could never be told SIGTERM.
+    // SAFETY: both calls are async-signal-safe, and the set is initialised before it's read.
+    unsafe {
+        command.pre_exec(|| {
+            let mut none = std::mem::zeroed::<libc::sigset_t>();
+            libc::sigemptyset(&raw mut none);
+            libc::pthread_sigmask(libc::SIG_SETMASK, &raw const none, std::ptr::null_mut());
+            Ok(())
+        });
+    }
     let mut child = command
         .arg("--dir")
         .arg(dir.root())

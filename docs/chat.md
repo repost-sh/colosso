@@ -779,6 +779,9 @@ No GPUI here: what doesn't draw is tested without compiling the app.
 - `KOYO_AGENT_PROVIDER` is one of the variables the app passes on, so a build with its own
   `KOYO_DATA_DIR` can run on the fake provider end to end. The fake goes by its own name: the app
   names no provider (`provider: null`, the host's first) until a person can choose one.
+- A daemon starts with no signals blocked, whichever thread started it (`koyo_daemon::start`):
+  a child inherits its thread's mask, and the app's background threads are GCD's, with nearly
+  every signal blocked, so a daemon started from one could never be told SIGTERM.
 
 ### 5.2 The chat model in the app [proposed]
 

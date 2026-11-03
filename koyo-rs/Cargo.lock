@@ -5213,6 +5213,7 @@ dependencies = [
  "crossbeam-channel",
  "futures",
  "koyo-daemon",
+ "libc",
  "log",
  "parking_lot",
  "serde",

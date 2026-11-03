@@ -189,6 +189,30 @@ fn a_turn_runs_end_to_end_and_a_killed_host_comes_back_with_what_it_kept() {
     client.replace_host().unwrap();
 }
 
+/// Blocks every signal on this thread, as on the app's background threads, which are GCD's.
+fn block_signals() {
+    // SAFETY: the set is initialised by `sigfillset` before it's read.
+    unsafe {
+        let mut all = std::mem::zeroed::<libc::sigset_t>();
+        libc::sigfillset(&raw mut all);
+        libc::pthread_sigmask(libc::SIG_SETMASK, &raw const all, std::ptr::null_mut());
+    }
+}
+
+#[test]
+fn a_host_started_from_a_thread_with_signals_blocked_still_stops_on_a_signal() {
+    let dir = scratch();
+    let client = real(&dir);
+    block_signals();
+    client.request::<ThreadsWatch>(&Empty {}).unwrap();
+    signal_host(&dir, "-TERM");
+    let limit = Instant::now() + Duration::from_secs(5);
+    while UnixStream::connect(dir.socket()).is_ok() {
+        assert!(Instant::now() < limit, "the host didn't stop on SIGTERM");
+        std::thread::park_timeout(Duration::from_millis(20));
+    }
+}
+
 #[test]
 fn what_is_asked_in_order_reaches_the_host_in_order_though_nobody_awaits_it() {
     let dir = scratch();
