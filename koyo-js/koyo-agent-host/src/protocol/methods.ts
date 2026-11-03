@@ -85,7 +85,10 @@ export const methods = {
       client: z.object({ kind: z.enum(["app", "cli", "test"]) }),
       version: Version,
     }),
-    /** `busy` while a run is live or a request waits, so another build waits to replace it. */
+    /**
+     * `busy` while a run is live, a request waits or another client is here (another build's
+     * app uses it), so another build waits to replace it.
+     */
     result: z.object({ version: Version, pid: z.int().positive(), busy: z.boolean() }),
   },
   "shutdown": { params: Empty, result: Empty },
@@ -101,14 +104,15 @@ export const methods = {
     result: z.array(ProviderStatus),
   },
   "catalog": {
-    params: z.object({ provider: ProviderId, cwd: z.string().min(1) }),
+    /** `provider` null is the host's first, which the app takes until a person can choose. */
+    params: z.object({ provider: ProviderId.nullable(), cwd: z.string().min(1) }),
     result: Catalog,
   },
   "threads.watch": { params: Empty, result: z.array(ThreadSummary) },
   "threads.create": {
     params: z.object({
       cwd: z.string().min(1),
-      provider: ProviderId,
+      provider: ProviderId.nullable(),
       model: z.string().nullable(),
       effort: Effort.nullable(),
       permission: Mode.nullable(),
@@ -134,6 +138,7 @@ export const methods = {
       fast: z.boolean().optional(),
       permission: Mode.nullable().optional(),
       plan: z.boolean().optional(),
+      tabOpen: z.boolean().optional(),
     }),
     result: Thread,
   },

@@ -13,6 +13,7 @@ import type {
   Mode,
   NoticeLevel,
   Prompt,
+  ProviderId,
   Request,
   RequestPayload,
   Run,
@@ -29,16 +30,22 @@ const SEED_TITLE = 60;
 /** The most words a generated title keeps (4.5.7). */
 const TITLE_WORDS = 6;
 
-/** A new chat, as `threads.create` asks for it; its title comes with its first prompt. */
-export function newThread(params: Params<"threads.create">, at: string): Thread {
+/** A new chat on `provider`, as `threads.create` asks; its title comes with its first prompt. */
+export function newThread(
+  params: Params<"threads.create">,
+  provider: ProviderId,
+  at: string,
+): Thread {
   return {
     id: newId(ThreadId),
     ...params,
+    provider,
     title: "",
     titleSource: "seed",
     fast: false,
     sessionId: null,
     queueHeld: false,
+    tabOpen: true,
     createdAt: at,
     updatedAt: at,
     readAt: null,
@@ -292,7 +299,7 @@ export type ThreadChange = Omit<Params<"threads.update">, "threadId">;
 
 /** `thread` with what `change` names changed; a title given is the person's. */
 export function updatedThread(thread: Thread, change: ThreadChange, at: string): Thread {
-  return {
+  const settings: Thread = {
     ...thread,
     title: change.title ?? thread.title,
     titleSource: change.title === undefined ? thread.titleSource : "user",
@@ -301,7 +308,12 @@ export function updatedThread(thread: Thread, change: ThreadChange, at: string):
     fast: change.fast ?? thread.fast,
     permission: change.permission === undefined ? thread.permission : change.permission,
     plan: change.plan ?? thread.plan,
-    updatedAt: at,
+  };
+  return {
+    ...settings,
+    tabOpen: change.tabOpen ?? thread.tabOpen,
+    // A tab coming or going is nothing done in the chat, and lists go by when one last was.
+    updatedAt: Bun.deepEquals(settings, thread) ? thread.updatedAt : at,
   };
 }
 

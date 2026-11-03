@@ -28,6 +28,7 @@ export function thread(): Thread {
     plan: false,
     sessionId: null,
     queueHeld: false,
+    tabOpen: true,
     createdAt: AT,
     updatedAt: AT,
     readAt: null,

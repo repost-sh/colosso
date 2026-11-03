@@ -54,6 +54,8 @@ export const Thread = z.object({
   sessionId: z.string().min(1).nullable(),
   /** Queued runs wait for the person after a stop, a failure or a restart. */
   queueHeld: z.boolean(),
+  /** A tab shows it, and will again after a restart (C13). */
+  tabOpen: z.boolean(),
   createdAt: Time,
   updatedAt: Time,
   readAt: Time.nullable(),
@@ -345,6 +347,7 @@ export const ThreadSummary = z.object({
   needs: RequestKind.nullable(),
   queued: Count,
   unread: z.boolean(),
+  tabOpen: z.boolean(),
   updatedAt: Time,
 });
 export type ThreadSummary = z.infer<typeof ThreadSummary>;

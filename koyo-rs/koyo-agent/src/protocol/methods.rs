@@ -88,7 +88,8 @@ pub struct HelloParams {
 pub struct HelloResult {
     pub version: u32,
     pub pid: u32,
-    /// A run is live or a request waits, so another build waits to replace it.
+    /// A run is live, a request waits or another client is here, so another build waits to
+    /// replace it.
     pub busy: bool,
 }
 
@@ -131,7 +132,8 @@ pub struct ProviderStatus {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CatalogParams {
-    pub provider: String,
+    /// `None` is the host's first provider.
+    pub provider: Option<String>,
     pub cwd: String,
 }
 
@@ -165,7 +167,8 @@ pub struct Catalog {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CreateParams {
     pub cwd: String,
-    pub provider: String,
+    /// `None` is the host's first provider.
+    pub provider: Option<String>,
     pub model: Option<String>,
     pub effort: Option<Effort>,
     pub permission: Option<Mode>,
@@ -245,6 +248,8 @@ pub struct UpdateParams {
     pub permission: Option<Option<Mode>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plan: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tab_open: Option<bool>,
 }
 
 /// A field that's there, `null` included: absent is the default, `None`.

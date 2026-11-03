@@ -4,7 +4,7 @@
 // the host run end to end (`KOYO_AGENT_PROVIDER=fake`).
 
 import type { Catalog, ProviderStatus } from "../protocol/methods";
-import type { Mode, RequestPayload, Response } from "../protocol/model";
+import type { Mode, ProviderId, RequestPayload, Response } from "../protocol/model";
 import type {
   Capabilities,
   Config,
@@ -37,7 +37,7 @@ interface FakeOptions {
 }
 
 export class FakeProvider implements Provider {
-  readonly id = "fake";
+  readonly id: ProviderId = "fake";
   readonly capabilities: Capabilities;
   /** Every session opened, the latest last. */
   readonly sessions: FakeSession[] = [];

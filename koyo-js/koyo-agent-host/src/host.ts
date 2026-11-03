@@ -19,13 +19,17 @@ export interface Host {
 
 export function handlers(host: Host): Handlers<Client> {
   const { threads } = host;
+  const greeted = new Set<Client>();
   return {
     "hello": ({ version }, client) => {
       client.greet(version);
+      greeted.add(client);
       client.onClose(() => {
+        greeted.delete(client);
         threads.forget(client);
       });
-      return { version: HOST_VERSION, pid: process.pid, busy: threads.busy() };
+      // Another client here is another app in use, which two builds mustn't take turns stopping.
+      return { version: HOST_VERSION, pid: process.pid, busy: threads.busy() || greeted.size > 1 };
     },
     "shutdown": () => {
       host.shutdown();
