@@ -1,4 +1,0 @@
-# Read by `dx` when it bundles the dev app.
-[bundle]
-identifier = "dev.colosso.desktop"
-publisher = "Colosso"

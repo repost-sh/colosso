@@ -12,11 +12,11 @@ use std::sync::Arc;
 use std::sync::mpsc;
 use std::time::Duration;
 
-use colosso_app_control::frame::{ClientFrame, MAX_CLIENT_FRAME, MAX_SERVER_FRAME, ServerFrame};
-use colosso_app_control::ops::app::{AppStatus, AppStatusOutput};
-use colosso_app_control::ops::shared::NoInput;
-use colosso_app_control::transport::Listener;
-use colosso_app_control::{
+use koyo_app_control::frame::{ClientFrame, MAX_CLIENT_FRAME, MAX_SERVER_FRAME, ServerFrame};
+use koyo_app_control::ops::app::{AppStatus, AppStatusOutput};
+use koyo_app_control::ops::shared::NoInput;
+use koyo_app_control::transport::Listener;
+use koyo_app_control::{
     Client, ClientInfo, ControlError, ErrorCode, Hello, Notice, Scope, Topic,
 };
 use common::{next_call, spawn_app, temp_dir};
@@ -58,7 +58,7 @@ fn a_hello_is_welcomed_with_the_grant() {
 
 #[test]
 fn a_refused_hello_fails_with_the_apps_error() {
-    let endpoint = colosso_app_control::Endpoint::at(temp_dir("refuse").join("app.sock"));
+    let endpoint = koyo_app_control::Endpoint::at(temp_dir("refuse").join("app.sock"));
     let listener = Listener::bind(&endpoint).unwrap();
     let app = std::thread::spawn(move || {
         let (mut reader, writer) = listener.accept().unwrap().split().unwrap();
@@ -235,7 +235,7 @@ fn a_subscription_delivers_the_apps_events() {
 
 #[test]
 fn nothing_listening_is_app_not_running() {
-    let endpoint = colosso_app_control::Endpoint::at(temp_dir("none").join("app.sock"));
+    let endpoint = koyo_app_control::Endpoint::at(temp_dir("none").join("app.sock"));
     let Err(error) = Client::connect(&endpoint, &hello()) else {
         panic!("connected to nothing");
     };

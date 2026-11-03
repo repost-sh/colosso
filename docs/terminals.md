@@ -1,4 +1,4 @@
-# Colosso terminals: multiplexer, in-app view and agent control
+# Koyo terminals: multiplexer, in-app view and agent control
 
 Specification, written 2026-10-30 on branch `schulzfel/feat-terminal-multiplexer`.
 Author of the vision: Felipe Schulz (schulz@nuvera.global). Drafted with Claude.
@@ -15,8 +15,8 @@ confirmed by implementation) or `[open]` (needs the owner's call; a default is g
 
 ## 0. Vision in one paragraph
 
-Terminals in Colosso are long-lived processes owned by a small daemon, not by the app
-window. Closing Colosso leaves them running; reopening it, or a later mobile client,
+Terminals in Koyo are long-lived processes owned by a small daemon, not by the app
+window. Closing Koyo leaves them running; reopening it, or a later mobile client,
 re-attaches to them. Every terminal belongs to a worktree (a branch checkout), so a
 human sees, per branch, what is running there, and an agent working in that branch finds
 the same terminals by default. Agents reach terminals through an MCP server hosted by the
@@ -31,16 +31,16 @@ terminal core (libghostty-vt).
 
 ## 1. Context and constraints
 
-### 1.1 The Colosso codebase (facts, 2026-10-30)
+### 1.1 The Koyo codebase (facts, 2026-10-30)
 
 - Rust workspace, `edition = "2024"`, toolchain `1.98.1` (`rust-toolchain.toml`), resolver 3,
-  license Apache-2.0 (`LICENSE`). Crates: `crates/colosso` (the app), `crates/project`,
+  license Apache-2.0 (`LICENSE`). Crates: `crates/koyo` (the app), `crates/project`,
   `crates/git`, `crates/lsp`, `crates/bench`. Vendored forks: `vendor/gpui-base`,
   `vendor/gpui-component` (gpui-kit 0.8.1 at commit `99576db5`), see `vendor/README.md`.
 - UI: GPUI through `gpui-kit = "0.8.1"` with feature `gpui-fast` (retained views). The GPUI
   crate underneath is `gpui-pre 0.3.10` (see `Cargo.lock`, and the `hot-reload` feature in
-  `crates/colosso/Cargo.toml`).
-- macOS first. `crates/colosso/src/native/` hosts AppKit `NSView`s inside GPUI's window
+  `crates/koyo/Cargo.toml`).
+- macOS first. `crates/koyo/src/native/` hosts AppKit `NSView`s inside GPUI's window
   composition (`native/surface.rs`: `WindowCompositionSurface`, stacked over the page and
   under GPUI's overlays). Non-macOS paths exist in `crates/project` (notify watcher), so
   portability is intended but not exercised.
@@ -50,8 +50,8 @@ terminal core (libghostty-vt).
   `needless_pass_by_value`, `redundant_clone`, `error_impl_error`,
   `unchecked_time_subtraction` are **denied**. Exceptions use
   `#[expect(lint, reason = "...")]`. Logging goes through the `log` facade into
-  `colosso::logs`. New crates inherit `[lints] workspace = true`.
-- Existing terminal placeholders: `PaneKind::Terminal` in `crates/colosso/src/model.rs:11`
+  `koyo::logs`. New crates inherit `[lints] workspace = true`.
+- Existing terminal placeholders: `PaneKind::Terminal` in `crates/koyo/src/model.rs:11`
   (title "New Terminal", default name "zsh", icon `SquareTerminal`), `pane.rs:157 fn terminal`
   renders a stand-in, `bottom.rs:54` "The panel under the workspace; a stand-in for the
   terminal it's to hold", action `NewTerminal` in `shell/actions.rs`. No PTY, no VT code.
@@ -59,15 +59,15 @@ terminal core (libghostty-vt).
   `Worktree { path, head: Head::Branch(name) | Head::Detached(commit), is_main }`.
   `Project { path (main checkout), name, branches: Vec<BranchUnit>, active_branch }`.
   `Workspace::project_of(worktree_path)` finds a project by a worktree path.
-- Checkout identity: `crates/colosso/src/checkouts.rs` keys open checkouts by
+- Checkout identity: `crates/koyo/src/checkouts.rs` keys open checkouts by
   `std::fs::canonicalize(root)` "so a checkout reached through a link is the same checkout".
   Reuse this rule for terminal scoping.
-- App data folder: `settings::data_dir()` (`crates/colosso/src/settings.rs:243`), the app's
+- App data folder: `settings::data_dir()` (`crates/koyo/src/settings.rs:243`), the app's
   folder under Application Support; language servers are fetched under it. Logs go to
-  `~/Library/Logs/Colosso` (`logs/mod.rs:117`).
+  `~/Library/Logs/Koyo` (`logs/mod.rs:117`).
 - Dev loop: `script/dev` runs `dx serve --hot-patch`; it downloads a pinned `dx` into
   `.tools/dx-<version>/` with a sha256 check. The same pattern will pin Zig (section 11).
-- Tests: `gpui-kit` feature `test-support` gives headless windows; `crates/colosso` has a
+- Tests: `gpui-kit` feature `test-support` gives headless windows; `crates/koyo` has a
   `visual-check` feature and `test_support` module.
 - Repository rules (owner's machine rules): everything the work creates stays inside the
   checkout; scratch under `.superpowers/` (gitignored); `.cargo-home` is the cargo home;
@@ -75,16 +75,16 @@ terminal core (libghostty-vt).
 
 ### 1.2 Relationship to Orca and monocode
 
-- Colosso is the native successor of the Orca app's layout ("Orca layout: projects and their
-  branch units in the sidebar", `crates/colosso/src/orca.rs`). The Orca CLI
+- Koyo is the native successor of the Orca app's layout ("Orca layout: projects and their
+  branch units in the sidebar", `crates/koyo/src/orca.rs`). The Orca CLI
   (`/Applications/Orca.app/Contents/Resources/bin/orca`) already exposes worktree-scoped
   terminals to agents (`orca terminal list|show|read|send|wait|create|...`). Its vocabulary
   is the one agents on this machine already know; the MCP here keeps it (section 8.9).
 - monocode (`/Users/schulzf/github.com/schulzfel/monocode-worktrees/feat-browser-panes`) has
   a full app-control MCP in Rust (`crates/monocode-control`, `crates/monocode-mcp`,
   `crates/monocode-gpui/src/shell/control/`). Its conventions are adopted here (section 8).
-  Its browser panes are being ported into Colosso in the worktree
-  `/Users/schulzf/orca/workspaces/colosso/feat-new-native-app` (CEF host crates
+  Its browser panes are being ported into Koyo in the worktree
+  `/Users/schulzf/orca/workspaces/koyo/feat-new-native-app` (CEF host crates
   `crates/browser-host`, `crates/browser-ipc`, uncommitted as of 2026-10-30); no MCP or
   control code has been ported there yet.
 - `agent-terminal` (`/Users/schulzf/github.com/repost-sh/agent-terminal`, Rust, ~35k lines,
@@ -169,7 +169,7 @@ terminals only. **As implemented (M4):** the server runs in the stdio relay, not
 daemon, which runs the operations behind it; HTTP is deferred (4, 8.1).
 
 **D10 [decided] Terminal input is exposed to agents.** monocode's MCP lists terminal input
-under "never exposed". Colosso reverses that on purpose, mitigated by scopes and grants,
+under "never exposed". Koyo reverses that on purpose, mitigated by scopes and grants,
 the control model, idempotent requests and the activity log.
 
 **D11 [decided 2026-10-30] A human takes a terminal over either implicitly, by typing in it,
@@ -291,10 +291,10 @@ PR 1006; dev.to "What it takes to embed libghostty in a Swift app".
 ```
                     ┌──────────────────────────── machine ────────────────────────────┐
                     │                                                                 │
-  Claude Code ──stdio──▶ colosso mcp (MCP) ────┐                                      │
-  (HTTP 127.0.0.1 deferred, 8.1)               │  colosso-termd (one per user)        │
+  Claude Code ──stdio──▶ koyo mcp (MCP) ────┐                                      │
+  (HTTP 127.0.0.1 deferred, 8.1)               │  koyo-termd (one per user)        │
                                                │  ├─ registry (worktrees, terminals)  │
-  Colosso.app ◀──unix socket (frames v1)──────▶│  ├─ operations behind the MCP        │
+  Koyo.app ◀──unix socket (frames v1)──────▶│  ├─ operations behind the MCP        │
    ├─ crates/term: engine + GPUI element       │  ├─ control leases, status, activity │
    └─ branch units ─ terminal tabs             │  └─ sessions[n]: thread {            │
                                                │        PTY ⇄ child process          │
@@ -309,21 +309,21 @@ Data flow for one keystroke: GPUI key event → ghostty key encoder in the app �
 daemon's headless engine (status, snapshot, queries) and fanned out as `Output` frames →
 app → app engine `vt_write` → render state → GPUI paint on the next frame if dirty.
 
-**As implemented (M5):** the MCP server is the relay `colosso mcp` (crates/term-mcp), one per
+**As implemented (M5):** the MCP server is the relay `koyo mcp` (crates/term-mcp), one per
 agent, over stdio; it reaches the daemon by the same unix socket and frames as the app, and
 the daemon runs the operations (8.1). Loopback HTTP is deferred.
 
 ---
 
-## 5. The daemon: `colosso-termd`
+## 5. The daemon: `koyo-termd`
 
 ### 5.1 Process model and lifecycle [proposed]
 
 - One daemon per user account, built from `crates/termd`, a library with a thin binary.
-  The app runs it from its own executable as `colosso termd --dir <folder>` (the subcommand
+  The app runs it from its own executable as `koyo termd --dir <folder>` (the subcommand
   is dispatched before anything else in `main`), so the daemon ships inside the app and is
-  always the app's build; `colosso-termd` is the same daemon on its own, for the tests and
-  the `colosso-term` command line.
+  always the app's build; `koyo-termd` is the same daemon on its own, for the tests and
+  the `koyo-term` command line.
 - Started on demand by the first client (app or relay) that finds no live socket: spawn
   detached (own process group, stdout piped until it prints `ready`, stderr to the log
   file) under `start.lock`, so only one client starts it. The app's startup only lists the
@@ -332,7 +332,7 @@ the daemon runs the operations (8.1). Loopback HTTP is deferred.
 - Single-instance guarantee: `flock` on `<dir>/daemon.lock` holding the pid; the socket path
   is only trusted when the lock is held (pattern from agent-terminal
   `cli/src/native/daemon/claim/mod.rs:11-31`).
-- Files, under `settings::data_dir()/term/` (macOS: `~/Library/Application Support/Colosso/term/`):
+- Files, under `settings::data_dir()/term/` (macOS: `~/Library/Application Support/Koyo/term/`):
   - `daemon.sock` (mode 0600), `daemon.lock`, `daemon.version` (protocol + build),
     `daemon.log` (rotated, size-bounded).
   - `registry.json` (atomic replace via temp file + rename), see 5.9.
@@ -350,7 +350,7 @@ the daemon runs the operations (8.1). Loopback HTTP is deferred.
 views restore its snapshots, so the app's client (`term/src/client.rs`, `this_build`) turns
 away a daemon whose Ghostty commit or snapshot format isn't its own, and the daemon refuses a
 hello of another protocol, answering `daemon_version_mismatch` before it hangs up. A tab the
-daemon turned away shows the notice ("Terminals are served by another build of Colosso;
+daemon turned away shows the notice ("Terminals are served by another build of Koyo;
 restart them to use this one. Their programs end, and the shells you opened start again."),
 worded for either direction, since an older app meets a newer daemon too, with a "Restart
 terminals" button. The button runs `stop_daemon` (`term-control/src/client.rs`): `Shutdown`
@@ -367,7 +367,7 @@ Besides the protocol, the welcome's `daemon_version` must be this build's `DAEMO
 so a build whose daemon changed bumps it, or the old daemon would go on serving the new app.
 `script/daemon-version`, run by `script/lint` and so by the pre-commit hook, holds the version
 in `daemon-version.txt` beside a fingerprint of what the daemon is built from: the crates
-`cargo tree` resolves for `colosso-termd` with their versions, the sources of those in the
+`cargo tree` resolves for `koyo-termd` with their versions, the sources of those in the
 checkout (tests left out), `rust-toolchain.toml` and `.cargo/config.toml`. It fails once they
 part, until `script/daemon-version bump` raises the version or `script/daemon-version keep`
 notes a change a running daemon doesn't need.
@@ -416,9 +416,9 @@ Terminal {
 - PTY: `portable-pty 0.9` (unix `openpty`), spawned with the login shell
   (`$SHELL -l`) or the given argv, `cwd` as spawn directory, env: inherit the daemon's env
   plus `TERM=xterm-ghostty` **if** the bundled terminfo is installed (section 11), else
-  `TERM=xterm-256color`; `COLORTERM=truecolor`; `TERM_PROGRAM=Colosso`;
-  `TERM_PROGRAM_VERSION`; `COLOSSO_TERMINAL=<handle>`; `COLOSSO_WORKTREE=<path>`; and for
-  shells, the shell-integration hook (5.7). Never inject `COLOSSO_MCP_*` secrets into a
+  `TERM=xterm-256color`; `COLORTERM=truecolor`; `TERM_PROGRAM=Koyo`;
+  `TERM_PROGRAM_VERSION`; `KOYO_TERMINAL=<handle>`; `KOYO_WORKTREE=<path>`; and for
+  shells, the shell-integration hook (5.7). Never inject `KOYO_MCP_*` secrets into a
   terminal that an agent opened for a non-agent purpose; the app passes agent env explicitly.
 - Read loop: `read(2)` into a 64 KiB buffer; each chunk is (a) appended to the raw ring,
   (b) fed to the engine with `vt_write` (callbacks update title/cwd/status and queue
@@ -559,7 +559,7 @@ sides must link the same Ghostty revision (CI check: compare `ghostty-vt-sys` bu
 - Terminal default (`terminal` omitted): the terminal this caller last acted on in the
   resolved worktree; else, if the worktree has exactly one terminal, that one; else an error
   listing the candidates. Never pick another actor's terminal implicitly.
-- Worktree deletion (`crates/colosso/src/delete_worktree.rs`) calls `Close` for each terminal
+- Worktree deletion (`crates/koyo/src/delete_worktree.rs`) calls `Close` for each terminal
   of that worktree after confirmation naming running processes. **As implemented (M5):**
   the dialog names each terminal with its status ("Its terminal stops: server (running,
   output)") and closes them in the daemon before git removes the folder, so none of their
@@ -574,7 +574,7 @@ sides must link the same Ghostty revision (CI check: compare `ghostty-vt-sys` bu
 
 Actors: `Actor { kind: human|agent|system, id, label }`. Human = the app or mobile client's
 user. Agent id = `<client name>:<connection id>` (e.g. `claude-code:7f3a`), optionally with
-the agent's own session id if the relay was launched with `COLOSSO_AGENT_SESSION`.
+the agent's own session id if the relay was launched with `KOYO_AGENT_SESSION`.
 
 State per terminal:
 
@@ -629,7 +629,7 @@ As implemented [2026-10-31, `termd/src/session/control.rs`, tests in
   tracking the mouse) are delivered but take nothing and don't clear `needs_input`: looking
   at or scrolling a terminal isn't typing in it. Arrows the wheel sends in alternate scroll
   mode can't be told from typed ones and do take control.
-- The app, mobile and `colosso-term` clients are the person (one actor, `human`); a relay
+- The app, mobile and `koyo-term` clients are the person (one actor, `human`); a relay
   is the agent `<client name>:<connection id>`.
 - Every agent write (input, paste, resize, signal, close) is checked against its lease and
   renews it; the lease moves in lists at most once a second. A person's resize or close
@@ -685,15 +685,15 @@ goes in `GHOSTTY_ZSH_ZDOTDIR` and Ghostty's `.zshenv` restores it before reading
 fish through `XDG_DATA_DIRS` (plus `GHOSTTY_SHELL_INTEGRATION_XDG_DIR`, which the script takes
 back out). bash is not injected: Ghostty's script needs bash 4.4 and macOS ships 3.2. No
 `GHOSTTY_SHELL_FEATURES` are set, so the scripts add marks and OSC 7 only, no title or cursor
-changes. A terminal whose environment says `COLOSSO_SHELL_INTEGRATION=off` is left alone. zsh
+changes. A terminal whose environment says `KOYO_SHELL_INTEGRATION=off` is left alone. zsh
 reports its folder as `kitty-shell-cwd://host/path` (raw), which the daemon reads beside
 `file://` (percent-encoded).
 
 **License note (needs the owner's decision):** Ghostty's zsh and bash scripts say they derive
 from Kitty's and are GPLv3 (fish's carries no such header). `ghostty-vt` embeds them in the
 binary whether or not they are injected. They run as separate programs in the shell, but a
-distributed Colosso carries their text, so their license has to be honoured or the scripts
-replaced with Colosso's own (the marks are a few lines per shell; agent-terminal's zsh hook at
+distributed Koyo carries their text, so their license has to be honoured or the scripts
+replaced with Koyo's own (the marks are a few lines per shell; agent-terminal's zsh hook at
 `cli/src/native/shell/agent-terminal.zsh:22-47` shows the size).
 
 Status as implemented (`termd/src/session/status.rs`): reasons are `started`, `prompt`,
@@ -778,7 +778,7 @@ per PNG/SVG/HTML/text capture written by `terminal_screenshot` or by the app's "
 screenshot".
 
 Retention [proposed]: agent-terminal rotates nothing because its sessions were short-lived.
-Colosso terminals live for weeks, so each JSONL file is capped at 64 MB and rotated once to
+Koyo terminals live for weeks, so each JSONL file is capped at 64 MB and rotated once to
 `.1` (older dropped), the screenshots folder at 512 MB oldest-first; both are settings.
 "Export trace" zips a terminal's folder (agent-terminal's `trace export`) for bug reports
 and QA evidence; "Clear log" in the UI only hides rows in the view (see 7.4), the files are
@@ -978,7 +978,7 @@ sees the shell back from its screen, idle at its prompt.
   none) and observer count. The chip's menu: Take control (when an agent or nobody holds) /
   Give back (when you hold) / Show activity. A human-held terminal shows the chip as "yours"
   with a distinct tint so it is obvious agents are locked out of it.
-- As implemented [2026-10-31, `colosso/src/terminals/{states,watch,header}.rs`]: the app keeps
+- As implemented [2026-10-31, `koyo/src/terminals/{states,watch,header}.rs`]: the app keeps
   every terminal's status and control from one `ListTerminals` and then the daemon's events
   (all clients get every terminal's events), listing again after the daemon comes back. A
   tab with terminals shows a dot for the most urgent of their statuses (needs input, then
@@ -1012,7 +1012,7 @@ sees the shell back from its screen, idle at its prompt.
   says "Activity cleared" until new rows arrive; a screenshot a call took opens in the
   lightbox from the row.
 - The same panel exists on mobile later, reading the same files through the same offsets.
-- As implemented [2026-10-31, `colosso/src/terminals/{panel,beside}.rs`, `panel/rows.rs`]:
+- As implemented [2026-10-31, `koyo/src/terminals/{panel,beside}.rs`, `panel/rows.rs`]:
   the bar's "Activity" button and ⌘⇧L (bound in the terminal's key context, so editors keep
   the key) show or hide a terminal's panel at the pane's right, 30% of it and dragged by its
   left edge between 15% and 70%; the width is shared by every panel while the app runs.
@@ -1051,7 +1051,7 @@ sees the shell back from its screen, idle at its prompt.
 - Memory: engine scrollback limit default 50 MB per terminal (Ghostty's default), compressed
   incrementally during idle (`compress` incremental mode on the VT thread).
 
-**As measured (M5):** `colosso-bench` runs `term-echo` and `term-cat` (`crates/bench/README.md`):
+**As measured (M5):** `koyo-bench` runs `term-echo` and `term-cat` (`crates/bench/README.md`):
 the daemon, a client attached as the view attaches, and its engine; each sample ends in the
 client's engine, at the frame the view would take, the paint not timed. Release build, Apple
 M4 Max:
@@ -1100,15 +1100,15 @@ its screen, ending leases), whether or not anything happened.
   1. **Streamable HTTP** on `127.0.0.1:6272/mcp` (6273 for development data; port is a
      setting; distinct from monocode's 6262/6263 so both can run). Off by default; the app's
      Settings → Terminals turns it on. Host/Origin checks; bearer token.
-  2. **stdio relay**: `colosso mcp` (a subcommand of the app binary, or a tiny
-     `colosso-term-mcp` binary) that forwards MCP over the daemon socket. It sends the
-     caller's cwd, pid and `COLOSSO_AGENT_*` env in `Hello`. This is what Colosso injects
+  2. **stdio relay**: `koyo mcp` (a subcommand of the app binary, or a tiny
+     `koyo-term-mcp` binary) that forwards MCP over the daemon socket. It sends the
+     caller's cwd, pid and `KOYO_AGENT_*` env in `Hello`. This is what Koyo injects
      into agents it launches (Claude `--mcp-config`, Codex `-c mcp_servers…`, ACP
      `mcpServers`, as monocode does in `monocode-core/src/app_mcp.rs`).
 - Federation (later): app-level tools (browser, editor, workspace) register in the same
   catalog with an executor that forwards to the app's control socket; when the app is not
   running they fail with `app_not_running`. Agents then configure one server.
-- **As implemented (M4):** the MCP server runs in `colosso mcp`, not inside the daemon.
+- **As implemented (M4):** the MCP server runs in `koyo mcp`, not inside the daemon.
   The relay carries out the catalog itself (`term-control/src/exec.rs`) over its ordinary
   protocol connection, as a `Relay` client whose actor is the MCP client's name from
   `initialize` (`claude-code:…`), and serves it with `rmcp` 3.8 over stdio
@@ -1143,7 +1143,7 @@ Copied from monocode (`docs/native/mcp.md` there):
 ### 8.3 Caller identity and defaults [decided]
 
 - Identity: `clientInfo.name` + connection id → `Actor`. Relay callers add cwd and pid;
-  app-launched agents add `COLOSSO_AGENT_SESSION`.
+  app-launched agents add `KOYO_AGENT_SESSION`.
 - Default `worktree`: section 5.5 (relay cwd, MCP roots, else required).
 - Default `terminal`: section 5.5 (last acted on in that worktree, else the only one, else
   error listing candidates).
@@ -1265,11 +1265,11 @@ claims it, and is only the starting size with `claim: false`. `requestId` is kep
 ### 8.6 Resources and subscriptions [decided]
 
 ```
-colosso://worktrees                          list, with counts
-colosso://worktrees/{path}/terminals         TerminalSummary[]        (template)
-colosso://terminals/{handle}                 TerminalSummary + control + size
-colosso://terminals/{handle}/screen          text screen (format text)
-colosso://terminals/{handle}/activity        last 200 activity entries
+koyo://worktrees                          list, with counts
+koyo://worktrees/{path}/terminals         TerminalSummary[]        (template)
+koyo://terminals/{handle}                 TerminalSummary + control + size
+koyo://terminals/{handle}/screen          text screen (format text)
+koyo://terminals/{handle}/activity        last 200 activity entries
 ```
 
 All but `worktrees` are subscribable; updates are `notifications/resources/updated` without
@@ -1298,7 +1298,7 @@ and the human rule: **`person_has_control` means the person has taken this termi
 wait for it, do not retry, do not claim with takeover; read it if you need its output, and
 open or pick another terminal in the worktree for your own work. Return to it only after a
 `human_released` event or when the person tells you to.**
-A Claude skill in `~/.claude/skills/colosso-terminals` is a two-line stub pointing at the
+A Claude skill in `~/.claude/skills/koyo-terminals` is a two-line stub pointing at the
 prompt (so the guide is never stale).
 
 **As implemented (M4):** both ship in the app binary that runs the daemon and the relay
@@ -1307,7 +1307,7 @@ few lines, and `terminal_guide` says it at length (waits, full-screen programs a
 control and takeover, logs, errors and `requestId`). The skill stub isn't written: it
 lives in the person's home folder. Accepted from the official TypeScript SDK's client
 (1.32): tools, a zsh driven through `less` by keys, resources, a subscription's update,
-the guide, and the refusals, against `colosso mcp` from the built app.
+the guide, and the refusals, against `koyo mcp` from the built app.
 
 ### 8.8 App-side consumption
 
@@ -1316,7 +1316,7 @@ The app uses the same operations over the socket (not over MCP) for its own UI, 
 
 ### 8.9 Vocabulary mapping to Orca and agent-terminal
 
-| Orca CLI | Colosso MCP |
+| Orca CLI | Koyo MCP |
 | --- | --- |
 | `terminal list --worktree <selector>` | `terminal_list { worktree }` |
 | handles `term_<uuid>` | handles `term_<ulid>` |
@@ -1332,7 +1332,7 @@ onto `for: text|gone|stable|idle|exit|prompt`; its `snapshot -i` refs onto
 
 ---
 
-## 9. Human and agent UX in Colosso
+## 9. Human and agent UX in Koyo
 
 - Opening a branch unit shows its terminals as tabs with status dots; a terminal an agent
   opened appears automatically (reveal `tab`) without stealing focus. **As implemented
@@ -1379,13 +1379,13 @@ crates/term-engine    libghostty-vt behind one module: Engine, owned Frames, key
                       encoding, selection, snapshots, the OSC 133 scanner
 crates/term-control   wire types (frames v1, CBOR control frames), selectors, errors, the
                       blocking client Connection, the daemon's folder; later the catalog
-crates/termd          the daemon, a library (`colosso_termd::main`) and the `colosso-termd`
+crates/termd          the daemon, a library (`koyo_termd::main`) and the `koyo-termd`
                       binary: registry, sessions, PTY, headless engine, later the MCP server;
-                      also the `colosso-term` command line for testing without the app
+                      also the `koyo-term` command line for testing without the app
 crates/term           the app side: TermClient, the VT thread, TerminalElement, TerminalView,
                       key mapping, glyph cache, sprites
-crates/colosso        wires TerminalView into tabs (`terminals.rs`); the
-                      `colosso termd` subcommand; later `colosso mcp`, the settings page and
+crates/koyo        wires TerminalView into tabs (`terminals.rs`); the
+                      `koyo termd` subcommand; later `koyo mcp`, the settings page and
                       launching agents with the relay injected
 ```
 
@@ -1424,7 +1424,7 @@ crates/colosso        wires TerminalView into tabs (`terminals.rs`); the
 - App: headless GPUI tests for `TerminalElement` layout (grid size from bounds, cell-pinned
   glyph positions, wide-cell handling), visual checks via the existing `visual-check` feature,
   bench scenarios in `crates/bench` (typing latency, `cat` throughput, idle CPU).
-- Real-surface QA with `agent-terminal`/`agent-tui` driving Claude Code inside a Colosso
+- Real-surface QA with `agent-terminal`/`agent-tui` driving Claude Code inside a Koyo
   terminal, and with the MCP from a real Claude Code session in a worktree.
 
 **As implemented (M5):** `crates/termd/tests/daemon/` runs the daemon end to end (attach,
@@ -1442,7 +1442,7 @@ official TypeScript SDK's client instead (8.7).
 ## 13. Milestones and acceptance
 
 M1 **Daemon core** (`term-control` frames v1, `termd`): open/attach/detach/input/resize,
-raw streaming, snapshot on attach, registry on disk, one CLI `colosso-term attach <handle>`
+raw streaming, snapshot on attach, registry on disk, one CLI `koyo-term attach <handle>`
 for manual testing. Accept: a shell opened via the CLI survives the CLI exiting; re-attach
 shows the same screen and scrollback; two attaches see the same output.
 
@@ -1455,7 +1455,7 @@ M3 **Status, control, activity**: shell integration injection, status derivation
 human pre-emption, activity log, controller badge and sidebar roll-up.
 
 M4 **MCP**: catalog, stdio relay, loopback HTTP, scopes and grants, resources and
-subscriptions, instructions/prompt, Claude Code launched by Colosso with the relay injected.
+subscriptions, instructions/prompt, Claude Code launched by Koyo with the relay injected.
 Accept: an agent in a worktree calls `terminal_list` with no arguments and sees only that
 branch's terminals; two agents in one branch hand a terminal over with a visible takeover; a
 human typing (or pressing "Take control") displaces the agent, every further agent write to
@@ -1469,9 +1469,9 @@ finds only its own), the handover between agents and the person's takeover until
 back (`agents_hold_by_lease_and_a_person_takes_over_until_giving_back`), and
 `person_has_control` through the catalog (`an_agent_drives_a_shell_through_the_catalog`);
 the in-app check shows the same in the window. The official TypeScript SDK's client drove
-`colosso mcp` from the built app. Not done: Claude Code *launched by Colosso* with the
-relay injected, since Colosso launches no agents yet; until it does, an agent adds the
-server itself (`claude mcp add colosso -- <app>/colosso mcp`). Loopback HTTP is deferred
+`koyo mcp` from the built app. Not done: Claude Code *launched by Koyo* with the
+relay injected, since Koyo launches no agents yet; until it does, an agent adds the
+server itself (`claude mcp add koyo -- <app>/koyo mcp`). Loopback HTTP is deferred
 (8.1).
 
 M5 **Hardening**: catch-up under a throttled client, daemon upgrade path, persistence of
@@ -1560,7 +1560,7 @@ Orca CLI: `orca terminal <cmd> --help`, `orca agent-context --json` (288 command
 contains raw control characters, strip them before `jq`), `orca worktree current --json`
 (worktree `id = <repoId>::<path>`, `identity.key`, `branch` as a full ref, `displayName`).
 
-Colosso: `crates/colosso/src/{model.rs, checkouts.rs, checkout/mod.rs, native/surface.rs,
+Koyo: `crates/koyo/src/{model.rs, checkouts.rs, checkout/mod.rs, native/surface.rs,
 bottom.rs, pane.rs, shell/actions.rs, settings.rs, delete_worktree.rs}`, `script/dev`,
 `crates/bench`.
 
@@ -1576,7 +1576,7 @@ multi-client, snapshot on reattach), Ghostty discussion #12176 (catch-up via sna
 
 - **Terminal**: a daemon-owned PTY + process + headless engine + record; the unit agents and
   the UI address. Has a handle and a per-worktree name.
-- **Worktree / branch unit**: a git checkout directory; Colosso's `BranchUnit` wraps one.
+- **Worktree / branch unit**: a git checkout directory; Koyo's `BranchUnit` wraps one.
 - **Engine**: libghostty-vt (`ghostty-vt` binding): parser + grid + scrollback + encoders.
 - **Snapshot**: libghostty-vt's binary serialization of a terminal's complete state.
 - **Attach**: a client subscribing to a terminal's output after receiving a snapshot.

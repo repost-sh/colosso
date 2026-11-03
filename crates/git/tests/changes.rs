@@ -11,7 +11,7 @@ mod common;
 
 use std::path::PathBuf;
 
-use colosso_git::{Change, Checkout, Content, Discarding, Hunk, Status};
+use koyo_git::{Change, Checkout, Content, Discarding, Hunk, Status};
 
 /// A repository with `files` committed, removed again when the test ends.
 struct Fixture {

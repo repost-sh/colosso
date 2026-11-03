@@ -7,7 +7,7 @@ use cef::{
     Browser, BrowserSettings, ImplBrowser, ImplBrowserHost, ImplFrame, ImplTask, RequestContext,
     RequestContextSettings, Task, ThreadId, WindowInfo, WrapTask, rc::Rc, wrap_task,
 };
-use colosso_browser_ipc::{AppRequest, Cursor, HostEvent, PageState, PaneId, ViewAction, Viewport};
+use koyo_browser_ipc::{AppRequest, Cursor, HostEvent, PageState, PaneId, ViewAction, Viewport};
 
 /// One request context per profile, so projects never share cookies.
 fn context(profile: &str) -> Option<RequestContext> {

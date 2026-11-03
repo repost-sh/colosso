@@ -7,7 +7,7 @@
 //! IO threads, so the waiting callbacks sit behind a lock that is never held
 //! across a call into CEF.
 //!
-//! [`AppRequest::Answer`]: colosso_browser_ipc::AppRequest::Answer
+//! [`AppRequest::Answer`]: koyo_browser_ipc::AppRequest::Answer
 use crate::host;
 use crate::pending::Pending;
 use cef::{
@@ -16,7 +16,7 @@ use cef::{
     ImplMediaAccessCallback, ImplPermissionPromptCallback, JsdialogCallback, MediaAccessCallback,
     PermissionPromptCallback, PermissionRequestResult,
 };
-use colosso_browser_ipc::{Answer, Dialog, FileMode, HostEvent, PaneId, Permission};
+use koyo_browser_ipc::{Answer, Dialog, FileMode, HostEvent, PaneId, Permission};
 use std::sync::Mutex;
 
 /// A callback CEF waits on.

@@ -3,10 +3,10 @@
 
 use std::io::Cursor;
 
-use colosso_app_control::frame::{
+use koyo_app_control::frame::{
     self, Call, ClientFrame, ClientInfo, FrameError, Hello, MAX_CLIENT_FRAME, ServerFrame,
 };
-use colosso_app_control::{ControlError, ErrorCode, Scope, Topic};
+use koyo_app_control::{ControlError, ErrorCode, Scope, Topic};
 use serde_json::json;
 
 // Marked as test code, as everything here is, so the lints' leave for tests (to unwrap, to

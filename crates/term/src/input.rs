@@ -5,7 +5,7 @@
 use std::ops::Range;
 use std::time::Duration;
 
-use colosso_term_engine::{
+use koyo_term_engine::{
     GridPoint, KeyAction, MouseAction, MouseButton, MouseInput, Scroll, SelectUnit,
 };
 use gpui_kit::{

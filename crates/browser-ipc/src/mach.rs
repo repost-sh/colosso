@@ -345,7 +345,7 @@ mod tests {
     fn service() -> String {
         static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
         format!(
-            "dev.colosso.browser-ipc-test.{}.{}.{}",
+            "dev.koyo.browser-ipc-test.{}.{}.{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

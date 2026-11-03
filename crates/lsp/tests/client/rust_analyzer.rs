@@ -6,23 +6,23 @@
 //! says it's ready, and asks as an editor does, again once it's ready after a reload.
 //!
 //! It downloads rust-analyzer the first time, so it runs only when asked:
-//! `COLOSSO_LSP_IT=1 COLOSSO_DATA_DIR=$PWD/.superpowers/data cargo test -p colosso-lsp -- --ignored`
+//! `KOYO_LSP_IT=1 KOYO_DATA_DIR=$PWD/.superpowers/data cargo test -p koyo-lsp -- --ignored`
 
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use colosso_lsp::lsp_types::notification::{
+use koyo_lsp::lsp_types::notification::{
     DidChangeTextDocument, DidOpenTextDocument, DidSaveTextDocument, PublishDiagnostics,
 };
-use colosso_lsp::lsp_types::request::{Completion, GotoDefinition, HoverRequest, Request};
-use colosso_lsp::lsp_types::{
+use koyo_lsp::lsp_types::request::{Completion, GotoDefinition, HoverRequest, Request};
+use koyo_lsp::lsp_types::{
     CompletionContext, CompletionParams, CompletionResponse, CompletionTriggerKind,
     DiagnosticSeverity, GotoDefinitionParams, GotoDefinitionResponse, HoverContents, HoverParams,
     PartialResultParams, Position, PublishDiagnosticsParams, TextDocumentIdentifier,
     TextDocumentPositionParams, WorkDoneProgressParams,
 };
-use colosso_lsp::servers::{Curl, RUST_ANALYZER};
-use colosso_lsp::{Client, Document, Encoding, IndexedText, LineIndex, Notifications, uri};
+use koyo_lsp::servers::{Curl, RUST_ANALYZER};
+use koyo_lsp::{Client, Document, Encoding, IndexedText, LineIndex, Notifications, uri};
 use futures::StreamExt;
 
 use crate::common::{data_dir, fixture, wait};

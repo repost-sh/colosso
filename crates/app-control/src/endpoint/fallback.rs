@@ -18,7 +18,7 @@ pub(super) fn socket_path(dir: &Path, temp: &Path) -> Result<PathBuf, ControlErr
     let length = path.as_os_str().len();
     if length > MAX_SOCKET_PATH {
         return Err(ControlError::invalid_input(format!(
-            "The control socket of {} would be {} ({length} bytes), longer than the {MAX_SOCKET_PATH} a socket path may have. Use a shorter COLOSSO_DATA_DIR or TMPDIR.",
+            "The control socket of {} would be {} ({length} bytes), longer than the {MAX_SOCKET_PATH} a socket path may have. Use a shorter KOYO_DATA_DIR or TMPDIR.",
             dir.display(),
             path.display()
         )));
@@ -53,7 +53,7 @@ fn check(folder: &Path) -> Result<(), ControlError> {
 
 fn refused(folder: &Path, why: &str) -> ControlError {
     ControlError::invalid_input(format!(
-        "The control socket folder {} {why}. Remove it, or use a shorter COLOSSO_DATA_DIR.",
+        "The control socket folder {} {why}. Remove it, or use a shorter KOYO_DATA_DIR.",
         folder.display()
     ))
 }

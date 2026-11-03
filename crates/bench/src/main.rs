@@ -29,7 +29,7 @@ use crate::stats::Deadline;
 use crate::suite::Outcome;
 
 const USAGE: &str = "\
-usage: colosso-bench <command>
+usage: koyo-bench <command>
 
   all [--only TEXT,..] [--timeout SECS]
                                        run every scenario (or those whose id contains one of
@@ -48,12 +48,12 @@ fn main() -> ExitCode {
     // The terminal scenarios' daemon: this program run again, as the app runs itself.
     let mut args = std::env::args().skip(1);
     if args.next().as_deref() == Some("termd") {
-        return colosso_termd::main(args);
+        return koyo_termd::main(args);
     }
     match cli() {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            let _ = writeln!(std::io::stderr().lock(), "colosso-bench: {error:#}");
+            let _ = writeln!(std::io::stderr().lock(), "koyo-bench: {error:#}");
             ExitCode::FAILURE
         }
     }

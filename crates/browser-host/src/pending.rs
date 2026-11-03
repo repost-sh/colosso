@@ -1,6 +1,6 @@
 //! Callbacks CEF waits on while the app answers, kept under a number the app
 //! echoes back with the pane it was for.
-use colosso_browser_ipc::PaneId;
+use koyo_browser_ipc::PaneId;
 use std::collections::BTreeMap;
 
 pub(crate) struct Pending<T> {

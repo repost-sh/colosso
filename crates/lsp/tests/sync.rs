@@ -10,8 +10,8 @@
 use std::ops::Range;
 use std::str::FromStr;
 
-use colosso_lsp::lsp_types::{Position, TextDocumentContentChangeEvent, Uri};
-use colosso_lsp::{Document, EditError, Encoding, IndexedText, LineIndex};
+use koyo_lsp::lsp_types::{Position, TextDocumentContentChangeEvent, Uri};
+use koyo_lsp::{Document, EditError, Encoding, IndexedText, LineIndex};
 
 const PIECES: [&str; 13] = [
     "a",

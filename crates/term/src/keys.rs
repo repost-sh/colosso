@@ -4,7 +4,7 @@
 //! layout; they only matter to the kitty protocol and to Ctrl combinations, which a
 //! character names well enough.
 
-use colosso_term_engine::{Key, KeyAction, KeyInput, Mods, OptionAsAlt, key_named};
+use koyo_term_engine::{Key, KeyAction, KeyInput, Mods, OptionAsAlt, key_named};
 use gpui_kit::{Keystroke, Modifiers};
 
 /// A key event to encode, owned so it can cross to the VT thread.

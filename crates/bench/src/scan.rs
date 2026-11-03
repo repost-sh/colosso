@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, Result, bail};
-use colosso_project::{Excludes, Feed, GitDirs, Options, Project, Subscription, Update, Written};
+use koyo_project::{Excludes, Feed, GitDirs, Options, Project, Subscription, Update, Written};
 
 use crate::repo::{AREAS, MODULES, PACKAGES, module};
 use crate::scenarios::{Kind, Scenario};
@@ -30,7 +30,7 @@ const IGNORED_DIR: &str = "node_modules/.bench-burst";
 
 pub fn run(scenario: Scenario, deadline: Deadline) -> Result<Measured> {
     let root = fs::canonicalize(scenario.fixture.path())
-        .context("finding the repository (run `colosso-bench fixtures` first)")?;
+        .context("finding the repository (run `koyo-bench fixtures` first)")?;
     let mut run = Run {
         root,
         deadline,

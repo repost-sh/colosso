@@ -161,7 +161,7 @@ impl Actor {
         Actor {
             kind: ActorKind::System,
             id: "daemon".into(),
-            label: "Colosso".into(),
+            label: "Koyo".into(),
         }
     }
 }

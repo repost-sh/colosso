@@ -6,7 +6,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use colosso_app_control::Topic;
+use koyo_app_control::Topic;
 use rmcp::ErrorData;
 use rmcp::model::ResourceUpdatedNotificationParam;
 use rmcp::service::{Peer, RequestContext, RoleServer, SubscriptionContext};

@@ -1,7 +1,7 @@
 //! A page dragged wider, as a pane's divider or a responsive grip does: a new layout in every
 //! frame while the drag goes on, and the page edge to edge once it stops.
 
-use colosso_browser_ipc::{AppRequest, HostEvent, Viewport};
+use koyo_browser_ipc::{AppRequest, HostEvent, Viewport};
 use std::time::{Duration, Instant};
 
 use crate::support::{Session, is_red, launch};

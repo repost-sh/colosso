@@ -8,7 +8,7 @@ use std::cell::{Cell as Shared, RefCell};
 use std::rc::Rc;
 use std::sync::Arc;
 
-use colosso_term_engine::{CursorShape, Frame, Geometry, GridPoint, Width};
+use koyo_term_engine::{CursorShape, Frame, Geometry, GridPoint, Width};
 use gpui_kit::{
     App, BorderStyle, Bounds, ContentMask, CursorStyle, DispatchPhase, Element, ElementId,
     ElementInputHandler, Entity, FocusHandle, GlobalElementId, Hitbox, HitboxBehavior,

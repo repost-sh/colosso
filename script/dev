@@ -1,5 +1,5 @@
 #!/bin/sh
-# Runs Colosso with hot reload: edits to render code apply to the running app
+# Runs Koyo with hot reload: edits to render code apply to the running app
 # without a restart. Anything subsecond can't patch (new struct fields, statics,
 # other crates) triggers a full rebuild and relaunch.
 set -eu
@@ -28,4 +28,4 @@ fi
 # The browser panes' engine, packaged beside the app's build (see script/browser-engine).
 script/browser-engine
 
-exec "$DX" serve --hot-patch --package colosso --features hot-reload,inspector --platform macos "$@"
+exec "$DX" serve --hot-patch --package koyo --features hot-reload,inspector --platform macos "$@"

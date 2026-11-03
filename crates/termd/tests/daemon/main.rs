@@ -1,4 +1,4 @@
-//! The daemon end to end: a real `colosso-termd` in a folder under `target/`, real
+//! The daemon end to end: a real `koyo-termd` in a folder under `target/`, real
 //! programs in real PTYs, clients over its socket. `docs/terminals.md` 13, M1.
 
 #![expect(
@@ -12,12 +12,12 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use colosso_term_control::{
+use koyo_term_control::{
     AttachMode, ClientError, ClientKind, Connection, DaemonCommand, ErrorCode, EventKind, Handle,
     Hello, IfExists, Message, OpenRequest, PROTOCOL, RequestBody, ResponseBody, ScreenRead,
     Selector, Size, Status, TermDir, TerminalRecord, TerminalSummary, Welcome,
 };
-use colosso_term_engine::{Engine, TextFormat};
+use koyo_term_engine::{Engine, TextFormat};
 use crossbeam_channel::Receiver;
 
 mod catalog;
@@ -32,7 +32,7 @@ mod status;
 mod theme;
 mod upgrade;
 
-const DAEMON: &str = env!("CARGO_BIN_EXE_colosso-termd");
+const DAEMON: &str = env!("CARGO_BIN_EXE_koyo-termd");
 const WAIT: Duration = Duration::from_secs(20);
 
 /// A fresh folder for one test's daemon, under the checkout; short, since a unix socket's
@@ -65,7 +65,7 @@ struct StopOnDrop(TermDir);
 
 impl Drop for StopOnDrop {
     fn drop(&mut self) {
-        let _ = colosso_term_control::client::stop_daemon(&self.0, &hello(ClientKind::Cli, None));
+        let _ = koyo_term_control::client::stop_daemon(&self.0, &hello(ClientKind::Cli, None));
     }
 }
 
@@ -75,7 +75,7 @@ fn connect(dir: &TermDir, kind: ClientKind) -> Client {
 
 /// Connects as a client running in `cwd`, which the daemon takes `current` to mean.
 fn connect_from(dir: &TermDir, kind: ClientKind, cwd: Option<PathBuf>) -> Client {
-    let (tx, inbox) = colosso_term_control::client::inbox();
+    let (tx, inbox) = koyo_term_control::client::inbox();
     let (connection, welcome) =
         Connection::connect_or_start(dir, &DaemonCommand::binary(DAEMON), &hello(kind, cwd), tx)
             .unwrap();

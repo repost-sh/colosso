@@ -3,9 +3,9 @@
 
 use std::collections::BTreeSet;
 
-use colosso_app_control::ops::settings::{BranchPrefix, SettingsSetInput};
-use colosso_app_control::ops::tab::CloseInput;
-use colosso_app_control::{
+use koyo_app_control::ops::settings::{BranchPrefix, SettingsSetInput};
+use koyo_app_control::ops::tab::CloseInput;
+use koyo_app_control::{
     APP_LAUNCH, Command, ErrorCode, REQUEST_ID, REQUEST_ID_PATTERN, Scope, Topic, catalog, info,
     infos, summarize, valid_tool_name,
 };
@@ -20,7 +20,7 @@ fn names_are_valid_unique_and_clear_of_the_terminals() {
     }
     assert!(!names.contains(APP_LAUNCH));
     assert!(valid_tool_name(APP_LAUNCH));
-    for terminal in colosso_term_control::catalog::CATALOG {
+    for terminal in koyo_term_control::catalog::CATALOG {
         assert!(
             !names.contains(terminal.name),
             "{} is a terminal tool",

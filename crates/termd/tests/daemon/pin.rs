@@ -6,10 +6,10 @@
 
 use std::path::Path;
 
-use colosso_term_control::catalog::Scope;
-use colosso_term_control::exec::Executor;
-use colosso_term_control::log::read_since;
-use colosso_term_control::{
+use koyo_term_control::catalog::Scope;
+use koyo_term_control::exec::Executor;
+use koyo_term_control::log::read_since;
+use koyo_term_control::{
     ActivityEntry, ActorKind, ClientError, ClientKind, ErrorCode, EventKind, Handle, LogKind,
     Pinned, ProtocolError, RequestBody, ResponseBody, Size, Status, TerminalRecord,
 };

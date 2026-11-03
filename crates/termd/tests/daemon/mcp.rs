@@ -1,11 +1,11 @@
-//! `colosso mcp` end to end (`docs/terminals.md` 8): MCP's JSON-RPC over a pipe, the tools
+//! `koyo mcp` end to end (`docs/terminals.md` 8): MCP's JSON-RPC over a pipe, the tools
 //! the catalog lists, and a shell driven through them as the client that named itself.
 
 use std::path::Path;
 
-use colosso_term_control::catalog::Scope;
-use colosso_term_control::{ClientKind, DaemonCommand};
-use colosso_term_mcp::Config;
+use koyo_term_control::catalog::Scope;
+use koyo_term_control::{ClientKind, DaemonCommand};
+use koyo_term_mcp::Config;
 use serde_json::{Value, json};
 use tokio::io::{
     AsyncBufReadExt, AsyncWriteExt, BufReader, DuplexStream, Lines, ReadHalf, WriteHalf,
@@ -109,11 +109,11 @@ fn an_agent_drives_a_shell_over_mcp() {
     runtime.block_on(async move {
         let (ours, theirs) = tokio::io::duplex(1 << 20);
         // No app runs in this test: the app's tools answer that it isn't running.
-        let connect = colosso_term_mcp::socket_backend(Err(
-            colosso_app_control::ControlError::app_not_running(),
+        let connect = koyo_term_mcp::socket_backend(Err(
+            koyo_app_control::ControlError::app_not_running(),
         ));
-        let server = colosso_term_mcp::Server::new(config, &connect, None);
-        let server = tokio::spawn(colosso_term_mcp::serve(server, tokio::io::split(theirs)));
+        let server = koyo_term_mcp::Server::new(config, &connect, None);
+        let server = tokio::spawn(koyo_term_mcp::serve(server, tokio::io::split(theirs)));
         let (reader, writer) = tokio::io::split(ours);
         let mut client = Client {
             lines: BufReader::new(reader).lines(),
@@ -127,7 +127,7 @@ fn an_agent_drives_a_shell_over_mcp() {
             "clientInfo": { "name": "mcp-test", "version": "0" },
         });
         let welcome = client.ask("initialize", init).await;
-        assert_eq!(welcome["serverInfo"]["name"], "colosso");
+        assert_eq!(welcome["serverInfo"]["name"], "koyo");
         assert!(
             welcome["instructions"]
                 .as_str()
@@ -192,9 +192,9 @@ async fn resources(client: &mut Client, handle: &str) {
     let uris: Vec<&str> = (listed["resources"].as_array().unwrap().iter())
         .filter_map(|resource| resource["uri"].as_str())
         .collect();
-    let screen = format!("colosso://terminals/{handle}/screen");
+    let screen = format!("koyo://terminals/{handle}/screen");
     assert!(
-        uris.contains(&"colosso://worktrees") && uris.contains(&screen.as_str()),
+        uris.contains(&"koyo://worktrees") && uris.contains(&screen.as_str()),
         "{uris:?}"
     );
     let templates = client.ask("resources/templates/list", json!({})).await;
@@ -203,7 +203,7 @@ async fn resources(client: &mut Client, handle: &str) {
     let read = client.ask("resources/read", json!({ "uri": screen })).await;
     let text = read["contents"][0]["text"].as_str().unwrap();
     assert!(text.lines().any(|line| line == "from-mcp"), "{text}");
-    let terminal = format!("colosso://terminals/{handle}");
+    let terminal = format!("koyo://terminals/{handle}");
     let read = client
         .ask("resources/read", json!({ "uri": terminal }))
         .await;
@@ -211,7 +211,7 @@ async fn resources(client: &mut Client, handle: &str) {
         serde_json::from_str(read["contents"][0]["text"].as_str().unwrap()).unwrap();
     assert_eq!(described["control"]["youHold"], true);
 
-    let activity = format!("colosso://terminals/{handle}/activity");
+    let activity = format!("koyo://terminals/{handle}/activity");
     for uri in [&activity, &screen] {
         client
             .ask("resources/subscribe", json!({ "uri": uri }))

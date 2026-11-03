@@ -1,5 +1,5 @@
 //! What the end-to-end tests share: a real `rmcp` client over an in-memory duplex to the
-//! server, and a fake Colosso on a real control socket in the checkout's `target/tmp`. The
+//! server, and a fake Koyo on a real control socket in the checkout's `target/tmp`. The
 //! fake app welcomes every client, answers calls as the test says, reports what it was sent,
 //! and pushes topic events to the connections following them. Nothing here starts the real
 //! app or the terminal daemon. Each test file declares it as `#[cfg(test)] pub mod common;`,
@@ -13,14 +13,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use colosso_app_control::frame::{
+use koyo_app_control::frame::{
     Call, ClientFrame, MAX_CLIENT_FRAME, MAX_SERVER_FRAME, ServerFrame,
 };
-use colosso_app_control::transport::{Connection, FrameWriter, Listener};
-use colosso_app_control::{ControlError, Endpoint, Hello, Scope as AppScope, Topic};
-use colosso_term_control::catalog::Scope;
-use colosso_term_control::{DaemonCommand, TermDir};
-use colosso_term_mcp::{Config, Launcher, Server, serve, socket_backend};
+use koyo_app_control::transport::{Connection, FrameWriter, Listener};
+use koyo_app_control::{ControlError, Endpoint, Hello, Scope as AppScope, Topic};
+use koyo_term_control::catalog::Scope;
+use koyo_term_control::{DaemonCommand, TermDir};
+use koyo_term_mcp::{Config, Launcher, Server, serve, socket_backend};
 use crossbeam_channel::{Receiver, Sender};
 use parking_lot::Mutex;
 use rmcp::model::{
@@ -99,7 +99,7 @@ struct Peer {
     topics: Mutex<BTreeSet<Topic>>,
 }
 
-/// A fake Colosso listening on a control socket until stopped or dropped.
+/// A fake Koyo listening on a control socket until stopped or dropped.
 pub struct FakeApp {
     endpoint: Endpoint,
     peers: Arc<Mutex<Vec<Arc<Peer>>>>,

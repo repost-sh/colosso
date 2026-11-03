@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};
 use std::time::Duration;
 
-use colosso_app_control::{
+use koyo_app_control::{
     ClientInfo, Command, ControlError, ErrorCode, Notice, Topic, take_request_id,
 };
 use parking_lot::Mutex;

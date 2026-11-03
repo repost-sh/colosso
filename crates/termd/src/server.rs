@@ -8,7 +8,7 @@ use std::os::unix::net::UnixStream;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
-use colosso_term_control::{
+use koyo_term_control::{
     ErrorCode, Event, EventKind, Handle, Input, Message, ProtocolError, Request, RequestBody,
     ResponseBody, Selector, Status, TermDir, TerminalSummary, Theme,
 };
@@ -242,7 +242,7 @@ impl Daemon {
     }
 
     /// The terminal's record as the session keeps it, else as the registry remembers it.
-    pub fn record(&self, handle: &Handle) -> Option<colosso_term_control::TerminalRecord> {
+    pub fn record(&self, handle: &Handle) -> Option<koyo_term_control::TerminalRecord> {
         if let Some(session) = self.session(handle)
             && let Some(record) = session.live.record.lock().clone()
         {
@@ -304,7 +304,7 @@ impl Daemon {
                 ErrorCode::NameTaken,
                 format!("{name} is {}", other.handle),
             )
-            .with_details(colosso_term_control::ErrorDetails::Existing {
+            .with_details(koyo_term_control::ErrorDetails::Existing {
                 handle: other.handle.clone(),
             })),
             _ => Ok(()),
@@ -385,7 +385,7 @@ impl Daemon {
                 log::info!("{handle} closed");
             }
             Ended::Crashed => {
-                let exit = colosso_term_control::Exit {
+                let exit = koyo_term_control::Exit {
                     code: None,
                     signal: None,
                     daemon_restart: false,

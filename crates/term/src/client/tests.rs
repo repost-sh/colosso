@@ -1,6 +1,6 @@
 use super::*;
 
-use colosso_term_control::{DAEMON_VERSION, PROTOCOL};
+use koyo_term_control::{DAEMON_VERSION, PROTOCOL};
 
 fn output(offset: u64, text: &'static str) -> Stream {
     Stream::Output(Output {
@@ -78,7 +78,7 @@ fn a_client_that_stopped_the_daemon_starts_it_no_more() {
             .unwrap()
             .join("target/no-such-daemon"),
     );
-    let client = TermClient::new(dir, DaemonCommand::binary("colosso"));
+    let client = TermClient::new(dir, DaemonCommand::binary("koyo"));
     client.shutdown().unwrap();
     let asked = client.request(RequestBody::ListTerminals {
         worktree: None,
@@ -101,10 +101,10 @@ fn a_daemon_of_another_version_or_engine_is_another_builds() {
         engine_commit: engine_commit.into(),
         snapshot_format,
         client_id: 1,
-        actor: colosso_term_control::Actor::system(),
+        actor: koyo_term_control::Actor::system(),
         features: Vec::new(),
     };
-    let ours = colosso_term_engine::GHOSTTY_COMMIT;
+    let ours = koyo_term_engine::GHOSTTY_COMMIT;
     assert!(this_build(&welcome(ours, SNAPSHOT_FORMAT)).is_ok());
     let older = this_build(&welcome("0123456789abcdef", SNAPSHOT_FORMAT)).unwrap_err();
     assert!(is_other_build(&older));

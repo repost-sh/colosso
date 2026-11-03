@@ -19,8 +19,8 @@ pub struct Look {
     /// Line height over the font's own ascent and descent.
     pub line_height: f32,
     pub padding: Pixels,
-    pub foreground: colosso_term_engine::Rgb,
-    pub background: colosso_term_engine::Rgb,
+    pub foreground: koyo_term_engine::Rgb,
+    pub background: koyo_term_engine::Rgb,
     pub cursor: gpui_kit::Hsla,
     pub selection: gpui_kit::Hsla,
 }

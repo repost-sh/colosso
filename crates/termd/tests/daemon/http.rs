@@ -9,10 +9,10 @@ use std::net::TcpStream;
 use std::path::Path;
 use std::time::Duration;
 
-use colosso_term_control::catalog::Scope;
-use colosso_term_control::{ClientKind, DaemonCommand, EventKind, Handle, Pinned};
-use colosso_term_mcp::Config;
-use colosso_term_mcp::http::HttpServer;
+use koyo_term_control::catalog::Scope;
+use koyo_term_control::{ClientKind, DaemonCommand, EventKind, Handle, Pinned};
+use koyo_term_mcp::Config;
+use koyo_term_mcp::http::HttpServer;
 use serde_json::{Value, json};
 
 use super::{Client, DAEMON, StopOnDrop, connect, test_dir};
@@ -205,7 +205,7 @@ fn an_http_sessions_pin_goes_when_its_client_ends_it_or_the_server_stops() {
     };
     // No app runs in this test: only the terminals' tools are called.
     let connect =
-        colosso_term_mcp::socket_backend(Err(colosso_app_control::ControlError::app_not_running()));
+        koyo_term_mcp::socket_backend(Err(koyo_app_control::ControlError::app_not_running()));
     let server = HttpServer::start(0, config, connect).unwrap();
 
     // The client ends its session, as MCP has it: `DELETE` with the session's id.

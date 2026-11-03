@@ -1,0 +1,5 @@
+# Read by `dx` when it bundles the dev app.
+[bundle]
+identifier = "dev.koyo.desktop"
+publisher = "Koyo"
+icon = ["icons/Koyo.icns"]

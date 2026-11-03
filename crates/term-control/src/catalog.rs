@@ -100,7 +100,7 @@ pub const CATALOG: &[Operation] = &[
         title: "Open a terminal",
         description: "Opens a terminal named `name` in a worktree, or returns the one that \
                       has the name already, and takes control of it when it's free. It \
-                      appears as a tab in Colosso. `size` pins it at that size for every \
+                      appears as a tab in Koyo. `size` pins it at that size for every \
                       viewer while you're connected (`pinned`, or `pinned: null` and \
                       `pinRefused` when that was refused); with `claim: false` it's only the \
                       size it starts at.",
@@ -198,7 +198,7 @@ pub const CATALOG: &[Operation] = &[
         name: "terminal_close",
         title: "Close a terminal",
         description: "Closes a terminal and forgets it. One whose program still runs needs \
-                      the person's confirmation in Colosso: stop the program first.",
+                      the person's confirmation in Koyo: stop the program first.",
         scope: Scope::Manage,
         hints: ENDS,
         schema: schema::<args::CloseArgs>,

@@ -1,17 +1,17 @@
 [package]
-name = "colosso-browser-host"
+name = "koyo-browser-host"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "Colosso's browser host: a CEF app that renders browser panes off screen and serves them to the app over colosso-browser-ipc."
+description = "Koyo's browser host: a CEF app that renders browser panes off screen and serves them to the app over koyo-browser-ipc."
 
 [[bin]]
-name = "colosso-browser-host"
+name = "koyo-browser-host"
 path = "src/main.rs"
 
 [dependencies]
-colosso-browser-ipc = { path = "../browser-ipc" }
+koyo-browser-ipc = { path = "../browser-ipc" }
 # Chromium, embedded: the exact version the distribution under .superpowers/cef matches
 # (script/cef fetches it; cef-dll-sys builds its C++ wrapper with script/cmake).
 cef = { version = "=156.2.0", default-features = false, features = ["sandbox"] }

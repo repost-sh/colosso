@@ -4,7 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
-use colosso_term_control::{ErrorCode, ErrorDetails, ProtocolError, Selector, WorktreeRef};
+use koyo_term_control::{ErrorCode, ErrorDetails, ProtocolError, Selector, WorktreeRef};
 
 /// The worktree `path` is in, or `None` outside any checkout.
 pub fn discover(path: &Path) -> Option<WorktreeRef> {

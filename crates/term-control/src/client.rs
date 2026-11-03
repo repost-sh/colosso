@@ -251,7 +251,7 @@ fn not_running(error: &io::Error) -> bool {
 }
 
 /// How to start the daemon: a program and the arguments that come before `--dir`. The app
-/// runs itself as `colosso termd`; the command line and the tests run `colosso-termd`.
+/// runs itself as `koyo termd`; the command line and the tests run `koyo-termd`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DaemonCommand {
     pub program: PathBuf,

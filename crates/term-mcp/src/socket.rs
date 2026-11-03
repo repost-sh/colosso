@@ -6,7 +6,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use colosso_app_control::{
+use koyo_app_control::{
     Client, ClientInfo, Command, ControlError, Endpoint, Hello, Notice, Topic,
 };
 use parking_lot::Mutex;
@@ -16,7 +16,7 @@ use crate::backend::{Backend, Connect, NoticeSink};
 
 /// Connects each MCP session to the app on `endpoint`, as a client named by the session's
 /// first call, with the terminal, worktree and working folder this process runs in
-/// (`COLOSSO_TERMINAL`, `COLOSSO_WORKTREE`, its cwd). An endpoint error, a socket path too
+/// (`KOYO_TERMINAL`, `KOYO_WORKTREE`, its cwd). An endpoint error, a socket path too
 /// long, is every app call's answer.
 pub fn socket_backend(endpoint: Result<Endpoint, ControlError>) -> Connect {
     Arc::new(move |sink| {

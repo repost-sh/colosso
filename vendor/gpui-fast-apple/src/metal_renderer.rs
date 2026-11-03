@@ -38,13 +38,13 @@ use std::{
     },
 };
 
-/// Colosso: whether every renderer presents its frames in the Core Animation transaction of
+/// Koyo: whether every renderer presents its frames in the Core Animation transaction of
 /// the main thread, as it does while AppKit waits for a window to draw, rather than when the
 /// GPU is done. Native views changed while a frame is drawn (a browser page's layer) then
 /// reach the screen in the same frame as what GPUI drew around them.
 static PRESENT_IN_TRANSACTION: AtomicBool = AtomicBool::new(false);
 
-/// Colosso: has every renderer present its frames in the main thread's Core Animation
+/// Koyo: has every renderer present its frames in the main thread's Core Animation
 /// transaction (`on`), or when the GPU is done, as upstream does.
 pub fn present_in_transaction(on: bool) {
     PRESENT_IN_TRANSACTION.store(on, Ordering::Relaxed);

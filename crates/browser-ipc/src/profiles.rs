@@ -80,7 +80,7 @@ pub fn free(root: &Path, host_name: &str) -> io::Result<()> {
         Holder::Other { host, app } => Err(io::Error::new(
             io::ErrorKind::ResourceBusy,
             format!(
-                "another Colosso (process {app}) is running the browser on these profiles, \
+                "another Koyo (process {app}) is running the browser on these profiles, \
                  as process {host}"
             ),
         )),
@@ -204,19 +204,19 @@ mod tests {
         ));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).expect("scratch");
-        assert_eq!(holder(&root, "Colosso Browser Host"), Holder::Free);
+        assert_eq!(holder(&root, "Koyo Browser Host"), Holder::Free);
         let hostname = hostname().expect("hostname");
         // No process has the largest pid, and this test's own process isn't a host.
         std::os::unix::fs::symlink(format!("{hostname}-{}", i32::MAX), root.join(LOCK))
             .expect("lock");
-        assert_eq!(holder(&root, "Colosso Browser Host"), Holder::Free);
+        assert_eq!(holder(&root, "Koyo Browser Host"), Holder::Free);
         std::fs::remove_file(root.join(LOCK)).expect("unlock");
         std::os::unix::fs::symlink(
             format!("{hostname}-{}", std::process::id()),
             root.join(LOCK),
         )
         .expect("lock");
-        assert_eq!(holder(&root, "Colosso Browser Host"), Holder::Free);
+        assert_eq!(holder(&root, "Koyo Browser Host"), Holder::Free);
         let name = process(i32::try_from(std::process::id()).expect("pid"))
             .expect("self")
             .0;

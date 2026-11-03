@@ -12,7 +12,7 @@ use cef::{
     WrapPermissionHandler, WrapRequestHandler, rc::Rc, wrap_dialog_handler, wrap_jsdialog_handler,
     wrap_permission_handler, wrap_request_handler,
 };
-use colosso_browser_ipc::{Dialog, PaneId};
+use koyo_browser_ipc::{Dialog, PaneId};
 use std::os::raw::c_int;
 
 /// The handler for `pane`'s network requests: sign-ins, certificate errors, a renderer gone.

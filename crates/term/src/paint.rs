@@ -4,7 +4,7 @@
 
 use std::cell::RefCell;
 
-use colosso_term_engine::{Attrs, Cell, Frame, Grapheme, Rgb, Underline, Width};
+use koyo_term_engine::{Attrs, Cell, Frame, Grapheme, Rgb, Underline, Width};
 use gpui_kit::{App, Bounds, Hsla, Pixels, Rgba, SharedString, TextRun, Window, fill, point, size};
 
 use crate::element::Grid;

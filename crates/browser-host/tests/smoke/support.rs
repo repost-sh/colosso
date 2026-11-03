@@ -1,7 +1,7 @@
 //! What the smoke tests share: the engine to start, a session that keeps the host's rings
 //! and hands its frames back, and the pixels read out of a frame.
-use colosso_browser_ipc::client::{Connection, Incoming, Launch};
-use colosso_browser_ipc::{AppRequest, HostEvent, PixelSize};
+use koyo_browser_ipc::client::{Connection, Incoming, Launch};
+use koyo_browser_ipc::{AppRequest, HostEvent, PixelSize};
 use objc2_io_surface::{IOSurfaceLockOptions, IOSurfaceRef};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -9,8 +9,8 @@ use std::time::{Duration, Instant};
 
 pub fn launch(test: &str) -> Launch {
     let engine = PathBuf::from(
-        std::env::var("COLOSSO_BROWSER_ENGINE")
-            .expect("COLOSSO_BROWSER_ENGINE points at an installed engine"),
+        std::env::var("KOYO_BROWSER_ENGINE")
+            .expect("KOYO_BROWSER_ENGINE points at an installed engine"),
     );
     let manifest: serde_json::Value =
         serde_json::from_slice(&std::fs::read(engine.join("engine.json")).expect("engine.json"))
@@ -123,7 +123,7 @@ impl Session {
                         .map(|port| {
                             let surface = IOSurfaceRef::lookup_from_mach_port(*port)
                                 .expect("surface from port");
-                            colosso_browser_ipc::mach::release(*port);
+                            koyo_browser_ipc::mach::release(*port);
                             surface
                         })
                         .collect();

@@ -42,7 +42,7 @@ impl Scope {
     pub const DEFAULT_GRANT: [Scope; 4] =
         [Scope::Read, Scope::Navigate, Scope::Manage, Scope::Browser];
 
-    /// What an agent in a Colosso terminal gets without asking: everything but
+    /// What an agent in a Koyo terminal gets without asking: everything but
     /// `destructive`, whose calls the window confirms regardless.
     pub const TERMINAL_AGENT: [Scope; 5] = [
         Scope::Read,

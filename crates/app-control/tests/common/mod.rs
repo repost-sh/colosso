@@ -5,11 +5,11 @@ use std::fs;
 use std::path::PathBuf;
 use std::thread::JoinHandle;
 
-use colosso_app_control::frame::{
+use koyo_app_control::frame::{
     Call, ClientFrame, MAX_CLIENT_FRAME, MAX_SERVER_FRAME, ServerFrame,
 };
-use colosso_app_control::transport::{FrameReader, FrameWriter, Listener};
-use colosso_app_control::{Endpoint, Hello, Scope};
+use koyo_app_control::transport::{FrameReader, FrameWriter, Listener};
+use koyo_app_control::{Endpoint, Hello, Scope};
 
 /// A fresh, empty folder of the build's own (`target/tmp`), named short so socket paths in
 /// it stay well under the limit.

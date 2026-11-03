@@ -4,8 +4,8 @@
 
 use std::time::{Duration, Instant};
 
-use colosso_term_control::Status;
-use colosso_term_engine::Mark;
+use koyo_term_control::Status;
+use koyo_term_engine::Mark;
 
 /// Output this recent, with no marks to go by, is the program working.
 const BUSY: Duration = Duration::from_millis(500);

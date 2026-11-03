@@ -3,7 +3,7 @@
 #![allow(clippy::disallowed_methods, reason = "build scripts are exempt")]
 
 #[path = "src/fast/rounded_clip_shader.rs"]
-// Colosso: `stage` is only used when the shaders are compiled ahead of time.
+// Koyo: `stage` is only used when the shaders are compiled ahead of time.
 #[allow(dead_code)]
 mod fast_rounded_clip_shader;
 

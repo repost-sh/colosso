@@ -6,11 +6,11 @@ use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 use std::time::Instant;
 
-use colosso_term_control::{
+use koyo_term_control::{
     AttachMode, ClientKind, Decoder, Handle, Input, Message, Outcome, Request, RequestBody,
     ResponseBody, Size, TermDir,
 };
-use colosso_term_engine::{Engine, TextFormat};
+use koyo_term_engine::{Engine, TextFormat};
 
 use super::{Client, StopOnDrop, WAIT, connect, hello, test_dir, wait_until};
 

@@ -2,10 +2,10 @@
 
 use std::sync::Arc;
 
-use colosso_lsp::lsp_types::error_codes::REQUEST_CANCELLED;
-use colosso_lsp::lsp_types::notification::{LogMessage, Progress, PublishDiagnostics, ShowMessage};
-use colosso_lsp::lsp_types::{MessageType, NumberOrString, ProgressParamsValue, WorkDoneProgress};
-use colosso_lsp::{LspError, ResponseError};
+use koyo_lsp::lsp_types::error_codes::REQUEST_CANCELLED;
+use koyo_lsp::lsp_types::notification::{LogMessage, Progress, PublishDiagnostics, ShowMessage};
+use koyo_lsp::lsp_types::{MessageType, NumberOrString, ProgressParamsValue, WorkDoneProgress};
+use koyo_lsp::{LspError, ResponseError};
 use futures::StreamExt;
 use futures::future::join;
 use serde_json::{Value, json};

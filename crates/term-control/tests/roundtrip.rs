@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use bytes::Bytes;
-use colosso_term_control::{
+use koyo_term_control::{
     Actor, ActorKind, AttachMode, Auth, ClientInfo, ClientKind, Control, ControlChange, Controller,
     Decoder, ErrorCode, ErrorDetails, Event, EventKind, Exit, Handle, Hello, IfExists, Input,
     Lagging, Message, OpenRequest, Outcome, Output, PROTOCOL, Pinned, Progress, ProtocolError,
@@ -373,7 +373,7 @@ fn every_message() -> Vec<Message> {
             protocol: PROTOCOL,
             client: ClientInfo {
                 kind: ClientKind::App,
-                name: "colosso".into(),
+                name: "koyo".into(),
                 version: "0.1".into(),
                 pid: 1,
                 session: None,

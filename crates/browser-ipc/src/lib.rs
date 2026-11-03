@@ -1,4 +1,4 @@
-//! The protocol between `Colosso` and its browser host.
+//! The protocol between `Koyo` and its browser host.
 //!
 //! The app starts the host from the installed engine and talks to it over a
 //! socket pair whose host end the host inherits ([`inherit`]). Every message is one frame: a 4-byte
@@ -53,14 +53,14 @@ pub const RING: u8 = 3;
 
 /// The environment variable carrying the number of the inherited file
 /// descriptor that is the host's end of the app's socket.
-pub const ENV_SOCKET_FD: &str = "COLOSSO_BROWSER_SOCKET_FD";
+pub const ENV_SOCKET_FD: &str = "KOYO_BROWSER_SOCKET_FD";
 /// The environment variable carrying the one-time token to the host.
-pub const ENV_TOKEN: &str = "COLOSSO_BROWSER_TOKEN";
+pub const ENV_TOKEN: &str = "KOYO_BROWSER_TOKEN";
 /// The environment variable naming the mach service the app checked in, to
 /// which the host sends its frame surfaces (macOS).
-pub const ENV_SURFACE_SERVICE: &str = "COLOSSO_BROWSER_SURFACES";
+pub const ENV_SURFACE_SERVICE: &str = "KOYO_BROWSER_SURFACES";
 /// The environment variable with the folder for CEF's caches and profiles.
-pub const ENV_PROFILE_ROOT: &str = "COLOSSO_BROWSER_PROFILES";
+pub const ENV_PROFILE_ROOT: &str = "KOYO_BROWSER_PROFILES";
 
 /// The first frame on a connection, from the app.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

@@ -1,6 +1,6 @@
 //! An agent's protocol commands on a page, beside the page's own `DevTools`.
 
-use colosso_browser_ipc::{AppRequest, HostEvent, Viewport};
+use koyo_browser_ipc::{AppRequest, HostEvent, Viewport};
 use std::time::Duration;
 
 use crate::support::{Session, launch};

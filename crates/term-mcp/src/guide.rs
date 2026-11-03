@@ -1,16 +1,16 @@
 //! What the server tells agents about using it (`docs/app-control.md` 8, `docs/terminals.md`
 //! 8.7), shipped in the binary so it always matches the app and daemon it runs with: the
-//! MCP `instructions`, and the `colosso_guide` and `terminal_guide` prompts.
+//! MCP `instructions`, and the `koyo_guide` and `terminal_guide` prompts.
 
 use rmcp::ErrorData;
 use rmcp::model::{GetPromptResult, Prompt, PromptMessage, Role};
 
 /// The MCP `instructions`.
 pub const INSTRUCTIONS: &str = "\
-You are connected to Colosso, the app the person works in. These tools see and drive its \
+You are connected to Koyo, the app the person works in. These tools see and drive its \
 window as the person would: projects, worktrees, tabs, split panes, files, browser pages, \
 panels, layout and settings, and the terminals of the worktree you run in. Changes appear \
-in the window as if the person made them. Drive Colosso only through these tools: never \
+in the window as if the person made them. Drive Koyo only through these tools: never \
 edit its settings, data or other files.
 
 Start with app_status (what the window shows and what is selected) or project_list (the \
@@ -31,27 +31,27 @@ its content, and open or pick another terminal or page for your own work; return
 only when the person gives it back or tells you to.
 
 Failures are results with `{ code, message, retryable }`. `app_not_running` means \
-Colosso isn't running: call app_launch, then try again. `control_disabled` means the \
+Koyo isn't running: call app_launch, then try again. `control_disabled` means the \
 person has to turn on Settings → MCP server, `scope_denied` that the person hasn't \
 allowed this client that kind of change, and `user_declined` that the person refused (or \
-didn't answer within two minutes) the confirmation Colosso shows before deleting or \
-discarding, so nothing changed. The colosso_guide and terminal_guide prompts say more.";
+didn't answer within two minutes) the confirmation Koyo shows before deleting or \
+discarding, so nothing changed. The koyo_guide and terminal_guide prompts say more.";
 
 /// The app guide's name.
-pub const COLOSSO_GUIDE_NAME: &str = "colosso_guide";
+pub const KOYO_GUIDE_NAME: &str = "koyo_guide";
 
-/// The `colosso_guide` prompt: how to drive the app, at length.
-pub const COLOSSO_GUIDE: &str = include_str!("guide/colosso.md");
+/// The `koyo_guide` prompt: how to drive the app, at length.
+pub const KOYO_GUIDE: &str = include_str!("guide/koyo.md");
 
 /// The prompt's name.
 pub const GUIDE_NAME: &str = "terminal_guide";
 
 /// The `terminal_guide` prompt: how to work in the terminals, at length.
 pub const GUIDE: &str = "\
-# Working in Colosso's terminals
+# Working in Koyo's terminals
 
 The terminals belong to the worktree you run in. The person sees each one as a tab in \
-Colosso and can type into any of them at any moment.
+Koyo and can type into any of them at any moment.
 
 ## The loop
 
@@ -112,7 +112,7 @@ connection does.
 terminal_log reads a terminal's logs from a `cursor` on: `activity` (who did what), \
 `commands` (each command with its exit code and duration; `failed: true` keeps the \
 failures), and `notices`. Resources say the same for clients that read them: \
-`colosso://terminals/{handle}/screen` and `/activity`, which can be subscribed to.
+`koyo://terminals/{handle}/screen` and `/activity`, which can be subscribed to.
 
 ## Errors
 
@@ -129,14 +129,14 @@ stopping first (terminal_signal, or terminal_send with `interrupt`) or the perso
 pub fn prompts() -> Vec<Prompt> {
     vec![
         Prompt::new(
-            COLOSSO_GUIDE_NAME,
-            Some("How to drive Colosso: projects, worktrees, tabs, panes, browser pages, settings"),
+            KOYO_GUIDE_NAME,
+            Some("How to drive Koyo: projects, worktrees, tabs, panes, browser pages, settings"),
             None,
         )
-        .with_title("Colosso guide"),
+        .with_title("Koyo guide"),
         Prompt::new(
             GUIDE_NAME,
-            Some("How to work in Colosso's terminals: the loop, waits, control, logs"),
+            Some("How to work in Koyo's terminals: the loop, waits, control, logs"),
             None,
         )
         .with_title("Terminal guide"),
@@ -146,8 +146,8 @@ pub fn prompts() -> Vec<Prompt> {
 /// The prompt called `name`.
 pub fn prompt(name: &str) -> Result<GetPromptResult, ErrorData> {
     let (text, description) = match name {
-        COLOSSO_GUIDE_NAME => (COLOSSO_GUIDE, "How to drive Colosso"),
-        GUIDE_NAME => (GUIDE, "How to work in Colosso's terminals"),
+        KOYO_GUIDE_NAME => (KOYO_GUIDE, "How to drive Koyo"),
+        GUIDE_NAME => (GUIDE, "How to work in Koyo's terminals"),
         _ => {
             let message = format!("there is no prompt called {name}");
             return Err(ErrorData::invalid_params(message, None));

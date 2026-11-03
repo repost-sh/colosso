@@ -14,7 +14,7 @@
 
 use std::time::{Duration, Instant};
 
-use colosso_browser_ipc::{PixelSize, Viewport};
+use koyo_browser_ipc::{PixelSize, Viewport};
 
 pub(crate) mod drive;
 

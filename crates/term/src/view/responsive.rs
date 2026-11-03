@@ -4,7 +4,7 @@
 //! pinned grid is drawn at, and where it was drawn. The pin is the daemon's, so every view of
 //! the terminal shows the same one; what's drawn round it (the bar, the grips) is the app's.
 
-use colosso_term_control::{Pinned, RequestBody, Size, clamp_pin_cells};
+use koyo_term_control::{Pinned, RequestBody, Size, clamp_pin_cells};
 use gpui_kit::{Bounds, Context, Pixels};
 
 use super::{TerminalEvent, TerminalView};

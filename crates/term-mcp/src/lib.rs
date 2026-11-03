@@ -1,4 +1,4 @@
-//! `colosso mcp`: Colosso's MCP server (`docs/app-control.md`), for an agent to start over
+//! `koyo mcp`: Koyo's MCP server (`docs/app-control.md`), for an agent to start over
 //! stdio. It lists the app's tools and the terminals' (`docs/terminals.md` 8) as one server.
 //! App calls go to the running app over its control socket, through the session's
 //! [`Backend`]; terminal calls go to the daemon as a relay client, running where the agent
@@ -24,9 +24,9 @@ use std::io::Write as _;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use colosso_app_control::Endpoint;
-use colosso_term_control::catalog::Scope;
-use colosso_term_control::{DaemonCommand, TermDir};
+use koyo_app_control::Endpoint;
+use koyo_term_control::catalog::Scope;
+use koyo_term_control::{DaemonCommand, TermDir};
 
 pub use backend::{Backend, Connect, NoticeSink};
 pub use launch::{LAUNCH_WAIT, Launcher, Spawner};
@@ -49,9 +49,9 @@ pub struct Config {
     pub client: Option<String>,
 }
 
-const USAGE: &str = "usage: colosso mcp [--scopes terminal.read,terminal.write,...] [--client NAME]
+const USAGE: &str = "usage: koyo mcp [--scopes terminal.read,terminal.write,...] [--client NAME]
 
-Serves Colosso as an MCP server over stdio: the running app's projects, worktrees, tabs,
+Serves Koyo as an MCP server over stdio: the running app's projects, worktrees, tabs,
 panes, files, browser pages and settings, through its control socket, and the terminals of
 the worktree it runs in. app_launch starts the app when it isn't running.
 --scopes  what the client may do in the terminals (default terminal.read,terminal.write,
@@ -109,7 +109,7 @@ pub fn main(args: impl Iterator<Item = String>, daemon: DaemonCommand) -> ExitCo
         daemon,
         grants: options.grants,
         cwd: std::env::current_dir().ok(),
-        session: std::env::var("COLOSSO_AGENT_SESSION").ok(),
+        session: std::env::var("KOYO_AGENT_SESSION").ok(),
         client: options.client,
     };
     let endpoint = Endpoint::from_env();
@@ -146,7 +146,7 @@ fn scopes(list: &str) -> Result<Vec<Scope>, String> {
 }
 
 fn fail(message: &str) -> ExitCode {
-    let _ = writeln!(std::io::stderr(), "colosso mcp: {message}");
+    let _ = writeln!(std::io::stderr(), "koyo mcp: {message}");
     ExitCode::FAILURE
 }
 

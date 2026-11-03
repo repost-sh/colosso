@@ -1,4 +1,4 @@
-//! `colosso app`: reading its arguments, its help from the catalog, and calls against a fake
+//! `koyo app`: reading its arguments, its help from the catalog, and calls against a fake
 //! app, printing results and error envelopes as a script reads them.
 
 #![cfg(unix)]
@@ -8,9 +8,9 @@
 #[cfg(test)]
 mod common;
 
-use colosso_app_control::cli::{self, CLIENT_NAME, Invocation};
-use colosso_app_control::frame::{MAX_SERVER_FRAME, ServerFrame};
-use colosso_app_control::{ControlError, Endpoint, ErrorCode, Scope, catalog};
+use koyo_app_control::cli::{self, CLIENT_NAME, Invocation};
+use koyo_app_control::frame::{MAX_SERVER_FRAME, ServerFrame};
+use koyo_app_control::{ControlError, Endpoint, ErrorCode, Scope, catalog};
 use common::{next_call, spawn_app, temp_dir};
 use serde_json::{Value, json};
 

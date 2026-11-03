@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{Context as _, Result, bail, ensure};
-use colosso_project::{Finder, Folder, MOST_FOUND, Results};
+use koyo_project::{Finder, Folder, MOST_FOUND, Results};
 
 use crate::rows::Tree;
 use crate::scenarios::{Kind, Scenario};

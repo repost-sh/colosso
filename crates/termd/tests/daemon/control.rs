@@ -2,7 +2,7 @@
 //! another agent takes over only by asking to, a person's typing takes the terminal from any
 //! agent, and only their "Give back" opens it to agents again.
 
-use colosso_term_control::{
+use koyo_term_control::{
     ActorKind, ClientError, ClientKind, Control, ControlChange, Controller, ErrorCode,
     ErrorDetails, EventKind, Handle, ProtocolError, RequestBody, ResponseBody,
 };

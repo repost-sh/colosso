@@ -159,7 +159,7 @@ async fn route(
     if request.uri().path() == PATH {
         return service.handle(request).await;
     }
-    let body = Full::new(Bytes::from_static(b"Not Found: Colosso serves MCP at /mcp")).boxed();
+    let body = Full::new(Bytes::from_static(b"Not Found: Koyo serves MCP at /mcp")).boxed();
     let mut response = Response::new(body);
     *response.status_mut() = StatusCode::NOT_FOUND;
     response

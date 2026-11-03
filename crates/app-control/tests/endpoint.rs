@@ -8,8 +8,8 @@ use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
 
-use colosso_app_control::transport::{BindError, Connection, Listener};
-use colosso_app_control::{
+use koyo_app_control::transport::{BindError, Connection, Listener};
+use koyo_app_control::{
     APP_ID, Endpoint, ErrorCode, FALLBACK_SOCKET_FILE, MAX_SOCKET_PATH, fallback_dir,
 };
 
@@ -33,13 +33,13 @@ fn mode(path: &Path) -> u32 {
 #[cfg(test)]
 fn deep_data_dir(root: &Path) -> PathBuf {
     let deep = root.join("a-data-folder-nested-deep-enough".repeat(2));
-    assert!(deep.join("control/colosso-control.sock").as_os_str().len() > MAX_SOCKET_PATH);
+    assert!(deep.join("control/koyo-control.sock").as_os_str().len() > MAX_SOCKET_PATH);
     deep
 }
 
 #[test]
 fn the_app_folder_is_the_one_the_terminals_use() {
-    assert_eq!(APP_ID, colosso_term_control::APP_ID);
+    assert_eq!(APP_ID, koyo_term_control::APP_ID);
 }
 
 #[test]
@@ -49,7 +49,7 @@ fn a_short_data_folder_keeps_its_socket_in_its_control_folder() {
     let endpoint = Endpoint::for_data_dir_in(&data, &root.join("tmp")).unwrap();
     assert_eq!(
         endpoint.path(),
-        data.join("control").join("colosso-control.sock")
+        data.join("control").join("koyo-control.sock")
     );
 }
 
@@ -65,7 +65,7 @@ fn a_deep_data_folder_gets_a_private_folder_under_the_temporary_one() {
     assert!(endpoint.path().as_os_str().len() <= MAX_SOCKET_PATH);
     let name = folder.file_name().unwrap().to_str().unwrap();
     let uid = fs::metadata(&root).unwrap().uid();
-    let hash = name.strip_prefix(&format!("colosso-{uid}-")).unwrap();
+    let hash = name.strip_prefix(&format!("koyo-{uid}-")).unwrap();
     assert_eq!(hash.len(), 8);
     assert!(hash.bytes().all(|b| b.is_ascii_hexdigit()));
 

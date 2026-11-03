@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use colosso_project::{Excludes, Feed, Kind, Options};
+use koyo_project::{Excludes, Feed, Kind, Options};
 
 use crate::common::{Checkout, ignored, names, until_listed};
 

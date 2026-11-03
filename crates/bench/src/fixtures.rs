@@ -206,7 +206,7 @@ impl Fixture {
         let path = self.path();
         fs::read_to_string(&path).with_context(|| {
             format!(
-                "reading {} (run `colosso-bench fixtures` first)",
+                "reading {} (run `koyo-bench fixtures` first)",
                 path.display()
             )
         })

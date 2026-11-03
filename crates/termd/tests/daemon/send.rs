@@ -2,7 +2,7 @@
 //! keys encoded for the terminal, the screen read back, and the person's control still the
 //! last word.
 
-use colosso_term_control::{
+use koyo_term_control::{
     ClientError, ClientKind, ErrorCode, Handle, RequestBody, ResponseBody, SendRequest, Status,
 };
 

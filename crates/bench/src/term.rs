@@ -11,12 +11,12 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, Result, anyhow, bail};
-use colosso_term_control::client::{self, inbox};
-use colosso_term_control::{
+use koyo_term_control::client::{self, inbox};
+use koyo_term_control::{
     AttachMode, ClientKind, Connection, DaemonCommand, Handle, Hello, IfExists, Message,
     OpenRequest, Output, RequestBody, ResponseBody, Size, TermDir,
 };
-use colosso_term_engine::{Engine, TextFormat};
+use koyo_term_engine::{Engine, TextFormat};
 use crossbeam_channel::{Receiver, RecvTimeoutError};
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 
@@ -87,7 +87,7 @@ fn cat(
     let bytes = fs::metadata(&path)
         .with_context(|| {
             format!(
-                "finding {} (run `colosso-bench fixtures` first)",
+                "finding {} (run `koyo-bench fixtures` first)",
                 path.display()
             )
         })?
@@ -278,7 +278,7 @@ impl Client {
             inbox,
             index,
             engine: client_engine(Engine::new(
-                colosso_term_engine::Size::cells(COLS, ROWS),
+                koyo_term_engine::Size::cells(COLS, ROWS),
                 SCROLLBACK_BYTES,
             ))?,
             snapshot: Vec::new(),
@@ -390,7 +390,7 @@ fn client_engine<E: std::fmt::Debug>(engine: std::result::Result<Engine, E>) -> 
 }
 
 fn hello() -> Hello {
-    Hello::new(ClientKind::App, "colosso-bench", env!("CARGO_PKG_VERSION"))
+    Hello::new(ClientKind::App, "koyo-bench", env!("CARGO_PKG_VERSION"))
 }
 
 /// Shuts down the daemon in `dir`, if one listens there, and waits for it to go.

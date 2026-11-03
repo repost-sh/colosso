@@ -7,8 +7,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
-use colosso_term_control::{Exit, Handle, OpenRequest, Pinned, Size, TerminalRecord};
-use colosso_term_engine::{Cursor, Frame, OptionAsAlt};
+use koyo_term_control::{Exit, Handle, OpenRequest, Pinned, Size, TerminalRecord};
+use koyo_term_engine::{Cursor, Frame, OptionAsAlt};
 use gpui_kit::{
     App, Bounds, Context, EventEmitter, FocusHandle, Focusable, InteractiveElement as _,
     IntoElement, KeyBinding, ParentElement as _, Pixels, Render, SharedString,
@@ -428,7 +428,7 @@ impl TerminalView {
                     .bg(background)
                     .text_color(foreground)
                     .child(
-                        "Terminals are served by another build of Colosso; restart them to \
+                        "Terminals are served by another build of Koyo; restart them to \
                          use this one. Their programs end, and the shells you opened start \
                          again.",
                     )

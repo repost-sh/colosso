@@ -2,11 +2,11 @@
 //! folder, started, given a file, and asked what a name is.
 //!
 //! It downloads the servers the first time, so it runs only when asked:
-//! `COLOSSO_LSP_IT=1 COLOSSO_DATA_DIR=$PWD/.superpowers/data cargo test -p colosso-lsp -- --ignored native_servers`
+//! `KOYO_LSP_IT=1 KOYO_DATA_DIR=$PWD/.superpowers/data cargo test -p koyo-lsp -- --ignored native_servers`
 
 use std::time::Instant;
 
-use colosso_lsp::servers::{Curl, PYREFLY, TYPESCRIPT};
+use koyo_lsp::servers::{Curl, PYREFLY, TYPESCRIPT};
 
 use crate::common::{GREET_PY, GREET_TS, data_dir, fixture, probe};
 

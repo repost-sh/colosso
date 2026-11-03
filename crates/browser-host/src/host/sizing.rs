@@ -12,7 +12,7 @@
 use std::time::{Duration, Instant};
 
 use cef::AcceleratedPaintInfo;
-use colosso_browser_ipc::{PixelSize, Viewport};
+use koyo_browser_ipc::{PixelSize, Viewport};
 
 /// How long a size may take to paint before the next is laid out anyway: a page busy for
 /// longer still follows the drag, a frame behind.

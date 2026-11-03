@@ -42,7 +42,7 @@ impl Client {
                 name,
             }]),
             client_info: Some(ClientInfo {
-                name: "Colosso".to_owned(),
+                name: "Koyo".to_owned(),
                 version: Some(env!("CARGO_PKG_VERSION").to_owned()),
             }),
             ..InitializeParams::default()

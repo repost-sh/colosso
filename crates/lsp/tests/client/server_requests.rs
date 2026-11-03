@@ -2,9 +2,9 @@
 
 use std::thread;
 
-use colosso_lsp::lsp_types::request::{ApplyWorkspaceEdit, ShowDocument, WorkspaceConfiguration};
-use colosso_lsp::lsp_types::{ApplyWorkspaceEditResponse, GlobPattern};
-use colosso_lsp::{Event, ResponseError};
+use koyo_lsp::lsp_types::request::{ApplyWorkspaceEdit, ShowDocument, WorkspaceConfiguration};
+use koyo_lsp::lsp_types::{ApplyWorkspaceEditResponse, GlobPattern};
+use koyo_lsp::{Event, ResponseError};
 use futures::StreamExt;
 use serde_json::{Value, json};
 

@@ -8,9 +8,9 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use colosso_app_control::{APP_LAUNCH, ClientInfo, info};
-use colosso_term_control::exec::{Done, Executor};
-use colosso_term_control::{ClientKind, Connection, ErrorCode, Hello, ProtocolError};
+use koyo_app_control::{APP_LAUNCH, ClientInfo, info};
+use koyo_term_control::exec::{Done, Executor};
+use koyo_term_control::{ClientKind, Connection, ErrorCode, Hello, ProtocolError};
 use parking_lot::Mutex;
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, CallToolResult, GetPromptRequestParams,
@@ -112,7 +112,7 @@ impl Inner {
             ..Hello::new(ClientKind::Relay, client, env!("CARGO_PKG_VERSION"))
         };
         hello.client.session.clone_from(&self.config.session);
-        let (inbox, events) = colosso_term_control::client::inbox();
+        let (inbox, events) = koyo_term_control::client::inbox();
         let (connection, welcome) =
             Connection::connect_or_start(&self.config.dir, &self.config.daemon, &hello, inbox)
                 .map_err(|error| {
@@ -195,7 +195,7 @@ impl ServerHandler for Server {
             .build();
         ServerConfig::new(capabilities)
             .with_server_info(
-                Implementation::new("colosso", env!("CARGO_PKG_VERSION")).with_title("Colosso"),
+                Implementation::new("koyo", env!("CARGO_PKG_VERSION")).with_title("Koyo"),
             )
             .with_instructions(INSTRUCTIONS)
     }

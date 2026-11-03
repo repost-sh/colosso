@@ -118,7 +118,7 @@ pub fn table(results: &Results) -> Result<String, std::fmt::Error> {
     let version = |name: &str| results.versions.get(name).map_or("?", String::as_str);
     writeln!(
         out,
-        "colosso-bench · {} build · {} ({} cores, {}) · gpui-kit {} · gpui-fast {}",
+        "koyo-bench · {} build · {} ({} cores, {}) · gpui-kit {} · gpui-fast {}",
         results.build_profile,
         machine.cpu,
         machine.cores,

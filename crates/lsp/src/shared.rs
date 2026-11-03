@@ -150,7 +150,7 @@ impl Shared {
     /// stopped for it crashed.
     pub(crate) fn ended(&self, code: Option<i32>, killed: bool, broken: Option<&str>) {
         if let Some(reason) = broken {
-            self.stderr_line(format!("colosso-lsp: {reason}"));
+            self.stderr_line(format!("koyo-lsp: {reason}"));
         }
         let exit = Exit {
             code,

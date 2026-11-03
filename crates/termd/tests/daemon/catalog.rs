@@ -4,9 +4,9 @@
 
 use std::path::Path;
 
-use colosso_term_control::catalog::Scope;
-use colosso_term_control::exec::{Done, Executor};
-use colosso_term_control::{ClientKind, ErrorCode, ProtocolError};
+use koyo_term_control::catalog::Scope;
+use koyo_term_control::exec::{Done, Executor};
+use koyo_term_control::{ClientKind, ErrorCode, ProtocolError};
 use serde_json::{Value, json};
 
 use super::{StopOnDrop, connect, connect_from, test_dir, wait_until};
@@ -131,10 +131,10 @@ fn an_agent_drives_a_shell_through_the_catalog() {
 }
 
 /// The person typing takes the terminal: the agent is told to leave it alone.
-fn the_person_takes_it_back(dir: &colosso_term_control::TermDir, agent: &Executor, handle: &str) {
+fn the_person_takes_it_back(dir: &koyo_term_control::TermDir, agent: &Executor, handle: &str) {
     let call = |name: &str, args: Value| agent.call(name, args);
     let person = connect(dir, ClientKind::App);
-    let handle = colosso_term_control::Handle(handle.to_owned());
+    let handle = koyo_term_control::Handle(handle.to_owned());
     let (index, _) = person.attach(&handle, None);
     person.connection.input(index, b" ").unwrap();
     wait_until("the agent to be refused", || {

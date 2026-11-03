@@ -1,4 +1,4 @@
-# Colosso responsive mode: browser pages and terminals at a chosen size
+# Koyo responsive mode: browser pages and terminals at a chosen size
 
 Specification, written 2026-11-02 on `main`. Author of the vision: Felipe Schulz. Drafted
 with Claude. Source of truth for responsive mode; update it when a decision changes.
@@ -176,7 +176,7 @@ the view sends them (`view/link.rs` `grid_changed`). With a pin on the record:
 ### 3.3 UI [decided]
 
 A pinned terminal is shown as a page in responsive mode is, with the same chrome:
-`crates/colosso/src/responsive/` draws the device bar, the sunken area, the outline, the
+`crates/koyo/src/responsive/` draws the device bar, the sunken area, the outline, the
 grips and the drag label for both, so they are the same pixels. What differs is what each
 pane gives it: units (pixels, cells), presets, limits, and how content is fitted.
 
@@ -259,7 +259,7 @@ while the relay's connection does (3.1).
 
 ### 4.3 Guides
 
-`colosso_guide` and `terminal_guide` gain a paragraph: to check a layout, set the size,
+`koyo_guide` and `terminal_guide` gain a paragraph: to check a layout, set the size,
 screenshot, then `fill: true`; the person sees what you do, and their own change wins.
 
 ## 5. What came from agent-terminal [decided]
@@ -289,7 +289,7 @@ connection that set it.
   and cell mapping.
 - `app-control`, `term-control`: catalog (names, schemas, `requestId`), argument
   validation.
-- MCP e2e: `colosso mcp` calls `browser_viewport` and `terminal_resize` against the built
+- MCP e2e: `koyo mcp` calls `browser_viewport` and `terminal_resize` against the built
   app; real-surface QA drives the UI (drag, presets, rotate, zoom, ✕) and the tools, with
   screenshots.
 - `script/check` green.
@@ -298,14 +298,14 @@ connection that set it.
 
 Where the build differs from the sections above, or settles what they left open:
 
-- Crates: `colosso/src/responsive/` (the chrome both panes share: `mod.rs` placement,
+- Crates: `koyo/src/responsive/` (the chrome both panes share: `mod.rs` placement,
   outline and zoom, `bar.rs` the device bar and its fields, `grips.rs` the grips, their
   drag as the `Resizable` trait, and the label), `browser/responsive/` (`mod.rs` fit and
   point mapping, `devices.rs`, `pane.rs`, `grips.rs` and `bar.rs` the page's side of the
   shared ones), `control/exec/browser/viewport.rs`,
   `app-control/src/ops/browser/viewport.rs`; `termd/src/session/pin.rs`,
   `term-control/src/exec/resize.rs`, `term/src/fit.rs`, `term/src/element/pinned.rs`,
-  `term/src/view/responsive.rs`, `colosso/src/terminals/responsive.rs` (a view round each
+  `term/src/view/responsive.rs`, `koyo/src/terminals/responsive.rs` (a view round each
   terminal view that draws the shared chrome while it's pinned, `responsive/frame.rs` the
   outline and grips over the grid as last laid out).
 - Browser layer: the native layer keeps top-left gravity with its contents scale set to the
@@ -397,7 +397,7 @@ one size per frame, and says whether a drag is under way (`AppRequest::Resize { 
 - The view grows once per drag, at its start and whichever way it goes, to the largest
   display (`largest_screen`), so a fast drag never has it grow again partway.
 - The pane's edge and the page reach the screen together, as in a Chrome window
-  (`crates/colosso/src/browser/view/sized.rs`): when a page's pane changes size, the page
+  (`crates/koyo/src/browser/view/sized.rs`): when a page's pane changes size, the page
   element sends the size and waits for the page's frame at it before the window is drawn,
   handling what the host says meanwhile (`browser/host/inbox.rs`). The pages resized in one
   frame wait until the same deadline, 250 ms after the first began (`frame_deadline`), so a

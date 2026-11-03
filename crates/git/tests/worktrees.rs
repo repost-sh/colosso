@@ -11,7 +11,7 @@ mod common;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use colosso_git::{Head, NewWorktree, Ref, Repo, Start};
+use koyo_git::{Head, NewWorktree, Ref, Repo, Start};
 use common::git;
 
 struct Fixture {
@@ -45,7 +45,7 @@ impl Fixture {
         self.root.join("workspaces").join(self.repo.name())
     }
 
-    fn create(&self, name: &str, start: Start) -> colosso_git::Result<colosso_git::Worktree> {
+    fn create(&self, name: &str, start: Start) -> koyo_git::Result<koyo_git::Worktree> {
         self.repo.create_worktree(&NewWorktree {
             name: name.into(),
             start,
@@ -105,7 +105,7 @@ fn opening_from_a_linked_worktree_finds_the_main_checkout() {
 
 #[test]
 fn opening_a_folder_outside_any_repository_is_refused() {
-    // The fixtures sit inside Colosso's own checkout, so ask about the filesystem root.
+    // The fixtures sit inside Koyo's own checkout, so ask about the filesystem root.
     let error = Repo::open(Path::new("/")).unwrap_err();
     assert_eq!(error.message, "/ is not in a git repository.");
 }
@@ -199,7 +199,7 @@ fn an_existing_remote_branch_is_checked_out_tracking_it() {
         &["rev-parse", "--abbrev-ref", "@{upstream}"],
     );
     assert_eq!(upstream.trim(), "origin/shared");
-    // Colosso did not make this branch, so nothing marks it as one to delete.
+    // Koyo did not make this branch, so nothing marks it as one to delete.
     assert_eq!(fixture.repo.recorded_base("shared"), None);
 }
 

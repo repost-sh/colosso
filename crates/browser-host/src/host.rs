@@ -9,7 +9,7 @@ use cef::{
     Browser, BrowserHost, CefString, ImplBrowser, ImplBrowserHost, ImplTask, RequestContext,
     Settings, Task, ThreadId, WrapTask, rc::Rc, wrap_task,
 };
-use colosso_browser_ipc::{
+use koyo_browser_ipc::{
     self as ipc, AppRequest, Cursor, Go, HostEvent, MouseKind, PageState, PaneId, Viewport,
 };
 use std::cell::RefCell;
@@ -184,7 +184,7 @@ pub(crate) fn send(event: &HostEvent) {
 
 fn env(name: &str) -> Result<String, String> {
     std::env::var(name)
-        .map_err(|error| format!("{name} is not set ({error}); the host is started by Colosso"))
+        .map_err(|error| format!("{name} is not set ({error}); the host is started by Koyo"))
 }
 
 /// The browser process's whole life.
@@ -247,7 +247,7 @@ pub(crate) fn run(args: &Args) -> Result<(), String> {
         log_severity: cef::LogSeverity::WARNING,
         // Opaque white until a page paints, as in a browser tab.
         background_color: 0xFFFF_FFFF,
-        keychain_service_name: "Colosso Browser Engine".into(),
+        keychain_service_name: "Koyo Browser Engine".into(),
         ..Settings::default()
     };
     if cef::initialize(

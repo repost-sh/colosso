@@ -25,7 +25,7 @@ pub const MAX_SERVER_FRAME: usize = 32 << 20;
 /// Settings, and guards against surprises, not impersonation.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClientInfo {
-    /// The client's name: an MCP client's `clientInfo.name`, or `colosso app`.
+    /// The client's name: an MCP client's `clientInfo.name`, or `koyo app`.
     pub name: String,
     /// The client's version.
     pub version: String,
@@ -39,10 +39,10 @@ pub struct Hello {
     pub protocol: u32,
     /// Who is calling.
     pub client: ClientInfo,
-    /// The Colosso terminal the caller runs in (`COLOSSO_TERMINAL`, a `term_…` handle).
+    /// The Koyo terminal the caller runs in (`KOYO_TERMINAL`, a `term_…` handle).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub terminal: Option<String>,
-    /// The caller's worktree (`COLOSSO_WORKTREE`).
+    /// The caller's worktree (`KOYO_WORKTREE`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worktree: Option<String>,
     /// The caller's working folder.
@@ -66,12 +66,12 @@ impl Hello {
     }
 
     /// A hello from this process as `client`, with the terminal and worktree its
-    /// environment names (`COLOSSO_TERMINAL`, `COLOSSO_WORKTREE`) and its working folder.
+    /// environment names (`KOYO_TERMINAL`, `KOYO_WORKTREE`) and its working folder.
     pub fn from_env(client: ClientInfo) -> Hello {
         let var = |name: &str| std::env::var(name).ok().filter(|value| !value.is_empty());
         Hello {
-            terminal: var("COLOSSO_TERMINAL"),
-            worktree: var("COLOSSO_WORKTREE"),
+            terminal: var("KOYO_TERMINAL"),
+            worktree: var("KOYO_WORKTREE"),
             cwd: std::env::current_dir()
                 .ok()
                 .map(|dir| dir.to_string_lossy().into_owned()),
@@ -193,7 +193,7 @@ impl From<FrameError> for ControlError {
                     io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
                 ) =>
             {
-                ControlError::timeout("Colosso didn't answer in time.")
+                ControlError::timeout("Koyo didn't answer in time.")
             }
             FrameError::Io(_) => ControlError::connection_lost(),
             FrameError::TooLarge(limit) => {

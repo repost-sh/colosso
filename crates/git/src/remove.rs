@@ -126,7 +126,7 @@ impl Repo {
         parse_count(&count)
     }
 
-    /// The base a new branch was made from, recorded when Colosso (or Orca, which uses the
+    /// The base a new branch was made from, recorded when Koyo (or Orca, which uses the
     /// same key) created it. A branch without one was there before its worktree.
     pub fn recorded_base(&self, branch: &str) -> Option<String> {
         self.config(&base_key(branch))

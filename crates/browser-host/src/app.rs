@@ -18,7 +18,7 @@ wrap_app! {
             let (None, Some(command_line)) = (process_type, command_line) else {
                 return;
             };
-            // Panes are composed by Colosso; Chromium never owns a window,
+            // Panes are composed by Koyo; Chromium never owns a window,
             // a dock icon or the menu bar.
             for switch in [
                 "disable-background-mode",
