@@ -280,6 +280,9 @@ megabyte keeping `host.log.old` (`src/log.ts`); stderr only in the foreground. W
   since another serves. Bun's sockets don't expose the peer's credentials, so the 0700 folder
   is what keeps other users out.
 - Data: `chats.sqlite` (WAL) and `attachments/`.
+- A client that stops reading (a hung app, a debugger) is cut off once 32 MiB wait for it;
+  it reconnects and catches up with `sinceSeq` (5.1). On shutdown, each client is let go only
+  once what it's owed has gone, the `shutdown` reply among it.
 - Idle exit: with no client connected, no live run and no pending live request for 10
   minutes, the host closes its sessions and exits. A pending approval keeps it alive: it
   waits for a person, who will open Koyo.

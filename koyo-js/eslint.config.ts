@@ -84,7 +84,9 @@ export default defineConfig(
       "curly": "error",
       "no-console": "error",
       "no-labels": "error",
-      "no-param-reassign": ["error", { props: true }],
+      // Bun hands a connection's state to its socket handlers as `socket.data`, which the
+      // `open` handler sets; that's the one parameter whose properties are written.
+      "no-param-reassign": ["error", { props: true, ignorePropertyModificationsFor: ["socket"] }],
       "no-nested-ternary": "error",
       "no-implicit-coercion": "error",
       "no-else-return": ["error", { allowElseIf: false }],
