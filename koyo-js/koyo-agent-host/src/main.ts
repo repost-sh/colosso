@@ -2,7 +2,7 @@
 // `settings::data_dir()/agents`, which the app starts and waits for the `ready` line of.
 // `--foreground` logs to stderr rather than the folder's log, and `KOYO_LOG` says how much.
 // `KOYO_AGENT_PROVIDER=fake` puts the fake provider, its sessions answering by themselves, in
-// Claude's place, for the host run end to end (docs/chat.md 6).
+// Claude's place, for the host and the app run end to end (docs/chat.md 6).
 
 import { parseArgs } from "node:util";
 

@@ -15,7 +15,7 @@ import { Store } from "../src/store/store";
 import { Threads } from "../src/threads/threads";
 import { prompt } from "./support/actor";
 import { ignore } from "./support/handlers";
-import { LineClient, type Received } from "./support/line-client";
+import { createdThread, LineClient, type Received } from "./support/line-client";
 import { CREATE } from "./support/records";
 import { removeScratch, scratch } from "./support/scratch";
 import { settle } from "./support/wait";
@@ -70,7 +70,7 @@ function host(): Running {
 async function client(to: Running): Promise<LineClient> {
   const connected = await LineClient.connect(to.socket);
   to.clients.push(connected);
-  expect(await connected.hello()).toMatchObject({ line: { id: 0, result: { busy: false } } });
+  expect(await connected.hello()).toMatchObject({ line: { id: 0 } });
   return connected;
 }
 
@@ -87,6 +87,16 @@ function kind(received: Received): string {
     return line.event;
   }
   return "result" in line ? "result" : "error";
+}
+
+/** The next line of kind `wanted`, the ones before it skipped. */
+async function until(from: LineClient, wanted: string): Promise<Received> {
+  for (;;) {
+    const received = await from.next();
+    if (kind(received) === wanted || received.kind === "closed") {
+      return received;
+    }
+  }
 }
 
 async function kinds(from: LineClient, count: number): Promise<string[]> {
@@ -181,6 +191,65 @@ describe("the host", () => {
       delivery: "auto",
     });
     expect(await kinds(app, 1)).toStrictEqual(["result"]);
+  });
+
+  test("counts another client as busy: two builds don't take turns stopping it", async () => {
+    const chats = host();
+    await client(chats);
+    const second = await LineClient.connect(chats.socket);
+    chats.clients.push(second);
+    expect(await second.hello()).toMatchObject({ line: { result: { busy: true } } });
+    const third = await LineClient.connect(chats.socket);
+    chats.clients.push(third);
+    second.close();
+    expect(await third.hello()).toMatchObject({ line: { result: { busy: true } } });
+  });
+
+  test("is told which chats have a tab, and lists it with them", async () => {
+    const chats = host();
+    const app = await client(chats);
+    app.request(1, "threads.watch", {});
+    await until(app, "result");
+    app.request(2, "threads.create", { ...CREATE, cwd: chats.dir });
+    const thread = createdThread(await until(app, "result"));
+    expect(thread.tabOpen).toBe(true);
+    app.request(3, "threads.update", { threadId: thread.id, tabOpen: false });
+    expect(await until(app, "thread.summary")).toMatchObject({
+      line: { params: { id: thread.id, tabOpen: false } },
+    });
+    app.request(4, "threads.watch", {});
+    expect(await until(app, "result")).toMatchObject({
+      line: { id: 3, result: { tabOpen: false } },
+    });
+    expect(await until(app, "result")).toMatchObject({
+      line: { id: 4, result: [{ id: thread.id, tabOpen: false }] },
+    });
+  });
+
+  test("takes a tab's coming and going as no work, and what already holds as nothing", async () => {
+    const chats = host();
+    const app = await client(chats);
+    app.request(1, "threads.create", { ...CREATE, cwd: chats.dir });
+    const thread = createdThread(await until(app, "result"));
+    app.request(2, "threads.update", { threadId: thread.id, tabOpen: true });
+    expect(await until(app, "result")).toMatchObject({
+      line: { id: 2, result: { seq: thread.seq } },
+    });
+    app.request(3, "threads.update", { threadId: thread.id, tabOpen: false });
+    const closed = await until(app, "result");
+    expect(closed).toMatchObject({
+      line: { id: 3, result: { tabOpen: false, updatedAt: thread.updatedAt } },
+    });
+    expect(closed).not.toMatchObject({ line: { result: { seq: thread.seq } } });
+  });
+
+  test("puts a chat that names no provider on its first", async () => {
+    const chats = host();
+    const app = await client(chats);
+    app.request(1, "threads.create", { ...CREATE, cwd: chats.dir, provider: null });
+    expect(createdThread(await until(app, "result")).provider).toBe("fake");
+    app.request(2, "catalog", { provider: null, cwd: chats.dir });
+    expect((await until(app, "result")).kind).toBe("line");
   });
 
   test("says a thread it doesn't have isn't there", async () => {

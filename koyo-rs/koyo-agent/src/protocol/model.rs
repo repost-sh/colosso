@@ -58,6 +58,10 @@ pub enum TitleSource {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "the host's record as it's sent, and each of these is its own setting"
+)]
 pub struct Thread {
     pub id: ThreadId,
     pub cwd: String,
@@ -73,6 +77,8 @@ pub struct Thread {
     pub session_id: Option<String>,
     /// Queued runs wait for the person after a stop, a failure or a restart.
     pub queue_held: bool,
+    /// A tab shows it, and will again after a restart (C13).
+    pub tab_open: bool,
     pub created_at: Time,
     pub updated_at: Time,
     pub read_at: Option<Time>,
@@ -378,6 +384,7 @@ pub struct ThreadSummary {
     pub needs: Option<RequestKind>,
     pub queued: u64,
     pub unread: bool,
+    pub tab_open: bool,
     pub updated_at: Time,
 }
 

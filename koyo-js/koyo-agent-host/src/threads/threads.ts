@@ -56,8 +56,10 @@ export class Threads {
     this.#config = config;
   }
 
-  provider(id: ProviderId): Provider {
-    const provider = this.#providers.get(id);
+  /** The provider `id`, or the host's first for `null`. */
+  provider(id: ProviderId | null): Provider {
+    const [first] = this.#providers.values();
+    const provider = id === null ? first : this.#providers.get(id);
     if (provider === undefined) {
       throw noProvider(id);
     }
@@ -76,8 +78,8 @@ export class Threads {
   }
 
   create(params: Params<"threads.create">): Thread {
-    this.provider(params.provider);
-    const thread = newThread(params, this.#options.now());
+    const { id } = this.provider(params.provider);
+    const thread = newThread(params, id, this.#options.now());
     const actor = ThreadActor.create(this.#context(thread), thread);
     this.#actors.set(thread.id, actor);
     return actor.thread;
@@ -170,8 +172,9 @@ export class Threads {
   }
 }
 
-function noProvider(id: ProviderId): HostError {
-  return new HostError("provider_unavailable", `Koyo has no provider \`${id}\`.`);
+function noProvider(id: ProviderId | null): HostError {
+  const named = id === null ? "" : ` \`${id}\``;
+  return new HostError("provider_unavailable", `Koyo has no provider${named}.`);
 }
 
 /** The provider of a thread whose provider this host doesn't have: every turn fails. */

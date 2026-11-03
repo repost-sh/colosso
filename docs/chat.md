@@ -185,8 +185,9 @@ edit doesn't count as a new host. The hello's answer carries the version. Same: 
 host. Different and the host is idle (no live run, no pending request): stop it and start
 the app's, without asking. Different and busy: the chat shows "Chats are running on another
 build of Koyo. Restart them to use this one; running turns stop." with "Restart chats", as
-terminals do (D12). The hello is the one exchange every version keeps. Rejected: a hash of
-the sources as the build's id (automatic, but every edit, a comment included, would turn a
+terminals do (D12). Busy also means another client is connected, so two builds in use at once
+leave the choice to the person rather than take turns replacing each other. The hello is the
+one exchange every version keeps. Rejected: a hash of the sources as the build's id (automatic, but every edit, a comment included, would turn a
 busy host away; and it would be a second compatibility scheme beside termd's).
 
 **C10 [decided] Assistant text streams.** The driver turns `text_delta` and
@@ -211,7 +212,10 @@ terminal sessions. T3 defaults to full access; Koyo doesn't.
 **C13 [decided] A chat is a tab, in a worktree.** Threads are keyed to the worktree's
 checkout path, which is also the agent's `cwd`. The tab face shows the chat's title and
 status; the sidebar's worktree row shows what its chats need. Closing the tab doesn't delete
-the chat: "Recent chats" in the worktree's new-tab menu lists the chats no tab shows.
+the chat: "Recent chats" in the worktree's new-tab menu lists the chats no tab shows. Which
+chats have a tab is the thread's own `tabOpen`, kept by the host with the rest of it, so the
+tabs come back with the app as terminals' do (5.2); the app keeps no list of its own. A new
+tab is not a chat until its first send, so empty tabs leave nothing behind.
 Rejected: T3's thread inbox in the sidebar (Koyo's sidebar lists worktrees; a chat is a tab
 in one, as a terminal is).
 
@@ -332,7 +336,8 @@ H→C  {"event": "thread.changed", "params": {...}}      // unsolicited
 
 ```
 hello       {client: {kind: "app"|"cli"|"test"}, version} → {version, pid, busy}
-            `version` is `HOST_VERSION` (C9); `busy` while a run is live or a request waits.
+            `version` is `HOST_VERSION` (C9); `busy` while a run is live, a request waits or
+            another client is here, so two builds of the app don't take turns stopping it.
             A hello of another version is answered, so the app can see whom it met, and that
             client may then only call `shutdown`; before a hello, nothing else is answered
             but `not_allowed`.
@@ -341,7 +346,7 @@ config.set  {claudePath, defaultMode} → {}
 providers.status {refresh: bool} → [ProviderStatus]
             {provider, state: "ready"|"missing"|"signed_out"|"error", executable, version,
              account: {email, plan}, message}
-catalog     {provider, cwd} → {models: [Model], commands: [Command], defaultMode}
+catalog     {provider: id | null, cwd} → {models: [Model], commands: [Command], defaultMode}
             Model = {id, name, description, efforts, fast, auto} (4.5.9)
 ```
 
@@ -349,7 +354,7 @@ catalog     {provider, cwd} → {models: [Model], commands: [Command], defaultMo
 
 ```
 threads.watch   {} → [ThreadSummary], then `thread.summary` for every thread
-threads.create  {cwd, provider, model, effort, permission, plan} → Thread
+threads.create  {cwd, provider: id | null, model, effort, permission, plan} → Thread
 threads.open    {threadId, sinceSeq} → ThreadSnapshot, then its `thread.changed` and
                 `item.appended` until `threads.close`. A first open holds the latest 30
                 runs' items; `sinceSeq` gets the rows changed since, and every streaming item
@@ -357,7 +362,8 @@ threads.open    {threadId, sinceSeq} → ThreadSnapshot, then its `thread.change
 threads.history {threadId, before: runId, runs} → {runs, items, requests}
                 the page of runs before `before`, with their rows
 threads.close   {threadId} → {}
-threads.update  {threadId, title?, model?, effort?, fast?, permission?, plan?} → Thread
+threads.update  {threadId, title?, model?, effort?, fast?, permission?, plan?, tabOpen?}
+                → Thread
 threads.read    {threadId} → {}                                the person has seen it
 threads.delete  {threadId} → {}                                rows and attachments go
 ```
@@ -414,7 +420,9 @@ Thread {
   id, cwd, title, titleSource: "seed"|"generated"|"user", provider, model, effort, fast,
   permission: Mode | null (null: the provider's settings decide), plan: bool,
   sessionId,                  // the provider's conversation, once there is one
-  queueHeld: bool, createdAt, updatedAt, readAt, seq
+  queueHeld: bool,
+  tabOpen: bool,              // a tab shows it, and will again after a restart (C13)
+  createdAt, updatedAt, readAt, seq
 }
 
 Run {                         // a turn: one prompt and the work it caused

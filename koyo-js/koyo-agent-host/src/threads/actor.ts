@@ -245,8 +245,11 @@ export class ThreadActor {
   update(change: ThreadChange): Thread {
     const before = this.#state.thread;
     const after = updatedThread(before, change, this.#cx.now());
-    this.#state.commit({ thread: after });
-    this.#session.configure(settingsChanged(before, after, this.#cx.config().defaultMode));
+    // Told what already holds, nothing happened, so nobody hears of it.
+    if (!Bun.deepEquals(after, before)) {
+      this.#state.commit({ thread: after });
+      this.#session.configure(settingsChanged(before, after, this.#cx.config().defaultMode));
+    }
     return this.#state.thread;
   }
 

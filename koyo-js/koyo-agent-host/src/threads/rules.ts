@@ -85,6 +85,7 @@ export function summary(thread: Thread, state: State): ThreadSummary {
     needs: needs(state.pending),
     queued: state.unsettled.filter((run) => run.status === "queued").length,
     unread: unread(thread, state),
+    tabOpen: thread.tabOpen,
     updatedAt: thread.updatedAt,
   };
 }

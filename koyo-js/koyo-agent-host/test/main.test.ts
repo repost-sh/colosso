@@ -43,7 +43,7 @@ test("starts in its folder, answers a message and exits once asked to stop", asy
 
   const client = await LineClient.connect(folder(root).socket);
   await client.hello();
-  client.request(1, "threads.create", CREATE);
+  client.request(1, "threads.create", { ...CREATE, provider: null });
   const thread = createdThread(await client.next());
   client.request(2, "threads.open", { threadId: thread.id, sinceSeq: null });
   client.request(3, "turns.send", {
