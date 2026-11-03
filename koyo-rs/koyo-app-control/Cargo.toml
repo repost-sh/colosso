@@ -1,0 +1,30 @@
+[package]
+name = "koyo-app-control"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "The app-control MCP's no-UI half: operations, scopes, errors, frames, the control socket and its blocking client."
+
+[dependencies]
+# The waiting calls' channels and the client's notices; the version the terminals use.
+crossbeam-channel = "0.5"
+# The platform's data folder, the version the app already uses.
+dirs = "6"
+# The user id the fallback socket folder is named after.
+libc = "0.2"
+parking_lot = "0.12"
+# The operation catalog: inputs and outputs as agents see them, and the schemas the MCP lists
+# for each tool; the major version rmcp and the terminals' catalog use.
+schemars = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# The fallback socket folder's name, a digest of the data folder; already in the lockfile.
+sha2 = "0.10"
+
+[dev-dependencies]
+# The terminals' catalog, which app tool names must not collide with.
+koyo-term-control = { path = "../koyo-term-control" }
+
+[lints]
+workspace = true

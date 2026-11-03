@@ -1,24 +1,25 @@
 #!/bin/sh
-# The terminal daemon's version is `DAEMON_VERSION` in crates/term-control/src/protocol.rs.
+# The terminal daemon's version is `DAEMON_VERSION` in
+# koyo-rs/koyo-term-control/src/protocol.rs.
 # An app meeting a daemon of another version has it restarted (docs/terminals.md 5.1), so a
 # change to what the daemon runs bumps it, and an update then restarts the daemon rather
 # than leave the old one serving the new app.
 #
-# daemon-version.txt holds the version and a fingerprint of what the daemon is built from:
-# the crates `cargo tree` resolves for it, with their versions, the sources of those in this
-# checkout (tests left out), and the toolchain and Zig they're built with. script/lint fails
-# once the two part, until one of these says which change it was:
+# koyo-rs/daemon-version.txt holds the version and a fingerprint of what the daemon is built
+# from: the crates `cargo tree` resolves for it, with their versions, the sources of those in
+# this checkout (tests left out), and the toolchain and Zig they're built with. script/lint
+# fails once the two part, until one of these says which change it was:
 #
 #   script/daemon-version          check (script/lint runs it)
 #   script/daemon-version bump     the daemon changed: the next version, and its sources noted
 #   script/daemon-version keep     a change a running daemon doesn't need (comments, renames,
 #                                  code only clients run): its sources noted, the same version
 set -eu
-# The physical path, which `cargo tree` prints too, so a checkout reached through a symlink
-# fingerprints the same as any other (see `fingerprint`).
-cd -P "$(dirname "$0")/.."
+# It works in the Cargo workspace, by its physical path, which `cargo tree` prints too, so a
+# checkout reached through a symlink fingerprints the same as any other (see `fingerprint`).
+cd -P "$(dirname "$0")/../koyo-rs"
 
-PROTOCOL_RS=crates/term-control/src/protocol.rs
+PROTOCOL_RS=koyo-term-control/src/protocol.rs
 RECORD=daemon-version.txt
 LINE='^pub const DAEMON_VERSION: u32 = \([0-9][0-9]*\);$'
 
@@ -28,9 +29,9 @@ version() {
 
 # One hash of the daemon's crates as resolved, and every file it's built from, by path and
 # content. Tests are left out: `tests/` folders and `tests.rs` files only tests compile.
-# Paths are relative to the checkout, so every checkout of the same sources agrees.
+# Paths are relative to the workspace, so every checkout of the same sources agrees.
 fingerprint() {
-  crates=$(cargo tree --quiet --offline -p koyo-termd -e normal,build --prefix none |
+  crates=$(../script/cargo tree --quiet --offline -p koyo-termd -e normal,build --prefix none |
     LC_ALL=C sort -u)
   folders=$(printf '%s\n' "$crates" | sed -n "s|.*($PWD/\(.*\))\$|\1|p")
   {

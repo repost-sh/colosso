@@ -1,38 +1,38 @@
 #!/bin/sh
 # Packages the browser engine the app runs its browser panes on: the browser host
-# (crates/browser-host), the Chromium Embedded Framework and CEF's helper apps, laid out as
-# macOS wants them, under target/browser-engine/<cef version>/ with an engine.json beside:
+# (koyo-rs/koyo-browser-host), the Chromium Embedded Framework and CEF's helper apps, laid out
+# as macOS wants them, under koyo-rs/target/browser-engine/<cef version>/ with an engine.json
+# beside:
 #
 #   script/browser-engine [--release] [--out <dir>] [--cef <dir>] [--locales en,de]
 #                         [--sign <identity>]
 #
 # A debug app finds the engine there; a bundled app carries the host app in its own
-# Contents/Frameworks (see crates/koyo/src/browser/engine.rs). script/dev runs this
+# Contents/Frameworks (see koyo-rs/koyo/src/browser/engine.rs). script/dev runs this
 # before the app, and it does nothing when the packaged host is as new as the built one.
 # Without --sign the bundle gets an ad-hoc signature, enough to run locally; a release
 # identity gets the hardened runtime notarization needs.
 set -eu
 cd "$(dirname "$0")/.."
 
-export CARGO_HOME="${CARGO_HOME:-$PWD/.cargo-home}"
-
 HOST_NAME="Koyo Browser Host"
 BUNDLE_ID="dev.koyo.desktop.browser-host"
 FRAMEWORK="Chromium Embedded Framework.framework"
 # The app's icon, which macOS shows for the host and its helpers when one asks for
 # something, as for notifications.
-ICON=crates/koyo/icons/Koyo.icns
+ICON=koyo-rs/koyo/icons/Koyo.icns
 # The protocol the host speaks, read from where it's defined so the two can't drift.
 IPC_PROTOCOL=$(sed -n 's/^pub const PROTOCOL: u32 = \([0-9][0-9]*\);$/\1/p' \
-  crates/browser-ipc/src/lib.rs)
+  koyo-rs/koyo-browser-ipc/src/lib.rs)
 if [ -z "$IPC_PROTOCOL" ]; then
-  echo "script/browser-engine: no PROTOCOL in crates/browser-ipc/src/lib.rs" >&2
+  echo "script/browser-engine: no PROTOCOL in koyo-rs/koyo-browser-ipc/src/lib.rs" >&2
   exit 1
 fi
 
 profile=debug
 cargo_profile=dev
-out="target/browser-engine"
+# The workspace's KOYO_TARGET_DIR (koyo-rs/.cargo/config.toml), where a debug app looks.
+out="koyo-rs/target/browser-engine"
 cef=""
 locales=""
 sign=""
@@ -49,9 +49,9 @@ while [ $# -gt 0 ]; do
 done
 
 # The CEF version is the lockfile's: the `+` part of cef-dll-sys's version.
-version=$(awk '/^name = "cef-dll-sys"$/ { getline; sub(/^version = "[^+]*\+/, ""); sub(/"$/, ""); print }' Cargo.lock)
+version=$(awk '/^name = "cef-dll-sys"$/ { getline; sub(/^version = "[^+]*\+/, ""); sub(/"$/, ""); print }' koyo-rs/Cargo.lock)
 if [ -z "$version" ]; then
-  echo "cef-dll-sys is not in Cargo.lock" >&2
+  echo "cef-dll-sys is not in koyo-rs/Cargo.lock" >&2
   exit 1
 fi
 case "$(uname -m)" in
@@ -59,11 +59,12 @@ case "$(uname -m)" in
   *) arch=x86_64 ;;
 esac
 target="$arch-apple-darwin"
-# Where cef-dll-sys keeps the distribution (.cargo/config.toml's CEF_PATH).
+# Where cef-dll-sys keeps the distribution: koyo-rs/.cargo/config.toml's CEF_PATH, the same
+# folder from the checkout's root.
 cef="${cef:-${CEF_PATH:-.superpowers/cef}/$version/cef_macos_$arch}"
 
-cargo build -p koyo-browser-host --profile "$cargo_profile"
-binary="target/$profile/koyo-browser-host"
+script/cargo build -p koyo-browser-host --profile "$cargo_profile"
+binary="koyo-rs/target/$profile/koyo-browser-host"
 
 dir="$out/$version"
 app="$dir/$HOST_NAME.app/Contents"
@@ -75,7 +76,7 @@ if [ -f "$packaged" ] && [ -f "$dir/engine.json" ] && ! [ "$binary" -nt "$packag
   exit 0
 fi
 if [ ! -d "$cef/$FRAMEWORK" ]; then
-  echo "no CEF distribution at $cef: build crates/browser-host first" >&2
+  echo "no CEF distribution at $cef: build koyo-rs/koyo-browser-host first" >&2
   exit 1
 fi
 

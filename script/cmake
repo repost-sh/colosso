@@ -1,7 +1,8 @@
 #!/bin/sh
 # The cmake that builds CEF's C++ wrapper library for the browser host (cef-dll-sys runs it,
-# and ninja through it, as .cargo/config.toml's CMAKE). Neither is installed on a machine as a
-# rule, so pinned builds are fetched into .tools/ on first use, as script/dev fetches dx.
+# and ninja through it, as koyo-rs/.cargo/config.toml's CMAKE). Neither is installed on a
+# machine as a rule, so pinned builds are fetched into .tools/ on first use, as script/dev
+# fetches dx.
 set -eu
 cd "$(dirname "$0")/.."
 

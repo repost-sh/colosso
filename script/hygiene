@@ -1,14 +1,17 @@
 #!/bin/sh
-# Holds every Rust file under 500 lines: one file, one job. The files listed in
-# hygiene-allow.txt are over it already; each may shrink but not grow, and leaves the list
-# once it's under the limit.
+# Holds every Rust file of the koyo-rs crates under 500 lines: one file, one job (the vendored
+# crates keep upstream's files). The files listed in koyo-rs/hygiene-allow.txt are over it
+# already; each may shrink but not grow, and leaves the list once it's under the limit. Paths
+# are the workspace's, as cargo prints them.
 set -eu
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../koyo-rs"
 
 LIMIT=500
 ALLOW=hygiene-allow.txt
 
-find crates -name '*.rs' -not -path '*/target/*' -exec wc -l {} + | grep -v ' total$' |
+# The workspace's members, as its Cargo.toml names them.
+find koyo koyo-* -name '*.rs' -not -path '*/target/*' -exec wc -l {} + |
+  grep -v ' total$' |
   awk -v limit="$LIMIT" -v allow="$ALLOW" '
     BEGIN {
       while ((getline line < allow) > 0) {

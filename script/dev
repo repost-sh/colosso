@@ -12,7 +12,7 @@ export CARGO_HOME="${CARGO_HOME:-$PWD/.cargo-home}"
 # dx must match the dioxus devtools version GPUI's hot-reload feature links against.
 DX_VERSION=0.7.10
 DX_SHA256=342c92bc33dca60dadd725ed5e249923f049ae2e1e50b7477f4968d56695b425
-DX_DIR=".tools/dx-$DX_VERSION"
+DX_DIR="$PWD/.tools/dx-$DX_VERSION"
 DX="$DX_DIR/dx"
 
 if [ ! -x "$DX" ]; then
@@ -28,4 +28,6 @@ fi
 # The browser panes' engine, packaged beside the app's build (see script/browser-engine).
 script/browser-engine
 
+# dx works on the Cargo workspace, which is koyo-rs/.
+cd koyo-rs
 exec "$DX" serve --hot-patch --package koyo --features hot-reload,inspector --platform macos "$@"

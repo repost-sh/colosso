@@ -1,24 +1,24 @@
 #!/bin/sh
-# The lint half of script/check, which the pre-commit hook runs on its own: Clippy under the
-# workspace lint policy with every warning an error, the file-size limit, the terminal daemon's
-# version against its sources, and the agent host's type check and ESLint policy.
+# The lint half of script/check, which the pre-commit hook runs on its own: for koyo-rs, Clippy
+# under the workspace lint policy with every warning an error, the file-size limit and the
+# terminal daemon's version against its sources; for koyo-js, tsc and the ESLint policy.
 set -eu
 cd "$(dirname "$0")/.."
 
-# The same cargo home as script/dev, so the two share what's built.
-export CARGO_HOME="${CARGO_HOME:-$PWD/.cargo-home}"
-
-# The agent host's checks share nothing with Clippy, so they run beside it: its packages
-# exactly as bun.lock has them (a no-op once they are), then tsc and ESLint.
+# koyo-js's checks share nothing with koyo-rs's, so they run beside them: its packages exactly
+# as bun.lock has them (a no-op once they are), then tsc and ESLint, side by side too.
 (
   script/bun install --frozen-lockfile --silent
-  script/bun run --silent typecheck
+  script/bun run --silent typecheck &
+  typecheck=$!
   script/bun run --silent lint
+  wait "$typecheck"
 ) &
-host_checks=$!
-trap 'kill "$host_checks" 2>/dev/null || true' EXIT
+js_checks=$!
+trap 'kill "$js_checks" 2>/dev/null || true' EXIT
 
-cargo clippy --workspace --all-targets -- -D warnings
+# The quick ones first, so a file too long or a daemon change not settled shows at once.
 script/hygiene
 script/daemon-version
-wait "$host_checks"
+script/cargo clippy --workspace --all-targets -- -D warnings
+wait "$js_checks"

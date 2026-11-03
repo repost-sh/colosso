@@ -33,25 +33,27 @@ terminal core (libghostty-vt).
 
 ### 1.1 The Koyo codebase (facts, 2026-10-30)
 
-- Rust workspace, `edition = "2024"`, toolchain `1.98.1` (`rust-toolchain.toml`), resolver 3,
-  license Apache-2.0 (`LICENSE`). Crates: `crates/koyo` (the app), `crates/project`,
-  `crates/git`, `crates/lsp`, `crates/bench`. Vendored forks: `vendor/gpui-base`,
-  `vendor/gpui-component` (gpui-kit 0.8.1 at commit `99576db5`), see `vendor/README.md`.
+- Rust workspace `koyo-rs`, `edition = "2024"`, toolchain `1.98.1`
+  (`koyo-rs/rust-toolchain.toml`), resolver 3, license Apache-2.0 (`LICENSE`). Crates:
+  `koyo-rs/koyo` (the app), `koyo-rs/koyo-project`, `koyo-rs/koyo-git`, `koyo-rs/koyo-lsp`,
+  `koyo-rs/koyo-bench`. Vendored forks: `koyo-rs/vendor/gpui-base`,
+  `koyo-rs/vendor/gpui-component` (gpui-kit 0.8.1 at commit `99576db5`), see
+  `koyo-rs/vendor/README.md`.
 - UI: GPUI through `gpui-kit = "0.8.1"` with feature `gpui-fast` (retained views). The GPUI
-  crate underneath is `gpui-pre 0.3.10` (see `Cargo.lock`, and the `hot-reload` feature in
-  `crates/koyo/Cargo.toml`).
-- macOS first. `crates/koyo/src/native/` hosts AppKit `NSView`s inside GPUI's window
+  crate underneath is `gpui-pre 0.3.10` (see `koyo-rs/Cargo.lock`, and the `hot-reload`
+  feature in `koyo-rs/koyo/Cargo.toml`).
+- macOS first. `koyo-rs/koyo/src/native/` hosts AppKit `NSView`s inside GPUI's window
   composition (`native/surface.rs`: `WindowCompositionSurface`, stacked over the page and
-  under GPUI's overlays). Non-macOS paths exist in `crates/project` (notify watcher), so
+  under GPUI's overlays). Non-macOS paths exist in `koyo-rs/koyo-project` (notify watcher), so
   portability is intended but not exercised.
-- Lint policy (`Cargo.toml` `[workspace.lints]`): clippy pedantic as warnings; `unwrap_used`,
-  `expect_used`, `panic`, `todo`, `unimplemented`, `unreachable`, `print_stdout`,
+- Lint policy (`koyo-rs/Cargo.toml` `[workspace.lints]`): clippy pedantic as warnings;
+  `unwrap_used`, `expect_used`, `panic`, `todo`, `unimplemented`, `unreachable`, `print_stdout`,
   `print_stderr`, `dbg_macro`, `map_err_ignore`, `await_holding_lock`,
   `needless_pass_by_value`, `redundant_clone`, `error_impl_error`,
   `unchecked_time_subtraction` are **denied**. Exceptions use
   `#[expect(lint, reason = "...")]`. Logging goes through the `log` facade into
   `koyo::logs`. New crates inherit `[lints] workspace = true`.
-- Existing terminal placeholders: `PaneKind::Terminal` in `crates/koyo/src/model.rs:11`
+- Existing terminal placeholders: `PaneKind::Terminal` in `koyo-rs/koyo/src/model.rs:11`
   (title "New Terminal", default name "zsh", icon `SquareTerminal`), `pane.rs:157 fn terminal`
   renders a stand-in, `bottom.rs:54` "The panel under the workspace; a stand-in for the
   terminal it's to hold", action `NewTerminal` in `shell/actions.rs`. No PTY, no VT code.
@@ -59,15 +61,15 @@ terminal core (libghostty-vt).
   `Worktree { path, head: Head::Branch(name) | Head::Detached(commit), is_main }`.
   `Project { path (main checkout), name, branches: Vec<BranchUnit>, active_branch }`.
   `Workspace::project_of(worktree_path)` finds a project by a worktree path.
-- Checkout identity: `crates/koyo/src/checkouts.rs` keys open checkouts by
+- Checkout identity: `koyo-rs/koyo/src/checkouts.rs` keys open checkouts by
   `std::fs::canonicalize(root)` "so a checkout reached through a link is the same checkout".
   Reuse this rule for terminal scoping.
-- App data folder: `settings::data_dir()` (`crates/koyo/src/settings.rs:243`), the app's
+- App data folder: `settings::data_dir()` (`koyo-rs/koyo/src/settings.rs:243`), the app's
   folder under Application Support; language servers are fetched under it. Logs go to
   `~/Library/Logs/Koyo` (`logs/mod.rs:117`).
 - Dev loop: `script/dev` runs `dx serve --hot-patch`; it downloads a pinned `dx` into
   `.tools/dx-<version>/` with a sha256 check. The same pattern will pin Zig (section 11).
-- Tests: `gpui-kit` feature `test-support` gives headless windows; `crates/koyo` has a
+- Tests: `gpui-kit` feature `test-support` gives headless windows; `koyo-rs/koyo` has a
   `visual-check` feature and `test_support` module.
 - Repository rules (owner's machine rules): everything the work creates stays inside the
   checkout; scratch under `.superpowers/` (gitignored); `.cargo-home` is the cargo home;
@@ -76,7 +78,7 @@ terminal core (libghostty-vt).
 ### 1.2 Relationship to Orca and monocode
 
 - Koyo is the native successor of the Orca app's layout ("Orca layout: projects and their
-  branch units in the sidebar", `crates/koyo/src/orca.rs`). The Orca CLI
+  branch units in the sidebar", `koyo-rs/koyo/src/orca.rs`). The Orca CLI
   (`/Applications/Orca.app/Contents/Resources/bin/orca`) already exposes worktree-scoped
   terminals to agents (`orca terminal list|show|read|send|wait|create|...`). Its vocabulary
   is the one agents on this machine already know; the MCP here keeps it (section 8.9).
@@ -85,7 +87,7 @@ terminal core (libghostty-vt).
   `crates/monocode-gpui/src/shell/control/`). Its conventions are adopted here (section 8).
   Its browser panes are being ported into Koyo in the worktree
   `/Users/schulzf/orca/workspaces/koyo/feat-new-native-app` (CEF host crates
-  `crates/browser-host`, `crates/browser-ipc`, uncommitted as of 2026-10-30); no MCP or
+  `koyo-rs/koyo-browser-host`, `koyo-rs/koyo-browser-ipc`, uncommitted as of 2026-10-30); no MCP or
   control code has been ported there yet.
 - `agent-terminal` (`/Users/schulzf/github.com/repost-sh/agent-terminal`, Rust, ~35k lines,
   binary at `~/.cargo/bin/agent-terminal`) is the owner's first shared human/agent terminal.
@@ -295,7 +297,7 @@ PR 1006; dev.to "What it takes to embed libghostty in a Swift app".
   (HTTP 127.0.0.1 deferred, 8.1)               │  koyo-termd (one per user)        │
                                                │  ├─ registry (worktrees, terminals)  │
   Koyo.app ◀──unix socket (frames v1)──────▶│  ├─ operations behind the MCP        │
-   ├─ crates/term: engine + GPUI element       │  ├─ control leases, status, activity │
+   ├─ koyo-term: engine + GPUI element         │  ├─ control leases, status, activity │
    └─ branch units ─ terminal tabs             │  └─ sessions[n]: thread {            │
                                                │        PTY ⇄ child process          │
   mobile (later) ◀─ssh/QUIC─▶ same frames ────▶│        headless ghostty-vt Terminal  │
@@ -309,7 +311,7 @@ Data flow for one keystroke: GPUI key event → ghostty key encoder in the app �
 daemon's headless engine (status, snapshot, queries) and fanned out as `Output` frames →
 app → app engine `vt_write` → render state → GPUI paint on the next frame if dirty.
 
-**As implemented (M5):** the MCP server is the relay `koyo mcp` (crates/term-mcp), one per
+**As implemented (M5):** the MCP server is the relay `koyo mcp` (koyo-rs/koyo-term-mcp), one per
 agent, over stdio; it reaches the daemon by the same unix socket and frames as the app, and
 the daemon runs the operations (8.1). Loopback HTTP is deferred.
 
@@ -319,7 +321,7 @@ the daemon runs the operations (8.1). Loopback HTTP is deferred.
 
 ### 5.1 Process model and lifecycle [proposed]
 
-- One daemon per user account, built from `crates/termd`, a library with a thin binary.
+- One daemon per user account, built from `koyo-rs/koyo-termd`, a library with a thin binary.
   The app runs it from its own executable as `koyo termd --dir <folder>` (the subcommand
   is dispatched before anything else in `main`), so the daemon ships inside the app and is
   always the app's build; `koyo-termd` is the same daemon on its own, for the tests and
@@ -351,13 +353,13 @@ the daemon runs the operations (8.1). Loopback HTTP is deferred.
   `Shutdown` + restart. (Fd-passing handover is a later improvement.)
 
 **As implemented (M5):** "compatible" means the daemon's protocol and also its engine: the
-views restore its snapshots, so the app's client (`term/src/client.rs`, `this_build`) turns
+views restore its snapshots, so the app's client (`koyo-term/src/client.rs`, `this_build`) turns
 away a daemon whose Ghostty commit or snapshot format isn't its own, and the daemon refuses a
 hello of another protocol, answering `daemon_version_mismatch` before it hangs up. A tab the
 daemon turned away shows the notice ("Terminals are served by another build of Koyo;
 restart them to use this one. Their programs end, and the shells you opened start again."),
 worded for either direction, since an older app meets a newer daemon too, with a "Restart
-terminals" button. The button runs `stop_daemon` (`term-control/src/client.rs`): `Shutdown`
+terminals" button. The button runs `stop_daemon` (`koyo-term-control/src/client.rs`): `Shutdown`
 when the daemon still takes the hello, else SIGTERM to the pid in `daemon.lock`, sent only
 while that lock is held so a stale pid is never signalled; the tab then opens or attaches
 again, which starts this build's daemon, and every other tab turned away tries again. When the
@@ -370,11 +372,11 @@ gets the shell back on this build's daemon.
 Besides the protocol, the welcome's `daemon_version` must be this build's `DAEMON_VERSION`,
 so a build whose daemon changed bumps it, or the old daemon would go on serving the new app.
 `script/daemon-version`, run by `script/lint` and so by the pre-commit hook, holds the version
-in `daemon-version.txt` beside a fingerprint of what the daemon is built from: the crates
-`cargo tree` resolves for `koyo-termd` with their versions, the sources of those in the
-checkout (tests left out), `rust-toolchain.toml` and `.cargo/config.toml`. It fails once they
-part, until `script/daemon-version bump` raises the version or `script/daemon-version keep`
-notes a change a running daemon doesn't need.
+in `koyo-rs/daemon-version.txt` beside a fingerprint of what the daemon is built from: the
+crates `cargo tree` resolves for `koyo-termd` with their versions, the sources of those in the
+checkout (tests left out), `koyo-rs/rust-toolchain.toml` and `koyo-rs/.cargo/config.toml`. It
+fails once they part, until `script/daemon-version bump` raises the version or
+`script/daemon-version keep` notes a change a running daemon doesn't need.
 
 ### 5.2 Terminal model [decided]
 
@@ -404,7 +406,7 @@ Terminal {
 
 - `WorktreeRef.path` is `canonicalize(nearest ancestor containing .git)` of the spawn cwd, or
   the explicit worktree argument. `repo_main` is the main checkout path (from `git worktree
-  list` / `GitDirs` in `crates/project`), so one project groups its branches.
+  list` / `GitDirs` in `koyo-rs/koyo-project`), so one project groups its branches.
 - A terminal whose cwd is outside any git checkout gets `worktree = None` and lives under a
   synthetic "no worktree" group; the UI shows it under the project of the app's current
   selection only when explicitly asked. Agents must pass `worktree` explicitly for these.
@@ -518,7 +520,7 @@ Paste { handle, text }                              // daemon brackets it per th
 ```
 
 **As implemented (M5):** the binary frames (`Output`, `Snapshot`, `Input`) name the
-attachment by the index `Attached` returned, not the handle (`term-control/src/framing.rs`),
+attachment by the index `Attached` returned, not the handle (`koyo-term-control/src/framing.rs`),
 and `Input` carries no request id: a repeated `requestId` is answered from the relay's
 receipts (8.2). `Paste` is a control request, not a binary frame.
 
@@ -567,7 +569,7 @@ sides must link the same Ghostty revision (CI check: compare `ghostty-vt-sys` bu
 - Terminal default (`terminal` omitted): the terminal this caller last acted on in the
   resolved worktree; else, if the worktree has exactly one terminal, that one; else an error
   listing the candidates. Never pick another actor's terminal implicitly.
-- Worktree deletion (`crates/koyo/src/delete_worktree.rs`) calls `Close` for each terminal
+- Worktree deletion (`koyo-rs/koyo/src/delete_worktree.rs`) calls `Close` for each terminal
   of that worktree after confirmation naming running processes. **As implemented (M5):**
   the dialog names each terminal with its status ("Its terminal stops: server (running,
   output)") and closes them in the daemon before git removes the folder, so none of their
@@ -625,8 +627,8 @@ Rules:
 
 Events: `control: claimed|released|lost|taken|human_took{mode}|human_released|expired`.
 
-As implemented [2026-10-31, `termd/src/session/control.rs`, tests in
-`termd/tests/daemon/control.rs`]:
+As implemented [2026-10-31, `koyo-termd/src/session/control.rs`, tests in
+`koyo-termd/tests/daemon/control.rs`]:
 
 - Typing, pasting or signalling in a terminal **no one holds** takes nothing: the person
   just uses it, and an agent may still claim it. Only input while an agent holds is the
@@ -686,7 +688,7 @@ Signals (engine callbacks on the daemon's headless terminal) → transitions:
 The daemon emits `Event{status}` on every change with the reason, so clients and the MCP's
 `wait` resolve from events, not polling. The heuristic timers run on the session thread.
 
-Shell integration [implemented 2026-10-31, `termd/src/session/integration.rs`]: the daemon
+Shell integration [implemented 2026-10-31, `koyo-termd/src/session/integration.rs`]: the daemon
 injects Ghostty's scripts, which `ghostty-vt`'s `shell_integration::resources_dir()` writes out
 once, by Ghostty's own mechanism: zsh through a `ZDOTDIR` hop (the person's `ZDOTDIR`, if any,
 goes in `GHOSTTY_ZSH_ZDOTDIR` and Ghostty's `.zshenv` restores it before reading their files),
@@ -704,7 +706,7 @@ distributed Koyo carries their text, so their license has to be honoured or the 
 replaced with Koyo's own (the marks are a few lines per shell; agent-terminal's zsh hook at
 `cli/src/native/shell/agent-terminal.zsh:22-47` shows the size).
 
-Status as implemented (`termd/src/session/status.rs`): reasons are `started`, `prompt`,
+Status as implemented (`koyo-termd/src/session/status.rs`): reasons are `started`, `prompt`,
 `command running`, `output`, `quiet`, `bell`, `notification: <title>`, `exited <code>`. With
 marks seen the marks decide (between `133;C` and `133;D` it is `running` however quiet), so a
 TUI run from an integrated shell reads `command running` and asks for the person only through
@@ -792,9 +794,10 @@ Koyo terminals live for weeks, so each JSONL file is capped at 64 MB and rotated
 and QA evidence; "Clear log" in the UI only hides rows in the view (see 7.4), the files are
 never truncated from the UI.
 
-As implemented [2026-10-31; types and the reader in `term-control/src/log.rs`, the writer in
-`termd/src/journal.rs`, the lines in `termd/src/session/{activity,commands,keys}.rs`, tests
-in `termd/tests/daemon/logs.rs`]:
+As implemented [2026-10-31; types and the reader in `koyo-term-control/src/log.rs`, the
+writer in `koyo-termd/src/journal.rs`, the lines in
+`koyo-termd/src/session/{activity,commands,keys}.rs`, tests in
+`koyo-termd/tests/daemon/logs.rs`]:
 
 - `frame` is `offset` instead: the byte offset in the terminal's output stream when the line
   was written (`first_offset`/`last_offset` for a command's output). The daemon keeps no frame
@@ -835,7 +838,7 @@ in `termd/tests/daemon/logs.rs`]:
 - The ring and live state are memory only.
 
 **As implemented (M5):** each session keeps `terminals/<handle>/snapshot.bin`
-(`termd/src/session/persist.rs`): a format line naming the Ghostty commit, then the engine's
+(`koyo-termd/src/session/persist.rs`): a format line naming the Ghostty commit, then the engine's
 snapshot, written whole through a rename when the screen changed and 30 s went by, when the
 program exits, and on `Shutdown` before the program is hung up; a file another engine wrote
 is removed, and closing a terminal removes its file. After a restart, `ReadScreen` on a
@@ -866,7 +869,7 @@ sees the shell back from its screen, idle at its prompt.
 ## 6. Engine binding and use
 
 - Crate: `ghostty-vt = "=0.8.0+ghostty.1.4.0-main.83fb956"` (and its sys crate), pinned
-  exactly, in one workspace module `crates/term/src/engine/` that re-exports what the rest
+  exactly, in one workspace module `koyo-rs/koyo-term/src/engine/` that re-exports what the rest
   of the code uses. Nothing outside that module names `ghostty_vt` types directly, so a
   switch to `libghostty-vt` (Uzaaft) is a one-module change. Record the Ghostty commit the
   binding builds (`GHOSTTY.lock`) in this document when it changes.
@@ -889,13 +892,13 @@ sees the shell back from its screen, idle at its prompt.
 - Queries: when the app is attached, the **app's** engine answers DA/DSR/color queries
   through `on_pty_write` → `Input`; the daemon's engine answers only when no client is
   attached. The daemon tracks "attached" per terminal to switch this (boo's rule).
-- **As implemented (M5):** the engine is the `crates/term-engine` crate (11), not a module of
-  `crates/term`; it pins `ghostty-vt = "=0.8.0"` and reads the Ghostty commit from the
+- **As implemented (M5):** the engine is the `koyo-rs/koyo-term-engine` crate (11), not a module of
+  `koyo-rs/koyo-term`; it pins `ghostty-vt = "=0.8.0"` and reads the Ghostty commit from the
   binding (`GHOSTTY_COMMIT`), which the daemon's hello carries and the app compares (5.1).
   The sys crate needs Zig 0.17.0 (`script/zig`). No `GHOSTTY.lock` or `GHOSTTY_SOURCE_DIR`
   offline source yet: a clean build fetches Ghostty's source. The daemon's engine answers
   every query, attached or not: the app asks for no `answers_queries` capability, since two
-  windows on one terminal would answer twice (`term/src/client.rs`).
+  windows on one terminal would answer twice (`koyo-term/src/client.rs`).
 - **The app's theme:** the app tells the daemon its theme with `Theme`: its terminal colours
   and whether it's light or dark, the app's own setting rather than the system's. The client
   sends it on every connection and again when it changes. The daemon keeps it for terminals
@@ -905,7 +908,7 @@ sees the shell back from its screen, idle at its prompt.
 
 ---
 
-## 7. The in-app view: `crates/term`
+## 7. The in-app view: `koyo-rs/koyo-term`
 
 ### 7.1 Placement in the app [decided]
 
@@ -1057,7 +1060,7 @@ sees the shell back from its screen, idle at its prompt.
 ### 7.5 Performance budget [decided]
 
 - Local keystroke to glyph: ≤ 1 frame at 120 Hz plus PTY latency; measure with a
-  `crates/bench` scenario (type 1000 chars, measure frame times) and keep it in the
+  `koyo-rs/koyo-bench` scenario (type 1000 chars, measure frame times) and keep it in the
   bench suite like the editor scenarios.
 - `cat` of a 150 MB file: the view must stay responsive (frames ≤ 16 ms) while throughput
   is bounded by the engine (Ghostty reports 566 ms for 150 MB on its own stack; ours adds a
@@ -1070,7 +1073,7 @@ sees the shell back from its screen, idle at its prompt.
 - Memory: engine scrollback limit default 50 MB per terminal (Ghostty's default), compressed
   incrementally during idle (`compress` incremental mode on the VT thread).
 
-**As measured (M5):** `koyo-bench` runs `term-echo` and `term-cat` (`crates/bench/README.md`):
+**As measured (M5):** `koyo-bench` runs `term-echo` and `term-cat` (`koyo-rs/koyo-bench/README.md`):
 the daemon, a client attached as the view attaches, and its engine; each sample ends in the
 client's engine, at the frame the view would take, the paint not timed. Release build, Apple
 M4 Max:
@@ -1103,7 +1106,7 @@ its screen, ending leases), whether or not anything happened.
 
 ---
 
-## 8. The MCP: `crates/term-control`
+## 8. The MCP: `koyo-rs/koyo-term-control`
 
 ### 8.1 Shape and placement [decided]
 
@@ -1128,10 +1131,10 @@ its screen, ending leases), whether or not anything happened.
   catalog with an executor that forwards to the app's control socket; when the app is not
   running they fail with `app_not_running`. Agents then configure one server.
 - **As implemented (M4):** the MCP server runs in `koyo mcp`, not inside the daemon.
-  The relay carries out the catalog itself (`term-control/src/exec.rs`) over its ordinary
+  The relay carries out the catalog itself (`koyo-term-control/src/exec.rs`) over its ordinary
   protocol connection, as a `Relay` client whose actor is the MCP client's name from
   `initialize` (`claude-code:…`), and serves it with `rmcp` 3.8 over stdio
-  (`crates/term-mcp`). The daemon keeps one protocol and no MCP code; the relay runs as
+  (`koyo-rs/koyo-term-mcp`). The daemon keeps one protocol and no MCP code; the relay runs as
   the user, which is the trust the socket already checks (peer uid), so grants are
   enforced there. The connection is made on the first call and made again when the daemon
   went away. Streamable HTTP is deferred: it would serve the same handler from the daemon
@@ -1272,12 +1275,12 @@ worktree_list      { project?: path } → { worktrees: [{ path, branch, project,
 `ControlState = { holder: null | { kind, id, label, since, leaseUntil?, reason? },
 observers: [Actor], youHold: bool }`.
 
-**Not built (M5 audit)**, against `term-control/src/catalog/args.rs`: `terminal_list` has no
+**Not built (M5 audit)**, against `koyo-term-control/src/catalog/args.rs`: `terminal_list` has no
 `project` and `worktree_list` takes no arguments; `terminal_read` has `screen` and `stream`
 but no `scrollback` mode, no `format` (text only) and no `withRefs`; `terminal_open` has no
 `reveal` (the app reveals every agent's terminal, 9); `terminal_close` closes one terminal,
 with no `worktree`, `all` or `force`; `terminal_screenshot` is missing (8.1).
-`terminal_resize` is built (2026-11-02, `term-control/src/exec/resize.rs`) as the daemon's
+`terminal_resize` is built (2026-11-02, `koyo-term-control/src/exec/resize.rs`) as the daemon's
 `Pin` (`docs/responsive.md`); `terminal_open`'s `size` pins that size for the agent that
 claims it, and is only the starting size with `claim: false`. `requestId` is kept by the relay, not the daemon (5.4's input ids).
 
@@ -1297,11 +1300,11 @@ per-connection queues (monocode `hub.rs`). Screen updates are rate-limited to 4/
 subscriber. MCP `logging` notifications carry `Event{status|control}` for clients that
 prefer a push without a re-read.
 
-**As implemented (M4):** the relay serves these resources (`term-mcp/src/resources.rs`;
+**As implemented (M4):** the relay serves these resources (`koyo-term-mcp/src/resources.rs`;
 `{path}` percent-encoded), lists the worktrees plus each terminal of the caller's worktree
 and its screen, and takes subscriptions both as `resources/subscribe` and as
 `subscriptions/listen` streams. The daemon's events on the relay's own connection drive
-the updates, gathered for 100 ms and said once each (`term-mcp/src/watch.rs`); a screen
+the updates, gathered for 100 ms and said once each (`koyo-term-mcp/src/watch.rs`); a screen
 has no event, so a watched one is looked at four times a second and said when its frame
 number moved since the subscription. Opening or closing a terminal says the resource
 list changed. The `logging` push isn't sent: SEP-2577 deprecates logging notifications.
@@ -1321,7 +1324,7 @@ A Claude skill in `~/.claude/skills/koyo-terminals` is a two-line stub pointing 
 prompt (so the guide is never stale).
 
 **As implemented (M4):** both ship in the app binary that runs the daemon and the relay
-(`term-mcp/src/guide.rs`): the instructions say the loop, waits and the human rule in a
+(`koyo-term-mcp/src/guide.rs`): the instructions say the loop, waits and the human rule in a
 few lines, and `terminal_guide` says it at length (waits, full-screen programs and keys,
 control and takeover, logs, errors and `requestId`). The skill stub isn't written: it
 lives in the person's home folder. Accepted from the official TypeScript SDK's client
@@ -1394,16 +1397,16 @@ onto `for: text|gone|stable|idle|exit|prompt`; its `snapshot -i` refs onto
 ## 11. Crate layout, build and toolchain [decided]
 
 ```
-crates/term-engine    libghostty-vt behind one module: Engine, owned Frames, key/mouse/focus
+koyo-rs/koyo-term-engine    libghostty-vt behind one module: Engine, owned Frames, key/mouse/focus
                       encoding, selection, snapshots, the OSC 133 scanner
-crates/term-control   wire types (frames v1, CBOR control frames), selectors, errors, the
+koyo-rs/koyo-term-control   wire types (frames v1, CBOR control frames), selectors, errors, the
                       blocking client Connection, the daemon's folder; later the catalog
-crates/termd          the daemon, a library (`koyo_termd::main`) and the `koyo-termd`
+koyo-rs/koyo-termd          the daemon, a library (`koyo_termd::main`) and the `koyo-termd`
                       binary: registry, sessions, PTY, headless engine, later the MCP server;
                       also the `koyo-term` command line for testing without the app
-crates/term           the app side: TermClient, the VT thread, TerminalElement, TerminalView,
+koyo-rs/koyo-term           the app side: TermClient, the VT thread, TerminalElement, TerminalView,
                       key mapping, glyph cache, sprites
-crates/koyo        wires TerminalView into tabs (`terminals.rs`); the
+koyo-rs/koyo        wires TerminalView into tabs (`terminals.rs`); the
                       `koyo termd` subcommand; later `koyo mcp`, the settings page and
                       launching agents with the relay injected
 ```
@@ -1428,7 +1431,7 @@ crates/koyo        wires TerminalView into tabs (`terminals.rs`); the
 
 ## 12. Testing strategy [proposed]
 
-- `crates/termd` integration tests: start a daemon in a temp dir under the checkout
+- `koyo-rs/koyo-termd` integration tests: start a daemon in a temp dir under the checkout
   (`.superpowers/test-home/`), open a terminal running a tiny fixture program (`printf`
   loops, a program that emits OSC 133/9/7501 sequences, a program that reads input), attach
   two clients, assert: output offsets are contiguous, attach replays a snapshot equal to the
@@ -1442,15 +1445,15 @@ crates/koyo        wires TerminalView into tabs (`terminals.rs`); the
   `crates/monocode-mcp/tests/docs.rs` doing exactly this; copy the idea).
 - App: headless GPUI tests for `TerminalElement` layout (grid size from bounds, cell-pinned
   glyph positions, wide-cell handling), visual checks via the existing `visual-check` feature,
-  bench scenarios in `crates/bench` (typing latency, `cat` throughput, idle CPU).
+  bench scenarios in `koyo-rs/koyo-bench` (typing latency, `cat` throughput, idle CPU).
 - Real-surface QA with `agent-terminal`/`agent-tui` driving Claude Code inside a Koyo
   terminal, and with the MCP from a real Claude Code session in a worktree.
 
-**As implemented (M5):** `crates/termd/tests/daemon/` runs the daemon end to end (attach,
-snapshots, catch-up, control, status, logs, persistence, upgrade); `term-control/tests`
+**As implemented (M5):** `koyo-rs/koyo-termd/tests/daemon/` runs the daemon end to end (attach,
+snapshots, catch-up, control, status, logs, persistence, upgrade); `koyo-term-control/tests`
 round-trips the frames; the app's `--visual-check-terminal` drives the window (typing,
 keys, selection, scrollback, full screen, resize, control and takeover, the activity
-panel, agents' tabs, Stop, deleting a worktree, restart and upgrade); `crates/bench` times
+panel, agents' tabs, Stop, deleting a worktree, restart and upgrade); `koyo-rs/koyo-bench` times
 echo and `cat`. **Not built:** decoder fuzzing, the engine conformance corpus, MCP contract
 tests against this document's tables, and the real-surface QA from a Claude Code session
 (it writes to `~/.claude`, which needs the owner's approval). The MCP was driven by the
@@ -1579,9 +1582,9 @@ Orca CLI: `orca terminal <cmd> --help`, `orca agent-context --json` (288 command
 contains raw control characters, strip them before `jq`), `orca worktree current --json`
 (worktree `id = <repoId>::<path>`, `identity.key`, `branch` as a full ref, `displayName`).
 
-Koyo: `crates/koyo/src/{model.rs, checkouts.rs, checkout/mod.rs, native/surface.rs,
+Koyo: `koyo-rs/koyo/src/{model.rs, checkouts.rs, checkout/mod.rs, native/surface.rs,
 bottom.rs, pane.rs, shell/actions.rs, settings.rs, delete_worktree.rs}`, `script/dev`,
-`crates/bench`.
+`koyo-rs/koyo-bench`.
 
 External reference implementations: PaneFlow blog (owned frames copied under the lock),
 zeronsh/zeron PR 1006 (cell-pinned glyphs, sprite port, kitty keyboard via the encoder),

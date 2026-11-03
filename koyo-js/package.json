@@ -1,0 +1,22 @@
+{
+  "name": "koyo-js",
+  "private": true,
+  "type": "module",
+  "description": "Koyo's TypeScript: a Bun workspace of koyo-* packages, sharing one lint policy and one compiler setup.",
+  "license": "Apache-2.0",
+  "workspaces": ["koyo-*"],
+  "scripts": {
+    "typecheck": "tsc && bun run --workspaces typecheck",
+    "lint": "bun --bun eslint --max-warnings 0 ."
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@stylistic/eslint-plugin": "5.10.0",
+    "@types/bun": "1.4.4",
+    "eslint": "10.14.0",
+    "eslint-plugin-simple-import-sort": "14.0.0",
+    "eslint-plugin-unicorn": "79.0.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.1"
+  }
+}

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Pins the Zig that builds libghostty-vt (through the ghostty-vt-sys crate) into .tools, so a
 # build never depends on whatever Zig the machine has. Prints the binary's path, which
-# .cargo/config.toml gives cargo as ZIG; run it once before the first build.
+# koyo-rs/.cargo/config.toml gives cargo as ZIG; run it once before the first build.
 set -eu
 cd "$(dirname "$0")/.."
 

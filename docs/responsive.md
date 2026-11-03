@@ -123,7 +123,7 @@ at the limit.
 ### 3.1 How it works [decided]
 
 A terminal has one size for every viewer (`docs/terminals.md` 5.4): the daemon takes the
-smallest of the control-mode clients' sizes (`termd/src/session/stream.rs`
+smallest of the control-mode clients' sizes (`koyo-termd/src/session/stream.rs`
 `settle_size`). Agents never attach; they send. So responsive mode is a size *pinned*
 in the daemon, set by the app for the person or by a relay for an agent:
 
@@ -149,7 +149,7 @@ in the daemon, set by the app for the person or by a relay for an agent:
 
 ### 3.2 The view [decided]
 
-`crates/term` `TerminalElement::prepaint` today derives `cols × rows` from its bounds and
+`koyo-rs/koyo-term` `TerminalElement::prepaint` today derives `cols × rows` from its bounds and
 the view sends them (`view/link.rs` `grid_changed`). With a pin on the record:
 
 - The element lays out the pinned grid, not its bounds', in the bounds the pane gives it
@@ -176,7 +176,7 @@ the view sends them (`view/link.rs` `grid_changed`). With a pin on the record:
 ### 3.3 UI [decided]
 
 A pinned terminal is shown as a page in responsive mode is, with the same chrome:
-`crates/koyo/src/responsive/` draws the device bar, the sunken area, the outline, the
+`koyo-rs/koyo/src/responsive/` draws the device bar, the sunken area, the outline, the
 grips and the drag label for both, so they are the same pixels. What differs is what each
 pane gives it: units (pixels, cells), presets, limits, and how content is fitted.
 
@@ -235,7 +235,7 @@ Viewport = { mode: "fill"|"responsive"|"device", device?, width, height, scale, 
 - `browser_list`'s pages gain `viewport` (`mode: "fill"` with the element's size when off),
   so reading needs no tool of its own. `browser_screenshot` captures the emulated viewport.
 
-### 4.2 `terminal_resize` (terminal catalog, `term-control/src/catalog`)
+### 4.2 `terminal_resize` (terminal catalog, `koyo-term-control/src/catalog`)
 
 `docs/terminals.md` 8.5's line, built, with unpinning:
 
@@ -303,9 +303,9 @@ Where the build differs from the sections above, or settles what they left open:
   drag as the `Resizable` trait, and the label), `browser/responsive/` (`mod.rs` fit and
   point mapping, `devices.rs`, `pane.rs`, `grips.rs` and `bar.rs` the page's side of the
   shared ones), `control/exec/browser/viewport.rs`,
-  `app-control/src/ops/browser/viewport.rs`; `termd/src/session/pin.rs`,
-  `term-control/src/exec/resize.rs`, `term/src/fit.rs`, `term/src/element/pinned.rs`,
-  `term/src/view/responsive.rs`, `koyo/src/terminals/responsive.rs` (a view round each
+  `koyo-app-control/src/ops/browser/viewport.rs`; `koyo-termd/src/session/pin.rs`,
+  `koyo-term-control/src/exec/resize.rs`, `koyo-term/src/fit.rs`, `koyo-term/src/element/pinned.rs`,
+  `koyo-term/src/view/responsive.rs`, `koyo/src/terminals/responsive.rs` (a view round each
   terminal view that draws the shared chrome while it's pinned, `responsive/frame.rs` the
   outline and grips over the grid as last laid out).
 - Browser layer: the native layer keeps top-left gravity with its contents scale set to the
@@ -360,7 +360,7 @@ Where the build differs from the sections above, or settles what they left open:
 
 A page follows a drag of its pane's edge (a split's divider, a responsive grip, the window)
 with a new layout every frame, as a Chrome window does. This is the browser host's job
-(`crates/browser-host/src/host/{sizing.rs,live.rs,live/drive.rs}`); the app keeps sending
+(`koyo-rs/koyo-browser-host/src/host/{sizing.rs,live.rs,live/drive.rs}`); the app keeps sending
 one size per frame, and says whether a drag is under way (`AppRequest::Resize { dragging }`).
 
 - Why: resizing Chromium's off-screen view restarts its capture, which first paints the
@@ -397,7 +397,7 @@ one size per frame, and says whether a drag is under way (`AppRequest::Resize { 
 - The view grows once per drag, at its start and whichever way it goes, to the largest
   display (`largest_screen`), so a fast drag never has it grow again partway.
 - The pane's edge and the page reach the screen together, as in a Chrome window
-  (`crates/koyo/src/browser/view/sized.rs`): when a page's pane changes size, the page
+  (`koyo-rs/koyo/src/browser/view/sized.rs`): when a page's pane changes size, the page
   element sends the size and waits for the page's frame at it before the window is drawn,
   handling what the host says meanwhile (`browser/host/inbox.rs`). The pages resized in one
   frame wait until the same deadline, 250 ms after the first began (`frame_deadline`), so a
@@ -405,7 +405,7 @@ one size per frame, and says whether a drag is under way (`AppRequest::Resize { 
   page dragged fast then goes at its own pace (openai.com: mostly under 50 ms, at most about
   120 ms). A page that misses five waits in a row isn't waited for until a frame catches up.
 - And GPUI presents its frames in Core Animation's transaction while any page has a native
-  view (`vendor/gpui-fast-apple`, `browser/frames.rs`), so what it draws around the page
+  view (`koyo-rs/vendor/gpui-fast-apple`, `browser/frames.rs`), so what it draws around the page
   reaches the screen in the same frame as the page's layer, not one after.
 - Measured on screen (QA app, a split dragged 600 pt in 0.1 s each way, the area under the
   page painted magenta for the test): 0 frames of ~720 showed any of it on openai.com.
@@ -413,5 +413,5 @@ one size per frame, and says whether a drag is under way (`AppRequest::Resize { 
   (120 sizes at 60 Hz): 118 frames and 118 distinct layouts in a 2 s drag, mostly 0 to
   4 px behind the drag, and the page edge to edge at the last size once it stops.
 - A daemon of another build that doesn't stop on `Shutdown` or SIGTERM within 5 s is now
-  killed with SIGKILL (`term-control/src/client.rs`, `stop_daemon`), so "Restart
-  terminals" can't hang on it (test `term-control/tests/stop.rs`).
+  killed with SIGKILL (`koyo-term-control/src/client.rs`, `stop_daemon`), so "Restart
+  terminals" can't hang on it (test `koyo-term-control/tests/stop.rs`).

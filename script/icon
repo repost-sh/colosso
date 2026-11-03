@@ -1,12 +1,12 @@
 #!/bin/sh
-# Makes the app's icon from its artwork, crates/koyo/icons/artwork.png: the shape macOS gives
+# Makes the app's icon from its artwork, koyo-rs/koyo/icons/artwork.png: the shape macOS gives
 # app icons (a rounded square on a 1024-point canvas, a shadow under it) as icon.png, which
 # the app shows in the Dock (native/icon.rs), and Koyo.icns, which bundles carry (Dioxus.toml).
 # Run it after the artwork changes; both are committed, so builds need neither Python nor this.
 set -eu
 cd "$(dirname "$0")/.."
 
-ICONS=crates/koyo/icons
+ICONS=koyo-rs/koyo/icons
 WORK=.superpowers/icon
 rm -rf "$WORK"
 mkdir -p "$WORK/Koyo.iconset"
