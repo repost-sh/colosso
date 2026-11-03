@@ -5265,6 +5265,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "koyo-daemon"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "log",
+]
+
+[[package]]
 name = "koyo-git"
 version = "0.1.0"
 dependencies = [
@@ -5326,7 +5334,7 @@ dependencies = [
  "crossbeam-channel",
  "dirs 6.0.0",
  "fastrand",
- "libc",
+ "koyo-daemon",
  "log",
  "parking_lot",
  "regex",

@@ -4,14 +4,13 @@
 //! The daemon is started on demand when none is listening.
 
 use std::collections::HashMap;
-use std::io::{self, BufRead as _, BufReader, Read as _, Write as _};
+use std::io::{self, Read as _, Write as _};
 use std::os::unix::net::UnixStream;
-use std::os::unix::process::CommandExt as _;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use crossbeam_channel::{Receiver, Sender, bounded};
 use parking_lot::Mutex;
@@ -86,7 +85,16 @@ impl Connection {
         hello: &Hello,
         inbox: Sender<Message>,
     ) -> Result<(Arc<Connection>, Welcome), ClientError> {
-        let mut stream = UnixStream::connect(socket)?;
+        Connection::over(UnixStream::connect(socket)?, hello, inbox)
+    }
+
+    /// Says hello over `stream`, connected to the daemon, and starts the reader thread, as
+    /// `connect` does.
+    fn over(
+        mut stream: UnixStream,
+        hello: &Hello,
+        inbox: Sender<Message>,
+    ) -> Result<(Arc<Connection>, Welcome), ClientError> {
         let mut out = Vec::new();
         Message::Hello(hello.clone()).encode(&mut out)?;
         stream.write_all(&out)?;
@@ -137,20 +145,8 @@ impl Connection {
         hello: &Hello,
         inbox: Sender<Message>,
     ) -> Result<(Arc<Connection>, Welcome), ClientError> {
-        match Connection::connect(&dir.socket(), hello, inbox.clone()) {
-            Err(ClientError::Io(error)) if not_running(&error) => {}
-            other => return other,
-        }
-        std::fs::create_dir_all(dir.root())?;
-        // Only one client starts a daemon; the others find it once the lock is released.
-        let lock = std::fs::File::create(dir.start_lock())?;
-        lock.lock()?;
-        match Connection::connect(&dir.socket(), hello, inbox.clone()) {
-            Err(ClientError::Io(error)) if not_running(&error) => {}
-            other => return other,
-        }
-        start_daemon(dir, daemon)?;
-        Connection::connect(&dir.socket(), hello, inbox)
+        let stream = koyo_daemon::connect_or_start(&dir.daemon(), || daemon.command())?;
+        Connection::over(stream, hello, inbox)
     }
 
     /// Sends a request and waits for its answer.
@@ -243,13 +239,6 @@ impl Connection {
     }
 }
 
-fn not_running(error: &io::Error) -> bool {
-    matches!(
-        error.kind(),
-        io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused
-    )
-}
-
 /// How to start the daemon: a program and the arguments that come before `--dir`. The app
 /// runs itself as `koyo termd`; the command line and the tests run `koyo-termd`.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -266,109 +255,31 @@ impl DaemonCommand {
             args: Vec::new(),
         }
     }
-}
 
-/// Starts the daemon detached, its log in its folder, and waits for it to listen.
-pub fn start_daemon(dir: &TermDir, daemon: &DaemonCommand) -> io::Result<()> {
-    let log = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(dir.log())?;
-    let mut child = Command::new(&daemon.program)
-        .args(&daemon.args)
-        .arg("--dir")
-        .arg(dir.root())
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(log)
-        .process_group(0)
-        .spawn()?;
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| io::Error::other("the daemon's stdout wasn't captured"))?;
-    let mut line = String::new();
-    BufReader::new(stdout).read_line(&mut line)?;
-    if !line.starts_with("ready") {
-        return Err(io::Error::other(format!(
-            "the daemon didn't start; see {}",
-            dir.log().display()
-        )));
+    /// The command that runs it, to which starting it adds `--dir`.
+    pub fn command(&self) -> Command {
+        let mut command = Command::new(&self.program);
+        command.args(&self.args);
+        command
     }
-    Ok(())
 }
-
-/// How long a daemon told to stop may take to stop listening before it's killed.
-const STOP_WAIT: Duration = Duration::from_secs(5);
-/// How long a killed daemon may take to let go of its socket.
-const KILL_WAIT: Duration = Duration::from_secs(5);
 
 /// Stops the daemon in `dir` so another build's can start in its place (`docs/terminals.md`
-/// 5.1): asked to shut down when it takes `hello`, else sent SIGTERM through the pid its
-/// lock holds, and only while the lock is held, so a pid a daemon gone left there is never
-/// signalled. A daemon still listening after [`STOP_WAIT`] is killed, the same way: its
-/// programs end either way, and an old build that doesn't stop would keep the person's
-/// terminals from ever coming back. Returns once nothing listens in `dir`; nothing listening
-/// is nothing to do.
+/// 5.1): asked to shut down when it takes `hello`, else signalled, then killed if it doesn't
+/// stop (`koyo_daemon::stop`). Returns once nothing listens in `dir`.
 pub fn stop_daemon(dir: &TermDir, hello: &Hello) -> Result<(), ClientError> {
-    let (tx, _inbox) = inbox();
-    match Connection::connect(&dir.socket(), hello, tx) {
-        Ok((connection, _)) => match connection.request(RequestBody::Shutdown) {
-            // It may hang up before it answers.
-            Ok(_) | Err(ClientError::Closed) => {}
-            Err(error) => return Err(error),
-        },
-        Err(ClientError::Io(error)) if not_running(&error) => return Ok(()),
-        // Another protocol refuses the hello; only the signal reaches it.
-        Err(_) => signal(dir, libc::SIGTERM)?,
-    }
-    if stopped_within(dir, STOP_WAIT) {
-        return Ok(());
-    }
-    log::warn!(
-        "the terminal daemon in {} didn't stop when asked; killing it",
-        dir.root().display()
-    );
-    signal(dir, libc::SIGKILL)?;
-    if stopped_within(dir, KILL_WAIT) {
-        Ok(())
-    } else {
-        Err(ClientError::Timeout)
-    }
-}
-
-/// Whether nothing listens in `dir` within `wait`.
-fn stopped_within(dir: &TermDir, wait: Duration) -> bool {
-    let until = Instant::now() + wait;
-    while UnixStream::connect(dir.socket()).is_ok() {
-        if Instant::now() >= until {
-            return false;
-        }
-        std::thread::park_timeout(Duration::from_millis(50));
-    }
-    true
-}
-
-/// Sends `signal` to the daemon whose pid `dir`'s lock holds, if one still holds it.
-fn signal(dir: &TermDir, signal: libc::c_int) -> io::Result<()> {
-    let mut lock = std::fs::File::open(dir.lock())?;
-    match lock.try_lock() {
-        // No daemon holds it, so the pid in it is stale.
-        Ok(()) => return Ok(()),
-        Err(std::fs::TryLockError::WouldBlock) => {}
-        Err(std::fs::TryLockError::Error(error)) => return Err(error),
-    }
-    let mut pid = String::new();
-    lock.read_to_string(&mut pid)?;
-    let pid: libc::pid_t = pid.trim().parse().map_err(|error| {
-        io::Error::other(format!("{} holds no pid: {error}", dir.lock().display()))
-    })?;
-    // SAFETY: `kill` takes a pid and a signal number, and borrows nothing.
-    if unsafe { libc::kill(pid, signal) } == 0 {
-        Ok(())
-    } else {
-        Err(io::Error::last_os_error())
-    }
+    let ask = |stream| {
+        let (tx, _inbox) = inbox();
+        // Another protocol refuses the hello; only the signal reaches it. A daemon that
+        // took the request may hang up before it answers.
+        Connection::over(stream, hello, tx).is_ok_and(|(connection, _)| {
+            matches!(
+                connection.request(RequestBody::Shutdown),
+                Ok(_) | Err(ClientError::Closed)
+            )
+        })
+    };
+    Ok(koyo_daemon::stop(&dir.daemon(), ask)?)
 }
 
 /// An inbox and its receiving end, for `Connection::connect`.
