@@ -12,8 +12,6 @@
 //!   cargo run -p colosso --features visual-check -- --visual-check-browser
 //! ```
 
-use std::io::{Read as _, Write as _};
-use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
@@ -31,7 +29,9 @@ use crate::shell::Shell;
 use crate::theme::{UseDarkTheme, UseLightTheme};
 use crate::visual::{Drawn, Result};
 
+mod agent;
 mod play;
+mod serve;
 
 /// Where the pictures go, relative to the checkout.
 const OUT: &str = ".superpowers/qa/browser";
@@ -48,7 +48,7 @@ pub fn run() -> ExitCode {
 }
 
 fn draw() -> Result<Vec<String>> {
-    let port = serve()?;
+    let port = serve::serve()?;
     let out = crate::visual::out_dir(OUT)?;
     let drawn = Drawn::open_on_checkout(OUT, &[])?;
     let mut check = Check {
@@ -67,6 +67,7 @@ fn draw() -> Result<Vec<String>> {
     check.find_and_zoom(&page)?;
     check.devtools(&page)?;
     check.play(&page, port)?;
+    check.agent(port)?;
     check.settings()?;
     let browsers = check.drawn.cx.update(Browsers::global);
     let stopped = (check.drawn.cx).update(|cx| browsers.update(cx, |browsers, _| browsers.stop()));
@@ -353,6 +354,16 @@ fn fits(view: &BrowserView) -> bool {
 
 /// The window drawn, with each of `pages`' last frames laid where the page shows.
 fn picture(drawn: &mut Drawn, pages: &[&Entity<BrowserView>]) -> Result<RgbaImage> {
+    picture_on(drawn, pages, None)
+}
+
+/// [`picture`], the pages laid where the window shows `backdrop`, or else the colour at
+/// their bottom left corner.
+fn picture_on(
+    drawn: &mut Drawn,
+    pages: &[&Entity<BrowserView>],
+    backdrop: Option<[u8; 4]>,
+) -> Result<RgbaImage> {
     drawn.draw()?;
     let window = drawn.window;
     let mut image = (drawn.cx.capture_screenshot(window)).map_err(|error| error.to_string())?;
@@ -370,16 +381,22 @@ fn picture(drawn: &mut Drawn, pages: &[&Entity<BrowserView>]) -> Result<RgbaImag
             view.frame.clone().map(|frame| (frame, view.origin))
         });
         if let Some((frame, origin)) = shown {
-            lay(&mut image, &frame, origin, scale);
+            lay(&mut image, &frame, origin, scale, backdrop);
         }
     }
     Ok(image)
 }
 
 /// Copies `frame`'s page into `image` at `origin`, in the image's pixels, wherever the
-/// window shows the page's backdrop: what the window draws over the page, among its overlays,
-/// stays over it, as on screen.
-fn lay(image: &mut RgbaImage, frame: &Frame, origin: Point<Pixels>, scale: f32) {
+/// window shows the page's backdrop, `backdrop` or the colour at its bottom left corner:
+/// what the window draws over the page, among its overlays, stays over it, as on screen.
+fn lay(
+    image: &mut RgbaImage,
+    frame: &Frame,
+    origin: Point<Pixels>,
+    scale: f32,
+    backdrop: Option<[u8; 4]>,
+) {
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
@@ -397,7 +414,7 @@ fn lay(image: &mut RgbaImage, frame: &Frame, origin: Point<Pixels>, scale: f32) 
         return;
     };
     // The page's bottom left corner, where nothing's drawn over it.
-    let backdrop = image.get_pixel(left.min(last_x), last_y).0;
+    let backdrop = backdrop.unwrap_or(image.get_pixel(left.min(last_x), last_y).0);
     let surface = &frame.surface;
     let row = surface.bytes_per_row();
     // SAFETY: the surface is locked read-only while its rows are read, within the page's
@@ -422,74 +439,4 @@ fn lay(image: &mut RgbaImage, frame: &Frame, origin: Point<Pixels>, scale: f32) 
         }
         surface.unlock(IOSurfaceLockOptions::ReadOnly, std::ptr::null_mut());
     }
-}
-
-/// Serves the check's pages on a local port: a first one whose picture comes late, with a
-/// link to a second.
-fn serve() -> Result<u16> {
-    let listener = TcpListener::bind("127.0.0.1:0").map_err(|error| error.to_string())?;
-    let port = listener
-        .local_addr()
-        .map_err(|error| error.to_string())?
-        .port();
-    std::thread::spawn(move || {
-        for stream in listener.incoming().flatten() {
-            std::thread::spawn(move || answer(stream));
-        }
-    });
-    Ok(port)
-}
-
-const FIRST: &str = "<!doctype html><title>First page</title><style>\
-    body{font:16px -apple-system,sans-serif;margin:0;padding:32px 40px;color:#1d1d1f}\
-    h1{font-size:28px;margin:0 0 12px}p{max-width:620px;line-height:1.5}\
-    a{position:absolute;left:40px;top:220px;font-size:20px}\
-    input{position:absolute;left:40px;top:270px;font-size:16px;padding:6px 10px;width:280px}\
-    img{position:absolute;left:40px;top:330px}</style>\
-    <h1>A page served for the browser check</h1>\
-    <p>This pane runs Chromium in an engine of its own. Find has a few matches here: \
-    browser, browser and browser.</p><a href=/second>Go to the second page</a>\
-    <input placeholder='Type here'><img src=/late.svg width=320 height=120>";
-
-const SECOND: &str = "<!doctype html><title>Second page</title>\
-    <body style='font:16px -apple-system,sans-serif;padding:32px 40px'>\
-    <h1>The second page</h1><p>Reached by a click on the first page's link.</p>";
-
-const LATE: &str = "<svg xmlns='http://www.w3.org/2000/svg' width='320' height='120'>\
-    <rect width='320' height='120' rx='14' fill='#5e5ce6'/></svg>";
-
-fn answer(mut stream: TcpStream) {
-    let mut head = Vec::new();
-    let mut chunk = [0u8; 4096];
-    while !head.windows(4).any(|w| w == b"\r\n\r\n") {
-        match stream.read(&mut chunk) {
-            Ok(0) | Err(_) => return,
-            Ok(n) => head.extend_from_slice(&chunk[..n]),
-        }
-    }
-    let head = String::from_utf8_lossy(&head);
-    let (kind, body) = match head.split_whitespace().nth(1).unwrap_or("/") {
-        "/first" => ("text/html", FIRST),
-        "/second" => ("text/html", SECOND),
-        "/play" => ("text/html", play::PLAY),
-        "/late.svg" => {
-            late(Duration::from_millis(2500));
-            ("image/svg+xml", LATE)
-        }
-        _ => ("text/plain", ""),
-    };
-    let _ = write!(
-        stream,
-        "HTTP/1.1 200 OK\r\nContent-Type: {kind}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n{body}",
-        body.len()
-    );
-}
-
-/// Holds the answer back, so the page is caught loading.
-#[expect(
-    clippy::disallowed_methods,
-    reason = "a server thread of the check's own, late on purpose"
-)]
-fn late(by: Duration) {
-    std::thread::sleep(by);
 }

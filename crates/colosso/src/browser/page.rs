@@ -13,6 +13,7 @@ use gpui_kit::{
 
 use super::frames::Shown;
 use super::input::{self, cursor_style};
+use super::pointer;
 use super::responsive::Grip;
 use super::toolbar;
 use super::view::BrowserView;
@@ -256,7 +257,7 @@ impl BrowserView {
     /// hand.
     pub(super) fn page_element(
         &mut self,
-        window: &Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
         let p = theme::palette(cx);
@@ -268,7 +269,9 @@ impl BrowserView {
         // a blank white one; DevTools keep it.
         let blank = self.frame.is_none() || inspector;
         let overlay = toolbar::overlay(self, &status, cx);
-        let bar = toolbar::control_bar(self, cx);
+        let bar = toolbar::control_bar(self, window, cx);
+        // Under the bar, which names the agent the marks show at work.
+        let marks = pointer::overlay(self, window, cx);
         let page = div()
             .id(ElementId::NamedInteger("browser-page".into(), self.pane))
             .key_context("BrowserPage")
@@ -289,6 +292,7 @@ impl BrowserView {
                 palette: p,
             })
             .when(start, |page| page.child(toolbar::start_page(p)))
+            .children(marks)
             .children(bar)
             .children(overlay)
             .children(self.responsive.mode.as_ref().and_then(|mode| {

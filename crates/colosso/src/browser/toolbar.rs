@@ -6,10 +6,11 @@ use colosso_browser_ipc::{Go, PageState};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::input::Input;
 use gpui_kit::component::native_menu::NativeMenu;
-use gpui_kit::component::{Disableable as _, Selectable as _, Sizable as _};
+use gpui_kit::component::{ActiveTheme as _, Disableable as _, Selectable as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, ClickEvent, Context, Div, Focusable as _, FontWeight, InteractiveElement as _,
+    AnyElement, App, ClickEvent, Context, Div, ElementId, Focusable as _, FontWeight,
+    InteractiveElement as _,
     IntoElement, MouseButton, MouseDownEvent, ParentElement as _, StatefulInteractiveElement as _,
     Styled as _, Window, deferred, div, px, relative,
 };
@@ -18,6 +19,7 @@ use super::control::{Holder, Mode};
 use super::host::HostStatus;
 use super::menu::Lease;
 use super::view::{BrowserView, Notice};
+use crate::native::liquid;
 use crate::responsive::bar::toggle_button;
 use crate::shell::{icon, icon_button};
 use crate::theme::{self, Palette};
@@ -208,28 +210,48 @@ fn chip(view: &BrowserView, p: Palette) -> impl IntoElement {
 
 /// The bar at the bottom of the page while it's contested: an agent using it, with the
 /// person's way to take it; or the person having taken it from an agent, with the way to
-/// give it back.
-pub(super) fn control_bar(view: &BrowserView, cx: &mut Context<BrowserView>) -> Option<AnyElement> {
+/// give it back. Liquid Glass where the system has it.
+pub(super) fn control_bar(
+    view: &BrowserView,
+    window: &mut Window,
+    cx: &mut Context<BrowserView>,
+) -> Option<AnyElement> {
     let p = theme::palette(cx);
-    if let Some(agent) = view.control.agent() {
+    let (text, id, label, on_click): (_, _, _, OnClick) = if let Some(agent) = view.control.agent() {
         let take = cx.listener(|this, _: &ClickEvent, _, cx| this.person_acts(Mode::Explicit, cx));
-        return Some(bar(
-            format!("{} is using this tab", agent.label),
-            bar_button("browser-take-control", "Take control", p).on_click(take),
-            p,
-        ));
-    }
-    let displaced = view.control.displaced.as_ref()?;
-    let give_back = cx.listener(|this, _: &ClickEvent, _, cx| this.give_back(cx));
-    Some(bar(
-        format!("You took over this tab from {}", displaced.label),
-        bar_button("browser-give-back", "Give back", p).on_click(give_back),
-        p,
-    ))
-}
-
-/// Among the window's overlays, as the page's native layer hides what's drawn under it.
-fn bar(text: String, button: impl IntoElement, p: Palette) -> AnyElement {
+        let text = format!("{} is using this tab", agent.label);
+        (text, "browser-take-control", "Take control", Box::new(take))
+    } else {
+        let displaced = view.control.displaced.as_ref()?;
+        let give_back = cx.listener(|this, _: &ClickEvent, _, cx| this.give_back(cx));
+        let text = format!("You took over this tab from {}", displaced.label);
+        (text, "browser-give-back", "Give back", Box::new(give_back))
+    };
+    let id_glass = ElementId::NamedInteger("browser-control-glass".into(), view.pane);
+    let glass = liquid::backdrop(id_glass, px(999.), cx.theme().mode.is_dark(), window, cx);
+    let button = bar_button(id, label, glass.is_some(), p).on_click(on_click);
+    let pill = div()
+        .relative()
+        .flex()
+        .items_center()
+        .gap_2()
+        .max_w(px(560.))
+        .pl_3()
+        .pr(px(5.))
+        .py(px(5.))
+        .rounded_full()
+        .occlude()
+        .text_xs()
+        .text_color(p.text);
+    let pill = match glass {
+        Some(glass) => pill.child(glass),
+        None => pill
+            .bg(p.floating())
+            .border_1()
+            .border_color(p.hairline)
+            .shadow_md(),
+    };
+    // Among the window's overlays, as the page's native layer hides what's drawn under it.
     let bar = div()
         .absolute()
         .bottom(px(14.))
@@ -237,30 +259,22 @@ fn bar(text: String, button: impl IntoElement, p: Palette) -> AnyElement {
         .right_0()
         .flex()
         .justify_center()
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap_2()
-                .max_w(px(560.))
-                .pl_3()
-                .pr(px(5.))
-                .py(px(5.))
-                .rounded_full()
-                .bg(p.floating())
-                .border_1()
-                .border_color(p.hairline)
-                .shadow_md()
-                .occlude()
-                .text_xs()
-                .text_color(p.text)
-                .child(div().truncate().child(text))
-                .child(button),
-        );
-    deferred(bar).into_any_element()
+        .child(pill.child(div().truncate().child(text)).child(button));
+    Some(deferred(bar).into_any_element())
 }
 
-fn bar_button(id: &'static str, label: &'static str, p: Palette) -> gpui_kit::Stateful<Div> {
+/// The bar's button: a tint of the text's colour on glass, a raised fill on the bar's own.
+fn bar_button(
+    id: &'static str,
+    label: &'static str,
+    on_glass: bool,
+    p: Palette,
+) -> gpui_kit::Stateful<Div> {
+    let (fill, hovered) = if on_glass {
+        (p.text.opacity(0.08), p.text.opacity(0.14))
+    } else {
+        (p.raised, p.hover)
+    };
     div()
         .id(id)
         .px_2()
@@ -268,8 +282,8 @@ fn bar_button(id: &'static str, label: &'static str, p: Palette) -> gpui_kit::St
         .rounded_full()
         .cursor_pointer()
         .font_weight(FontWeight::MEDIUM)
-        .bg(p.raised)
-        .hover(|button| button.bg(p.hover))
+        .bg(fill)
+        .hover(move |button| button.bg(hovered))
         .child(label)
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
 }
@@ -329,7 +343,7 @@ pub(super) fn overlay(
                     .child(message),
             )
             .children(action.map(|(label, on_click)| {
-                bar_button("browser-notice-action", label, p)
+                bar_button("browser-notice-action", label, false, p)
                     .text_sm()
                     .text_color(p.text)
                     .on_click(on_click)
