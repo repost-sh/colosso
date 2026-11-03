@@ -8,7 +8,7 @@ use super::{progress, smooth};
 const GLOW_FADE: Duration = Duration::from_millis(450);
 
 /// The glow round a page an agent holds: how much of it shows, as it comes and goes.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Glow {
     on: bool,
     /// When it last changed, and how much showed then.
@@ -25,12 +25,14 @@ impl Glow {
         from + (to - from) * smooth(progress(since, GLOW_FADE, now))
     }
 
-    /// An agent holds the page from `now`, or no longer does.
-    pub fn set(&mut self, on: bool, now: Instant) {
-        if on != self.on {
+    /// An agent holds the page from `now`, or no longer does. Answers whether that's a change.
+    pub fn set(&mut self, on: bool, now: Instant) -> bool {
+        let changes = on != self.on;
+        if changes {
             let from = self.level(now);
             (self.on, self.changed) = (on, Some((now, from)));
         }
+        changes
     }
 
     /// Whether it's coming or going at `now`.

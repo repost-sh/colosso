@@ -5,8 +5,8 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 use gpui_kit::{
-    AnyWindowHandle, App, Bounds, DevicePixels, DispatchEventResult, Pixels, PlatformInput,
-    PlatformSurfaceAttachment, Size, Window, WindowCompositionSurface,
+    AnyWindowHandle, App, Bounds, DevicePixels, DispatchEventResult, ElementId, Entity, Pixels,
+    PlatformInput, PlatformSurfaceAttachment, Size, Window, WindowCompositionSurface,
 };
 use objc2::Message as _;
 use objc2::rc::Retained;
@@ -169,4 +169,32 @@ impl Surface {
             drop(surface);
         });
     }
+}
+
+/// What holds a native view in a surface of its own, given up when the view goes.
+pub trait Hosted: 'static {
+    fn into_surface(self) -> Surface;
+}
+
+/// A native view an element keeps under one id for as long as it's drawn: made by `make`
+/// the frame it first shows, none where `make` makes none, and its surface taken out of the
+/// window the frame it isn't drawn.
+pub struct Kept<T>(pub Option<T>);
+
+/// The native view kept under `id`, made by `make` the frame it first shows.
+pub fn keep<T: Hosted>(
+    id: impl Into<ElementId>,
+    window: &mut Window,
+    cx: &mut App,
+    make: impl FnOnce(&Window) -> Option<T>,
+) -> Entity<Kept<T>> {
+    window.use_keyed_state(id.into(), cx, |window, cx| {
+        cx.on_release(|kept: &mut Kept<T>, cx| {
+            if let Some(native) = kept.0.take() {
+                native.into_surface().remove(cx);
+            }
+        })
+        .detach();
+        Kept(make(window))
+    })
 }

@@ -12,8 +12,7 @@ use std::cell::Cell;
 use std::sync::Once;
 
 use gpui_kit::{
-    AnyElement, App, Bounds, Context, ElementId, IntoElement as _, Pixels, Styled as _, Window,
-    canvas,
+    AnyElement, App, Bounds, ElementId, IntoElement as _, Pixels, Styled as _, Window, canvas,
 };
 use objc2::rc::Retained;
 use objc2::runtime::{AnyClass, NSObjectProtocol as _};
@@ -23,7 +22,7 @@ use objc2_app_kit::{
     NSAppearanceNameDarkAqua, NSGlassEffectView,
 };
 
-use super::surface::Surface;
+use super::surface::{self, Hosted, Surface};
 
 /// Glass to put behind the element it's a child of, filling it, its corners `radius` round
 /// (at most half its height) and dark or light as `dark` says; none where there's no glass.
@@ -36,8 +35,15 @@ pub fn backdrop(
     window: &mut Window,
     cx: &mut App,
 ) -> Option<AnyElement> {
-    let pane = window.use_keyed_state(id.into(), cx, Pane::new);
-    pane.read(cx).native.as_ref()?;
+    let pane = surface::keep(id, window, cx, |window| {
+        Native::new(window)
+            .inspect_err(|why| {
+                static SAID: Once = Once::new();
+                SAID.call_once(|| log::info!("no Liquid Glass behind the app's bars: {why}"));
+            })
+            .ok()
+    });
+    pane.read(cx).0.as_ref()?;
     // Placed as it's painted, not prepainted: GPUI stacks a native surface on the side of
     // its overlays its element is prepainted on (gpui-fast's `begin_base` ends the prepaint
     // that tells), so placed from a deferred element's prepaint the glass would cover what's
@@ -47,7 +53,7 @@ pub fn backdrop(
         move |bounds, (), window, cx| {
             let clip = window.content_mask().bounds;
             pane.update(cx, |pane, _| {
-                if let Some(native) = &pane.native {
+                if let Some(native) = &pane.0 {
                     native.place(bounds, clip, radius, dark, window);
                 }
             });
@@ -60,10 +66,6 @@ pub fn backdrop(
     Some(glass.into_any_element())
 }
 
-struct Pane {
-    native: Option<Native>,
-}
-
 struct Native {
     surface: Surface,
     view: Retained<NSGlassEffectView>,
@@ -72,21 +74,9 @@ struct Native {
     dark: Cell<Option<bool>>,
 }
 
-impl Pane {
-    fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let native = Native::new(window)
-            .inspect_err(|why| {
-                static SAID: Once = Once::new();
-                SAID.call_once(|| log::info!("no Liquid Glass behind the app's bars: {why}"));
-            })
-            .ok();
-        cx.on_release(|pane: &mut Self, cx| {
-            if let Some(native) = pane.native.take() {
-                native.surface.remove(cx);
-            }
-        })
-        .detach();
-        Pane { native }
+impl Hosted for Native {
+    fn into_surface(self) -> Surface {
+        self.surface
     }
 }
 

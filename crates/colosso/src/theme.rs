@@ -15,6 +15,7 @@ use crate::settings;
 use crate::shell::action_button;
 
 mod accent;
+pub mod card;
 #[cfg(target_os = "macos")]
 mod system_accent;
 #[cfg(feature = "visual-check")]

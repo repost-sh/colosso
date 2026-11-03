@@ -3,10 +3,11 @@
 //! composition stacks over the page and under the card. So a card is frosted as the app's
 //! menus are. In a window that can't host a native view the cards stay opaque.
 
+use std::cell::Cell;
 use std::sync::Once;
 
 use gpui_kit::component::input::{PopoverBackdrop, set_popover_backdrop};
-use gpui_kit::{App, Bounds, Context, ElementId, Entity, Pixels, Window};
+use gpui_kit::{App, Bounds, ElementId, Entity, Pixels, Window};
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, Bool};
 use objc2::{MainThreadMarker, msg_send};
@@ -14,7 +15,7 @@ use objc2_app_kit::{
     NSVisualEffectBlendingMode, NSVisualEffectMaterial, NSVisualEffectState, NSVisualEffectView,
 };
 
-use super::surface::Surface;
+use super::surface::{self, Hosted, Kept, Surface};
 
 pub fn init(cx: &mut App) {
     set_popover_backdrop(Glass, cx);
@@ -24,57 +25,42 @@ struct Glass;
 
 impl PopoverBackdrop for Glass {
     fn shows(&self, window: &mut Window, cx: &mut App) -> bool {
-        pane(window, cx).read(cx).native.is_some()
+        pane(window, cx).read(cx).0.is_some()
     }
 
     fn place(&self, bounds: Bounds<Pixels>, radius: Pixels, window: &mut Window, cx: &mut App) {
-        pane(window, cx).update(cx, |pane, _| {
-            let Some(native) = &pane.native else {
-                return;
-            };
-            if pane.radius.replace(radius) != Some(radius) {
+        if let Some(native) = &pane(window, cx).read(cx).0 {
+            if native.radius.replace(Some(radius)) != Some(radius) {
                 native.round(radius);
             }
             native.surface.place(bounds, bounds, window);
-        });
+        }
     }
 }
 
 /// The glass behind the card being drawn, kept as long as the card is: made the frame it
 /// first shows, and taken out of the window the frame it doesn't.
-fn pane(window: &mut Window, cx: &mut App) -> Entity<Pane> {
-    window.use_keyed_state(ElementId::Name("popover-glass".into()), cx, Pane::new)
-}
-
-struct Pane {
-    native: Option<Native>,
-    /// The corners the glass was last given.
-    radius: Option<Pixels>,
+fn pane(window: &mut Window, cx: &mut App) -> Entity<Kept<Native>> {
+    surface::keep(ElementId::Name("popover-glass".into()), window, cx, |window| {
+        Native::new(window)
+            .inspect_err(|why| {
+                static SAID: Once = Once::new();
+                SAID.call_once(|| log::info!("the editor's cards stay opaque: {why}"));
+            })
+            .ok()
+    })
 }
 
 struct Native {
     surface: Surface,
     view: Retained<NSVisualEffectView>,
+    /// The corners the glass was last given.
+    radius: Cell<Option<Pixels>>,
 }
 
-impl Pane {
-    fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let native = Native::new(window)
-            .inspect_err(|why| {
-                static SAID: Once = Once::new();
-                SAID.call_once(|| log::info!("the editor's cards stay opaque: {why}"));
-            })
-            .ok();
-        cx.on_release(|pane: &mut Self, cx| {
-            if let Some(native) = pane.native.take() {
-                native.surface.remove(cx);
-            }
-        })
-        .detach();
-        Pane {
-            native,
-            radius: None,
-        }
+impl Hosted for Native {
+    fn into_surface(self) -> Surface {
+        self.surface
     }
 }
 
@@ -87,7 +73,11 @@ impl Native {
         view.setState(NSVisualEffectState::Active);
         view.setWantsLayer(true);
         let surface = Surface::new(window, &view)?;
-        Ok(Native { surface, view })
+        Ok(Native {
+            surface,
+            view,
+            radius: Cell::new(None),
+        })
     }
 
     /// Rounds the blur's corners to the card's.

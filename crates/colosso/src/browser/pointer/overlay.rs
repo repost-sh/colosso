@@ -1,9 +1,9 @@
 //! What an agent's work looks like over its page: a glow inside the page's edges while it
 //! holds the page, and its pointer, a navigation arrow riding its arcs, with the ring its
-//! clicks send out. The glow is drawn among the window's overlays, as the page's native
-//! layer hides what's under it. The pointer is in the page's own view (`native.rs`), moved
-//! at the display's rate whatever the app is doing; drawn here only where the page has no
-//! native view. Nothing in it takes the pointer.
+//! clicks send out. They're in the page's own view (`native.rs`), moved and faded at the
+//! display's rate whatever the app is doing; drawn here, among the window's overlays, as the
+//! page's native layer hides what's under it, only where the page has no native view or no
+//! display link. Nothing in them takes the pointer.
 
 use std::time::{Duration, Instant};
 
@@ -13,7 +13,11 @@ use gpui_kit::{
     point, px, quad, size, transparent_black,
 };
 
+use objc2::rc::Retained;
+use objc2_app_kit::NSView;
+
 use super::native::Native;
+use crate::browser::responsive::to_window;
 use super::{Glow, Next, Pointer, Shot};
 use crate::browser::view::BrowserView;
 use crate::gradient;
@@ -30,6 +34,11 @@ pub(super) const RIM: (f32, f32) = (4.5, 0.96);
 pub(super) const BODY: f32 = 0.06;
 /// The ring a click sends out: how wide it's stroked, and how much of the tint it shows.
 pub(super) const RING: (f32, f32) = (1.25, 0.55);
+/// The glow inside the page's edges, gone some 30 px in: how much of the tint each of its
+/// shadows shows and how blurred it is, GPUI's way, from a soft one to a tight bright one.
+pub(super) const GLOW: [(f32, f32); 3] = [(0.6, 16.), (0.42, 6.), (0.5, 2.)];
+/// How much of the tint the hairline at the page's edge shows.
+pub(super) const HAIRLINE: f32 = 0.45;
 
 /// A page's agent marks: its pointer, its glow, the pointer's layers in the page's view, and
 /// the wake-up for the pointer's fade.
@@ -69,11 +78,13 @@ impl BrowserView {
         cx.notify();
     }
 
-    /// Hands the pointer, as it is now, to its layers in the page's view.
+    /// Hands the pointer and the glow, as they are now, to their layers in the page's view.
     fn show_pointer(&mut self, cx: &App) {
-        let (pointer, fit, tint) = (self.marks.pointer.clone(), self.fit(), rgb(tint(cx)));
+        let (pointer, glow) = (self.marks.pointer.clone(), self.marks.glow.clone());
+        let (fit, tint) = (self.fit(), rgb(tint(cx)));
         if let Some(native) = self.pointer_native(cx) {
-            native.show(&pointer, fit, tint);
+            native.follow(fit, tint);
+            native.show(&pointer, &glow);
         }
     }
 
@@ -86,13 +97,31 @@ impl BrowserView {
         }
     }
 
+    /// The view the page shows in now, if it has one.
+    fn page_view(&self, cx: &App) -> Option<Retained<NSView>> {
+        (self.shown.as_ref())
+            .and_then(gpui_kit::WeakEntity::upgrade)
+            .and_then(|shown| shown.read(cx).page_view())
+    }
+
+    /// Whether the marks show at `now` and their layers aren't in the view the page shows in
+    /// now: the page moved to another, or they were never made.
+    fn marks_moved(&self, now: Instant, cx: &App) -> bool {
+        let page = self.page_view(cx);
+        match (&self.marks.native, page) {
+            (Some(native), Some(page)) => !native.in_view(&page),
+            (Some(_), None) => true,
+            (None, Some(_)) => {
+                self.marks.glow.level(now) > 0. || self.marks.pointer.shot(now).is_some()
+            }
+            (None, None) => false,
+        }
+    }
+
     /// The pointer's layers in the view the page shows in now, made there if they're not;
     /// none where the page has no native view.
     fn pointer_native(&mut self, cx: &App) -> Option<&Native> {
-        let page = (self.shown.as_ref())
-            .and_then(gpui_kit::WeakEntity::upgrade)
-            .and_then(|shown| shown.read(cx).page_view());
-        let Some(page) = page else {
+        let Some(page) = self.page_view(cx) else {
             self.marks.native = None;
             return None;
         };
@@ -117,24 +146,30 @@ pub(in crate::browser) fn overlay(
     cx: &mut Context<BrowserView>,
 ) -> Option<AnyElement> {
     let now = Instant::now();
-    view.marks.glow.set(view.control.agent().is_some(), now);
-    if view.control.person_holds() && view.marks.pointer.dismiss(now) {
+    let glows = view.marks.glow.set(view.control.agent().is_some(), now);
+    let dismissed = view.control.person_holds() && view.marks.pointer.dismiss(now);
+    if glows || dismissed || view.marks_moved(now, cx) {
         view.show_pointer(cx);
     }
-    let fit = view.fit();
+    let (fit, accent) = (view.fit(), tint(cx));
     let marks = &mut view.marks;
-    // In the page's view, the pointer is its layers' to move and fade.
+    // In the page's view, the marks are their layers' to move and fade.
     if let Some(native) = &marks.native {
-        native.fit(fit);
+        native.follow(fit, rgb(accent));
     }
     let native = marks.native.as_ref();
-    let (glow, busy) = (marks.glow.level(now), marks.pointer.busy(now));
-    let shot = native.is_none().then(|| marks.pointer.shot(now)).flatten();
-    match marks.pointer.next(now) {
-        Next::Frame => match native {
+    let drawn = native.is_none();
+    let glow = if drawn { marks.glow.level(now) } else { 0. };
+    let busy = marks.pointer.busy(now);
+    let shot = drawn.then(|| marks.pointer.shot(now)).flatten();
+    let moving = marks.pointer.next(now);
+    if moving == Next::Frame || marks.glow.changing(now) {
+        match native {
             Some(native) => native.wake(),
             None => window.request_animation_frame(),
-        },
+        }
+    }
+    match moving {
         Next::At(at) if marks.wake.as_ref().map(|(when, _)| *when) != Some(at) => {
             let wait = at.saturating_duration_since(now);
             let task = cx.spawn(async move |this, cx| {
@@ -143,28 +178,23 @@ pub(in crate::browser) fn overlay(
             });
             marks.wake = Some((at, task));
         }
-        Next::At(_) | Next::Never => {}
-    }
-    if marks.glow.changing(now) {
-        window.request_animation_frame();
+        Next::Frame | Next::At(_) | Next::Never => {}
     }
     if glow <= 0. && shot.is_none() {
         return None;
     }
-    let accent = tint(cx);
     let page = cx.entity();
     let marks = canvas(
         |_, _, _| (),
         move |bounds, (), window, cx| {
-            let (shown, fit) = shown(&page, bounds, cx);
+            let (shown, origin, fit) = shown(&page, bounds, cx);
             if glow > 0. {
                 paint_glow(shown, accent, glow * (0.8 + 0.2 * busy), window);
             }
             if let Some(shot) = shot {
                 let mask = ContentMask { bounds: shown };
                 window.with_content_mask(Some(mask), |window| {
-                    let place =
-                        |at: Point<f32>| shown.origin + point(px(at.x * fit), px(at.y * fit));
+                    let place = |at: Point<f32>| to_window(point(px(at.x), px(at.y)), origin, fit);
                     paint_pointer(&shot, place, accent, window);
                 });
             }
@@ -177,13 +207,17 @@ pub(in crate::browser) fn overlay(
     Some(deferred(marks).into_any_element())
 }
 
-/// Where `page` shows in `area`, the element its marks are drawn in, and how much of its
-/// true size it shows at.
-fn shown(page: &Entity<BrowserView>, area: Bounds<Pixels>, cx: &App) -> (Bounds<Pixels>, f32) {
+/// Where `page` shows in `area`, the element its marks are drawn in, where its top left is,
+/// whether it shows or not, and how much of its true size it shows at.
+fn shown(
+    page: &Entity<BrowserView>,
+    area: Bounds<Pixels>,
+    cx: &App,
+) -> (Bounds<Pixels>, Point<Pixels>, f32) {
     let view = page.read(cx);
     let fit = view.fit();
     let Some(viewport) = view.viewport else {
-        return (area, fit);
+        return (area, area.origin, fit);
     };
     let laid = Bounds::new(
         view.origin,
@@ -192,7 +226,7 @@ fn shown(page: &Entity<BrowserView>, area: Bounds<Pixels>, cx: &App) -> (Bounds<
             px(viewport.height as f32 * fit),
         ),
     );
-    (laid.intersect(&area), fit)
+    (laid.intersect(&area), view.origin, fit)
 }
 
 /// The colour of the marks: the hue of the theme the person set, its first colour, kept
@@ -215,8 +249,7 @@ fn tint(cx: &App) -> Hsla {
     }
 }
 
-/// The glow inside `bounds`, `level` of it, gone some 30 px in: a soft one, a tight bright one,
-/// and a hairline at the edge.
+/// The glow inside `bounds`, `level` of it: its shadows, and a hairline at the edge.
 fn paint_glow(bounds: Bounds<Pixels>, accent: Hsla, level: f32, window: &mut Window) {
     let shadow = |alpha: f32, blur: f32| BoxShadow {
         color: accent.opacity(alpha * level),
@@ -225,14 +258,14 @@ fn paint_glow(bounds: Bounds<Pixels>, accent: Hsla, level: f32, window: &mut Win
         spread_radius: px(0.),
         inset: true,
     };
-    let shadows = [shadow(0.6, 16.), shadow(0.42, 6.), shadow(0.5, 2.)];
+    let shadows = GLOW.map(|(alpha, blur)| shadow(alpha, blur));
     window.paint_inset_shadows(bounds, Corners::default(), &shadows);
     window.paint_quad(quad(
         bounds,
         Corners::default(),
         transparent_black(),
         px(1.),
-        accent.opacity(0.45 * level),
+        accent.opacity(HAIRLINE * level),
         BorderStyle::Solid,
     ));
 }
