@@ -1,36 +1,61 @@
 #!/bin/sh
-# The terminal daemon's version is `DAEMON_VERSION` in
-# koyo-rs/koyo-term-control/src/protocol.rs.
-# An app meeting a daemon of another version has it restarted (docs/terminals.md 5.1), so a
-# change to what the daemon runs bumps it, and an update then restarts the daemon rather
-# than leave the old one serving the new app.
+# The daemons' versions: the terminal daemon's `DAEMON_VERSION` in
+# koyo-rs/koyo-term-control/src/protocol.rs, and the agent host's `HOST_VERSION` in
+# koyo-js/koyo-agent-host/src/protocol/wire.ts (docs/chat.md C9). An app meeting a daemon of
+# another version has it restarted (docs/terminals.md 5.1), so a change to what a daemon runs
+# bumps its version, and an update then restarts it rather than leave the old one serving the
+# new app.
 #
-# koyo-rs/daemon-version.txt holds the version and a fingerprint of what the daemon is built
-# from: the crates `cargo tree` resolves for it, with their versions, the sources of those in
-# this checkout (tests left out), and the toolchain and Zig they're built with. script/lint
-# fails once the two part, until one of these says which change it was:
+# koyo-rs/daemon-version.txt holds each version beside a fingerprint of what that daemon is
+# built from. The terminal daemon's: the crates `cargo tree` resolves for it, with their
+# versions, the sources of those in this checkout (tests left out), and the toolchain and Zig
+# they're built with. The host's: its sources (tests left out), the package files and bun.lock
+# of the workspace it's built in, and the Bun that compiles it. script/lint fails once a
+# version and its fingerprint part, until one of these says which change it was:
 #
-#   script/daemon-version          check (script/lint runs it)
-#   script/daemon-version bump     the daemon changed: the next version, and its sources noted
-#   script/daemon-version keep     a change a running daemon doesn't need (comments, renames,
-#                                  code only clients run): its sources noted, the same version
+#   script/daemon-version               check (script/lint runs it)
+#   script/daemon-version bump [name]   the daemon changed: the next version, its sources noted
+#   script/daemon-version keep [name]   a change a running daemon doesn't need (comments,
+#                                       renames, code only clients run): its sources noted
+#
+# `name` is `termd` or `host`; without one, each daemon whose sources changed.
 set -eu
 # It works in the Cargo workspace, by its physical path, which `cargo tree` prints too, so a
 # checkout reached through a symlink fingerprints the same as any other (see `fingerprint`).
 cd -P "$(dirname "$0")/../koyo-rs"
 
-PROTOCOL_RS=koyo-term-control/src/protocol.rs
 RECORD=daemon-version.txt
-LINE='^pub const DAEMON_VERSION: u32 = \([0-9][0-9]*\);$'
+DAEMONS="termd host"
+TERMD_SOURCE=koyo-term-control/src/protocol.rs
+TERMD_LINE='^pub const DAEMON_VERSION: u32 = \([0-9][0-9]*\);$'
+HOST_SOURCE=../koyo-js/koyo-agent-host/src/protocol/wire.ts
+HOST_LINE='^export const HOST_VERSION = \([0-9][0-9]*\);$'
+
+title() {
+  case $1 in
+    termd) echo "terminal daemon" ;;
+    host) echo "agent host" ;;
+  esac
+}
 
 version() {
-  sed -n "s/$LINE/\\1/p" "$PROTOCOL_RS"
+  case $1 in
+    termd) sed -n "s/$TERMD_LINE/\\1/p" "$TERMD_SOURCE" ;;
+    host) sed -n "s/$HOST_LINE/\\1/p" "$HOST_SOURCE" ;;
+  esac
+}
+
+set_version() {
+  case $1 in
+    termd) sed -i '' "s/$TERMD_LINE/pub const DAEMON_VERSION: u32 = $2;/" "$TERMD_SOURCE" ;;
+    host) sed -i '' "s/$HOST_LINE/export const HOST_VERSION = $2;/" "$HOST_SOURCE" ;;
+  esac
 }
 
 # One hash of the daemon's crates as resolved, and every file it's built from, by path and
 # content. Tests are left out: `tests/` folders and `tests.rs` files only tests compile.
 # Paths are relative to the workspace, so every checkout of the same sources agrees.
-fingerprint() {
+termd_fingerprint() {
   crates=$(../script/cargo tree --quiet --offline -p koyo-termd -e normal,build --prefix none |
     LC_ALL=C sort -u)
   folders=$(printf '%s\n' "$crates" | sed -n "s|.*($PWD/\(.*\))\$|\1|p")
@@ -44,36 +69,97 @@ fingerprint() {
   } | shasum -a 256 | cut -d' ' -f1
 }
 
-record() {
+# One hash of the Bun that compiles the host and every file it's compiled from, by path
+# (relative to the TypeScript workspace) and content; its tests live outside `src/`.
+host_fingerprint() {
   {
-    echo "# Written by script/daemon-version: the daemon version and its sources' fingerprint."
-    echo "$(version) $(fingerprint)"
+    echo "bun $(sed -n 's/^BUN_VERSION=//p' ../script/bun)"
+    (
+      cd ../koyo-js
+      find koyo-agent-host/src koyo-agent-host/package.json package.json bun.lock -type f |
+        LC_ALL=C sort | tr '\n' '\0' | xargs -0 shasum -a 256
+    )
+  } | shasum -a 256 | cut -d' ' -f1
+}
+
+# The daemon's line as its sources are now, and as the record has it.
+expected() {
+  echo "$1 $(version "$1") $("$1"_fingerprint)"
+}
+recorded() {
+  grep "^$1 " "$RECORD" 2>/dev/null || true
+}
+
+# The daemons whose sources changed since their version was set.
+drifted() {
+  for name in $DAEMONS; do
+    if [ "$(recorded "$name")" != "$(expected "$name")" ]; then
+      echo "$name"
+    fi
+  done
+}
+
+# The line of daemon $1 once the daemons named after it are noted: theirs as they are now,
+# the others' as the record has them.
+line() {
+  name=$1
+  shift
+  case " $* " in
+    *" $name "*) expected "$name" ;;
+    *) recorded "$name" ;;
+  esac
+}
+
+# Notes the sources of the daemons named.
+record() {
+  lines=$(for name in $DAEMONS; do line "$name" "$@"; done)
+  {
+    echo "# Written by script/daemon-version: each daemon's version and its sources' fingerprint."
+    printf '%s\n' "$lines"
   } >"$RECORD"
 }
 
-case "${1:-check}" in
+command=${1:-check}
+if [ $# -gt 0 ]; then
+  shift
+fi
+for name in "$@"; do
+  case " $DAEMONS " in
+    *" $name "*) ;;
+    *)
+      echo "There's no daemon \`$name\`; the daemons are: $DAEMONS." >&2
+      exit 2
+      ;;
+  esac
+done
+
+case $command in
   check)
-    expected="$(version) $(fingerprint)"
-    recorded="$(grep -v '^#' "$RECORD" 2>/dev/null || true)"
-    if [ "$recorded" != "$expected" ]; then
-      echo "The terminal daemon's sources changed since its version ($(version)) was set."
-      echo "  script/daemon-version bump   if a running daemon must restart for the change"
-      echo "  script/daemon-version keep   if it needn't (comments, renames, client-only code)"
+    stale=$(drifted)
+    if [ -n "$stale" ]; then
+      for name in $stale; do
+        echo "The $(title "$name")'s sources changed since version $(version "$name") was set."
+      done
+      echo "  script/daemon-version bump [name]   if a running daemon must restart for the change"
+      echo "  script/daemon-version keep [name]   if it needn't (comments, renames, clients' code)"
       exit 1
     fi
     ;;
-  bump)
-    next=$(($(version) + 1))
-    sed -i '' "s/$LINE/pub const DAEMON_VERSION: u32 = $next;/" "$PROTOCOL_RS"
-    record
-    echo "The daemon is version $next now."
-    ;;
-  keep)
-    record
-    echo "The daemon stays version $(version), its sources noted."
+  bump | keep)
+    names=${*:-$(drifted)}
+    for name in $names; do
+      if [ "$command" = bump ]; then
+        set_version "$name" $(($(version "$name") + 1))
+        echo "The $(title "$name") is version $(version "$name") now."
+      else
+        echo "The $(title "$name") stays version $(version "$name"), its sources noted."
+      fi
+    done
+    # shellcheck disable=SC2086 # one word per daemon
+    record $names
     ;;
   *)
-    echo "usage: script/daemon-version [check|bump|keep]" >&2
+    echo "usage: script/daemon-version [check | bump [termd|host] | keep [termd|host]]" >&2
     exit 2
     ;;
 esac
