@@ -671,7 +671,7 @@ The behaviours, each with the T3 adapter pitfall it carries (`t3-claude-adapter.
   driver iterates the `Query` itself, not the raw generator (1). Options:
   `pathToClaudeCodeExecutable`, `cwd`, `env` (4.2), `sessionId` or `resume`,
   `systemPrompt: {type: "preset", preset: "claude_code"}`, `includePartialMessages: true`,
-  `canUseTool`, `model`, `effort`, `permissionMode` only when the thread names one,
+  `canUseTool`, `model`, `effort`, `permissionMode` only when the spec names one (4.5.6),
   `allowDangerouslySkipPermissions` with Full access,
   `toolConfig.askUserQuestion.previewFormat: "markdown"`, `spawnClaudeCodeProcess` (4.2).
 - **Prompt identity.** Each prompt gets a fresh uuid; root frames are credited to a turn
@@ -684,16 +684,18 @@ The behaviours, each with the T3 adapter pitfall it carries (`t3-claude-adapter.
   change kind, and it guesses at one model generation's habit.
 - **Tools.** A tool item starts on the `tool_use` block or the permission request,
   whichever comes first (33), settles on its `tool_result`, using `tool_use_result` only
-  when the message has a single result (32); every open tool closes at turn end. Families:
-  Bash → command; Read → read; Edit, Write, MultiEdit, NotebookEdit → edit (with the
-  structured patch); Grep, Glob, LS → search; WebSearch, WebFetch → web; `mcp__*` → mcp;
-  Agent → agent (a `subagent` item); TodoWrite → todo (and the `todos` item); Skill → skill;
-  anything else → other. Legacy names go through `LEGACY_TOOL_NAME_ALIASES`.
+  when the message has a single result (32); the actor closes one still open when the run
+  settles (4.5). Families: Bash → command; Read → read; Edit, Write, MultiEdit, NotebookEdit
+  → edit (with the structured patch); Grep, Glob, LS → search; WebSearch, WebFetch → web;
+  `mcp__*` → mcp; Agent → agent (a `subagent` item); TodoWrite → todo (and the `todos`
+  item); Skill → skill; anything else → other. Legacy names go through
+  `LEGACY_TOOL_NAME_ALIASES`.
 - **Approvals** through `canUseTool` in every mode but Full access, and in plan mode always
-  (14, 15). The request is raced against the SDK's abort signal, checked once more after the
-  listener is added (18). Decisions: allow → `{behavior: "allow", updatedInput: input}`;
-  allow for this chat → with the SDK's suggestions rewritten to `destination: "session"`
-  (17); deny → `{behavior: "deny", message}`; cancel → deny with `interrupt: true`.
+  (14, 15). The SDK's abort signal goes with the request to the actor, which withdraws the
+  request when it fires (4.5.5); a request withdrawn or refused denies the tool (18).
+  Decisions: allow → `{behavior: "allow", updatedInput: input}`; allow for this chat → with
+  the SDK's suggestions rewritten to `destination: "session"` (17); deny → `{behavior:
+  "deny", message}`; cancel → deny with `interrupt: true`.
 - **AskUserQuestion** becomes a question; the answer allows the tool with
   `updatedInput: {questions, answers}`, answers keyed by question text, a multi-select
   joined with ", ".
@@ -707,7 +709,8 @@ The behaviours, each with the T3 adapter pitfall it carries (`t3-claude-adapter.
   `input + cache_creation + cache_read`; the context window from the result's `modelUsage`;
   the auto-compact point is the window less a 33k reserve (38).
 - **Compaction** from `status: compacting`, `compact_boundary` and `compact_result`, as one
-  `compaction` item; a `/compact` turn's result text stays on that item (39, 40).
+  `compaction` item; a turn `TurnInput.compact` marks that didn't compact shows its result
+  text as a notice (39, 40).
 - **Interrupt**: `interrupt()`, then wait for the result; the process is kept when the result
   comes (T3 closes it; keeping it saves a respawn) and closed when it doesn't (7).
 - **Errors on start**: the last lines of the CLI's stderr are kept until the first frame, so
@@ -716,7 +719,8 @@ The behaviours, each with the T3 adapter pitfall it carries (`t3-claude-adapter.
   know) are logged at debug and dropped; the driver's `switch` handles every known one, the
   default reached through a `{type: string}` view of the frame, without a cast.
 - **Titles**: `query()` with a string prompt, a haiku model, `tools: []`,
-  `settingSources: []`, `persistSession: false`, `maxTurns: 1`.
+  `settingSources: []`, `persistSession: false`, `maxTurns: 1`; the reply goes back as it
+  came (4.5.7).
 
 Skipped for now (T3 adapter 10.2): MCP elicitation, the resume dialog, subagent transcripts,
 task output tails, ultracode, PDF budgets.
