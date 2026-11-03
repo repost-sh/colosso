@@ -31,6 +31,11 @@ pub fn host_dir(data_dir: &Path) -> DaemonDir {
     DaemonDir::new(data_dir.join("agents"), "host")
 }
 
+/// Whether the host in `dir` has its store, which it makes with the first chat.
+pub fn has_store(dir: &DaemonDir) -> bool {
+    dir.root().join("chats.sqlite").is_file()
+}
+
 /// What the host keeps of the environment it's started from (`docs/chat.md` 4.1): nothing of
 /// whatever launched Koyo reaches the agents it runs, which get the login shell's (4.2).
 const KEPT_ENVIRONMENT: &[&str] = &[
@@ -42,6 +47,7 @@ const KEPT_ENVIRONMENT: &[&str] = &[
     "LANG",
     "KOYO_DATA_DIR",
     "KOYO_LOG",
+    "KOYO_AGENT_PROVIDER",
 ];
 
 /// The command that starts the host executable `program` in `dir`, with only the environment
@@ -67,6 +73,9 @@ pub enum ClientError {
     /// The connection ended before the answer came.
     Closed,
     Timeout,
+    /// A host of another build is in use; only the person can choose to stop it
+    /// (`docs/chat.md` C9).
+    OtherBuild,
 }
 
 impl std::fmt::Display for ClientError {
@@ -77,6 +86,7 @@ impl std::fmt::Display for ClientError {
             ClientError::Host(error) => f.write_str(&error.message),
             ClientError::Closed => f.write_str("the agent host closed the connection"),
             ClientError::Timeout => f.write_str("the agent host didn't answer in time"),
+            ClientError::OtherBuild => f.write_str("the agent host is another build's, in use"),
         }
     }
 }
@@ -169,8 +179,11 @@ impl Client {
         }
         let (tx, rx) = bounded(1);
         self.waiting.replies.lock().insert(id, tx);
-        if let Err(error) = self.writer.lock().write_all(line.as_bytes()) {
+        let written = self.writer.lock().write_all(line.as_bytes());
+        if let Err(error) = written {
             self.waiting.replies.lock().remove(&id);
+            // A socket that can't be written to is one the next request shouldn't try.
+            self.close();
             return Err(error.into());
         }
         match rx.recv_timeout(REQUEST_TIMEOUT) {

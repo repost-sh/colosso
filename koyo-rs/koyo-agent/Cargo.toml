@@ -14,6 +14,10 @@ serde_json = { version = "1", features = ["raw_value"] }
 koyo-daemon = { path = "../koyo-daemon" }
 # The client's channels: the events, and each request's reply.
 crossbeam-channel = "0.5"
+# What the app awaits: the notices it subscribed to, and the answer to an ordered request.
+futures = "0.3"
+# The ids of the messages the app sends, which sort as they were made, as the host's do.
+uuid = { version = "1", features = ["v7"] }
 log = "0.4"
 parking_lot = "0.12"
 

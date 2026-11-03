@@ -30,6 +30,13 @@ ids! {
     MessageId;
 }
 
+impl MessageId {
+    /// The id of a message about to be sent.
+    pub fn fresh() -> MessageId {
+        MessageId(uuid::Uuid::now_v7().to_string())
+    }
+}
+
 /// A time as the host writes it: ISO 8601 in UTC, to the millisecond.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
