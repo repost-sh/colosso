@@ -5,6 +5,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use gpui_kit::{App, Entity, SharedString};
+use koyo_agent::protocol::ids::ThreadId;
 
 use super::PaneKind;
 use crate::browser::BrowserView;
@@ -31,6 +32,8 @@ pub struct Pane {
     pub shown_at: u64,
     /// A terminal pane's terminal, by the number `crate::terminals` knows it by.
     pub terminal: Option<u64>,
+    /// The thread a chat pane shows: a new chat has none until its first send.
+    pub chat: Option<ThreadId>,
 }
 
 impl Pane {
@@ -45,6 +48,7 @@ impl Pane {
             changes: None,
             shown_at: 0,
             terminal: None,
+            chat: None,
         }
     }
 

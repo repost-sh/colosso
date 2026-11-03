@@ -3,6 +3,7 @@ mod backdrop;
 mod bottom;
 mod browser;
 mod changes;
+mod chat;
 mod checkout;
 mod checkouts;
 mod control;

@@ -18,6 +18,22 @@ impl Workspace {
         title: SharedString,
         select: bool,
     ) -> Option<u64> {
+        let pane = Pane {
+            title,
+            terminal: Some(id),
+            ..Pane::new(PaneKind::Terminal)
+        };
+        self.add_pane_tab(worktree, pane, select)
+    }
+
+    /// Adds a tab of `pane` on the checkout at `worktree`, shown when `select`: its id, unless
+    /// no such checkout is listed.
+    pub(super) fn add_pane_tab(
+        &mut self,
+        worktree: &Path,
+        pane: Pane,
+        select: bool,
+    ) -> Option<u64> {
         let found = self
             .projects
             .iter()
@@ -29,11 +45,6 @@ impl Workspace {
             });
         let (project, branch) = found?;
         let unit = &mut self.projects[project].branches[branch];
-        let pane = Pane {
-            title,
-            terminal: Some(id),
-            ..Pane::new(PaneKind::Terminal)
-        };
         let pane_id = pane.id;
         unit.tabs.push(Tab::Single(pane));
         if select {

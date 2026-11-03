@@ -4,7 +4,7 @@
 use gpui_kit::assets::IconName;
 use gpui_kit::{
     AnyElement, Div, ElementId, InteractiveElement as _, IntoElement, ParentElement as _, Stateful,
-    Styled as _, div, px, relative,
+    Styled as _, div, px,
 };
 
 use crate::model::{Pane, PaneKind};
@@ -35,9 +35,10 @@ pub fn tab_button(id: impl Into<ElementId>, p: Palette) -> Stateful<Div> {
 }
 
 /// What a pane shows: its chat, terminal, page, file or the checkout's diffs.
-pub fn pane(pane: &Pane, context: &str, p: Palette) -> AnyElement {
+pub fn pane(pane: &Pane, p: Palette) -> AnyElement {
     match pane.kind {
-        PaneKind::Chat => chat(pane, context, p),
+        // Its view is drawn in its place, once the shell has made it.
+        PaneKind::Chat => div().size_full().into_any_element(),
         PaneKind::Terminal => terminal(p),
         PaneKind::Browser => browser(pane),
         PaneKind::Editor => match (&pane.file, &pane.changes) {
@@ -46,109 +47,6 @@ pub fn pane(pane: &Pane, context: &str, p: Palette) -> AnyElement {
             (None, None) => editor(pane, p),
         },
     }
-}
-
-fn chat(pane: &Pane, context: &str, p: Palette) -> AnyElement {
-    let message = |width: f32, lines: usize| {
-        div()
-            .flex()
-            .flex_col()
-            .gap_2()
-            .children((0..lines).map(move |line| {
-                let width = if line + 1 == lines {
-                    width * 0.6
-                } else {
-                    width
-                };
-                div()
-                    .h(px(10.))
-                    .w(relative(width))
-                    .rounded(px(5.))
-                    .bg(p.raised)
-            }))
-    };
-    div()
-        .size_full()
-        .flex()
-        .flex_col()
-        .child(
-            div()
-                .px_6()
-                .pt_4()
-                .text_sm()
-                .text_color(p.muted)
-                .child(format!("{context}  /  {}", pane.title)),
-        )
-        .child(
-            div()
-                .flex_1()
-                .min_h_0()
-                .w_full()
-                .max_w(px(760.))
-                .mx_auto()
-                .px_6()
-                .py_6()
-                .flex()
-                .flex_col()
-                .gap_8()
-                .child(
-                    div()
-                        .self_end()
-                        .w(relative(0.5))
-                        .p_3()
-                        .rounded(px(10.))
-                        .bg(p.raised)
-                        .child(message(1., 2)),
-                )
-                .child(message(1., 4))
-                .child(message(0.9, 3)),
-        )
-        .child(
-            div()
-                .w_full()
-                .max_w(px(760.))
-                .mx_auto()
-                .px_6()
-                .pb_4()
-                .child(
-                    div()
-                        .h(px(96.))
-                        .p_3()
-                        .flex()
-                        .flex_col()
-                        .justify_between()
-                        .rounded(px(14.))
-                        .border_1()
-                        .border_color(p.hairline)
-                        .bg(p.raised)
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(p.muted)
-                                .child("Ask anything, @tag files, or / for commands"),
-                        )
-                        .child(
-                            div()
-                                .flex()
-                                .justify_between()
-                                .items_center()
-                                .text_xs()
-                                .text_color(p.muted)
-                                .child("Claude Opus 5.5  ·  Extra High")
-                                .child(
-                                    div()
-                                        .size(px(26.))
-                                        .rounded_full()
-                                        .bg(p.text)
-                                        .flex()
-                                        .items_center()
-                                        .justify_center()
-                                        .child(icon(IconName::ArrowUp, 14.).text_color(p.on_text)),
-                                ),
-                        ),
-                ),
-        )
-        .into_any_element()
 }
 
 fn terminal(p: Palette) -> AnyElement {

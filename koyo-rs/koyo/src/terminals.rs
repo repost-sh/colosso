@@ -298,19 +298,21 @@ impl Shell {
         first
     }
 
-    /// What `pane` shows: its terminal when it's a terminal pane whose view is made, else what
+    /// What `pane` shows: its chat or its terminal when its view is made, else what
     /// `crate::pane` draws for its kind.
     pub fn pane_content(
         &self,
         pane: &Pane,
-        context: &str,
         p: Palette,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        if let Some(chat) = self.chat_tabs.view(pane.id) {
+            return chat.clone().into_any_element();
+        }
         let Some((id, view)) =
             (pane.terminal).and_then(|id| Some((id, &self.terminals.views.get(&id)?.responsive)))
         else {
-            return crate::pane::pane(pane, context, p);
+            return crate::pane::pane(pane, p);
         };
         let view = self.beside_panel(id, view.clone().into_any_element(), p, cx);
         div()

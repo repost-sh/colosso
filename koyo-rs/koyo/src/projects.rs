@@ -210,6 +210,7 @@ impl Shell {
             Ok(worktrees) => {
                 self.workspace.set_worktrees(project, worktrees);
                 self.restore_terminals(cx);
+                self.follow_chats(cx);
             }
             Err(error) => self.workspace.set_error(project, error.message),
         }

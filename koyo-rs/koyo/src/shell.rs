@@ -17,6 +17,7 @@ use gpui_kit::{
 };
 
 use crate::bottom::StatusBar;
+use crate::chat::ChatTabs;
 use crate::files::Locations;
 use crate::model::{PaneKind, Workspace};
 use crate::navigation::{GoBack, GoForward, Navigate, NavigationHistory, OpenSettings, Route};
@@ -70,6 +71,8 @@ pub struct Shell {
     pub status_bar: StatusBar,
     /// The terminals the tabs show.
     pub terminals: crate::terminals::Terminals,
+    /// The chats the tabs show.
+    pub chat_tabs: ChatTabs,
     /// Horizontal travel of a two-finger swipe in progress over the Arc sidebar.
     pub swipe: Option<f32>,
     pub focus: FocusHandle,
@@ -95,6 +98,7 @@ impl Shell {
                 .placeholder("Search")
                 .clean_on_escape()
         });
+        let chat_tabs = ChatTabs::new(cx);
         let _subscriptions = [
             settings::observe(cx),
             cx.observe(&history, |_, _, cx| cx.notify()),
@@ -116,6 +120,7 @@ impl Shell {
                 this.follow_selection(window, cx);
                 // Closed terminal tabs let their views go, which detaches them.
                 this.terminals.retain(&this.workspace);
+                this.chat_tabs.retain(&this.workspace, cx);
             }),
             // What had the keyboard is gone, as a closed panel's list is: actions then start
             // at the window's root, above the shell's, and the top bar's buttons and keys
@@ -136,6 +141,7 @@ impl Shell {
             bottom_panel_open: false,
             status_bar: StatusBar::new(cx),
             terminals: crate::terminals::Terminals::default(),
+            chat_tabs,
             swipe: None,
             focus,
             search,
@@ -209,6 +215,9 @@ impl Shell {
             self.new_terminal(cx);
         } else {
             self.workspace.new_tab(kind);
+        }
+        if kind == PaneKind::Chat {
+            self.focus_chat_next();
         }
         // A new tab is something to look at, so leave settings for it.
         self.navigate(Route::Workspace, cx);
@@ -367,11 +376,15 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
-        // The shown tab's terminal panes have their views before the panes draw them.
-        if let Some(view) = self.make_shown_terminals(window, cx) {
-            // Shown with nothing else holding the keyboard, a terminal takes it.
-            if self.focus.is_focused(window) {
-                let focus = view.focus_handle(cx);
+        // The shown tab's terminal and chat panes have their views before the panes draw them.
+        let terminal = self.make_shown_terminals(window, cx);
+        let chat = self.make_shown_chats(window, cx);
+        // Shown with nothing else holding the keyboard, one of them takes it. Only then, as
+        // reading a view here makes this draw again whenever that view changes.
+        if self.focus.is_focused(window) {
+            let takes_keys = (terminal.map(|view| view.focus_handle(cx)))
+                .or_else(|| chat.map(|view| view.focus_handle(cx)));
+            if let Some(focus) = takes_keys {
                 cx.defer_in(window, move |_, window, cx| window.focus(&focus, cx));
             }
         }
@@ -390,11 +403,8 @@ impl Shell {
         let content = match (workspace.project(), workspace.branch()) {
             (None, _) => note("Add a project to see its worktrees here."),
             (Some(_), None) => note("No checkout selected."),
-            (Some(project), Some(branch)) => match branch.tabs.get(branch.active_tab) {
-                Some(tab) => {
-                    let context = format!("{} / {}", project.name, branch.name());
-                    self.tab_content(tab, &context, cx)
-                }
+            (Some(_), Some(branch)) => match branch.tabs.get(branch.active_tab) {
+                Some(tab) => self.tab_content(tab, cx),
                 None => note("No tabs on this branch. ⌘T starts a chat, ⌘P opens a file."),
             },
         };
