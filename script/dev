@@ -27,6 +27,8 @@ fi
 
 # The browser panes' engine, packaged beside the app's build (see script/browser-engine).
 script/browser-engine
+# The agent host the chat tabs talk to, built where a debug app finds it (see script/agent-host).
+script/agent-host
 
 # dx works on the Cargo workspace, which is koyo-rs/.
 cd koyo-rs

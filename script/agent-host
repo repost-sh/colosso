@@ -1,0 +1,25 @@
+#!/bin/sh
+# Builds the agent host (docs/chat.md 4.1), koyo-js/koyo-agent-host, into one executable with
+# Bun inside it, so Koyo's users need neither Bun nor Node:
+#
+#   script/agent-host      koyo-js/koyo-agent-host/dist/koyo-agent-host
+#
+# A debug app finds it there; a bundled app carries it in Contents/MacOS. It reads no .env or
+# bunfig.toml where it runs, so nothing beside it changes what it does. script/dev runs this
+# before the app, and it does nothing when the executable is newer than all it's built from:
+# the host's sources, the workspace's packages and the pinned Bun.
+set -eu
+cd "$(dirname "$0")/.."
+
+OUT=koyo-js/koyo-agent-host/dist/koyo-agent-host
+SOURCES="koyo-js/koyo-agent-host/src koyo-js/koyo-agent-host/package.json koyo-js/package.json
+  koyo-js/bun.lock script/bun"
+
+# shellcheck disable=SC2086 # the sources are split into paths on purpose
+if [ -x "$OUT" ] && [ -z "$(find $SOURCES -newer "$OUT" -print -quit)" ]; then
+  exit 0
+fi
+script/bun install --frozen-lockfile --silent
+# script/bun runs in koyo-js/.
+script/bun build --compile --no-compile-autoload-dotenv --no-compile-autoload-bunfig \
+  --outfile koyo-agent-host/dist/koyo-agent-host koyo-agent-host/src/main.ts
