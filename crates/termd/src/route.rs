@@ -98,6 +98,7 @@ pub fn route(body: RequestBody, reply: impl Fn() -> Reply) -> Route {
         | RequestBody::Open(_)
         | RequestBody::Rename { .. }
         | RequestBody::Close { .. }
+        | RequestBody::Theme(_)
         | RequestBody::Shutdown) => return Route::Daemon(body),
     };
     Route::Session(handle, cmd)

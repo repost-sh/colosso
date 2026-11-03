@@ -232,10 +232,9 @@ fn shown(
 /// The colour of the marks: the hue of the theme the person set, its first colour, kept
 /// light and dark enough to show on a page; a neutral grey with no theme set.
 fn tint(cx: &App) -> Hsla {
-    let Some(&[r, g, b]) = gradient::current(cx).colors().first() else {
+    let Some(color) = gradient::current(cx).primary() else {
         return gpui_kit::hsla(0., 0., 0.45, 1.);
     };
-    let color: Hsla = gradient::rgba([r, g, b], 1.).into();
     // A muted colour keeps its hue, with enough colour in it to show; a grey stays grey.
     let s = if color.s > 0.04 {
         color.s.max(0.6)

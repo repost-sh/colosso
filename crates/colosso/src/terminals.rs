@@ -7,12 +7,17 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use colosso_term::{Look, Source, TermClient, TerminalEvent, TerminalView};
-use colosso_term_control::{DaemonCommand, Handle, IfExists, OpenRequest, Selector, TermDir};
+use colosso_term_control::{
+    DaemonCommand, Handle, IfExists, OpenRequest, Selector, TermDir, Theme,
+};
+use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::{
-    AnyElement, AppContext as _, Context, Entity, Focusable as _, Hsla, InteractiveElement as _,
-    IntoElement as _, ParentElement as _, Rgba, Styled as _, Subscription, Task, Window, div, px,
+    AnyElement, App, AppContext as _, Context, Entity, Focusable as _, Hsla,
+    InteractiveElement as _, IntoElement as _, ParentElement as _, Rgba, Styled as _,
+    Subscription, Task, Window, div, px,
 };
 
 use crate::model::{Pane, Workspace};
@@ -51,7 +56,12 @@ pub struct Terminals {
     /// The activity panels shown, by terminal tab, and their share of the pane once dragged.
     panels: HashMap<u64, Entity<panel::ActivityPanel>>,
     panel_share: Option<f32>,
+    /// The theme's send to the daemon, waiting for the theme to settle.
+    theme_send: Option<Task<()>>,
 }
+
+/// How long the theme stays the same before the daemon is told it.
+const THEME_DELAY: Duration = Duration::from_millis(150);
 
 /// A terminal tab's view once it's made, and responsive mode round it, made with it.
 struct Made {
@@ -88,7 +98,7 @@ pub(crate) fn daemon_command() -> DaemonCommand {
 }
 
 /// Binds the terminals' keys; call once when the app starts.
-pub fn init(cx: &mut gpui_kit::App) {
+pub fn init(cx: &mut App) {
     beside::init(cx);
 }
 
@@ -100,6 +110,28 @@ impl Terminals {
             self.client = daemon_client();
         }
         self.client.clone()
+    }
+
+    /// Has the daemon tell every terminal's program the app's theme when it changed: once it
+    /// settles, as dragging in the theme picker changes it at every frame.
+    pub fn tell_theme(&mut self, cx: &App) {
+        let Some(client) = self.client() else {
+            return;
+        };
+        let look = look(theme::palette(cx));
+        let theme = Theme {
+            foreground: look.foreground.into(),
+            background: look.background.into(),
+            dark: cx.theme().mode.is_dark(),
+        };
+        if client.keep_theme(theme) {
+            let settled = cx.background_executor().timer(THEME_DELAY);
+            // A newer change drops this task, and with it the send it waited for.
+            self.theme_send = Some(cx.background_executor().spawn(async move {
+                settled.await;
+                client.send_theme(theme);
+            }));
+        }
     }
 
     /// The terminal tab `id` shows, once it's known.

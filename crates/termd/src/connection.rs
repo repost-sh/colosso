@@ -10,8 +10,9 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use colosso_term_control::{
-    Actor, ActorKind, ClientInfo, ClientKind, Decoder, ErrorCode, Event, EventKind, Handle, Hello,
-    Message, Outcome, PROTOCOL, ProtocolError, Response, ResponseBody, SNAPSHOT_FORMAT, Welcome,
+    Actor, ActorKind, ClientInfo, ClientKind, DAEMON_VERSION, Decoder, ErrorCode, Event, EventKind,
+    Handle, Hello, Message, Outcome, PROTOCOL, ProtocolError, Response, ResponseBody,
+    SNAPSHOT_FORMAT, Welcome,
 };
 use parking_lot::Mutex;
 
@@ -209,7 +210,7 @@ fn handshake(daemon: &Arc<Daemon>, stream: &mut UnixStream, id: u32) -> io::Resu
     });
     client.send(&Message::Welcome(Welcome {
         protocol: PROTOCOL,
-        daemon_version: env!("CARGO_PKG_VERSION").to_owned(),
+        daemon_version: DAEMON_VERSION.to_string(),
         engine_commit: colosso_term_engine::GHOSTTY_COMMIT.to_owned(),
         snapshot_format: SNAPSHOT_FORMAT,
         client_id: id,

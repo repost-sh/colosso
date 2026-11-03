@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use colosso_term_control::{
     ErrorCode, Event, EventKind, Handle, Input, Message, ProtocolError, Request, RequestBody,
-    ResponseBody, Selector, Status, TermDir, TerminalSummary,
+    ResponseBody, Selector, Status, TermDir, TerminalSummary, Theme,
 };
 use parking_lot::Mutex;
 
@@ -25,6 +25,8 @@ pub struct Daemon {
     pub registry: Mutex<Registry>,
     clients: Mutex<HashMap<u32, Arc<Client>>>,
     sessions: Mutex<HashMap<Handle, Arc<SessionHandle>>>,
+    /// The app's theme, once it's said, which every terminal tells its program.
+    theme: Mutex<Option<Theme>>,
     next_client: AtomicU32,
     stopping: AtomicBool,
     /// Written to by `stop` and the signal handler; the accept loop polls its other end.
@@ -39,6 +41,7 @@ impl Daemon {
             registry: Mutex::new(registry),
             clients: Mutex::default(),
             sessions: Mutex::default(),
+            theme: Mutex::default(),
             next_client: AtomicU32::new(1),
             stopping: AtomicBool::new(false),
             wake,
@@ -81,6 +84,20 @@ impl Daemon {
 
     pub fn session(&self, handle: &Handle) -> Option<Arc<SessionHandle>> {
         self.sessions.lock().get(handle).cloned()
+    }
+
+    pub fn theme(&self) -> Option<Theme> {
+        *self.theme.lock()
+    }
+
+    /// Keeps `theme` for the terminals opened from now on and tells every running one. Under
+    /// the sessions' lock, as `add_session` is, so a terminal starting meanwhile misses none.
+    fn set_theme(&self, theme: Theme) {
+        let sessions = self.sessions.lock();
+        *self.theme.lock() = Some(theme);
+        for session in sessions.values() {
+            let _ = session.tx.send(Cmd::Theme(theme));
+        }
     }
 
     /// Tells every client, the event encoded once for all of them.
@@ -129,6 +146,10 @@ impl Daemon {
                 labels,
             } => self.rename(client, req, &handle, name, title, labels),
             RequestBody::Close { handle, force: _ } => self.close(client, req, &handle),
+            RequestBody::Theme(theme) => {
+                self.set_theme(theme);
+                client.respond(req, done());
+            }
             RequestBody::Shutdown => {
                 log::info!("client {} asked the daemon to shut down", client.id);
                 client.respond(req, done());
@@ -341,8 +362,14 @@ impl Daemon {
         }
     }
 
+    /// Starts sending `session` commands, the theme first: it may have changed since the
+    /// session read it as it started.
     pub fn add_session(&self, handle: Handle, session: SessionHandle) {
-        self.sessions.lock().insert(handle, Arc::new(session));
+        let mut sessions = self.sessions.lock();
+        if let Some(theme) = *self.theme.lock() {
+            let _ = session.tx.send(Cmd::Theme(theme));
+        }
+        sessions.insert(handle, Arc::new(session));
     }
 
     /// Called by a session's thread as it ends.

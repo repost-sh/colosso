@@ -11,8 +11,8 @@ use gpui_kit::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::settings;
 use crate::shell::action_button;
+use crate::{gradient, settings};
 
 mod accent;
 pub mod card;
@@ -51,7 +51,9 @@ pub const MONO: &str = "Menlo";
 pub struct Palette {
     /// The window's blur shows through this, so its alpha sets how glassy the rails look.
     pub rail_tint: Hsla,
-    /// The content card and the panels in it: solid, so the glass shows only in the rails.
+    /// Painted over `rail_tint`, which covers the whole window, so the two alphas stack; and
+    /// only by the card itself, as what's in it painting it again would stack a third.
+    /// Tinted by the gradient theme's first colour (`tinted`).
     pub card: Hsla,
     pub sunken: Hsla,
     pub raised: Hsla,
@@ -80,7 +82,7 @@ pub struct Palette {
 
 impl Palette {
     /// The fill of what floats over a page in a native layer: the card's colour, solid, as
-    /// the page under it is no glass for a tint to read on.
+    /// the page under it is no blurred glass that `card`'s tint would read on.
     pub fn floating(self) -> Hsla {
         Hsla { a: 1., ..self.card }
     }
@@ -138,7 +140,7 @@ const LIGHT_CODE: Code = Code {
 
 const DARK: Palette = Palette {
     rail_tint: gray(0.08, 0.55),
-    card: gray(0.1, 1.),
+    card: gray(0.1, 0.6),
     sunken: gray(0., 0.2),
     raised: gray(1., 0.05),
     hairline: gray(1., 0.08),
@@ -158,7 +160,7 @@ const DARK: Palette = Palette {
 
 const LIGHT: Palette = Palette {
     rail_tint: gray(0.96, 0.55),
-    card: gray(1., 1.),
+    card: gray(1., 0.65),
     sunken: gray(0., 0.03),
     raised: gray(0., 0.05),
     hairline: gray(0., 0.09),
@@ -282,8 +284,23 @@ pub fn palette(cx: &App) -> Palette {
     let palette = if dark { DARK } else { LIGHT };
     Palette {
         accent: accent::get(dark, cx),
+        card: tinted(palette.card, cx),
         ..palette
     }
+}
+
+/// How much of the theme colour's saturation the card keeps: enough to read as a shade of
+/// it, little enough not to compete with what's on the card.
+const CARD_SATURATION: f32 = 0.5;
+
+/// `card` in the hue of the gradient theme's first colour, at the card's own lightness and
+/// alpha: in the dark a deep shade of the theme, not gray. Gray while no colour is picked.
+fn tinted(card: Hsla, cx: &App) -> Hsla {
+    gradient::current(cx).primary().map_or(card, |colour| Hsla {
+        h: colour.h,
+        s: colour.s * CARD_SATURATION,
+        ..card
+    })
 }
 
 pub fn preference(cx: &App) -> ThemePreference {

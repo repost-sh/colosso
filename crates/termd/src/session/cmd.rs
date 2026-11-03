@@ -8,7 +8,7 @@ use std::time::Instant;
 use bytes::Bytes;
 use colosso_term_control::{
     Actor, ActorKind, AttachMode, ErrorCode, EventKind, ProtocolError, ResponseBody, SendRequest,
-    Signal, Size,
+    Signal, Size, Theme,
 };
 
 use super::{CLOSE_GRACE, Ended, Session, pty};
@@ -129,6 +129,8 @@ pub enum Cmd {
     Close {
         reply: Option<Reply>,
     },
+    /// The app's theme, which the engine answers the program with.
+    Theme(Theme),
     /// The daemon is going down: end the program and the thread.
     Shutdown,
 }
@@ -192,6 +194,7 @@ impl Session {
                 }
             }
             Cmd::Input { client_id, bytes } => self.input(client_id, &bytes),
+            Cmd::Theme(theme) => self.set_theme(theme),
             Cmd::Paste { reply, text } => self.paste(&reply, &text),
             Cmd::Resize { reply, size } => self.resize(&reply, size),
             Cmd::Pin { reply, cells } => self.pin(&reply, cells),

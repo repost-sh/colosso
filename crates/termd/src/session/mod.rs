@@ -25,7 +25,7 @@ use std::time::{Duration, Instant};
 use bytes::Bytes;
 use colosso_term_control::{
     Actor, Controller, ErrorCode, EventKind, Exit, ProtocolError, Size, Status, TerminalRecord,
-    now_ms,
+    Theme, now_ms,
 };
 use colosso_term_engine::{Engine, PromptScanner};
 use crossbeam_channel::{Receiver, Sender, after, bounded, never, tick, unbounded};
@@ -192,6 +192,9 @@ impl Session {
             preview_dirty: false,
             kept: persist::Kept::default(),
         };
+        if let Some(theme) = session.daemon.theme() {
+            session.set_theme(theme);
+        }
         session.spawn()?;
         Ok(session)
     }
@@ -205,6 +208,7 @@ impl Session {
             &self.record.cwd,
             &self.record.env,
             self.record.size,
+            self.daemon.theme().map(|theme| theme.dark),
         )
         .map_err(|error| {
             ProtocolError::new(
@@ -331,6 +335,19 @@ impl Session {
         self.preview_dirty = true;
         self.kept.changed = true;
         self.fan_out(start, chunk);
+    }
+
+    /// Has the engine answer the program with `theme`, and tells a program that asked to hear
+    /// of it that it turned light or dark.
+    pub(super) fn set_theme(&mut self, theme: Theme) {
+        let report = (self.engine)
+            .set_default_colors(theme.foreground.into(), theme.background.into())
+            .and_then(|()| self.engine.set_color_scheme(theme.dark));
+        match report {
+            Ok(Some(report)) => self.write_pty(&report),
+            Ok(None) => {}
+            Err(error) => log::warn!("{}: couldn't set the theme: {error}", self.record.handle),
+        }
     }
 
     pub(super) fn write_pty(&mut self, bytes: &[u8]) {

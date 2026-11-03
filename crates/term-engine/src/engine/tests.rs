@@ -92,3 +92,23 @@ fn scrolls_the_viewport_into_history() {
     engine.scroll(Scroll::Bottom);
     assert_eq!(engine.frame().unwrap().text(), "3\n4");
 }
+
+#[test]
+fn programs_are_told_the_hosts_theme() {
+    let mut engine = Engine::new(Size::cells(10, 3), 1 << 20).unwrap();
+    engine.set_default_colors(Rgb { r: 0, g: 0, b: 0 }, Rgb { r: 255, g: 255, b: 255 }).unwrap();
+    assert_eq!(engine.set_color_scheme(false).unwrap(), None);
+    engine.write(b"\x1b]11;?\x07\x1b[?996n");
+    let replies: Vec<Vec<u8>> = (engine.take_effects().into_iter())
+        .filter_map(|effect| match effect {
+            Effect::WriteBack(bytes) => Some(bytes),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(replies, [b"\x1b]11;rgb:ffff/ffff/ffff\x07".to_vec(), b"\x1b[?997;2n".to_vec()]);
+    // A change is reported only to a program that asked to hear of changes.
+    assert_eq!(engine.set_color_scheme(true).unwrap(), None);
+    engine.write(b"\x1b[?2031h");
+    assert_eq!(engine.set_color_scheme(true).unwrap(), None);
+    assert_eq!(engine.set_color_scheme(false).unwrap(), Some(b"\x1b[?997;2n".to_vec()));
+}

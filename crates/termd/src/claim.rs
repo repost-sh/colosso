@@ -6,7 +6,7 @@ use std::io::{self, ErrorKind, Write as _};
 use std::os::unix::fs::PermissionsExt as _;
 use std::os::unix::net::{UnixListener, UnixStream};
 
-use colosso_term_control::{PROTOCOL, TermDir};
+use colosso_term_control::{DAEMON_VERSION, PROTOCOL, TermDir};
 
 pub struct Claimed {
     /// Held for the daemon's life; dropping it lets the next daemon in.
@@ -50,7 +50,7 @@ pub fn claim(dir: &TermDir) -> io::Result<Claimed> {
     fs::write(
         dir.version(),
         format!(
-            "protocol {PROTOCOL}\nbuild {}\nengine {}\n",
+            "protocol {PROTOCOL}\ndaemon {DAEMON_VERSION}\nbuild {}\nengine {}\n",
             env!("CARGO_PKG_VERSION"),
             colosso_term_engine::GHOSTTY_COMMIT
         ),

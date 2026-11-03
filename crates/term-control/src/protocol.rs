@@ -11,10 +11,15 @@ use crate::terminal::{
     Actor, Control, Controller, Handle, Pinned, Selector, Size, Status, TerminalRecord,
     TerminalSummary, WorktreeRef,
 };
+use crate::theme::Theme;
 
 /// The protocol this crate speaks; a daemon speaks exactly one. 2 added `Pin`; 3 pins at
-/// `cells` rather than a `size`.
-pub const PROTOCOL: u32 = 3;
+/// `cells` rather than a `size`; 4 added `Theme`.
+pub const PROTOCOL: u32 = 4;
+/// The daemon's version, in `Welcome::daemon_version`: the app has a daemon of another one
+/// restarted for its own (`docs/terminals.md` 5.1). Any change to what the daemon runs bumps
+/// it (`script/daemon-version`).
+pub const DAEMON_VERSION: u32 = 1;
 /// The engine snapshot format carried in `Snapshot` frames.
 pub const SNAPSHOT_FORMAT: u16 = 1;
 
@@ -297,6 +302,8 @@ pub enum RequestBody {
         since: Option<u64>,
         max_bytes: Option<u32>,
     },
+    /// The app's theme for every terminal, those opened later too. Answered `Done`.
+    Theme(Theme),
     Shutdown,
 }
 
@@ -321,6 +328,7 @@ impl RequestBody {
             RequestBody::ListWorktrees
             | RequestBody::ListTerminals { .. }
             | RequestBody::Open(_)
+            | RequestBody::Theme(_)
             | RequestBody::Shutdown => None,
         }
     }

@@ -12,6 +12,7 @@ pub mod message;
 pub mod paths;
 pub mod protocol;
 pub mod terminal;
+pub mod theme;
 pub mod ulid;
 
 pub use client::{ClientError, Connection, DaemonCommand};
@@ -26,13 +27,15 @@ pub use log::{
 pub use message::Message;
 pub use paths::{APP_ID, TermDir};
 pub use protocol::{
-    AttachMode, Auth, ClientInfo, ClientKind, ErrorCode, ErrorDetails, Hello, IfExists,
-    OpenRequest, Outcome, PROTOCOL, ProtocolError, Request, RequestBody, Response, ResponseBody,
-    SNAPSHOT_FORMAT, ScreenCursor, ScreenRead, SendRequest, Signal, Welcome, WorktreeSummary,
+    AttachMode, Auth, ClientInfo, ClientKind, DAEMON_VERSION, ErrorCode, ErrorDetails, Hello,
+    IfExists, OpenRequest, Outcome, PROTOCOL, ProtocolError, Request, RequestBody, Response,
+    ResponseBody, SNAPSHOT_FORMAT, ScreenCursor, ScreenRead, SendRequest, Signal, Welcome,
+    WorktreeSummary,
 };
 pub use terminal::{
     Actor, ActorKind, Control, Controller, Exit, Handle, PIN_CELLS, Pinned, Progress, Selector,
     Size, Status, TerminalRecord, TerminalSummary, WorktreeRef, clamp_pin_cells, pin_cells_error,
     worktree_root,
 };
+pub use theme::Theme;
 pub use ulid::now_ms;

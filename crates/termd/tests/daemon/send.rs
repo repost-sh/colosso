@@ -3,12 +3,11 @@
 //! last word.
 
 use colosso_term_control::{
-    ClientError, ClientKind, ErrorCode, Handle, RequestBody, ResponseBody, ScreenRead, SendRequest,
-    Status,
+    ClientError, ClientKind, ErrorCode, Handle, RequestBody, ResponseBody, SendRequest, Status,
 };
 
 use super::status::open_zsh;
-use super::{Client, StopOnDrop, connect, test_dir, wait_until};
+use super::{StopOnDrop, connect, test_dir, wait_until};
 
 fn send(handle: &Handle) -> SendRequest {
     SendRequest {
@@ -18,16 +17,6 @@ fn send(handle: &Handle) -> SendRequest {
         keys: Vec::new(),
         enter: false,
         interrupt: false,
-    }
-}
-
-fn screen(client: &Client, handle: &Handle) -> ScreenRead {
-    let request = RequestBody::ReadScreen {
-        handle: handle.clone(),
-    };
-    match client.connection.request(request).unwrap() {
-        ResponseBody::Screen(screen) => *screen,
-        other => panic!("not a screen: {other:?}"),
     }
 }
 
@@ -46,12 +35,12 @@ fn an_agent_sends_text_and_keys_and_reads_the_screen_without_attaching() {
     let agent = connect(&dir, ClientKind::Relay);
     let handle = open_zsh(&person, &dir).handle;
     wait_until("the prompt", || {
-        screen(&agent, &handle)
+        agent.screen(&handle)
             .lines
             .iter()
             .any(|line| line.starts_with('%'))
     });
-    let first = screen(&agent, &handle);
+    let first = agent.screen(&handle);
     assert_eq!((first.cols, first.rows), (60, 12));
     assert!(first.cursor.is_some_and(|cursor| cursor.visible));
 
@@ -79,7 +68,7 @@ fn an_agent_sends_text_and_keys_and_reads_the_screen_without_attaching() {
     let sent = agent.connection.request(RequestBody::Send(typed)).unwrap();
     assert_eq!(sent, ResponseBody::Sent { bytes: 19 });
     wait_until("the agent's output on the screen", || {
-        screen(&agent, &handle)
+        agent.screen(&handle)
             .lines
             .iter()
             .any(|line| line == "sent-by-agent")
@@ -103,7 +92,7 @@ fn an_agent_sends_text_and_keys_and_reads_the_screen_without_attaching() {
         .request(RequestBody::Send(sleeping))
         .unwrap();
     wait_until("the program to run", || {
-        let screen = screen(&agent, &handle);
+        let screen = agent.screen(&handle);
         screen.status == Status::Running && screen.lines.iter().any(|line| line == "asleep")
     });
     let interrupt = SendRequest {

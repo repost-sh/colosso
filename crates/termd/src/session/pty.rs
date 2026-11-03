@@ -99,6 +99,7 @@ pub fn spawn(
     cwd: &Path,
     extra_env: &BTreeMap<String, String>,
     size: Size,
+    dark: Option<bool>,
 ) -> io::Result<Spawned> {
     if !cwd.is_dir() {
         return Err(io::Error::new(
@@ -130,7 +131,7 @@ pub fn spawn(
         [] => extra_env.get("SHELL").cloned().unwrap_or_else(login_shell),
         [program, ..] => program.clone(),
     };
-    for (key, value) in environment(handle, worktree, &program, extra_env) {
+    for (key, value) in environment(handle, worktree, &program, extra_env, dark) {
         builder.env(key, value);
     }
     let child = pair
@@ -181,12 +182,13 @@ fn login_shell() -> String {
 
 /// The daemon's environment plus what identifies the terminal, and the shell integration for
 /// `program`; `TERM` is Ghostty's own when its terminfo could be written, `xterm-256color`
-/// otherwise.
+/// otherwise. `COLORFGBG` says whether the app's theme is `dark`, once it's known.
 fn environment(
     handle: &Handle,
     worktree: Option<&WorktreeRef>,
     program: &str,
     extra: &BTreeMap<String, String>,
+    dark: Option<bool>,
 ) -> Vec<(String, String)> {
     let mut env: Vec<(String, String)> = Vec::new();
     match colosso_term_engine::terminfo_dir() {
@@ -210,6 +212,11 @@ fn environment(
         ));
     }
     env.push(("COLORTERM".into(), "truecolor".into()));
+    if let Some(dark) = dark {
+        // White on black, or black on white, in the 16 colours' numbers.
+        let colors = if dark { "15;0" } else { "0;15" };
+        env.push(("COLORFGBG".into(), colors.into()));
+    }
     env.push(("TERM_PROGRAM".into(), "Colosso".into()));
     env.push((
         "TERM_PROGRAM_VERSION".into(),
@@ -296,7 +303,7 @@ mod tests {
         let handle = Handle("term_test".into());
         let env = BTreeMap::from([("SHELL".to_owned(), "/bin/sh".to_owned())]);
         let cwd = std::env::current_dir().unwrap();
-        let mut spawned = spawn(&handle, None, &[], &cwd, &env, Size::cells(80, 24)).unwrap();
+        let mut spawned = spawn(&handle, None, &[], &cwd, &env, Size::cells(80, 24), None).unwrap();
         let printed = printed(&mut spawned);
         let mut seen = Vec::new();
         // Typed once the shell shows its prompt, as a person would: a login shell may drop

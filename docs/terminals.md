@@ -363,6 +363,15 @@ stop a real daemon both ways and find its terminals in the next; the in-app chec
 stand-in daemon with another engine under the app, sees the notice, presses the button and
 gets the shell back on this build's daemon.
 
+Besides the protocol, the welcome's `daemon_version` must be this build's `DAEMON_VERSION`,
+so a build whose daemon changed bumps it, or the old daemon would go on serving the new app.
+`script/daemon-version`, run by `script/lint` and so by the pre-commit hook, holds the version
+in `daemon-version.txt` beside a fingerprint of what the daemon is built from: the crates
+`cargo tree` resolves for `colosso-termd` with their versions, the sources of those in the
+checkout (tests left out), `rust-toolchain.toml` and `.cargo/config.toml`. It fails once they
+part, until `script/daemon-version bump` raises the version or `script/daemon-version keep`
+notes a change a running daemon doesn't need.
+
 ### 5.2 Terminal model [decided]
 
 A **terminal** (the daemon's unit; "session" is avoided because it collides with agent
@@ -480,6 +489,7 @@ Pin    { handle, cells?: (cols, rows) }            → Pinned { size, pinned }  
 Rename { handle, name? , title? , labels? }
 Signal { handle, signal }
 Close  { handle, force?: bool }                    → requires control or manage scope
+Theme  { foreground, background, dark }            → Done   (protocol 4; daemon-wide, see 6)
 Shutdown {}
 ```
 
@@ -878,6 +888,12 @@ sees the shell back from its screen, idle at its prompt.
   offline source yet: a clean build fetches Ghostty's source. The daemon's engine answers
   every query, attached or not: the app asks for no `answers_queries` capability, since two
   windows on one terminal would answer twice (`term/src/client.rs`).
+- **The app's theme:** the app tells the daemon its theme with `Theme`: its terminal colours
+  and whether it's light or dark, the app's own setting rather than the system's. The client
+  sends it on every connection and again when it changes. The daemon keeps it for terminals
+  opened later and gives it to every engine. The engine answers OSC 10 and 11 with the
+  colours and CSI ? 996 n with light or dark. It reports a change to a program that turned on
+  mode 2031. New shells also get `COLORFGBG` (`0;15` light, `15;0` dark).
 
 ---
 

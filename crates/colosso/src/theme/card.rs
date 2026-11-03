@@ -8,10 +8,8 @@ use gpui_kit::{
     App, Bounds, Corners, Global, IntoElement, Pixels, Styled as _, Window, WindowId, canvas, px,
 };
 
-use super::CARD_RADIUS;
-
-/// How wide the card's border is, inside its bounds.
-const BORDER: f32 = 1.;
+/// How far an edge can lie from the card's and still be its, for layout's rounding.
+const NEAR: f32 = 1.;
 
 /// Each window's card, where it was last laid out.
 #[derive(Default)]
@@ -35,21 +33,15 @@ pub fn noted() -> impl IntoElement {
     .size_full()
 }
 
-/// How round the card is inside its border.
-pub fn inner_radius() -> Pixels {
-    px(CARD_RADIUS - BORDER)
-}
-
-/// Which corners of `bounds` are the card's own in `window`, inside its border.
+/// Which corners of `bounds` are the card's own in `window`.
 pub fn shared_corners(bounds: Bounds<Pixels>, window: &Window, cx: &App) -> Corners<bool> {
     let id = window.window_handle().window_id();
     let Some(card) = cx.try_global::<Cards>().and_then(|cards| cards.0.get(&id)) else {
         return Corners::default();
     };
-    let inside = card.dilate(px(-BORDER));
-    let near = |a: Pixels, b: Pixels| (a - b).abs() <= px(BORDER);
-    let (left, right) = (near(bounds.left(), inside.left()), near(bounds.right(), inside.right()));
-    let (top, bottom) = (near(bounds.top(), inside.top()), near(bounds.bottom(), inside.bottom()));
+    let near = |a: Pixels, b: Pixels| (a - b).abs() <= px(NEAR);
+    let (left, right) = (near(bounds.left(), card.left()), near(bounds.right(), card.right()));
+    let (top, bottom) = (near(bounds.top(), card.top()), near(bounds.bottom(), card.bottom()));
     Corners {
         top_left: top && left,
         top_right: top && right,
