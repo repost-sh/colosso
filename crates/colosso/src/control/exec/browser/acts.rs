@@ -14,8 +14,9 @@ use serde_json::{Value, json};
 
 use super::super::{Caller, Exec, output};
 use super::keys::Key;
-use super::page::{Page, acted, call, now, resolve};
+use super::page::{self as pages, Page, acted, call, now, resolve};
 use super::script::{self, evaluate};
+use crate::browser::BrowserView;
 
 /// The most characters `browser_read` answers unless told otherwise.
 const READ_LIMIT: usize = 50_000;
@@ -194,6 +195,18 @@ pub(crate) fn click(
                 MouseButton::Right => "right",
             };
             let count = input.click_count.unwrap_or(1).max(1);
+            // The person sees the agent's pointer travel to the point, and the click lands as
+            // it gets there.
+            if let Some(caller) = actor {
+                let actor = pages::actor(caller);
+                let travel = cx.update(|cx| {
+                    (page.view).update(cx, |view, cx| view.agent_points(&actor, (x, y), cx))
+                });
+                let travel = travel.map_err(pages::refused)?;
+                if !travel.is_zero() {
+                    cx.background_executor().timer(travel).await;
+                }
+            }
             mouse(
                 &page,
                 actor,
@@ -206,6 +219,7 @@ pub(crate) fn click(
                     json!({ "type": kind, "x": x, "y": y, "button": button, "clickCount": count });
                 mouse(&page, actor, event, cx).await?;
             }
+            cx.update(|cx| page.view.update(cx, BrowserView::agent_clicked));
             at_page(&page, cx)
         },
     )

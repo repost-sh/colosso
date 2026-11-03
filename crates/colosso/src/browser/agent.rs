@@ -2,6 +2,8 @@
 //! and the ways an agent moves it; and the Chrome `DevTools` protocol commands it runs on
 //! it, under the page's lease when they act.
 
+use std::time::Duration;
+
 use colosso_app_control::ops::browser::{
     DeviceName, Orientation, Viewport as ViewportFacts, ViewportMode,
 };
@@ -14,8 +16,8 @@ use super::control::Holder;
 pub use super::control::{Actor, Refused};
 use super::host::Browsers;
 pub use super::host::CdpResult;
-pub use super::responsive::devices::find as find_device;
 use super::responsive;
+pub use super::responsive::devices::find as find_device;
 pub use super::responsive::{Change as ViewportChange, Choice, ViewportRefused, Zoom};
 use super::view::BrowserView;
 
@@ -153,6 +155,28 @@ impl BrowserView {
         self.send_to_page(AppRequest::Go { pane, to }, cx);
         cx.notify();
         Ok(())
+    }
+
+    /// Claims the page for `actor` and sends its pointer on its way to `(x, y)` of the page,
+    /// in CSS pixels: answers how long it takes to get there, which a click waits out so it
+    /// lands as the pointer does. A page the host hasn't opened yet takes no click, and the
+    /// pointer stays put.
+    pub fn agent_points(
+        &mut self,
+        actor: &Actor,
+        (x, y): (f64, f64),
+        cx: &mut Context<Self>,
+    ) -> Result<Duration, Refused> {
+        self.agent_claims(actor.clone(), false, None, cx)?;
+        if !self.is_open(cx) {
+            return Ok(Duration::ZERO);
+        }
+        Ok(self.point_to(x, y, cx))
+    }
+
+    /// The agent's click landed where its pointer is.
+    pub fn agent_clicked(&mut self, cx: &mut Context<Self>) {
+        self.pointer_clicked(cx);
     }
 }
 

@@ -138,6 +138,8 @@ pub struct BrowserView {
     pub(super) favicon: Option<Arc<Image>>,
     /// Responsive mode: the page at a chosen size or as a device, and how it shows.
     pub(super) responsive: super::responsive::State,
+    /// What shows an agent at work on the page: its pointer, and the glow while it holds it.
+    pub(super) marks: super::pointer::Marks,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -263,6 +265,7 @@ impl BrowserView {
             zoom: ACTUAL_SIZE,
             favicon: None,
             responsive,
+            marks: super::pointer::Marks::default(),
             _subscriptions: subscriptions,
         }
     }

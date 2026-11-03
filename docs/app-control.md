@@ -197,6 +197,12 @@ The page lease of `browser/control.rs` applies: acting needs the lease; a free p
 claimed on the first act; `person_has_control` means the person took the page: don't
 retry or wait, open another page.
 
+The person sees an agent at work (`browser/pointer.rs`): a glow inside the page's edges
+while an agent holds it, and for `browser_click` the agent's pointer, a navigation arrow
+that travels to the point along an arc of an ellipse, easing in and out, its heading the
+arc's. The click waits for it to arrive, 0.38 to 0.9 s by distance (none with reduced
+motion), and sends a ring out where it lands; the pointer fades 6 s after its last click.
+
 ```
 browser_list     [read] R {} → { pages: [{ pane, url, title, loading, worktree, controller?,
                    viewport }] }

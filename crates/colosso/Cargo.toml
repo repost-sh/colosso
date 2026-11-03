@@ -128,6 +128,10 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
   "NSEvent",
   "NSView",
   "NSWindow",
+  # The display link an agent's pointer over a page moves by (browser/pointer/native.rs).
+  "objc2-quartz-core",
+  # The Liquid Glass behind the app's bars over a page (native/liquid.rs).
+  "NSGlassEffectView",
 ] }
 objc2-foundation = { version = "0.3", default-features = false, features = [
   "std",
@@ -137,13 +141,30 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
   "NSNotification",
   "NSOperation",
   "NSString",
+  # The display link an agent's pointer moves by (browser/pointer/native.rs).
+  "NSObjCRuntime",
+  "NSRunLoop",
 ] }
 block2 = "0.6"
 # The browser panes' frames: the host's `IOSurface`s, found from the mach ports it sends,
 # shown as the contents of a layer. All versions GPUI already pulls in.
 objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFBase", "CFCGTypes", "objc2"] }
 objc2-io-surface = { version = "0.3", default-features = false, features = ["std", "IOSurfaceRef", "IOSurfaceTypes", "libc", "objc2", "objc2-core-foundation"] }
-objc2-quartz-core = { version = "0.3", default-features = false, features = ["std", "CALayer", "objc2-core-foundation"] }
+objc2-quartz-core = { version = "0.3", default-features = false, features = [
+  "std",
+  "CALayer",
+  "objc2-core-foundation",
+  # An agent's pointer over a page: its arrow and ring, and the display link that moves
+  # them (browser/pointer/native.rs).
+  "CABase",
+  "CADisplayLink",
+  "CAFrameRateRange",
+  "CAShapeLayer",
+  "CATransaction",
+  "objc2-core-graphics",
+] }
+# An agent's pointer over a page: its shapes (browser/pointer/native.rs).
+objc2-core-graphics = { version = "0.3", default-features = false, features = ["std", "CGPath", "CGColor"] }
 
 [features]
 # Debug builds only: lets `dx serve --hot-patch` swap render code into the running app.

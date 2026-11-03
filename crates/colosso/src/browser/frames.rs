@@ -61,9 +61,9 @@ pub struct Frame {
 }
 
 define_class!(
-    /// The view a page's frames show in. Nothing to `AppKit`'s hit testing, so the pointer
-    /// over it reaches GPUI, which forwards it to the page; flipped, so its layer's top left
-    /// is the page's.
+    /// The view a page's frames show in, and the one over it an agent's pointer shows in.
+    /// Nothing to `AppKit`'s hit testing, so the pointer over it reaches GPUI, which forwards
+    /// it to the page; flipped, so its layer's top left is the page's.
     #[unsafe(super(NSView))]
     #[thread_kind = MainThreadOnly]
     #[name = "ColossoPageView"]
@@ -104,6 +104,7 @@ pub struct Shown {
 
 struct Native {
     surface: Surface,
+    view: Retained<PageView>,
     layer: Retained<CALayer>,
     _presents: InTransaction,
 }
@@ -186,6 +187,12 @@ impl Shown {
             scale: 0.,
             _pointer: pointer,
         }
+    }
+
+    /// The view the page shows in, which views drawn over the page go in; none in a window
+    /// that can't host a native view.
+    pub fn page_view(&self) -> Option<Retained<NSView>> {
+        (self.native.as_ref()).map(|native| Retained::into_super(native.view.clone()))
     }
 
     /// Whether the pointer over the page goes to its native view, rather than to GPUI's
@@ -281,6 +288,7 @@ impl Native {
         })?;
         Ok(Native {
             surface,
+            view,
             layer,
             _presents: InTransaction::new(),
         })
