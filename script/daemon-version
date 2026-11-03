@@ -14,7 +14,9 @@
 #   script/daemon-version keep     a change a running daemon doesn't need (comments, renames,
 #                                  code only clients run): its sources noted, the same version
 set -eu
-cd "$(dirname "$0")/.."
+# The physical path, which `cargo tree` prints too, so a checkout reached through a symlink
+# fingerprints the same as any other (see `fingerprint`).
+cd -P "$(dirname "$0")/.."
 
 PROTOCOL_RS=crates/term-control/src/protocol.rs
 RECORD=daemon-version.txt
@@ -26,12 +28,13 @@ version() {
 
 # One hash of the daemon's crates as resolved, and every file it's built from, by path and
 # content. Tests are left out: `tests/` folders and `tests.rs` files only tests compile.
+# Paths are relative to the checkout, so every checkout of the same sources agrees.
 fingerprint() {
   crates=$(cargo tree --quiet --offline -p koyo-termd -e normal,build --prefix none |
     LC_ALL=C sort -u)
   folders=$(printf '%s\n' "$crates" | sed -n "s|.*($PWD/\(.*\))\$|\1|p")
   {
-    printf '%s\n' "$crates"
+    printf '%s\n' "$crates" | sed "s|($PWD/|(|"
     # shellcheck disable=SC2086 # one word per folder
     find $folders rust-toolchain.toml .cargo/config.toml -type f \
       \( -path '*/src/*' -o -name Cargo.toml -o -name build.rs -o -name rust-toolchain.toml \
