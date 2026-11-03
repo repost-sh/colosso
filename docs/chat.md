@@ -1,0 +1,882 @@
+# Koyo chat: agent host, Claude driver and the chat tab
+
+Specification, written 2026-11-03 on branch `claude-chat-agent-sdk`. Drafted with Claude from a
+study of T3 Code (pingdotgg/t3code, Apache-2.0) and of the Claude Agent SDK 0.3.317.
+
+This document is the source of truth for the chat work, in the manner of `docs/terminals.md`:
+every decision carries its reasons and the alternatives rejected, every external fact its
+version, every piece of prior art the file to read. Update it when a decision changes.
+
+Status of each section is marked `[decided]`, `[proposed]` (designed here, to be confirmed by
+implementation) or `[open]` (needs the owner's call; a default is given).
+
+---
+
+## 0. Vision in one paragraph
+
+A chat is a tab, like a terminal or a browser page, and belongs to a worktree: the agent works
+in that checkout. Claude runs through Anthropic's own Agent SDK inside a small host program
+that Koyo ships, compiled from strict TypeScript into one executable, so nobody needs Node.
+The host outlives the window, as the terminal daemon does: quitting or updating Koyo leaves a
+running turn running, and reopening Koyo shows where it got to, approvals still waiting. The
+app is a typed client that renders: a timeline that streams the answer as it is written and
+folds the work behind it, and a Liquid Glass composer floating over it with the model, effort,
+permission and plan controls. Every behaviour T3 Code learned the hard way about driving
+Claude is kept; where T3 is thin (streaming text, approval context, keys, a stop key), Koyo
+does better. Claude is the only provider, behind a seam another one (Codex) can plug into.
+
+---
+
+## 1. Context and constraints
+
+### 1.1 The Koyo codebase (facts, 2026-11-03)
+
+- Laid out as repost is: `koyo-rs/` is the Cargo workspace, each crate in a folder named
+  for its package (`koyo-rs/koyo` is the app, `koyo-rs/koyo-termd` the terminal daemon), the
+  vendored forks in `koyo-rs/vendor/`; `koyo-js/` is the Bun workspace, each package a
+  `koyo-js/koyo-*` folder sharing the root's lint policy and compiler setup. Scripts and docs
+  stay at the checkout's root, and so do the pinned tools (`.tools/`).
+- GPUI through `gpui-kit 0.8.1` (`gpui-fast`), vendored `gpui-base` and `gpui-component`
+  (`koyo-rs/vendor/README.md`). Clippy pedantic with `unwrap`/`expect`/`panic` denied, a
+  500-line limit per file (`script/hygiene`), `script/lint` in the pre-commit hook.
+- Tabs and panes: `koyo-rs/koyo/src/model.rs`, `model/tab.rs`. `PaneKind::Chat` exists as a
+  placeholder ("New chat", `IconName::MessageSquare`) rendered by `crate::pane::pane`. Pane
+  contents are chosen in `Shell::pane_content` (`terminals.rs`).
+- Liquid Glass: `native/liquid.rs::backdrop(id, radius, dark, window, cx)` puts an
+  `NSGlassEffectView` in a native surface above GPUI's base layer and below its overlays;
+  what is drawn on the glass goes in `deferred(...)` (pattern: `browser/toolbar.rs`,
+  `control_bar`). Without the glass (older macOS, Reduce Transparency) the fallback is the
+  palette's `floating()` fill with a hairline and a shadow.
+- Theme: `theme::palette(cx)` (the card tinted by the gradient theme, `floating()`,
+  `hairline`, `accent`), `CARD_RADIUS = 10`, `MONO = "Menlo"`.
+- Markdown: `gpui-component`'s `TextView` streams (`push_str`, and `set_text` that appends
+  when the new text extends the old) and fades new blocks in.
+- Chat primitives in `gpui-component`: `message_scroller` (a `ListState` that follows the
+  tail), `message`, `bubble`, `questionnaire`, `attachment`, `shimmer`; `gpui-base`'s
+  `textarea` with `auto_grow(min, max)`, `submit_on_enter` and `InputEvent::PressEnter`.
+- Daemon precedent: `koyo-termd` (`docs/terminals.md` 5.1, 5.10): a per-user process under
+  `settings::data_dir()`, a socket trusted only while its lock is held, started detached by
+  the first client under `start.lock`, a `ready` line on stdout, a version handshake, a log
+  that starts over at a megabyte (`koyo-termd/src/logfile.rs`), a version kept beside a
+  fingerprint of its sources by `script/daemon-version`.
+- Helper binaries: the browser host is found beside the app's executable in a bundle and,
+  in a debug build, in the checkout (`koyo-rs/koyo/src/browser/engine.rs`: `host_beside`,
+  `packaged_in_checkout`), packaged by `script/browser-engine`, which `script/dev` runs.
+
+### 1.2 Claude Agent SDK (facts, 0.3.317, 2026-11-03)
+
+Full notes: `.superpowers/research/notes/claude-wire-protocol.md` (local, not committed).
+
+- `query({prompt, options})` returns a `Query`: an async generator of `SDKMessage` (40
+  variants) with control methods: `interrupt`, `setPermissionMode`, `setModel`,
+  `applyFlagSettings({effortLevel, fastMode})`, `initializationResult`, `supportedCommands`,
+  `supportedModels` (with `supportedEffortLevels`, `supportsFastMode`, `supportsAutoMode`),
+  `accountInfo`, `getContextUsage`, `setMcpServers`, `rewindFiles`, `stopTask`, `close`.
+- `prompt` may be an `AsyncIterable<SDKUserMessage>`: one live CLI process per session, fed
+  prompt after prompt. A user message may carry `priority: 'now' | 'next' | 'later'` and a
+  `uuid`.
+- The SDK drives the Claude Code CLI over stream-json. It brings the CLI only as an optional
+  platform package (299 MB); with `pathToClaudeCodeExecutable` set, its resolver is skipped
+  and nothing but our executable needs to ship. Inside `bun build --compile`,
+  `require.resolve` of the platform package fails, so the path must always be given.
+- Import the root entry (`sdk.mjs`): it inlines zod and the MCP SDK and imports only Node
+  builtins, so it compiles into a single file.
+- `env` replaces `process.env`. `systemPrompt` omitted means an *empty* prompt: Claude Code's
+  behaviour needs `{type: 'preset', preset: 'claude_code'}`. `settingSources` omitted loads
+  user, project and local settings, as the CLI does.
+- `permissionMode` unset in 0.3.317 lets the CLI decide from the user's settings
+  (`permissions.defaultMode`); the `init` frame reports the mode in force.
+- Frames outside the typed union arrive at runtime; they must be tolerated.
+- A running `claude` process holds about 275 MB (measured 2026-11-03 over 18 processes,
+  598 MB at most).
+
+### 1.3 T3 Code (facts, 2026-11)
+
+Notes, local: `.superpowers/research/notes/t3-claude-adapter.md` (the adapter, 48 pitfalls),
+`t3-orchestration.md` (the domain model, 53 pitfalls), `t3-chat-ui.md` (the UI inventory).
+T3 runs a Node server (Effect, event-sourced SQLite) and a React client; its Claude adapter
+is one 12k-line file behind a provider-neutral contract. It does not stream assistant text.
+
+### 1.4 Non-negotiables
+
+- **Strict TypeScript.** No `any`, no `as`, no `!`, no `@ts-ignore`; untrusted input is
+  parsed with zod; every union is matched exhaustively. `tsc` with every strict flag and
+  `skipLibCheck` off; ESLint with typescript-eslint's strict type-checked sets, every rule an
+  error, `--max-warnings 0` (`koyo-js/eslint.config.ts`), in `script/lint` and so in the
+  pre-commit hook.
+- **No Node for the user.** The host is one executable from `bun build --compile`.
+- **Everything a task creates stays in the checkout** while developing: `script/bun` pins
+  Bun 1.4.4 in `.tools/`, with its caches; tests run with `KOYO_DATA_DIR` in the checkout.
+- **Native feel.** Liquid Glass for the composer and everything floating; the theme's
+  palette everywhere; system conventions for keys (⌘. stops), menus and focus.
+- **Performance.** A token delta repaints one message, never the list. History loads lazily.
+
+---
+
+## 2. Decisions
+
+**C1 [decided] The agent runtime is a TypeScript program on the official Claude Agent SDK,
+compiled with `bun build --compile`.** Why: the SDK is Anthropic's supported, typed surface
+over the CLI's stream-json and control protocol, which is internal and moves with every CLI
+release (40 message kinds, dozens of control subtypes, version-dependent defaults such as the
+permission mode). Following it from Rust means re-deriving that protocol from minified
+JavaScript at each release; the SDK absorbs it, and a version bump is a `package.json`
+change checked by `tsc`. Bun compiles the host, the SDK and zod into one executable, so the
+user needs neither Node nor `node_modules`. Rejected: Rust speaking stream-json to the CLI
+(fragile; the owner's call); Node with shipped `node_modules` (needs Node); Deno compile
+(works, but Bun has SQLite and FFI built in, and runs ESLint and the tests in the same
+toolchain); the Python SDK (needs Python); Gleam (compiles to Erlang or JavaScript, not to an
+executable, and would lose the SDK's types at the boundary).
+
+**C2 [decided] The host is a per-user daemon, like `koyo-termd`, not a child of the
+window.** Why: an agent turn runs for minutes; a chat that dies when Koyo quits or updates
+is worse than running `claude` in a Koyo terminal, which survives (terminals D2). With the
+host outliving the app, approvals stay answerable across an app restart, and the cases T3
+must recover from (its server restarting under live turns) shrink to the host's own restart.
+It also leaves room for other clients later (a `koyo chat` command, mobile). Rejected: a
+stdio child of the app (simpler, but every app quit interrupts every agent); a launchd agent
+(later, as for termd; not required).
+
+**C3 [decided] The host owns the chats: their state lives in the host's SQLite, and the app
+is a client that renders snapshots and live changes.** Why: the host outlives the app, so it
+must hold the truth, or what happens while no window is open is lost. Rejected: the app owns
+state and the host is a stateless driver (two sources of truth, and events with nowhere to go
+while the app is closed); Claude's transcripts as the store (they are the provider's, carry
+none of Koyo's items, requests or queue, and a second provider has its own).
+
+**C4 [decided] State tables with a per-thread change number, not event sourcing.** Tables
+`threads`, `runs`, `items`, `requests`, each row the record's JSON; every write stamps the
+rows it changes with the thread's next change number, so a client catches up with "rows
+changed after N". Why: T3's event log, projections, outbox and receipts pay off with remote
+clients and several devices; for one local user they are machinery. Kept from T3: the
+rules, not the mechanism (4.5).
+
+**C5 [decided] One serialized actor per thread.** Every decision and write for a thread runs
+in its mailbox, one at a time, and each publishes its changes before the next runs. Why: JS
+is single-threaded but `await` interleaves; T3's ordering bugs (orchestration pitfalls 1, 3,
+6, 7, 10) all come from two paths deciding about one thread at once. With one lane per
+thread they can't, by construction.
+
+**C6 [decided] A provider seam inside the host.** The actor talks to a `Provider` (status,
+catalog, sessions, titles) through normalized events and items; it never sees SDK types.
+The Claude driver is the first provider; a scripted fake provider is the second, for tests;
+Codex can be the third. Capabilities are declared, and the actor branches on them, never on a
+provider's name (T3 `OV2:260-397`).
+
+**C7 [decided] Claude runs from the user's installed `claude`.** The host finds it in the
+login shell's `PATH` and the usual places, or where Koyo's settings point. Why: the SDK's
+CLI is a 299 MB platform package; people who use Claude have it installed and signed in, and
+their CLI keeps itself current. T3 does the same. A missing or signed-out CLI is a state the
+chat shows ("Install Claude Code", "Sign in to Claude"), with the command to run in a
+terminal tab. Rejected: shipping the CLI (size; two CLIs to keep in step).
+
+**C8 [decided] The app–host protocol is JSON lines over the unix socket**: requests with ids,
+their results or errors, and events. Contract tests: golden JSON fixtures that both zod
+(host) and serde (app) parse and re-encode unchanged. Why: no hot binary path exists (a
+token delta is a few bytes of text), JSON is debuggable with `nc -U`, and both sides have
+exact schema types. Rejected: termd's binary framing (built for PTY bytes); gRPC or HTTP
+(machinery); MCP (a tool protocol, not a UI state stream).
+
+**C9 [decided] The host has a version, kept as termd's is.** `HOST_VERSION` in the host's
+protocol module, beside a fingerprint of what the executable is built from (the package's
+sources, `bun.lock`, the Bun version), in `koyo-rs/daemon-version.txt` next to termd's line;
+`script/daemon-version` checks both, and `bump` or `keep` settles a change, so a comment-only
+edit doesn't count as a new host. The hello's answer carries the version. Same: use the
+host. Different and the host is idle (no live run, no pending request): stop it and start
+the app's, without asking. Different and busy: the chat shows "Chats are running on another
+build of Koyo. Restart them to use this one; running turns stop." with "Restart chats", as
+terminals do (D12). The hello is the one exchange every version keeps. Rejected: a hash of
+the sources as the build's id (automatic, but every edit, a comment included, would turn a
+busy host away; and it would be a second compatibility scheme beside termd's).
+
+**C10 [decided] Assistant text streams.** The driver turns `text_delta` and
+`thinking_delta` stream events into appends per content block, reconciled with the
+`assistant` snapshot by message id and block index (T3 does this for thinking only). Each
+append is sent as it comes, as the new text alone; the app applies the appends that arrived
+since the last frame once per frame, to the one message they belong to.
+
+**C11 [proposed, M6] Rewind is conversation-only by default.** The terminals, file tabs and
+other agents share the worktree, so restoring files under them is the hazard T3 itself names
+(orchestration 6.4, pitfall 41). File restore (the SDK's `enableFileCheckpointing` and
+`rewindFiles`) is offered only when the files a turn changed haven't changed since, with a
+dry run first.
+
+**C12 [decided] Permissions are Claude's own modes, named for people:** Ask (`default`),
+Accept edits (`acceptEdits`), Auto (`auto`, where the model supports it), Full access
+(`bypassPermissions`); Plan is a separate toggle (`plan`). A new chat starts in the mode the
+user's Claude settings choose (nothing is passed; the `init` frame reports it), unless Koyo's
+setting names one. Why: respect the user's Claude configuration, which also applies in their
+terminal sessions. T3 defaults to full access; Koyo doesn't.
+
+**C13 [decided] A chat is a tab, in a worktree.** Threads are keyed to the worktree's
+checkout path, which is also the agent's `cwd`. The tab face shows the chat's title and
+status; the sidebar's worktree row shows what its chats need. Closing the tab doesn't delete
+the chat: "Recent chats" in the worktree's new-tab menu lists the chats no tab shows.
+Rejected: T3's thread inbox in the sidebar (Koyo's sidebar lists worktrees; a chat is a tab
+in one, as a terminal is).
+
+**C14 [decided] What the agent waits on a person for is a request, whatever it is.** An
+approval, a question and a proposed plan are the three kinds; the thread needs its person
+exactly while one is pending. A request the agent stopped waiting on (a plan, whose tool is
+denied at once; a question after a host restart) is answered by the person's next message,
+which the actor applies in the step that starts the turn; a live one (an approval, a
+question the agent waits on) is answered with `requests.respond`. Rejected: plans as items
+with a state of their own (a second source for "needs you", and nothing to say what a
+restart does to one).
+
+---
+
+## 3. Architecture overview
+
+```
+ Koyo.app (Rust, GPUI)                         koyo-agent-host (Bun executable)
+ ┌───────────────────────────┐   unix socket   ┌────────────────────────────────────────┐
+ │ chat tab (GPUI views)     │   JSON lines    │ server: connections, hello, routing    │
+ │  timeline · composer      │◀───────────────▶│ threads: one actor per thread          │
+ │ chat model (entities)     │                 │ store: bun:sqlite (WAL)                │
+ │ koyo-agent: protocol +    │                 │ providers: claude (Agent SDK) · fake   │
+ │   client (threads, serde) │                 │                    │                   │
+ └───────────────────────────┘                 └────────────────────┼───────────────────┘
+                                                                    │ stream-json (SDK)
+                                                        ┌───────────▼───────────┐
+                                                        │ claude (user's CLI),  │
+                                                        │ one per live session, │
+                                                        │ own process group     │
+                                                        └───────────────────────┘
+```
+
+- `koyo-js/koyo-agent-host/`: `src/protocol/` (zod schemas, the contract), `src/server/`
+  (socket, connections, hello), `src/daemon/` (lock, paths, idle exit, shutdown),
+  `src/store/` (SQLite), `src/threads/` (actor, status, queue, requests), `src/providers/`
+  (the seam, `claude/`, `fake/`), `src/env/` (login-shell environment, CLI discovery),
+  `src/main.ts`; tests in `test/`, fixtures in `test/fixtures/`. `script/agent-host` builds
+  the executable into `koyo-js/koyo-agent-host/dist/`.
+- `koyo-rs/koyo-agent`: the protocol as serde types, tested against the same fixtures; the
+  client (connect or start, hello, requests, an event inbox), on its own threads as
+  `koyo-lsp` and `koyo-term-control` are.
+- `koyo-rs/koyo/src/chat/`: the app's chat model (a `Chats` entity holding thread entities fed
+  by the client) and the views.
+
+---
+
+## 4. The host: `koyo-agent-host`
+
+### 4.1 Process model and lifecycle [proposed]
+
+As termd (`docs/terminals.md` 5.1 and 5.10), in a folder of its own,
+`settings::data_dir()/agents/`: the socket `host.sock` (0600, in the 0700 folder), trusted
+only while `host.lock` is held; `start.lock`, under which a client checks again and starts
+the host; a `ready` line on stdout once it listens; `host.log`, which starts over at a
+megabyte keeping `host.log.old` (`src/log.ts`); stderr only in the foreground. What differs:
+
+- The host is its own executable, `koyo-agent-host --dir <agents>`, not a subcommand of the
+  app: it's Bun's, not Rust's. Compiled with `--no-compile-autoload-dotenv` and
+  `--no-compile-autoload-bunfig`, so no `.env` or `bunfig.toml` near it changes it.
+- The app starts it with a cleared environment (`HOME`, `USER`, `LOGNAME`, `SHELL`,
+  `TMPDIR`, `LANG`, and `KOYO_DATA_DIR`/`KOYO_LOG` when set) and the agents folder as its
+  working directory, so nothing of whatever launched Koyo (a terminal, another agent's
+  session, an IDE) reaches the host or the agents it runs (4.2).
+- The lock is `flock` on `host.lock` through `bun:ffi`; a host that can't take it exits 0,
+  since another serves. Bun's sockets don't expose the peer's credentials, so the 0700 folder
+  is what keeps other users out.
+- Data: `chats.sqlite` (WAL) and `attachments/`.
+- Idle exit: with no client connected, no live run and no pending live request for 10
+  minutes, the host closes its sessions and exits. A pending approval keeps it alive: it
+  waits for a person, who will open Koyo.
+- Live sessions: a thread's CLI process stays alive between turns, which saves a spawn;
+  at most 4 are alive at once (the least recently used is closed first) and each closes after
+  5 minutes idle. The next turn resumes the session (4.5.6).
+- Shutdown (`shutdown` or SIGTERM): stop accepting, interrupt live runs (5 s at most), settle
+  them interrupted by the host, expire live approvals, close sessions (each CLI's process
+  group gets SIGTERM, then SIGKILL after 5 s), close the store, remove the socket, exit.
+- Startup recovery (after a crash or a kill): runs still `starting`, `running` or `stopping`
+  are settled interrupted by the host; live approvals expire; live questions become answered
+  by the next message; queues are held. Nothing that touches a process is replayed (T3
+  orchestration 11.2).
+
+### 4.2 Environment and CLI discovery [proposed]
+
+- The CLI runs in the user's login environment, not the host's: once at start, bounded at
+  5 s, the host runs `$SHELL -l -c 'env -0'` (no `-i`: interactive rc files print, prompt and
+  hang) and gives that environment, whole, to every CLI it starts. A Finder launch's minimal
+  `PATH` is never what the agent sees. Failure falls back to the host's own environment with
+  the usual places on `PATH`. `HOME` is never changed (T3 pitfall 44: login lives in the
+  keychain).
+- `claude` is resolved in order: Koyo's setting `chat.claude_path`, the login `PATH`,
+  `~/.local/bin/claude`, `~/.claude/local/claude`, `/opt/homebrew/bin/claude`,
+  `/usr/local/bin/claude`. Its version (`claude --version`) is read once per path.
+- Spawn: a custom `spawnClaudeCodeProcess` starts the CLI in its own process group
+  (`detached`), so an interrupt or close ends its MCP servers and shells too (T3 pitfall 2);
+  closing sends SIGTERM to the group, SIGKILL after 5 s. The host's exit ends every group it
+  started.
+
+### 4.3 Wire protocol v1 [proposed]
+
+Framing: one JSON object per line (`\n`), UTF-8, at most 8 MiB a line. Attachments don't
+travel over the socket: the app writes them into `attachments/` and names them by file. A
+missing value is `null`, never an absent field. A reply the host has at once is written at
+once, before any event a later step makes, so the snapshot `threads.open` answers with comes
+ahead of the changes that follow it.
+
+```
+C→H  {"id": 7, "method": "threads.create", "params": {...}}
+H→C  {"id": 7, "result": {...}}                       // or
+H→C  {"id": 7, "error": {"code": "thread_not_found", "message": "…"}}
+H→C  {"event": "thread.changed", "params": {...}}      // unsolicited
+```
+
+#### 4.3.1 Host
+
+```
+hello       {client: {kind: "app"|"cli"|"test"}, version} → {version, pid, busy}
+            `version` is `HOST_VERSION` (C9); `busy` while a run is live or a request waits.
+            A hello of another version is answered, so the app can see whom it met, and that
+            client may then only call `shutdown`; before a hello, nothing else is answered
+            but `not_allowed`.
+shutdown    {} → {}
+config.set  {claudePath, defaultMode} → {}
+providers.status {refresh: bool} → [ProviderStatus]
+            {provider, state: "ready"|"missing"|"signed_out"|"error", executable, version,
+             account: {email, plan}, message}
+catalog     {provider, cwd} → {models: [Model], commands: [Command], defaultMode}
+            Model = {id, name, description, efforts, fast, auto} (4.5.9)
+```
+
+#### 4.3.2 Threads
+
+```
+threads.watch   {} → [ThreadSummary], then `thread.summary` for every thread
+threads.create  {cwd, provider, model, effort, permission, plan} → Thread
+threads.open    {threadId, sinceSeq} → ThreadSnapshot, then its `thread.changed` and
+                `item.appended` until `threads.close`. A first open holds the latest 30
+                runs' items; `sinceSeq` gets the rows changed since, and every streaming item
+                whole.
+threads.history {threadId, before: runId, runs} → {runs, items, requests}
+                the page of runs before `before`, with their rows
+threads.close   {threadId} → {}
+threads.update  {threadId, title?, model?, effort?, fast?, permission?, plan?} → Thread
+threads.read    {threadId} → {}                                the person has seen it
+threads.delete  {threadId} → {}                                rows and attachments go
+```
+
+#### 4.3.3 Turns, queue, requests
+
+```
+turns.send      {threadId, prompt: {messageId, text, attachments}, delivery: "auto"|"queue"}
+                → {runId, delivered: "started"|"queued"|"steered"}
+                `messageId` is the client's uuid: a repeated send is answered from the run
+                it made, never sent twice (T3 pitfall 11).
+turns.stop      {threadId, force} → {}
+turns.compact   {threadId} → {runId}                           a /compact turn
+queue.remove    {threadId, runId} → {}
+queue.edit      {threadId, runId, text, attachments} → {}
+queue.sendNow   {threadId, runId} → {delivered}
+queue.resume    {threadId} → {}                                release a held queue
+requests.respond {threadId, requestId, response} → {}
+                response = {kind: "approval", decision: "allow"|"allow_session"|"deny"|
+                                   "cancel", message}
+                         | {kind: "question", answers: {[questionId]: [string]}}
+                         | {kind: "plan", decision: "implement"|"dismiss"}
+                its kind is the request's; another kind is `bad_request`, a request no longer
+                pending `conflict`.
+```
+
+#### 4.3.4 Events
+
+```
+thread.summary   ThreadSummary, when something a list shows changed
+thread.removed   {threadId}, a thread deleted
+thread.changed   {threadId, seq, thread, runs, items, requests}: the rows one actor step
+                 changed, whole
+item.appended    {threadId, itemId, text}: what a streaming item grew by, in order
+host.notice      {level, message}, e.g. the CLI went missing
+```
+
+Ordering: one actor step publishes one `thread.changed`; appends follow the step that made
+their item, in order, on the one socket. `threads.open` registers the subscriber and takes the
+snapshot in the same synchronous step, so nothing falls between snapshot and stream (T3
+orchestration pitfall 2).
+
+`AttachmentRef = {file, name, mime}`: `file` is a name inside `attachments/`, checked
+there (no `..`, no links out). Images (png, jpeg, gif, webp, at most 5 MB after the app
+downsizes them) go to the model as image blocks; other files as their path in the text.
+
+### 4.4 Domain model [proposed]
+
+The zod schemas in `src/protocol/model.ts` are the definition; this is their summary. Ids are
+UUIDv7 (they sort by creation time), each kind its own branded type. Times are ISO-8601.
+
+```text
+Thread {
+  id, cwd, title, titleSource: "seed"|"generated"|"user", provider, model, effort, fast,
+  permission: Mode | null (null: the provider's settings decide), plan: bool,
+  sessionId,                  // the provider's conversation, once there is one
+  queueHeld: bool, createdAt, updatedAt, readAt, seq
+}
+
+Run {                         // a turn: one prompt and the work it caused
+  id, threadId, status: "queued"|"starting"|"running"|"stopping"|"completed"|
+                        "interrupted"|"failed"|"removed" (taken off the queue),
+  prompt: {messageId, text, attachments},   // all a queued run is
+  model, effort, permission (in force while it ran), plan,
+  requestedAt, startedAt, endedAt,
+  stop: {requestedAt, by: "person"|"host", force} | null,
+  failure: {kind: "api"|"usage_limit"|"auth"|"overloaded"|"process"|"host", message,
+            retryAt} | null,
+  usage: {inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, costUsd,
+          contextTokens, contextWindow} | null,
+  files: [{path, added, removed}], seq
+}
+
+Item {                        // one timeline entry
+  id, threadId, runId (every entry is a turn's), ordinal, parentId,
+  status: "pending"|"running"|"completed"|"failed"|"declined"|"interrupted", kind + payload, seq
+}
+  user_message   {messageId, text, attachments, delivered: "turn"|"steer"}
+  assistant_text {text}                                         streams
+  reasoning      {text}                                         streams
+  tool           {name, family: "command"|"read"|"edit"|"search"|"web"|"mcp"|"agent"|
+                  "todo"|"skill"|"other", label, input (≤ 16 KB), output (≤ 16 KB, the end),
+                  exitCode, patch: [Hunk], files, server}
+  todos          {todos: [{text, status}]}
+  request        {requestId}                   a request, in its place in the timeline
+  subagent       {description, agentType, summary}
+  compaction     {trigger: "manual"|"auto", before, after}
+  notice         {level: "info"|"warning"|"error", text}
+
+Request {
+  id, threadId, runId, status: "pending"|"answered"|"cancelled"|"expired", kind + payload,
+  answer: a response (4.3.3) | {kind: "message", messageId}, createdAt, resolvedAt, seq
+}
+  approval  {tool, family, title, detail, input, reason, allowSession: {label} | null}
+  question  {questions: [{id, header, question, multiSelect, options: [{label, description,
+             preview}]}], live: bool}
+  plan      {markdown}                          live: never; answered by a message, or
+                                                implemented or dismissed
+
+ThreadSummary = id, cwd, title, provider, model, updatedAt,
+  status: "idle"|"working"|"failed", needs: "approval"|"question"|"plan" | null,
+  queued: count, unread: bool
+```
+
+Derived, never stored (T3: status written twice drifts):
+- `status`, in one function: working while a run is starting, running or stopping; failed
+  when the latest settled run failed; else idle. `needs` from the oldest pending request.
+  `unread` when the latest settled run ended after `readAt`.
+- The stop divider ("You stopped this response") from `Run.stop`; the failure row from
+  `Run.failure`; Force stop offered once `stop.requestedAt` is 10 s old and the run is still
+  stopping; the user message of a run from its `user_message` item.
+
+An item's `ordinal` is fixed the first time the item is seen, before its text exists, so text
+that streams in late never moves below something that came after it (T3 orchestration
+pitfall 14).
+
+### 4.5 The thread actor [proposed]
+
+One actor per thread. Each step is a method that runs to its end without waiting: it reads,
+writes the store in one transaction (`Store.commit`) and publishes its `thread.changed`
+before it returns, so the event loop is the mailbox and no two steps interleave. A
+provider's reports are queued behind the step that's running (`queueMicrotask`), never run
+inside it, so a stop and a late tool result are never decided at once; a session dropped
+(closed, killed, reopened) reports to nothing. A run changes status only through one
+function, which knows the moves allowed:
+
+```
+queued → starting → running → stopping → completed | interrupted | failed
+  │         │  │       └────────────────→ completed | interrupted | failed
+  │         │  └───────────────────────→ stopping
+  │         └──────────────────────────→ failed
+  └────────────────────────────────────→ removed
+```
+
+Nothing leaves `stopping` except to a settled status, and nothing leaves a settled one. A run
+that settles from where the move isn't allowed passes through the status between, in the
+same step: `starting` completes through `running`, and is interrupted through `stopping`.
+Rows are never deleted but with their thread: a queued run taken off the queue is `removed`.
+
+#### 4.5.1 Send
+
+`turns.send` with `delivery`:
+- `auto` (the composer's Enter): idle → start; running → steer, unless the provider can't
+  steer or compaction runs → queue; stopping → queue (T3 orchestration pitfalls 3, 4, 19).
+- `queue` (⌘↩ while running): append to the queue.
+The step that starts a turn answers every pending request the agent stopped waiting on
+(a plan: refined; a question that isn't live: answered by the message) (C14). A live request
+the app answers itself: with an approval shown, composer text sent declines it with the
+text as the reason; with a question shown, the text is its "Other" answer. If that request
+was settled meanwhile (`conflict`), the text stays in the composer.
+
+Start: write the run `starting` and its `user_message` item, pick the session (4.5.6), give
+the provider the prompt with a fresh uuid (T3 pitfall 7), move to `running` on the provider's
+`turn.started`; the provider's events update items; `turn.finished` settles the run.
+
+#### 4.5.2 Steering
+
+The message is offered to the live session with `priority: "next"`, so it lands at the
+turn's next step without cutting off the text being written; its item is a `user_message`
+with `delivered: "steer"` in the running run. Right before offering, the actor checks the run
+is still running; if it ended in between, the message starts a run of its own, with the same
+`messageId` (T3 orchestration pitfall 3). [proposed: confirm `next` against CLI 2.1.317 in
+the driver's probe; T3 uses `now`, which aborts the current segment and needs its `aborted_*`
+results swallowed (adapter pitfall 22).]
+
+#### 4.5.3 Queue
+
+Queued runs start in the order they were sent (their ids sort by time), the next once the
+current one has settled. The queue holds (`queueHeld`) after a stop, a failure, a usage limit
+or a host restart, and only the person releases it: `queue.resume`, or `queue.sendNow` on a
+run (T3 orchestration pitfalls 16, 17). A message sent while the queue is held starts now
+and leaves the held runs waiting, shown as "2 queued messages are waiting · Send · Clear".
+
+#### 4.5.4 Stop
+
+`turns.stop` moves the run to `stopping` with `stop: {requestedAt, by: "person"}`, holds the
+queue, then calls the session's interrupt. The `stopping` status is the barrier: a steer, a
+queued start or a late tool finds it, and the transition function refuses every move out of
+it but to a settled status. The run settles `interrupted` on the provider's result or the
+process's end. `force: true` kills the CLI's process group and settles it at once (T3 adapter
+pitfall 46, orchestration 8). A stop and a turn's natural end race for the same run; the first
+step wins and the second finds it settled (orchestration pitfall 7).
+
+#### 4.5.5 Requests
+
+A provider asks through the sink; the actor writes the request `pending` and its `request`
+item, and holds the provider's answer promise. What the agent stopped at without waiting (a
+plan) comes as a `request` event instead, with nothing held: the next message answers it.
+`requests.respond` resolves it: the row is written `answered` first, then the answer
+delivered; a delivery that fails writes an error notice and doesn't reopen the request (T3
+orchestration 11.3.6). An abort from the provider (the turn interrupted, the tool withdrawn)
+writes `cancelled`, as does a run settling with requests it still waits on; a run the host
+stopped leaves them as a restart does (4.1). The answer is checked against the row inside
+the step that writes it, so a turn ending as the person answers can't erase the answer
+(orchestration pitfall 10). Implementing a plan turns the plan toggle off and sends
+"Implement the plan above.", as the person would.
+
+#### 4.5.6 Sessions
+
+A thread has at most one live provider session. A turn reuses it; a closed one is resumed by
+`sessionId`; resuming needs the transcript to exist with real turns, else a fresh session
+starts and a notice says the earlier context wasn't available (T3 adapter pitfalls 9, 10).
+The session id is minted by the host and stored before the first turn (the SDK's `sessionId`
+option), so a crash before the first frame still resumes the right conversation.
+
+Model and effort changes apply to the live session (`setModel`, `applyFlagSettings`) before
+the next turn; a permission change with `setPermissionMode`; a change the live session can't
+take reopens it with resume, refused while a background task runs (adapter pitfalls 24, 27,
+28).
+
+#### 4.5.7 Titles
+
+After the first turn starts, the provider's `title(prompt)` runs once: a one-shot query to
+the smallest model with no tools, no settings and no session kept, for a title of at most
+six words. It's written only while the title is still `seed` (the prompt's first line, cut
+at 60 characters): a rename by the person always wins (T3 orchestration pitfall 47).
+
+#### 4.5.8 Live text
+
+Streaming text lives in the actor's memory; the store keeps it at most every 500 ms without
+a change number or an event (`Store.keepText`), since clients have it from the appends, and
+the step that ends the block writes it as a change. A crash loses at most half a second of
+text, which the provider's transcript still holds. Tool output is never kept per delta; the
+item keeps the last 16 KB when the tool settles (T3 orchestration 11.3.4).
+
+#### 4.5.9 Catalog
+
+Models, efforts and the account come from the CLI's initialize response and depend only on
+the CLI and the account: they're kept per executable and version. Slash commands and skills
+depend on the folder: each session's `init` refreshes them for its cwd, and a cwd no session
+has run in yet gets an initialization-only probe (a query whose prompt never yields, read
+for `initializationResult()` and closed; no API call). No hand-kept model list (T3 keeps a
+manifest by hand).
+
+### 4.6 Provider seam [proposed]
+
+```ts
+interface Provider {
+  readonly id: ProviderId;
+  readonly capabilities: { steer; resume; images; compact; plan };
+  status: (refresh: boolean) => Promise<ProviderStatus>;
+  catalog: (cwd: string) => Promise<Catalog>;
+  open: (spec: SessionSpec, sink: SessionSink) => ProviderSession;
+  title: (prompt: string, cwd: string) => Promise<string | undefined>;
+}
+interface ProviderSession {              // each returns once its work is asked for
+  start: (turn: TurnInput) => void;      // one turn at a time; events follow on the sink
+  steer: (message: TurnInput) => boolean;// false when no turn is running anymore
+  interrupt: () => Promise<void>;
+  configure: (change: SessionChange) => Promise<"applied" | "reopen">;
+  kill: () => void;                      // ends the process, and a turn that won't stop
+  close: () => Promise<void>;
+}
+interface SessionSink {
+  event: (event: DriverEvent) => void;
+  ask: (request: RequestPayload, signal: AbortSignal) => Promise<Response>;
+}
+DriverEvent = session.ready {mode} | turn.started {promptId}
+  | item.started {key, parentKey, item: {kind, payload}} | item.appended {key, text}
+  | item.updated {key, item, status} | usage {usage} | request {request}
+  | notice {level, text}
+  | turn.finished {outcome: "completed"|"interrupted"|"failed", failure, usage}
+  | session.ended {error}
+```
+
+`key` is the provider's own stable id for an item (a tool use id, a message id and a block
+index); the actor maps it to an `Item.id` and fixes the ordinal on first sight. A turn's
+events all come before its `turn.finished`. A compaction is an item like any other. What
+each model can do (efforts, fast, auto) is the catalog's, not a capability.
+
+### 4.7 The Claude driver [proposed]
+
+The behaviours, each with the T3 adapter pitfall it carries (`t3-claude-adapter.md` 9).
+
+- **One live `query()` per session**, its prompt an async queue the driver feeds; the
+  driver iterates the `Query` itself, not the raw generator (1). Options:
+  `pathToClaudeCodeExecutable`, `cwd`, `env` (4.2), `sessionId` or `resume`,
+  `systemPrompt: {type: "preset", preset: "claude_code"}`, `includePartialMessages: true`,
+  `canUseTool`, `model`, `effort`, `permissionMode` only when the thread names one,
+  `allowDangerouslySkipPermissions` with Full access,
+  `toolConfig.askUserQuestion.previewFormat: "markdown"`, `spawnClaudeCodeProcess` (4.2).
+- **Prompt identity.** Each prompt gets a fresh uuid; root frames are credited to a turn
+  only once the CLI echoes it (`user_message_uuid(s)`) or reports it in `command_lifecycle`.
+  Frames that arrive while no turn is running (the CLI's own wake turns) are parked and
+  shown as "Claude finished background work" with the next turn (6, 7, 8).
+- **Text and thinking** stream per content block (C10). Thinking is shown as reasoning, as
+  the CLI shows it. Rejected: T3's rule that the second thinking block before a tool is text
+  (29): it can only be decided once the tool use arrives, so an item already on screen would
+  change kind, and it guesses at one model generation's habit.
+- **Tools.** A tool item starts on the `tool_use` block or the permission request,
+  whichever comes first (33), settles on its `tool_result`, using `tool_use_result` only
+  when the message has a single result (32); every open tool closes at turn end. Families:
+  Bash → command; Read → read; Edit, Write, MultiEdit, NotebookEdit → edit (with the
+  structured patch); Grep, Glob, LS → search; WebSearch, WebFetch → web; `mcp__*` → mcp;
+  Agent → agent (a `subagent` item); TodoWrite → todo (and the `todos` item); Skill → skill;
+  anything else → other. Legacy names go through `LEGACY_TOOL_NAME_ALIASES`.
+- **Approvals** through `canUseTool` in every mode but Full access, and in plan mode always
+  (14, 15). The request is raced against the SDK's abort signal, checked once more after the
+  listener is added (18). Decisions: allow → `{behavior: "allow", updatedInput: input}`;
+  allow for this chat → with the SDK's suggestions rewritten to `destination: "session"`
+  (17); deny → `{behavior: "deny", message}`; cancel → deny with `interrupt: true`.
+- **AskUserQuestion** becomes a question; the answer allows the tool with
+  `updatedInput: {questions, answers}`, answers keyed by question text, a multi-select
+  joined with ", ".
+- **ExitPlanMode** becomes a plan request; the tool is denied with "The client captured your
+  proposed plan. Stop here and wait for the user's decision.", and the next turn restores the
+  thread's permission mode with `setPermissionMode` (11).
+- **Results** are classified, never trusting `subtype: "success"`: `is_error`, an API status
+  429 or 529, or an error `terminal_reason` fail the run; `aborted_*` interrupts it (21).
+  Rate-limit events give `retryAt`; auth failures read "Sign in to Claude again" (41).
+- **Usage and context** from `message_start` and `message_delta`: input counts
+  `input + cache_creation + cache_read`; the context window from the result's `modelUsage`;
+  the auto-compact point is the window less a 33k reserve (38).
+- **Compaction** from `status: compacting`, `compact_boundary` and `compact_result`, as one
+  `compaction` item; a `/compact` turn's result text stays on that item (39, 40).
+- **Interrupt**: `interrupt()`, then wait for the result; the process is kept when the result
+  comes (T3 closes it; keeping it saves a respawn) and closed when it doesn't (7).
+- **Errors on start**: the last lines of the CLI's stderr are kept until the first frame, so
+  a refusal that appears only there is shown (45).
+- **Unknown frames** (outside the typed union, or a `system` subtype the driver doesn't
+  know) are logged at debug and dropped; the driver's `switch` handles every known one, the
+  default reached through a `{type: string}` view of the frame, without a cast.
+- **Titles**: `query()` with a string prompt, a haiku model, `tools: []`,
+  `settingSources: []`, `persistSession: false`, `maxTurns: 1`.
+
+Skipped for now (T3 adapter 10.2): MCP elicitation, the resume dialog, subagent transcripts,
+task output tails, ultracode, PDF budgets.
+
+---
+
+## 5. The app
+
+### 5.1 `koyo-rs/koyo-agent` [proposed]
+
+- `protocol.rs`: every request, result and event as serde types (`rename_all =
+  "camelCase"`), item payloads an enum by `kind` with an `Unknown` variant holding the
+  `serde_json::Value`, so a newer host's item never breaks the app (it shows as a notice).
+  Tests: every fixture in `koyo-js/koyo-agent-host/test/fixtures/protocol/` parses and
+  re-encodes to the same JSON.
+- `client.rs`: connect or start (4.1), `hello`, one reader thread, requests with timeouts,
+  events into a channel; after a drop it reconnects and opens each open thread again with
+  its `sinceSeq`.
+- Shared with termd's client, not written twice: the start and stop of a daemon
+  (`koyo-term-control/src/client.rs`: `connect_or_start`, `start_daemon`, `stop_daemon`,
+  the SIGTERM only while the lock is held) move to a module both clients call, given the
+  folder and the command. The folder comes from the app (`settings::data_dir()`), not from a
+  third lookup of `KOYO_DATA_DIR`. The executable is found as the browser host is
+  (`browser/engine.rs`): beside the app's executable in a bundle
+  (`Contents/MacOS/koyo-agent-host`), else in the checkout
+  (`koyo-js/koyo-agent-host/dist/koyo-agent-host`).
+
+### 5.2 The chat model in the app [proposed]
+
+- `Chats` (one per app): the client, thread summaries (from `threads.watch`), open thread
+  entities by id, the catalog by cwd, the provider status.
+- `ChatThread` entity per open chat: thread, runs, items in ordinal order, requests; a
+  structure revision bumped by `thread.changed`; one `Entity<StreamingText>` per streaming
+  item, which `item.appended` feeds, so a token delta notifies only that entity.
+- Appends are drained once per frame: the client thread pushes into a buffer and wakes the
+  foreground once; the drain applies every pending append and notifies each touched entity
+  once. A batch that changes nothing notifies nothing.
+- Drafts per thread (text, attachments, cursor), in the app, debounced 300 ms to
+  `data_dir()/chat-drafts.json`, flushed on quit.
+
+### 5.3 The chat tab [proposed]
+
+Layout, top to bottom inside the pane's card:
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                timeline (gpui list, centred column ≤ 760 px)  │
+│                               ┌──────────────────────────┐   │
+│                               │ user bubble              │   │
+│                               └──────────────────────────┘   │
+│   Worked for 1m 3s ›                                          │
+│   assistant markdown, streaming…                             │
+│   ⌁ Running cargo test · 41s                                  │
+│                                           [ ⌄ Scroll to end ] │
+│  ╭────────────────────────────────────────────────────────╮  │
+│  │ attached drawers: question · plan ready · todos · queue │  │  Liquid Glass,
+│  │────────────────────────────────────────────────────────│  │  one surface
+│  │ Ask Claude…                                            │  │
+│  │ [+]             Opus 5.5 · High ▾   Ask ▾   Plan   ◔   ⏎ │  │
+│  ╰────────────────────────────────────────────────────────╯  │
+└──────────────────────────────────────────────────────────────┘
+```
+
+- **Glass.** The composer and its drawers are one `liquid::backdrop` (radius 18) floating
+  12 px above the card's bottom edge, its content in `deferred`; the scroll-to-end pill,
+  the pickers and the menus are glass too. Fallback: `floating()` + hairline + shadow.
+  The timeline's bottom inset is the composer's measured height plus 24 px, so the last
+  row clears the glass.
+- **Empty chat.** The composer sits centred with the worktree's name above it ("Chat in
+  koyo / claude-chat-agent-sdk") and moves to the bottom on the first send.
+- **Timeline rows** (from T3 UI 2.1), derived by a pure `rows(thread, view) -> Vec<Row>`
+  with stable row ids, a view per row id kept across derivations:
+  - user message: a bubble on the right, at most 80 % wide, the theme's accent at low
+    opacity; images above the text; long messages collapse past 8 lines with "Show more";
+    hover: copy, time; a steer marked "↷ Steered".
+  - assistant text: full-width markdown (`TextView`, streaming), no bubble; a meta line on
+    hover under the final answer: copy, model · effort, time.
+  - reasoning: one muted line with the latest thought ("Thinking…" shimmering while live),
+    expandable to the trace.
+  - work: one row per tool with icon, label and status ("Ran cargo test", "Read
+    src/main.rs", "Changed 3 files", "Searched the web"); consecutive tools form a group
+    whose header is a summary sentence ("Read 3 files and ran 2 commands"); the live row is
+    one row whose id never changes while the turn works, showing the running tool and its
+    elapsed time ("Running cargo test · 41s"); expanding a command shows its output (mono,
+    ANSI-coloured, capped height), an edit its diff, a search its results, a todo its steps,
+    an MCP call its arguments and result.
+  - turn fold: once a run settles, its work before the final answer folds into "Worked for
+    1m 3s ›"; not folded: the live run, failed and interrupted runs, requests, compactions.
+  - approval: inline where it was asked, never folded: what is asked (the command in mono;
+    for an edit, its diff; for a write, the file's head), why, if the CLI said, then Deny ·
+    Allow and a menu: "Allow for this chat (adds `Bash(npm test:*)`)" and "Stop". Keys, while
+    the composer is empty: ⌘↩ allow, ⌥⌘↩ allow for this chat, ⌘⌫ deny.
+  - question: a drawer attached above the composer, one question at a time ("2 of 3"),
+    options as rows with digits 1–9, a single choice advancing after 200 ms, a multi-select
+    with Next; the composer is "Other"; Skip denies the tool with "The user skipped the
+    question"; `preview` renders as markdown beside the options.
+  - plan: a card ("Plan", its first heading as title, collapsed past 20 lines) with Copy and
+    Save as…; a "Plan ready" drawer above the composer: Implement while the composer is
+    empty, Refine once it has text.
+  - compaction: a centred divider "Context compacted · 182k → 31k tokens", "Compacting
+    context…" while live.
+  - failure: from the run, a red icon and the message; for a usage limit "Usage limit
+    reached · resets 14:30".
+  - stop: from the run, a divider "You stopped this response".
+  - changed files: under the final answer, "3 files changed +42 −7"; a row opens the file
+    (a file tab) or its diff (the changes panel).
+  - queued: dashed user bubbles at the end, "Send now · Edit · Remove".
+- **Composer.** `textarea` growing from 1 to 12 lines; Enter sends, ⇧↩ adds a line; while
+  running, Enter steers and ⌘↩ queues (the button's icon follows ⌘); ↑ on an empty composer
+  recalls the last prompt; `@` opens file search in the worktree (`koyo-project`'s index),
+  `/` the commands and skills from the catalog plus Koyo's own (`/model`, `/plan`,
+  `/compact`, `/clear` = new chat); pasted or dropped images show as tiles, downsized to
+  2048 px; ⌘., or Esc on an empty composer, stops.
+- **Footer.** `[+]` attach · model and effort ("Opus 5.5 · High", ⚡ when fast) · permission
+  ("Ask", in the accent when not the default) · Plan toggle (⇧Tab) · context ring (hover:
+  "42 % · 84k of 200k", "Compact now") · send / stop. Labels collapse to icons from the end
+  as the pane narrows.
+- **Model picker** (⌘⇧M, a glass popover above the footer): models from the catalog, ✓ on
+  the current, the effort column for the highlighted model, Fast as a switch when it can be.
+  ↑/↓, → to efforts, Enter picks, Esc closes.
+- **Scroll.** Follows the end while within 40 px of it; any scroll up releases; reaching the
+  end again re-arms. Sending anchors the new prompt near the top and lets the answer grow
+  under it until the first tool. The pill "⌄ Scroll to end" (with "· 2 queued") shows 150 ms
+  after leaving the end. Position per thread is restored on return; scrolling to the top
+  loads older runs (`threads.history`).
+- **Status in the shell.** The tab face shows a spinner while working, the accent dot when
+  it needs you, a dot when unread, red when failed. The sidebar's worktree row shows the
+  most urgent of its chats. A macOS notification when a chat needs you or finishes while
+  Koyo isn't frontmost, opening the chat when clicked.
+
+### 5.4 Performance budget [proposed]
+
+- A token delta: one `StreamingText` notify, one row repaint, nothing else. 60 fps while
+  streaming 200 tokens/s on a 2,000-item thread.
+- Row derivation runs on structure changes only, and reuses unchanged rows.
+- A thread opens with its latest 30 runs; older ones load as the person scrolls up.
+- Timers (elapsed labels) share one 1 s tick that runs only while something is live; the
+  shimmer pauses when the window is occluded.
+
+---
+
+## 6. Testing strategy [proposed]
+
+- **Host unit tests** (`script/bun test`): the store (change numbers, snapshot, since),
+  the status function, the run transitions, the actor on the fake provider (send, steer,
+  queue and its hold, stop, force stop, the stop barrier against late tools, approvals
+  answered, cancelled and raced, questions, plans, restart recovery, titles not overwriting
+  renames), the protocol (every fixture parses; every method and event has a fixture).
+- **Claude driver**: SDK message transcripts recorded from real sessions
+  (`test/fixtures/claude/*.jsonl`) replayed into the mapping (text and thinking deltas,
+  tools, edits with patches, AskUserQuestion, ExitPlanMode, compaction, interrupts, errors);
+  a live smoke test against the real CLI when `KOYO_LIVE_CLAUDE=1`.
+- **Host end to end**: the compiled executable with the fake provider
+  (`KOYO_AGENT_PROVIDER=fake`), driven over its socket.
+- **Rust**: `koyo-agent` parses every fixture; the client against the compiled host on the
+  fake provider; the app's row derivation as pure functions.
+- **Real app**: driven with `orca computer` on a real Claude session in a test worktree:
+  send, stream, approve, deny, ask, plan, stop, queue, restart Koyo mid-turn.
+
+---
+
+## 7. Milestones [proposed]
+
+- **M1 Host core.** Protocol and fixtures, daemon, store, actor, fake provider, tests.
+- **M2 Claude driver.** The driver of 4.7, recorded fixtures, the live smoke test, the
+  compiled executable (`script/agent-host`, run by `script/dev`), its version in
+  `script/daemon-version`.
+- **M3 App client.** `koyo-agent`, the shared daemon start and stop, the chat model, the tab
+  restored from its thread id.
+- **M4 Chat tab.** Timeline, streaming markdown, work rows and folds, the glass composer.
+- **M5 The agent's asks.** Approvals, questions, plans, pickers, permission and plan
+  controls, `@` and `/`, images, queue, stop.
+- **M6 Koyo-wide.** Tab and sidebar status, notifications, the chat settings page, keys,
+  recent chats, rewind (C11), app-control operations for chats.
+
+Each milestone ends with `script/check` green, the simplify pass, and its commits.
+
+---
+
+## 8. Open decisions
+
+- **O1 [open] Koyo's MCP server in chat sessions** (the terminal and browser tools of
+  `docs/terminals.md` 8), so the chat's Claude can drive Koyo's terminals. Default: no for
+  v1; a setting once the tools are scoped to the chat's worktree.
+- **O2 [open] Installing Claude Code** when it's missing, by opening a terminal tab with
+  Anthropic's install command. Default: show the command and a "Check again" button.
+- **O3 [open] Claude sessions started outside Koyo.** Sessions started in Koyo are ordinary
+  Claude sessions on disk; the worktree's other sessions (`listSessions`) could be continued
+  in a chat. Default: later.
+
+---
+
+## 9. Glossary
+
+- **Host**: `koyo-agent-host`, the daemon of section 4.
+- **Thread / chat**: one conversation, in one worktree, shown in one tab.
+- **Run / turn**: one prompt and the work it caused.
+- **Item**: one timeline entry: a message, a thought, a tool call, a request, a divider.
+- **Request**: what the agent waits on a person for: an approval, a question or a plan.
+- **Session**: the provider's live conversation process, resumable by its id.
+- **Steer**: a message added to a running turn instead of starting a new one.
