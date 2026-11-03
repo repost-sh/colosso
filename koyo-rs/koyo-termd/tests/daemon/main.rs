@@ -8,6 +8,7 @@
 )]
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::hash::{DefaultHasher, Hash as _, Hasher as _};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -35,12 +36,15 @@ mod upgrade;
 const DAEMON: &str = env!("CARGO_BIN_EXE_koyo-termd");
 const WAIT: Duration = Duration::from_secs(20);
 
-/// A fresh folder for one test's daemon, under the checkout; short, since a unix socket's
-/// path is limited to about a hundred bytes.
+/// A fresh folder for one test's daemon, under the checkout. A unix socket's path is limited to
+/// about a hundred bytes and the checkout's own takes most of them, so the folder goes by a few
+/// digits of `name`'s hash, however long the name is.
 fn test_dir(name: &str) -> TermDir {
+    let mut hasher = DefaultHasher::new();
+    name.hash(&mut hasher);
     let root = Path::new(env!("KOYO_TARGET_DIR"))
         .join("tt")
-        .join(name);
+        .join(format!("{:06x}", hasher.finish() & 0xff_ffff));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();
     TermDir::at(std::fs::canonicalize(&root).unwrap().join("d"))
