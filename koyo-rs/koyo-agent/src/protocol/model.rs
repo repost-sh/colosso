@@ -291,6 +291,24 @@ pub enum ItemBody {
     },
 }
 
+impl ItemBody {
+    /// The text of what streams: an answer, or the agent's thinking.
+    pub fn text(&self) -> Option<&str> {
+        match self {
+            ItemBody::AssistantText(text) | ItemBody::Reasoning(text) => Some(&text.text),
+            _ => None,
+        }
+    }
+
+    /// The text of what streams, to grow.
+    pub fn text_mut(&mut self) -> Option<&mut String> {
+        match self {
+            ItemBody::AssistantText(text) | ItemBody::Reasoning(text) => Some(&mut text.text),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UserMessage {

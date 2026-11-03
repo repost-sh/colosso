@@ -5211,11 +5211,13 @@ name = "koyo-agent"
 version = "0.1.0"
 dependencies = [
  "crossbeam-channel",
+ "futures",
  "koyo-daemon",
  "log",
  "parking_lot",
  "serde",
  "serde_json",
+ "uuid",
 ]
 
 [[package]]
