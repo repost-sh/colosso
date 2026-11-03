@@ -7,7 +7,6 @@ import { mkdirSync, rmSync } from "node:fs";
 
 import { handlers } from "../host";
 import { log, logTo } from "../log";
-import type { Params } from "../protocol/methods";
 import { HOST_VERSION } from "../protocol/wire";
 import type { Provider } from "../providers/provider";
 import { serve } from "../server/server";
@@ -26,8 +25,6 @@ export interface Options {
   /** Logs to stderr rather than the folder's log. */
   readonly foreground: boolean;
   readonly providers: readonly Provider[];
-  /** Hands Koyo's settings of the agents to the providers. */
-  readonly configure: (config: Params<"config.set">) => void;
   /** Says the host listens: the `ready` line on stdout its starter waits for. */
   readonly ready: () => void;
 }
@@ -70,7 +67,6 @@ export async function run(options: Options): Promise<Served> {
     threads,
     providers: options.providers,
     attachments: dir.attachments,
-    configure: options.configure,
     shutdown: () => {
       stop("a client asked");
     },

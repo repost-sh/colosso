@@ -4,7 +4,7 @@
 // reaches nothing, so a session killed mid-turn can't change the turn after it.
 
 import { errorMessage, log } from "../log";
-import type { RequestPayload, Thread } from "../protocol/model";
+import type { Mode, RequestPayload, Thread } from "../protocol/model";
 import type {
   DriverEvent,
   Provider,
@@ -18,8 +18,11 @@ import type { Waiter } from "./requests";
 /** How long a session waits for its next turn before it's closed (4.1). */
 const IDLE_MS = 5 * 60_000;
 
-/** The session `thread` runs its turns in, as conversation `sessionId`. */
-export function specFor(thread: Thread, sessionId: string): SessionSpec {
+/**
+ * The session `thread` runs its turns in, as conversation `sessionId`: in the chat's mode, or
+ * Koyo's `defaultMode` when it names none (C12).
+ */
+export function specFor(thread: Thread, sessionId: string, defaultMode: Mode | null): SessionSpec {
   return {
     cwd: thread.cwd,
     sessionId,
@@ -28,7 +31,7 @@ export function specFor(thread: Thread, sessionId: string): SessionSpec {
     model: thread.model,
     effort: thread.effort,
     fast: thread.fast,
-    permission: thread.permission,
+    permission: thread.permission ?? defaultMode,
     plan: thread.plan,
   };
 }

@@ -8,12 +8,13 @@ import type { ThreadId } from "../../src/protocol/ids";
 import type { Rows } from "../../src/protocol/methods";
 import type { Item, ThreadSummary } from "../../src/protocol/model";
 import { FakeProvider } from "../../src/providers/fake";
-import type { Capabilities } from "../../src/providers/provider";
+import type { Capabilities, Config } from "../../src/providers/provider";
 import type { Change } from "../../src/store/store";
 import { Store } from "../../src/store/store";
 import { type Context, ThreadActor } from "../../src/threads/actor";
 import { textPrompt } from "../../src/threads/records";
 import { thread } from "./records";
+import { settle } from "./wait";
 
 export class Harness {
   readonly store = Store.open(":memory:");
@@ -24,11 +25,13 @@ export class Harness {
   /** The lines the actor sent its subscriber, parsed. */
   readonly lines: unknown[] = [];
   readonly id: ThreadId;
+  /** Koyo's settings, as the actor reads them. */
+  config: Config = { claudePath: null, defaultMode: null };
   #tick = 0;
   #actor: ThreadActor | undefined;
 
   constructor(capabilities: Partial<Capabilities> = {}, given: Partial<Change> = {}) {
-    this.provider = new FakeProvider(capabilities);
+    this.provider = new FakeProvider({ capabilities });
     const chat = given.thread ?? thread();
     this.id = chat.id;
     this.store.commit(chat.id, { ...given, thread: chat });
@@ -78,6 +81,7 @@ export class Harness {
     return {
       store: this.store,
       provider: this.provider,
+      config: () => this.config,
       attachments: "/attachments",
       now: () => {
         this.#tick += 1;
@@ -100,7 +104,25 @@ const AppendedLine = z.object({
 
 export const prompt = textPrompt;
 
-/** Lets the steps queued behind the running one run. */
-export async function settle(): Promise<void> {
-  await Bun.sleep(0);
+const harnesses: Harness[] = [];
+
+/** A harness that `closeHarnesses`, which a test file runs after each test, closes. */
+export function harness(...args: ConstructorParameters<typeof Harness>): Harness {
+  const made = new Harness(...args);
+  harnesses.push(made);
+  return made;
+}
+
+/** Closes every harness `harness` made. */
+export function closeHarnesses(): void {
+  for (const made of harnesses.splice(0)) {
+    made.close();
+  }
+}
+
+/** Starts a turn and has the session say it started. */
+export async function running(chats: Harness, text = "Find the flaky test."): Promise<void> {
+  chats.actor.send(prompt(text), "auto");
+  chats.provider.session.started();
+  await settle();
 }

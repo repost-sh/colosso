@@ -45,9 +45,14 @@ export function isOpen(item: Item): boolean {
   return item.status === "pending" || item.status === "running";
 }
 
+/** Whether a prompt of `text` compacts the conversation: Koyo's `/compact`. */
+export function isCompact(text: string): boolean {
+  return /^\/compact(?:\s|$)/u.test(text);
+}
+
 /** Whether `run` compacts the conversation, which no message can join (4.5.1). */
 export function compacts(run: Run): boolean {
-  return /^\/compact(?:\s|$)/u.test(run.prompt.text);
+  return isCompact(run.prompt.text);
 }
 
 /** What a thread is doing, from its unsettled runs and the latest that ended. */

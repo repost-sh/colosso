@@ -1,6 +1,7 @@
 // The rows a thread's actor writes, made and changed by pure functions: a new run or item, a
 // run moved through the one transition function, a run settled with what it left open.
 
+import type { UUID } from "node:crypto";
 import { join } from "node:path";
 
 import { ItemId, MessageId, newId, RequestId, RunId, ThreadId } from "../protocol/ids";
@@ -9,6 +10,7 @@ import type {
   Answer,
   Failure,
   Item,
+  Mode,
   NoticeLevel,
   Prompt,
   Request,
@@ -20,10 +22,12 @@ import type {
   Usage,
 } from "../protocol/model";
 import type { ItemBody, Outcome, SessionChange, TurnInput } from "../providers/provider";
-import { canMove, isOpen } from "./rules";
+import { canMove, isCompact, isOpen } from "./rules";
 
 /** The longest seed title: the prompt's first line, cut (docs/chat.md 4.5.7). */
 const SEED_TITLE = 60;
+/** The most words a generated title keeps (4.5.7). */
+const TITLE_WORDS = 6;
 
 /** A new chat, as `threads.create` asks for it; its title comes with its first prompt. */
 export function newThread(params: Params<"threads.create">, at: string): Thread {
@@ -81,11 +85,6 @@ export function stopBy(by: Stop["by"], at: string): Stop {
   return { requestedAt: at, by, force: false };
 }
 
-/** A failure of the agent's process, as a person reads it. */
-export function processFailure(message: string): Failure {
-  return { kind: "process", message, retryAt: null };
-}
-
 /** What a run's end is told, each defaulting to what the run had: why it failed, what it
  * used, who stopped it. */
 export interface Ending {
@@ -101,7 +100,6 @@ export function settled(
   open: readonly Item[],
   ending: Ending & { readonly at: string },
 ): { readonly run: Run; readonly items: readonly Item[] } {
-  const status = outcome === "completed" ? "completed" : "interrupted";
   return {
     run: moved(run, outcome, {
       endedAt: ending.at,
@@ -109,8 +107,35 @@ export function settled(
       usage: ending.usage ?? run.usage,
       stop: ending.stop ?? run.stop,
     }),
-    items: open.filter(isOpen).map((item) => ({ ...item, status })),
+    items: open.filter(isOpen).map((item) => ({ ...item, status: closed(item, outcome) })),
   };
+}
+
+/**
+ * What an item left open becomes when its run ends as `outcome` (docs/chat.md 4.5): after a
+ * run that completed, a tool or a subagent no result came for can't be said to have run, and
+ * a compaction that never said it ended didn't, so they fail, and the rest completes; after
+ * any other end, all of it was interrupted.
+ */
+function closed(item: Item, outcome: Outcome): Item["status"] {
+  if (outcome !== "completed") {
+    return "interrupted";
+  }
+  switch (item.kind) {
+    case "tool":
+    case "subagent":
+    case "compaction": {
+      return "failed";
+    }
+    case "user_message":
+    case "assistant_text":
+    case "reasoning":
+    case "todos":
+    case "request":
+    case "notice": {
+      return "completed";
+    }
+  }
 }
 
 /** An item of `run` at `ordinal`, from what a provider or the actor says it is. */
@@ -149,8 +174,16 @@ export function userMessage(
   return closedItem(run, ordinal, { kind: "user_message", payload });
 }
 
-/** `prompt` as a session takes it, with its files where `folder` keeps them. */
-export function turnInput(promptId: string, prompt: Prompt, folder: string): TurnInput {
+/**
+ * `prompt` as a session takes it, as a turn or a message joining one, with its files where
+ * `folder` keeps them.
+ */
+export function turnInput(
+  promptId: UUID,
+  prompt: Prompt,
+  folder: string,
+  delivered: "turn" | "steer",
+): TurnInput {
   return {
     promptId,
     text: prompt.text,
@@ -158,6 +191,7 @@ export function turnInput(promptId: string, prompt: Prompt, folder: string): Tur
       path: join(folder, attachment.file),
       mime: attachment.mime,
     })),
+    compact: delivered === "turn" && isCompact(prompt.text),
   };
 }
 
@@ -271,13 +305,21 @@ export function updatedThread(thread: Thread, change: ThreadChange, at: string):
   };
 }
 
-/** What changed between `before` and `after` that a live session takes. */
-export function settingsChanged(before: Thread, after: Thread): SessionChange {
+/**
+ * What changed between `before` and `after` that a live session takes; a chat's mode that
+ * changed to none is Koyo's `defaultMode`, as a session is opened with (4.5.6).
+ */
+export function settingsChanged(
+  before: Thread,
+  after: Thread,
+  defaultMode: Mode | null,
+): SessionChange {
+  const permission = after.permission ?? defaultMode;
   return {
     ...(after.model === before.model ? {} : { model: after.model }),
     ...(after.effort === before.effort ? {} : { effort: after.effort }),
     ...(after.fast === before.fast ? {} : { fast: after.fast }),
-    ...(after.permission === before.permission ? {} : { permission: after.permission }),
+    ...(after.permission === before.permission ? {} : { permission }),
     ...(after.plan === before.plan ? {} : { plan: after.plan }),
   };
 }
@@ -286,4 +328,15 @@ export function settingsChanged(before: Thread, after: Thread): SessionChange {
 export function seedTitle(text: string): string {
   const line = text.trim().split("\n", 1).at(0) ?? "";
   return line.length > SEED_TITLE ? `${line.slice(0, SEED_TITLE - 1).trimEnd()}…` : line;
+}
+
+/**
+ * The title a model's `reply` makes: its first line that isn't empty, without the quotes and
+ * markdown around it, at most six words; `undefined` when nothing is left.
+ */
+export function titleFrom(reply: string): string | undefined {
+  const line = reply.split("\n").map((each) => each.trim()).find((each) => each !== "") ?? "";
+  const bare = line.replace(/^[\s"'`*#]+|[\s"'`*.]+$/gu, "");
+  const words = bare.split(/\s+/u).filter((word) => word !== "").slice(0, TITLE_WORDS);
+  return words.length === 0 ? undefined : words.join(" ");
 }

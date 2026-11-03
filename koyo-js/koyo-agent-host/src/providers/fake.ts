@@ -1,11 +1,13 @@
 // A provider that runs no agent (docs/chat.md C6), for tests: each session records what the
 // actor asked of it and reports what its test tells it to, through the same sink a real
-// driver reports to.
+// driver reports to. Given `answer`, its sessions answer each turn by themselves instead, for
+// the host run end to end (`KOYO_AGENT_PROVIDER=fake`).
 
 import type { Catalog, ProviderStatus } from "../protocol/methods";
-import type { RequestPayload, Response } from "../protocol/model";
+import type { Mode, RequestPayload, Response } from "../protocol/model";
 import type {
   Capabilities,
+  Config,
   DriverEvent,
   ItemBody,
   Outcome,
@@ -25,18 +27,37 @@ const EVERYTHING: Capabilities = {
   plan: true,
 };
 
+/** What a session does as a turn starts, beside recording it. */
+type OnStart = (session: FakeSession, turn: TurnInput) => void;
+
+interface FakeOptions {
+  /** What it can do, everything unless said otherwise. */
+  readonly capabilities?: Partial<Capabilities>;
+  readonly onStart?: OnStart;
+}
+
 export class FakeProvider implements Provider {
   readonly id = "fake";
   readonly capabilities: Capabilities;
   /** Every session opened, the latest last. */
   readonly sessions: FakeSession[] = [];
-  /** The title `title` gives; `undefined` gives none. */
+  /** The reply `title` gives; `undefined` gives none. */
   nextTitle: string | undefined;
   /** Makes `open` fail, as a missing CLI does. */
   failOpen: Error | undefined;
+  /** Koyo's settings, as they were last given. */
+  config: Config | undefined;
+  /** The default mode its own settings name. */
+  settingsMode: Mode | null = null;
+  readonly #onStart: OnStart | undefined;
 
-  constructor(capabilities: Partial<Capabilities> = {}) {
-    this.capabilities = { ...EVERYTHING, ...capabilities };
+  constructor(options: FakeOptions = {}) {
+    this.capabilities = { ...EVERYTHING, ...options.capabilities };
+    this.#onStart = options.onStart;
+  }
+
+  setConfig(config: Config): void {
+    this.config = config;
   }
 
   /** The session opened last. */
@@ -60,14 +81,14 @@ export class FakeProvider implements Provider {
   }
 
   async catalog(_cwd: string): Promise<Catalog> {
-    return await Promise.resolve({ models: [], commands: [], defaultMode: null });
+    return await Promise.resolve({ models: [], commands: [], defaultMode: this.settingsMode });
   }
 
   open(spec: SessionSpec, sink: SessionSink): ProviderSession {
     if (this.failOpen !== undefined) {
       throw this.failOpen;
     }
-    const session = new FakeSession(spec, sink);
+    const session = new FakeSession(spec, sink, this.#onStart);
     this.sessions.push(session);
     return session;
   }
@@ -99,13 +120,17 @@ export class FakeSession implements ProviderSession {
   /** Makes `interrupt` fail, as a process that stopped answering does. */
   failInterrupt: Error | undefined;
 
-  constructor(spec: SessionSpec, sink: SessionSink) {
+  readonly #onStart: OnStart | undefined;
+
+  constructor(spec: SessionSpec, sink: SessionSink, onStart?: OnStart) {
     this.spec = spec;
     this.#sink = sink;
+    this.#onStart = onStart;
   }
 
   start(turn: TurnInput): void {
     this.turns.push(turn);
+    this.#onStart?.(this, turn);
   }
 
   steer(turn: TurnInput): boolean {
@@ -169,4 +194,17 @@ export class FakeSession implements ProviderSession {
       },
     };
   }
+}
+
+/** Answers `turn` at once with its text said back, streamed in two pieces. */
+export function answer(session: FakeSession, turn: TurnInput): void {
+  const key = `answer-${String(session.turns.length)}`;
+  const opening = "You said: ";
+  session.started();
+  session.startsText(key);
+  session.report({ type: "item.appended", key, text: opening });
+  session.report({ type: "item.appended", key, text: turn.text });
+  const item: ItemBody = { kind: "assistant_text", payload: { text: `${opening}${turn.text}` } };
+  session.report({ type: "item.updated", key, item, status: "completed" });
+  session.finished();
 }
