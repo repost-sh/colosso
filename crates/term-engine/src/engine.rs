@@ -9,7 +9,7 @@ use ghostty_vt::render::{
 };
 use ghostty_vt::screen::{CellWide, RowSemanticPrompt};
 use ghostty_vt::style::{RgbColor, StyleColor, Underline as StyleUnderline};
-use ghostty_vt::terminal::{Event, ProgressState, ScrollViewport};
+use ghostty_vt::terminal::{ColorScheme, Event, Mode, ProgressState, ScrollViewport};
 use ghostty_vt::{Terminal, TerminalOptions};
 
 use crate::Result;
@@ -97,6 +97,8 @@ pub struct Engine {
     cache: HashMap<RowId, Arc<Row>>,
     sequence: u64,
     grapheme: Vec<char>,
+    /// Whether the host's theme is dark, once it's said: what a program asking is told.
+    dark: Option<bool>,
 }
 
 impl std::fmt::Debug for Engine {
@@ -138,6 +140,7 @@ impl Engine {
             cache: HashMap::new(),
             sequence: 0,
             grapheme: Vec::with_capacity(8),
+            dark: None,
         })
     }
 
@@ -195,7 +198,7 @@ impl Engine {
 
     pub fn is_bracketed_paste(&self) -> bool {
         self.term
-            .mode(ghostty_vt::terminal::Mode::BRACKETED_PASTE)
+            .mode(Mode::BRACKETED_PASTE)
             .unwrap_or(false)
     }
 
@@ -225,6 +228,21 @@ impl Engine {
         self.term
             .set_default_bg_color(Some(rgb_color(background)))?;
         Ok(())
+    }
+
+    /// Whether the host's theme is dark, as a program asking (CSI ? 996 n) is told. When it
+    /// changes for a program that asked to hear of changes (mode 2031), the report to write
+    /// to it.
+    pub fn set_color_scheme(&mut self, dark: bool) -> Result<Option<Vec<u8>>> {
+        let changed = self.dark.replace(dark).is_some_and(|was| was != dark);
+        let scheme = if dark { ColorScheme::Dark } else { ColorScheme::Light };
+        self.term.set_color_scheme(Some(scheme));
+        if !changed || !self.term.mode(Mode::COLOR_SCHEME_REPORT)? {
+            return Ok(None);
+        }
+        let mut report = [0; 16];
+        let len = scheme.encode_report(&mut report)?;
+        Ok(Some(report[..len].to_vec()))
     }
 
     /// The whole state, to restore with [`Engine::restore`] or to send to another client.
@@ -327,6 +345,7 @@ impl Engine {
             }),
             foreground: rgb(colors.foreground),
             background: rgb(colors.background),
+            background_overridden: self.term.bg_color()? != self.term.default_bg_color()?,
             cursor_color: colors.cursor.map(rgb),
             scrollbar: self.scrollbar(),
             alt_screen: self.is_alt_screen(),

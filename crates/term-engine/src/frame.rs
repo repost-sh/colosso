@@ -12,6 +12,19 @@ pub struct Rgb {
     pub b: u8,
 }
 
+/// As the daemon's protocol carries a colour.
+impl From<[u8; 3]> for Rgb {
+    fn from([r, g, b]: [u8; 3]) -> Rgb {
+        Rgb { r, g, b }
+    }
+}
+
+impl From<Rgb> for [u8; 3] {
+    fn from(Rgb { r, g, b }: Rgb) -> [u8; 3] {
+        [r, g, b]
+    }
+}
+
 /// What one cell shows.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum Grapheme {
@@ -234,6 +247,9 @@ pub struct Frame {
     pub cursor: Option<Cursor>,
     pub foreground: Rgb,
     pub background: Rgb,
+    /// Whether the program set a background of its own (OSC 11) over the default the
+    /// terminal was given, which then fills the terminal instead of the host's backdrop.
+    pub background_overridden: bool,
     pub cursor_color: Option<Rgb>,
     pub scrollbar: Scrollbar,
     pub alt_screen: bool,
@@ -353,6 +369,7 @@ mod tests {
             cursor: None,
             foreground: Rgb::default(),
             background: Rgb::default(),
+            background_overridden: false,
             cursor_color: None,
             scrollbar: Scrollbar::default(),
             alt_screen: false,

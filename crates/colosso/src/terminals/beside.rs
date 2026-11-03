@@ -90,7 +90,6 @@ impl Shell {
                     .flex_shrink_0()
                     .border_l_1()
                     .border_color(p.hairline)
-                    .bg(p.card)
                     .child(panel.clone())
                     .child(resize_handle("terminal-panel-edge", PanelResize(id)).left(px(-3.))),
             )

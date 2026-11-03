@@ -331,7 +331,7 @@ pub(super) fn overlay(
             .items_center()
             .justify_center()
             .gap_3()
-            .bg(p.card)
+            .bg(p.floating())
             // The page under it stays out of reach.
             .occlude()
             .child(

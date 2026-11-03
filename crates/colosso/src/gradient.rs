@@ -126,6 +126,12 @@ impl GradientTheme {
         self.dots.iter().map(|&dot| self.color(dot)).collect()
     }
 
+    /// The first colour, which the app's own tints take their hue from; none with no dots.
+    pub fn primary(&self) -> Option<Hsla> {
+        let &dot = self.dots.first()?;
+        Some(rgba(self.color(dot), 1.).into())
+    }
+
     /// `color` as it lies over the blur: lifted a little toward white, at the theme's opacity.
     pub fn glass(&self, color: Rgb) -> Rgba {
         let floor = self.opacity + MIN_OPACITY;

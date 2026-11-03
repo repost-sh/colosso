@@ -234,7 +234,11 @@ impl Element for TerminalElement {
             window.paint_quad(fill(drawn, hsla(background)));
             drawn
         } else {
-            window.paint_quad(fill(bounds, hsla(background)));
+            // What's behind the terminal shows through its default background; a program's own
+            // background is painted solid.
+            if self.frame.as_ref().is_some_and(|frame| frame.background_overridden) {
+                window.paint_quad(fill(bounds, hsla(background)));
+            }
             bounds
         };
         if let Some(frame) = self.frame.clone() {

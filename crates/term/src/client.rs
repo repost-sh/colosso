@@ -10,9 +10,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use colosso_term_control::{
-    AttachMode, ClientError, ClientKind, Connection, DaemonCommand, ErrorCode, Event, EventKind,
-    Handle, Hello, Message, Output, ProtocolError, RequestBody, ResponseBody, SNAPSHOT_FORMAT,
-    Size, SnapshotChunk, TermDir, TerminalRecord, Welcome,
+    AttachMode, ClientError, ClientKind, Connection, DAEMON_VERSION, DaemonCommand, ErrorCode,
+    Event, EventKind, Handle, Hello, Message, Output, ProtocolError, RequestBody, ResponseBody,
+    SNAPSHOT_FORMAT, Size, SnapshotChunk, TermDir, TerminalRecord, Theme, Welcome,
 };
 use crossbeam_channel::{Receiver, Sender};
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
@@ -59,6 +59,8 @@ pub struct TermClient {
     subscribers: Arc<Mutex<Vec<UnboundedSender<Notice>>>>,
     /// The client stopped the daemon: it isn't started again.
     stopped: AtomicBool,
+    /// The app's theme, which every daemon this client connects to is told.
+    theme: Mutex<Option<Theme>>,
 }
 
 struct Live {
@@ -179,6 +181,7 @@ impl TermClient {
             live: Mutex::new(None),
             subscribers: Arc::default(),
             stopped: AtomicBool::new(false),
+            theme: Mutex::new(None),
         })
     }
 
@@ -216,6 +219,27 @@ impl TermClient {
         self.request(body).map(Some)
     }
 
+    /// Keeps `theme` for the daemon to tell every terminal's program, on every connection
+    /// from now on; whether it changed, when `send_theme` tells the daemon connected now.
+    pub fn keep_theme(&self, theme: Theme) -> bool {
+        self.theme.lock().replace(theme) != Some(theme)
+    }
+
+    /// Tells the daemon connected now `theme`; one connected later is told the theme kept as
+    /// it connects. Blocks like `request`.
+    pub fn send_theme(&self, theme: Theme) {
+        if let Some(connection) = self.connection() {
+            tell_theme(&connection, theme);
+        }
+    }
+
+    /// The connection to the daemon, while it's open.
+    fn connection(&self) -> Option<Arc<Connection>> {
+        (self.live.lock().as_ref())
+            .filter(|live| !live.connection.is_closed())
+            .map(|live| Arc::clone(&live.connection))
+    }
+
     /// Stops the daemon if it runs, and every terminal in it. The client starts it no more:
     /// the views that lose it stay as they are rather than starting it again.
     pub fn shutdown(&self) -> Result<(), ClientError> {
@@ -240,9 +264,7 @@ impl TermClient {
     }
 
     fn is_running(&self) -> bool {
-        let live = self.live.lock();
-        live.as_ref()
-            .is_some_and(|live| !live.connection.is_closed())
+        self.connection().is_some()
             || std::os::unix::net::UnixStream::connect(self.dir.socket()).is_ok()
     }
 
@@ -353,6 +375,9 @@ impl TermClient {
         std::thread::Builder::new()
             .name("term-dispatch".into())
             .spawn(move || dispatch(&received, &for_thread, &subscribers))?;
+        if let Some(theme) = *self.theme.lock() {
+            tell_theme(&connection, theme);
+        }
         Ok(Live {
             connection,
             welcome,
@@ -399,11 +424,19 @@ fn dispatch(
         .retain(|tx| tx.unbounded_send(Notice::Disconnected).is_ok());
 }
 
-/// Whether this build can use the daemon that sent `welcome` (`docs/terminals.md` 5.1): the
-/// views restore its snapshots, so its engine and their format must be this build's. A
-/// daemon of another protocol refuses the hello itself.
+fn tell_theme(connection: &Connection, theme: Theme) {
+    if let Err(error) = connection.request(RequestBody::Theme(theme)) {
+        log::warn!("couldn't tell the terminal daemon the theme: {error}");
+    }
+}
+
+/// Whether this build can use the daemon that sent `welcome` (`docs/terminals.md` 5.1): it
+/// must be this build's version of the daemon, and the views restore its snapshots, so its
+/// engine and their format must be this build's. A daemon of another protocol refuses the
+/// hello itself.
 pub fn this_build(welcome: &Welcome) -> Result<(), ClientError> {
-    if welcome.engine_commit == colosso_term_engine::GHOSTTY_COMMIT
+    if welcome.daemon_version == DAEMON_VERSION.to_string()
+        && welcome.engine_commit == colosso_term_engine::GHOSTTY_COMMIT
         && welcome.snapshot_format == SNAPSHOT_FORMAT
     {
         return Ok(());
@@ -415,7 +448,7 @@ pub fn this_build(welcome: &Welcome) -> Result<(), ClientError> {
     Err(ClientError::Protocol(ProtocolError::new(
         ErrorCode::DaemonVersionMismatch,
         format!(
-            "the terminals are served by another build, {} on Ghostty {engine}",
+            "the terminals are served by another build, daemon {} on Ghostty {engine}",
             welcome.daemon_version
         ),
     )))

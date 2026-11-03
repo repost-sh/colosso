@@ -1,0 +1,75 @@
+#!/bin/sh
+# The terminal daemon's version is `DAEMON_VERSION` in crates/term-control/src/protocol.rs.
+# An app meeting a daemon of another version has it restarted (docs/terminals.md 5.1), so a
+# change to what the daemon runs bumps it, and an update then restarts the daemon rather
+# than leave the old one serving the new app.
+#
+# daemon-version.txt holds the version and a fingerprint of what the daemon is built from:
+# the crates `cargo tree` resolves for it, with their versions, the sources of those in this
+# checkout (tests left out), and the toolchain and Zig they're built with. script/lint fails
+# once the two part, until one of these says which change it was:
+#
+#   script/daemon-version          check (script/lint runs it)
+#   script/daemon-version bump     the daemon changed: the next version, and its sources noted
+#   script/daemon-version keep     a change a running daemon doesn't need (comments, renames,
+#                                  code only clients run): its sources noted, the same version
+set -eu
+cd "$(dirname "$0")/.."
+
+PROTOCOL_RS=crates/term-control/src/protocol.rs
+RECORD=daemon-version.txt
+LINE='^pub const DAEMON_VERSION: u32 = \([0-9][0-9]*\);$'
+
+version() {
+  sed -n "s/$LINE/\\1/p" "$PROTOCOL_RS"
+}
+
+# One hash of the daemon's crates as resolved, and every file it's built from, by path and
+# content. Tests are left out: `tests/` folders and `tests.rs` files only tests compile.
+fingerprint() {
+  crates=$(cargo tree --quiet --offline -p colosso-termd -e normal,build --prefix none |
+    LC_ALL=C sort -u)
+  folders=$(printf '%s\n' "$crates" | sed -n "s|.*($PWD/\(.*\))\$|\1|p")
+  {
+    printf '%s\n' "$crates"
+    # shellcheck disable=SC2086 # one word per folder
+    find $folders rust-toolchain.toml .cargo/config.toml -type f \
+      \( -path '*/src/*' -o -name Cargo.toml -o -name build.rs -o -name rust-toolchain.toml \
+      -o -name config.toml \) -not -path '*/target/*' -not -path '*/tests/*' -not -name tests.rs |
+      LC_ALL=C sort | tr '\n' '\0' | xargs -0 shasum -a 256
+  } | shasum -a 256 | cut -d' ' -f1
+}
+
+record() {
+  {
+    echo "# Written by script/daemon-version: the daemon version and its sources' fingerprint."
+    echo "$(version) $(fingerprint)"
+  } >"$RECORD"
+}
+
+case "${1:-check}" in
+  check)
+    expected="$(version) $(fingerprint)"
+    recorded="$(grep -v '^#' "$RECORD" 2>/dev/null || true)"
+    if [ "$recorded" != "$expected" ]; then
+      echo "The terminal daemon's sources changed since its version ($(version)) was set."
+      echo "  script/daemon-version bump   if a running daemon must restart for the change"
+      echo "  script/daemon-version keep   if it needn't (comments, renames, client-only code)"
+      exit 1
+    fi
+    ;;
+  bump)
+    next=$(($(version) + 1))
+    sed -i '' "s/$LINE/pub const DAEMON_VERSION: u32 = $next;/" "$PROTOCOL_RS"
+    record
+    echo "The daemon is version $next now."
+    ;;
+  keep)
+    record
+    echo "The daemon stays version $(version), its sources noted."
+    ;;
+  *)
+    echo "usage: script/daemon-version [check|bump|keep]" >&2
+    exit 2
+    ;;
+esac

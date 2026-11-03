@@ -1,6 +1,6 @@
 use super::*;
 
-use colosso_term_control::PROTOCOL;
+use colosso_term_control::{DAEMON_VERSION, PROTOCOL};
 
 fn output(offset: u64, text: &'static str) -> Stream {
     Stream::Output(Output {
@@ -94,10 +94,10 @@ fn a_client_that_stopped_the_daemon_starts_it_no_more() {
 }
 
 #[test]
-fn a_daemon_of_another_engine_is_another_builds() {
+fn a_daemon_of_another_version_or_engine_is_another_builds() {
     let welcome = |engine_commit: &str, snapshot_format| Welcome {
         protocol: PROTOCOL,
-        daemon_version: "0.1.0".into(),
+        daemon_version: DAEMON_VERSION.to_string(),
         engine_commit: engine_commit.into(),
         snapshot_format,
         client_id: 1,
@@ -112,5 +112,10 @@ fn a_daemon_of_another_engine_is_another_builds() {
     assert!(is_other_build(
         &this_build(&welcome(ours, SNAPSHOT_FORMAT + 1)).unwrap_err()
     ));
+    let earlier = Welcome {
+        daemon_version: (DAEMON_VERSION - 1).to_string(),
+        ..welcome(ours, SNAPSHOT_FORMAT)
+    };
+    assert!(is_other_build(&this_build(&earlier).unwrap_err()));
     assert!(!is_other_build(&ClientError::Closed));
 }

@@ -14,8 +14,8 @@ use std::time::{Duration, Instant};
 
 use colosso_term_control::{
     AttachMode, ClientError, ClientKind, Connection, DaemonCommand, ErrorCode, EventKind, Handle,
-    Hello, IfExists, Message, OpenRequest, PROTOCOL, RequestBody, ResponseBody, Selector, Size,
-    Status, TermDir, TerminalRecord, TerminalSummary, Welcome,
+    Hello, IfExists, Message, OpenRequest, PROTOCOL, RequestBody, ResponseBody, ScreenRead,
+    Selector, Size, Status, TermDir, TerminalRecord, TerminalSummary, Welcome,
 };
 use colosso_term_engine::{Engine, TextFormat};
 use crossbeam_channel::Receiver;
@@ -29,6 +29,7 @@ mod mcp;
 mod pin;
 mod send;
 mod status;
+mod theme;
 mod upgrade;
 
 const DAEMON: &str = env!("CARGO_BIN_EXE_colosso-termd");
@@ -206,6 +207,17 @@ impl Client {
         {
             ResponseBody::Terminals { terminals } => terminals,
             other => panic!("{other:?}"),
+        }
+    }
+
+    /// The terminal's screen as text, with what's around it.
+    fn screen(&self, handle: &Handle) -> ScreenRead {
+        let request = RequestBody::ReadScreen {
+            handle: handle.clone(),
+        };
+        match self.connection.request(request).unwrap() {
+            ResponseBody::Screen(screen) => *screen,
+            other => panic!("not a screen: {other:?}"),
         }
     }
 }

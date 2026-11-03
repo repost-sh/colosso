@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::native_menu::NativeMenu;
-use gpui_kit::component::{Disableable as _, Selectable as _};
+use gpui_kit::component::{Disableable as _, Selectable as _, Theme};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, DragMoveEvent, Entity, FocusHandle, Focusable as _,
@@ -81,7 +81,7 @@ pub struct Shell {
     pub tab_hand: Rc<TabHand>,
     /// The places a symbol led to, listed under the tabs, while they are.
     pub locations: Option<Entity<Locations>>,
-    _subscriptions: [Subscription; 6],
+    _subscriptions: [Subscription; 8],
 }
 
 impl Shell {
@@ -121,6 +121,9 @@ impl Shell {
             // at the window's root, above the shell's, and the top bar's buttons and keys
             // would do nothing until something else took the keyboard.
             cx.on_focus_lost(window, |this, window, cx| window.focus(&this.focus, cx)),
+            // Every terminal's program follows the app's theme, its tab shown or not.
+            settings::on_change(cx, |this, cx| this.terminals.tell_theme(cx)),
+            cx.observe_global::<Theme>(|this, cx| this.terminals.tell_theme(cx)),
         ];
         Self::guard_closing(window, cx);
         let mut shell = Shell {
@@ -142,6 +145,7 @@ impl Shell {
             _subscriptions,
         };
         shell.reload_projects(cx);
+        shell.terminals.tell_theme(cx);
         shell
     }
 
@@ -425,8 +429,6 @@ impl Render for Shell {
             .min_w_0()
             .mr(px(theme::GUTTER))
             .rounded(px(theme::CARD_RADIUS))
-            .border_1()
-            .border_color(p.hairline)
             .bg(p.card)
             .overflow_hidden()
             .relative()

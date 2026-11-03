@@ -1,6 +1,7 @@
 #!/bin/sh
 # The lint half of script/check, which the pre-commit hook runs on its own: Clippy under the
-# workspace lint policy with every warning an error, and the file-size limit.
+# workspace lint policy with every warning an error, the file-size limit, and the terminal
+# daemon's version against its sources.
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -9,3 +10,4 @@ export CARGO_HOME="${CARGO_HOME:-$PWD/.cargo-home}"
 
 cargo clippy --workspace --all-targets -- -D warnings
 script/hygiene
+script/daemon-version

@@ -22,7 +22,7 @@ use objc2_quartz_core::{CACornerMask, CALayer, kCAGravityTopLeft};
 
 use super::view::BrowserView;
 use crate::native::Surface;
-use crate::theme::card;
+use crate::theme;
 
 /// A pane's ring of surfaces for one generation.
 pub struct Ring {
@@ -233,7 +233,7 @@ impl Shown {
             .filter(|(shared, _)| *shared)
             .fold(CACornerMask::empty(), |mask, (_, corner)| mask | corner);
         if self.rounded.replace(rounded) != Some(rounded) {
-            let radius = if rounded.is_empty() { px(0.) } else { card::inner_radius() };
+            let radius = if rounded.is_empty() { px(0.) } else { px(theme::CARD_RADIUS) };
             native.layer.setCornerRadius(f64::from(f32::from(radius)));
             native.layer.setMaskedCorners(rounded);
         }

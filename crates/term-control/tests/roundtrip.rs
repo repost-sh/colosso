@@ -9,7 +9,7 @@ use colosso_term_control::{
     Lagging, Message, OpenRequest, Outcome, Output, PROTOCOL, Pinned, Progress, ProtocolError,
     Request, RequestBody, Response, ResponseBody, SNAPSHOT_FORMAT, ScreenCursor, ScreenRead,
     Selector, SendRequest, Signal, Size, SnapshotChunk, Status, TerminalRecord, TerminalSummary,
-    Welcome, WorktreeRef, WorktreeSummary,
+    Theme, Welcome, WorktreeRef, WorktreeSummary,
 };
 
 fn agent() -> Actor {
@@ -171,6 +171,11 @@ fn requests() -> Vec<RequestBody> {
             since: Some(1 << 33),
             max_bytes: None,
         },
+        RequestBody::Theme(Theme {
+            foreground: [20, 20, 22],
+            background: [250, 250, 250],
+            dark: false,
+        }),
         RequestBody::Shutdown,
     ]
 }
