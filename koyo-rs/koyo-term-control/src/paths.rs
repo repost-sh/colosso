@@ -4,6 +4,8 @@
 
 use std::path::{Path, PathBuf};
 
+use koyo_daemon::DaemonDir;
+
 use crate::terminal::Handle;
 
 /// The app's id, its folder under the platform's data directory.
@@ -33,19 +35,24 @@ impl TermDir {
         &self.root
     }
 
+    /// The files every daemon of the app's keeps: its socket, its locks and its log.
+    pub fn daemon(&self) -> DaemonDir {
+        DaemonDir::new(&self.root, "daemon")
+    }
+
     /// The socket, mode 0600, only trusted while `lock` is held by a daemon.
     pub fn socket(&self) -> PathBuf {
-        self.root.join("daemon.sock")
+        self.daemon().socket()
     }
 
     /// The daemon's single-instance lock, holding its pid.
     pub fn lock(&self) -> PathBuf {
-        self.root.join("daemon.lock")
+        self.daemon().lock()
     }
 
     /// Serializes clients that may each start a daemon, so only one does.
     pub fn start_lock(&self) -> PathBuf {
-        self.root.join("start.lock")
+        self.daemon().start_lock()
     }
 
     /// The running daemon's protocol and build, for clients that can't connect yet.
@@ -54,7 +61,7 @@ impl TermDir {
     }
 
     pub fn log(&self) -> PathBuf {
-        self.root.join("daemon.log")
+        self.daemon().log()
     }
 
     pub fn registry(&self) -> PathBuf {

@@ -15,8 +15,8 @@ ciborium = "0.2"
 crossbeam-channel = "0.5"
 log = "0.4"
 parking_lot = "0.12"
-# The signal that stops a daemon of another protocol, which refuses the hello.
-libc = "0.2"
+# Starting and stopping the daemon, as the app's other daemon (the agent host) is.
+koyo-daemon = { path = "../koyo-daemon" }
 # The platform's data folder, the version the app already uses.
 dirs = "6"
 # The random half of a handle's ULID.

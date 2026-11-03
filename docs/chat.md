@@ -706,11 +706,12 @@ task output tails, ultracode, PDF budgets.
 - `client.rs`: connect or start (4.1), `hello`, one reader thread, requests with timeouts,
   events into a channel; after a drop it reconnects and opens each open thread again with
   its `sinceSeq`.
-- Shared with termd's client, not written twice: the start and stop of a daemon
-  (`koyo-term-control/src/client.rs`: `connect_or_start`, `start_daemon`, `stop_daemon`,
-  the SIGTERM only while the lock is held) move to a module both clients call, given the
-  folder and the command. The folder comes from the app (`settings::data_dir()`), not from a
-  third lookup of `KOYO_DATA_DIR`. The executable is found as the browser host is
+- Shared with termd's client, not written twice: the start and stop of a daemon (its folder's
+  files, `connect_or_start` under the start lock, `start` waiting for `ready`, `stop` asking
+  first and signalling only while the lock is held) are `koyo-rs/koyo-daemon`, which both
+  clients call with the folder and the command; each says its own hello over the stream.
+  The folder comes from the app (`settings::data_dir()`), not from a third lookup of
+  `KOYO_DATA_DIR`. The executable is found as the browser host is
   (`browser/engine.rs`): beside the app's executable in a bundle
   (`Contents/MacOS/koyo-agent-host`), else in the checkout
   (`koyo-js/koyo-agent-host/dist/koyo-agent-host`).
