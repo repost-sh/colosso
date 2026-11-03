@@ -1,0 +1,136 @@
+// The seam between a thread's actor and whoever runs the agent (docs/chat.md C6, 4.6): the
+// actor speaks in these terms only, never in a provider's SDK types. Claude is the first
+// provider, a scripted fake the second; another (Codex) plugs in here, and the actor branches
+// on its capabilities, never on its name.
+
+import type { Catalog, ProviderStatus } from "../protocol/methods";
+import type {
+  Effort,
+  Failure,
+  Item,
+  Mode,
+  NoticeLevel,
+  ProviderId,
+  RequestPayload,
+  Response,
+  Usage,
+} from "../protocol/model";
+
+export interface Capabilities {
+  /** A message can join a running turn. */
+  readonly steer: boolean;
+  /** A closed session can be resumed with its id. */
+  readonly resume: boolean;
+  readonly images: boolean;
+  readonly compact: boolean;
+  readonly plan: boolean;
+}
+
+/** What a session is opened with. */
+export interface SessionSpec {
+  readonly cwd: string;
+  /** The conversation's id, minted by the host before the first turn. */
+  readonly sessionId: string;
+  /** Whether the conversation has turns already, to continue rather than start. */
+  readonly resume: boolean;
+  readonly model: string | null;
+  readonly effort: Effort | null;
+  readonly fast: boolean;
+  /** `null` leaves the mode to the provider's own settings. */
+  readonly permission: Mode | null;
+  readonly plan: boolean;
+}
+
+/** A change to a live session's settings. */
+export type SessionChange = Partial<
+  Pick<SessionSpec, "model" | "effort" | "fast" | "permission" | "plan">
+>;
+
+/** A prompt as a session takes it: its id is fresh for every send (T3 adapter pitfall 7). */
+export interface TurnInput {
+  readonly promptId: string;
+  readonly text: string;
+  /** Files by their path on disk. */
+  readonly attachments: readonly { readonly path: string; readonly mime: string }[];
+}
+
+/** How a turn ended. */
+export type Outcome = "completed" | "interrupted" | "failed";
+
+/** Each kind of item as its kind and payload alone. */
+type Body<I> = I extends { kind: unknown; payload: unknown } ? Pick<I, "kind" | "payload"> : never;
+
+/** An item as a provider describes it: what it is, without where the thread keeps it. */
+export type ItemBody = Body<Item>;
+
+/**
+ * What a session reports. `key` is the provider's own stable name for an item (a tool use's
+ * id, a message's id and block); the actor gives the item its id and place the first time it
+ * sees the key. A turn's events all come before its `turn.finished`.
+ */
+export type DriverEvent =
+  | { readonly type: "session.ready"; readonly mode: Mode | null }
+  | { readonly type: "turn.started"; readonly promptId: string }
+  | {
+    readonly type: "item.started";
+    readonly key: string;
+    readonly parentKey: string | null;
+    readonly item: ItemBody;
+  }
+  | { readonly type: "item.appended"; readonly key: string; readonly text: string }
+  | {
+    readonly type: "item.updated";
+    readonly key: string;
+    readonly item: ItemBody;
+    readonly status: Item["status"];
+  }
+  | { readonly type: "usage"; readonly usage: Usage }
+  /** Something the agent stopped at for the person without waiting, as a plan: the next
+   * message answers it (C14). What the agent waits on comes through `SessionSink.ask`. */
+  | { readonly type: "request"; readonly request: RequestPayload }
+  | { readonly type: "notice"; readonly level: NoticeLevel; readonly text: string }
+  | {
+    readonly type: "turn.finished";
+    readonly outcome: Outcome;
+    readonly failure: Failure | null;
+    readonly usage: Usage | null;
+  }
+  | { readonly type: "session.ended"; readonly error: string | null };
+
+/** Where a session reports to. */
+export interface SessionSink {
+  readonly event: (event: DriverEvent) => void;
+  /** Asks the person; `signal` aborts when the agent stops waiting. */
+  readonly ask: (request: RequestPayload, signal: AbortSignal) => Promise<Response>;
+}
+
+/**
+ * One live conversation. Its methods return once their work is asked for, never once the
+ * agent has acted on it: what follows arrives on the sink.
+ */
+export interface ProviderSession {
+  /** Starts a turn; one runs at a time. */
+  readonly start: (turn: TurnInput) => void;
+  /** Adds a message to the running turn; false when none runs anymore. */
+  readonly steer: (turn: TurnInput) => boolean;
+  readonly interrupt: () => Promise<void>;
+  /**
+   * Takes a change, applied before the next turn starts, or says at once that the session
+   * must be opened again to take it, so the turn the same step starts never runs on the old
+   * settings. A change that fails to apply is the session's own to recover from.
+   */
+  readonly configure: (change: SessionChange) => "applied" | "reopen";
+  /** Ends the session's process now, and with it a turn that wouldn't stop. */
+  readonly kill: () => void;
+  readonly close: () => Promise<void>;
+}
+
+export interface Provider {
+  readonly id: ProviderId;
+  readonly capabilities: Capabilities;
+  readonly status: (refresh: boolean) => Promise<ProviderStatus>;
+  readonly catalog: (cwd: string) => Promise<Catalog>;
+  readonly open: (spec: SessionSpec, sink: SessionSink) => ProviderSession;
+  /** A short title for a chat that starts with `prompt`, if one comes. */
+  readonly title: (prompt: string, cwd: string) => Promise<string | undefined>;
+}

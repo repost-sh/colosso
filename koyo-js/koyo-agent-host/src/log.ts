@@ -49,6 +49,11 @@ function emit(line: string): void {
   file.size += bytes;
 }
 
+/** What went wrong, as a person reads it: an error's message, anything else as a string. */
+export function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 /** An error as its name, message and causes; anything else as Bun shows it. */
 function describe(detail: unknown): string {
   if (typeof detail === "string") {
