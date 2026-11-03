@@ -1,0 +1,21 @@
+[package]
+name = "koyo-agent"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The host's lines: one JSON object each (`docs/chat.md` 4.3). A result stays raw until the
+# request waiting for it reads it as its own type.
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["raw_value"] }
+# Starting and stopping the host, as the terminal daemon is.
+koyo-daemon = { path = "../koyo-daemon" }
+# The client's channels: the events, and each request's reply.
+crossbeam-channel = "0.5"
+log = "0.4"
+parking_lot = "0.12"
+
+[lints]
+workspace = true
