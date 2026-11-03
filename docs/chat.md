@@ -246,9 +246,9 @@ restart does to one).
 ```
 
 - `koyo-js/koyo-agent-host/`: `src/protocol/` (zod schemas, the contract), `src/server/`
-  (socket, connections, hello), `src/daemon/` (lock, paths, idle exit, shutdown),
+  (socket, connections, hello), `src/daemon/` (lock, folder, idle exit, shutdown),
   `src/store/` (SQLite), `src/threads/` (actor, status, queue, requests), `src/providers/`
-  (the seam, `claude/`, `fake/`), `src/env/` (login-shell environment, CLI discovery),
+  (the seam, `fake.ts`, and `claude/` with the login-shell environment and CLI discovery),
   `src/main.ts`; tests in `test/`, fixtures in `test/fixtures/`. `script/agent-host` builds
   the executable into `koyo-js/koyo-agent-host/dist/`.
 - `koyo-rs/koyo-agent`: the protocol as serde types, tested against the same fixtures; the
@@ -870,12 +870,13 @@ Layout, top to bottom inside the pane's card:
   queue and its hold, stop, force stop, the stop barrier against late tools, approvals
   answered, cancelled and raced, questions, plans, restart recovery, titles not overwriting
   renames), the protocol (every fixture parses; every method and event has a fixture).
-- **Claude driver**: SDK message transcripts recorded from real sessions
-  (`test/fixtures/claude/*.jsonl`) replayed into the mapping (text and thinking deltas,
-  tools, edits with patches, AskUserQuestion, ExitPlanMode, compaction, interrupts, errors);
-  a live smoke test against the real CLI when `KOYO_LIVE_CLAUDE=1`.
-- **Host end to end**: the compiled executable with the fake provider
-  (`KOYO_AGENT_PROVIDER=fake`), driven over its socket.
+- **Claude driver**: sessions recorded from the real CLI, rebuilt frame by frame with
+  builders typed by the SDK's own types (`test/fixtures/claude/`), as recorded JSON can't be
+  read back as those types without a cast, and replayed into the mapping (text and thinking
+  deltas, tools, edits with patches, AskUserQuestion, ExitPlanMode, compaction, interrupts,
+  errors); a live smoke test against the real CLI when `KOYO_LIVE_CLAUDE=1`.
+- **Host end to end**: the executable with the fake provider (`KOYO_AGENT_PROVIDER=fake`),
+  whose sessions answer each turn by saying back what was sent, driven over its socket.
 - **Rust**: `koyo-agent` parses every fixture; the client against the compiled host on the
   fake provider; the app's row derivation as pure functions.
 - **Real app**: driven with `orca computer` on a real Claude session in a test worktree:

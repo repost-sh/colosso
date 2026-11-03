@@ -1,7 +1,7 @@
-// The host's log, as termd's (koyo-rs/koyo-termd/src/logfile.rs): one line a record, to a file that
-// starts over at a megabyte keeping the one before as `<file>.old`, or to stderr until a file
-// is set (in the foreground and the tests). Nothing else in the host writes to stdout or
-// stderr.
+// The host's log, as termd's (koyo-rs/koyo-termd/src/logfile.rs): one line a record, to a
+// file that starts over at a megabyte keeping the one before as `<file>.old`, or to stderr
+// until a file is set (in the foreground and the tests). Nothing else in the host writes to
+// stderr, and stdout has only the `ready` line (`main.ts`).
 
 import { closeSync, fstatSync, openSync, renameSync, writeSync } from "node:fs";
 
@@ -16,6 +16,24 @@ let file: { readonly path: string; fd: number; size: number } | null = null;
 /** Shows records of `level` and above from now on. */
 export function setLevel(level: Level): void {
   shown = level;
+}
+
+/** The level `KOYO_LOG` names, as termd reads it: its `trace` is the host's `debug`. */
+export function levelNamed(name: string): Level | undefined {
+  switch (name) {
+    case "error":
+    case "warn":
+    case "info":
+    case "debug": {
+      return name;
+    }
+    case "trace": {
+      return "debug";
+    }
+    default: {
+      return undefined;
+    }
+  }
 }
 
 /** Writes the log to `path` from now on, after what it holds already. */
