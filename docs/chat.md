@@ -477,25 +477,28 @@ pitfall 14).
 ### 4.5 The thread actor [proposed]
 
 One actor per thread. Each step is a method that runs to its end without waiting: it reads,
-writes the store in one transaction (`Store.commit`) and publishes its `thread.changed`
-before it returns, so the event loop is the mailbox and no two steps interleave. A
-provider's reports are queued behind the step that's running (`queueMicrotask`), never run
-inside it, so a stop and a late tool result are never decided at once; a session dropped
-(closed, killed, reopened) reports to nothing. A run changes status only through one
-function, which knows the moves allowed:
+and writes what it decided, each `Store.commit` one transaction whose `thread.changed` is
+published as it's made (a run settling and the next one starting are two), so the event
+loop is the mailbox and no two steps interleave. A provider's reports, a request withdrawn
+and a title that came are queued behind the step that's running (`queueMicrotask`), never
+run inside it, so a stop and a late tool result are never decided at once; a session dropped
+(closed, killed, reopened) reports to nothing, and a deleted thread's actor takes no more
+steps. The turn a session works on lives with its run: it starts as the run does and ends
+with the commit that settles it. A run changes status only through one function, which
+knows the moves allowed:
 
 ```
 queued → starting → running → stopping → completed | interrupted | failed
   │         │  │       └────────────────→ completed | interrupted | failed
   │         │  └───────────────────────→ stopping
-  │         └──────────────────────────→ failed
+  │         └──────────────────────────→ completed | interrupted | failed
   └────────────────────────────────────→ removed
 ```
 
-Nothing leaves `stopping` except to a settled status, and nothing leaves a settled one. A run
-that settles from where the move isn't allowed passes through the status between, in the
-same step: `starting` completes through `running`, and is interrupted through `stopping`.
-Rows are never deleted but with their thread: a queued run taken off the queue is `removed`.
+A turn may end before it's seen to start (a quick failure, a `/compact`, a stop as it
+starts), so `starting` settles too. Nothing leaves `stopping` except to a settled status,
+and nothing leaves a settled one. Rows are never deleted but with their thread: a queued run
+taken off the queue is `removed`.
 
 #### 4.5.1 Send
 
@@ -566,7 +569,10 @@ option), so a crash before the first frame still resumes the right conversation.
 Model and effort changes apply to the live session (`setModel`, `applyFlagSettings`) before
 the next turn; a permission change with `setPermissionMode`; a change the live session can't
 take reopens it with resume, refused while a background task runs (adapter pitfalls 24, 27,
-28).
+28). The session says at once which it is (`configure` returns `"applied"` or `"reopen"`), so
+a turn the same step starts, as implementing a plan does, never runs on the old settings; a
+change that fails to apply is the session's to recover from, by reopening before its next
+turn. An interrupt the session can't deliver ends its process, and the run with it.
 
 #### 4.5.7 Titles
 
@@ -607,7 +613,7 @@ interface ProviderSession {              // each returns once its work is asked 
   start: (turn: TurnInput) => void;      // one turn at a time; events follow on the sink
   steer: (message: TurnInput) => boolean;// false when no turn is running anymore
   interrupt: () => Promise<void>;
-  configure: (change: SessionChange) => Promise<"applied" | "reopen">;
+  configure: (change: SessionChange) => "applied" | "reopen";  // decided at once (4.5.6)
   kill: () => void;                      // ends the process, and a turn that won't stop
   close: () => Promise<void>;
 }
