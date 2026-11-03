@@ -785,14 +785,59 @@ No GPUI here: what doesn't draw is tested without compiling the app.
 
 ### 5.2 The chat model in the app [proposed]
 
-- `Chats` (one per app): the client, thread summaries (from `threads.watch`), open thread
-  entities by id, the catalog by cwd, the provider status.
-- `ChatThread` entity per open chat: thread, runs, items in ordinal order, requests; a
-  structure revision bumped by `thread.changed`; one `Entity<StreamingText>` per streaming
-  item, which `item.appended` feeds, so a token delta notifies only that entity.
-- Appends are drained once per frame: the client thread pushes into a buffer and wakes the
-  foreground once; the drain applies every pending append and notifies each touched entity
-  once. A batch that changes nothing notifies nothing.
+`koyo-rs/koyo/src/chat/`, in the shape of `crate::terminals`:
+
+- `Chats`, an entity: the client (`None` in tests, which start no host), thread summaries (from
+  `threads.watch`), the open threads by id, the connection's state (idle, connecting, connected,
+  another build, failed with why), the threads still to bring back, the catalog by cwd and the
+  provider status. It knows nothing of the shell; views ask it for what they need, and the shell
+  follows its events. A person who has no store yet (`chats.sqlite`) runs no host until their
+  first chat tab.
+- `ChatTabs`, in `Shell.chat_tabs`: each chat pane's view by pane id, and the threads the panes
+  show.
+- `Pane.chat: Option<ThreadId>`: which thread a chat pane shows; `None` while it's a new chat.
+  A pane's view is made when it's first drawn (`make_shown_chats`), as terminals' are, so a
+  restored tab costs nothing until it's looked at. Its first send makes the thread, says so to
+  the shell, and from there it's like any other.
+- `ChatThread`, an entity per open chat: a `Replica` once the snapshot came, what arrived
+  before it, and one `Entity<TextViewState>` per text item a row has drawn. A `thread.changed`
+  notifies the entity, and sets the text of the rows it changed; an `item.appended` grows the
+  replica and the item's own `TextViewState`, so a token delta notifies only that one
+  (`TextViewState` parses in the background, appending rather than starting over).
+- One loop per app (`follow`, in `chat.rs`), a `cx.spawn` over `subscribe()`: take a notice,
+  take all that are waiting, apply them, notify each touched entity once, then wait out the
+  frame (16 ms). So appends are applied once per frame however fast they come, and a batch that
+  changes nothing notifies nothing.
+- A snapshot's answer and the events after it arrive by different roads. The host writes the
+  answer first and every event of that connection after it (4.3.4), so whatever reaches an
+  entity while an open is unanswered, the first or a reopen, came after its snapshot: it's kept
+  and applied on top, or let go if the open fails. A run of the loop never sees an entity
+  half-way: the snapshot is applied in one update.
+- After `Disconnected`: the state says so, a second's wait, then `threads.watch` and
+  `threads.open` with its `seq` for each open thread, over the new connection. It fails, and
+  waits twice as long, at most 30 s, until it works or the state is "another build", which waits
+  for the person. Nothing else starts the host in a loop; a send made meanwhile connects, and
+  shows its own error if it can't.
+- **Tabs follow one rule**, not a hook at each of the ways a tab can close (the tab's close
+  button, a split's, ⌘W, app control, a worktree gone): after each change of the shell, as
+  `Terminals::retain` runs, `ChatTabs::retain` compares the threads the panes show with the ones
+  they showed. One no pane shows now gets `threads.update {tabOpen: false}` and `threads.close`,
+  and its entity goes; a thread the host deleted is past telling. One newly shown (⌘⇧T, recent
+  chats) gets `tabOpen: true`, whatever its summary says: a false may still be in the queue. An
+  update that changes nothing commits nothing, and a tab's coming and going leaves `updatedAt`
+  alone, as it's nothing done in the chat.
+- **Restoring**: the threads with `tabOpen` in the host's *first* list of this run of the app, in
+  the order they were made, get tabs that don't take the focus, each as soon as its `cwd` is a
+  listed checkout (that list, and every read of a project's worktrees, looks again). Nothing later
+  brings a tab back: a chat just made has a summary that may arrive before the answer that names
+  it, and the summary of a tab closed a moment ago still says it's open. A thread some pane
+  already shows, made while the first list was on its way, is counted as brought back.
+- The tab's title is the summary's, a thread removed closes its tabs, and a chat that isn't
+  shown keeps its summary for the tab face and the sidebar (M6).
+- Sending: the composer clears at once and the item appears when the host says so, a round
+  trip of a few milliseconds over the socket; there's no optimistic copy to reconcile. A send
+  that fails puts the text back with the error beside it, and retrying repeats the same
+  `messageId` (4.3.3). A new chat makes its thread first; the composer waits for that.
 - Drafts per thread (text, attachments, cursor), in the app, debounced 300 ms to
   `data_dir()/chat-drafts.json`, flushed on quit.
 

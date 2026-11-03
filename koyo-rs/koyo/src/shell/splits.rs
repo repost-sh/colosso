@@ -145,19 +145,17 @@ impl Shell {
     pub(super) fn tab_content(
         &self,
         tab: &Tab,
-        context: &str,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let p = theme::palette(cx);
         let in_hand = cx.has_active_drag();
-        self.part(tab, Vec::new(), context, p, in_hand, cx)
+        self.part(tab, Vec::new(), p, in_hand, cx)
     }
 
     fn part(
         &self,
         tab: &Tab,
         path: Vec<bool>,
-        context: &str,
         p: Palette,
         in_hand: bool,
         cx: &mut Context<Self>,
@@ -165,9 +163,9 @@ impl Shell {
         match tab {
             Tab::Single(pane) => {
                 let in_split = !path.is_empty();
-                self.pane_part(pane, in_split, context, p, in_hand, cx)
+                self.pane_part(pane, in_split, p, in_hand, cx)
             }
-            Tab::Split(split) => self.split_part(split, path, context, p, in_hand, cx),
+            Tab::Split(split) => self.split_part(split, path, p, in_hand, cx),
         }
     }
 
@@ -175,7 +173,6 @@ impl Shell {
         &self,
         split: &Split,
         path: Vec<bool>,
-        context: &str,
         p: Palette,
         in_hand: bool,
         cx: &mut Context<Self>,
@@ -187,8 +184,8 @@ impl Shell {
             path.push(second);
             path
         };
-        let first = self.part(&split.first, side(&path, false), context, p, in_hand, cx);
-        let second = self.part(&split.second, side(&path, true), context, p, in_hand, cx);
+        let first = self.part(&split.first, side(&path, false), p, in_hand, cx);
+        let second = self.part(&split.second, side(&path, true), p, in_hand, cx);
         let id = SharedString::from(format!("split-{path:?}"));
         let dragged = path.clone();
         div()
@@ -250,7 +247,6 @@ impl Shell {
         &self,
         pane: &Pane,
         in_split: bool,
-        context: &str,
         p: Palette,
         in_hand: bool,
         cx: &mut Context<Self>,
@@ -268,7 +264,7 @@ impl Shell {
                     .flex_1()
                     .min_h_0()
                     .min_w_0()
-                    .child(self.pane_content(pane, context, p, cx)),
+                    .child(self.pane_content(pane, p, cx)),
             )
             .when(in_hand, |part| {
                 // Among the window's overlays, as a page's native layer hides what's under it.

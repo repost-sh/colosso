@@ -68,17 +68,22 @@ impl Shell {
         let pane = (self.workspace.tab(at))
             .and_then(|tab| tab.panes().into_iter().find(|pane| pane.id == id))
             .map(|pane| (pane.terminal, pane.file.clone(), pane.browser.clone()));
-        let focus = match pane {
-            Some((Some(terminal), _, _)) => self
-                .terminal_view(terminal, window, cx)
-                .map(|view| view.focus_handle(cx)),
-            Some((_, Some(file), _)) => {
-                let editor = file.read(cx).editor.clone();
-                editor.update(cx, |editor, cx| editor.focus_editor(window, cx));
-                None
+        self.make_shown_chats(window, cx);
+        let focus = if let Some(chat) = self.chat_tabs.view(id) {
+            Some(chat.focus_handle(cx))
+        } else {
+            match pane {
+                Some((Some(terminal), _, _)) => self
+                    .terminal_view(terminal, window, cx)
+                    .map(|view| view.focus_handle(cx)),
+                Some((_, Some(file), _)) => {
+                    let editor = file.read(cx).editor.clone();
+                    editor.update(cx, |editor, cx| editor.focus_editor(window, cx));
+                    None
+                }
+                Some((_, _, Some(view))) => Some(view.focus_handle(cx)),
+                _ => Some(self.focus.clone()),
             }
-            Some((_, _, Some(view))) => Some(view.focus_handle(cx)),
-            _ => Some(self.focus.clone()),
         };
         if let Some(focus) = focus {
             window.focus(&focus, cx);
@@ -96,7 +101,9 @@ impl Shell {
         let focused = panes.iter().find(|pane| {
             let terminal = pane.terminal.and_then(|id| self.terminals.view(id));
             let file = pane.file.as_ref().map(|file| file.read(cx).editor.clone());
+            let chat = self.chat_tabs.view(pane.id);
             terminal.is_some_and(|view| view.focus_handle(cx).contains_focused(window, cx))
+                || chat.is_some_and(|view| view.focus_handle(cx).contains_focused(window, cx))
                 || file.is_some_and(|editor| editor.read(cx).has_focus(window, cx))
                 || (pane.browser.as_ref())
                     .is_some_and(|view| view.focus_handle(cx).contains_focused(window, cx))

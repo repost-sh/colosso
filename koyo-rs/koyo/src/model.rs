@@ -8,6 +8,7 @@ use koyo_git::{Head, Worktree};
 use gpui_kit::SharedString;
 use gpui_kit::assets::IconName;
 
+mod chats;
 mod closed;
 mod moves;
 mod tab;
