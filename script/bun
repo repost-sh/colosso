@@ -1,6 +1,7 @@
 #!/bin/sh
-# Runs the Bun that builds and checks the agent host (agent-host/), pinned into .tools so a
-# build never depends on whatever Bun or Node the machine has:
+# Runs the Bun that builds and checks Koyo's TypeScript, the koyo-js workspace, pinned into
+# .tools so a build never depends on whatever Bun or Node the machine has. It runs in
+# koyo-js/, so these work on the whole workspace:
 #
 #   script/bun install --frozen-lockfile
 #   script/bun run typecheck
@@ -38,5 +39,5 @@ fi
 
 export BUN_INSTALL_CACHE_DIR="${BUN_INSTALL_CACHE_DIR:-$PWD/.tools/bun-cache}"
 export BUN_RUNTIME_TRANSPILER_CACHE_PATH="${BUN_RUNTIME_TRANSPILER_CACHE_PATH:-$BUN_INSTALL_CACHE_DIR/transpiler}"
-cd agent-host
+cd koyo-js
 exec "../$BUN" "$@"

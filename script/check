@@ -3,9 +3,6 @@
 set -eu
 cd "$(dirname "$0")/.."
 
-# The same cargo home as script/dev, so the two share what's built.
-export CARGO_HOME="${CARGO_HOME:-$PWD/.cargo-home}"
-
 script/lint
 # Tests keep their settings in the checkout, away from the app's own.
-KOYO_CONFIG_DIR="$PWD/target/test-config" cargo test --workspace
+KOYO_CONFIG_DIR="$PWD/koyo-rs/target/test-config" script/cargo test --workspace

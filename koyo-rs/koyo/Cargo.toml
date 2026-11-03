@@ -1,0 +1,180 @@
+[package]
+name = "koyo"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# App control: the operations agents and scripts drive the window with, the control socket and
+# `koyo app`, the CLI the app runs from its own executable.
+koyo-app-control = { path = "../koyo-app-control" }
+koyo-git = { path = "../koyo-git" }
+# Terminals: the view and its client, the protocol's types, the engine's colours, and the
+# daemon itself, which the app runs from its own executable as `koyo termd`.
+koyo-term = { path = "../koyo-term" }
+koyo-term-control = { path = "../koyo-term-control" }
+koyo-term-engine = { path = "../koyo-term-engine" }
+koyo-termd = { path = "../koyo-termd" }
+koyo-term-mcp = { path = "../koyo-term-mcp" }
+# Each checkout's files, scanned and watched once for every panel that shows it.
+koyo-project = { path = "../koyo-project" }
+# The language servers behind the file tabs: rust-analyzer, found or fetched, and talked to.
+koyo-lsp = { path = "../koyo-lsp" }
+# The browser panes' host process (koyo-rs/koyo-browser-host), talked to over this.
+koyo-browser-ipc = { path = "../koyo-browser-ipc" }
+# A search typed into a browser tab's address, encoded as a query: the version `url` (in
+# GPUI's tree) already pulls in.
+form_urlencoded = "1.2"
+# The MCP server's install links for Cursor (base64) and VS Code (percent-encoded): versions
+# already in the lockfile.
+base64 = "0.22"
+percent-encoding = "2.3"
+# The files a language server asked to hear about, matched by its globs: ripgrep's matcher,
+# already in the lockfile.
+globset = "0.4"
+# The completions a server listed, ranked against the word as it's typed on: the matcher the
+# command palette already uses (koyo-rs/koyo-project), so already in the lockfile.
+nucleo-matcher = "0.3"
+futures = "0.3"
+# Syntax highlighting for diffs: syntect's parser with bat's syntaxes, which add TypeScript,
+# TOML, Svelte and more. Pure-Rust regexes, so nothing to link.
+syntect = { version = "5.3", default-features = false, features = ["parsing", "dump-load", "regex-fancy"] }
+two-face = { version = "0.5", default-features = false, features = ["syntect-fancy"] }
+# The grammars the file tabs colour code with: picked by what a checkout usually holds. SQL's
+# isn't among them: it pins `cc` below the version GPUI locks.
+gpui-kit = { workspace = true, features = [
+  "tree-sitter",
+  "tree-sitter-rust",
+  "tree-sitter-typescript",
+  "tree-sitter-tsx",
+  "tree-sitter-javascript",
+  "tree-sitter-python",
+  "tree-sitter-go",
+  "tree-sitter-toml",
+  "tree-sitter-yaml",
+  "tree-sitter-markdown",
+  "tree-sitter-markdown-inline",
+  "tree-sitter-css",
+  "tree-sitter-html",
+  "tree-sitter-bash",
+  "tree-sitter-c",
+  "tree-sitter-cpp",
+  "tree-sitter-java",
+  "tree-sitter-swift",
+  "tree-sitter-kotlin",
+  "tree-sitter-ruby",
+  "tree-sitter-zig",
+  "tree-sitter-lua",
+  "tree-sitter-make",
+  "tree-sitter-proto",
+  "tree-sitter-graphql",
+  "tree-sitter-diff",
+] }
+# Only for the frames of bitmaps painted at runtime; the version GPUI already pulls in.
+image = { version = "0.25", default-features = false }
+# Settings on disk; all versions GPUI already pulls in.
+dirs = "6"
+# The log: the facade GPUI and gix already log through, and the clock its lines are stamped
+# with, both already built for GPUI.
+log = { version = "0.4", features = ["std"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+serde = { version = "1", features = ["derive"] }
+# A file written from outside lands in its editor as the difference, line by line; the
+# version already in the lockfile.
+similar = { version = "2", default-features = false, features = ["text"] }
+serde_json = "1"
+# Only named to turn on GPUI's hot-reload feature; it must match the version gpui-kit pins.
+gpui-pre = { version = "=0.3.10", default-features = false, optional = true }
+
+[dev-dependencies]
+# Headless windows for measuring and testing views.
+gpui-kit = { workspace = true, features = ["test-support"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# GPUI's Metal renderer, for presenting frames in Core Animation's transaction, so a browser
+# page's native layer and what GPUI draws around it reach the screen together
+# (`vendor/README.md`).
+gpui-fast-apple = "0.1.12"
+# Haptic ticks on the theme picker's detents; the version GPUI already pulls in.
+objc = "0.2"
+# The system's accent colour, under each appearance, and word when System Settings changes
+# it; all versions GPUI already pulls in, with every feature named here already built.
+objc2 = { version = "0.6", features = [
+  # gpui-fast-apple reads a layer's colour space as a `void *` where the runtime says
+  # `CGColorSpaceRef`; debug builds check message types, and would stop the app as soon as
+  # a native view (the settings' sliders) turns window composition on.
+  "relax-void-encoding",
+] }
+objc2-app-kit = { version = "0.3", default-features = false, features = [
+  "std",
+  "block2",
+  "objc2-core-foundation",
+  "NSAppearance",
+  "NSColor",
+  "NSColorSpace",
+  # The settings' sliders and switches, which AppKit draws (native, settings_view/native_*).
+  "NSApplication",
+  "NSControl",
+  # The blur behind the editor's cards (native/glass.rs).
+  "NSVisualEffectView",
+  "NSResponder",
+  "NSSlider",
+  "NSSliderCell",
+  "NSSwitch",
+  "NSCell",
+  # A browser page's trackpad pinches, which AppKit hands out apart from the pointer
+  # (native/pinch.rs).
+  "NSEvent",
+  "NSView",
+  "NSWindow",
+  # The display link an agent's pointer over a page moves by (browser/pointer/native.rs).
+  "objc2-quartz-core",
+  # The Liquid Glass behind the app's bars over a page (native/liquid.rs).
+  "NSGlassEffectView",
+  # The app's icon in the Dock (native/icon.rs).
+  "NSImage",
+] }
+objc2-foundation = { version = "0.3", default-features = false, features = [
+  "std",
+  "block2",
+  "NSArray",
+  "NSData",
+  "NSGeometry",
+  "NSNotification",
+  "NSOperation",
+  "NSString",
+  # The display link an agent's pointer moves by (browser/pointer/native.rs).
+  "NSObjCRuntime",
+  "NSRunLoop",
+] }
+block2 = "0.6"
+# The browser panes' frames: the host's `IOSurface`s, found from the mach ports it sends,
+# shown as the contents of a layer. All versions GPUI already pulls in.
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFBase", "CFCGTypes", "objc2"] }
+objc2-io-surface = { version = "0.3", default-features = false, features = ["std", "IOSurfaceRef", "IOSurfaceTypes", "libc", "objc2", "objc2-core-foundation"] }
+objc2-quartz-core = { version = "0.3", default-features = false, features = [
+  "std",
+  "CALayer",
+  "objc2-core-foundation",
+  # An agent's pointer over a page: its arrow and ring, and the display link that moves
+  # them (browser/pointer/native.rs).
+  "CABase",
+  "CADisplayLink",
+  "CAFrameRateRange",
+  "CAShapeLayer",
+  "CATransaction",
+  "objc2-core-graphics",
+] }
+# An agent's pointer over a page: its shapes (browser/pointer/native.rs).
+objc2-core-graphics = { version = "0.3", default-features = false, features = ["std", "CGPath", "CGColor"] }
+
+[features]
+# Debug builds only: lets `dx serve --hot-patch` swap render code into the running app.
+hot-reload = ["dep:gpui-pre", "gpui-pre/hot-reload"]
+inspector = ["gpui-kit/inspector"]
+# `--visual-check`: draws the Files panel in the real shell off screen and saves PNGs.
+visual-check = ["gpui-kit/test-support"]
+
+[lints]
+workspace = true

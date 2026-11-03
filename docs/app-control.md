@@ -36,16 +36,16 @@ lists both the app's tools (this document) and the terminals' tools (`terminal_*
 
 Crates:
 
-- `crates/app-control` (`koyo-app-control`), no UI: the `Operation` trait and the
+- `koyo-rs/koyo-app-control` (`koyo-app-control`), no UI: the `Operation` trait and the
   registry macro making `Command` (monocode `operation.rs`, `command.rs`), `Scope`,
   `ControlError`/`ErrorCode`, frames, the endpoint (socket path), a Unix-socket listener
   and a blocking multiplexing client, `Topic`s, and every operation's typed input/output
   under `ops/`. Adding an operation is its types in `ops/<domain>.rs` and one registry line.
-- `crates/koyo/src/control/`: the app's side. A listener thread per connection, each
+- `koyo-rs/koyo/src/control/`: the app's side. A listener thread per connection, each
   hello and call handed to the UI thread on one channel; the pipeline checks the caller and
   its grant, replays or records receipts, asks for confirmation, runs the executor on the
   `Shell`, logs the call, answers. Executors in `control/exec/<domain>.rs`.
-- `crates/term-mcp` becomes the unified MCP handler: tools from both catalogs, app calls
+- `koyo-rs/koyo-term-mcp` becomes the unified MCP handler: tools from both catalogs, app calls
   forwarded through a `Backend` (socket client for the stdio relay; the in-process pipeline
   for HTTP), terminal calls through the existing `Executor`.
 
@@ -312,10 +312,10 @@ per-scope switches and Revoke, clients denied lately with Allow, and Recent acti
 
 ## 11. As implemented (2026-11-02)
 
-- Crates: `crates/app-control` (45 operations, frames, socket, client, `koyo app`),
-  `crates/koyo/src/control/` (listener, gate, approval, confirmations, receipts, activity,
+- Crates: `koyo-rs/koyo-app-control` (45 operations, frames, socket, client, `koyo app`),
+  `koyo-rs/koyo/src/control/` (listener, gate, approval, confirmations, receipts, activity,
   topics, in-process client, HTTP server in `control/http.rs`, executors in `control/exec/`,
-  browser executors in `control/exec/browser/`), `crates/term-mcp` (the unified server:
+  browser executors in `control/exec/browser/`), `koyo-rs/koyo-term-mcp` (the unified server:
   `backend.rs`, `socket.rs`, `app.rs`, `tools.rs`, `launch.rs`, `subscriptions.rs`,
   `http.rs`), the Settings page in `settings_view/mcp_server.rs` and `mcp_clients.rs`.
 - `koyo mcp` lists 60 tools (14 terminal, 45 app, `app_launch`); HTTP lists 59 (no

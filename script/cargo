@@ -1,0 +1,16 @@
+#!/bin/sh
+# Runs cargo on koyo-rs, the Cargo workspace, from the checkout's root: in koyo-rs/, where the
+# toolchain its rust-toolchain.toml pins and its .cargo/config.toml apply (rustup and cargo
+# find both from the folder they run in), with the checkout's own cargo home, which
+# script/dev's builds use too.
+#
+#   script/cargo test -p koyo-termd
+#   script/cargo run -p koyo --features visual-check -- --visual-check
+#
+# Paths among the arguments are koyo-rs's; paths in the environment, expanded before it
+# runs, are the caller's.
+set -eu
+cd "$(dirname "$0")/.."
+export CARGO_HOME="${CARGO_HOME:-$PWD/.cargo-home}"
+cd koyo-rs
+exec cargo "$@"

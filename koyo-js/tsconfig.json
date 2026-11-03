@@ -1,0 +1,5 @@
+{
+  // The workspace's own files (the lint policy); each package has a tsconfig of its own.
+  "extends": "./tsconfig.base.json",
+  "include": ["eslint.config.ts"]
+}
