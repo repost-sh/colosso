@@ -2,55 +2,45 @@
 // at a time, and each line in parsed, in order.
 
 import type { Socket } from "bun";
+import { z } from "zod";
 
+import { Thread } from "../../src/protocol/model";
 import { HOST_VERSION } from "../../src/protocol/wire";
+import { Queue } from "../../src/queue";
 import { LineReader } from "../../src/server/lines";
 import { Outbox } from "../../src/server/outbox";
 
 const encoder = new TextEncoder();
 
 /** What a test waits for: the next line, or the end of the connection. */
-export type Received = { readonly kind: "line"; readonly line: unknown }
-  | { readonly kind: "closed" };
+export type Received = Line | { readonly kind: "closed" };
 
-class Mailbox {
-  readonly #received: Received[] = [];
-  readonly #waiting: ((received: Received) => void)[] = [];
+interface Line {
+  readonly kind: "line";
+  readonly line: unknown;
+}
 
-  arrive(received: Received): void {
-    const waiter = this.#waiting.shift();
-    if (waiter === undefined) {
-      this.#received.push(received);
-    } else {
-      waiter(received);
-    }
-  }
+const Created = z.object({ result: Thread });
 
-  async next(): Promise<Received> {
-    const received = this.#received.shift();
-    if (received !== undefined) {
-      return received;
-    }
-    const { promise, resolve } = Promise.withResolvers<Received>();
-    this.#waiting.push(resolve);
-    return await promise;
-  }
+/** The thread `threads.create` answered with. */
+export function createdThread(received: Received): Thread {
+  return Created.parse(received.kind === "line" ? received.line : undefined).result;
 }
 
 export class LineClient {
   readonly #socket: Socket;
-  readonly #mailbox: Mailbox;
+  readonly #lines: Queue<Line>;
   readonly #outbox: Outbox;
 
-  private constructor(socket: Socket, mailbox: Mailbox, outbox: Outbox) {
+  private constructor(socket: Socket, lines: Queue<Line>, outbox: Outbox) {
     this.#socket = socket;
-    this.#mailbox = mailbox;
+    this.#lines = lines;
     this.#outbox = outbox;
   }
 
   static async connect(path: string): Promise<LineClient> {
     const reader = new LineReader(64 * 1024 * 1024);
-    const mailbox = new Mailbox();
+    const lines = new Queue<Line>();
     const outbox = new Outbox();
     const socket = await Bun.connect({
       unix: path,
@@ -60,7 +50,7 @@ export class LineClient {
           if (read.kind === "lines") {
             for (const line of read.lines) {
               const parsed: unknown = JSON.parse(line);
-              mailbox.arrive({ kind: "line", line: parsed });
+              lines.push({ kind: "line", line: parsed });
             }
           }
         },
@@ -68,11 +58,11 @@ export class LineClient {
           outbox.drain(connection);
         },
         close() {
-          mailbox.arrive({ kind: "closed" });
+          lines.end();
         },
       },
     });
-    return new LineClient(socket, mailbox, outbox);
+    return new LineClient(socket, lines, outbox);
   }
 
   /** Sends `text` as it is: a test adds the newline. */
@@ -91,7 +81,8 @@ export class LineClient {
   }
 
   async next(): Promise<Received> {
-    return await this.#mailbox.next();
+    const next = await this.#lines.next();
+    return next.done === true ? { kind: "closed" } : next.value;
   }
 
   close(): void {

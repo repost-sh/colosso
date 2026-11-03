@@ -9,14 +9,16 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { folder } from "../src/daemon/folder";
 import { handlers } from "../src/host";
 import { FakeProvider } from "../src/providers/fake";
+import type { Config } from "../src/providers/provider";
 import { serve, type Server } from "../src/server/server";
 import { Store } from "../src/store/store";
 import { Threads } from "../src/threads/threads";
-import { prompt, settle } from "./support/actor";
+import { prompt } from "./support/actor";
 import { ignore } from "./support/handlers";
 import { LineClient, type Received } from "./support/line-client";
 import { CREATE } from "./support/records";
 import { removeScratch, scratch } from "./support/scratch";
+import { settle } from "./support/wait";
 
 interface Running {
   readonly server: Server;
@@ -57,7 +59,6 @@ function host(): Running {
     threads,
     providers: [provider],
     attachments,
-    configure: ignore,
     shutdown: ignore,
   }));
   const started = { server, store, threads, provider, dir, socket, attachments, clients: [] };
@@ -97,6 +98,31 @@ async function kinds(from: LineClient, count: number): Promise<string[]> {
 }
 
 describe("the host", () => {
+  test("hands Koyo's settings to its providers, and answers the catalog with them", async () => {
+    const chats = host();
+    const app = await client(chats);
+    const config: Config = { claudePath: "/Users/ana/bin/claude", defaultMode: "auto" };
+    const catalog = { provider: "fake", cwd: chats.dir };
+    chats.provider.settingsMode = "accept_edits";
+    app.request(1, "catalog", catalog);
+    expect(await app.next()).toMatchObject({ line: { result: { defaultMode: "accept_edits" } } });
+    app.request(2, "config.set", config);
+    expect(await app.next()).toMatchObject({ line: { id: 2, result: {} } });
+    expect(chats.provider.config).toStrictEqual(config);
+    app.request(3, "catalog", catalog);
+    expect(await app.next()).toMatchObject({ line: { result: { defaultMode: "auto" } } });
+  });
+
+  test("opens a chat that names no mode in Koyo's default", async () => {
+    const chats = host();
+    const app = await client(chats);
+    app.request(1, "config.set", { claudePath: null, defaultMode: "accept_edits" });
+    await app.next();
+    const thread = chats.threads.create(CREATE);
+    chats.threads.actor(thread.id).send(prompt("Find the flaky test."), "auto");
+    expect(chats.provider.session.spec.permission).toBe("accept_edits");
+  });
+
   test("tells a thread's changes in step order, each before the answer that made it", async () => {
     const chats = host();
     const app = await client(chats);

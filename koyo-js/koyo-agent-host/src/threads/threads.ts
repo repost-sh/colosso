@@ -6,7 +6,7 @@ import type { ThreadId } from "../protocol/ids";
 import type { Params } from "../protocol/methods";
 import type { ProviderId, Thread, ThreadSummary } from "../protocol/model";
 import { eventLine, HostError } from "../protocol/wire";
-import type { Provider } from "../providers/provider";
+import type { Config, Provider } from "../providers/provider";
 import type { Store } from "../store/store";
 import { type Context, ThreadActor } from "./actor";
 import { removeAttachments } from "./attachments";
@@ -32,6 +32,8 @@ export class Threads {
   readonly #watchers = new Set<Subscriber>();
   /** The actors with a session open, the least recently used first. */
   #sessions: ThreadActor[] = [];
+  /** Koyo's settings for the agents, as the app last gave them. */
+  #config: Config = { claudePath: null, defaultMode: null };
 
   constructor(options: Options) {
     this.#options = options;
@@ -43,6 +45,15 @@ export class Threads {
     for (const id of this.#options.store.unsettledThreads()) {
       this.actor(id);
     }
+  }
+
+  get config(): Config {
+    return this.#config;
+  }
+
+  /** Keeps Koyo's settings, which the next session a thread opens follows. */
+  configure(config: Config): void {
+    this.#config = config;
   }
 
   provider(id: ProviderId): Provider {
@@ -125,6 +136,7 @@ export class Threads {
     return {
       store: this.#options.store,
       provider: this.#providers.get(thread.provider) ?? missing(thread.provider),
+      config: () => this.#config,
       attachments: this.#options.attachments,
       now: this.#options.now,
       summarized: (shown) => {
@@ -168,6 +180,9 @@ function missing(id: ProviderId): Provider {
   return {
     id,
     capabilities: { steer: false, resume: false, images: false, compact: false, plan: false },
+    setConfig: () => {
+      // It has nothing to follow them with.
+    },
     status: async () => await Promise.resolve({
       provider: id,
       state: "missing",

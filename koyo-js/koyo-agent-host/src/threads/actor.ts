@@ -21,7 +21,13 @@ import type {
   ThreadSummary,
 } from "../protocol/model";
 import { eventLine, HostError } from "../protocol/wire";
-import type { DriverEvent, Outcome, Provider } from "../providers/provider";
+import {
+  type Config,
+  type DriverEvent,
+  type Outcome,
+  processFailure,
+  type Provider,
+} from "../providers/provider";
 import type { Store } from "../store/store";
 import {
   answered,
@@ -29,7 +35,6 @@ import {
   type Ending,
   moved,
   notice,
-  processFailure,
   queuedRun,
   seedTitle,
   settingsChanged,
@@ -37,6 +42,7 @@ import {
   stopBy,
   textPrompt,
   type ThreadChange,
+  titleFrom,
   turnInput,
   updatedThread,
   userMessage,
@@ -51,6 +57,8 @@ export interface Context {
   readonly store: Store;
   /** The provider the thread's agent runs on. */
   readonly provider: Provider;
+  /** Koyo's settings for the agents, as they are now. */
+  readonly config: () => Config;
   /** The folder the messages' attachments are in. */
   readonly attachments: string;
   readonly now: () => string;
@@ -238,7 +246,7 @@ export class ThreadActor {
     const before = this.#state.thread;
     const after = updatedThread(before, change, this.#cx.now());
     this.#state.commit({ thread: after });
-    this.#session.configure(settingsChanged(before, after));
+    this.#session.configure(settingsChanged(before, after, this.#cx.config().defaultMode));
     return this.#state.thread;
   }
 
@@ -313,8 +321,9 @@ export class ThreadActor {
     });
     const turn = this.#state.startTurn(run);
     try {
-      const session = this.#session.ensure(specFor(thread, sessionId));
-      session.start(turnInput(turn.promptId, run.prompt, this.#cx.attachments));
+      const spec = specFor(thread, sessionId, this.#cx.config().defaultMode);
+      const session = this.#session.ensure(spec);
+      session.start(turnInput(turn.promptId, run.prompt, this.#cx.attachments, "turn"));
     } catch (error) {
       log.error("A turn wouldn't start", error);
       this.#settle("failed", { failure: processFailure(errorMessage(error)) });
@@ -335,10 +344,10 @@ export class ThreadActor {
     if (session === undefined || !steerable) {
       return undefined;
     }
-    if (!session.steer(turnInput(crypto.randomUUID(), prompt, this.#cx.attachments))) {
-      return undefined;
-    }
-    return userMessage(live, this.#state.place(), prompt, "steer");
+    const input = turnInput(crypto.randomUUID(), prompt, this.#cx.attachments, "steer");
+    return session.steer(input)
+      ? userMessage(live, this.#state.place(), prompt, "steer")
+      : undefined;
   }
 
   /** Moves `live` to stopping, which holds the queue, and asks its session to stop it. */
@@ -377,11 +386,15 @@ export class ThreadActor {
     }
   }
 
-  /** Asks the provider for a title, written only while the seed is still the title (4.5.7). */
+  /**
+   * Asks the provider for a title and makes one of its reply, written only while the seed is
+   * still the title (4.5.7).
+   */
   #title(prompt: string): void {
-    this.#cx.provider.title(prompt, this.#state.thread.cwd).then((title) => {
+    this.#cx.provider.title(prompt, this.#state.thread.cwd).then((reply) => {
       this.#step(() => {
         const { thread } = this.#state;
+        const title = reply === undefined ? undefined : titleFrom(reply);
         if (title !== undefined && thread.titleSource === "seed") {
           this.#state.commit({ thread: { ...thread, title, titleSource: "generated" } });
         }

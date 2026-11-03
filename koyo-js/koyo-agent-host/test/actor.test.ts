@@ -4,33 +4,16 @@ import type { RequestId } from "../src/protocol/ids";
 import type { Item, Request, RequestPayload, Response } from "../src/protocol/model";
 import { HostError } from "../src/protocol/wire";
 import type { Subscriber } from "../src/threads/state";
-import { Harness, prompt, settle } from "./support/actor";
+import { closeHarnesses, type Harness, harness, prompt, running } from "./support/actor";
 import { request, run, thread } from "./support/records";
+import { settle } from "./support/wait";
 
-const open: Harness[] = [];
-afterEach(() => {
-  for (const made of open.splice(0)) {
-    made.close();
-  }
-});
-
-function harness(...args: ConstructorParameters<typeof Harness>): Harness {
-  const made = new Harness(...args);
-  open.push(made);
-  return made;
-}
+afterEach(closeHarnesses);
 
 const TEXT: Item["kind"] = "assistant_text";
 
 /** A client that opened the thread and reads nothing. */
 const nobody: Subscriber = { send: () => true };
-
-/** Starts a turn and has the session say it started. */
-async function running(chats: Harness, text = "Find the flaky test."): Promise<void> {
-  chats.actor.send(prompt(text), "auto");
-  chats.provider.session.started();
-  await settle();
-}
 
 function textOf(items: readonly Item[]): string | undefined {
   const item = items.find((each) => each.kind === TEXT);

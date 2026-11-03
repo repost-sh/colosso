@@ -3,7 +3,9 @@
 // provider, a scripted fake the second; another (Codex) plugs in here, and the actor branches
 // on its capabilities, never on its name.
 
-import type { Catalog, ProviderStatus } from "../protocol/methods";
+import type { UUID } from "node:crypto";
+
+import type { Catalog, Params, ProviderStatus } from "../protocol/methods";
 import type {
   Effort,
   Failure,
@@ -36,7 +38,10 @@ export interface SessionSpec {
   readonly model: string | null;
   readonly effort: Effort | null;
   readonly fast: boolean;
-  /** `null` leaves the mode to the provider's own settings. */
+  /**
+   * The chat's mode, else Koyo's default; `null` when neither names one, so the provider's
+   * own settings choose.
+   */
   readonly permission: Mode | null;
   readonly plan: boolean;
 }
@@ -48,14 +53,27 @@ export type SessionChange = Partial<
 
 /** A prompt as a session takes it: its id is fresh for every send (T3 adapter pitfall 7). */
 export interface TurnInput {
-  readonly promptId: string;
+  readonly promptId: UUID;
   readonly text: string;
   /** Files by their path on disk. */
   readonly attachments: readonly { readonly path: string; readonly mime: string }[];
+  /**
+   * Whether the turn compacts the conversation (Koyo's `/compact`), which a provider does in
+   * its own way; a message joining a running turn never does.
+   */
+  readonly compact: boolean;
 }
+
+/** Koyo's settings for the agents (`config.set`). */
+export type Config = Params<"config.set">;
 
 /** How a turn ended. */
 export type Outcome = "completed" | "interrupted" | "failed";
+
+/** A failure of the agent's process, as a person reads it. */
+export function processFailure(message: string): Failure {
+  return { kind: "process", message, retryAt: null };
+}
 
 /** Each kind of item as its kind and payload alone. */
 type Body<I> = I extends { kind: unknown; payload: unknown } ? Pick<I, "kind" | "payload"> : never;
@@ -128,9 +146,15 @@ export interface ProviderSession {
 export interface Provider {
   readonly id: ProviderId;
   readonly capabilities: Capabilities;
+  /** Takes Koyo's settings, each time they change. */
+  readonly setConfig: (config: Config) => void;
   readonly status: (refresh: boolean) => Promise<ProviderStatus>;
+  /** What the provider offers in `cwd`; its default mode is the provider's own settings'. */
   readonly catalog: (cwd: string) => Promise<Catalog>;
   readonly open: (spec: SessionSpec, sink: SessionSink) => ProviderSession;
-  /** A short title for a chat that starts with `prompt`, if one comes. */
+  /**
+   * The model's reply when asked for a short title for a chat that starts with `prompt`, as
+   * it came, if one came; the actor makes the title of it (docs/chat.md 4.5.7).
+   */
   readonly title: (prompt: string, cwd: string) => Promise<string | undefined>;
 }

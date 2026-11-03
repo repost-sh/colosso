@@ -500,6 +500,11 @@ starts), so `starting` settles too. Nothing leaves `stopping` except to a settle
 and nothing leaves a settled one. Rows are never deleted but with their thread: a queued run
 taken off the queue is `removed`.
 
+The commit that settles a run closes the items it left open, the same for every provider,
+which closes none of them itself. After a run that completed, a tool, a subagent or a
+compaction left open is `failed`, as no result came to say it ran, and anything else is
+`completed`. After a run that was interrupted or failed, all of them are `interrupted`.
+
 #### 4.5.1 Send
 
 `turns.send` with `delivery`:
@@ -574,12 +579,20 @@ a turn the same step starts, as implementing a plan does, never runs on the old 
 change that fails to apply is the session's to recover from, by reopening before its next
 turn. An interrupt the session can't deliver ends its process, and the run with it.
 
+A session opens in the chat's mode, else Koyo's default (`config.set`), else `null`, which
+leaves the choice to the provider's settings. A change to the chat's mode reaches a live
+session the same way. A change to Koyo's default leaves a live session in the mode it has,
+until it next opens.
+
 #### 4.5.7 Titles
 
 After the first turn starts, the provider's `title(prompt)` runs once: a one-shot query to
-the smallest model with no tools, no settings and no session kept, for a title of at most
-six words. It's written only while the title is still `seed` (the prompt's first line, cut
-at 60 characters): a rename by the person always wins (T3 orchestration pitfall 47).
+the smallest model with no tools, no settings and no session kept, asking for a title of at
+most six words. The provider returns the reply as it came, and the actor makes the title of
+it: its first line that isn't empty, without the quotes and markdown around it, at most six
+words. A reply with nothing left writes no title. A title is written only while the title
+is still `seed` (the prompt's first line, cut at 60 characters): a rename by the person
+always wins (T3 orchestration pitfall 47).
 
 #### 4.5.8 Live text
 
@@ -596,7 +609,8 @@ the CLI and the account: they're kept per executable and version. Slash commands
 depend on the folder: each session's `init` refreshes them for its cwd, and a cwd no session
 has run in yet gets an initialization-only probe (a query whose prompt never yields, read
 for `initializationResult()` and closed; no API call). No hand-kept model list (T3 keeps a
-manifest by hand).
+manifest by hand). The default mode the `catalog` method answers is Koyo's default when
+`config.set` names one, else the one in the provider's settings.
 
 ### 4.6 Provider seam [proposed]
 
@@ -604,9 +618,11 @@ manifest by hand).
 interface Provider {
   readonly id: ProviderId;
   readonly capabilities: { steer; resume; images; compact; plan };
+  setConfig: (config: Config) => void;   // Koyo's settings, each time they change
   status: (refresh: boolean) => Promise<ProviderStatus>;
   catalog: (cwd: string) => Promise<Catalog>;
   open: (spec: SessionSpec, sink: SessionSink) => ProviderSession;
+  // The model's reply as it came, which the actor makes the title of (4.5.7).
   title: (prompt: string, cwd: string) => Promise<string | undefined>;
 }
 interface ProviderSession {              // each returns once its work is asked for
@@ -621,6 +637,12 @@ interface SessionSink {
   event: (event: DriverEvent) => void;
   ask: (request: RequestPayload, signal: AbortSignal) => Promise<Response>;
 }
+interface TurnInput {
+  promptId: UUID;                        // fresh for every send
+  text: string;
+  attachments: { path; mime }[];         // files by their path on disk
+  compact: boolean;                      // Koyo's `/compact`; a steer never is
+}
 DriverEvent = session.ready {mode} | turn.started {promptId}
   | item.started {key, parentKey, item: {kind, payload}} | item.appended {key, text}
   | item.updated {key, item, status} | usage {usage} | request {request}
@@ -631,8 +653,15 @@ DriverEvent = session.ready {mode} | turn.started {promptId}
 
 `key` is the provider's own stable id for an item (a tool use id, a message id and a block
 index); the actor maps it to an `Item.id` and fixes the ordinal on first sight. A turn's
-events all come before its `turn.finished`. A compaction is an item like any other. What
-each model can do (efforts, fast, auto) is the catalog's, not a capability.
+events all come before its `turn.finished`, and the actor closes what they left open (4.5).
+A compaction is an item like any other. What each model can do (efforts, fast, auto) is the
+catalog's, not a capability.
+
+What the core decides, no provider does. `SessionSpec.permission` is the chat's mode, else
+Koyo's default, and `null` only when neither names one, which leaves it to the provider's
+settings (4.5.6). `catalog` says the default mode in the provider's settings, and the host
+answers Koyo's over it (4.5.9). `TurnInput.compact` says a turn is a `/compact`, so no
+provider reads the prompt's text for it.
 
 ### 4.7 The Claude driver [proposed]
 

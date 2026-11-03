@@ -11,7 +11,7 @@ import { FakeProvider } from "../src/providers/fake";
 import { Store } from "../src/store/store";
 import { prompt } from "./support/actor";
 import { ignore } from "./support/handlers";
-import { LineClient } from "./support/line-client";
+import { createdThread, LineClient } from "./support/line-client";
 import { CREATE } from "./support/records";
 import { removeScratch, scratch } from "./support/scratch";
 
@@ -29,7 +29,6 @@ async function started(provider = new FakeProvider()): Promise<{
     root,
     foreground: true,
     providers: [provider],
-    configure: ignore,
     ready: () => {
       ready.resolve(undefined);
     },
@@ -50,7 +49,7 @@ test("serves until asked to stop, then takes its socket away", async () => {
 
 test("leaves its folder to the host that serves it", async () => {
   const { root, outcome, client } = await started();
-  const another = run({ root, foreground: true, providers: [], configure: ignore, ready: ignore });
+  const another = run({ root, foreground: true, providers: [], ready: ignore });
   expect(await another).toBe("another");
   client.request(1, "shutdown", {});
   await outcome;
@@ -60,8 +59,7 @@ test("stopping ends a live run as the host", async () => {
   const provider = new FakeProvider();
   const { root, outcome, client } = await started(provider);
   client.request(1, "threads.create", CREATE);
-  const created = await client.next();
-  const id = created.kind === "line" ? threadId(created.line) : undefined;
+  const { id } = createdThread(await client.next());
   client.request(2, "turns.send", { threadId: id, prompt: prompt("Find it."), delivery: "auto" });
   await client.next();
   const { session } = provider;
@@ -81,11 +79,3 @@ test("stopping ends a live run as the host", async () => {
   const byHost = { status: "interrupted", stop: { by: "host", force: false } };
   expect(stopped.at(0)).toMatchObject(byHost);
 });
-
-function threadId(line: unknown): unknown {
-  if (typeof line === "object" && line !== null && "result" in line) {
-    const { result } = line;
-    return typeof result === "object" && result !== null && "id" in result ? result.id : undefined;
-  }
-  return undefined;
-}

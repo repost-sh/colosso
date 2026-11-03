@@ -2,7 +2,6 @@
 // method about a thread is a step of that thread's actor, answered at once; only what waits
 // on a provider's process answers later.
 
-import type { Params } from "./protocol/methods";
 import { type Handlers, HOST_VERSION } from "./protocol/wire";
 import type { Provider } from "./providers/provider";
 import type { Client } from "./server/client";
@@ -14,8 +13,6 @@ export interface Host {
   readonly providers: readonly Provider[];
   /** The folder the messages' attachments are in. */
   readonly attachments: string;
-  /** What Koyo's settings say of the agents, for the providers to follow. */
-  readonly configure: (config: Params<"config.set">) => void;
   /** Stops the host: its reply goes first, as the stop starts after the step that asks. */
   readonly shutdown: () => void;
 }
@@ -34,13 +31,22 @@ export function handlers(host: Host): Handlers<Client> {
       host.shutdown();
       return {};
     },
+    // What Koyo's settings say of the agents: kept for the sessions threads open, and handed to
+    // every provider to follow.
     "config.set": (config) => {
-      host.configure(config);
+      threads.configure(config);
+      for (const provider of host.providers) {
+        provider.setConfig(config);
+      }
       return {};
     },
     "providers.status": async ({ refresh }) =>
       await Promise.all(host.providers.map(async (provider) => await provider.status(refresh))),
-    "catalog": async ({ provider, cwd }) => await threads.provider(provider).catalog(cwd),
+    // A new chat starts in Koyo's default mode, when it names one, else the provider's (C12).
+    "catalog": async ({ provider, cwd }) => {
+      const catalog = await threads.provider(provider).catalog(cwd);
+      return { ...catalog, defaultMode: threads.config.defaultMode ?? catalog.defaultMode };
+    },
     "threads.watch": (_params, client) => threads.watch(client),
     "threads.create": (params) => threads.create(params),
     "threads.open": ({ threadId, sinceSeq }, client) =>
