@@ -40,7 +40,7 @@ unwrap_used = "deny"
 map_err_ignore = "deny"
 # `Instant - Duration` panics if the clock reads less than the duration.
 unchecked_time_subtraction = "deny"
-# Messages go through the log, `colosso::logs`, which knows where they belong.
+# Messages go through the log, `koyo::logs`, which knows where they belong.
 print_stderr = "deny"
 print_stdout = "deny"
 dbg_macro = "deny"
@@ -100,12 +100,12 @@ gpui-fast-apple = { path = "vendor/gpui-fast-apple" }
 [profile.dev.package."*"]
 opt-level = 3
 
-[profile.dev.package.colosso-project]
+[profile.dev.package.koyo-project]
 opt-level = 3
 
 # A terminal paints every cell of every frame and parses everything a program prints.
-[profile.dev.package.colosso-term]
+[profile.dev.package.koyo-term]
 opt-level = 3
 
-[profile.dev.package.colosso-term-engine]
+[profile.dev.package.koyo-term-engine]
 opt-level = 3

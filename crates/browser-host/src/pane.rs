@@ -13,7 +13,7 @@ use cef::{
     wrap_context_menu_handler, wrap_display_handler, wrap_find_handler, wrap_life_span_handler,
     wrap_load_handler, wrap_render_handler,
 };
-use colosso_browser_ipc::{Cursor, HostEvent, PaneId};
+use koyo_browser_ipc::{Cursor, HostEvent, PaneId};
 use std::os::raw::c_int;
 
 mod favicon;

@@ -1,7 +1,7 @@
-//! `colosso app`: the app's operations from a shell (`docs/app-control.md` 6, CLI).
+//! `koyo app`: the app's operations from a shell (`docs/app-control.md` 6, CLI).
 //!
-//! `colosso app help` lists the operations from the catalog, and `colosso app help <op>` shows
-//! one with its input schema. `colosso app <op> [--json '{…}'] [--request-id ID] [--client
+//! `koyo app help` lists the operations from the catalog, and `koyo app help <op>` shows
+//! one with its input schema. `koyo app <op> [--json '{…}'] [--request-id ID] [--client
 //! NAME]` calls it on the running app's control socket and prints its result as JSON; a
 //! failure prints the error envelope `{"error": {…}}`, also to stdout, and exits 1.
 
@@ -16,7 +16,7 @@ use crate::{
 };
 
 /// The name the CLI says hello with, unless `--client` gives another.
-pub const CLIENT_NAME: &str = "colosso app";
+pub const CLIENT_NAME: &str = "koyo app";
 
 /// What a command line asks for.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -36,7 +36,7 @@ pub enum Invocation {
     },
 }
 
-/// Runs `colosso app` with the arguments after `app`, printing to stdout.
+/// Runs `koyo app` with the arguments after `app`, printing to stdout.
 pub fn cli_main(args: impl IntoIterator<Item = String>) -> ExitCode {
     let mut out = std::io::stdout().lock();
     let code = match parse(args) {
@@ -82,7 +82,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Invocation, Contr
             "--json" => &mut json,
             "--request-id" => &mut request_id,
             "--client" => &mut client,
-            _ => return Err(usage(&format!("`{flag}` isn't an option of colosso app."))),
+            _ => return Err(usage(&format!("`{flag}` isn't an option of koyo app."))),
         };
         if slot.is_some() {
             return Err(usage(&format!("`{flag}` is given twice.")));
@@ -191,18 +191,18 @@ fn call(
     _: impl FnOnce() -> Result<Endpoint, ControlError>,
 ) -> Result<Value, ControlError> {
     known(operation)?;
-    Err(ControlError::internal("colosso app needs a Unix system."))
+    Err(ControlError::internal("koyo app needs a Unix system."))
 }
 
 /// The operation named `name`.
 fn known(name: &str) -> Result<Info, ControlError> {
     info(name).ok_or_else(|| {
         let hint = if name == crate::APP_LAUNCH {
-            " app_launch is the MCP relay's own tool; open Colosso instead."
+            " app_launch is the MCP relay's own tool; open Koyo instead."
         } else {
-            " `colosso app help` lists the operations."
+            " `koyo app help` lists the operations."
         };
-        ControlError::invalid_input(format!("Colosso has no operation named `{name}`.{hint}"))
+        ControlError::invalid_input(format!("Koyo has no operation named `{name}`.{hint}"))
     })
 }
 
@@ -214,17 +214,17 @@ fn fail(out: &mut impl Write, error: &ControlError) -> u8 {
 }
 
 fn usage(message: &str) -> ControlError {
-    ControlError::invalid_input(format!("{message} `colosso app help` shows how it's used."))
+    ControlError::invalid_input(format!("{message} `koyo app help` shows how it's used."))
 }
 
 /// The list of operations: each one's name, scope, title and first sentence.
 pub fn help() -> String {
     let mut text = String::from(
-        "Drives the running Colosso window: projects, worktrees, tabs, panes, files, browser\n\
+        "Drives the running Koyo window: projects, worktrees, tabs, panes, files, browser\n\
          pages and settings. Each call prints its result as JSON; a failure prints\n\
          {\"error\": {…}} and exits 1.\n\n\
-         Usage: colosso app <operation> [--json '{…}'] [--request-id ID] [--client NAME]\n\
-         \x20      colosso app help [<operation>]\n\nOperations:\n",
+         Usage: koyo app <operation> [--json '{…}'] [--request-id ID] [--client NAME]\n\
+         \x20      koyo app help [<operation>]\n\nOperations:\n",
     );
     for info in infos() {
         let _ = writeln!(
@@ -247,7 +247,7 @@ pub fn operation_help(name: &str) -> Result<String, ControlError> {
     known(name)?;
     let Some(descriptor) = catalog().into_iter().find(|d| d.name == name) else {
         return Err(ControlError::invalid_input(format!(
-            "Colosso has no operation named `{name}`."
+            "Koyo has no operation named `{name}`."
         )));
     };
     let mut text = format!(

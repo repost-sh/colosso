@@ -1,25 +1,25 @@
 [package]
-name = "colosso-termd"
+name = "koyo-termd"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
 [lib]
-name = "colosso_termd"
+name = "koyo_termd"
 path = "src/lib.rs"
 
 [[bin]]
-name = "colosso-termd"
+name = "koyo-termd"
 path = "src/main.rs"
 
 [[bin]]
-name = "colosso-term"
-path = "src/bin/colosso-term.rs"
+name = "koyo-term"
+path = "src/bin/koyo-term.rs"
 
 [dependencies]
-colosso-term-control = { path = "../term-control" }
-colosso-term-engine = { path = "../term-engine" }
+koyo-term-control = { path = "../term-control" }
+koyo-term-engine = { path = "../term-engine" }
 bytes = "1"
 # Timestamps in the log and the activity files; the version the app already builds.
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
@@ -38,9 +38,9 @@ serde_json = "1"
 
 [dev-dependencies]
 # The MCP server end to end, over a pipe, against the daemon the tests start.
-colosso-term-mcp = { path = "../term-mcp" }
+koyo-term-mcp = { path = "../term-mcp" }
 # The error the server's app tools answer with when no app runs.
-colosso-app-control = { path = "../app-control" }
+koyo-app-control = { path = "../app-control" }
 tokio = { version = "1", features = ["rt-multi-thread", "io-util", "time"] }
 
 [lints]

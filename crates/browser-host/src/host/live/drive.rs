@@ -5,7 +5,7 @@
 use std::time::Instant;
 
 use cef::{ImplTask, Task, ThreadId, WrapTask, rc::Rc, wrap_task};
-use colosso_browser_ipc::{PaneId, PixelSize, Viewport};
+use koyo_browser_ipc::{PaneId, PixelSize, Viewport};
 
 use super::{Do, Live, metrics};
 use crate::host::inspect::{self, Unsent, Whose};

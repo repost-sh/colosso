@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use colosso_app_control::{ClientInfo, Command, ControlError, Notice, Topic};
+use koyo_app_control::{ClientInfo, Command, ControlError, Notice, Topic};
 use serde_json::Value;
 
 /// One MCP session's way into the app. The client it speaks for is named on its first call;

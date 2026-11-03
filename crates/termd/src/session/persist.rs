@@ -7,8 +7,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use colosso_term_control::{ErrorCode, ProtocolError, TerminalRecord};
-use colosso_term_engine::{Engine, GHOSTTY_COMMIT, Size};
+use koyo_term_control::{ErrorCode, ProtocolError, TerminalRecord};
+use koyo_term_engine::{Engine, GHOSTTY_COMMIT, Size};
 
 use super::Session;
 
@@ -112,11 +112,11 @@ pub(super) fn engine(
 pub fn screen(
     terminal_dir: &Path,
     record: &TerminalRecord,
-) -> Option<colosso_term_control::ScreenRead> {
+) -> Option<koyo_term_control::ScreenRead> {
     let mut engine = load(&path(terminal_dir))?;
     super::send::screen_read(&mut engine, record).ok()
 }
 
 fn header() -> Vec<u8> {
-    format!("colosso-snapshot 1 ghostty {GHOSTTY_COMMIT}\n").into_bytes()
+    format!("koyo-snapshot 1 ghostty {GHOSTTY_COMMIT}\n").into_bytes()
 }

@@ -14,7 +14,7 @@ static HANDLING_SEND_EVENT: AtomicBool = AtomicBool::new(false);
 
 define_class!(
     #[unsafe(super(NSApplication))]
-    #[name = "ColossoBrowserHostApplication"]
+    #[name = "KoyoBrowserHostApplication"]
     pub(crate) struct HostApplication;
 
     impl HostApplication {

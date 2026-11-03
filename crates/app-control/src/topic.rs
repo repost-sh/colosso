@@ -12,12 +12,12 @@ use crate::Scope;
 )]
 #[serde(rename_all = "snake_case")]
 pub enum Topic {
-    /// The window, as `app_status` reads it (`colosso://app`).
+    /// The window, as `app_status` reads it (`koyo://app`).
     App,
     /// Projects, worktrees, tabs and panes, as `project_list` and `tab_list` read them
-    /// (`colosso://projects`, `colosso://tabs`).
+    /// (`koyo://projects`, `koyo://tabs`).
     Workspace,
-    /// The allowlisted settings, as `settings_get` reads them (`colosso://settings`).
+    /// The allowlisted settings, as `settings_get` reads them (`koyo://settings`).
     Settings,
 }
 
@@ -49,9 +49,9 @@ impl Topic {
     /// The MCP resources this topic covers.
     pub fn resources(self) -> &'static [&'static str] {
         match self {
-            Topic::App => &["colosso://app"],
-            Topic::Workspace => &["colosso://projects", "colosso://tabs"],
-            Topic::Settings => &["colosso://settings"],
+            Topic::App => &["koyo://app"],
+            Topic::Workspace => &["koyo://projects", "koyo://tabs"],
+            Topic::Settings => &["koyo://settings"],
         }
     }
 }

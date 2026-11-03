@@ -27,7 +27,7 @@ version() {
 # One hash of the daemon's crates as resolved, and every file it's built from, by path and
 # content. Tests are left out: `tests/` folders and `tests.rs` files only tests compile.
 fingerprint() {
-  crates=$(cargo tree --quiet --offline -p colosso-termd -e normal,build --prefix none |
+  crates=$(cargo tree --quiet --offline -p koyo-termd -e normal,build --prefix none |
     LC_ALL=C sort -u)
   folders=$(printf '%s\n' "$crates" | sed -n "s|.*($PWD/\(.*\))\$|\1|p")
   {

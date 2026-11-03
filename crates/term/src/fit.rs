@@ -119,7 +119,7 @@ pub fn cells_in(room: (f32, f32), metrics: Metrics) -> (u16, u16) {
         while count > 0. && count * cell > room {
             count -= 1.;
         }
-        let range = colosso_term_control::PIN_CELLS;
+        let range = koyo_term_control::PIN_CELLS;
         count.clamp(f32::from(*range.start()), f32::from(*range.end())) as u16
     };
     (
@@ -296,13 +296,13 @@ mod tests {
         let inside = at + point(px(4.5 * 10. + 1.), px(9. * 3. + 1.));
         assert_eq!(
             grid.cell_at(inside),
-            colosso_term_engine::GridPoint { col: 10, row: 3 }
+            koyo_term_engine::GridPoint { col: 10, row: 3 }
         );
         // Left of the grid and below it clamp to its first column and last row.
         let outside = point(px(1.), px(590.));
         assert_eq!(
             grid.cell_at(outside),
-            colosso_term_engine::GridPoint { col: 0, row: 39 }
+            koyo_term_engine::GridPoint { col: 0, row: 39 }
         );
         assert_eq!(
             grid.device(inside),

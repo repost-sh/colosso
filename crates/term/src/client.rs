@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use colosso_term_control::{
+use koyo_term_control::{
     AttachMode, ClientError, ClientKind, Connection, DAEMON_VERSION, DaemonCommand, ErrorCode,
     Event, EventKind, Handle, Hello, Message, Output, ProtocolError, RequestBody, ResponseBody,
     SNAPSHOT_FORMAT, Size, SnapshotChunk, TermDir, TerminalRecord, Theme, Welcome,
@@ -260,7 +260,7 @@ impl TermClient {
             Err(error) if is_other_build(&error) => {}
             other => return other.map(drop),
         }
-        colosso_term_control::client::stop_daemon(&self.dir, &hello())
+        koyo_term_control::client::stop_daemon(&self.dir, &hello())
     }
 
     fn is_running(&self) -> bool {
@@ -358,7 +358,7 @@ impl TermClient {
     }
 
     fn connect(&self) -> Result<Live, ClientError> {
-        let (inbox, received) = colosso_term_control::client::inbox();
+        let (inbox, received) = koyo_term_control::client::inbox();
         let (connection, welcome) =
             Connection::connect_or_start(&self.dir, &self.daemon, &hello(), inbox)?;
         if let Err(error) = this_build(&welcome) {
@@ -436,7 +436,7 @@ fn tell_theme(connection: &Connection, theme: Theme) {
 /// hello itself.
 pub fn this_build(welcome: &Welcome) -> Result<(), ClientError> {
     if welcome.daemon_version == DAEMON_VERSION.to_string()
-        && welcome.engine_commit == colosso_term_engine::GHOSTTY_COMMIT
+        && welcome.engine_commit == koyo_term_engine::GHOSTTY_COMMIT
         && welcome.snapshot_format == SNAPSHOT_FORMAT
     {
         return Ok(());
@@ -462,7 +462,7 @@ pub fn is_other_build(error: &ClientError) -> bool {
 fn hello() -> Hello {
     // No `answers_queries`: the daemon's engine answers the programs' queries, as two windows
     // on one terminal would otherwise answer twice.
-    Hello::new(ClientKind::App, "colosso", env!("CARGO_PKG_VERSION"))
+    Hello::new(ClientKind::App, "koyo", env!("CARGO_PKG_VERSION"))
 }
 
 #[cfg(test)]

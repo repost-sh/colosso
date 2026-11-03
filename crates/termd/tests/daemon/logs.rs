@@ -1,8 +1,8 @@
 //! The logs end to end (`docs/terminals.md` 5.8): what the person and an agent did, and the
 //! commands the shell ran, read on by offset as the app and the MCP read them.
 
-use colosso_term_control::log::read_since;
-use colosso_term_control::{
+use koyo_term_control::log::read_since;
+use koyo_term_control::{
     ActivityEntry, ActorKind, ClientKind, CommandRecord, EventKind, Handle, HumanInput, LogKind,
     RequestBody, ResponseBody, Status, TermDir,
 };
@@ -27,7 +27,7 @@ fn the_logs_keep_who_did_what_and_every_command_the_shell_ran() {
     let terminal = open_zsh(&person, &dir);
     let handle = terminal.handle;
     let (index, _) = person.attach(&handle, None);
-    let idle = |record: &colosso_term_control::TerminalRecord| {
+    let idle = |record: &koyo_term_control::TerminalRecord| {
         record.status == Status::Idle && record.status_reason == "prompt"
     };
     let record = || {

@@ -7,7 +7,7 @@
 #                         [--sign <identity>]
 #
 # A debug app finds the engine there; a bundled app carries the host app in its own
-# Contents/Frameworks (see crates/colosso/src/browser/engine.rs). script/dev runs this
+# Contents/Frameworks (see crates/koyo/src/browser/engine.rs). script/dev runs this
 # before the app, and it does nothing when the packaged host is as new as the built one.
 # Without --sign the bundle gets an ad-hoc signature, enough to run locally; a release
 # identity gets the hardened runtime notarization needs.
@@ -16,9 +16,12 @@ cd "$(dirname "$0")/.."
 
 export CARGO_HOME="${CARGO_HOME:-$PWD/.cargo-home}"
 
-HOST_NAME="Colosso Browser Host"
-BUNDLE_ID="dev.colosso.desktop.browser-host"
+HOST_NAME="Koyo Browser Host"
+BUNDLE_ID="dev.koyo.desktop.browser-host"
 FRAMEWORK="Chromium Embedded Framework.framework"
+# The app's icon, which macOS shows for the host and its helpers when one asks for
+# something, as for notifications.
+ICON=crates/koyo/icons/Koyo.icns
 # The protocol the host speaks, read from where it's defined so the two can't drift.
 IPC_PROTOCOL=$(sed -n 's/^pub const PROTOCOL: u32 = \([0-9][0-9]*\);$/\1/p' \
   crates/browser-ipc/src/lib.rs)
@@ -59,13 +62,15 @@ target="$arch-apple-darwin"
 # Where cef-dll-sys keeps the distribution (.cargo/config.toml's CEF_PATH).
 cef="${cef:-${CEF_PATH:-.superpowers/cef}/$version/cef_macos_$arch}"
 
-cargo build -p colosso-browser-host --profile "$cargo_profile"
-binary="target/$profile/colosso-browser-host"
+cargo build -p koyo-browser-host --profile "$cargo_profile"
+binary="target/$profile/koyo-browser-host"
 
 dir="$out/$version"
 app="$dir/$HOST_NAME.app/Contents"
 packaged="$app/MacOS/$HOST_NAME"
-if [ -f "$packaged" ] && [ -f "$dir/engine.json" ] && ! [ "$binary" -nt "$packaged" ]; then
+# Packaged again once the host, its icon or this script is newer than the package.
+if [ -f "$packaged" ] && [ -f "$dir/engine.json" ] && ! [ "$binary" -nt "$packaged" ] &&
+  ! [ "$ICON" -nt "$packaged" ] && ! [ "$0" -nt "$packaged" ]; then
   echo "Browser engine $version is packaged in $dir"
   exit 0
 fi
@@ -89,6 +94,8 @@ plist() { # executable identifier helper(yes|no)
   <string>$1</string>
   <key>CFBundleExecutable</key>
   <string>$1</string>
+  <key>CFBundleIconFile</key>
+  <string>Koyo</string>
   <key>CFBundleIdentifier</key>
   <string>$2</string>
   <key>CFBundleInfoDictionaryVersion</key>
@@ -118,7 +125,7 @@ PLIST
 PLIST
     if [ -z "$sign" ]; then
       cat <<PLIST
-  <key>ColossoMockKeychain</key>
+  <key>KoyoMockKeychain</key>
   <true/>
 PLIST
     fi
@@ -131,8 +138,9 @@ PLIST
 
 rm -rf "$dir"
 frameworks="$app/Frameworks"
-mkdir -p "$app/MacOS" "$frameworks"
+mkdir -p "$app/MacOS" "$app/Resources" "$frameworks"
 cp "$binary" "$packaged"
+cp "$ICON" "$app/Resources/Koyo.icns"
 plist "$HOST_NAME" "$BUNDLE_ID" no > "$app/Info.plist"
 # -R keeps the framework's symlinks as they are.
 cp -R "$cef/$FRAMEWORK" "$frameworks/$FRAMEWORK"
@@ -153,8 +161,9 @@ fi
 for suffix in "" " (GPU)" " (Renderer)" " (Plugin)" " (Alerts)"; do
   name="$HOST_NAME Helper$suffix"
   contents="$frameworks/$name.app/Contents"
-  mkdir -p "$contents/MacOS"
+  mkdir -p "$contents/MacOS" "$contents/Resources"
   cp "$binary" "$contents/MacOS/$name"
+  cp "$ICON" "$contents/Resources/Koyo.icns"
   chmod 755 "$contents/MacOS/$name"
   role=$(echo "$suffix" | tr -cd 'A-Za-z' | tr 'A-Z' 'a-z')
   plist "$name" "$BUNDLE_ID.helper${role:+.$role}" yes > "$contents/Info.plist"

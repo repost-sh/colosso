@@ -2,8 +2,8 @@
 //! read the frame's pixels out of the shared surface.
 //!
 //! ```sh
-//! COLOSSO_BROWSER_ENGINE=<data>/browser-engine/current \
-//!   cargo test -p colosso-browser-host --test smoke -- --ignored
+//! KOYO_BROWSER_ENGINE=<data>/browser-engine/current \
+//!   cargo test -p koyo-browser-host --test smoke -- --ignored
 //! ```
 #![cfg(target_os = "macos")]
 #![expect(
@@ -17,8 +17,8 @@ mod live_resize;
 mod support;
 
 use agents::{cdp, reply};
-use colosso_browser_ipc::client::{Connection, Incoming};
-use colosso_browser_ipc::{AppRequest, HostEvent, PinchPhase, Viewport};
+use koyo_browser_ipc::client::{Connection, Incoming};
+use koyo_browser_ipc::{AppRequest, HostEvent, PinchPhase, Viewport};
 use objc2_io_surface::IOSurfaceRef;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -54,7 +54,7 @@ fn dev_tools_paint_into_surfaces_of_their_own_and_close_with_their_page() {
             pane: 1,
             devtools: 2,
             viewport,
-            inspect: Some(colosso_browser_ipc::Point { x: 4., y: 4. }),
+            inspect: Some(koyo_browser_ipc::Point { x: 4., y: 4. }),
         })
         .expect("open devtools");
     session.wait("the DevTools surfaces", |event, _| {
@@ -163,7 +163,7 @@ fn a_page_paints_into_the_shared_surface() {
                     .map(|port| {
                         let surface =
                             IOSurfaceRef::lookup_from_mach_port(*port).expect("surface from port");
-                        colosso_browser_ipc::mach::release(*port);
+                        koyo_browser_ipc::mach::release(*port);
                         surface
                     })
                     .collect();

@@ -1,6 +1,6 @@
-# colosso-lsp
+# koyo-lsp
 
-A Language Server Protocol client for Colosso, with no GPUI in it: the server's pipes are
+A Language Server Protocol client for Koyo, with no GPUI in it: the server's pipes are
 served on the client's own threads, and the app polls futures on any executor.
 
 ## What it does
@@ -37,7 +37,7 @@ served on the client's own threads, and the app polls futures on any executor.
 ## Tests
 
 ```sh
-cargo test -p colosso-lsp
+cargo test -p koyo-lsp
 ```
 
 runs everything against `fake-lsp` (`src/bin/fake-lsp.rs`), a server that follows a script
@@ -45,6 +45,6 @@ each test gives it. The test against a real rust-analyzer downloads it, so it's 
 prints each request's latency:
 
 ```sh
-COLOSSO_LSP_IT=1 COLOSSO_DATA_DIR=$PWD/.superpowers/data \
-  cargo test -p colosso-lsp -- --ignored --nocapture
+KOYO_LSP_IT=1 KOYO_DATA_DIR=$PWD/.superpowers/data \
+  cargo test -p koyo-lsp -- --ignored --nocapture
 ```

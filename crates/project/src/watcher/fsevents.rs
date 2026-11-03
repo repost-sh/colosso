@@ -45,7 +45,7 @@ static QUEUE: LazyLock<DispatchRetained<DispatchQueue>> = LazyLock::new(|| {
         DispatchQoS::UserInteractive,
     ));
     DispatchQueue::new_with_target(
-        "colosso.project.fsevents",
+        "koyo.project.fsevents",
         DispatchQueueAttr::SERIAL,
         Some(&ahead),
     )

@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use colosso_term_control::{
+use koyo_term_control::{
     Control, ErrorCode, ErrorDetails, EventKind, Handle, IfExists, OpenRequest, ProtocolError,
     ResponseBody, Status, TerminalRecord, now_ms,
 };
@@ -186,7 +186,7 @@ pub fn valid_name(name: &str) -> Result<(), ProtocolError> {
 fn place(record: &TerminalRecord) -> String {
     record.worktree.as_ref().map_or_else(
         || record.cwd.display().to_string(),
-        colosso_term_control::WorktreeRef::display_name,
+        koyo_term_control::WorktreeRef::display_name,
     )
 }
 

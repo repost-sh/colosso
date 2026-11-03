@@ -80,7 +80,7 @@ impl Client {
                 ControlError::app_not_running()
             } else {
                 ControlError::internal(format!(
-                    "Can't reach Colosso at {}: {error}",
+                    "Can't reach Koyo at {}: {error}",
                     endpoint.path().display()
                 ))
                 .retryable(true)
@@ -113,7 +113,7 @@ impl Client {
             .and_then(|()| match welcome.recv_timeout(HELLO_TIMEOUT) {
                 Ok(welcome) => welcome,
                 Err(RecvTimeoutError::Timeout) => Err(ControlError::timeout(format!(
-                    "Colosso didn't answer the hello within {} seconds.",
+                    "Koyo didn't answer the hello within {} seconds.",
                     HELLO_TIMEOUT.as_secs()
                 ))),
                 Err(RecvTimeoutError::Disconnected) => Err(hung_up("its reader stopped")),
@@ -202,7 +202,7 @@ impl Client {
                 // The answer may have come between the timeout and forgetting the call.
                 answer.try_recv().unwrap_or_else(|_| {
                     Err(ControlError::timeout(format!(
-                        "Colosso didn't answer {operation} within {} seconds.",
+                        "Koyo didn't answer {operation} within {} seconds.",
                         timeout.as_secs()
                     )))
                 })
@@ -238,7 +238,7 @@ impl Client {
         let output = self.call_command(&Op::command(input), request_id)?;
         serde_json::from_value(output).map_err(|error| {
             ControlError::internal(format!(
-                "Colosso answered {} unexpectedly: {error}",
+                "Koyo answered {} unexpectedly: {error}",
                 Op::NAME
             ))
         })
@@ -300,7 +300,7 @@ impl Shared {
             Ok(Some(ServerFrame::Welcome { grant })) => Ok(grant),
             Ok(Some(ServerFrame::Error { error, .. })) => Err(error),
             Ok(Some(_)) => Err(ControlError::internal(
-                "Colosso answered the hello unexpectedly.",
+                "Koyo answered the hello unexpectedly.",
             )),
             Ok(None) => Err(hung_up("it hung up")),
             Err(FrameError::Io(error)) => Err(hung_up(error)),
@@ -327,12 +327,12 @@ impl Shared {
                     let _ = self.notices.send(Notice::Changed(topic));
                 }
                 Ok(Some(ServerFrame::Welcome { .. })) => {
-                    break ControlError::internal("Colosso sent a second welcome.");
+                    break ControlError::internal("Koyo sent a second welcome.");
                 }
                 Ok(None) | Err(FrameError::Io(_)) => break ControlError::connection_lost(),
                 Err(error) => {
                     break ControlError::internal(format!(
-                        "Colosso sent a frame this client can't read: {}",
+                        "Koyo sent a frame this client can't read: {}",
                         ControlError::from(error).message
                     ));
                 }
@@ -364,7 +364,7 @@ impl Shared {
 /// The app hung up before welcoming the client: it quit, or refused without saying why.
 fn hung_up(why: impl std::fmt::Display) -> ControlError {
     ControlError::internal(format!(
-        "Colosso closed the control connection before welcoming this client: {why}."
+        "Koyo closed the control connection before welcoming this client: {why}."
     ))
     .retryable(true)
 }

@@ -4,7 +4,7 @@
 
 use std::time::{Duration, Instant};
 
-use colosso_term_control::{
+use koyo_term_control::{
     ActivityEntry, Actor, ActorKind, ControlChange, ErrorCode, EventKind, HumanInput, LogKind,
     ProtocolError,
 };

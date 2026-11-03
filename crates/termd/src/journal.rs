@@ -5,7 +5,7 @@ use std::fs::OpenOptions;
 use std::io::{self, Read as _, Seek as _, SeekFrom, Write as _};
 use std::path::PathBuf;
 
-use colosso_term_control::LogKind;
+use koyo_term_control::LogKind;
 use serde::Serialize;
 
 /// How big a log grows before it's rotated.
@@ -77,7 +77,7 @@ impl Journal {
 mod tests {
     use std::path::Path;
 
-    use colosso_term_control::log::read_since;
+    use koyo_term_control::log::read_since;
 
     use super::*;
 

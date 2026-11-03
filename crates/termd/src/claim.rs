@@ -6,7 +6,7 @@ use std::io::{self, ErrorKind, Write as _};
 use std::os::unix::fs::PermissionsExt as _;
 use std::os::unix::net::{UnixListener, UnixStream};
 
-use colosso_term_control::{DAEMON_VERSION, PROTOCOL, TermDir};
+use koyo_term_control::{DAEMON_VERSION, PROTOCOL, TermDir};
 
 pub struct Claimed {
     /// Held for the daemon's life; dropping it lets the next daemon in.
@@ -37,7 +37,7 @@ pub fn claim(dir: &TermDir) -> io::Result<Claimed> {
             return Err(io::Error::new(
                 ErrorKind::AddrInUse,
                 format!(
-                    "another colosso-termd runs for this user: {pid}, listening on {}",
+                    "another koyo-termd runs for this user: {pid}, listening on {}",
                     dir.socket().display()
                 ),
             ));
@@ -52,7 +52,7 @@ pub fn claim(dir: &TermDir) -> io::Result<Claimed> {
         format!(
             "protocol {PROTOCOL}\ndaemon {DAEMON_VERSION}\nbuild {}\nengine {}\n",
             env!("CARGO_PKG_VERSION"),
-            colosso_term_engine::GHOSTTY_COMMIT
+            koyo_term_engine::GHOSTTY_COMMIT
         ),
     )?;
     Ok(Claimed {

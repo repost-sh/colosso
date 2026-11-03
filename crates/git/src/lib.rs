@@ -1,4 +1,4 @@
-//! Git for Colosso: runs the `git` command line and reads what it prints into typed values.
+//! Git for Koyo: runs the `git` command line and reads what it prints into typed values.
 //! Nothing here knows about the UI, and every call blocks until git is done, so the app makes
 //! them off its main thread.
 

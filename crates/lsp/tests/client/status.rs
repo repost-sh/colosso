@@ -1,8 +1,8 @@
 //! A server that reports its status: waited on until it's ready, and asked again what it
 //! gave up on while it reloaded.
 
-use colosso_lsp::lsp_types::error_codes::CONTENT_MODIFIED;
-use colosso_lsp::{LspError, ServerStatus};
+use koyo_lsp::lsp_types::error_codes::CONTENT_MODIFIED;
+use koyo_lsp::{LspError, ServerStatus};
 use futures::future::join;
 use futures::{FutureExt, StreamExt};
 use serde_json::{Value, json};

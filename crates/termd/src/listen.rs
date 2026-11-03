@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::time::Duration;
 
-use colosso_term_control::TermDir;
+use koyo_term_control::TermDir;
 
 use crate::registry::Registry;
 use crate::server::Daemon;
@@ -22,9 +22,9 @@ const PERSIST_EVERY: Duration = Duration::from_secs(30);
 pub fn run(dir: TermDir, foreground: bool) -> io::Result<()> {
     logfile::init((!foreground).then(|| dir.log()).as_deref())?;
     log::info!(
-        "========== colosso-termd {} (ghostty {}) in {} ==========",
+        "========== koyo-termd {} (ghostty {}) in {} ==========",
         env!("CARGO_PKG_VERSION"),
-        colosso_term_engine::GHOSTTY_COMMIT,
+        koyo_term_engine::GHOSTTY_COMMIT,
         dir.root().display()
     );
     let claimed = claim::claim(&dir)?;

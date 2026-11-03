@@ -7,7 +7,7 @@ use cef::{
     CefString, ContextMenuParams, EventFlags, ImplContextMenuParams, ImplMenuModel,
     ImplRunContextMenuCallback, MenuItemType, MenuModel, RunContextMenuCallback,
 };
-use colosso_browser_ipc::{HostEvent, MenuEntry, MenuTarget, PaneId};
+use koyo_browser_ipc::{HostEvent, MenuEntry, MenuTarget, PaneId};
 use std::cell::RefCell;
 
 /// Find and Print need windows the host does not have.

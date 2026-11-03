@@ -5,13 +5,13 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use colosso_lsp::lsp_types::notification::{DidOpenTextDocument, Notification};
-use colosso_lsp::lsp_types::request::{HoverRequest, Request};
-use colosso_lsp::lsp_types::{
+use koyo_lsp::lsp_types::notification::{DidOpenTextDocument, Notification};
+use koyo_lsp::lsp_types::request::{HoverRequest, Request};
+use koyo_lsp::lsp_types::{
     HoverContents, HoverParams, MarkedString, TextDocumentIdentifier, TextDocumentPositionParams,
     WorkDoneProgressParams,
 };
-use colosso_lsp::{Client, Document, Launch, LineIndex, LspError, uri, within};
+use koyo_lsp::{Client, Document, Launch, LineIndex, LspError, uri, within};
 use futures::executor::block_on;
 use serde_json::{Value, json};
 
@@ -118,14 +118,14 @@ pub const GREET_PY: Call = Call {
 };
 
 /// The data folder the tests against real servers install into, when they're asked for with
-/// `COLOSSO_LSP_IT=1`; `what` names the server in the line that says they weren't.
+/// `KOYO_LSP_IT=1`; `what` names the server in the line that says they weren't.
 pub fn data_dir(what: &str) -> Option<PathBuf> {
-    if std::env::var("COLOSSO_LSP_IT").as_deref() != Ok("1") {
-        eprintln!("skipped: set COLOSSO_LSP_IT=1 to run against {what}");
+    if std::env::var("KOYO_LSP_IT").as_deref() != Ok("1") {
+        eprintln!("skipped: set KOYO_LSP_IT=1 to run against {what}");
         return None;
     }
-    let data = std::env::var_os("COLOSSO_DATA_DIR")
-        .expect("COLOSSO_DATA_DIR names a folder in the checkout to install into");
+    let data = std::env::var_os("KOYO_DATA_DIR")
+        .expect("KOYO_DATA_DIR names a folder in the checkout to install into");
     Some(PathBuf::from(data))
 }
 

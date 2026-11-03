@@ -1,4 +1,4 @@
-//! A Language Server Protocol client for Colosso. It starts a server, talks to it over its
+//! A Language Server Protocol client for Koyo. It starts a server, talks to it over its
 //! stdin and stdout, and hands back answers as futures and notifications as streams.
 //!
 //! Nothing here knows about GPUI or any executor: writing, reading, and waiting on the

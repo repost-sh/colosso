@@ -5,7 +5,7 @@ use cef::{
     ImplBrowser, ImplBrowserHost, ImplFrame, KeyEvent, KeyEventType, MouseButtonType, MouseEvent,
     PointerType, TouchEvent, TouchEventType,
 };
-use colosso_browser_ipc::{
+use koyo_browser_ipc::{
     self as ipc, AppRequest, Ime, KeyKind, Modifiers, MouseButton, MouseKind, PaneId, PinchPhase,
 };
 

@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use colosso_term_control::{
+use koyo_term_control::{
     AttachMode, EventKind, Handle, OpenRequest, RequestBody, ResponseBody, Size,
 };
 use futures::StreamExt as _;
@@ -49,7 +49,7 @@ impl TerminalView {
 
     fn opened(
         &mut self,
-        opened: Result<ResponseBody, colosso_term_control::ClientError>,
+        opened: Result<ResponseBody, koyo_term_control::ClientError>,
         cx: &mut Context<Self>,
     ) {
         let record = match opened {
@@ -189,7 +189,7 @@ impl TerminalView {
 
     fn attached(
         &mut self,
-        attached: Result<crate::client::Attachment, colosso_term_control::ClientError>,
+        attached: Result<crate::client::Attachment, koyo_term_control::ClientError>,
         cx: &mut Context<Self>,
     ) {
         let attachment = match attached {

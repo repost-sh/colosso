@@ -1,6 +1,6 @@
 //! The daemon's log: one line a record to `daemon.log`, which starts over at a megabyte
 //! keeping the one before as `daemon.log.old`; or to stderr when run in the foreground.
-//! `COLOSSO_LOG`, else `RUST_LOG`, sets the level (`debug`, `trace`); the default is info.
+//! `KOYO_LOG`, else `RUST_LOG`, sets the level (`debug`, `trace`); the default is info.
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write as _};
@@ -13,7 +13,7 @@ const LIMIT: u64 = 1 << 20;
 
 /// Starts logging to `path`, or to stderr when `path` is `None`.
 pub fn init(path: Option<&Path>) -> io::Result<()> {
-    let level = std::env::var("COLOSSO_LOG")
+    let level = std::env::var("KOYO_LOG")
         .or_else(|_| std::env::var("RUST_LOG"))
         .ok()
         .and_then(|value| value.parse::<LevelFilter>().ok())
@@ -64,7 +64,7 @@ impl Log for Logger {
         if let Err(error) = written {
             let _ = writeln!(
                 io::stderr(),
-                "colosso-termd: couldn't write the log: {error}"
+                "koyo-termd: couldn't write the log: {error}"
             );
         }
     }

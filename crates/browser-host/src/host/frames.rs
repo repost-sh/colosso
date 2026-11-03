@@ -2,7 +2,7 @@
 //! into a free slot and announced, and the slots the app hands back.
 use super::{send, with, with_pane};
 use cef::{AcceleratedPaintInfo, Rect};
-use colosso_browser_ipc::{self as ipc, HostEvent, PaneId};
+use koyo_browser_ipc::{self as ipc, HostEvent, PaneId};
 
 /// A fresh ring at the pane's current pixel size, announced to the app.
 pub(super) fn new_ring(pane: PaneId) {

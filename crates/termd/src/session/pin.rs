@@ -3,7 +3,7 @@
 //! unpinned, replaced, or the connection that set it goes. An agent's pin is a resize under
 //! its lease and is logged as one; a person's takes nothing from an agent.
 
-use colosso_term_control::{
+use koyo_term_control::{
     Actor, ActorKind, ErrorCode, Pinned, ProtocolError, ResponseBody, pin_cells_error,
 };
 

@@ -123,7 +123,7 @@ impl Command {
     pub fn parse(operation: &str, input: Value) -> Result<Command, ControlError> {
         if info(operation).is_none() {
             return Err(ControlError::invalid_input(format!(
-                "Colosso has no operation named `{operation}`."
+                "Koyo has no operation named `{operation}`."
             )));
         }
         let input = if input.is_null() {

@@ -100,9 +100,9 @@ pub struct SettingsValues {
     pub inlay_hints: bool,
     /// Whether a language server's reading of the code colours it over the grammar's.
     pub semantic_colouring: bool,
-    /// Whether the sidebar is open when Colosso starts.
+    /// Whether the sidebar is open when Koyo starts.
     pub sidebar_open_on_launch: bool,
-    /// Where new worktrees go, a folder per project; null for `~/colosso/workspaces`.
+    /// Where new worktrees go, a folder per project; null for `~/koyo/workspaces`.
     pub worktrees_dir: Option<String>,
     /// What new branches are named under.
     pub branch_prefix: BranchPrefix,
@@ -156,10 +156,10 @@ pub struct SettingsSetInput {
     /// Whether a language server's reading of the code colours it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub semantic_colouring: Option<bool>,
-    /// Whether the sidebar is open when Colosso starts.
+    /// Whether the sidebar is open when Koyo starts.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sidebar_open_on_launch: Option<bool>,
-    /// Where new worktrees go, an absolute path; null for `~/colosso/workspaces`.
+    /// Where new worktrees go, an absolute path; null for `~/koyo/workspaces`.
     #[serde(
         default,
         deserialize_with = "present",
@@ -238,6 +238,6 @@ fn summary(output: &SettingsValues) -> String {
         output
             .worktrees_dir
             .as_deref()
-            .unwrap_or("~/colosso/workspaces")
+            .unwrap_or("~/koyo/workspaces")
     )
 }

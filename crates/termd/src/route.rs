@@ -1,7 +1,7 @@
 //! Which requests a terminal's own thread answers, as the commands it takes; the rest the
 //! daemon answers itself (`server.rs`).
 
-use colosso_term_control::{Handle, RequestBody};
+use koyo_term_control::{Handle, RequestBody};
 
 use crate::session::{Cmd, Reply};
 

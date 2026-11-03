@@ -7,7 +7,7 @@ use std::io::{self, Write};
 use std::os::fd::{AsRawFd, BorrowedFd, RawFd};
 use std::path::Path;
 
-use colosso_term_control::{Handle, Size, WorktreeRef};
+use koyo_term_control::{Handle, Size, WorktreeRef};
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 
 /// The program's terminal as the session holds it. Its reads and writes are non-blocking
@@ -191,20 +191,20 @@ fn environment(
     dark: Option<bool>,
 ) -> Vec<(String, String)> {
     let mut env: Vec<(String, String)> = Vec::new();
-    match colosso_term_engine::terminfo_dir() {
+    match koyo_term_engine::terminfo_dir() {
         Ok(dir) => {
-            env.push(("TERM".into(), colosso_term_engine::TERM.into()));
+            env.push(("TERM".into(), koyo_term_engine::TERM.into()));
             env.push(("TERMINFO".into(), dir.to_string_lossy().into_owned()));
         }
         Err(error) => {
             log::warn!(
                 "no terminfo for {}: {error}; children get xterm-256color",
-                colosso_term_engine::TERM
+                koyo_term_engine::TERM
             );
             env.push(("TERM".into(), "xterm-256color".into()));
         }
     }
-    let resources = colosso_term_engine::shell_integration_dir().ok();
+    let resources = koyo_term_engine::shell_integration_dir().ok();
     if let Some(dir) = &resources {
         env.push((
             "GHOSTTY_RESOURCES_DIR".into(),
@@ -217,15 +217,15 @@ fn environment(
         let colors = if dark { "15;0" } else { "0;15" };
         env.push(("COLORFGBG".into(), colors.into()));
     }
-    env.push(("TERM_PROGRAM".into(), "Colosso".into()));
+    env.push(("TERM_PROGRAM".into(), "Koyo".into()));
     env.push((
         "TERM_PROGRAM_VERSION".into(),
         env!("CARGO_PKG_VERSION").into(),
     ));
-    env.push(("COLOSSO_TERMINAL".into(), handle.as_str().to_owned()));
+    env.push(("KOYO_TERMINAL".into(), handle.as_str().to_owned()));
     if let Some(worktree) = worktree {
         env.push((
-            "COLOSSO_WORKTREE".into(),
+            "KOYO_WORKTREE".into(),
             worktree.path.to_string_lossy().into_owned(),
         ));
     }

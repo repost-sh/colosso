@@ -28,7 +28,7 @@ pub enum ErrorCode {
     RequestConflict,
     /// External control is off in Settings → MCP server.
     ControlDisabled,
-    /// No Colosso answers on the control socket of this data folder.
+    /// No Koyo answers on the control socket of this data folder.
     AppNotRunning,
     /// An editor holds unsaved edits; `details` lists the files.
     UnsavedChanges,
@@ -209,7 +209,7 @@ impl ControlError {
         ControlError::new(
             ErrorCode::ScopeDenied,
             format!(
-                "This client isn't allowed the `{}` scope. The person can switch it on in Colosso under Settings → MCP server.",
+                "This client isn't allowed the `{}` scope. The person can switch it on in Koyo under Settings → MCP server.",
                 scope.id()
             ),
         )
@@ -238,7 +238,7 @@ impl ControlError {
     pub fn control_disabled() -> ControlError {
         ControlError::new(
             ErrorCode::ControlDisabled,
-            "Colosso's MCP server is off. The person can turn it on in Colosso under Settings → MCP server.",
+            "Koyo's MCP server is off. The person can turn it on in Koyo under Settings → MCP server.",
         )
     }
 
@@ -246,7 +246,7 @@ impl ControlError {
     pub fn app_not_running() -> ControlError {
         ControlError::new(
             ErrorCode::AppNotRunning,
-            "Colosso isn't running for this data folder. Open the app (or call app_launch) and try again.",
+            "Koyo isn't running for this data folder. Open the app (or call app_launch) and try again.",
         )
     }
 
@@ -256,7 +256,7 @@ impl ControlError {
     pub fn connection_lost() -> ControlError {
         ControlError::new(
             ErrorCode::AppNotRunning,
-            "Colosso closed the control connection before answering, so the call may or may not have taken effect. Check the current state before repeating a change; a call with a requestId can be repeated safely.",
+            "Koyo closed the control connection before answering, so the call may or may not have taken effect. Check the current state before repeating a change; a call with a requestId can be repeated safely.",
         )
         .retryable(true)
     }

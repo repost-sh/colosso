@@ -5,8 +5,8 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use colosso_term_control::client::stop_daemon;
-use colosso_term_control::{ClientKind, Hello, TermDir};
+use koyo_term_control::client::stop_daemon;
+use koyo_term_control::{ClientKind, Hello, TermDir};
 
 /// A daemon of an old build that never stops when asked: it holds the lock with its pid,
 /// listens on the socket, hangs up on every hello it can't read, and ignores SIGTERM.

@@ -1,5 +1,5 @@
 [package]
-name = "colosso-app-control"
+name = "koyo-app-control"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
@@ -24,7 +24,7 @@ sha2 = "0.10"
 
 [dev-dependencies]
 # The terminals' catalog, which app tool names must not collide with.
-colosso-term-control = { path = "../term-control" }
+koyo-term-control = { path = "../term-control" }
 
 [lints]
 workspace = true

@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use colosso_project::{Entry, Excludes, Feed, GitDirs, Options, Project, Subscription, Update};
+use koyo_project::{Entry, Excludes, Feed, GitDirs, Options, Project, Subscription, Update};
 
 /// How long a test waits for the watcher before it fails. A test's first write is reported
 /// once the platform's watcher covers its checkout, and `fseventsd` takes 1.7 to 1.9 s to start

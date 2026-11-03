@@ -19,7 +19,7 @@ pub const PROTOCOL: u32 = 4;
 /// The daemon's version, in `Welcome::daemon_version`: the app has a daemon of another one
 /// restarted for its own (`docs/terminals.md` 5.1). Any change to what the daemon runs bumps
 /// it (`script/daemon-version`).
-pub const DAEMON_VERSION: u32 = 1;
+pub const DAEMON_VERSION: u32 = 2;
 /// The engine snapshot format carried in `Snapshot` frames.
 pub const SNAPSHOT_FORMAT: u16 = 1;
 
@@ -59,7 +59,7 @@ impl Hello {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClientInfo {
     pub kind: ClientKind,
-    /// `colosso`, `claude-code`, `codex`: the actor's name before the connection id.
+    /// `koyo`, `claude-code`, `codex`: the actor's name before the connection id.
     pub name: String,
     pub version: String,
     pub pid: u32,
@@ -75,7 +75,7 @@ pub enum ClientKind {
     /// The stdio MCP relay an agent runs.
     Relay,
     Mobile,
-    /// `colosso-term`, the command-line attach for testing.
+    /// `koyo-term`, the command-line attach for testing.
     Cli,
 }
 

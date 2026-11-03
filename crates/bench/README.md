@@ -1,11 +1,11 @@
-# colosso-bench
+# koyo-bench
 
 Measures what gpui-kit's code editor costs the main thread on large files: one input event and the full frame drawn after it (update, layout, prepaint, paint), timed on a real macOS window kept off screen, with the real text system and Metal renderer.
 
 ```sh
-cargo run -p colosso-bench --release -- all                 # fixtures, every scenario, table, JSON
-cargo run -p colosso-bench --release -- all --only resize,4k # ids containing "resize" or "4k"
-cargo run -p colosso-bench --release -- list                # scenario ids; `run <id>` runs one here
+cargo run -p koyo-bench --release -- all                 # fixtures, every scenario, table, JSON
+cargo run -p koyo-bench --release -- all --only resize,4k # ids containing "resize" or "4k"
+cargo run -p koyo-bench --release -- list                # scenario ids; `run <id>` runs one here
 ```
 
 `--release` is the reference; a debug build says so in the table. Fixtures are generated once into `.superpowers/fixtures/` (seeded; the Rust ones are this repository's own sources). `rust-4k` and `markdown-5k` stay under 256 KB, where the highlighter parses on the main thread at every keystroke (up to 2 ms) and scans the whole tree for injections; every larger file is parsed in the background. Each run writes `.superpowers/bench/<timestamp>.json` with the machine, versions, fixture hashes and every sample. Each scenario runs in a process of its own and is stopped after `--timeout` seconds (default 60), reporting "timed out at X" with the samples it took.
@@ -21,7 +21,7 @@ cargo run -p colosso-bench --release -- list                # scenario ids; `run
 
 A scenario's id is its kind and its fixture, `type/rust-10k`. The long-line scenarios are `open`, `scroll` (sideways) and `type` on `json-1mb`, one 1 MiB line of minified JSON.
 
-The scan scenarios run `colosso-project` off the main thread, with no window, on `repo-300k`: a git checkout of 150,001 files in 3,000 folders of nested packages, and 150,000 more in `node_modules/` and `target/`, which its `.gitignore` ignores. It's made once, with empty files, in `.superpowers/fixtures/repo-300k/`.
+The scan scenarios run `koyo-project` off the main thread, with no window, on `repo-300k`: a git checkout of 150,001 files in 3,000 folders of nested packages, and 150,000 more in `node_modules/` and `target/`, which its `.gitignore` ignores. It's made once, with empty files, in `.superpowers/fixtures/repo-300k/`.
 
 | Scenario | Each sample |
 | --- | --- |
@@ -30,7 +30,7 @@ The scan scenarios run `colosso-project` off the main thread, with no window, on
 | `burst-ignored` | 50,000 files written into `node_modules/`, then removed: the time the project spent taking them up; notes the reports, those dropped at the watcher, updates to consumers and folders read |
 | `burst-tracked` | 2,000 files written into 20 tracked folders, then removed (3 times each), until every listing shows it; notes batches and folders read |
 
-The rows scenarios time the Files panel's rows model (`colosso_project::Rows`) on `tree-500k`, a tree of 510,003 files held in memory: `big/` with 10,000 files, `deep/` 24 folders deep, and `src/` with 100 packages of 50 modules of 100 files. Every folder of `src/` is open, which shows 505,105 rows, before the samples are taken. Nothing is read from disk and no window opens.
+The rows scenarios time the Files panel's rows model (`koyo_project::Rows`) on `tree-500k`, a tree of 510,003 files held in memory: `big/` with 10,000 files, `deep/` 24 folders deep, and `src/` with 100 packages of 50 modules of 100 files. Every folder of `src/` is open, which shows 505,105 rows, before the samples are taken. Nothing is read from disk and no window opens.
 
 | Scenario | Each sample |
 | --- | --- |
@@ -39,14 +39,14 @@ The rows scenarios time the Files panel's rows model (`colosso_project::Rows`) o
 | `rows-update` | a listing of `src/pkg-000/mod-00` with a file added or taken away, applied as an update brings it, before every other open row (60) |
 | `rows-reveal` | the file at the bottom of `deep/` revealed with every folder above it closed (60) |
 
-The finder scenarios time Go to File's search (`colosso_project::Finder`) over the same tree's files, handed over by folder as `Project::files_by_folder` hands them out, on as many threads as the machine runs. Each sample ends with the 500 best matches ranked and their matched characters found, which is what the palette draws.
+The finder scenarios time Go to File's search (`koyo_project::Finder`) over the same tree's files, handed over by folder as `Project::files_by_folder` hands them out, on as many threads as the machine runs. Each sample ends with the 500 best matches ranked and their matched characters found, which is what the palette draws.
 
 | Scenario | Each sample |
 | --- | --- |
 | `finder-query` | one keystroke of `modfil` typed a letter at a time, then erased to nothing, from a finder just opened each time (240); every prefix matches all 500,000 files of `src/` |
 | `finder-update` | a folder of 1,000 files the query matches added while `modfil` is typed, to the results with them; it's taken away again between samples, untimed (60) |
 
-The terminal scenarios run the terminal daemon in `.superpowers/tb/` (the bench run again as `colosso-bench termd`, as the app runs itself as `colosso termd`) and a client of it that attaches as the app's view does and writes the output into the same engine, Ghostty's VT through `colosso-term-engine`. Each sample is wall time from the input written to the daemon's socket to the client's engine having taken what came back; the GPU's paint isn't in it, since the view takes a frame from the engine at most once a refresh. Each run stops its daemon and removes the folder; one a timeout killed leaves its daemon, which the next terminal scenario stops first.
+The terminal scenarios run the terminal daemon in `.superpowers/tb/` (the bench run again as `koyo-bench termd`, as the app runs itself as `koyo termd`) and a client of it that attaches as the app's view does and writes the output into the same engine, Ghostty's VT through `koyo-term-engine`. Each sample is wall time from the input written to the daemon's socket to the client's engine having taken what came back; the GPU's paint isn't in it, since the view takes a frame from the engine at most once a refresh. Each run stops its daemon and removes the folder; one a timeout killed leaves its daemon, which the next terminal scenario stops first.
 
 | Scenario | Each sample |
 | --- | --- |

@@ -2,7 +2,7 @@
 //! `src/shell-integration/README.md`), so the shell marks its prompts and commands (OSC 133)
 //! and reports its folder (OSC 7), which the status follows (`docs/terminals.md` 5.7): zsh
 //! through `ZDOTDIR`, fish through `XDG_DATA_DIRS`. bash isn't injected: Ghostty's script
-//! needs bash 4.4, and macOS's is 3.2. `COLOSSO_SHELL_INTEGRATION=off` in a terminal's
+//! needs bash 4.4, and macOS's is 3.2. `KOYO_SHELL_INTEGRATION=off` in a terminal's
 //! environment leaves its shell alone.
 
 use std::path::Path;
@@ -16,7 +16,7 @@ pub fn variables(
     resources: &Path,
     get: impl Fn(&str) -> Option<String>,
 ) -> Vec<(String, String)> {
-    if get("COLOSSO_SHELL_INTEGRATION").as_deref() == Some("off") {
+    if get("KOYO_SHELL_INTEGRATION").as_deref() == Some("off") {
         return Vec::new();
     }
     let scripts = resources.join("shell-integration");
@@ -108,6 +108,6 @@ mod tests {
     fn other_programs_and_a_terminal_that_says_off_are_left_alone() {
         assert!(injected("/bin/bash", &[]).is_empty());
         assert!(injected("/usr/bin/vim", &[]).is_empty());
-        assert!(injected("/bin/zsh", &[("COLOSSO_SHELL_INTEGRATION", "off")]).is_empty());
+        assert!(injected("/bin/zsh", &[("KOYO_SHELL_INTEGRATION", "off")]).is_empty());
     }
 }

@@ -7,8 +7,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use colosso_term_control::{Connection, EventKind, Handle, Output, RequestBody, SnapshotChunk};
-use colosso_term_engine::{
+use koyo_term_control::{Connection, EventKind, Handle, Output, RequestBody, SnapshotChunk};
+use koyo_term_engine::{
     Effect, Engine, Frame, Geometry, GridPoint, KeyAction, MouseInput, OptionAsAlt, Rgb, Scroll,
     SelectUnit, Size,
 };
@@ -388,7 +388,7 @@ fn drive(
     engine: &mut Engine,
     command: Command,
     option_as_alt: OptionAsAlt,
-) -> colosso_term_engine::Result<Vec<u8>> {
+) -> koyo_term_engine::Result<Vec<u8>> {
     let bytes = match command {
         Command::Key(key) => {
             let bytes = engine.encode_key(&key.as_input(), option_as_alt)?;
@@ -439,8 +439,8 @@ fn wheel(
     rows: i32,
     at: MouseInput,
     geometry: Geometry,
-) -> colosso_term_engine::Result<Vec<u8>> {
-    use colosso_term_engine::{MouseAction, MouseButton};
+) -> koyo_term_engine::Result<Vec<u8>> {
+    use koyo_term_engine::{MouseAction, MouseButton};
     if rows == 0 {
         return Ok(Vec::new());
     }

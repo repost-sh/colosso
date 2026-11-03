@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use colosso_term_control::{
+use koyo_term_control::{
     Control, Exit, Handle, Status, TerminalRecord, WorktreeRef, WorktreeSummary,
 };
 use serde::{Deserialize, Serialize};
@@ -180,7 +180,7 @@ impl Registry {
 mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
-    use colosso_term_control::{Actor, Size};
+    use koyo_term_control::{Actor, Size};
 
     use super::*;
 
@@ -222,7 +222,7 @@ mod tests {
         let path = dir.join("registry.json");
         let mut registry = Registry::load(path.clone());
         let a = TerminalRecord {
-            pinned: Some(colosso_term_control::Pinned {
+            pinned: Some(koyo_term_control::Pinned {
                 cols: 120,
                 rows: 40,
                 by: Actor::system(),

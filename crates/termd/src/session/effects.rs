@@ -2,8 +2,8 @@
 //! replies back to the program when no client answers them, the title and working directory
 //! into the record, bells and notifications out to the clients.
 
-use colosso_term_control::EventKind;
-use colosso_term_engine::Effect;
+use koyo_term_control::EventKind;
+use koyo_term_engine::Effect;
 
 use super::Session;
 
@@ -53,18 +53,18 @@ impl Session {
                 }
                 Effect::Progress(progress) => {
                     self.record.progress = match progress {
-                        colosso_term_engine::Progress::Remove => None,
-                        colosso_term_engine::Progress::Set(pct) => {
-                            Some(colosso_term_control::Progress::Percent(pct))
+                        koyo_term_engine::Progress::Remove => None,
+                        koyo_term_engine::Progress::Set(pct) => {
+                            Some(koyo_term_control::Progress::Percent(pct))
                         }
-                        colosso_term_engine::Progress::Error(pct) => {
-                            Some(colosso_term_control::Progress::Error(pct))
+                        koyo_term_engine::Progress::Error(pct) => {
+                            Some(koyo_term_control::Progress::Error(pct))
                         }
-                        colosso_term_engine::Progress::Indeterminate => {
-                            Some(colosso_term_control::Progress::Indeterminate)
+                        koyo_term_engine::Progress::Indeterminate => {
+                            Some(koyo_term_control::Progress::Indeterminate)
                         }
-                        colosso_term_engine::Progress::Paused(pct) => {
-                            Some(colosso_term_control::Progress::Paused(pct))
+                        koyo_term_engine::Progress::Paused(pct) => {
+                            Some(koyo_term_control::Progress::Paused(pct))
                         }
                     };
                     self.publish(false);

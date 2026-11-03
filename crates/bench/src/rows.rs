@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{Result, bail, ensure};
-use colosso_project::{Entry, Kind as EntryKind, Listings, Reveal, Row, Rows, order};
+use koyo_project::{Entry, Kind as EntryKind, Listings, Reveal, Row, Rows, order};
 
 use crate::scenarios::{Kind, Scenario};
 use crate::stats::{self, Deadline, Measured};

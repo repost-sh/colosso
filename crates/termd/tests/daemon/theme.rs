@@ -1,7 +1,7 @@
 //! The app's theme reaches the programs: a terminal opened after it's said starts with it in
 //! `COLORFGBG`, and its engine answers a program asking whether the theme is light or dark.
 
-use colosso_term_control::{ClientKind, RequestBody, Theme};
+use koyo_term_control::{ClientKind, RequestBody, Theme};
 
 use super::{StopOnDrop, connect, test_dir, wait_until};
 

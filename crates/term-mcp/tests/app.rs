@@ -1,5 +1,5 @@
 //! The app's tools and resources end to end: a real MCP client lists both catalogs, calls
-//! app tools that the server forwards over the control socket to a fake Colosso, and reads
+//! app tools that the server forwards over the control socket to a fake Koyo, and reads
 //! the app's resources; without an app, calls fail `app_not_running`.
 
 #![cfg(unix)]
@@ -9,9 +9,9 @@ pub mod common;
 
 use std::sync::Arc;
 
-use colosso_app_control::{APP_LAUNCH, APP_LAUNCH_TITLE, ControlError, catalog, summarize};
-use colosso_term_control::catalog::{CATALOG, Scope};
-use colosso_term_mcp::{Launcher, Server, socket_backend};
+use koyo_app_control::{APP_LAUNCH, APP_LAUNCH_TITLE, ControlError, catalog, summarize};
+use koyo_term_control::catalog::{CATALOG, Scope};
+use koyo_term_mcp::{Launcher, Server, socket_backend};
 use common::{
     CLIENT, FakeApp, Heard, call, config, connect, endpoint, failure, relay, scratch, texts,
 };
@@ -19,7 +19,7 @@ use rmcp::model::{ProtocolVersion, ReadResourceRequestParams, ResourceContents};
 use serde_json::{Value, json};
 
 fn tab_opened() -> Value {
-    json!({ "pane": 7, "tab": 2, "worktree": "/work/colosso" })
+    json!({ "pane": 7, "tab": 2, "worktree": "/work/koyo" })
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -135,8 +135,8 @@ async fn an_app_call_is_forwarded_with_its_request_id() {
     );
 }
 
-fn app_call(id: u64, operation: &str, input: Value) -> colosso_app_control::frame::Call {
-    colosso_app_control::frame::Call {
+fn app_call(id: u64, operation: &str, input: Value) -> koyo_app_control::frame::Call {
+    koyo_app_control::frame::Call {
         id,
         request_id: None,
         operation: operation.to_owned(),
@@ -229,10 +229,10 @@ async fn app_resources_are_read_through_their_operations() {
     let (session, _) = connect(relay(&dir, &endpoint, None), ProtocolVersion::V_2025_11_25).await;
 
     let cases = [
-        ("colosso://app", "app_status", json!({})),
-        ("colosso://projects", "project_list", json!({})),
-        ("colosso://tabs", "tab_list", json!({ "all": true })),
-        ("colosso://settings", "settings_get", json!({})),
+        ("koyo://app", "app_status", json!({})),
+        ("koyo://projects", "project_list", json!({})),
+        ("koyo://tabs", "tab_list", json!({ "all": true })),
+        ("koyo://settings", "settings_get", json!({})),
     ];
     for (uri, operation, input) in cases {
         let read = session

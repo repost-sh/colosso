@@ -8,12 +8,12 @@ use super::shared::{Layout, NoInput, PaneId};
 use crate::{Hints, Operation, Scope};
 
 /// The stdio relay's own tool, answered without the app and so not in the
-/// [`catalog`](crate::catalog): it starts Colosso and waits up to 30 seconds for its socket.
+/// [`catalog`](crate::catalog): it starts Koyo and waits up to 30 seconds for its socket.
 pub const APP_LAUNCH: &str = "app_launch";
 /// [`APP_LAUNCH`]'s title.
-pub const APP_LAUNCH_TITLE: &str = "Launch Colosso";
+pub const APP_LAUNCH_TITLE: &str = "Launch Koyo";
 /// [`APP_LAUNCH`]'s description.
-pub const APP_LAUNCH_DESCRIPTION: &str = "Starts Colosso when it isn't running and waits up to 30 seconds for it to answer. Call it when another tool fails app_not_running.";
+pub const APP_LAUNCH_DESCRIPTION: &str = "Starts Koyo when it isn't running and waits up to 30 seconds for it to answer. Call it when another tool fails app_not_running.";
 
 /// The panel on the right of the content.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
@@ -96,7 +96,7 @@ pub struct LayoutState {
     reason = "the window's switches, one field each"
 )]
 pub struct AppStatusOutput {
-    /// Colosso's version.
+    /// Koyo's version.
     pub version: String,
     /// Whether the window is open.
     pub window_open: bool,
@@ -133,7 +133,7 @@ fn status_summary(output: &AppStatusOutput) -> String {
         .or(output.selected.project.as_deref())
         .unwrap_or("nothing selected");
     format!(
-        "Colosso {}, {window}, showing {} ({shown})",
+        "Koyo {}, {window}, showing {} ({shown})",
         output.version, output.route
     )
 }
@@ -146,7 +146,7 @@ impl Operation for AppStatus {
     const NAME: &'static str = "app_status";
     const TITLE: &'static str = "Read app status";
     const SCOPE: Scope = Scope::Read;
-    const DESCRIPTION: &'static str = "What Colosso's window shows: its version, whether the window is open and focused, the route (workspace or a settings page), layout and panels, the selected project, worktree and pane, the MCP server's address and the data folder. Start here.";
+    const DESCRIPTION: &'static str = "What Koyo's window shows: its version, whether the window is open and focused, the route (workspace or a settings page), layout and panels, the selected project, worktree and pane, the MCP server's address and the data folder. Start here.";
     const HINTS: Hints = Hints::READ;
     type Input = NoInput;
     type Output = AppStatusOutput;
@@ -164,7 +164,7 @@ impl Operation for AppFocus {
     const NAME: &'static str = "app_focus";
     const TITLE: &'static str = "Focus the window";
     const SCOPE: Scope = Scope::Navigate;
-    const DESCRIPTION: &'static str = "Brings Colosso's window forward, opening it when it's closed. Answers the app's status after.";
+    const DESCRIPTION: &'static str = "Brings Koyo's window forward, opening it when it's closed. Answers the app's status after.";
     const HINTS: Hints = Hints::IDEMPOTENT;
     type Input = NoInput;
     type Output = AppStatusOutput;

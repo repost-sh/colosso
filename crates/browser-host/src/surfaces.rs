@@ -3,7 +3,7 @@
 //! `OnAcceleratedPaint`, so every frame is copied on the GPU before the
 //! callback returns: into the pane's own copy of its page and of its open
 //! popup (a `<select>` list), which are then composed into a free slot.
-use colosso_browser_ipc::{PixelSize, RING, mach};
+use koyo_browser_ipc::{PixelSize, RING, mach};
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_core_foundation::{CFDictionary, CFNumber, CFRetained, CFString, CFType};

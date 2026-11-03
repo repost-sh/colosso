@@ -4,9 +4,9 @@
 
 use std::sync::Arc;
 
-use colosso_app_control::{APP_LAUNCH, ControlError, Descriptor, catalog, summarize};
-use colosso_term_control::ProtocolError;
-use colosso_term_control::catalog::{CATALOG, Operation, Scope};
+use koyo_app_control::{APP_LAUNCH, ControlError, Descriptor, catalog, summarize};
+use koyo_term_control::ProtocolError;
+use koyo_term_control::catalog::{CATALOG, Operation, Scope};
 use rmcp::model::{CallToolResult, ContentBlock, Tool, ToolAnnotations};
 use serde_json::Value;
 

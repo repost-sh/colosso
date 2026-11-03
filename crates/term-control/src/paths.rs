@@ -1,13 +1,13 @@
 //! Where the daemon keeps its files, which its clients need to find it: under the app's data
-//! folder, `~/Library/Application Support/dev.colosso.desktop/term/` on macOS, or wherever
-//! `COLOSSO_DATA_DIR` points, as the app's settings do. `docs/terminals.md` 5.1.
+//! folder, `~/Library/Application Support/dev.koyo.desktop/term/` on macOS, or wherever
+//! `KOYO_DATA_DIR` points, as the app's settings do. `docs/terminals.md` 5.1.
 
 use std::path::{Path, PathBuf};
 
 use crate::terminal::Handle;
 
 /// The app's id, its folder under the platform's data directory.
-pub const APP_ID: &str = "dev.colosso.desktop";
+pub const APP_ID: &str = "dev.koyo.desktop";
 
 /// The daemon's folder and the files in it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -19,7 +19,7 @@ impl TermDir {
     /// The folder the environment points to, or the platform's; `None` when the platform
     /// has no data directory for this user.
     pub fn from_env() -> Option<TermDir> {
-        let data = std::env::var_os("COLOSSO_DATA_DIR")
+        let data = std::env::var_os("KOYO_DATA_DIR")
             .map(PathBuf::from)
             .or_else(|| dirs::data_dir().map(|dir| dir.join(APP_ID)))?;
         Some(TermDir::at(data.join("term")))

@@ -3,7 +3,7 @@
 
 use std::time::{Duration, Instant};
 
-use colosso_lsp::{Encoding, Event, Exit, LspError, uri};
+use koyo_lsp::{Encoding, Event, Exit, LspError, uri};
 use futures::StreamExt;
 use futures::channel::mpsc::UnboundedReceiver;
 use serde_json::json;

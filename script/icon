@@ -1,0 +1,60 @@
+#!/bin/sh
+# Makes the app's icon from its artwork, crates/koyo/icons/artwork.png: the shape macOS gives
+# app icons (a rounded square on a 1024-point canvas, a shadow under it) as icon.png, which
+# the app shows in the Dock (native/icon.rs), and Koyo.icns, which bundles carry (Dioxus.toml).
+# Run it after the artwork changes; both are committed, so builds need neither Python nor this.
+set -eu
+cd "$(dirname "$0")/.."
+
+ICONS=crates/koyo/icons
+WORK=.superpowers/icon
+rm -rf "$WORK"
+mkdir -p "$WORK/Koyo.iconset"
+
+python3 - "$ICONS/artwork.png" "$ICONS/icon.png" <<'PY'
+import math
+import sys
+from PIL import Image, ImageDraw, ImageFilter
+
+artwork, out = sys.argv[1:]
+CANVAS, BODY, SCALE = 1024, 824, 4  # Apple's grid: an 824-point body, 100 points round it
+# The square of the artwork the icon shows: the circle and its leaf, closer than the paper.
+CROP = (127, 100, 1127, 1100)
+
+def squircle(size):
+    """macOS's continuous-corner square, as a superellipse, drawn large and scaled down."""
+    big = size * SCALE
+    half = big / 2
+    points = []
+    steps = 2000
+    for i in range(steps):
+        t = 2 * math.pi * i / steps
+        c, s = math.cos(t), math.sin(t)
+        points.append((half + half * abs(c) ** 0.4 * (1 if c >= 0 else -1),
+                       half + half * abs(s) ** 0.4 * (1 if s >= 0 else -1)))
+    mask = Image.new("L", (big, big), 0)
+    ImageDraw.Draw(mask).polygon(points, fill=255)
+    return mask.resize((size, size), Image.LANCZOS)
+
+body = Image.open(artwork).convert("RGB").crop(CROP).resize((BODY, BODY), Image.LANCZOS)
+mask = squircle(BODY)
+origin = ((CANVAS - BODY) // 2,) * 2
+
+shadow = Image.new("L", (CANVAS, CANVAS), 0)
+shadow.paste(mask, (origin[0], origin[1] + 12))
+shadow = shadow.filter(ImageFilter.GaussianBlur(14)).point(lambda v: v * 0.35)
+icon = Image.new("RGBA", (CANVAS, CANVAS), (0, 0, 0, 0))
+icon.putalpha(shadow)
+icon.paste(body, origin, mask)
+icon.save(out, optimize=True)
+PY
+
+for size in 16 32 128 256 512; do
+  sips -z "$size" "$size" "$ICONS/icon.png" --out "$WORK/Koyo.iconset/icon_${size}x${size}.png" >/dev/null
+  double=$((size * 2))
+  sips -z "$double" "$double" "$ICONS/icon.png" \
+    --out "$WORK/Koyo.iconset/icon_${size}x${size}@2x.png" >/dev/null
+done
+iconutil -c icns "$WORK/Koyo.iconset" -o "$ICONS/Koyo.icns"
+rm -rf "$WORK"
+echo "Made $ICONS/icon.png and $ICONS/Koyo.icns"

@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use colosso_project::{Feed, Folder, Git, Options, Subscription, Update, Written};
+use koyo_project::{Feed, Folder, Git, Options, Subscription, Update, Written};
 
 use crate::common::{Checkout, ignored, names, until, until_listed};
 

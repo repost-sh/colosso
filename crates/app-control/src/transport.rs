@@ -22,7 +22,7 @@ use crate::frame::{self, FrameError};
 /// Why the app couldn't listen.
 #[derive(Debug)]
 pub enum BindError {
-    /// Another Colosso already answers on this socket; it's left alone.
+    /// Another Koyo already answers on this socket; it's left alone.
     InUse(PathBuf),
     /// Anything else.
     Io(io::Error),
@@ -33,7 +33,7 @@ impl fmt::Display for BindError {
         match self {
             BindError::InUse(path) => write!(
                 f,
-                "Another Colosso already answers on {}; this one runs without app control.",
+                "Another Koyo already answers on {}; this one runs without app control.",
                 path.display()
             ),
             BindError::Io(error) => write!(f, "Can't listen for app control: {error}"),

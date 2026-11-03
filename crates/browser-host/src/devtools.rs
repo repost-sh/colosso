@@ -22,8 +22,8 @@ use cef::{
     Browser, DevToolsMessageObserver, ImplDevToolsMessageObserver, WrapDevToolsMessageObserver,
     rc::Rc, wrap_dev_tools_message_observer,
 };
-use colosso_browser_ipc::PaneId;
-use colosso_browser_ipc::client::token;
+use koyo_browser_ipc::PaneId;
+use koyo_browser_ipc::client::token;
 use std::io;
 use std::net::{TcpListener, TcpStream};
 use std::os::raw::c_int;

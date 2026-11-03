@@ -59,7 +59,7 @@ impl Corpus {
     /// bench doesn't change what it measures.
     pub fn load(root: &Path) -> Result<Self> {
         let mut paths = Vec::new();
-        for dir in ["crates/colosso/src", "crates/git/src"] {
+        for dir in ["crates/koyo/src", "crates/git/src"] {
             collect_rust(&root.join(dir), &mut paths)?;
         }
         paths.sort();

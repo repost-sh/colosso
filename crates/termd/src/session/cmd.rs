@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use bytes::Bytes;
-use colosso_term_control::{
+use koyo_term_control::{
     Actor, ActorKind, AttachMode, ErrorCode, EventKind, ProtocolError, ResponseBody, SendRequest,
     Signal, Size, Theme,
 };

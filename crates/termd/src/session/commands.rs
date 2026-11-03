@@ -6,8 +6,8 @@
 
 use std::fmt::Write as _;
 
-use colosso_term_control::{Actor, CommandRecord, KEPT_OUTPUT_BYTES, LogKind, log::kept, now_ms};
-use colosso_term_engine::Mark;
+use koyo_term_control::{Actor, CommandRecord, KEPT_OUTPUT_BYTES, LogKind, log::kept, now_ms};
+use koyo_term_engine::Mark;
 
 use super::Session;
 use crate::journal::Journal;

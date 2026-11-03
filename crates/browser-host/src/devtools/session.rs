@@ -1,6 +1,6 @@
 //! The frontend's session on the page, from finding the page's target to detaching from
 //! it: the host's own steps and lookups told apart from the frontend's by their message ids.
-use colosso_browser_ipc::{PaneId, Point};
+use koyo_browser_ipc::{PaneId, Point};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicI64, Ordering};
 

@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use bytes::Bytes;
-use colosso_term_control::{
+use koyo_term_control::{
     ActorKind, AttachMode, ErrorCode, EventKind, Lagging, Message, Output, ProtocolError,
     ResponseBody, SNAPSHOT_FORMAT, Size, SnapshotChunk,
 };

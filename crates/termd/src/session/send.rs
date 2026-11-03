@@ -2,10 +2,10 @@
 //! text, named keys, a paste, Enter and Ctrl-C written as the caller without attaching, under
 //! the rules typing follows (5.6), and the screen read off the daemon's own engine.
 
-use colosso_term_control::{
+use koyo_term_control::{
     ErrorCode, ProtocolError, ResponseBody, ScreenCursor, ScreenRead, SendRequest, TerminalRecord,
 };
-use colosso_term_engine::{Engine, KeyAction, KeyInput, OptionAsAlt, chord};
+use koyo_term_engine::{Engine, KeyAction, KeyInput, OptionAsAlt, chord};
 
 use super::Session;
 use super::activity::quoted;

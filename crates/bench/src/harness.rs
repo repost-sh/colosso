@@ -1,5 +1,5 @@
 //! The app the editor is measured in: a real macOS window, off screen, with the real text
-//! system and Metal renderer, so shaping and painting cost what they cost in Colosso. Its
+//! system and Metal renderer, so shaping and painting cost what they cost in Koyo. Its
 //! scheduler runs nothing until asked, so a sample times exactly the work of one input event
 //! and the full frame drawn after it, and the work the event leaves for later runs between
 //! samples, outside the timing.

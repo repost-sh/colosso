@@ -4,8 +4,8 @@
 
 # The changes panel's view: the file list, its keys, scrolling and the file actions, to be
 # split along those lines; the diff rows are in view/diffs.rs already.
-crates/colosso/src/changes/view.rs  # 853 lines
+crates/koyo/src/changes/view.rs  # 853 lines
 # The theme picker's pad, presets, opacity slider and texture dial.
-crates/colosso/src/picker.rs  # 1057 lines
+crates/koyo/src/picker.rs  # 1057 lines
 # Listing changes, diffing files, and staging, unstaging and discarding them.
 crates/git/src/changes.rs  # 725 lines

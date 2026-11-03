@@ -3,7 +3,7 @@
 //! until they give it back. An agent writes under a lease it claims, renews by acting, and
 //! loses when it lapses, its connection closes, or another agent takes over.
 
-use colosso_term_control::{
+use koyo_term_control::{
     Actor, ActorKind, AttachMode, ControlChange, Controller, ErrorCode, ErrorDetails, EventKind,
     ProtocolError, now_ms,
 };

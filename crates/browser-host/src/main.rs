@@ -1,4 +1,4 @@
-//! Colosso's browser host.
+//! Koyo's browser host.
 //!
 //! One binary plays every CEF role. Started by the app, it is the browser
 //! process: it connects back to the app's socket, renders each browser pane
@@ -29,7 +29,7 @@ use std::process::ExitCode;
 pub(crate) fn mock_keychain() -> bool {
     use objc2_foundation::{NSBundle, NSNumber, NSString};
     NSBundle::mainBundle()
-        .objectForInfoDictionaryKey(&NSString::from_str("ColossoMockKeychain"))
+        .objectForInfoDictionaryKey(&NSString::from_str("KoyoMockKeychain"))
         .and_then(|value| value.downcast::<NSNumber>().ok())
         .is_some_and(|value| value.boolValue())
 }
@@ -95,13 +95,13 @@ fn main() -> ExitCode {
         let exe = match std::env::current_exe() {
             Ok(exe) => exe,
             Err(error) => {
-                eprintln!("colosso-browser-host: no executable path: {error}");
+                eprintln!("koyo-browser-host: no executable path: {error}");
                 return ExitCode::FAILURE;
             }
         };
         let loader = cef::library_loader::LibraryLoader::new(&exe, helper);
         if !loader.load() {
-            eprintln!("colosso-browser-host: cannot load the Chromium Embedded Framework");
+            eprintln!("koyo-browser-host: cannot load the Chromium Embedded Framework");
             return ExitCode::FAILURE;
         }
         loader
@@ -127,7 +127,7 @@ fn main() -> ExitCode {
     match host::run(&args) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("colosso-browser-host: {error}");
+            eprintln!("koyo-browser-host: {error}");
             ExitCode::FAILURE
         }
     }

@@ -2,11 +2,11 @@
 //! folder, started, given a file, and asked what a name is.
 //!
 //! It installs the package the first time, so it runs only when asked:
-//! `COLOSSO_LSP_IT=1 COLOSSO_DATA_DIR=$PWD/.superpowers/data cargo test -p colosso-lsp -- --ignored node_servers`
+//! `KOYO_LSP_IT=1 KOYO_DATA_DIR=$PWD/.superpowers/data cargo test -p koyo-lsp -- --ignored node_servers`
 
 use std::time::Instant;
 
-use colosso_lsp::servers::{NpmCli, VTSLS, node, vtsls_settings};
+use koyo_lsp::servers::{NpmCli, VTSLS, node, vtsls_settings};
 
 use crate::common::{GREET_TS, data_dir, fixture, probe};
 

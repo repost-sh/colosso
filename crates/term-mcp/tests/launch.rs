@@ -11,15 +11,15 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use colosso_app_control::{APP_LAUNCH, Endpoint};
-use colosso_term_mcp::{Launcher, Spawner};
+use koyo_app_control::{APP_LAUNCH, Endpoint};
+use koyo_term_mcp::{Launcher, Spawner};
 use common::{FakeApp, call, connect, endpoint, failure, relay, scratch, texts};
 use parking_lot::Mutex;
 use rmcp::model::ProtocolVersion;
 use serde_json::json;
 
 /// A fake start: counts the starts and, when `listens`, starts the fake app on `endpoint`
-/// as a started Colosso would.
+/// as a started Koyo would.
 struct Start {
     starts: Arc<AtomicUsize>,
     app: Arc<Mutex<Option<FakeApp>>>,
@@ -69,7 +69,7 @@ async fn a_stopped_app_is_started_and_waited_for() {
     );
     assert!(output["waitedMs"].is_u64(), "{output}");
     assert!(
-        texts(&result)[0].starts_with("Started Colosso"),
+        texts(&result)[0].starts_with("Started Koyo"),
         "{result:?}"
     );
     assert_eq!(start.starts.load(Ordering::SeqCst), 1);

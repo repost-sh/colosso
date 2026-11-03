@@ -4,8 +4,8 @@
 
 use std::os::unix::net::UnixStream;
 
-use colosso_term_control::client::{inbox, stop_daemon};
-use colosso_term_control::{ClientError, ClientKind, Connection, ErrorCode, PROTOCOL};
+use koyo_term_control::client::{inbox, stop_daemon};
+use koyo_term_control::{ClientError, ClientKind, Connection, ErrorCode, PROTOCOL};
 
 use super::{StopOnDrop, connect, hello, test_dir};
 

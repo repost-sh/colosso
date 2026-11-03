@@ -62,11 +62,11 @@ fn first(finder: &Finder, typed: &str) -> Option<String> {
 const REPO: &[&str] = &[
     "Cargo.toml",
     "README.md",
-    "crates/colosso/src/main.rs",
-    "crates/colosso/src/changes/view.rs",
-    "crates/colosso/src/changes/mod.rs",
-    "crates/colosso/src/checkout/mod.rs",
-    "crates/colosso/src/cache/hover.rs",
+    "crates/koyo/src/main.rs",
+    "crates/koyo/src/changes/view.rs",
+    "crates/koyo/src/changes/mod.rs",
+    "crates/koyo/src/checkout/mod.rs",
+    "crates/koyo/src/cache/hover.rs",
     "crates/project/src/lib.rs",
     "crates/project/src/domain/rules.rs",
     "src/main.rs",
@@ -80,7 +80,7 @@ fn a_file_is_found_by_its_name_shortest_path_first() {
     let found = found(&finder, "mainrs");
     assert_eq!(
         found.get(1).map(String::as_str),
-        Some("crates/colosso/src/main.rs")
+        Some("crates/koyo/src/main.rs")
     );
 }
 
@@ -89,7 +89,7 @@ fn a_file_is_found_by_its_folders_initials() {
     let finder = finder(REPO);
     assert_eq!(
         first(&finder, "chv").as_deref(),
-        Some("crates/colosso/src/changes/view.rs")
+        Some("crates/koyo/src/changes/view.rs")
     );
 }
 
@@ -114,8 +114,8 @@ fn slashes_match_between_folders() {
     let finder = finder(REPO);
     assert_eq!(first(&finder, "src/main").as_deref(), Some("src/main.rs"));
     assert_eq!(
-        found(&finder, "colosso/main"),
-        ["crates/colosso/src/main.rs"]
+        found(&finder, "koyo/main"),
+        ["crates/koyo/src/main.rs"]
     );
 }
 
@@ -181,22 +181,22 @@ fn files_added_and_removed_are_found_and_no_longer_found() {
     assert!(!finder.set_files(&refolder(&listed, &paths)));
     assert_eq!(
         found(&finder, "hovr"),
-        ["crates/colosso/src/cache/hover.rs"]
+        ["crates/koyo/src/cache/hover.rs"]
     );
-    paths.push("crates/colosso/src/hover/mod.rs");
+    paths.push("crates/koyo/src/hover/mod.rs");
     paths.push("new/hover_new.rs");
     listed = refolder(&listed, &paths);
     assert!(finder.set_files(&listed));
     assert_eq!(
         found(&finder, "hovr"),
         [
-            "crates/colosso/src/cache/hover.rs",
+            "crates/koyo/src/cache/hover.rs",
             "new/hover_new.rs",
-            "crates/colosso/src/hover/mod.rs"
+            "crates/koyo/src/hover/mod.rs"
         ]
     );
     assert_eq!(found(&finder, "hovrne"), ["new/hover_new.rs"]);
-    paths.retain(|path| !path.starts_with("crates/colosso/src/cache"));
+    paths.retain(|path| !path.starts_with("crates/koyo/src/cache"));
     assert!(finder.set_files(&refolder(&listed, &paths)));
     assert_eq!(found(&finder, "hovr").len(), 2);
     assert_eq!(finder.len(), paths.len());
@@ -251,9 +251,9 @@ fn searches_kept_take_up_files_changed_meanwhile() {
     for end in 1..=4 {
         search(&finder, &"crmo"[..end], 50);
     }
-    paths.push("crates/colosso/src/more/mod.rs");
-    paths.push("crates/colosso/src/changes/remote.rs");
-    paths.retain(|path| *path != "crates/colosso/src/checkout/mod.rs");
+    paths.push("crates/koyo/src/more/mod.rs");
+    paths.push("crates/koyo/src/changes/remote.rs");
+    paths.retain(|path| *path != "crates/koyo/src/checkout/mod.rs");
     listed = refolder(&listed, &paths);
     assert!(finder.set_files(&listed));
     typed_as_searched_afresh(&finder, &paths, "crmo");

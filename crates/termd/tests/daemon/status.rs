@@ -3,7 +3,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use colosso_term_control::{
+use koyo_term_control::{
     ClientKind, IfExists, Input, Message, OpenRequest, RequestBody, ResponseBody, Size, Status,
     TermDir, TerminalRecord,
 };

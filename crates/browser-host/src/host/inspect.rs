@@ -3,7 +3,7 @@
 use super::panes::create;
 use super::{Pane, Queued, enqueue, host_of, send, with, with_pane};
 use cef::{BrowserHost, ImplBrowserHost};
-use colosso_browser_ipc::{self as ipc, AppRequest, HostEvent, PaneId, Viewport};
+use koyo_browser_ipc::{self as ipc, AppRequest, HostEvent, PaneId, Viewport};
 
 /// Chrome `DevTools` for `page`, as the pane `devtools`: the inspector
 /// frontend in a second off-screen browser, joined to the page's session

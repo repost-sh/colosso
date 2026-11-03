@@ -5,10 +5,10 @@
 
 use std::path::PathBuf;
 
-use colosso_app_control::{ControlError, Topic};
-use colosso_term_control::catalog::Scope;
-use colosso_term_control::exec::Executor;
-use colosso_term_control::{ErrorCode, ProtocolError};
+use koyo_app_control::{ControlError, Topic};
+use koyo_term_control::catalog::Scope;
+use koyo_term_control::exec::Executor;
+use koyo_term_control::{ErrorCode, ProtocolError};
 use rmcp::ErrorData;
 use rmcp::model::{Resource, ResourceContents, ResourceTemplate};
 use serde_json::{Value, json};
@@ -31,7 +31,7 @@ pub enum Uri {
 
 impl Uri {
     pub fn parse(uri: &str) -> Option<Uri> {
-        let rest = uri.strip_prefix("colosso://")?;
+        let rest = uri.strip_prefix("koyo://")?;
         if let Some(resource) = AppResource::ALL.into_iter().find(|r| r.path() == rest) {
             return Some(Uri::App(resource));
         }
@@ -59,17 +59,17 @@ impl Uri {
 
     pub fn text(&self) -> String {
         match self {
-            Uri::App(resource) => format!("colosso://{}", resource.path()),
-            Uri::Worktrees => "colosso://worktrees".to_owned(),
+            Uri::App(resource) => format!("koyo://{}", resource.path()),
+            Uri::Worktrees => "koyo://worktrees".to_owned(),
             Uri::Terminals(path) => {
                 format!(
-                    "colosso://worktrees/{}/terminals",
+                    "koyo://worktrees/{}/terminals",
                     encode(&path.to_string_lossy())
                 )
             }
-            Uri::Terminal(handle) => format!("colosso://terminals/{handle}"),
-            Uri::Screen(handle) => format!("colosso://terminals/{handle}/screen"),
-            Uri::Activity(handle) => format!("colosso://terminals/{handle}/activity"),
+            Uri::Terminal(handle) => format!("koyo://terminals/{handle}"),
+            Uri::Screen(handle) => format!("koyo://terminals/{handle}/screen"),
+            Uri::Activity(handle) => format!("koyo://terminals/{handle}/activity"),
         }
     }
 
@@ -96,7 +96,7 @@ impl AppResource {
         AppResource::Settings,
     ];
 
-    /// The address after `colosso://`.
+    /// The address after `koyo://`.
     fn path(self) -> &'static str {
         match self {
             AppResource::App => "app",
@@ -128,7 +128,7 @@ impl AppResource {
     fn describe(self) -> (&'static str, &'static str) {
         match self {
             AppResource::App => (
-                "Colosso",
+                "Koyo",
                 "The window: what it shows, its panels and layout, what is selected, and the MCP server",
             ),
             AppResource::Projects => (
@@ -160,7 +160,7 @@ pub fn app_resources() -> Vec<Resource> {
 /// An app refusal as a JSON-RPC error, its structured form kept as the error's data:
 /// resource reads have no `isError` result.
 pub fn app_error(error: &ControlError) -> ErrorData {
-    use colosso_app_control::ErrorCode;
+    use koyo_app_control::ErrorCode;
     let data = serde_json::to_value(error).ok();
     let message = error.message.clone();
     match error.code {
@@ -174,16 +174,16 @@ pub fn app_error(error: &ControlError) -> ErrorData {
 
 pub fn templates() -> Vec<ResourceTemplate> {
     vec![
-        ResourceTemplate::new("colosso://worktrees/{path}/terminals", "worktree terminals")
+        ResourceTemplate::new("koyo://worktrees/{path}/terminals", "worktree terminals")
             .with_description("A worktree's terminals; the path is percent-encoded")
             .with_mime_type(JSON),
-        ResourceTemplate::new("colosso://terminals/{handle}", "terminal")
+        ResourceTemplate::new("koyo://terminals/{handle}", "terminal")
             .with_description("A terminal, who holds it, and its size")
             .with_mime_type(JSON),
-        ResourceTemplate::new("colosso://terminals/{handle}/screen", "terminal screen")
+        ResourceTemplate::new("koyo://terminals/{handle}/screen", "terminal screen")
             .with_description("What the terminal shows, as text")
             .with_mime_type(TEXT),
-        ResourceTemplate::new("colosso://terminals/{handle}/activity", "terminal activity")
+        ResourceTemplate::new("koyo://terminals/{handle}/activity", "terminal activity")
             .with_description("The terminal's last 200 activity entries")
             .with_mime_type(JSON),
     ]
@@ -341,10 +341,10 @@ mod tests {
         }
         assert_eq!(
             Uri::Terminals(PathBuf::from("/a b")).text(),
-            "colosso://worktrees/%2Fa%20b/terminals"
+            "koyo://worktrees/%2Fa%20b/terminals"
         );
-        assert_eq!(Uri::parse("colosso://terminals/term_01/nothing"), None);
-        assert_eq!(Uri::parse("colosso://terminals/other"), None);
+        assert_eq!(Uri::parse("koyo://terminals/term_01/nothing"), None);
+        assert_eq!(Uri::parse("koyo://terminals/other"), None);
         assert_eq!(Uri::parse("file:///etc"), None);
     }
 

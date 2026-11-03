@@ -23,11 +23,11 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use bytes::Bytes;
-use colosso_term_control::{
+use koyo_term_control::{
     Actor, Controller, ErrorCode, EventKind, Exit, ProtocolError, Size, Status, TerminalRecord,
     Theme, now_ms,
 };
-use colosso_term_engine::{Engine, PromptScanner};
+use koyo_term_engine::{Engine, PromptScanner};
 use crossbeam_channel::{Receiver, Sender, after, bounded, never, tick, unbounded};
 use parking_lot::Mutex;
 
@@ -455,7 +455,7 @@ impl Session {
     fn refresh_preview(&mut self) {
         let text = match self
             .engine
-            .screen_text(colosso_term_engine::TextFormat::Plain)
+            .screen_text(koyo_term_engine::TextFormat::Plain)
         {
             Ok(text) => text,
             Err(error) => {
@@ -475,8 +475,8 @@ impl Session {
     }
 }
 
-pub fn engine_size(size: Size) -> colosso_term_engine::Size {
-    colosso_term_engine::Size {
+pub fn engine_size(size: Size) -> koyo_term_engine::Size {
+    koyo_term_engine::Size {
         cols: size.cols,
         rows: size.rows,
         cell_width_px: size.cell_width_px,

@@ -8,7 +8,7 @@ use cef::{
     ImplBrowserHost, ImplDownloadImageCallback, ImplImage, WrapDownloadImageCallback, rc::Rc,
     wrap_download_image_callback,
 };
-use colosso_browser_ipc::{HostEvent, PaneId};
+use koyo_browser_ipc::{HostEvent, PaneId};
 use std::os::raw::c_int;
 
 /// The most pixels a side of the icon is fetched at: a tab's 13 points, on a 2x screen,

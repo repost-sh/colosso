@@ -1,5 +1,5 @@
 //! `app_launch`, the one app tool the stdio relay answers itself (`docs/app-control.md` 5):
-//! when nothing answers on the control socket it starts Colosso, then waits up to 30 seconds
+//! when nothing answers on the control socket it starts Koyo, then waits up to 30 seconds
 //! for the socket to answer.
 
 use std::path::{Path, PathBuf};
@@ -7,8 +7,8 @@ use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use colosso_app_control::transport::Connection;
-use colosso_app_control::{
+use koyo_app_control::transport::Connection;
+use koyo_app_control::{
     APP_LAUNCH, APP_LAUNCH_DESCRIPTION, APP_LAUNCH_TITLE, ControlError, Endpoint,
 };
 use rmcp::model::{Tool, ToolAnnotations};
@@ -69,7 +69,7 @@ impl Launcher {
             .map_err(|error| {
                 ControlError::internal(format!("The relay's worker stopped: {error}"))
             })?
-            .map_err(|error| ControlError::internal(format!("Can't start Colosso: {error}")))?;
+            .map_err(|error| ControlError::internal(format!("Can't start Koyo: {error}")))?;
         let started = Instant::now();
         loop {
             if answers() {
@@ -80,7 +80,7 @@ impl Launcher {
             }
             if started.elapsed() >= self.wait {
                 return Err(ControlError::timeout(format!(
-                    "Colosso was started but didn't answer within {} ms.",
+                    "Koyo was started but didn't answer within {} ms.",
                     self.wait.as_millis()
                 )));
             }
@@ -99,9 +99,9 @@ pub(crate) fn tool() -> Tool {
     let output = json!({
         "type": "object",
         "properties": {
-            "launched": { "type": "boolean", "description": "Whether this call started Colosso." },
-            "alreadyRunning": { "type": "boolean", "description": "Whether Colosso was answering already." },
-            "waitedMs": { "type": "integer", "minimum": 0, "description": "How long the call waited for Colosso to answer." }
+            "launched": { "type": "boolean", "description": "Whether this call started Koyo." },
+            "alreadyRunning": { "type": "boolean", "description": "Whether Koyo was answering already." },
+            "waitedMs": { "type": "integer", "minimum": 0, "description": "How long the call waited for Koyo to answer." }
         },
         "required": ["launched", "alreadyRunning", "waitedMs"],
         "additionalProperties": false
@@ -120,10 +120,10 @@ pub(crate) fn tool() -> Tool {
 /// A one-line summary of a launch.
 pub(crate) fn summary(output: &Value) -> String {
     if output["alreadyRunning"] == true {
-        "Colosso is running already".to_owned()
+        "Koyo is running already".to_owned()
     } else {
         format!(
-            "Started Colosso; it answered after {} ms",
+            "Started Koyo; it answered after {} ms",
             output["waitedMs"]
         )
     }
@@ -136,8 +136,8 @@ fn spawn_this_app() -> Result<(), String> {
             let mut open = Command::new("open");
             // Launch Services starts the app without this process's environment, so the
             // data folder it serves is passed on.
-            if let Some(dir) = std::env::var_os("COLOSSO_DATA_DIR") {
-                let mut pair = std::ffi::OsString::from("COLOSSO_DATA_DIR=");
+            if let Some(dir) = std::env::var_os("KOYO_DATA_DIR") {
+                let mut pair = std::ffi::OsString::from("KOYO_DATA_DIR=");
                 pair.push(dir);
                 open.arg("--env").arg(pair);
             }
@@ -185,14 +185,14 @@ mod tests {
     fn only_an_executable_in_a_bundle_is_opened_as_one() {
         assert_eq!(
             bundle(Path::new(
-                "/Applications/Colosso.app/Contents/MacOS/colosso"
+                "/Applications/Koyo.app/Contents/MacOS/koyo"
             )),
-            Some(PathBuf::from("/Applications/Colosso.app"))
+            Some(PathBuf::from("/Applications/Koyo.app"))
         );
         assert_eq!(
-            bundle(Path::new("/work/colosso/target/debug/colosso")),
+            bundle(Path::new("/work/koyo/target/debug/koyo")),
             None
         );
-        assert_eq!(bundle(Path::new("/Contents/MacOS/colosso")), None);
+        assert_eq!(bundle(Path::new("/Contents/MacOS/koyo")), None);
     }
 }
