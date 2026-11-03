@@ -1,0 +1,483 @@
+{
+  "request": {
+    "id": 8,
+    "method": "threads.open",
+    "params": {
+      "threadId": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
+      "sinceSeq": null
+    }
+  },
+  "response": {
+    "id": 8,
+    "result": {
+      "thread": {
+        "id": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
+        "cwd": "/Users/ana/code/ledger",
+        "title": "Fix the flaky ledger test",
+        "titleSource": "generated",
+        "provider": "claude",
+        "model": "claude-opus-5-5",
+        "effort": "high",
+        "fast": false,
+        "permission": null,
+        "plan": false,
+        "sessionId": "6d1f0c2a-35b7-4c9e-8f0a-2b1c3d4e5f60",
+        "queueHeld": false,
+        "createdAt": "2026-11-03T18:02:11.204Z",
+        "updatedAt": "2026-11-03T18:09:40.877Z",
+        "readAt": "2026-11-03T18:05:02.000Z",
+        "seq": 42
+      },
+      "runs": [
+        {
+          "id": "0193a2f0-7a00-7c11-8d22-3e4f5a6b7c81",
+          "threadId": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
+          "status": "completed",
+          "prompt": {
+            "messageId": "0193a2f0-79ff-7e00-b100-000000000001",
+            "text": "The ledger test fails one run in ten. Find out why.",
+            "attachments": [
+              {
+                "file": "0193a2f0-79fe-7000-9000-00000000000a.png",
+                "name": "failure.png",
+                "mime": "image/png"
+              }
+            ]
+          },
+          "model": "claude-opus-5-5",
+          "effort": "high",
+          "permission": "ask",
+          "plan": false,
+          "requestedAt": "2026-11-03T18:02:11.300Z",
+          "startedAt": "2026-11-03T18:02:11.912Z",
+          "endedAt": "2026-11-03T18:05:01.420Z",
+          "stop": null,
+          "failure": null,
+          "usage": {
+            "inputTokens": 48211,
+            "outputTokens": 1873,
+            "cacheReadTokens": 40960,
+            "cacheCreationTokens": 6144,
+            "costUsd": 0.4127,
+            "contextTokens": 50084,
+            "contextWindow": 200000
+          },
+          "files": [
+            {
+              "path": "src/ledger.rs",
+              "added": 12,
+              "removed": 3
+            }
+          ],
+          "seq": 31
+        },
+        {
+          "id": "0193a2f1-0400-7c11-8d22-3e4f5a6b7c82",
+          "threadId": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
+          "status": "stopping",
+          "prompt": {
+            "messageId": "0193a2f1-03ff-7e00-b100-000000000002",
+            "text": "Now make the retry configurable.",
+            "attachments": []
+          },
+          "model": "claude-opus-5-5",
+          "effort": "high",
+          "permission": "ask",
+          "plan": true,
+          "requestedAt": "2026-11-03T18:08:00.010Z",
+          "startedAt": "2026-11-03T18:08:00.530Z",
+          "endedAt": null,
+          "stop": {
+            "requestedAt": "2026-11-03T18:09:40.877Z",
+            "by": "person",
+            "force": false
+          },
+          "failure": null,
+          "usage": null,
+          "files": [],
+          "seq": 42
+        },
+        {
+          "id": "0193a2f1-2200-7c11-8d22-3e4f5a6b7c83",
+          "threadId": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
+          "status": "queued",
+          "prompt": {
+            "messageId": "0193a2f1-21ff-7e00-b100-000000000003",
+            "text": "Then update the changelog.",
+            "attachments": []
+          },
+          "model": "claude-opus-5-5",
+          "effort": "high",
+          "permission": null,
+          "plan": false,
+          "requestedAt": "2026-11-03T18:09:12.000Z",
+          "startedAt": null,
+          "endedAt": null,
+          "stop": null,
+          "failure": null,
+          "usage": null,
+          "files": [],
+          "seq": 40
+        }
+      ],
+      "items": [
+        {
+          "id": "0193a2f0-7a01-7000-8000-000000000001",
+          "threadId": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
+          "runId": "0193a2f0-7a00-7c11-8d22-3e4f5a6b7c81",
+          "ordinal": 0,
+          "parentId": null,
+          "status": "completed",
+          "seq": 31,
+          "kind": "user_message",
+          "payload": {
+            "messageId": "0193a2f0-79ff-7e00-b100-000000000001",
+            "text": "The ledger test fails one run in ten. Find out why.",
+            "attachments": [
+              {
+                "file": "0193a2f0-79fe-7000-9000-00000000000a.png",
+                "name": "failure.png",
+                "mime": "image/png"
+              }
+            ],
+            "delivered": "turn"
+          }
+        },
+        {
+          "id": "0193a2f0-7a01-7000-8000-000000000002",
+          "threadId": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
+          "runId": "0193a2f0-7a00-7c11-8d22-3e4f5a6b7c81",
+          "ordinal": 1,
+          "parentId": null,
+          "status": "completed",
+          "seq": 31,
+          "kind": "reasoning",
+          "payload": {
+            "text": "The test shares a temp folder across threads."
+          }
+        },
+        {
+          "id": "0193a2f0-7a01-7000-8000-000000000003",
+          "threadId": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
+          "runId": "0193a2f0-7a00-7c11-8d22-3e4f5a6b7c81",
+          "ordinal": 2,
+          "parentId": null,
+          "status": "completed",
+          "seq": 31,
+          "kind": "tool",
+          "payload": {
+            "name": "Bash",
+            "family": "command",
+            "label": "cargo test -p ledger",
+            "input": {
+              "command": "cargo test -p ledger",
+              "description": "Run the ledger tests"
+            },
+            "output": "test result: FAILED. 41 passed; 1 failed",
+            "exitCode": 101,
+            "patch": null,
+            "files": [],
+            "server": null
+          }
+        },
+        {
+          "id": "0193a2f0-7a01-7000-8000-000000000004",
+          "threadId": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
+          "runId": "0193a2f0-7a00-7c11-8d22-3e4f5a6b7c81",
+          "ordinal": 3,
+          "parentId": null,
+          "status": "completed",
+          "seq": 31,
+          "kind": "request",
+          "payload": {
+            "requestId": "0193a2f0-7b00-7d00-a000-000000000001"
+          }
+        },
+        {
+          "id": "0193a2f0-7a01-7000-8000-000000000005",
+          "threadId": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
+          "runId": "0193a2f0-7a00-7c11-8d22-3e4f5a6b7c81",
+          "ordinal": 4,
+          "parentId": null,
+          "status": "completed",
+          "seq": 31,
+          "kind": "tool",
+          "payload": {
+            "name": "Edit",
+            "family": "edit",
+            "label": "src/ledger.rs",
+            "input": {
+              "file_path": "src/ledger.rs",
+              "old_string": "temp_dir()",
+              "new_string": "tempdir()?"
+            },
+            "output": null,
+            "exitCode": null,
+            "patch": [
+              {
+                "oldStart": 40,
+                "oldLines": 3,
+                "newStart": 40,
+                "newLines": 3,
+                "lines": [
+                  " let dir =",
+                  "-    std::env::temp_dir();",
+                  "+    tempfile::tempdir()?;"
+                ]
+              }
+            ],
+            "files": [
+              "src/ledger.rs"
+            ],
+            "server": null
+          }
+        },
+        {
+          "id": "0193a2f0-7a01-7000-8000-000000000006",
+          "threadId": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
+          "runId": "0193a2f0-7a00-7c11-8d22-3e4f5a6b7c81",
+          "ordinal": 5,
+          "parentId": null,
+          "status": "completed",
+          "seq": 31,
+          "kind": "todos",
+          "payload": {
+            "todos": [
+              {
+                "text": "Reproduce the failure",
+                "status": "completed"
+              },
+              {
+                "text": "Isolate the temp folder",
+                "status": "in_progress"
+              },
+              {
+                "text": "Run the suite 50 times",
+                "status": "pending"
+              }
+            ]
+          }
+        },
+        {
+          "id": "0193a2f0-7a01-7000-8000-000000000007",
+          "threadId": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
+          "runId": "0193a2f0-7a00-7c11-8d22-3e4f5a6b7c81",
+          "ordinal": 6,
+          "parentId": null,
+          "status": "completed",
+          "seq": 31,
+          "kind": "subagent",
+          "payload": {
+            "description": "Look for other shared temp folders",
+            "agentType": "Explore",
+            "summary": "None found."
+          }
+        },
+        {
+          "id": "0193a2f0-7a01-7000-8000-000000000008",
+          "threadId": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
+          "runId": "0193a2f0-7a00-7c11-8d22-3e4f5a6b7c81",
+          "ordinal": 7,
+          "parentId": "0193a2f0-7a01-7000-8000-000000000007",
+          "status": "completed",
+          "seq": 31,
+          "kind": "tool",
+          "payload": {
+            "name": "mcp__github__search_issues",
+            "family": "mcp",
+            "label": "search_issues",
+            "input": {
+              "q": "flaky ledger"
+            },
+            "output": "[]",
+            "exitCode": null,
+            "patch": null,
+            "files": [],
+            "server": "github"
+          }
+        },
+        {
+          "id": "0193a2f0-7a01-7000-8000-000000000009",
+          "threadId": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
+          "runId": "0193a2f0-7a00-7c11-8d22-3e4f5a6b7c81",
+          "ordinal": 8,
+          "parentId": null,
+          "status": "completed",
+          "seq": 31,
+          "kind": "compaction",
+          "payload": {
+            "trigger": "auto",
+            "before": 182000,
+            "after": 31000
+          }
+        },
+        {
+          "id": "0193a2f0-7a01-7000-8000-000000000010",
+          "threadId": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
+          "runId": "0193a2f0-7a00-7c11-8d22-3e4f5a6b7c81",
+          "ordinal": 9,
+          "parentId": null,
+          "status": "completed",
+          "seq": 31,
+          "kind": "assistant_text",
+          "payload": {
+            "text": "The test raced on a shared temp folder; each run now gets its own."
+          }
+        },
+        {
+          "id": "0193a2f0-7a01-7000-8000-000000000011",
+          "threadId": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
+          "runId": "0193a2f1-0400-7c11-8d22-3e4f5a6b7c82",
+          "ordinal": 10,
+          "parentId": null,
+          "status": "completed",
+          "seq": 36,
+          "kind": "user_message",
+          "payload": {
+            "messageId": "0193a2f1-03ff-7e00-b100-000000000002",
+            "text": "Now make the retry configurable.",
+            "attachments": [],
+            "delivered": "turn"
+          }
+        },
+        {
+          "id": "0193a2f0-7a01-7000-8000-000000000012",
+          "threadId": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
+          "runId": "0193a2f1-0400-7c11-8d22-3e4f5a6b7c82",
+          "ordinal": 11,
+          "parentId": null,
+          "status": "completed",
+          "seq": 38,
+          "kind": "request",
+          "payload": {
+            "requestId": "0193a2f1-0500-7d00-a000-000000000003"
+          }
+        },
+        {
+          "id": "0193a2f0-7a01-7000-8000-000000000013",
+          "threadId": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
+          "runId": "0193a2f1-0400-7c11-8d22-3e4f5a6b7c82",
+          "ordinal": 12,
+          "parentId": null,
+          "status": "completed",
+          "seq": 39,
+          "kind": "user_message",
+          "payload": {
+            "messageId": "0193a2f1-2aff-7e00-b100-000000000004",
+            "text": "Keep the default at three.",
+            "attachments": [],
+            "delivered": "steer"
+          }
+        },
+        {
+          "id": "0193a2f0-7a01-7000-8000-000000000014",
+          "threadId": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
+          "runId": "0193a2f1-0400-7c11-8d22-3e4f5a6b7c82",
+          "ordinal": 13,
+          "parentId": null,
+          "status": "running",
+          "seq": 41,
+          "kind": "assistant_text",
+          "payload": {
+            "text": "Adding a `retries` setting"
+          }
+        },
+        {
+          "id": "0193a2f0-7a01-7000-8000-000000000015",
+          "threadId": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
+          "runId": "0193a2f1-0400-7c11-8d22-3e4f5a6b7c82",
+          "ordinal": 14,
+          "parentId": null,
+          "status": "completed",
+          "seq": 37,
+          "kind": "notice",
+          "payload": {
+            "level": "warning",
+            "text": "The earlier context wasn't available; this turn started fresh."
+          }
+        }
+      ],
+      "requests": [
+        {
+          "id": "0193a2f0-7b00-7d00-a000-000000000001",
+          "threadId": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
+          "runId": "0193a2f0-7a00-7c11-8d22-3e4f5a6b7c81",
+          "status": "answered",
+          "payload": {
+            "kind": "approval",
+            "tool": "Bash",
+            "family": "command",
+            "title": "Run a command",
+            "detail": "cargo test -p ledger -- --test-threads=1",
+            "input": {
+              "command": "cargo test -p ledger -- --test-threads=1"
+            },
+            "reason": null,
+            "allowSession": {
+              "label": "Bash(cargo test:*)"
+            }
+          },
+          "answer": {
+            "kind": "approval",
+            "decision": "allow_session",
+            "message": null
+          },
+          "createdAt": "2026-11-03T18:03:00.000Z",
+          "resolvedAt": "2026-11-03T18:03:04.500Z",
+          "seq": 29
+        },
+        {
+          "id": "0193a2f0-7b10-7d00-a000-000000000002",
+          "threadId": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
+          "runId": "0193a2f0-7a00-7c11-8d22-3e4f5a6b7c81",
+          "status": "answered",
+          "payload": {
+            "kind": "question",
+            "live": false,
+            "questions": [
+              {
+                "id": "q1",
+                "header": "Scope",
+                "question": "Fix only the test, or the code too?",
+                "multiSelect": false,
+                "options": [
+                  {
+                    "label": "Only the test",
+                    "description": null,
+                    "preview": null
+                  },
+                  {
+                    "label": "The code too",
+                    "description": "Touches src/ledger.rs",
+                    "preview": "```rust\nlet dir = tempfile::tempdir()?;\n```"
+                  }
+                ]
+              }
+            ]
+          },
+          "answer": {
+            "kind": "message",
+            "messageId": "0193a2f1-03ff-7e00-b100-000000000002"
+          },
+          "createdAt": "2026-11-03T18:04:00.000Z",
+          "resolvedAt": "2026-11-03T18:08:00.010Z",
+          "seq": 33
+        },
+        {
+          "id": "0193a2f1-0500-7d00-a000-000000000003",
+          "threadId": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
+          "runId": "0193a2f1-0400-7c11-8d22-3e4f5a6b7c82",
+          "status": "pending",
+          "payload": {
+            "kind": "plan",
+            "markdown": "# Configurable retries\n\n1. Add `retries` to `Config`.\n2. Read it in `run_with_retry`."
+          },
+          "answer": null,
+          "createdAt": "2026-11-03T18:08:30.000Z",
+          "resolvedAt": null,
+          "seq": 38
+        }
+      ]
+    }
+  }
+}

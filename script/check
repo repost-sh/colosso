@@ -6,3 +6,4 @@ cd "$(dirname "$0")/.."
 script/lint
 # Tests keep their settings in the checkout, away from the app's own.
 KOYO_CONFIG_DIR="$PWD/koyo-rs/target/test-config" script/cargo test --workspace
+script/bun test

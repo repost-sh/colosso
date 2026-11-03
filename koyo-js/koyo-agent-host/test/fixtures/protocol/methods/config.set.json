@@ -1,0 +1,14 @@
+{
+  "request": {
+    "id": 3,
+    "method": "config.set",
+    "params": {
+      "claudePath": null,
+      "defaultMode": "accept_edits"
+    }
+  },
+  "response": {
+    "id": 3,
+    "result": {}
+  }
+}

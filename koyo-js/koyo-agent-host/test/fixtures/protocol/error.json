@@ -1,0 +1,7 @@
+{
+  "id": 7,
+  "error": {
+    "code": "thread_not_found",
+    "message": "There is no thread 0193a2f0-6c1e-7b3a-9f21-4d5e6f708192."
+  }
+}
