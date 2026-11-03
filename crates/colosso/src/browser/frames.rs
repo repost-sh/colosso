@@ -8,7 +8,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use colosso_browser_ipc::{PixelSize, mach};
 use futures::StreamExt as _;
 use futures::channel::mpsc;
-use gpui_kit::{AppContext as _, Bounds, Context, Pixels, PlatformInput, Task, WeakEntity, Window};
+use gpui_kit::{
+    AppContext as _, Bounds, Context, Corners, Pixels, PlatformInput, Task, WeakEntity, Window, px,
+};
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, NSObjectProtocol};
 use objc2::{MainThreadMarker, MainThreadOnly, define_class, msg_send};
@@ -16,10 +18,11 @@ use objc2_app_kit::NSView;
 use objc2_core_foundation::{CFRetained, CFType, CGPoint, CGRect, CGSize};
 use objc2_foundation::NSPoint;
 use objc2_io_surface::IOSurfaceRef;
-use objc2_quartz_core::{CALayer, kCAGravityTopLeft};
+use objc2_quartz_core::{CACornerMask, CALayer, kCAGravityTopLeft};
 
 use super::view::BrowserView;
 use crate::native::Surface;
+use crate::theme::card;
 
 /// A pane's ring of surfaces for one generation.
 pub struct Ring {
@@ -98,6 +101,8 @@ pub struct Shown {
     painted: f32,
     fit: f32,
     scale: f64,
+    /// The corners of the content card's the view was last rounded at.
+    rounded: Option<CACornerMask>,
     /// Hands the page what the pointer does over its native view, in order.
     _pointer: Option<Task<()>>,
 }
@@ -185,6 +190,7 @@ impl Shown {
             painted: 1.,
             fit: 1.,
             scale: 0.,
+            rounded: None,
             _pointer: pointer,
         }
     }
@@ -202,19 +208,36 @@ impl Shown {
     }
 
     /// Puts the view over `bounds`, showing only what of it lies within `clip`, the page at
-    /// `fit` of its true size: in responsive mode, scaled to fit.
+    /// `fit` of its true size: in responsive mode, scaled to fit. The corners of it that are
+    /// the content card's are rounded as the card is, which doesn't clip a native view.
     pub fn place(
         &mut self,
         bounds: Bounds<Pixels>,
         clip: Bounds<Pixels>,
-        fit: f32,
+        (fit, card): (f32, Corners<bool>),
         window: &Window,
     ) {
         self.fit = fit;
         self.rescale();
-        if let Some(native) = &self.native {
-            native.surface.place(bounds, clip, window);
+        let Some(native) = &self.native else {
+            return;
+        };
+        // The view is flipped: its layer's least y is the page's top.
+        let corners = [
+            (card.top_left, CACornerMask::LayerMinXMinYCorner),
+            (card.top_right, CACornerMask::LayerMaxXMinYCorner),
+            (card.bottom_right, CACornerMask::LayerMaxXMaxYCorner),
+            (card.bottom_left, CACornerMask::LayerMinXMaxYCorner),
+        ];
+        let rounded = (corners.into_iter())
+            .filter(|(shared, _)| *shared)
+            .fold(CACornerMask::empty(), |mask, (_, corner)| mask | corner);
+        if self.rounded.replace(rounded) != Some(rounded) {
+            let radius = if rounded.is_empty() { px(0.) } else { card::inner_radius() };
+            native.layer.setCornerRadius(f64::from(f32::from(radius)));
+            native.layer.setMaskedCorners(rounded);
         }
+        native.surface.place(bounds, clip, window);
     }
 
     /// Has the layer show its frame at the frame's own scale, over the share of its size the

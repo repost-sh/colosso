@@ -87,13 +87,17 @@ struct Check {
 impl Check {
     /// Saves the window as `name`, with `pages`' frames laid in.
     fn save(&mut self, name: &str, pages: &[&Entity<BrowserView>]) -> Result<()> {
-        let path = self.out.join(name);
         // What arrives just after the step, a late image or the paint for it, shows too.
         let settled = Instant::now() + SETTLE;
         (self.drawn).until(PATIENCE, move |_| Ok(Instant::now() >= settled))?;
-        (picture(&mut self.drawn, pages)?)
-            .save(&path)
-            .map_err(|error| error.to_string())?;
+        let picture = picture(&mut self.drawn, pages)?;
+        self.keep(name, &picture)
+    }
+
+    /// Writes `picture` out as `name`, and says so.
+    fn keep(&mut self, name: &str, picture: &RgbaImage) -> Result<()> {
+        let path = self.out.join(name);
+        picture.save(&path).map_err(|error| error.to_string())?;
         self.lines.push(format!("saved {}", path.display()));
         Ok(())
     }

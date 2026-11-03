@@ -169,9 +169,10 @@ impl Element for PageSurface {
             let key = ElementId::NamedInteger("browser-page-view".into(), pane);
             let owner = self.view.downgrade();
             let shown = window.use_keyed_state(key, cx, |window, cx| Shown::new(owner, window, cx));
+            let card = theme::card::shared_corners(bounds, window, cx);
             native = shown.update(cx, |shown, _| {
                 shown.show(&frame);
-                shown.place(bounds, hitbox.content_mask.bounds, placed.fit, window);
+                shown.place(bounds, hitbox.content_mask.bounds, (placed.fit, card), window);
                 shown.takes_pointer()
             });
             let layer = shown.downgrade();

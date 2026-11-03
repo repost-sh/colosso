@@ -140,12 +140,8 @@ impl Check {
     /// Saves the window now, the page laid in where it shows white.
     fn shoot(&mut self, page: &Entity<BrowserView>, name: &str) -> Result<()> {
         next_frame(&mut self.drawn)?;
-        let path = self.out.join(name);
-        (picture_on(&mut self.drawn, &[page], Some(WHITE))?)
-            .save(&path)
-            .map_err(|error| error.to_string())?;
-        self.lines.push(format!("saved {}", path.display()));
-        Ok(())
+        let picture = picture_on(&mut self.drawn, &[page], Some(WHITE))?;
+        self.keep(name, &picture)
     }
 }
 
