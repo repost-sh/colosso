@@ -1,0 +1,10 @@
+# Bun's settings for the agent host (script/bun runs Bun here).
+
+[install]
+# The Claude Agent SDK's optional dependency is a platform build of the Claude Code CLI
+# (299 MB). The host runs the person's own `claude` (docs/chat.md C7), so it's never needed.
+# The setting covers every package: today only the SDK declares optional dependencies, and a
+# package that comes to need its own must be given them another way.
+optional = false
+# Exact versions only: an upgrade is a decision, made in package.json.
+exact = true

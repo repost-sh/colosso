@@ -1,0 +1,42 @@
+#!/bin/sh
+# Runs the Bun that builds and checks the agent host (agent-host/), pinned into .tools so a
+# build never depends on whatever Bun or Node the machine has:
+#
+#   script/bun install --frozen-lockfile
+#   script/bun run typecheck
+#   script/bun run lint
+#   script/bun test
+#
+# Bun's caches stay in the checkout too: the packages it installs, and the transpiler's cache,
+# which it would otherwise keep in ~/.bun.
+set -eu
+cd "$(dirname "$0")/.."
+
+BUN_VERSION=1.4.4
+case "$(uname -m)" in
+  arm64)
+    BUN_TARGET=darwin-aarch64
+    BUN_SHA256=c240d7f0ccb90c263a849fcdb09b7ee62630d921348ed6aafda86b9d577bc510
+    ;;
+  *)
+    BUN_TARGET=darwin-x64
+    BUN_SHA256=50a3491f73abc2fe81673171a85762d3bc2cc1680ccecadd983de99adf77977e
+    ;;
+esac
+BUN_DIR=".tools/bun-$BUN_VERSION"
+BUN="$BUN_DIR/bun"
+
+if [ ! -x "$BUN" ]; then
+  echo "Installing bun $BUN_VERSION into $BUN_DIR" >&2
+  mkdir -p "$BUN_DIR"
+  curl -fsSL -o "$BUN_DIR/bun.zip" \
+    "https://github.com/oven-sh/bun/releases/download/bun-v$BUN_VERSION/bun-$BUN_TARGET.zip"
+  echo "$BUN_SHA256  $BUN_DIR/bun.zip" | shasum -a 256 -c - >&2
+  unzip -q -j "$BUN_DIR/bun.zip" "bun-$BUN_TARGET/bun" -d "$BUN_DIR"
+  rm "$BUN_DIR/bun.zip"
+fi
+
+export BUN_INSTALL_CACHE_DIR="${BUN_INSTALL_CACHE_DIR:-$PWD/.tools/bun-cache}"
+export BUN_RUNTIME_TRANSPILER_CACHE_PATH="${BUN_RUNTIME_TRANSPILER_CACHE_PATH:-$BUN_INSTALL_CACHE_DIR/transpiler}"
+cd agent-host
+exec "../$BUN" "$@"

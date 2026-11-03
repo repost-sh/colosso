@@ -4,3 +4,5 @@
 .DS_Store
 /.superpowers
 /.idea
+/agent-host/node_modules
+/agent-host/dist
