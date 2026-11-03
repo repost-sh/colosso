@@ -5207,6 +5207,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "koyo-agent"
+version = "0.1.0"
+dependencies = [
+ "crossbeam-channel",
+ "koyo-daemon",
+ "log",
+ "parking_lot",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "koyo-app-control"
 version = "0.1.0"
 dependencies = [
