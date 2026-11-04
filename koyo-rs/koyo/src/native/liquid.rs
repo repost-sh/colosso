@@ -11,8 +11,10 @@
 //! It ends at its own edge. Its shadow would reach past that, but a surface shows only what's over
 //! the element, since anything more would hide the page from the pointer: so the shadow would be
 //! cut off at the element's rectangle and show only in its corners, as grey squares on a light page.
+//! The bright line along that edge is left out as well: the glass is a little larger than what
+//! shows of it.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::sync::Once;
 
 use gpui_kit::component::ActiveTheme as _;
@@ -22,15 +24,24 @@ use gpui_kit::{
 };
 use objc2::rc::Retained;
 use objc2::runtime::{AnyClass, NSObjectProtocol as _};
-use objc2::{MainThreadMarker, msg_send, sel};
+use objc2::{MainThreadMarker, MainThreadOnly as _, msg_send, sel};
 use objc2_app_kit::{
     NSAppearance, NSAppearanceCustomization as _, NSAppearanceNameAqua,
-    NSAppearanceNameDarkAqua, NSGlassEffectView,
+    NSAppearanceNameDarkAqua, NSAutoresizingMaskOptions, NSColor, NSGlassEffectView,
+    NSGlassEffectViewStyle, NSView,
 };
+use objc2_foundation::{NSPoint, NSRect, NSSize};
 use objc2_quartz_core::kCACornerCurveContinuous;
 
 use super::surface::{self, Hosted, Surface};
 use crate::theme::Palette;
+
+/// How dark the glass is on a dark theme: its clear style, which the page shows through, shaded so
+/// the theme's text reads on it. Glass as it's made would hide the page.
+const DARK_SHADE: f64 = 0.45;
+/// How far the glass goes past what shows of it, in points: past the bright line it draws along
+/// its own edge, which isn't wanted.
+const EDGE: f64 = 2.;
 
 /// `surface`, floating over what's under it: with `glass` behind what it holds, or a raised fill
 /// where there's none.
@@ -89,10 +100,35 @@ pub fn backdrop(
 
 struct Native {
     surface: Surface,
-    view: Retained<NSGlassEffectView>,
+    /// What shows of `view`, which ends past it.
+    shown: Retained<NSView>,
+    /// As it's made on a light theme. Back from a dark one it's made again, as no style there is
+    /// goes back to that: the regular style is a glass of its own, whiter and flatter.
+    view: RefCell<Retained<NSGlassEffectView>>,
     /// The corners and the appearance the glass was last given.
     corners: Cell<Option<f64>>,
     dark: Cell<Option<bool>>,
+}
+
+/// New glass in `shown`, `EDGE` past it all round whatever size it goes to.
+fn glass_in(shown: &NSView) -> Retained<NSGlassEffectView> {
+    let view = NSGlassEffectView::new(shown.mtm());
+    // Its look from its appearance, which `place` sets, not from what's behind it.
+    if view.respondsToSelector(sel!(set_adaptiveAppearance:)) {
+        // SAFETY: the setter, private, takes an `NSInteger`, of which 1 has the glass
+        // follow its view's appearance.
+        let _: () = unsafe { msg_send![&view, set_adaptiveAppearance: 1isize] };
+    }
+    let size = shown.bounds().size;
+    view.setFrame(NSRect::new(
+        NSPoint::new(-EDGE, -EDGE),
+        NSSize::new(size.width + 2. * EDGE, size.height + 2. * EDGE),
+    ));
+    view.setAutoresizingMask(
+        NSAutoresizingMaskOptions::ViewWidthSizable | NSAutoresizingMaskOptions::ViewHeightSizable,
+    );
+    shown.addSubview(&view);
+    view
 }
 
 impl Hosted for Native {
@@ -105,17 +141,13 @@ impl Native {
     fn new(window: &Window) -> Result<Native, String> {
         let main = MainThreadMarker::new().ok_or("not on the main thread")?;
         AnyClass::get(c"NSGlassEffectView").ok_or("the system has no Liquid Glass")?;
-        let view = NSGlassEffectView::new(main);
-        view.setWantsLayer(true);
-        // Its look from its appearance, which `place` sets, not from what's behind it.
-        if view.respondsToSelector(sel!(set_adaptiveAppearance:)) {
-            // SAFETY: the setter, private, takes an `NSInteger`, of which 1 has the glass
-            // follow its view's appearance.
-            let _: () = unsafe { msg_send![&view, set_adaptiveAppearance: 1isize] };
-        }
-        let surface = Surface::new(window, &view)?;
+        let shown = NSView::new(main);
+        shown.setWantsLayer(true);
+        let view = RefCell::new(glass_in(&shown));
+        let surface = Surface::new(window, &shown)?;
         Ok(Native {
             surface,
+            shown,
             view,
             corners: Cell::new(None),
             dark: Cell::new(None),
@@ -131,12 +163,13 @@ impl Native {
         dark: bool,
         window: &Window,
     ) {
-        let corners = f64::from(f32::from(radius.min(bounds.size.height / 2.)));
-        if self.corners.replace(Some(corners)) != Some(corners) {
-            self.view.setCornerRadius(corners);
-            self.end_at(corners);
-        }
-        if self.dark.replace(Some(dark)) != Some(dark) {
+        let was_dark = self.dark.replace(Some(dark));
+        if was_dark != Some(dark) {
+            if was_dark == Some(true) {
+                self.view.replace(glass_in(&self.shown)).removeFromSuperview();
+                self.corners.set(None);
+            }
+            let view = self.view.borrow();
             // SAFETY: names AppKit defines.
             let name = unsafe {
                 if dark {
@@ -145,15 +178,23 @@ impl Native {
                     NSAppearanceNameAqua
                 }
             };
-            self.view
-                .setAppearance(NSAppearance::appearanceNamed(name).as_deref());
+            view.setAppearance(NSAppearance::appearanceNamed(name).as_deref());
+            if dark {
+                view.setStyle(NSGlassEffectViewStyle::Clear);
+                view.setTintColor(Some(&NSColor::colorWithWhite_alpha(0., DARK_SHADE)));
+            }
+        }
+        let corners = f64::from(f32::from(radius.min(bounds.size.height / 2.)));
+        if self.corners.replace(Some(corners)) != Some(corners) {
+            self.view.borrow().setCornerRadius(corners + EDGE);
+            self.end_at(corners);
         }
         self.surface.place(bounds, clip, window);
     }
 
     /// Shows nothing of the glass outside corners this round, which go as its own do.
     fn end_at(&self, corners: f64) {
-        if let Some(layer) = self.view.layer() {
+        if let Some(layer) = self.shown.layer() {
             layer.setCornerRadius(corners);
             // SAFETY: a name Core Animation defines.
             layer.setCornerCurve(unsafe { kCACornerCurveContinuous });
