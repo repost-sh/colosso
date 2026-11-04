@@ -691,7 +691,9 @@ The behaviours, each with the T3 adapter pitfall it carries (`t3-claude-adapter.
   Frames that arrive while no turn is running (the CLI's own wake turns) are parked and
   shown as "Claude finished background work" with the next turn (6, 7, 8).
 - **Text and thinking** stream per content block (C10). Thinking is shown as reasoning, as
-  the CLI shows it. Rejected: T3's rule that the second thinking block before a tool is text
+  the CLI shows it, and asked for by `--thinking-display summarized`: left alone, Claude Code
+  sends thinking blocks with no text, and the SDK's `thinking` option would also turn thinking on
+  for someone who has it off. Rejected: T3's rule that the second thinking block before a tool is text
   (29): it can only be decided once the tool use arrives, so an item already on screen would
   change kind, and it guesses at one model generation's habit.
 - **Tools.** A tool item starts on the `tool_use` block or the permission request,

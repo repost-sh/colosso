@@ -21,6 +21,7 @@ describe("a session's options", () => {
       sessionId: opened.sessionId,
       systemPrompt: { type: "preset", preset: "claude_code" },
       includePartialMessages: true,
+      extraArgs: { "thinking-display": "summarized" },
       model: "claude-opus-5-5",
       effort: "high",
       permissionMode: "default",

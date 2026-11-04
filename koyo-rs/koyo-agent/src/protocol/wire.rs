@@ -12,7 +12,7 @@ use super::events::Event;
 use super::methods::Method;
 
 /// The protocol version this build speaks, the host's `HOST_VERSION` (`docs/chat.md` C9).
-pub const HOST_VERSION: u32 = 7;
+pub const HOST_VERSION: u32 = 8;
 
 /// The longest line either side accepts.
 pub const MAX_LINE_BYTES: usize = 8 * 1024 * 1024;

@@ -280,14 +280,14 @@ export function boundary(pre: number, post: number): SDKCompactBoundaryMessage {
   };
 }
 
-export function apiRetry(attempt: number): SDKAPIRetryMessage {
+export function apiRetry(attempt: number, errorStatus: number | null = 529): SDKAPIRetryMessage {
   return {
     type: "system",
     subtype: "api_retry",
     attempt,
     max_retries: 10,
     retry_delay_ms: 500,
-    error_status: 529,
+    error_status: errorStatus,
     error: "overloaded",
     uuid: randomUUID(),
     session_id: SESSION,
