@@ -56,6 +56,7 @@ pub struct ShimmerStyle {
     spread: ShimmerSpread,
     reverse: bool,
     once: bool,
+    max_fps: Option<f32>,
 }
 
 impl ShimmerStyle {
@@ -109,8 +110,19 @@ impl ShimmerStyle {
         self
     }
 
+    /// Limit how often the highlight moves, so a shimmer among much else doesn't redraw it all on
+    /// every frame of the display.
+    pub fn max_fps(mut self, max_fps: f32) -> Self {
+        self.max_fps = Some(max_fps);
+        self
+    }
+
     pub(crate) fn animation(self) -> Animation {
-        loading_animation(self.duration, self.once)
+        let animation = loading_animation(self.duration, self.once);
+        match self.max_fps {
+            Some(max_fps) => animation.with_max_fps(max_fps),
+            None => animation,
+        }
     }
 }
 
@@ -122,6 +134,7 @@ impl Default for ShimmerStyle {
             spread: ShimmerSpread::default(),
             reverse: false,
             once: false,
+            max_fps: None,
         }
     }
 }
@@ -195,6 +208,12 @@ impl ShimmerText {
     /// Set whether the highlight should complete one sweep instead of looping.
     pub fn once(mut self, once: bool) -> Self {
         self.shimmer_style = self.shimmer_style.once(once);
+        self
+    }
+
+    /// Limit how often the highlight moves.
+    pub fn max_fps(mut self, max_fps: f32) -> Self {
+        self.shimmer_style = self.shimmer_style.max_fps(max_fps);
         self
     }
 }
