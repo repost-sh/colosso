@@ -73,6 +73,22 @@ terminal's tab leaves the terminal running in the daemon.
 The terminal tools (`terminal_*`) drive terminals whatever tab shows them; the
 `terminal_guide` prompt covers them.
 
+## Chats
+
+`chat_list` lists a worktree's chats with an agent (`all` for every worktree's), whether a tab
+shows them or not, each with its `id`, `status` and what it `needs` of a person.
+
+- `chat_create` starts a chat in a worktree and says `text` to it, in a tab of its own (with
+  `select: false` it isn't shown). `chat_send` says `text` to a chat: it joins the turn running,
+  or with `queue` waits for it.
+- `chat_read` gives what was said in the latest `turns` (5 when left out). Poll `chat_list` for
+  when `status` is back to `idle`, then read.
+- `chat_open` shows a chat; `chat_stop` asks what it's running to stop.
+
+Its agent works in that checkout as far as the chat's permissions let it. What it asks of a
+person (`needs`: `approval`, `question` or `plan`) only the person can answer, in the window: a
+chat stays `working` until they do. Tell them rather than wait on it.
+
 ## Files
 
 - `file_open` opens a `path` in an editor at a `line` and `column`, in a split with

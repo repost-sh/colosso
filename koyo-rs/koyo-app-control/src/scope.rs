@@ -15,7 +15,8 @@ pub enum Scope {
     /// Selecting projects and worktrees; opening, selecting, moving and closing tabs;
     /// splitting, focusing and resizing panes; panels, layout, settings pages, opening files.
     Navigate,
-    /// Adding, removing and reordering projects, creating worktrees, saving files.
+    /// Adding, removing and reordering projects, creating worktrees, saving files, starting and
+    /// telling chats.
     Manage,
     /// Driving pages: navigating, evaluating, clicking, typing, keys, scrolling, claiming.
     Browser,

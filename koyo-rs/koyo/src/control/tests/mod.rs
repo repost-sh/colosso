@@ -4,6 +4,7 @@
 //! times out when the test says.
 
 mod approval;
+mod chats;
 mod panes;
 mod pipeline;
 mod projects;

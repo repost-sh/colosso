@@ -10,7 +10,6 @@ use gpui_kit::{
     Action, App, AppContext as _, Context, Entity, Focusable as _, SharedString, Subscription, Task, Window,
 };
 use koyo_agent::protocol::ids::ThreadId;
-use koyo_agent::protocol::model::ThreadSummary;
 
 use super::view::details::Workplace;
 use super::view::{ChatView, ChatViewEvent};
@@ -213,20 +212,36 @@ impl Shell {
             return Some(pane);
         }
         let cwd = PathBuf::from(&self.chat_tabs.chats.read(cx).summary(id)?.cwd);
-        let pane = self.workspace.add_chat_tab(&cwd, id.clone(), true)?;
-        self.focus_chat_next();
+        self.add_chat(&cwd, id.clone(), true, cx)
+    }
+
+    /// Thread `id` in a new tab on the checkout at `cwd`, shown with the keyboard if `select`. The
+    /// pane that shows it; `None` if its checkout isn't listed.
+    pub(crate) fn add_chat(
+        &mut self,
+        cwd: &Path,
+        id: ThreadId,
+        select: bool,
+        cx: &mut Context<Self>,
+    ) -> Option<u64> {
+        let pane = self.workspace.add_chat_tab(cwd, id, select)?;
+        if select {
+            self.focus_chat_next();
+        }
         self.follow_chats(cx);
         Some(pane)
+    }
+
+    /// The chats, as app control asks after them.
+    pub(crate) fn chats(&self) -> &Entity<Chats> {
+        &self.chat_tabs.chats
     }
 
     /// The chats of the checkout at `worktree` no tab shows, latest first, as a menu's rows.
     pub(crate) fn recent_chats(&self, worktree: &Path, cx: &App) -> Vec<MenuItem> {
         let tabs = &self.chat_tabs;
-        let mut recent: Vec<&ThreadSummary> = (tabs.chats.read(cx).summaries.values())
-            .filter(|summary| Path::new(&summary.cwd) == worktree)
-            .filter(|summary| !tabs.shown.contains(&summary.id))
-            .collect();
-        recent.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        let mut recent = tabs.chats.read(cx).latest_first(Some(worktree));
+        recent.retain(|summary| !tabs.shown.contains(&summary.id));
         recent.truncate(RECENT_CHATS);
         let rows = recent.into_iter().enumerate().map(|(at, summary)| {
             let open = Box::new(OpenChat(summary.id.clone()));
