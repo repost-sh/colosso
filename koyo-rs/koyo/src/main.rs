@@ -1,4 +1,5 @@
 mod arc;
+mod atomic_file;
 mod backdrop;
 mod bottom;
 mod browser;

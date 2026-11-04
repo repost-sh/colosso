@@ -28,7 +28,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::StreamExt as _;
-use gpui_kit::{App, AppContext as _, Context, Entity, EventEmitter, SharedString, Task, WeakEntity};
+use gpui_kit::{App, AppContext as _, Context, Entity, EventEmitter, SharedString, Subscription, Task, WeakEntity};
 use koyo_agent::agent_client::{AgentClient, Notice};
 use koyo_agent::client::{self, ClientError};
 use koyo_agent::protocol::events::Event;
@@ -96,6 +96,9 @@ pub struct Chats {
     to_restore: Option<Vec<ThreadId>>,
     /// The attempt to reach the host under way, if any.
     connecting: Option<Task<()>>,
+    /// What the host last heard of Koyo's settings on this connection.
+    told_config: Option<koyo_agent::protocol::methods::Config>,
+    _settings: Subscription,
     /// The loop over what the host says.
     _following: Option<Task<()>>,
 }
@@ -131,6 +134,8 @@ impl Chats {
             connection,
             to_restore: None,
             connecting: None,
+            told_config: None,
+            _settings: settings::on_change(cx, Self::tell_config),
             _following,
         };
         if settings::data_dir().is_some_and(|data| client::has_store(&client::host_dir(&data))) {
@@ -242,10 +247,11 @@ impl Chats {
             .map(|summary| (summary.id.clone(), summary))
             .collect();
         self.connection = Connection::Connected;
+        self.told_config = None;
+        self.tell_config(cx);
         for thread in self.threads.values().filter_map(WeakEntity::upgrade) {
             self.open(thread, cx);
         }
-        self.refresh_catalogs(cx);
         self.summaries_changed(cx);
         cx.notify();
         false
