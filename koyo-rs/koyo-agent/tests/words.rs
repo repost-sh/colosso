@@ -7,6 +7,7 @@ mod records;
 use std::collections::BTreeMap;
 
 use koyo_agent::protocol::ids::{MessageId, RunId, Time};
+use koyo_agent::protocol::methods::Model;
 use koyo_agent::protocol::model::{
     Compaction, CompactionTrigger, Effort, Item, ItemBody, ItemStatus, Run, RunStatus, ToolFamily,
 };
@@ -15,8 +16,8 @@ use koyo_agent::protocol::requests::{
     RequestPayload, RequestStatus, Response,
 };
 use koyo_agent::words::{
-    answer_meta, approval_line, compacted, duration, live_line, plan_outcome, plan_parts,
-    question_lines, tool_line, work_line, work_summary, worked_for,
+    answer_meta, approval_line, compacted, context_line, duration, live_line, plan_outcome,
+    plan_parts, question_lines, tool_line, work_line, work_summary, worked_for,
 };
 use records::{done, reasoning, request, run, subagent, tool_of};
 use serde_json::json;
@@ -90,7 +91,16 @@ fn times_and_tokens_are_said_as_a_person_would() {
     let mut settled = run("r1", RunStatus::Completed, 5);
     settled.model = Some("claude-opus".into());
     settled.effort = Some(Effort::Xhigh);
-    assert_eq!(answer_meta(&settled), "claude-opus · Extra high");
+    assert_eq!(answer_meta(&settled, &[]), "claude-opus · Extra high", "it isn't listed");
+    let listed = Model {
+        id: "claude-opus".into(),
+        name: "Opus 5.5 (new)".into(),
+        description: String::new(),
+        efforts: Vec::new(),
+        fast: false,
+        auto: false,
+    };
+    assert_eq!(answer_meta(&settled, &[listed]), "Opus 5.5 · Extra high");
 }
 
 #[test]
@@ -239,4 +249,10 @@ fn a_plan_says_what_became_of_it() {
     assert_eq!(plan_outcome(&answered(plan(PlanDecision::Dismiss))), Some("Dismissed"));
     let by_message = Answer::Message { message_id: MessageId("m".into()) };
     assert_eq!(plan_outcome(&answered(by_message)), Some("Refined by your message"));
+}
+
+#[test]
+fn how_full_a_conversation_is_is_said_in_a_line() {
+    assert_eq!(context_line(84_000, 200_000), "42 % · 84k of 200k");
+    assert_eq!(context_line(10, 0), "0 % · 10 of 0", "a model that says it holds nothing");
 }

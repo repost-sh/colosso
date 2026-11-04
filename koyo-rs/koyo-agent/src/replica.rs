@@ -44,6 +44,12 @@ impl Replica {
             .min_by_key(|request| request.seq)
     }
 
+    /// How full the conversation is, as of the last run that said: what it holds and what it can.
+    pub fn context(&self) -> Option<(u64, u64)> {
+        let mut usages = self.runs.iter().rev().filter_map(|run| run.usage.as_ref());
+        usages.find_map(|usage| Some((usage.context_tokens?, usage.context_window?)))
+    }
+
     /// What the plan of request `id` says.
     pub fn plan(&self, id: &RequestId) -> Option<&str> {
         let request = self.requests.iter().find(|request| request.id == *id)?;
