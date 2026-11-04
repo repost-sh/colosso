@@ -21,13 +21,12 @@ import type {
   SDKResultSuccess,
   SDKStatusMessage,
   SDKSystemMessage,
-  SDKTaskNotificationMessage,
   SDKUserMessage,
   SDKUserMessageReplay,
   TerminalReason,
 } from "@anthropic-ai/claude-agent-sdk";
 
-const SESSION = "d23655c0-e6b4-4398-9f86-ab4313bd2a24";
+export const SESSION = "d23655c0-e6b4-4398-9f86-ab4313bd2a24";
 export const MODEL = "claude-haiku-5-5";
 /** The recorded model's window. */
 export const WINDOW = 1_000_000;
@@ -303,24 +302,6 @@ export function informational(
     subtype: "informational",
     content,
     level,
-    uuid: randomUUID(),
-    session_id: SESSION,
-  };
-}
-
-export function taskNotification(
-  toolUseId: string,
-  summary: string,
-  state: SDKTaskNotificationMessage["status"] = "completed",
-): SDKTaskNotificationMessage {
-  return {
-    type: "system",
-    subtype: "task_notification",
-    task_id: "bd0ghgd67",
-    tool_use_id: toolUseId,
-    status: state,
-    output_file: "",
-    summary,
     uuid: randomUUID(),
     session_id: SESSION,
   };

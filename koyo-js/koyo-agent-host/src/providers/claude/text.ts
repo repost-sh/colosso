@@ -9,7 +9,7 @@ import type {
   SDKPartialAssistantMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 
-import type { DriverEvent, ItemBody } from "../provider";
+import type { ItemBody, ItemEvent } from "../provider";
 
 type StreamEvent = SDKPartialAssistantMessage["event"];
 type Kind = "text" | "thinking";
@@ -23,7 +23,7 @@ interface Block {
 }
 
 export class Texts {
-  readonly #emit: (event: DriverEvent) => void;
+  readonly #emit: (event: ItemEvent) => void;
   readonly #blocks = new Map<string, Block>();
   /** The streaming message's blocks by their index in it, as keys. */
   readonly #streaming = new Map<number, string>();
@@ -32,7 +32,7 @@ export class Texts {
   /** How many blocks of each kind each message's snapshots had so far. */
   readonly #snapshotted = new Map<string, { text: number; thinking: number }>();
 
-  constructor(emit: (event: DriverEvent) => void) {
+  constructor(emit: (event: ItemEvent) => void) {
     this.#emit = emit;
   }
 
@@ -87,7 +87,7 @@ export class Texts {
     }
   }
 
-  /** The text and thinking blocks of a snapshot of the main conversation. */
+  /** The text and thinking blocks of a snapshot. */
   snapshot(message: SDKAssistantMessage["message"]): void {
     const seen = this.#snapshotted.get(message.id) ?? { text: 0, thinking: 0 };
     this.#snapshotted.set(message.id, seen);
@@ -118,7 +118,7 @@ export class Texts {
     const block = this.#block(key, kind);
     if (!block.started) {
       block.started = true;
-      this.#emit({ type: "item.started", key, parentKey: null, item: body(kind, "") });
+      this.#emit({ type: "item.started", key, item: body(kind, "") });
     }
     block.text += text;
     this.#emit({ type: "item.appended", key, text });
@@ -142,7 +142,6 @@ export class Texts {
         return;
       }
       block.started = true;
-      this.#emit({ type: "item.started", key, parentKey: null, item: body(kind, final) });
     }
     // A thinking block whose text the model withheld keeps what streamed of it.
     const text = final === "" ? block.text : final;

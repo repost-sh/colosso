@@ -9,12 +9,12 @@ import type { UUID } from "node:crypto";
 import { log } from "../log";
 import type { ItemId, RunId } from "../protocol/ids";
 import type { Item, Run } from "../protocol/model";
-import type { DriverEvent } from "../providers/provider";
+import type { ItemEvent } from "../providers/provider";
 import { appended, newItem } from "./records";
 import { isOpen } from "./rules";
 
 /** A provider's report that an item was seen or changed. */
-type ItemReport = Extract<DriverEvent, { type: "item.started" | "item.updated" }>;
+type ItemReport = Extract<ItemEvent, { type: "item.started" | "item.updated" }>;
 
 /** How long text that streamed in may wait before the store keeps it. */
 const KEEP_MS = 500;
@@ -51,9 +51,7 @@ export class LiveTurn {
     if (known !== undefined) {
       return { ...known, ...report.item, status };
     }
-    const parentKey = report.type === "item.started" ? report.parentKey : null;
-    const parentId = parentKey === null ? null : this.#ids.get(parentKey) ?? null;
-    const item = newItem(live, place(), report.item, { parentId, status });
+    const item = newItem(live, place(), report.item, status);
     this.#ids.set(report.key, item.id);
     this.#items.set(item.id, item);
     return item;

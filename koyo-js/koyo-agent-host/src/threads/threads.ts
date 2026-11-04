@@ -9,8 +9,9 @@ import type { ProviderId, Thread, ThreadSummary } from "../protocol/model";
 import { eventLine, HostError } from "../protocol/wire";
 import type { Config, Provider } from "../providers/provider";
 import type { Store } from "../store/store";
-import { type Context, ThreadActor } from "./actor";
+import { ThreadActor } from "./actor";
 import { removeAttachments, sweepAttachments } from "./attachments";
+import type { Context } from "./context";
 import { newThread } from "./records";
 import { summary } from "./rules";
 import type { Subscriber } from "./state";
@@ -45,6 +46,11 @@ export class Threads {
   recover(): void {
     const { store, attachments, now } = this.#options;
     for (const id of store.unsettledThreads()) {
+      // The thread with its row first: a host that stops between the two has this to do again.
+      const parent = store.thread(id)?.parent;
+      if (parent !== null && parent !== undefined) {
+        this.actor(parent.threadId);
+      }
       this.actor(id);
     }
     try {
@@ -74,13 +80,14 @@ export class Threads {
   }
 
   /**
-   * Every thread as lists show it, and from now on each change to what they show. A thread
-   * no one has worked on since the host started is summed up from the store as it is.
+   * Every thread as lists show it, and from now on each change to what they show: not a
+   * subagent's, which shows where it started. A thread no one has worked on since the host
+   * started is summed up from the store as it is.
    */
   watch(watcher: Subscriber): ThreadSummary[] {
     this.#watchers.add(watcher);
     const { store } = this.#options;
-    return store.threads().map((thread) =>
+    return store.chats().map((thread) =>
       this.#actors.get(thread.id)?.summary() ?? summary(thread, store.state(thread.id)));
   }
 
@@ -107,12 +114,16 @@ export class Threads {
     return actor;
   }
 
-  /** Ends the thread's live work and forgets it, its rows and its files. */
+  /** Ends the thread's live work and forgets it, its rows, its files and its subagents'. */
   delete(id: ThreadId): void {
     const actor = this.actor(id);
     const { store, attachments } = this.#options;
     const files = store.attachments(id);
     actor.dispose();
+    // Once they ended with its session, so that nothing writes them again.
+    for (const child of store.children(id)) {
+      this.delete(child);
+    }
     store.delete(id);
     this.#actors.delete(id);
     this.#sessions = this.#sessions.filter((each) => each !== actor);
@@ -153,6 +164,11 @@ export class Threads {
       },
       sessionUsed: (actor) => {
         this.#used(actor);
+      },
+      spawn: (child, prompt, stop) => {
+        const actor = ThreadActor.subagent(this.#context(child), child, prompt, stop);
+        this.#actors.set(child.id, actor);
+        return actor;
       },
     };
   }

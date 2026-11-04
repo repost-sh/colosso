@@ -110,6 +110,7 @@ export class FakeSession implements ProviderSession {
   readonly turns: TurnInput[] = [];
   readonly steers: TurnInput[] = [];
   readonly changes: SessionChange[] = [];
+  readonly subagentsStopped: string[] = [];
   interrupts = 0;
   killed = false;
   closed = false;
@@ -178,17 +179,21 @@ export class FakeSession implements ProviderSession {
   /** Reports an answer starting, named `key`, empty, for text to stream into. */
   startsText(key: string): void {
     const item: ItemBody = { kind: "assistant_text", payload: { text: "" } };
-    this.report({ type: "item.started", key, parentKey: null, item });
+    this.report({ type: "item.started", key, item });
+  }
+
+  stopSubagent(key: string): void {
+    this.subagentsStopped.push(key);
   }
 
   finished(outcome: Outcome = "completed"): void {
     this.report({ type: "turn.finished", outcome, failure: null, usage: null });
   }
 
-  ask(payload: RequestPayload): Asked {
+  ask(payload: RequestPayload, bySubagent = false): Asked {
     const controller = new AbortController();
     return {
-      answer: this.#sink.ask(payload, controller.signal),
+      answer: this.#sink.ask(payload, controller.signal, bySubagent),
       withdraw: () => {
         controller.abort();
       },

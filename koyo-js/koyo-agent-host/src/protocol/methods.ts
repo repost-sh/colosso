@@ -39,6 +39,7 @@ export const Model = z.object({
   id: z.string().min(1),
   name: z.string(),
   label: z.string(),
+  runs: z.string().nullable().default(null),
   efforts: z.array(Effort),
   fast: z.boolean(),
   auto: z.boolean(),

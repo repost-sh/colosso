@@ -35,7 +35,7 @@ export function mapped(compact = false): Mapped {
   const usages: DriverEvent[] = [];
   const frames = new Frames((event) => {
     (event.type === "usage" ? usages : events).push(event);
-  });
+  }, 1000);
   frames.begin("turn-1", compact);
   return {
     frames,

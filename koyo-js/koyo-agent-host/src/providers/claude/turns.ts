@@ -3,10 +3,11 @@
 // conversation's frames are credited to the person's turn only once the CLI says it took the
 // turn's prompt: it echoes the prompt's uuid on the turn's first reply frames and its result
 // (`user_message_uuid(s)`), and reports it started in a `command_lifecycle` frame. Until then
-// the conversation's frames are held; what came while no turn ran is parked, and the next turn
-// says Claude finished background work. A message steered into the turn that the CLI hadn't
-// taken when the turn's result came runs as a turn of its own right after; it's still this
-// turn's, which ends with the last of them.
+// the conversation's frames are held. A frame of the conversation while no turn runs is a turn
+// the CLI started: it's adopted, and shows as any other, with no message of the person's to
+// start it. A message steered into a turn that the CLI hadn't taken when the turn's result came
+// runs as a turn of its own right after; it's still this turn's, which ends with the last of
+// them. A subagent's frames are its own, whatever runs.
 
 import type { SDKMessage, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
@@ -17,7 +18,6 @@ import { type DriverEvent, processFailure } from "../provider";
 import type { Frames } from "./frames";
 import { type Ending, summed } from "./results";
 
-const BACKGROUND = "Claude finished background work.";
 const NEVER_STARTED = "Claude acknowledged the message but never started a turn for it.";
 
 /** A frame outside the SDK's union that says what became of a prompt. */
@@ -40,6 +40,8 @@ interface Turn {
   sent: boolean;
   /** Whether the CLI said it took the prompt; frames are credited from then on. */
   echoed: boolean;
+  /** Whether the CLI started it, with no prompt of ours. */
+  readonly adopted: boolean;
   readonly held: SDKMessage[];
   interrupted: boolean;
   /** What its results used so far, when one came and a steer's turn is still to come. */
@@ -52,8 +54,6 @@ export class Turns {
   readonly #frames: Frames;
   readonly #finished: () => void;
   #turn: Turn | undefined;
-  /** Whether the CLI did work of its own since the last turn. */
-  #parked = false;
 
   constructor(emit: (event: DriverEvent) => void, frames: Frames, finished: () => void) {
     this.#emit = emit;
@@ -78,20 +78,34 @@ export class Turns {
 
   /** Starts a turn of `promptId`; `compact` when it compacts the conversation. */
   start(promptId: string, compact: boolean): void {
-    this.#turn = {
+    this.#begin(promptId, compact, false);
+  }
+
+  /** A turn the CLI started: its prompt, if it had one, is the CLI's, and it has gone. */
+  #adopt(): Turn {
+    const turn = this.#begin(crypto.randomUUID(), false, true);
+    this.#emit({ type: "turn.adopted" });
+    return turn;
+  }
+
+  #begin(promptId: string, compact: boolean, adopted: boolean): Turn {
+    const turn: Turn = {
       promptId,
       prompts: new Set([promptId]),
       steers: new Set(),
       taken: new Set(),
       dropped: new Set(),
-      sent: false,
-      echoed: false,
+      sent: adopted,
+      echoed: adopted,
+      adopted,
       held: [],
       interrupted: false,
       usage: null,
       ending: null,
     };
+    this.#turn = turn;
     this.#frames.begin(promptId, compact);
+    return turn;
   }
 
   /** The turn's prompt went to the CLI. */
@@ -199,15 +213,15 @@ export class Turns {
 
   /** A frame of the conversation, credited to the running turn once the CLI took it. */
   frame(frame: SDKMessage): void {
+    if (this.#frames.subagents.hears(frame)) {
+      return;
+    }
     if (frame.type === "result") {
       this.#result(frame);
       return;
     }
-    const turn = this.#turn;
+    const turn = this.#turn ?? (gated(frame) ? this.#adopt() : undefined);
     if (turn === undefined) {
-      if (gated(frame)) {
-        this.#park(frame.type);
-      }
       return;
     }
     if (!turn.echoed && this.#echoes(turn, frame)) {
@@ -222,16 +236,17 @@ export class Turns {
   #result(result: SDKResultMessage): void {
     const turn = this.#turn;
     if (turn === undefined) {
-      this.#park(result.type);
+      log.debug("A turn no frame was seen of ended.");
       return;
     }
-    const ours = this.#echoes(turn, result);
+    const ours = this.#echoes(turn, result) || turn.adopted;
     const stamped = echoed(result).length > 0;
     const human = result.origin === undefined || result.origin.kind === "human";
     if (!ours && (stamped || !human)) {
-      // Another turn's, one the CLI ran of its own: what was held goes with it.
-      turn.held.length = 0;
-      this.#park(result.type);
+      // Another turn's, one the CLI ran of its own just before: what it said still shows.
+      for (const frame of turn.held.splice(0)) {
+        this.#frames.frame(frame);
+      }
       return;
     }
     // A CLI that echoes only on the result credits the turn with all it held.
@@ -256,7 +271,7 @@ export class Turns {
   }
 
   #finish(ending: Ending, usage: Usage | null): void {
-    this.#frames.end();
+    this.#frames.end(ending.outcome);
     this.#turn = undefined;
     this.#emit({ type: "turn.finished", outcome: ending.outcome, failure: ending.failure, usage });
     this.#finished();
@@ -270,10 +285,6 @@ export class Turns {
     }
     turn.echoed = true;
     this.#emit({ type: "turn.started", promptId: turn.promptId });
-    if (this.#parked) {
-      this.#parked = false;
-      this.#emit({ type: "notice", level: "info", text: BACKGROUND });
-    }
     for (const frame of turn.held.splice(0)) {
       this.#frames.frame(frame);
     }
@@ -286,13 +297,6 @@ export class Turns {
       turn.taken.add(id);
     }
     return ids.length > 0;
-  }
-
-  #park(type: string): void {
-    if (!this.#parked) {
-      log.debug(`Claude did work of its own (${type}); it's noted for the next turn.`);
-      this.#parked = true;
-    }
   }
 }
 

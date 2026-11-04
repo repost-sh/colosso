@@ -66,9 +66,21 @@ export class Store {
     return rows.map((row) => decode(Thread, row));
   }
 
+  /** Every thread lists show, newest first: not a subagent's, which shows where it started. */
+  chats(): Thread[] {
+    const sql = `SELECT data FROM threads WHERE ${SUBAGENT_OF} IS NULL ORDER BY updated_at DESC`;
+    return this.#db.query(sql).all().map((row) => decode(Thread, row));
+  }
+
   thread(id: ThreadId): Thread | undefined {
     const row = this.#db.query("SELECT data FROM threads WHERE id = ?").get(id);
     return row === null ? undefined : decode(Thread, row);
+  }
+
+  /** The threads of the subagents `id` started. */
+  children(id: ThreadId): ThreadId[] {
+    const sql = `SELECT id FROM threads WHERE ${SUBAGENT_OF} = ?`;
+    return this.#db.query(sql).all(id).map((row) => IdRow.parse(row).id);
   }
 
   /** The thread's latest change number, or 0 for a thread that isn't stored. */
@@ -150,7 +162,8 @@ export class Store {
    * one that ran and ended, and the requests that wait for the person.
    */
   state(id: ThreadId): State {
-    const latest = `${RUNS} AND status IN ${ENDED} ORDER BY id DESC LIMIT 1`;
+    const last = "json_extract(data, '$.endedAt') DESC, id DESC";
+    const latest = `${RUNS} AND status IN ${ENDED} ORDER BY ${last} LIMIT 1`;
     const ended = this.#query(Run, latest, id);
     return {
       unsettled: this.#query(Run, `${RUNS} AND status IN ${UNSETTLED} ORDER BY id`, id),
@@ -182,9 +195,10 @@ export class Store {
     return this.#query(Item, sql, id, messageId).at(0);
   }
 
-  /** A run's items, in timeline order. */
-  itemsOf(id: ThreadId, runId: RunId): Item[] {
-    return this.#query(Item, `${ITEMS} AND run_id = ? ORDER BY ordinal`, id, runId);
+  /** The thread's items not yet settled, in timeline order. */
+  openItems(id: ThreadId): Item[] {
+    const open = "json_extract(data, '$.status') IN ('pending', 'running')";
+    return this.#query(Item, `${ITEMS} AND ${open} ORDER BY ordinal`, id);
   }
 
   request(id: ThreadId, requestId: RequestId): Request | undefined {
@@ -256,6 +270,8 @@ const ATTACHED = `
     WHERE items.message_id IS NOT NULL`;
 /** The settled runs that ran: a removed one never did. */
 const ENDED = "('completed', 'interrupted', 'failed')";
+/** The thread a thread is a subagent's of, as the index on it has it. */
+const SUBAGENT_OF = "json_extract(data, '$.parent.threadId')";
 const ITEMS = "SELECT data FROM items WHERE thread_id = ?";
 const REQUESTS = "SELECT data FROM requests WHERE thread_id = ?";
 

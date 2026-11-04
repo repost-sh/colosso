@@ -20,9 +20,10 @@ import type {
 
 import { log } from "../../log";
 import type { Item, NoticeLevel, Usage } from "../../protocol/model";
-import type { DriverEvent, ItemBody } from "../provider";
+import type { DriverEvent, ItemBody, Outcome } from "../provider";
 import { classify, type Ending, LIMITED, resultUsage, type Signs } from "./results";
-import { Steps } from "./steps";
+import { settleResults, Steps } from "./steps";
+import { Subagents } from "./subagents";
 import { Texts } from "./text";
 import type { Fields, Json } from "./tools";
 import { Meter } from "./usage";
@@ -36,16 +37,13 @@ interface Compaction {
   open: boolean;
 }
 
-type ResultContent = Extract<
-  Exclude<SDKUserMessage["message"]["content"], string>[number],
-  { type: "tool_result" }
->["content"];
-
 const RETRYING = "Claude's API answered with an error; Claude Code is trying again.";
 const UNREACHABLE = "Claude's API can't be reached; Claude Code is trying again.";
 const UNSAVED = "Claude couldn't save this conversation: the disk is full.";
 
 export class Frames {
+  /** The subagents of the conversation, whose frames are theirs whatever turn runs. */
+  readonly subagents: Subagents;
   readonly #emit: (event: DriverEvent) => void;
   readonly #steps: Steps;
   readonly #meter = new Meter();
@@ -59,9 +57,10 @@ export class Frames {
   #limited: { retryAt: string | null } | null = null;
   #retried = false;
 
-  constructor(emit: (event: DriverEvent) => void) {
+  constructor(emit: (event: DriverEvent) => void, stopMs: number) {
     this.#emit = emit;
-    this.#steps = new Steps(emit);
+    this.subagents = new Subagents(emit, stopMs);
+    this.#steps = new Steps(emit, this.subagents, null);
     this.#texts = new Texts(emit);
   }
 
@@ -81,13 +80,15 @@ export class Frames {
   }
 
   /**
-   * Forgets the turn's text, calls and compaction once it has ended, so none of it is kept
-   * while the session idles; what was left open, the actor closes (4.5).
+   * Forgets the turn's text, calls and compaction once it has ended as `outcome`, so none of it
+   * is kept while the session idles; what was left open, the actor closes (4.5). A subagent
+   * the turn waited for goes with it.
    */
-  end(): void {
+  end(outcome: Outcome): void {
     this.#texts.clear();
     this.#steps.clear();
     this.#compaction = undefined;
+    this.subagents.turnEnded(outcome);
   }
 
   /** The session's `init`, which names the model whose window the results tell. */
@@ -97,12 +98,13 @@ export class Frames {
 
   /** A call seen first in its permission request, its input bounded as `kept`. */
   toolStarted(toolUseId: string, name: string, input: Fields, kept: Json): void {
-    this.#steps.start(toolUseId, { name, input, kept }, null);
+    this.#steps.start(toolUseId, { name, input, kept });
   }
 
   /** The person declined a call, whose result then reads as declined. */
   toolDeclined(toolUseId: string): void {
     this.#steps.decline(toolUseId);
+    this.subagents.decline(toolUseId);
   }
 
   /**
@@ -176,10 +178,6 @@ export class Frames {
   }
 
   #stream(frame: SDKPartialAssistantMessage): void {
-    // A subagent's own text isn't shown (its transcript is skipped); its tools are.
-    if (frame.parent_tool_use_id !== null) {
-      return;
-    }
     const { event } = frame;
     this.#texts.stream(event);
     if (event.type === "message_start") {
@@ -194,19 +192,16 @@ export class Frames {
   #assistant(frame: SDKAssistantMessage): void {
     this.#sign(frame.error);
     const { message } = frame;
-    const parentKey = frame.parent_tool_use_id;
-    if (parentKey === null && message.model === "<synthetic>") {
+    if (message.model === "<synthetic>") {
       // The CLI's own words, such as an API error, come as a message of no model.
       const said = message.content.flatMap((block) => block.type === "text" ? [block.text] : []);
       this.#notice(frame.error === undefined ? "info" : "error", said.join("\n"));
       return;
     }
-    if (parentKey === null) {
-      this.#texts.snapshot(message);
-    }
+    this.#texts.snapshot(message);
     for (const block of message.content) {
       if (block.type === "tool_use") {
-        this.#steps.start(block.id, { name: block.name, input: block.input }, parentKey);
+        this.#steps.start(block.id, { name: block.name, input: block.input });
       }
     }
   }
@@ -220,15 +215,7 @@ export class Frames {
     if (typeof content === "string") {
       return;
     }
-    const results = content.flatMap((block) => block.type === "tool_result" ? [block] : []);
-    for (const block of results) {
-      this.#steps.settle(block.tool_use_id, {
-        text: resultText(block.content),
-        isError: block.is_error === true,
-        // The CLI's structured twin is the message's, so it's only one result's (pitfall 32).
-        structured: results.length === 1 ? frame.tool_use_result : undefined,
-      });
-    }
+    settleResults(this.#steps, content, frame.tool_use_result);
   }
 
   #system(frame: System): void {
@@ -264,20 +251,15 @@ export class Frames {
         }
         return;
       }
-      case "task_notification": {
-        if (frame.tool_use_id !== undefined) {
-          this.#steps.finished(frame.tool_use_id, frame.summary, frame.status !== "failed");
-        }
-        return;
-      }
       case "permission_denied": {
-        this.#steps.decline(frame.tool_use_id);
+        this.toolDeclined(frame.tool_use_id);
         return;
       }
       case "session_writes_lost": {
         this.#notice("error", UNSAVED);
         return;
       }
+      // A task's frames are `Subagents.hears`' before any comes here.
       case "init":
       case "control_request_progress":
       case "hook_started":
@@ -287,6 +269,7 @@ export class Frames {
       case "task_started":
       case "task_updated":
       case "task_progress":
+      case "task_notification":
       case "background_tasks_changed":
       case "thinking_tokens":
       case "session_state_changed":
@@ -334,7 +317,7 @@ export class Frames {
     };
     this.#compaction = compaction;
     const { key, body } = compaction;
-    this.#emit({ type: "item.started", key, parentKey: null, item: body });
+    this.#emit({ type: "item.started", key, item: body });
     return compaction;
   }
 
@@ -396,21 +379,6 @@ export class Frames {
       this.#emit({ type: "notice", level, text });
     }
   }
-}
-
-/** A tool result's text, as the model read it. */
-function resultText(content: ResultContent): string {
-  if (content === undefined || typeof content === "string") {
-    return content ?? "";
-  }
-  return content
-    .flatMap((block) => {
-      if (block.type === "text") {
-        return [block.text];
-      }
-      return block.type === "image" ? ["[image]"] : [];
-    })
-    .join("\n");
 }
 
 /** A frame of a type outside the SDK's union, as arrive at runtime: logged and dropped. */

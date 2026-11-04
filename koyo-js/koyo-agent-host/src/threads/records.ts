@@ -19,16 +19,33 @@ import type {
   Run,
   RunStatus,
   Stop,
+  SubagentUsage,
   Thread,
   Usage,
 } from "../protocol/model";
-import type { ItemBody, Outcome, SessionChange, TurnInput } from "../providers/provider";
+import type {
+  ItemBody,
+  Outcome,
+  SessionChange,
+  SubagentChange,
+  SubagentStart,
+  TurnInput,
+} from "../providers/provider";
 import { canMove, isCompact, isOpen } from "./rules";
 
 /** The longest seed title: the prompt's first line, cut (docs/chat.md 4.5.7). */
 const SEED_TITLE = 60;
 /** The most words a generated title keeps (4.5.7). */
 const TITLE_WORDS = 6;
+
+/** A new run already running, as no person asked for it: it was never queued or starting. */
+export function runningRun(thread: Thread, prompt: Prompt, at: string): Run {
+  const queued = queuedRun(thread, prompt, at);
+  return moved(moved(queued, "starting", { startedAt: at }), "running");
+}
+
+/** The row a subagent has in the timeline of the thread that started it. */
+export type SubagentRow = Extract<Item, { kind: "subagent" }>;
 
 /** A new chat on `provider`, as `threads.create` asks; its title comes with its first prompt. */
 export function newThread(
@@ -45,11 +62,110 @@ export function newThread(
     sessionId: null,
     queueHeld: false,
     tabOpen: true,
+    parent: null,
     createdAt: at,
     updatedAt: at,
     readAt: null,
     seq: 0,
   };
+}
+
+/** The thread of subagent `subagent`, which row `itemId` of thread `parent` shows (4.5.10). */
+export function subagentThread(
+  parent: Thread,
+  ids: { readonly threadId: ThreadId; readonly itemId: ItemId },
+  subagent: SubagentStart,
+  at: string,
+): Thread {
+  const { threadId, itemId } = ids;
+  return {
+    ...parent,
+    id: threadId,
+    title: subagent.description,
+    titleSource: "seed",
+    model: subagent.model ?? parent.model,
+    effort: subagent.effort ?? parent.effort,
+    fast: false,
+    plan: false,
+    sessionId: null,
+    queueHeld: false,
+    tabOpen: false,
+    parent: { threadId: parent.id, itemId },
+    createdAt: at,
+    updatedAt: at,
+    readAt: null,
+    seq: 0,
+  };
+}
+
+/** The row of subagent `subagent`, of `run`, whose thread is `threadId`. */
+export function subagentRow(
+  run: Run,
+  place: { readonly ordinal: number; readonly at: string },
+  threadId: ThreadId,
+  subagent: SubagentStart,
+): SubagentRow {
+  const payload = {
+    description: subagent.description,
+    agentType: subagent.agentType,
+    summary: null,
+    threadId,
+    progress: null,
+    usage: null,
+    startedAt: place.at,
+    endedAt: null,
+  };
+  return newItem(run, place.ordinal, { kind: "subagent", payload }, "running");
+}
+
+/** `row` started again, as a subagent can be. */
+export function subagentAgain(row: SubagentRow): SubagentRow {
+  const payload = { ...row.payload, summary: null, progress: null, endedAt: null };
+  return { ...row, status: "running", payload };
+}
+
+/** `row` with what's new of its subagent. */
+export function subagentChanged(row: SubagentRow, change: SubagentChange): SubagentRow {
+  const { payload } = row;
+  return {
+    ...row,
+    payload: {
+      ...payload,
+      progress: change.progress ?? payload.progress,
+      usage: change.usage ?? payload.usage,
+    },
+  };
+}
+
+/** `row` as its subagent ended. */
+export function subagentEnded(
+  row: SubagentRow,
+  outcome: Outcome,
+  ending: {
+    readonly summary: string | null;
+    readonly usage: SubagentUsage | null;
+    readonly at: string;
+  },
+): SubagentRow {
+  const { payload } = row;
+  return {
+    ...row,
+    status: outcome,
+    payload: {
+      ...payload,
+      summary: ending.summary ?? payload.summary,
+      usage: ending.usage ?? payload.usage,
+      progress: null,
+      endedAt: ending.at,
+    },
+  };
+}
+
+/** What a host that stopped left open, which went with it (4.1). */
+export function lost(item: Item, at: string): Item {
+  return item.kind === "subagent"
+    ? subagentEnded(item, "interrupted", { summary: null, usage: null, at })
+    : { ...item, status: "interrupted" };
 }
 
 /** A prompt of `text` alone, as the host sends one of its own. */
@@ -145,19 +261,18 @@ function closed(item: Item, outcome: Outcome): Item["status"] {
 }
 
 /** An item of `run` at `ordinal`, from what a provider or the actor says it is. */
-export function newItem(
+export function newItem<Said extends ItemBody>(
   run: Run,
   ordinal: number,
-  body: ItemBody,
-  place: { readonly parentId: ItemId | null; readonly status: Item["status"] },
-): Item {
+  body: Said,
+  status: Item["status"],
+): Omit<SubagentRow, keyof ItemBody> & Said {
   return {
     id: newId(ItemId),
     threadId: run.threadId,
     runId: run.id,
     ordinal,
-    parentId: place.parentId,
-    status: place.status,
+    status,
     seq: 0,
     ...body,
   };
@@ -165,7 +280,7 @@ export function newItem(
 
 /** An item of `run` at `ordinal` that's whole as it's written: a message, a notice. */
 function closedItem(run: Run, ordinal: number, body: ItemBody): Item {
-  return newItem(run, ordinal, body, { parentId: null, status: "completed" });
+  return newItem(run, ordinal, body, "completed");
 }
 
 /** The item of the message that started or steered `run`. */

@@ -59,4 +59,8 @@ export const MIGRATIONS: readonly string[] = [
   CREATE INDEX requests_by_run ON requests (thread_id, run_id);
   CREATE INDEX requests_by_change ON requests (thread_id, seq);
   `,
+  `
+  CREATE INDEX threads_by_parent ON threads (json_extract(data, '$.parent.threadId'))
+    WHERE json_extract(data, '$.parent.threadId') IS NOT NULL;
+  `,
 ];

@@ -40,6 +40,8 @@ export function specFor(thread: Thread, sessionId: string, defaultMode: Mode | n
 export interface Reports {
   readonly event: (event: DriverEvent) => void;
   readonly ask: (payload: RequestPayload, signal: AbortSignal, waiter: Waiter) => void;
+  /** The session went, by whichever road: what lived in it beside its turn went with it. */
+  readonly gone: () => void;
 }
 
 interface Session {
@@ -85,10 +87,10 @@ export class SessionSlot {
           }
         });
       },
-      ask: async (payload, signal) => await new Promise((resolve, reject) => {
+      ask: async (payload, signal, bySubagent) => await new Promise((resolve, reject) => {
         this.#later(() => {
           if (current()) {
-            this.#reports.ask(payload, signal, { resolve, reject });
+            this.#reports.ask(payload, signal, { resolve, reject, bySubagent });
           } else {
             reject(new Error("The session was closed."));
           }
@@ -106,6 +108,9 @@ export class SessionSlot {
     clearTimeout(this.#idle);
     this.#session = undefined;
     this.#epoch += 1;
+    if (session !== undefined) {
+      this.#reports.gone();
+    }
     return session?.live;
   }
 
@@ -151,6 +156,11 @@ export class SessionSlot {
     }
   }
 
+  /** Asks subagent `key` to stop; one lives as long as the session, so there is one to ask. */
+  stopSubagent(key: string): void {
+    this.#session?.live.stopSubagent(key);
+  }
+
   /** Whether reports come from the session open now, as they come. */
   #current(): () => boolean {
     const epoch = this.#epoch;
@@ -160,6 +170,9 @@ export class SessionSlot {
   /** Closes the session a while from now, unless a turn wants it first or `busy` says so. */
   idleSoon(busy: () => boolean): void {
     clearTimeout(this.#idle);
+    if (this.#session === undefined) {
+      return;
+    }
     this.#idle = setTimeout(() => {
       if (!busy()) {
         this.close();

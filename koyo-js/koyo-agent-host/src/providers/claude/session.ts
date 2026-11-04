@@ -44,6 +44,7 @@ export type Conversation = AsyncIterable<SDKMessage> & Pick<
   | "setPermissionMode"
   | "setModel"
   | "applyFlagSettings"
+  | "stopTask"
   | "supportedCommands"
   | "initializationResult"
   | "close"
@@ -124,7 +125,7 @@ export class ClaudeSession implements ProviderSession {
     this.#deps = deps;
     this.#frames = new Frames((event) => {
       sink.event(event);
-    });
+    }, deps.stopMs);
     this.#turns = new Turns((event) => {
       sink.event(event);
     }, this.#frames, () => {
@@ -191,6 +192,11 @@ export class ClaudeSession implements ProviderSession {
       log.info("A stopped turn's message was still queued; Claude's process is closed.");
       this.#end();
     }
+  }
+
+  stopSubagent(key: string): void {
+    const conversation = this.#conversation;
+    this.#frames.subagents.stop(key, async (taskId) => await conversation?.stopTask(taskId));
   }
 
   configure(change: SessionChange): "applied" | "reopen" {
@@ -445,13 +451,18 @@ export class ClaudeSession implements ProviderSession {
   }
 
   readonly #canUseTool: CanUseTool = async (name, input, request) => {
+    // A subagent asks with or without a turn, and says nothing of the turn if there's one.
+    if (request.agentID !== undefined) {
+      const asking = this.#frames.subagents.asking(request.agentID, this.#sink);
+      return await answerTool(asking, name, input, request);
+    }
     return this.#turns.permission()
       ? await answerTool(this.#asking, name, input, request)
       : { behavior: "deny", message: NO_TURN };
   };
 
   readonly #asking: Asking = {
-    ask: async (payload, signal) => await this.#sink.ask(payload, signal),
+    ask: async (payload, signal) => await this.#sink.ask(payload, signal, false),
     event: (event) => {
       this.#sink.event(event);
     },
