@@ -217,12 +217,7 @@ impl ChatComposer {
     /// What a queued message was being changed to, when it couldn't be: after what's typed, so
     /// neither is lost, with the caret at its end to go on from.
     fn give_back_edit(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
-        self.text.update(cx, |typed, cx| {
-            let end = typed.value().len();
-            let words = if end == 0 { text.to_owned() } else { format!("\n\n{text}") };
-            typed.set_selected_range(end..end, cx);
-            typed.replace(words, window, cx);
-        });
+        self.after_typed(text, window, cx);
         self.error = Some("That message couldn't be changed, so your words are here.".into());
         cx.notify();
     }

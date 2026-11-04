@@ -1,9 +1,9 @@
 //! A composer's draft (`docs/chat.md` 5.2): what it shows of the chat's when it opens, what it
 //! writes as things change. A composer on a chat another has open starts empty and keeps nothing.
 
-use gpui_kit::{App, Context, Window};
+use gpui_kit::{App, Context, Focusable as _, Window};
 use koyo_agent::protocol::ids::ThreadId;
-use koyo_agent::protocol::model::Attachment;
+use koyo_agent::protocol::model::{Attachment, Prompt};
 
 use super::ChatComposer;
 use crate::chat::drafts::{self, Draft, DraftOf};
@@ -23,7 +23,35 @@ impl ChatComposer {
                 typed.set_selected_range(cursor..cursor, cx);
             });
         }
-        // A file that's gone would only stop the message going.
+        self.give_back_those_there(attachments);
+    }
+
+    /// Takes back what a message said, to say again: its words after what's typed, its files with
+    /// what's attached. The caret goes to its end, for a person to change it.
+    pub(in crate::chat) fn take_back(
+        &mut self,
+        prompt: Prompt,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.after_typed(&prompt.text, window, cx);
+        self.give_back_those_there(prompt.attachments);
+        window.focus(&self.focus_handle(cx), cx);
+        cx.notify();
+    }
+
+    /// `text` after what's typed so neither is lost, with the caret at its end.
+    pub(super) fn after_typed(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.text.update(cx, |typed, cx| {
+            let end = typed.value().len();
+            let words = if end == 0 { text.to_owned() } else { format!("\n\n{text}") };
+            typed.set_selected_range(end..end, cx);
+            typed.replace(words, window, cx);
+        });
+    }
+
+    /// A file that's gone would only stop the message going.
+    fn give_back_those_there(&mut self, attachments: Vec<Attachment>) {
         let folder = self.attachments.as_deref();
         let there = |kept: &Attachment| folder.is_some_and(|in_it| in_it.join(&kept.file).exists());
         self.give_back_attached(attachments.into_iter().filter(there).collect());
