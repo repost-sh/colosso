@@ -11,8 +11,9 @@
 
 mod asked;
 mod attach;
+mod effort;
 mod footer;
-mod model_picker;
+mod model_menu;
 mod question;
 mod sending;
 mod suggest;
@@ -25,9 +26,9 @@ use gpui_kit::component::Sizable as _;
 use gpui_kit::component::input::{InputEvent, Textarea, TextareaState};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, ClickEvent, Context, Div, ElementId, Entity, EventEmitter,
+    AnyElement, App, AppContext as _, ClickEvent, Context, ElementId, Entity, EventEmitter,
     FocusHandle, Focusable, InteractiveElement as _, IntoElement, KeyContext, ParentElement as _,
-    Render, SharedString, Stateful, Styled as _, Subscription, Task, Window, div, px,
+    Render, SharedString, Styled as _, Subscription, Task, Window, div, px,
 };
 #[cfg(test)]
 use koyo_agent::protocol::ids::RequestId;
@@ -43,12 +44,12 @@ use koyo_agent::replica::Replica;
 use self::asked::Asked;
 use self::attach::Attached;
 use self::footer::{COMPOSER, ROOM_FOR_LABELS, Settings, labels_fitting};
-use self::model_picker::{ModelPicker, PICKING};
 use self::suggest::{SUGGESTING, Suggestions};
 use self::turn::{RECALLING, STOPPABLE, Turn};
 use super::thread::ChatThread;
 use super::view::COLUMN;
 use super::{Chats, Connection, attachments};
+use crate::menu::Trigger;
 use crate::native::liquid;
 use crate::shell::glass;
 use crate::theme::{self, Palette};
@@ -56,7 +57,7 @@ use crate::theme::{self, Palette};
 pub(super) fn bind_keys(cx: &mut App) {
     asked::bind_keys(cx);
     footer::bind_keys(cx);
-    model_picker::bind_keys(cx);
+    model_menu::bind_keys(cx);
     question::bind_keys(cx);
     suggest::bind_keys(cx);
     turn::bind_keys(cx);
@@ -94,7 +95,9 @@ pub(super) struct ChatComposer {
     settings: Settings,
     /// How full the conversation is, as of the last run that said: what it holds, and can.
     context: Option<(u64, u64)>,
-    picker: Option<ModelPicker>,
+    /// What opens the menu of models, and the slider of efforts.
+    model_menu: Trigger,
+    effort_menu: Trigger,
     /// What the word being typed completes to.
     suggest: Option<Suggestions>,
     /// Where the word starts that was told not to complete, until the caret leaves it.
@@ -167,9 +170,10 @@ impl ChatComposer {
                     cx.notify();
                 }
             }),
-            // What the picker points at may not be there any more, nor the commands listed.
+            // What the menus were opened on may not be there any more, nor the commands listed.
             cx.observe(&catalog, |this, _, cx| {
-                this.picker = None;
+                this.model_menu.close(cx);
+                this.effort_menu.close(cx);
                 this.search(cx);
                 cx.notify();
             }),
@@ -195,7 +199,8 @@ impl ChatComposer {
             asked: Asked::Nothing,
             settings: Settings::default(),
             context: None,
-            picker: None,
+            model_menu: Trigger::new(("chat-model-menu", cx.entity_id().as_u64())),
+            effort_menu: Trigger::new(("chat-effort-menu", cx.entity_id().as_u64())),
             suggest: None,
             dismissed: None,
             attached: Vec::new(),
@@ -260,6 +265,10 @@ impl ChatComposer {
         }
         self.follow_turn(turn, cx);
         if let Some(settings) = settings.filter(|settings| *settings != self.settings) {
+            // The slider's stops are the efforts of the model it opened on.
+            if settings.model != self.settings.model {
+                self.effort_menu.close(cx);
+            }
             self.settings = settings;
             cx.notify();
         }
@@ -272,40 +281,6 @@ impl ChatComposer {
     /// Whether nothing's been said here yet, nor is on its way.
     pub(super) fn is_new(&self) -> bool {
         self.thread.is_none() && !self.creating
-    }
-
-    /// Whether a popover is over what's above the composer, which has to go: glass only hides what's
-    /// drawn under the glass.
-    pub(super) fn covers_above(&self) -> bool {
-        self.picker.is_some() || self.suggesting()
-    }
-
-    /// A popover of `id` on glass over the footer. No press in it takes the keyboard from what's
-    /// typed, where its keys are heard.
-    fn popover(
-        id: &'static str,
-        p: Palette,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Stateful<Div> {
-        let keyed = ElementId::NamedInteger(id.into(), cx.entity_id().as_u64());
-        let on_glass = liquid::backdrop(keyed, px(14.), window, cx);
-        let popover = div()
-            .id(id)
-            .absolute()
-            .bottom_full()
-            .left_0()
-            .mb_2()
-            .max_w_full()
-            .flex()
-            .flex_col()
-            .gap_1()
-            .p_2()
-            .rounded(px(14.))
-            .occlude()
-            .text_color(p.text)
-            .capture_any_mouse_down(|_, window, _| window.prevent_default());
-        liquid::floating(popover, on_glass, p)
     }
 
     /// What's in the way: why the last send failed, why the chat can't be shown, or how things
@@ -379,14 +354,11 @@ impl Render for ChatComposer {
             .children(self.tiles(p, cx))
             .child(Textarea::new(&self.text).appearance(false).on_paste(self.takes_paste(cx)))
             .child(self.footer(&typed, p, cx))
-            .children(self.model_picker(p, window, cx))
             .children(self.suggestions(p, window, cx));
         let mut keys = KeyContext::default();
         keys.add(COMPOSER);
         // A popover has the keys while it's open, ahead of what's asked.
-        if self.picker.is_some() {
-            keys.add(PICKING);
-        } else if self.suggesting() {
+        if self.suggesting() {
             keys.add(SUGGESTING);
         } else if typed.is_empty() {
             keys.add(RECALLING);
@@ -400,7 +372,7 @@ impl Render for ChatComposer {
         let composer = cx.weak_entity();
         let labels = self.labels;
         let hearing = Self::hears_turn(Self::hears_footer(Self::hears_answers(div(), cx), cx), cx);
-        self.hears_suggestions(self.hears_picker(hearing, cx), cx)
+        self.hears_suggestions(Self::hears_model_menu(hearing, cx), cx)
             .key_context(keys)
             .relative()
             .w_full()
@@ -410,7 +382,7 @@ impl Render for ChatComposer {
             .flex_col()
             .child(
                 div()
-                    .when(self.covers_above(), gpui_kit::Styled::invisible)
+                    .when(self.suggesting(), gpui_kit::Styled::invisible)
                     .when(self.is_new(), |above| {
                         above.child(
                             div()

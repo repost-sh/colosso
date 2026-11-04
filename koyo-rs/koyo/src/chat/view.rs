@@ -242,7 +242,7 @@ impl ChatView {
     /// The pill back to the end of the timeline, once a person left it.
     fn scroll_pill(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         let composer = self.composer.read(cx);
-        if !self.pill || composer.covers_above() {
+        if !self.pill || composer.suggesting() {
             return None;
         }
         let queued = composer.queued();

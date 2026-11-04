@@ -121,7 +121,7 @@ impl ChatComposer {
     }
 
     /// Asks the host for `M`, which only says anything if it can't be done.
-    fn ask<M>(&mut self, params: M::Params, cx: &mut Context<Self>)
+    pub(super) fn ask<M>(&mut self, params: M::Params, cx: &mut Context<Self>)
     where
         M: Method + 'static,
         M::Params: Send + 'static,
@@ -132,7 +132,7 @@ impl ChatComposer {
     }
 
     /// The chat's thread, once it has one.
-    fn thread_id(&self, cx: &App) -> Option<ThreadId> {
+    pub(super) fn thread_id(&self, cx: &App) -> Option<ThreadId> {
         Some(self.thread.as_ref()?.read(cx).id().clone())
     }
 

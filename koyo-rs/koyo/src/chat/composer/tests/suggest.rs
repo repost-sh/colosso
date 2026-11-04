@@ -59,7 +59,7 @@ fn the_rows_have_the_arrows_while_they_show(cx: &mut TestAppContext) {
     let chat = with_commands("chat-suggest-arrows", cx);
 
     type_in(&chat, "/", cx);
-    press(&chat, "down up down down enter", cx);
+    press(&chat, "down up down down down enter", cx);
 
     assert_eq!(chat.typed(cx), "", "/compact is done, not said");
     let asked = chat.composer.read_with(cx, |composer, _| composer.error.clone());
@@ -74,7 +74,7 @@ fn koyos_own_command_is_done_at_once(cx: &mut TestAppContext) {
     press(&chat, "enter", cx);
 
     assert_eq!(chat.typed(cx), "");
-    assert!(picking(&chat, cx), "/model opens the picker");
+    assert!(picking(&chat, cx), "/model opens the menu");
     assert!(!suggesting(&chat, cx));
 }
 
