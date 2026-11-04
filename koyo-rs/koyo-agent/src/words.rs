@@ -2,26 +2,36 @@
 //! failed. What goes with the words, such as an icon, is the app's.
 
 use crate::protocol::ids::Time;
+use crate::protocol::methods::Model;
 use crate::protocol::model::{
-    Compaction, Effort, Failure, FailureKind, Item, ItemBody, ItemStatus, Run, TodoStatus, Tool,
-    ToolFamily,
+    Compaction, Effort, Failure, FailureKind, Item, ItemBody, ItemStatus, Mode, Run, TodoStatus,
+    Tool, ToolFamily,
 };
 use crate::protocol::requests::{
     Answer, Approval, Decision, PlanDecision, Question, Request, RequestPayload, RequestStatus,
     Response,
 };
 
-/// What shows under a final answer: "claude-opus · High · 14:30".
-pub fn answer_meta(run: &Run) -> String {
+/// What shows under a final answer: "Opus 5.5 · High · 14:30", the model as `models` calls it.
+pub fn answer_meta(run: &Run, models: &[Model]) -> String {
+    let model = run.model.as_ref().map(|id| {
+        let known = models.iter().find(|model| model.id == *id);
+        known.map_or_else(|| id.clone(), |model| model_name(model).to_owned())
+    });
     let parts = [
-        run.model.clone(),
+        model,
         run.effort.map(|effort| effort_label(effort).to_owned()),
         run.ended_at.as_ref().and_then(clock),
     ];
     parts.into_iter().flatten().collect::<Vec<_>>().join(" · ")
 }
 
-fn effort_label(effort: Effort) -> &'static str {
+/// What a model goes by: what the catalog calls it, less what it says of it in brackets.
+pub fn model_name(model: &Model) -> &str {
+    model.name.split(" (").next().unwrap_or(&model.name)
+}
+
+pub fn effort_label(effort: Effort) -> &'static str {
     match effort {
         Effort::Low => "Low",
         Effort::Medium => "Medium",
@@ -57,6 +67,21 @@ pub fn worked_for(run: &Run, requests: &[Request]) -> Option<String> {
         .sum();
     let worked = (ended - started).num_seconds() - waited;
     Some(duration(worked.max(1).unsigned_abs()))
+}
+
+pub fn mode_label(mode: Mode) -> &'static str {
+    match mode {
+        Mode::Ask => "Ask",
+        Mode::AcceptEdits => "Accept edits",
+        Mode::Auto => "Auto",
+        Mode::FullAccess => "Full access",
+    }
+}
+
+/// How full the conversation is: "42 % · 84k of 200k".
+pub fn context_line(held: u64, room: u64) -> String {
+    let percent = held.saturating_mul(100).checked_div(room).unwrap_or(0);
+    format!("{percent} % · {} of {}", tokens(held), tokens(room))
 }
 
 /// A length of time as a person says it: "41s", "1m 3s", "2h 5m".

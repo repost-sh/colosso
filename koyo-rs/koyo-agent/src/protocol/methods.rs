@@ -155,13 +155,24 @@ pub struct Command {
     pub argument_hint: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Catalog {
     pub models: Vec<Model>,
     pub commands: Vec<Command>,
     /// The mode a chat that names none runs in, from the provider's settings.
     pub default_mode: Option<Mode>,
+}
+
+impl Catalog {
+    /// The model of a chat that chose `id`: the first, which the provider recommends, if it
+    /// chose none. One no longer listed has nothing to say of it.
+    pub fn model(&self, id: Option<&str>) -> Option<&Model> {
+        match id {
+            Some(id) => self.models.iter().find(|model| model.id == id),
+            None => self.models.first(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

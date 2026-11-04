@@ -92,7 +92,7 @@ impl Drawing {
                 .into_any_element(),
             RowKind::Answer { item, run, last } => {
                 let answered = &item_at(item)?.id;
-                let meta = last.then_some(run_at(run)?).map(answer_meta);
+                let meta = last.then_some(run_at(run)?).map(|run| answer_meta(run, &[]));
                 self.answer(answered, thread.drawn_text(answered)?, meta)
                     .into_any_element()
             }
