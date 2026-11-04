@@ -45,7 +45,13 @@ use crate::settings;
 use host::agent_client;
 use thread::{ChatThread, ThreadEvent};
 
+pub use asks::{AllowRequest, AllowRequestForChat, DenyRequest};
+pub use composer::{
+    ImplementPlan, OpenModelMenu, RecallPrompt, SkipQuestion, StopTurn, TogglePlan,
+};
+pub use subagent_bar::OpenParent;
 pub use tabs::{ChatTabs, OpenChat};
+pub use view::details::ToggleDetails;
 
 /// How long the loop waits between batches: what arrives meanwhile is applied together.
 const FRAME: Duration = Duration::from_millis(16);
