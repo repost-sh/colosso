@@ -212,7 +212,7 @@ fn what_is_typed_at_a_plan_goes_as_a_message(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn a_plan_shows_in_its_place_and_copies_whole(cx: &mut TestAppContext) {
     let chat = Asking::new("chat-plan-row", vec![plan()], cx);
-    let timeline = chat.view.read_with(cx, |view, _| view.shown.as_ref().unwrap().timeline.clone());
+    let timeline = chat.view.read_with(cx, |view, _| view.showing().unwrap().timeline.clone());
     let item = koyo_agent::protocol::ids::ItemId("asks-q1".into());
 
     let text = chat.thread.read_with(cx, |thread, _| thread.drawn_text(&item).is_some());
