@@ -18,7 +18,7 @@ mod native_switch;
 #[cfg(all(target_os = "macos", feature = "visual-check"))]
 pub mod native_visual;
 mod settings_sidebar;
-mod ticked_slider;
+pub mod ticked_slider;
 #[cfg(feature = "visual-check")]
 pub mod visual;
 

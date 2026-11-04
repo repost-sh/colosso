@@ -171,6 +171,8 @@ pub struct Settings {
     pub language_servers: LanguageServers,
     /// How much of what an agent did along the way shows in a chat.
     pub chat_work: ChatWork,
+    /// How hard the agent works in a chat not set to anything else, as far as its model can.
+    pub chat_effort: koyo_agent::protocol::model::Effort,
     /// How a held arrow key repeats.
     pub key_repeat: KeyRepeat,
     /// Where a page's `DevTools` open, and the room they take docked.
@@ -243,6 +245,7 @@ impl Default for Settings {
             stop_idle_language_servers: false,
             language_servers: language_servers::every_server(),
             chat_work: ChatWork::default(),
+            chat_effort: koyo_agent::protocol::model::Effort::Xhigh,
             key_repeat: KeyRepeat::default(),
             devtools: crate::browser::DevtoolsPlace::default(),
             on_quit: crate::quitting::OnQuit::default(),
