@@ -55,6 +55,7 @@ pub enum ChatViewEvent {
 
 /// A chat a tab has on show, or under what's on show: its timeline and where it scrolled to.
 pub(super) struct Shown {
+    id: ThreadId,
     pub(super) thread: Entity<ChatThread>,
     pub(super) timeline: Entity<Timeline>,
     pub(super) scroller: Entity<MessageScrollerState>,
@@ -175,6 +176,7 @@ impl ChatView {
             under.timeline.update(cx, |timeline, cx| timeline.set_covered(true, cx));
         }
         self.shown.push(Shown {
+            id: thread.read(cx).id().clone(),
             thread,
             timeline,
             scroller,
@@ -240,6 +242,18 @@ impl ChatView {
     pub(super) fn set_place(&mut self, place: Workplace, cx: &mut Context<Self>) {
         if self.details.set_place(place, cx) {
             cx.notify();
+        }
+    }
+
+    /// What's on show has been seen, if the window's in front. Only a chat whose tab is shown is
+    /// drawn, and every change of its summary draws it again.
+    fn note_seen(&self, window: &Window, cx: &mut Context<Self>) {
+        let Some(shown) = self.showing().filter(|_| window.is_window_active()) else {
+            return;
+        };
+        if self.chats.read(cx).summary(&shown.id).is_some_and(|summary| summary.unread) {
+            let (chats, id) = (self.chats.clone(), shown.id.clone());
+            cx.defer(move |cx| chats.update(cx, |chats, cx| chats.saw(&id, cx)));
         }
     }
 
@@ -432,6 +446,7 @@ impl Focusable for ChatView {
 impl Render for ChatView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         details::keep_fresh(self, cx);
+        self.note_seen(window, cx);
         let timeline = (self.showing())
             .map(|shown| shown.timeline.clone().cached(StyleRefinement::default().size_full()));
         div()

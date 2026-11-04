@@ -108,24 +108,24 @@ pub fn sidebar(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
                     let branch = &project.branches[branch_index];
                     let selected = project_index == workspace.active_project
                         && branch_index == project.active_branch;
-                    let waiting = shell.terminals_needing_input(&branch.worktree.path);
-                    let has_terminals = shell.has_terminals(&branch.worktree.path);
-                    branch_row(project_index, branch_index, branch, selected, (waiting, has_terminals), p, cx)
+                    branch_row(shell, project_index, branch_index, branch, selected, p, cx)
                 }))
         }))
 }
 
 fn branch_row(
+    shell: &Shell,
     project_index: usize,
     branch_index: usize,
     branch: &BranchUnit,
     selected: bool,
-    (waiting, has_terminals): (usize, bool),
     p: Palette,
     cx: &mut Context<Shell>,
 ) -> impl IntoElement + use<> {
     let (path, is_main) = (branch.worktree.path.clone(), branch.is_main());
-    let terminals = has_terminals;
+    let waiting = shell.terminals_needing_input(&path);
+    let terminals = shell.has_terminals(&path);
+    let chat_mark = shell.checkout_chat_mark(&path, p, cx);
     with_menu(
         row(
             ("orca-branch", project_index * 100 + branch_index),
@@ -146,6 +146,7 @@ fn branch_row(
         row.child(div().text_xs().text_color(p.muted).child("checkout"))
     })
     .when(waiting > 0, |row| row.child(crate::terminals::waiting_badge(waiting, p)))
+    .children(chat_mark)
 }
 
 pub fn tab_strip(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
@@ -184,7 +185,7 @@ pub fn tab_strip(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
                     cx.listener(move |this, _, window, cx| this.close_tab_at(at, window, cx)),
                 );
             let list = (Axis::Horizontal, active, &shell.tab_hand);
-            let (dot, split_dot) = shell.tab_dots(tab, p);
+            let (dot, split_dot) = shell.tab_dots(tab, p, cx);
             let row = row.children(split_dot);
             tab_row(row, (at, tab), list, p, cx, |row, face, cx| {
                 let close = ("orca-tab-close", tab_index);
@@ -209,13 +210,15 @@ pub fn tab_strip(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
         .border_b_1()
         .border_color(p.hairline)
         .child(tab_list(&shell.tab_hand, list, rows, px(4.), p, cx))
-        .when(branch.is_some(), |strip| {
+        .when_some(branch, |strip, unit| {
             strip.child(new_tab_menu(
                 "orca-new-tab-menu",
                 icon_button("orca-new-tab", IconName::Plus, "New tab", cx)
                     .small()
                     .debug_selector(|| "new-tab-button".to_owned()),
                 shell.focus.clone(),
+                cx.weak_entity(),
+                unit.worktree.path.clone(),
             ))
         })
 }

@@ -88,15 +88,10 @@ pub(super) fn line(view: &ChatView, p: Palette, cx: &App) -> Option<Div> {
         "chat-details-editors",
         control("chat-details-editors-trigger", IconName::ChevronDown, p),
         view.focus_handle(cx),
-        move || {
+        move |_| {
             installed()
                 .iter()
-                .map(|editor| MenuItem {
-                    icon: None,
-                    label: (*editor).into(),
-                    action: Box::new(OpenIn(editor)),
-                    switch: None,
-                })
+                .map(|editor| MenuItem::new(None, *editor, Box::new(OpenIn(editor))))
                 .collect()
         },
     );

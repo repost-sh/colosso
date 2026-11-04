@@ -59,13 +59,35 @@ pub struct MenuItem {
     pub action: Box<dyn Action>,
     /// Whether it's on, if it's a switch: a pick flips it, and leaves the menu up.
     pub switch: Option<bool>,
+    /// Whether a line sets it apart from those above.
+    pub apart: bool,
 }
 
-/// Whether a line sets row `index` apart from those above it, as the first of the switches under
-/// other rows.
+impl MenuItem {
+    pub fn new(
+        icon: Option<IconName>,
+        label: impl Into<SharedString>,
+        action: Box<dyn Action>,
+    ) -> Self {
+        MenuItem { icon, label: label.into(), action, switch: None, apart: false }
+    }
+
+    /// A switch, on or off.
+    pub fn switch(mut self, on: bool) -> Self {
+        self.switch = Some(on);
+        self
+    }
+
+    /// With a line above it, or not.
+    pub fn apart(mut self, apart: bool) -> Self {
+        self.apart = apart;
+        self
+    }
+}
+
+/// Whether a line sets row `index` apart from those above it.
 fn separated(rows: &[(MenuItem, Option<Kbd>)], index: usize) -> bool {
-    let is_switch = |index: usize| rows.get(index).is_some_and(|(item, _)| item.switch.is_some());
-    index > 0 && is_switch(index) && !is_switch(index - 1)
+    index > 0 && rows.get(index).is_some_and(|(item, _)| item.apart)
 }
 
 /// What a menu's window holds, which hears the keys it has a use for ahead of the window that has
@@ -131,14 +153,15 @@ impl Trigger {
     /// the keys start from.
     pub fn toggle(
         &self,
-        items: impl FnOnce() -> Vec<MenuItem>,
+        items: impl FnOnce(&App) -> Vec<MenuItem>,
         highlighted: Option<usize>,
         target: &FocusHandle,
         window: &mut Window,
         cx: &mut App,
     ) {
         if self.clears_the_way(cx) {
-            open_rows(self.id.clone(), self.bounds.get(), items(), highlighted, target, window, cx);
+            let items = items(cx);
+            open_rows(self.id.clone(), self.bounds.get(), items, highlighted, target, window, cx);
         }
     }
 
@@ -170,7 +193,7 @@ pub fn dropdown(
     id: impl Into<ElementId>,
     trigger: impl IntoElement,
     target: FocusHandle,
-    items: impl Fn() -> Vec<MenuItem> + 'static,
+    items: impl Fn(&App) -> Vec<MenuItem> + 'static,
 ) -> impl IntoElement {
     let opener = Trigger::new(id);
     let toggled = opener.clone();

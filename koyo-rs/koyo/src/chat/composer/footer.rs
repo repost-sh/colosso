@@ -38,7 +38,6 @@ pub(super) const COMPOSER: &str = "ChatComposer";
 pub(super) const ROOM_FOR_LABELS: [f32; 4] = [340., 420., 480., 560.];
 /// How long a ring's stroke goes all the way around: its radius in `ring`, by 2π.
 const RING_LENGTH: f32 = 56.55;
-const MODES: [Mode; 4] = [Mode::Ask, Mode::AcceptEdits, Mode::Auto, Mode::FullAccess];
 
 actions!(chat, [TogglePlan, CompactContext]);
 
@@ -120,13 +119,11 @@ fn mode_mark(mode: Mode) -> IconName {
 
 /// The modes on offer, with a check in place of the mark of the one the chat is in.
 fn permission_rows(current: Mode, can_auto: bool) -> Vec<MenuItem> {
-    let offered = MODES.into_iter().filter(|mode| *mode != Mode::Auto || can_auto);
+    let offered = Mode::ALL.into_iter().filter(|mode| *mode != Mode::Auto || can_auto);
     offered
-        .map(|mode| MenuItem {
-            icon: Some(if mode == current { IconName::Check } else { mode_mark(mode) }),
-            label: mode_label(mode).into(),
-            action: Box::new(SetPermission(mode)),
-            switch: None,
+        .map(|mode| {
+            let icon = if mode == current { IconName::Check } else { mode_mark(mode) };
+            MenuItem::new(Some(icon), mode_label(mode), Box::new(SetPermission(mode)))
         })
         .collect()
 }
@@ -266,7 +263,7 @@ impl ChatComposer {
             "chat-permission-menu",
             trigger,
             self.focus_handle(cx),
-            move || permission_rows(mode, can_auto),
+            move |_| permission_rows(mode, can_auto),
         ))
     }
 

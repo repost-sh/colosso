@@ -52,18 +52,13 @@ fn rows(catalog: &Catalog, settings: &Settings) -> Vec<MenuItem> {
     let current = settings.model_in(catalog);
     let models = catalog.models.iter().map(|model| {
         let chosen = current.is_some_and(|current| current.id == model.id);
-        MenuItem {
-            icon: chosen.then_some(IconName::Check),
-            label: row_label(model),
-            action: Box::new(SetModel(model.id.clone())),
-            switch: None,
-        }
+        let icon = chosen.then_some(IconName::Check);
+        MenuItem::new(icon, row_label(model), Box::new(SetModel(model.id.clone())))
     });
-    let fast = current.filter(|model| model.fast).map(|_| MenuItem {
-        icon: Some(IconName::Zap),
-        label: "Fast".into(),
-        action: Box::new(ToggleFast),
-        switch: Some(settings.fast),
+    let fast = current.filter(|model| model.fast).map(|_| {
+        MenuItem::new(Some(IconName::Zap), "Fast", Box::new(ToggleFast))
+            .switch(settings.fast)
+            .apart(true)
     });
     models.chain(fast).collect()
 }
@@ -80,7 +75,7 @@ impl ChatComposer {
         let at = catalog.models.iter().position(|model| Some(model.id.as_str()) == shown);
         self.suggest = None;
         let target = self.focus_handle(cx);
-        self.model_menu.toggle(|| items, Some(at.unwrap_or(0)), &target, window, cx);
+        self.model_menu.toggle(|_| items, Some(at.unwrap_or(0)), &target, window, cx);
         window.focus(&target, cx);
         cx.notify();
     }

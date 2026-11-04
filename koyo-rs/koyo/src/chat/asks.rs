@@ -258,7 +258,7 @@ fn buttons(
             ("chat-allow-more-menu", index),
             more,
             drawing.composer.clone(),
-            move || answers_past_allow(for_chat.clone()),
+            move |_| answers_past_allow(for_chat.clone()),
         ))
     } else {
         row.child(more)
@@ -267,17 +267,9 @@ fn buttons(
 
 /// Allowing for the chat, in what the host says that adds, when it can be; and stopping.
 pub(super) fn answers_past_allow(for_chat: Option<SharedString>) -> Vec<MenuItem> {
-    let allow = for_chat.map(|label| MenuItem {
-        icon: Some(IconName::Check),
-        label,
-        action: Box::new(AllowRequestForChat),
-        switch: None,
+    let allow = for_chat.map(|label| {
+        MenuItem::new(Some(IconName::Check), label, Box::new(AllowRequestForChat))
     });
-    let stop = MenuItem {
-        icon: Some(IconName::CircleX),
-        label: "Stop".into(),
-        action: Box::new(StopRequest),
-        switch: None,
-    };
+    let stop = MenuItem::new(Some(IconName::CircleX), "Stop", Box::new(StopRequest));
     allow.into_iter().chain([stop]).collect()
 }

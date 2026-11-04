@@ -21,6 +21,11 @@ pub enum Mode {
     FullAccess,
 }
 
+impl Mode {
+    /// Every mode, from the one that asks the most.
+    pub const ALL: [Mode; 4] = [Mode::Ask, Mode::AcceptEdits, Mode::Auto, Mode::FullAccess];
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Effort {

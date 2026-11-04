@@ -1,6 +1,8 @@
 //! The pieces the window and its sidebars are drawn from: buttons on the glass, rows, the
 //! search field, and the menu of new tabs.
 
+use std::path::PathBuf;
+
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
@@ -9,7 +11,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Action, App, Context, Div, ElementId, Entity, FocusHandle, Hsla, InteractiveElement as _,
     IntoElement, MouseButton, MouseDownEvent, ParentElement as _, SharedString, Stateful,
-    StatefulInteractiveElement as _, Styled, div, px,
+    StatefulInteractiveElement as _, Styled, div, px, WeakEntity,
 };
 
 use super::{NewBrowserTab, NewChat, NewEditorTab, NewTerminal, Shell};
@@ -28,23 +30,26 @@ fn new_tab_action(kind: PaneKind) -> Box<dyn Action> {
     }
 }
 
-/// Opens a menu under `trigger` offering a tab of each kind for the selected branch unit.
+/// Opens a menu under `trigger` offering a tab of each kind for the selected branch unit, and
+/// the chats of the checkout at `worktree` no tab shows.
 pub fn new_tab_menu(
     id: impl Into<ElementId>,
     trigger: Button,
     target: FocusHandle,
+    shell: WeakEntity<Shell>,
+    worktree: PathBuf,
 ) -> impl IntoElement {
-    menu::dropdown(id, trigger, target, || {
-        PaneKind::ALL
-            .into_iter()
-            .map(|kind| MenuItem {
-                icon: Some(kind.icon()),
-                label: kind.new_tab_label().into(),
-                action: new_tab_action(kind),
-                switch: None,
-            })
-            .collect()
+    menu::dropdown(id, trigger, target, move |cx| {
+        let recent = shell.upgrade().map(|shell| shell.read(cx).recent_chats(&worktree, cx));
+        new_tab_items(recent.unwrap_or_default())
     })
+}
+
+fn new_tab_items(recent: Vec<MenuItem>) -> Vec<MenuItem> {
+    let kinds = PaneKind::ALL.into_iter().map(|kind| {
+        MenuItem::new(Some(kind.icon()), kind.new_tab_label(), new_tab_action(kind))
+    });
+    kinds.chain(recent).collect()
 }
 
 /// Empty rail space that moves the window, since the app owns titlebar dragging.

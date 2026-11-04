@@ -392,18 +392,16 @@ mod tests {
             window.draw(cx).clear(cx);
             let focus = shell.read(cx).focus.clone();
             let items = vec![
-                MenuItem {
-                    icon: Some(gpui_kit::assets::IconName::Plus),
-                    label: "New Chat".into(),
-                    action: Box::new(NewChat),
-                    switch: None,
-                },
-                MenuItem {
-                    icon: Some(gpui_kit::assets::IconName::Globe),
-                    label: "New Browser Tab".into(),
-                    action: Box::new(NewBrowserTab),
-                    switch: None,
-                },
+                MenuItem::new(
+                    Some(gpui_kit::assets::IconName::Plus),
+                    "New Chat",
+                    Box::new(NewChat),
+                ),
+                MenuItem::new(
+                    Some(gpui_kit::assets::IconName::Globe),
+                    "New Browser Tab",
+                    Box::new(NewBrowserTab),
+                ),
             ];
             menu::open_rows(
                 "test-new-tab-menu".into(),

@@ -3,19 +3,47 @@
 //! and the host is told, so the tabs come back with the app.
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
+use futures::StreamExt as _;
 use gpui_kit::{
-    AppContext as _, Context, Entity, Focusable as _, SharedString, Subscription, Window,
+    Action, App, AppContext as _, Context, Entity, Focusable as _, SharedString, Subscription, Task, Window,
 };
 use koyo_agent::protocol::ids::ThreadId;
+use koyo_agent::protocol::model::ThreadSummary;
 
 use super::view::details::Workplace;
 use super::view::{ChatView, ChatViewEvent};
 use super::{Chats, ChatsEvent};
 use crate::files::Place;
+use crate::menu::MenuItem;
 use crate::model::{PaneKind, Workspace};
+use crate::native::notifications;
 use crate::shell::Shell;
+
+/// Shows the chat a person clicked a notification of, for as long as the shell's there.
+fn notifications_clicked(cx: &mut Context<Shell>) -> Option<Task<()>> {
+    let mut clicks = notifications::clicks()?;
+    Some(cx.spawn(async move |shell, cx| {
+        while let Some(thread) = clicks.next().await {
+            let shown = shell.update(cx, |shell, cx| {
+                shell.open_chat(&ThreadId(thread), cx);
+                cx.activate(true);
+            });
+            if shown.is_err() {
+                return;
+            }
+        }
+    }))
+}
+
+/// How many chats with no tab the new-tab menu lists.
+const RECENT_CHATS: usize = 6;
+
+/// Shows a chat, in the tab showing it or in a new one.
+#[derive(Clone, Debug, PartialEq, Action)]
+#[action(namespace = chat, no_json)]
+pub struct OpenChat(pub ThreadId);
 
 pub struct ChatTabs {
     pub(super) chats: Entity<Chats>,
@@ -26,6 +54,7 @@ pub struct ChatTabs {
     /// The pane whose view takes the keyboard once it's made: the chat just opened.
     focus_next: Option<u64>,
     _followed: Subscription,
+    _clicked: Option<Task<()>>,
 }
 
 struct Made {
@@ -39,13 +68,17 @@ impl ChatTabs {
         let _followed = cx.subscribe(&chats, |this, _, event, cx| match event {
             ChatsEvent::Summaries => this.follow_chats(cx),
             ChatsEvent::Removed(id) => this.close_chat_tabs(id, cx),
+            ChatsEvent::News { id, title, said } => notifications::post(&id.0, title, said),
         });
+        // A click on what a chat told a person shows that chat.
+        let _clicked = notifications_clicked(cx);
         ChatTabs {
             chats,
             views: HashMap::new(),
             shown: HashSet::new(),
             focus_next: None,
             _followed,
+            _clicked,
         }
     }
 
@@ -171,11 +204,41 @@ impl Shell {
         self.chat_tabs.focus_next = pane;
     }
 
+    /// Shows thread `id`: the tab showing it already, or a new one on its checkout. The pane that
+    /// shows it; `None` if there's no such chat, or its checkout isn't listed.
+    pub(crate) fn open_chat(&mut self, id: &ThreadId, cx: &mut Context<Self>) -> Option<u64> {
+        if let Some((at, pane)) = self.workspace.find_pane(|pane| pane.chat.as_ref() == Some(id)) {
+            self.workspace.select_tab(at.0, at.1, at.2);
+            cx.notify();
+            return Some(pane);
+        }
+        let cwd = PathBuf::from(&self.chat_tabs.chats.read(cx).summary(id)?.cwd);
+        let pane = self.workspace.add_chat_tab(&cwd, id.clone(), true)?;
+        self.focus_chat_next();
+        self.follow_chats(cx);
+        Some(pane)
+    }
+
+    /// The chats of the checkout at `worktree` no tab shows, latest first, as a menu's rows.
+    pub(crate) fn recent_chats(&self, worktree: &Path, cx: &App) -> Vec<MenuItem> {
+        let tabs = &self.chat_tabs;
+        let mut recent: Vec<&ThreadSummary> = (tabs.chats.read(cx).summaries.values())
+            .filter(|summary| Path::new(&summary.cwd) == worktree)
+            .filter(|summary| !tabs.shown.contains(&summary.id))
+            .collect();
+        recent.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        recent.truncate(RECENT_CHATS);
+        let rows = recent.into_iter().enumerate().map(|(at, summary)| {
+            let open = Box::new(OpenChat(summary.id.clone()));
+            MenuItem::new(Some(PaneKind::Chat.icon()), summary.title.clone(), open).apart(at == 0)
+        });
+        rows.collect()
+    }
+
     /// The first send of pane `pane` made its thread.
     fn chat_created(&mut self, pane: u64, id: ThreadId, cx: &mut Context<Self>) {
         self.workspace.set_chat(pane, id);
         self.follow_chats(cx);
-        cx.notify();
     }
 
     /// The tabs follow the summaries, and what's listed: the chats that had tabs when the app
@@ -183,13 +246,13 @@ impl Shell {
     pub(crate) fn follow_chats(&mut self, cx: &mut Context<Self>) {
         self.restore_chats(cx);
         let chats = self.chat_tabs.chats.read(cx);
-        let changed = self.workspace.retitle_chats(|id| {
+        self.workspace.retitle_chats(|id| {
             let title = chats.summary(id).map(|summary| summary.title.as_str());
             title.filter(|title| !title.is_empty())
         });
-        if changed {
-            cx.notify();
-        }
+        // Whatever changed, the tabs and rows may say something else of them now, and what the
+        // panes show may have changed.
+        cx.notify();
     }
 
     /// Brings back the chats that had tabs, each once its checkout is listed. One a pane shows
@@ -204,9 +267,8 @@ impl Shell {
         };
         for (id, cwd) in waiting {
             let shown = (self.workspace.chat_panes()).any(|(_, thread)| thread == Some(&id));
-            if shown || self.workspace.add_chat_tab(&cwd, id.clone()) {
+            if shown || self.workspace.add_chat_tab(&cwd, id.clone(), false).is_some() {
                 chats.update(cx, |chats, _| chats.restored(&id));
-                cx.notify();
             }
         }
     }

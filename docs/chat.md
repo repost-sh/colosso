@@ -1035,8 +1035,11 @@ Layout, top to bottom inside the pane's card:
   top loads older runs (`threads.history`).
 - **Status in the shell.** The tab face shows a spinner while working, a dot in the text's colour
   when it needs you, a dot when unread, red when failed. The sidebar's worktree row shows the
-  most urgent of its chats. A macOS notification when a chat needs you or finishes while
-  Koyo isn't frontmost, opening the chat when clicked.
+  most urgent of its chats, and a chat with no tab counts only while it's working or needs you.
+  A chat on show with the window in front has been seen, and says so to the host (`threads.read`),
+  so a mark for what's new or failed goes once it's looked at. A macOS notification when a chat
+  needs you or finishes while Koyo isn't frontmost, opening the chat when clicked; only a bundled
+  app can post one.
 
 ### 5.4 Performance budget [proposed]
 

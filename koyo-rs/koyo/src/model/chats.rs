@@ -8,14 +8,14 @@ use koyo_agent::protocol::ids::ThreadId;
 use super::{BranchUnit, Pane, PaneKind, Tab, Workspace};
 
 impl Workspace {
-    /// Adds a tab for thread `id` on the checkout at `worktree`, not shown; false when no such
-    /// checkout is listed. Its title comes from `retitle_chats`.
-    pub fn add_chat_tab(&mut self, worktree: &Path, id: ThreadId) -> bool {
+    /// Adds a tab for thread `id` on the checkout at `worktree`, shown when `select`: its pane,
+    /// unless no such checkout is listed. Its title comes from `retitle_chats`.
+    pub fn add_chat_tab(&mut self, worktree: &Path, id: ThreadId, select: bool) -> Option<u64> {
         let pane = Pane {
             chat: Some(id),
             ..Pane::new(PaneKind::Chat)
         };
-        self.add_pane_tab(worktree, pane, false).is_some()
+        self.add_pane_tab(worktree, pane, select)
     }
 
     /// Every chat pane's id and the thread it shows, if it has one yet, split or not.
@@ -47,19 +47,15 @@ impl Workspace {
         }
     }
 
-    /// Names each chat pane what `title_of` says its thread is called, if anything; whether
-    /// that changed one.
-    pub fn retitle_chats<'a>(&mut self, title_of: impl Fn(&ThreadId) -> Option<&'a str>) -> bool {
-        let mut changed = false;
+    /// Names each chat pane what `title_of` says its thread is called, if anything.
+    pub fn retitle_chats<'a>(&mut self, title_of: impl Fn(&ThreadId) -> Option<&'a str>) {
         let panes = (self.units_mut()).flat_map(|unit| unit.tabs.iter_mut().flat_map(Tab::panes_mut));
         for pane in panes {
             let title = pane.chat.as_ref().and_then(&title_of);
             if let Some(title) = title.filter(|title| *title != pane.title.as_ref()) {
                 pane.title = title.to_owned().into();
-                changed = true;
             }
         }
-        changed
     }
 
     fn units_mut(&mut self) -> impl Iterator<Item = &mut BranchUnit> {
@@ -99,12 +95,12 @@ mod tests {
     fn a_chat_tab_goes_on_its_checkout_unshown_and_only_on_one_that_is_listed() {
         let mut workspace = workspace();
         workspace.new_tab(PaneKind::Chat);
-        assert!(workspace.add_chat_tab("/src/app".as_ref(), thread("t")));
+        assert!(workspace.add_chat_tab("/src/app".as_ref(), thread("t"), false).is_some());
         let unit = workspace.branch().unwrap();
         assert_eq!(unit.tabs.len(), 2);
         assert_eq!(unit.active_tab, 0);
         assert_eq!(unit.tabs[1].first().chat, Some(thread("t")));
-        assert!(!workspace.add_chat_tab("/src/gone".as_ref(), thread("u")));
+        assert!(workspace.add_chat_tab("/src/gone".as_ref(), thread("u"), false).is_none());
     }
 
     #[test]
@@ -120,7 +116,7 @@ mod tests {
     #[test]
     fn a_chat_is_found_in_a_split_and_its_panes_go_with_it() {
         let mut workspace = workspace();
-        workspace.add_chat_tab("/src/app".as_ref(), thread("t"));
+        workspace.add_chat_tab("/src/app".as_ref(), thread("t"), false);
         let terminal = Pane::new(PaneKind::Terminal);
         let unit = workspace.branch_mut().unwrap();
         let Some(Tab::Single(chat)) = unit.tabs.pop() else {
@@ -129,9 +125,14 @@ mod tests {
         unit.tabs
             .push(Tab::beside(Tab::Single(terminal.clone()), Tab::Single(chat)));
         assert_eq!(shown(&workspace), [Some(&thread("t"))]);
-        assert!(workspace.retitle_chats(|_| Some("How")));
-        assert!(!workspace.retitle_chats(|_| Some("How")));
-        assert!(!workspace.retitle_chats(|_| None));
+        let title = |workspace: &Workspace| {
+            let panes = workspace.branch().unwrap().tabs[0].panes();
+            panes.iter().find(|pane| pane.chat.is_some()).unwrap().title.clone()
+        };
+        workspace.retitle_chats(|_| Some("How"));
+        assert_eq!(title(&workspace), "How");
+        workspace.retitle_chats(|_| None);
+        assert_eq!(title(&workspace), "How");
         workspace.close_chat_panes(&thread("t"));
         assert!(shown(&workspace).is_empty());
         // What it shared the tab with stays.
