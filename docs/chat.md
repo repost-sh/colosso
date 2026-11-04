@@ -1119,8 +1119,9 @@ Each milestone ends with `script/check` green, the simplify pass, and its commit
 - **O1 [open] Koyo's MCP server in chat sessions** (the terminal and browser tools of
   `docs/terminals.md` 8), so the chat's Claude can drive Koyo's terminals. Default: no for
   v1; a setting once the tools are scoped to the chat's worktree.
-- **O2 [open] Installing Claude Code** when it's missing, by opening a terminal tab with
-  Anthropic's install command. Default: show the command and a "Check again" button.
+- **O2 [decided] Installing Claude Code** when it's missing: a chat shows the install command
+  to copy and a "Check again" button, over the composer. Opening a terminal tab with the
+  command is left for later.
 - **O3 [open] Claude sessions started outside Koyo.** Sessions started in Koyo are ordinary
   Claude sessions on disk; the worktree's other sessions (`listSessions`) could be continued
   in a chat. Default: later.

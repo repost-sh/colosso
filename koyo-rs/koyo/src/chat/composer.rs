@@ -15,6 +15,7 @@ mod context;
 mod draft;
 mod effort;
 mod footer;
+mod missing;
 mod model_menu;
 mod question;
 mod sending;
@@ -169,6 +170,7 @@ impl ChatComposer {
                 .submit_on_enter(true)
                 .placeholder(Asked::Nothing.placeholder())
         });
+        let claude_missing = chats.read(cx).claude_missing.clone();
         let subscriptions = vec![
             cx.subscribe_in(&text, window, |this, _, event, window, cx| {
                 match event {
@@ -184,6 +186,7 @@ impl ChatComposer {
                     cx.notify();
                 }
             }),
+            cx.observe(&claude_missing, |_, _, cx| cx.notify()),
             // What the menus were opened on may not be there any more, nor the commands listed.
             cx.observe(&catalog, |this, _, cx| {
                 this.model_menu.close(cx);
@@ -413,6 +416,7 @@ impl Render for ChatComposer {
                                 .child(format!("Chat in {}", self.place)),
                         )
                     })
+                    .children(self.claude_missing_note(p, cx))
                     .children(self.note(p, cx)),
             )
             .child(surface)

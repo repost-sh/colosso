@@ -96,6 +96,8 @@ pub struct Chats {
     threads: HashMap<ThreadId, WeakEntity<ChatThread>>,
     /// What each checkout a tab shows can choose from.
     catalogs: HashMap<PathBuf, WeakEntity<Catalog>>,
+    /// Whether the host found no Claude Code to run chats on.
+    claude_missing: Entity<bool>,
     connection: Connection,
     /// The threads that had tabs when the app last ran and have none yet, from the host's first
     /// list in this run: `None` until it comes. Later lists and summaries bring none back, so a
@@ -138,6 +140,7 @@ impl Chats {
             checkout_marks: HashMap::new(),
             threads: HashMap::new(),
             catalogs: HashMap::new(),
+            claude_missing: cx.new(|_| false),
             connection,
             to_restore: None,
             connecting: None,
