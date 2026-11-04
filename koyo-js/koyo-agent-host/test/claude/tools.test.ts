@@ -1,7 +1,15 @@
 import { describe, expect, test } from "bun:test";
 
 import type { Hunk } from "../../src/protocol/model";
-import { bounded, boundedPatch, family, toolStarted } from "../../src/providers/claude/tools";
+import {
+  bounded,
+  boundedPatch,
+  change,
+  detail,
+  family,
+  fieldsOf,
+  toolStarted,
+} from "../../src/providers/claude/tools";
 import {
   assistant,
   message,
@@ -43,6 +51,35 @@ describe("families", () => {
     const kept = bounded(input);
     expect(JSON.stringify(kept).length).toBeLessThan(4200);
     expect(toolStarted("Write", input).payload.input).toEqual(kept);
+  });
+});
+
+describe("what a request shows", () => {
+  const shown = (name: string, input: unknown): string =>
+    detail(name, fieldsOf(input), bounded(input));
+  const changed = (name: string, input: unknown): string[] | null =>
+    change(name, fieldsOf(input));
+
+  test("a command as it's run, and a file's path", () => {
+    expect(shown("Bash", { command: "cargo test" })).toBe("cargo test");
+    expect(changed("Bash", { command: "cargo test" })).toBeNull();
+    expect(shown("Write", { file_path: NOTES, content: "one" })).toBe(NOTES);
+    expect(shown("NotebookEdit", { notebook_path: NOTES })).toBe(NOTES);
+    expect(changed("NotebookEdit", { notebook_path: NOTES })).toBeNull();
+  });
+
+  test("an edit's change in lines, however its text starts", () => {
+    expect(changed("Edit", { old_string: "one\ntwo", new_string: "three" }))
+      .toEqual(["-one", "-two", "+three"]);
+    expect(changed("Write", { content: "-one\n+two" })).toEqual(["+-one", "++two"]);
+  });
+
+  test("however long what's asked is, a bounded head of it", () => {
+    const long = "x".repeat(100_000);
+    expect(shown("Bash", { command: long }).length).toBeLessThan(17 * 1024);
+    const written = changed("Write", { content: long })?.join("\n") ?? "";
+    expect(written.length).toBeLessThan(17 * 1024);
+    expect(written.endsWith("…")).toBe(true);
   });
 });
 

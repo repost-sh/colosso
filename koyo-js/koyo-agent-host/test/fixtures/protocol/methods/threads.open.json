@@ -409,7 +409,9 @@
             "tool": "Bash",
             "family": "command",
             "title": "Run a command",
+            "label": "cargo test -p ledger -- --test-threads=1",
             "detail": "cargo test -p ledger -- --test-threads=1",
+            "change": null,
             "input": {
               "command": "cargo test -p ledger -- --test-threads=1"
             },
