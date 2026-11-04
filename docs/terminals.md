@@ -342,7 +342,7 @@ the daemon runs the operations (8.1). Loopback HTTP is deferred.
     (5.8) and `terminals/<handle>/snapshot.bin` (optional, 5.9).
   - `mcp.token` (0600): secret for app-launched agents, regenerated at daemon start.
 - Quitting the app (⌘Q, the menu) with terminals running asks whether to end them or keep them,
-  unless a choice was kept (Settings → General; `crates/koyo/src/quitting.rs`). Ending closes
+  unless a choice was kept (Settings → General; `koyo-rs/koyo/src/quitting.rs`). Ending closes
   each terminal, so none runs again at the next launch, then stops the daemon. The Dock and a
   logout can't be held up to ask, and keep them.
 - Shutdown: `Shutdown` frame from an authorized client, or SIGTERM. The daemon sends SIGHUP
