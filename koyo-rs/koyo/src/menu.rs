@@ -13,7 +13,7 @@ use gpui_kit::component::kbd::Kbd;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Action, AnyWindowHandle, App, AppContext as _, Bounds, Context, ElementId, FocusHandle, Global,
-    InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, Pixels, Render,
+    InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, Pixels, Render, Rems,
     SharedString, StatefulInteractiveElement as _, Styled as _, Subscription, Window,
     WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions, div, point, px, size,
 };
@@ -21,8 +21,22 @@ use gpui_kit::{
 use crate::shell::icon;
 use crate::theme;
 
+/// The narrowest a menu gets, and the widest: past that, a row's label wraps. A label can be what a
+/// person agrees to, so it's never cut.
 const WIDTH: f32 = 220.;
+const MAX_WIDTH: f32 = 420.;
 const PADDING: f32 = 5.;
+/// How tall a line of a label is; what a row adds past its first.
+const LABEL_LINE: f32 = 18.;
+const ROW_PADDING: f32 = 8.;
+const ICON: f32 = 15.;
+const ROW_GAP: f32 = 10.;
+const LABEL_SIZE: Rems = Rems(0.875);
+/// What a row holds beside its label: its padding, its icon and the gap after it.
+const ROW_ROOM: f32 = ROW_PADDING * 2. + ICON + ROW_GAP;
+/// What a shortcut takes of a row, and the gap before it: a row's label is measured for what's left.
+const SHORTCUT: f32 = 50.;
+const SHORTCUT_ROOM: f32 = SHORTCUT + ROW_GAP;
 /// How long the parent window may be inactive before the menu takes it as left, in ms:
 /// long enough for the menu's own activation to arrive after a click on a row.
 const ACTIVATION_GRACE: u64 = 80;
@@ -125,12 +139,18 @@ pub(crate) fn open(
             (item, shortcut)
         })
         .collect();
-    let origin = window.bounds().origin + point(anchor.left(), anchor.bottom() + px(GAP));
-    let height = PADDING * 2. + theme::ROW_HEIGHT * items.len() as f32;
+    let (width, height) = fitted(&items, window);
+    // Right of the window's edge it'd lie over what isn't the app's, so it opens leftwards.
+    let left = if anchor.left() + width > window.bounds().size.width {
+        anchor.right() - width
+    } else {
+        anchor.left()
+    };
+    let origin = window.bounds().origin + point(left, anchor.bottom() + px(GAP));
     let options = WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(Bounds::new(
             origin,
-            size(px(WIDTH), px(height)),
+            size(width, height),
         ))),
         titlebar: None,
         focus: false,
@@ -193,6 +213,34 @@ pub(crate) fn open(
         .ok();
 }
 
+/// How wide a menu is, for its longest row within what a menu can be, and how tall its rows then
+/// are, those whose labels had to wrap taking more.
+fn fitted(items: &[(MenuItem, Option<Kbd>)], window: &Window) -> (Pixels, Pixels) {
+    let style = window.text_style();
+    let font_size = LABEL_SIZE.to_pixels(window.rem_size());
+    let run = |label: &SharedString| style.to_run(label.len());
+    let beside = |shortcut: &Option<Kbd>| {
+        px(ROW_ROOM + if shortcut.is_some() { SHORTCUT_ROOM } else { 0. })
+    };
+    let longest = items.iter().map(|(item, shortcut)| {
+        let label = &item.label;
+        let line = window.text_system().shape_line(label.clone(), font_size, &[run(label)], None);
+        line.width + beside(shortcut)
+    });
+    // A pixel over, for a label to fit in what it measures rather than wrap at its very end.
+    let width = longest.fold(px(0.), Pixels::max) + px(PADDING * 2. + 1.);
+    let width = width.clamp(px(WIDTH), px(MAX_WIDTH));
+    let rows = items.iter().map(|(item, shortcut)| {
+        let label = &item.label;
+        let room = width - px(PADDING * 2.) - beside(shortcut);
+        let lines = (window.text_system())
+            .shape_text(label.clone(), font_size, &[run(label)], Some(room), None)
+            .map_or(1, |shaped| shaped.iter().map(|line| line.wrap_boundaries.len() + 1).sum());
+        theme::ROW_HEIGHT + LABEL_LINE * (lines - 1) as f32
+    });
+    (width, px(PADDING * 2. + rows.sum::<f32>()))
+}
+
 struct Menu {
     items: Vec<(MenuItem, Option<Kbd>)>,
     target: FocusHandle,
@@ -230,24 +278,34 @@ impl Render for Menu {
                     .map(|(index, (item, shortcut))| {
                         div()
                             .id(index)
-                            .h(px(theme::ROW_HEIGHT))
+                            .min_h(px(theme::ROW_HEIGHT))
                             .flex_shrink_0()
-                            .px(px(8.))
+                            .px(px(ROW_PADDING))
                             .flex()
                             .items_center()
-                            .gap(px(10.))
+                            .gap(px(ROW_GAP))
                             .rounded(px(6.))
-                            .text_sm()
+                            .text_size(LABEL_SIZE)
                             .cursor_pointer()
                             .hover(|style| style.bg(p.selected))
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.pick(index, window, cx);
                             }))
-                            .child(icon(item.icon, 15.).text_color(p.muted))
-                            .child(div().flex_1().child(item.label.clone()))
+                            .child(icon(item.icon, ICON).text_color(p.muted))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .line_height(px(LABEL_LINE))
+                                    .child(item.label.clone()),
+                            )
                             .when_some(shortcut.clone(), |row, keys| {
                                 row.child(
                                     div()
+                                        .flex()
+                                        .flex_shrink_0()
+                                        .justify_end()
+                                        .w(px(SHORTCUT))
                                         .text_xs()
                                         .text_color(p.muted)
                                         .child(keys.appearance(false)),
