@@ -6,7 +6,10 @@ use crate::protocol::model::{
     Compaction, Effort, Failure, FailureKind, Item, ItemBody, ItemStatus, Run, TodoStatus, Tool,
     ToolFamily,
 };
-use crate::protocol::requests::{Answer, Approval, Decision, Request, Response};
+use crate::protocol::requests::{
+    Answer, Approval, Decision, PlanDecision, Question, Request, RequestPayload, RequestStatus,
+    Response,
+};
 
 /// What shows under a final answer: "claude-opus · High · 14:30".
 pub fn answer_meta(run: &Run) -> String {
@@ -39,13 +42,16 @@ pub fn clock(time: &Time) -> Option<String> {
 }
 
 /// How long a settled run took of the agent's own time: what it waited on a person for isn't work.
+/// It doesn't wait on a plan, which is answered after the run; nor past its end on a question left
+/// when the host stopped.
 pub fn worked_for(run: &Run, requests: &[Request]) -> Option<String> {
     let started = parsed(run.started_at.as_ref()?)?;
     let ended = parsed(run.ended_at.as_ref()?)?;
     let waited: i64 = (requests.iter())
         .filter(|request| request.run_id == run.id)
+        .filter(|request| !matches!(request.payload, RequestPayload::Plan { .. }))
         .filter_map(|request| {
-            let answered = parsed(request.resolved_at.as_ref()?)?;
+            let answered = parsed(request.resolved_at.as_ref()?)?.min(ended);
             Some((answered - parsed(&request.created_at)?).num_seconds())
         })
         .sum();
@@ -194,6 +200,55 @@ pub fn approval_line(request: &Request, approval: &Approval, cwd: &str) -> Strin
         (Decision::Deny, Some(message)) => format!("Denied {what}: {message}"),
         (Decision::Deny, None) => format!("Denied {what}"),
         (Decision::Cancel, _) => format!("Stopped at {what}"),
+    }
+}
+
+/// What's said of a question's request, a line for each thing it asks: what was asked while it
+/// waits, and what the person said once it's answered.
+pub fn question_lines(request: &Request, questions: &[Question]) -> Vec<String> {
+    let line = |question: &Question| {
+        let what = &question.text;
+        match &request.answer {
+            Some(Answer::Response(Response::Question { answers })) => {
+                match answers.get(&question.id).filter(|chosen| !chosen.is_empty()) {
+                    Some(chosen) => format!("{}: {}", question.header, chosen.join(", ")),
+                    None => format!("Skipped: {what}"),
+                }
+            }
+            Some(Answer::Message { .. }) => format!("Answered by your message: {what}"),
+            _ if request.status == RequestStatus::Pending => format!("Asked: {what}"),
+            _ => format!("No longer asked: {what}"),
+        }
+    };
+    questions.iter().map(line).collect()
+}
+
+/// A plan's title, its first heading, and what's to show under it: the rest if it starts with
+/// that heading, or else all of it.
+pub fn plan_parts(markdown: &str) -> (Option<&str>, &str) {
+    let start = markdown.trim_start();
+    let (first, rest) = start.split_once('\n').unwrap_or((start, ""));
+    match heading(first) {
+        Some(title) => (Some(title), rest.trim_start()),
+        None => (markdown.lines().find_map(heading), markdown),
+    }
+}
+
+/// The words of a line of markdown that's a heading.
+fn heading(line: &str) -> Option<&str> {
+    let words = line.trim_start_matches('#');
+    (words.len() < line.len() && words.starts_with(' ')).then(|| words.trim())
+}
+
+/// What became of a plan, once something did: nothing's said of one still waiting.
+pub fn plan_outcome(request: &Request) -> Option<&'static str> {
+    match request.answer.as_ref()? {
+        Answer::Response(Response::Plan { decision }) => Some(match decision {
+            PlanDecision::Implement => "Implemented",
+            PlanDecision::Dismiss => "Dismissed",
+        }),
+        Answer::Message { .. } => Some("Refined by your message"),
+        _ => None,
     }
 }
 

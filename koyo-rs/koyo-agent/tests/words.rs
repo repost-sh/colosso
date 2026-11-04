@@ -4,16 +4,19 @@
 #[path = "support/records.rs"]
 mod records;
 
-use koyo_agent::protocol::ids::{RunId, Time};
+use std::collections::BTreeMap;
+
+use koyo_agent::protocol::ids::{MessageId, RunId, Time};
 use koyo_agent::protocol::model::{
     Compaction, CompactionTrigger, Effort, Item, ItemBody, ItemStatus, Run, RunStatus, ToolFamily,
 };
 use koyo_agent::protocol::requests::{
-    Answer, Approval, Decision, Request, RequestStatus, Response,
+    Answer, Approval, Decision, PlanDecision, Question, QuestionOption, Questions, Request,
+    RequestPayload, RequestStatus, Response,
 };
 use koyo_agent::words::{
-    answer_meta, approval_line, compacted, duration, live_line, tool_line, work_line, work_summary,
-    worked_for,
+    answer_meta, approval_line, compacted, duration, live_line, plan_outcome, plan_parts,
+    question_lines, tool_line, work_line, work_summary, worked_for,
 };
 use records::{done, reasoning, request, run, subagent, tool_of};
 use serde_json::json;
@@ -143,6 +146,10 @@ fn a_run_worked_for_as_long_as_it_took_less_what_it_waited_on_a_person_for() {
     let asked = Request {
         created_at: at(10),
         resolved_at: Some(at(46)),
+        payload: RequestPayload::Question(Questions {
+            questions: Vec::new(),
+            live: true,
+        }),
         ..request("q1", RequestStatus::Answered)
     };
     let elsewhere = Request {
@@ -151,5 +158,85 @@ fn a_run_worked_for_as_long_as_it_took_less_what_it_waited_on_a_person_for() {
     };
 
     assert_eq!(worked_for(&done, &[]).as_deref(), Some("50s"));
-    assert_eq!(worked_for(&done, &[asked, elsewhere]).as_deref(), Some("14s"));
+    assert_eq!(worked_for(&done, &[asked.clone(), elsewhere]).as_deref(), Some("14s"));
+
+    let left_at_a_restart = Request {
+        created_at: at(40),
+        resolved_at: Some(Time("2026-11-03T10:30:00.000Z".into())),
+        ..asked
+    };
+    assert_eq!(worked_for(&done, &[left_at_a_restart]).as_deref(), Some("40s"));
+
+    let plan = request("p", RequestStatus::Answered);
+    let plan = Request {
+        created_at: at(40),
+        resolved_at: Some(Time("2026-11-03T10:30:00.000Z".into())),
+        ..plan
+    };
+    assert_eq!(worked_for(&done, &[plan]).as_deref(), Some("50s"), "nothing waited on it");
+}
+
+fn indentation() -> Question {
+    Question {
+        id: "Tabs or spaces?".into(),
+        header: "Indentation".into(),
+        text: "Tabs or spaces?".into(),
+        multi_select: false,
+        options: vec![QuestionOption {
+            label: "Tabs".into(),
+            description: None,
+            preview: None,
+        }],
+    }
+}
+
+fn answered(answer: Answer) -> Request {
+    Request {
+        answer: Some(answer),
+        ..request("q", RequestStatus::Answered)
+    }
+}
+
+#[test]
+fn a_question_says_what_was_asked_and_then_what_the_person_said() {
+    let asked = [indentation()];
+    let lines = |request: &Request| question_lines(request, &asked);
+    let chose = |choices: &[&str]| {
+        let answers: BTreeMap<String, Vec<String>> = BTreeMap::from([(
+            "Tabs or spaces?".to_owned(),
+            choices.iter().map(|choice| (*choice).to_owned()).collect(),
+        )]);
+        Answer::Response(Response::Question { answers })
+    };
+
+    assert_eq!(lines(&request("q", RequestStatus::Pending)), ["Asked: Tabs or spaces?"]);
+    assert_eq!(lines(&answered(chose(&["Tabs"]))), ["Indentation: Tabs"]);
+    assert_eq!(lines(&answered(chose(&["Tabs", "Both"]))), ["Indentation: Tabs, Both"]);
+    let skipped = Answer::Response(Response::Question { answers: BTreeMap::new() });
+    assert_eq!(lines(&answered(skipped)), ["Skipped: Tabs or spaces?"]);
+    let by_message = Answer::Message { message_id: MessageId("m".into()) };
+    assert_eq!(lines(&answered(by_message)), ["Answered by your message: Tabs or spaces?"]);
+    assert_eq!(lines(&request("q", RequestStatus::Expired)), ["No longer asked: Tabs or spaces?"]);
+}
+
+#[test]
+fn a_plan_is_titled_by_its_first_heading() {
+    assert_eq!(plan_parts("# Ship it\n\n1. Build\n"), (Some("Ship it"), "1. Build\n"));
+    assert_eq!(plan_parts("\n## Ship it"), (Some("Ship it"), ""));
+    assert_eq!(
+        plan_parts("First this.\n\n# Ship it\nThen."),
+        (Some("Ship it"), "First this.\n\n# Ship it\nThen."),
+        "there's more above it to read",
+    );
+    assert_eq!(plan_parts("#hashtag\n1. Build"), (None, "#hashtag\n1. Build"));
+}
+
+#[test]
+fn a_plan_says_what_became_of_it() {
+    let plan = |decision| Answer::Response(Response::Plan { decision });
+    assert_eq!(plan_outcome(&request("p", RequestStatus::Pending)), None);
+    assert_eq!(plan_outcome(&answered(plan(PlanDecision::Implement))), Some("Implemented"));
+    assert_eq!(plan_outcome(&answered(plan(PlanDecision::Dismiss))), Some("Dismissed"));
+    let by_message = Answer::Message { message_id: MessageId("m".into()) };
+    assert_eq!(plan_outcome(&answered(by_message)), Some("Refined by your message"));
 }
