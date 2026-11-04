@@ -7,7 +7,7 @@ use gpui_kit::component::Disableable as _;
 use gpui_kit::component::switch::Switch;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    App, ClickEvent, Context, Div, ElementId, Focusable as _, InteractiveElement as _, KeyBinding,
+    App, ClickEvent, Context, Div, Focusable as _, InteractiveElement as _, KeyBinding,
     MouseMoveEvent, ParentElement as _, ScrollHandle, Stateful, StatefulInteractiveElement as _,
     Styled as _, Window, actions, div, px,
 };
@@ -18,7 +18,6 @@ use koyo_agent::words::effort_label;
 use super::ChatComposer;
 use super::footer::{COMPOSER, Settings};
 use crate::list::{self, Activate, PageDown, PageUp, SelectNext, SelectPrevious};
-use crate::native::liquid;
 use crate::shell::{ellipsized, icon, row};
 use crate::theme::{self, Palette};
 
@@ -96,17 +95,13 @@ fn kept_effort(settings: &Settings, model: &Model) -> Option<Effort> {
 }
 
 impl ChatComposer {
-    /// Whether the picker is open, over what's above the composer.
-    pub(in crate::chat) fn is_picking(&self) -> bool {
-        self.picker.is_some()
-    }
-
     /// Opens the picker on the model the chat is set to, or closes it.
     pub(super) fn toggle_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         cx.notify();
         if self.picker.take().is_some() {
             return;
         }
+        self.suggest = None;
         let models = &self.catalog.read(cx).models;
         if models.is_empty() {
             return;
@@ -227,20 +222,31 @@ impl ChatComposer {
     }
 
     /// `column`, which hears the picker's keys.
-    pub(super) fn hears_picker(column: Div, cx: &mut Context<Self>) -> Div {
+    pub(super) fn hears_picker(&self, column: Div, cx: &Context<Self>) -> Div {
         column
             .on_action(cx.listener(|this, _: &OpenModelPicker, window, cx| {
                 this.toggle_picker(window, cx);
             }))
-            .on_action(cx.listener(|this, _: &SelectPrevious, _, cx| this.move_in_picker(-1, cx)))
-            .on_action(cx.listener(|this, _: &SelectNext, _, cx| this.move_in_picker(1, cx)))
-            .on_action(cx.listener(|this, _: &PageUp, _, cx| this.move_in_picker(-PAGE, cx)))
-            .on_action(cx.listener(|this, _: &PageDown, _, cx| this.move_in_picker(PAGE, cx)))
-            .on_action(cx.listener(|this, _: &PickerToEfforts, _, cx| this.over_to_efforts(cx)))
-            .on_action(cx.listener(|this, _: &PickerToModels, _, cx| this.back_to_models(cx)))
-            .on_action(cx.listener(|this, _: &Activate, _, cx| this.pick(cx)))
-            .on_action(cx.listener(|this, _: &PickerClose, _, cx| this.close_picker(cx)))
-            .on_action(cx.listener(|this, _: &PickerFast, _, cx| this.toggle_fast(cx)))
+            .when(self.picker.is_some(), |column| {
+                column
+                    .on_action(cx.listener(|this, _: &SelectPrevious, _, cx| {
+                        this.move_in_picker(-1, cx);
+                    }))
+                    .on_action(cx.listener(|this, _: &SelectNext, _, cx| {
+                        this.move_in_picker(1, cx);
+                    }))
+                    .on_action(cx.listener(|this, _: &PageUp, _, cx| this.move_in_picker(-PAGE, cx)))
+                    .on_action(cx.listener(|this, _: &PageDown, _, cx| this.move_in_picker(PAGE, cx)))
+                    .on_action(cx.listener(|this, _: &PickerToEfforts, _, cx| {
+                        this.over_to_efforts(cx);
+                    }))
+                    .on_action(cx.listener(|this, _: &PickerToModels, _, cx| {
+                        this.back_to_models(cx);
+                    }))
+                    .on_action(cx.listener(|this, _: &Activate, _, cx| this.pick(cx)))
+                    .on_action(cx.listener(|this, _: &PickerClose, _, cx| this.close_picker(cx)))
+                    .on_action(cx.listener(|this, _: &PickerFast, _, cx| this.toggle_fast(cx)))
+            })
     }
 
     /// The popover, while it's open.
@@ -251,28 +257,11 @@ impl ChatComposer {
         cx: &mut Context<Self>,
     ) -> Option<Stateful<Div>> {
         let picker = self.picker.as_ref()?;
-        let keyed = ElementId::NamedInteger("chat-model-glass".into(), cx.entity_id().as_u64());
-        let on_glass = liquid::backdrop(keyed, px(14.), window, cx);
+        let popover = Self::popover("chat-model-picker", p, window, cx)
+            .w(px(WIDTH))
+            .on_mouse_down_out(cx.listener(|this, _, _, cx| this.close_picker(cx)));
         let catalog = self.catalog.read(cx);
         let highlighted = catalog.models.get(picker.at)?;
-        let popover = div()
-            .id("chat-model-picker")
-            .absolute()
-            .bottom_full()
-            .left_0()
-            .mb_2()
-            .w(px(WIDTH))
-            .max_w_full()
-            .flex()
-            .flex_col()
-            .gap_1()
-            .p_2()
-            .rounded(px(14.))
-            .occlude()
-            .text_color(p.text)
-            // No press in here takes the keyboard from what's typed, which its keys are heard from.
-            .capture_any_mouse_down(|_, window, _| window.prevent_default())
-            .on_mouse_down_out(cx.listener(|this, _, _, cx| this.close_picker(cx)));
         // It's the same size whichever model is highlighted, having grown from the footer: anything
         // less would move the rows from under a pointer on its way to one.
         let most_efforts = catalog.models.iter().map(|model| effort_rows(model).count()).max();
@@ -285,7 +274,7 @@ impl ChatComposer {
             .child(self.efforts_column(highlighted, picker, p, cx));
         let some_go_fast = catalog.models.iter().any(|model| model.fast);
         Some(
-            liquid::floating(popover, on_glass, p)
+            popover
                 .child(columns)
                 .when(some_go_fast, |popover| popover.child(self.fast_row(highlighted.fast, p, cx))),
         )

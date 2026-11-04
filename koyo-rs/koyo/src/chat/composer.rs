@@ -13,6 +13,7 @@ mod asked;
 mod footer;
 mod model_picker;
 mod question;
+mod suggest;
 
 use std::path::PathBuf;
 
@@ -21,9 +22,9 @@ use gpui_kit::component::Sizable as _;
 use gpui_kit::component::input::{InputEvent, Textarea, TextareaState};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, ClickEvent, Context, ElementId, Entity, EventEmitter,
+    AnyElement, App, AppContext as _, ClickEvent, Context, Div, ElementId, Entity, EventEmitter,
     FocusHandle, Focusable, InteractiveElement as _, IntoElement, KeyContext, ParentElement as _,
-    Render, SharedString, Styled as _, Subscription, Window, div, px,
+    Render, SharedString, Stateful, Styled as _, Subscription, Window, div, px,
 };
 use koyo_agent::client::ClientError;
 #[cfg(test)]
@@ -39,6 +40,7 @@ use koyo_agent::replica::Replica;
 use self::asked::Asked;
 use self::footer::{COMPOSER, ROOM_FOR_LABELS, Settings, labels_fitting};
 use self::model_picker::{ModelPicker, PICKING};
+use self::suggest::{SUGGESTING, Suggestions};
 use super::thread::ChatThread;
 use super::view::COLUMN;
 use super::{Chats, Connection};
@@ -51,6 +53,7 @@ pub(super) fn bind_keys(cx: &mut App) {
     footer::bind_keys(cx);
     model_picker::bind_keys(cx);
     question::bind_keys(cx);
+    suggest::bind_keys(cx);
 }
 
 /// What the tab hears from its composer.
@@ -86,6 +89,10 @@ pub(super) struct ChatComposer {
     /// How full the conversation is, as of the last run that said: what it holds, and can.
     context: Option<(u64, u64)>,
     picker: Option<ModelPicker>,
+    /// What the word being typed completes to.
+    suggest: Option<Suggestions>,
+    /// Where the word starts that was told not to complete, until the caret leaves it.
+    dismissed: Option<usize>,
     /// How many of the footer's chips say what they are, as wide as it is.
     labels: usize,
     _subscriptions: Vec<Subscription>,
@@ -130,8 +137,13 @@ impl ChatComposer {
                     cx.notify();
                 }
             }),
-            // What the picker points at may not be there any more.
-            cx.observe(&catalog, |this, _, _| this.picker = None),
+            // What the picker points at may not be there any more, nor the commands listed.
+            cx.observe(&catalog, |this, _, cx| {
+                this.picker = None;
+                this.search(cx);
+                cx.notify();
+            }),
+            cx.observe(&text, |this, _, cx| this.follow_text(cx)),
         ];
         let connection = chats.read(cx).connection().clone();
         let mut composer = ChatComposer {
@@ -149,6 +161,8 @@ impl ChatComposer {
             settings: Settings::default(),
             context: None,
             picker: None,
+            suggest: None,
+            dismissed: None,
             labels: ROOM_FOR_LABELS.len(),
             _subscriptions: subscriptions,
             #[cfg(test)]
@@ -320,6 +334,40 @@ impl ChatComposer {
         });
     }
 
+    /// Whether a popover is over what's above the composer, which has to go: glass only hides what's
+    /// drawn under the glass.
+    pub(super) fn covers_above(&self) -> bool {
+        self.picker.is_some() || self.suggesting()
+    }
+
+    /// A popover of `id` on glass over the footer. No press in it takes the keyboard from what's
+    /// typed, where its keys are heard.
+    fn popover(
+        id: &'static str,
+        p: Palette,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let keyed = ElementId::NamedInteger(id.into(), cx.entity_id().as_u64());
+        let on_glass = liquid::backdrop(keyed, px(14.), window, cx);
+        let popover = div()
+            .id(id)
+            .absolute()
+            .bottom_full()
+            .left_0()
+            .mb_2()
+            .max_w_full()
+            .flex()
+            .flex_col()
+            .gap_1()
+            .p_2()
+            .rounded(px(14.))
+            .occlude()
+            .text_color(p.text)
+            .capture_any_mouse_down(|_, window, _| window.prevent_default());
+        liquid::floating(popover, on_glass, p)
+    }
+
     /// What's in the way: why the last send failed, why the chat can't be shown, or how things
     /// are with the host.
     fn note(&self, p: Palette, cx: &mut Context<Self>) -> Option<AnyElement> {
@@ -389,18 +437,22 @@ impl Render for ChatComposer {
             .children(self.drawer(&typed, p, cx))
             .child(Textarea::new(&self.text).appearance(false))
             .child(self.footer(&typed, p, cx))
-            .children(self.model_picker(p, window, cx));
+            .children(self.model_picker(p, window, cx))
+            .children(self.suggestions(p, window, cx));
         let mut keys = KeyContext::default();
         keys.add(COMPOSER);
-        // The picker has the keys while it's open, ahead of what's asked.
+        // A popover has the keys while it's open, ahead of what's asked.
         if self.picker.is_some() {
             keys.add(PICKING);
+        } else if self.suggesting() {
+            keys.add(SUGGESTING);
         } else if let Some(answering) = self.asked.key_context().filter(|_| typed.is_empty()) {
             keys.add(answering);
         }
         let composer = cx.weak_entity();
         let labels = self.labels;
-        Self::hears_picker(Self::hears_footer(Self::hears_answers(div(), cx), cx), cx)
+        let hearing = Self::hears_footer(Self::hears_answers(div(), cx), cx);
+        self.hears_suggestions(self.hears_picker(hearing, cx), cx)
             .key_context(keys)
             .relative()
             .w_full()
@@ -410,8 +462,7 @@ impl Render for ChatComposer {
             .flex_col()
             .child(
                 div()
-                    // Under the picker, whose glass only hides what's drawn under the glass.
-                    .when(self.is_picking(), gpui_kit::Styled::invisible)
+                    .when(self.covers_above(), gpui_kit::Styled::invisible)
                     .when(self.is_new(), |above| {
                         above.child(
                             div()

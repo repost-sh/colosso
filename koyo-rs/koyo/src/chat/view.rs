@@ -240,8 +240,7 @@ impl ChatView {
 
     /// The pill back to the end of the timeline, once a person left it.
     fn scroll_pill(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
-        // Not under the composer's picker, whose glass only hides what's drawn under the glass.
-        if !self.pill || self.composer.read(cx).is_picking() {
+        if !self.pill || self.composer.read(cx).covers_above() {
             return None;
         }
         let p = theme::palette(cx);
