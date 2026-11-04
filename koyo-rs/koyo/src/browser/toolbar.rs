@@ -6,7 +6,7 @@ use koyo_browser_ipc::{Go, PageState};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::input::Input;
 use gpui_kit::component::native_menu::NativeMenu;
-use gpui_kit::component::{ActiveTheme as _, Disableable as _, Selectable as _, Sizable as _};
+use gpui_kit::component::{Disableable as _, Selectable as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, ClickEvent, Context, Div, ElementId, Focusable as _, FontWeight,
@@ -233,7 +233,7 @@ pub(super) fn control_bar(
         (text, "browser-give-back", "Give back", Box::new(give_back))
     };
     let id_glass = ElementId::NamedInteger("browser-control-glass".into(), view.pane);
-    let glass = liquid::backdrop(id_glass, px(999.), cx.theme().mode.is_dark(), window, cx);
+    let glass = liquid::backdrop(id_glass, px(999.), window, cx);
     let button = bar_button(id, label, glass.is_some(), p).on_click(on_click);
     let pill = div()
         .relative()
@@ -248,14 +248,7 @@ pub(super) fn control_bar(
         .occlude()
         .text_xs()
         .text_color(p.text);
-    let pill = match glass {
-        Some(glass) => pill.child(glass),
-        None => pill
-            .bg(p.floating())
-            .border_1()
-            .border_color(p.hairline)
-            .shadow_md(),
-    };
+    let pill = liquid::floating(pill, glass, p);
     // Among the window's overlays, as the page's native layer hides what's drawn under it.
     let bar = div()
         .absolute()

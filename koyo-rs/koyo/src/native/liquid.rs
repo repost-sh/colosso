@@ -11,8 +11,10 @@
 use std::cell::Cell;
 use std::sync::Once;
 
+use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::{
-    AnyElement, App, Bounds, ElementId, IntoElement as _, Pixels, Styled as _, Window, canvas,
+    AnyElement, App, Bounds, ElementId, IntoElement as _, ParentElement, Pixels, Styled, Window,
+    canvas,
 };
 use objc2::rc::Retained;
 use objc2::runtime::{AnyClass, NSObjectProtocol as _};
@@ -23,18 +25,32 @@ use objc2_app_kit::{
 };
 
 use super::surface::{self, Hosted, Surface};
+use crate::theme::Palette;
+
+/// `surface`, floating over what's under it: with `glass` behind what it holds, or a raised fill
+/// where there's none.
+pub fn floating<E: ParentElement + Styled>(surface: E, glass: Option<AnyElement>, p: Palette) -> E {
+    match glass {
+        Some(glass) => surface.child(glass),
+        None => surface
+            .bg(p.floating())
+            .border_1()
+            .border_color(p.hairline)
+            .shadow_md(),
+    }
+}
 
 /// Glass to put behind the element it's a child of, filling it, its corners `radius` round
-/// (at most half its height) and dark or light as `dark` says; none where there's no glass.
+/// (at most half its height) and dark or light as the theme is; none where there's no glass.
 /// `id` keys it: it's kept as long as it's drawn, made the frame it first shows and taken
 /// out of the window the frame it doesn't.
 pub fn backdrop(
     id: impl Into<ElementId>,
     radius: Pixels,
-    dark: bool,
     window: &mut Window,
     cx: &mut App,
 ) -> Option<AnyElement> {
+    let dark = cx.theme().mode.is_dark();
     let pane = surface::keep(id, window, cx, |window| {
         Native::new(window)
             .inspect_err(|why| {
