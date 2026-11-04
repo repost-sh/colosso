@@ -8,7 +8,7 @@ use gpui_kit::{AppContext as _, Context, Entity, SharedString};
 use koyo_agent::client::ClientError;
 use koyo_agent::protocol::events::{Appended, Changed};
 use koyo_agent::protocol::ids::{ItemId, ThreadId};
-use koyo_agent::protocol::methods::ThreadSnapshot;
+use koyo_agent::protocol::methods::{Rows, ThreadSnapshot};
 use koyo_agent::protocol::model::Item;
 use koyo_agent::protocol::wire::ErrorCode;
 use koyo_agent::replica::Replica;
@@ -129,6 +129,19 @@ impl ChatThread {
         if structure {
             cx.notify();
         }
+    }
+
+    /// Takes in a page of older runs.
+    pub fn prepend(&mut self, rows: Rows, cx: &mut Context<Self>) {
+        if let Some(replica) = &mut self.replica {
+            replica.prepend(rows);
+            cx.notify();
+        }
+    }
+
+    /// The markdown view of the text item `id`, if a row has drawn it.
+    pub fn drawn_text(&self, id: &ItemId) -> Option<&Entity<TextViewState>> {
+        self.texts.get(id)
     }
 
     /// The markdown view of the text item `id` holds, `text` when it's made now.

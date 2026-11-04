@@ -5,11 +5,14 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
-use gpui_kit::{AppContext as _, Context, Entity, Focusable as _, Subscription, Window};
+use gpui_kit::{
+    AppContext as _, Context, Entity, Focusable as _, SharedString, Subscription, Window,
+};
 use koyo_agent::protocol::ids::ThreadId;
 
 use super::view::{ChatView, ChatViewEvent};
 use super::{Chats, ChatsEvent};
+use crate::files::Place;
 use crate::model::{PaneKind, Workspace};
 use crate::shell::Shell;
 
@@ -92,8 +95,13 @@ impl Shell {
             .collect();
         if !missing.is_empty() {
             let cwd = unit.worktree.path.clone();
+            let project = self.workspace.project().map(|project| project.name.clone());
+            let place: SharedString = match project {
+                Some(project) => format!("{project} / {}", unit.name()).into(),
+                None => unit.name(),
+            };
             for (pane, thread) in missing {
-                self.make_chat_view(pane, thread, cwd.clone(), window, cx);
+                self.make_chat_view(pane, thread, cwd.clone(), place.clone(), window, cx);
             }
         }
         self.chat_tabs.view(first).cloned()
@@ -104,13 +112,17 @@ impl Shell {
         pane: u64,
         thread: Option<ThreadId>,
         cwd: PathBuf,
+        place: SharedString,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let chats = self.chat_tabs.chats.clone();
-        let view = cx.new(|cx| ChatView::new(chats, cwd, thread, window, cx));
-        let events = cx.subscribe(&view, move |this, _, event, cx| match event {
+        let view = cx.new(|cx| ChatView::new(chats, cwd, place, thread, window, cx));
+        let events = cx.subscribe_in(&view, window, move |this, _, event, window, cx| match event {
             ChatViewEvent::Created(id) => this.chat_created(pane, id.clone(), cx),
+            ChatViewEvent::OpenFile(path) => {
+                this.open_file(Place::file(path.clone()), true, true, window, cx);
+            }
         });
         if self.chat_tabs.focus_next.take() == Some(pane) {
             let focus = view.focus_handle(cx);

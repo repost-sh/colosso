@@ -19,7 +19,7 @@ use super::super::file_view::FileView;
 use super::super::highlight::Token;
 use super::super::line::{CodeLine, Half, Look, runs};
 use super::super::rows::{Layout, Row};
-use super::{ChangesPanel, DIGIT_WIDTH, LINE_HEIGHT, counts, split_path, status_letter};
+use super::{ChangesPanel, LINE_HEIGHT, counts, split_path, status_letter};
 use crate::right_panel::panel_header;
 use crate::shell::{ellipsized, icon, icon_button};
 use crate::theme::{self, Palette};
@@ -342,8 +342,7 @@ fn number_width(file: &FileView) -> f32 {
         Content::Text { old, new, .. } => old.len().max(new.len()),
         _ => 0,
     };
-    let digits = lines.max(1).ilog10() + 1;
-    digits.max(2) as f32 * DIGIT_WIDTH + 12.
+    super::super::line::number_width(lines)
 }
 
 fn token_colour(token: Token, p: Palette) -> Hsla {

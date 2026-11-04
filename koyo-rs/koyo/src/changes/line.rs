@@ -15,6 +15,15 @@ use gpui_kit::{
 
 use super::highlight::Token;
 
+/// The width of a digit of a line number, in the code's font at its size.
+const DIGIT_WIDTH: f32 = 7.3;
+
+/// How wide a line number's column is for a file of `lines` lines.
+pub fn number_width(lines: usize) -> f32 {
+    let digits = lines.max(1).ilog10() + 1;
+    digits.max(2) as f32 * DIGIT_WIDTH + 12.
+}
+
 /// What a line looks like, the same for every line of the diffs.
 #[derive(Clone)]
 pub struct Look {

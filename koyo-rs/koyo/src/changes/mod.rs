@@ -15,6 +15,7 @@ mod view;
 mod watch;
 
 pub use file_view::FileView;
+pub use line::{CodeLine, Half, Look, number_width};
 pub use marks::{Mark, Marks};
 pub use reread::{Read, Stale, read};
 pub use view::{ChangesEvent, ChangesPanel, ChangesTab, counts};
