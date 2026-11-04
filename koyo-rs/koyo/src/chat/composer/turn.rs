@@ -42,8 +42,9 @@ pub(super) fn bind_keys(cx: &mut App) {
     let stoppable = format!("{STOPPABLE} > Input");
     let recalling = format!("{RECALLING} > Input");
     cx.bind_keys([
-        KeyBinding::new("cmd-.", StopTurn, Some(COMPOSER)),
         KeyBinding::new("escape", StopTurn, Some(stoppable.as_str())),
+        // Keyboard shortcuts names the last one, which works wherever a person's typing.
+        KeyBinding::new("cmd-.", StopTurn, Some(COMPOSER)),
         KeyBinding::new("up", RecallPrompt, Some(recalling.as_str())),
     ]);
 }

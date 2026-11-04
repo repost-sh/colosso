@@ -4,6 +4,10 @@ use gpui_kit::component::kbd::Kbd;
 use gpui_kit::{Action, App, AsKeystroke as _, IntoElement, ParentElement as _, Styled as _, div};
 
 use super::components::{SettingRow, SettingsSection};
+use crate::chat::{
+    AllowRequest, AllowRequestForChat, DenyRequest, ImplementPlan, OpenModelMenu, OpenParent,
+    RecallPrompt, SkipQuestion, StopTurn, ToggleDetails, TogglePlan,
+};
 use crate::files::Save;
 use crate::go_to_file::GoToFile;
 use crate::navigation::{CloseSettings, GoBack, GoForward, OpenSettings};
@@ -49,6 +53,22 @@ const SECTIONS: &[(&str, &[Command])] = &[
         ],
     ),
     (
+        "Chat",
+        &[
+            ("Stop the agent", &StopTurn),
+            ("Bring back the last prompt", &RecallPrompt),
+            ("Choose the model", &OpenModelMenu),
+            ("Plan first, or don't", &TogglePlan),
+            ("Show or hide the chat's card", &ToggleDetails),
+            ("Implement the plan", &ImplementPlan),
+            ("Allow what's asked", &AllowRequest),
+            ("Allow it for the rest of the chat", &AllowRequestForChat),
+            ("Deny what's asked", &DenyRequest),
+            ("Skip a question", &SkipQuestion),
+            ("Back from a subagent to the chat it started in", &OpenParent),
+        ],
+    ),
+    (
         "Files",
         &[
             ("Go to file", &GoToFile),
@@ -85,4 +105,25 @@ fn keys(action: &dyn Action, cx: &App) -> Option<Kbd> {
     let binding = keymap.bindings_for_action(action).last()?;
     let keystroke = binding.keystrokes().first()?.as_keystroke().clone();
     Some(Kbd::new(keystroke))
+}
+
+#[cfg(test)]
+mod tests {
+    use gpui_kit::TestAppContext;
+
+    use super::{SECTIONS, keys};
+    use crate::chat;
+
+    /// A row of the Chat section that says "Not assigned" is a key someone unbound.
+    #[gpui_kit::test]
+    fn every_chat_command_has_its_key(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            chat::init(cx);
+            let (_, commands) =
+                SECTIONS.iter().find(|(title, _)| *title == "Chat").expect("a Chat section");
+            for (label, action) in *commands {
+                assert!(keys(*action, cx).is_some(), "{label} has no key");
+            }
+        });
+    }
 }

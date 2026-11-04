@@ -20,6 +20,12 @@ mod sending;
 mod suggest;
 mod turn;
 
+pub use asked::ImplementPlan;
+pub use footer::TogglePlan;
+pub use model_menu::OpenModelMenu;
+pub use question::SkipQuestion;
+pub use turn::{RecallPrompt, StopTurn};
+
 use std::path::PathBuf;
 
 use gpui_kit::base::ElementExt as _;
