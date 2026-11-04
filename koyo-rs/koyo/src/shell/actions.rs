@@ -14,7 +14,7 @@ use crate::model::PaneKind;
 use crate::navigation::{CloseSettings, GoBack, GoForward, Navigate, NavigationHistory, Route};
 use crate::projects::{self, NewWorktree};
 use crate::settings;
-use crate::settings_view::{self, EditBranchPrefix};
+use crate::settings_view::{self, ClearClaudePath, EditBranchPrefix, EditClaudePath};
 use crate::{browser, modal, picker, terminals};
 
 actions!(
@@ -133,6 +133,12 @@ impl Shell {
             .map(|root| terminals::handle_actions(root, cx))
             .on_action(|_: &EditBranchPrefix, window, cx| {
                 settings_view::edit_branch_prefix(window, cx);
+            })
+            .on_action(|_: &EditClaudePath, window, cx| {
+                settings_view::edit_claude_path(window, cx);
+            })
+            .on_action(|_: &ClearClaudePath, _, cx| {
+                settings::update(cx, |settings| settings.claude_path = None);
             })
             .on_drag_move(cx.listener(Self::resize_sidebar))
             // A press in the window puts the picker and any dialog over it away, so what's

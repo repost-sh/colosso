@@ -27,7 +27,8 @@ impl Chats {
         held
     }
 
-    /// The host was reached, and says what it offers now to the checkouts tabs still show.
+    /// The host heard Koyo's settings, and says what it offers now to the checkouts tabs still
+    /// show.
     pub(super) fn refresh_catalogs(&mut self, cx: &mut Context<Self>) {
         let Some(client) = &self.client else {
             return;

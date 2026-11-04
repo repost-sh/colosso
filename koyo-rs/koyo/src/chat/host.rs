@@ -1,12 +1,40 @@
-//! Finding the agent host, and a client for it.
+//! Finding the agent host, a client for it, and what it's told of Koyo's settings.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use gpui_kit::Context;
 use koyo_agent::agent_client::AgentClient;
 use koyo_agent::client;
+use koyo_agent::protocol::methods::{Config, ConfigSet};
 
+use super::{Chats, Connection};
 use crate::settings;
+
+impl Chats {
+    /// Tells the host what Koyo's settings say, if that's news: the next session it opens follows
+    /// them, and a new chat starts as they say.
+    pub(super) fn tell_config(&mut self, cx: &mut Context<Self>) {
+        let settings = settings::get(cx);
+        let config = Config {
+            claude_path: settings.claude_path.clone(),
+            default_mode: settings.chat_mode,
+        };
+        if self.connection != Connection::Connected || self.told_config.as_ref() == Some(&config) {
+            return;
+        }
+        let told = self.ordered::<ConfigSet>(config.clone());
+        self.told_config = Some(config);
+        // What the host offers has Koyo's settings in it, so it's asked for once it's heard them.
+        cx.spawn(async move |chats, cx| {
+            if let Err(error) = told.await {
+                log::warn!("telling the host its settings: {error}");
+            }
+            let _ = chats.update(cx, Chats::refresh_catalogs);
+        })
+        .detach();
+    }
+}
 
 /// A client of the host in the app's data folder. Tests start no host and read none, as the
 /// person's chats aren't theirs.

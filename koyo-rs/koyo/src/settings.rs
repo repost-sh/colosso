@@ -10,17 +10,20 @@ use gpui_kit::{Action, App, Context, Global, SharedString, Subscription, Task, W
 use serde::{Deserialize, Serialize};
 
 mod chat_details;
+mod chat_mode;
 mod project_scripts;
 mod chat_work;
 mod language_servers;
 mod migration;
 
 pub use chat_details::{ChatDetails, DetailsItem, FlipDetailsItem};
+pub use chat_mode::{SetChatMode, chat_mode_label, chat_mode_menu};
 pub use project_scripts::{ProjectScript, ProjectScripts};
 pub use chat_work::{ChatWork, SetChatWork};
 pub use language_servers::{LanguageServers, Scope, SetLanguageServer};
 use migration::migrate;
 
+use crate::atomic_file;
 use crate::gradient::GradientTheme;
 use crate::key_repeat::KeyRepeat;
 use crate::theme::{self, ThemePreference};
@@ -181,6 +184,10 @@ pub struct Settings {
     pub project_scripts: ProjectScripts,
     /// How hard the agent works in a chat not set to anything else, as far as its model can.
     pub chat_effort: koyo_agent::protocol::model::Effort,
+    /// What a new chat may do without asking; with none, what Claude's own settings say.
+    pub chat_mode: Option<koyo_agent::protocol::model::Mode>,
+    /// Where the `claude` program is; with none, it's looked for.
+    pub claude_path: Option<String>,
     /// How a held arrow key repeats.
     pub key_repeat: KeyRepeat,
     /// Where a page's `DevTools` open, and the room they take docked.
@@ -256,6 +263,8 @@ impl Default for Settings {
             chat_details: ChatDetails::default(),
             project_scripts: ProjectScripts::default(),
             chat_effort: koyo_agent::protocol::model::Effort::Xhigh,
+            chat_mode: None,
+            claude_path: None,
             key_repeat: KeyRepeat::default(),
             devtools: crate::browser::DevtoolsPlace::default(),
             on_quit: crate::quitting::OnQuit::default(),
@@ -339,6 +348,9 @@ pub fn init(cx: &mut App) {
     cx.on_action(|SetChatWork(work): &SetChatWork, cx| {
         update(cx, |settings| settings.chat_work = *work);
     });
+    cx.on_action(|SetChatMode(mode): &SetChatMode, cx| {
+        update(cx, |settings| settings.chat_mode = *mode);
+    });
     cx.on_action(|FlipDetailsItem(item): &FlipDetailsItem, cx| {
         update(cx, |settings| settings.chat_details.flip(*item));
     });
@@ -350,7 +362,7 @@ pub fn init(cx: &mut App) {
         if cx.global_mut::<Store>().pending.take().is_some()
             && let Some((path, json)) = encode(cx)
         {
-            write(&path, &json);
+            atomic_file::write(&path, &json);
         }
         async {}
     })
@@ -406,7 +418,7 @@ pub fn update(cx: &mut App, change: impl FnOnce(&mut Settings)) {
         cx.background_executor().timer(SAVE_DELAY).await;
         if let Some((path, json)) = cx.update(encode) {
             let written = cx.background_executor().spawn(async move {
-                write(&path, &json);
+                atomic_file::write(&path, &json);
                 modified(&path)
             });
             let seen = written.await;
@@ -480,19 +492,6 @@ fn encode(cx: &mut App) -> Option<(PathBuf, Vec<u8>)> {
             log::error!("couldn't encode the settings: {error}");
             None
         }
-    }
-}
-
-/// Writes through a temporary file, so a crash mid-write never leaves half a file behind.
-pub(crate) fn write(path: &Path, json: &[u8]) {
-    let temporary = path.with_extension("json.tmp");
-    let written = path
-        .parent()
-        .map_or(Ok(()), std::fs::create_dir_all)
-        .and_then(|()| std::fs::write(&temporary, json))
-        .and_then(|()| std::fs::rename(&temporary, path));
-    if let Err(error) = written {
-        log::error!("couldn't save {}: {error}", path.display());
     }
 }
 

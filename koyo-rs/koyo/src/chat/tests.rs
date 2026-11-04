@@ -22,6 +22,7 @@ use crate::shell::Shell;
 use crate::test_support::{draw, repo, select, shell_with};
 
 pub(super) mod asks;
+mod config;
 mod turn;
 mod drawers;
 mod details;

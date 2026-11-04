@@ -17,7 +17,7 @@ use koyo_agent::protocol::model::Attachment;
 use serde::{Deserialize, Serialize};
 
 use super::attachments;
-use crate::settings;
+use crate::{atomic_file, settings};
 
 const SAVE_DELAY: Duration = Duration::from_millis(300);
 const FILE: &str = "chat-drafts.json";
@@ -99,7 +99,7 @@ fn read_file(path: &Path) -> HashMap<DraftOf, Draft> {
 fn write_file(path: &Path, kept: &HashMap<DraftOf, Draft>) {
     let listed: Vec<(&DraftOf, &Draft)> = kept.iter().collect();
     match serde_json::to_vec_pretty(&listed) {
-        Ok(json) => settings::write(path, &json),
+        Ok(json) => atomic_file::write(path, &json),
         Err(error) => log::error!("couldn't encode the drafts: {error}"),
     }
 }
