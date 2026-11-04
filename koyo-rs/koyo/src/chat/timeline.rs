@@ -18,6 +18,7 @@ use koyo_agent::protocol::model::ItemBody;
 use koyo_agent::replica::Replica;
 use koyo_agent::timeline::{Row, RowId, RowKind, WorkFold, changed, rows};
 
+use super::queued::QueuedEdit;
 use super::rows::Drawing;
 use super::thread::ChatThread;
 use super::view::ChatViewEvent;
@@ -28,13 +29,13 @@ use crate::theme;
 const COPIED_FOR: Duration = Duration::from_millis(1500);
 
 pub(super) struct Timeline {
-    thread: Entity<ChatThread>,
+    pub(super) thread: Entity<ChatThread>,
     /// What the models are called.
     catalog: Entity<Catalog>,
-    scroller: Entity<MessageScrollerState>,
+    pub(super) scroller: Entity<MessageScrollerState>,
     cwd: Rc<str>,
     /// Who an answer to what's asked is said to.
-    composer: FocusHandle,
+    pub(super) composer: FocusHandle,
     pub(super) rows: Rc<Vec<Row>>,
     /// How much of the work shows, as a person chose.
     work: ChatWork,
@@ -49,6 +50,8 @@ pub(super) struct Timeline {
     copied: Option<(ItemId, Task<()>)>,
     /// The room under the last row, for what floats there.
     inset: Pixels,
+    /// The queued message being changed where it shows.
+    pub(super) queued_edit: Option<QueuedEdit>,
     _following: Subscription,
     _choosing: Subscription,
     #[cfg(test)]
@@ -82,6 +85,7 @@ impl Timeline {
             ticking: None,
             copied: None,
             inset,
+            queued_edit: None,
             _following: following,
             _choosing: choosing,
             #[cfg(test)]
@@ -114,6 +118,7 @@ impl Timeline {
         }
         self.rows = Rc::new(new);
         self.keep_time(cx);
+        self.follow_queued_edit(cx);
         cx.notify();
     }
 
@@ -230,6 +235,7 @@ impl Timeline {
             running_since: self.running.as_ref().map(|(_, since)| *since),
             copied: self.copied.as_ref().map(|(id, _)| id.clone()),
             cwd: Rc::clone(&self.cwd),
+            queued_edit: (self.queued_edit.as_ref()).map(|edit| (edit.run.clone(), edit.text.clone())),
             composer: self.composer.clone(),
             inset: self.inset,
             p: theme::palette(cx),

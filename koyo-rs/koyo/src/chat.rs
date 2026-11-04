@@ -7,6 +7,7 @@ mod attachments;
 mod catalog;
 mod composer;
 mod marks;
+mod queued;
 mod output;
 mod rows;
 mod tabs;
@@ -93,6 +94,7 @@ impl EventEmitter<ChatsEvent> for Chats {}
 pub fn init(cx: &mut App) {
     asks::bind_keys(cx);
     composer::bind_keys(cx);
+    queued::bind_keys(cx);
 }
 
 impl Chats {
@@ -298,16 +300,17 @@ impl Chats {
         logged(self.ordered::<ThreadsUpdate>(params), "noting a chat's tab", cx);
     }
 
-    /// Sends `prompt` to thread `id`.
+    /// Sends `prompt` to thread `id`, to go as `delivery` says.
     pub fn send(
         &self,
         id: &ThreadId,
         prompt: Prompt,
+        delivery: Delivery,
     ) -> impl Future<Output = Result<Sent, ClientError>> + use<> {
         self.ordered::<TurnsSend>(SendParams {
             thread_id: id.clone(),
             prompt,
-            delivery: Delivery::Auto,
+            delivery,
         })
     }
 

@@ -5,9 +5,9 @@
 use std::cmp::Ordering;
 
 use crate::protocol::events::{Appended, Changed};
-use crate::protocol::ids::RequestId;
+use crate::protocol::ids::{RequestId, RunId};
 use crate::protocol::methods::{Rows, ThreadSnapshot};
-use crate::protocol::model::{Item, Run, Thread};
+use crate::protocol::model::{Item, ItemBody, Run, RunStatus, Thread};
 use crate::protocol::requests::{Request, RequestPayload, RequestStatus};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -34,6 +34,29 @@ impl Replica {
         };
         replica.merge(snapshot.runs, snapshot.items, snapshot.requests);
         replica
+    }
+
+    /// The run a session's on, if there is one.
+    pub fn live(&self) -> Option<&Run> {
+        self.runs.iter().rev().find(|run| run.status.is_live())
+    }
+
+    /// The messages waiting their turn, the next to go first.
+    pub fn queued(&self) -> impl Iterator<Item = &Run> {
+        self.runs.iter().filter(|run| run.status == RunStatus::Queued)
+    }
+
+    /// Run `id`, if it's still waiting its turn.
+    pub fn queued_run(&self, id: &RunId) -> Option<&Run> {
+        self.queued().find(|run| run.id == *id)
+    }
+
+    /// The words a person last said to the agent: what's queued hasn't been said yet.
+    pub fn last_said(&self) -> Option<&str> {
+        self.items.iter().rev().find_map(|item| match &item.body {
+            ItemBody::UserMessage(message) if !message.text.is_empty() => Some(message.text.as_str()),
+            _ => None,
+        })
     }
 
     /// What the agent waits on a person for now: the oldest request still waiting, as they're

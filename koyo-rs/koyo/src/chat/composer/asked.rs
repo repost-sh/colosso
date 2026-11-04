@@ -4,9 +4,10 @@
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::Sizable as _;
+use gpui_kit::component::button::Button;
 use gpui_kit::{
     Action, AnyElement, App, ClickEvent, Context, Div, InteractiveElement as _, IntoElement,
-    KeyBinding, ParentElement as _, Styled as _, Window, actions, div, px,
+    KeyBinding, ParentElement as _, SharedString, Styled as _, Window, actions, div, px,
 };
 use koyo_agent::client::ClientError;
 use koyo_agent::protocol::ids::RequestId;
@@ -109,8 +110,7 @@ impl ChatComposer {
             Asked::Plan(_) => plan_ready(typed, p, cx).into_any_element(),
             _ => return None,
         };
-        let attached = div().flex().flex_col().gap_2().child(drawn);
-        Some(attached.child(div().h(px(1.)).bg(p.hairline)).into_any_element())
+        Some(attached_above(drawn, p).into_any_element())
     }
 
     /// Answers the approval asked now, if there is one and it can be answered so.
@@ -268,12 +268,28 @@ fn plan_ready(typed: &str, p: Palette, cx: &mut Context<ChatComposer>) -> Div {
         .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
             this.decide_plan(PlanDecision::Dismiss, window, cx);
         }));
+    drawer_line(IconName::ListChecks, "Plan ready", dismiss, go)
+}
+
+/// `drawn`, attached above what's typed, with a rule between them.
+pub(super) fn attached_above(drawn: impl IntoElement, p: Palette) -> Div {
+    div().flex().flex_col().gap_2().child(drawn).child(div().h(px(1.)).bg(p.hairline))
+}
+
+/// A drawer of a line: what it's about, and the two things to do about it, the one it leads to
+/// last.
+pub(super) fn drawer_line(
+    mark: IconName,
+    says: impl Into<SharedString>,
+    other: Button,
+    go: Button,
+) -> Div {
     div()
         .flex()
         .items_center()
         .gap_2()
-        .child(icon(IconName::ListChecks, 14.))
-        .child(div().flex_1().text_sm().child("Plan ready"))
-        .child(dismiss)
+        .child(icon(mark, 14.))
+        .child(div().flex_1().text_sm().child(says.into()))
+        .child(other)
         .child(go)
 }

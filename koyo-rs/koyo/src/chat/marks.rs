@@ -1,5 +1,5 @@
 //! The rows that say what became of a run (`docs/chat.md` 5.3): a compaction, a notice, a failure,
-//! a stop, the files it changed, and a run still waiting its turn.
+//! a stop, and the files it changed.
 
 use std::path::Path;
 
@@ -8,13 +8,12 @@ use gpui_kit::{
     AnyElement, Div, Hsla, InteractiveElement as _, IntoElement, ParentElement as _, SharedString,
     StatefulInteractiveElement as _, Styled as _, div, px,
 };
-use gpui_kit::prelude::FluentBuilder as _;
 use koyo_agent::protocol::model::{
     FileChange, Item, ItemBody, ItemStatus, NoticeLevel, Run, StoppedBy,
 };
 use koyo_agent::words::{compacted, failed};
 
-use super::rows::{Drawing, attached, bubble};
+use super::rows::Drawing;
 use super::view::ChatViewEvent;
 use crate::changes::counts;
 use crate::files::relative;
@@ -112,7 +111,6 @@ impl Drawing {
 
     fn file_row(&self, file: &FileChange) -> impl IntoElement {
         let p = self.p;
-        let timeline = self.timeline.clone();
         let cwd = Path::new(&*self.cwd);
         let path = cwd.join(&file.path);
         let shown = relative(cwd, &path);
@@ -126,26 +124,7 @@ impl Drawing {
             .hover(|row| row.text_color(p.text))
             .child(ellipsized(shown))
             .child(counts(file.added, file.removed, p))
-            .on_click(move |_, _, cx| {
-                let path = path.clone();
-                timeline.update(cx, |_, cx| cx.emit(ChatViewEvent::OpenFile(path))).ok();
-            })
-    }
-
-    pub(super) fn queued(&self, run: &Run) -> impl IntoElement {
-        let p = self.p;
-        let prompt = &run.prompt;
-        div().flex().justify_end().child(
-            bubble()
-                .border_1()
-                .border_dashed()
-                .border_color(p.hairline)
-                .text_color(p.muted)
-                .when(!prompt.attachments.is_empty(), |said| {
-                    said.child(attached(&run.id.0, &prompt.attachments, p))
-                })
-                .when(!prompt.text.is_empty(), |said| said.child(prompt.text.clone())),
-        )
+            .on_click(self.on_timeline(move |_, _, cx| cx.emit(ChatViewEvent::OpenFile(path.clone()))))
     }
 }
 

@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::message_scroller::MessageScrollerState;
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Bounds, ClickEvent, Context, ElementId, Entity, EventEmitter,
     ExternalPaths, FocusHandle, Focusable, InteractiveElement as _, IntoElement,
@@ -240,9 +241,11 @@ impl ChatView {
 
     /// The pill back to the end of the timeline, once a person left it.
     fn scroll_pill(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
-        if !self.pill || self.composer.read(cx).covers_above() {
+        let composer = self.composer.read(cx);
+        if !self.pill || composer.covers_above() {
             return None;
         }
+        let queued = composer.queued();
         let p = theme::palette(cx);
         let keyed = ElementId::NamedInteger("chat-pill-glass".into(), cx.entity_id().as_u64());
         let on_glass = liquid::backdrop(keyed, px(14.), window, cx);
@@ -262,6 +265,7 @@ impl ChatView {
         let pill = liquid::floating(pill, on_glass, p)
             .child(icon(IconName::ChevronDown, 13.))
             .child("Scroll to end")
+            .when(queued > 0, |pill| pill.child(format!("· {queued} queued")))
             .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
                 this.scroller.update(cx, MessageScrollerState::scroll_to_end);
             }));

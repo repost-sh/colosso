@@ -6,15 +6,16 @@ use std::rc::Rc;
 use std::time::Instant;
 
 use gpui_kit::assets::IconName;
+use gpui_kit::component::input::TextareaState;
 use gpui_kit::component::shimmer::ShimmerText;
 use gpui_kit::component::text::{TextView, TextViewState};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, ClickEvent, Div, ElementId, Entity, FocusHandle, InteractiveElement as _,
+    AnyElement, App, ClickEvent, Context, Div, ElementId, Entity, FocusHandle, InteractiveElement as _,
     IntoElement, ParentElement as _, Pixels, SharedString, Stateful,
     StatefulInteractiveElement as _, Styled as _, WeakEntity, Window, div, px, relative,
 };
-use koyo_agent::protocol::ids::ItemId;
+use koyo_agent::protocol::ids::{ItemId, RunId};
 use koyo_agent::protocol::methods::Catalog;
 use koyo_agent::protocol::model::{Attachment, Delivered, Item, ItemBody, Run};
 use koyo_agent::protocol::requests::{Request, RequestPayload};
@@ -58,6 +59,8 @@ pub(super) struct Drawing {
     pub(super) running_since: Option<Instant>,
     pub(super) copied: Option<ItemId>,
     pub(super) cwd: Rc<str>,
+    /// The queued message being changed where it shows, and what it's being changed to.
+    pub(super) queued_edit: Option<(RunId, Entity<TextareaState>)>,
     /// Who an answer to what's asked is said to.
     pub(super) composer: FocusHandle,
     /// The room under the last row.
@@ -149,19 +152,25 @@ impl Drawing {
         self.open.contains(id) != self.all_work_open
     }
 
+    /// What an element of a row hears, a click or an action, that `does` something to the
+    /// timeline.
+    pub(super) fn on_timeline<E: ?Sized>(
+        &self,
+        does: impl Fn(&mut Timeline, &mut Window, &mut Context<Timeline>) + 'static,
+    ) -> impl Fn(&E, &mut Window, &mut App) + 'static {
+        let timeline = self.timeline.clone();
+        move |_, window, cx| {
+            timeline.update(cx, |timeline, cx| does(timeline, window, cx)).ok();
+        }
+    }
+
     /// A click that opens or closes what goes by `id`, drawn in the row at `index`.
     pub(super) fn opens(
         &self,
         id: RowId,
         index: usize,
     ) -> impl Fn(&ClickEvent, &mut Window, &mut App) + 'static {
-        let timeline = self.timeline.clone();
-        move |_, _, cx| {
-            let id = id.clone();
-            timeline
-                .update(cx, |timeline, cx| timeline.toggle(id, index, cx))
-                .ok();
-        }
+        self.on_timeline(move |timeline, _, cx| timeline.toggle(id.clone(), index, cx))
     }
 
     fn user(&self, item: &Item, run: &Run, id: &RowId, index: usize) -> Option<Div> {
@@ -212,14 +221,9 @@ impl Drawing {
     }
 
     pub(super) fn show_more(&self, id: RowId, index: usize, open: bool) -> impl IntoElement {
-        div()
-            .id(("chat-show-more", index))
+        let says = if open { "Show less" } else { "Show more" };
+        word_button(("chat-show-more", index), says, self.p)
             .pt_1()
-            .text_xs()
-            .text_color(self.p.muted)
-            .cursor_pointer()
-            .hover(|text| text.text_color(self.p.text))
-            .child(if open { "Show less" } else { "Show more" })
             .on_click(self.opens(id, index))
     }
 
@@ -242,11 +246,8 @@ impl Drawing {
 
     /// A click that copies what item `id` says.
     pub(super) fn copies(&self, id: &ItemId) -> impl Fn(&ClickEvent, &mut Window, &mut App) + 'static {
-        let (timeline, item) = (self.timeline.clone(), id.clone());
-        move |_, _, cx| {
-            let item = item.clone();
-            timeline.update(cx, |timeline, cx| timeline.copy(item, cx)).ok();
-        }
+        let item = id.clone();
+        self.on_timeline(move |timeline, _, cx| timeline.copy(item.clone(), cx))
     }
 
     fn answer(&self, id: &ItemId, text: &Entity<TextViewState>, meta: Option<String>) -> Div {
@@ -332,6 +333,17 @@ pub(super) fn chevron(open: bool) -> impl IntoElement {
         IconName::ChevronRight
     };
     icon(name, 12.)
+}
+
+/// A small word that does something once clicked, brighter under the pointer.
+pub(super) fn word_button(id: impl Into<ElementId>, says: &'static str, p: Palette) -> Stateful<Div> {
+    div()
+        .id(id)
+        .text_xs()
+        .text_color(p.muted)
+        .cursor_pointer()
+        .hover(move |word| word.text_color(p.text))
+        .child(says)
 }
 
 /// What shows only as the pointer passes over the group `group`.

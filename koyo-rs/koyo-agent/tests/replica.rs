@@ -145,3 +145,34 @@ fn history_goes_before_what_is_held_and_leaves_the_change_number_alone() {
     let runs: Vec<_> = replica.runs.iter().map(|run| run.id.0.as_str()).collect();
     assert_eq!(runs, ["r0", "r1", "r2"]);
 }
+
+#[test]
+fn says_what_is_on_what_waits_and_what_was_said_last() {
+    let queued = |id, seq| run(id, RunStatus::Queued, seq);
+    let snapshot = snapshot(
+        5,
+        vec![run("a", RunStatus::Completed, 1), run("b", RunStatus::Running, 2), queued("c", 3), queued("d", 4)],
+        vec![
+            item("first", 0, message("First."), 1),
+            item("answer", 1, answer("Sure."), 2),
+            item("second", 2, message("Second."), 3),
+            item("empty", 3, message(""), 4),
+            item("after", 4, answer("Done."), 5),
+        ],
+    );
+    let replica = Replica::new(snapshot);
+
+    assert_eq!(replica.live().map(|run| run.id.0.as_str()), Some("b"));
+    let waiting: Vec<&str> = replica.queued().map(|run| run.id.0.as_str()).collect();
+    assert_eq!(waiting, ["c", "d"]);
+    assert_eq!(replica.last_said(), Some("Second."));
+}
+
+#[test]
+fn says_nothing_is_on_when_nothing_is() {
+    let replica = Replica::new(snapshot(1, vec![run("a", RunStatus::Completed, 1)], Vec::new()));
+
+    assert!(replica.live().is_none());
+    assert_eq!(replica.queued().count(), 0);
+    assert_eq!(replica.last_said(), None);
+}

@@ -1,45 +1,29 @@
 //! The rows a chat's records make in the tab's list, and what each change draws.
 
 use gpui_kit::{AnyWindowHandle, AppContext as _, Entity, TestAppContext};
-use koyo_agent::protocol::ids::{ItemId, MessageId, RunId, ThreadId, Time};
+use koyo_agent::protocol::ids::{ItemId, RunId, ThreadId, Time};
 use koyo_agent::protocol::methods::ThreadSnapshot;
 use koyo_agent::protocol::model::{
-    Delivered, Item, ItemBody, ItemStatus, Prompt, Run, RunStatus, Text, Tool, ToolFamily,
+    Delivered, Item, ItemBody, ItemStatus, Run, RunStatus, Text, Tool, ToolFamily,
     UserMessage,
 };
 use koyo_agent::timeline::RowId;
 
 use super::super::thread::ChatThread;
 use super::super::view::ChatView;
-use super::{AT, answer, appended, chats_of, snapshot, summary, text_of};
+use super::{AT, answer, appended, chats_of, run, snapshot, summary, text_of};
 use crate::settings::{self, ChatWork};
 use crate::test_support::{draw, repo, select, shell_with};
 
 /// A run that's over, with a prompt, a tool and an answer.
 fn settled(id: &str) -> ThreadSnapshot {
-    let message = MessageId("m".into());
     let run = Run {
-        id: RunId("r".into()),
         thread_id: ThreadId(id.into()),
-        status: RunStatus::Completed,
-        prompt: Prompt {
-            message_id: message.clone(),
-            text: "Why?".into(),
-            attachments: Vec::new(),
-        },
-        model: None,
-        effort: None,
-        permission: None,
-        plan: false,
-        requested_at: Time(AT.into()),
         started_at: Some(Time(AT.into())),
         ended_at: Some(Time(AT.into())),
-        stop: None,
-        failure: None,
-        usage: None,
-        files: Vec::new(),
-        seq: 3,
+        ..run("r", RunStatus::Completed, "Why?", 3)
     };
+    let message = run.prompt.message_id.clone();
     let done = |id: &str, ordinal: u64, body: ItemBody| Item {
         status: ItemStatus::Completed,
         body,
