@@ -193,7 +193,7 @@ impl ChatComposer {
     /// what's on the glass blocks the pointer from what's behind.
     pub(super) fn takes_drops(surface: Div, p: Palette, cx: &Context<Self>) -> Div {
         surface
-            .drag_over::<ExternalPaths>(move |style, _, _, _| style.bg(p.accent.opacity(0.1)))
+            .drag_over::<ExternalPaths>(move |style, _, _, _| style.bg(p.selected))
             .on_drop(cx.listener(|this, dropped: &ExternalPaths, _, cx| {
                 this.attach_paths(dropped.paths(), cx);
             }))

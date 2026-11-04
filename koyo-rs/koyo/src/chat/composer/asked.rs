@@ -4,7 +4,6 @@
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::Sizable as _;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::{
     Action, AnyElement, App, ClickEvent, Context, Div, InteractiveElement as _, IntoElement,
     KeyBinding, ParentElement as _, Styled as _, Window, actions, div, px,
@@ -21,7 +20,7 @@ use super::{ChatComposer, ComposerEvent};
 use crate::chat::asks::{
     ANSWERABLE, AllowRequest, AllowRequestForChat, DenyRequest, SavePlan, StopRequest,
 };
-use crate::shell::{glass, icon};
+use crate::shell::{glass, icon, solid};
 use crate::theme::Palette;
 
 /// The composer's context while a plan is asked and nothing's typed, where the key implements it.
@@ -251,7 +250,7 @@ impl ChatComposer {
 
 /// A plan's drawer: implement it, or with something typed, refine it by sending that.
 fn plan_ready(typed: &str, p: Palette, cx: &mut Context<ChatComposer>) -> Div {
-    let go = Button::new("chat-plan-go").primary().small();
+    let go = solid("chat-plan-go", true, cx).small();
     let go = if typed.trim().is_empty() {
         go.label("Implement")
             .tooltip("⌘↩ with nothing typed")

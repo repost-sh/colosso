@@ -168,7 +168,7 @@ impl Drawing {
         // A steer joined the run: when the run was asked for isn't when it was said.
         let sent = if steered { None } else { clock(&run.requested_at) };
         let said = bubble()
-            .bg(p.accent.opacity(0.16))
+            .bg(p.selected)
             .when(!message.attachments.is_empty(), |said| {
                 said.child(attached(&item.id.0, &message.attachments, p))
             })

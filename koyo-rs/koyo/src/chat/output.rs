@@ -141,7 +141,8 @@ fn terminal_colour(colour: u8, p: Palette) -> Hsla {
         1 => p.removed,
         2 => p.added,
         3 => p.modified,
-        4..=6 => p.accent,
+        4 | 6 => p.code.function,
+        5 => p.code.keyword,
         7 => p.text,
         _ => p.muted,
     }
