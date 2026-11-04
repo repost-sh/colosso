@@ -13,6 +13,7 @@ use gpui_kit::{
     Styled as _, Subscription, Task, Window,
 };
 use koyo_agent::protocol::ids::{ItemId, RunId};
+use koyo_agent::protocol::methods::Catalog;
 use koyo_agent::protocol::model::ItemBody;
 use koyo_agent::replica::Replica;
 use koyo_agent::timeline::{Row, RowId, RowKind, changed, rows};
@@ -27,6 +28,8 @@ const COPIED_FOR: Duration = Duration::from_millis(1500);
 
 pub(super) struct Timeline {
     thread: Entity<ChatThread>,
+    /// What the models are called.
+    catalog: Entity<Catalog>,
     scroller: Entity<MessageScrollerState>,
     cwd: Rc<str>,
     /// Who an answer to what's asked is said to.
@@ -52,6 +55,7 @@ impl EventEmitter<ChatViewEvent> for Timeline {}
 impl Timeline {
     pub(super) fn new(
         thread: Entity<ChatThread>,
+        catalog: Entity<Catalog>,
         scroller: Entity<MessageScrollerState>,
         cwd: Rc<str>,
         composer: FocusHandle,
@@ -61,6 +65,7 @@ impl Timeline {
         let following = cx.observe(&thread, |timeline, _, cx| timeline.follow(cx));
         let mut timeline = Timeline {
             thread,
+            catalog,
             scroller,
             cwd,
             composer,
@@ -177,6 +182,7 @@ impl Render for Timeline {
         }
         let drawing = Drawing {
             thread: self.thread.clone(),
+            catalog: self.catalog.clone(),
             timeline: cx.weak_entity(),
             rows: Rc::clone(&self.rows),
             open: Rc::clone(&self.open),
