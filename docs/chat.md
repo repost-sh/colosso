@@ -1026,7 +1026,8 @@ Layout, top to bottom inside the pane's card:
   it runs, by name or else by id; ⚡ when fast) · effort ("Extra high"; none for a model with no efforts) · permission
   ("Ask", brighter when not the default; unknown, so not shown, until the catalog says what
   the person's settings choose) · Plan toggle (⇧Tab) · context ring (hover: "42 % · 84k of
-  200k", "Compact now") · send / stop. Labels collapse to icons from the end as the pane
+  200k"; press: that and "Compact now", on a menu's surface) · send / stop. Labels collapse
+  to icons from the end as the pane
   narrows. What shows is what the thread says, so it's what the agent runs with: a change goes
   to the host and shows when the host says so; a new chat holds what it will start with.
 - **Model menu** (the chip, ⌃M as ⌘⇧M is the sidebar's, or `/model`): the same dropdown as the

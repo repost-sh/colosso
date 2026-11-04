@@ -11,6 +11,7 @@
 
 mod asked;
 mod attach;
+mod context;
 mod draft;
 mod effort;
 mod footer;
@@ -103,9 +104,10 @@ pub(super) struct ChatComposer {
     settings: Settings,
     /// How full the conversation is, as of the last run that said: what it holds, and can.
     context: Option<(u64, u64)>,
-    /// What opens the menu of models, and the slider of efforts.
+    /// What opens the menu of models, the slider of efforts, and how full the conversation is.
     model_menu: Trigger,
     effort_menu: Trigger,
+    context_menu: Trigger,
     /// What the word being typed completes to.
     suggest: Option<Suggestions>,
     /// Where the word starts that was told not to complete, until the caret leaves it.
@@ -214,6 +216,7 @@ impl ChatComposer {
             context: None,
             model_menu: Trigger::new(("chat-model-menu", cx.entity_id().as_u64())),
             effort_menu: Trigger::new(("chat-effort-menu", cx.entity_id().as_u64())),
+            context_menu: Trigger::new(("chat-context-menu", cx.entity_id().as_u64())),
             suggest: None,
             dismissed: None,
             attached: Vec::new(),

@@ -3,9 +3,9 @@
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::{
-    AnyElement, AnyView, AnyWindowHandle, Context, Div, FocusHandle, InteractiveElement as _, IntoElement,
-    MouseMoveEvent, ParentElement as _, Render, Stateful, StatefulInteractiveElement as _,
-    Styled as _, Subscription, Window, div, px,
+    AnyElement, AnyView, AnyWindowHandle, Context, Div, ElementId, FocusHandle,
+    InteractiveElement as _, IntoElement, MouseMoveEvent, ParentElement as _, Render, Stateful,
+    StatefulInteractiveElement as _, Styled as _, Subscription, Window, div, px,
 };
 
 use super::{
@@ -43,6 +43,21 @@ pub(super) struct Rows {
     pub(super) highlighted: Option<usize>,
     pub(super) target: FocusHandle,
     pub(super) parent: AnyWindowHandle,
+}
+
+/// A row of a menu, all that makes it look like one.
+pub(crate) fn row(id: impl Into<ElementId>) -> Stateful<Div> {
+    div()
+        .id(id)
+        .min_h(px(theme::ROW_HEIGHT))
+        .flex_shrink_0()
+        .px(px(ROW_PADDING))
+        .flex()
+        .items_center()
+        .gap(px(ROW_GAP))
+        .rounded(px(6.))
+        .text_size(LABEL_SIZE)
+        .cursor_pointer()
 }
 
 impl MenuBody for Rows {
@@ -110,17 +125,7 @@ impl Rows {
         cx: &Context<Self>,
     ) -> Stateful<Div> {
         let keys = || shortcut.clone().map(|keys| keys.appearance(false).into_any_element());
-        div()
-            .id(index)
-            .min_h(px(theme::ROW_HEIGHT))
-            .flex_shrink_0()
-            .px(px(ROW_PADDING))
-            .flex()
-            .items_center()
-            .gap(px(ROW_GAP))
-            .rounded(px(6.))
-            .text_size(LABEL_SIZE)
-            .cursor_pointer()
+        row(index)
             .when(highlighted, |row| row.bg(p.selected))
             // Moved, as it may rest on a row while the keys go elsewhere.
             .on_mouse_move(cx.listener(move |this, _: &MouseMoveEvent, _, cx| {
