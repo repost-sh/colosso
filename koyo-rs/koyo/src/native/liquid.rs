@@ -7,6 +7,10 @@
 //! macOS 26, there's none, and the element keeps a fill of its own.
 //!
 //! It moves only when the element does: a frame that moves nothing tells `AppKit` nothing.
+//!
+//! It ends at its own edge. Its shadow would reach past that, but a surface shows only what's over
+//! the element, since anything more would hide the page from the pointer: so the shadow would be
+//! cut off at the element's rectangle and show only in its corners, as grey squares on a light page.
 
 use std::cell::Cell;
 use std::sync::Once;
@@ -23,6 +27,7 @@ use objc2_app_kit::{
     NSAppearance, NSAppearanceCustomization as _, NSAppearanceNameAqua,
     NSAppearanceNameDarkAqua, NSGlassEffectView,
 };
+use objc2_quartz_core::kCACornerCurveContinuous;
 
 use super::surface::{self, Hosted, Surface};
 use crate::theme::Palette;
@@ -101,6 +106,7 @@ impl Native {
         let main = MainThreadMarker::new().ok_or("not on the main thread")?;
         AnyClass::get(c"NSGlassEffectView").ok_or("the system has no Liquid Glass")?;
         let view = NSGlassEffectView::new(main);
+        view.setWantsLayer(true);
         // Its look from its appearance, which `place` sets, not from what's behind it.
         if view.respondsToSelector(sel!(set_adaptiveAppearance:)) {
             // SAFETY: the setter, private, takes an `NSInteger`, of which 1 has the glass
@@ -128,6 +134,7 @@ impl Native {
         let corners = f64::from(f32::from(radius.min(bounds.size.height / 2.)));
         if self.corners.replace(Some(corners)) != Some(corners) {
             self.view.setCornerRadius(corners);
+            self.end_at(corners);
         }
         if self.dark.replace(Some(dark)) != Some(dark) {
             // SAFETY: names AppKit defines.
@@ -142,5 +149,15 @@ impl Native {
                 .setAppearance(NSAppearance::appearanceNamed(name).as_deref());
         }
         self.surface.place(bounds, clip, window);
+    }
+
+    /// Shows nothing of the glass outside corners this round, which go as its own do.
+    fn end_at(&self, corners: f64) {
+        if let Some(layer) = self.view.layer() {
+            layer.setCornerRadius(corners);
+            // SAFETY: a name Core Animation defines.
+            layer.setCornerCurve(unsafe { kCACornerCurveContinuous });
+            layer.setMasksToBounds(true);
+        }
     }
 }
