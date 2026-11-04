@@ -9,7 +9,7 @@ use koyo_agent::protocol::methods::{Catalog, Model, UpdateParams};
 use koyo_agent::protocol::model::{Effort, Mode, Thread};
 use koyo_agent::protocol::requests::{Questions, RequestPayload, RequestStatus};
 
-use super::footer::{CompactContext, ROOM_FOR_LABELS, SetPermission, Settings, labels_fitting};
+use super::footer::{ROOM_FOR_LABELS, SetPermission, Settings, labels_fitting};
 use crate::chat::tests::asks::{Asking, request};
 use crate::chat::tests::{question, snapshot};
 use crate::chat::thread::ThreadEvent;
@@ -382,11 +382,29 @@ fn what_it_is_set_to_already_is_not_asked_for(cx: &mut TestAppContext) {
 fn compacting_says_why_it_did_not_happen(cx: &mut TestAppContext) {
     let chat = chat("chat-footer-compact", cx);
 
-    chat.says(&CompactContext, cx);
+    chat.composer.update(cx, super::ChatComposer::compact);
     cx.run_until_parked();
 
     let error = chat.composer.read_with(cx, |composer, _| composer.error.clone());
     assert!(error.is_some(), "no host heard it");
+}
+
+#[gpui_kit::test]
+fn the_ring_opens_how_full_it_is_and_closes_it(cx: &mut TestAppContext) {
+    let chat = chat("chat-footer-context", cx);
+    let press = |cx: &mut TestAppContext| {
+        cx.update_window(chat.window, |_, window, cx| {
+            chat.composer.update(cx, |composer, cx| composer.toggle_context(window, cx));
+        })
+        .unwrap();
+        chat.composer.read_with(cx, |composer, cx| composer.context_menu.is_open(cx))
+    };
+    assert!(!press(cx), "no run has said yet");
+
+    chat.composer.update(cx, |composer, _| composer.context = Some((86, 967)));
+
+    assert!(press(cx));
+    assert!(!press(cx));
 }
 
 #[gpui_kit::test]

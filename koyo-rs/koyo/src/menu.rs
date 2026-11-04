@@ -25,11 +25,13 @@ use crate::theme;
 mod switch;
 mod view;
 
+pub(crate) use view::row;
+
 /// The narrowest a menu gets, and the widest: past that, a row's label wraps. A label can be what a
 /// person agrees to, so it's never cut.
 const WIDTH: f32 = 220.;
 const MAX_WIDTH: f32 = 420.;
-const PADDING: f32 = 5.;
+pub(crate) const PADDING: f32 = 5.;
 /// How tall a line of a label is; what a row adds past its first.
 const LABEL_LINE: f32 = 18.;
 pub(crate) const ROW_PADDING: f32 = 8.;

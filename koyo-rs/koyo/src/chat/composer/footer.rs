@@ -10,10 +10,9 @@ use std::path::Path;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::Button;
-use gpui_kit::component::hover_card::HoverCard;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Action, Anchor, AnyElement, App, ClickEvent, Context, Div, Focusable as _, Hsla, InteractiveElement as _,
+    Action, AnyElement, App, ClickEvent, Context, Div, Focusable as _, Hsla, InteractiveElement as _,
     IntoElement, KeyBinding, ParentElement as _, Pixels, SharedString, Styled as _, Svg, Window,
     actions, div, px, svg,
 };
@@ -23,7 +22,7 @@ use koyo_agent::protocol::methods::{
     Catalog, CreateParams, Model, ThreadParams, ThreadsUpdate, TurnsCompact, UpdateParams,
 };
 use koyo_agent::protocol::model::{Effort, Mode, Thread};
-use koyo_agent::words::{NEARLY_FULL, context_line, context_percent, mode_label, model_name};
+use koyo_agent::words::{mode_label, model_name};
 
 use super::ChatComposer;
 use super::model_menu::OpenModelMenu;
@@ -39,7 +38,7 @@ pub(super) const ROOM_FOR_LABELS: [f32; 4] = [340., 420., 480., 560.];
 /// How long a ring's stroke goes all the way around: its radius in `ring`, by 2π.
 const RING_LENGTH: f32 = 56.55;
 
-actions!(chat, [TogglePlan, CompactContext]);
+actions!(chat, [TogglePlan]);
 
 /// How much the agent may do without asking is now this.
 #[derive(Clone, Debug, PartialEq, Action)]
@@ -146,7 +145,7 @@ pub(super) fn chip(
 /// A ring `percent` full, in the color it's given. A sprite, the same one until that changes: the
 /// kit's ring is a path, and a path in view has every frame of a streaming answer draw the window
 /// over to antialias it.
-fn ring(percent: u8) -> Svg {
+pub(super) fn ring(percent: u8) -> Svg {
     let filled = RING_LENGTH * f32::from(percent) / 100.;
     let drawn = format!(
         r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="3"><circle cx="12" cy="12" r="9" opacity="0.25"/><circle cx="12" cy="12" r="9" stroke-dasharray="{filled} {RING_LENGTH}" transform="rotate(-90 12 12)"/></svg>"#
@@ -279,36 +278,6 @@ impl ChatComposer {
         self.change_settings(|settings| settings.plan = !settings.plan, cx);
     }
 
-    /// How full the conversation is, once a run has said: more, and compacting it, on hover.
-    fn context_ring(&self, p: Palette, cx: &App) -> Option<HoverCard> {
-        let (held, room) = self.context?;
-        let percent = context_percent(held, room);
-        let color = if percent >= NEARLY_FULL { p.danger } else { p.muted };
-        let composer = self.focus_handle(cx);
-        let card = HoverCard::new("chat-context-card")
-            .anchor(Anchor::BottomRight)
-            .trigger(div().flex_shrink_0().child(ring(percent).text_color(color)))
-            .content(move |_, _, cx| {
-                let composer = composer.clone();
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_2()
-                    .text_xs()
-                    .whitespace_nowrap()
-                    .child(context_line(held, room))
-                    .child(
-                        glass("chat-compact", p.text, cx)
-                            .small()
-                            .label("Compact now")
-                            .on_click(move |_, window, cx| {
-                                composer.dispatch_action(&CompactContext, window, cx);
-                            }),
-                    )
-            });
-        Some(card)
-    }
-
     pub(super) fn footer(&self, typed: &str, p: Palette, cx: &Context<Self>) -> Div {
         let catalog = self.catalog.read(cx);
         div()
@@ -329,7 +298,6 @@ impl ChatComposer {
     pub(super) fn hears_footer(column: Div, cx: &mut Context<Self>) -> Div {
         column
             .on_action(cx.listener(|this, _: &TogglePlan, _, cx| this.toggle_plan(cx)))
-            .on_action(cx.listener(|this, _: &CompactContext, _, cx| this.compact(cx)))
             .on_action(cx.listener(|this, permission: &SetPermission, _: &mut Window, cx| {
                 let mode = permission.0;
                 this.change_settings(|settings| settings.permission = Some(mode), cx);
