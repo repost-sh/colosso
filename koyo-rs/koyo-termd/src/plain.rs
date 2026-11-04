@@ -106,7 +106,7 @@ pub fn complete_len(bytes: &[u8]) -> usize {
 
 /// Skips what follows an ESC: a CSI to its final byte, an OSC or other string to its
 /// terminator, a charset designation's one more character, or the one character after it.
-fn skip_escape(chars: &mut Peekable<Chars<'_>>) {
+pub fn skip_escape(chars: &mut Peekable<Chars<'_>>) {
     match chars.next() {
         Some('[') => {
             for c in chars.by_ref() {
