@@ -347,7 +347,7 @@ providers.status {refresh: bool} → [ProviderStatus]
             {provider, state: "ready"|"missing"|"signed_out"|"error", executable, version,
              account: {email, plan}, message}
 catalog     {provider: id | null, cwd} → {models: [Model], commands: [Command], defaultMode}
-            Model = {id, name, label, efforts, fast, auto} (4.5.9)
+            Model = {id, name, label, runs, efforts, fast, auto} (4.5.9)
 ```
 
 #### 4.3.2 Threads
@@ -422,6 +422,7 @@ Thread {
   sessionId,                  // the provider's conversation, once there is one
   queueHeld: bool,
   tabOpen: bool,              // a tab shows it, and will again after a restart (C13)
+  parent: {threadId, itemId} | null,   // the row of the thread that started it (4.5.10)
   createdAt, updatedAt, readAt, seq
 }
 
@@ -440,7 +441,7 @@ Run {                         // a turn: one prompt and the work it caused
 }
 
 Item {                        // one timeline entry
-  id, threadId, runId (every entry is a turn's), ordinal, parentId,
+  id, threadId, runId (every entry is a turn's), ordinal,
   status: "pending"|"running"|"completed"|"failed"|"declined"|"interrupted", kind + payload, seq
 }
   user_message   {messageId, text, attachments, delivered: "turn"|"steer"}
@@ -451,7 +452,8 @@ Item {                        // one timeline entry
                   exitCode, patch: [Hunk] (≤ 16 KB, whole lines), files, server}
   todos          {todos: [{text, status}]}
   request        {requestId}                   a request, in its place in the timeline
-  subagent       {description, agentType, summary}
+  subagent       {description, agentType, summary, threadId, progress, usage, startedAt,
+                  endedAt}   (4.5.10)
   compaction     {trigger: "manual"|"auto", before, after}
   notice         {level: "info"|"warning"|"error", text}
 
@@ -515,7 +517,9 @@ taken off the queue is `removed`.
 The commit that settles a run closes the items it left open, the same for every provider,
 which closes none of them itself. After a run that completed, a tool, a subagent or a
 compaction left open is `failed`, as no result came to say it ran, and anything else is
-`completed`. After a run that was interrupted or failed, all of them are `interrupted`.
+`completed`. After a run that was interrupted or failed, all of them are `interrupted`. A
+subagent's row is the exception: its subagent says how it ended, as one in the background
+outlives its run (4.5.10).
 
 #### 4.5.1 Send
 
@@ -624,6 +628,34 @@ for `initializationResult()` and closed; no API call). No hand-kept model list (
 manifest by hand). The default mode the `catalog` method answers is Koyo's default when
 `config.set` names one, else the one in the provider's settings.
 
+#### 4.5.10 Subagents
+
+A subagent is a thread of its own, as T3 has it: `Thread.parent` names the row of the thread
+that started it, and the row's `threadId` names the thread back. It's an ordinary actor with
+no session, so open, history and recovery need nothing new, and it's left out of
+`threads.watch`, as it's reached through its row. The provider's `subagent.*` events say what
+it does; its timeline comes through `subagent.event` as any turn's items do.
+
+The row is written outside the run's `LiveTurn`, so a run settling doesn't close it. One in the
+background outlives its run, and a session with one running doesn't idle-close or get evicted.
+Its requests go to the parent's timeline, on the live or the last run, and last until the session
+goes. Nothing can be said to a subagent (`turns.send` is a conflict); `turns.stop` on its thread
+stops it alone and never kills the session. A host that comes back settles both row and thread.
+
+On Claude, as recorded from the CLI (0.3.317):
+
+- An `Agent` call's frames name it as `parent_tool_use_id`, whatever turn runs by then. There
+  are no stream events for a subagent: `forwardSubagentText` gives its text whole.
+- A call in the background returns "launched" at once, which is never its summary. How it ended
+  comes in `task_notification`, what it's doing in `task_progress`.
+- It ends on `SubagentHandback`, whose message is its report and is shown as its last answer.
+  That report goes over the notification's summary, which then only says where the report went.
+- A subagent waiting on a shell or monitor of its own (`parent_task_id`) gets a `completed`
+  notification saying it hasn't reported yet, and goes on when that task ends. It stays running
+  until it hands back, or a notification comes with nothing of its own left running. No more is
+  said of a task already told of, so stopping one that waits ends it once the CLI takes the stop.
+- The CLI's `<task-notification>` words to a subagent aren't shown as said to it.
+
 ### 4.6 Provider seam [proposed]
 
 ```ts
@@ -688,8 +720,9 @@ The behaviours, each with the T3 adapter pitfall it carries (`t3-claude-adapter.
   `toolConfig.askUserQuestion.previewFormat: "markdown"`, `spawnClaudeCodeProcess` (4.2).
 - **Prompt identity.** Each prompt gets a fresh uuid; root frames are credited to a turn
   only once the CLI echoes it (`user_message_uuid(s)`) or reports it in `command_lifecycle`.
-  Frames that arrive while no turn is running (the CLI's own wake turns) are parked and
-  shown as "Claude finished background work" with the next turn (6, 7, 8).
+  Frames that arrive while no turn is running (the CLI's own wake turns, when a background
+  task ends) get a run of their own with no user message: `turn.adopted`. A result that names
+  no turn of ours shows what was held for it rather than dropping it (6, 7, 8).
 - **Text and thinking** stream per content block (C10). Thinking is shown as reasoning, as
   the CLI shows it, and asked for by `--thinking-display summarized`: left alone, Claude Code
   sends thinking blocks with no text, and the SDK's `thinking` option would also turn thinking on
@@ -701,7 +734,7 @@ The behaviours, each with the T3 adapter pitfall it carries (`t3-claude-adapter.
   when the message has a single result (32); the actor closes one still open when the run
   settles (4.5). Families: Bash → command; Read → read; Edit, Write, MultiEdit, NotebookEdit
   → edit (with the structured patch); Grep, Glob, LS → search; WebSearch, WebFetch → web;
-  `mcp__*` → mcp; Agent → agent (a `subagent` item); TodoWrite → todo (and the `todos`
+  `mcp__*` → mcp; Agent → a `subagent` item and its thread (4.5.10); TodoWrite → todo (and the `todos`
   item); Skill → skill; anything else → other. Legacy names go through
   `LEGACY_TOOL_NAME_ALIASES`.
 - **Approvals** through `canUseTool` in every mode but Full access, and in plan mode always
@@ -736,8 +769,9 @@ The behaviours, each with the T3 adapter pitfall it carries (`t3-claude-adapter.
   `settingSources: []`, `persistSession: false`, `maxTurns: 1`; the reply goes back as it
   came (4.5.7).
 
-Skipped for now (T3 adapter 10.2): MCP elicitation, the resume dialog, subagent transcripts,
-task output tails, ultracode, PDF budgets.
+Skipped for now (T3 adapter 10.2): MCP elicitation, the resume dialog, task output tails,
+ultracode, PDF budgets; `agentProgressSummaries` and the hidden
+`forwardNestedSubagentToolCalls`.
 
 ---
 
@@ -870,6 +904,12 @@ Layout, top to bottom inside the pane's card:
 └──────────────────────────────────────────────────────────────┘
 ```
 
+- **Subagents.** A subagent's row is a card: Claude's little guy, in his orange, on a round mark
+  with a dot for how it's doing; what it's called; what it's doing or the start of its report;
+  its status and how long it took. Subagents one after the other sit under one line saying how
+  many and how they're doing, open until a person closes it. A card opens the subagent's chat in
+  the same tab, over the one that started it, with a glass bar in the composer's place: its
+  status, what it runs with, Stop while it runs, and Open parent (`escape`).
 - **Glass.** The composer and its drawers are one `liquid::backdrop` (radius 18) floating
   12 px above the card's bottom edge, its content in `deferred`; the scroll-to-end pill,
   the suggestions and the menus are glass too. Fallback: `floating()` + hairline + shadow.

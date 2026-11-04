@@ -147,7 +147,7 @@ fn a_bubble_says_to_go_now_or_come_off_the_queue(cx: &mut TestAppContext) {
 }
 
 fn timeline(chat: &Asking, cx: &TestAppContext) -> Entity<Timeline> {
-    chat.view.read_with(cx, |view, _| view.shown.as_ref().unwrap().timeline.clone())
+    chat.view.read_with(cx, |view, _| view.showing().unwrap().timeline.clone())
 }
 
 /// A chat with something being written and a message waiting, which is being changed.

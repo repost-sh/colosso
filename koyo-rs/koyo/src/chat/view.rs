@@ -20,8 +20,9 @@ use koyo_agent::protocol::ids::ThreadId;
 
 use super::Chats;
 use super::composer::{ChatComposer, ComposerEvent};
+use super::subagent_bar::{KEYS, OpenParent, SubagentBar, WentToParent};
 use super::thread::ChatThread;
-use super::timeline::Timeline;
+use super::timeline::{OpenSubagent, Timeline};
 use crate::native::liquid;
 use crate::shell::icon;
 use crate::theme;
@@ -46,26 +47,31 @@ pub enum ChatViewEvent {
     OpenFile(PathBuf),
 }
 
-/// The thread a tab shows, and its timeline.
+/// A chat a tab has on show, or under what's on show: its timeline and where it scrolled to.
 pub(super) struct Shown {
     pub(super) thread: Entity<ChatThread>,
     pub(super) timeline: Entity<Timeline>,
+    pub(super) scroller: Entity<MessageScrollerState>,
+    /// Whether there may be older runs than those held, and they aren't being asked for.
+    can_fetch_older: bool,
+    /// What takes the composer's place, in a subagent's chat.
+    bar: Option<Entity<SubagentBar>>,
+    _following: Vec<Subscription>,
 }
 
 pub struct ChatView {
-    chats: Entity<Chats>,
+    pub(super) chats: Entity<Chats>,
     cwd: PathBuf,
-    pub(super) shown: Option<Shown>,
+    /// The tab's chat, once it has one, then the subagents' chats a person went into, each over
+    /// the one it was started from.
+    shown: Vec<Shown>,
     pub(super) composer: Entity<ChatComposer>,
-    pub(super) scroller: Entity<MessageScrollerState>,
     /// How tall the composer last was, which the timeline's end clears.
     composer_height: Pixels,
     /// Whether the pill back to the end shows.
     pill: bool,
     /// Waits to show the pill.
     showing_pill: Option<Task<()>>,
-    /// Whether there may be older runs than those held, and they aren't being asked for.
-    can_fetch_older: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -87,55 +93,137 @@ impl ChatView {
             let (chats, cwd, opened) = (chats.clone(), cwd.clone(), opened.clone());
             cx.new(|cx| ChatComposer::new(chats, catalog, cwd, place, opened, window, cx))
         };
-        let scroller = cx.new(|cx| MessageScrollerState::new(0, cx));
-        let subscriptions = vec![
-            cx.subscribe(&composer, |view, _, event, cx| view.composer_said(event, cx)),
-            cx.observe(&scroller, |view, _, cx| view.scrolled(cx)),
-        ];
+        let subscriptions = vec![cx.subscribe_in(&composer, window, |view, _, event, window, cx| {
+            view.composer_said(event, window, cx);
+        })];
         let mut view = ChatView {
             chats,
             cwd,
-            shown: None,
+            shown: Vec::new(),
             composer,
-            scroller,
             composer_height: Pixels::ZERO,
             pill: false,
             showing_pill: None,
-            can_fetch_older: true,
             _subscriptions: subscriptions,
         };
         if let Some(thread) = opened {
-            view.show(thread, cx);
+            view.show(thread, None, window, cx);
         }
         view
     }
 
-    fn composer_said(&mut self, event: &ComposerEvent, cx: &mut Context<Self>) {
+    fn composer_said(&mut self, event: &ComposerEvent, window: &mut Window, cx: &mut Context<Self>) {
         match event {
-            ComposerEvent::Sent => self.scroller.update(cx, MessageScrollerState::scroll_to_end),
+            ComposerEvent::Sent => {
+                if let Some(shown) = self.showing() {
+                    shown.scroller.update(cx, MessageScrollerState::scroll_to_end);
+                }
+            }
             ComposerEvent::Created(thread, id) => {
-                self.show(thread.clone(), cx);
+                self.show(thread.clone(), None, window, cx);
                 cx.emit(ChatViewEvent::Created(id.clone()));
             }
         }
         cx.notify();
     }
 
-    /// From now on the tab shows `thread`, whose timeline follows it.
-    fn show(&mut self, thread: Entity<ChatThread>, cx: &mut Context<Self>) {
+    /// Puts `thread` over what's on show, its timeline following it and `bar` in the composer's
+    /// place, if it has one.
+    fn show(
+        &mut self,
+        thread: Entity<ChatThread>,
+        bar: Option<Entity<SubagentBar>>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let (cwd, inset) = (self.cwd.to_string_lossy().into(), self.inset());
-        let (following, scroller) = (thread.clone(), self.scroller.clone());
         let catalog = self.composer.read(cx).catalog.clone();
         let composer = self.composer.read(cx).focus_handle(cx);
-        let timeline = cx.new(|cx| Timeline::new(following, catalog, scroller, cwd, composer, inset, cx));
-        let heard = cx.subscribe(&timeline, |_, _, event: &ChatViewEvent, cx| cx.emit(event.clone()));
-        self._subscriptions.push(heard);
-        self.shown = Some(Shown { thread, timeline });
+        let scroller = cx.new(|cx| MessageScrollerState::new(0, cx));
+        let timeline = {
+            let (thread, scroller) = (thread.clone(), scroller.clone());
+            cx.new(|cx| Timeline::new(thread, catalog, scroller, cwd, composer, inset, cx))
+        };
+        let mut following = vec![
+            cx.subscribe(&timeline, |_, _, event: &ChatViewEvent, cx| cx.emit(event.clone())),
+            cx.subscribe_in(&timeline, window, Self::went_into),
+            cx.observe(&scroller, |view, _, cx| view.scrolled(cx)),
+        ];
+        if let Some(bar) = &bar {
+            following.push(cx.subscribe_in(bar, window, |view, _, _: &WentToParent, window, cx| {
+                view.came_back(window, cx);
+            }));
+        }
+        if let Some(under) = self.showing() {
+            under.timeline.update(cx, |timeline, cx| timeline.set_covered(true, cx));
+        }
+        self.shown.push(Shown {
+            thread,
+            timeline,
+            scroller,
+            can_fetch_older: true,
+            bar,
+            _following: following,
+        });
+    }
+
+    /// A person went for a subagent's chat, which takes the place of what's on show.
+    fn went_into(
+        &mut self,
+        _: &Entity<Timeline>,
+        event: &OpenSubagent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let OpenSubagent(id) = event;
+        let thread = self.chats.update(cx, |chats, cx| chats.thread(id, cx));
+        let bar = {
+            let (thread, chats) = (thread.clone(), self.chats.clone());
+            let catalog = self.composer.read(cx).catalog.clone();
+            cx.new(|cx| SubagentBar::new(thread, catalog, chats, cx))
+        };
+        self.show(thread, Some(bar), window, cx);
+        self.showing_changed(window, cx);
+    }
+
+    /// Back in the chat under the subagent's.
+    fn came_back(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.shown.pop();
+        if let Some(under) = self.showing() {
+            under.timeline.update(cx, |timeline, cx| timeline.set_covered(false, cx));
+        }
+        self.showing_changed(window, cx);
+    }
+
+    /// Another chat's on show: the pill was the last one's, and the keys go with it.
+    fn showing_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.pill = false;
+        self.showing_pill = None;
+        window.focus(&self.focus_handle(cx), cx);
+        cx.notify();
+    }
+
+    /// The chat on show, a subagent's if a person went into one.
+    pub(super) fn showing(&self) -> Option<&Shown> {
+        self.shown.last()
+    }
+
+    /// The bar on show, which is where the composer would be.
+    fn bar(&self) -> Option<&Entity<SubagentBar>> {
+        self.showing().and_then(|shown| shown.bar.as_ref())
+    }
+
+    /// The composer, unless a bar takes its place.
+    pub(super) fn composer_on_show(&self) -> Option<&Entity<ChatComposer>> {
+        self.bar().is_none().then_some(&self.composer)
     }
 
     /// A person scrolled: the pill follows, and older runs come as the top gets near.
     fn scrolled(&mut self, cx: &mut Context<Self>) {
-        let scroller = self.scroller.read(cx);
+        let Some(shown) = self.showing() else {
+            return;
+        };
+        let scroller = shown.scroller.read(cx);
         let up = scroller.is_scrolled_up();
         let near_top = scroller.logical_scroll_top().item_ix < NEAR_TOP;
         if !up {
@@ -161,26 +249,32 @@ impl ChatView {
 
     /// Asks for the runs before the oldest held, once at a time.
     fn fetch_older(&mut self, cx: &mut Context<Self>) {
-        let Some(thread) = self.shown.as_ref().map(|shown| shown.thread.clone()) else {
+        let Some(shown) = self.shown.last_mut().filter(|shown| shown.can_fetch_older) else {
             return;
         };
+        let thread = shown.thread.clone();
         let opened = thread.read(cx);
-        let oldest = opened.replica().and_then(|replica| replica.runs.first());
-        let Some(oldest) = oldest.filter(|_| self.can_fetch_older) else {
+        let Some(oldest) = opened.replica().and_then(|replica| replica.runs.first()) else {
             return;
         };
         let page = self.chats.read(cx).history(opened.id(), oldest.id.clone(), cx);
-        self.can_fetch_older = false;
+        shown.can_fetch_older = false;
         cx.spawn(async move |this, cx| {
             let page = page.await;
             this.update(cx, |this, cx| {
-                this.can_fetch_older = true;
-                match page {
+                let more = match page {
                     Ok(page) => {
-                        this.can_fetch_older = page.runs.len() == super::HISTORY_PAGE;
+                        let more = page.runs.len() == super::HISTORY_PAGE;
                         thread.update(cx, |thread, cx| thread.prepend(page, cx));
+                        more
                     }
-                    Err(error) => log::warn!("older runs of a chat: {error}"),
+                    Err(error) => {
+                        log::warn!("older runs of a chat: {error}");
+                        true
+                    }
+                };
+                if let Some(shown) = this.shown.iter_mut().find(|shown| shown.thread == thread) {
+                    shown.can_fetch_older = more;
                 }
             })
             .ok();
@@ -203,6 +297,9 @@ impl ChatView {
             .flex_col()
             .items_center()
             .on_children_prepainted(self.measures_composer(cx));
+        if let Some(bar) = self.bar() {
+            return deferred(place.bottom(px(FLOAT)).child(bar.clone())).into_any_element();
+        }
         let place = if self.composer.read(cx).is_new() {
             place.top_0().bottom_0().justify_center().pb(px(48.))
         } else {
@@ -233,7 +330,7 @@ impl ChatView {
     fn composer_measured(&mut self, height: Pixels, cx: &mut Context<Self>) {
         self.composer_height = height;
         let inset = self.inset();
-        if let Some(shown) = &self.shown {
+        if let Some(shown) = self.showing() {
             shown.timeline.update(cx, |timeline, cx| timeline.set_inset(inset, cx));
         }
         cx.notify();
@@ -241,11 +338,11 @@ impl ChatView {
 
     /// The pill back to the end of the timeline, once a person left it.
     fn scroll_pill(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let composer = self.composer.read(cx);
-        if !self.pill || composer.suggesting() {
+        let composer = self.composer_on_show().map(|composer| composer.read(cx));
+        if !self.pill || composer.is_some_and(ChatComposer::suggesting) {
             return None;
         }
-        let queued = composer.queued();
+        let queued = composer.map_or(0, ChatComposer::queued);
         let p = theme::palette(cx);
         let keyed = ElementId::NamedInteger("chat-pill-glass".into(), cx.entity_id().as_u64());
         let on_glass = liquid::backdrop(keyed, px(14.), window, cx);
@@ -267,7 +364,9 @@ impl ChatView {
             .child("Scroll to end")
             .when(queued > 0, |pill| pill.child(format!("· {queued} queued")))
             .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
-                this.scroller.update(cx, MessageScrollerState::scroll_to_end);
+                if let Some(shown) = this.showing() {
+                    shown.scroller.update(cx, MessageScrollerState::scroll_to_end);
+                }
             }));
         let bar = div()
             .absolute()
@@ -283,21 +382,32 @@ impl ChatView {
 
 impl Focusable for ChatView {
     fn focus_handle(&self, cx: &App) -> FocusHandle {
-        self.composer.read(cx).focus_handle(cx)
+        match self.bar() {
+            Some(bar) => bar.read(cx).focus_handle(cx),
+            None => self.composer.read(cx).focus_handle(cx),
+        }
     }
 }
 
 impl Render for ChatView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let timeline = (self.shown.as_ref())
+        let timeline = (self.showing())
             .map(|shown| shown.timeline.clone().cached(StyleRefinement::default().size_full()));
         div()
             .id("chat")
             .relative()
             .size_full()
             .text_color(theme::palette(cx).text)
+            // Wherever the keys are in a subagent's chat: clicking its text takes them from the bar.
+            .when(self.bar().is_some(), |chat| {
+                chat.key_context(KEYS).on_action(cx.listener(|this, _: &OpenParent, window, cx| {
+                    this.came_back(window, cx);
+                }))
+            })
             .on_drop(cx.listener(|this, dropped: &ExternalPaths, _, cx| {
-                this.composer.update(cx, |composer, cx| composer.attach_paths(dropped.paths(), cx));
+                if let Some(composer) = this.composer_on_show() {
+                    composer.update(cx, |composer, cx| composer.attach_paths(dropped.paths(), cx));
+                }
             }))
             .children(timeline)
             .children(self.scroll_pill(window, cx))

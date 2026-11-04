@@ -10,6 +10,7 @@ mod marks;
 mod queued;
 mod output;
 mod rows;
+mod subagent_bar;
 mod subagents;
 mod tabs;
 mod thread;
@@ -30,8 +31,8 @@ use koyo_agent::protocol::events::Event;
 use koyo_agent::protocol::ids::{RequestId, RunId, ThreadId};
 use koyo_agent::protocol::methods::{
     Catalog, Delivery, Empty, HistoryParams, Method, OpenParams, RequestsRespond, RespondParams,
-    Rows, SendParams, Sent, ThreadParams, ThreadsClose, ThreadsHistory, ThreadsOpen, ThreadsUpdate,
-    ThreadsWatch, TurnsSend, UpdateParams,
+    Rows, SendParams, Sent, StopParams, ThreadParams, ThreadsClose, ThreadsHistory, ThreadsOpen,
+    ThreadsUpdate, ThreadsWatch, TurnsSend, TurnsStop, UpdateParams,
 };
 use koyo_agent::protocol::model::{Prompt, ThreadSummary};
 use koyo_agent::protocol::requests::Response;
@@ -75,7 +76,8 @@ pub enum ChatsEvent {
 pub struct Chats {
     client: Option<Arc<AgentClient>>,
     summaries: HashMap<ThreadId, ThreadSummary>,
-    threads: HashMap<ThreadId, Entity<ChatThread>>,
+    /// The threads open with the host, for as long as anything shows them.
+    threads: HashMap<ThreadId, WeakEntity<ChatThread>>,
     /// What each checkout a tab shows can choose from.
     catalogs: HashMap<PathBuf, WeakEntity<Catalog>>,
     connection: Connection,
@@ -96,6 +98,7 @@ pub fn init(cx: &mut App) {
     asks::bind_keys(cx);
     composer::bind_keys(cx);
     queued::bind_keys(cx);
+    subagent_bar::bind_keys(cx);
 }
 
 impl Chats {
@@ -227,8 +230,8 @@ impl Chats {
             .map(|summary| (summary.id.clone(), summary))
             .collect();
         self.connection = Connection::Connected;
-        for thread in self.threads.values() {
-            self.open(thread.clone(), cx);
+        for thread in self.threads.values().filter_map(WeakEntity::upgrade) {
+            self.open(thread, cx);
         }
         self.refresh_catalogs(cx);
         cx.emit(ChatsEvent::Summaries);
@@ -242,15 +245,29 @@ impl Chats {
         cx.notify();
     }
 
-    /// The open thread `id`, opened now if it isn't.
+    /// The open thread `id`, opened now if it isn't. It stays open as long as it's held.
     pub fn thread(&mut self, id: &ThreadId, cx: &mut Context<Self>) -> Entity<ChatThread> {
-        if let Some(thread) = self.threads.get(id) {
-            return thread.clone();
+        if let Some(thread) = self.threads.get(id).and_then(WeakEntity::upgrade) {
+            return thread;
         }
         let thread = cx.new(|_| ChatThread::new(id.clone()));
-        self.threads.insert(id.clone(), thread.clone());
+        let released = id.clone();
+        cx.observe_release(&thread, move |chats, _, cx| chats.let_go(&released, cx)).detach();
+        self.threads.insert(id.clone(), thread.downgrade());
         self.open(thread.clone(), cx);
         thread
+    }
+
+    /// Nothing holds thread `id` any more. The host hears so, unless it deleted the thread, and
+    /// what's kept of it is the host's. It may be open again by now, which isn't this one.
+    fn let_go(&mut self, id: &ThreadId, cx: &mut Context<Self>) {
+        if self.threads.get(id).is_some_and(|thread| thread.upgrade().is_none()) {
+            self.threads.remove(id);
+            let params = ThreadParams {
+                thread_id: id.clone(),
+            };
+            logged(self.ordered::<ThreadsClose>(params), "closing a chat", cx);
+        }
     }
 
     /// Asks the host to open `thread`, from what it holds, its snapshot taken in once it comes.
@@ -271,18 +288,10 @@ impl Chats {
         .detach();
     }
 
-    /// No pane shows thread `id` any more. The host hears so, unless it deleted the thread, and
-    /// what's kept of it is the host's.
+    /// No pane shows thread `id` any more. The host hears so, unless it deleted the thread.
     fn tab_closed(&mut self, id: &ThreadId, cx: &mut Context<Self>) {
-        let open = self.threads.remove(id).is_some();
-        if open || self.summaries.contains_key(id) {
+        if self.threads.contains_key(id) || self.summaries.contains_key(id) {
             self.set_tab_open(id, false, cx);
-        }
-        if open {
-            let params = ThreadParams {
-                thread_id: id.clone(),
-            };
-            logged(self.ordered::<ThreadsClose>(params), "closing a chat", cx);
         }
     }
 
@@ -327,6 +336,15 @@ impl Chats {
             request_id: request,
             response,
         })
+    }
+
+    /// Asks what's running in thread `id` to stop.
+    pub fn stop(&self, id: &ThreadId, cx: &mut Context<Self>) {
+        let params = StopParams {
+            thread_id: id.clone(),
+            force: false,
+        };
+        logged(self.ordered::<TurnsStop>(params), "stopping a chat's run", cx);
     }
 
     /// A page of the runs of thread `id` sent before `before`, on its own thread as it may take a
@@ -392,7 +410,7 @@ impl Chats {
             }
         }
         for (id, events) in touched {
-            if let Some(thread) = self.threads.get(&id) {
+            if let Some(thread) = self.threads.get(&id).and_then(WeakEntity::upgrade) {
                 thread.update(cx, |thread, cx| thread.take_in(events, cx));
             }
         }

@@ -10,6 +10,7 @@ use koyo_agent::protocol::model::{
 use koyo_agent::timeline::RowId;
 
 use super::super::thread::ChatThread;
+use super::super::timeline::OpenSubagent;
 use super::super::view::ChatView;
 use super::{AT, answer, appended, chats_of, run, snapshot, summary, text_of};
 use crate::settings::{self, ChatWork};
@@ -95,14 +96,14 @@ fn the_list_holds_a_row_for_what_shows_and_a_fold_or_a_token_changes_only_that(
 ) {
     let (window, view, thread) = shown_chat("chat-rows", cx);
     let rows = |cx: &TestAppContext| {
-        view.read_with(cx, |view, cx| view.scroller.read(cx).item_count())
+        view.read_with(cx, |view, cx| view.showing().unwrap().scroller.read(cx).item_count())
     };
     assert_eq!(rows(cx), 3, "the prompt, its work and the answer");
     cx.update(|cx| settings::update(cx, |settings| settings.chat_work = ChatWork::Turns));
     draw(window, cx);
     assert_eq!(rows(cx), 3, "the prompt, the fold and the answer");
 
-    let timeline = view.read_with(cx, |view, _| view.shown.as_ref().unwrap().timeline.clone());
+    let timeline = view.read_with(cx, |view, _| view.showing().unwrap().timeline.clone());
     let fold = RowId::Fold(RunId("r".into()));
     timeline.update(cx, |timeline, cx| timeline.toggle(fold, 1, cx));
     draw(window, cx);
@@ -119,7 +120,7 @@ fn the_list_holds_a_row_for_what_shows_and_a_fold_or_a_token_changes_only_that(
 #[gpui_kit::test]
 fn how_much_of_the_work_shows_is_chosen_and_a_click_still_has_the_last_word(cx: &mut TestAppContext) {
     let (window, view, _) = shown_chat("chat-work", cx);
-    let timeline = view.read_with(cx, |view, _| view.shown.as_ref().unwrap().timeline.clone());
+    let timeline = view.read_with(cx, |view, _| view.showing().unwrap().timeline.clone());
     let line = RowId::Item(ItemId("t".into()));
     let is_open = |cx: &mut TestAppContext| {
         timeline.update(cx, |timeline, cx| timeline.drawing(cx).work_open(&line))
@@ -161,7 +162,7 @@ fn how_much_of_the_work_shows_is_chosen_and_a_click_still_has_the_last_word(cx: 
 fn a_token_draws_the_timeline_alone_and_whats_typed_the_composer_alone(cx: &mut TestAppContext) {
     let (window, view, thread) = shown_chat("chat-budget", cx);
     let (composer, timeline) = view.read_with(cx, |view, _| {
-        (view.composer.clone(), view.shown.as_ref().unwrap().timeline.clone())
+        (view.composer.clone(), view.showing().unwrap().timeline.clone())
     });
     let text = composer.read_with(cx, |composer, _| composer.text.clone());
     let drawn = |cx: &TestAppContext| {
@@ -195,4 +196,26 @@ fn a_token_draws_the_timeline_alone_and_whats_typed_the_composer_alone(cx: &mut 
     key("Ty", cx);
     key("Typ", cx);
     assert_eq!(drawn(cx), (typed + 3, rows), "each key draws the composer, none the rows");
+}
+
+#[gpui_kit::test]
+fn a_subagents_chat_goes_over_its_parent_and_is_let_go_of_coming_back(cx: &mut TestAppContext) {
+    let (window, view, parent) = shown_chat("chat-subagent", cx);
+    let child = ThreadId("0002".into());
+    let timeline = view.read_with(cx, |view, _| view.showing().unwrap().timeline.clone());
+    timeline.update(cx, |_, cx| cx.emit(OpenSubagent(child.clone())));
+    draw(window, cx);
+    let chats = view.read_with(cx, |view, _| view.chats.clone());
+    let showing = |cx: &TestAppContext| {
+        view.read_with(cx, |view, cx| view.showing().unwrap().thread.read(cx).id().clone())
+    };
+    assert_eq!(showing(cx), child);
+    assert!(chats.read_with(cx, |chats, _| chats.threads.contains_key(&child)));
+    assert!(view.read_with(cx, |view, _| view.composer_on_show().is_none()), "a bar's in its place");
+
+    cx.simulate_keystrokes(window, "escape");
+    draw(window, cx);
+    assert_eq!(showing(cx), parent.read_with(cx, |parent, _| parent.id().clone()));
+    assert!(view.read_with(cx, |view, _| view.composer_on_show().is_some()));
+    assert!(!chats.read_with(cx, |chats, _| chats.threads.contains_key(&child)), "nothing shows it");
 }
