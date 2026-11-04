@@ -905,8 +905,12 @@ Layout, top to bottom inside the pane's card:
 ```
 
 - **The details card.** A floating glass card at the top right of a chat says where it works:
-  its branch and folder, what's changed there, its subagents (those working, then "Previous agents"
-  behind a line), and how full its conversation is. It's up where the pane has room for it beside
+  its branch and folder, an editor to open that in, a project's scripts, which run in a terminal
+  tab and are kept in settings by project, what can be done next with its work (commit,
+  publish or push, pull, create a pull request, or the one it has), what's changed there, its
+  subagents (those working, then "Previous agents" behind a line), and how full its conversation
+  is. What's known of the branch is read as the card's drawn, asking its remote, if that's over a
+  minute old, `HEAD` moved, or a person is back from another app. Pull requests are the GitHub CLI's, where it's installed. It's up where the pane has room for it beside
   the timeline, as a person left it, and over the timeline only when asked for where there's none.
   ⌘⇧B or its button toggles it, and a menu beside the button turns each part on or off.
 - **Subagents.** A subagent's row is a card: Claude's little guy, in his orange, on a round mark

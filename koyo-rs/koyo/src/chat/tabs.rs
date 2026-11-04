@@ -111,7 +111,7 @@ impl Shell {
 
     /// Tells the shown tab's chats where they work, once the right panel holds its checkout.
     fn tell_chats_where_they_work(&self, cx: &mut Context<Self>) {
-        let Some(unit) = self.workspace.branch() else {
+        let (Some(project), Some(unit)) = (self.workspace.project(), self.workspace.branch()) else {
             return;
         };
         let held = self.right_panel.checkout().filter(|checkout| *checkout.read(cx).root() == unit.worktree.path);
@@ -123,6 +123,7 @@ impl Shell {
                 let place = Workplace {
                     branch: unit.name(),
                     folder: unit.worktree.path.clone(),
+                    project: project.path.clone(),
                     is_main: unit.is_main(),
                     checkout: checkout.clone(),
                 };
@@ -147,6 +148,7 @@ impl Shell {
             ChatViewEvent::OpenFile(path) => {
                 this.open_file(Place::file(path.clone()), true, true, window, cx);
             }
+            ChatViewEvent::RunScript { script, folder } => this.run_script(folder.clone(), script, cx),
         });
         if self.chat_tabs.focus_next.take() == Some(pane) {
             let focus = view.focus_handle(cx);
