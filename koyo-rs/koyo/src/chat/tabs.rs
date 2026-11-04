@@ -10,6 +10,7 @@ use gpui_kit::{
 };
 use koyo_agent::protocol::ids::ThreadId;
 
+use super::view::details::Workplace;
 use super::view::{ChatView, ChatViewEvent};
 use super::{Chats, ChatsEvent};
 use crate::files::Place;
@@ -104,7 +105,30 @@ impl Shell {
                 self.make_chat_view(pane, thread, cwd.clone(), place.clone(), window, cx);
             }
         }
+        self.tell_chats_where_they_work(cx);
         self.chat_tabs.view(first).cloned()
+    }
+
+    /// Tells the shown tab's chats where they work, once the right panel holds its checkout.
+    fn tell_chats_where_they_work(&self, cx: &mut Context<Self>) {
+        let Some(unit) = self.workspace.branch() else {
+            return;
+        };
+        let held = self.right_panel.checkout().filter(|checkout| *checkout.read(cx).root() == unit.worktree.path);
+        let (Some(checkout), Some(tab)) = (held, unit.tabs.get(unit.active_tab)) else {
+            return;
+        };
+        for pane in tab.panes() {
+            if let Some(view) = self.chat_tabs.view(pane.id) {
+                let place = Workplace {
+                    branch: unit.name(),
+                    folder: unit.worktree.path.clone(),
+                    is_main: unit.is_main(),
+                    checkout: checkout.clone(),
+                };
+                view.update(cx, |view, cx| view.set_place(place, cx));
+            }
+        }
     }
 
     fn make_chat_view(

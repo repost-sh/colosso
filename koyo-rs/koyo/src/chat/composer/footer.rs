@@ -23,7 +23,7 @@ use koyo_agent::protocol::methods::{
     Catalog, CreateParams, Model, ThreadParams, ThreadsUpdate, TurnsCompact, UpdateParams,
 };
 use koyo_agent::protocol::model::{Effort, Mode, Thread};
-use koyo_agent::words::{context_line, context_percent, mode_label, model_name};
+use koyo_agent::words::{NEARLY_FULL, context_line, context_percent, mode_label, model_name};
 
 use super::ChatComposer;
 use super::model_menu::OpenModelMenu;
@@ -38,8 +38,6 @@ pub(super) const COMPOSER: &str = "ChatComposer";
 pub(super) const ROOM_FOR_LABELS: [f32; 4] = [340., 420., 480., 560.];
 /// How long a ring's stroke goes all the way around: its radius in `ring`, by 2π.
 const RING_LENGTH: f32 = 56.55;
-/// How full a conversation is before its ring warns of it, in percent.
-const NEARLY_FULL: u8 = 90;
 const MODES: [Mode; 4] = [Mode::Ask, Mode::AcceptEdits, Mode::Auto, Mode::FullAccess];
 
 actions!(chat, [TogglePlan, CompactContext]);

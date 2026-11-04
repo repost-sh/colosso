@@ -4,6 +4,8 @@
 //! overlays, as the glass hides what's drawn under it. That draws this view again for any change
 //! under it (a deferred element's reads aren't told apart), so it's kept to very little.
 
+pub(super) mod details;
+
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -23,6 +25,7 @@ use super::composer::{ChatComposer, ComposerEvent};
 use super::subagent_bar::{KEYS, OpenParent, SubagentBar, WentToParent};
 use super::thread::ChatThread;
 use super::timeline::{OpenSubagent, Timeline};
+use details::{Details, ToggleDetails, Workplace};
 use crate::native::liquid;
 use crate::shell::icon;
 use crate::theme;
@@ -72,6 +75,8 @@ pub struct ChatView {
     pill: bool,
     /// Waits to show the pill.
     showing_pill: Option<Task<()>>,
+    /// The card that says where the chat works.
+    details: Details,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -104,6 +109,7 @@ impl ChatView {
             composer_height: Pixels::ZERO,
             pill: false,
             showing_pill: None,
+            details: Details::default(),
             _subscriptions: subscriptions,
         };
         if let Some(thread) = opened {
@@ -176,6 +182,11 @@ impl ChatView {
         cx: &mut Context<Self>,
     ) {
         let OpenSubagent(id) = event;
+        self.open_subagent(id, window, cx);
+    }
+
+    /// Thread `id`, a subagent's, takes the place of what's on show.
+    fn open_subagent(&mut self, id: &ThreadId, window: &mut Window, cx: &mut Context<Self>) {
         let thread = self.chats.update(cx, |chats, cx| chats.thread(id, cx));
         let bar = {
             let (thread, chats) = (thread.clone(), self.chats.clone());
@@ -201,6 +212,19 @@ impl ChatView {
         self.showing_pill = None;
         window.focus(&self.focus_handle(cx), cx);
         cx.notify();
+    }
+
+    /// Whether the details card is up.
+    #[cfg(test)]
+    pub(super) fn details_up(&self, cx: &App) -> bool {
+        self.details.is_up(cx)
+    }
+
+    /// Where the chat works, as the shell says.
+    pub(super) fn set_place(&mut self, place: Workplace, cx: &mut Context<Self>) {
+        if self.details.set_place(place) {
+            cx.notify();
+        }
     }
 
     /// The chat on show, a subagent's if a person went into one.
@@ -409,8 +433,14 @@ impl Render for ChatView {
                     composer.update(cx, |composer, cx| composer.attach_paths(dropped.paths(), cx));
                 }
             }))
+            .on_action(cx.listener(|this, _: &ToggleDetails, _, cx| {
+                this.details.toggle(cx);
+                cx.notify();
+            }))
+            .child(details::measure(cx))
             .children(timeline)
             .children(self.scroll_pill(window, cx))
+            .child(details::floating(self, window, cx))
             .child(self.composer_in_place(cx))
     }
 }

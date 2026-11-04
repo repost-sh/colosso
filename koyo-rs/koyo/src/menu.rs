@@ -61,9 +61,11 @@ pub struct MenuItem {
     pub switch: Option<bool>,
 }
 
-/// Whether a line sets row `index` apart from those above it, which a switch's row is.
-fn separated(index: usize, item: &MenuItem) -> bool {
-    index > 0 && item.switch.is_some()
+/// Whether a line sets row `index` apart from those above it, as the first of the switches under
+/// other rows.
+fn separated(rows: &[(MenuItem, Option<Kbd>)], index: usize) -> bool {
+    let is_switch = |index: usize| rows.get(index).is_some_and(|(item, _)| item.switch.is_some());
+    index > 0 && is_switch(index) && !is_switch(index - 1)
 }
 
 /// What a menu's window holds, which hears the keys it has a use for ahead of the window that has
@@ -357,7 +359,7 @@ fn fitted(items: &[(MenuItem, Option<Kbd>)], window: &Window) -> Size<Pixels> {
         let lines = (window.text_system())
             .shape_text(label.clone(), font_size, &[run(label)], Some(room), None)
             .map_or(1, |shaped| shaped.iter().map(|line| line.wrap_boundaries.len() + 1).sum());
-        let above = if separated(index, &row.0) { SEPARATOR } else { 0. };
+        let above = if separated(items, index) { SEPARATOR } else { 0. };
         above + theme::ROW_HEIGHT + LABEL_LINE * (lines - 1) as f32
     });
     size(width, px(PADDING * 2. + rows.sum::<f32>()))

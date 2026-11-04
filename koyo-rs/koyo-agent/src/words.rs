@@ -79,6 +79,9 @@ pub fn mode_label(mode: Mode) -> &'static str {
     }
 }
 
+/// How full a conversation is, in percent, when it's about to want compacting.
+pub const NEARLY_FULL: u8 = 90;
+
 /// How full a conversation is, as far as it can be.
 pub fn context_percent(held: u64, room: u64) -> u8 {
     let percent = held.saturating_mul(100).checked_div(room).unwrap_or(0);

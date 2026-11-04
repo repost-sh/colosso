@@ -165,7 +165,7 @@ impl Render for Rows {
             .map(|(index, (item, _))| item.switch.map(|on| row_switch(index, on, window, cx)))
             .collect();
         let rows = self.items.iter().zip(switches).enumerate().map(|(index, (row, switch))| {
-            let line = separated(index, &row.0).then(|| {
+            let line = separated(&self.items, index).then(|| {
                 div().h(px(1.)).mx(px(ROW_PADDING)).my(px(SEPARATOR_MARGIN)).bg(p.hairline)
             });
             let highlighted = self.highlighted == Some(index);
