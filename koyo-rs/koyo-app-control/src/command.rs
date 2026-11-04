@@ -194,6 +194,12 @@ registry! {
     BrowserViewport => ops::browser::BrowserViewport,
     BrowserClaim => ops::browser::BrowserClaim,
     BrowserRelease => ops::browser::BrowserRelease,
+    ChatList => ops::chat::ChatList,
+    ChatRead => ops::chat::ChatRead,
+    ChatOpen => ops::chat::ChatOpen,
+    ChatCreate => ops::chat::ChatCreate,
+    ChatSend => ops::chat::ChatSend,
+    ChatStop => ops::chat::ChatStop,
     SettingsGet => ops::settings::SettingsGet,
     SettingsSet => ops::settings::SettingsSet,
 }

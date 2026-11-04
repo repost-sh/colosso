@@ -28,7 +28,7 @@ fn names_are_valid_unique_and_clear_of_the_terminals() {
         );
         assert_ne!(terminal.name, APP_LAUNCH);
     }
-    assert_eq!(names.len(), 45);
+    assert_eq!(names.len(), 51);
 }
 
 #[test]

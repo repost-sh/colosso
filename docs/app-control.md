@@ -183,6 +183,26 @@ pane_detach [navigate] I { pane } → moves the pane out of its split into a tab
 pane_close [navigate] I { pane } → takes the pane out (same unsaved rule as tab_close)
 ```
 
+### Chats
+
+```
+chat_list   [read] R { worktree?, all?: bool } → { chats: [{ id, title, worktree, status:
+              "idle"|"working"|"failed", needs?: "approval"|"question"|"plan", queued, unread,
+              open, updatedAt }] }, latest first; a subagent's chat isn't listed
+chat_read   [read] R { chat, turns?: n (default 5) } → { status, messages: [{ role:
+              "user"|"assistant", text }] }, oldest first, without the work between the words
+chat_open   [navigate] I { chat } → { pane, tab, worktree }: the tab showing it, or a new one
+chat_create [manage] C { worktree?, text, select?: bool (default true) } → { chat, place }:
+              a new chat, set as Settings says, told `text`
+chat_send   [manage] C { chat, text, queue?: bool } → { turn }: starts a turn, or joins the one
+              running unless `queue`
+chat_stop   [manage] I { chat } → asks what's running to stop
+```
+
+Sending to a chat has the agent work in that checkout, as far as the chat's permissions let it,
+so it's `manage`. What the agent asks of a person (approvals, questions, plans) can't be answered
+from here: `chat_list` says what a chat waits for, and the person answers in the window.
+
 ### Files
 
 ```

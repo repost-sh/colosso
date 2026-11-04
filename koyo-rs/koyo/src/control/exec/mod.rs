@@ -5,6 +5,7 @@
 
 mod app;
 mod browser;
+mod chat;
 mod file;
 mod info;
 mod open;
@@ -79,6 +80,12 @@ pub(crate) fn run(caller: &Caller, command: Command, cx: &mut App) -> Exec {
         C::ChangesOpen(input) => {
             Exec::Ready(file::changes_open(caller, input.worktree.as_deref(), cx))
         }
+        C::ChatList(input) => Exec::Ready(chat::list(caller, &input, cx)),
+        C::ChatRead(input) => chat::read(&input, cx).into(),
+        C::ChatOpen(input) => Exec::Ready(chat::open(&input, cx)),
+        C::ChatCreate(input) => chat::create(caller, input, cx).into(),
+        C::ChatSend(input) => chat::send(input, cx).into(),
+        C::ChatStop(input) => Exec::Ready(chat::stop(&input, cx)),
         C::SettingsGet(_) => Exec::Ready(settings::get(cx)),
         C::SettingsSet(input) => Exec::Ready(settings::set(input, cx)),
         C::BrowserList(_) => Exec::Ready(browser::list(cx)),

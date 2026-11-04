@@ -1,15 +1,29 @@
 //! Sending what's typed and what's attached: the composer clears at once, and the message shows when
 //! the host says so. If it doesn't go it all comes back, with why.
 
+use std::path::Path;
+
 use gpui_kit::{Context, Window};
 use koyo_agent::client::ClientError;
 use koyo_agent::protocol::ids::{MessageId, ThreadId};
 use koyo_agent::protocol::methods::{Delivery, ThreadsCreate};
-use koyo_agent::protocol::model::Prompt;
+use koyo_agent::protocol::model::{Prompt, Thread};
 use koyo_agent::protocol::requests::{Decision, Response};
 
 use super::asked::Asked;
+use super::footer::Settings;
 use super::{ChatComposer, ComposerEvent};
+use crate::chat::Chats;
+
+impl Chats {
+    /// Makes a chat in the checkout at `cwd`, as it starts until a person changes something.
+    pub(crate) fn create(
+        &self,
+        cwd: &Path,
+    ) -> impl Future<Output = Result<Thread, ClientError>> + use<> {
+        self.ordered::<ThreadsCreate>(Settings::default().to_create(cwd))
+    }
+}
 
 impl ChatComposer {
     /// Whether what's typed answers what's asked, which takes only words: what's attached stays for

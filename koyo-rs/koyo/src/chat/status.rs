@@ -99,6 +99,17 @@ fn spinner(place: String, cx: &mut App) -> Div {
 }
 
 impl Chats {
+    /// A person's chats, a subagent's not among them, in the checkout at `worktree` if it's given,
+    /// latest first.
+    pub(crate) fn latest_first(&self, worktree: Option<&Path>) -> Vec<&ThreadSummary> {
+        let in_it = |summary: &&ThreadSummary| {
+            worktree.is_none_or(|worktree| Path::new(&summary.cwd) == worktree)
+        };
+        let mut chats: Vec<&ThreadSummary> = self.summaries.values().filter(in_it).collect();
+        chats.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        chats
+    }
+
     /// The summaries changed: what the rows say follows, and whoever shows them hears.
     pub(super) fn summaries_changed(&mut self, cx: &mut Context<Self>) {
         self.checkout_marks = checkout_marks(self.summaries.values());
@@ -154,6 +165,19 @@ impl Shell {
     pub fn checkout_chat_mark(&self, worktree: &Path, p: Palette, cx: &mut App) -> Option<Div> {
         let mark = *self.chat_tabs.chats.read(cx).checkout_marks.get(worktree)?;
         Some(mark.shown(format!("row-{}", worktree.display()), p, cx))
+    }
+}
+
+#[cfg(test)]
+impl Chats {
+    /// Takes `summaries` in as the host would say them.
+    pub(crate) fn hear_summaries(&mut self, summaries: Vec<ThreadSummary>, cx: &mut Context<Self>) {
+        let said = summaries.into_iter().map(|summary| {
+            koyo_agent::agent_client::Notice::Event(Box::new(
+                koyo_agent::protocol::events::Event::ThreadSummary(summary),
+            ))
+        });
+        self.take_in(said.collect(), cx);
     }
 }
 
