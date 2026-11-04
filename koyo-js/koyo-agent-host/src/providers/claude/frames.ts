@@ -42,6 +42,7 @@ type ResultContent = Extract<
 >["content"];
 
 const RETRYING = "Claude's API answered with an error; Claude Code is trying again.";
+const UNREACHABLE = "Claude's API can't be reached; Claude Code is trying again.";
 const UNSAVED = "Claude couldn't save this conversation: the disk is full.";
 
 export class Frames {
@@ -243,7 +244,7 @@ export class Frames {
       case "api_retry": {
         if (!this.#retried) {
           this.#retried = true;
-          this.#notice("warning", RETRYING);
+          this.#notice("warning", frame.error_status === null ? UNREACHABLE : RETRYING);
         }
         return;
       }

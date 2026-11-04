@@ -91,8 +91,9 @@ interface Opening {
 
 /**
  * A chat session's options: Claude Code's own system prompt (an omitted one is empty), text
- * as it streams, and a permission mode only when the chat or Koyo names one, so Claude's own
- * settings choose otherwise (C12).
+ * as it streams, what the model thought (left out unless asked for, and asked for by the flag:
+ * the `thinking` option would also turn thinking on for someone who has it off), and a permission
+ * mode only when the chat or Koyo names one, so Claude's own settings choose otherwise (C12).
  */
 export function sessionOptions(spec: SessionSpec, place: Place, opening: Opening): Options {
   const mode = spec.permission;
@@ -102,6 +103,7 @@ export function sessionOptions(spec: SessionSpec, place: Place, opening: Opening
     ...(opening.resume ? { resume: spec.sessionId } : { sessionId: spec.sessionId }),
     systemPrompt: { type: "preset", preset: "claude_code" },
     includePartialMessages: true,
+    extraArgs: { "thinking-display": "summarized" },
     ...(asks(spec.plan, mode) ? { canUseTool: opening.canUseTool } : {}),
     ...(spec.model === null ? {} : { model: spec.model }),
     ...(spec.effort === null ? {} : { effort: spec.effort }),

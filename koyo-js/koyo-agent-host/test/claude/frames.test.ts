@@ -252,6 +252,16 @@ describe("notices", () => {
     }]);
   });
 
+  test("no answer from the API at all is said as what it is", () => {
+    const { events, send } = mapped();
+    send(apiRetry(1, null));
+    expect(events).toEqual([{
+      type: "notice",
+      level: "warning",
+      text: "Claude's API can't be reached; Claude Code is trying again.",
+    }]);
+  });
+
   test("the CLI's warnings and notices are shown, its info and suggestions aren't", () => {
     const { events, send } = mapped();
     send(
