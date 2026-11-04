@@ -43,7 +43,7 @@ impl Chats {
 }
 
 /// Asks the host for the catalog of `cwd`, on its own thread as a first answer takes a while. `held`
-/// only hears of an answer that says something new, as a picker open on it closes.
+/// only hears of an answer that says something new, as a menu open on it closes.
 fn ask_for_catalog(
     client: &Arc<AgentClient>,
     cwd: &Path,

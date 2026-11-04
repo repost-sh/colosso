@@ -45,13 +45,15 @@ pub(super) fn token_at(text: &str, cursor: usize) -> Option<Token> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Own {
     Model,
+    Effort,
     Plan,
     Compact,
     Clear,
 }
 
-const OWN: [(&str, &str, Own); 4] = [
-    ("model", "Choose the model and effort", Own::Model),
+const OWN: [(&str, &str, Own); 5] = [
+    ("model", "Choose the model", Own::Model),
+    ("effort", "Choose how hard the agent works", Own::Effort),
     ("plan", "Plan first, or stop planning first", Own::Plan),
     ("compact", "Summarize the conversation, to free up context", Own::Compact),
     ("clear", "Start a new chat", Own::Clear),
@@ -165,13 +167,13 @@ mod tests {
     fn koyos_own_commands_come_first_and_stand_in_for_the_agents() {
         let listed = [command("review"), command("compact")];
         let rows = commands_matching("", &listed, true);
-        assert_eq!(names(&rows), ["model", "plan", "compact", "clear", "review"]);
-        assert_eq!(rows.get(2).and_then(|row| row.own), Some(Own::Compact));
+        assert_eq!(names(&rows), ["model", "effort", "plan", "compact", "clear", "review"]);
+        assert_eq!(rows.get(3).and_then(|row| row.own), Some(Own::Compact));
     }
 
     #[test]
     fn a_chat_that_has_not_begun_has_nothing_to_compact() {
-        assert_eq!(names(&commands_matching("", &[], false)), ["model", "plan", "clear"]);
+        assert_eq!(names(&commands_matching("", &[], false)), ["model", "effort", "plan", "clear"]);
     }
 
     #[test]

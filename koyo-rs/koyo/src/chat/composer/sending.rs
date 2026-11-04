@@ -79,6 +79,7 @@ impl ChatComposer {
             text,
             attachments,
         };
+        self.settle_effort(cx);
         match &self.thread {
             Some(thread) => {
                 let id = thread.read(cx).id().clone();

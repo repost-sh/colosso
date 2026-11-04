@@ -872,7 +872,7 @@ Layout, top to bottom inside the pane's card:
 
 - **Glass.** The composer and its drawers are one `liquid::backdrop` (radius 18) floating
   12 px above the card's bottom edge, its content in `deferred`; the scroll-to-end pill,
-  the pickers and the menus are glass too. Fallback: `floating()` + hairline + shadow.
+  the suggestions and the menus are glass too. Fallback: `floating()` + hairline + shadow.
   The timeline's bottom inset is the composer's measured height plus 24 px, so the last
   row clears the glass.
 - **Empty chat.** The composer sits centred with the worktree's name above it ("Chat in
@@ -940,7 +940,7 @@ Layout, top to bottom inside the pane's card:
   index, the finder Go to File uses), and goes in as `@path`, which the CLI reads in; a first
   word starting `/` to the commands and skills from the catalog, which go in as `/name`, and
   Koyo's own, which are done at once and stand in for the agent's of the same name: `/model`,
-  `/plan`, `/compact`, `/clear` (a new chat). Rows over the footer that leave the keyboard in
+  `/effort`, `/plan`, `/compact`, `/clear` (a new chat). Rows over the footer that leave the keyboard in
   what's typed: ↑/↓ and the page keys move, Enter or ⇥ picks, Esc leaves that word alone. What
   matches nothing shows nothing and takes no keys, so Enter still sends.
 - **Attachments.** Pasted, dropped anywhere on the tab, or chosen with `[+]`, each shows as a
@@ -956,18 +956,25 @@ Layout, top to bottom inside the pane's card:
   removes as it starts once no message names it a week on. In the timeline a picture shows at a
   fixed size above the message's words, drawn from a small copy of it, and opens where the person
   would.
-- **Footer.** `[+]` attach · model and effort ("Opus 5.5 · High", ⚡ when fast) · permission
+- **Footer.** `[+]` attach · model ("Opus 5.5", never "Default": the host labels that row with what
+  it runs, by name or else by id; ⚡ when fast) · effort ("Extra high"; none for a model with no efforts) · permission
   ("Ask", brighter when not the default; unknown, so not shown, until the catalog says what
   the person's settings choose) · Plan toggle (⇧Tab) · context ring (hover: "42 % · 84k of
   200k", "Compact now") · send / stop. Labels collapse to icons from the end as the pane
   narrows. What shows is what the thread says, so it's what the agent runs with: a change goes
   to the host and shows when the host says so; a new chat holds what it will start with.
-- **Model picker** (⌃M, as ⌘⇧M is the sidebar's; a glass popover above the footer): models
-  from the catalog, ✓ on the current, the effort column for the highlighted model, Fast as a
-  switch, off for a model that can't. ↑/↓, → to efforts, Enter picks, Esc closes, ⇥ toggles
-  Fast. The focus stays in what's typed. It's the same size whichever model is highlighted, as
-  it grows from the footer and a row must stay under a pointer on its way to it. A model keeps
-  only what it can do: an effort it has, Fast if it can, Auto if it can (else Ask).
+- **Model menu** (the chip, ⌃M as ⌘⇧M is the sidebar's, or `/model`): the same dropdown as the
+  permission's, in a popup window of its own below the chip, or over it with no room below: a line
+  for each model from the catalog, ✓ on the current, and below a separator Fast's switch, as in
+  Settings, if the chat's model can; it flips where it is and leaves the menu up. ↑/↓, Enter picks
+  or flips, Esc closes; the focus stays in what's typed. A model keeps only what it can do:
+  the effort it was on or the nearest below, else the least it has; Fast if it can; Auto if it can
+  (else Ask).
+- **Effort** (the chip, or `/effort`): the same dropdown holding the system's slider over the
+  efforts of the chat's model, as in Settings, with its Liquid Glass thumb. ←/→ move it, Enter or
+  Esc closes. A move goes to the host as it's made. A chat shows what it's set to, or else
+  Settings › Chat's "Effort" (Extra high unless changed), fitted to its model the same way, and
+  takes that with its next message, so what shows is what runs.
 - **Scroll.** Follows the end while at it; any scroll up releases; reaching the end again
   re-arms, and so does sending. The pill "⌄ Scroll to end" (with "· 2 queued") shows 150 ms
   after leaving the end. Position per thread is kept while its tab is open; scrolling to the
@@ -1027,7 +1034,7 @@ Layout, top to bottom inside the pane's card:
 - **M3 App client.** `koyo-agent`, the shared daemon start and stop, the chat model, the tab
   restored from its thread id.
 - **M4 Chat tab.** Timeline, streaming markdown, work rows and folds, the glass composer.
-- **M5 The agent's asks.** Approvals, questions, plans, pickers, permission and plan
+- **M5 The agent's asks.** Approvals, questions, plans, the model and effort menus, permission and plan
   controls, `@` and `/`, images, queue, stop.
 - **M6 Koyo-wide.** Tab and sidebar status, notifications, the chat settings page, keys,
   recent chats, rewind (C11), app-control operations for chats.

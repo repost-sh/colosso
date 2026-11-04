@@ -13,20 +13,20 @@ use gpui_kit::component::button::Button;
 use gpui_kit::component::hover_card::HoverCard;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Action, Anchor, App, ClickEvent, Context, Div, Focusable as _, Hsla, InteractiveElement as _,
-    IntoElement, KeyBinding, MouseButton, ParentElement as _, Pixels, SharedString, Styled as _,
-    Svg, Window, actions, div, px, svg,
+    Action, Anchor, AnyElement, App, ClickEvent, Context, Div, Focusable as _, Hsla, InteractiveElement as _,
+    IntoElement, KeyBinding, ParentElement as _, Pixels, SharedString, Styled as _, Svg, Window,
+    actions, div, px, svg,
 };
 use koyo_agent::client::ClientError;
 use koyo_agent::protocol::ids::ThreadId;
 use koyo_agent::protocol::methods::{
-    Catalog, CreateParams, ThreadParams, ThreadsUpdate, TurnsCompact, UpdateParams,
+    Catalog, CreateParams, Model, ThreadParams, ThreadsUpdate, TurnsCompact, UpdateParams,
 };
 use koyo_agent::protocol::model::{Effort, Mode, Thread};
-use koyo_agent::words::{context_line, context_percent, effort_label, mode_label, model_name};
+use koyo_agent::words::{context_line, context_percent, mode_label, model_name};
 
 use super::ChatComposer;
-use super::model_picker::OpenModelPicker;
+use super::model_menu::OpenModelMenu;
 use crate::menu::{self, MenuItem};
 use crate::shell::glass;
 use crate::theme::Palette;
@@ -35,7 +35,7 @@ use crate::theme::Palette;
 pub(super) const COMPOSER: &str = "ChatComposer";
 /// How wide the composer is before each of the chips says what it is, from the first: they're all
 /// marks alone in a narrow pane, and the last of them goes first as one narrows.
-pub(super) const ROOM_FOR_LABELS: [f32; 3] = [380., 440., 520.];
+pub(super) const ROOM_FOR_LABELS: [f32; 4] = [340., 420., 480., 560.];
 /// How long a ring's stroke goes all the way around: its radius in `ring`, by 2π.
 const RING_LENGTH: f32 = 56.55;
 /// How full a conversation is before its ring warns of it, in percent.
@@ -75,6 +75,11 @@ impl Settings {
         }
     }
 
+    /// The model these are on, if the catalog lists it.
+    pub(super) fn model_in<'a>(&self, catalog: &'a Catalog) -> Option<&'a Model> {
+        catalog.model(self.model.as_deref())
+    }
+
     /// A chat in the checkout at `cwd` that starts with these, on the host's first provider.
     pub(super) fn to_create(&self, cwd: &Path) -> CreateParams {
         CreateParams {
@@ -91,14 +96,12 @@ impl Settings {
     /// What thread `id`, set to these, has to hear to be set to `to`, and nothing else.
     fn changes(&self, to: &Settings, id: ThreadId) -> UpdateParams {
         UpdateParams {
-            thread_id: id,
-            title: None,
             model: (self.model != to.model).then(|| to.model.clone()),
             effort: (self.effort != to.effort).then_some(to.effort),
             fast: (self.fast != to.fast).then_some(to.fast),
             permission: (self.permission != to.permission).then_some(to.permission),
             plan: (self.plan != to.plan).then_some(to.plan),
-            tab_open: None,
+            ..UpdateParams::of(id)
         }
     }
 }
@@ -131,7 +134,7 @@ fn permission_rows(current: Mode, can_auto: bool) -> Vec<MenuItem> {
 }
 
 /// One thing the chat is set to, and what changes it.
-fn chip(
+pub(super) fn chip(
     id: &'static str,
     mark: IconName,
     label: Option<SharedString>,
@@ -174,10 +177,14 @@ impl ChatComposer {
             return;
         };
         let params = self.settings.changes(&changed, thread.read(cx).id().clone());
+        self.update_thread(params, cx);
+    }
+
+    /// Asks the host to change the thread, after anything else asked of it.
+    pub(super) fn update_thread(&mut self, params: UpdateParams, cx: &mut Context<Self>) {
         #[cfg(test)]
         self.updated.push(params.clone());
-        let updating = self.chats.read(cx).ordered::<ThreadsUpdate>(params);
-        self.when_said(updating, cx);
+        self.ask::<ThreadsUpdate>(params, cx);
     }
 
     /// Whatever `asked` said back is no one's business, but why it didn't happen is a person's.
@@ -204,14 +211,9 @@ impl ChatComposer {
 
     /// Asks the agent to summarize the conversation so far.
     pub(super) fn compact(&mut self, cx: &mut Context<Self>) {
-        let Some(thread) = &self.thread else {
-            return;
-        };
-        let params = ThreadParams {
-            thread_id: thread.read(cx).id().clone(),
-        };
-        let compacting = self.chats.read(cx).ordered::<TurnsCompact>(params);
-        self.when_said(compacting, cx);
+        if let Some(thread_id) = self.thread_id(cx) {
+            self.ask::<TurnsCompact>(ThreadParams { thread_id }, cx);
+        }
     }
 
     /// The mode the chat runs in: what it chose, or else what the person's settings choose, which
@@ -224,17 +226,12 @@ impl ChatComposer {
         }
     }
 
-    /// "Opus 5.5 · High": the name the catalog has for it, or its id if it no longer lists it.
+    /// What the model goes by, or its id if the catalog no longer lists it.
     fn model_label(&self, catalog: &Catalog) -> SharedString {
-        let settings = &self.settings;
-        let name = match (catalog.model(settings.model.as_deref()), &settings.model) {
-            (Some(model), _) => model_name(model),
-            (None, Some(id)) => id,
-            (None, None) => "Default",
-        };
-        match settings.effort {
-            Some(effort) => format!("{name} · {}", effort_label(effort)).into(),
-            None => name.to_owned().into(),
+        match (self.settings.model_in(catalog), &self.settings.model) {
+            (Some(model), _) => model_name(model).to_owned().into(),
+            (None, Some(id)) => id.clone().into(),
+            (None, None) => "Model".into(),
         }
     }
 
@@ -244,19 +241,14 @@ impl ChatComposer {
             .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.choose_files(cx)))
     }
 
-    fn model_chip(&self, catalog: &Catalog, p: Palette, cx: &Context<Self>) -> Button {
+    fn model_chip(&self, catalog: &Catalog, p: Palette, cx: &Context<Self>) -> AnyElement {
         let mark = if self.settings.fast { IconName::Zap } else { IconName::Sparkles };
         let labelled = self.labels >= 1;
-        chip("chat-model", mark, labelled.then(|| self.model_label(catalog)), p.muted, cx)
+        let button = chip("chat-model", mark, labelled.then(|| self.model_label(catalog)), p.muted, cx)
             .dropdown_caret(labelled)
-            .tooltip_with_action("Model and effort", &OpenModelPicker, None)
-            // A press outside the picker closes it first, so on this chip it mustn't open it again.
-            .when(self.picker.is_none(), |chip| {
-                chip.on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(|this, _, window, cx| this.toggle_picker(window, cx)),
-                )
-            })
+            .tooltip_with_action("Model", &OpenModelMenu, None);
+        let pressed = cx.listener(|this, _, window, cx| this.toggle_model_menu(window, cx));
+        self.model_menu.wraps(button, pressed).into_any_element()
     }
 
     fn permission_chip(
@@ -267,8 +259,8 @@ impl ChatComposer {
     ) -> Option<impl IntoElement + use<>> {
         let mode = self.mode(catalog)?;
         let color = if mode == catalog.default_mode.unwrap_or(Mode::Ask) { p.muted } else { p.text };
-        let labelled = self.labels >= 2;
-        let can_auto = catalog.model(self.settings.model.as_deref()).is_none_or(|model| model.auto);
+        let labelled = self.labels >= 3;
+        let can_auto = self.settings.model_in(catalog).is_none_or(|model| model.auto);
         let trigger = chip("chat-permission", mode_mark(mode), labelled.then(|| mode_label(mode).into()), color, cx)
             .dropdown_caret(labelled)
             .tooltip("What the agent may do without asking");
@@ -282,7 +274,7 @@ impl ChatComposer {
 
     fn plan_chip(&self, p: Palette, cx: &Context<Self>) -> Button {
         let color = if self.settings.plan { p.text } else { p.muted };
-        chip("chat-plan-toggle", IconName::ListChecks, (self.labels >= 3).then(|| "Plan".into()), color, cx)
+        chip("chat-plan-toggle", IconName::ListChecks, (self.labels >= 4).then(|| "Plan".into()), color, cx)
             .toggled(self.settings.plan)
             .tooltip_with_action("Plan first", &TogglePlan, None)
             .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.toggle_plan(cx)))
@@ -330,6 +322,7 @@ impl ChatComposer {
             .gap_1()
             .child(self.attach_chip(p, cx))
             .child(self.model_chip(catalog, p, cx))
+            .children(self.effort_chip(catalog, p, cx))
             .children(self.permission_chip(catalog, p, cx))
             .child(self.plan_chip(p, cx))
             .child(div().flex_1())

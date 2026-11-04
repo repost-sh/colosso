@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Action as _, AnyElement, App, AppContext as _, ClickEvent, Context, Div, FontWeight,
+    Action as _, AnyElement, App, AppContext as _, ClickEvent, Context, Div, ElementId, FontWeight,
     InteractiveElement as _, IntoElement as _, KeyBinding, ParentElement as _, ScrollStrategy,
     Stateful, StatefulInteractiveElement as _, Styled as _, Task,
     UniformListScrollHandle, Window, actions, div, px,
@@ -21,6 +21,7 @@ use crate::checkouts;
 use crate::files::ROW;
 use crate::go_to_file::{self, Row, follow_files};
 use crate::list::{self, Activate, PageDown, PageUp, SelectNext, SelectPrevious};
+use crate::native::liquid;
 use crate::shell::{self, NewChat};
 use crate::theme::Palette;
 
@@ -100,9 +101,33 @@ impl Suggestions {
     }
 }
 
+/// What the rows are in, on glass over the footer. No press in it takes the keyboard from what's
+/// typed, where its keys are heard.
+fn popover(p: Palette, window: &mut Window, cx: &mut Context<ChatComposer>) -> Stateful<Div> {
+    let keyed = ElementId::NamedInteger("chat-suggestions".into(), cx.entity_id().as_u64());
+    let on_glass = liquid::backdrop(keyed, px(14.), window, cx);
+    let popover = div()
+        .id("chat-suggestions")
+        .absolute()
+        .bottom_full()
+        .left_0()
+        .mb_2()
+        .max_w_full()
+        .flex()
+        .flex_col()
+        .gap_1()
+        .p_2()
+        .rounded(px(14.))
+        .occlude()
+        .text_color(p.text)
+        .capture_any_mouse_down(|_, window, _| window.prevent_default());
+    liquid::floating(popover, on_glass, p)
+}
+
 impl ChatComposer {
-    /// Whether rows show. A token that completes to nothing doesn't take the keys.
-    pub(super) fn suggesting(&self) -> bool {
+    /// Whether rows show, over what's above the composer, which has to go: glass only hides what's
+    /// drawn under the glass. A token that completes to nothing doesn't take the keys.
+    pub(in crate::chat) fn suggesting(&self) -> bool {
         self.suggest.as_ref().is_some_and(|open| open.found.len() > 0)
     }
 
@@ -115,7 +140,7 @@ impl ChatComposer {
         if token.as_ref().map(|token| token.range.start) != self.dismissed {
             self.dismissed = None;
         }
-        let token = token.filter(|_| self.dismissed.is_none() && self.picker.is_none());
+        let token = token.filter(|_| self.dismissed.is_none());
         let Some(token) = token else {
             if self.suggest.take().is_some() {
                 cx.notify();
@@ -253,7 +278,8 @@ impl ChatComposer {
         });
         match own {
             None => {}
-            Some(Own::Model) => self.toggle_picker(window, cx),
+            Some(Own::Model) => self.toggle_model_menu(window, cx),
+            Some(Own::Effort) => self.toggle_effort(window, cx),
             Some(Own::Plan) => self.toggle_plan(cx),
             Some(Own::Compact) => self.compact(cx),
             Some(Own::Clear) => window.dispatch_action(NewChat.boxed_clone(), cx),
@@ -303,7 +329,7 @@ impl ChatComposer {
         });
         let list = list::scrolling("chat-suggestion-rows", count, &open.scroll, rows);
         Some(
-            Self::popover("chat-suggestions", p, window, cx)
+            popover(p, window, cx)
                 .w_full()
                 .on_mouse_down_out(cx.listener(|this, _, _, cx| this.close_suggestions(cx)))
                 .child(

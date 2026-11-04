@@ -1,5 +1,5 @@
 //! What a person sets a chat to from the composer's footer: what the host is asked to change, and
-//! nothing else, by the keys and the picker. No host hears it here, so what the composer asked is
+//! nothing else, by the keys and the menus. No host hears it here, so what the composer asked is
 //! what's looked at; what shows is what the thread says, as it does once the host answers.
 
 use gpui_kit::{AppContext as _, KeyUpEvent, Keystroke, PlatformInput, TestAppContext, px};
@@ -9,7 +9,6 @@ use koyo_agent::protocol::methods::{Catalog, Model, UpdateParams};
 use koyo_agent::protocol::model::{Effort, Mode, Thread};
 use koyo_agent::protocol::requests::{Questions, RequestPayload, RequestStatus};
 
-use super::model_picker::ModelPicker;
 use super::footer::{CompactContext, ROOM_FOR_LABELS, SetPermission, Settings, labels_fitting};
 use crate::chat::tests::asks::{Asking, request};
 use crate::chat::tests::{question, snapshot};
@@ -61,16 +60,7 @@ fn chat(name: &str, cx: &mut TestAppContext) -> Asking {
 }
 
 fn nothing() -> UpdateParams {
-    UpdateParams {
-        thread_id: ThreadId("0001".into()),
-        title: None,
-        model: None,
-        effort: None,
-        fast: None,
-        permission: None,
-        plan: None,
-        tab_open: None,
-    }
+    UpdateParams::of(ThreadId("0001".into()))
 }
 
 fn updated(chat: &Asking, cx: &TestAppContext) -> Vec<UpdateParams> {
@@ -110,7 +100,33 @@ fn settings(chat: &Asking, cx: &TestAppContext) -> Settings {
 }
 
 fn picking(chat: &Asking, cx: &TestAppContext) -> bool {
-    chat.composer.read_with(cx, |composer, _| composer.picker.is_some())
+    chat.composer.read_with(cx, |composer, cx| composer.model_menu.is_open(cx))
+}
+
+fn sliding(chat: &Asking, cx: &TestAppContext) -> bool {
+    chat.composer.read_with(cx, |composer, cx| composer.effort_menu.is_open(cx))
+}
+
+/// A thread on `model` at `effort`, with the slider open on it.
+fn slider_on(
+    name: &str,
+    model: &str,
+    effort: Option<Effort>,
+    cx: &mut TestAppContext,
+) -> Asking {
+    let chat = chat(name, cx);
+    set_to(
+        &chat,
+        |thread| {
+            thread.model = Some(model.into());
+            thread.effort = effort;
+        },
+        11,
+        cx,
+    );
+    type_in(&chat, "/eff", cx);
+    chat.keys("enter", cx);
+    chat
 }
 
 #[gpui_kit::test]
@@ -126,8 +142,8 @@ fn the_key_for_the_plan_asks_for_that_and_shows_what_the_thread_then_says(cx: &m
 }
 
 #[gpui_kit::test]
-fn the_keys_of_the_picker_pick_a_model_and_an_effort(cx: &mut TestAppContext) {
-    let chat = chat("chat-footer-picker", cx);
+fn the_keys_of_the_menu_pick_a_model(cx: &mut TestAppContext) {
+    let chat = chat("chat-footer-menu", cx);
 
     press(&chat, "ctrl-m down enter", cx);
     assert_eq!(
@@ -136,24 +152,13 @@ fn the_keys_of_the_picker_pick_a_model_and_an_effort(cx: &mut TestAppContext) {
     );
     assert!(!picking(&chat, cx), "picking closes it");
     assert_eq!(chat.typed(cx), "", "and none of it went into what's typed");
-
-    press(&chat, "ctrl-m down right down down enter", cx);
-    assert_eq!(
-        updated(&chat, cx).last(),
-        Some(&UpdateParams {
-            model: Some(Some("second".into())),
-            effort: Some(Some(Effort::High)),
-            ..nothing()
-        }),
-        "the efforts start at the model's own, and it's the second model again, not set yet",
-    );
 }
 
 #[gpui_kit::test]
-fn the_keys_stop_at_the_ends_and_a_model_with_no_efforts_has_no_column(cx: &mut TestAppContext) {
+fn the_keys_stop_at_the_ends(cx: &mut TestAppContext) {
     let chat = chat("chat-footer-ends", cx);
 
-    press(&chat, "ctrl-m up up down down down down right enter", cx);
+    press(&chat, "ctrl-m up up down down enter", cx);
 
     assert_eq!(
         updated(&chat, cx),
@@ -167,7 +172,7 @@ fn the_keys_stop_at_the_ends_and_a_model_with_no_efforts_has_no_column(cx: &mut 
 }
 
 #[gpui_kit::test]
-fn escape_closes_the_picker_and_the_keys_go_back_to_what_is_typed(cx: &mut TestAppContext) {
+fn escape_closes_the_menu_and_the_keys_go_back_to_what_is_typed(cx: &mut TestAppContext) {
     let chat = chat("chat-footer-escape", cx);
 
     press(&chat, "a ctrl-m", cx);
@@ -179,28 +184,12 @@ fn escape_closes_the_picker_and_the_keys_go_back_to_what_is_typed(cx: &mut TestA
     chat.keys("b", cx);
     assert_eq!(chat.typed(cx), "ab", "they're the input's again");
     chat.keys("enter", cx);
-    assert_eq!(updated(&chat, cx), [], "and picking is over");
+    let models = updated(&chat, cx).into_iter().filter(|asked| asked.model.is_some()).count();
+    assert_eq!(models, 0, "and picking is over");
 }
 
 #[gpui_kit::test]
-fn the_rows_stay_where_they_are_whichever_model_is_highlighted(cx: &mut TestAppContext) {
-    let chat = chat("chat-footer-stays", cx);
-    let models = |cx: &TestAppContext| {
-        chat.composer.read_with(cx, |composer, _| {
-            composer.picker.as_ref().map(ModelPicker::models_bounds)
-        })
-    };
-
-    chat.keys("ctrl-m", cx);
-    let with_efforts_and_fast = models(cx);
-    assert!(with_efforts_and_fast.is_some_and(|bounds| bounds.size.height > px(0.)));
-    press(&chat, "down down", cx);
-
-    assert_eq!(models(cx), with_efforts_and_fast, "the third model has neither");
-}
-
-#[gpui_kit::test]
-fn the_key_closes_the_picker_it_opened(cx: &mut TestAppContext) {
+fn the_key_closes_the_menu_it_opened(cx: &mut TestAppContext) {
     let chat = chat("chat-footer-toggle", cx);
 
     chat.keys("ctrl-m", cx);
@@ -249,32 +238,119 @@ fn a_model_keeps_the_effort_it_can_run_at(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn the_efforts_go_back_to_leaving_it_to_the_model(cx: &mut TestAppContext) {
-    let chat = chat("chat-footer-no-effort", cx);
-    let set = |thread: &mut Thread| {
-        thread.model = Some("first".into());
-        thread.effort = Some(Effort::Low);
-    };
-    set_to(&chat, set, 11, cx);
+fn a_model_takes_the_nearest_effort_below_the_one_it_can_not_run_at(cx: &mut TestAppContext) {
+    let chat = chat("chat-footer-nearest-effort", cx);
+    set_to(&chat, |thread| thread.effort = Some(Effort::Max), 11, cx);
 
-    press(&chat, "ctrl-m right up enter", cx);
+    press(&chat, "ctrl-m down enter", cx);
 
-    assert_eq!(updated(&chat, cx), [UpdateParams { effort: Some(None), ..nothing() }]);
+    assert_eq!(
+        updated(&chat, cx),
+        [UpdateParams {
+            model: Some(Some("second".into())),
+            effort: Some(Some(Effort::High)),
+            ..nothing()
+        }],
+    );
 }
 
 #[gpui_kit::test]
-fn fast_goes_with_the_model_highlighted_and_only_if_it_can(cx: &mut TestAppContext) {
-    let chat = chat("chat-footer-fast", cx);
+fn the_slider_opens_on_what_shows_and_each_move_goes_to_the_host(cx: &mut TestAppContext) {
+    let chat = slider_on("chat-footer-slider", "first", Some(Effort::High), cx);
+    assert!(sliding(&chat, cx));
+    assert_eq!(chat.typed(cx), "", "the command that opened it is gone");
 
-    press(&chat, "ctrl-m tab", cx);
+    press(&chat, "left left right", cx);
+
+    let efforts: Vec<_> = updated(&chat, cx).into_iter().map(|asked| asked.effort).collect();
+    assert_eq!(
+        efforts,
+        [Some(Some(Effort::Low)), Some(Some(Effort::High))],
+        "it stops at the end, and the second goes though the thread, not caught up, is still at it",
+    );
+
+    press(&chat, "escape", cx);
+    assert!(!sliding(&chat, cx));
+    chat.keys("a", cx);
+    assert_eq!(chat.typed(cx), "a", "and the keys are what's typed's again");
+}
+
+#[gpui_kit::test]
+fn a_model_with_no_efforts_has_no_slider(cx: &mut TestAppContext) {
+    let chat = slider_on("chat-footer-no-slider", "third", None, cx);
+
+    assert!(!sliding(&chat, cx));
+}
+
+#[gpui_kit::test]
+fn a_popover_opened_closes_the_other(cx: &mut TestAppContext) {
+    let chat = slider_on("chat-footer-one-popover", "first", None, cx);
+
+    press(&chat, "ctrl-m", cx);
+
+    assert!(!sliding(&chat, cx));
+    assert!(picking(&chat, cx));
+}
+
+#[gpui_kit::test]
+fn the_slider_closes_on_another_model(cx: &mut TestAppContext) {
+    let chat = slider_on("chat-footer-slider-model", "first", None, cx);
+
+    set_to(&chat, |thread| thread.model = Some("second".into()), 12, cx);
+
+    assert!(!sliding(&chat, cx));
+}
+
+#[gpui_kit::test]
+fn what_shows_is_what_runs(cx: &mut TestAppContext) {
+    let chat = chat("chat-footer-runs", cx);
+    set_to(&chat, |thread| thread.model = Some("second".into()), 11, cx);
+
+    chat.keys("a enter", cx);
+
     assert_eq!(
         updated(&chat, cx),
-        [UpdateParams { model: Some(Some("first".into())), fast: Some(true), ..nothing() }],
+        [UpdateParams { effort: Some(Some(Effort::High)), ..nothing() }],
+        "not set to an effort, it takes Extra high as near as its model gets, ahead of the message",
     );
-    assert!(picking(&chat, cx), "it stays open, with more to choose");
+}
 
-    press(&chat, "down tab", cx);
-    assert_eq!(updated(&chat, cx).len(), 1, "the second model can't go fast");
+#[gpui_kit::test]
+fn a_chat_set_to_an_effort_keeps_it_when_it_sends(cx: &mut TestAppContext) {
+    let chat = chat("chat-footer-keeps-set", cx);
+    set_to(&chat, |thread| thread.effort = Some(Effort::Low), 11, cx);
+
+    chat.keys("a enter", cx);
+
+    assert_eq!(updated(&chat, cx), []);
+}
+
+#[gpui_kit::test]
+fn the_settings_choose_the_effort_of_a_chat_not_set_to_one(cx: &mut TestAppContext) {
+    let chat = chat("chat-footer-setting", cx);
+    cx.update(|cx| crate::settings::update(cx, |settings| settings.chat_effort = Effort::Low));
+    draw(chat.window, cx);
+
+    chat.keys("a enter", cx);
+
+    assert_eq!(updated(&chat, cx), [UpdateParams { effort: Some(Some(Effort::Low)), ..nothing() }]);
+}
+
+#[gpui_kit::test]
+fn fast_is_the_last_row_if_the_model_of_the_chat_can_go_fast(cx: &mut TestAppContext) {
+    let chat = chat("chat-footer-fast", cx);
+
+    press(&chat, "ctrl-m down down down enter", cx);
+    assert_eq!(updated(&chat, cx), [UpdateParams { fast: Some(true), ..nothing() }]);
+
+    press(&chat, "escape", cx);
+    set_to(&chat, |thread| thread.model = Some("second".into()), 11, cx);
+    press(&chat, "ctrl-m down down down enter", cx);
+    assert_eq!(
+        updated(&chat, cx).last(),
+        Some(&UpdateParams { model: Some(Some("third".into())), permission: Some(Some(Mode::Ask)), ..nothing() }),
+        "the second model can't, so the last row is the last model",
+    );
 }
 
 #[gpui_kit::test]
@@ -311,7 +387,7 @@ fn compacting_says_why_it_did_not_happen(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn a_new_catalog_closes_the_picker_that_pointed_into_the_old(cx: &mut TestAppContext) {
+fn a_new_catalog_closes_the_menu_opened_on_the_old(cx: &mut TestAppContext) {
     let chat = chat("chat-footer-new-catalog", cx);
     press(&chat, "ctrl-m down down", cx);
 
@@ -321,7 +397,7 @@ fn a_new_catalog_closes_the_picker_that_pointed_into_the_old(cx: &mut TestAppCon
 }
 
 #[gpui_kit::test]
-fn the_picker_has_the_keys_ahead_of_what_is_asked(cx: &mut TestAppContext) {
+fn the_menu_has_the_keys_ahead_of_what_is_asked(cx: &mut TestAppContext) {
     let asked = RequestPayload::Question(Questions {
         questions: vec![question("Tabs?", false, &["Tabs", "Spaces"])],
         live: true,
@@ -350,14 +426,18 @@ fn a_page_of_rows_stops_at_the_end(cx: &mut TestAppContext) {
 
     press(&chat, "ctrl-m pagedown enter", cx);
 
-    assert_eq!(
-        updated(&chat, cx),
-        [UpdateParams {
-            model: Some(Some("third".into())),
-            permission: Some(Some(Mode::Ask)),
-            ..nothing()
-        }],
-    );
+    assert_eq!(updated(&chat, cx), [UpdateParams { fast: Some(true), ..nothing() }], "Fast is the last");
+}
+
+#[gpui_kit::test]
+fn fast_flips_where_it_is_and_the_menu_stays_up(cx: &mut TestAppContext) {
+    let chat = chat("chat-footer-fast-switch", cx);
+
+    press(&chat, "ctrl-m pagedown enter", cx);
+    assert!(picking(&chat, cx), "it's a switch, not a pick");
+
+    press(&chat, "escape", cx);
+    assert!(!picking(&chat, cx));
 }
 
 #[gpui_kit::test]
@@ -365,20 +445,24 @@ fn a_new_chat_holds_what_it_will_start_with(cx: &mut TestAppContext) {
     let chat = chat("chat-footer-new", cx);
     chat.composer.update(cx, |composer, _| composer.thread = None);
 
-    press(&chat, "ctrl-m down right down enter shift-tab", cx);
+    press(&chat, "ctrl-m down enter shift-tab", cx);
+    type_in(&chat, "/eff", cx);
+    chat.keys("enter", cx);
+    press(&chat, "left escape", cx);
 
     assert_eq!(updated(&chat, cx), [], "there's no thread to ask");
     let set = settings(&chat, cx);
     let made = set.to_create(std::path::Path::new("/work"));
     assert_eq!(made.model.as_deref(), Some("second"));
-    assert_eq!(made.effort, Some(Effort::Low));
+    assert_eq!(made.effort, Some(Effort::Low), "from the High it showed");
     assert!(made.plan);
 }
 
 #[test]
 fn the_chips_say_less_from_the_end_as_the_composer_narrows() {
     assert_eq!(labels_fitting(px(760.)), ROOM_FOR_LABELS.len());
-    assert_eq!(labels_fitting(px(480.)), 2);
+    assert_eq!(labels_fitting(px(480.)), 3);
+    assert_eq!(labels_fitting(px(420.)), 2);
     assert_eq!(labels_fitting(px(400.)), 1);
     assert_eq!(labels_fitting(px(300.)), 0);
 }
