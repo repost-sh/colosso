@@ -2,9 +2,15 @@
 //! every thread's summary, and the rows of the ones a tab shows. One loop takes in what the host
 //! says, once a frame however fast it comes, and connects again when the connection ends.
 
+mod composer;
+mod marks;
+mod output;
+mod rows;
 mod tabs;
 mod thread;
+mod timeline;
 mod view;
+mod work;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -12,14 +18,15 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::StreamExt as _;
-use gpui_kit::{AppContext as _, Context, Entity, EventEmitter, SharedString, Task};
+use gpui_kit::{App, AppContext as _, Context, Entity, EventEmitter, SharedString, Task};
 use koyo_agent::agent_client::{AgentClient, Notice};
 use koyo_agent::client::{self, ClientError};
 use koyo_agent::protocol::events::Event;
-use koyo_agent::protocol::ids::ThreadId;
+use koyo_agent::protocol::ids::{RunId, ThreadId};
 use koyo_agent::protocol::methods::{
-    CreateParams, Delivery, Empty, Method, OpenParams, SendParams, Sent, ThreadParams,
-    ThreadsClose, ThreadsCreate, ThreadsOpen, ThreadsUpdate, ThreadsWatch, TurnsSend, UpdateParams,
+    CreateParams, Delivery, Empty, HistoryParams, Method, OpenParams, Rows, SendParams, Sent,
+    ThreadParams, ThreadsClose, ThreadsCreate, ThreadsHistory, ThreadsOpen, ThreadsUpdate,
+    ThreadsWatch, TurnsSend, UpdateParams,
 };
 use koyo_agent::protocol::model::{Prompt, Thread, ThreadSummary};
 
@@ -34,6 +41,8 @@ const FRAME: Duration = Duration::from_millis(16);
 const FIRST_WAIT: Duration = Duration::from_secs(1);
 /// The longest wait between attempts to reach the host.
 const LONGEST_WAIT: Duration = Duration::from_secs(30);
+/// How many older runs come at a time.
+const HISTORY_PAGE: usize = 30;
 
 /// How things stand with the host.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -301,6 +310,20 @@ impl Chats {
             prompt,
             delivery: Delivery::Auto,
         })
+    }
+
+    /// A page of the runs of thread `id` sent before `before`, on its own thread as it may take a
+    /// while, and with nothing to come in order with.
+    pub fn history(&self, id: &ThreadId, before: RunId, cx: &App) -> Task<Result<Rows, ClientError>> {
+        let Some(client) = self.client.clone() else {
+            return Task::ready(Err(ClientError::Closed));
+        };
+        let params = HistoryParams {
+            thread_id: id.clone(),
+            before,
+            runs: HISTORY_PAGE as u32,
+        };
+        cx.background_spawn(async move { client.request::<ThreadsHistory>(&params) })
     }
 
     /// Asks the host for `M` in its place in the queue (`AgentClient::ordered`).

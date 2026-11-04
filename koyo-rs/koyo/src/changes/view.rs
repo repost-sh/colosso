@@ -147,8 +147,6 @@ fn file_entries(files: &[Arc<FileView>], tree: bool, closed: &HashSet<Key>) -> V
 
 const LINE_HEIGHT: f32 = 20.;
 const FILE_ROW_HEIGHT: f32 = 26.;
-/// The width of a digit of a line number, in the code's font at its size.
-const DIGIT_WIDTH: f32 = 7.3;
 /// How long the diffs take to glide to a file picked in the list.
 const GLIDE: Duration = Duration::from_millis(180);
 
@@ -811,7 +809,8 @@ fn status_letter(status: &Status, p: Palette) -> Div {
 }
 
 /// `+added −removed`, leaving out a side with none.
-pub fn counts(added: u32, removed: u32, p: Palette) -> Div {
+pub fn counts(added: impl Into<u64>, removed: impl Into<u64>, p: Palette) -> Div {
+    let (added, removed) = (added.into(), removed.into());
     div()
         .flex_shrink_0()
         .flex()

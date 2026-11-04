@@ -854,7 +854,7 @@ Layout, top to bottom inside the pane's card:
 │   Worked for 1m 3s ›                                          │
 │   assistant markdown, streaming…                             │
 │   ⌁ Running cargo test · 41s                                  │
-│                                           [ ⌄ Scroll to end ] │
+│                       [ ⌄ Scroll to end ]                     │
 │  ╭────────────────────────────────────────────────────────╮  │
 │  │ attached drawers: question · plan ready · todos · queue │  │  Liquid Glass,
 │  │────────────────────────────────────────────────────────│  │  one surface
@@ -872,7 +872,8 @@ Layout, top to bottom inside the pane's card:
 - **Empty chat.** The composer sits centred with the worktree's name above it ("Chat in
   koyo / claude-chat-agent-sdk") and moves to the bottom on the first send.
 - **Timeline rows** (from T3 UI 2.1), derived by a pure `rows(thread, view) -> Vec<Row>`
-  with stable row ids, a view per row id kept across derivations:
+  with stable row ids; what a person opened and each text's markdown view are kept by id
+  across derivations:
   - user message: a bubble on the right, at most 80 % wide, the theme's accent at low
     opacity; images above the text; long messages collapse past 8 lines with "Show more";
     hover: copy, time; a steer marked "↷ Steered".
@@ -884,9 +885,10 @@ Layout, top to bottom inside the pane's card:
     src/main.rs", "Changed 3 files", "Searched the web"); consecutive tools form a group
     whose header is a summary sentence ("Read 3 files and ran 2 commands"); the live row is
     one row whose id never changes while the turn works, showing the running tool and its
-    elapsed time ("Running cargo test · 41s"); expanding a command shows its output (mono,
-    ANSI-coloured, capped height), an edit its diff, a search its results, a todo its steps,
-    an MCP call its arguments and result.
+    elapsed time ("Running cargo test · 41s"), and gone while the answer writes or a request
+    asks, which show for themselves; expanding a command shows its output (mono, ANSI-coloured,
+    capped height), an edit its diff in the changes tab's lines, a search its results, a todo
+    its steps, an MCP call its arguments and result.
   - turn fold: once a run settles, its work before the final answer folds into "Worked for
     1m 3s ›"; not folded: the live run, failed and interrupted runs, requests, compactions.
   - approval: inline where it was asked, never folded: what is asked (the command in mono;
@@ -906,7 +908,7 @@ Layout, top to bottom inside the pane's card:
     reached · resets 14:30".
   - stop: from the run, a divider "You stopped this response".
   - changed files: under the final answer, "3 files changed +42 −7"; a row opens the file
-    (a file tab) or its diff (the changes panel).
+    (a file tab).
   - queued: dashed user bubbles at the end, "Send now · Edit · Remove".
 - **Composer.** `textarea` growing from 1 to 12 lines; Enter sends, ⇧↩ adds a line; while
   running, Enter steers and ⌘↩ queues (the button's icon follows ⌘); ↑ on an empty composer
@@ -921,11 +923,10 @@ Layout, top to bottom inside the pane's card:
 - **Model picker** (⌘⇧M, a glass popover above the footer): models from the catalog, ✓ on
   the current, the effort column for the highlighted model, Fast as a switch when it can be.
   ↑/↓, → to efforts, Enter picks, Esc closes.
-- **Scroll.** Follows the end while within 40 px of it; any scroll up releases; reaching the
-  end again re-arms. Sending anchors the new prompt near the top and lets the answer grow
-  under it until the first tool. The pill "⌄ Scroll to end" (with "· 2 queued") shows 150 ms
-  after leaving the end. Position per thread is restored on return; scrolling to the top
-  loads older runs (`threads.history`).
+- **Scroll.** Follows the end while at it; any scroll up releases; reaching the end again
+  re-arms, and so does sending. The pill "⌄ Scroll to end" (with "· 2 queued") shows 150 ms
+  after leaving the end. Position per thread is kept while its tab is open; scrolling to the
+  top loads older runs (`threads.history`).
 - **Status in the shell.** The tab face shows a spinner while working, the accent dot when
   it needs you, a dot when unread, red when failed. The sidebar's worktree row shows the
   most urgent of its chats. A macOS notification when a chat needs you or finishes while
@@ -933,12 +934,19 @@ Layout, top to bottom inside the pane's card:
 
 ### 5.4 Performance budget [proposed]
 
-- A token delta: one `StreamingText` notify, one row repaint, nothing else. 60 fps while
-  streaming 200 tokens/s on a 2,000-item thread.
+- A token delta: one text notify, the rows on screen drawn again, nothing else: list rows are
+  laid out on their own, so the framework can't draw one without the view holding the list. The
+  timeline and the composer are views of their own, so a token draws no composer and a key no
+  row; the tab around them is drawn for either (a deferred element's reads aren't told apart) and
+  is kept to very little. A test holds this. 60 fps while streaming 200 tokens/s on a 2,000-item
+  thread.
+- A view holding what's read while it draws is drawn again for each update of it, notified or
+  not, and every token updates the thread and `Chats`: the composer holds copies of what it shows
+  of them, changed only when they differ.
 - Row derivation runs on structure changes only, and reuses unchanged rows.
 - A thread opens with its latest 30 runs; older ones load as the person scrolls up.
-- Timers (elapsed labels) share one 1 s tick that runs only while something is live; the
-  shimmer pauses when the window is occluded.
+- A tab's elapsed label ticks once a second, only while a tool is running; the shimmer moves at
+  20 fps, whatever the display's rate, so the rows it draws again don't matter.
 
 ---
 

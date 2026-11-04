@@ -1,0 +1,171 @@
+//! The rows a chat's records make in the tab's list, and what each change draws.
+
+use gpui_kit::{AnyWindowHandle, AppContext as _, Entity, TestAppContext};
+use koyo_agent::protocol::ids::{MessageId, RunId, ThreadId, Time};
+use koyo_agent::protocol::methods::ThreadSnapshot;
+use koyo_agent::protocol::model::{
+    Delivered, Item, ItemBody, ItemStatus, Prompt, Run, RunStatus, Text, Tool, ToolFamily,
+    UserMessage,
+};
+use koyo_agent::timeline::RowId;
+
+use super::super::thread::ChatThread;
+use super::super::view::ChatView;
+use super::{AT, answer, appended, chats_of, snapshot, summary, text_of};
+use crate::test_support::{draw, repo, select, shell_with};
+
+/// A run that's over, with a prompt, a tool and an answer.
+fn settled(id: &str) -> ThreadSnapshot {
+    let message = MessageId("m".into());
+    let run = Run {
+        id: RunId("r".into()),
+        thread_id: ThreadId(id.into()),
+        status: RunStatus::Completed,
+        prompt: Prompt {
+            message_id: message.clone(),
+            text: "Why?".into(),
+            attachments: Vec::new(),
+        },
+        model: None,
+        effort: None,
+        permission: None,
+        plan: false,
+        requested_at: Time(AT.into()),
+        started_at: Some(Time(AT.into())),
+        ended_at: Some(Time(AT.into())),
+        stop: None,
+        failure: None,
+        usage: None,
+        files: Vec::new(),
+        seq: 3,
+    };
+    let done = |id: &str, ordinal: u64, body: ItemBody| Item {
+        status: ItemStatus::Completed,
+        body,
+        ..answer(id, ordinal, "", ordinal)
+    };
+    let items = vec![
+        done(
+            "u",
+            0,
+            ItemBody::UserMessage(UserMessage {
+                message_id: message,
+                text: "Why?".into(),
+                attachments: Vec::new(),
+                delivered: Delivered::Turn,
+            }),
+        ),
+        done(
+            "t",
+            1,
+            ItemBody::Tool(Tool {
+                name: "Read".into(),
+                family: ToolFamily::Read,
+                label: "a.rs".into(),
+                input: serde_json::Value::Null,
+                output: None,
+                exit_code: None,
+                patch: None,
+                files: Vec::new(),
+                server: None,
+            }),
+        ),
+        done("a", 2, ItemBody::AssistantText(Text { text: "Because".into() })),
+    ];
+    ThreadSnapshot {
+        runs: vec![run],
+        ..snapshot(id, 3, items)
+    }
+}
+
+/// A window showing chat `0001`'s tab, with the rows of `settled`.
+fn shown_chat(
+    name: &str,
+    cx: &mut TestAppContext,
+) -> (AnyWindowHandle, Entity<ChatView>, Entity<ChatThread>) {
+    let root = repo(name, &[("README.md", "hi\n")]);
+    let (window, shell) = shell_with(&[&root], cx);
+    select(&shell, &root, cx);
+    let chats = chats_of(&shell, cx);
+    chats.update(cx, |chats, cx| {
+        chats.listed(Ok(vec![summary("0001", &root, "A chat", true)]), cx);
+    });
+    draw(window, cx);
+    let view = shell.read_with(cx, |shell, _| {
+        let pane = shell.workspace.branch().unwrap().tabs[0].first().id;
+        shell.chat_tabs.view(pane).unwrap().clone()
+    });
+    let thread = chats.update(cx, |chats, cx| chats.thread(&ThreadId("0001".into()), cx));
+    thread.update(cx, |thread, cx| {
+        thread.opening();
+        thread.opened(Ok(settled("0001")), cx);
+    });
+    draw(window, cx);
+    (window, view, thread)
+}
+
+#[gpui_kit::test]
+fn the_list_holds_a_row_for_what_shows_and_a_fold_or_a_token_changes_only_that(
+    cx: &mut TestAppContext,
+) {
+    let (window, view, thread) = shown_chat("chat-rows", cx);
+    let rows = |cx: &TestAppContext| {
+        view.read_with(cx, |view, cx| view.scroller.read(cx).item_count())
+    };
+    assert_eq!(rows(cx), 3, "the prompt, the fold and the answer");
+
+    let timeline = view.read_with(cx, |view, _| view.shown.as_ref().unwrap().timeline.clone());
+    let fold = RowId::Fold(RunId("r".into()));
+    timeline.update(cx, |timeline, cx| timeline.toggle(fold, 1, cx));
+    draw(window, cx);
+    assert_eq!(rows(cx), 4, "and the work the fold held");
+
+    thread.update(cx, |thread, cx| {
+        thread.take_in(vec![appended("a", " of that")], cx);
+    });
+    draw(window, cx);
+    assert_eq!(rows(cx), 4);
+    assert!(text_of(&thread, cx).contains("Because of that"));
+}
+
+/// The budget's two sides (`docs/chat.md` 5.4): a token draws no composer, and what's typed no row.
+/// Counted over the frames that come by themselves: `draw` forces one more than anything asked for.
+#[gpui_kit::test]
+fn a_token_draws_the_timeline_alone_and_whats_typed_the_composer_alone(cx: &mut TestAppContext) {
+    let (window, view, thread) = shown_chat("chat-budget", cx);
+    let (composer, timeline) = view.read_with(cx, |view, _| {
+        (view.composer.clone(), view.shown.as_ref().unwrap().timeline.clone())
+    });
+    let text = composer.read_with(cx, |composer, _| composer.text.clone());
+    let drawn = |cx: &TestAppContext| {
+        let typed = composer.read_with(cx, |composer, _| composer.renders);
+        (typed, timeline.read_with(cx, |timeline, _| timeline.renders))
+    };
+    let token = |cx: &mut TestAppContext| {
+        thread.update(cx, |thread, cx| {
+            thread.take_in(vec![appended("a", " more")], cx);
+        });
+        cx.run_until_parked();
+    };
+    let key = |value: &str, cx: &mut TestAppContext| {
+        let value = value.to_owned();
+        cx.update_window(window, |_, window, cx| {
+            text.update(cx, |text, cx| text.set_value(value, window, cx));
+        })
+        .unwrap();
+        cx.run_until_parked();
+    };
+    token(cx);
+
+    let (typed, rows) = drawn(cx);
+    token(cx);
+    token(cx);
+    token(cx);
+    assert_eq!(drawn(cx), (typed, rows + 3), "each token draws the rows, none the composer");
+
+    let (typed, rows) = drawn(cx);
+    key("T", cx);
+    key("Ty", cx);
+    key("Typ", cx);
+    assert_eq!(drawn(cx), (typed + 3, rows), "each key draws the composer, none the rows");
+}
