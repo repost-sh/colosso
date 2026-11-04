@@ -3,10 +3,12 @@
 use std::rc::Rc;
 
 use gpui_kit::assets::IconName;
+use gpui_kit::base::TextViewDefaults;
+use gpui_kit::base::text::editor_host::RenderContext;
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::component::{ActiveTheme as _, Theme};
 use gpui_kit::{
-    Action, App, Hsla, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent,
+    Action, App, HighlightStyle, Hsla, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent,
     ParentElement as _, Window, WindowAppearance, actions, div,
 };
 use serde::{Deserialize, Serialize};
@@ -66,7 +68,8 @@ pub struct Palette {
     pub selected: Hsla,
     /// Dropdown menus sit in a blurred window of their own; this tints that glass.
     pub menu: Hsla,
-    /// Switched-on switches and links: the system's accent on macOS, `ACCENT` elsewhere.
+    /// Switched-on switches and links: the system's accent on macOS, `ACCENT` elsewhere. It has
+    /// nothing to do with the theme, so what stands in the theme's colours isn't drawn in it.
     pub accent: Hsla,
     /// Errors, and what can't be undone.
     pub danger: Hsla,
@@ -256,7 +259,21 @@ pub fn init(cx: &mut App) {
     lift_dark_popovers(cx);
     #[cfg(target_os = "macos")]
     system_accent::follow(cx);
+    cx.observe_global::<Theme>(code_off_the_accent).detach();
     set_preference(settings::get(cx).appearance, cx);
+    code_off_the_accent(cx);
+}
+
+/// The kit puts inline code on its accent, which is the system's here, not the theme: in every
+/// text view it goes on the shade of a selected row instead. Again each time the theme changes,
+/// as the kit puts its own back then.
+fn code_off_the_accent(cx: &mut App) {
+    let code = HighlightStyle {
+        background_color: Some(palette(cx).selected),
+        ..HighlightStyle::default()
+    };
+    let style = RenderContext::from_app(cx).style().clone().with_inline_code(code);
+    TextViewDefaults::global(cx).with_style(style).install(cx);
 }
 
 /// gpui-kit's dark popovers are near black, a hole in the window under a hover card or a
@@ -335,4 +352,28 @@ pub fn toggle(cx: &App) -> impl IntoElement {
             CycleTheme,
             cx,
         ))
+}
+
+#[cfg(test)]
+mod tests {
+    use gpui_kit::TestAppContext;
+
+    use super::*;
+
+    fn inline_code(cx: &App) -> Option<Hsla> {
+        RenderContext::from_app(cx).style().inline_code().background_color
+    }
+
+    #[gpui_kit::test]
+    fn inline_code_stays_on_the_theme_whichever_appearance_it_takes(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        cx.update(|cx| set_preference(ThemePreference::Dark, cx));
+        let dark = cx.read(|cx| (inline_code(cx), palette(cx).selected));
+        assert_eq!(dark.0, Some(dark.1));
+        // The kit puts its own back as the theme changes.
+        cx.update(|cx| set_preference(ThemePreference::Light, cx));
+        let light = cx.read(|cx| (inline_code(cx), palette(cx).selected));
+        assert_eq!(light.0, Some(light.1));
+        assert_ne!(dark.1, light.1);
+    }
 }

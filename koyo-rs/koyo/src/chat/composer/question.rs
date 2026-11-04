@@ -7,9 +7,7 @@ use std::collections::BTreeMap;
 use std::time::Duration;
 
 use gpui_kit::assets::IconName;
-use gpui_kit::component::Disableable as _;
 use gpui_kit::component::Sizable as _;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::text::TextView;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -24,7 +22,7 @@ use koyo_agent::protocol::requests::{Question, QuestionOption, Response};
 use super::ChatComposer;
 use super::asked::Asked;
 use crate::chat::output::scroll_box;
-use crate::shell::{glass, icon, icon_button, row};
+use crate::shell::{glass, icon, icon_button, row, solid};
 use crate::theme::Palette;
 
 /// The composer's context while a question shows and nothing's typed, where the keys answer it.
@@ -256,12 +254,10 @@ impl QuestionDrawer {
 
     fn next_button(&self, cx: &mut Context<ChatComposer>) -> Div {
         let last = self.at + 1 == self.questions.len();
-        let next = Button::new("chat-question-next")
-            .primary()
+        let next = solid("chat-question-next", !self.chosen().is_empty(), cx)
             .small()
             .label(if last { "Send" } else { "Next" })
             .tooltip("↩ with nothing typed")
-            .disabled(self.chosen().is_empty())
             .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
                 this.next_question(None, window, cx);
             }));

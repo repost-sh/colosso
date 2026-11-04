@@ -121,8 +121,9 @@ impl Drawing {
             .flex()
             .justify_between()
             .gap_3()
+            .text_color(p.muted)
             .cursor_pointer()
-            .hover(|row| row.text_color(p.accent))
+            .hover(|row| row.text_color(p.text))
             .child(ellipsized(shown))
             .child(counts(file.added, file.removed, p))
             .on_click(move |_, _, cx| {

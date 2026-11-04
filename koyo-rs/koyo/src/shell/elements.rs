@@ -4,7 +4,7 @@
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
-use gpui_kit::component::{Icon, Sizable as _};
+use gpui_kit::component::{Disableable as _, Icon, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Action, App, Context, Div, ElementId, Entity, FocusHandle, Hsla, InteractiveElement as _,
@@ -97,6 +97,23 @@ pub fn glass(id: impl Into<ElementId>, foreground: Hsla, cx: &App) -> Button {
             .hover(p.hover)
             .active(p.selected),
     )
+}
+
+/// The button a choice leans to, filled in the text's colour: the one any theme reads on, in either
+/// appearance, with or without a colour picked. Whether it's `enabled` is said here, as the fill
+/// is laid over what the kit draws, which at rest keeps a fifth of a custom button's colour, and
+/// would be laid over how it draws a disabled one too.
+pub fn solid(id: impl Into<ElementId>, enabled: bool, cx: &App) -> Button {
+    let p = theme::palette(cx);
+    let button = Button::new(id).disabled(!enabled).custom(
+        ButtonCustomVariant::new(cx)
+            .color(p.text)
+            .foreground(p.on_text)
+            // As a modal's leading button answers the pointer.
+            .hover(p.text.opacity(0.85))
+            .active(p.text.opacity(0.75)),
+    );
+    if enabled { button.bg(p.text) } else { button }
 }
 
 pub fn icon(name: IconName, size: f32) -> Icon {

@@ -9,7 +9,6 @@ use std::path::Path;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::Disableable as _;
 use gpui_kit::component::Sizable as _;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::text::TextView;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -27,7 +26,7 @@ use super::rows::Drawing;
 use super::work::tool_mark;
 use crate::files::relative;
 use crate::menu::{self, MenuItem};
-use crate::shell::{ellipsized, glass, icon, icon_button};
+use crate::shell::{ellipsized, glass, icon, icon_button, solid};
 use crate::theme::Palette;
 
 actions!(chat, [AllowRequest, AllowRequestForChat, DenyRequest, StopRequest]);
@@ -163,7 +162,7 @@ fn frame(p: Palette, waiting: bool) -> Div {
         .border_1()
         .border_color(p.hairline)
         .when(waiting, |frame| {
-            frame.border_color(p.accent.opacity(0.4)).bg(p.accent.opacity(0.04))
+            frame.border_color(p.text.opacity(0.3)).bg(p.raised)
         })
 }
 
@@ -237,12 +236,10 @@ fn buttons(
         .tooltip("⌘⌫ with nothing typed, or type why and send")
         .disabled(!asking)
         .on_click(says(drawing, Box::new(DenyRequest)));
-    let allow = Button::new(("chat-allow", index))
-        .primary()
+    let allow = solid(("chat-allow", index), asking, cx)
         .small()
         .label("Allow")
         .tooltip("⌘↩ with nothing typed")
-        .disabled(!asking)
         .on_click(says(drawing, Box::new(AllowRequest)));
     let more = icon_button(("chat-allow-more", index), IconName::ChevronDown, "More answers", cx)
         .small()

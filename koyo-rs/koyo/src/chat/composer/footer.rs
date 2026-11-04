@@ -265,7 +265,7 @@ impl ChatComposer {
         cx: &App,
     ) -> Option<impl IntoElement + use<>> {
         let mode = self.mode(catalog)?;
-        let color = if mode == catalog.default_mode.unwrap_or(Mode::Ask) { p.muted } else { p.accent };
+        let color = if mode == catalog.default_mode.unwrap_or(Mode::Ask) { p.muted } else { p.text };
         let labelled = self.labels >= 2;
         let can_auto = catalog.model(self.settings.model.as_deref()).is_none_or(|model| model.auto);
         let trigger = chip("chat-permission", mode_mark(mode), labelled.then(|| mode_label(mode).into()), color, cx)
@@ -280,7 +280,7 @@ impl ChatComposer {
     }
 
     fn plan_chip(&self, p: Palette, cx: &Context<Self>) -> Button {
-        let color = if self.settings.plan { p.accent } else { p.muted };
+        let color = if self.settings.plan { p.text } else { p.muted };
         chip("chat-plan-toggle", IconName::ListChecks, (self.labels >= 3).then(|| "Plan".into()), color, cx)
             .toggled(self.settings.plan)
             .tooltip_with_action("Plan first", &TogglePlan, None)
@@ -324,7 +324,7 @@ impl ChatComposer {
     pub(super) fn footer(&self, typed: &str, p: Palette, cx: &Context<Self>) -> Div {
         let can_send = self.can_send(typed);
         let (fill, mark): (Hsla, Hsla) = if can_send {
-            (p.accent, p.on_text)
+            (p.text, p.on_text)
         } else {
             (p.text.opacity(0.08), p.muted)
         };

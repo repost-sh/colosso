@@ -880,8 +880,9 @@ Layout, top to bottom inside the pane's card:
 - **Timeline rows** (from T3 UI 2.1), derived by a pure `rows(thread, view) -> Vec<Row>`
   with stable row ids; what a person opened and each text's markdown view are kept by id
   across derivations:
-  - user message: a bubble on the right, at most 80 % wide, the theme's accent at low
-    opacity; images above the text; long messages collapse past 8 lines with "Show more";
+  - user message: a bubble on the right, at most 80 % wide, in the shade of a selected row, which
+    over the tinted card is the theme's own (never the system's accent, which isn't the theme);
+    images above the text; long messages collapse past 8 lines with "Show more";
     hover: copy, time; a steer marked "↷ Steered".
   - assistant text: full-width markdown (`TextView`, streaming), no bubble; a meta line on
     hover under the final answer: copy, model · effort, time.
@@ -950,7 +951,7 @@ Layout, top to bottom inside the pane's card:
   fixed size above the message's words, drawn from a small copy of it, and opens where the person
   would.
 - **Footer.** `[+]` attach · model and effort ("Opus 5.5 · High", ⚡ when fast) · permission
-  ("Ask", in the accent when not the default; unknown, so not shown, until the catalog says what
+  ("Ask", brighter when not the default; unknown, so not shown, until the catalog says what
   the person's settings choose) · Plan toggle (⇧Tab) · context ring (hover: "42 % · 84k of
   200k", "Compact now") · send / stop. Labels collapse to icons from the end as the pane
   narrows. What shows is what the thread says, so it's what the agent runs with: a change goes
@@ -965,8 +966,8 @@ Layout, top to bottom inside the pane's card:
   re-arms, and so does sending. The pill "⌄ Scroll to end" (with "· 2 queued") shows 150 ms
   after leaving the end. Position per thread is kept while its tab is open; scrolling to the
   top loads older runs (`threads.history`).
-- **Status in the shell.** The tab face shows a spinner while working, the accent dot when
-  it needs you, a dot when unread, red when failed. The sidebar's worktree row shows the
+- **Status in the shell.** The tab face shows a spinner while working, a dot in the text's colour
+  when it needs you, a dot when unread, red when failed. The sidebar's worktree row shows the
   most urgent of its chats. A macOS notification when a chat needs you or finishes while
   Koyo isn't frontmost, opening the chat when clicked.
 
