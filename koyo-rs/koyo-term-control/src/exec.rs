@@ -280,10 +280,7 @@ impl Executor {
         let command = match args.command {
             None => Vec::new(),
             Some(CommandArg::Argv(program)) => program,
-            Some(CommandArg::Line(line)) => {
-                let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned());
-                vec![shell, "-lc".to_owned(), line]
-            }
+            Some(CommandArg::Line(line)) => crate::terminal::login_shell_line(line),
         };
         let request = OpenRequest {
             worktree: Some(

@@ -10,11 +10,13 @@ use gpui_kit::{Action, App, Context, Global, SharedString, Subscription, Task, W
 use serde::{Deserialize, Serialize};
 
 mod chat_details;
+mod project_scripts;
 mod chat_work;
 mod language_servers;
 mod migration;
 
 pub use chat_details::{ChatDetails, DetailsItem, FlipDetailsItem};
+pub use project_scripts::{ProjectScript, ProjectScripts};
 pub use chat_work::{ChatWork, SetChatWork};
 pub use language_servers::{LanguageServers, Scope, SetLanguageServer};
 use migration::migrate;
@@ -175,6 +177,8 @@ pub struct Settings {
     pub chat_work: ChatWork,
     /// What the details card over a chat shows, and whether it's up.
     pub chat_details: ChatDetails,
+    /// The commands a person keeps for each project.
+    pub project_scripts: ProjectScripts,
     /// How hard the agent works in a chat not set to anything else, as far as its model can.
     pub chat_effort: koyo_agent::protocol::model::Effort,
     /// How a held arrow key repeats.
@@ -250,6 +254,7 @@ impl Default for Settings {
             language_servers: language_servers::every_server(),
             chat_work: ChatWork::default(),
             chat_details: ChatDetails::default(),
+            project_scripts: ProjectScripts::default(),
             chat_effort: koyo_agent::protocol::model::Effort::Xhigh,
             key_repeat: KeyRepeat::default(),
             devtools: crate::browser::DevtoolsPlace::default(),
