@@ -7,7 +7,7 @@ use super::*;
 /// An empty folder of the test's own under the checkout's `target`.
 fn scratch(name: &str) -> PathBuf {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target/test-paste")
+        .join("../target/test-paste")
         .join(format!("{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
