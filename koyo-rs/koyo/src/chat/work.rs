@@ -12,7 +12,7 @@ use koyo_agent::protocol::ids::ItemId;
 use koyo_agent::protocol::model::{Item, ItemBody, ItemStatus, Todo, TodoStatus, Tool, ToolFamily};
 use koyo_agent::replica::Replica;
 use koyo_agent::timeline::{RowId, children};
-use koyo_agent::words::{work_line, work_summary};
+use koyo_agent::words::{THOUGHT, work_line, work_summary};
 
 use super::output::{block, diff};
 use super::rows::{Drawing, chevron, disclosure};
@@ -44,7 +44,7 @@ fn summary(
     index: usize,
 ) -> Div {
     let p = drawing.p;
-    let open = drawing.open.contains(id);
+    let open = drawing.work_open(id);
     let failed = lines.iter().any(|item| item.status == ItemStatus::Failed);
     div()
         .flex()
@@ -77,8 +77,14 @@ fn summary(
 fn line(drawing: &Drawing, replica: &Replica, item: &Item, index: usize) -> Div {
     let p = drawing.p;
     let id = RowId::Item(item.id.clone());
-    let open = drawing.open.contains(&id);
+    let opens_up = has_details(item);
+    let open = opens_up && drawing.work_open(&id);
     let opens = drawing.opens(id, index);
+    let says = match &item.body {
+        // The line is the thought's last, which what's opened under it says again.
+        ItemBody::Reasoning(_) if open => THOUGHT.to_owned(),
+        _ => work_line(item, &drawing.cwd),
+    };
     let color = if item.status == ItemStatus::Failed {
         p.danger
     } else {
@@ -93,11 +99,11 @@ fn line(drawing: &Drawing, replica: &Replica, item: &Item, index: usize) -> Div 
         .text_sm()
         .text_color(color)
         .child(div().flex_shrink_0().child(icon(mark_of(item), 13.)))
-        .child(ellipsized(work_line(item, &drawing.cwd)))
+        .child(ellipsized(says))
         .when(item.status == ItemStatus::Declined, |row| {
             row.child(div().flex_shrink_0().text_xs().child("Declined"))
         })
-        .when(has_details(item), |row| {
+        .when(opens_up, |row| {
             row.cursor_pointer()
                 .hover(|row| row.text_color(p.text))
                 .child(div().flex_shrink_0().child(chevron(open)))
@@ -154,7 +160,7 @@ fn details(drawing: &Drawing, replica: &Replica, item: &Item, index: usize) -> O
         ItemBody::Reasoning(text) => div()
             .text_sm()
             .text_color(p.muted)
-            .child(text.text.clone())
+            .child(text.text.trim().to_owned())
             .into_any_element(),
         ItemBody::Todos(todos) => todo_list(&todos.todos, p).into_any_element(),
         ItemBody::Subagent(agent) => {

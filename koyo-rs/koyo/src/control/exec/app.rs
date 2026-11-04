@@ -120,6 +120,7 @@ pub(crate) fn settings_open(
     let page = match page {
         None => None,
         Some(SettingsPage::General) => Some(Page::General),
+        Some(SettingsPage::Chat) => Some(Page::Chat),
         Some(SettingsPage::Appearance) => Some(Page::Appearance),
         Some(SettingsPage::Editor) => Some(Page::Editor),
         Some(SettingsPage::Languages) => Some(Page::Languages),
@@ -155,6 +156,7 @@ fn route(route: Route) -> String {
             "settings:{}",
             match page {
                 Page::General => "general",
+                Page::Chat => "chat",
                 Page::Editor => "editor",
                 Page::Languages => "languages",
                 Page::Appearance => "appearance",

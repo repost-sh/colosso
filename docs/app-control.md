@@ -131,8 +131,8 @@ app_launch (stdio relay only, answered by the relay) → starts Koyo when it isn
            and waits up to 30 s for its socket
 layout_set [navigate] I { sidebar?: bool, rightPanel?: "changes"|"files"|"none",
                          bottomPanel?: bool, layout?: "orca"|"arc" } → app_status subset
-settings_open [navigate] I { page?: "general"|"appearance"|"editor"|"languages"|"browser"|
-                         "keyboard"|"mcp"|"about" } ; settings_close [navigate] I {}
+settings_open [navigate] I { page?: "general"|"chat"|"appearance"|"editor"|"languages"|
+                         "browser"|"keyboard"|"mcp"|"about" } ; settings_close [navigate] I {}
 ```
 
 ### Projects and worktrees

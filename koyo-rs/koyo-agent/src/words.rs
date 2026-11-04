@@ -132,7 +132,9 @@ pub fn failed(failure: &Failure) -> String {
 pub fn work_summary<'a>(items: impl Iterator<Item = &'a Item>) -> String {
     let mut counts: Vec<(ToolFamily, usize)> = Vec::new();
     let mut declined = 0;
+    let mut thought = false;
     for item in items {
+        thought |= matches!(item.body, ItemBody::Reasoning(_));
         if item.status == ItemStatus::Declined {
             declined += 1;
             continue;
@@ -145,25 +147,28 @@ pub fn work_summary<'a>(items: impl Iterator<Item = &'a Item>) -> String {
             None => counts.push((family, 1)),
         }
     }
+    let thoughts = thought.then(|| "thought".to_owned());
+    let done = counts.iter().map(|(family, count)| did(*family, *count));
+    let parts: Vec<String> = thoughts.into_iter().chain(done).collect();
     let mut sentence = String::new();
-    let last = counts.len().saturating_sub(1);
-    for (at, (family, count)) in counts.iter().enumerate() {
+    let last = parts.len().saturating_sub(1);
+    for (at, part) in parts.iter().enumerate() {
         if at > 0 {
             sentence.push_str(if at == last { " and " } else { ", " });
         }
-        sentence.push_str(&did(*family, *count));
+        sentence.push_str(part);
     }
     let mut letters = sentence.chars();
     let first = letters.next().map(|first| first.to_uppercase().chain(letters).collect::<String>());
     match (first, declined) {
         (Some(done), 0) => done,
         (Some(done), declined) => format!("{done} · {declined} declined"),
-        (None, 0) => "Thought".to_owned(),
+        (None, 0) => "Worked".to_owned(),
         (None, declined) => format!("{declined} declined"),
     }
 }
 
-/// What an item of work counts as in a sentence; thinking isn't counted.
+/// What an item of work counts as in a sentence; thinking is said, not counted.
 fn family_of(item: &Item) -> Option<ToolFamily> {
     match &item.body {
         ItemBody::Tool(tool) => Some(tool.family),
@@ -288,13 +293,16 @@ fn from_checkout(text: &str, cwd: &str) -> String {
     text.replace(&format!("{}/", cwd.trim_end_matches('/')), "")
 }
 
+/// What a thought is called, where what it said isn't shown.
+pub const THOUGHT: &str = "Thought";
+
 /// What the line of an item of work says.
 pub fn work_line(item: &Item, cwd: &str) -> String {
     match &item.body {
         ItemBody::Tool(tool) => tool_line(tool, item.status, cwd),
         ItemBody::Reasoning(text) => {
             let last = text.text.lines().rfind(|line| !line.trim().is_empty());
-            last.unwrap_or("Thought").trim().to_owned()
+            last.unwrap_or(THOUGHT).trim().to_owned()
         }
         ItemBody::Todos(todos) => {
             let done = (todos.todos.iter()).filter(|todo| todo.status == TodoStatus::Completed);
