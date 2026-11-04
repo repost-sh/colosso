@@ -62,9 +62,13 @@ pub(super) struct Timeline {
 
 impl EventEmitter<ChatViewEvent> for Timeline {}
 impl EventEmitter<OpenSubagent> for Timeline {}
+impl EventEmitter<GoBackTo> for Timeline {}
 
 /// A person went for the thread of a subagent in the timeline.
 pub(super) struct OpenSubagent(pub(super) ThreadId);
+
+/// A person went for the message that started a run in the timeline, to say it again.
+pub(super) struct GoBackTo(pub(super) RunId);
 
 /// A second's tick for as long as something's `running`, for its elapsed time.
 pub(super) fn keep_ticking<T: 'static>(
@@ -266,10 +270,16 @@ impl Timeline {
             cwd: Rc::clone(&self.cwd),
             queued_edit: (self.queued_edit.as_ref()).map(|edit| (edit.run.clone(), edit.text.clone())),
             composer: self.composer.clone(),
+            can_go_back: self.thread.read(cx).replica().is_some_and(can_go_back),
             inset: self.inset,
             p: theme::palette(cx),
         }
     }
+}
+
+/// Whether the host would let a chat go back: not a subagent's, nothing at work or waiting.
+pub(super) fn can_go_back(replica: &Replica) -> bool {
+    replica.thread.parent.is_none() && replica.live().is_none() && replica.queued().next().is_none()
 }
 
 /// The item the live row in `rows` shows.

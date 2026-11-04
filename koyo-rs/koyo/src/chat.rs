@@ -12,6 +12,7 @@ mod marks;
 mod notify;
 mod queued;
 mod output;
+mod rewind;
 mod rows;
 mod status;
 mod subagent_bar;

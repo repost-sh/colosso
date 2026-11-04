@@ -9,6 +9,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::input::TextareaState;
 use gpui_kit::component::shimmer::ShimmerText;
 use gpui_kit::component::text::{TextView, TextViewState};
+use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, ClickEvent, Context, Div, ElementId, Entity, FocusHandle, InteractiveElement as _,
@@ -25,7 +26,7 @@ use koyo_agent::words::{answer_meta, clock, duration, live_line, plan_parts, wor
 
 use super::{asks, attachments, subagents};
 use super::thread::ChatThread;
-use super::timeline::Timeline;
+use super::timeline::{GoBackTo, Timeline};
 use super::view::COLUMN;
 use super::work;
 use crate::pane::tab_button;
@@ -65,6 +66,8 @@ pub(super) struct Drawing {
     pub(super) queued_edit: Option<(RunId, Entity<TextareaState>)>,
     /// Who an answer to what's asked is said to.
     pub(super) composer: FocusHandle,
+    /// Whether a message can be gone back to.
+    pub(super) can_go_back: bool,
     /// The room under the last row.
     pub(super) inset: Pixels,
     pub(super) p: Palette,
@@ -218,9 +221,23 @@ impl Drawing {
                 .child(
                     hover_meta(&group, p)
                         .children(sent)
+                        .when(self.can_go_back && !steered, |meta| {
+                            meta.child(self.go_back_button(&run.id))
+                        })
                         .child(self.copy_button(&item.id)),
                 ),
         )
+    }
+
+    /// A small button that goes back to the message that started `run`.
+    fn go_back_button(&self, run: &RunId) -> impl IntoElement {
+        let id = SharedString::from(format!("go-back-{run}"));
+        let run = run.clone();
+        tab_button(id, self.p)
+            .cursor_pointer()
+            .tooltip(|window, cx| Tooltip::new("Go back to this message").build(window, cx))
+            .child(icon(IconName::Undo2, 12.))
+            .on_click(self.on_timeline(move |_, _, cx| cx.emit(GoBackTo(run.clone()))))
     }
 
     pub(super) fn show_more(&self, id: RowId, index: usize, open: bool) -> impl IntoElement {

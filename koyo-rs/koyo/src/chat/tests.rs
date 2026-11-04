@@ -28,6 +28,7 @@ mod drawers;
 mod details;
 mod drawing;
 mod recent;
+mod rewind;
 mod seen;
 
 const AT: &str = "2026-11-03T10:00:00.000Z";

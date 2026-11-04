@@ -22,9 +22,10 @@ use koyo_agent::protocol::ids::ThreadId;
 
 use super::Chats;
 use super::composer::{ChatComposer, ComposerEvent};
+use super::rewind;
 use super::subagent_bar::{KEYS, OpenParent, SubagentBar, WentToParent};
 use super::thread::ChatThread;
-use super::timeline::{OpenSubagent, Timeline};
+use super::timeline::{GoBackTo, OpenSubagent, Timeline};
 use details::{Details, OpenIn, ToggleDetails, Workplace};
 use crate::native::liquid;
 use crate::settings::ProjectScript;
@@ -165,6 +166,7 @@ impl ChatView {
         let mut following = vec![
             cx.subscribe(&timeline, |_, _, event: &ChatViewEvent, cx| cx.emit(event.clone())),
             cx.subscribe_in(&timeline, window, Self::went_into),
+            cx.subscribe_in(&timeline, window, Self::went_back),
             cx.observe(&scroller, |view, _, cx| view.scrolled(cx)),
         ];
         if let Some(bar) = &bar {
@@ -196,6 +198,19 @@ impl ChatView {
     ) {
         let OpenSubagent(id) = event;
         self.open_subagent(id, window, cx);
+    }
+
+    fn went_back(
+        &mut self,
+        timeline: &Entity<Timeline>,
+        event: &GoBackTo,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let GoBackTo(run) = event;
+        let thread = timeline.read(cx).thread.read(cx).id().clone();
+        let (chats, composer) = (self.chats.clone(), self.composer.clone());
+        rewind::confirm(chats, composer, thread, run.clone(), window, cx);
     }
 
     /// Thread `id`, a subagent's, takes the place of what's on show.

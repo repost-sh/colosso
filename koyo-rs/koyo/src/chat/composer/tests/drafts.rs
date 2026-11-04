@@ -7,7 +7,8 @@ use std::time::Duration;
 use gpui_kit::{AnyWindowHandle, AppContext as _, Context, Entity, TestAppContext, Window, px, size};
 use koyo_agent::agent_client::Notice;
 use koyo_agent::protocol::events::{Event, Removed};
-use koyo_agent::protocol::ids::ThreadId;
+use koyo_agent::protocol::ids::{MessageId, ThreadId};
+use koyo_agent::protocol::model::{Attachment, Prompt};
 
 use super::super::ChatComposer;
 use super::attach::kept_files;
@@ -315,4 +316,32 @@ fn a_file_that_cannot_be_read_is_no_drafts(cx: &mut TestAppContext) {
     cx.update(|cx| drafts::open_at(&path, cx));
 
     assert_eq!(Open::thread(&place, cx).typed(cx), "");
+}
+
+#[gpui_kit::test]
+fn words_taken_back_go_after_whats_typed_with_the_files_that_are_still_there(
+    cx: &mut TestAppContext,
+) {
+    let place = Place::new("draft-take-back", cx);
+    let open = Open::thread(&place, cx);
+    open.attach(&place.note, cx);
+    let kept: Vec<Attachment> =
+        open.composer.read_with(cx, |composer, _| composer.kept_attachments().cloned().collect());
+    open.with(cx, |composer, _, _| composer.attached.clear());
+    let gone = Attachment { file: "gone.txt".into(), ..kept[0].clone() };
+    open.write("typed", cx);
+
+    open.with(cx, |composer, window, cx| {
+        let prompt = Prompt {
+            message_id: MessageId("m".into()),
+            text: "said".into(),
+            attachments: vec![gone, kept[0].clone()],
+        };
+        composer.take_back(prompt, window, cx);
+    });
+
+    assert_eq!(open.typed(cx), "typed\n\nsaid");
+    assert_eq!(open.tiles(cx), 1, "what's gone would only stop it going");
+    let caret = open.composer.read_with(cx, |composer, cx| composer.text.read(cx).cursor());
+    assert_eq!(caret, "typed\n\nsaid".len());
 }
