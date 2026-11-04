@@ -52,6 +52,11 @@ export const Thread = z.object({
   plan: z.boolean(),
   /** The provider's conversation, minted before the first turn so a crash still resumes it. */
   sessionId: z.string().min(1).nullable(),
+  /**
+   * The entry of the conversation the next session goes on from, when a person went back to before
+   * its later turns (C11), until a turn has gone on from there.
+   */
+  resumeAt: z.string().min(1).nullable().default(null),
   /** Queued runs wait for the person after a stop, a failure or a restart. */
   queueHeld: z.boolean(),
   /** A tab shows it, and will again after a restart (C13). */
@@ -73,7 +78,7 @@ export const RunStatus = z.enum([
   "completed",
   "interrupted",
   "failed",
-  /** Taken off the queue before it started; clients show it no more. */
+  /** Taken off the queue, or gone back past (C11); clients show it no more. */
   "removed",
 ]);
 export type RunStatus = z.infer<typeof RunStatus>;

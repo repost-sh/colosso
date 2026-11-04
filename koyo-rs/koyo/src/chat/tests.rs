@@ -79,6 +79,7 @@ pub(super) fn snapshot(id: &str, seq: u64, items: Vec<Item>) -> ThreadSnapshot {
             permission: None,
             plan: false,
             session_id: None,
+            resume_at: None,
             queue_held: false,
             tab_open: true,
             parent: None,

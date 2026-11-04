@@ -22,6 +22,7 @@
         "permission": null,
         "plan": false,
         "sessionId": "6d1f0c2a-35b7-4c9e-8f0a-2b1c3d4e5f60",
+        "resumeAt": null,
         "queueHeld": false,
         "tabOpen": true,
         "parent": null,

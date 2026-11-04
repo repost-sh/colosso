@@ -91,12 +91,12 @@ export class Store {
 
   /** The thread's latest `count` runs, queued ones among them, with their rows. */
   latest(id: ThreadId, count: number): Rows {
-    return this.#page(this.#query(Run, `${RUNS} ORDER BY id DESC LIMIT ?`, id, count));
+    return this.#page(this.#query(Run, `${SHOWN_RUNS} ORDER BY id DESC LIMIT ?`, id, count));
   }
 
   /** The `count` runs sent before run `before`, with their rows. */
   before(id: ThreadId, before: RunId, count: number): Rows {
-    const runs = `${RUNS} AND id < ? ORDER BY id DESC LIMIT ?`;
+    const runs = `${SHOWN_RUNS} AND id < ? ORDER BY id DESC LIMIT ?`;
     return this.#page(this.#query(Run, runs, id, before, count));
   }
 
@@ -107,6 +107,18 @@ export class Store {
       items: this.#query(Item, `${ITEMS} AND seq > ? ORDER BY ordinal`, id, since),
       requests: this.#query(Request, `${REQUESTS} AND seq > ? ORDER BY id`, id, since),
     };
+  }
+
+  /** Run `from` and those after it, unless they're removed, oldest first. */
+  runsFrom(id: ThreadId, from: RunId): Run[] {
+    return this.#query(Run, `${SHOWN_RUNS} AND id >= ? ORDER BY id`, id, from);
+  }
+
+  /** The threads of the subagents `id` started whose rows are gone from it. */
+  orphans(id: ThreadId): ThreadId[] {
+    const sql = `SELECT id FROM threads WHERE ${SUBAGENT_OF} = ? AND NOT EXISTS
+      (SELECT 1 FROM items WHERE items.id = json_extract(threads.data, '$.parent.itemId'))`;
+    return this.#db.query(sql).all(id).map((row) => IdRow.parse(row).id);
   }
 
   /** Writes what one actor step changed, as one transaction, and returns it stamped. */
@@ -137,6 +149,11 @@ export class Store {
       for (const run of runs) {
         const message = run.prompt.messageId;
         putRun.run(run.id, id, run.status, message, seq, JSON.stringify(run));
+        // A removed run stays as a row to say so, and what it held goes.
+        if (run.status === "removed") {
+          this.#db.query("DELETE FROM items WHERE thread_id = ? AND run_id = ?").run(id, run.id);
+          this.#db.query("DELETE FROM requests WHERE thread_id = ? AND run_id = ?").run(id, run.id);
+        }
       }
       const putItem = this.#db.query(
         `INSERT OR REPLACE INTO items (id, thread_id, run_id, ordinal, message_id, seq, data)
@@ -259,6 +276,8 @@ export class Store {
 }
 
 const RUNS = "SELECT data FROM runs WHERE thread_id = ?";
+/** A removed run stays only to tell a client that held it, which catches up by what changed. */
+const SHOWN_RUNS = `${RUNS} AND status != 'removed'`;
 const UNSETTLED = "('queued', 'starting', 'running', 'stopping')";
 /** Every file a message names: where its run started, or as an item when it joined one. */
 const ATTACHED = `
@@ -268,7 +287,7 @@ const ATTACHED = `
   SELECT thread_id, json_extract(attached.value, '$.file') AS file
     FROM items, json_each(items.data, '$.payload.attachments') AS attached
     WHERE items.message_id IS NOT NULL`;
-/** The settled runs that ran: a removed one never did. */
+/** The settled runs that count as having run: a removed one doesn't. */
 const ENDED = "('completed', 'interrupted', 'failed')";
 /** The thread a thread is a subagent's of, as the index on it has it. */
 const SUBAGENT_OF = "json_extract(data, '$.parent.threadId')";

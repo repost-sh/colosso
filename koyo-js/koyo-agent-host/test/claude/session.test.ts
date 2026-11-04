@@ -86,6 +86,20 @@ describe("a session's options", () => {
   });
 });
 
+describe("a session gone back in its conversation", () => {
+  test("resumes from the entry it went back to", async () => {
+    const opened = spec({ resume: true, resumeAt: "entry" });
+    const query = await bench(opened, { resumable: true }).query();
+    expect(query.options.resumeSessionAt).toBe("entry");
+  });
+
+  test("has nothing to go back in, when it's starting fresh", async () => {
+    const opened = spec({ resume: true, resumeAt: "entry" });
+    const query = await bench(opened, { resumable: false }).query();
+    expect(query.options.resumeSessionAt).toBeUndefined();
+  });
+});
+
 describe("the session's init", () => {
   test("says the mode in force, none for plan mode, and the folder's slash commands", async () => {
     const made = bench();

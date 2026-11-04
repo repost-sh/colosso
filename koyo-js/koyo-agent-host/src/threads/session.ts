@@ -33,6 +33,7 @@ export function specFor(thread: Thread, sessionId: string, defaultMode: Mode | n
     fast: thread.fast,
     permission: thread.permission ?? defaultMode,
     plan: thread.plan,
+    resumeAt: thread.resumeAt,
   };
 }
 

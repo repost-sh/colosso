@@ -12,7 +12,7 @@ use super::events::Event;
 use super::methods::Method;
 
 /// The protocol version this build speaks, the host's `HOST_VERSION` (`docs/chat.md` C9).
-pub const HOST_VERSION: u32 = 10;
+pub const HOST_VERSION: u32 = 11;
 
 /// The longest line either side accepts.
 pub const MAX_LINE_BYTES: usize = 8 * 1024 * 1024;
@@ -44,10 +44,6 @@ pub struct WireError {
 
 /// A line from the host.
 #[derive(Debug)]
-#[expect(
-    clippy::large_enum_variant,
-    reason = "a line read is matched at once and its event moved on, never kept as one"
-)]
 pub enum Inbound {
     /// The answer to the request `id`; no id when the host couldn't read the request's line.
     Reply {

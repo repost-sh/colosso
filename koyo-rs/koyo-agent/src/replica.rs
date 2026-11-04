@@ -3,6 +3,7 @@
 //! one it's a newer version of, and only text grows piece by piece.
 
 use std::cmp::Ordering;
+use std::collections::HashSet;
 
 use crate::protocol::events::{Appended, Changed};
 use crate::protocol::ids::{RequestId, RunId};
@@ -124,6 +125,16 @@ impl Replica {
     }
 
     fn merge(&mut self, runs: Vec<Run>, items: Vec<Item>, requests: Vec<Request>) {
+        // A removed run is gone with what it held: what a person went back past. What takes its
+        // place in the timeline comes with this.
+        let (gone, runs): (Vec<Run>, Vec<Run>) =
+            runs.into_iter().partition(|run| run.status == RunStatus::Removed);
+        if !gone.is_empty() {
+            let gone: HashSet<&RunId> = gone.iter().map(|run| &run.id).collect();
+            self.runs.retain(|run| !gone.contains(&run.id));
+            self.items.retain(|item| !gone.contains(&item.run_id));
+            self.requests.retain(|request| !gone.contains(&request.run_id));
+        }
         merge_rows(&mut self.runs, runs, |a, b| a.id.cmp(&b.id), |run| run.seq);
         merge_rows(&mut self.items, items, |a, b| a.ordinal.cmp(&b.ordinal), |item| item.seq);
         merge_rows(&mut self.requests, requests, |a, b| a.id.cmp(&b.id), |request| request.seq);

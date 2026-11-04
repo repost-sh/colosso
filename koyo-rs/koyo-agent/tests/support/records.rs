@@ -25,6 +25,7 @@ pub fn thread(seq: u64) -> Thread {
         permission: None,
         plan: false,
         session_id: None,
+        resume_at: None,
         queue_held: false,
         tab_open: true,
         parent: None,

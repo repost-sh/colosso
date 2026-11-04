@@ -1,6 +1,7 @@
 import type { ModelInfo } from "@anthropic-ai/claude-agent-sdk";
 import { describe, expect, test } from "bun:test";
 
+import { HostError } from "../../src/protocol/wire";
 import { models } from "../../src/providers/claude/catalog";
 import { type ClaudeDeps, ClaudeProvider } from "../../src/providers/claude/provider";
 import { failed, success } from "../fixtures/claude/frames";
@@ -32,6 +33,7 @@ function provider(deps: Partial<ClaudeDeps> = {}): {
     version: async () => await Promise.resolve("2.1.317"),
     settingsMode: async () => await Promise.resolve("acceptEdits"),
     resumable: async () => await Promise.resolve(false),
+    conversation: async () => await Promise.resolve([]),
     stopMs: 50,
     ...deps,
   });
@@ -175,6 +177,26 @@ describe("a session", () => {
     await Promise.all(opened.map(async ({ session }) => {
       await session.close();
     }));
+  });
+});
+
+describe("going back", () => {
+  const conversation = async (): Promise<string[]> => await Promise.resolve(["a", "b"]);
+
+  test("finds the entry before a message", async () => {
+    const { claude } = provider({ conversation });
+    expect(await claude.entryBefore("s", "/work", "b")).toBe("a");
+  });
+
+  test("has nothing before the message that started it", async () => {
+    const { claude } = provider({ conversation });
+    expect(await claude.entryBefore("s", "/work", "a")).toBeNull();
+  });
+
+  test("refuses a message it doesn't have", async () => {
+    const { claude } = provider({ conversation });
+    expect(claude.entryBefore("s", "/work", "c")).rejects.toThrow(HostError);
+    await settle();
   });
 });
 

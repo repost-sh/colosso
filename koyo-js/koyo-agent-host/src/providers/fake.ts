@@ -49,6 +49,8 @@ export class FakeProvider implements Provider {
   config: Config | undefined;
   /** The default mode its own settings name. */
   settingsMode: Mode | null = null;
+  /** What `entryBefore` says, or the error it refuses with. */
+  entry: string | null | Error = null;
   readonly #onStart: OnStart | undefined;
 
   constructor(options: FakeOptions = {}) {
@@ -58,6 +60,11 @@ export class FakeProvider implements Provider {
 
   setConfig(config: Config): void {
     this.config = config;
+  }
+
+  async entryBefore(_sessionId: string, _cwd: string, _promptId: string): Promise<string | null> {
+    const { entry } = this;
+    return await (entry instanceof Error ? Promise.reject(entry) : Promise.resolve(entry));
   }
 
   /** The session opened last. */

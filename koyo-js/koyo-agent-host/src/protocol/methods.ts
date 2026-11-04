@@ -127,7 +127,7 @@ export const methods = {
     result: ThreadSnapshot,
   },
   "threads.history": {
-    params: z.object({ threadId: ThreadId, before: RunId, runs: z.int().positive() }),
+    params: z.object({ threadId: ThreadId, before: RunId.nullable(), runs: z.int().positive() }),
     result: Rows,
   },
   "threads.close": { params: ThreadParams, result: Empty },
@@ -146,6 +146,11 @@ export const methods = {
   },
   "threads.read": { params: ThreadParams, result: Empty },
   "threads.delete": { params: ThreadParams, result: Empty },
+  /** Goes back to before run `runId`, and says what the person said then (C11). */
+  "threads.rewind": {
+    params: z.object({ threadId: ThreadId, runId: RunId }),
+    result: z.object({ prompt: Prompt }),
+  },
   "turns.send": {
     params: z.object({ threadId: ThreadId, prompt: Prompt, delivery: Delivery }),
     result: z.object({ runId: RunId, delivered: Delivered }),

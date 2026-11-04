@@ -257,6 +257,7 @@ export function spec(change: Partial<SessionSpec> = {}): SessionSpec {
     cwd: "/work/rec-cwd",
     sessionId: randomUUID(),
     resume: false,
+    resumeAt: null,
     model: null,
     effort: null,
     fast: false,

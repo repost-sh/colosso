@@ -4,8 +4,6 @@
 // that closes an item writes it whole. The thread's state starts a turn with its run and ends
 // it with the commit that settles the run.
 
-import type { UUID } from "node:crypto";
-
 import { log } from "../log";
 import type { ItemId, RunId } from "../protocol/ids";
 import type { Item, Run } from "../protocol/model";
@@ -21,8 +19,6 @@ const KEEP_MS = 500;
 
 export class LiveTurn {
   readonly runId: RunId;
-  /** The id the session was given the turn's prompt with. */
-  readonly promptId: UUID = crypto.randomUUID();
   readonly #ids = new Map<string, ItemId>();
   readonly #items = new Map<ItemId, Item>();
   /** Items whose text grew since the store last had it. */

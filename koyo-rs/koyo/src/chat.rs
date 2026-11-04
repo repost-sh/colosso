@@ -371,16 +371,22 @@ impl Chats {
         logged(self.ordered::<TurnsStop>(params), "stopping a chat's run", cx);
     }
 
-    /// A page of the runs of thread `id` sent before `before`, on its own thread as it may take a
-    /// while, and with nothing to come in order with.
-    pub fn history(&self, id: &ThreadId, before: RunId, cx: &App) -> Task<Result<Rows, ClientError>> {
+    /// A page of `runs` runs of thread `id`, those sent before `before` or the latest, on its own
+    /// thread as it may take a while, and with nothing to come in order with.
+    pub fn history(
+        &self,
+        id: &ThreadId,
+        before: Option<RunId>,
+        runs: u32,
+        cx: &App,
+    ) -> Task<Result<Rows, ClientError>> {
         let Some(client) = self.client.clone() else {
             return Task::ready(Err(ClientError::Closed));
         };
         let params = HistoryParams {
             thread_id: id.clone(),
             before,
-            runs: HISTORY_PAGE as u32,
+            runs,
         };
         cx.background_spawn(async move { client.request::<ThreadsHistory>(&params) })
     }
@@ -414,7 +420,7 @@ impl Chats {
             match *event {
                 Event::ThreadChanged(changed) => {
                     (touched.entry(changed.thread_id.clone()).or_default())
-                        .push(ThreadEvent::Changed(Box::new(changed)));
+                        .push(ThreadEvent::Changed(changed));
                 }
                 Event::ItemAppended(appended) => {
                     (touched.entry(appended.thread_id.clone()).or_default())

@@ -51,6 +51,8 @@ methods! {
     /// The person has seen the thread.
     "threads.read" => ThreadsRead(ThreadParams) -> Empty;
     "threads.delete" => ThreadsDelete(ThreadParams) -> Empty;
+    /// Goes back to before run `run_id`, and says what the person said then.
+    "threads.rewind" => ThreadsRewind(RewindParams) -> Rewound;
     "turns.send" => TurnsSend(SendParams) -> Sent;
     "turns.stop" => TurnsStop(StopParams) -> Empty;
     "turns.compact" => TurnsCompact(ThreadParams) -> Compacting;
@@ -216,6 +218,18 @@ pub struct ThreadParams {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RewindParams {
+    pub thread_id: ThreadId,
+    pub run_id: RunId,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Rewound {
+    pub prompt: Prompt,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OpenParams {
     pub thread_id: ThreadId,
     pub since_seq: Option<u64>,
@@ -243,8 +257,8 @@ pub struct ThreadSnapshot {
 #[serde(rename_all = "camelCase")]
 pub struct HistoryParams {
     pub thread_id: ThreadId,
-    /// The page is the runs sent before this one.
-    pub before: RunId,
+    /// The page is the runs sent before this one, or the latest.
+    pub before: Option<RunId>,
     pub runs: u32,
 }
 

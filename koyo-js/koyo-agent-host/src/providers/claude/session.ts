@@ -127,6 +127,10 @@ export class ClaudeSession implements ProviderSession {
       sink.event(event);
     }, deps.stopMs);
     this.#turns = new Turns((event) => {
+      // From now on the conversation has that turn: a restart goes on from it.
+      if (event.type === "turn.started") {
+        this.#spec = { ...this.#spec, resumeAt: null };
+      }
       sink.event(event);
     }, this.#frames, () => {
       clearTimeout(this.#stopping);

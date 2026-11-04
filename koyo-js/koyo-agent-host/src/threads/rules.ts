@@ -20,9 +20,10 @@ const MOVES: Readonly<Record<RunStatus, readonly RunStatus[]>> = {
   running: ["stopping", "completed", "interrupted", "failed"],
   // The barrier: once a stop is asked for, the run only ends.
   stopping: ["completed", "interrupted", "failed"],
-  completed: [],
-  interrupted: [],
-  failed: [],
+  // Only going back past a run moves it once it's ended (C11).
+  completed: ["removed"],
+  interrupted: ["removed"],
+  failed: ["removed"],
   removed: [],
 };
 
@@ -37,7 +38,7 @@ export function isLive(run: Run): boolean {
 }
 
 export function isSettled(run: Run): boolean {
-  return MOVES[run.status].length === 0;
+  return !isLive(run) && run.status !== "queued";
 }
 
 /** Whether an item may still change: the turn's end closes it. */
