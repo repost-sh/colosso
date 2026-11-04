@@ -18,6 +18,7 @@ use crate::test_support::draw;
 mod drafts;
 
 mod attach;
+mod missing;
 mod suggest;
 
 fn model(id: &str, efforts: &[Effort], fast: bool, auto: bool) -> Model {

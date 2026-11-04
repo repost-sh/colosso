@@ -8,7 +8,9 @@ use std::sync::Arc;
 
 use gpui_kit::{AppContext as _, Context, Entity, WeakEntity};
 use koyo_agent::agent_client::AgentClient;
-use koyo_agent::protocol::methods::{Catalog, CatalogParams, GetCatalog};
+use koyo_agent::protocol::methods::{
+    Catalog, CatalogParams, GetCatalog, ProviderState, ProvidersStatus, StatusParams,
+};
 
 use super::{Chats, Connection};
 
@@ -30,6 +32,7 @@ impl Chats {
     /// The host heard Koyo's settings, and says what it offers now to the checkouts tabs still
     /// show.
     pub(super) fn refresh_catalogs(&mut self, cx: &mut Context<Self>) {
+        self.ask_for_provider(false, cx);
         let Some(client) = &self.client else {
             return;
         };
@@ -40,6 +43,36 @@ impl Chats {
             }
             held.is_some()
         });
+    }
+}
+
+impl Chats {
+    /// Asks the host whether Claude Code is there, which it looks for each time. Once it turns up
+    /// there's something to choose from.
+    pub(super) fn ask_for_provider(&self, refresh: bool, cx: &mut Context<Self>) {
+        let Some(client) = self.client.clone() else {
+            return;
+        };
+        let held = self.claude_missing.clone();
+        let params = StatusParams { refresh };
+        let asked = cx.background_spawn(async move { client.request::<ProvidersStatus>(&params) });
+        cx.spawn(async move |chats, cx| match asked.await {
+            Ok(statuses) => {
+                let missing = statuses.iter().any(|status| status.state == ProviderState::Missing);
+                let turned_up = held.update(cx, |held, cx| {
+                    let was = std::mem::replace(held, missing);
+                    if was != missing {
+                        cx.notify();
+                    }
+                    was && !missing
+                });
+                if turned_up {
+                    chats.update(cx, Chats::refresh_catalogs).ok();
+                }
+            }
+            Err(error) => log::warn!("whether Claude Code is there: {error}"),
+        })
+        .detach();
     }
 }
 
