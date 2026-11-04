@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use gpui_kit::component::message_scroller::{MessageScroller, MessageScrollerState};
 use gpui_kit::{
-    ClipboardItem, Context, Entity, EventEmitter, IntoElement, Pixels, Render, StyleRefinement,
+    ClipboardItem, Context, Entity, EventEmitter, FocusHandle, IntoElement, Pixels, Render, StyleRefinement,
     Styled as _, Subscription, Task, Window,
 };
 use koyo_agent::protocol::ids::{ItemId, RunId};
@@ -29,6 +29,8 @@ pub(super) struct Timeline {
     thread: Entity<ChatThread>,
     scroller: Entity<MessageScrollerState>,
     cwd: Rc<str>,
+    /// Who an answer to what's asked is said to.
+    composer: FocusHandle,
     rows: Rc<Vec<Row>>,
     /// What a person opened: a long message, a group of work, a tool, a settled run's work.
     open: Rc<HashSet<RowId>>,
@@ -52,6 +54,7 @@ impl Timeline {
         thread: Entity<ChatThread>,
         scroller: Entity<MessageScrollerState>,
         cwd: Rc<str>,
+        composer: FocusHandle,
         inset: Pixels,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -60,6 +63,7 @@ impl Timeline {
             thread,
             scroller,
             cwd,
+            composer,
             rows: Rc::default(),
             open: Rc::default(),
             running: None,
@@ -180,6 +184,7 @@ impl Render for Timeline {
             running_since: self.running.as_ref().map(|(_, since)| *since),
             copied: self.copied.as_ref().map(|(id, _)| id.clone()),
             cwd: Rc::clone(&self.cwd),
+            composer: self.composer.clone(),
             inset: self.inset,
             p: theme::palette(cx),
         };

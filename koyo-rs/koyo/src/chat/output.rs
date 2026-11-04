@@ -49,9 +49,9 @@ pub(super) fn block(id: String, text: &str, p: Palette) -> Stateful<Div> {
     boxed(id, p).p_2().child(StyledText::new(plain).with_highlights(highlights))
 }
 
-/// `patch`, each line numbered as the file has it now, or had it if it's gone.
-pub(super) fn diff(id: &ItemId, patch: &[Hunk], p: Palette) -> Stateful<Div> {
-    let look = Rc::new(Look {
+/// The look of a patch's lines.
+fn look(p: Palette) -> Rc<Look> {
+    Rc::new(Look {
         font: font(MONO),
         font_size: px(DIFF_FONT_SIZE),
         line_height: px(DIFF_LINE_HEIGHT),
@@ -61,7 +61,22 @@ pub(super) fn diff(id: &ItemId, patch: &[Hunk], p: Palette) -> Stateful<Div> {
         numbers: p.muted,
         missing: p.hover,
         wrap: true,
+    })
+}
+
+/// A change not made yet, whose lines have no numbers to go by, each starting `+` or `-`.
+pub(super) fn change(id: String, lines: &[String], p: Palette) -> Stateful<Div> {
+    let look = look(p);
+    let lines = lines.iter().map(|line| {
+        let tint = if line.starts_with('-') { p.removed } else { p.added };
+        diff_line(line, None, Some(tint), px(0.), &look, p)
     });
+    boxed(id, p).py_1().children(lines.collect::<Vec<_>>())
+}
+
+/// `patch`, each line numbered as the file has it now, or had it if it's gone.
+pub(super) fn diff(id: &ItemId, patch: &[Hunk], p: Palette) -> Stateful<Div> {
+    let look = look(p);
     let longest = patch.iter().map(|hunk| hunk.new_start + hunk.new_lines).max();
     let width = px(number_width(usize::try_from(longest.unwrap_or(1)).unwrap_or(usize::MAX)));
     let mut lines = Vec::new();
@@ -78,17 +93,18 @@ pub(super) fn diff(id: &ItemId, patch: &[Hunk], p: Palette) -> Stateful<Div> {
                     (&mut new, None)
                 }
             };
-            lines.push(diff_line(line, *number, tint, width, &look, p));
+            lines.push(diff_line(line, Some(*number), tint, width, &look, p));
             *number += 1;
         }
     }
     boxed(format!("diff-{id}"), p).py_1().children(lines)
 }
 
-/// A line of a patch, its first character saying what its tint says, numbered from one.
+/// A line of a patch, its first character saying what its tint says, numbered from one if it can
+/// be.
 fn diff_line(
     line: &str,
-    number: u64,
+    number: Option<u64>,
     tint: Option<Hsla>,
     number_width: gpui_kit::Pixels,
     look: &Rc<Look>,
@@ -104,7 +120,7 @@ fn diff_line(
         strikethrough: None,
     };
     let half = Half {
-        numbers: vec![u32::try_from(number.saturating_sub(1)).ok()],
+        numbers: vec![number.and_then(|number| u32::try_from(number.saturating_sub(1)).ok())],
         number_width,
         text,
         runs: vec![run],

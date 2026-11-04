@@ -64,6 +64,7 @@ fn init(cx: &mut App) {
     files::init(cx);
     navigation::bind_keys(cx);
     go_to_file::init(cx);
+    chat::init(cx);
     symbols::init(cx);
     koyo_term::init(cx);
     terminals::init(cx);

@@ -10,16 +10,17 @@ use gpui_kit::component::shimmer::ShimmerText;
 use gpui_kit::component::text::{TextView, TextViewState};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, ClickEvent, Div, ElementId, Entity, InteractiveElement as _, IntoElement,
-    ParentElement as _, Pixels, SharedString, Stateful, StatefulInteractiveElement as _,
+    AnyElement, App, ClickEvent, Div, ElementId, Entity, FocusHandle, InteractiveElement as _,
+    IntoElement, ParentElement as _, Pixels, SharedString, Stateful, StatefulInteractiveElement as _,
     Styled as _, WeakEntity, Window, div, px, relative,
 };
 use koyo_agent::protocol::ids::ItemId;
 use koyo_agent::protocol::model::{Delivered, Item, ItemBody, Run};
-use koyo_agent::protocol::requests::{Request, RequestPayload};
+use koyo_agent::protocol::requests::Request;
 use koyo_agent::timeline::{Row, RowId, RowKind};
 use koyo_agent::words::{answer_meta, clock, duration, live_line, worked_for};
 
+use super::asks;
 use super::thread::ChatThread;
 use super::timeline::Timeline;
 use super::view::COLUMN;
@@ -49,6 +50,8 @@ pub(super) struct Drawing {
     pub(super) running_since: Option<Instant>,
     pub(super) copied: Option<ItemId>,
     pub(super) cwd: Rc<str>,
+    /// Who an answer to what's asked is said to.
+    pub(super) composer: FocusHandle,
     /// The room under the last row.
     pub(super) inset: Pixels,
     pub(super) p: Palette,
@@ -102,9 +105,10 @@ impl Drawing {
             RowKind::Fold { run } => self
                 .fold(run_at(run)?, &replica.requests, id, index)
                 .into_any_element(),
-            RowKind::Request { request, .. } => self
-                .request(&replica.requests.get(*request)?.payload)
-                .into_any_element(),
+            RowKind::Request { request, asking, .. } => {
+                let asked = replica.requests.get(*request)?;
+                asks::request(self, asked, *asking, index, cx)
+            }
             RowKind::Compaction { item } => self.compaction(item_at(item)?),
             RowKind::Notice { item } => self.notice(item_at(item)?).into_any_element(),
             RowKind::Failure { run } => self.failure(run_at(run)?).into_any_element(),
@@ -262,17 +266,6 @@ impl Drawing {
             .child(label)
             .child(chevron(self.open.contains(id)))
             .on_click(self.opens(id.clone(), index))
-    }
-
-    /// What the agent asked, in a line until the kinds of request have their own rows.
-    fn request(&self, payload: &RequestPayload) -> impl IntoElement {
-        let text = match payload {
-            RequestPayload::Approval(approval) => approval.title.as_str(),
-            RequestPayload::Question(_) => "A question",
-            RequestPayload::Plan { markdown } => markdown.lines().next().unwrap_or("A plan"),
-            RequestPayload::Unknown(_) => "Something this version of Koyo can't show",
-        };
-        div().text_sm().text_color(self.p.muted).child(text.to_owned())
     }
 }
 

@@ -2,6 +2,9 @@
 //! sent from. A view of its own, as its caret blinks and what's typed changes with every key, none
 //! of which is the timeline's to draw. If a message doesn't go the text comes back, with why.
 //!
+//! All a person says to the chat goes through here, so answers to what the agent asks do too: from
+//! the keys, the buttons of a row, or what's typed while an approval waits, which declines it.
+//!
 //! What it shows of the thread and the host it holds a copy of. A view is drawn again each time
 //! what it read is updated, told or not, and every token updates both.
 
@@ -12,20 +15,26 @@ use gpui_kit::component::Sizable as _;
 use gpui_kit::component::input::{InputEvent, Textarea, TextareaState};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, ClickEvent, Context, ElementId, Entity, EventEmitter,
+    Action, AnyElement, App, AppContext as _, ClickEvent, Context, ElementId, Entity, EventEmitter,
     FocusHandle, Focusable, Hsla, InteractiveElement as _, IntoElement, ParentElement as _, Render,
     SharedString, StatefulInteractiveElement as _, Styled as _, Subscription, Window, div, px,
 };
 use koyo_agent::client::ClientError;
-use koyo_agent::protocol::ids::{MessageId, ThreadId};
+use koyo_agent::protocol::ids::{MessageId, RequestId, ThreadId};
 use koyo_agent::protocol::model::Prompt;
+use koyo_agent::protocol::requests::{Approval, Decision, Request, RequestPayload, Response};
+use koyo_agent::protocol::wire::{ErrorCode, WireError};
 
+use super::asks::{ANSWERABLE, AllowRequest, AllowRequestForChat, DenyRequest, StopRequest};
 use super::thread::ChatThread;
 use super::view::COLUMN;
 use super::{Chats, Connection};
 use crate::native::liquid;
 use crate::shell::{glass, icon};
 use crate::theme::{self, Palette};
+
+const ASK: &str = "Ask Claude…";
+const INSTEAD: &str = "Say what to do instead…";
 
 /// What the tab hears from its composer.
 #[derive(Clone, Debug)]
@@ -51,9 +60,14 @@ pub(super) struct ChatComposer {
     failed: Option<SharedString>,
     /// How things are with the host.
     connection: Connection,
+    /// Whether what's asked now is an approval, which the keys answer and what's typed declines.
+    approving: bool,
     _subscriptions: Vec<Subscription>,
     #[cfg(test)]
     pub(super) renders: usize,
+    /// What it answered.
+    #[cfg(test)]
+    pub(super) said: Vec<(RequestId, Response)>,
 }
 
 impl EventEmitter<ComposerEvent> for ChatComposer {}
@@ -71,7 +85,7 @@ impl ChatComposer {
             TextareaState::new(window, cx)
                 .auto_grow(1, 12)
                 .submit_on_enter(true)
-                .placeholder("Ask Claude…")
+                .placeholder(ASK)
         });
         let subscriptions = vec![
             cx.subscribe_in(&text, window, |this, _, event, window, cx| {
@@ -98,27 +112,48 @@ impl ChatComposer {
             error: None,
             failed: None,
             connection,
+            approving: false,
             _subscriptions: subscriptions,
             #[cfg(test)]
             renders: 0,
+            #[cfg(test)]
+            said: Vec::new(),
         };
         if let Some(thread) = thread {
-            composer.send_to_thread(thread, cx);
+            composer.send_to_thread(thread, window, cx);
         }
         composer
     }
 
     /// From now on what's sent goes to `thread`.
-    fn send_to_thread(&mut self, thread: Entity<ChatThread>, cx: &mut Context<Self>) {
-        self.failed = thread.read(cx).failed().cloned();
-        self._subscriptions.push(cx.observe(&thread, |this, thread, cx| {
-            let failed = thread.read(cx).failed().cloned();
-            if this.failed != failed {
-                this.failed = failed;
-                cx.notify();
-            }
+    fn send_to_thread(
+        &mut self,
+        thread: Entity<ChatThread>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self._subscriptions.push(cx.observe_in(&thread, window, |this, _, window, cx| {
+            this.thread_changed(window, cx);
         }));
         self.thread = Some(thread);
+        self.thread_changed(window, cx);
+    }
+
+    /// Takes what it shows of its thread, and is drawn only if that's new.
+    fn thread_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let held = self.thread.as_ref().map(|thread| thread.read(cx));
+        let failed = held.and_then(|thread| thread.failed().cloned());
+        let approving = self.approval(cx).is_some();
+        if self.approving != approving {
+            self.approving = approving;
+            let placeholder = if approving { INSTEAD } else { ASK };
+            self.text.update(cx, |text, cx| text.set_placeholder(placeholder, window, cx));
+            cx.notify();
+        }
+        if self.failed != failed {
+            self.failed = failed;
+            cx.notify();
+        }
     }
 
     /// Whether nothing's been said here yet, nor is on its way.
@@ -136,6 +171,15 @@ impl ChatComposer {
         self.text.update(cx, |composer, cx| composer.set_value("", window, cx));
         self.error = None;
         cx.emit(ComposerEvent::Sent);
+        cx.notify();
+        if let Some(request) = self.approval(cx).map(|(request, _)| request.id.clone()) {
+            let response = Response::Approval {
+                decision: Decision::Deny,
+                message: Some(text.clone()),
+            };
+            self.respond(request, response, Some(text), window, cx);
+            return;
+        }
         let prompt = Prompt {
             message_id: MessageId::fresh(),
             text,
@@ -148,7 +192,6 @@ impl ChatComposer {
             }
             None => self.create_and_send(prompt, window, cx),
         }
-        cx.notify();
     }
 
     fn send_to(
@@ -183,7 +226,7 @@ impl ChatComposer {
                     Ok(thread) => {
                         let id = thread.id;
                         let opened = this.chats.update(cx, |chats, cx| chats.thread(&id, cx));
-                        this.send_to_thread(opened.clone(), cx);
+                        this.send_to_thread(opened.clone(), window, cx);
                         cx.emit(ComposerEvent::Created(opened, id.clone()));
                         this.send_to(&id, prompt, window, cx);
                     }
@@ -205,12 +248,100 @@ impl ChatComposer {
     ) {
         log::warn!("a message didn't go: {why}");
         self.error = Some(why.to_string().into());
+        self.give_back(text, window, cx);
+        cx.notify();
+    }
+
+    /// What was typed comes back, unless something else has been typed since.
+    fn give_back(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.text.update(cx, |composer, cx| {
             if composer.value().is_empty() {
                 composer.set_value(text.to_owned(), window, cx);
             }
         });
-        cx.notify();
+    }
+
+    /// The approval a person can answer now, if that's what's asked.
+    fn approval<'a>(&self, cx: &'a App) -> Option<(&'a Request, &'a Approval)> {
+        let asked = self.thread.as_ref()?.read(cx).replica()?.asking()?;
+        match &asked.payload {
+            RequestPayload::Approval(approval) => Some((asked, approval)),
+            _ => None,
+        }
+    }
+
+    /// Answers the approval asked now, if there is one and it can be answered so.
+    fn answer(&mut self, decision: Decision, window: &mut Window, cx: &mut Context<Self>) {
+        let Some((request, approval)) = self.approval(cx) else {
+            return;
+        };
+        if decision == Decision::AllowSession && approval.allow_session.is_none() {
+            return;
+        }
+        let request = request.id.clone();
+        let response = Response::Approval {
+            decision,
+            message: None,
+        };
+        self.respond(request, response, None, window, cx);
+    }
+
+    /// Says `response` to `request`, in the words of `typed` if it was typed.
+    fn respond(
+        &mut self,
+        request: RequestId,
+        response: Response,
+        typed: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(thread) = &self.thread else {
+            return;
+        };
+        #[cfg(test)]
+        self.said.push((request.clone(), response.clone()));
+        let answered = self.chats.read(cx).respond(thread.read(cx).id(), request, response);
+        cx.spawn_in(window, async move |this, cx| {
+            if let Err(error) = answered.await {
+                this.update_in(cx, |this, window, cx| {
+                    this.not_answered(typed.as_deref(), &error, window, cx);
+                })
+                .ok();
+            }
+        })
+        .detach();
+    }
+
+    /// An answer didn't go. If what it answered was settled meanwhile that's no one's trouble, and
+    /// what was typed stays for a person to send as they see fit (`docs/chat.md` 4.5.1).
+    fn not_answered(
+        &mut self,
+        typed: Option<&str>,
+        why: &ClientError,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let settled = matches!(
+            why,
+            ClientError::Host(WireError {
+                code: ErrorCode::Conflict | ErrorCode::RequestNotFound,
+                ..
+            })
+        );
+        let typed = typed.unwrap_or_default();
+        if settled {
+            self.give_back(typed, window, cx);
+        } else {
+            self.not_sent(typed, why, window, cx);
+        }
+    }
+
+    /// What happens on `A`: the approval asked now is answered with `decision`.
+    fn answers<A: Action>(
+        decision: Decision,
+        cx: &mut Context<Self>,
+    ) -> impl Fn(&A, &mut Window, &mut App) + 'static {
+        cx.listener(move |this, _: &A, window, cx| this.answer(decision, window, cx))
     }
 
     /// What's in the way: why the last send failed, why the chat can't be shown, or how things
@@ -249,9 +380,8 @@ impl ChatComposer {
         Some(row.into_any_element())
     }
 
-    fn footer(&self, p: Palette, cx: &mut Context<Self>) -> impl IntoElement {
-        let text = self.text.read(cx).value();
-        let can_send = !text.trim().is_empty() && !self.creating;
+    fn footer(&self, typed: &str, p: Palette, cx: &mut Context<Self>) -> impl IntoElement {
+        let can_send = !typed.trim().is_empty() && !self.creating;
         let (fill, mark): (Hsla, Hsla) = if can_send {
             (p.accent, p.on_text)
         } else {
@@ -304,10 +434,16 @@ impl Render for ChatComposer {
             .px_3()
             .rounded(px(18.))
             .occlude();
+        let typed = self.text.read(cx).value();
         let surface = liquid::floating(surface, on_glass, p)
             .child(Textarea::new(&self.text).appearance(false))
-            .child(self.footer(p, cx));
+            .child(self.footer(&typed, p, cx));
         div()
+            .when(self.approving && typed.is_empty(), |column| column.key_context(ANSWERABLE))
+            .on_action(Self::answers::<AllowRequest>(Decision::Allow, cx))
+            .on_action(Self::answers::<AllowRequestForChat>(Decision::AllowSession, cx))
+            .on_action(Self::answers::<DenyRequest>(Decision::Deny, cx))
+            .on_action(Self::answers::<StopRequest>(Decision::Cancel, cx))
             .w_full()
             .max_w(px(COLUMN))
             .px_6()

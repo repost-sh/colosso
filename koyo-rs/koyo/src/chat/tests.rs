@@ -19,6 +19,7 @@ use crate::model::PaneKind;
 use crate::shell::Shell;
 use crate::test_support::{draw, repo, select, shell_with};
 
+mod asks;
 mod drawing;
 
 const AT: &str = "2026-11-03T10:00:00.000Z";

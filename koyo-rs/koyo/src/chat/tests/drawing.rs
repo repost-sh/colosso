@@ -79,7 +79,7 @@ fn settled(id: &str) -> ThreadSnapshot {
 }
 
 /// A window showing chat `0001`'s tab, with the rows of `settled`.
-fn shown_chat(
+pub(super) fn shown_chat(
     name: &str,
     cx: &mut TestAppContext,
 ) -> (AnyWindowHandle, Entity<ChatView>, Entity<ChatThread>) {
