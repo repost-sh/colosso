@@ -24,6 +24,7 @@ use crate::test_support::{draw, repo, select, shell_with};
 pub(super) mod asks;
 mod turn;
 mod drawers;
+mod details;
 mod drawing;
 
 const AT: &str = "2026-11-03T10:00:00.000Z";

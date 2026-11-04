@@ -7,18 +7,31 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DetailsItem {
     Worktree,
+    OpenIn,
+    Scripts,
+    Git,
     Changes,
     Subagents,
     Context,
 }
 
 impl DetailsItem {
-    pub const ALL: [DetailsItem; 4] =
-        [DetailsItem::Worktree, DetailsItem::Changes, DetailsItem::Subagents, DetailsItem::Context];
+    pub const ALL: [DetailsItem; 7] = [
+        DetailsItem::Worktree,
+        DetailsItem::OpenIn,
+        DetailsItem::Scripts,
+        DetailsItem::Git,
+        DetailsItem::Changes,
+        DetailsItem::Subagents,
+        DetailsItem::Context,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
             DetailsItem::Worktree => "Branch and worktree",
+            DetailsItem::OpenIn => "Open in editor",
+            DetailsItem::Scripts => "Project scripts",
+            DetailsItem::Git => "Git actions and pull request",
             DetailsItem::Changes => "Changes",
             DetailsItem::Subagents => "Subagents",
             DetailsItem::Context => "Context window",
@@ -33,6 +46,8 @@ pub struct ChatDetails {
     pub open: bool,
     /// What a person turned off of it.
     pub hidden: Vec<DetailsItem>,
+    /// The editor its checkout last opened in.
+    pub editor: Option<String>,
 }
 
 impl Default for ChatDetails {
@@ -40,6 +55,7 @@ impl Default for ChatDetails {
         ChatDetails {
             open: true,
             hidden: Vec::new(),
+            editor: None,
         }
     }
 }

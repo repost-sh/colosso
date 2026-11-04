@@ -18,7 +18,7 @@ use gpui_kit::{
 };
 
 use crate::changes::ChangesPanel;
-use crate::checkout::Checkout;
+use crate::checkout::{Checkout, HeadMoved};
 use crate::files::{FilesPanel, Place};
 use crate::language;
 use crate::navigation::Route;
@@ -229,11 +229,19 @@ impl RightPanel {
             let checkout = cx.new(|cx| Checkout::new(path.to_owned(), window, cx));
             // The top rail counts its changes.
             let observing = cx.observe(&checkout, |_, _, cx| cx.notify());
+            // The sidebar and all that asks it say what the checkout's on, whoever moved it.
+            let worktree = path.to_owned();
+            let moved = cx.subscribe(&checkout, move |shell, _, _: &HeadMoved, cx| {
+                let project = shell.workspace.project_of(&worktree);
+                if let Some(project) = project.map(|project| project.path.clone()) {
+                    shell.reload_project(project, cx);
+                }
+            });
             let panels = Panels {
                 checkout,
                 changes: None,
                 files: None,
-                _subscriptions: vec![observing],
+                _subscriptions: vec![observing, moved],
             };
             self.checkouts.insert(path.to_owned(), panels);
         }

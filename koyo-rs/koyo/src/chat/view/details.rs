@@ -16,7 +16,18 @@ use koyo_agent::replica::Replica;
 use koyo_agent::words::{
     NEARLY_FULL, context_line, context_percent, subagent_line, subagent_status,
 };
+use std::fmt::Display;
 use std::path::PathBuf;
+
+mod commit_dialog;
+mod git_actions;
+mod open_in;
+mod scripts;
+
+#[cfg(test)]
+pub(in crate::chat) use git_actions::{commit_files, went_old};
+pub(super) use git_actions::{keep_fresh, window_active_again};
+pub(super) use open_in::{OpenIn, opened_in};
 
 use super::{COLUMN, ChatView};
 use crate::checkout::Checkout;
@@ -52,6 +63,8 @@ pub(in super::super) fn bind_keys(cx: &mut App) {
 pub(in super::super) struct Workplace {
     pub(in super::super) branch: SharedString,
     pub(in super::super) folder: PathBuf,
+    /// The main checkout of the project it's in.
+    pub(in super::super) project: PathBuf,
     pub(in super::super) is_main: bool,
     pub(in super::super) checkout: Entity<Checkout>,
 }
@@ -65,6 +78,7 @@ pub(super) struct Details {
     over: bool,
     /// Whether the subagents that ended show.
     previous: bool,
+    git: git_actions::GitState,
 }
 
 impl Details {
@@ -78,9 +92,10 @@ impl Details {
     }
 
     /// Follows where the chat works, which is new when it's on another branch.
-    pub(in super::super) fn set_place(&mut self, place: Workplace) -> bool {
+    pub(super) fn set_place(&mut self, place: Workplace, cx: &mut Context<ChatView>) -> bool {
         let new = self.place.as_ref() != Some(&place);
         if new {
+            self.git.moved(&place.checkout, cx);
             self.place = Some(place);
         }
         new
@@ -93,6 +108,11 @@ impl Details {
         } else {
             self.over = !self.over;
         }
+    }
+
+    #[cfg(test)]
+    pub(super) fn folder(&self) -> Option<PathBuf> {
+        self.place.as_ref().map(|place| place.folder.clone())
     }
 
     pub(super) fn measured(&mut self, pane: (Pixels, Pixels)) -> bool {
@@ -191,6 +211,9 @@ fn card(view: &ChatView, window: &mut Window, cx: &mut Context<ChatView>) -> Any
     let tallest = (view.details.pane.1 - px(MARGIN + CONTROLS + GAP + COMPOSER)).max(px(120.));
     let sections: Vec<Div> = [
         choice.shows(DetailsItem::Worktree).then(|| worktree(view, p, cx)).flatten(),
+        choice.shows(DetailsItem::OpenIn).then(|| open_in::line(view, p, cx)).flatten(),
+        choice.shows(DetailsItem::Scripts).then(|| scripts::section(view, p, cx)).flatten(),
+        choice.shows(DetailsItem::Git).then(|| git_actions::rows(view, p, cx)).flatten(),
         choice.shows(DetailsItem::Changes).then(|| changes(view, p, cx)).flatten(),
         choice.shows(DetailsItem::Subagents).then(|| subagents(view, replica, p, cx)).flatten(),
         choice.shows(DetailsItem::Context).then(|| context(replica, p)).flatten(),
@@ -229,6 +252,11 @@ fn clickable(row: Div, id: impl Into<ElementId>, p: Palette) -> Stateful<Div> {
     row.id(id).cursor_pointer().hover(move |row| row.bg(p.hover))
 }
 
+/// "1 file", or "3 files".
+fn counted<Count: Copy + Display + PartialEq + From<u8>>(count: Count, thing: &str) -> String {
+    if count == Count::from(1) { format!("1 {thing}") } else { format!("{count} {thing}s") }
+}
+
 fn meta(says: impl Into<SharedString>, color: Hsla) -> Div {
     div().flex_shrink_0().text_xs().text_color(color).child(says.into())
 }
@@ -252,11 +280,7 @@ fn changes(view: &ChatView, p: Palette, cx: &Context<ChatView>) -> Option<Div> {
     let checkout = place.checkout.read(cx);
     let (added, removed) = checkout.totals();
     let files = checkout.files().len();
-    let says = match files {
-        0 => "No changes".to_owned(),
-        1 => "1 file".to_owned(),
-        many => format!("{many} files"),
-    };
+    let says = if files == 0 { "No changes".to_owned() } else { counted(files, "file") };
     let line = row(IconName::FileDiff, p).child(div().flex_1().min_w_0().child(says));
     let line = line
         .when(added > 0, |line| line.child(meta(format!("+{added}"), p.added)))

@@ -25,8 +25,9 @@ use super::composer::{ChatComposer, ComposerEvent};
 use super::subagent_bar::{KEYS, OpenParent, SubagentBar, WentToParent};
 use super::thread::ChatThread;
 use super::timeline::{OpenSubagent, Timeline};
-use details::{Details, ToggleDetails, Workplace};
+use details::{Details, OpenIn, ToggleDetails, Workplace};
 use crate::native::liquid;
+use crate::settings::ProjectScript;
 use crate::shell::icon;
 use crate::theme;
 
@@ -48,6 +49,8 @@ pub enum ChatViewEvent {
     Created(ThreadId),
     /// A person opened a file the chat changed.
     OpenFile(PathBuf),
+    /// A person ran one of the project's scripts, for the checkout at `folder`.
+    RunScript { script: ProjectScript, folder: PathBuf },
 }
 
 /// A chat a tab has on show, or under what's on show: its timeline and where it scrolled to.
@@ -98,9 +101,17 @@ impl ChatView {
             let (chats, cwd, opened) = (chats.clone(), cwd.clone(), opened.clone());
             cx.new(|cx| ChatComposer::new(chats, catalog, cwd, place, opened, window, cx))
         };
-        let subscriptions = vec![cx.subscribe_in(&composer, window, |view, _, event, window, cx| {
-            view.composer_said(event, window, cx);
-        })];
+        let subscriptions = vec![
+            cx.subscribe_in(&composer, window, |view, _, event, window, cx| {
+                view.composer_said(event, window, cx);
+            }),
+            // A person back from elsewhere may have done something with the branch there.
+            cx.observe_window_activation(window, |view, window, cx| {
+                if window.is_window_active() {
+                    details::window_active_again(view, cx);
+                }
+            }),
+        ];
         let mut view = ChatView {
             chats,
             cwd,
@@ -220,9 +231,14 @@ impl ChatView {
         self.details.is_up(cx)
     }
 
+    #[cfg(test)]
+    pub(super) fn details_folder(&self) -> Option<PathBuf> {
+        self.details.folder()
+    }
+
     /// Where the chat works, as the shell says.
     pub(super) fn set_place(&mut self, place: Workplace, cx: &mut Context<Self>) {
-        if self.details.set_place(place) {
+        if self.details.set_place(place, cx) {
             cx.notify();
         }
     }
@@ -415,6 +431,7 @@ impl Focusable for ChatView {
 
 impl Render for ChatView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        details::keep_fresh(self, cx);
         let timeline = (self.showing())
             .map(|shown| shown.timeline.clone().cached(StyleRefinement::default().size_full()));
         div()
@@ -437,6 +454,7 @@ impl Render for ChatView {
                 this.details.toggle(cx);
                 cx.notify();
             }))
+            .on_action(cx.listener(|this, open: &OpenIn, _, cx| details::opened_in(this, open, cx)))
             .child(details::measure(cx))
             .children(timeline)
             .children(self.scroll_pill(window, cx))

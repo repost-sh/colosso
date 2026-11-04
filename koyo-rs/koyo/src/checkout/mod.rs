@@ -13,7 +13,7 @@ use koyo_git::{Change, Checkout as Git};
 use koyo_project::{Feed, GitDirs, Project};
 use futures::StreamExt as _;
 use gpui_kit::gpui::{
-    AppContext as _, AsyncApp, Context, Entity, Subscription, Task, WeakEntity, Window,
+    AppContext as _, AsyncApp, Context, Entity, EventEmitter, Subscription, Task, WeakEntity, Window,
 };
 
 use documents::Documents;
@@ -34,6 +34,11 @@ struct Waits {
     /// Another checkout is selected.
     unselected: bool,
 }
+
+/// `HEAD` or a branch moved: what the checkout's on, or how that stands, may be something else.
+pub struct HeadMoved;
+
+impl EventEmitter<HeadMoved> for Checkout {}
 
 pub struct Checkout {
     root: PathBuf,
@@ -179,6 +184,11 @@ impl Checkout {
         checkout
     }
 
+    /// Its git, once it's open.
+    pub fn git(&self) -> Option<Arc<Git>> {
+        self.git.clone()
+    }
+
     /// Runs `act`, staging, unstaging or discarding, on `changes` in the background, then reads
     /// again what it touched rather than waiting for the watcher to say.
     pub fn act(
@@ -187,15 +197,32 @@ impl Checkout {
         changes: Vec<Change>,
         cx: &mut Context<Self>,
     ) -> Task<koyo_git::Result<()>> {
+        let files = (changes.iter().flat_map(Change::paths)).map(|path| Touched::File(path.into()));
+        let touched: Vec<Touched> = std::iter::once(Touched::Index).chain(files).collect();
+        self.run_touching(touched, move |git| act(git, &changes), cx)
+    }
+
+    /// Runs `work`, which commits, pushes or pulls, in the background, then says `HEAD` moved
+    /// rather than waiting for the watcher to.
+    pub fn run(
+        &mut self,
+        work: impl FnOnce(&Git) -> koyo_git::Result<()> + Send + 'static,
+        cx: &mut Context<Self>,
+    ) -> Task<koyo_git::Result<()>> {
+        self.run_touching(vec![Touched::Head, Touched::Index], work, cx)
+    }
+
+    fn run_touching(
+        &mut self,
+        touched: Vec<Touched>,
+        work: impl FnOnce(&Git) -> koyo_git::Result<()> + Send + 'static,
+        cx: &mut Context<Self>,
+    ) -> Task<koyo_git::Result<()>> {
         let Some(git) = self.git.clone() else {
             return Task::ready(Ok(()));
         };
-        let files = (changes.iter().flat_map(Change::paths)).map(|path| Touched::File(path.into()));
-        let touched: Vec<Touched> = std::iter::once(Touched::Index).chain(files).collect();
         cx.spawn(async move |this, cx| {
-            let done = cx
-                .background_spawn(async move { act(&git, &changes) })
-                .await;
+            let done = cx.background_spawn(async move { work(&git) }).await;
             // Even a failed command may have done part of it.
             this.update(cx, |this, cx| this.touched(touched, cx)).ok();
             done
@@ -241,6 +268,9 @@ impl Checkout {
     }
 
     pub(crate) fn touched(&mut self, touched: Vec<Touched>, cx: &mut Context<Self>) {
+        if touched.iter().any(|touched| matches!(touched, Touched::Head | Touched::Everything)) {
+            cx.emit(HeadMoved);
+        }
         self.documents.touched(&touched, &self.root, cx);
         self.stale.add(touched);
         self.read(cx);
