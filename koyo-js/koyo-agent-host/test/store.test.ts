@@ -5,6 +5,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 
 import { MIGRATIONS } from "../src/store/migrations";
 import { Store } from "../src/store/store";
+import { userMessage } from "../src/threads/records";
 import { request, run, text, thread } from "./support/records";
 import { removeScratch, scratch } from "./support/scratch";
 
@@ -130,6 +131,23 @@ describe("reading a thread", () => {
     chats.delete(chat.id);
     expect(chats.thread(chat.id)).toBeUndefined();
     expect(chats.latest(chat.id, 10)).toStrictEqual({ runs: [], items: [], requests: [] });
+  });
+
+  test("names the files its messages attach, one that joined a run's too", () => {
+    const chats = store();
+    const chat = thread();
+    const started = run(chat);
+    const a = { file: "a.png", name: "a.png", mime: "image/png" };
+    const b = { file: "b.png", name: "b.png", mime: "image/png" };
+    const first = { ...started, prompt: { ...started.prompt, attachments: [a] } };
+    const joined = { ...started.prompt, attachments: [b] };
+    chats.commit(chat.id, {
+      thread: chat,
+      runs: [first],
+      items: [userMessage(first, 1, joined, "steer")],
+    });
+    expect(chats.attachments(chat.id).toSorted()).toStrictEqual(["a.png", "b.png"]);
+    expect(chats.allAttachments()).toStrictEqual(new Set(["a.png", "b.png"]));
   });
 
   test("lists threads, the most recently changed first", () => {

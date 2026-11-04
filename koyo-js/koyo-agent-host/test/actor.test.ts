@@ -313,6 +313,26 @@ describe("the thread", () => {
     expect(renamed.actor.thread).toMatchObject({ title: "Ledger", titleSource: "user" });
   });
 
+  test("takes its title from the first words, not a message of pictures alone", async () => {
+    const chats = harness();
+    chats.provider.nextTitle = "What the shot shows";
+    const picture = { file: "shot.png", name: "shot.png", mime: "image/png" };
+    chats.actor.send({ ...prompt(""), attachments: [picture] }, "auto");
+    await settle();
+    expect(chats.actor.thread).toMatchObject({ title: "", titleSource: "seed" });
+    chats.provider.session.started();
+    chats.provider.session.finished();
+    await settle();
+
+    chats.actor.send(prompt("What's in it?"), "auto");
+    await settle();
+
+    expect(chats.actor.thread).toMatchObject({
+      title: "What the shot shows",
+      titleSource: "generated",
+    });
+  });
+
   test("gives a live session the settings that changed, and reopens one that can't take them",
     async () => {
       const chats = harness();

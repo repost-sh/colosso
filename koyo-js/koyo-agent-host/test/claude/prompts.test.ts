@@ -43,6 +43,28 @@ describe("a prompt", () => {
     });
   });
 
+  test("a message of pictures alone says no words, which the model would refuse", async () => {
+    const dir = scratch();
+    const picture = join(dir, "alone.png");
+    writeFileSync(picture, Buffer.from([0x89, 0x50, 0x4E, 0x47]));
+    const sent = await userMessage({
+      ...turnOf(""),
+      attachments: [{ path: picture, mime: "image/png" }],
+    });
+    expect(sent.message.content).toEqual([
+      { type: "image", source: { type: "base64", media_type: "image/png", data: "iVBORw==" } },
+    ]);
+  });
+
+  test("a file alone is named without a line above it", async () => {
+    const named = join(scratch(), "alone.txt");
+    const sent = await userMessage({
+      ...turnOf(""),
+      attachments: [{ path: named, mime: "text/plain" }],
+    });
+    expect(sent.message.content).toEqual([{ type: "text", text: `[Attached file: ${named}]` }]);
+  });
+
   test("joining a running turn lands at its next step", async () => {
     const sent = await userMessage(turnOf("Also this."), "next");
     expect(sent.priority).toBe("next");

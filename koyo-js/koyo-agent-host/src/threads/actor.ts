@@ -333,7 +333,8 @@ export class ThreadActor {
       return run.id;
     }
     this.#cx.sessionUsed(this);
-    if (thread.title === "") {
+    // A message of pictures alone leaves the title to the first words.
+    if (thread.title === "" && run.prompt.text !== "") {
       this.#title(run.prompt.text);
     }
     return run.id;

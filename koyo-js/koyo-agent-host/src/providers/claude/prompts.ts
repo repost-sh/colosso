@@ -27,7 +27,10 @@ export async function userMessage(turn: TurnInput, priority?: "next"): Promise<S
   }));
   const named = turn.attachments.filter((attachment) => imageType(attachment.mime) === undefined);
   const files = named.map((attachment) => `\n[Attached file: ${attachment.path}]`).join("");
-  const content: Block[] = [...images, { type: "text", text: `${turn.text}${files}` }];
+  const text = `${turn.text}${files}`.trim();
+  // A message of pictures alone has no words, and the model refuses a block without any.
+  const words: Block[] = text === "" ? [] : [{ type: "text", text }];
+  const content: Block[] = [...images, ...words];
   return {
     type: "user",
     message: { role: "user", content },

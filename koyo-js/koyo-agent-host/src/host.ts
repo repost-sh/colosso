@@ -5,7 +5,7 @@
 import { type Handlers, HOST_VERSION } from "./protocol/wire";
 import type { Provider } from "./providers/provider";
 import type { Client } from "./server/client";
-import { checkAttachments } from "./threads/attachments";
+import { checkMessage } from "./threads/attachments";
 import type { Threads } from "./threads/threads";
 
 export interface Host {
@@ -72,7 +72,7 @@ export function handlers(host: Host): Handlers<Client> {
     },
     "turns.send": ({ threadId, prompt, delivery }) => {
       const actor = threads.actor(threadId);
-      checkAttachments(host.attachments, prompt.attachments);
+      checkMessage(host.attachments, prompt.text, prompt.attachments);
       return actor.send(prompt, delivery);
     },
     "turns.stop": ({ threadId, force }) => {
@@ -86,7 +86,7 @@ export function handlers(host: Host): Handlers<Client> {
     },
     "queue.edit": ({ threadId, runId, text, attachments }) => {
       const actor = threads.actor(threadId);
-      checkAttachments(host.attachments, attachments);
+      checkMessage(host.attachments, text, attachments);
       actor.editQueued(runId, text, attachments);
       return {};
     },

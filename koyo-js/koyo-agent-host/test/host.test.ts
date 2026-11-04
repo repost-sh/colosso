@@ -8,6 +8,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 
 import { folder } from "../src/daemon/folder";
 import { handlers } from "../src/host";
+import { newId, RunId } from "../src/protocol/ids";
 import { FakeProvider } from "../src/providers/fake";
 import type { Config } from "../src/providers/provider";
 import { serve, type Server } from "../src/server/server";
@@ -174,6 +175,17 @@ describe("the host", () => {
       });
       expect(await app.next()).toMatchObject({ line: { id, error: { code: "bad_request" } } });
     }
+  });
+
+  test("refuses a message with neither words nor files", async () => {
+    const chats = host();
+    const app = await client(chats);
+    const thread = chats.threads.create(CREATE);
+    app.request(1, "turns.send", { threadId: thread.id, prompt: prompt(" \n"), delivery: "auto" });
+    expect(await app.next()).toMatchObject({ line: { id: 1, error: { code: "bad_request" } } });
+    const runId = newId(RunId);
+    app.request(2, "queue.edit", { threadId: thread.id, runId, text: "", attachments: [] });
+    expect(await app.next()).toMatchObject({ line: { id: 2, error: { code: "bad_request" } } });
   });
 
   test("forgets a client that went", async () => {
