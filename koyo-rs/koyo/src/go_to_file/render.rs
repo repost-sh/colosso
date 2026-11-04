@@ -9,8 +9,8 @@ use koyo_project::Results;
 use gpui_kit::assets::IconName;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, Context, InteractiveElement as _, IntoElement, ParentElement as _, Render,
-    SharedString, StatefulInteractiveElement as _, Styled as _, Window, div,
+    AnyElement, Context, Div, ElementId, InteractiveElement as _, IntoElement, ParentElement as _,
+    Render, SharedString, Stateful, StatefulInteractiveElement as _, Styled as _, Window, div,
 };
 
 use super::view::GoToFile;
@@ -22,7 +22,7 @@ use crate::theme::{self, Palette};
 
 /// A file found, as its row draws it: its icon, its name and its folder, each with the
 /// bytes in it that matched.
-pub(super) struct Row {
+pub(crate) struct Row {
     icon: IconName,
     name: SharedString,
     name_matched: Vec<Range<usize>>,
@@ -33,7 +33,7 @@ pub(super) struct Row {
 
 impl Row {
     /// The row of the file `results` found at `index`, if it found one there.
-    pub(super) fn of(results: &Results, index: usize) -> Option<Row> {
+    pub(crate) fn of(results: &Results, index: usize) -> Option<Row> {
         let found = results.found.get(index)?;
         let matched = results.highlights(index);
         let path = &*found.path;
@@ -47,6 +47,13 @@ impl Row {
             folder_matched: within(&matched, &folder),
             recent: found.recent,
         })
+    }
+
+    /// The row, its folder dimmed and what matched in the accent colour.
+    pub(crate) fn draw(&self, id: impl Into<ElementId>, selected: bool, p: Palette) -> Stateful<Div> {
+        let name = styled(&self.name, &self.name_matched, p.accent);
+        let folder = styled(&self.folder, &self.folder_matched, p.accent);
+        file_row(id, selected, self.icon, name, folder, p)
     }
 }
 
@@ -83,9 +90,7 @@ impl GoToFile {
         let Some(row) = slot.as_ref() else {
             return div().into_any_element();
         };
-        let name = styled(&row.name, &row.name_matched, p.accent);
-        let folder = styled(&row.folder, &row.folder_matched, p.accent);
-        file_row(("go-to-file-row", index), selected, row.icon, name, folder, p)
+        row.draw(("go-to-file-row", index), selected, p)
             .on_click(cx.listener(move |this, _, window, cx| this.open(index, window, cx)))
             .when(row.recent, |row| {
                 row.child(div().text_xs().text_color(p.muted).child("recent"))

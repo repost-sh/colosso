@@ -16,6 +16,8 @@ use crate::chat::tests::{question, snapshot};
 use crate::chat::thread::ThreadEvent;
 use crate::test_support::draw;
 
+mod suggest;
+
 fn model(id: &str, efforts: &[Effort], fast: bool, auto: bool) -> Model {
     Model {
         id: id.into(),
@@ -378,4 +380,14 @@ fn the_chips_say_less_from_the_end_as_the_composer_narrows() {
     assert_eq!(labels_fitting(px(480.)), 2);
     assert_eq!(labels_fitting(px(400.)), 1);
     assert_eq!(labels_fitting(px(300.)), 0);
+}
+
+/// `typed` goes in where the caret is, as if typed.
+fn type_in(chat: &Asking, typed: &str, cx: &mut TestAppContext) {
+    let (composer, typed) = (chat.composer.clone(), typed.to_owned());
+    cx.update_window(chat.window, |_, window, cx| {
+        composer.read(cx).text.clone().update(cx, |text, cx| text.insert(typed, window, cx));
+    })
+    .unwrap();
+    draw(chat.window, cx);
 }

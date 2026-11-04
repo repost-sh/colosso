@@ -18,6 +18,9 @@ use gpui_kit::{App, Context, Div, Global, InteractiveElement as _, KeyBinding, W
 
 use crate::shell::Shell;
 
+pub(crate) use self::render::Row;
+pub(crate) use self::view::follow_files;
+
 actions!(go_to_file, [GoToFile]);
 
 /// How many of the files opened lately each checkout remembers.
@@ -41,6 +44,12 @@ struct Kept {
     finder: Arc<Finder>,
     /// Relative to the checkout, the latest first.
     recent: VecDeque<Arc<str>>,
+}
+
+/// The finder of the checkout at `root`, for whoever else finds files in it.
+pub(crate) fn finder(root: &Path, cx: &mut App) -> Arc<Finder> {
+    let checkouts = &mut cx.default_global::<Checkouts>().0;
+    Arc::clone(&checkouts.entry(root.to_owned()).or_default().finder)
 }
 
 /// Notes that `path`, absolute or relative to the checkout at `root`, was opened from it, if

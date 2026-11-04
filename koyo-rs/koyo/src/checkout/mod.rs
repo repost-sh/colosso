@@ -73,17 +73,7 @@ impl Checkout {
         });
         let path = root.clone();
         let opening = cx.spawn(async move |this, cx| {
-            let opened = cx
-                .background_spawn(async move {
-                    let git = Git::open(&path)?;
-                    let (git_dir, common_dir) = git.git_dirs();
-                    let dirs = GitDirs {
-                        git_dir,
-                        common_dir,
-                    };
-                    Ok::<_, koyo_git::GitError>((git, dirs))
-                })
-                .await;
+            let opened = cx.background_spawn(async move { checkouts::open_git(&path) }).await;
             this.update(cx, |this, cx| this.opened(opened, cx)).ok();
         });
         Checkout {

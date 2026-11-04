@@ -202,7 +202,7 @@ impl ChatComposer {
     }
 
     /// Asks the agent to summarize the conversation so far.
-    fn compact(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn compact(&mut self, cx: &mut Context<Self>) {
         let Some(thread) = &self.thread else {
             return;
         };
@@ -281,7 +281,7 @@ impl ChatComposer {
             .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.toggle_plan(cx)))
     }
 
-    fn toggle_plan(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn toggle_plan(&mut self, cx: &mut Context<Self>) {
         self.change_settings(|settings| settings.plan = !settings.plan, cx);
     }
 

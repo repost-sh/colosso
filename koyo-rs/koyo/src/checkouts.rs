@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Weak};
 
+use koyo_git::Checkout as Git;
 use koyo_project::{GitDirs, Options, Project};
 use gpui_kit::{App, Global};
 
@@ -27,4 +28,16 @@ pub fn project(root: &Path, git: GitDirs, cx: &mut App) -> Arc<Project> {
     let project = Project::open(Options::new(root.clone(), Some(git)));
     open.insert(root, Arc::downgrade(&project));
     project
+}
+
+/// Git opened on the checkout at `path`, with its folders as its project takes them. It's slow, so
+/// it's for off the main thread.
+pub fn open_git(path: &Path) -> koyo_git::Result<(Git, GitDirs)> {
+    let git = Git::open(path)?;
+    let (git_dir, common_dir) = git.git_dirs();
+    let dirs = GitDirs {
+        git_dir,
+        common_dir,
+    };
+    Ok((git, dirs))
 }

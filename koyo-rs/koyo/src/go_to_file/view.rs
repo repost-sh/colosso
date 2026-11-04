@@ -7,11 +7,11 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use koyo_project::{Feed, Finder, MOST_FOUND, Results};
+use koyo_project::{Feed, Finder, MOST_FOUND, Project, Results};
 use futures::StreamExt as _;
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::{
-    AnyWindowHandle, App, AppContext as _, Context, Entity, Focusable as _, ScrollStrategy,
+    AnyWindowHandle, App, AppContext as _, AsyncApp, Context, Entity, Focusable as _, ScrollStrategy,
     SharedString, Subscription, Task, UniformListScrollHandle, WeakEntity, Window,
 };
 
@@ -40,6 +40,37 @@ pub fn open(
     modal::open_palette(window, cx, |window, cx| {
         GoToFile::new(shell, checkout, finder, recent, behind, window, cx)
     });
+}
+
+/// Keeps `finder` on the files of `project`, now and each time a listing changes, for as long as
+/// it's polled. `took` hears each time whether what's found may have changed, and whether they're
+/// all listed.
+pub(crate) async fn follow_files<T: 'static>(
+    this: WeakEntity<T>,
+    project: Arc<Project>,
+    finder: Arc<Finder>,
+    cx: &mut AsyncApp,
+    took: impl Fn(&mut T, bool, bool, &mut Context<T>),
+) {
+    let mut updates = project.subscribe(Feed::Listings);
+    loop {
+        let (finder, project) = (finder.clone(), project.clone());
+        let changed = (cx
+            .background_spawn(async move { finder.set_files(&project.files_by_folder()) }))
+        .await;
+        let listed = updates.project().scanned().is_some();
+        if this.update(cx, |this, cx| took(this, changed, listed, cx)).is_err() {
+            return;
+        }
+        if !listed {
+            cx.background_executor().timer(WHILE_SCANNING).await;
+        }
+        // A listing changed, or the scan's done. The subscription merges whatever came meanwhile
+        // into the one update, so there's never a backlog to drain.
+        if updates.next().await.is_none() {
+            return;
+        }
+    }
 }
 
 pub struct GoToFile {
@@ -117,37 +148,19 @@ impl GoToFile {
         let Some(project) = self.checkout.read(cx).project().cloned() else {
             return;
         };
-        let mut updates = project.subscribe(Feed::Listings);
         let finder = self.finder.clone();
         self.following = Some(cx.spawn(async move |this, cx| {
-            loop {
-                let (finder, project) = (finder.clone(), project.clone());
-                let changed = (cx
-                    .background_spawn(async move { finder.set_files(&project.files_by_folder()) }))
-                .await;
-                let listed = updates.project().scanned().is_some();
-                let followed = this.update(cx, |this, cx| {
-                    if changed {
-                        this.search(cx);
-                    }
-                    if this.listed != listed {
-                        this.listed = listed;
-                        this.status = this.status_line();
-                        cx.notify();
-                    }
-                });
-                if followed.is_err() {
-                    return;
+            let took = |this: &mut Self, changed, listed, cx: &mut Context<Self>| {
+                if changed {
+                    this.search(cx);
                 }
-                if !listed {
-                    cx.background_executor().timer(WHILE_SCANNING).await;
+                if this.listed != listed {
+                    this.listed = listed;
+                    this.status = this.status_line();
+                    cx.notify();
                 }
-                // A listing changed, or the scan's done. The subscription merges whatever
-                // came meanwhile into the one update, so there's never a backlog to drain.
-                if updates.next().await.is_none() {
-                    return;
-                }
-            }
+            };
+            follow_files(this, project, finder, cx, took).await;
         }));
     }
 
