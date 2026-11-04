@@ -931,12 +931,17 @@ Layout, top to bottom inside the pane's card:
   `/compact`, `/clear` = new chat); pasted or dropped images show as tiles, downsized to
   2048 px; ⌘., or Esc on an empty composer, stops.
 - **Footer.** `[+]` attach · model and effort ("Opus 5.5 · High", ⚡ when fast) · permission
-  ("Ask", in the accent when not the default) · Plan toggle (⇧Tab) · context ring (hover:
-  "42 % · 84k of 200k", "Compact now") · send / stop. Labels collapse to icons from the end
-  as the pane narrows.
-- **Model picker** (⌘⇧M, a glass popover above the footer): models from the catalog, ✓ on
-  the current, the effort column for the highlighted model, Fast as a switch when it can be.
-  ↑/↓, → to efforts, Enter picks, Esc closes.
+  ("Ask", in the accent when not the default; unknown, so not shown, until the catalog says what
+  the person's settings choose) · Plan toggle (⇧Tab) · context ring (hover: "42 % · 84k of
+  200k", "Compact now") · send / stop. Labels collapse to icons from the end as the pane
+  narrows. What shows is what the thread says, so it's what the agent runs with: a change goes
+  to the host and shows when the host says so; a new chat holds what it will start with.
+- **Model picker** (⌃M, as ⌘⇧M is the sidebar's; a glass popover above the footer): models
+  from the catalog, ✓ on the current, the effort column for the highlighted model, Fast as a
+  switch, off for a model that can't. ↑/↓, → to efforts, Enter picks, Esc closes, ⇥ toggles
+  Fast. The focus stays in what's typed. It's the same size whichever model is highlighted, as
+  it grows from the footer and a row must stay under a pointer on its way to it. A model keeps
+  only what it can do: an effort it has, Fast if it can, Auto if it can (else Ask).
 - **Scroll.** Follows the end while at it; any scroll up releases; reaching the end again
   re-arms, and so does sending. The pill "⌄ Scroll to end" (with "· 2 queued") shows 150 ms
   after leaving the end. Position per thread is kept while its tab is open; scrolling to the

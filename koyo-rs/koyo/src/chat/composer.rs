@@ -10,37 +10,46 @@
 //! what it read is updated, told or not, and every token updates both.
 
 mod asked;
+mod footer;
+mod model_picker;
 mod question;
 
 use std::path::PathBuf;
 
-use gpui_kit::assets::IconName;
+use gpui_kit::base::ElementExt as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::input::{InputEvent, Textarea, TextareaState};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, ClickEvent, Context, ElementId, Entity, EventEmitter,
-    FocusHandle, Focusable, Hsla, InteractiveElement, IntoElement, ParentElement as _, Render,
-    SharedString, StatefulInteractiveElement as _, Styled as _, Subscription, Window, div, px,
+    FocusHandle, Focusable, InteractiveElement as _, IntoElement, KeyContext, ParentElement as _,
+    Render, SharedString, Styled as _, Subscription, Window, div, px,
 };
 use koyo_agent::client::ClientError;
 #[cfg(test)]
 use koyo_agent::protocol::ids::RequestId;
 use koyo_agent::protocol::ids::{MessageId, ThreadId};
+#[cfg(test)]
+use koyo_agent::protocol::methods::UpdateParams;
+use koyo_agent::protocol::methods::{Catalog, ThreadsCreate};
 use koyo_agent::protocol::model::Prompt;
 use koyo_agent::protocol::requests::{Decision, Response};
 use koyo_agent::replica::Replica;
 
 use self::asked::Asked;
+use self::footer::{COMPOSER, ROOM_FOR_LABELS, Settings, labels_fitting};
+use self::model_picker::{ModelPicker, PICKING};
 use super::thread::ChatThread;
 use super::view::COLUMN;
 use super::{Chats, Connection};
 use crate::native::liquid;
-use crate::shell::{glass, icon};
+use crate::shell::glass;
 use crate::theme::{self, Palette};
 
 pub(super) fn bind_keys(cx: &mut App) {
     asked::bind_keys(cx);
+    footer::bind_keys(cx);
+    model_picker::bind_keys(cx);
     question::bind_keys(cx);
 }
 
@@ -55,6 +64,8 @@ pub(super) enum ComposerEvent {
 
 pub(super) struct ChatComposer {
     chats: Entity<Chats>,
+    /// What the chat can choose from.
+    pub(super) catalog: Entity<Catalog>,
     cwd: PathBuf,
     /// Where the chat is, as it says when it's empty: "koyo / main".
     place: SharedString,
@@ -70,12 +81,22 @@ pub(super) struct ChatComposer {
     connection: Connection,
     /// What the agent waits on a person for now.
     asked: Asked,
+    /// What the chat is set to.
+    settings: Settings,
+    /// How full the conversation is, as of the last run that said: what it holds, and can.
+    context: Option<(u64, u64)>,
+    picker: Option<ModelPicker>,
+    /// How many of the footer's chips say what they are, as wide as it is.
+    labels: usize,
     _subscriptions: Vec<Subscription>,
     #[cfg(test)]
     pub(super) renders: usize,
     /// What it answered.
     #[cfg(test)]
     pub(super) said: Vec<(RequestId, Response)>,
+    /// What it asked the host to change of the chat.
+    #[cfg(test)]
+    pub(super) updated: Vec<UpdateParams>,
 }
 
 impl EventEmitter<ComposerEvent> for ChatComposer {}
@@ -83,6 +104,7 @@ impl EventEmitter<ComposerEvent> for ChatComposer {}
 impl ChatComposer {
     pub(super) fn new(
         chats: Entity<Chats>,
+        catalog: Entity<Catalog>,
         cwd: PathBuf,
         place: SharedString,
         thread: Option<Entity<ChatThread>>,
@@ -108,10 +130,13 @@ impl ChatComposer {
                     cx.notify();
                 }
             }),
+            // What the picker points at may not be there any more.
+            cx.observe(&catalog, |this, _, _| this.picker = None),
         ];
         let connection = chats.read(cx).connection().clone();
         let mut composer = ChatComposer {
             chats,
+            catalog,
             cwd,
             place,
             thread: None,
@@ -121,11 +146,17 @@ impl ChatComposer {
             failed: None,
             connection,
             asked: Asked::Nothing,
+            settings: Settings::default(),
+            context: None,
+            picker: None,
+            labels: ROOM_FOR_LABELS.len(),
             _subscriptions: subscriptions,
             #[cfg(test)]
             renders: 0,
             #[cfg(test)]
             said: Vec::new(),
+            #[cfg(test)]
+            updated: Vec::new(),
         };
         if let Some(thread) = thread {
             composer.send_to_thread(thread, window, cx);
@@ -151,7 +182,10 @@ impl ChatComposer {
     fn thread_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let held = self.thread.as_ref().map(|thread| thread.read(cx));
         let failed = held.and_then(|thread| thread.failed().cloned());
-        let asking = held.and_then(ChatThread::replica).and_then(Replica::asking);
+        let replica = held.and_then(ChatThread::replica);
+        let settings = replica.map(|replica| Settings::of(&replica.thread));
+        let context = replica.and_then(Replica::context);
+        let asking = replica.and_then(Replica::asking);
         if self.asked.request() != asking.map(|asked| &asked.id) {
             self.asked = asking.map_or(Asked::Nothing, Asked::of);
             let placeholder = self.asked.placeholder();
@@ -160,6 +194,14 @@ impl ChatComposer {
         }
         if self.failed != failed {
             self.failed = failed;
+            cx.notify();
+        }
+        if let Some(settings) = settings.filter(|settings| *settings != self.settings) {
+            self.settings = settings;
+            cx.notify();
+        }
+        if self.context != context {
+            self.context = context;
             cx.notify();
         }
     }
@@ -233,7 +275,8 @@ impl ChatComposer {
     /// A new chat's first send: its thread is made, then opened, then told the message.
     fn create_and_send(&mut self, prompt: Prompt, window: &mut Window, cx: &mut Context<Self>) {
         self.creating = true;
-        let made = self.chats.read(cx).create(&self.cwd);
+        let params = self.settings.to_create(&self.cwd);
+        let made = self.chats.read(cx).ordered::<ThreadsCreate>(params);
         cx.spawn_in(window, async move |this, cx| {
             let made = made.await;
             this.update_in(cx, |this, window, cx| {
@@ -312,32 +355,6 @@ impl ChatComposer {
             });
         Some(row.into_any_element())
     }
-
-    fn footer(&self, typed: &str, p: Palette, cx: &mut Context<Self>) -> impl IntoElement {
-        let can_send = !typed.trim().is_empty() && !self.creating;
-        let (fill, mark): (Hsla, Hsla) = if can_send {
-            (p.accent, p.on_text)
-        } else {
-            (p.text.opacity(0.08), p.muted)
-        };
-        let send = div()
-            .id("chat-send")
-            .size(px(28.))
-            .flex_shrink_0()
-            .flex()
-            .items_center()
-            .justify_center()
-            .rounded_full()
-            .bg(fill)
-            .text_color(mark)
-            .child(icon(IconName::ArrowUp, 15.))
-            .when(can_send, |button| {
-                button
-                    .cursor_pointer()
-                    .on_click(cx.listener(|this, _: &ClickEvent, window, cx| this.send(window, cx)))
-            });
-        div().flex().items_center().justify_end().child(send)
-    }
 }
 
 impl Focusable for ChatComposer {
@@ -371,27 +388,60 @@ impl Render for ChatComposer {
         let surface = liquid::floating(surface, on_glass, p)
             .children(self.drawer(&typed, p, cx))
             .child(Textarea::new(&self.text).appearance(false))
-            .child(self.footer(&typed, p, cx));
-        let answering = self.asked.key_context().filter(|_| typed.is_empty());
-        Self::hears_answers(div(), cx)
-            .when_some(answering, InteractiveElement::key_context)
+            .child(self.footer(&typed, p, cx))
+            .children(self.model_picker(p, window, cx));
+        let mut keys = KeyContext::default();
+        keys.add(COMPOSER);
+        // The picker has the keys while it's open, ahead of what's asked.
+        if self.picker.is_some() {
+            keys.add(PICKING);
+        } else if let Some(answering) = self.asked.key_context().filter(|_| typed.is_empty()) {
+            keys.add(answering);
+        }
+        let composer = cx.weak_entity();
+        let labels = self.labels;
+        Self::hears_picker(Self::hears_footer(Self::hears_answers(div(), cx), cx), cx)
+            .key_context(keys)
+            .relative()
             .w_full()
             .max_w(px(COLUMN))
             .px_6()
             .flex()
             .flex_col()
-            .when(self.is_new(), |column| {
-                column.child(
-                    div()
-                        .pb_4()
-                        .flex()
-                        .justify_center()
-                        .text_lg()
-                        .text_color(p.muted)
-                        .child(format!("Chat in {}", self.place)),
-                )
-            })
-            .children(self.note(p, cx))
+            .child(
+                div()
+                    // Under the picker, whose glass only hides what's drawn under the glass.
+                    .when(self.is_picking(), gpui_kit::Styled::invisible)
+                    .when(self.is_new(), |above| {
+                        above.child(
+                            div()
+                                .pb_4()
+                                .flex()
+                                .justify_center()
+                                .text_lg()
+                                .text_color(p.muted)
+                                .child(format!("Chat in {}", self.place)),
+                        )
+                    })
+                    .children(self.note(p, cx)),
+            )
             .child(surface)
+            // Told a frame late, as it's measured once drawn.
+            .on_prepaint(move |bounds, _, cx| {
+                let fitting = labels_fitting(bounds.size.width);
+                if fitting != labels {
+                    cx.defer(move |cx| {
+                        composer
+                            .update(cx, |composer, cx| {
+                                composer.labels = fitting;
+                                cx.notify();
+                            })
+                            .ok();
+                    });
+                }
+            })
     }
 }
+
+#[cfg(test)]
+mod tests;

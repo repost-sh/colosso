@@ -78,9 +78,15 @@ pub fn mode_label(mode: Mode) -> &'static str {
     }
 }
 
+/// How full a conversation is, as far as it can be.
+pub fn context_percent(held: u64, room: u64) -> u8 {
+    let percent = held.saturating_mul(100).checked_div(room).unwrap_or(0);
+    u8::try_from(percent.min(100)).unwrap_or(100)
+}
+
 /// How full the conversation is: "42 % · 84k of 200k".
 pub fn context_line(held: u64, room: u64) -> String {
-    let percent = held.saturating_mul(100).checked_div(room).unwrap_or(0);
+    let percent = context_percent(held, room);
     format!("{percent} % · {} of {}", tokens(held), tokens(room))
 }
 

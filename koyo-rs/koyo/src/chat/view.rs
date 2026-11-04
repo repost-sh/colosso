@@ -81,9 +81,10 @@ impl ChatView {
     ) -> Self {
         chats.update(cx, Chats::connect);
         let opened = thread.map(|id| chats.update(cx, |chats, cx| chats.thread(&id, cx)));
+        let catalog = chats.update(cx, |chats, cx| chats.catalog(&cwd, cx));
         let composer = {
             let (chats, cwd, opened) = (chats.clone(), cwd.clone(), opened.clone());
-            cx.new(|cx| ChatComposer::new(chats, cwd, place, opened, window, cx))
+            cx.new(|cx| ChatComposer::new(chats, catalog, cwd, place, opened, window, cx))
         };
         let scroller = cx.new(|cx| MessageScrollerState::new(0, cx));
         let subscriptions = vec![
@@ -123,8 +124,9 @@ impl ChatView {
     fn show(&mut self, thread: Entity<ChatThread>, cx: &mut Context<Self>) {
         let (cwd, inset) = (self.cwd.to_string_lossy().into(), self.inset());
         let (following, scroller) = (thread.clone(), self.scroller.clone());
+        let catalog = self.composer.read(cx).catalog.clone();
         let composer = self.composer.read(cx).focus_handle(cx);
-        let timeline = cx.new(|cx| Timeline::new(following, scroller, cwd, composer, inset, cx));
+        let timeline = cx.new(|cx| Timeline::new(following, catalog, scroller, cwd, composer, inset, cx));
         let heard = cx.subscribe(&timeline, |_, _, event: &ChatViewEvent, cx| cx.emit(event.clone()));
         self._subscriptions.push(heard);
         self.shown = Some(Shown { thread, timeline });
@@ -238,7 +240,8 @@ impl ChatView {
 
     /// The pill back to the end of the timeline, once a person left it.
     fn scroll_pill(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
-        if !self.pill {
+        // Not under the composer's picker, whose glass only hides what's drawn under the glass.
+        if !self.pill || self.composer.read(cx).is_picking() {
             return None;
         }
         let p = theme::palette(cx);

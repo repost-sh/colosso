@@ -3,6 +3,7 @@
 //! says, once a frame however fast it comes, and connects again when the connection ends.
 
 mod asks;
+mod catalog;
 mod composer;
 mod marks;
 mod output;
@@ -19,17 +20,17 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::StreamExt as _;
-use gpui_kit::{App, AppContext as _, Context, Entity, EventEmitter, SharedString, Task};
+use gpui_kit::{App, AppContext as _, Context, Entity, EventEmitter, SharedString, Task, WeakEntity};
 use koyo_agent::agent_client::{AgentClient, Notice};
 use koyo_agent::client::{self, ClientError};
 use koyo_agent::protocol::events::Event;
 use koyo_agent::protocol::ids::{RequestId, RunId, ThreadId};
 use koyo_agent::protocol::methods::{
-    CreateParams, Delivery, Empty, HistoryParams, Method, OpenParams, RequestsRespond, RespondParams, Rows, SendParams, Sent,
-    ThreadParams, ThreadsClose, ThreadsCreate, ThreadsHistory, ThreadsOpen, ThreadsUpdate,
+    Catalog, Delivery, Empty, HistoryParams, Method, OpenParams, RequestsRespond, RespondParams,
+    Rows, SendParams, Sent, ThreadParams, ThreadsClose, ThreadsHistory, ThreadsOpen, ThreadsUpdate,
     ThreadsWatch, TurnsSend, UpdateParams,
 };
-use koyo_agent::protocol::model::{Prompt, Thread, ThreadSummary};
+use koyo_agent::protocol::model::{Prompt, ThreadSummary};
 use koyo_agent::protocol::requests::Response;
 
 use crate::settings;
@@ -72,6 +73,8 @@ pub struct Chats {
     client: Option<Arc<AgentClient>>,
     summaries: HashMap<ThreadId, ThreadSummary>,
     threads: HashMap<ThreadId, Entity<ChatThread>>,
+    /// What each checkout a tab shows can choose from.
+    catalogs: HashMap<PathBuf, WeakEntity<Catalog>>,
     connection: Connection,
     /// The threads that had tabs when the app last ran and have none yet, from the host's first
     /// list in this run: `None` until it comes. Later lists and summaries bring none back, so a
@@ -105,6 +108,7 @@ impl Chats {
             client,
             summaries: HashMap::new(),
             threads: HashMap::new(),
+            catalogs: HashMap::new(),
             connection,
             to_restore: None,
             connecting: None,
@@ -222,6 +226,7 @@ impl Chats {
         for thread in self.threads.values() {
             self.open(thread.clone(), cx);
         }
+        self.refresh_catalogs(cx);
         cx.emit(ChatsEvent::Summaries);
         cx.notify();
         false
@@ -290,22 +295,6 @@ impl Chats {
             tab_open: Some(open),
         };
         logged(self.ordered::<ThreadsUpdate>(params), "noting a chat's tab", cx);
-    }
-
-    /// Makes a new chat in the checkout at `cwd`, on the host's first provider.
-    pub fn create(
-        &self,
-        cwd: &Path,
-    ) -> impl Future<Output = Result<Thread, ClientError>> + use<> {
-        self.ordered::<ThreadsCreate>(CreateParams {
-            cwd: cwd.to_string_lossy().into_owned(),
-            provider: None,
-            model: None,
-            effort: None,
-            fast: false,
-            permission: None,
-            plan: false,
-        })
     }
 
     /// Sends `prompt` to thread `id`.

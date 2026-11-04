@@ -20,7 +20,7 @@ use crate::model::PaneKind;
 use crate::shell::Shell;
 use crate::test_support::{draw, repo, select, shell_with};
 
-mod asks;
+pub(super) mod asks;
 mod drawers;
 mod drawing;
 
@@ -59,7 +59,7 @@ fn summary(id: &str, cwd: &Path, title: &str, tab_open: bool) -> ThreadSummary {
     }
 }
 
-fn snapshot(id: &str, seq: u64, items: Vec<Item>) -> ThreadSnapshot {
+pub(super) fn snapshot(id: &str, seq: u64, items: Vec<Item>) -> ThreadSnapshot {
     ThreadSnapshot {
         thread: Thread {
             id: ThreadId(id.into()),

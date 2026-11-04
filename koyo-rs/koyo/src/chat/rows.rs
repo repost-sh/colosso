@@ -15,6 +15,7 @@ use gpui_kit::{
     Styled as _, WeakEntity, Window, div, px, relative,
 };
 use koyo_agent::protocol::ids::ItemId;
+use koyo_agent::protocol::methods::Catalog;
 use koyo_agent::protocol::model::{Delivered, Item, ItemBody, Run};
 use koyo_agent::protocol::requests::{Request, RequestPayload};
 use koyo_agent::replica::Replica;
@@ -45,6 +46,7 @@ const SHIMMER_FPS: f32 = 20.;
 /// What the list's rows are drawn from.
 pub(super) struct Drawing {
     pub(super) thread: Entity<ChatThread>,
+    pub(super) catalog: Entity<Catalog>,
     pub(super) timeline: WeakEntity<Timeline>,
     pub(super) rows: Rc<Vec<Row>>,
     pub(super) open: Rc<HashSet<RowId>>,
@@ -92,7 +94,8 @@ impl Drawing {
                 .into_any_element(),
             RowKind::Answer { item, run, last } => {
                 let answered = &item_at(item)?.id;
-                let meta = last.then_some(run_at(run)?).map(|run| answer_meta(run, &[]));
+                let meta = (last.then_some(run_at(run)?))
+                    .map(|run| answer_meta(run, &self.catalog.read(cx).models));
                 self.answer(answered, thread.drawn_text(answered)?, meta)
                     .into_any_element()
             }

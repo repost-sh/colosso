@@ -21,7 +21,7 @@ use super::{AT, answer};
 use crate::menu;
 use crate::test_support::draw;
 
-pub(super) fn request(id: &str, status: RequestStatus, for_chat: bool, seq: u64) -> Request {
+pub(in crate::chat) fn request(id: &str, status: RequestStatus, for_chat: bool, seq: u64) -> Request {
     Request {
         id: RequestId(id.into()),
         thread_id: ThreadId("0001".into()),
@@ -75,16 +75,16 @@ pub(super) fn holds(
     thread.update(cx, |thread, cx| thread.take_in(vec![event], cx));
 }
 
-pub(super) struct Asking {
-    pub(super) window: AnyWindowHandle,
-    composer: Entity<ChatComposer>,
-    pub(super) thread: Entity<ChatThread>,
+pub(in crate::chat) struct Asking {
+    pub(in crate::chat) window: AnyWindowHandle,
+    pub(in crate::chat) composer: Entity<ChatComposer>,
+    pub(in crate::chat) thread: Entity<ChatThread>,
     pub(super) view: Entity<ChatView>,
 }
 
 impl Asking {
     /// A chat's tab with the composer focused, and `requests` waiting on the person.
-    pub(super) fn new(name: &str, requests: Vec<Request>, cx: &mut TestAppContext) -> Asking {
+    pub(in crate::chat) fn new(name: &str, requests: Vec<Request>, cx: &mut TestAppContext) -> Asking {
         let (window, view, thread) = shown_chat(name, cx);
         holds(&thread, requests, 10, cx);
         let composer = view.read_with(cx, |view, _| view.composer.clone());
@@ -101,22 +101,22 @@ impl Asking {
         }
     }
 
-    pub(super) fn said(&self, cx: &TestAppContext) -> Vec<(RequestId, Response)> {
+    pub(in crate::chat) fn said(&self, cx: &TestAppContext) -> Vec<(RequestId, Response)> {
         self.composer.read_with(cx, |composer, _| composer.said.clone())
     }
 
-    pub(super) fn typed(&self, cx: &TestAppContext) -> String {
+    pub(in crate::chat) fn typed(&self, cx: &TestAppContext) -> String {
         self.composer.read_with(cx, |composer, cx| {
             composer.text.read(cx).value().to_string()
         })
     }
 
-    pub(super) fn keys(&self, keys: &str, cx: &mut TestAppContext) {
+    pub(in crate::chat) fn keys(&self, keys: &str, cx: &mut TestAppContext) {
         cx.simulate_keystrokes(self.window, keys);
         draw(self.window, cx);
     }
 
-    fn says(&self, action: &dyn gpui_kit::Action, cx: &mut TestAppContext) {
+    pub(in crate::chat) fn says(&self, action: &dyn gpui_kit::Action, cx: &mut TestAppContext) {
         cx.update_window(self.window, |_, window, cx| {
             let target = self.composer.read(cx).focus_handle(cx);
             target.dispatch_action(action, window, cx);
