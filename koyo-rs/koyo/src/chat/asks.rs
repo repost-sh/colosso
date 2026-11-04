@@ -1,6 +1,8 @@
 //! What the agent waits on a person for, in its place in the timeline (`docs/chat.md` 5.3): what's
 //! asked, and the buttons that answer it. They say so to the composer, as its keys do, since an
 //! answer is one more thing a person says to the chat, and only what's asked now can be answered.
+//! A question and a plan are answered in the composer's drawers; what shows here is what they ask
+//! and what became of them.
 
 use std::path::Path;
 
@@ -8,13 +10,16 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::Disableable as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::text::TextView;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Action, AnyElement, App, ClickEvent, Div, IntoElement, KeyBinding, ParentElement as _,
-    SharedString, Styled as _, Window, actions, div, px,
+    Action, AnyElement, App, ClickEvent, Div, FontWeight, IntoElement, KeyBinding,
+    ParentElement as _, SharedString, Styled as _, Window, actions, div, px,
 };
-use koyo_agent::protocol::requests::{Approval, Request, RequestPayload, RequestStatus};
-use koyo_agent::words::approval_line;
+use koyo_agent::protocol::ids::{ItemId, RequestId};
+use koyo_agent::protocol::requests::{Approval, Questions, Request, RequestPayload, RequestStatus};
+use koyo_agent::timeline::RowId;
+use koyo_agent::words::{approval_line, plan_outcome, plan_parts, question_lines};
 
 use super::marks::marked;
 use super::output::{block, change};
@@ -23,15 +28,25 @@ use super::work::tool_mark;
 use crate::files::relative;
 use crate::menu::{self, MenuItem};
 use crate::shell::{ellipsized, glass, icon, icon_button};
+use crate::theme::Palette;
 
 actions!(chat, [AllowRequest, AllowRequestForChat, DenyRequest, StopRequest]);
+
+/// Asks where to keep the plan of this request.
+#[derive(Clone, Debug, PartialEq, Action)]
+#[action(namespace = chat, no_json)]
+pub(super) struct SavePlan(pub(super) RequestId);
 
 /// The composer's context while the keys answer what's asked: nothing's typed, and an approval
 /// waits. They do what they always do otherwise.
 pub(super) const ANSWERABLE: &str = "ChatAnswerable";
 
+/// How many lines of a plan show until a person asks for the rest.
+const PLAN_LINES: usize = 20;
+
 pub(super) fn bind_keys(cx: &mut App) {
-    let context = Some("ChatAnswerable > Input");
+    let context = format!("{ANSWERABLE} > Input");
+    let context = Some(context.as_str());
     cx.bind_keys([
         KeyBinding::new("cmd-enter", AllowRequest, context),
         KeyBinding::new("cmd-alt-enter", AllowRequestForChat, context),
@@ -44,27 +59,112 @@ pub(super) fn request(
     drawing: &Drawing,
     request: &Request,
     asking: bool,
+    item: &ItemId,
+    row: &RowId,
     index: usize,
     cx: &App,
-) -> AnyElement {
+) -> Option<AnyElement> {
     let p = drawing.p;
-    match &request.payload {
+    let drawn = match &request.payload {
         RequestPayload::Approval(approval) if request.status == RequestStatus::Pending => {
             card(drawing, approval, &request.id.0, asking, index, cx).into_any_element()
         }
         RequestPayload::Approval(approval) => marked(tool_mark(approval.family), p.muted)
             .child(ellipsized(approval_line(request, approval, &drawing.cwd)))
             .into_any_element(),
-        RequestPayload::Question(_) => line(drawing, "A question"),
-        RequestPayload::Plan { markdown } => {
-            line(drawing, markdown.lines().next().unwrap_or("A plan"))
-        }
-        RequestPayload::Unknown(_) => line(drawing, "Something this version of Koyo can't show"),
-    }
+        RequestPayload::Question(asked) => question(drawing, request, asked),
+        RequestPayload::Plan { markdown } => plan(drawing, request, markdown, item, row, index, cx)?,
+        RequestPayload::Unknown(_) => div()
+            .text_sm()
+            .text_color(p.muted)
+            .child("Something this version of Koyo can't show")
+            .into_any_element(),
+    };
+    Some(drawn)
 }
 
-fn line(drawing: &Drawing, text: &str) -> AnyElement {
-    div().text_sm().text_color(drawing.p.muted).child(text.to_owned()).into_any_element()
+/// What a question asked, or what was said to it. The drawer asks it while it's live; one the agent
+/// stopped waiting on is answered by the next message, so its options are said here.
+fn question(drawing: &Drawing, request: &Request, asked: &Questions) -> AnyElement {
+    let p = drawing.p;
+    let lines = question_lines(request, &asked.questions);
+    let waits_for_message = request.status == RequestStatus::Pending && !asked.live;
+    let options = (asked.questions.iter().filter(|_| waits_for_message)).map(|question| {
+        let labels: Vec<&str> = question.options.iter().map(|option| option.label.as_str()).collect();
+        div().pl_5().text_xs().child(labels.join(" · "))
+    });
+    div()
+        .flex()
+        .flex_col()
+        .gap_1()
+        .text_color(p.muted)
+        .children(lines.into_iter().map(|said| {
+            marked(IconName::CircleQuestionMark, p.muted).child(ellipsized(said))
+        }))
+        .children(options)
+        .into_any_element()
+}
+
+/// A plan, to read and to keep. It's answered in the drawer above the composer, while it's asked.
+fn plan(
+    drawing: &Drawing,
+    request: &Request,
+    markdown: &str,
+    item: &ItemId,
+    row: &RowId,
+    index: usize,
+    cx: &App,
+) -> Option<AnyElement> {
+    let p = drawing.p;
+    let text = drawing.thread.read(cx).drawn_text(item)?;
+    let (title, body) = plan_parts(markdown);
+    // Past so many lines with something on them, each at least a line tall, there's always more
+    // to show. It's only ever cut where it says so.
+    let long = body.lines().filter(|line| !line.trim().is_empty()).nth(PLAN_LINES).is_some();
+    let open = drawing.open.contains(row);
+    let copy = icon_button(("chat-plan-copy", index), drawing.copy_mark(item), "Copy", cx)
+        .small()
+        .on_click(drawing.copies(item));
+    let save = icon_button(("chat-plan-save", index), IconName::Download, "Save as…", cx)
+        .small()
+        .on_click(says(drawing, Box::new(SavePlan(request.id.clone()))));
+    let heading = div()
+        .flex()
+        .items_center()
+        .gap_2()
+        .text_xs()
+        .text_color(p.muted)
+        .child(icon(IconName::ListChecks, 13.))
+        .child("Plan")
+        .children(plan_outcome(request).map(|outcome| format!("· {outcome}")))
+        .child(div().flex_1())
+        .child(copy)
+        .child(save);
+    let card = frame(p, request.status == RequestStatus::Pending)
+        .child(heading)
+        .children(title.map(|title| div().font_weight(FontWeight::SEMIBOLD).child(title.to_owned())))
+        .child(
+            div()
+                .text_sm()
+                .child(TextView::new(text).when(long && !open, |text| text.max_lines(PLAN_LINES))),
+        )
+        .when(long, |card| card.child(drawing.show_more(row.clone(), index, open)));
+    Some(card.into_any_element())
+}
+
+/// The box around what's asked, which stands out while it waits.
+fn frame(p: Palette, waiting: bool) -> Div {
+    div()
+        .flex()
+        .flex_col()
+        .gap_2()
+        .p_3()
+        .rounded(px(12.))
+        .border_1()
+        .border_color(p.hairline)
+        .when(waiting, |frame| {
+            frame.border_color(p.accent.opacity(0.4)).bg(p.accent.opacity(0.04))
+        })
 }
 
 fn card(
@@ -76,15 +176,7 @@ fn card(
     cx: &App,
 ) -> Div {
     let p = drawing.p;
-    div()
-        .flex()
-        .flex_col()
-        .gap_2()
-        .p_3()
-        .rounded(px(12.))
-        .border_1()
-        .border_color(p.accent.opacity(0.4))
-        .bg(p.accent.opacity(0.04))
+    frame(p, true)
         .child(
             div()
                 .flex()
@@ -121,6 +213,15 @@ fn asked(drawing: &Drawing, approval: &Approval, id: &str) -> Option<AnyElement>
     }
 }
 
+/// A click that says `action` to the composer.
+fn says(
+    drawing: &Drawing,
+    action: Box<dyn Action>,
+) -> impl Fn(&ClickEvent, &mut Window, &mut App) + 'static {
+    let composer = drawing.composer.clone();
+    move |_, window, cx| composer.dispatch_action(&*action, window, cx)
+}
+
 /// Deny · Allow and a menu of the rest. They wait while an older request is asked.
 fn buttons(
     drawing: &Drawing,
@@ -130,25 +231,19 @@ fn buttons(
     cx: &App,
 ) -> impl IntoElement {
     let p = drawing.p;
-    let says = |action: Box<dyn Action>| {
-        let composer = drawing.composer.clone();
-        move |_: &ClickEvent, window: &mut Window, cx: &mut App| {
-            composer.dispatch_action(&*action, window, cx);
-        }
-    };
     let deny = glass(("chat-deny", index), p.text, cx)
         .small()
         .label("Deny")
         .tooltip("⌘⌫ with nothing typed, or type why and send")
         .disabled(!asking)
-        .on_click(says(Box::new(DenyRequest)));
+        .on_click(says(drawing, Box::new(DenyRequest)));
     let allow = Button::new(("chat-allow", index))
         .primary()
         .small()
         .label("Allow")
         .tooltip("⌘↩ with nothing typed")
         .disabled(!asking)
-        .on_click(says(Box::new(AllowRequest)));
+        .on_click(says(drawing, Box::new(AllowRequest)));
     let more = icon_button(("chat-allow-more", index), IconName::ChevronDown, "More answers", cx)
         .small()
         .disabled(!asking);

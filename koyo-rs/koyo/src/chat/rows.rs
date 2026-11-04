@@ -16,9 +16,10 @@ use gpui_kit::{
 };
 use koyo_agent::protocol::ids::ItemId;
 use koyo_agent::protocol::model::{Delivered, Item, ItemBody, Run};
-use koyo_agent::protocol::requests::Request;
+use koyo_agent::protocol::requests::{Request, RequestPayload};
+use koyo_agent::replica::Replica;
 use koyo_agent::timeline::{Row, RowId, RowKind};
-use koyo_agent::words::{answer_meta, clock, duration, live_line, worked_for};
+use koyo_agent::words::{answer_meta, clock, duration, live_line, plan_parts, worked_for};
 
 use super::asks;
 use super::thread::ChatThread;
@@ -79,9 +80,7 @@ impl Drawing {
     }
 
     fn content(&self, row: &Row, index: usize, cx: &mut App) -> Option<AnyElement> {
-        if let RowKind::Answer { item, .. } = row.kind {
-            self.make_text(item, cx);
-        }
+        self.make_text(&row.kind, cx);
         let thread = self.thread.read(cx);
         let replica = thread.replica()?;
         let run_at = |at: &usize| replica.runs.get(*at);
@@ -105,9 +104,13 @@ impl Drawing {
             RowKind::Fold { run } => self
                 .fold(run_at(run)?, &replica.requests, id, index)
                 .into_any_element(),
-            RowKind::Request { request, asking, .. } => {
-                let asked = replica.requests.get(*request)?;
-                asks::request(self, asked, *asking, index, cx)
+            RowKind::Request {
+                request,
+                item,
+                asking,
+            } => {
+                let (asked, item) = (replica.requests.get(*request)?, &item_at(item)?.id);
+                asks::request(self, asked, *asking, item, id, index, cx)?
             }
             RowKind::Compaction { item } => self.compaction(item_at(item)?),
             RowKind::Notice { item } => self.notice(item_at(item)?).into_any_element(),
@@ -119,16 +122,15 @@ impl Drawing {
         Some(element)
     }
 
-    /// Makes the view of the answer at `item`'s text, the first time it's drawn. Asked first, as
-    /// updating the thread while drawing would count as changing it.
-    fn make_text(&self, item: usize, cx: &mut App) {
+    /// Makes the view of the text a row shows, the first time it's drawn. Asked first, as updating
+    /// the thread while drawing would count as changing it.
+    fn make_text(&self, kind: &RowKind, cx: &mut App) {
         let thread = self.thread.read(cx);
-        let found = thread.replica().and_then(|replica| replica.items.get(item));
-        let Some(found) = found.filter(|found| thread.drawn_text(&found.id).is_none()) else {
+        let shown = thread.replica().and_then(|replica| shown_text(kind, replica));
+        let Some((id, text)) = shown.filter(|(id, _)| thread.drawn_text(id).is_none()) else {
             return;
         };
-        let id = found.id.clone();
-        let text = found.body.text().unwrap_or_default().to_owned();
+        let (id, text) = (id.clone(), text.to_owned());
         self.thread.update(cx, |thread, cx| {
             thread.text(&id, &text, cx);
         });
@@ -191,7 +193,7 @@ impl Drawing {
         )
     }
 
-    fn show_more(&self, id: RowId, index: usize, open: bool) -> impl IntoElement {
+    pub(super) fn show_more(&self, id: RowId, index: usize, open: bool) -> impl IntoElement {
         div()
             .id(("chat-show-more", index))
             .pt_1()
@@ -205,20 +207,28 @@ impl Drawing {
 
     /// A small button that copies what item `id` says, as it says it then.
     fn copy_button(&self, id: &ItemId) -> impl IntoElement {
-        let timeline = self.timeline.clone();
-        let item = id.clone();
-        let mark = if self.copied.as_ref() == Some(id) {
+        tab_button(SharedString::from(format!("copy-{id}")), self.p)
+            .cursor_pointer()
+            .child(icon(self.copy_mark(id), 12.))
+            .on_click(self.copies(id))
+    }
+
+    /// What a copy button of item `id` shows: whether it just copied.
+    pub(super) fn copy_mark(&self, id: &ItemId) -> IconName {
+        if self.copied.as_ref() == Some(id) {
             IconName::Check
         } else {
             IconName::Copy
-        };
-        tab_button(SharedString::from(format!("copy-{id}")), self.p)
-            .cursor_pointer()
-            .child(icon(mark, 12.))
-            .on_click(move |_, _, cx| {
-                let item = item.clone();
-                timeline.update(cx, |timeline, cx| timeline.copy(item, cx)).ok();
-            })
+        }
+    }
+
+    /// A click that copies what item `id` says.
+    pub(super) fn copies(&self, id: &ItemId) -> impl Fn(&ClickEvent, &mut Window, &mut App) + 'static {
+        let (timeline, item) = (self.timeline.clone(), id.clone());
+        move |_, _, cx| {
+            let item = item.clone();
+            timeline.update(cx, |timeline, cx| timeline.copy(item, cx)).ok();
+        }
     }
 
     fn answer(&self, id: &ItemId, text: &Entity<TextViewState>, meta: Option<String>) -> Div {
@@ -316,6 +326,24 @@ fn gap_after(kind: &RowKind) -> f32 {
         RowKind::Work { .. } | RowKind::Fold { .. } | RowKind::Live { .. } => 10.,
         RowKind::User { .. } | RowKind::Answer { .. } | RowKind::Queued { .. } => 14.,
         _ => 18.,
+    }
+}
+
+/// The text a row of this kind shows in a view of its own: an answer, or what's under a plan's
+/// title. What it's kept by, and what it says.
+fn shown_text<'a>(kind: &RowKind, replica: &'a Replica) -> Option<(&'a ItemId, &'a str)> {
+    match *kind {
+        RowKind::Answer { item, .. } => {
+            let item = replica.items.get(item)?;
+            Some((&item.id, item.body.text()?))
+        }
+        RowKind::Request { item, request, .. } => {
+            let RequestPayload::Plan { markdown } = &replica.requests.get(request)?.payload else {
+                return None;
+            };
+            Some((&replica.items.get(item)?.id, plan_parts(markdown).1))
+        }
+        _ => None,
     }
 }
 

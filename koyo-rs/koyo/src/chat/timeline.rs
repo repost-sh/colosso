@@ -139,8 +139,7 @@ impl Timeline {
     /// Puts what item `id` says now on the clipboard, and has its button say so for a moment.
     pub(super) fn copy(&mut self, id: ItemId, cx: &mut Context<Self>) {
         let replica = self.thread.read(cx).replica();
-        let found = replica.and_then(|replica| replica.items.iter().rev().find(|held| held.id == id));
-        let Some(text) = found.and_then(|found| said(&found.body)) else {
+        let Some(text) = replica.and_then(|replica| said(replica, &id)) else {
             return;
         };
         cx.write_to_clipboard(ClipboardItem::new_string(text.to_owned()));
@@ -208,9 +207,11 @@ fn running_item(replica: &Replica, rows: &[Row]) -> Option<ItemId> {
 }
 
 /// What a person would copy of an item.
-fn said(body: &ItemBody) -> Option<&str> {
-    match body {
+fn said<'a>(replica: &'a Replica, id: &ItemId) -> Option<&'a str> {
+    let item = replica.items.iter().rev().find(|held| held.id == *id)?;
+    match &item.body {
         ItemBody::UserMessage(message) => Some(&message.text),
-        _ => body.text(),
+        ItemBody::Request(asked) => replica.plan(&asked.request_id),
+        body => body.text(),
     }
 }

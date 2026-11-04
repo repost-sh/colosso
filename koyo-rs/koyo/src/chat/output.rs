@@ -7,7 +7,7 @@ use std::rc::Rc;
 use std::str::Chars;
 
 use gpui_kit::{
-    Div, HighlightStyle, Hsla, InteractiveElement as _, ParentElement as _, SharedString, Stateful,
+    Div, ElementId, HighlightStyle, Hsla, InteractiveElement as _, ParentElement as _, SharedString, Stateful,
     StatefulInteractiveElement as _, Styled as _, StyledText, TextRun, div, font, px,
     transparent_black,
 };
@@ -23,14 +23,19 @@ const OUTPUT_HEIGHT: f32 = 240.;
 const DIFF_FONT_SIZE: f32 = 12.;
 const DIFF_LINE_HEIGHT: f32 = 18.;
 
-/// The box a tool's text goes in, which scrolls past a height.
-fn boxed(id: String, p: Palette) -> Stateful<Div> {
+/// A sunken box, which scrolls past a height.
+pub(super) fn scroll_box(id: impl Into<ElementId>, p: Palette) -> Stateful<Div> {
     div()
-        .id(SharedString::from(id))
+        .id(id)
         .max_h(px(OUTPUT_HEIGHT))
         .overflow_y_scroll()
         .rounded(px(8.))
         .bg(p.sunken)
+}
+
+/// The box a tool's text goes in.
+fn boxed(id: String, p: Palette) -> Stateful<Div> {
+    scroll_box(SharedString::from(id), p)
         .font_family(MONO)
         .text_xs()
         .text_color(p.muted)
