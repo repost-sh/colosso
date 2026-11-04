@@ -16,6 +16,7 @@ use crate::chat::tests::{question, snapshot};
 use crate::chat::thread::ThreadEvent;
 use crate::test_support::draw;
 
+mod attach;
 mod suggest;
 
 fn model(id: &str, efforts: &[Effort], fast: bool, auto: bool) -> Model {

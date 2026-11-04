@@ -11,9 +11,9 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::message_scroller::MessageScrollerState;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Bounds, ClickEvent, Context, ElementId, Entity, EventEmitter,
-    FocusHandle, Focusable, InteractiveElement as _, IntoElement, ParentElement as _, Pixels,
-    Render, SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled as _,
-    Subscription, Task, Window, deferred, div, px,
+    ExternalPaths, FocusHandle, Focusable, InteractiveElement as _, IntoElement,
+    ParentElement as _, Pixels, Render, SharedString, StatefulInteractiveElement as _,
+    StyleRefinement, Styled as _, Subscription, Task, Window, deferred, div, px,
 };
 use koyo_agent::protocol::ids::ThreadId;
 
@@ -292,6 +292,9 @@ impl Render for ChatView {
             .relative()
             .size_full()
             .text_color(theme::palette(cx).text)
+            .on_drop(cx.listener(|this, dropped: &ExternalPaths, _, cx| {
+                this.composer.update(cx, |composer, cx| composer.attach_paths(dropped.paths(), cx));
+            }))
             .children(timeline)
             .children(self.scroll_pill(window, cx))
             .child(self.composer_in_place(cx))

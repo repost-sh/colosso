@@ -237,6 +237,12 @@ impl ChatComposer {
         }
     }
 
+    fn attach_chip(&self, p: Palette, cx: &Context<Self>) -> Button {
+        chip("chat-attach", IconName::Plus, None, p.muted, cx)
+            .tooltip("Attach files or images")
+            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.choose_files(cx)))
+    }
+
     fn model_chip(&self, catalog: &Catalog, p: Palette, cx: &Context<Self>) -> Button {
         let mark = if self.settings.fast { IconName::Zap } else { IconName::Sparkles };
         let labelled = self.labels >= 1;
@@ -316,7 +322,7 @@ impl ChatComposer {
     }
 
     pub(super) fn footer(&self, typed: &str, p: Palette, cx: &Context<Self>) -> Div {
-        let can_send = !typed.trim().is_empty() && !self.creating;
+        let can_send = self.can_send(typed);
         let (fill, mark): (Hsla, Hsla) = if can_send {
             (p.accent, p.on_text)
         } else {
@@ -343,6 +349,7 @@ impl ChatComposer {
             .flex()
             .items_center()
             .gap_1()
+            .child(self.attach_chip(p, cx))
             .child(self.model_chip(catalog, p, cx))
             .children(self.permission_chip(catalog, p, cx))
             .child(self.plan_chip(p, cx))

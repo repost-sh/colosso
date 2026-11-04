@@ -73,8 +73,9 @@ gpui-kit = { workspace = true, features = [
   "tree-sitter-graphql",
   "tree-sitter-diff",
 ] }
-# Only for the frames of bitmaps painted at runtime; the version GPUI already pulls in.
-image = { version = "0.25", default-features = false }
+# The frames of bitmaps painted at runtime, and the pictures a chat's message attaches, made to fit
+# what the model takes; the version and the formats GPUI already pulls in.
+image = { version = "0.25", default-features = false, features = ["bmp", "gif", "jpeg", "png", "tiff", "webp"] }
 # Settings on disk; all versions GPUI already pulls in.
 dirs = "6"
 # The log: the facade GPUI and gix already log through, and the clock its lines are stamped
