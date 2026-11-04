@@ -13,8 +13,12 @@ crossbeam-channel = "0.5"
 # What the VT thread and the client tell a view arrives on a channel a GPUI task awaits.
 futures = "0.3"
 gpui-kit = { workspace = true }
+# A pasted TIFF becomes a PNG programs read. The version and formats GPUI already pulls in.
+image = { version = "0.25", default-features = false, features = ["png", "tiff"] }
 log = "0.4"
 parking_lot = "0.12"
+# A pasted image's file, private and never an existing one.
+tempfile = "3"
 
 [lints]
 workspace = true

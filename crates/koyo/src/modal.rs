@@ -35,7 +35,7 @@ pub const SMALL_LINE: f32 = 18.;
 /// A [`heading`]'s text is this big, each of its lines this high, and it has at most this
 /// many: a long file name wraps it, a silly one is cut short.
 const HEADING_SIZE: f32 = 16.;
-const HEADING_LINE: f32 = 24.;
+pub const HEADING_LINE: f32 = 24.;
 const MOST_HEADING_LINES: usize = 3;
 
 /// The height of a dialog's text [`field`].

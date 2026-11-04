@@ -167,14 +167,21 @@ impl Shell {
     }
 
     /// Closes pane `id`, and its tab when it's the tab's only pane, asking first when its
-    /// file has unsaved edits.
+    /// file has unsaved edits or its terminal runs something. Its terminal ends.
     pub fn close_pane(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
         let pane = self.workspace.branch().and_then(|unit| unit.pane(id));
         let editors = (pane.and_then(|pane| pane.file.as_ref()))
             .filter(|file| file.read(cx).is_dirty())
             .map(|file| vec![file.read(cx).editor.clone()])
             .unwrap_or_default();
-        self.ask_then(editors, move |shell, cx| shell.close_pane_now(id, cx), window, cx);
+        let terminals = pane.and_then(|pane| pane.terminal).into_iter().collect();
+        self.ask_then(
+            editors,
+            terminals,
+            move |shell, cx| shell.close_pane_now(id, cx),
+            window,
+            cx,
+        );
     }
 
     /// Closes pane `id`, on whichever checkout it is, and its tab when it's the tab's only
@@ -196,7 +203,7 @@ impl Shell {
     }
 
     /// Closes the tab at `at`, as `(project, branch, tab)`, asking first when its files have
-    /// unsaved edits.
+    /// unsaved edits or its terminals run something. Its terminals end.
     pub fn close_tab_at(
         &mut self,
         at: (usize, usize, usize),
@@ -207,6 +214,9 @@ impl Shell {
             return;
         };
         let editors = tab.unsaved(cx);
+        let terminals = (tab.panes().into_iter())
+            .filter_map(|pane| pane.terminal)
+            .collect();
         // Found again by a pane of it once answered: tabs may have moved meanwhile.
         let id = tab.first().id;
         let close = move |shell: &mut Self, cx: &mut Context<Self>| {
@@ -214,12 +224,33 @@ impl Shell {
                 shell.close_tab_now(at, cx);
             }
         };
-        self.ask_then(editors, close, window, cx);
+        self.ask_then(editors, terminals, close, window, cx);
+    }
+
+    /// Ends `terminals` and does `close`, asking first about what's running in them and then
+    /// about what's unsaved in `editors`: once it's agreed, and saved or let go.
+    fn ask_then(
+        &mut self,
+        editors: Vec<Entity<FileEditor>>,
+        terminals: Vec<u64>,
+        close: impl FnOnce(&mut Self, &mut Context<Self>) + 'static,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let asked = terminals.clone();
+        let then = move |shell: &mut Self, window: &mut Window, cx: &mut Context<Self>| {
+            let close = move |shell: &mut Self, cx: &mut Context<Self>| {
+                shell.end_terminals(&terminals, cx);
+                close(shell, cx);
+            };
+            shell.ask_about_files_then(editors, close, window, cx);
+        };
+        self.ask_to_end_terminals(&asked, then, window, cx);
     }
 
     /// Does `close` now when `editors` have no unsaved edits, and otherwise asks about them
     /// first: once they're saved or let go.
-    fn ask_then(
+    fn ask_about_files_then(
         &mut self,
         editors: Vec<Entity<FileEditor>>,
         close: impl FnOnce(&mut Self, &mut Context<Self>) + 'static,

@@ -16,6 +16,7 @@ use gpui_kit::{
 
 use crate::element::Grid;
 use crate::keys;
+use crate::paste::{self, Pasted};
 use crate::view::{
     Copy, Link, Paste, ScrollPageDown, ScrollPageUp, ScrollToBottom, ScrollToTop, TerminalView,
 };
@@ -69,6 +70,14 @@ impl TerminalView {
         cx.stop_propagation();
     }
 
+    /// Sends `text` as typed, for a chord that means it.
+    pub(crate) fn type_text(&mut self, text: &str, cx: &mut Context<Self>) {
+        if self.is_attached() {
+            self.send(Command::Text(text.to_owned()));
+            self.typed(cx);
+        }
+    }
+
     pub(crate) fn key_up(&mut self, event: &KeyUpEvent, _: &mut Window, _: &mut Context<Self>) {
         if !self.is_attached() || keys::types_text(&event.keystroke, self.option_as_alt) {
             return;
@@ -95,10 +104,22 @@ impl TerminalView {
     }
 
     pub(crate) fn paste(&mut self, _: &Paste, _: &mut Window, cx: &mut Context<Self>) {
-        let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) else {
-            return;
-        };
-        self.paste_text(text);
+        match cx.read_from_clipboard().and_then(paste::pasted) {
+            Some(Pasted::Text(text)) => self.paste_text(text),
+            Some(Pasted::Image(image)) => {
+                cx.spawn(async move |this, cx| {
+                    let saved = cx.background_spawn(async move { paste::save(&image) }).await;
+                    match saved {
+                        Ok(path) => {
+                            let _ = this.update(cx, |this, _| this.paste_text(path));
+                        }
+                        Err(error) => log::warn!("couldn't save the pasted image: {error}"),
+                    }
+                })
+                .detach();
+            }
+            None => {}
+        }
     }
 
     /// Sends `text` as a paste, which the daemon brackets when the program asked for it.
@@ -383,9 +404,8 @@ impl EntityInputHandler for TerminalView {
         cx: &mut Context<Self>,
     ) {
         self.marked = None;
-        if self.is_attached() && !text.is_empty() {
-            self.send(Command::Text(text.to_owned()));
-            self.typed(cx);
+        if !text.is_empty() {
+            self.type_text(text, cx);
         }
         cx.notify();
     }

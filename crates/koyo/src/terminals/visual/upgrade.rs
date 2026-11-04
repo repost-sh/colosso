@@ -21,7 +21,7 @@ use crate::visual::{Drawn, Result};
 pub(super) fn other_build(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     let shell = drawn.shell.clone();
     let closed = terminal(drawn)?.downgrade();
-    (drawn.cx).update(|cx| shell.update(cx, Shell::close_shown_terminal));
+    (drawn.cx).update(|cx| shell.update(cx, Shell::let_go_of_shown_terminal));
     wait_until(drawn, "the tab to close", |drawn| {
         Ok(terminal(drawn).is_err())
     })?;

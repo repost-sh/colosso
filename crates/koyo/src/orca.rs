@@ -164,7 +164,11 @@ pub fn tab_strip(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
             let at = (project_index, branch_index, tab_index);
             let row = row(("orca-tab", tab_index), active, p)
                 .h(px(28.))
+                // Narrowed to fit beside the + button, however many there are, down to their
+                // icons, as a browser's are: each stays on screen to pick.
+                .flex_shrink(1.)
                 .min_w_0()
+                .overflow_hidden()
                 .when(!active, |tab| tab.text_color(p.muted))
                 .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
                     this.workspace
@@ -208,7 +212,9 @@ pub fn tab_strip(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
         .when(branch.is_some(), |strip| {
             strip.child(new_tab_menu(
                 "orca-new-tab-menu",
-                icon_button("orca-new-tab", IconName::Plus, "New tab", cx).small(),
+                icon_button("orca-new-tab", IconName::Plus, "New tab", cx)
+                    .small()
+                    .debug_selector(|| "new-tab-button".to_owned()),
                 shell.focus.clone(),
             ))
         })

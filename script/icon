@@ -19,7 +19,7 @@ from PIL import Image, ImageDraw, ImageFilter
 artwork, out = sys.argv[1:]
 CANVAS, BODY, SCALE = 1024, 824, 4  # Apple's grid: an 824-point body, 100 points round it
 # The square of the artwork the icon shows: the circle and its leaf, closer than the paper.
-CROP = (127, 100, 1127, 1100)
+CROP = (134, 64, 1254, 1184)
 
 def squircle(size):
     """macOS's continuous-corner square, as a superellipse, drawn large and scaled down."""
