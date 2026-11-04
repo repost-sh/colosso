@@ -7,10 +7,11 @@ use gpui_kit::{AppContext as _, Entity, TestAppContext};
 use koyo_agent::agent_client::Notice;
 use koyo_agent::client::ClientError;
 use koyo_agent::protocol::events::{Appended, Changed, Event, Removed};
-use koyo_agent::protocol::ids::{ItemId, RunId, ThreadId, Time};
+use koyo_agent::protocol::ids::{ItemId, MessageId, RunId, ThreadId, Time};
 use koyo_agent::protocol::methods::ThreadSnapshot;
 use koyo_agent::protocol::model::{
-    Item, ItemBody, ItemStatus, Status, Text, Thread, ThreadSummary, TitleSource,
+    Item, ItemBody, ItemStatus, Prompt, Run, RunStatus, Status, Text, Thread, ThreadSummary,
+    TitleSource,
 };
 use koyo_agent::protocol::requests::{Question, QuestionOption};
 
@@ -21,6 +22,7 @@ use crate::shell::Shell;
 use crate::test_support::{draw, repo, select, shell_with};
 
 pub(super) mod asks;
+mod turn;
 mod drawers;
 mod drawing;
 
@@ -83,6 +85,32 @@ pub(super) fn snapshot(id: &str, seq: u64, items: Vec<Item>) -> ThreadSnapshot {
         runs: Vec::new(),
         items,
         requests: Vec::new(),
+    }
+}
+
+/// Run `id` of chat 0001, saying `text`, as it is at `seq`.
+fn run(id: &str, status: RunStatus, text: &str, seq: u64) -> Run {
+    Run {
+        id: RunId(id.into()),
+        thread_id: ThreadId("0001".into()),
+        status,
+        prompt: Prompt {
+            message_id: MessageId(format!("m-{id}")),
+            text: text.into(),
+            attachments: Vec::new(),
+        },
+        model: None,
+        effort: None,
+        permission: None,
+        plan: false,
+        requested_at: Time(AT.into()),
+        started_at: None,
+        ended_at: None,
+        stop: None,
+        failure: None,
+        usage: None,
+        files: Vec::new(),
+        seq,
     }
 }
 

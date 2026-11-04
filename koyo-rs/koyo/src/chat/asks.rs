@@ -213,7 +213,7 @@ fn asked(drawing: &Drawing, approval: &Approval, id: &str) -> Option<AnyElement>
 }
 
 /// A click that says `action` to the composer.
-fn says(
+pub(super) fn says(
     drawing: &Drawing,
     action: Box<dyn Action>,
 ) -> impl Fn(&ClickEvent, &mut Window, &mut App) + 'static {

@@ -4,7 +4,7 @@
 use gpui_kit::{Context, Window};
 use koyo_agent::client::ClientError;
 use koyo_agent::protocol::ids::{MessageId, ThreadId};
-use koyo_agent::protocol::methods::ThreadsCreate;
+use koyo_agent::protocol::methods::{Delivery, ThreadsCreate};
 use koyo_agent::protocol::model::Prompt;
 use koyo_agent::protocol::requests::{Decision, Response};
 
@@ -35,8 +35,17 @@ impl ChatComposer {
         }
     }
 
-    /// Sends what's typed and what's attached.
+    /// Sends what's typed and what's attached: a turn of its own, or into the one that's on.
     pub(in crate::chat) fn send(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.send_as(Delivery::Auto, window, cx);
+    }
+
+    /// Sends what's typed and what's attached, after the turn that's on.
+    pub(super) fn queue(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.send_as(Delivery::Queue, window, cx);
+    }
+
+    fn send_as(&mut self, delivery: Delivery, window: &mut Window, cx: &mut Context<Self>) {
         let text = self.text.read(cx).value().trim().to_owned();
         if !self.can_send(&text) {
             return;
@@ -73,7 +82,7 @@ impl ChatComposer {
         match &self.thread {
             Some(thread) => {
                 let id = thread.read(cx).id().clone();
-                self.send_to(&id, prompt, window, cx);
+                self.send_to(&id, prompt, delivery, window, cx);
             }
             None => self.create_and_send(prompt, window, cx),
         }
@@ -83,10 +92,13 @@ impl ChatComposer {
         &mut self,
         id: &ThreadId,
         prompt: Prompt,
+        delivery: Delivery,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let sent = self.chats.read(cx).send(id, prompt.clone());
+        #[cfg(test)]
+        self.sent_as.push(delivery);
+        let sent = self.chats.read(cx).send(id, prompt.clone(), delivery);
         cx.spawn_in(window, async move |this, cx| {
             if let Err(error) = sent.await {
                 this.update_in(cx, |this, window, cx| {
@@ -113,7 +125,7 @@ impl ChatComposer {
                         let opened = this.chats.update(cx, |chats, cx| chats.thread(&id, cx));
                         this.send_to_thread(opened.clone(), window, cx);
                         cx.emit(ComposerEvent::Created(opened, id.clone()));
-                        this.send_to(&id, prompt, window, cx);
+                        this.send_to(&id, prompt, Delivery::Auto, window, cx);
                     }
                     Err(error) => this.prompt_not_sent(prompt, &error, window, cx),
                 }

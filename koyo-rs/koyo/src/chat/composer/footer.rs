@@ -14,8 +14,8 @@ use gpui_kit::component::hover_card::HoverCard;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Action, Anchor, App, ClickEvent, Context, Div, Focusable as _, Hsla, InteractiveElement as _,
-    IntoElement, KeyBinding, MouseButton, ParentElement as _, Pixels, SharedString,
-    StatefulInteractiveElement as _, Styled as _, Svg, Window, actions, div, px, svg,
+    IntoElement, KeyBinding, MouseButton, ParentElement as _, Pixels, SharedString, Styled as _,
+    Svg, Window, actions, div, px, svg,
 };
 use koyo_agent::client::ClientError;
 use koyo_agent::protocol::ids::ThreadId;
@@ -28,7 +28,7 @@ use koyo_agent::words::{context_line, context_percent, effort_label, mode_label,
 use super::ChatComposer;
 use super::model_picker::OpenModelPicker;
 use crate::menu::{self, MenuItem};
-use crate::shell::{glass, icon};
+use crate::shell::glass;
 use crate::theme::Palette;
 
 /// The composer's context, where the keys that are its own all the time are bound.
@@ -180,7 +180,7 @@ impl ChatComposer {
     }
 
     /// Whatever `asked` said back is no one's business, but why it didn't happen is a person's.
-    fn when_said<T: 'static>(
+    pub(super) fn when_said<T: 'static>(
         &mut self,
         asked: impl Future<Output = Result<T, ClientError>> + 'static,
         cx: &mut Context<Self>,
@@ -322,28 +322,6 @@ impl ChatComposer {
     }
 
     pub(super) fn footer(&self, typed: &str, p: Palette, cx: &Context<Self>) -> Div {
-        let can_send = self.can_send(typed);
-        let (fill, mark): (Hsla, Hsla) = if can_send {
-            (p.text, p.on_text)
-        } else {
-            (p.text.opacity(0.08), p.muted)
-        };
-        let send = div()
-            .id("chat-send")
-            .size(px(28.))
-            .flex_shrink_0()
-            .flex()
-            .items_center()
-            .justify_center()
-            .rounded_full()
-            .bg(fill)
-            .text_color(mark)
-            .child(icon(IconName::ArrowUp, 15.))
-            .when(can_send, |button| {
-                button
-                    .cursor_pointer()
-                    .on_click(cx.listener(|this, _: &ClickEvent, window, cx| this.send(window, cx)))
-            });
         let catalog = self.catalog.read(cx);
         div()
             .flex()
@@ -355,7 +333,7 @@ impl ChatComposer {
             .child(self.plan_chip(p, cx))
             .child(div().flex_1())
             .children(self.context_ring(p, cx))
-            .child(send)
+            .child(self.send_or_stop(typed, p, cx))
     }
 
     /// `column`, which hears what the footer's keys, chips and menus say.

@@ -16,6 +16,7 @@ mod model_picker;
 mod question;
 mod sending;
 mod suggest;
+mod turn;
 
 use std::path::PathBuf;
 
@@ -26,7 +27,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, ClickEvent, Context, Div, ElementId, Entity, EventEmitter,
     FocusHandle, Focusable, InteractiveElement as _, IntoElement, KeyContext, ParentElement as _,
-    Render, SharedString, Stateful, Styled as _, Subscription, Window, div, px,
+    Render, SharedString, Stateful, Styled as _, Subscription, Task, Window, div, px,
 };
 #[cfg(test)]
 use koyo_agent::protocol::ids::RequestId;
@@ -44,6 +45,7 @@ use self::attach::Attached;
 use self::footer::{COMPOSER, ROOM_FOR_LABELS, Settings, labels_fitting};
 use self::model_picker::{ModelPicker, PICKING};
 use self::suggest::{SUGGESTING, Suggestions};
+use self::turn::{RECALLING, STOPPABLE, Turn};
 use super::thread::ChatThread;
 use super::view::COLUMN;
 use super::{Chats, Connection, attachments};
@@ -57,6 +59,7 @@ pub(super) fn bind_keys(cx: &mut App) {
     model_picker::bind_keys(cx);
     question::bind_keys(cx);
     suggest::bind_keys(cx);
+    turn::bind_keys(cx);
 }
 
 /// What the tab hears from its composer.
@@ -80,7 +83,7 @@ pub(super) struct ChatComposer {
     creating: bool,
     pub(super) text: Entity<TextareaState>,
     /// Why the last thing a person asked of it didn't happen.
-    error: Option<SharedString>,
+    pub(super) error: Option<SharedString>,
     /// Why the chat can't be shown.
     failed: Option<SharedString>,
     /// How things are with the host.
@@ -104,6 +107,14 @@ pub(super) struct ChatComposer {
     unsent: Option<Prompt>,
     /// Where what's attached is kept.
     attachments: Option<PathBuf>,
+    /// Where the chat's turn is.
+    turn: Turn,
+    /// Waits for a stop to have taken too long.
+    forcing: Option<Task<()>>,
+    /// Whether a stop has taken long enough for the turn to be ended instead.
+    can_force: bool,
+    /// Whether ⌘'s down, which the send button shows.
+    secondary_held: bool,
     /// How many of the footer's chips say what they are, as wide as it is.
     labels: usize,
     _subscriptions: Vec<Subscription>,
@@ -115,6 +126,12 @@ pub(super) struct ChatComposer {
     /// What it asked the host to change of the chat.
     #[cfg(test)]
     pub(super) updated: Vec<UpdateParams>,
+    /// How it asked messages to go.
+    #[cfg(test)]
+    pub(super) sent_as: Vec<koyo_agent::protocol::methods::Delivery>,
+    /// What it asked the host of the turn and the queue.
+    #[cfg(test)]
+    pub(super) asked_host: Vec<(&'static str, serde_json::Value)>,
 }
 
 impl EventEmitter<ComposerEvent> for ChatComposer {}
@@ -137,8 +154,10 @@ impl ChatComposer {
         });
         let subscriptions = vec![
             cx.subscribe_in(&text, window, |this, _, event, window, cx| {
-                if let InputEvent::PressEnter { shift: false, .. } = event {
-                    this.send(window, cx);
+                match event {
+                    InputEvent::PressEnter { secondary: true, shift: false } => this.queue(window, cx),
+                    InputEvent::PressEnter { shift: false, .. } => this.send(window, cx),
+                    _ => {}
                 }
             }),
             cx.observe(&chats, |this, chats, cx| {
@@ -183,6 +202,10 @@ impl ChatComposer {
             tiles_made: 0,
             unsent: None,
             attachments: attachments::folder(),
+            turn: Turn::default(),
+            forcing: None,
+            can_force: false,
+            secondary_held: false,
             labels: ROOM_FOR_LABELS.len(),
             _subscriptions: subscriptions,
             #[cfg(test)]
@@ -191,6 +214,10 @@ impl ChatComposer {
             said: Vec::new(),
             #[cfg(test)]
             updated: Vec::new(),
+            #[cfg(test)]
+            sent_as: Vec::new(),
+            #[cfg(test)]
+            asked_host: Vec::new(),
         };
         if let Some(thread) = thread {
             composer.send_to_thread(thread, window, cx);
@@ -219,6 +246,7 @@ impl ChatComposer {
         let replica = held.and_then(ChatThread::replica);
         let settings = replica.map(|replica| Settings::of(&replica.thread));
         let context = replica.and_then(Replica::context);
+        let turn = replica.map_or_else(Turn::default, Turn::of);
         let asking = replica.and_then(Replica::asking);
         if self.asked.request() != asking.map(|asked| &asked.id) {
             self.asked = asking.map_or(Asked::Nothing, Asked::of);
@@ -230,6 +258,7 @@ impl ChatComposer {
             self.failed = failed;
             cx.notify();
         }
+        self.follow_turn(turn, cx);
         if let Some(settings) = settings.filter(|settings| *settings != self.settings) {
             self.settings = settings;
             cx.notify();
@@ -346,6 +375,7 @@ impl Render for ChatComposer {
         let typed = self.text.read(cx).value();
         let surface = Self::takes_drops(liquid::floating(surface, on_glass, p), p, cx)
             .children(self.drawer(&typed, p, cx))
+            .children(self.held_queue(p, cx))
             .children(self.tiles(p, cx))
             .child(Textarea::new(&self.text).appearance(false).on_paste(self.takes_paste(cx)))
             .child(self.footer(&typed, p, cx))
@@ -358,12 +388,18 @@ impl Render for ChatComposer {
             keys.add(PICKING);
         } else if self.suggesting() {
             keys.add(SUGGESTING);
-        } else if let Some(answering) = self.asked.key_context().filter(|_| typed.is_empty()) {
-            keys.add(answering);
+        } else if typed.is_empty() {
+            keys.add(RECALLING);
+            if let Some(answering) = self.asked.key_context() {
+                keys.add(answering);
+            }
+            if self.turn.is_on() {
+                keys.add(STOPPABLE);
+            }
         }
         let composer = cx.weak_entity();
         let labels = self.labels;
-        let hearing = Self::hears_footer(Self::hears_answers(div(), cx), cx);
+        let hearing = Self::hears_turn(Self::hears_footer(Self::hears_answers(div(), cx), cx), cx);
         self.hears_suggestions(self.hears_picker(hearing, cx), cx)
             .key_context(keys)
             .relative()
