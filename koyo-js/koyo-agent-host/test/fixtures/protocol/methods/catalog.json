@@ -14,7 +14,7 @@
         {
           "id": "claude-opus-5-5",
           "name": "Opus 5.5",
-          "description": "Most capable",
+          "label": "Opus 5.5",
           "efforts": [
             "low",
             "medium",
@@ -28,7 +28,7 @@
         {
           "id": "claude-haiku-5-5",
           "name": "Haiku 5.5",
-          "description": "Fastest",
+          "label": "Haiku 5.5",
           "efforts": [],
           "fast": false,
           "auto": false

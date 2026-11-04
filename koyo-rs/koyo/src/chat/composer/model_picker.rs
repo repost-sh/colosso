@@ -317,12 +317,7 @@ impl ChatComposer {
             .min_w_0()
             .flex()
             .flex_col()
-            .child(ellipsized(model.name.clone()))
-            .when(!model.description.is_empty(), |words| {
-                words.child(
-                    div().text_xs().text_color(p.muted).child(ellipsized(model.description.clone())),
-                )
-            });
+            .child(ellipsized(model.name.clone()));
         row(("chat-model-row", at), highlighted, p)
             .h_auto()
             .py_1()

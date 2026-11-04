@@ -38,7 +38,7 @@ export type ProviderStatus = z.infer<typeof ProviderStatus>;
 export const Model = z.object({
   id: z.string().min(1),
   name: z.string(),
-  description: z.string(),
+  label: z.string(),
   efforts: z.array(Effort),
   fast: z.boolean(),
   auto: z.boolean(),

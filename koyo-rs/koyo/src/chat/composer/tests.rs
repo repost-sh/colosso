@@ -23,7 +23,7 @@ fn model(id: &str, efforts: &[Effort], fast: bool, auto: bool) -> Model {
     Model {
         id: id.into(),
         name: format!("{id} (latest)"),
-        description: format!("All about {id}"),
+        label: format!("{id} (latest)"),
         efforts: efforts.to_vec(),
         fast,
         auto,

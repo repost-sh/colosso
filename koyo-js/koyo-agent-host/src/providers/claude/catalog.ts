@@ -47,11 +47,23 @@ export async function probe(start: Start, place: Omit<Place, "spawn">): Promise<
   }
 }
 
+/**
+ * What a row goes by once it's chosen. "Default" says nothing of what runs, so that row goes by
+ * the name of the row that runs the same model, or else the id of what it runs.
+ */
+function label(model: ModelInfo, list: readonly ModelInfo[]): string {
+  if (model.value !== "default" || model.resolvedModel === undefined) {
+    return model.displayName;
+  }
+  const same = list.find((other) => other !== model && other.resolvedModel === model.resolvedModel);
+  return same?.displayName ?? model.resolvedModel;
+}
+
 export function models(list: readonly ModelInfo[]): Model[] {
   return list.map((model) => ({
     id: model.value,
     name: model.displayName,
-    description: model.description,
+    label: label(model, list),
     efforts: model.supportedEffortLevels ?? [],
     fast: model.supportsFastMode ?? false,
     auto: model.supportsAutoMode ?? false,

@@ -26,9 +26,9 @@ pub fn answer_meta(run: &Run, models: &[Model]) -> String {
     parts.into_iter().flatten().collect::<Vec<_>>().join(" · ")
 }
 
-/// What a model goes by: what the catalog calls it, less what it says of it in brackets.
+/// What a model goes by, less what the catalog says of it in brackets.
 pub fn model_name(model: &Model) -> &str {
-    model.name.split(" (").next().unwrap_or(&model.name)
+    model.label.split(" (").next().unwrap_or(&model.label)
 }
 
 pub fn effort_label(effort: Effort) -> &'static str {

@@ -140,8 +140,10 @@ pub struct CatalogParams {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Model {
     pub id: String,
+    /// What its row in a list says.
     pub name: String,
-    pub description: String,
+    /// What it goes by once it's chosen, which says what runs where `name` may not.
+    pub label: String,
     pub efforts: Vec<Effort>,
     pub fast: bool,
     pub auto: bool,
@@ -172,6 +174,16 @@ impl Catalog {
             Some(id) => self.models.iter().find(|model| model.id == id),
             None => self.models.first(),
         }
+    }
+}
+
+impl Model {
+    /// The effort it runs at when asked for `wanted`: that one if it has it, or else the nearest
+    /// below, or else the least it has. None if it has no efforts to choose.
+    pub fn fitted(&self, wanted: Effort) -> Option<Effort> {
+        let efforts = self.efforts.iter().copied();
+        let below = efforts.clone().filter(|effort| *effort <= wanted).max();
+        below.or_else(|| efforts.min())
     }
 }
 
@@ -262,6 +274,22 @@ pub struct UpdateParams {
     pub plan: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tab_open: Option<bool>,
+}
+
+impl UpdateParams {
+    /// What asks nothing of thread `id`, for what's to change to go over.
+    pub fn of(thread_id: ThreadId) -> UpdateParams {
+        UpdateParams {
+            thread_id,
+            title: None,
+            model: None,
+            effort: None,
+            fast: None,
+            permission: None,
+            plan: None,
+            tab_open: None,
+        }
+    }
 }
 
 /// A field that's there, `null` included: absent is the default, `None`.

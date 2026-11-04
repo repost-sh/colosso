@@ -1,5 +1,7 @@
+import type { ModelInfo } from "@anthropic-ai/claude-agent-sdk";
 import { describe, expect, test } from "bun:test";
 
+import { models } from "../../src/providers/claude/catalog";
 import { type ClaudeDeps, ClaudeProvider } from "../../src/providers/claude/provider";
 import { failed, success } from "../fixtures/claude/frames";
 import { settle } from "../support/wait";
@@ -97,7 +99,7 @@ describe("the catalog", () => {
       models: [{
         id: "default",
         name: "Default",
-        description: "The recommended model",
+        label: "Default",
         efforts: ["low", "medium", "high"],
         fast: true,
         auto: true,
@@ -105,6 +107,17 @@ describe("the catalog", () => {
       commands: [{ name: "compact", description: "Compact the conversation", argumentHint: null }],
       defaultMode: "accept_edits",
     });
+  });
+
+  test("has the Default row go by the name of what it runs", () => {
+    const opus = { value: "opus", displayName: "Opus 5.5", description: "", resolvedModel: "o-5" };
+    const row = { value: "default", displayName: "Default (recommended)", description: "" };
+    const labels = (list: ModelInfo[]): string[] => models(list).map((model) => model.label);
+
+    expect(labels([{ ...row, resolvedModel: "o-5" }, opus])).toEqual(["Opus 5.5", "Opus 5.5"]);
+    expect(labels([{ ...row, resolvedModel: "other" }, opus]))
+      .toEqual(["other", "Opus 5.5"]);
+    expect(labels([row, opus])).toEqual(["Default (recommended)", "Opus 5.5"]);
   });
 
   test("reports Claude's own default mode, whatever Koyo's settings name", async () => {
