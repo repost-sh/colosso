@@ -1,6 +1,7 @@
 //! The person's input to a page: the pointer and wheel over it, the keys it owns while it
 //! has focus, text from the input method, and the edit commands the app binds. The first
-//! of it takes the page for the person (`control`).
+//! of it takes the page for the person (`control`). A press the window would hold on the
+//! page past its end is let go (`release`).
 
 use std::ops::Range;
 
@@ -19,6 +20,8 @@ use super::{
     Back, Copy, Cut, FocusAddress, Forward, Paste, Redo, Reload, SelectAll, SendBackTab,
     SendEscape, SendTab, ToggleDevTools, ToggleResponsive, Undo,
 };
+
+mod release;
 
 impl BrowserView {
     /// A press on the page: it takes the keyboard, and the button stays the page's until
@@ -81,6 +84,18 @@ impl BrowserView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // The window holds a press on the page from each press it hands on until a release
+        // ends it; a single press ends on any release, as the window has it (`release`).
+        match event {
+            PlatformInput::MouseDown(event) if !self.window_presses.contains(&event.button) => {
+                self.window_presses.push(event.button);
+            }
+            PlatformInput::MouseUp(event) => match self.window_presses.as_slice() {
+                [_] => self.window_presses.clear(),
+                _ => self.window_presses.retain(|held| *held != event.button),
+            },
+            _ => {}
+        }
         // A responsive page's grip in hand takes the pointer, wherever it goes.
         if self.grip_pointer(event, cx) {
             return;
@@ -88,7 +103,15 @@ impl BrowserView {
         match event {
             PlatformInput::MouseDown(event) => self.pressed_at(event, window, cx),
             PlatformInput::MouseUp(event) => self.released_at(event, cx),
-            PlatformInput::MouseMove(event) => self.moved_to(event, true, cx),
+            PlatformInput::MouseMove(event) => {
+                // With no button held, the move belies the presses the window holds on the
+                // page (`release`): they're let go, and the page left, not followed.
+                let belied = event.pressed_button.is_none() && !self.window_presses.is_empty();
+                if belied {
+                    self.let_go(event.position, window, cx);
+                }
+                self.moved_to(event, !belied, cx);
+            }
             PlatformInput::MouseExited(event) => {
                 let moved = MouseMoveEvent {
                     position: event.position,
@@ -410,15 +433,6 @@ pub(super) fn modifiers_of(modifiers: Modifiers) -> ipc::Modifiers {
         control: modifiers.control,
         alt: modifiers.alt,
         platform: modifiers.platform,
-    }
-}
-
-/// A page's button as the window names it, the other way from [`button_of`].
-pub(super) fn platform_button(button: ipc::MouseButton) -> MouseButton {
-    match button {
-        ipc::MouseButton::Left => MouseButton::Left,
-        ipc::MouseButton::Middle => MouseButton::Middle,
-        ipc::MouseButton::Right => MouseButton::Right,
     }
 }
 

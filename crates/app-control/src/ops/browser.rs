@@ -1,6 +1,17 @@
 //! The app's browser panes, driven over CDP: listing and reading pages here, acting on them
 //! in `act`. Acting needs the page's lease: a free page is claimed on the first act, and
-//! `person_has_control` means the person took the page, so the agent leaves it.
+//! `person_has_control` means the person holds the page, so the agent leaves it: for a
+//! moment when they're only using it, for good when they took it.
+
+/// The rule every acting tool's description ends with.
+macro_rules! leased {
+    ($($text:literal),+ $(,)?) => {
+        concat!(
+            $($text,)+
+            " Claims a free page first. person_has_control means the person holds the page; its message says whether it comes back on its own (wait, then retry) or to open another page."
+        )
+    };
+}
 
 mod act;
 mod viewport;

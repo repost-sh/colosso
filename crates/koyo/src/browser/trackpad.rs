@@ -11,7 +11,9 @@ use super::view::BrowserView;
 const LINE_PIXELS: f32 = 40.;
 
 impl BrowserView {
+    /// Scrolling doesn't take a page from an agent, but it's using one the person holds.
     pub(super) fn wheel(&mut self, event: &ScrollEvent, cx: &mut Context<Self>) {
+        self.keep_hold(cx);
         let (dx, dy) = match event.delta {
             ScrollDelta::Pixels(delta) => (delta.x.as_f32(), delta.y.as_f32()),
             ScrollDelta::Lines(delta) => (delta.x * LINE_PIXELS, delta.y * LINE_PIXELS),
@@ -31,6 +33,7 @@ impl BrowserView {
     }
 
     pub(super) fn pinch(&mut self, event: &PinchEvent, cx: &mut Context<Self>) {
+        self.keep_hold(cx);
         let at = self.page_point(event.position);
         let phase = match event.phase {
             TouchPhase::Started => PinchPhase::Started,

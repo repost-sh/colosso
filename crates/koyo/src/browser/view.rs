@@ -5,12 +5,13 @@ use std::collections::VecDeque;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Instant;
 
 use koyo_browser_ipc::{self as ipc, AppRequest, Cursor, Go, PageState, PaneId, Viewport};
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::{
-    App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Focusable, Image, Pixels,
-    Point, Size, Subscription, WeakEntity, Window,
+    App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Focusable, Image,
+    MouseButton, Pixels, Point, Size, Subscription, Task, WeakEntity, Window,
 };
 
 use super::control::{Control, Mode};
@@ -78,6 +79,9 @@ pub struct BrowserView {
     pub(super) page: PageState,
     /// Who drives the page.
     pub(super) control: Control,
+    /// When a page the person is only using goes back, unless they act again first, and
+    /// the task that gives it back then (`control::keep_hold`).
+    pub(super) lapse: Option<(Instant, Task<()>)>,
     /// The page the pane shows once the host is ready; empty for the start page, which
     /// needs no browser.
     target: String,
@@ -111,6 +115,9 @@ pub struct BrowserView {
     /// The modifier keys held, as the page was last told.
     pub(super) held: gpui_kit::Modifiers,
     pub(super) pressed: Option<ipc::MouseButton>,
+    /// The buttons the window holds pressed on the page, from the presses it hands on until
+    /// their releases; while any, it keeps the pointer on the page (`input::release`).
+    pub(super) window_presses: Vec<MouseButton>,
     pub(super) hovered: bool,
     /// What the next render, which has the window, settles.
     settle: Settle,
@@ -231,6 +238,7 @@ impl BrowserView {
                 ..PageState::default()
             },
             control: Control::default(),
+            lapse: None,
             target: url,
             viewport: None,
             opened: None,
@@ -250,6 +258,7 @@ impl BrowserView {
             marked: None,
             held: gpui_kit::Modifiers::default(),
             pressed: None,
+            window_presses: Vec::new(),
             hovered: false,
             settle: Settle::default(),
             origin: Point::default(),

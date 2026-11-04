@@ -16,7 +16,7 @@ use serde_json::Value;
 
 use super::super::{Caller, Exec, main_shell, output, window_closed};
 use super::script;
-use crate::browser::agent::{self, Actor, AgentError, Go, Refused};
+use crate::browser::agent::{self, Actor, AgentError, Go, Mode, Refused};
 use crate::browser::{self, BrowserView};
 
 /// How often a wait looks at the page again.
@@ -122,6 +122,10 @@ pub(super) fn actor(caller: &Caller) -> Actor {
 /// A refusal of the page's lease, in app control's words.
 pub(super) fn refused(refused: Refused) -> ControlError {
     match refused {
+        Refused::PersonHasControl {
+            mode: Mode::Implicit,
+            ..
+        } => ControlError::person_using_page(),
         Refused::PersonHasControl { .. } => ControlError::person_has_control(),
         Refused::ControlRequired { holder } => ControlError::control_required(format!(
             "{} holds this page; browser_claim with takeover takes it over.",

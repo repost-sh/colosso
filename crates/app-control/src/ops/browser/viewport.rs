@@ -216,11 +216,10 @@ impl Operation for BrowserViewport {
     const TITLE: &'static str = "Set a page's viewport";
     const SUBJECT: &'static [&'static str] = &["device", "width", "height"];
     const SCOPE: Scope = Scope::Browser;
-    const DESCRIPTION: &'static str = concat!(
+    const DESCRIPTION: &'static str = leased!(
         "Shows a browser page at a phone's or tablet's size (`device`, with its user agent, touch and mobile layout) or at a free `width` × `height`, scaled down to fit the pane, as Chrome's device toolbar does; `fill: true` ends it. ",
         "Answers once the page has laid out at the new size (`settled`, 5 seconds at most); `screenshot: true` adds an image of it. ",
-        "To check a layout: set the size, look, then `fill: true`. The person sees what you do, and their own change wins. ",
-        "Claims a free page first. person_has_control means the person took the page: don't retry or wait, open another page."
+        "To check a layout: set the size, look, then `fill: true`. The person sees what you do, and their own change wins."
     );
     const HINTS: Hints = Hints::IDEMPOTENT;
     type Input = BrowserViewportInput;
