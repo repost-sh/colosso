@@ -115,6 +115,7 @@ export const methods = {
       provider: ProviderId.nullable(),
       model: z.string().nullable(),
       effort: Effort.nullable(),
+      fast: z.boolean(),
       permission: Mode.nullable(),
       plan: z.boolean(),
     }),

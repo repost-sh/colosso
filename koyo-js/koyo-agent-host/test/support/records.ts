@@ -79,6 +79,7 @@ export const CREATE: Params<"threads.create"> = {
   provider: "fake",
   model: null,
   effort: null,
+  fast: false,
   permission: null,
   plan: false,
 };

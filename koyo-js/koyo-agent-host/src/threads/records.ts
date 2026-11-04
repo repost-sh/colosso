@@ -42,7 +42,6 @@ export function newThread(
     provider,
     title: "",
     titleSource: "seed",
-    fast: false,
     sessionId: null,
     queueHeld: false,
     tabOpen: true,

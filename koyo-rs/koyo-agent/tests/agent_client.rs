@@ -75,6 +75,7 @@ fn create(cwd: &str) -> CreateParams {
         provider: None,
         model: None,
         effort: None,
+        fast: false,
         permission: None,
         plan: false,
     }
