@@ -172,9 +172,16 @@ impl Element for PageSurface {
             let card = theme::card::shared_corners(bounds, window, cx);
             native = shown.update(cx, |shown, _| {
                 shown.show(&frame);
-                shown.place(bounds, hitbox.content_mask.bounds, (placed.fit, card), window);
+                shown.place(
+                    bounds,
+                    hitbox.content_mask.bounds,
+                    (placed.fit, card),
+                    window,
+                );
                 shown.takes_pointer()
             });
+            // The marks in the page's view are laid for the size it was just placed at.
+            self.view.read(cx).marks_fit_page();
             let layer = shown.downgrade();
             let known = {
                 let view = self.view.read(cx);

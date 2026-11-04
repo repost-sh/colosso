@@ -224,7 +224,12 @@ pub(super) fn control_bar(
     } else {
         let displaced = view.control.displaced.as_ref()?;
         let give_back = cx.listener(|this, _: &ClickEvent, _, cx| this.give_back(cx));
-        let text = format!("You took over this tab from {}", displaced.label);
+        // A page the person is only using goes back by itself once they stop.
+        let text = if view.control.person_using() {
+            format!("{} waits while you use this tab", displaced.label)
+        } else {
+            format!("You took over this tab from {}", displaced.label)
+        };
         (text, "browser-give-back", "Give back", Box::new(give_back))
     };
     let id_glass = ElementId::NamedInteger("browser-control-glass".into(), view.pane);

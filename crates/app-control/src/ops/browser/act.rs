@@ -10,16 +10,6 @@ use super::PageOutput;
 use crate::ops::shared::PaneId;
 use crate::{Hints, Operation, Scope};
 
-/// The rule every acting tool's description ends with.
-macro_rules! leased {
-    ($text:literal) => {
-        concat!(
-            $text,
-            " Claims a free page first. person_has_control means the person took the page: don't retry or wait, open another page."
-        )
-    };
-}
-
 /// A page to act on.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -373,7 +363,7 @@ impl Operation for BrowserClaim {
     const NAME: &'static str = "browser_claim";
     const TITLE: &'static str = "Take control of a page";
     const SCOPE: Scope = Scope::Browser;
-    const DESCRIPTION: &'static str = "Takes a browser page's lease so only you act on it. `takeover` displaces another agent, never the person: person_has_control means leave the page alone and open another.";
+    const DESCRIPTION: &'static str = "Takes a browser page's lease so only you act on it. `takeover` displaces another agent, never the person: person_has_control means leave the page alone, and its message says whether it comes back on its own or to open another.";
     const HINTS: Hints = Hints::IDEMPOTENT;
     type Input = BrowserClaimInput;
     type Output = Lease;

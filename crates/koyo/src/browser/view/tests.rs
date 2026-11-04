@@ -68,3 +68,34 @@ fn questions_are_asked_one_at_a_time_and_a_withdrawn_one_makes_way(cx: &mut Test
         assert_eq!(view.dialogs.len(), 1);
     });
 }
+
+#[gpui_kit::test]
+fn a_page_the_person_only_uses_goes_back_once_they_have_been_still_a_while(
+    cx: &mut TestAppContext,
+) {
+    let (_, view) = start_page(cx);
+    let still = |cx: &mut TestAppContext, secs: u64| {
+        cx.executor()
+            .advance_clock(std::time::Duration::from_secs(secs));
+        cx.run_until_parked();
+    };
+    view.update(cx, |view, cx| view.person_acts(Mode::Implicit, cx));
+    still(cx, 3);
+    view.read_with(cx, |view, _| assert!(view.control.person_holds()));
+    // Using it again holds it for as long again.
+    view.update(cx, |view, cx| view.person_acts(Mode::Implicit, cx));
+    still(cx, 3);
+    view.read_with(cx, |view, _| {
+        assert!(view.control.person_holds(), "still at it");
+    });
+    still(cx, 2);
+    view.read_with(cx, |view, _| {
+        assert!(view.control.holder.is_none(), "gone back");
+    });
+    // Asked for, it stays theirs until they give it back.
+    view.update(cx, |view, cx| view.person_acts(Mode::Explicit, cx));
+    still(cx, 60);
+    view.read_with(cx, |view, _| assert!(view.control.person_holds()));
+    view.update(cx, BrowserView::give_back);
+    view.read_with(cx, |view, _| assert!(view.control.holder.is_none()));
+}

@@ -2,8 +2,10 @@
 //! page's edges, the arrow, near black in a white rim over a faint shadow of its outline,
 //! and the ring a click sends out, as Core Animation layers. A display link puts them where
 //! the models have them for each frame the display shows, from copies of the models,
-//! whatever GPUI does meanwhile; it pauses while nothing moves. Where there's no display
-//! link, before macOS 14, the overlay draws them instead.
+//! whatever GPUI does meanwhile; it pauses while nothing moves. The glow is laid for the
+//! page's size as the page element lays the page out (`fit_page`), in the same transaction
+//! as its new edge. Where there's no display link, before macOS 14, the overlay draws them
+//! instead.
 //!
 //! Everything here is on the main thread, where the page's view lives.
 
@@ -19,8 +21,7 @@ use objc2_core_foundation::{CFRetained, CGAffineTransform, CGPoint, CGRect, CGSi
 use objc2_core_graphics::{CGColor, CGMutablePath};
 use objc2_foundation::{NSRunLoop, NSRunLoopCommonModes};
 use objc2_quartz_core::{
-    CAAutoresizingMask, CACurrentMediaTime, CADisplayLink, CAFrameRateRange, CALayer,
-    CAShapeLayer, CATransaction,
+    CACurrentMediaTime, CADisplayLink, CAFrameRateRange, CALayer, CAShapeLayer, CATransaction,
 };
 
 use super::overlay::{BODY, GLOW, HAIRLINE, RIM, RING, outline};
@@ -108,7 +109,8 @@ impl Scene {
             if let Some((radius, shown)) = shot.ring {
                 let radius = f64::from(radius);
                 let across = radius * 2.;
-                self.ring.setBounds(CGRect::new(CGPoint::ZERO, CGSize::new(across, across)));
+                self.ring
+                    .setBounds(CGRect::new(CGPoint::ZERO, CGSize::new(across, across)));
                 self.ring.setCornerRadius(radius);
                 self.ring.setPosition(tip);
                 self.ring.setOpacity(shown * shot.opacity);
@@ -150,6 +152,7 @@ impl Native {
         let arrow = arrow();
         arrow.setHidden(true);
         let edge = Edge::new();
+        edge.lay_for(marks.bounds().size);
         if let Some(layer) = marks.layer() {
             layer.addSublayer(&edge.group);
             layer.addSublayer(&ring);
@@ -186,7 +189,10 @@ impl Native {
 
     /// Whether they're in `page`.
     pub fn in_view(&self, page: &NSView) -> bool {
-        std::ptr::eq(std::ptr::from_ref::<NSView>(&self.page), std::ptr::from_ref(page))
+        std::ptr::eq(
+            std::ptr::from_ref::<NSView>(&self.page),
+            std::ptr::from_ref(page),
+        )
     }
 
     /// From now on, the pointer and the glow as `pointer` and `glow` have them.
@@ -220,6 +226,21 @@ impl Native {
         }
     }
 
+    /// The page's view is laid out: the glow is laid for its size, unless it is already.
+    /// Its layers don't follow the view on their own: stretched to a wider page, they
+    /// showed the shadow of the frame cast round the narrower one, a band down the page.
+    pub fn fit_page(&self) {
+        let scene = self.ticker.ivars().borrow();
+        let size = self.marks.bounds().size;
+        if scene.edge.laid_for(size) {
+            return;
+        }
+        CATransaction::begin();
+        CATransaction::setDisableActions(true);
+        scene.edge.lay_for(size);
+        CATransaction::commit();
+    }
+
     /// Draws it now, and for each frame from the next while it moves.
     fn redraw(&self) {
         let scene = self.ticker.ivars().borrow();
@@ -237,7 +258,9 @@ impl Drop for Native {
 }
 
 /// The glow inside the page's edges: soft inner shadows, each cast onto the page by a frame
-/// round it, and a hairline at the edge, all as wide as the page and clipped to it.
+/// round it, and a hairline at the edge, all as wide as the page and clipped to it. They're
+/// laid for the page's size (`Native::fit_page`), never stretched to it: the frame is cast
+/// round one size, and stretched past it shows its shadow inside the page.
 struct Edge {
     group: Retained<CALayer>,
     shades: [Retained<CALayer>; 3],
@@ -248,14 +271,11 @@ struct Edge {
 
 impl Edge {
     fn new() -> Edge {
-        let fills = CAAutoresizingMask::LayerWidthSizable | CAAutoresizingMask::LayerHeightSizable;
         let group = CALayer::new();
         group.setMasksToBounds(true);
-        group.setAutoresizingMask(fills);
         group.setHidden(true);
         let shades = GLOW.map(|(alpha, blur)| {
             let shade = CALayer::new();
-            shade.setAutoresizingMask(fills);
             shade.setShadowOffset(CGSize::new(0., 0.));
             // Core Animation's radius reaches as far as GPUI's blur, measured side by side.
             shade.setShadowRadius(f64::from(blur));
@@ -264,7 +284,6 @@ impl Edge {
             shade
         });
         let line = CALayer::new();
-        line.setAutoresizingMask(fills);
         line.setBorderWidth(1.);
         group.addSublayer(&line);
         Edge {
@@ -279,30 +298,38 @@ impl Edge {
         for shade in &self.shades {
             shade.setShadowColor(Some(&color(tint, 1.)));
         }
-        self.line.setBorderColor(Some(&color(tint, HAIRLINE.into())));
+        self.line
+            .setBorderColor(Some(&color(tint, HAIRLINE.into())));
     }
 
     /// `level` of it shows, from 0 to 1.
     fn draw(&self, level: f32) {
         self.group.setHidden(level <= 0.);
-        if level <= 0. {
+        if level > 0. {
+            self.group.setOpacity(level);
+        }
+    }
+
+    /// Whether the frame was last cast round a page of `size`.
+    fn laid_for(&self, size: CGSize) -> bool {
+        let laid = self.size.get();
+        (laid.width, laid.height) == (size.width, size.height)
+    }
+
+    /// Casts the frame round a page of `size`, and lays the rest out to it, unless it is so
+    /// already.
+    fn lay_for(&self, size: CGSize) {
+        if self.laid_for(size) {
             return;
         }
-        self.group.setOpacity(level);
-        let Some(page) = self.group.superlayer().map(|page| page.bounds()) else {
-            return;
-        };
-        let size = page.size;
-        if (self.size.get().width, self.size.get().height) != (size.width, size.height) {
-            self.size.set(size);
-            let bounds = CGRect::new(CGPoint::ZERO, size);
-            self.group.setFrame(bounds);
-            self.line.setFrame(bounds);
-            let frame = frame(size);
-            for shade in &self.shades {
-                shade.setFrame(bounds);
-                shade.setShadowPath(Some(&frame));
-            }
+        self.size.set(size);
+        let bounds = CGRect::new(CGPoint::ZERO, size);
+        self.group.setFrame(bounds);
+        self.line.setFrame(bounds);
+        let frame = frame(size);
+        for shade in &self.shades {
+            shade.setFrame(bounds);
+            shade.setShadowPath(Some(&frame));
         }
     }
 }
@@ -378,4 +405,39 @@ fn arrow_path() -> CFRetained<CGMutablePath> {
     }
     CGMutablePath::close_subpath(Some(&path));
     path
+}
+
+#[cfg(test)]
+mod tests {
+    use objc2_core_graphics::CGPath;
+
+    use super::*;
+
+    /// The frame the shades cast their shadow by, as last laid: its bounds.
+    fn cast(edge: &Edge) -> CGRect {
+        let path = edge.shades[0].shadowPath().expect("laid for a page");
+        CGPath::bounding_box(Some(&path))
+    }
+
+    fn near(a: f64, b: f64) -> bool {
+        (a - b).abs() < 1e-6
+    }
+
+    #[test]
+    fn the_glow_is_cast_round_the_page_again_once_the_page_changes_size() {
+        let edge = Edge::new();
+        edge.lay_for(CGSize::new(400., 300.));
+        assert!(edge.laid_for(CGSize::new(400., 300.)));
+        assert!(
+            near(cast(&edge).size.width, 400. + 2. * 200.),
+            "cast round the page"
+        );
+        // The page grows: laid for its new size, the frame is cast round that, so the old
+        // frame's side never shows inside the page.
+        assert!(!edge.laid_for(CGSize::new(800., 300.)));
+        edge.lay_for(CGSize::new(800., 300.));
+        assert!(edge.laid_for(CGSize::new(800., 300.)));
+        assert!(near(cast(&edge).size.width, 800. + 2. * 200.));
+        assert!(near(edge.group.bounds().size.width, 800.));
+    }
 }

@@ -278,6 +278,15 @@ impl ControlError {
         )
     }
 
+    /// The person is using the page, which comes back once they stop.
+    pub fn person_using_page() -> ControlError {
+        ControlError::new(
+            ErrorCode::PersonHasControl,
+            "The person is using this page; it comes back on its own a few seconds after they stop. Wait, then retry.",
+        )
+        .retryable(true)
+    }
+
     pub fn control_required(message: impl Into<String>) -> ControlError {
         ControlError::new(ErrorCode::ControlRequired, message)
     }

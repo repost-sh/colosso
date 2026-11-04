@@ -98,8 +98,11 @@ Acting needs the page's lease, which your first act on a free page claims:
 snapshot again after the page navigates, since refs don't outlive it. `browser_claim` and
 `browser_release` take and give back the lease outright.
 
-`person_has_control` means the person took the page. Do not wait for it, do not retry, do
-not claim it with takeover: open another page for your own work.
+`person_has_control` means the person holds the page, and its message says which way. A
+page they're only using (they clicked or typed in it) comes back on its own 5 s after
+their last act: wait, then retry. A page they took with Take control is theirs until they
+give it back: do not wait for it, do not retry, do not claim it with takeover; open
+another page for your own work.
 
 `browser_viewport` shows a page as a phone or tablet (`device`: `iphone-se`, `iphone-15`,
 `iphone-15-pro-max`, `pixel-8`, `galaxy-s24`, `ipad-mini`, `ipad-pro-11`, with its user
@@ -153,7 +156,7 @@ A failure has a `code`, a `message` and `retryable`; retry only what is retryabl
 | `control_disabled` | The person has to turn on Settings → MCP server. |
 | `app_not_running` | Koyo isn't running: call `app_launch`, then try again. When a connection was lost mid-call, the call may have acted: check, or repeat it with the same `requestId`. |
 | `unsaved_changes` | Save `details.files` first, or discard them with the person's confirmation. |
-| `person_has_control` | The person took the page or terminal: use another. |
+| `person_has_control` | The person holds the page or terminal. A page they're only using comes back 5 s after they stop (`retryable`): wait, then retry. Otherwise use another. |
 | `control_required` | Claim the page first. |
 | `timeout` | Retry, or wait for something narrower. |
 | `browser_unavailable` | The browser engine is restarting: retry shortly. |

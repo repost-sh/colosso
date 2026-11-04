@@ -13,7 +13,7 @@ use futures::channel::oneshot;
 use gpui_kit::{App, Context, Entity};
 
 use super::control::Holder;
-pub use super::control::{Actor, Refused};
+pub use super::control::{Actor, Mode, Refused};
 use super::host::Browsers;
 pub use super::host::CdpResult;
 use super::responsive;

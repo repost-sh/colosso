@@ -194,8 +194,10 @@ changes_open [navigate] C { worktree? } → the Changes tab
 ### Browser (on the app's browser panes, via CDP `AppRequest::Cdp`)
 
 The page lease of `browser/control.rs` applies: acting needs the lease; a free page is
-claimed on the first act; `person_has_control` means the person took the page: don't
-retry or wait, open another page.
+claimed on the first act; `person_has_control` means the person holds the page. Its message
+says which way: a page they're only using (they clicked or typed in it) comes back on its
+own 5 s after their last act, so wait and retry; a page they took with Take control is
+theirs until they give it back: don't retry or wait, open another page.
 
 The person sees an agent at work (`browser/pointer.rs`): a glow inside the page's edges
 while an agent holds it, and for `browser_click` the agent's pointer, a navigation arrow

@@ -2,12 +2,9 @@
 //! app's own rows for links, images and selected text. Picks come back as actions on the
 //! window, which the shell routes to the page.
 
-use koyo_browser_ipc::{self as ipc, AppRequest, MenuEntry, MenuTarget, MouseKind, PaneId};
+use koyo_browser_ipc::{self as ipc, AppRequest, MenuEntry, MenuTarget, PaneId};
 use gpui_kit::component::native_menu::NativeMenu;
-use gpui_kit::{
-    Action, App, ClipboardItem, Context, Div, InteractiveElement as _, MouseUpEvent, PlatformInput,
-    Window,
-};
+use gpui_kit::{Action, App, ClipboardItem, Context, Div, InteractiveElement as _, Window};
 
 use super::control::Mode;
 use super::host::Browsers;
@@ -243,32 +240,16 @@ impl BrowserView {
         }
         let at = self.window_point(request.page_at);
         self.open_menu = Some((request.id, request.page_at));
-        self.end_press(window, cx);
+        // The menu's tracking takes the release of a press still held on the page, and
+        // until that press is let go the window gives every press to the page, the app's
+        // own buttons left dead (`input::release`). So the press ends here, for the page
+        // and for the window, before it shows.
+        self.let_go(window.mouse_position(), window, cx);
         // The visual check runs unattended, where the menu's tracking would wait for a pick.
         if cfg!(feature = "visual-check") {
             return;
         }
         native(rows, self.pane, request.id).show(at, window, cx);
-    }
-
-    /// The menu's tracking takes the release of a press still held on the page, and until
-    /// that press is let go the window gives every press to the page, the app's own buttons
-    /// left dead. So the press ends here, for the page and for the window, before it shows.
-    fn end_press(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(button) = self.pressed.take() else {
-            return;
-        };
-        let (position, modifiers) = (window.mouse_position(), window.modifiers());
-        self.mouse(MouseKind::Up, position, Some(button), 1, modifiers, cx);
-        let release = MouseUpEvent {
-            button: super::input::platform_button(button),
-            position,
-            modifiers,
-            click_count: 1,
-        };
-        window.defer(cx, move |window, cx| {
-            window.dispatch_event(PlatformInput::MouseUp(release), cx);
-        });
     }
 
     /// A menu left without a pick is over for the page: the next press or key says so.

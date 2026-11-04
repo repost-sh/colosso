@@ -88,6 +88,13 @@ impl BrowserView {
         }
     }
 
+    /// The page's view is laid out: the glow in it is laid for its size (`Native::fit_page`).
+    pub(in crate::browser) fn marks_fit_page(&self) {
+        if let Some(native) = &self.marks.native {
+            native.fit_page();
+        }
+    }
+
     /// How much of its true size the page shows at.
     fn fit(&self) -> f32 {
         if self.responsive.fit > 0. {
