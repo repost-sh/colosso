@@ -105,7 +105,7 @@ export function label(name: string, fields: Fields): string {
   const path = pathOf(fields);
   switch (family(name)) {
     case "command": {
-      return text(fields, "description") ?? firstLine(text(fields, "command") ?? name);
+      return firstLine(text(fields, "command") ?? name);
     }
     case "read":
     case "edit": {
@@ -190,9 +190,27 @@ export function toolSettled(started: ToolBody, result: ToolResult): ToolBody {
       ...started.payload,
       output: tail(output),
       exitCode: kind === "command" ? exitCode(result) : null,
-      patch: patch?.success === true ? patch.data.structuredPatch : null,
+      patch: patch?.success === true ? boundedPatch(patch.data.structuredPatch) : null,
     },
   };
+}
+
+/** A patch as an item keeps it: whole lines up to the bound, then `…` where it was cut. */
+export function boundedPatch(hunks: readonly Hunk[]): Hunk[] {
+  const kept: Hunk[] = [];
+  let room = BOUND;
+  for (const hunk of hunks) {
+    const lines: string[] = [];
+    for (const line of hunk.lines) {
+      room -= line.length + 1;
+      if (room < 0) {
+        return [...kept, { ...hunk, lines: [...lines, " …"] }];
+      }
+      lines.push(line);
+    }
+    kept.push(hunk);
+  }
+  return kept;
 }
 
 /** A command's exit code: 0 when it ran well, else the code its result names, if any. */
