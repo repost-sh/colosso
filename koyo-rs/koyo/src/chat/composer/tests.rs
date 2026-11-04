@@ -15,6 +15,8 @@ use crate::chat::tests::{question, snapshot};
 use crate::chat::thread::ThreadEvent;
 use crate::test_support::draw;
 
+mod drafts;
+
 mod attach;
 mod suggest;
 

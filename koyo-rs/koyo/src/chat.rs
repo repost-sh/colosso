@@ -6,6 +6,7 @@ mod asks;
 mod attachments;
 mod catalog;
 mod composer;
+mod drafts;
 mod host;
 mod marks;
 mod queued;
@@ -95,10 +96,11 @@ pub struct Chats {
 
 impl EventEmitter<ChatsEvent> for Chats {}
 
-/// What's bound for the chats.
+/// What's bound for the chats, and what's kept of them.
 pub fn init(cx: &mut App) {
     asks::bind_keys(cx);
     composer::bind_keys(cx);
+    drafts::init(cx);
     queued::bind_keys(cx);
     subagent_bar::bind_keys(cx);
     view::details::bind_keys(cx);
@@ -406,6 +408,7 @@ impl Chats {
                 Event::ThreadRemoved(removed) => {
                     self.summaries.remove(&removed.thread_id);
                     self.threads.remove(&removed.thread_id);
+                    drafts::thread_removed(&removed.thread_id, cx);
                     cx.emit(ChatsEvent::Removed(removed.thread_id));
                 }
                 Event::HostNotice(notice) => log::info!("the agent host: {}", notice.message),

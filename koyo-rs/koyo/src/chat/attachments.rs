@@ -17,7 +17,7 @@ use gpui_kit::component::attachment::{
     Attachment as Tile, AttachmentContent, AttachmentMedia, AttachmentTitle,
 };
 use gpui_kit::{
-    App, Asset, Axis, ClipboardEntry, ClipboardItem, ElementId, ImageCacheError, ParentElement as _,
+    App, AppContext as _, Asset, Axis, ClipboardEntry, ClipboardItem, ElementId, ImageCacheError, ParentElement as _,
     RenderImage, SharedString, Styled as _, Window, px,
 };
 use image::codecs::jpeg::JpegEncoder;
@@ -54,6 +54,21 @@ type Failed = Box<dyn Error + Send + Sync>;
 pub(super) fn folder() -> Option<PathBuf> {
     let data = settings::data_dir().filter(|_| !cfg!(test))?;
     Some(client::host_dir(&data).root().join("attachments"))
+}
+
+/// Takes the files of `kept` out of `folder`, as no message will name them.
+pub(super) fn forget(folder: Option<PathBuf>, kept: Vec<Attachment>, cx: &App) {
+    let Some(folder) = folder.filter(|_| !kept.is_empty()) else {
+        return;
+    };
+    cx.background_spawn(async move {
+        for Attachment { file, .. } in kept {
+            if let Err(error) = fs::remove_file(folder.join(&file)) {
+                log::warn!("an attachment no message names, {file}: {error}");
+            }
+        }
+    })
+    .detach();
 }
 
 /// What's to be attached.

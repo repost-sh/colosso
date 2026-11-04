@@ -11,6 +11,7 @@
 
 mod asked;
 mod attach;
+mod draft;
 mod effort;
 mod footer;
 mod model_menu;
@@ -46,9 +47,10 @@ use self::attach::Attached;
 use self::footer::{COMPOSER, ROOM_FOR_LABELS, Settings, labels_fitting};
 use self::suggest::{SUGGESTING, Suggestions};
 use self::turn::{RECALLING, STOPPABLE, Turn};
+use super::drafts::{self, DraftOf};
 use super::thread::ChatThread;
 use super::view::COLUMN;
-use super::{Chats, Connection, attachments};
+use super::{Chats, Connection};
 use crate::menu::Trigger;
 use crate::native::liquid;
 use crate::shell::glass;
@@ -110,6 +112,10 @@ pub(super) struct ChatComposer {
     unsent: Option<Prompt>,
     /// Where what's attached is kept.
     attachments: Option<PathBuf>,
+    /// The chat whose draft it writes to, unless another composer is.
+    draft: Option<DraftOf>,
+    /// The text's version and the caret, as last written to its draft.
+    draft_written: Option<(u64, usize)>,
     /// Where the chat's turn is.
     turn: Turn,
     /// Waits for a stop to have taken too long.
@@ -177,12 +183,13 @@ impl ChatComposer {
                 this.search(cx);
                 cx.notify();
             }),
-            cx.observe(&text, |this, _, cx| this.follow_text(cx)),
-            // No message will name what's still attached.
-            cx.on_release(|this: &mut Self, cx| {
-                let gone = std::mem::take(&mut this.attached);
-                this.forget(gone, cx);
+            cx.observe(&text, |this, _, cx| {
+                this.follow_text(cx);
+                this.keep_draft(cx);
             }),
+            // What's attached changes the composer and not what's typed.
+            cx.observe_self(|this, cx| this.keep_draft(cx)),
+            cx.on_release(|this: &mut Self, cx| this.let_go(cx)),
         ];
         let connection = chats.read(cx).connection().clone();
         let mut composer = ChatComposer {
@@ -206,7 +213,9 @@ impl ChatComposer {
             attached: Vec::new(),
             tiles_made: 0,
             unsent: None,
-            attachments: attachments::folder(),
+            attachments: drafts::attachments_folder(cx),
+            draft: None,
+            draft_written: None,
             turn: Turn::default(),
             forcing: None,
             can_force: false,
@@ -227,6 +236,7 @@ impl ChatComposer {
         if let Some(thread) = thread {
             composer.send_to_thread(thread, window, cx);
         }
+        composer.bring_back_draft(window, cx);
         composer
     }
 

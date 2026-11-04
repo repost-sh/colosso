@@ -878,8 +878,13 @@ No GPUI here: what doesn't draw is tested without compiling the app.
   trip of a few milliseconds over the socket; there's no optimistic copy to reconcile. A send
   that fails puts the text back with the error beside it, and retrying repeats the same
   `messageId` (4.3.3). A new chat makes its thread first; the composer waits for that.
-- Drafts per thread (text, attachments, cursor), in the app, debounced 300 ms to
-  `data_dir()/chat-drafts.json`, flushed on quit.
+- Drafts per thread and one per folder for a chat with no thread yet (text, attachments,
+  cursor), in the app, debounced 300 ms to `chat-drafts.json` in the host's folder, flushed on
+  quit. A draft has one composer at a time, the first to open it, since it owns the files it
+  attaches; another tab on the same chat starts empty and keeps nothing. Its files go when
+  they're taken off it or its thread is deleted, not when its tab closes, and a sent draft's go
+  with the message. The host reads the file as it sweeps the attachments folder (5.3), so a draft
+  keeps its files for as long as it's kept.
 
 ### 5.3 The chat tab [proposed]
 
@@ -1000,9 +1005,9 @@ Layout, top to bottom inside the pane's card:
   file is copied and the agent is told its path. What can't be attached says why. A picture alone
   can be sent, and leaves the chat's title to its first words; a message with neither words nor
   files is refused. Words that answer what's asked leave the tiles for the next message, and don't
-  wait for them. A message that doesn't go brings them back; a tile taken away, or left when the
-  tab closes, takes its file. What's left in the folder anyway, by an app that stopped, the host
-  removes as it starts once no message names it a week on. In the timeline a picture shows at a
+  wait for them. A message that doesn't go brings them back; a tile taken away takes its file, and
+  one left when the tab closes stays with its draft (5.2). What's left in the folder anyway, by an
+  app that stopped, the host removes as it starts once no message or draft names it a week on. In the timeline a picture shows at a
   fixed size above the message's words, drawn from a small copy of it, and opens where the person
   would.
 - **Footer.** `[+]` attach · model ("Opus 5.5", never "Default": the host labels that row with what
