@@ -144,7 +144,7 @@ impl Drawing {
 }
 
 /// A row of small text in `color`, with `mark` first.
-fn marked(mark: IconName, color: Hsla) -> Div {
+pub(super) fn marked(mark: IconName, color: Hsla) -> Div {
     div()
         .flex()
         .items_start()

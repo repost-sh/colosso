@@ -121,7 +121,7 @@ fn mark_of(item: &Item) -> IconName {
     }
 }
 
-fn tool_mark(family: ToolFamily) -> IconName {
+pub(super) fn tool_mark(family: ToolFamily) -> IconName {
     match family {
         ToolFamily::Command => IconName::SquareTerminal,
         ToolFamily::Read => IconName::FileText,

@@ -123,7 +123,8 @@ impl ChatView {
     fn show(&mut self, thread: Entity<ChatThread>, cx: &mut Context<Self>) {
         let (cwd, inset) = (self.cwd.to_string_lossy().into(), self.inset());
         let (following, scroller) = (thread.clone(), self.scroller.clone());
-        let timeline = cx.new(|cx| Timeline::new(following, scroller, cwd, inset, cx));
+        let composer = self.composer.read(cx).focus_handle(cx);
+        let timeline = cx.new(|cx| Timeline::new(following, scroller, cwd, composer, inset, cx));
         let heard = cx.subscribe(&timeline, |_, _, event: &ChatViewEvent, cx| cx.emit(event.clone()));
         self._subscriptions.push(heard);
         self.shown = Some(Shown { thread, timeline });

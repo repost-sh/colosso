@@ -2,6 +2,7 @@
 //! every thread's summary, and the rows of the ones a tab shows. One loop takes in what the host
 //! says, once a frame however fast it comes, and connects again when the connection ends.
 
+mod asks;
 mod composer;
 mod marks;
 mod output;
@@ -22,13 +23,14 @@ use gpui_kit::{App, AppContext as _, Context, Entity, EventEmitter, SharedString
 use koyo_agent::agent_client::{AgentClient, Notice};
 use koyo_agent::client::{self, ClientError};
 use koyo_agent::protocol::events::Event;
-use koyo_agent::protocol::ids::{RunId, ThreadId};
+use koyo_agent::protocol::ids::{RequestId, RunId, ThreadId};
 use koyo_agent::protocol::methods::{
-    CreateParams, Delivery, Empty, HistoryParams, Method, OpenParams, Rows, SendParams, Sent,
+    CreateParams, Delivery, Empty, HistoryParams, Method, OpenParams, RequestsRespond, RespondParams, Rows, SendParams, Sent,
     ThreadParams, ThreadsClose, ThreadsCreate, ThreadsHistory, ThreadsOpen, ThreadsUpdate,
     ThreadsWatch, TurnsSend, UpdateParams,
 };
 use koyo_agent::protocol::model::{Prompt, Thread, ThreadSummary};
+use koyo_agent::protocol::requests::Response;
 
 use crate::settings;
 use thread::{ChatThread, ThreadEvent};
@@ -82,6 +84,11 @@ pub struct Chats {
 }
 
 impl EventEmitter<ChatsEvent> for Chats {}
+
+/// What's bound for the chats.
+pub fn init(cx: &mut App) {
+    asks::bind_keys(cx);
+}
 
 impl Chats {
     /// The chats of the host in the app's data folder. A person who has chats has their host
@@ -309,6 +316,20 @@ impl Chats {
             thread_id: id.clone(),
             prompt,
             delivery: Delivery::Auto,
+        })
+    }
+
+    /// Says `response` to request `request` of thread `id`.
+    pub fn respond(
+        &self,
+        id: &ThreadId,
+        request: RequestId,
+        response: Response,
+    ) -> impl Future<Output = Result<Empty, ClientError>> + use<> {
+        self.ordered::<RequestsRespond>(RespondParams {
+            thread_id: id.clone(),
+            request_id: request,
+            response,
         })
     }
 

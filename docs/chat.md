@@ -459,11 +459,15 @@ Request {
   id, threadId, runId, status: "pending"|"answered"|"cancelled"|"expired", kind + payload,
   answer: a response (4.3.3) | {kind: "message", messageId}, createdAt, resolvedAt, seq
 }
-  approval  {tool, family, title, detail, input, reason, allowSession: {label} | null}
+  approval  {tool, family, title, label, detail, change: [string] | null, input, reason,
+             allowSession: {label} | null}
   question  {questions: [{id, header, question, multiSelect, options: [{label, description,
              preview}]}], live: bool}
   plan      {markdown}                          live: never; answered by a message, or
                                                 implemented or dismissed
+  `label` is what a line of work would go by; `detail` is shown as is, at most 16 KB: a
+  command, a path, or else the input; `change` is an edit's to the file `detail` names, each
+  line starting `+` or `-`.
 
 ThreadSummary = id, cwd, title, provider, model, updatedAt,
   status: "idle"|"working"|"failed", needs: "approval"|"question"|"plan" | null,
@@ -892,9 +896,15 @@ Layout, top to bottom inside the pane's card:
   - turn fold: once a run settles, its work before the final answer folds into "Worked for
     1m 3s ›"; not folded: the live run, failed and interrupted runs, requests, compactions.
   - approval: inline where it was asked, never folded: what is asked (the command in mono;
-    for an edit, its diff; for a write, the file's head), why, if the CLI said, then Deny ·
-    Allow and a menu: "Allow for this chat (adds `Bash(npm test:*)`)" and "Stop". Keys, while
-    the composer is empty: ⌘↩ allow, ⌥⌘↩ allow for this chat, ⌘⌫ deny.
+    for an edit, its file and diff; for a write, the file and its head as added lines), why,
+    if the CLI said, then Deny · Allow and a menu: what the host says "Allow for this chat"
+    adds ("Allow `Bash(npm test:*)` for this chat", wrapped and never cut, as it's what a
+    person agrees to) and "Stop". Keys, while the composer is empty: ⌘↩ allow, ⌥⌘↩ allow for
+    this chat, ⌘⌫ deny; they're bound only then, so they edit and queue as ever once something
+    is typed. Requests are answered oldest first: a later one's buttons wait. What's typed and
+    sent declines with its words. Answered, it's one muted line ("Allowed cargo test",
+    "Denied cargo test: not now", "No longer asked: cargo test"), and "Worked for" leaves out
+    what the run waited on a person for.
   - question: a drawer attached above the composer, one question at a time ("2 of 3"),
     options as rows with digits 1–9, a single choice advancing after 200 ms, a multi-select
     with Next; the composer is "Other"; Skip denies the tool with "The user skipped the
