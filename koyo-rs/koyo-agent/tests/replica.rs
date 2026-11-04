@@ -5,6 +5,7 @@
     reason = "a test fails loudly at the step that broke"
 )]
 
+#[expect(dead_code, reason = "each test crate builds what it needs of these")]
 #[path = "support/records.rs"]
 mod records;
 

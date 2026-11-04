@@ -6,6 +6,7 @@ use crate::protocol::model::{
     Compaction, Effort, Failure, FailureKind, Item, ItemBody, ItemStatus, Run, TodoStatus, Tool,
     ToolFamily,
 };
+use crate::protocol::requests::{Answer, Approval, Decision, Request, Response};
 
 /// What shows under a final answer: "claude-opus · High · 14:30".
 pub fn answer_meta(run: &Run) -> String {
@@ -37,10 +38,19 @@ pub fn clock(time: &Time) -> Option<String> {
     Some(at.format("%H:%M").to_string())
 }
 
-pub fn worked_for(run: &Run) -> Option<String> {
+/// How long a settled run took of the agent's own time: what it waited on a person for isn't work.
+pub fn worked_for(run: &Run, requests: &[Request]) -> Option<String> {
     let started = parsed(run.started_at.as_ref()?)?;
     let ended = parsed(run.ended_at.as_ref()?)?;
-    Some(duration((ended - started).num_seconds().max(1).unsigned_abs()))
+    let waited: i64 = (requests.iter())
+        .filter(|request| request.run_id == run.id)
+        .filter_map(|request| {
+            let answered = parsed(request.resolved_at.as_ref()?)?;
+            Some((answered - parsed(&request.created_at)?).num_seconds())
+        })
+        .sum();
+    let worked = (ended - started).num_seconds() - waited;
+    Some(duration(worked.max(1).unsigned_abs()))
 }
 
 /// A length of time as a person says it: "41s", "1m 3s", "2h 5m".
@@ -84,7 +94,15 @@ pub fn failed(failure: &Failure) -> String {
 /// nothing but thinking.
 pub fn work_summary<'a>(items: impl Iterator<Item = &'a Item>) -> String {
     let mut counts: Vec<(ToolFamily, usize)> = Vec::new();
-    for family in items.filter_map(family_of) {
+    let mut declined = 0;
+    for item in items {
+        if item.status == ItemStatus::Declined {
+            declined += 1;
+            continue;
+        }
+        let Some(family) = family_of(item) else {
+            continue;
+        };
         match counts.iter_mut().find(|(counted, _)| *counted == family) {
             Some((_, count)) => *count += 1,
             None => counts.push((family, 1)),
@@ -99,9 +117,12 @@ pub fn work_summary<'a>(items: impl Iterator<Item = &'a Item>) -> String {
         sentence.push_str(&did(*family, *count));
     }
     let mut letters = sentence.chars();
-    match letters.next() {
-        Some(first) => first.to_uppercase().chain(letters).collect(),
-        None => "Thought".to_owned(),
+    let first = letters.next().map(|first| first.to_uppercase().chain(letters).collect::<String>());
+    match (first, declined) {
+        (Some(done), 0) => done,
+        (Some(done), declined) => format!("{done} · {declined} declined"),
+        (None, 0) => "Thought".to_owned(),
+        (None, declined) => format!("{declined} declined"),
     }
 }
 
@@ -151,9 +172,34 @@ pub fn tool_line(tool: &Tool, status: ItemStatus, cwd: &str) -> String {
         // What it was asked to do reads as a line of its own.
         ToolFamily::Agent => return tool.label.clone(),
     };
+    let what = from_checkout(&tool.label, cwd);
+    // It never ran: what it would have done is all there is to say, beside "Declined".
+    if status == ItemStatus::Declined {
+        return what;
+    }
     let verb = if running { doing } else { done };
-    let what = tool.label.replace(&format!("{}/", cwd.trim_end_matches('/')), "");
     format!("{verb} {what}")
+}
+
+/// What's left of an approval once it's no longer waiting: "Allowed cargo test", in the person's
+/// words if they gave any.
+pub fn approval_line(request: &Request, approval: &Approval, cwd: &str) -> String {
+    let what = from_checkout(&approval.label, cwd);
+    let Some(Answer::Response(Response::Approval { decision, message })) = &request.answer else {
+        return format!("No longer asked: {what}");
+    };
+    match (decision, message) {
+        (Decision::Allow, _) => format!("Allowed {what}"),
+        (Decision::AllowSession, _) => format!("Allowed {what} for this chat"),
+        (Decision::Deny, Some(message)) => format!("Denied {what}: {message}"),
+        (Decision::Deny, None) => format!("Denied {what}"),
+        (Decision::Cancel, _) => format!("Stopped at {what}"),
+    }
+}
+
+/// `text` with the paths under `cwd` relative to it.
+fn from_checkout(text: &str, cwd: &str) -> String {
+    text.replace(&format!("{}/", cwd.trim_end_matches('/')), "")
 }
 
 /// What the line of an item of work says.
