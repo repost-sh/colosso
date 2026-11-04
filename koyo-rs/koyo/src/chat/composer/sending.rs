@@ -125,6 +125,7 @@ impl ChatComposer {
                         let id = thread.id;
                         let opened = this.chats.update(cx, |chats, cx| chats.thread(&id, cx));
                         this.send_to_thread(opened.clone(), window, cx);
+                        this.draft_goes_to(&id, cx);
                         cx.emit(ComposerEvent::Created(opened, id.clone()));
                         this.send_to(&id, prompt, Delivery::Auto, window, cx);
                     }

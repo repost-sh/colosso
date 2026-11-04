@@ -42,7 +42,7 @@ fn tiles(chat: &Asking, cx: &TestAppContext) -> usize {
     chat.composer.read_with(cx, |composer, _| composer.attached.len())
 }
 
-fn kept_files(folder: &Path) -> usize {
+pub(super) fn kept_files(folder: &Path) -> usize {
     std::fs::read_dir(folder).map_or(0, Iterator::count)
 }
 

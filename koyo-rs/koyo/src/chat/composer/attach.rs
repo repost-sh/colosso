@@ -146,22 +146,13 @@ impl ChatComposer {
 
     /// The files of `attached`, which no message will name.
     pub(super) fn forget(&self, attached: Vec<Attached>, cx: &App) {
-        let Some(folder) = self.attachments.clone() else {
-            return;
-        };
-        let files: Vec<String> =
-            attached.into_iter().filter_map(|held| held.kept.map(|kept| kept.file)).collect();
-        if files.is_empty() {
-            return;
-        }
-        cx.background_spawn(async move {
-            for file in files {
-                if let Err(error) = std::fs::remove_file(folder.join(&file)) {
-                    log::warn!("an attachment no message names, {file}: {error}");
-                }
-            }
-        })
-        .detach();
+        let kept = attached.into_iter().filter_map(|held| held.kept).collect();
+        attachments::forget(self.attachments.clone(), kept, cx);
+    }
+
+    /// What's attached that a message could name.
+    pub(super) fn kept_attachments(&self) -> impl Iterator<Item = &Attachment> {
+        self.attached.iter().filter_map(|held| held.kept.as_ref())
     }
 
     /// The tiles, if anything's attached.

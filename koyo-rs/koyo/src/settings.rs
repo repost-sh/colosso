@@ -484,7 +484,7 @@ fn encode(cx: &mut App) -> Option<(PathBuf, Vec<u8>)> {
 }
 
 /// Writes through a temporary file, so a crash mid-write never leaves half a file behind.
-fn write(path: &Path, json: &[u8]) {
+pub(crate) fn write(path: &Path, json: &[u8]) {
     let temporary = path.with_extension("json.tmp");
     let written = path
         .parent()
