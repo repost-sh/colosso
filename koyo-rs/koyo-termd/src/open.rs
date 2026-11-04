@@ -166,12 +166,7 @@ fn reopen(
 
 /// `[a-z0-9][a-z0-9-]{0,31}`.
 pub fn valid_name(name: &str) -> Result<(), ProtocolError> {
-    let mut chars = name.chars();
-    let first_ok = chars
-        .next()
-        .is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit());
-    let rest_ok = chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
-    if first_ok && rest_ok && name.len() <= 32 {
+    if koyo_term_control::terminal::is_terminal_name(name) {
         Ok(())
     } else {
         Err(ProtocolError::new(

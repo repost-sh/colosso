@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 use koyo_app_control::ops::shared::{PaneKind, PaneSpec};
 use koyo_app_control::{ControlError, ErrorCode};
+use koyo_term_control::terminal::{is_terminal_name, login_shell_line};
 use koyo_term_control::Handle;
 use gpui_kit::{App, AsyncApp, Context, Task, Window};
 use serde_json::Value;
@@ -80,26 +81,14 @@ pub(crate) fn check(spec: &PaneSpec) -> Result<(), ControlError> {
             "`line` and `column` need a `file`.",
         )),
         None => match &spec.name {
-            Some(name) if !terminal_name(name) => Err(ControlError::invalid_input(format!(
+            // A name the daemon refuses would leave a tab whose terminal never opens.
+            Some(name) if !is_terminal_name(name) => Err(ControlError::invalid_input(format!(
                 "“{name}” isn't a terminal name: lowercase letters, digits and dashes, up to 32, \
                  starting with a letter or digit."
             ))),
             _ => Ok(()),
         },
     }
-}
-
-/// Whether the terminal daemon takes `name` for a terminal: `[a-z0-9][a-z0-9-]{0,31}`, as
-/// `koyo_termd`'s open checks it. A name it refuses would leave a tab whose terminal never
-/// opens, so it's refused before the tab is made.
-fn terminal_name(name: &str) -> bool {
-    let mut chars = name.chars();
-    let first = chars
-        .next()
-        .is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit());
-    first
-        && name.len() <= 32
-        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
 /// Opens the pane `spec` describes on the selected checkout, at `root`, in a tab of its own:
@@ -128,13 +117,8 @@ pub(crate) fn open(
                         }),
                 );
             }
-            let command = (spec.command.clone())
-                .map(|line| {
-                    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned());
-                    vec![shell, "-lc".to_owned(), line]
-                })
-                .unwrap_or_default();
-            let opening = shell.open_terminal(root.to_path_buf(), spec.name.clone(), command, cx);
+            let command = (spec.command.clone()).map(login_shell_line).unwrap_or_default();
+            let opening = shell.open_terminal(root.to_path_buf(), spec.name.clone().into(), command, cx);
             Opened::Later(cx.spawn_in(window, async move |this, cx| {
                 let pane = opening.await.ok_or_else(|| {
                     ControlError::new(

@@ -6,11 +6,27 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use koyo_term::{Source, TerminalView};
-use koyo_term_control::{Handle, OpenRequest, RequestBody, ResponseBody, Selector};
+use koyo_term_control::{Handle, OpenRequest, RequestBody, ResponseBody, Selector, terminal};
 use gpui_kit::{AppContext as _, Context, Entity, Task};
 
 use super::{Terminals, free_name, open_request, shell_name};
+use crate::settings::ProjectScript;
 use crate::shell::Shell;
+
+/// What a new terminal is called.
+pub(crate) enum Naming {
+    /// This: a terminal the checkout has by this name is shown instead.
+    Exactly(String),
+    /// This, with the next free number after it if it's taken.
+    After(String),
+}
+
+impl From<Option<String>> for Naming {
+    /// The name asked for, or the shell's.
+    fn from(name: Option<String>) -> Self {
+        name.map_or_else(|| Naming::After(shell_name()), Naming::Exactly)
+    }
+}
 
 impl Terminals {
     /// The view of terminal tab `id`, once it's made.
@@ -40,18 +56,25 @@ impl Shell {
         else {
             return;
         };
-        self.open_terminal(worktree, None, Vec::new(), cx).detach();
+        self.open_terminal(worktree, None.into(), Vec::new(), cx).detach();
+    }
+
+    /// Runs `script` through the login shell in the checkout at `worktree`, in a new tab called
+    /// after it: it runs again each time a person asks.
+    pub fn run_script(&mut self, worktree: PathBuf, script: &ProjectScript, cx: &mut Context<Self>) {
+        let name = terminal::name_after(&script.name).unwrap_or_else(|| "script".to_owned());
+        let command = terminal::login_shell_line(script.command.clone());
+        self.open_terminal(worktree, Naming::After(name), command, cx).detach();
     }
 
     /// Opens a terminal in the checkout at `worktree`, in a new tab that's shown and takes the
-    /// keyboard: named `name`, or after the shell and the next free number, and running
-    /// `command`, or the login shell when it's empty. A name the checkout has already shows
-    /// that terminal. Done with the tab's pane once it's added; with `None` when the daemon
-    /// can't be reached or the checkout isn't listed.
+    /// keyboard, called as `name` says and running `command`, or the login shell when it's empty.
+    /// Done with the tab's pane once it's added; with `None` when the daemon can't be reached or
+    /// the checkout isn't listed.
     pub(crate) fn open_terminal(
         &mut self,
         worktree: PathBuf,
-        name: Option<String>,
+        name: Naming,
         command: Vec<String>,
         cx: &mut Context<Self>,
     ) -> Task<Option<u64>> {
@@ -62,8 +85,8 @@ impl Shell {
         cx.spawn(async move |this, cx| {
             // Only a name to pick needs the names taken.
             let listed = match &name {
-                Some(_) => None,
-                None => Some(
+                Naming::Exactly(_) => None,
+                Naming::After(_) => Some(
                     cx.background_spawn({
                         let worktree = worktree.clone();
                         async move {
@@ -91,17 +114,20 @@ impl Shell {
                 }
             };
             this.update(cx, |this, cx| {
-                let name = name.unwrap_or_else(|| {
-                    // Names the open tabs hold count too: their terminals may not be open yet.
-                    let mut taken = taken;
-                    taken.extend(
-                        this.terminals
-                            .views
-                            .values()
-                            .map(|made| made.view.read(cx).name().to_owned()),
-                    );
-                    free_name(&shell_name(), &taken)
-                });
+                let name = match name {
+                    Naming::Exactly(name) => name,
+                    Naming::After(base) => {
+                        // Names the open tabs hold count too: their terminals may not be open yet.
+                        let mut taken = taken;
+                        taken.extend(
+                            this.terminals
+                                .views
+                                .values()
+                                .map(|made| made.view.read(cx).name().to_owned()),
+                        );
+                        free_name(&base, &taken)
+                    }
+                };
                 let request = OpenRequest {
                     command,
                     ..open_request(&worktree, name.clone())
