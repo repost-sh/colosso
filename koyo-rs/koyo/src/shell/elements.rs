@@ -38,9 +38,10 @@ pub fn new_tab_menu(
         PaneKind::ALL
             .into_iter()
             .map(|kind| MenuItem {
-                icon: kind.icon(),
+                icon: Some(kind.icon()),
                 label: kind.new_tab_label().into(),
                 action: new_tab_action(kind),
+                switch: None,
             })
             .collect()
     })

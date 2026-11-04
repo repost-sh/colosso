@@ -268,14 +268,16 @@ fn buttons(
 /// Allowing for the chat, in what the host says that adds, when it can be; and stopping.
 pub(super) fn answers_past_allow(for_chat: Option<SharedString>) -> Vec<MenuItem> {
     let allow = for_chat.map(|label| MenuItem {
-        icon: IconName::Check,
+        icon: Some(IconName::Check),
         label,
         action: Box::new(AllowRequestForChat),
+        switch: None,
     });
     let stop = MenuItem {
-        icon: IconName::CircleX,
+        icon: Some(IconName::CircleX),
         label: "Stop".into(),
         action: Box::new(StopRequest),
+        switch: None,
     };
     allow.into_iter().chain([stop]).collect()
 }

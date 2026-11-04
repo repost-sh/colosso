@@ -38,14 +38,13 @@ pub trait Control: 'static {
 /// and a div that size, full width, it's put over. None where the window can't host a native
 /// view, which falls back to the GPUI control.
 pub fn host<C: Control>(
-    id: &'static str,
+    id: impl Into<ElementId>,
     control: C,
     shown: C::Shown,
     window: &mut Window,
     cx: &mut App,
 ) -> Option<(Size<Pixels>, Div)> {
-    let key = ElementId::NamedInteger(id.into(), 0);
-    let hosted = window.use_keyed_state(key, cx, |window, cx| Hosted::new(control, window, cx));
+    let hosted = window.use_keyed_state(id.into(), cx, |window, cx| Hosted::new(control, window, cx));
     let size = hosted.update(cx, |hosted, _| {
         let native = hosted.native.as_ref()?;
         if hosted.shown != Some(shown) {
