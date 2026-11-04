@@ -302,6 +302,7 @@ impl Chats {
             provider: None,
             model: None,
             effort: None,
+            fast: false,
             permission: None,
             plan: false,
         })

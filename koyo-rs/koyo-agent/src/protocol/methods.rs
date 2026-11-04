@@ -171,6 +171,7 @@ pub struct CreateParams {
     pub provider: Option<String>,
     pub model: Option<String>,
     pub effort: Option<Effort>,
+    pub fast: bool,
     pub permission: Option<Mode>,
     pub plan: bool,
 }

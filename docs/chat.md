@@ -354,7 +354,7 @@ catalog     {provider: id | null, cwd} → {models: [Model], commands: [Command]
 
 ```
 threads.watch   {} → [ThreadSummary], then `thread.summary` for every thread
-threads.create  {cwd, provider: id | null, model, effort, permission, plan} → Thread
+threads.create  {cwd, provider: id | null, model, effort, fast, permission, plan} → Thread
 threads.open    {threadId, sinceSeq} → ThreadSnapshot, then its `thread.changed` and
                 `item.appended` until `threads.close`. A first open holds the latest 30
                 runs' items; `sinceSeq` gets the rows changed since, and every streaming item
