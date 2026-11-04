@@ -138,6 +138,7 @@ pub enum Response {
         decision: Decision,
         message: Option<String>,
     },
+    /// By the question's id. No answers at all is skipping it, which declines the tool.
     Question {
         answers: Answers,
     },

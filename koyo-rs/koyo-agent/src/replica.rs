@@ -5,9 +5,10 @@
 use std::cmp::Ordering;
 
 use crate::protocol::events::{Appended, Changed};
+use crate::protocol::ids::RequestId;
 use crate::protocol::methods::{Rows, ThreadSnapshot};
 use crate::protocol::model::{Item, Run, Thread};
-use crate::protocol::requests::{Request, RequestStatus};
+use crate::protocol::requests::{Request, RequestPayload, RequestStatus};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Replica {
@@ -41,6 +42,15 @@ impl Replica {
         (self.requests.iter())
             .filter(|request| request.status == RequestStatus::Pending)
             .min_by_key(|request| request.seq)
+    }
+
+    /// What the plan of request `id` says.
+    pub fn plan(&self, id: &RequestId) -> Option<&str> {
+        let request = self.requests.iter().find(|request| request.id == *id)?;
+        match &request.payload {
+            RequestPayload::Plan { markdown } => Some(markdown),
+            _ => None,
+        }
     }
 
     /// What a reopen passes as its `sinceSeq`: the last change this holds.
