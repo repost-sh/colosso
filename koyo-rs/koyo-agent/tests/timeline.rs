@@ -13,8 +13,8 @@ use koyo_agent::protocol::model::{
 };
 use koyo_agent::protocol::requests::{Request, RequestStatus};
 use koyo_agent::replica::Replica;
-use koyo_agent::timeline::{Row, RowId, RowKind, WorkFold, changed, children, rows};
-use records::{answer, done, item, message, request, run, snapshot, tool_of};
+use koyo_agent::timeline::{Row, RowId, RowKind, WorkFold, changed, rows};
+use records::{answer, done, item, message, request, run, snapshot, subagent, tool_of};
 
 fn tool(label: &str) -> ItemBody {
     ItemBody::Tool(tool_of(ToolFamily::Read, label))
@@ -35,6 +35,9 @@ fn shape(replica: &Replica, rows: &[Row]) -> Vec<String> {
             }
             RowKind::Work { items } => {
                 format!("work {}", items.iter().map(id).collect::<Vec<_>>().join(","))
+            }
+            RowKind::Subagents { items } => {
+                format!("agents {}", items.iter().map(id).collect::<Vec<_>>().join(" "))
             }
             RowKind::Live { .. } => "live".to_owned(),
             RowKind::Fold { .. } => "fold".to_owned(),
@@ -265,17 +268,47 @@ fn a_note_stays_unless_it_is_only_for_information() {
 }
 
 #[test]
-fn what_an_agent_did_shows_inside_it_not_as_rows_of_its_own() {
-    let child = Item {
-        parent_id: Some(ItemId("b".into())),
-        ..done("c", 2, tool("inside"))
+fn subagents_one_after_the_other_are_a_row_that_stays_when_the_run_folds() {
+    let agent = |id: &str, ordinal| done(id, ordinal, ItemBody::Subagent(Box::new(subagent("Check"))));
+    let items = vec![
+        done("a", 0, tool("first")),
+        agent("b", 1),
+        agent("c", 2),
+        done("d", 3, tool("later")),
+        agent("e", 4),
+        done("f", 5, answer("Done")),
+    ];
+    let replica = replica_of(RunStatus::Completed, items);
+    let open = rows(&replica, |_| WorkFold::Open);
+    assert_eq!(shape(&replica, &open)[1..], [
+        "work a",
+        "agents b c",
+        "work d",
+        "agents e",
+        "answer f",
+    ]);
+    assert_eq!(of(&replica), ["fold", "agents b c e", "answer f"]);
+    let folded: Vec<_> = made(&replica).into_iter().map(|row| row.id).collect();
+    let id = |item: &str| ItemId(item.into());
+    assert_eq!(folded, [
+        RowId::Fold(RunId("r1".into())),
+        RowId::Subagents(id("b")),
+        RowId::Item(id("f")),
+    ]);
+}
+
+#[test]
+fn a_running_subagent_shows_for_itself_and_the_live_row_says_the_rest() {
+    let running = Item {
+        status: ItemStatus::Running,
+        ..done("a", 0, ItemBody::Subagent(Box::new(subagent("Check"))))
     };
-    let items = vec![done("b", 1, tool("agent")), child, done("d", 3, answer("Done"))];
-    let replica = replica_of(RunStatus::Failed, items);
-    assert_eq!(of(&replica), ["work b", "answer d", "failure"]);
-    let agent = ItemId("b".into());
-    let inside: Vec<&str> = children(&replica, &agent).map(|child| child.id.0.as_str()).collect();
-    assert_eq!(inside, ["c"]);
+    let replica = replica_of(RunStatus::Running, vec![running]);
+    let kinds: Vec<_> = rows(&replica, |_| WorkFold::None).into_iter().map(|row| row.kind).collect();
+    assert_eq!(kinds, [
+        RowKind::Subagents { items: vec![0] },
+        RowKind::Live { item: None },
+    ]);
 }
 
 #[test]

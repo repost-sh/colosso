@@ -10,6 +10,7 @@ mod marks;
 mod queued;
 mod output;
 mod rows;
+mod subagents;
 mod tabs;
 mod thread;
 mod timeline;

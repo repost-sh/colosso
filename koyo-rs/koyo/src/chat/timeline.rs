@@ -12,9 +12,9 @@ use gpui_kit::{
     ClipboardItem, Context, Entity, EventEmitter, FocusHandle, IntoElement, Pixels, Render, StyleRefinement,
     Styled as _, Subscription, Task, Window,
 };
-use koyo_agent::protocol::ids::{ItemId, RunId};
+use koyo_agent::protocol::ids::{ItemId, RunId, ThreadId};
 use koyo_agent::protocol::methods::Catalog;
-use koyo_agent::protocol::model::ItemBody;
+use koyo_agent::protocol::model::{ItemBody, ItemStatus};
 use koyo_agent::replica::Replica;
 use koyo_agent::timeline::{Row, RowId, RowKind, WorkFold, changed, rows};
 
@@ -44,6 +44,8 @@ pub(super) struct Timeline {
     open: Rc<HashSet<RowId>>,
     /// What the live row shows, and since when.
     running: Option<(ItemId, Instant)>,
+    /// Whether another chat is over this one, so it has nothing to keep up with until it's back.
+    covered: bool,
     /// Keeps the elapsed time going while something's running.
     ticking: Option<Task<()>>,
     /// What was just copied, until the button stops saying so.
@@ -59,6 +61,31 @@ pub(super) struct Timeline {
 }
 
 impl EventEmitter<ChatViewEvent> for Timeline {}
+impl EventEmitter<OpenSubagent> for Timeline {}
+
+/// A person went for the thread of a subagent in the timeline.
+pub(super) struct OpenSubagent(pub(super) ThreadId);
+
+/// A second's tick for as long as something's `running`, for its elapsed time.
+pub(super) fn keep_ticking<T: 'static>(
+    ticking: &mut Option<Task<()>>,
+    running: bool,
+    cx: &mut Context<T>,
+) {
+    if running == ticking.is_some() {
+        return;
+    }
+    *ticking = running.then(|| {
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor().timer(Duration::from_secs(1)).await;
+                if this.update(cx, |_, cx| cx.notify()).is_err() {
+                    return;
+                }
+            }
+        })
+    });
+}
 
 impl Timeline {
     pub(super) fn new(
@@ -82,6 +109,7 @@ impl Timeline {
             rows: Rc::default(),
             open: Rc::default(),
             running: None,
+            covered: false,
             ticking: None,
             copied: None,
             inset,
@@ -97,6 +125,9 @@ impl Timeline {
 
     /// Takes in what the thread holds now.
     fn follow(&mut self, cx: &mut Context<Self>) {
+        if self.covered {
+            return;
+        }
         let replica = self.thread.read(cx).replica();
         let fold = |run: &RunId| match self.work {
             ChatWork::Steps | ChatWork::Everything => WorkFold::None,
@@ -105,6 +136,11 @@ impl Timeline {
         };
         let new = replica.map_or_else(Vec::new, |replica| rows(replica, fold));
         let running = replica.and_then(|replica| running_item(replica, &new));
+        let subagent_running = replica.is_some_and(|replica| {
+            (replica.items.iter()).any(|item| {
+                matches!(item.body, ItemBody::Subagent(_)) && item.status == ItemStatus::Running
+            })
+        });
         self.running = running.map(|id| {
             let since = (self.running.as_ref())
                 .filter(|(held, _)| *held == id)
@@ -117,7 +153,7 @@ impl Timeline {
             });
         }
         self.rows = Rc::new(new);
-        self.keep_time(cx);
+        keep_ticking(&mut self.ticking, self.running.is_some() || subagent_running, cx);
         self.follow_queued_edit(cx);
         cx.notify();
     }
@@ -136,22 +172,14 @@ impl Timeline {
         self.scroller.update(cx, |scroller, cx| scroller.remeasure_items(0..count, cx));
     }
 
-    /// A second's tick for as long as something's running, for its elapsed time.
-    fn keep_time(&mut self, cx: &mut Context<Self>) {
-        let running = self.running.is_some();
-        if running == self.ticking.is_some() {
-            return;
+    /// Another chat came over this one, or left: what happened meanwhile is taken in at once.
+    pub(super) fn set_covered(&mut self, covered: bool, cx: &mut Context<Self>) {
+        self.covered = covered;
+        if covered {
+            self.ticking = None;
+        } else {
+            self.follow(cx);
         }
-        self.ticking = running.then(|| {
-            cx.spawn(async move |this, cx| {
-                loop {
-                    cx.background_executor().timer(Duration::from_secs(1)).await;
-                    if this.update(cx, |_, cx| cx.notify()).is_err() {
-                        return;
-                    }
-                }
-            })
-        });
     }
 
     /// Opens or closes what goes by `id`, drawn in the row at `index`. A settled run's work is
@@ -226,6 +254,7 @@ impl Timeline {
     /// What the rows are drawn from now.
     pub(super) fn drawing(&self, cx: &Context<Self>) -> Drawing {
         Drawing {
+            now: chrono::Utc::now(),
             thread: self.thread.clone(),
             catalog: self.catalog.clone(),
             timeline: cx.weak_entity(),

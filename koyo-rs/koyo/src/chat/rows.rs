@@ -23,7 +23,7 @@ use koyo_agent::replica::Replica;
 use koyo_agent::timeline::{Row, RowId, RowKind};
 use koyo_agent::words::{answer_meta, clock, duration, live_line, plan_parts, worked_for};
 
-use super::{asks, attachments};
+use super::{asks, attachments, subagents};
 use super::thread::ChatThread;
 use super::timeline::Timeline;
 use super::view::COLUMN;
@@ -44,10 +44,12 @@ const BUBBLE_LINE_HEIGHT: f32 = 24.;
 /// How big a picture a message attached shows.
 const ATTACHED_PICTURE: f32 = 160.;
 /// How often the live row's highlight moves: slow enough for the rows it redraws not to matter.
-const SHIMMER_FPS: f32 = 20.;
+pub(super) const SHIMMER_FPS: f32 = 20.;
 
 /// What the list's rows are drawn from.
 pub(super) struct Drawing {
+    /// Now, as of this draw of the timeline, for how long what's running took.
+    pub(super) now: chrono::DateTime<chrono::Utc>,
     pub(super) thread: Entity<ChatThread>,
     pub(super) catalog: Entity<Catalog>,
     pub(super) timeline: WeakEntity<Timeline>,
@@ -108,6 +110,7 @@ impl Drawing {
                     .into_any_element()
             }
             RowKind::Work { items } => work::group(self, replica, items, id, index),
+            RowKind::Subagents { items } => subagents::group(self, replica, items, id, index),
             RowKind::Live { item } => {
                 let working_on = item.as_ref().and_then(item_at);
                 self.live(working_on).into_any_element()
@@ -365,7 +368,7 @@ fn gap_after(kind: &RowKind) -> f32 {
         // What's said on the way is a paragraph of the same turn, and the room for its copy button
         // already keeps it from what follows.
         RowKind::Answer { last: false, .. } => 0.,
-        RowKind::Work { .. } | RowKind::Fold { .. } | RowKind::Live { .. } => 10.,
+        RowKind::Work { .. } | RowKind::Fold { .. } | RowKind::Live { .. } | RowKind::Subagents { .. } => 10.,
         RowKind::User { .. } | RowKind::Answer { .. } | RowKind::Queued { .. } => 14.,
         _ => 18.,
     }

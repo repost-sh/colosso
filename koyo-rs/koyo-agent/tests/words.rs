@@ -19,7 +19,7 @@ use koyo_agent::words::{
     answer_meta, approval_line, compacted, context_line, duration, live_line, plan_outcome,
     plan_parts, question_lines, tool_line, work_line, work_summary, worked_for,
 };
-use records::{done, reasoning, request, run, subagent, tool_of};
+use records::{done, reasoning, request, run, tool_of};
 use serde_json::json;
 
 #[test]
@@ -30,8 +30,6 @@ fn work_done_together_is_said_in_a_sentence() {
     assert_eq!(said(&[&read]), "Read a file");
     assert_eq!(said(&[&read, &read, &read, &ran, &ran]), "Read 3 files and ran 2 commands");
     assert_eq!(said(&[&ran, &read, &web, &web]), "Ran a command, read a file and searched the web");
-    let agent = done("b", 1, ItemBody::Subagent(subagent("Check")));
-    assert_eq!(said(&[&agent, &agent]), "Ran 2 agents");
     let thought = done("c", 1, reasoning("Hm"));
     assert_eq!(said(&[&thought, &thought]), "Thought");
     assert_eq!(said(&[&read, &thought]), "Thought and read a file", "a thought isn't hidden");
@@ -65,9 +63,6 @@ fn a_line_of_work_says_the_latest_thought_and_the_live_row_only_that_it_thinks()
     assert_eq!(work_line(&thinking, "/work"), "Then this");
     assert_eq!(live_line(Some(&thinking), "/work"), "Thinking…");
     assert_eq!(live_line(None, "/work"), "Working…");
-    let agent = done("b", 1, ItemBody::Subagent(subagent("Check the callers")));
-    assert_eq!(work_line(&agent, "/work"), "Check the callers");
-    assert_eq!(live_line(Some(&agent), "/work"), "Check the callers");
     let running = Item {
         status: ItemStatus::Running,
         ..done("c", 1, ItemBody::Tool(tool_of(ToolFamily::Command, "ls")))
@@ -96,6 +91,7 @@ fn times_and_tokens_are_said_as_a_person_would() {
     assert_eq!(answer_meta(&settled, &[]), "claude-opus · Extra high", "it isn't listed");
     let listed = Model {
         id: "claude-opus".into(),
+        runs: None,
         name: "Default (recommended)".into(),
         label: "Opus 5.5 (new)".into(),
         efforts: Vec::new(),
@@ -109,6 +105,7 @@ fn times_and_tokens_are_said_as_a_person_would() {
 fn a_model_runs_at_the_effort_nearest_below_what_is_asked_for() {
     let model = |efforts: &[Effort]| Model {
         id: "m".into(),
+        runs: None,
         name: "M".into(),
         label: "M".into(),
         efforts: efforts.to_vec(),
