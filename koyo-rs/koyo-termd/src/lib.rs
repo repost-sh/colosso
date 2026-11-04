@@ -23,6 +23,8 @@ mod worktree;
 use std::io::Write as _;
 use std::process::ExitCode;
 
+pub use plain::skip_escape;
+
 use koyo_term_control::TermDir;
 
 /// Runs the daemon with `args` (what follows the program or subcommand name) until it's
