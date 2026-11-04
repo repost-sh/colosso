@@ -10,9 +10,11 @@
 //! what it read is updated, told or not, and every token updates both.
 
 mod asked;
+mod attach;
 mod footer;
 mod model_picker;
 mod question;
+mod sending;
 mod suggest;
 
 use std::path::PathBuf;
@@ -26,24 +28,25 @@ use gpui_kit::{
     FocusHandle, Focusable, InteractiveElement as _, IntoElement, KeyContext, ParentElement as _,
     Render, SharedString, Stateful, Styled as _, Subscription, Window, div, px,
 };
-use koyo_agent::client::ClientError;
 #[cfg(test)]
 use koyo_agent::protocol::ids::RequestId;
-use koyo_agent::protocol::ids::{MessageId, ThreadId};
+use koyo_agent::protocol::ids::ThreadId;
+use koyo_agent::protocol::methods::Catalog;
 #[cfg(test)]
 use koyo_agent::protocol::methods::UpdateParams;
-use koyo_agent::protocol::methods::{Catalog, ThreadsCreate};
 use koyo_agent::protocol::model::Prompt;
-use koyo_agent::protocol::requests::{Decision, Response};
+#[cfg(test)]
+use koyo_agent::protocol::requests::Response;
 use koyo_agent::replica::Replica;
 
 use self::asked::Asked;
+use self::attach::Attached;
 use self::footer::{COMPOSER, ROOM_FOR_LABELS, Settings, labels_fitting};
 use self::model_picker::{ModelPicker, PICKING};
 use self::suggest::{SUGGESTING, Suggestions};
 use super::thread::ChatThread;
 use super::view::COLUMN;
-use super::{Chats, Connection};
+use super::{Chats, Connection, attachments};
 use crate::native::liquid;
 use crate::shell::glass;
 use crate::theme::{self, Palette};
@@ -93,6 +96,14 @@ pub(super) struct ChatComposer {
     suggest: Option<Suggestions>,
     /// Where the word starts that was told not to complete, until the caret leaves it.
     dismissed: Option<usize>,
+    /// What's attached to the message being written.
+    attached: Vec<Attached>,
+    /// How many tiles there've been, which each goes by.
+    tiles_made: usize,
+    /// The message that last didn't go, whose id it keeps if it's sent again as it was.
+    unsent: Option<Prompt>,
+    /// Where what's attached is kept.
+    attachments: Option<PathBuf>,
     /// How many of the footer's chips say what they are, as wide as it is.
     labels: usize,
     _subscriptions: Vec<Subscription>,
@@ -144,6 +155,11 @@ impl ChatComposer {
                 cx.notify();
             }),
             cx.observe(&text, |this, _, cx| this.follow_text(cx)),
+            // No message will name what's still attached.
+            cx.on_release(|this: &mut Self, cx| {
+                let gone = std::mem::take(&mut this.attached);
+                this.forget(gone, cx);
+            }),
         ];
         let connection = chats.read(cx).connection().clone();
         let mut composer = ChatComposer {
@@ -163,6 +179,10 @@ impl ChatComposer {
             picker: None,
             suggest: None,
             dismissed: None,
+            attached: Vec::new(),
+            tiles_made: 0,
+            unsent: None,
+            attachments: attachments::folder(),
             labels: ROOM_FOR_LABELS.len(),
             _subscriptions: subscriptions,
             #[cfg(test)]
@@ -223,115 +243,6 @@ impl ChatComposer {
     /// Whether nothing's been said here yet, nor is on its way.
     pub(super) fn is_new(&self) -> bool {
         self.thread.is_none() && !self.creating
-    }
-
-    /// Sends what's typed: the composer clears at once, and the message shows when the host says
-    /// so.
-    pub(super) fn send(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let text = self.text.read(cx).value().trim().to_owned();
-        if text.is_empty() || self.creating {
-            return;
-        }
-        self.text.update(cx, |composer, cx| composer.set_value("", window, cx));
-        self.error = None;
-        cx.emit(ComposerEvent::Sent);
-        cx.notify();
-        match &self.asked {
-            Asked::Approval { .. } => {
-                let response = Response::Approval {
-                    decision: Decision::Deny,
-                    message: Some(text.clone()),
-                };
-                self.respond(response, Some(text), window, cx);
-                return;
-            }
-            // With all of it answered, and on its way, this is just the next message.
-            Asked::Question(drawer) if drawer.shown().is_some() => {
-                self.next_question(Some(text), window, cx);
-                return;
-            }
-            _ => {}
-        }
-        let prompt = Prompt {
-            message_id: MessageId::fresh(),
-            text,
-            attachments: Vec::new(),
-        };
-        match &self.thread {
-            Some(thread) => {
-                let id = thread.read(cx).id().clone();
-                self.send_to(&id, prompt, window, cx);
-            }
-            None => self.create_and_send(prompt, window, cx),
-        }
-    }
-
-    fn send_to(
-        &mut self,
-        id: &ThreadId,
-        prompt: Prompt,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let text = prompt.text.clone();
-        let sent = self.chats.read(cx).send(id, prompt);
-        cx.spawn_in(window, async move |this, cx| {
-            if let Err(error) = sent.await {
-                this.update_in(cx, |this, window, cx| {
-                    this.not_sent(&text, &error, window, cx);
-                })
-                .ok();
-            }
-        })
-        .detach();
-    }
-
-    /// A new chat's first send: its thread is made, then opened, then told the message.
-    fn create_and_send(&mut self, prompt: Prompt, window: &mut Window, cx: &mut Context<Self>) {
-        self.creating = true;
-        let params = self.settings.to_create(&self.cwd);
-        let made = self.chats.read(cx).ordered::<ThreadsCreate>(params);
-        cx.spawn_in(window, async move |this, cx| {
-            let made = made.await;
-            this.update_in(cx, |this, window, cx| {
-                this.creating = false;
-                match made {
-                    Ok(thread) => {
-                        let id = thread.id;
-                        let opened = this.chats.update(cx, |chats, cx| chats.thread(&id, cx));
-                        this.send_to_thread(opened.clone(), window, cx);
-                        cx.emit(ComposerEvent::Created(opened, id.clone()));
-                        this.send_to(&id, prompt, window, cx);
-                    }
-                    Err(error) => this.not_sent(&prompt.text, &error, window, cx),
-                }
-                cx.notify();
-            })
-            .ok();
-        })
-        .detach();
-    }
-
-    fn not_sent(
-        &mut self,
-        text: &str,
-        why: &ClientError,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        log::warn!("a message didn't go: {why}");
-        self.error = Some(why.to_string().into());
-        self.give_back(text, window, cx);
-        cx.notify();
-    }
-
-    /// What was typed comes back, unless something else has been typed since.
-    fn give_back(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
-        self.text.update(cx, |composer, cx| {
-            if composer.value().is_empty() {
-                composer.insert(text.to_owned(), window, cx);
-            }
-        });
     }
 
     /// Whether a popover is over what's above the composer, which has to go: glass only hides what's
@@ -433,9 +344,10 @@ impl Render for ChatComposer {
             .rounded(px(18.))
             .occlude();
         let typed = self.text.read(cx).value();
-        let surface = liquid::floating(surface, on_glass, p)
+        let surface = Self::takes_drops(liquid::floating(surface, on_glass, p), p, cx)
             .children(self.drawer(&typed, p, cx))
-            .child(Textarea::new(&self.text).appearance(false))
+            .children(self.tiles(p, cx))
+            .child(Textarea::new(&self.text).appearance(false).on_paste(self.takes_paste(cx)))
             .child(self.footer(&typed, p, cx))
             .children(self.model_picker(p, window, cx))
             .children(self.suggestions(p, window, cx));

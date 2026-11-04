@@ -11,18 +11,18 @@ use gpui_kit::component::text::{TextView, TextViewState};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, ClickEvent, Div, ElementId, Entity, FocusHandle, InteractiveElement as _,
-    IntoElement, ParentElement as _, Pixels, SharedString, Stateful, StatefulInteractiveElement as _,
-    Styled as _, WeakEntity, Window, div, px, relative,
+    IntoElement, ParentElement as _, Pixels, SharedString, Stateful,
+    StatefulInteractiveElement as _, Styled as _, WeakEntity, Window, div, px, relative,
 };
 use koyo_agent::protocol::ids::ItemId;
 use koyo_agent::protocol::methods::Catalog;
-use koyo_agent::protocol::model::{Delivered, Item, ItemBody, Run};
+use koyo_agent::protocol::model::{Attachment, Delivered, Item, ItemBody, Run};
 use koyo_agent::protocol::requests::{Request, RequestPayload};
 use koyo_agent::replica::Replica;
 use koyo_agent::timeline::{Row, RowId, RowKind};
 use koyo_agent::words::{answer_meta, clock, duration, live_line, plan_parts, worked_for};
 
-use super::asks;
+use super::{asks, attachments};
 use super::thread::ChatThread;
 use super::timeline::Timeline;
 use super::view::COLUMN;
@@ -40,6 +40,8 @@ const COLLAPSED_LINES: usize = 8;
 const BUBBLE_LINE: usize = 72;
 /// How tall a line of a bubble is, which a collapsed one is cut to a number of.
 const BUBBLE_LINE_HEIGHT: f32 = 24.;
+/// How big a picture a message attached shows.
+const ATTACHED_PICTURE: f32 = 160.;
 /// How often the live row's highlight moves: slow enough for the rows it redraws not to matter.
 const SHIMMER_FPS: f32 = 20.;
 
@@ -167,15 +169,20 @@ impl Drawing {
         let sent = if steered { None } else { clock(&run.requested_at) };
         let said = bubble()
             .bg(p.accent.opacity(0.16))
-            .child(
-                div()
-                    .line_height(px(BUBBLE_LINE_HEIGHT))
-                    .when(long && !open, |text| {
-                        text.max_h(px(COLLAPSED_LINES as f32 * BUBBLE_LINE_HEIGHT))
-                            .overflow_hidden()
-                    })
-                    .child(message.text.clone()),
-            )
+            .when(!message.attachments.is_empty(), |said| {
+                said.child(attached(&item.id.0, &message.attachments, p))
+            })
+            .when(!message.text.is_empty(), |said| {
+                said.child(
+                    div()
+                        .line_height(px(BUBBLE_LINE_HEIGHT))
+                        .when(long && !open, |text| {
+                            text.max_h(px(COLLAPSED_LINES as f32 * BUBBLE_LINE_HEIGHT))
+                                .overflow_hidden()
+                        })
+                        .child(message.text.clone()),
+                )
+            })
             .when(long, |said| said.child(self.show_more(id.clone(), index, open)));
         Some(
             div()
@@ -283,6 +290,21 @@ impl Drawing {
 }
 
 /// A message's shape, right or dashed as its row says.
+/// What a message attached, above its words: a picture a fixed size, so the row's height is known
+/// before it's read, and any other file by its name. Each opens where the person would.
+pub(super) fn attached(key: &str, attachments: &[Attachment], p: Palette) -> Div {
+    let folder = attachments::folder();
+    let tiles = attachments.iter().enumerate().map(|(at, attachment)| {
+        let id: SharedString = format!("attached-{key}-{at}").into();
+        let path = folder.as_ref().map(|folder| folder.join(&attachment.file));
+        attachments::tile(id, attachment, folder.as_deref(), ATTACHED_PICTURE, p)
+            .when_some(path, |tile, path| {
+                tile.on_click(move |_: &ClickEvent, _, cx| cx.open_with_system(&path))
+            })
+    });
+    div().flex().flex_wrap().justify_end().gap_2().pb_1().children(tiles)
+}
+
 pub(super) fn bubble() -> Div {
     div().max_w(relative(0.8)).px(px(14.)).py(px(9.)).rounded(px(16.))
 }

@@ -926,8 +926,7 @@ Layout, top to bottom inside the pane's card:
   - queued: dashed user bubbles at the end, "Send now · Edit · Remove".
 - **Composer.** `textarea` growing from 1 to 12 lines; Enter sends, ⇧↩ adds a line; while
   running, Enter steers and ⌘↩ queues (the button's icon follows ⌘); ↑ on an empty composer
-  recalls the last prompt; pasted or dropped images show as tiles, downsized to
-  2048 px; ⌘., or Esc on an empty composer, stops.
+  recalls the last prompt; ⌘., or Esc on an empty composer, stops.
 - **`@` and `/`.** A word starting `@` completes to the worktree's files (`koyo-project`'s
   index, the finder Go to File uses), and goes in as `@path`, which the CLI reads in; a first
   word starting `/` to the commands and skills from the catalog, which go in as `/name`, and
@@ -935,6 +934,19 @@ Layout, top to bottom inside the pane's card:
   `/plan`, `/compact`, `/clear` (a new chat). Rows over the footer that leave the keyboard in
   what's typed: ↑/↓ and the page keys move, Enter or ⇥ picks, Esc leaves that word alone. What
   matches nothing shows nothing and takes no keys, so Enter still sends.
+- **Attachments.** Pasted, dropped anywhere on the tab, or chosen with `[+]`, each shows as a
+  tile from the moment it's asked for, while it's kept in the host's `attachments/` off the main
+  thread; a message waits for its tiles. A picture is known by what's in it, not what it's
+  called, and goes as it is if the model takes it, or else smaller (2048 px at most, 5 MB at
+  most): a photo stays a JPEG, anything else is a PNG while that fits and a JPEG after. Any other
+  file is copied and the agent is told its path. What can't be attached says why. A picture alone
+  can be sent, and leaves the chat's title to its first words; a message with neither words nor
+  files is refused. Words that answer what's asked leave the tiles for the next message, and don't
+  wait for them. A message that doesn't go brings them back; a tile taken away, or left when the
+  tab closes, takes its file. What's left in the folder anyway, by an app that stopped, the host
+  removes as it starts once no message names it a week on. In the timeline a picture shows at a
+  fixed size above the message's words, drawn from a small copy of it, and opens where the person
+  would.
 - **Footer.** `[+]` attach · model and effort ("Opus 5.5 · High", ⚡ when fast) · permission
   ("Ask", in the accent when not the default; unknown, so not shown, until the catalog says what
   the person's settings choose) · Plan toggle (⇧Tab) · context ring (hover: "42 % · 84k of

@@ -3,6 +3,7 @@
 //! says, once a frame however fast it comes, and connects again when the connection ends.
 
 mod asks;
+mod attachments;
 mod catalog;
 mod composer;
 mod marks;

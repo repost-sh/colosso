@@ -8,12 +8,13 @@ use gpui_kit::{
     AnyElement, Div, Hsla, InteractiveElement as _, IntoElement, ParentElement as _, SharedString,
     StatefulInteractiveElement as _, Styled as _, div, px,
 };
+use gpui_kit::prelude::FluentBuilder as _;
 use koyo_agent::protocol::model::{
     FileChange, Item, ItemBody, ItemStatus, NoticeLevel, Run, StoppedBy,
 };
 use koyo_agent::words::{compacted, failed};
 
-use super::rows::{Drawing, bubble};
+use super::rows::{Drawing, attached, bubble};
 use super::view::ChatViewEvent;
 use crate::changes::counts;
 use crate::files::relative;
@@ -132,13 +133,17 @@ impl Drawing {
 
     pub(super) fn queued(&self, run: &Run) -> impl IntoElement {
         let p = self.p;
+        let prompt = &run.prompt;
         div().flex().justify_end().child(
             bubble()
                 .border_1()
                 .border_dashed()
                 .border_color(p.hairline)
                 .text_color(p.muted)
-                .child(run.prompt.text.clone()),
+                .when(!prompt.attachments.is_empty(), |said| {
+                    said.child(attached(&run.id.0, &prompt.attachments, p))
+                })
+                .when(!prompt.text.is_empty(), |said| said.child(prompt.text.clone())),
         )
     }
 }
