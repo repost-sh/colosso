@@ -5211,6 +5211,7 @@ dependencies = [
 name = "koyo-agent"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "crossbeam-channel",
  "futures",
  "koyo-daemon",

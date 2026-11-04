@@ -20,6 +20,8 @@ futures = "0.3"
 uuid = { version = "1", features = ["v7"] }
 log = "0.4"
 parking_lot = "0.12"
+# A time of day where the person is, as a row says it.
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 [dev-dependencies]
 # Blocking signals as the app's background threads do, to start a host from such a thread.
