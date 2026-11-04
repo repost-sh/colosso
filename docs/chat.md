@@ -904,6 +904,11 @@ Layout, top to bottom inside the pane's card:
 └──────────────────────────────────────────────────────────────┘
 ```
 
+- **The details card.** A floating glass card at the top right of a chat says where it works:
+  its branch and folder, what's changed there, its subagents (those working, then "Previous agents"
+  behind a line), and how full its conversation is. It's up where the pane has room for it beside
+  the timeline, as a person left it, and over the timeline only when asked for where there's none.
+  ⌘⇧B or its button toggles it, and a menu beside the button turns each part on or off.
 - **Subagents.** A subagent's row is a card: Claude's little guy, in his orange, on a round mark
   with a dot for how it's doing; what it's called; what it's doing or the start of its report;
   its status and how long it took. Subagents one after the other sit under one line saying how

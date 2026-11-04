@@ -219,3 +219,18 @@ fn a_subagents_chat_goes_over_its_parent_and_is_let_go_of_coming_back(cx: &mut T
     assert!(view.read_with(cx, |view, _| view.composer_on_show().is_some()));
     assert!(!chats.read_with(cx, |chats, _| chats.threads.contains_key(&child)), "nothing shows it");
 }
+
+#[gpui_kit::test]
+fn the_details_card_comes_up_and_goes_by_its_key_wherever_the_keys_are_in_the_chat(
+    cx: &mut TestAppContext,
+) {
+    let (window, view, _) = shown_chat("chat-details", cx);
+    let up = |cx: &TestAppContext| view.read_with(cx, ChatView::details_up);
+    let before = up(cx);
+    cx.simulate_keystrokes(window, "cmd-shift-b");
+    draw(window, cx);
+    assert_eq!(up(cx), !before);
+    cx.simulate_keystrokes(window, "cmd-shift-b");
+    draw(window, cx);
+    assert_eq!(up(cx), before);
+}
