@@ -40,7 +40,7 @@ const SHORTCUT_ROOM: f32 = SHORTCUT + ROW_GAP;
 /// How long the parent window may be inactive before the menu takes it as left, in ms:
 /// long enough for the menu's own activation to arrive after a click on a row.
 const ACTIVATION_GRACE: u64 = 80;
-/// Space between the button and the menu below it.
+/// Space between the button and the menu.
 const GAP: f32 = 4.;
 
 pub struct MenuItem {
@@ -55,8 +55,8 @@ struct OpenMenu(Option<(ElementId, AnyWindowHandle)>);
 
 impl Global for OpenMenu {}
 
-/// Wraps `trigger` so pressing it toggles a menu of `items` below it. `items` is only
-/// called when the menu opens.
+/// Wraps `trigger` so pressing it toggles a menu of `items` below it, or over it with no room
+/// below. `items` is only called when the menu opens.
 pub fn dropdown(
     id: impl Into<ElementId>,
     trigger: impl IntoElement,
@@ -146,7 +146,13 @@ pub(crate) fn open(
     } else {
         anchor.left()
     };
-    let origin = window.bounds().origin + point(left, anchor.bottom() + px(GAP));
+    // Past its bottom edge, likewise, it opens upwards.
+    let top = if anchor.bottom() + px(GAP) + height > window.bounds().size.height {
+        anchor.top() - px(GAP) - height
+    } else {
+        anchor.bottom() + px(GAP)
+    };
+    let origin = window.bounds().origin + point(left, top);
     let options = WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(Bounds::new(
             origin,
