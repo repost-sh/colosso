@@ -1,6 +1,8 @@
 // The ids of the host's records. Each kind is its own branded type, so a run's id can't be
 // passed where a thread's is wanted; a new one is a UUIDv7, which sorts by creation time.
 
+import type { UUID } from "node:crypto";
+
 import { randomUUIDv7 } from "bun";
 import { z } from "zod";
 
@@ -15,6 +17,11 @@ export type ItemId = z.infer<typeof ItemId>;
 
 export const RequestId = z.uuid().brand<"RequestId">();
 export type RequestId = z.infer<typeof RequestId>;
+
+const AnyUUID = z.uuid();
+
+/** An id as what a provider's API wants of a UUID, which every id here is. */
+export const PlainUUID = z.custom<UUID>((id) => AnyUUID.safeParse(id).success);
 
 /** The id a client gives a message it sends, so a repeated send is recognised. */
 export const MessageId = z.uuid().brand<"MessageId">();

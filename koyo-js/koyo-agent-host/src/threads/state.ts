@@ -103,6 +103,15 @@ export class ThreadState {
     return nothingToHold ? null : { ...this.#thread, queueHeld: true };
   }
 
+  /** Run `runId` and those after it, or why there's no going back to it. */
+  fromRun(runId: RunId): readonly [Run, ...Run[]] {
+    const [run, ...after] = this.#store.runsFrom(this.#thread.id, runId);
+    if (run?.id !== runId) {
+      throw new HostError("run_not_found", "The chat has no such message.");
+    }
+    return [run, ...after];
+  }
+
   /** The queued run `runId`, or why there's none to change. */
   queued(runId: RunId): Run {
     const run = this.#unsettled.find((each) => each.id === runId);
@@ -167,8 +176,11 @@ export class ThreadState {
     this.#turn = undefined;
   }
 
-  history(before: RunId, runs: number): Rows {
-    const rows = this.#store.before(this.#thread.id, before, runs);
+  history(before: RunId | null, runs: number): Rows {
+    const { id } = this.#thread;
+    const rows = before === null
+      ? this.#store.latest(id, runs)
+      : this.#store.before(id, before, runs);
     return { ...rows, items: this.#overlay(rows.items, false) };
   }
 
@@ -184,6 +196,12 @@ export class ThreadState {
       }
     }
     this.#pending = kept(this.#pending, committed.requests, (row) => row.status === "pending");
+    if (committed.runs.some((run) => run.status === "removed")) {
+      // What ended last, and what waits for the person, may be among what's gone.
+      const state = this.#store.state(this.#thread.id);
+      this.#ended = state.ended;
+      this.#pending = state.pending;
+    }
     const turn = this.#turn;
     turn?.remember(committed.items);
     // Ended once the commit has its items whole, so it keeps nothing stale.
@@ -228,8 +246,11 @@ export class ThreadState {
         return;
       }
       case "turn.started": {
-        if (live.status === "starting" && event.promptId === turn.promptId) {
-          this.commit({ runs: [moved(live, "running")] });
+        if (live.status === "starting" && event.promptId === turn.runId) {
+          // Where it went on from is its conversation's latest now, with this turn on it.
+          const { resumeAt } = this.#thread;
+          const thread = resumeAt === null ? null : { ...this.#thread, resumeAt: null };
+          this.commit({ thread, runs: [moved(live, "running")] });
         }
         return;
       }

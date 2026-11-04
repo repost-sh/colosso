@@ -36,6 +36,7 @@ export function handlers(given: Partial<Handlers<Client>>): Handlers<Client> {
     "queue.edit": notHere,
     "queue.sendNow": notHere,
     "queue.resume": notHere,
+    "threads.rewind": notHere,
     "requests.respond": notHere,
     ...given,
   };

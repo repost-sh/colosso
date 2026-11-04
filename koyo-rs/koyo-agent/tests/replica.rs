@@ -10,7 +10,7 @@
 mod records;
 
 use koyo_agent::protocol::events::{Appended, Changed};
-use koyo_agent::protocol::ids::{ItemId, ThreadId};
+use koyo_agent::protocol::ids::{ItemId, RunId, ThreadId};
 use koyo_agent::protocol::methods::Rows;
 use koyo_agent::protocol::model::{Item, Run, RunStatus};
 use koyo_agent::replica::Replica;
@@ -175,4 +175,32 @@ fn says_nothing_is_on_when_nothing_is() {
     assert!(replica.live().is_none());
     assert_eq!(replica.queued().count(), 0);
     assert_eq!(replica.last_said(), None);
+}
+
+#[test]
+fn a_removed_run_goes_with_what_it_held_and_what_came_since_takes_its_place() {
+    let later = |id: &str, ordinal, seq| Item {
+        run_id: RunId("r2".into()),
+        ..item(id, ordinal, answer("Said"), seq)
+    };
+    let mut replica = Replica::new(snapshot(
+        3,
+        vec![run("r1", RunStatus::Completed, 1), run("r2", RunStatus::Completed, 3)],
+        vec![item("a", 0, message("First"), 1), later("b", 1, 3)],
+    ));
+
+    let new = Item {
+        run_id: RunId("r3".into()),
+        ..item("c", 1, message("Other"), 5)
+    };
+    replica.apply(changed(
+        5,
+        vec![run("r2", RunStatus::Removed, 5), run("r3", RunStatus::Completed, 5)],
+        vec![new],
+    ));
+
+    let runs: Vec<&str> = replica.runs.iter().map(|run| run.id.0.as_str()).collect();
+    assert_eq!(runs, ["r1", "r3"]);
+    let items: Vec<&str> = replica.items.iter().map(|item| item.id.0.as_str()).collect();
+    assert_eq!(items, ["a", "c"]);
 }

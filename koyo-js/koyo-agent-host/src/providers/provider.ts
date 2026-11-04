@@ -45,6 +45,8 @@ export interface SessionSpec {
    */
   readonly permission: Mode | null;
   readonly plan: boolean;
+  /** The entry of the conversation to go on from, dropping what came after; else its latest. */
+  readonly resumeAt: string | null;
 }
 
 /** A change to a live session's settings. */
@@ -207,6 +209,15 @@ export interface Provider {
   /** What the provider offers in `cwd`; its default mode is the provider's own settings'. */
   readonly catalog: (cwd: string) => Promise<Catalog>;
   readonly open: (spec: SessionSpec, sink: SessionSink) => ProviderSession;
+  /**
+   * The entry of conversation `sessionId` right before the prompt `promptId`, or `null` when that
+   * started it; refuses when the conversation doesn't have it.
+   */
+  readonly entryBefore: (
+    sessionId: string,
+    cwd: string,
+    promptId: string,
+  ) => Promise<string | null>;
   /**
    * The model's reply when asked for a short title for a chat that starts with `prompt`, as
    * it came, if one came; the actor makes the title of it (docs/chat.md 4.5.7).

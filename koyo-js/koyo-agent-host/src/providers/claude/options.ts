@@ -102,6 +102,7 @@ export function sessionOptions(spec: SessionSpec, place: Place, opening: Opening
   return {
     ...placed(place),
     ...(opening.resume ? { resume: spec.sessionId } : { sessionId: spec.sessionId }),
+    ...(opening.resume && spec.resumeAt !== null ? { resumeSessionAt: spec.resumeAt } : {}),
     systemPrompt: { type: "preset", preset: "claude_code" },
     includePartialMessages: true,
     forwardSubagentText: true,

@@ -104,7 +104,7 @@ fn follow(
         assert!(Instant::now() < limit, "gave up waiting: {replica:#?}");
         match inbox.try_recv() {
             Ok(Notice::Event(event)) => match *event {
-                Event::ThreadChanged(changed) => replica.apply(changed),
+                Event::ThreadChanged(changed) => replica.apply(*changed),
                 Event::ItemAppended(appended) => assert!(replica.append(&appended)),
                 _ => {}
             },

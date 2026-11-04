@@ -4,14 +4,17 @@
 
 import {
   getSessionMessages,
+  type GetSessionMessagesOptions,
   type PermissionMode,
   query,
   resolveSettings,
   type SDKControlInitializeResponse,
+  type SessionMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 
 import { errorMessage, log } from "../../log";
 import type { Catalog, Command, ProviderStatus } from "../../protocol/methods";
+import { HostError } from "../../protocol/wire";
 import type {
   Capabilities,
   Config,
@@ -38,6 +41,8 @@ export interface ClaudeDeps {
   readonly settingsMode: (cwd: string) => Promise<PermissionMode | undefined>;
   /** Whether a conversation has turns on disk to resume. */
   readonly resumable: (sessionId: string, cwd: string) => Promise<boolean>;
+  /** The ids of a conversation's messages on disk, in order; none when it can't be read. */
+  readonly conversation: (sessionId: string, cwd: string) => Promise<readonly string[]>;
   /** How long a stopped turn has to end before its process is closed. */
   readonly stopMs: number;
 }
@@ -45,6 +50,8 @@ export interface ClaudeDeps {
 /** How long a title may take. */
 const TITLE_MS = 60_000;
 const MISSING_CLI = "Claude Code isn't installed. Install it, then send the message again.";
+const NOT_IN_CONVERSATION = "Claude's conversation doesn't have that message: it may have been "
+  + "compacted away, or never reached it.";
 
 const versions = new Versions();
 
@@ -55,6 +62,7 @@ const DEFAULTS: ClaudeDeps = {
   version: async (executable, env) => await versions.of(executable, env),
   settingsMode,
   resumable: hasTurns,
+  conversation: messageIds,
   stopMs: 10_000,
 };
 
@@ -196,6 +204,15 @@ export class ClaudeProvider implements Provider {
     return { executable: found.executable, env: found.env, resumable };
   }
 
+  async entryBefore(sessionId: string, cwd: string, promptId: string): Promise<string | null> {
+    const ids = await this.#deps.conversation(sessionId, cwd);
+    const at = ids.indexOf(promptId);
+    if (at < 0) {
+      throw new HostError("conflict", NOT_IN_CONVERSATION);
+    }
+    return ids[at - 1] ?? null;
+  }
+
   /** Whether the conversation `spec` resumes has turns on disk, read until it's found to. */
   async #hasTurns(spec: SessionSpec): Promise<boolean> {
     if (!spec.resume || this.#resumable.has(spec.sessionId)) {
@@ -265,12 +282,24 @@ async function settingsMode(cwd: string): Promise<PermissionMode | undefined> {
   }
 }
 
+async function messageIds(sessionId: string, cwd: string): Promise<readonly string[]> {
+  return (await messages(sessionId, { dir: cwd })).map((message) => message.uuid);
+}
+
 /** Whether the conversation's transcript has a turn in it, which resuming needs. */
 async function hasTurns(sessionId: string, cwd: string): Promise<boolean> {
+  return (await messages(sessionId, { dir: cwd, limit: 1 })).length > 0;
+}
+
+/** What the conversation's transcript has, none if it can't be read. */
+async function messages(
+  sessionId: string,
+  options: GetSessionMessagesOptions,
+): Promise<SessionMessage[]> {
   try {
-    return (await getSessionMessages(sessionId, { dir: cwd, limit: 1 })).length > 0;
+    return await getSessionMessages(sessionId, options);
   } catch (error) {
     log.debug(`Claude's conversation ${sessionId} couldn't be read`, error);
-    return false;
+    return [];
   }
 }

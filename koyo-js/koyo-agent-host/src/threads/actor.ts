@@ -6,7 +6,7 @@
 // between two commits of one step.
 
 import { errorMessage, log } from "../log";
-import type { RequestId, RunId } from "../protocol/ids";
+import { PlainUUID, type RequestId, type RunId } from "../protocol/ids";
 import type { Delivered, Delivery, Rows, ThreadSnapshot } from "../protocol/methods";
 import type {
   Answer,
@@ -153,7 +153,7 @@ export class ThreadActor {
     this.#state.close(subscriber);
   }
 
-  history(before: RunId, runs: number): Rows {
+  history(before: RunId | null, runs: number): Rows {
     return this.#state.history(before, runs);
   }
 
@@ -356,11 +356,12 @@ export class ThreadActor {
       items: [userMessage(run, this.#state.place(), run.prompt, "turn")],
       requests: answers.map((request) => answered(request, answer, at)),
     });
-    const turn = this.#state.startTurn(run);
+    this.#state.startTurn(run);
     try {
       const spec = specFor(thread, sessionId, this.#cx.config().defaultMode);
       const session = this.#session.ensure(spec);
-      session.start(turnInput(turn.promptId, run.prompt, this.#cx.attachments, "turn"));
+      const input = turnInput(PlainUUID.parse(run.id), run.prompt, this.#cx.attachments, "turn");
+      session.start(input);
     } catch (error) {
       log.error("A turn wouldn't start", error);
       this.#settle("failed", { failure: processFailure(errorMessage(error)) });

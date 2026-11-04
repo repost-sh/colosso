@@ -70,6 +70,9 @@ export function handlers(host: Host): Handlers<Client> {
       threads.delete(threadId);
       return {};
     },
+    "threads.rewind": async ({ threadId, runId }) => ({
+      prompt: await threads.rewind(threadId, runId),
+    }),
     "turns.send": ({ threadId, prompt, delivery }) => {
       const actor = threads.actor(threadId);
       checkMessage(host.attachments, prompt.text, prompt.attachments);

@@ -3,9 +3,9 @@
 // most four stay open, the least recently used closed first when a fifth is wanted.
 
 import { log } from "../log";
-import type { ThreadId } from "../protocol/ids";
+import type { RunId, ThreadId } from "../protocol/ids";
 import type { Params } from "../protocol/methods";
-import type { ProviderId, Thread, ThreadSummary } from "../protocol/model";
+import type { Prompt, ProviderId, Thread, ThreadSummary } from "../protocol/model";
 import { eventLine, HostError } from "../protocol/wire";
 import type { Config, Provider } from "../providers/provider";
 import type { Store } from "../store/store";
@@ -13,6 +13,7 @@ import { ThreadActor } from "./actor";
 import { draftAttachments, removeAttachments, sweepAttachments } from "./attachments";
 import type { Context } from "./context";
 import { newThread } from "./records";
+import { rewind } from "./rewind";
 import { summary } from "./rules";
 import type { Subscriber } from "./state";
 
@@ -134,6 +135,16 @@ export class Threads {
     this.#tell(eventLine("thread.removed", { threadId: id }));
   }
 
+  /** Goes back to before run `runId` of thread `id`, and says what the person said then (C11). */
+  async rewind(id: ThreadId, runId: RunId): Promise<Prompt> {
+    const actor = this.actor(id);
+    const prompt = await rewind(actor, this.#providerOf(actor.thread), runId, this.#options.now());
+    for (const child of this.#options.store.orphans(id)) {
+      this.delete(child);
+    }
+    return prompt;
+  }
+
   /** Whether any thread has a live run or waits on its person. */
   busy(): boolean {
     return [...this.#actors.values()].some((actor) => actor.busy());
@@ -155,10 +166,14 @@ export class Threads {
     }));
   }
 
+  #providerOf(thread: Thread): Provider {
+    return this.#providers.get(thread.provider) ?? missing(thread.provider);
+  }
+
   #context(thread: Thread): Context {
     return {
       store: this.#options.store,
-      provider: this.#providers.get(thread.provider) ?? missing(thread.provider),
+      provider: this.#providerOf(thread),
       config: () => this.#config,
       attachments: this.#options.attachments,
       now: this.#options.now,
@@ -224,6 +239,7 @@ function missing(id: ProviderId): Provider {
     open: () => {
       throw refusal;
     },
+    entryBefore: async () => await Promise.reject(refusal),
     title: async () => await Promise.reject(refusal),
   };
 }

@@ -196,11 +196,19 @@ busy host away; and it would be a second compatibility scheme beside termd's).
 append is sent as it comes, as the new text alone; the app applies the appends that arrived
 since the last frame once per frame, to the one message they belong to.
 
-**C11 [proposed, M6] Rewind is conversation-only by default.** The terminals, file tabs and
-other agents share the worktree, so restoring files under them is the hazard T3 itself names
-(orchestration 6.4, pitfall 41). File restore (the SDK's `enableFileCheckpointing` and
-`rewindFiles`) is offered only when the files a turn changed haven't changed since, with a
-dry run first.
+**C11 [decided] Rewind is conversation-only.** The terminals, file tabs and other agents share
+the worktree, so restoring files under them is the hazard T3 itself names (orchestration 6.4,
+pitfall 41). A person goes back to one of their messages from its row, once nothing's at work or
+waiting, and confirms. The host finds the entry before the message in Claude's transcript and
+keeps it as `Thread.resumeAt`; the next session resumes there (`resumeSessionAt`), which drops
+the turns after it from the same session id, and later resumes follow the new branch. A message
+that started the conversation has the next turn start another. A run's prompt carries the run's
+id as its uuid, which is how its entry is found. `forkSession` isn't used: it renumbers every
+entry. Removed runs stay as rows with the status `removed`, their items and requests deleted, so
+a client catching up by `since` hears of it. A message the transcript no longer has (compacted
+away, or never reached) is refused. File restore (the SDK's `enableFileCheckpointing` and
+`rewindFiles`) isn't built: it writes under `~/.claude/file-history`, and would be offered only
+when the files a turn changed haven't changed since, with a dry run first.
 
 **C12 [decided] Permissions are Claude's own modes, named for people:** Ask (`default`),
 Accept edits (`acceptEdits`), Auto (`auto`, where the model supports it), Full access
@@ -359,7 +367,8 @@ threads.open    {threadId, sinceSeq} → ThreadSnapshot, then its `thread.change
                 `item.appended` until `threads.close`. A first open holds the latest 30
                 runs' items; `sinceSeq` gets the rows changed since, and every streaming item
                 whole.
-threads.history {threadId, before: runId, runs} → {runs, items, requests}
+threads.history {threadId, before: runId | null, runs} → {runs, items, requests}
+threads.rewind  {threadId, runId} → {prompt}
                 the page of runs before `before`, with their rows
 threads.close   {threadId} → {}
 threads.update  {threadId, title?, model?, effort?, fast?, permission?, plan?, tabOpen?}
@@ -428,7 +437,7 @@ Thread {
 
 Run {                         // a turn: one prompt and the work it caused
   id, threadId, status: "queued"|"starting"|"running"|"stopping"|"completed"|
-                        "interrupted"|"failed"|"removed" (taken off the queue),
+                        "interrupted"|"failed"|"removed" (off the queue, or gone back past),
   prompt: {messageId, text, attachments},   // all a queued run is
   model, effort, permission (in force while it ran), plan,
   requestedAt, startedAt, endedAt,
@@ -511,8 +520,9 @@ queued → starting → running → stopping → completed | interrupted | faile
 
 A turn may end before it's seen to start (a quick failure, a `/compact`, a stop as it
 starts), so `starting` settles too. Nothing leaves `stopping` except to a settled status,
-and nothing leaves a settled one. Rows are never deleted but with their thread: a queued run
-taken off the queue is `removed`.
+and a settled run leaves only to `removed`, when a person goes back past it (C11). A queued run
+taken off the queue is `removed` too. A removed run's row stays and its items and requests go
+with it; other rows are never deleted but with their thread.
 
 The commit that settles a run closes the items it left open, the same for every provider,
 which closes none of them itself. After a run that completed, a tool, a subagent or a

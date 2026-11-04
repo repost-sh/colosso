@@ -48,7 +48,7 @@ events! {
     /// A thread deleted, to a client that watches threads.
     "thread.removed" => ThreadRemoved(Removed);
     /// The rows one step of a thread's actor changed, whole, to a client that opened it.
-    "thread.changed" => ThreadChanged(Changed);
+    "thread.changed" => ThreadChanged(Box<Changed>);
     /// Text a streaming item grew by, in order after the change that made the item.
     "item.appended" => ItemAppended(Appended);
     "host.notice" => HostNotice(HostNotice);

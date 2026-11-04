@@ -311,7 +311,8 @@ impl ChatView {
         let Some(oldest) = opened.replica().and_then(|replica| replica.runs.first()) else {
             return;
         };
-        let page = self.chats.read(cx).history(opened.id(), oldest.id.clone(), cx);
+        let page = (self.chats.read(cx))
+            .history(opened.id(), Some(oldest.id.clone()), super::HISTORY_PAGE as u32, cx);
         shown.can_fetch_older = false;
         cx.spawn(async move |this, cx| {
             let page = page.await;
