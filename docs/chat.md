@@ -384,7 +384,7 @@ queue.resume    {threadId} → {}                                release a held 
 requests.respond {threadId, requestId, response} → {}
                 response = {kind: "approval", decision: "allow"|"allow_session"|"deny"|
                                    "cancel", message}
-                         | {kind: "question", answers: {[questionId]: [string]}}
+                         | {kind: "question", answers: {[questionId]: [string]}}   (none at all: skipped)
                          | {kind: "plan", decision: "implement"|"dismiss"}
                 its kind is the request's; another kind is `bad_request`, a request no longer
                 pending `conflict`.
@@ -905,13 +905,17 @@ Layout, top to bottom inside the pane's card:
     sent declines with its words. Answered, it's one muted line ("Allowed cargo test",
     "Denied cargo test: not now", "No longer asked: cargo test"), and "Worked for" leaves out
     what the run waited on a person for.
-  - question: a drawer attached above the composer, one question at a time ("2 of 3"),
-    options as rows with digits 1–9, a single choice advancing after 200 ms, a multi-select
-    with Next; the composer is "Other"; Skip denies the tool with "The user skipped the
-    question"; `preview` renders as markdown beside the options.
+  - question: a drawer attached above the composer, one question at a time ("2 of 3", with
+    a way back), options as rows with digits 1–9, a single choice advancing after 200 ms, a
+    multi-select with Next (↩); the composer is "Other", which a digit past the options
+    starts; Skip (⌘⌫ with nothing typed) denies the tool with "The user skipped the
+    question"; `preview` renders as markdown beside the options. In the timeline it's a muted
+    line for each thing asked: "Asked: …", then "Indent: Tabs", "Skipped: …" or "No longer
+    asked: …"; one the next message answers says its options there, and has no drawer.
   - plan: a card ("Plan", its first heading as title, collapsed past 20 lines) with Copy and
-    Save as…; a "Plan ready" drawer above the composer: Implement while the composer is
-    empty, Refine once it has text.
+    Save as…; a "Plan ready" drawer above the composer: Implement (⌘↩) while the composer is
+    empty, Refine once it has text, Dismiss. An empty plan goes back to Claude to write,
+    rather than ask a person about nothing. Once answered the card says what became of it.
   - compaction: a centred divider "Context compacted · 182k → 31k tokens", "Compacting
     context…" while live.
   - failure: from the run, a red icon and the message; for a usage limit "Usage limit

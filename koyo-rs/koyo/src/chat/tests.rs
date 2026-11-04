@@ -12,6 +12,7 @@ use koyo_agent::protocol::methods::ThreadSnapshot;
 use koyo_agent::protocol::model::{
     Item, ItemBody, ItemStatus, Status, Text, Thread, ThreadSummary, TitleSource,
 };
+use koyo_agent::protocol::requests::{Question, QuestionOption};
 
 use super::Chats;
 use super::thread::{ChatThread, ThreadEvent};
@@ -20,9 +21,27 @@ use crate::shell::Shell;
 use crate::test_support::{draw, repo, select, shell_with};
 
 mod asks;
+mod drawers;
 mod drawing;
 
 const AT: &str = "2026-11-03T10:00:00.000Z";
+
+/// A question that's its own id, with options of those labels.
+pub(in crate::chat) fn question(text: &str, multi_select: bool, labels: &[&str]) -> Question {
+    Question {
+        id: text.into(),
+        header: "About".into(),
+        text: text.into(),
+        multi_select,
+        options: (labels.iter())
+            .map(|label| QuestionOption {
+                label: (*label).into(),
+                description: None,
+                preview: None,
+            })
+            .collect(),
+    }
+}
 
 fn summary(id: &str, cwd: &Path, title: &str, tab_open: bool) -> ThreadSummary {
     ThreadSummary {

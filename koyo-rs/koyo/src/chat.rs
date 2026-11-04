@@ -88,6 +88,7 @@ impl EventEmitter<ChatsEvent> for Chats {}
 /// What's bound for the chats.
 pub fn init(cx: &mut App) {
     asks::bind_keys(cx);
+    composer::bind_keys(cx);
 }
 
 impl Chats {

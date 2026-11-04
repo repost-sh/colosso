@@ -21,7 +21,7 @@ use super::{AT, answer};
 use crate::menu;
 use crate::test_support::draw;
 
-fn request(id: &str, status: RequestStatus, for_chat: bool, seq: u64) -> Request {
+pub(super) fn request(id: &str, status: RequestStatus, for_chat: bool, seq: u64) -> Request {
     Request {
         id: RequestId(id.into()),
         thread_id: ThreadId("0001".into()),
@@ -48,7 +48,12 @@ fn request(id: &str, status: RequestStatus, for_chat: bool, seq: u64) -> Request
 }
 
 /// The thread now holds `requests`, each with its row at the end of the run.
-fn holds(thread: &Entity<ChatThread>, requests: Vec<Request>, seq: u64, cx: &mut TestAppContext) {
+pub(super) fn holds(
+    thread: &Entity<ChatThread>,
+    requests: Vec<Request>,
+    seq: u64,
+    cx: &mut TestAppContext,
+) {
     let items: Vec<Item> = (requests.iter().enumerate())
         .map(|(at, request)| Item {
             id: ItemId(format!("asks-{}", request.id)),
@@ -70,16 +75,16 @@ fn holds(thread: &Entity<ChatThread>, requests: Vec<Request>, seq: u64, cx: &mut
     thread.update(cx, |thread, cx| thread.take_in(vec![event], cx));
 }
 
-struct Asking {
-    window: AnyWindowHandle,
+pub(super) struct Asking {
+    pub(super) window: AnyWindowHandle,
     composer: Entity<ChatComposer>,
-    thread: Entity<ChatThread>,
-    _view: Entity<ChatView>,
+    pub(super) thread: Entity<ChatThread>,
+    pub(super) view: Entity<ChatView>,
 }
 
 impl Asking {
     /// A chat's tab with the composer focused, and `requests` waiting on the person.
-    fn new(name: &str, requests: Vec<Request>, cx: &mut TestAppContext) -> Asking {
+    pub(super) fn new(name: &str, requests: Vec<Request>, cx: &mut TestAppContext) -> Asking {
         let (window, view, thread) = shown_chat(name, cx);
         holds(&thread, requests, 10, cx);
         let composer = view.read_with(cx, |view, _| view.composer.clone());
@@ -92,21 +97,21 @@ impl Asking {
             window,
             composer,
             thread,
-            _view: view,
+            view,
         }
     }
 
-    fn said(&self, cx: &TestAppContext) -> Vec<(RequestId, Response)> {
+    pub(super) fn said(&self, cx: &TestAppContext) -> Vec<(RequestId, Response)> {
         self.composer.read_with(cx, |composer, _| composer.said.clone())
     }
 
-    fn typed(&self, cx: &TestAppContext) -> String {
+    pub(super) fn typed(&self, cx: &TestAppContext) -> String {
         self.composer.read_with(cx, |composer, cx| {
             composer.text.read(cx).value().to_string()
         })
     }
 
-    fn keys(&self, keys: &str, cx: &mut TestAppContext) {
+    pub(super) fn keys(&self, keys: &str, cx: &mut TestAppContext) {
         cx.simulate_keystrokes(self.window, keys);
         draw(self.window, cx);
     }
