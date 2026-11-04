@@ -18,6 +18,7 @@ use gpui_kit::{
 use super::responsive::ResponsiveTerminal;
 use super::states::{State, most_urgent};
 use crate::model::Tab;
+use crate::pane;
 use crate::responsive::bar::toggle_button;
 use crate::shell::{Shell, ellipsized};
 use crate::theme::Palette;
@@ -26,19 +27,20 @@ use crate::theme::Palette;
 pub const BAR: f32 = 26.;
 
 impl Shell {
-    /// The dot on a tab with terminals: the most urgent of their statuses.
-    pub fn tab_dot(&self, tab: &Tab, p: Palette) -> Option<Div> {
+    /// A tab's dot where its row shows it: after a single pane's icon (the first), or ahead
+    /// of a split's chips (the second). A terminal's dot is there whatever it's doing and a
+    /// chat's mark only when it has something to say, which goes first unless a terminal waits
+    /// for the person.
+    pub fn tab_dots(&self, tab: &Tab, p: Palette, cx: &mut App) -> (Option<Div>, Option<Div>) {
         let statuses = (tab.panes().into_iter())
             .filter_map(|pane| pane.terminal)
             .filter_map(|id| self.terminal_state(id))
             .map(|state| state.status);
-        most_urgent(statuses).map(|status| dot(status, p))
-    }
-
-    /// A tab's dot where its row shows it: after a single pane's icon (the first), or ahead
-    /// of a split's chips (the second).
-    pub fn tab_dots(&self, tab: &Tab, p: Palette) -> (Option<Div>, Option<Div>) {
-        let dot = self.tab_dot(tab, p);
+        let status = most_urgent(statuses);
+        let mark = (status != Some(Status::NeedsInput))
+            .then(|| self.chat_tab_mark(tab, p, cx))
+            .flatten();
+        let dot = mark.or_else(|| status.map(|status| dot(status, p)));
         match tab {
             Tab::Single(_) => (dot, None),
             Tab::Split(_) => (None, dot),
@@ -254,11 +256,7 @@ fn send(client: &Arc<TermClient>, request: RequestBody, cx: &mut App) {
 
 /// The dot a status shows as.
 pub fn dot(status: Status, p: Palette) -> Div {
-    div()
-        .size(px(7.))
-        .flex_shrink_0()
-        .rounded_full()
-        .bg(color(status, p))
+    pane::dot(color(status, p))
 }
 
 fn color(status: Status, p: Palette) -> Hsla {

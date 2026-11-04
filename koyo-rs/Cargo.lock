@@ -5199,6 +5199,7 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "objc2-io-surface",
  "objc2-quartz-core 0.3.2",
+ "objc2-user-notifications",
  "percent-encoding",
  "serde",
  "serde_json",

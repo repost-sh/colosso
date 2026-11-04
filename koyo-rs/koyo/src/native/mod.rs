@@ -11,6 +11,7 @@ mod glass;
 mod host;
 mod icon;
 pub mod liquid;
+pub mod notifications;
 mod pinch;
 pub mod slider;
 pub mod switch;

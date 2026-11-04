@@ -26,6 +26,8 @@ mod turn;
 mod drawers;
 mod details;
 mod drawing;
+mod recent;
+mod seen;
 
 const AT: &str = "2026-11-03T10:00:00.000Z";
 
@@ -46,7 +48,7 @@ pub(in crate::chat) fn question(text: &str, multi_select: bool, labels: &[&str])
     }
 }
 
-fn summary(id: &str, cwd: &Path, title: &str, tab_open: bool) -> ThreadSummary {
+pub(in crate::chat) fn summary(id: &str, cwd: &Path, title: &str, tab_open: bool) -> ThreadSummary {
     ThreadSummary {
         id: ThreadId(id.into()),
         cwd: cwd.to_string_lossy().into_owned(),

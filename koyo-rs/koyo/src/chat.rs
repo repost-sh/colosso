@@ -9,9 +9,11 @@ mod composer;
 mod drafts;
 mod host;
 mod marks;
+mod notify;
 mod queued;
 mod output;
 mod rows;
+mod status;
 mod subagent_bar;
 mod subagents;
 mod tabs;
@@ -43,7 +45,7 @@ use crate::settings;
 use host::agent_client;
 use thread::{ChatThread, ThreadEvent};
 
-pub use tabs::ChatTabs;
+pub use tabs::{ChatTabs, OpenChat};
 
 /// How long the loop waits between batches: what arrives meanwhile is applied together.
 const FRAME: Duration = Duration::from_millis(16);
@@ -74,11 +76,15 @@ pub enum ChatsEvent {
     Summaries,
     /// A thread was deleted: its tabs go.
     Removed(ThreadId),
+    /// A person who isn't looking should hear what a chat says.
+    News { id: ThreadId, title: String, said: &'static str },
 }
 
 pub struct Chats {
     client: Option<Arc<AgentClient>>,
     summaries: HashMap<ThreadId, ThreadSummary>,
+    /// What each checkout's row says of its chats, as the summaries have it.
+    checkout_marks: HashMap<PathBuf, status::ChatMark>,
     /// The threads open with the host, for as long as anything shows them.
     threads: HashMap<ThreadId, WeakEntity<ChatThread>>,
     /// What each checkout a tab shows can choose from.
@@ -119,6 +125,7 @@ impl Chats {
         let mut chats = Chats {
             client,
             summaries: HashMap::new(),
+            checkout_marks: HashMap::new(),
             threads: HashMap::new(),
             catalogs: HashMap::new(),
             connection,
@@ -239,7 +246,7 @@ impl Chats {
             self.open(thread, cx);
         }
         self.refresh_catalogs(cx);
-        cx.emit(ChatsEvent::Summaries);
+        self.summaries_changed(cx);
         cx.notify();
         false
     }
@@ -401,12 +408,18 @@ impl Chats {
                     (touched.entry(appended.thread_id.clone()).or_default())
                         .push(ThreadEvent::Appended(appended));
                 }
-                Event::ThreadSummary(summary) => {
+                // The host says so again of a chat a person's just seen.
+                Event::ThreadSummary(summary)
+                    if self.summaries.get(&summary.id) != Some(&summary) =>
+                {
+                    self.tell_of(&summary, cx);
                     self.summaries.insert(summary.id.clone(), summary);
                     summaries = true;
                 }
+                Event::ThreadSummary(_) => {}
                 Event::ThreadRemoved(removed) => {
                     self.summaries.remove(&removed.thread_id);
+                    summaries = true;
                     self.threads.remove(&removed.thread_id);
                     drafts::thread_removed(&removed.thread_id, cx);
                     cx.emit(ChatsEvent::Removed(removed.thread_id));
@@ -421,7 +434,7 @@ impl Chats {
             }
         }
         if summaries {
-            cx.emit(ChatsEvent::Summaries);
+            self.summaries_changed(cx);
         }
         if ended {
             self.reach(FIRST_WAIT, cx);

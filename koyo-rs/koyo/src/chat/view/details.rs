@@ -197,7 +197,7 @@ fn choosing(view: &ChatView, p: Palette, cx: &App) -> impl IntoElement + use<> {
         "chat-details-items",
         control("chat-details-choose", IconName::Ellipsis, p),
         view.focus_handle(cx),
-        move || items(&choice),
+        move |_| items(&choice),
     )
 }
 
@@ -396,11 +396,9 @@ fn context(replica: Option<&Replica>, p: Palette) -> Option<Div> {
 fn items(choice: &ChatDetails) -> Vec<MenuItem> {
     DetailsItem::ALL
         .into_iter()
-        .map(|item| MenuItem {
-            icon: None,
-            label: item.label().into(),
-            action: Box::new(FlipDetailsItem(item)),
-            switch: Some(choice.shows(item)),
+        .map(|item| {
+            MenuItem::new(None, item.label(), Box::new(FlipDetailsItem(item)))
+                .switch(choice.shows(item))
         })
         .collect()
 }

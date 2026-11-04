@@ -8,6 +8,7 @@ use gpui_kit::{
 };
 
 use super::{Shell, switcher};
+use crate::chat::OpenChat;
 use crate::files;
 use crate::model::PaneKind;
 use crate::navigation::{CloseSettings, GoBack, GoForward, Navigate, NavigationHistory, Route};
@@ -88,6 +89,9 @@ impl Shell {
             .map(|root| Self::handle_right_panel(root, cx))
             .on_action(cx.listener(Self::toggle_bottom_panel))
             .on_action(cx.listener(|this, _: &NewChat, _, cx| this.new_tab(PaneKind::Chat, cx)))
+            .on_action(cx.listener(|this, OpenChat(id): &OpenChat, _, cx| {
+                this.open_chat(id, cx);
+            }))
             // ⌘W closes what's looked at: the settings, or else the tab shown, asking about
             // its unsaved edits first. Never the window.
             .on_action(cx.listener(|this, _: &CloseTab, window, cx| {

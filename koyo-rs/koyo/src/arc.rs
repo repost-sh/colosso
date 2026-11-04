@@ -207,7 +207,7 @@ fn branch_group(
                     cx.listener(move |this, _, window, cx| this.close_tab_at(at, window, cx)),
                 );
             let list = (Axis::Vertical, active, &shell.tab_hand);
-            let (dot, split_dot) = shell.tab_dots(tab, p);
+            let (dot, split_dot) = shell.tab_dots(tab, p, cx);
             let row = row.children(split_dot);
             tab_row(row, (at, tab), list, p, cx, |row, face, cx| {
                 let close = ("arc-tab-close", branch_index * 100 + tab_index);
@@ -257,6 +257,7 @@ fn branch_group(
                         header.child(crate::terminals::waiting_badge(waiting, p))
                     })
                 })
+                .children(shell.checkout_chat_mark(&branch.worktree.path, p, cx))
                 .child(new_tab_menu(
                     ("arc-new-tab-menu", branch_index),
                     icon_button(("arc-new-tab", branch_index), IconName::Plus, "New tab", cx)
@@ -271,6 +272,8 @@ fn branch_group(
                             }),
                         ),
                     shell.focus.clone(),
+                    cx.weak_entity(),
+                    branch.worktree.path.clone(),
                 )),
             move || worktree_menu(&path, is_main, terminals),
         ))

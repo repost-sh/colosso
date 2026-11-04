@@ -3,8 +3,8 @@
 
 use gpui_kit::assets::IconName;
 use gpui_kit::{
-    AnyElement, Div, ElementId, InteractiveElement as _, IntoElement, ParentElement as _, Stateful,
-    Styled as _, div, px,
+    AnyElement, Div, ElementId, Hsla, InteractiveElement as _, IntoElement, ParentElement as _,
+    Stateful, Styled as _, div, px,
 };
 
 use crate::model::{Pane, PaneKind};
@@ -16,9 +16,14 @@ pub fn close_button(id: impl Into<ElementId>, p: Palette) -> Stateful<Div> {
     tab_button(id, p).child(icon(IconName::X, 12.))
 }
 
+/// A round mark of `color`, as a tab or a row says how something's doing.
+pub fn dot(color: Hsla) -> Div {
+    div().size(px(7.)).flex_shrink_0().rounded_full().bg(color)
+}
+
 /// The dot that marks a file with unsaved edits, on its tab and in the switcher.
 pub fn unsaved_dot(p: Palette) -> Div {
-    div().size(px(7.)).flex_shrink_0().rounded_full().bg(p.text)
+    dot(p.text)
 }
 
 /// A small square button in a tab, lit when hovered, without what's drawn in it.

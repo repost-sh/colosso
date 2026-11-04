@@ -152,6 +152,17 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
   "NSRunLoop",
 ] }
 block2 = "0.6"
+# What a chat tells a person who isn't looking (native/notifications.rs).
+objc2-user-notifications = { version = "0.3", default-features = false, features = [
+  "std",
+  "block2",
+  "UNNotification",
+  "UNNotificationContent",
+  "UNNotificationRequest",
+  "UNNotificationResponse",
+  "UNNotificationTrigger",
+  "UNUserNotificationCenter",
+] }
 # The browser panes' frames: the host's `IOSurface`s, found from the mach ports it sends,
 # shown as the contents of a layer. All versions GPUI already pulls in.
 objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFBase", "CFCGTypes", "objc2"] }
