@@ -196,19 +196,35 @@ busy host away; and it would be a second compatibility scheme beside termd's).
 append is sent as it comes, as the new text alone; the app applies the appends that arrived
 since the last frame once per frame, to the one message they belong to.
 
-**C11 [decided] Rewind is conversation-only.** The terminals, file tabs and other agents share
-the worktree, so restoring files under them is the hazard T3 itself names (orchestration 6.4,
-pitfall 41). A person goes back to one of their messages from its row, once nothing's at work or
-waiting, and confirms. The host finds the entry before the message in Claude's transcript and
+**C11 [decided] Rewind takes the conversation back, and the files only when asked and safe.** The
+terminals, file tabs and other agents share the worktree, so restoring files under them is the
+hazard T3 itself names (orchestration 6.4, pitfall 41). A person goes back to one of their messages
+from its row, once nothing's at work or waiting, and confirms. The host finds the entry before the message in Claude's transcript and
 keeps it as `Thread.resumeAt`; the next session resumes there (`resumeSessionAt`), which drops
 the turns after it from the same session id, and later resumes follow the new branch. A message
 that started the conversation has the next turn start another. A run's prompt carries the run's
 id as its uuid, which is how its entry is found. `forkSession` isn't used: it renumbers every
 entry. Removed runs stay as rows with the status `removed`, their items and requests deleted, so
 a client catching up by `since` hears of it. A message the transcript no longer has (compacted
-away, or never reached) is refused. File restore (the SDK's `enableFileCheckpointing` and
-`rewindFiles`) isn't built: it writes under `~/.claude/file-history`, and would be offered only
-when the files a turn changed haven't changed since, with a dry run first.
+away, or never reached) is refused.
+
+File restore is the SDK's `enableFileCheckpointing`, on for every session, which keeps its copies
+under `~/.claude/file-history`, and `rewindFiles`, asked of a CLI opened on the conversation with
+nothing said to it: no model call, about half a second, and the transcript doesn't grow.
+`threads.filesBack` is the dry run the dialog opens with; it offers nothing when Claude has no
+record (chats from before this) or nothing would change. Probed on the real CLI:
+
+- A restore writes over what's there and its dry run doesn't notice, so the host looks: a file
+  whose mtime is later than `Thread.filesSettledAt` (the end of the chat's last run, removed ones
+  too, or its last restore) blocks the offer by name, and so does another chat at work in the
+  checkout. A file that's gone doesn't: it has nothing to lose. An edit by someone else during the
+  chat's own run isn't caught, as the mtime can't tell it from Claude's, and neither is another
+  chat starting during the second a restore takes.
+- The conversation forgets a turn's checkpoint once it goes on from before it, so the files go
+  first; if they fail, the chat stays as it was. While it goes back, nothing new starts on that
+  chat. Going back without them gives up restoring those turns later, once a new turn is sent.
+- Only what Write, Edit and NotebookEdit did is restored. What commands and subagents changed
+  stays, unless the main conversation had edited that file too; the dialog says so.
 
 **C12 [decided] Permissions are Claude's own modes, named for people:** Ask (`default`),
 Accept edits (`acceptEdits`), Auto (`auto`, where the model supports it), Full access
@@ -368,7 +384,8 @@ threads.open    {threadId, sinceSeq} → ThreadSnapshot, then its `thread.change
                 runs' items; `sinceSeq` gets the rows changed since, and every streaming item
                 whole.
 threads.history {threadId, before: runId | null, runs} → {runs, items, requests}
-threads.rewind  {threadId, runId} → {prompt}
+threads.filesBack {threadId, runId} → {filesBack}
+threads.rewind  {threadId, runId, restoreFiles} → {prompt}
                 the page of runs before `before`, with their rows
 threads.close   {threadId} → {}
 threads.update  {threadId, title?, model?, effort?, fast?, permission?, plan?, tabOpen?}

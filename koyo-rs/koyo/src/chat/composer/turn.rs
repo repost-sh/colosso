@@ -15,7 +15,7 @@ use gpui_kit::{
 use koyo_agent::client::ClientError;
 use koyo_agent::protocol::ids::{RunId, ThreadId};
 use koyo_agent::protocol::methods::{
-    EditParams, Method, QueueEdit, QueueRemove, QueueResume, QueueSendNow, QueuedParams, StopParams,
+    EditParams, Method, QueueEdit, QueueRemove, QueueResume, QueueSendNow, RunParams, StopParams,
     ThreadParams, TurnsStop,
 };
 use koyo_agent::protocol::model::{Attachment, RunStatus};
@@ -167,8 +167,8 @@ impl ChatComposer {
     }
 
     /// What names `run` of the chat, if there's a thread for it to be of.
-    fn of_queue(&self, run: &RunId, cx: &App) -> Option<QueuedParams> {
-        Some(QueuedParams {
+    fn of_queue(&self, run: &RunId, cx: &App) -> Option<RunParams> {
+        Some(RunParams {
             thread_id: self.thread_id(cx)?,
             run_id: run.clone(),
         })

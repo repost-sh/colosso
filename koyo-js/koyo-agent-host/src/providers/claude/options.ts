@@ -68,6 +68,13 @@ export interface Place {
   readonly spawn: (options: SpawnOptions) => SpawnedProcess;
 }
 
+/** What keeps a CLI that's only asked something from starting anything else. */
+const ALONE = {
+  settings: { disableAllHooks: true },
+  mcpServers: {},
+  strictMcpConfig: true,
+} satisfies Options;
+
 /** Where every query runs, and how its CLI is started. */
 function placed(place: Place): Pick<
   Options,
@@ -114,7 +121,16 @@ export function sessionOptions(spec: SessionSpec, place: Place, opening: Opening
     ...(permissionMode === undefined ? {} : { permissionMode }),
     ...(mode === "full_access" ? { allowDangerouslySkipPermissions: true } : {}),
     toolConfig: { askUserQuestion: { previewFormat: "markdown" } },
+    enableFileCheckpointing: true,
   };
+}
+
+/**
+ * The options of a session opened only to ask about a conversation's files: no hooks, no MCP
+ * servers and nothing said, so the CLI makes no API call and the transcript doesn't grow.
+ */
+export function filesOptions(place: Place, sessionId: string): Options {
+  return { ...placed(place), ...ALONE, resume: sessionId, enableFileCheckpointing: true };
 }
 
 /**
@@ -124,10 +140,8 @@ export function sessionOptions(spec: SessionSpec, place: Place, opening: Opening
 export function probeOptions(place: Place): Options {
   return {
     ...placed(place),
+    ...ALONE,
     persistSession: false,
-    settings: { disableAllHooks: true },
-    mcpServers: {},
-    strictMcpConfig: true,
   };
 }
 

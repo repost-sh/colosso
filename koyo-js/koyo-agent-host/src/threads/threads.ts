@@ -4,7 +4,7 @@
 
 import { log } from "../log";
 import type { RunId, ThreadId } from "../protocol/ids";
-import type { Params } from "../protocol/methods";
+import type { FilesBack, Params } from "../protocol/methods";
 import type { Prompt, ProviderId, Thread, ThreadSummary } from "../protocol/model";
 import { eventLine, HostError } from "../protocol/wire";
 import type { Config, Provider } from "../providers/provider";
@@ -13,7 +13,7 @@ import { ThreadActor } from "./actor";
 import { draftAttachments, removeAttachments, sweepAttachments } from "./attachments";
 import type { Context } from "./context";
 import { newThread } from "./records";
-import { rewind } from "./rewind";
+import { filesBack, rewind } from "./rewind";
 import { summary } from "./rules";
 import type { Subscriber } from "./state";
 
@@ -135,14 +135,44 @@ export class Threads {
     this.#tell(eventLine("thread.removed", { threadId: id }));
   }
 
-  /** Goes back to before run `runId` of thread `id`, and says what the person said then (C11). */
-  async rewind(id: ThreadId, runId: RunId): Promise<Prompt> {
+  /**
+   * What going back to before run `runId` of thread `id` could do to the files, if anything: only
+   * ever an offer, so what goes wrong finding out leaves the person going back without it.
+   */
+  async filesBack(id: ThreadId, runId: RunId): Promise<FilesBack | null> {
     const actor = this.actor(id);
-    const prompt = await rewind(actor, this.#providerOf(actor.thread), runId, this.#options.now());
+    const othersAtWork = (): boolean => this.#othersAtWork(actor);
+    try {
+      return await filesBack(actor, this.#providerOf(actor.thread), runId, othersAtWork);
+    } catch (error) {
+      log.warn("Couldn't find out what going back would do to the files", error);
+      return null;
+    }
+  }
+
+  /**
+   * Goes back to before run `runId` of thread `id`, its files too if `restoreFiles`, and says what
+   * the person said then (C11).
+   */
+  async rewind(id: ThreadId, runId: RunId, restoreFiles: boolean): Promise<Prompt> {
+    const actor = this.actor(id);
+    const prompt = await rewind(actor, this.#providerOf(actor.thread), runId, {
+      restoreFiles,
+      othersAtWork: () => this.#othersAtWork(actor),
+      now: () => this.#options.now(),
+    });
     for (const child of this.#options.store.orphans(id)) {
       this.delete(child);
     }
     return prompt;
+  }
+
+  /** Whether another chat is at work in the checkout of `actor`'s. */
+  #othersAtWork(actor: ThreadActor): boolean {
+    const { cwd } = actor.thread;
+    return [...this.#actors.values()].some((other) => {
+      return other !== actor && other.thread.cwd === cwd && other.busy();
+    });
   }
 
   /** Whether any thread has a live run or waits on its person. */
@@ -240,6 +270,8 @@ function missing(id: ProviderId): Provider {
       throw refusal;
     },
     entryBefore: async () => await Promise.reject(refusal),
+    filesAt: async () => await Promise.reject(refusal),
+    restoreFiles: async () => { await Promise.reject(refusal); },
     title: async () => await Promise.reject(refusal),
   };
 }

@@ -1,0 +1,21 @@
+{
+  "request": {
+    "id": 13,
+    "method": "threads.filesBack",
+    "params": {
+      "threadId": "0193a2f0-6c1e-7b3a-9f21-4d5e6f708192",
+      "runId": "0193a2f0-7777-7b3a-9f21-4d5e6f708192"
+    }
+  },
+  "response": {
+    "id": 13,
+    "result": {
+      "filesBack": {
+        "files": ["src/main.rs", "CHANGELOG.md"],
+        "insertions": 3,
+        "deletions": 12,
+        "blocked": null
+      }
+    }
+  }
+}

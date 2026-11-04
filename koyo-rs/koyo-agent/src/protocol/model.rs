@@ -87,6 +87,8 @@ pub struct Thread {
     pub session_id: Option<String>,
     /// The entry of the conversation its next session goes on from, after a person went back.
     pub resume_at: Option<String>,
+    /// When the chat last wrote files, as far as anyone knows: a later write is someone else's.
+    pub files_settled_at: Option<String>,
     /// Queued runs wait for the person after a stop, a failure or a restart.
     pub queue_held: bool,
     /// A tab shows it, and will again after a restart (C13).

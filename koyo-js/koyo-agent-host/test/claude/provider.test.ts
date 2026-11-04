@@ -1,4 +1,4 @@
-import type { ModelInfo } from "@anthropic-ai/claude-agent-sdk";
+import type { ModelInfo, RewindFilesResult } from "@anthropic-ai/claude-agent-sdk";
 import { describe, expect, test } from "bun:test";
 
 import { HostError } from "../../src/protocol/wire";
@@ -177,6 +177,78 @@ describe("a session", () => {
     await Promise.all(opened.map(async ({ session }) => {
       await session.close();
     }));
+  });
+});
+
+/** A provider whose queries answer a rewind of the files with `rewound`. */
+function answering(rewound: RewindFilesResult): { claude: ClaudeProvider; queries: FakeQuery[] } {
+  const queries: FakeQuery[] = [];
+  const { claude } = provider({
+    start: (params) => {
+      const query = new FakeQuery(params);
+      query.rewound = rewound;
+      queries.push(query);
+      return query;
+    },
+  });
+  return { claude, queries };
+}
+
+function only(queries: readonly FakeQuery[]): FakeQuery {
+  const [query] = queries;
+  if (query === undefined) {
+    throw new Error("No query started.");
+  }
+  return query;
+}
+
+const NO_RECORD = { canRewind: false, error: "No file checkpoint found for this message." };
+
+describe("a conversation's files", () => {
+  test("are asked after with nothing said to the model, and the process goes", async () => {
+    const { claude, queries } = answering({
+      canRewind: true,
+      filesChanged: ["/work/a"],
+      insertions: 1,
+      deletions: 2,
+    });
+    expect(await claude.filesAt("s", "/work", "p")).toEqual({
+      files: ["/work/a"],
+      insertions: 1,
+      deletions: 2,
+    });
+    const query = only(queries);
+    expect(query.rewinds).toEqual([{ promptId: "p", dryRun: true }]);
+    expect(query.options).toMatchObject({ resume: "s", enableFileCheckpointing: true });
+    expect(query.options.settings).toEqual({ disableAllHooks: true });
+    expect(query.prompts).toEqual([]);
+    expect(query.closed).toBe(true);
+  });
+
+  test("have nothing to say when it kept no record of them", async () => {
+    const { claude } = answering(NO_RECORD);
+    expect(await claude.filesAt("s", "/work", "p")).toBeNull();
+  });
+
+  test("go back for real only when asked to, and say when they can't", async () => {
+    const { claude, queries } = answering(NO_RECORD);
+    expect(claude.restoreFiles("s", "/work", "p")).rejects.toThrow("No file checkpoint found");
+    await settle();
+    const query = only(queries);
+    expect(query.rewinds).toEqual([{ promptId: "p", dryRun: false }]);
+    expect(query.closed).toBe(true);
+  });
+
+  test("can't be asked after without Claude Code", async () => {
+    const { claude, queries } = provider({
+      find: () => {
+        // It isn't anywhere.
+      },
+    });
+    expect(claude.filesAt("s", "/work", "p")).rejects.toThrow(HostError);
+    expect(claude.restoreFiles("s", "/work", "p")).rejects.toThrow(HostError);
+    await settle();
+    expect(queries).toEqual([]);
   });
 });
 

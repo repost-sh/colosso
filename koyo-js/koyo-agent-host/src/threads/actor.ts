@@ -28,7 +28,6 @@ import {
   answeredByNextMessage,
   type Ending,
   moved,
-  queuedRun,
   runningRun,
   seedTitle,
   settingsChanged,
@@ -324,7 +323,7 @@ export class ThreadActor {
   // Runs.
 
   #queue(prompt: Prompt): Run {
-    return queuedRun(this.#state.thread, prompt, this.#cx.now());
+    return this.#state.queue(prompt, this.#cx.now());
   }
 
   /** The agent started a turn of its own, with no message to show for it. */
@@ -411,7 +410,7 @@ export class ThreadActor {
     // A run that didn't complete holds what's queued behind it, for the person to release.
     const thread = (outcome === "completed" ? null : this.#state.holding()) ?? this.#state.thread;
     this.#state.commit({
-      thread: { ...thread, updatedAt: at },
+      thread: { ...thread, updatedAt: at, filesSettledAt: at },
       runs: [ended.run],
       items: ended.items,
       requests: this.#requests.release(ended.run, at),

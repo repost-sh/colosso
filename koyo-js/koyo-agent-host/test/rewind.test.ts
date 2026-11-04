@@ -2,15 +2,12 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 
-import type { RunId } from "../src/protocol/ids";
 import { Run, type Thread } from "../src/protocol/model";
 import { HostError } from "../src/protocol/wire";
-import { FakeProvider } from "../src/providers/fake";
 import type { SubagentStart } from "../src/providers/provider";
-import { Store } from "../src/store/store";
-import { Threads } from "../src/threads/threads";
 import { prompt } from "./support/actor";
-import { removeScratch, scratch } from "./support/scratch";
+import { type Chat, chat, said, shown } from "./support/chat";
+import { removeScratch } from "./support/scratch";
 import { settle } from "./support/wait";
 
 afterEach(removeScratch);
@@ -22,49 +19,6 @@ const START: SubagentStart = {
   model: "haiku",
   effort: "low",
 };
-
-interface Chat {
-  readonly store: Store;
-  readonly provider: FakeProvider;
-  readonly threads: Threads;
-  readonly thread: Thread;
-}
-
-function chat(): Chat {
-  const store = Store.open(":memory:");
-  const provider = new FakeProvider();
-  const threads = new Threads({
-    store,
-    providers: [provider],
-    attachments: scratch(),
-    drafts: "/not/here/chat-drafts.json",
-    now: () => new Date().toISOString(),
-  });
-  const thread = threads.create({
-    cwd: "/work",
-    provider: "fake",
-    model: null,
-    effort: null,
-    fast: false,
-    permission: null,
-    plan: false,
-  });
-  return { store, provider, threads, thread };
-}
-
-/** A turn of `text`, from start to finish. */
-async function said(on: Chat, text: string): Promise<RunId> {
-  const { runId } = on.threads.actor(on.thread.id).send(prompt(text), "auto");
-  on.provider.session.started();
-  await settle();
-  on.provider.session.finished();
-  await settle();
-  return runId;
-}
-
-function shown(on: Chat): string[] {
-  return on.store.latest(on.thread.id, 10).runs.map((run) => run.prompt.text);
-}
 
 function stored(on: Chat): Thread {
   const thread = on.store.thread(on.thread.id);
@@ -83,7 +37,7 @@ describe("going back", () => {
     const { session } = on.provider;
     on.provider.entry = "entry-of-first";
 
-    const back = await on.threads.rewind(on.thread.id, second);
+    const back = await on.threads.rewind(on.thread.id, second, false);
 
     expect(back.text).toBe("Second");
     expect(shown(on)).toEqual(["First"]);
@@ -97,7 +51,7 @@ describe("going back", () => {
     await said(on, "First");
     const second = await said(on, "Second");
     on.provider.entry = "entry-of-first";
-    await on.threads.rewind(on.thread.id, second);
+    await on.threads.rewind(on.thread.id, second, false);
     const { sessionId } = stored(on);
 
     on.threads.actor(on.thread.id).send(prompt("Other"), "auto");
@@ -116,7 +70,7 @@ describe("going back", () => {
     const old = stored(on).sessionId;
     on.provider.entry = null;
 
-    await on.threads.rewind(on.thread.id, first);
+    await on.threads.rewind(on.thread.id, first, false);
 
     expect(shown(on)).toEqual([]);
     expect(stored(on).sessionId).toBeNull();
@@ -133,25 +87,26 @@ describe("going back", () => {
     on.provider.session.started();
     await settle();
 
-    expect(on.threads.rewind(on.thread.id, first)).rejects.toThrow(HostError);
+    expect(on.threads.rewind(on.thread.id, first, false)).rejects.toThrow(HostError);
     actor.send(prompt("Waiting"), "queue");
     on.provider.session.finished("interrupted");
     await settle();
-    expect(on.threads.rewind(on.thread.id, first)).rejects.toThrow(HostError);
+    expect(on.threads.rewind(on.thread.id, first, false)).rejects.toThrow(HostError);
 
     expect(shown(on)).toEqual(["First", "Running", "Waiting"]);
   });
 
-  test("a message sent while the conversation is read keeps the chat as it is", async () => {
+  test("nothing can be sent while it goes back", async () => {
     const on = chat();
     const first = await said(on, "First");
-    const going = on.threads.rewind(on.thread.id, first);
-    on.threads.actor(on.thread.id).send(prompt("Quick"), "auto");
+    const going = on.threads.rewind(on.thread.id, first, false);
+    expect(() => on.threads.actor(on.thread.id).send(prompt("Quick"), "auto")).toThrow(HostError);
 
-    expect(going).rejects.toThrow(HostError);
+    await going;
     await settle();
-
-    expect(shown(on)).toEqual(["First", "Quick"]);
+    expect(shown(on)).toEqual([]);
+    on.threads.actor(on.thread.id).send(prompt("Later"), "auto");
+    expect(shown(on)).toEqual(["Later"]);
   });
 
   test("a conversation without the message refuses, and the chat stays as it is", async () => {
@@ -159,7 +114,7 @@ describe("going back", () => {
     const first = await said(on, "First");
     on.provider.entry = new HostError("conflict", "It isn't there.");
 
-    expect(on.threads.rewind(on.thread.id, first)).rejects.toThrow("It isn't there.");
+    expect(on.threads.rewind(on.thread.id, first, false)).rejects.toThrow("It isn't there.");
     await settle();
 
     expect(shown(on)).toEqual(["First"]);
@@ -171,7 +126,7 @@ describe("going back", () => {
     await said(on, "First");
     const none = Run.shape.id.parse("0193a2f0-7777-7b3a-9f21-4d5e6f708192");
 
-    expect(on.threads.rewind(on.thread.id, none)).rejects.toThrow(HostError);
+    expect(on.threads.rewind(on.thread.id, none, false)).rejects.toThrow(HostError);
     await settle();
   });
 
@@ -181,7 +136,7 @@ describe("going back", () => {
     const second = await said(on, "Second");
     const head = on.store.head(on.thread.id);
 
-    await on.threads.rewind(on.thread.id, second);
+    await on.threads.rewind(on.thread.id, second, false);
 
     const heard = on.store.since(on.thread.id, head);
     expect(heard.runs.map((run) => [run.id, run.status])).toEqual([[second, "removed"]]);
@@ -197,7 +152,7 @@ describe("going back", () => {
     const actor = on.threads.actor(on.thread.id);
     expect(actor.history(null, 1).runs.map((run) => run.prompt.text)).toEqual(["Third"]);
 
-    await on.threads.rewind(on.thread.id, second);
+    await on.threads.rewind(on.thread.id, second, false);
 
     expect(actor.history(null, 5).runs.map((run) => run.id)).toEqual([first]);
     expect(actor.history(null, 5).items.length).toBeGreaterThan(0);
@@ -213,7 +168,7 @@ describe("going back", () => {
     await settle();
     expect(on.threads.actor(on.thread.id).summary().status).toBe("failed");
 
-    await on.threads.rewind(on.thread.id, runId);
+    await on.threads.rewind(on.thread.id, runId, false);
 
     expect(on.threads.actor(on.thread.id).summary().status).toBe("idle");
   });
@@ -238,7 +193,7 @@ describe("going back", () => {
     session.finished();
     await settle();
 
-    await on.threads.rewind(on.thread.id, runId);
+    await on.threads.rewind(on.thread.id, runId, false);
 
     expect(on.store.children(on.thread.id)).toEqual([]);
   });

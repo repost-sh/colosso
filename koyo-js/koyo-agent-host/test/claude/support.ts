@@ -7,6 +7,7 @@ import type {
   Options,
   PermissionMode,
   Query,
+  RewindFilesResult,
   SDKControlInitializeResponse,
   SDKControlInterruptResponse,
   SDKMessage,
@@ -77,6 +78,10 @@ export class FakeQuery implements Conversation {
   commands: SlashCommand[] = [{ name: "review", description: "Review a diff", argumentHint: "" }];
   closed = false;
   initialized: SDKControlInitializeResponse = INITIALIZED;
+  /** What `rewindFiles` answers. */
+  rewound: RewindFilesResult = { canRewind: true, filesChanged: [], insertions: 0, deletions: 0 };
+  /** The rewinds asked of it, as message and whether it was only a dry run. */
+  readonly rewinds: { readonly promptId: string; readonly dryRun: boolean }[] = [];
   /** Whether settings changes fail, as a process that died half-way would. */
   refuses = false;
   readonly #frames = new Queue<SDKMessage>();
@@ -91,6 +96,14 @@ export class FakeQuery implements Conversation {
     this.#onPrompt = onPrompt;
     const { prompt } = params;
     this.#taking = typeof prompt === "string" ? Promise.resolve() : this.#take(prompt);
+  }
+
+  async rewindFiles(
+    promptId: string,
+    options?: { dryRun?: boolean },
+  ): Promise<RewindFilesResult> {
+    this.rewinds.push({ promptId, dryRun: options?.dryRun ?? false });
+    return await Promise.resolve(this.rewound);
   }
 
   /** Whether the driver ended its prompts. */
