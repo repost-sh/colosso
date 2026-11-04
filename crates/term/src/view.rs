@@ -10,8 +10,8 @@ use std::time::Duration;
 use koyo_term_control::{Exit, Handle, OpenRequest, Pinned, Size, TerminalRecord};
 use koyo_term_engine::{Cursor, Frame, OptionAsAlt};
 use gpui_kit::{
-    App, Bounds, Context, EventEmitter, FocusHandle, Focusable, InteractiveElement as _,
-    IntoElement, KeyBinding, ParentElement as _, Pixels, Render, SharedString,
+    Action, App, Bounds, Context, EventEmitter, FocusHandle, Focusable, InteractiveElement as _,
+    IntoElement, KeyBinding, NoAction, ParentElement as _, Pixels, Render, SharedString,
     StatefulInteractiveElement as _, Styled as _, Task, Window, actions, div, point, px, size,
 };
 
@@ -41,6 +41,24 @@ actions!(
 /// The key context terminal views take, which their bindings are scoped to.
 pub const CONTEXT: &str = "Terminal";
 
+/// What macOS terminals make of a few Command and Option chords, as Ghostty and iTerm2 do:
+/// the line editing a shell reads (Emacs keys), since a program is never sent Command.
+pub const MAC_EDITING: [(&str, &str); 5] = [
+    // Deletes back to the line's start.
+    ("cmd-backspace", "\x15"),
+    // To the line's start and end.
+    ("cmd-left", "\x01"),
+    ("cmd-right", "\x05"),
+    // A word back and forward.
+    ("alt-left", "\x1bb"),
+    ("alt-right", "\x1bf"),
+];
+
+/// Sends bytes to the program, for a chord that means them ([`MAC_EDITING`]).
+#[derive(Clone, Debug, PartialEq, Action)]
+#[action(namespace = terminal, no_json)]
+pub struct SendText(pub &'static str);
+
 pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("cmd-c", Copy, Some(CONTEXT)),
@@ -50,7 +68,14 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("cmd-home", ScrollToTop, Some(CONTEXT)),
         KeyBinding::new("cmd-end", ScrollToBottom, Some(CONTEXT)),
         KeyBinding::new("cmd-alt-r", ToggleResponsive, Some(CONTEXT)),
+        // The program's, through `key_down`, not the window's, which moves focus on them.
+        KeyBinding::new("tab", NoAction, Some(CONTEXT)),
+        KeyBinding::new("shift-tab", NoAction, Some(CONTEXT)),
     ]);
+    cx.bind_keys(
+        (MAC_EDITING.iter())
+            .map(|(keys, text)| KeyBinding::new(keys, SendText(text), Some(CONTEXT))),
+    );
 }
 
 /// Half a blink.
@@ -377,6 +402,9 @@ impl Render for TerminalView {
             .on_action(cx.listener(Self::scroll_page_down))
             .on_action(cx.listener(Self::scroll_to_top))
             .on_action(cx.listener(Self::scroll_to_bottom))
+            .on_action(
+                cx.listener(|this, SendText(text): &SendText, _, cx| this.type_text(text, cx)),
+            )
             // ⌥⌘R goes on up, to the pane that shows the terminal responsive.
             .child(element)
             .children(notice.map(|message| div().absolute().top_2().left_2().child(message)))

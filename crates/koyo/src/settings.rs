@@ -171,6 +171,8 @@ pub struct Settings {
     pub key_repeat: KeyRepeat,
     /// Where a page's `DevTools` open, and the room they take docked.
     pub devtools: crate::browser::DevtoolsPlace,
+    /// What quitting does with the terminals still running.
+    pub on_quit: crate::quitting::OnQuit,
     /// Whether clients outside Koyo's terminals may control the app, on which port the
     /// MCP server listens for them, and the clients the person allowed. Only the person
     /// changes it, in Settings: no app-control operation reads or sets it.
@@ -238,6 +240,7 @@ impl Default for Settings {
             language_servers: language_servers::every_server(),
             key_repeat: KeyRepeat::default(),
             devtools: crate::browser::DevtoolsPlace::default(),
+            on_quit: crate::quitting::OnQuit::default(),
             external_control: crate::control::Policy::default(),
         }
     }

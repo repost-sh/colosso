@@ -39,6 +39,7 @@ use gpui_kit::{App, Global, Subscription};
 // What the Settings page reads and changes.
 pub use activity::{ActivityEntry, ActivityKind, Decision};
 pub(crate) use caller::Caller;
+pub(crate) use exec::main_shell;
 pub use http::state as http_state;
 #[cfg(test)]
 pub(crate) use in_process::InProcess;

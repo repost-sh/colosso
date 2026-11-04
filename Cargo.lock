@@ -5309,10 +5309,12 @@ dependencies = [
  "crossbeam-channel",
  "futures",
  "gpui-kit",
+ "image",
  "koyo-term-control",
  "koyo-term-engine",
  "log",
  "parking_lot",
+ "tempfile",
 ]
 
 [[package]]

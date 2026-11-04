@@ -1,2 +1,2 @@
 # Written by script/daemon-version: the daemon version and its sources' fingerprint.
-2 931e4e124158daecef89bd8ca5ceae218dcbf71981f26bd95097d4a753a1c93a
+3 e5de9d4e57314040dd8bfe60075bd80ea21aa875f3cbe121b0676c1550c1cc96

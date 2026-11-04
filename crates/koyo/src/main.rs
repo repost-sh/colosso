@@ -26,6 +26,7 @@ mod orca;
 mod pane;
 mod picker;
 mod projects;
+mod quitting;
 mod responsive;
 mod right_panel;
 mod settings;
@@ -56,6 +57,7 @@ fn init(cx: &mut App) {
     key_repeat::init(cx);
     theme::init(cx);
     shell::init(cx);
+    quitting::init(cx);
     browser::init(cx);
     right_panel::init(cx);
     files::init(cx);
@@ -171,6 +173,7 @@ fn main() -> ExitCode {
     });
     app.run(|cx| {
         init(cx);
+        quitting::set_menu(cx);
         // Not in `init`, which tests and the visual check share: they run servers of
         // their own, or none.
         language::init(cx);

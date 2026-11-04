@@ -111,24 +111,30 @@ pub fn spawn(
         .openpty(pty_size(size))
         .map_err(io::Error::other)?;
     let mut builder = match command {
-        [] => {
-            // portable-pty's default program is `$SHELL` as a login shell: run by its path,
-            // its name with a leading dash as `argv[0]`. A `SHELL` the caller gave wins.
-            let mut builder = CommandBuilder::new_default_prog();
-            builder.env("SHELL", login_shell());
-            builder
-        }
+        // portable-pty's default program is `$SHELL` as a login shell: run by its path, its
+        // name with a leading dash as `argv[0]`. A `SHELL` the caller gave wins.
+        [] => CommandBuilder::new_default_prog(),
         [program, args @ ..] => {
             let mut builder = CommandBuilder::new(program);
             builder.args(args);
             builder
         }
     };
+    builder.env_clear();
+    for (key, value) in std::env::vars_os() {
+        if key.to_str().is_some_and(inherits) {
+            builder.env(key, value);
+        }
+    }
     builder.cwd(cwd);
     // The program that runs, whose shell integration goes in: the login shell, or the
     // command's own.
     let program = match command {
-        [] => extra_env.get("SHELL").cloned().unwrap_or_else(login_shell),
+        [] => {
+            let shell = extra_env.get("SHELL").cloned().unwrap_or_else(login_shell);
+            builder.env("SHELL", &shell);
+            shell
+        }
         [program, ..] => program.clone(),
     };
     for (key, value) in environment(handle, worktree, &program, extra_env, dark) {
@@ -180,7 +186,28 @@ fn login_shell() -> String {
         .unwrap_or_else(|| "/bin/zsh".to_owned())
 }
 
-/// The daemon's environment plus what identifies the terminal, and the shell integration for
+/// Whether a program gets `key` of the daemon's environment: what macOS gives an app started
+/// from the Dock or the Finder, and the locale, and none of the rest. The daemon runs with the
+/// environment of whatever started it, an app run from a shell or an agent's `koyo mcp`, and
+/// what they set (an agent's session markers, a build's variables) isn't the terminal's.
+fn inherits(key: &str) -> bool {
+    const KEPT: [&str; 10] = [
+        "HOME",
+        "USER",
+        "LOGNAME",
+        "SHELL",
+        "PATH",
+        "TMPDIR",
+        "LANG",
+        "SSH_AUTH_SOCK",
+        "COMMAND_MODE",
+        "__CF_USER_TEXT_ENCODING",
+    ];
+    KEPT.contains(&key) || key.starts_with("LC_")
+}
+
+/// What the program gets of the daemon's environment ([`inherits`]) plus what identifies
+/// the terminal, and the shell integration for
 /// `program`; `TERM` is Ghostty's own when its terminfo could be written, `xterm-256color`
 /// otherwise. `COLORFGBG` says whether the app's theme is `dark`, once it's known.
 fn environment(
@@ -234,7 +261,7 @@ fn environment(
     }
     // Last, as it folds the terminal's own ZDOTDIR or XDG_DATA_DIRS into what it sets.
     if let Some(dir) = &resources {
-        let get = |key: &str| extra.get(key).cloned().or_else(|| std::env::var(key).ok());
+        let get = |key: &str| extra.get(key).cloned();
         env.extend(super::integration::variables(program, dir, get));
     }
     env
@@ -296,6 +323,26 @@ mod tests {
             }
         }
         true
+    }
+
+    #[test]
+    fn a_program_gets_only_the_apps_environment_of_the_daemons() {
+        let handle = Handle("term_test".into());
+        let env = BTreeMap::from([("ASKED_FOR".to_owned(), "yes".to_owned())]);
+        let cwd = std::env::current_dir().unwrap();
+        let command = ["/usr/bin/env".to_owned()];
+        let size = Size::cells(200, 100);
+        let mut spawned = spawn(&handle, None, &command, &cwd, &env, size, None).unwrap();
+        let printed = printed(&mut spawned);
+        let mut seen = Vec::new();
+        // The test's own environment is cargo's, CARGO_PKG_NAME among it.
+        let done = read_until(&printed, &mut seen, |text| text.contains("KOYO_TERMINAL="));
+        let _ = spawned.child.wait();
+        let seen = String::from_utf8_lossy(&seen);
+        assert!(done, "{seen}");
+        assert!(seen.contains("ASKED_FOR=yes"), "{seen}");
+        assert!(seen.contains("HOME="), "{seen}");
+        assert!(!seen.contains("CARGO_PKG_NAME="), "{seen}");
     }
 
     #[test]

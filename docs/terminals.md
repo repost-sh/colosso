@@ -339,6 +339,10 @@ the daemon runs the operations (8.1). Loopback HTTP is deferred.
   - `terminals/<handle>/{activity.jsonl, commands.jsonl, screenshots.jsonl, screenshots/}`
     (5.8) and `terminals/<handle>/snapshot.bin` (optional, 5.9).
   - `mcp.token` (0600): secret for app-launched agents, regenerated at daemon start.
+- Quitting the app (⌘Q, the menu) with terminals running asks whether to end them or keep them,
+  unless a choice was kept (Settings → General; `crates/koyo/src/quitting.rs`). Ending closes
+  each terminal, so none runs again at the next launch, then stops the daemon. The Dock and a
+  logout can't be held up to ask, and keep them.
 - Shutdown: `Shutdown` frame from an authorized client, or SIGTERM. The daemon sends SIGHUP
   to every child, waits up to 5 s, then SIGKILL. It never stops because a client left.
 - Upgrade: a new build does not replace a running daemon that holds terminals. It connects,
@@ -414,7 +418,11 @@ Terminal {
   `ghostty_vt::Terminal` (it is `!Send`, so it never leaves this thread), the raw byte ring,
   the status machine, and the list of attached clients' outbound queues.
 - PTY: `portable-pty 0.9` (unix `openpty`), spawned with the login shell
-  (`$SHELL -l`) or the given argv, `cwd` as spawn directory, env: inherit the daemon's env
+  (`$SHELL -l`) or the given argv, `cwd` as spawn directory, env: of the daemon's, only what
+  macOS gives an app started from the Dock (`HOME`, `USER`, `LOGNAME`, `SHELL`, `PATH`,
+  `TMPDIR`, `SSH_AUTH_SOCK`, `COMMAND_MODE`, `__CF_USER_TEXT_ENCODING`) and the locale (`LANG`,
+  `LC_*`), as the daemon has the env of whatever started it, an app run from a shell or an
+  agent's `koyo mcp`, whose variables (an agent's session markers) aren't the terminal's;
   plus `TERM=xterm-ghostty` **if** the bundled terminfo is installed (section 11), else
   `TERM=xterm-256color`; `COLORTERM=truecolor`; `TERM_PROGRAM=Koyo`;
   `TERM_PROGRAM_VERSION`; `KOYO_TERMINAL=<handle>`; `KOYO_WORKTREE=<path>`; and for
@@ -904,16 +912,20 @@ sees the shell back from its screen, idle at its prompt.
 - A terminal is a tab in a branch unit (`PaneKind::Terminal`), and only a tab (owner,
   2026-10-31): the bottom panel holds no terminal and stays the stand-in it was.
 - The branch unit's tab strip lists the daemon's terminals for that worktree; opening the
-  tab attaches. Closing the tab **detaches** (the terminal keeps running); a close button with
-  a modifier, or the tab's menu, offers "Stop terminal" (sends `Close`).
+  tab attaches. Closing the tab **stops** the terminal (sends `Close`), asking first when
+  something runs in it (owner, 2026-11-04); quitting the app can keep terminals running (5.1).
 - The sidebar branch row shows a status roll-up: a dot per `needs_input` terminal and a count
   ("2 waiting"). Project rows roll up their branches.
 - The window's "New Terminal" action opens a shell in the selected branch unit's worktree
   with the next free name (`zsh`, `zsh-2`, ...), per `model.rs`'s current default label.
 - **As implemented (M5):** the terminal's bar has Stop (Close once the program ended), and
-  ⌥-clicking a terminal tab's × stops its terminals; a busy program asks first, then the
-  daemon closes the terminal and its tab goes when the daemon says so, from whichever
-  client stopped it. A person may stop a terminal an agent holds. The tab has no menu yet.
+  a person closing a tab or pane (×, ⌘W, a middle click) stops its terminals; anything but a
+  shell at its prompt or a program that ended asks first, then the daemon closes the terminal
+  and its tab goes when the daemon says so, from whichever client stopped it. Only a shell's
+  marks say it's at its prompt, so a terminal without them always asks. ⌘⇧T opens a closed
+  tab with a new shell of the name. A person may stop a terminal an agent holds. An agent's
+  `tab_close` and `pane_close` leave terminals running; its `terminal_close` stops them. The
+  tab has no menu yet.
   Branch rows show the waiting count; project rows don't roll up yet.
 
 ### 7.2 Render pipeline [decided]
@@ -962,10 +974,17 @@ sees the shell back from its screen, idle at its prompt.
 - Keyboard: GPUI `KeyDownEvent` → engine key encoder configured from the terminal's modes
   (`key_encoder_setopt_from_terminal`), producing legacy, modifyOtherKeys or kitty-protocol
   bytes → `Input`. IME/composition through GPUI's `InputHandler` (the editor already does
-  this). macOS Option-as-Meta is a setting.
+  this). macOS Option-as-Meta is a setting. Bindings fire before a view hears a key, so the
+  terminal keeps what's the program's: Tab and Shift-Tab, which the window would take for
+  focus, unbound in its context, and the chords macOS terminals give line editing bound to their
+  bytes (`MAC_EDITING`: ⌘⌫, ⌘←, ⌘→, ⌥←, ⌥→). A test (`koyo/src/terminals/keys.rs`) fails when a
+  binding without ⌘ takes a key from a terminal.
 - Mouse: engine mouse encoder when the program tracks the mouse; otherwise selection.
 - Paste: bracketed when mode 2004 is on; large pastes are chunked; a paste with control
-  characters asks first (Ghostty's unsafe-paste rule).
+  characters asks first (Ghostty's unsafe-paste rule). A clipboard holding more than text
+  pastes as text (`term/src/paste.rs`): copied files as their quoted paths, and an image as the
+  path of a private file in the temporary folder that holds it, a TIFF converted to PNG, which
+  programs that take images (Claude Code) read as the image.
 - Focus and control: the first keystroke, paste or mouse input while an agent holds the
   lease is the implicit takeover of D11. The input is delivered (the human's intent wins),
   the agent's lease ends, and a toast names the displaced agent with a "Give back" action.
@@ -1345,8 +1364,8 @@ onto `for: text|gone|stable|idle|exit|prompt`; its `snapshot -i` refs onto
   accidental takeover is undone with the toast's "Give back".
 - "Needs input" terminals bubble up: sidebar count, a dock badge later, and an optional
   notification routed from OSC 9/777 with the terminal and branch in its title.
-- Terminals are not closed by closing tabs or the window. Quitting the app shows nothing
-  special; the daemon keeps everything. A "Stop all terminals of this branch" exists in the
+- Terminals are closed by closing their tabs, not by closing the window. Quitting the app asks
+  whether to end them or keep them (5.1). A "Stop all terminals of this branch" exists in the
   branch menu, with confirmation listing processes. **As implemented (M5):** "Stop
   Terminals…" in the checkout row's menu, shown while it has terminals, asks with each
   terminal's name and status.

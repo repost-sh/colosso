@@ -23,6 +23,7 @@ mod control;
 mod drive;
 mod delete;
 mod panel;
+mod paste;
 mod stop;
 mod upgrade;
 
@@ -36,12 +37,12 @@ use koyo_term_control::{
 };
 
 use crate::projects::read_worktrees;
-use crate::shell::{CloseTab, NewTerminal, ReopenClosedTab, Shell, ToggleRightPanel};
+use crate::shell::{NewTerminal, Shell, ToggleRightPanel};
 use crate::test_support::try_git;
 use crate::visual::{Drawn, Result, checkout};
 use drive::{
-    act, alt_screen, cell, click, drag, focused, press, selected, terminal, text, type_line, wait,
-    wait_until, wheel,
+    act, alt_screen, cell, click, drag, focused, press, selected, terminal, text, type_keys,
+    type_line, wait, wait_until, wheel,
 };
 
 /// Where the pictures go, relative to the checkout.
@@ -109,6 +110,7 @@ fn run_shell(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     wait(drawn, "echo's output", |text| text.matches("hello-koyo").count() >= 2)?;
     said.push(format!("{}", drawn.save("shell.png")?.display()));
     keys(drawn)?;
+    paste::paste(drawn, said)?;
     control::control(drawn, said)?;
     panel::panel(drawn, said)?;
     stop::stop(drawn, said)?;
@@ -130,7 +132,8 @@ fn run_shell(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     resized(drawn, said)?;
     reattached(drawn, said)?;
     after_restart(drawn, said)?;
-    upgrade::other_build(drawn, said)
+    upgrade::other_build(drawn, said)?;
+    stop::end_everything(drawn, said)
 }
 
 /// The shell's history and Ctrl-C, and text the input method delivers.
@@ -154,7 +157,23 @@ fn keys(drawn: &mut Drawn) -> Result<()> {
         text.lines().any(|line| line == "interrupted")
     })?;
     type_line(drawn, "echo café-ü")?;
-    wait(drawn, "accented text", |text| text.lines().any(|line| line == "café-ü"))
+    wait(drawn, "accented text", |text| text.lines().any(|line| line == "café-ü"))?;
+    program_keys(drawn)
+}
+
+/// Keys the app would take if the terminal didn't keep them: Tab reaches the shell, which
+/// completes the command, and ⌘⌫ deletes the line, as `MAC_EDITING` has it.
+fn program_keys(drawn: &mut Drawn) -> Result<()> {
+    type_keys(drawn, "whoam")?;
+    wait(drawn, "the start of a command", |text| text.trim_end().ends_with("whoam"))?;
+    press(drawn, "tab")?;
+    wait(drawn, "Tab's completion", |text| text.trim_end().ends_with("whoami"))?;
+    press(drawn, "cmd-backspace")?;
+    wait(drawn, "⌘⌫ to delete the line", |text| !text.trim_end().ends_with("whoami"))?;
+    type_line(drawn, "echo keys-reached")?;
+    wait(drawn, "a command on the emptied line", |text| {
+        text.lines().any(|line| line == "keys-reached")
+    })
 }
 
 /// A word chosen by a double click and a run of cells by a drag, read back as Copy reads
@@ -242,24 +261,17 @@ fn resized(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     Ok(())
 }
 
-/// The tab closed with ⌘W, which leaves the terminal running in the daemon, and opened again
-/// with ⌘⇧T; then closed again and brought back from the daemon as the app does when it
-/// starts. Each time its screen is as it was.
+/// The tab gone as quitting the app takes it, which leaves the terminal running in the daemon,
+/// and brought back from the daemon as the app does when it starts, its screen as it was.
 fn reattached(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     // The tab is narrow by now, so the command may have wrapped.
     let as_it_was = |text: &str| text.replace('\n', "").contains("% stty size");
     let closed = terminal(drawn)?.downgrade();
-    act(drawn, Box::new(CloseTab))?;
-    wait_until(drawn, "the tab to close", |drawn| Ok(terminal(drawn).is_err()))?;
-    // Its view goes with it, and lets the terminal go in the daemon.
-    wait_until(drawn, "the closed tab's view to go", |_| Ok(closed.upgrade().is_none()))?;
-    act(drawn, Box::new(ReopenClosedTab))?;
-    wait(drawn, "the tab opened again", as_it_was)?;
-    said.push(format!("{}", drawn.save("reopened.png")?.display()));
-
     let shell = drawn.shell.clone();
-    (drawn.cx).update(|cx| shell.update(cx, Shell::close_shown_terminal));
-    wait_until(drawn, "the tab to close again", |drawn| Ok(terminal(drawn).is_err()))?;
+    (drawn.cx).update(|cx| shell.update(cx, Shell::let_go_of_shown_terminal));
+    wait_until(drawn, "the tab to go", |drawn| Ok(terminal(drawn).is_err()))?;
+    // Its view goes with it, and lets the terminal go in the daemon.
+    wait_until(drawn, "its view to go", |_| Ok(closed.upgrade().is_none()))?;
     (drawn.cx).update(|cx| shell.update(cx, Shell::restore_terminals_again));
     wait(drawn, "the terminal back from the daemon", as_it_was)?;
     said.push(format!("{}", drawn.save("restored.png")?.display()));
@@ -272,8 +284,8 @@ fn after_restart(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     const RESTORED: &str = "[restored after the terminal daemon restarted]";
     let shell = drawn.shell.clone();
     let closed = terminal(drawn)?.downgrade();
-    (drawn.cx).update(|cx| shell.update(cx, Shell::close_shown_terminal));
-    wait_until(drawn, "the tab to close", |drawn| Ok(terminal(drawn).is_err()))?;
+    (drawn.cx).update(|cx| shell.update(cx, Shell::let_go_of_shown_terminal));
+    wait_until(drawn, "the tab to go", |drawn| Ok(terminal(drawn).is_err()))?;
     wait_until(drawn, "its view to go", |_| Ok(closed.upgrade().is_none()))?;
     let client = drawn.cx.update(|cx| shell.update(cx, |shell, _| shell.terminal_client()));
     let dir = client.ok_or("the app has no terminal client")?.dir().clone();

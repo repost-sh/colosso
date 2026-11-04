@@ -9,6 +9,7 @@ mod glyphs;
 mod input;
 mod keys;
 mod paint;
+mod paste;
 mod sprite;
 mod view;
 mod vt;
@@ -17,7 +18,7 @@ pub use client::{Attachment, Notice, Stream, TermClient, is_other_build};
 pub use fit::Scale;
 pub use glyphs::Look;
 pub use view::{
-    CONTEXT, Copy, Paste, ScrollPageDown, ScrollPageUp, ScrollToBottom, ScrollToTop, Source,
+    CONTEXT, Copy, MAC_EDITING, Paste, ScrollPageDown, ScrollPageUp, ScrollToBottom, ScrollToTop, Source,
     TerminalEvent, TerminalView, ToggleResponsive,
 };
 

@@ -1,5 +1,6 @@
 //! General: how the sidebar opens, which layout holds it, and how wide it is; where new
-//! worktrees go and what their branches are named under; and how a held arrow key repeats.
+//! worktrees go and what their branches are named under; how a held arrow key repeats; and
+//! what quitting does with the terminals still running.
 
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::{
@@ -24,7 +25,18 @@ pub(super) const SPEEDS: [f32; 10] = [30., 40., 52., 66., 80., 96., 120., 150., 
 pub(super) const DELAYS: [f32; 8] = [500., 400., 320., 250., 200., 150., 110., 80.];
 
 pub fn sections(cx: &App) -> Vec<SettingsSection> {
-    vec![sidebar(cx), worktrees(cx), keyboard(cx)]
+    vec![sidebar(cx), worktrees(cx), keyboard(cx), quitting(cx)]
+}
+
+fn quitting(cx: &App) -> SettingsSection {
+    let choice = settings::get(cx).on_quit;
+    SettingsSection::new("Quitting").row(
+        SettingRow::new("When you quit with terminals running")
+            .description("Kept, they run on and are back next launch. Ended, they're gone.")
+            .control(MenuButton::new("on-quit", choice.label(), |cx| {
+                settings::get(cx).on_quit.menu()
+            })),
+    )
 }
 
 fn sidebar(cx: &App) -> SettingsSection {

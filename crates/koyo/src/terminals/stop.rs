@@ -1,20 +1,19 @@
 //! Stopping terminals from the app (`docs/terminals.md` 7.1, 9): the one shown, from its bar
-//! or the Stop Terminal action; a tab's, by ⌥-clicking its ×; or every terminal of a checkout
-//! from its row's menu. A busy program asks first, and so does stopping a checkout's
+//! or the Stop Terminal action; a tab's or a pane's, by closing it; or every terminal of a
+//! checkout from its row's menu. A busy program asks first, and so does stopping a checkout's
 //! terminals; stopping ends the program and closes the terminal in the daemon, whose word
-//! takes its tab away. Deleting a worktree stops its terminals too, once its dialog has named
-//! them.
+//! takes its tab away unless closing it already has. Deleting a worktree stops its terminals
+//! too, once its dialog has named them.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use koyo_term::TermClient;
+use koyo_term::{Source, TermClient};
 
 use koyo_term_control::{Handle, RequestBody, Status};
-use gpui_kit::{
-    AppContext as _, AsyncApp, Context, Focusable as _, PromptLevel, SharedString, Window,
-};
+use gpui_kit::{AppContext as _, Context, Focusable as _, PromptLevel, SharedString, Window};
 
+use super::open_request;
 use super::states::State;
 use crate::shell::Shell;
 
@@ -46,39 +45,63 @@ impl Shell {
         }
     }
 
-    /// Stops the terminals of the tab at `at`, asking first when one is busy; whether it has
-    /// any, else its × closes it as a plain click does.
-    pub fn stop_tab_terminals(
+    /// Does `then` once the person has agreed to end what's running in the terminals of panes
+    /// `ids`, which closing their tab or pane does, or at once when nothing is.
+    pub(crate) fn ask_to_end_terminals(
         &mut self,
-        at: (usize, usize, usize),
+        ids: &[u64],
+        then: impl FnOnce(&mut Self, &mut Window, &mut Context<Self>) + 'static,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> bool {
-        let Some(tab) = self.workspace.tab_mut(at) else {
-            return false;
+    ) {
+        // A terminal the daemon has said nothing of yet may be running anything.
+        let busy: Vec<(&str, String)> = (ids.iter())
+            .filter_map(|id| match self.terminals.sources.get(id)? {
+                Source::Existing { handle, name } => match self.terminals.states.get(handle) {
+                    Some(state) => busy(state).then(|| (state.name.as_str(), doing(state))),
+                    None => Some((name.as_str(), "not known yet".to_owned())),
+                },
+                Source::Open(_) => None,
+            })
+            .collect();
+        let question = match busy.as_slice() {
+            [] => return then(self, window, cx),
+            [(name, _)] => format!("Close {name}?"),
+            several => format!("Close {} terminals?", several.len()),
         };
-        let ids: Vec<u64> = (tab.panes().into_iter())
-            .filter_map(|pane| pane.terminal)
+        let listed: Vec<String> = (busy.iter())
+            .map(|(name, doing)| format!("{name}: {doing}"))
             .collect();
-        let terminals: Vec<(Handle, &State)> = (ids.iter())
-            .filter_map(|id| self.terminals.handle_of(*id))
-            .filter_map(|handle| Some((handle.clone(), self.terminals.states.get(handle)?)))
+        let detail = format!("{}. Closing ends what's running.", listed.join(" · "));
+        confirm(&question, &detail, "Close", then, window, cx);
+    }
+
+    /// Closes the terminals of panes `ids` in the daemon as their tab or pane closes, so they
+    /// don't come back. The tab, should ⌘⇧T open it again, starts a new shell of the name.
+    pub(crate) fn end_terminals(&mut self, ids: &[u64], cx: &mut Context<Self>) {
+        let panes: Vec<(PathBuf, u64)> = (self.workspace.terminal_tabs())
+            .filter(|(_, id)| ids.contains(id))
+            .map(|(worktree, id)| (worktree.to_path_buf(), id))
             .collect();
-        if terminals.is_empty() {
-            return !ids.is_empty();
+        let mut handles = Vec::new();
+        for (worktree, id) in panes {
+            match self.terminals.sources.get(&id) {
+                Some(Source::Existing { handle, name }) => {
+                    handles.push(handle.clone());
+                    let shell = open_request(&worktree, name.clone());
+                    (self.terminals.sources).insert(id, Source::Open(Box::new(shell)));
+                }
+                // Not attached yet, as a shell a daemon restart ended and that wasn't looked
+                // at: the daemon still lists it, under its name.
+                Some(Source::Open(request)) => handles.extend(
+                    (self.terminals.states.of_worktree(&worktree).into_iter())
+                        .find(|(_, state)| state.name == request.name)
+                        .map(|(handle, _)| handle),
+                ),
+                None => {}
+            }
         }
-        let busy: Vec<String> = (terminals.iter())
-            .filter(|(_, state)| busy(state))
-            .map(|(_, state)| format!("{}: {}", state.name, doing(state)))
-            .collect();
-        let handles = terminals.into_iter().map(|(handle, _)| handle).collect();
-        if busy.is_empty() {
-            self.close_terminals(handles, cx);
-        } else {
-            let detail = format!("{}. Their programs end.", busy.join(" · "));
-            self.ask_to_stop("Stop the tab's terminals?", &detail, handles, window, cx);
-        }
-        true
+        self.close_terminals(handles, cx);
     }
 
     /// Stops every terminal of the checkout at `worktree`, once the person says so.
@@ -135,20 +158,10 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let answer = window.prompt(
-            PromptLevel::Warning,
-            question,
-            Some(detail),
-            &["Stop", "Cancel"],
-            cx,
-        );
-        cx.spawn(async move |this, cx: &mut AsyncApp| {
-            if answer.await == Ok(0) {
-                this.update(cx, |this, cx| this.close_terminals(handles, cx))
-                    .ok();
-            }
-        })
-        .detach();
+        let stop = move |this: &mut Self, _: &mut Window, cx: &mut Context<Self>| {
+            this.close_terminals(handles, cx);
+        };
+        confirm(question, detail, "Stop", stop, window, cx);
     }
 
     /// Closes `handles` in the daemon; their tabs go when it says they closed.
@@ -161,8 +174,32 @@ impl Shell {
     }
 }
 
+/// Asks `question`, and does `then` if the person answers `action`.
+fn confirm(
+    question: &str,
+    detail: &str,
+    action: &str,
+    then: impl FnOnce(&mut Shell, &mut Window, &mut Context<Shell>) + 'static,
+    window: &mut Window,
+    cx: &mut Context<Shell>,
+) {
+    let answer = window.prompt(
+        PromptLevel::Warning,
+        question,
+        Some(detail),
+        &[action, "Cancel"],
+        cx,
+    );
+    cx.spawn_in(window, async move |this, cx| {
+        if answer.await == Ok(0) {
+            this.update_in(cx, then).ok();
+        }
+    })
+    .detach();
+}
+
 /// Closes `handles` in the daemon, waiting for each.
-fn close_all(client: &Arc<TermClient>, handles: Vec<Handle>) {
+pub(crate) fn close_all(client: &Arc<TermClient>, handles: Vec<Handle>) {
     for handle in handles {
         let close = RequestBody::Close {
             handle: handle.clone(),
@@ -174,9 +211,15 @@ fn close_all(client: &Arc<TermClient>, handles: Vec<Handle>) {
     }
 }
 
-/// Whether ending the terminal's program would cut something short.
+/// Whether ending the terminal's program may cut something short: anything but a program
+/// that ended or a shell at its prompt. Only a shell's marks say it's at its prompt; without
+/// them, as for bash or a program run directly, idle only means quiet.
 fn busy(state: &State) -> bool {
-    matches!(state.status, Status::Running | Status::NeedsInput)
+    match state.status {
+        Status::Exited => false,
+        Status::Idle => state.reason != "prompt",
+        Status::Running | Status::NeedsInput | Status::Unknown => true,
+    }
 }
 
 /// What the program is doing, as the question says it.
@@ -188,3 +231,6 @@ fn doing(state: &State) -> String {
         format!("{status}, {}", state.reason)
     }
 }
+
+#[cfg(test)]
+mod tests;

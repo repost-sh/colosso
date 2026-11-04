@@ -248,6 +248,10 @@ pub(crate) fn run(args: &Args) -> Result<(), String> {
         // Opaque white until a page paints, as in a browser tab.
         background_color: 0xFFFF_FFFF,
         keychain_service_name: "Koyo Browser Engine".into(),
+        // CEF takes the outermost app bundle for its own, which inside Koyo.app is Koyo's,
+        // and looks for its framework and helpers there.
+        #[cfg(target_os = "macos")]
+        main_bundle_path: crate::own_bundle().unwrap_or_default().as_str().into(),
         ..Settings::default()
     };
     if cef::initialize(

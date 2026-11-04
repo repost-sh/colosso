@@ -39,6 +39,14 @@ pub(crate) fn mock_keychain() -> bool {
     false
 }
 
+/// The host's own app bundle, `Koyo Browser Host.app`.
+#[cfg(target_os = "macos")]
+pub(crate) fn own_bundle() -> Option<String> {
+    let bundle = objc2_foundation::NSBundle::mainBundle().bundlePath().to_string();
+    let is_app = std::path::Path::new(&bundle).extension().is_some_and(|ext| ext == "app");
+    is_app.then_some(bundle)
+}
+
 /// The rate pages paint at: the fastest display's, so a 120 Hz display
 /// scrolls at 120 frames a second. Chromium only paints what changes, so an
 /// idle page costs nothing more.

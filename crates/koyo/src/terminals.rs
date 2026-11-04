@@ -1,8 +1,8 @@
 //! The terminals the tabs show, and only tabs (`docs/terminals.md` 7.1): the app's one
 //! client of the daemon, which runs inside this executable as `koyo termd`, and a view
 //! per terminal tab, made the first time the tab is drawn so a tab never looked at never
-//! attaches. Closing a tab detaches its view; the terminal keeps running, and comes back as
-//! a tab when the app opens again.
+//! attaches. Closing a tab ends its terminal; quitting the app can leave terminals running,
+//! and they come back as tabs when it opens again.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -38,6 +38,7 @@ pub mod visual;
 mod watch;
 
 pub use responsive::handle_actions;
+pub(crate) use stop::close_all;
 
 #[derive(Default)]
 pub struct Terminals {
@@ -105,7 +106,7 @@ pub fn init(cx: &mut App) {
 impl Terminals {
     /// The daemon's client, made on first use: the daemon is this executable run as
     /// `koyo termd`, started when none runs.
-    fn client(&mut self) -> Option<Arc<TermClient>> {
+    pub(crate) fn client(&mut self) -> Option<Arc<TermClient>> {
         if self.client.is_none() {
             self.client = daemon_client();
         }
@@ -156,8 +157,8 @@ impl Terminals {
         self.next
     }
 
-    /// Lets go of the views whose panes closed: they detach, and the terminals live on. A
-    /// closed tab's terminals stay known, so ⌘⇧T opens them again.
+    /// Lets go of the views whose panes closed, which detaches them. A closed tab's terminals
+    /// stay known, so ⌘⇧T opens them again.
     pub fn retain(&mut self, workspace: &Workspace) {
         let shown: HashSet<u64> = workspace.terminal_tabs().map(|(_, id)| id).collect();
         let known: HashSet<u64> = (shown.iter().copied())
@@ -339,9 +340,10 @@ impl Shell {
         self.shown()?.1
     }
 
-    /// Closes the terminal tab shown, as its × does: the terminal stays in the daemon.
+    /// Takes away the terminal tab shown, as quitting the app does: the terminal stays in the
+    /// daemon.
     #[cfg(feature = "visual-check")]
-    pub fn close_shown_terminal(&mut self, cx: &mut Context<Self>) {
+    pub fn let_go_of_shown_terminal(&mut self, cx: &mut Context<Self>) {
         if let Some((id, _)) = self.shown() {
             self.close_terminal_tab(id, cx);
         }
@@ -415,6 +417,9 @@ impl Shell {
         cx.notify();
     }
 }
+
+#[cfg(test)]
+mod keys;
 
 #[cfg(test)]
 mod tests {

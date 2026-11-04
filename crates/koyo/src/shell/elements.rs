@@ -121,8 +121,8 @@ pub fn row(id: impl Into<ElementId>, selected: bool, p: Palette) -> Stateful<Div
 }
 
 /// The × that closes the tab at `(project, branch, tab)` without selecting it, asking
-/// first about unsaved edits; a dot in its place while its files have them. ⌥-clicked on a
-/// terminal tab, it stops its terminals.
+/// first about unsaved edits and running programs; a dot in its place while its files have
+/// unsaved edits.
 pub fn tab_close_button(
     id: impl Into<ElementId>,
     (project, branch, tab): (usize, usize, usize),
@@ -133,10 +133,7 @@ pub fn tab_close_button(
     let at = (project, branch, tab);
     close_or_dot(id, dirty, p).on_click(cx.listener(move |this, _, window, cx| {
         cx.stop_propagation();
-        // ⌥ stops a terminal tab's terminals, whose tab goes as the daemon closes them.
-        if !(window.modifiers().alt && this.stop_tab_terminals(at, window, cx)) {
-            this.close_tab_at(at, window, cx);
-        }
+        this.close_tab_at(at, window, cx);
     }))
 }
 

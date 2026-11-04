@@ -96,3 +96,37 @@ fn orca_strip_tabs_join_and_reorder_by_dragging(cx: &mut TestAppContext) {
 fn arc_sidebar_tabs_join_and_reorder_by_dragging(cx: &mut TestAppContext) {
     tabs_join_and_reorder(Layout::Arc, cx);
 }
+
+/// However many tabs a checkout has, the strip narrows them to fit beside its + button: each
+/// stays on screen to pick, and none runs over the button or what's beside the strip.
+#[gpui_kit::test]
+fn orca_strip_narrows_its_tabs_to_fit_beside_the_new_tab_button(cx: &mut TestAppContext) {
+    let root = repo("tab-list-narrowing", &[("README.md", "hi\n")]);
+    let (window, shell) = shell_with(&[&root], cx);
+    cx.update(|cx| settings::update(cx, |settings| settings.layout = Layout::Orca));
+    select(&shell, &root, cx);
+    for count in [8, 40] {
+        shell.update(cx, |shell, cx| {
+            let shown = |shell: &Shell| shell.workspace.branch().map_or(0, |unit| unit.tabs.len());
+            while shown(shell) < count {
+                shell.workspace.new_tab(PaneKind::Chat);
+            }
+            cx.notify();
+        });
+        draw(window, cx);
+        let mut vcx = VisualTestContext::from_window(window, cx);
+        let button = vcx.debug_bounds("new-tab-button").expect("the + button is shown");
+        assert!(button.size.width > px(0.), "with {count} tabs the + button has no width");
+        let last = listed(window, count - 1, cx);
+        assert!(
+            last.right() <= button.left(),
+            "with {count} tabs the last ends at {:?}, past the + button at {:?}",
+            last.right(),
+            button.left()
+        );
+        for at in 0..count {
+            let tab = listed(window, at, cx);
+            assert!(tab.size.width > px(0.), "tab {at} of {count} has no width");
+        }
+    }
+}

@@ -72,6 +72,12 @@ pub fn focused(drawn: &mut Drawn) -> Result<bool> {
 
 /// Types `line` a key at a time, as a person would, and presses Enter.
 pub fn type_line(drawn: &mut Drawn, line: &str) -> Result<()> {
+    type_keys(drawn, line)?;
+    press(drawn, "enter")
+}
+
+/// Types `line` a key at a time, as a person would.
+pub fn type_keys(drawn: &mut Drawn, line: &str) -> Result<()> {
     let window = drawn.window;
     for c in line.chars() {
         let keystroke = Keystroke {
@@ -86,7 +92,7 @@ pub fn type_line(drawn: &mut Drawn, line: &str) -> Result<()> {
             .update_window(window, |_, window, cx| window.dispatch_keystroke(keystroke, cx))
             .map_err(|error| error.to_string())?;
     }
-    press(drawn, "enter")
+    Ok(())
 }
 
 /// Presses `key`, `ctrl-c` say, and draws.
