@@ -275,11 +275,15 @@ export const RequestPayload = z.discriminatedUnion("kind", [
     tool: z.string(),
     family: ToolFamily,
     title: z.string(),
-    /** What is asked, shown as is: a command, a path, a diff. */
+    /** What it's asked of, as a line of work goes by it once it has run. */
+    label: z.string(),
+    /** What is asked, shown as is: a command, a path, or else the input. */
     detail: z.string(),
+    /** An edit's change to the file `detail` names: its lines, each starting `+` or `-`. */
+    change: z.array(z.string()).nullable(),
     input: z.json(),
     reason: z.string().nullable(),
-    /** What "Allow for this chat" adds, when it can. */
+    /** What allowing for this chat adds, as a person is offered it, when it can. */
     allowSession: z.object({ label: z.string() }).nullable(),
   }),
   z.object({

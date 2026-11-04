@@ -223,29 +223,40 @@ function exitCode(result: ToolResult): number | null {
 }
 
 /**
- * What a request to run a tool shows as is: a command, a path, a diff, or else its input as
- * an item keeps it, `kept`.
+ * What a request to run a tool shows as is, at most `BOUND` long: a command, a path, or else its
+ * input as an item keeps it, `kept`.
  */
 export function detail(name: string, fields: Fields, kept: Json): string {
-  const path = pathOf(fields) ?? "";
   switch (canonical(name)) {
     case "Bash": {
-      return text(fields, "command") ?? "";
-    }
-    case "Edit": {
-      const before = (text(fields, "old_string") ?? "").split("\n").map((line) => `-${line}`);
-      const after = (text(fields, "new_string") ?? "").split("\n").map((line) => `+${line}`);
-      return [path, ...before, ...after].join("\n");
-    }
-    case "Write": {
-      return [path, text(fields, "content") ?? ""].join("\n");
+      return head(text(fields, "command") ?? "");
     }
     case "Read":
+    case "Edit":
+    case "Write":
+    case "MultiEdit":
     case "NotebookEdit": {
-      return path;
+      return pathOf(fields) ?? "";
     }
     default: {
-      return JSON.stringify(kept, null, 2);
+      return head(JSON.stringify(kept, null, 2));
+    }
+  }
+}
+
+/** The lines of the change a request to edit a file would make: bounded heads of what it says. */
+export function change(name: string, fields: Fields): string[] | null {
+  const marked = (field: string, mark: string): string[] =>
+    head(text(fields, field) ?? "").split("\n").map((line) => `${mark}${line}`);
+  switch (canonical(name)) {
+    case "Edit": {
+      return [...marked("old_string", "-"), ...marked("new_string", "+")];
+    }
+    case "Write": {
+      return marked("content", "+");
+    }
+    default: {
+      return null;
     }
   }
 }

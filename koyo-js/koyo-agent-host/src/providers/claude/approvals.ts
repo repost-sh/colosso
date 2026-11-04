@@ -16,6 +16,7 @@ import type { DriverEvent, SessionSink } from "../provider";
 import {
   bounded,
   canonical,
+  change,
   detail,
   family,
   type Fields,
@@ -105,7 +106,9 @@ export function approval(
     tool: canonical(name),
     family: family(name),
     title: request.title ?? title(name, input, request.displayName),
+    label: label(name, input),
     detail: detail(name, input, kept),
+    change: change(name, input),
     input: kept,
     // Claude's reasons sometimes carry terminal escapes.
     reason: request.decisionReason === undefined ? null : Bun.stripANSI(request.decisionReason),

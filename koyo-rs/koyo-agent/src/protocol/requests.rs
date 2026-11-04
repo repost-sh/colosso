@@ -71,11 +71,15 @@ pub struct Approval {
     pub tool: String,
     pub family: ToolFamily,
     pub title: String,
-    /// What is asked, shown as is: a command, a path, a diff.
+    /// What it's asked of, as a line of work goes by it once it has run.
+    pub label: String,
+    /// What is asked, shown as is: a command, a path, or else the input.
     pub detail: String,
+    /// An edit's change to the file `detail` names: its lines, each starting `+` or `-`.
+    pub change: Option<Vec<String>>,
     pub input: Value,
     pub reason: Option<String>,
-    /// What "Allow for this chat" adds, when it can.
+    /// What allowing for this chat adds, as a person is offered it, when it can.
     pub allow_session: Option<AllowSession>,
 }
 
