@@ -2,7 +2,6 @@
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 
 use crate::command::{Git, GitError, Result};
 use crate::{Head, Ref, Repo, Worktree, real_path};
@@ -137,11 +136,7 @@ impl Repo {
         else {
             return Ok(());
         };
-        let fetched = Git::new(&self.path)
-            .args(["fetch", "--no-tags", remote])
-            .arg(format!("+refs/heads/{name}:refs/remotes/{remote}/{name}"))
-            .run();
-        match fetched {
+        match fetch_remote_branch(&self.path, remote, name) {
             Err(error) if !self.has_ref(branch).unwrap_or(false) => Err(error),
             _ => Ok(()),
         }
@@ -174,15 +169,16 @@ pub(crate) fn base_key(branch: &str) -> String {
 
 /// The user the GitHub CLI is signed in as, from its own config: no network involved.
 fn github_cli_user(dir: &Path) -> Option<String> {
-    let output = Command::new("gh")
-        .args(["config", "get", "-h", "github.com", "user"])
-        .current_dir(dir)
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
-    let user = String::from_utf8(output.stdout).ok()?.trim().to_owned();
-    (output.status.success() && !user.is_empty()).then_some(user)
+    let user = Git::github_cli(dir).ok()?;
+    user.args(["config", "get", "-h", "github.com", "user"]).read_optional()
+}
+
+/// Brings the copy here of `remote`'s `branch` up to date.
+pub(crate) fn fetch_remote_branch(dir: &Path, remote: &str, branch: &str) -> Result<()> {
+    Git::new(dir)
+        .args(["fetch", "--quiet", "--no-tags", "--no-auto-gc", remote])
+        .arg(format!("+refs/heads/{branch}:refs/remotes/{remote}/{branch}"))
+        .run()
 }
 
 /// Turns what the user typed into a folder and branch name: lowercase, with every run of

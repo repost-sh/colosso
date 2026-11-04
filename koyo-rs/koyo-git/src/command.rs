@@ -1,9 +1,10 @@
 //! Running `git`: one process per command, in a fixed environment, its output read as text.
 
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
+use std::sync::OnceLock;
 use std::time::Instant;
 
 pub type Result<T> = std::result::Result<T, GitError>;
@@ -39,13 +40,46 @@ pub(crate) struct Git {
     line: String,
 }
 
+/// Where programs are looked for: a person's `PATH`, then where they're usually installed, as an
+/// app started from the Finder has little of a `PATH`. Git's hooks run with it too.
+fn search_path() -> &'static OsString {
+    static SEARCH: OnceLock<OsString> = OnceLock::new();
+    SEARCH.get_or_init(|| {
+        let path = std::env::var_os("PATH");
+        let listed = path.iter().flat_map(std::env::split_paths);
+        let usual = ["/opt/homebrew/bin", "/usr/local/bin"].map(PathBuf::from);
+        std::env::join_paths(listed.chain(usual)).unwrap_or_default()
+    })
+}
+
 impl Git {
+    /// The GitHub CLI in place of git, run in `dir`, where it's installed.
+    pub(crate) fn github_cli(dir: &Path) -> Result<Self> {
+        let folders = std::env::split_paths(search_path());
+        let Some(gh) = folders.map(|folder| folder.join("gh")).find(|gh| gh.is_file()) else {
+            return Err(GitError::refused("The GitHub CLI isn't installed."));
+        };
+        let mut command = Command::new(gh);
+        command
+            .current_dir(dir)
+            .stdin(Stdio::null())
+            .env("GH_PROMPT_DISABLED", "1")
+            .env("GH_NO_UPDATE_NOTIFIER", "1")
+            .env("NO_COLOR", "1");
+        Ok(Git {
+            command,
+            dir: dir.to_owned(),
+            line: "gh".into(),
+        })
+    }
+
     pub fn new(dir: &Path) -> Self {
         let mut command = Command::new("git");
         command
             .arg("-C")
             .arg(dir)
             .stdin(Stdio::null())
+            .env("PATH", search_path())
             // Messages in English whatever the user's locale, the same on every machine.
             .env("LC_ALL", "C")
             // Reads must not take the index lock a terminal in the same checkout may want.

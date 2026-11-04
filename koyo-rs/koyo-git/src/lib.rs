@@ -15,6 +15,7 @@ mod command;
 mod create;
 mod refs;
 mod remove;
+mod publish;
 mod worktree;
 
 use std::path::{Path, PathBuf};
@@ -26,6 +27,7 @@ pub use changes::{
 use command::Git;
 pub use command::{GitError, Result};
 pub use create::{NewWorktree, Start, slugify};
+pub use publish::{PullRequest, PullRequestState, Published};
 pub use refs::Ref;
 pub use remove::Loss;
 pub use worktree::{Head, Worktree};
