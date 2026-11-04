@@ -385,6 +385,16 @@ describe("what a subagent asks", () => {
 describe("the host's threads", () => {
   const NOW = (): string => new Date().toISOString();
 
+  function threadsOn(store: Store, provider: FakeProvider): Threads {
+    return new Threads({
+      store,
+      providers: [provider],
+      attachments: scratch(),
+      drafts: "/not/here/chat-drafts.json",
+      now: NOW,
+    });
+  }
+
   /** Threads with a running chat whose agent started a subagent. */
   async function family(): Promise<{
     threads: Threads;
@@ -395,7 +405,7 @@ describe("the host's threads", () => {
   }> {
     const store = Store.open(":memory:");
     const provider = new FakeProvider();
-    const threads = new Threads({ store, providers: [provider], attachments: scratch(), now: NOW });
+    const threads = threadsOn(store, provider);
     const parent = threads.create({
       cwd: "/work",
       provider: null,
@@ -457,12 +467,7 @@ describe("the host's threads", () => {
     const { store, parent, child, session } = await family();
     session().finished();
     await settle();
-    const next = new Threads({
-      store,
-      providers: [new FakeProvider()],
-      attachments: scratch(),
-      now: NOW,
-    });
+    const next = threadsOn(store, new FakeProvider());
     next.recover();
     const left = store.latest(parent.id, 10).items.find((item) => item.kind === "subagent");
     expect(left?.status).toBe("interrupted");
@@ -474,12 +479,7 @@ describe("the host's threads", () => {
     const change = { progress: "Running ls" };
     session().report({ type: "subagent.changed", key: CALL, change });
     await settle();
-    const next = new Threads({
-      store,
-      providers: [new FakeProvider()],
-      attachments: scratch(),
-      now: NOW,
-    });
+    const next = threadsOn(store, new FakeProvider());
     next.recover();
     const left = store.latest(parent.id, 10).items.find((item) => item.kind === "subagent");
     expect(left).toMatchObject({ status: "interrupted", payload: { progress: null } });

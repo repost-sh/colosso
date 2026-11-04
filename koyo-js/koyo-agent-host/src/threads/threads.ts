@@ -10,7 +10,7 @@ import { eventLine, HostError } from "../protocol/wire";
 import type { Config, Provider } from "../providers/provider";
 import type { Store } from "../store/store";
 import { ThreadActor } from "./actor";
-import { removeAttachments, sweepAttachments } from "./attachments";
+import { draftAttachments, removeAttachments, sweepAttachments } from "./attachments";
 import type { Context } from "./context";
 import { newThread } from "./records";
 import { summary } from "./rules";
@@ -24,6 +24,8 @@ export interface Options {
   readonly providers: readonly Provider[];
   /** The folder the messages' attachments are in. */
   readonly attachments: string;
+  /** The app's drafts, whose attachments no message names yet. */
+  readonly drafts: string;
   readonly now: () => string;
 }
 
@@ -44,7 +46,7 @@ export class Threads {
 
   /** Settles what a host that stopped left live, as this one starts (4.1). */
   recover(): void {
-    const { store, attachments, now } = this.#options;
+    const { store, attachments, drafts, now } = this.#options;
     for (const id of store.unsettledThreads()) {
       // The thread with its row first: a host that stops between the two has this to do again.
       const parent = store.thread(id)?.parent;
@@ -54,7 +56,8 @@ export class Threads {
       this.actor(id);
     }
     try {
-      sweepAttachments(attachments, store.allAttachments(), Date.parse(now()));
+      const named = new Set([...store.allAttachments(), ...draftAttachments(drafts)]);
+      sweepAttachments(attachments, named, Date.parse(now()));
     } catch (error) {
       log.warn("Attachments no message names weren't swept", error);
     }

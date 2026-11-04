@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "bun:test";
 
 import { Store } from "../src/store/store";
-import { sweepAttachments } from "../src/threads/attachments";
+import { draftAttachments, sweepAttachments } from "../src/threads/attachments";
 import { Threads } from "../src/threads/threads";
 import { run, thread } from "./support/records";
 import { removeScratch, scratch } from "./support/scratch";
@@ -20,6 +20,14 @@ function folderOf(...files: string[]): { folder: string; left: () => boolean[] }
     writeFileSync(join(folder, file), "");
   }
   return { folder, left: () => files.map((file) => existsSync(join(folder, file))) };
+}
+
+/** The app's drafts, as `koyo/src/chat/drafts.rs` writes them, with one for each of `files`. */
+function draftsNaming(...files: string[]): string {
+  return JSON.stringify(files.map((file) => [
+    { thread: file },
+    { text: "", cursor: 0, attachments: [{ file, name: file, mime: "image/png" }] },
+  ]));
 }
 
 describe("sweeping the attachments", () => {
@@ -42,8 +50,10 @@ describe("sweeping the attachments", () => {
     }).not.toThrow();
   });
 
-  test("happens as a host starts, going by what the store names", () => {
-    const { folder, left } = folderOf("named.png", "unnamed.png");
+  test("happens as a host starts, going by what the store and the drafts name", () => {
+    const { folder, left } = folderOf("named.png", "drafted.png", "unnamed.png");
+    const drafts = join(scratch(), "chat-drafts.json");
+    writeFileSync(drafts, draftsNaming("drafted.png"));
     const store = Store.open(":memory:");
     const chat = thread();
     const started = run(chat);
@@ -52,9 +62,34 @@ describe("sweeping the attachments", () => {
     store.commit(chat.id, { thread: chat, runs: [settled] });
     const later = new Date(Date.now() + OVER_A_WEEK_MS).toISOString();
 
-    new Threads({ store, providers: [], attachments: folder, now: () => later }).recover();
+    new Threads({ store, providers: [], attachments: folder, drafts, now: () => later }).recover();
 
-    expect(left()).toStrictEqual([true, false]);
+    expect(left()).toStrictEqual([true, true, false]);
     store.close();
+  });
+
+  test("leaves everything if it can't tell what the drafts name", () => {
+    const { folder, left } = folderOf("unnamed.png");
+    const drafts = join(scratch(), "chat-drafts.json");
+    writeFileSync(drafts, "{ not json");
+    const store = Store.open(":memory:");
+    const later = new Date(Date.now() + OVER_A_WEEK_MS).toISOString();
+
+    new Threads({ store, providers: [], attachments: folder, drafts, now: () => later }).recover();
+
+    expect(left()).toStrictEqual([true]);
+    store.close();
+  });
+});
+
+describe("what the drafts name", () => {
+  test("is nothing before the app has written any", () => {
+    expect(draftAttachments(join(scratch(), "not-yet.json"))).toStrictEqual(new Set());
+  });
+
+  test("is every file of every draft", () => {
+    const drafts = join(scratch(), "chat-drafts.json");
+    writeFileSync(drafts, draftsNaming("one.png", "two.txt"));
+    expect(draftAttachments(drafts)).toStrictEqual(new Set(["one.png", "two.txt"]));
   });
 });
