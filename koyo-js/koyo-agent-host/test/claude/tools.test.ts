@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { bounded, family, toolStarted } from "../../src/providers/claude/tools";
+import type { Hunk } from "../../src/protocol/model";
+import { bounded, boundedPatch, family, toolStarted } from "../../src/providers/claude/tools";
 import {
   assistant,
   message,
@@ -45,6 +46,31 @@ describe("families", () => {
   });
 });
 
+describe("a patch", () => {
+  const hunk = (lines: string[]): Hunk => ({
+    oldStart: 1,
+    oldLines: 1,
+    newStart: 1,
+    newLines: 1,
+    lines,
+  });
+
+  test("stays whole while it fits", () => {
+    const patch = [hunk(["-one", "+two"]), hunk(["+three"])];
+    expect(boundedPatch(patch)).toEqual(patch);
+  });
+
+  test("past the bound keeps whole lines and says it was cut", () => {
+    const line = `+${"x".repeat(1023)}`;
+    const kept = boundedPatch([hunk(["-one"]), hunk(Array.from({ length: 100 }, () => line))]);
+    expect(kept).toHaveLength(2);
+    expect(kept[0]?.lines).toEqual(["-one"]);
+    expect(kept[1]?.lines).toHaveLength(16);
+    expect(kept[1]?.lines.at(-2)).toBe(line);
+    expect(kept[1]?.lines.at(-1)).toBe(" …");
+  });
+});
+
 describe("a recorded turn's tools", () => {
   test("start on their block and settle on their result, with output and patch", () => {
     const { events, send } = mapped();
@@ -56,7 +82,7 @@ describe("a recorded turn's tools", () => {
     ])).toEqual([
       ["toolu_write", NOTES],
       ["toolu_edit", NOTES],
-      ["toolu_bash", "Print contents of notes.txt"],
+      ["toolu_bash", "cat notes.txt"],
     ]);
     const tools = ofType(events, "item.updated").filter((event) => event.item.kind === "tool");
     expect(tools.map((event) => [event.key, event.status, event.item.payload])).toEqual([
@@ -85,7 +111,7 @@ describe("a recorded turn's tools", () => {
       ["toolu_bash", "completed", {
         name: "Bash",
         family: "command",
-        label: "Print contents of notes.txt",
+        label: "cat notes.txt",
         input: { command: "cat notes.txt", description: "Print contents of notes.txt" },
         output: "two",
         exitCode: 0,

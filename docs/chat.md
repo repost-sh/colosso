@@ -448,7 +448,7 @@ Item {                        // one timeline entry
   reasoning      {text}                                         streams
   tool           {name, family: "command"|"read"|"edit"|"search"|"web"|"mcp"|"agent"|
                   "todo"|"skill"|"other", label, input (≤ 16 KB), output (≤ 16 KB, the end),
-                  exitCode, patch: [Hunk], files, server}
+                  exitCode, patch: [Hunk] (≤ 16 KB, whole lines), files, server}
   todos          {todos: [{text, status}]}
   request        {requestId}                   a request, in its place in the timeline
   subagent       {description, agentType, summary}
