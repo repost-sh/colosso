@@ -5,7 +5,7 @@
 use std::collections::HashSet;
 use std::ops::Range;
 
-use crate::protocol::ids::{ItemId, RunId};
+use crate::protocol::ids::{ItemId, RequestId, RunId};
 use crate::protocol::model::{Item, ItemBody, ItemStatus, NoticeLevel, Run, RunStatus};
 use crate::protocol::requests::RequestStatus;
 use crate::replica::Replica;
@@ -47,7 +47,12 @@ pub enum RowKind {
     Live { item: Option<usize> },
     /// A settled run's work, which shows while this row is open.
     Fold { run: usize },
-    Request { item: usize, request: usize },
+    /// `asking` when it's the one a person can answer now, of those waiting.
+    Request {
+        item: usize,
+        request: usize,
+        asking: bool,
+    },
     Compaction { item: usize },
     /// A note in the timeline, or an item of a kind this build doesn't know.
     Notice { item: usize },
@@ -62,6 +67,7 @@ pub fn rows(replica: &Replica, unfolded: impl Fn(&RunId) -> bool) -> Vec<Row> {
     let mut rows = Vec::new();
     let mut seen = HashSet::new();
     let mut first = 0;
+    let asking = replica.asking().map(|asked| &asked.id);
     for items in replica.items.chunk_by(|a, b| a.run_id == b.run_id) {
         if let Some((index, run)) = items.first().and_then(|item| run_of(replica, item)) {
             seen.insert(index);
@@ -71,6 +77,7 @@ pub fn rows(replica: &Replica, unfolded: impl Fn(&RunId) -> bool) -> Vec<Row> {
                 index,
                 run,
                 first,
+                asking,
                 work: None,
             };
             made.add(items, unfolded(&run.id));
@@ -118,6 +125,8 @@ struct RunRows<'a> {
     /// The place in the replica's items of the first of this run's.
     first: usize,
     /// The work being gathered.
+    /// The request a person can answer now.
+    asking: Option<&'a RequestId>,
     work: Option<Work>,
 }
 
@@ -181,6 +190,7 @@ impl RunRows<'_> {
                 RowKind::Request {
                     item: place,
                     request,
+                    asking: self.asking == Some(&asked.request_id),
                 }
             }
             ItemBody::Compaction(_) => RowKind::Compaction { item: place },
@@ -294,9 +304,14 @@ pub fn children<'a>(replica: &'a Replica, agent: &'a ItemId) -> impl Iterator<It
 /// with how many. Rows above and below it keep their places and heights, however their places in
 /// the replica moved.
 pub fn changed(old: &[Row], new: &[Row]) -> Option<(Range<usize>, usize)> {
-    // A row's height follows its records, and an answer's on whether it's still the last.
-    let last = |row: &Row| matches!(row.kind, RowKind::Answer { last: true, .. });
-    let same = |a: &Row, b: &Row| a.id == b.id && a.seq == b.seq && last(a) == last(b);
+    // A row follows its records, an answer whether it's still the last, and a request whether
+    // it's the one asked.
+    let told = |row: &Row| match row.kind {
+        RowKind::Answer { last, .. } => last,
+        RowKind::Request { asking, .. } => asking,
+        _ => false,
+    };
+    let same = |a: &Row, b: &Row| a.id == b.id && a.seq == b.seq && told(a) == told(b);
     let before = (old.iter().zip(new)).take_while(|(a, b)| same(a, b)).count();
     if before == old.len() && before == new.len() {
         return None;

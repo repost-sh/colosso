@@ -1,60 +1,23 @@
 //! Which rows a thread's records make: each rule of the timeline, with no drawing.
 
+#[expect(dead_code, reason = "each test crate builds what it needs of these")]
 #[path = "support/records.rs"]
 mod records;
 
 use std::collections::HashSet;
 
-use koyo_agent::protocol::ids::{ItemId, RequestId, RunId, ThreadId, Time};
+use koyo_agent::protocol::ids::{ItemId, RequestId, RunId};
 use koyo_agent::protocol::model::{
-    Compaction, CompactionTrigger, Effort, FileChange, Item, ItemBody, ItemStatus, Notice,
-    NoticeLevel, RequestRef, Run, RunStatus, Subagent, Text, Tool, ToolFamily,
+    Compaction, CompactionTrigger, FileChange, Item, ItemBody, ItemStatus, Notice, NoticeLevel,
+    RequestRef, Run, RunStatus, ToolFamily,
 };
-use koyo_agent::protocol::requests::{Request, RequestPayload, RequestStatus};
+use koyo_agent::protocol::requests::{Request, RequestStatus};
 use koyo_agent::replica::Replica;
 use koyo_agent::timeline::{Row, RowId, RowKind, changed, children, rows};
-use koyo_agent::words::{
-    answer_meta, compacted, duration, live_line, tool_line, work_line, work_summary,
-};
-use records::{THREAD, answer, item, message, run, snapshot};
-use serde_json::json;
-
-fn tool_of(family: ToolFamily, label: &str) -> Tool {
-    Tool {
-        name: "Tool".into(),
-        family,
-        label: label.into(),
-        input: json!({}),
-        output: None,
-        exit_code: None,
-        patch: None,
-        files: Vec::new(),
-        server: None,
-    }
-}
-
-fn subagent(description: &str) -> Subagent {
-    Subagent {
-        description: description.into(),
-        agent_type: None,
-        summary: None,
-    }
-}
-
-fn reasoning(said: &str) -> ItemBody {
-    ItemBody::Reasoning(Text { text: said.into() })
-}
+use records::{answer, done, item, message, request, run, snapshot, tool_of};
 
 fn tool(label: &str) -> ItemBody {
     ItemBody::Tool(tool_of(ToolFamily::Read, label))
-}
-
-/// `body` at `ordinal` in run `r1`, done.
-fn done(id: &str, ordinal: u64, body: ItemBody) -> Item {
-    Item {
-        status: ItemStatus::Completed,
-        ..item(id, ordinal, body, ordinal)
-    }
 }
 
 fn replica(runs: Vec<Run>, items: Vec<Item>) -> Replica {
@@ -93,22 +56,6 @@ fn made(replica: &Replica) -> Vec<Row> {
 
 fn of(replica: &Replica) -> Vec<String> {
     shape(replica, &made(replica))
-}
-
-fn request(id: &str, status: RequestStatus) -> Request {
-    Request {
-        id: RequestId(id.into()),
-        thread_id: ThreadId(THREAD.into()),
-        run_id: RunId("r1".into()),
-        status,
-        payload: RequestPayload::Plan {
-            markdown: "# Plan".into(),
-        },
-        answer: None,
-        created_at: Time("2026-11-03T10:00:00.000Z".into()),
-        resolved_at: None,
-        seq: 3,
-    }
 }
 
 fn asks(id: &str) -> ItemBody {
@@ -362,66 +309,33 @@ fn a_change_replaces_only_the_rows_it_touched() {
 }
 
 #[test]
-fn work_done_together_is_said_in_a_sentence() {
-    let of = |family| done("a", 1, ItemBody::Tool(tool_of(family, "a")));
-    let (read, ran, web) = (of(ToolFamily::Read), of(ToolFamily::Command), of(ToolFamily::Web));
-    let said = |items: &[&Item]| work_summary(items.iter().copied());
-    assert_eq!(said(&[&read]), "Read a file");
-    assert_eq!(said(&[&read, &read, &read, &ran, &ran]), "Read 3 files and ran 2 commands");
-    assert_eq!(said(&[&ran, &read, &web, &web]), "Ran a command, read a file and searched the web");
-    let agent = done("b", 1, ItemBody::Subagent(subagent("Check")));
-    assert_eq!(said(&[&agent, &agent]), "Ran 2 agents");
-    let thought = done("c", 1, reasoning("Hm"));
-    assert_eq!(said(&[&thought, &thought]), "Thought");
-}
-
-#[test]
-fn a_tools_line_says_what_it_did_with_paths_from_the_checkout() {
-    let command = tool_of(ToolFamily::Command, "cargo test");
-    assert_eq!(tool_line(&command, ItemStatus::Running, "/work"), "Running cargo test");
-    assert_eq!(tool_line(&command, ItemStatus::Completed, "/work"), "Ran cargo test");
-    let read = tool_of(ToolFamily::Read, "/work/koyo/src/main.rs");
-    assert_eq!(tool_line(&read, ItemStatus::Completed, "/work/koyo/"), "Read src/main.rs");
-    let search = tool_of(ToolFamily::Search, "fn main in /work/koyo/src");
-    assert_eq!(
-        tool_line(&search, ItemStatus::Completed, "/work/koyo"),
-        "Searched for fn main in src"
-    );
-}
-
-#[test]
-fn a_line_of_work_says_the_latest_thought_and_the_live_row_only_that_it_thinks() {
-    let thinking = done("a", 1, reasoning("First\nThen this\n\n"));
-    assert_eq!(work_line(&thinking, "/work"), "Then this");
-    assert_eq!(live_line(Some(&thinking), "/work"), "Thinking…");
-    assert_eq!(live_line(None, "/work"), "Working…");
-    let agent = done("b", 1, ItemBody::Subagent(subagent("Check the callers")));
-    assert_eq!(work_line(&agent, "/work"), "Check the callers");
-    assert_eq!(live_line(Some(&agent), "/work"), "Check the callers");
-    let running = Item {
-        status: ItemStatus::Running,
-        ..done("c", 1, ItemBody::Tool(tool_of(ToolFamily::Command, "ls")))
+fn the_oldest_request_waiting_is_the_one_asked_and_the_next_is_once_it_is_answered() {
+    let items = vec![done("b", 1, asks("q2")), done("c", 2, asks("q1"))];
+    let waiting = |id: &str, seq: u64| Request {
+        seq,
+        ..request(id, RequestStatus::Pending)
     };
-    assert_eq!(live_line(Some(&running), "/work"), "Running ls");
-}
-
-#[test]
-fn times_and_tokens_are_said_as_a_person_would() {
-    assert_eq!(duration(41), "41s");
-    assert_eq!(duration(63), "1m 3s");
-    assert_eq!(duration(7500), "2h 5m");
-    let compaction = |before, after| Compaction {
-        trigger: CompactionTrigger::Auto,
-        before,
-        after,
+    let asked = |replica: &Replica| -> Vec<bool> {
+        made(replica)
+            .iter()
+            .filter_map(|row| match row.kind {
+                RowKind::Request { asking, .. } => Some(asking),
+                _ => None,
+            })
+            .collect()
     };
-    assert_eq!(
-        compacted(&compaction(Some(182_400), Some(999))),
-        "Context compacted · 182k → 999 tokens"
-    );
-    assert_eq!(compacted(&compaction(None, Some(999))), "Context compacted");
-    let mut settled = run("r1", RunStatus::Completed, 5);
-    settled.model = Some("claude-opus".into());
-    settled.effort = Some(Effort::Xhigh);
-    assert_eq!(answer_meta(&settled), "claude-opus · Extra high");
+    let mut snap = snapshot(9, vec![run("r1", RunStatus::Running, 5)], items);
+    snap.requests = vec![waiting("q1", 3), waiting("q2", 4)];
+    let mut replica = Replica::new(snap);
+    assert_eq!(replica.asking().map(|asked| asked.id.0.as_str()), Some("q1"));
+    assert_eq!(asked(&replica), [false, true]);
+    let before = made(&replica);
+
+    replica.requests.remove(0);
+    replica.requests.insert(0, request("q1", RequestStatus::Answered));
+
+    assert_eq!(replica.asking().map(|asked| asked.id.0.as_str()), Some("q2"));
+    assert_eq!(asked(&replica), [true, false]);
+    let after = made(&replica);
+    assert!(changed(&before, &after).is_some(), "the row now asked is drawn anew");
 }

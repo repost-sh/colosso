@@ -1,11 +1,13 @@
-//! The records the replica's and the timeline's tests build their threads from.
+//! The records the tests of what's made of a thread build it from.
 
-use koyo_agent::protocol::ids::{ItemId, MessageId, RunId, ThreadId, Time};
+use koyo_agent::protocol::ids::{ItemId, MessageId, RequestId, RunId, ThreadId, Time};
 use koyo_agent::protocol::methods::ThreadSnapshot;
 use koyo_agent::protocol::model::{
-    Delivered, Item, ItemBody, ItemStatus, Prompt, Run, RunStatus, Text, Thread, TitleSource,
-    UserMessage,
+    Delivered, Item, ItemBody, ItemStatus, Prompt, Run, RunStatus, Subagent, Text, Thread,
+    TitleSource, Tool, ToolFamily, UserMessage,
 };
+use koyo_agent::protocol::requests::{Request, RequestPayload, RequestStatus};
+use serde_json::json;
 
 pub const THREAD: &str = "t1";
 const AT: &str = "2026-11-03T10:00:00.000Z";
@@ -92,3 +94,52 @@ pub fn snapshot(seq: u64, runs: Vec<Run>, items: Vec<Item>) -> ThreadSnapshot {
     }
 }
 
+pub fn tool_of(family: ToolFamily, label: &str) -> Tool {
+    Tool {
+        name: "Tool".into(),
+        family,
+        label: label.into(),
+        input: json!({}),
+        output: None,
+        exit_code: None,
+        patch: None,
+        files: Vec::new(),
+        server: None,
+    }
+}
+
+pub fn subagent(description: &str) -> Subagent {
+    Subagent {
+        description: description.into(),
+        agent_type: None,
+        summary: None,
+    }
+}
+
+pub fn reasoning(said: &str) -> ItemBody {
+    ItemBody::Reasoning(Text { text: said.into() })
+}
+
+/// `body` at `ordinal` in run `r1`, done.
+pub fn done(id: &str, ordinal: u64, body: ItemBody) -> Item {
+    Item {
+        status: ItemStatus::Completed,
+        ..item(id, ordinal, body, ordinal)
+    }
+}
+
+pub fn request(id: &str, status: RequestStatus) -> Request {
+    Request {
+        id: RequestId(id.into()),
+        thread_id: ThreadId(THREAD.into()),
+        run_id: RunId("r1".into()),
+        status,
+        payload: RequestPayload::Plan {
+            markdown: "# Plan".into(),
+        },
+        answer: None,
+        created_at: Time("2026-11-03T10:00:00.000Z".into()),
+        resolved_at: None,
+        seq: 3,
+    }
+}

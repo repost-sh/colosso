@@ -16,7 +16,7 @@ use gpui_kit::{
 };
 use koyo_agent::protocol::ids::ItemId;
 use koyo_agent::protocol::model::{Delivered, Item, ItemBody, Run};
-use koyo_agent::protocol::requests::RequestPayload;
+use koyo_agent::protocol::requests::{Request, RequestPayload};
 use koyo_agent::timeline::{Row, RowId, RowKind};
 use koyo_agent::words::{answer_meta, clock, duration, live_line, worked_for};
 
@@ -99,7 +99,9 @@ impl Drawing {
                 let working_on = item.as_ref().and_then(item_at);
                 self.live(working_on).into_any_element()
             }
-            RowKind::Fold { run } => self.fold(run_at(run)?, id, index).into_any_element(),
+            RowKind::Fold { run } => self
+                .fold(run_at(run)?, &replica.requests, id, index)
+                .into_any_element(),
             RowKind::Request { request, .. } => self
                 .request(&replica.requests.get(*request)?.payload)
                 .into_any_element(),
@@ -251,8 +253,8 @@ impl Drawing {
             })
     }
 
-    fn fold(&self, run: &Run, id: &RowId, index: usize) -> impl IntoElement {
-        let label = worked_for(run).map_or_else(
+    fn fold(&self, run: &Run, requests: &[Request], id: &RowId, index: usize) -> impl IntoElement {
+        let label = worked_for(run, requests).map_or_else(
             || "Worked".to_owned(),
             |took| format!("Worked for {took}"),
         );

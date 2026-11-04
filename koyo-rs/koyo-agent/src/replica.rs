@@ -7,7 +7,7 @@ use std::cmp::Ordering;
 use crate::protocol::events::{Appended, Changed};
 use crate::protocol::methods::{Rows, ThreadSnapshot};
 use crate::protocol::model::{Item, Run, Thread};
-use crate::protocol::requests::Request;
+use crate::protocol::requests::{Request, RequestStatus};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Replica {
@@ -33,6 +33,14 @@ impl Replica {
         };
         replica.merge(snapshot.runs, snapshot.items, snapshot.requests);
         replica
+    }
+
+    /// What the agent waits on a person for now: the oldest request still waiting, as they're
+    /// answered one at a time. A waiting request's sequence is when it was asked.
+    pub fn asking(&self) -> Option<&Request> {
+        (self.requests.iter())
+            .filter(|request| request.status == RequestStatus::Pending)
+            .min_by_key(|request| request.seq)
     }
 
     /// What a reopen passes as its `sinceSeq`: the last change this holds.
