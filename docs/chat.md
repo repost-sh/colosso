@@ -936,7 +936,9 @@ Layout, top to bottom inside the pane's card:
   status, what it runs with, Stop while it runs, and Open parent (`escape`).
 - **Glass.** The composer and its drawers are one `liquid::backdrop` (radius 18) floating
   12 px above the card's bottom edge, its content in `deferred`; the scroll-to-end pill,
-  the suggestions and the menus are glass too. Fallback: `floating()` + hairline + shadow.
+  the suggestions and the menus are glass too. On a dark theme it's the clear style with a 45%
+  dark tint, so the page shows through; on a light one, glass as `AppKit` makes it. Fallback:
+  `floating()` + hairline + shadow.
   The timeline's bottom inset is the composer's measured height plus 24 px, so the last
   row clears the glass.
 - **Empty chat.** The composer sits centred with the worktree's name above it ("Chat in
