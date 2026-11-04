@@ -824,7 +824,8 @@ No GPUI here: what doesn't draw is tested without compiling the app.
   The folder comes from the app (`settings::data_dir()`), not from a third lookup of
   `KOYO_DATA_DIR`. The executable is found as the browser host is (`browser/engine.rs`):
   `KOYO_AGENT_HOST` when set; else beside the app's executable in a bundle
-  (`Contents/MacOS/koyo-agent-host`); else, in a debug build, in the checkout
+  (`Contents/MacOS/koyo-agent-host`, which `script/bundle` puts there); else, in a debug build,
+  in the checkout
   (`koyo-js/koyo-agent-host/dist/koyo-agent-host`).
 - `KOYO_AGENT_PROVIDER` is one of the variables the app passes on, so a build with its own
   `KOYO_DATA_DIR` can run on the fake provider end to end. The fake goes by its own name: the app
