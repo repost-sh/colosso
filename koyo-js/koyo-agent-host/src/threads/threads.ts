@@ -2,6 +2,7 @@
 // wanted and kept; the clients that watch the list of them; and the live sessions, of which at
 // most four stay open, the least recently used closed first when a fifth is wanted.
 
+import { log } from "../log";
 import type { ThreadId } from "../protocol/ids";
 import type { Params } from "../protocol/methods";
 import type { ProviderId, Thread, ThreadSummary } from "../protocol/model";
@@ -9,7 +10,7 @@ import { eventLine, HostError } from "../protocol/wire";
 import type { Config, Provider } from "../providers/provider";
 import type { Store } from "../store/store";
 import { type Context, ThreadActor } from "./actor";
-import { removeAttachments } from "./attachments";
+import { removeAttachments, sweepAttachments } from "./attachments";
 import { newThread } from "./records";
 import { summary } from "./rules";
 import type { Subscriber } from "./state";
@@ -42,8 +43,14 @@ export class Threads {
 
   /** Settles what a host that stopped left live, as this one starts (4.1). */
   recover(): void {
-    for (const id of this.#options.store.unsettledThreads()) {
+    const { store, attachments, now } = this.#options;
+    for (const id of store.unsettledThreads()) {
       this.actor(id);
+    }
+    try {
+      sweepAttachments(attachments, store.allAttachments(), Date.parse(now()));
+    } catch (error) {
+      log.warn("Attachments no message names weren't swept", error);
     }
   }
 

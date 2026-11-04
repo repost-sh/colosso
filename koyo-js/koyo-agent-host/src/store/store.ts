@@ -193,10 +193,14 @@ export class Store {
 
   /** The files the thread's messages attach, in the attachments folder. */
   attachments(id: ThreadId): string[] {
-    const sql = `SELECT DISTINCT json_extract(attached.value, '$.file') AS file
-      FROM runs, json_each(runs.data, '$.prompt.attachments') AS attached
-      WHERE runs.thread_id = ?`;
+    const sql = `SELECT DISTINCT file FROM (${ATTACHED}) WHERE thread_id = ?`;
     return this.#db.query(sql).all(id).map((row) => FileRow.parse(row).file);
+  }
+
+  /** The files any message attaches, in the attachments folder. */
+  allAttachments(): Set<string> {
+    const rows = this.#db.query(`SELECT DISTINCT file FROM (${ATTACHED})`).all();
+    return new Set(rows.map((row) => FileRow.parse(row).file));
   }
 
   /** The threads with a run that hasn't settled, which a host that stopped left so. */
@@ -242,6 +246,14 @@ export class Store {
 
 const RUNS = "SELECT data FROM runs WHERE thread_id = ?";
 const UNSETTLED = "('queued', 'starting', 'running', 'stopping')";
+/** Every file a message names: where its run started, or as an item when it joined one. */
+const ATTACHED = `
+  SELECT thread_id, json_extract(attached.value, '$.file') AS file
+    FROM runs, json_each(runs.data, '$.prompt.attachments') AS attached
+  UNION
+  SELECT thread_id, json_extract(attached.value, '$.file') AS file
+    FROM items, json_each(items.data, '$.payload.attachments') AS attached
+    WHERE items.message_id IS NOT NULL`;
 /** The settled runs that ran: a removed one never did. */
 const ENDED = "('completed', 'interrupted', 'failed')";
 const ITEMS = "SELECT data FROM items WHERE thread_id = ?";
