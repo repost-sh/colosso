@@ -122,9 +122,10 @@ fn permission_rows(current: Mode, can_auto: bool) -> Vec<MenuItem> {
     let offered = MODES.into_iter().filter(|mode| *mode != Mode::Auto || can_auto);
     offered
         .map(|mode| MenuItem {
-            icon: if mode == current { IconName::Check } else { mode_mark(mode) },
+            icon: Some(if mode == current { IconName::Check } else { mode_mark(mode) }),
             label: mode_label(mode).into(),
             action: Box::new(SetPermission(mode)),
+            switch: None,
         })
         .collect()
 }

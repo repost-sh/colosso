@@ -234,7 +234,7 @@ fn a_row_of_the_menu_says_its_answer_to_the_composer(cx: &mut TestAppContext) {
     cx.update_window(chat.window, |_, window, cx| {
         let target = chat.composer.read(cx).focus_handle(cx);
         let items = answers_past_allow(Some("Allow Bash(cargo test:*) for this chat".into()));
-        menu::open("test-chat-menu".into(), Bounds::default(), items, &target, window, cx);
+        menu::open_rows("test-chat-menu".into(), Bounds::default(), items, None, &target, window, cx);
     })
     .unwrap();
     cx.run_until_parked();

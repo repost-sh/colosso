@@ -12,6 +12,8 @@ mod host;
 mod icon;
 pub mod liquid;
 mod pinch;
+pub mod slider;
+pub mod switch;
 mod surface;
 mod target;
 

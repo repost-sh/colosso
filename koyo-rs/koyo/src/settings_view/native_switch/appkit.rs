@@ -3,10 +3,10 @@
 use gpui_kit::{AnyElement, App, IntoElement as _, ParentElement as _, Styled as _, Window, div};
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
-use objc2_app_kit::{NSControlStateValueOff, NSControlStateValueOn, NSSwitch};
+use objc2_app_kit::NSSwitch;
 
 use super::NativeSwitch;
-use crate::native::{self, Control};
+use crate::native::{self, Control, switch as native_switch};
 use crate::settings::{self, Settings};
 
 /// The switch `AppKit` draws for `switch`; none where the window can't host a native view,
@@ -27,23 +27,12 @@ impl Control for NativeSwitch {
 
     /// Flips the switch only when the setting has.
     fn show(switch: &NSSwitch, on: bool) {
-        if is_on(switch) != on {
-            let state = if on {
-                NSControlStateValueOn
-            } else {
-                NSControlStateValueOff
-            };
-            switch.setState(state);
-        }
+        native_switch::show(switch, on);
     }
 
     fn acted(&self, switch: &NSSwitch, shown: Option<bool>, cx: &mut App) {
-        take_flip(self.set, shown, is_on(switch), cx);
+        take_flip(self.set, shown, native_switch::is_on(switch), cx);
     }
-}
-
-fn is_on(switch: &NSSwitch) -> bool {
-    switch.state() == NSControlStateValueOn
 }
 
 /// Writes a flip to `on`, `AppKit` having flipped the switch, unless the switch was last
