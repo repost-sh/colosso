@@ -347,7 +347,7 @@ providers.status {refresh: bool} → [ProviderStatus]
             {provider, state: "ready"|"missing"|"signed_out"|"error", executable, version,
              account: {email, plan}, message}
 catalog     {provider: id | null, cwd} → {models: [Model], commands: [Command], defaultMode}
-            Model = {id, name, description, efforts, fast, auto} (4.5.9)
+            Model = {id, name, label, efforts, fast, auto} (4.5.9)
 ```
 
 #### 4.3.2 Threads

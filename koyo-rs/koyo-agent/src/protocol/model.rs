@@ -31,6 +31,11 @@ pub enum Effort {
     Max,
 }
 
+impl Effort {
+    /// Every effort, from the least.
+    pub const ALL: [Effort; 5] = [Effort::Low, Effort::Medium, Effort::High, Effort::Xhigh, Effort::Max];
+}
+
 /// A file the app put in the host's attachments folder, named there.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Attachment {

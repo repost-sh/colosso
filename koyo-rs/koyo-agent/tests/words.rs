@@ -96,13 +96,30 @@ fn times_and_tokens_are_said_as_a_person_would() {
     assert_eq!(answer_meta(&settled, &[]), "claude-opus · Extra high", "it isn't listed");
     let listed = Model {
         id: "claude-opus".into(),
-        name: "Opus 5.5 (new)".into(),
-        description: String::new(),
+        name: "Default (recommended)".into(),
+        label: "Opus 5.5 (new)".into(),
         efforts: Vec::new(),
         fast: false,
         auto: false,
     };
     assert_eq!(answer_meta(&settled, &[listed]), "Opus 5.5 · Extra high");
+}
+
+#[test]
+fn a_model_runs_at_the_effort_nearest_below_what_is_asked_for() {
+    let model = |efforts: &[Effort]| Model {
+        id: "m".into(),
+        name: "M".into(),
+        label: "M".into(),
+        efforts: efforts.to_vec(),
+        fast: false,
+        auto: false,
+    };
+    let some = model(&[Effort::Medium, Effort::High]);
+    assert_eq!(some.fitted(Effort::High), Some(Effort::High), "it has that one");
+    assert_eq!(some.fitted(Effort::Max), Some(Effort::High), "the nearest below");
+    assert_eq!(some.fitted(Effort::Low), Some(Effort::Medium), "the least it has");
+    assert_eq!(model(&[]).fitted(Effort::High), None);
 }
 
 #[test]
