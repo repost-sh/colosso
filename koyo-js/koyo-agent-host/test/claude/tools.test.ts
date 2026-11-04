@@ -14,7 +14,6 @@ import {
   assistant,
   message,
   permissionDenied,
-  taskNotification,
   toolResults,
   toolUse,
 } from "../fixtures/claude/frames";
@@ -196,7 +195,7 @@ describe("a tool call", () => {
   test("open at the turn's end is the actor's to close, and forgotten here", () => {
     const { frames, events, send } = mapped();
     send(assistant(message("m1", [toolUse("t1", "Bash", { command: "sleep 9" })])));
-    frames.end();
+    frames.end("completed");
     expect(ofType(events, "item.updated")).toEqual([]);
     send(assistant(message("m1", [toolUse("t1", "Bash", { command: "sleep 9" })])));
     expect(ofType(events, "item.started")).toHaveLength(2);
@@ -218,38 +217,6 @@ describe("a tool call", () => {
       toolResults([{ id: "t1", content: "Permission to use Bash was denied.", isError: true }]),
     );
     expect(ofType(events, "item.updated").map((event) => event.status)).toEqual(["declined"]);
-  });
-
-  test("to Agent is a subagent, its calls under it, settled with its report", () => {
-    const { events, send } = mapped();
-    send(
-      assistant(message("m1", [toolUse("ta", "Agent", {
-        description: "Find the flaky test",
-        subagent_type: "Explore",
-        prompt: "Look in test/.",
-      })])),
-      assistant(message("s1", [toolUse("tg", "Grep", { pattern: "flaky" })]), { parent: "ta" }),
-      toolResults([{ id: "tg", content: "test/a.test.ts" }], undefined, "ta"),
-      taskNotification("ta", "It's test/a.test.ts."),
-    );
-    const started = ofType(events, "item.started");
-    expect(started.map((event) => [event.key, event.parentKey, event.item.kind])).toEqual([
-      ["ta", null, "subagent"],
-      ["tg", "ta", "tool"],
-    ]);
-    expect(ofType(events, "item.updated").at(-1)).toEqual({
-      type: "item.updated",
-      key: "ta",
-      item: {
-        kind: "subagent",
-        payload: {
-          description: "Find the flaky test",
-          agentType: "Explore",
-          summary: "It's test/a.test.ts.",
-        },
-      },
-      status: "completed",
-    });
   });
 
   test("to TodoWrite shows the turn's to-do list, one item each call updates", () => {

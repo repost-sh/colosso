@@ -13,6 +13,8 @@ import type { ThreadState } from "./state";
 export interface Waiter {
   readonly resolve: (response: Response) => void;
   readonly reject: (error: Error) => void;
+  /** Whether a subagent waits, which may be past the end of the turn it asked in. */
+  readonly bySubagent: boolean;
 }
 
 export class Requests {
@@ -33,9 +35,12 @@ export class Requests {
     return this.#waiters.size > 0;
   }
 
-  /** What the agent asks of the person during its turn, until it answers or withdraws. */
+  /**
+   * What the agent asks of the person during its turn, or a subagent at any time, in the
+   * thread's latest run then, until it answers or withdraws.
+   */
   ask(payload: RequestPayload, signal: AbortSignal, waiter: Waiter): void {
-    const live = this.#state.live();
+    const live = waiter.bySubagent ? this.#state.latest() : this.#state.live();
     if (live === undefined || signal.aborted) {
       waiter.reject(new Error("No turn waits for an answer."));
       return;
@@ -46,6 +51,14 @@ export class Requests {
         this.#withdraw(request.id);
       });
     }, { once: true });
+  }
+
+  /** What the agent stopped at for the person without waiting, as a plan. */
+  proposed(payload: RequestPayload): void {
+    const live = this.#state.live();
+    if (live !== undefined) {
+      this.open(live, payload, undefined);
+    }
   }
 
   /** Writes a request and its place in the timeline; `waiter` when the agent waits on it. */
@@ -82,15 +95,16 @@ export class Requests {
    */
   release(run: Run, at: string): Request[] {
     const byHost = run.stop?.by === "host";
-    return this.#state.pending.flatMap((request) => {
-      const waiter = this.#waiters.get(request.id);
-      if (request.runId !== run.id || waiter === undefined) {
-        return [];
-      }
-      this.#waiters.delete(request.id);
-      waiter.reject(new Error("The turn ended."));
-      return (byHost ? orphaned(request, at) : undefined) ?? cancelled(request, at);
-    });
+    return this.#take(
+      (request, waiter) => request.runId === run.id && !waiter.bySubagent,
+      "The turn ended.",
+    ).map((request) => (byHost ? orphaned(request, at) : undefined) ?? cancelled(request, at));
+  }
+
+  /** The requests subagents waited on, cancelled, as their session has gone. */
+  releaseSubagents(at: string): Request[] {
+    return this.#take((_, waiter) => waiter.bySubagent, "The session ended.")
+      .map((request) => cancelled(request, at));
   }
 
   /** Tells every waiter no answer comes, for a thread being deleted. */
@@ -99,6 +113,19 @@ export class Requests {
       waiter.reject(new Error("The chat was deleted."));
     }
     this.#waiters.clear();
+  }
+
+  /** The requests waited on that `matches`, each waiter told `why` no answer comes. */
+  #take(matches: (request: Request, waiter: Waiter) => boolean, why: string): Request[] {
+    return this.#state.pending.flatMap((request) => {
+      const waiter = this.#waiters.get(request.id);
+      if (waiter === undefined || !matches(request, waiter)) {
+        return [];
+      }
+      this.#waiters.delete(request.id);
+      waiter.reject(new Error(why));
+      return [request];
+    });
   }
 
   /** The agent stopped waiting on a request (the tool withdrawn, the turn interrupted). */

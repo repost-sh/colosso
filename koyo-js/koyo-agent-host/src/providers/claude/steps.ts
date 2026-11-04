@@ -1,28 +1,27 @@
-// The tool calls of a turn (docs/chat.md 4.7). A call starts on its `tool_use` block or its
-// permission request, whichever comes first (T3 adapter pitfall 33), and settles on its
-// `tool_result`; what's still open when the turn ends, the actor closes (4.5). An Agent call
-// is a subagent item, under which its own calls go; a TodoWrite call also shows the to-do
+// The tool calls of a turn or a subagent (docs/chat.md 4.7). A call starts on its `tool_use`
+// block or its permission request, whichever comes first (T3 adapter pitfall 33), and settles
+// on its `tool_result`; what's still open when the turn ends, the actor closes (4.5). An Agent
+// call is a subagent's start, for those who keep them; a TodoWrite call also shows the to-do
 // list, one item a turn that each call updates. AskUserQuestion and ExitPlanMode have no item
 // of their own: the request they make stands in the timeline for them.
 
+import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { TodoWriteInput } from "@anthropic-ai/claude-agent-sdk/sdk-tools";
 import { z } from "zod";
 
 import { type Item, Todo } from "../../protocol/model";
-import type { DriverEvent, ItemBody } from "../provider";
+import type { ItemBody, ItemEvent } from "../provider";
 import {
   canonical,
-  fieldsOf,
-  head,
   type Json,
-  text,
   type ToolBody,
   type ToolResult,
   toolSettled,
   toolStarted,
 } from "./tools";
 
-type SubagentBody = Extract<ItemBody, { kind: "subagent" }>;
+type Content = Exclude<SDKUserMessage["message"]["content"], string>;
+type ResultContent = Extract<Content[number], { type: "tool_result" }>["content"];
 type Listed = Pick<TodoWriteInput["todos"][number], "content" | "status">;
 
 /** A call as it's first seen: its tool's name, its input, and the input bounded if known. */
@@ -32,8 +31,13 @@ interface Called {
   readonly kept?: Json;
 }
 
-/** The most of a subagent's report its item keeps. */
-const SUMMARY_BOUND = 4 * 1024;
+/** Who an Agent call goes to. */
+export interface Spawner {
+  /** An Agent call was seen; `parentKey` names the subagent that made it, if one did. */
+  readonly start: (key: string, input: unknown, parentKey: string | null) => void;
+  /** Whether the result of call `key` was a subagent's, which it took. */
+  readonly settle: (key: string, result: ToolResult) => boolean;
+}
 
 /** A TodoWrite call's input, typed by the CLI's own so it can't drift from it unseen. */
 const Todos: z.ZodType<{ todos: Listed[] }> = z.object({
@@ -41,16 +45,21 @@ const Todos: z.ZodType<{ todos: Listed[] }> = z.object({
 });
 
 export class Steps {
-  readonly #emit: (event: DriverEvent) => void;
+  readonly #emit: (event: ItemEvent) => void;
+  readonly #spawner: Spawner;
+  /** The subagent these are the calls of, if they are one's. */
+  readonly #owner: string | null;
   /** The calls started and not yet settled, by their tool use's id. */
-  readonly #open = new Map<string, ToolBody | SubagentBody>();
+  readonly #open = new Map<string, ToolBody>();
   readonly #settled = new Set<string>();
   readonly #declined = new Set<string>();
   #todos = "todos";
   #listed = false;
 
-  constructor(emit: (event: DriverEvent) => void) {
+  constructor(emit: (event: ItemEvent) => void, spawner: Spawner, owner: string | null) {
     this.#emit = emit;
+    this.#spawner = spawner;
+    this.#owner = owner;
   }
 
   /** Readies for a turn, naming its to-do list `${turn}:todos`. */
@@ -68,7 +77,7 @@ export class Steps {
   }
 
   /** A call seen, from its block or its permission request; the second sight adds nothing. */
-  start(id: string, call: Called, parentKey: string | null): void {
+  start(id: string, call: Called): void {
     const { name, input } = call;
     const tool = canonical(name);
     if (this.#open.has(id) || this.#settled.has(id)) {
@@ -77,9 +86,13 @@ export class Steps {
     if (tool === "AskUserQuestion" || tool === "ExitPlanMode") {
       return;
     }
-    const body = tool === "Agent" ? subagent(input) : toolStarted(name, input, call.kept);
+    if (tool === "Agent") {
+      this.#spawner.start(id, input, this.#owner);
+      return;
+    }
+    const body = toolStarted(name, input, call.kept);
     this.#open.set(id, body);
-    this.#emit({ type: "item.started", key: id, parentKey, item: body });
+    this.#emit({ type: "item.started", key: id, item: body });
     if (tool === "TodoWrite") {
       this.#list(input);
     }
@@ -92,6 +105,9 @@ export class Steps {
 
   /** The call's result came. */
   settle(id: string, result: ToolResult): void {
+    if (this.#spawner.settle(id, result)) {
+      return;
+    }
     const body = this.#open.get(id);
     if (body === undefined) {
       return;
@@ -102,20 +118,7 @@ export class Steps {
     if (this.#declined.has(id)) {
       status = "declined";
     }
-    const item = body.kind === "tool" ? toolSettled(body, result) : reported(body, result.text);
-    this.#emit({ type: "item.updated", key: id, item, status });
-  }
-
-  /** A subagent that ran in the background finished, with its summary. */
-  finished(id: string, summary: string, ok: boolean): void {
-    const body = this.#open.get(id);
-    if (body?.kind !== "subagent") {
-      return;
-    }
-    this.#open.delete(id);
-    this.#settled.add(id);
-    const status = ok ? "completed" : "failed";
-    this.#emit({ type: "item.updated", key: id, item: reported(body, summary), status });
+    this.#emit({ type: "item.updated", key: id, item: toolSettled(body, result), status });
   }
 
   #list(input: unknown): void {
@@ -127,28 +130,36 @@ export class Steps {
     const item: ItemBody = { kind: "todos", payload: { todos } };
     if (!this.#listed) {
       this.#listed = true;
-      this.#emit({ type: "item.started", key: this.#todos, parentKey: null, item });
+      this.#emit({ type: "item.started", key: this.#todos, item });
     }
     this.#emit({ type: "item.updated", key: this.#todos, item, status: "completed" });
   }
 }
 
-function subagent(input: unknown): SubagentBody {
-  const fields = fieldsOf(input);
-  return {
-    kind: "subagent",
-    payload: {
-      description: text(fields, "description") ?? "Subagent",
-      agentType: text(fields, "subagent_type") ?? null,
-      summary: null,
-    },
-  };
+/** Settles the calls whose results a user frame's `content` has. */
+export function settleResults(steps: Steps, content: Content, structured: unknown): void {
+  const results = content.flatMap((block) => block.type === "tool_result" ? [block] : []);
+  for (const block of results) {
+    steps.settle(block.tool_use_id, {
+      text: resultText(block.content),
+      isError: block.is_error === true,
+      // The CLI's structured twin is the message's, so it's only one result's (pitfall 32).
+      structured: results.length === 1 ? structured : undefined,
+    });
+  }
 }
 
-function reported(body: SubagentBody, summary: string): SubagentBody {
-  const said = summary.trim();
-  return {
-    kind: "subagent",
-    payload: { ...body.payload, summary: said === "" ? null : head(said, SUMMARY_BOUND) },
-  };
+/** What a message or a tool's result says, as the model read it. */
+export function resultText(content: ResultContent | Content): string {
+  if (content === undefined || typeof content === "string") {
+    return content ?? "";
+  }
+  return content
+    .flatMap((block) => {
+      if (block.type === "text") {
+        return [block.text];
+      }
+      return block.type === "image" ? ["[image]"] : [];
+    })
+    .join("\n");
 }

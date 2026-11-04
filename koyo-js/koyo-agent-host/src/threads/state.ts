@@ -4,10 +4,11 @@
 
 import type { MessageId, RequestId, RunId } from "../protocol/ids";
 import type { Delivered, Rows, ThreadSnapshot } from "../protocol/methods";
-import type { Item, Request, Run, Thread, ThreadSummary } from "../protocol/model";
+import type { Item, Mode, Request, Run, Thread, ThreadSummary } from "../protocol/model";
 import { eventLine, HostError } from "../protocol/wire";
+import type { DriverEvent, ItemEvent } from "../providers/provider";
 import type { Change, Store } from "../store/store";
-import { orphaned, settled, stopBy } from "./records";
+import { lost, moved, notice, orphaned, settled, stopBy } from "./records";
 import { isLive, isSettled, summary } from "./rules";
 import { LiveTurn } from "./turn";
 
@@ -15,6 +16,9 @@ import { LiveTurn } from "./turn";
 export interface Subscriber {
   readonly send: (line: string) => void;
 }
+
+/** What's said of a turn that only its rows follow. */
+type Heard = ItemEvent | Extract<DriverEvent, { type: "session.ready" | "turn.started" | "usage" }>;
 
 /** How many runs a first open sends (4.3.2). */
 const OPEN_RUNS = 30;
@@ -30,6 +34,8 @@ export class ThreadState {
   /** The requests that wait for the person, oldest first. */
   #pending: readonly Request[];
   #ordinal: number;
+  /** The mode the provider said its session runs in, for a chat that names none. */
+  #mode: Mode | null = null;
   /** The summary watchers were last told. */
   #told: ThreadSummary | undefined;
   readonly #subscribers = new Set<Subscriber>();
@@ -49,6 +55,10 @@ export class ThreadState {
 
   get thread(): Thread {
     return this.#thread;
+  }
+
+  get mode(): Mode | null {
+    return this.#mode;
   }
 
   get pending(): readonly Request[] {
@@ -75,6 +85,11 @@ export class ThreadState {
 
   live(): Run | undefined {
     return this.#unsettled.find(isLive);
+  }
+
+  /** The run a thread is on, or was on last. */
+  latest(): Run | undefined {
+    return this.live() ?? this.#ended;
   }
 
   /** The run the queue starts next. */
@@ -164,7 +179,7 @@ export class ThreadState {
     this.#unsettled = kept(this.#unsettled, committed.runs, (run) => !isSettled(run));
     for (const run of committed.runs) {
       const ran = isSettled(run) && run.status !== "removed";
-      if (ran && (this.#ended === undefined || run.id > this.#ended.id)) {
+      if (ran && (run.endedAt ?? "") >= (this.#ended?.endedAt ?? "")) {
         this.#ended = run;
       }
     }
@@ -177,34 +192,82 @@ export class ThreadState {
       turn?.end();
       this.#turn = undefined;
     }
-    this.broadcast(eventLine("thread.changed", {
-      threadId: this.#thread.id,
-      seq: committed.seq,
-      thread: committed.thread,
-      runs: [...committed.runs],
-      items: [...committed.items],
-      requests: [...committed.requests],
-    }));
-    const shown = this.summary();
-    if (!Bun.deepEquals(shown, this.#told)) {
-      this.#told = shown;
-      this.#summarized(shown);
+    if (this.#subscribers.size > 0) {
+      this.broadcast(eventLine("thread.changed", {
+        threadId: this.#thread.id,
+        seq: committed.seq,
+        thread: committed.thread,
+        runs: [...committed.runs],
+        items: [...committed.items],
+        requests: [...committed.requests],
+      }));
+    }
+    // A subagent's thread shows where it started, not in the lists.
+    if (this.#thread.parent === null) {
+      const shown = this.summary();
+      if (!Bun.deepEquals(shown, this.#told)) {
+        this.#told = shown;
+        this.#summarized(shown);
+      }
+    }
+  }
+
+  /** What's said of the turn, that only its rows follow, while one runs. */
+  heard(event: Heard): void {
+    const live = this.live();
+    const turn = this.#turn;
+    if (live === undefined || turn === undefined) {
+      return;
+    }
+    switch (event.type) {
+      case "session.ready": {
+        this.#mode = event.mode;
+        if (live.permission === null && event.mode !== null) {
+          this.commit({ runs: [{ ...live, permission: event.mode }] });
+        }
+        return;
+      }
+      case "turn.started": {
+        if (live.status === "starting" && event.promptId === turn.promptId) {
+          this.commit({ runs: [moved(live, "running")] });
+        }
+        return;
+      }
+      case "usage": {
+        this.commit({ runs: [{ ...live, usage: event.usage }] });
+        return;
+      }
+      case "item.started":
+      case "item.updated": {
+        this.commit({ items: [turn.seen(event, live, () => this.place())] });
+        return;
+      }
+      case "item.appended": {
+        // Streamed text is told as it comes, and kept by the turn (4.5.8).
+        const grown = turn.append(event.key, event.text);
+        if (grown !== undefined) {
+          const params = { threadId: live.threadId, itemId: grown.id, text: event.text };
+          this.broadcast(eventLine("item.appended", params));
+        }
+        return;
+      }
+      case "notice": {
+        this.commit({ items: [notice(live, this.place(), event.level, event.text)] });
+      }
     }
   }
 
   /** Settles what a host that stopped left live (4.1, startup recovery). */
   recover(at: string): void {
-    const runs: Run[] = [];
-    const items: Item[] = [];
-    for (const run of this.#unsettled.filter(isLive)) {
-      const open = this.#store.itemsOf(this.#thread.id, run.id);
-      const ended = settled(run, "interrupted", open, { at, stop: run.stop ?? stopBy("host", at) });
-      runs.push(ended.run);
-      items.push(...ended.items);
-    }
+    const runs = this.#unsettled.filter(isLive).map((run) => {
+      const stop = run.stop ?? stopBy("host", at);
+      return settled(run, "interrupted", [], { at, stop }).run;
+    });
+    // A background subagent's row outlives its run, so this looks past the runs that were live.
+    const items = this.#store.openItems(this.#thread.id).map((item) => lost(item, at));
     const requests = this.#pending.flatMap((request) => orphaned(request, at) ?? []);
     const thread = this.holding();
-    if (runs.length > 0 || requests.length > 0 || thread !== null) {
+    if (runs.length > 0 || items.length > 0 || requests.length > 0 || thread !== null) {
       this.commit({ thread, runs, items, requests });
     }
   }

@@ -28,6 +28,7 @@
       "sessionId": null,
       "queueHeld": false,
       "tabOpen": true,
+      "parent": null,
       "createdAt": "2026-11-03T18:02:11.204Z",
       "updatedAt": "2026-11-03T18:02:11.204Z",
       "readAt": null,

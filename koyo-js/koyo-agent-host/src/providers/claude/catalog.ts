@@ -64,6 +64,7 @@ export function models(list: readonly ModelInfo[]): Model[] {
     id: model.value,
     name: model.displayName,
     label: label(model, list),
+    runs: model.resolvedModel ?? null,
     efforts: model.supportedEffortLevels ?? [],
     fast: model.supportsFastMode ?? false,
     auto: model.supportsAutoMode ?? false,

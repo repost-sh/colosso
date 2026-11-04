@@ -68,6 +68,8 @@ export class FakeQuery implements Conversation {
   readonly options: Options;
   readonly prompts: SDKUserMessage[] = [];
   readonly controls: Control[] = [];
+  /** The tasks the driver asked to stop. */
+  readonly stopped: string[] = [];
   /** The control requests' methods and the prompts, in the order the CLI had them. */
   readonly journal: string[] = [];
   /** What `interrupt` answers. */
@@ -139,6 +141,11 @@ export class FakeQuery implements Conversation {
     await this.#answered();
   }
 
+  async stopTask(taskId: string): Promise<void> {
+    this.stopped.push(taskId);
+    await Promise.resolve();
+  }
+
   async setModel(model?: string): Promise<void> {
     this.controls.push({ method: "setModel", model });
     await this.#answered();
@@ -187,6 +194,7 @@ export class FakeQuery implements Conversation {
 export interface Asked {
   readonly payload: RequestPayload;
   readonly signal: AbortSignal;
+  readonly bySubagent: boolean;
   readonly answer: (response: Response) => void;
 }
 
@@ -208,9 +216,13 @@ export class Sink implements SessionSink {
     }
   };
 
-  readonly ask = async (payload: RequestPayload, signal: AbortSignal): Promise<Response> => {
+  readonly ask = async (
+    payload: RequestPayload,
+    signal: AbortSignal,
+    bySubagent: boolean,
+  ): Promise<Response> => {
     const answer = Promise.withResolvers<Response>();
-    this.asked.push({ payload, signal, answer: answer.resolve });
+    this.asked.push({ payload, signal, bySubagent, answer: answer.resolve });
     return await answer.promise;
   };
 

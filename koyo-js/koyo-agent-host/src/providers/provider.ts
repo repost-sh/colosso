@@ -15,6 +15,7 @@ import type {
   ProviderId,
   RequestPayload,
   Response,
+  SubagentUsage,
   Usage,
 } from "../protocol/model";
 
@@ -82,19 +83,12 @@ type Body<I> = I extends { kind: unknown; payload: unknown } ? Pick<I, "kind" | 
 export type ItemBody = Body<Item>;
 
 /**
- * What a session reports. `key` is the provider's own stable name for an item (a tool use's
- * id, a message's id and block); the actor gives the item its id and place the first time it
- * sees the key. A turn's events all come before its `turn.finished`.
+ * What's said of a turn's timeline. `key` is the provider's own stable name for an item (a tool
+ * use's id, a message's id and block); the actor gives the item its id and place the first
+ * time it sees the key.
  */
-export type DriverEvent =
-  | { readonly type: "session.ready"; readonly mode: Mode | null }
-  | { readonly type: "turn.started"; readonly promptId: string }
-  | {
-    readonly type: "item.started";
-    readonly key: string;
-    readonly parentKey: string | null;
-    readonly item: ItemBody;
-  }
+export type ItemEvent =
+  | { readonly type: "item.started"; readonly key: string; readonly item: ItemBody }
   | { readonly type: "item.appended"; readonly key: string; readonly text: string }
   | {
     readonly type: "item.updated";
@@ -102,11 +96,63 @@ export type DriverEvent =
     readonly item: ItemBody;
     readonly status: Item["status"];
   }
+  | { readonly type: "notice"; readonly level: NoticeLevel; readonly text: string };
+
+/** A subagent as it starts, or starts again. */
+export interface SubagentStart {
+  readonly description: string;
+  readonly agentType: string | null;
+  /** What it was asked, which starts its thread. */
+  readonly prompt: string;
+  /** What it runs, when that's not what its thread's parent runs. */
+  readonly model: string | null;
+  readonly effort: Effort | null;
+}
+
+/** What's new of a running subagent. */
+export interface SubagentChange {
+  readonly model?: string;
+  readonly progress?: string;
+  readonly usage?: SubagentUsage | null;
+}
+
+/**
+ * What's said of a subagent, whatever turn runs by then, as one may run on past the turn that
+ * started it (docs/chat.md 4.5.10). `key` is the provider's own stable name for it, and
+ * `parentKey` the subagent's that started it, if one did.
+ */
+export type SubagentEvent =
+  | {
+    readonly type: "subagent.started";
+    readonly key: string;
+    readonly parentKey: string | null;
+    readonly subagent: SubagentStart;
+  }
+  | { readonly type: "subagent.changed"; readonly key: string; readonly change: SubagentChange }
+  | { readonly type: "subagent.event"; readonly key: string; readonly event: ItemEvent }
+  | {
+    readonly type: "subagent.ended";
+    readonly key: string;
+    readonly outcome: Outcome;
+    readonly summary: string | null;
+    readonly usage: SubagentUsage | null;
+  };
+
+/**
+ * What a session reports. A turn's events all come before its `turn.finished`; a subagent's
+ * come whenever, a subagent's own timeline among them.
+ */
+export type DriverEvent =
+  | ItemEvent
+  | SubagentEvent
+  | { readonly type: "session.ready"; readonly mode: Mode | null }
+  | { readonly type: "turn.started"; readonly promptId: string }
+  /** The agent started a turn no prompt asked for, as a subagent finished: it runs from now. */
+  | { readonly type: "turn.adopted" }
   | { readonly type: "usage"; readonly usage: Usage }
   /** Something the agent stopped at for the person without waiting, as a plan: the next
    * message answers it (C14). What the agent waits on comes through `SessionSink.ask`. */
   | { readonly type: "request"; readonly request: RequestPayload }
-  | { readonly type: "notice"; readonly level: NoticeLevel; readonly text: string }
   | {
     readonly type: "turn.finished";
     readonly outcome: Outcome;
@@ -118,8 +164,15 @@ export type DriverEvent =
 /** Where a session reports to. */
 export interface SessionSink {
   readonly event: (event: DriverEvent) => void;
-  /** Asks the person; `signal` aborts when the agent stops waiting. */
-  readonly ask: (request: RequestPayload, signal: AbortSignal) => Promise<Response>;
+  /**
+   * Asks the person; `signal` aborts when the agent stops waiting. `bySubagent` when a subagent
+   * asks, which it may with no turn running, and whose asking a turn's end doesn't end.
+   */
+  readonly ask: (
+    request: RequestPayload,
+    signal: AbortSignal,
+    bySubagent: boolean,
+  ) => Promise<Response>;
 }
 
 /**
@@ -132,6 +185,8 @@ export interface ProviderSession {
   /** Adds a message to the running turn; false when none runs anymore. */
   readonly steer: (turn: TurnInput) => boolean;
   readonly interrupt: () => Promise<void>;
+  /** Asks subagent `key` to stop: its `subagent.ended` says when it has, whatever else happens. */
+  readonly stopSubagent: (key: string) => void;
   /**
    * Takes a change, applied before the next turn starts, or says at once that the session
    * must be opened again to take it, so the turn the same step starts never runs on the old

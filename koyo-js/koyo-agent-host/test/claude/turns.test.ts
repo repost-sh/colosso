@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import type { SDKMessageOrigin } from "@anthropic-ai/claude-agent-sdk";
 import { afterEach, describe, expect, test } from "bun:test";
 
 import { Frames } from "../../src/providers/claude/frames";
@@ -24,8 +25,6 @@ import { settle } from "../support/wait";
 import { bench, closeBenches, spec, toolRequest, turnOf } from "./support";
 
 afterEach(closeBenches);
-
-const BACKGROUND = "Claude finished background work.";
 
 describe("a turn", () => {
   test("sends its prompt with its id as the uuid the CLI echoes", async () => {
@@ -88,30 +87,57 @@ describe("a turn", () => {
     expect(made.sink.types()).toEqual(["turn.started", "item.started", "item.appended"]);
   });
 
-  test("shows what the CLI did of its own while no turn ran as background work", async () => {
+  test("adopts a turn the CLI started while none ran, which ends with its result", async () => {
     const made = bench();
     const first = await made.turn();
     first.query.send(success([first.promptId]));
     await settle();
-    // A wake turn the CLI started itself: its own prompt, its own result.
-    const wake = randomUUID();
+    const before = made.sink.events.length;
+    // As recorded: a turn the CLI starts as a task ends has no echo, and its result an origin.
+    const origin: SDKMessageOrigin = { kind: "task-notification" };
     first.query.send(
-      stream(messageStart("w1"), { echo: [wake] }),
-      assistant(message("w1", [textBlock("The build finished.")]), { echo: [wake] }),
-      success([wake], { text: "The build finished." }),
+      stream(messageStart("w1")),
+      assistant(message("w1", [textBlock("The build finished.")])),
+      success([], { text: "The build finished.", origin }),
     );
     await settle();
-    const before = made.sink.events.length;
+    const after = made.sink.events.slice(before).filter((event) => event.type !== "usage");
+    expect(after.map((event) => event.type)).toEqual([
+      "turn.adopted",
+      "item.updated",
+      "turn.finished",
+    ]);
+    expect(after.at(-1)).toMatchObject({ outcome: "completed" });
+    // It's over, so the next turn starts as any does.
     const second = await made.turn("And now?");
     second.query.send(stream(messageStart("m2"), { echo: [second.promptId] }));
     await settle();
-    expect(made.sink.events.slice(before).filter((event) => event.type !== "usage")).toEqual([
-      { type: "turn.started", promptId: second.promptId },
-      { type: "notice", level: "info", text: BACKGROUND },
-    ]);
+    expect(made.sink.of("turn.started").at(-1)).toEqual({
+      type: "turn.started",
+      promptId: second.promptId,
+    });
   });
 
-  test("drops what another turn held when that turn's result comes", async () => {
+  test("a message steered into an adopted turn keeps it going until it's run", async () => {
+    const made = bench();
+    const first = await made.turn();
+    first.query.send(success([first.promptId]));
+    await settle();
+    first.query.send(stream(messageStart("w1")));
+    await settle();
+    const steer = turnOf("Also this.");
+    expect(made.session.steer(steer)).toBe(true);
+    await settle();
+    first.query.send(success([], { origin: { kind: "task-notification" } }));
+    await settle();
+    expect(made.sink.of("turn.finished")).toHaveLength(1);
+    const echo = [steer.promptId];
+    first.query.send(stream(messageStart("w2"), { echo }), success(echo));
+    await settle();
+    expect(made.sink.of("turn.finished")).toHaveLength(2);
+  });
+
+  test("shows what another turn held when that turn's result comes", async () => {
     const made = bench();
     const { promptId, query } = await made.turn();
     const wake = randomUUID();
@@ -123,8 +149,13 @@ describe("a turn", () => {
       stream(messageStart("m1"), { echo: [promptId] }),
     );
     await settle();
-    expect(made.sink.types()).toEqual(["turn.started", "notice"]);
-    expect(made.sink.of("item.appended")).toEqual([]);
+    expect(made.sink.types()).toEqual([
+      "item.started",
+      "item.appended",
+      "turn.started",
+    ]);
+    expect(made.sink.of("item.appended").map((event) => event.text)).toEqual(["Wake text."]);
+    expect(made.sink.of("turn.finished")).toEqual([]);
   });
 });
 
@@ -136,7 +167,7 @@ describe("a prompt's lifecycle", () => {
       events.push(event);
     };
     return {
-      turns: new Turns(emit, new Frames(emit), () => {
+      turns: new Turns(emit, new Frames(emit, 1000), () => {
         events.push("finished");
       }),
       events,

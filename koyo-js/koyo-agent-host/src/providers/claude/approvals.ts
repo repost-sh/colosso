@@ -12,7 +12,7 @@ import type {
 import { z } from "zod";
 
 import type { Question, RequestPayload, Response } from "../../protocol/model";
-import type { DriverEvent, SessionSink } from "../provider";
+import type { DriverEvent } from "../provider";
 import {
   bounded,
   canonical,
@@ -54,7 +54,7 @@ const Questions = z.object({
 
 /** Where a session's requests go, and how it hears what became of a tool call. */
 export interface Asking {
-  readonly ask: SessionSink["ask"];
+  readonly ask: (request: RequestPayload, signal: AbortSignal) => Promise<Response>;
   readonly event: (event: DriverEvent) => void;
   /**
    * A tool call seen first in its permission request (T3 adapter pitfall 33), with its input

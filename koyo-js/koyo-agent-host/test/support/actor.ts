@@ -11,7 +11,8 @@ import { FakeProvider } from "../../src/providers/fake";
 import type { Capabilities, Config } from "../../src/providers/provider";
 import type { Change } from "../../src/store/store";
 import { Store } from "../../src/store/store";
-import { type Context, ThreadActor } from "../../src/threads/actor";
+import { ThreadActor } from "../../src/threads/actor";
+import type { Context } from "../../src/threads/context";
 import { textPrompt } from "../../src/threads/records";
 import { thread } from "./records";
 import { settle } from "./wait";
@@ -22,6 +23,8 @@ export class Harness {
   readonly summaries: ThreadSummary[] = [];
   /** The actors that ran a turn, as the threads' session pool hears of them. */
   readonly used: ThreadActor[] = [];
+  /** The actors of the subagents' threads. */
+  readonly children: ThreadActor[] = [];
   /** The lines the actor sent its subscriber, parsed. */
   readonly lines: unknown[] = [];
   readonly id: ThreadId;
@@ -92,6 +95,11 @@ export class Harness {
       },
       sessionUsed: (actor) => {
         this.used.push(actor);
+      },
+      spawn: (child, prompt, stop) => {
+        const actor = ThreadActor.subagent(this.#context(), child, prompt, stop);
+        this.children.push(actor);
+        return actor;
       },
     };
   }

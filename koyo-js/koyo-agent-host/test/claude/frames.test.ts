@@ -31,7 +31,6 @@ describe("text and thinking", () => {
       {
         type: "item.started",
         key: "msg_011CggdQ7qq4WaL7TjL1qvXv:text:0",
-        parentKey: null,
         item: { kind: "assistant_text", payload: { text: "" } },
       },
       {
@@ -70,7 +69,6 @@ describe("text and thinking", () => {
       {
         type: "item.started",
         key: "m1:thinking:1",
-        parentKey: null,
         item: { kind: "reasoning", payload: { text: "" } },
       },
       { type: "item.appended", key: "m1:thinking:1", text: "Rayleigh scattering." },
@@ -107,12 +105,6 @@ describe("text and thinking", () => {
     send(assistant(message("m1", [textBlock("All at once.")])));
     expect(events).toEqual([
       {
-        type: "item.started",
-        key: "m1:text:0",
-        parentKey: null,
-        item: { kind: "assistant_text", payload: { text: "All at once." } },
-      },
-      {
         type: "item.updated",
         key: "m1:text:0",
         item: { kind: "assistant_text", payload: { text: "All at once." } },
@@ -130,22 +122,11 @@ describe("text and thinking", () => {
     ];
     send(...streamed);
     const shown = events.length;
-    frames.end();
+    frames.end("completed");
     expect(events).toHaveLength(shown);
     // Forgotten, the block starts anew rather than growing what the last turn wrote.
     send(...streamed);
     expect(events.at(shown)).toMatchObject({ type: "item.started", key: "m1:text:0" });
-  });
-
-  test("a subagent's own text isn't shown", () => {
-    const { events, send } = mapped();
-    send(
-      stream(messageStart("sub1"), { parent: "toolu_agent" }),
-      stream(blockStart(0, textBlock("")), { parent: "toolu_agent" }),
-      stream(textDelta(0, "Searching."), { parent: "toolu_agent" }),
-      assistant(message("sub1", [textBlock("Searching.")]), { parent: "toolu_agent" }),
-    );
-    expect(events).toEqual([]);
   });
 
   test("a replay of what was said, as a compaction's summary, isn't shown again", () => {
@@ -190,7 +171,6 @@ describe("compaction", () => {
       {
         type: "item.started",
         key: "turn-1:compaction:1",
-        parentKey: null,
         item: { kind: "compaction", payload: { trigger: "manual", before: null, after: null } },
       },
       {

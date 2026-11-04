@@ -15,6 +15,7 @@
           "id": "claude-opus-5-5",
           "name": "Opus 5.5",
           "label": "Opus 5.5",
+          "runs": null,
           "efforts": [
             "low",
             "medium",
@@ -29,6 +30,7 @@
           "id": "claude-haiku-5-5",
           "name": "Haiku 5.5",
           "label": "Haiku 5.5",
+          "runs": null,
           "efforts": [],
           "fast": false,
           "auto": false

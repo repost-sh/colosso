@@ -12,7 +12,6 @@ import type {
   Answer,
   Attachment,
   Item,
-  Mode,
   Prompt,
   Response,
   Run,
@@ -20,29 +19,23 @@ import type {
   Thread,
   ThreadSummary,
 } from "../protocol/model";
-import { eventLine, HostError } from "../protocol/wire";
-import {
-  type Config,
-  type DriverEvent,
-  type Outcome,
-  processFailure,
-  type Provider,
-} from "../providers/provider";
-import type { Store } from "../store/store";
+import { HostError } from "../protocol/wire";
+import { type DriverEvent, type Outcome, processFailure } from "../providers/provider";
+import { within } from "../time";
+import type { Context } from "./context";
 import {
   answered,
   answeredByNextMessage,
   type Ending,
   moved,
-  notice,
   queuedRun,
+  runningRun,
   seedTitle,
   settingsChanged,
   settled,
   stopBy,
   textPrompt,
   type ThreadChange,
-  titleFrom,
   turnInput,
   updatedThread,
   userMessage,
@@ -51,22 +44,8 @@ import { Requests } from "./requests";
 import { compacts } from "./rules";
 import { SessionSlot, specFor } from "./session";
 import { type Subscriber, ThreadState } from "./state";
-
-/** What an actor works with, from the threads it's one of. */
-export interface Context {
-  readonly store: Store;
-  /** The provider the thread's agent runs on. */
-  readonly provider: Provider;
-  /** Koyo's settings for the agents, as they are now. */
-  readonly config: () => Config;
-  /** The folder the messages' attachments are in. */
-  readonly attachments: string;
-  readonly now: () => string;
-  /** Tells the threads' watchers that what lists show of the thread changed. */
-  readonly summarized: (summary: ThreadSummary) => void;
-  /** Tells the threads a session ran a turn, so the least recently used one closes first. */
-  readonly sessionUsed: (actor: ThreadActor) => void;
-}
+import { Subagents } from "./subagents";
+import { askForTitle } from "./title";
 
 /** How long a shutdown waits for a stopped turn to end before it ends its process. */
 const SHUTDOWN_MS = 5_000;
@@ -77,8 +56,9 @@ export class ThreadActor {
   readonly #state: ThreadState;
   readonly #requests: Requests;
   readonly #session: SessionSlot;
-  /** The mode the provider said its session runs in, for a chat that names none. */
-  #mode: Mode | null = null;
+  readonly #subagents: Subagents;
+  /** Asks what works on the thread to stop; false when there's nothing to ask. */
+  #interrupt = (): boolean => this.#session.interrupt();
   /** A deleted thread's actor takes no more steps. */
   #disposed = false;
 
@@ -98,6 +78,20 @@ export class ThreadActor {
       ask: (payload, signal, waiter) => {
         this.#requests.ask(payload, signal, waiter);
       },
+      gone: () => {
+        this.#sessionGone();
+      },
+    });
+    this.#subagents = new Subagents({
+      root: this,
+      now: cx.now,
+      spawn: cx.spawn,
+      stop: (key) => {
+        this.#session.stopSubagent(key);
+      },
+      ended: () => {
+        this.#session.idleSoon(() => this.busy());
+      },
     });
   }
 
@@ -105,6 +99,17 @@ export class ThreadActor {
   static create(cx: Context, thread: Thread): ThreadActor {
     const actor = new ThreadActor(cx, thread);
     actor.#state.commit({ thread });
+    return actor;
+  }
+
+  /** The actor of a subagent's new thread, which it writes, and which is working on `prompt`. */
+  static subagent(cx: Context, thread: Thread, prompt: string, stop: () => void): ThreadActor {
+    const actor = ThreadActor.create(cx, thread);
+    actor.#interrupt = () => {
+      stop();
+      return true;
+    };
+    actor.takeUp(prompt);
     return actor;
   }
 
@@ -119,13 +124,18 @@ export class ThreadActor {
     return this.#state.thread;
   }
 
+  /** What the thread holds, which its subagents' rows are written to. */
+  get state(): ThreadState {
+    return this.#state;
+  }
+
   summary(): ThreadSummary {
     return this.#state.summary();
   }
 
-  /** Whether a run is live or the agent waits on the person: what keeps the host up. */
+  /** Whether a run or a subagent is live, or the agent waits on the person. */
   busy(): boolean {
-    return this.#state.live() !== undefined || this.#requests.waiting();
+    return this.#state.live() !== undefined || this.#requests.waiting() || this.#subagents.live();
   }
 
   hasSession(): boolean {
@@ -154,6 +164,9 @@ export class ThreadActor {
     const earlier = this.#state.sent(prompt.messageId);
     if (earlier !== undefined) {
       return earlier;
+    }
+    if (this.#state.thread.parent !== null) {
+      throw new HostError("conflict", "A subagent runs on its own.");
     }
     const live = this.#state.live();
     if (live === undefined) {
@@ -184,7 +197,7 @@ export class ThreadActor {
       return;
     }
     const stop = live.stop ?? stopBy("person", this.#cx.now());
-    if (force) {
+    if (force && this.#state.thread.parent === null) {
       this.#session.drop()?.kill();
       this.#settle("interrupted", { stop: { ...stop, force: true } });
     } else if (live.status !== "stopping") {
@@ -253,6 +266,24 @@ export class ThreadActor {
     return this.#state.thread;
   }
 
+  // A subagent's thread and its row (4.5.10).
+
+  /** Starts working on `prompt`, as a subagent does whether a person's there or not. */
+  takeUp(prompt: string): void {
+    const at = this.#cx.now();
+    const { thread } = this.#state;
+    const run = runningRun(thread, textPrompt(prompt), at);
+    const said = prompt === "" ? [] : [userMessage(run, this.#state.place(), run.prompt, "turn")];
+    this.#state.commit({ thread: { ...thread, updatedAt: at }, runs: [run], items: said });
+    this.#state.startTurn(run);
+  }
+
+  /** The subagent this is the thread of ended as `outcome`, saying `summary`. */
+  finish(outcome: Outcome, summary: string | null): void {
+    const message = summary ?? "The subagent failed.";
+    this.#settle(outcome, { failure: outcome === "failed" ? processFailure(message) : null });
+  }
+
   /** The person has seen what the thread did. */
   read(): void {
     this.#state.commit({ thread: { ...this.#state.thread, readAt: this.#cx.now() } });
@@ -296,6 +327,14 @@ export class ThreadActor {
     return queuedRun(this.#state.thread, prompt, this.#cx.now());
   }
 
+  /** The agent started a turn of its own, with no message to show for it. */
+  #adopted(): void {
+    if (this.#state.live() === undefined) {
+      this.takeUp("");
+      this.#cx.sessionUsed(this);
+    }
+  }
+
   /** Starts `queued`: writes it starting with its message, then gives the session its turn. */
   #begin(queued: Run): RunId {
     const at = this.#cx.now();
@@ -305,22 +344,17 @@ export class ThreadActor {
       startedAt: at,
       model: thread.model,
       effort: thread.effort,
-      permission: thread.permission ?? this.#mode,
+      permission: thread.permission ?? this.#state.mode,
       plan: thread.plan,
     });
     const answer: Answer = { kind: "message", messageId: run.prompt.messageId };
+    const answers = this.#state.pending.filter(answeredByNextMessage);
+    const title = thread.title === "" ? seedTitle(run.prompt.text) : thread.title;
     this.#state.commit({
-      thread: {
-        ...thread,
-        sessionId,
-        title: thread.title === "" ? seedTitle(run.prompt.text) : thread.title,
-        updatedAt: at,
-      },
+      thread: { ...thread, sessionId, title, updatedAt: at },
       runs: [run],
       items: [userMessage(run, this.#state.place(), run.prompt, "turn")],
-      requests: this.#state.pending
-        .filter(answeredByNextMessage)
-        .map((request) => answered(request, answer, at)),
+      requests: answers.map((request) => answered(request, answer, at)),
     });
     const turn = this.#state.startTurn(run);
     try {
@@ -335,7 +369,9 @@ export class ThreadActor {
     this.#cx.sessionUsed(this);
     // A message of pictures alone leaves the title to the first words.
     if (thread.title === "" && run.prompt.text !== "") {
-      this.#title(run.prompt.text);
+      askForTitle(this.#cx.provider, this.#state, run.prompt.text, (write) => {
+        this.#step(write);
+      });
     }
     return run.id;
   }
@@ -358,7 +394,7 @@ export class ThreadActor {
   #stopping(live: Run, stop: Stop): void {
     const run = moved(live, "stopping", { stop });
     this.#state.commit({ thread: this.#state.holding(), runs: [run] });
-    if (!this.#session.interrupt()) {
+    if (!this.#interrupt()) {
       this.#settle("interrupted");
     }
   }
@@ -390,80 +426,51 @@ export class ThreadActor {
     }
   }
 
-  /**
-   * Asks the provider for a title and makes one of its reply, written only while the seed is
-   * still the title (4.5.7).
-   */
-  #title(prompt: string): void {
-    this.#cx.provider.title(prompt, this.#state.thread.cwd).then((reply) => {
-      this.#step(() => {
-        const { thread } = this.#state;
-        const title = reply === undefined ? undefined : titleFrom(reply);
-        if (title !== undefined && thread.titleSource === "seed") {
-          this.#state.commit({ thread: { ...thread, title, titleSource: "generated" } });
-        }
-      });
-    }, (error: unknown) => {
-      log.warn("A title didn't come", error);
-    });
-  }
-
   // What the session reports.
 
   #on(event: DriverEvent): void {
-    if (event.type === "session.ended") {
-      this.#sessionEnded(event.error);
-      return;
-    }
-    const live = this.#state.live();
-    const { turn } = this.#state;
-    if (live === undefined || turn === undefined) {
-      return;
-    }
     switch (event.type) {
-      case "session.ready": {
-        this.#mode = event.mode;
-        if (live.permission === null && event.mode !== null) {
-          this.#state.commit({ runs: [{ ...live, permission: event.mode }] });
-        }
+      case "session.ended": {
+        this.#sessionEnded(event.error);
         return;
       }
-      case "turn.started": {
-        if (live.status === "starting" && event.promptId === turn.promptId) {
-          this.#state.commit({ runs: [moved(live, "running")] });
-        }
-        return;
-      }
-      case "item.started":
-      case "item.updated": {
-        this.#state.commit({ items: [turn.seen(event, live, () => this.#state.place())] });
-        return;
-      }
-      case "item.appended": {
-        // Streamed text is told as it comes, and kept by the turn (4.5.8).
-        const grown = turn.append(event.key, event.text);
-        if (grown !== undefined) {
-          const params = { threadId: live.threadId, itemId: grown.id, text: event.text };
-          this.#state.broadcast(eventLine("item.appended", params));
-        }
-        return;
-      }
-      case "notice": {
-        const item = notice(live, this.#state.place(), event.level, event.text);
-        this.#state.commit({ items: [item] });
-        return;
-      }
-      case "request": {
-        this.#requests.open(live, event.request, undefined);
-        return;
-      }
-      case "usage": {
-        this.#state.commit({ runs: [{ ...live, usage: event.usage }] });
+      case "turn.adopted": {
+        this.#adopted();
         return;
       }
       case "turn.finished": {
         this.#settle(event.outcome, { failure: event.failure, usage: event.usage });
+        return;
       }
+      case "request": {
+        this.#requests.proposed(event.request);
+        return;
+      }
+      case "subagent.started":
+      case "subagent.changed":
+      case "subagent.event":
+      case "subagent.ended": {
+        this.#subagents.hear(event);
+        return;
+      }
+      case "session.ready":
+      case "turn.started":
+      case "usage":
+      case "item.started":
+      case "item.updated":
+      case "item.appended":
+      case "notice": {
+        this.#state.heard(event);
+      }
+    }
+  }
+
+  /** What lived in the session beside its turn went with it. */
+  #sessionGone(): void {
+    this.#subagents.lost();
+    const requests = this.#requests.releaseSubagents(this.#cx.now());
+    if (requests.length > 0) {
+      this.#state.commit({ requests });
     }
   }
 
@@ -489,12 +496,4 @@ export class ThreadActor {
       log.error(`A step of chat ${this.#state.thread.id} failed`, error);
     }
   }
-}
-
-/** Waits for `promise`, if there's one, for `ms` at most. */
-async function within(promise: Promise<unknown> | undefined, ms: number): Promise<void> {
-  const late = Promise.withResolvers<undefined>();
-  const timer = setTimeout(late.resolve, ms, undefined);
-  await Promise.race([promise ?? Promise.resolve(), late.promise]);
-  clearTimeout(timer);
 }

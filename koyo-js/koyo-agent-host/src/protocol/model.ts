@@ -56,6 +56,8 @@ export const Thread = z.object({
   queueHeld: z.boolean(),
   /** A tab shows it, and will again after a restart (C13). */
   tabOpen: z.boolean(),
+  /** The row of the thread that started it, for a subagent's: it runs on its own (4.5.10). */
+  parent: z.object({ threadId: ThreadId, itemId: ItemId }).nullable().default(null),
   createdAt: Time,
   updatedAt: Time,
   readAt: Time.nullable(),
@@ -182,6 +184,10 @@ export const Todo = z.object({
 });
 export type Todo = z.infer<typeof Todo>;
 
+/** What a subagent has used so far. */
+export const SubagentUsage = z.object({ tokens: Count, tools: Count });
+export type SubagentUsage = z.infer<typeof SubagentUsage>;
+
 export const NoticeLevel = z.enum(["info", "warning", "error"]);
 export type NoticeLevel = z.infer<typeof NoticeLevel>;
 
@@ -192,7 +198,6 @@ const ItemBase = z.object({
   runId: RunId,
   /** Its place in the timeline, fixed when the item is first seen. */
   ordinal: Count,
-  parentId: ItemId.nullable(),
   status: ItemStatus,
   seq: Count,
 });
@@ -233,7 +238,15 @@ export const Item = z.discriminatedUnion("kind", [
     payload: z.object({
       description: z.string(),
       agentType: z.string().nullable(),
+      /** What it reported as it ended. */
       summary: z.string().nullable(),
+      /** The thread of its own work, which a row from before they had one doesn't have. */
+      threadId: ThreadId.nullable().default(null),
+      /** What it says it's doing, while it runs. */
+      progress: z.string().nullable().default(null),
+      usage: SubagentUsage.nullable().default(null),
+      startedAt: Time.nullable().default(null),
+      endedAt: Time.nullable().default(null),
     }),
   }),
   ItemBase.extend({

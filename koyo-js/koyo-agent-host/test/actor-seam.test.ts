@@ -29,13 +29,12 @@ const OPEN: readonly (readonly [string, ItemBody])[] = [
       server: null,
     },
   }],
-  ["agent", { kind: "subagent", payload: { description: "Find", agentType: null, summary: null } }],
   ["compaction", { kind: "compaction", payload: { trigger: "auto", before: null, after: null } }],
 ];
 
 function startsAllOpen(session: FakeSession): void {
   for (const [key, item] of OPEN) {
-    session.report({ type: "item.started", key, parentKey: null, item });
+    session.report({ type: "item.started", key, item });
   }
 }
 
@@ -47,7 +46,7 @@ function statuses(chats: Harness): [string, string][] {
 }
 
 describe("a run's end", () => {
-  test("after it completed fails a tool, a subagent or a compaction left open", async () => {
+  test("after it completed fails a tool or a compaction left open", async () => {
     const chats = harness();
     await running(chats);
     startsAllOpen(chats.provider.session);
@@ -57,7 +56,6 @@ describe("a run's end", () => {
       ["assistant_text", "completed"],
       ["reasoning", "completed"],
       ["tool", "failed"],
-      ["subagent", "failed"],
       ["compaction", "failed"],
     ]);
   });

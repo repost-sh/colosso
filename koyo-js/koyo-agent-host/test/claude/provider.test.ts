@@ -100,6 +100,7 @@ describe("the catalog", () => {
         id: "default",
         name: "Default",
         label: "Default",
+        runs: null,
         efforts: ["low", "medium", "high"],
         fast: true,
         auto: true,
