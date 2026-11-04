@@ -219,6 +219,14 @@ describe("canUseTool", () => {
     });
   });
 
+  test("a question answered with nothing is skipped, which declines the tool", async () => {
+    const person = new Person(async () => await Promise.resolve({ kind: "question", answers: {} }));
+    expect(await answerTool(person, "AskUserQuestion", QUESTIONS, request())).toEqual({
+      behavior: "deny",
+      message: "The user skipped the question",
+    });
+  });
+
   test("ExitPlanMode is a plan, captured, and the tool denied so Claude stops at it", async () => {
     const person = new Person(async () => await Promise.reject(new Error("Not asked.")));
     const plan = { plan: "# Plan\n1. Read.\n2. Write." };
@@ -229,5 +237,21 @@ describe("canUseTool", () => {
     }]);
     expect(person.asked).toEqual([]);
     expect(result).toEqual({ behavior: "deny", message: PLAN_CAPTURED });
+  });
+
+  test("an empty plan is no request: Claude is told to write it", async () => {
+    const person = new Person(async () => await Promise.reject(new Error("Not asked.")));
+    for (const input of [{ plan: " \n" }, {}]) {
+      const result = await answerTool(person, "ExitPlanMode", input, request());
+      expect(result).toEqual({
+        behavior: "deny",
+        message: "The plan came through empty. Write your plan, then call ExitPlanMode again.",
+      });
+    }
+    expect(await answerTool(person, "ExitPlanMode", { plan: 3 }, request())).toEqual({
+      behavior: "deny",
+      message: "The plan couldn't be read.",
+    });
+    expect(person.events).toEqual([]);
   });
 });

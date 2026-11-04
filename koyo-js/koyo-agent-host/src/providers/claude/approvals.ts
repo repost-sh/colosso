@@ -35,8 +35,10 @@ export const PLAN_CAPTURED =
 const DECLINED = "The user declined this tool call.";
 const CANCELLED = "The user stopped this turn.";
 const WITHDRAWN = "The request was withdrawn.";
+const SKIPPED = "The user skipped the question";
+const EMPTY_PLAN = "The plan came through empty. Write your plan, then call ExitPlanMode again.";
 
-const Plan = z.object({ plan: z.string() });
+const Plan = z.object({ plan: z.string().nullish() });
 const Questions = z.object({
   questions: z.array(z.object({
     question: z.string(),
@@ -73,10 +75,15 @@ export async function answerTool(
   const tool = canonical(name);
   if (tool === "ExitPlanMode") {
     const plan = Plan.safeParse(input);
-    asking.event({
-      type: "request",
-      request: { kind: "plan", markdown: plan.success ? plan.data.plan : "" },
-    });
+    if (!plan.success) {
+      return { behavior: "deny", message: "The plan couldn't be read." };
+    }
+    // The CLI gives what's in its plan file, if it's there: with none there's nothing to decide.
+    const markdown = plan.data.plan ?? "";
+    if (markdown.trim() === "") {
+      return { behavior: "deny", message: EMPTY_PLAN };
+    }
+    asking.event({ type: "request", request: { kind: "plan", markdown } });
     return { behavior: "deny", message: PLAN_CAPTURED };
   }
   if (tool === "AskUserQuestion") {
@@ -176,7 +183,10 @@ async function askQuestions(
   return answered(response, input, questions);
 }
 
-/** The answers to AskUserQuestion as the CLI takes them; several choices joined with ", ". */
+/**
+ * The answers to AskUserQuestion as the CLI takes them, several choices joined with ", ". No
+ * answers at all is the person skipping it, which declines the tool.
+ */
 function answered(
   response: Response | null,
   input: Fields,
@@ -184,6 +194,9 @@ function answered(
 ): PermissionResult {
   if (response?.kind !== "question") {
     return { behavior: "deny", message: WITHDRAWN };
+  }
+  if (Object.keys(response.answers).length === 0) {
+    return { behavior: "deny", message: SKIPPED };
   }
   const answers: Record<string, string> = {};
   for (const question of questions) {
