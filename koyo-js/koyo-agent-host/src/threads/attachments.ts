@@ -1,16 +1,24 @@
 // The files messages attach (docs/chat.md 4.3.4): the app writes them into the host's
 // attachments folder and names them by file, so a name is checked to be one of that folder's
-// own files before an agent is given its path, and goes with its chat. One no message ended up
-// naming, the app having stopped before it could remove it, is swept up as the host starts.
+// own files before an agent is given its path, and goes with its chat. One neither a message nor
+// the app's drafts ended up naming, the app having stopped before it could remove it, is swept up
+// as the host starts.
 
-import { existsSync, lstatSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
+
+import { z } from "zod";
 
 import type { Attachment } from "../protocol/model";
 import { HostError } from "../protocol/wire";
 
-/** How long a file no message names stays, for a message still being written. */
+/** How long a file nothing names stays, for a message still being written. */
 const UNNAMED_FOR_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** What the app writes of its drafts that matters here: each one's chat, then the draft. */
+const Drafts = z.array(
+  z.tuple([z.unknown(), z.object({ attachments: z.array(z.object({ file: z.string() })) })]),
+);
 
 /**
  * Refuses a message with neither words nor files, and an attachment that isn't a plain file of
@@ -39,9 +47,21 @@ export function removeAttachments(folder: string, files: readonly string[]): voi
 }
 
 /**
- * Removes the files of `folder` no message names, once they're old enough at `now` not to be on
- * their way into one. Their age is from when they were made here, as a copy keeps its modified
- * time from the file it was made of.
+ * The files the app's drafts at `path` name, which stay for as long as they do. A file there that
+ * can't be read throws, as nothing can be said to be unnamed then.
+ */
+export function draftAttachments(path: string): ReadonlySet<string> {
+  if (!existsSync(path)) {
+    return new Set();
+  }
+  const drafts = Drafts.parse(JSON.parse(readFileSync(path, "utf8")));
+  return new Set(drafts.flatMap(([, draft]) => draft.attachments.map(({ file }) => file)));
+}
+
+/**
+ * Removes the files of `folder` nothing names, once they're old enough at `now` not to be on
+ * their way into a message. Their age is from when they were made here, as a copy keeps its
+ * modified time from the file it was made of.
  */
 export function sweepAttachments(folder: string, named: ReadonlySet<string>, now: number): void {
   if (!existsSync(folder)) {

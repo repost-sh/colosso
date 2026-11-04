@@ -54,6 +54,7 @@ function host(): Running {
     store,
     providers: [provider],
     attachments,
+    drafts: join(attachments, "no-drafts.json"),
     now: () => new Date().toISOString(),
   });
   const server = serve(socket, handlers({

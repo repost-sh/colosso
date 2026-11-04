@@ -49,6 +49,7 @@ export async function run(options: Options): Promise<Served> {
     store,
     providers: options.providers,
     attachments: dir.attachments,
+    drafts: dir.drafts,
     now: () => new Date().toISOString(),
   });
   threads.recover();

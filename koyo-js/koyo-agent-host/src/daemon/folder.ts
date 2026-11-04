@@ -14,6 +14,8 @@ export interface Folder {
   readonly log: string;
   readonly database: string;
   readonly attachments: string;
+  /** The app's drafts, which name attachments no message does yet. */
+  readonly drafts: string;
 }
 
 export function folder(root: string): Folder {
@@ -24,6 +26,7 @@ export function folder(root: string): Folder {
     log: join(root, "host.log"),
     database: join(root, "chats.sqlite"),
     attachments: join(root, "attachments"),
+    drafts: join(root, "chat-drafts.json"),
   };
 }
 
