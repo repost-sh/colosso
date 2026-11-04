@@ -2,7 +2,6 @@
 //! they did, each of them a line that opens on what it gave back.
 
 use gpui_kit::assets::IconName;
-use gpui_kit::component::text::TextView;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, Div, InteractiveElement as _, IntoElement, ParentElement as _, SharedString,
@@ -11,7 +10,7 @@ use gpui_kit::{
 use koyo_agent::protocol::ids::ItemId;
 use koyo_agent::protocol::model::{Item, ItemBody, ItemStatus, Todo, TodoStatus, Tool, ToolFamily};
 use koyo_agent::replica::Replica;
-use koyo_agent::timeline::{RowId, children};
+use koyo_agent::timeline::RowId;
 use koyo_agent::words::{THOUGHT, work_line, work_summary};
 
 use super::output::{block, diff};
@@ -31,18 +30,12 @@ pub(super) fn group(
         .filter_map(|item| replica.items.get(*item))
         .collect();
     match lines.as_slice() {
-        [only] => line(drawing, replica, only, index).into_any_element(),
-        several => summary(drawing, replica, several, id, index).into_any_element(),
+        [only] => line(drawing, only, index).into_any_element(),
+        several => summary(drawing, several, id, index).into_any_element(),
     }
 }
 
-fn summary(
-    drawing: &Drawing,
-    replica: &Replica,
-    lines: &[&Item],
-    id: &RowId,
-    index: usize,
-) -> Div {
+fn summary(drawing: &Drawing, lines: &[&Item], id: &RowId, index: usize) -> Div {
     let p = drawing.p;
     let open = drawing.work_open(id);
     let failed = lines.iter().any(|item| item.status == ItemStatus::Failed);
@@ -68,13 +61,13 @@ fn summary(
                     .pl_3()
                     .border_l_1()
                     .border_color(p.hairline)
-                    .children(lines.iter().map(|item| line(drawing, replica, item, index))),
+                    .children(lines.iter().map(|item| line(drawing, item, index))),
             )
         })
 }
 
 /// One item of work: what it did, and what it gave back once opened.
-fn line(drawing: &Drawing, replica: &Replica, item: &Item, index: usize) -> Div {
+fn line(drawing: &Drawing, item: &Item, index: usize) -> Div {
     let p = drawing.p;
     let id = RowId::Item(item.id.clone());
     let opens_up = has_details(item);
@@ -114,7 +107,7 @@ fn line(drawing: &Drawing, replica: &Replica, item: &Item, index: usize) -> Div 
         .flex_col()
         .gap_1()
         .child(head)
-        .when(open, |row| row.children(details(drawing, replica, item, index)))
+        .when(open, |row| row.children(details(drawing, item)))
 }
 
 fn mark_of(item: &Item) -> IconName {
@@ -122,7 +115,6 @@ fn mark_of(item: &Item) -> IconName {
         ItemBody::Tool(tool) => tool_mark(tool.family),
         ItemBody::Reasoning(_) => IconName::Brain,
         ItemBody::Todos(_) => IconName::ListTodo,
-        ItemBody::Subagent(_) => IconName::Bot,
         _ => IconName::Wrench,
     }
 }
@@ -145,15 +137,16 @@ pub(super) fn tool_mark(family: ToolFamily) -> IconName {
 fn has_details(item: &Item) -> bool {
     match &item.body {
         ItemBody::Tool(tool) => {
-            tool.output.is_some() || tool.patch.is_some() || tool.family == ToolFamily::Mcp
+            let said = tool.output.as_deref().is_some_and(|output| !output.trim().is_empty());
+            said || tool.patch.is_some() || tool.family == ToolFamily::Mcp
         }
         ItemBody::Reasoning(text) => !text.text.trim().is_empty(),
-        ItemBody::Todos(_) | ItemBody::Subagent(_) => true,
+        ItemBody::Todos(_) => true,
         _ => false,
     }
 }
 
-fn details(drawing: &Drawing, replica: &Replica, item: &Item, index: usize) -> Option<AnyElement> {
+fn details(drawing: &Drawing, item: &Item) -> Option<AnyElement> {
     let p = drawing.p;
     let inner = match &item.body {
         ItemBody::Tool(tool) => tool_details(&item.id, tool, p).into_any_element(),
@@ -163,19 +156,6 @@ fn details(drawing: &Drawing, replica: &Replica, item: &Item, index: usize) -> O
             .child(text.text.trim().to_owned())
             .into_any_element(),
         ItemBody::Todos(todos) => todo_list(&todos.todos, p).into_any_element(),
-        ItemBody::Subagent(agent) => {
-            let inside = children(replica, &item.id).map(|child| line(drawing, replica, child, index));
-            let summary = agent.summary.clone().map(|summary| {
-                TextView::markdown(SharedString::from(format!("agent-{}", item.id)), summary)
-            });
-            div()
-                .flex()
-                .flex_col()
-                .gap(px(6.))
-                .children(inside)
-                .children(summary)
-                .into_any_element()
-        }
         _ => return None,
     };
     Some(div().pl(px(21.)).child(inner).into_any_element())

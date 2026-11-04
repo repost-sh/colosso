@@ -84,10 +84,19 @@ pub struct Thread {
     pub queue_held: bool,
     /// A tab shows it, and will again after a restart (C13).
     pub tab_open: bool,
+    /// The row of the thread that started it, for a subagent's: it runs on its own.
+    pub parent: Option<Box<ThreadParent>>,
     pub created_at: Time,
     pub updated_at: Time,
     pub read_at: Option<Time>,
     pub seq: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThreadParent {
+    pub thread_id: ThreadId,
+    pub item_id: ItemId,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -259,7 +268,6 @@ pub struct Item {
     pub thread_id: ThreadId,
     pub run_id: RunId,
     pub ordinal: u64,
-    pub parent_id: Option<ItemId>,
     pub status: ItemStatus,
     pub seq: u64,
     #[serde(flatten)]
@@ -285,7 +293,7 @@ pub enum ItemBody {
     Tool(Tool),
     Todos(Todos),
     Request(RequestRef),
-    Subagent(Subagent),
+    Subagent(Box<Subagent>),
     Compaction(Compaction),
     Notice(Notice),
     /// A kind this build doesn't know, from a newer host; shown as a notice.
@@ -362,7 +370,23 @@ pub struct RequestRef {
 pub struct Subagent {
     pub description: String,
     pub agent_type: Option<String>,
+    /// What it reported as it ended.
     pub summary: Option<String>,
+    /// The thread of its own work, which a row from before they had one doesn't have.
+    pub thread_id: Option<ThreadId>,
+    /// What it says it's doing, while it runs.
+    pub progress: Option<String>,
+    pub usage: Option<SubagentUsage>,
+    pub started_at: Option<Time>,
+    pub ended_at: Option<Time>,
+}
+
+/// What a subagent has used so far.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubagentUsage {
+    pub tokens: u64,
+    pub tools: u64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

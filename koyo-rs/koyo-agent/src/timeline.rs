@@ -17,6 +17,8 @@ pub enum RowId {
     Item(ItemId),
     /// A group of work, by the item it started with.
     Work(ItemId),
+    /// Subagents one after the other, by the first.
+    Subagents(ItemId),
     Fold(RunId),
     Live(RunId),
     Failure(RunId),
@@ -40,8 +42,10 @@ pub enum RowKind {
     User { item: usize, run: usize },
     /// Assistant text; `last` when it's the run's final answer.
     Answer { item: usize, run: usize, last: bool },
-    /// Tools, thinking, to-dos and agents one after the other, none of them running.
+    /// Tools, thinking and to-dos one after the other, none of them running.
     Work { items: Vec<usize> },
+    /// Subagents one after the other, each showing how it's doing whatever its run does.
+    Subagents { items: Vec<usize> },
     /// What a live run is working on, `None` before there's anything to say. Its id never changes
     /// while the run works. There's none while the run writes or asks, which show themselves.
     Live { item: Option<usize> },
@@ -151,12 +155,11 @@ struct Work {
 
 impl RunRows<'_> {
     fn add(&mut self, items: &[Item], fold: WorkFold) {
-        let top = |item: &&Item| item.parent_id.is_none();
-        let answer = items.iter().filter(top).rfind(|item| is_text(item)).map(|item| &item.id);
+        let answer = items.iter().rfind(|item| is_text(item)).map(|item| &item.id);
         // Failed and interrupted runs show what they did, as that's what someone reads them for.
         let fold = if self.run.status == RunStatus::Completed { fold } else { WorkFold::None };
         let mut foldable = fold != WorkFold::None;
-        for (at, item) in items.iter().enumerate().filter(|(_, item)| top(item)) {
+        for (at, item) in items.iter().enumerate() {
             let place = self.first + at;
             if is_work(item) {
                 if foldable {
@@ -177,8 +180,13 @@ impl RunRows<'_> {
     fn item(&mut self, place: usize, item: &Item, last: bool) {
         let mut seq = item.seq;
         let kind = match &item.body {
-            ItemBody::Tool(_) | ItemBody::Todos(_) | ItemBody::Subagent(_) | ItemBody::Reasoning(_) => {
+            ItemBody::Tool(_) | ItemBody::Todos(_) | ItemBody::Reasoning(_) => {
                 self.gather(place, item);
+                return;
+            }
+            ItemBody::Subagent(_) => {
+                self.flush();
+                self.subagent(place, item);
                 return;
             }
             ItemBody::UserMessage(_) => RowKind::User {
@@ -212,6 +220,25 @@ impl RunRows<'_> {
             seq,
             kind,
         });
+    }
+
+    /// A row for a subagent, or a place in the row of the one before it.
+    fn subagent(&mut self, place: usize, item: &Item) {
+        if let Some(Row {
+            seq,
+            kind: RowKind::Subagents { items },
+            ..
+        }) = self.rows.last_mut()
+        {
+            items.push(place);
+            *seq = (*seq).max(item.seq);
+        } else {
+            self.rows.push(Row {
+                id: RowId::Subagents(item.id.clone()),
+                seq: item.seq,
+                kind: RowKind::Subagents { items: vec![place] },
+            });
+        }
     }
 
     /// Adds an item to the work under way, which what's running stays out of while the run's
@@ -274,8 +301,10 @@ impl RunRows<'_> {
         if asking {
             return;
         }
+        // A subagent shows for itself, however long it takes.
         let running = (items.iter().enumerate().rev())
-            .find(|(_, item)| item.parent_id.is_none() && item.status == ItemStatus::Running);
+            .filter(|(_, item)| !matches!(item.body, ItemBody::Subagent(_)))
+            .find(|(_, item)| item.status == ItemStatus::Running);
         let item = match running {
             Some((_, item)) if is_text(item) => return,
             Some((at, _)) => Some(self.first + at),
@@ -290,22 +319,18 @@ fn is_text(item: &Item) -> bool {
 }
 
 /// Whether an item is the work a settled run folds. What was said stays, however much came after
-/// it, and so do asks, compactions and what went wrong.
+/// it, and so do asks, subagents, compactions and what went wrong.
 fn is_work(item: &Item) -> bool {
     match &item.body {
-        ItemBody::Reasoning(_) | ItemBody::Tool(_) | ItemBody::Todos(_) | ItemBody::Subagent(_) => true,
+        ItemBody::Reasoning(_) | ItemBody::Tool(_) | ItemBody::Todos(_) => true,
         ItemBody::Notice(notice) => notice.level == NoticeLevel::Info,
         ItemBody::UserMessage(_)
         | ItemBody::AssistantText(_)
         | ItemBody::Request(_)
+        | ItemBody::Subagent(_)
         | ItemBody::Compaction(_)
         | ItemBody::Unknown { .. } => false,
     }
-}
-
-/// What an agent did, which shows inside its line and not as rows of its own.
-pub fn children<'a>(replica: &'a Replica, agent: &'a ItemId) -> impl Iterator<Item = &'a Item> {
-    (replica.items.iter()).filter(move |item| item.parent_id.as_ref() == Some(agent))
 }
 
 /// What to tell a list holding the rows `old` for it to hold `new`: which of its rows to replace

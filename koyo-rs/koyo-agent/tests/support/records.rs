@@ -27,6 +27,7 @@ pub fn thread(seq: u64) -> Thread {
         session_id: None,
         queue_held: false,
         tab_open: true,
+        parent: None,
         created_at: Time(AT.into()),
         updated_at: Time(AT.into()),
         read_at: None,
@@ -65,7 +66,6 @@ pub fn item(id: &str, ordinal: u64, body: ItemBody, seq: u64) -> Item {
         thread_id: ThreadId(THREAD.into()),
         run_id: RunId("r1".into()),
         ordinal,
-        parent_id: None,
         status: ItemStatus::Running,
         seq,
         body,
@@ -113,6 +113,11 @@ pub fn subagent(description: &str) -> Subagent {
         description: description.into(),
         agent_type: None,
         summary: None,
+        thread_id: None,
+        progress: None,
+        usage: None,
+        started_at: None,
+        ended_at: None,
     }
 }
 

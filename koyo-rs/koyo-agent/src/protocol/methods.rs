@@ -144,6 +144,9 @@ pub struct Model {
     pub name: String,
     /// What it goes by once it's chosen, which says what runs where `name` may not.
     pub label: String,
+    /// The id of what it runs, where its own id is another name for it.
+    #[serde(default)]
+    pub runs: Option<String>,
     pub efforts: Vec<Effort>,
     pub fast: bool,
     pub auto: bool,
@@ -171,10 +174,16 @@ impl Catalog {
     /// chose none. One no longer listed has nothing to say of it.
     pub fn model(&self, id: Option<&str>) -> Option<&Model> {
         match id {
-            Some(id) => self.models.iter().find(|model| model.id == id),
+            Some(id) => listed(&self.models, id),
             None => self.models.first(),
         }
     }
+}
+
+/// The model of `models` that goes by `id`: its own, or that of what it runs.
+pub fn listed<'a>(models: &'a [Model], id: &str) -> Option<&'a Model> {
+    (models.iter().find(|model| model.id == id))
+        .or_else(|| models.iter().find(|model| model.runs.as_deref() == Some(id)))
 }
 
 impl Model {

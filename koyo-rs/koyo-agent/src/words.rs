@@ -2,10 +2,10 @@
 //! failed. What goes with the words, such as an icon, is the app's.
 
 use crate::protocol::ids::Time;
-use crate::protocol::methods::Model;
+use crate::protocol::methods::{Model, listed};
 use crate::protocol::model::{
-    Compaction, Effort, Failure, FailureKind, Item, ItemBody, ItemStatus, Mode, Run, TodoStatus,
-    Tool, ToolFamily,
+    Compaction, Effort, Failure, FailureKind, Item, ItemBody, ItemStatus, Mode, Run, SubagentUsage,
+    TodoStatus, Tool, ToolFamily,
 };
 use crate::protocol::requests::{
     Answer, Approval, Decision, PlanDecision, Question, Request, RequestPayload, RequestStatus,
@@ -14,16 +14,17 @@ use crate::protocol::requests::{
 
 /// What shows under a final answer: "Opus 5.5 · High · 14:30", the model as `models` calls it.
 pub fn answer_meta(run: &Run, models: &[Model]) -> String {
-    let model = run.model.as_ref().map(|id| {
-        let known = models.iter().find(|model| model.id == *id);
-        known.map_or_else(|| id.clone(), |model| model_name(model).to_owned())
-    });
     let parts = [
-        model,
+        run.model.as_deref().map(|id| model_called(id, models)),
         run.effort.map(|effort| effort_label(effort).to_owned()),
         run.ended_at.as_ref().and_then(clock),
     ];
     parts.into_iter().flatten().collect::<Vec<_>>().join(" · ")
+}
+
+/// What model `id` goes by in `models`, or its id if it isn't listed.
+pub fn model_called(id: &str, models: &[Model]) -> String {
+    listed(models, id).map_or_else(|| id.to_owned(), |model| model_name(model).to_owned())
 }
 
 /// What a model goes by, less what the catalog says of it in brackets.
@@ -101,6 +102,48 @@ pub fn duration(seconds: u64) -> String {
     }
 }
 
+/// How a subagent is doing, or a run of a thread of one.
+pub fn subagent_status(status: ItemStatus) -> &'static str {
+    match status {
+        ItemStatus::Pending | ItemStatus::Running => "Running",
+        ItemStatus::Completed => "Completed",
+        ItemStatus::Failed => "Failed",
+        ItemStatus::Declined => "Declined",
+        ItemStatus::Interrupted => "Stopped",
+    }
+}
+
+/// How a subagent is doing and for how long, from `started` to `ended` or `now` while it goes on:
+/// "Running · 41s".
+pub fn subagent_line(
+    doing: &str,
+    started: Option<&Time>,
+    ended: Option<&Time>,
+    now: chrono::DateTime<chrono::Utc>,
+) -> String {
+    let took = started.and_then(|started| elapsed(started, ended, now));
+    took.map_or_else(|| doing.to_owned(), |took| format!("{doing} · {took}"))
+}
+
+fn elapsed(started: &Time, ended: Option<&Time>, now: chrono::DateTime<chrono::Utc>) -> Option<String> {
+    let started = parsed(started)?;
+    let until = match ended {
+        Some(ended) => parsed(ended)?,
+        None => now.fixed_offset(),
+    };
+    let seconds = (until - started).num_seconds().max(0);
+    Some(duration(seconds.unsigned_abs()))
+}
+
+/// What a subagent's used so far, as a person says it.
+pub fn subagent_used(usage: &SubagentUsage) -> String {
+    let tools = match usage.tools {
+        1 => "1 tool".to_owned(),
+        many => format!("{many} tools"),
+    };
+    format!("{tools} · {} tokens", tokens(usage.tokens))
+}
+
 /// A number of tokens as a person says it: "31k".
 fn tokens(count: u64) -> String {
     if count < 1000 {
@@ -172,7 +215,6 @@ pub fn work_summary<'a>(items: impl Iterator<Item = &'a Item>) -> String {
 fn family_of(item: &Item) -> Option<ToolFamily> {
     match &item.body {
         ItemBody::Tool(tool) => Some(tool.family),
-        ItemBody::Subagent(_) => Some(ToolFamily::Agent),
         ItemBody::Todos(_) => Some(ToolFamily::Todo),
         _ => None,
     }
@@ -308,7 +350,6 @@ pub fn work_line(item: &Item, cwd: &str) -> String {
             let done = (todos.todos.iter()).filter(|todo| todo.status == TodoStatus::Completed);
             format!("Updated the to-dos · {} of {} done", done.count(), todos.todos.len())
         }
-        ItemBody::Subagent(agent) => agent.description.clone(),
         _ => "Worked".to_owned(),
     }
 }
@@ -317,7 +358,6 @@ pub fn work_line(item: &Item, cwd: &str) -> String {
 pub fn live_line(item: Option<&Item>, cwd: &str) -> String {
     match item.map(|item| &item.body) {
         Some(ItemBody::Tool(tool)) => tool_line(tool, ItemStatus::Running, cwd),
-        Some(ItemBody::Subagent(agent)) => agent.description.clone(),
         Some(ItemBody::Reasoning(_)) => "Thinking…".to_owned(),
         _ => "Working…".to_owned(),
     }
