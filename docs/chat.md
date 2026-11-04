@@ -884,8 +884,8 @@ Layout, top to bottom inside the pane's card:
     over the tinted card is the theme's own (never the system's accent, which isn't the theme);
     images above the text; long messages collapse past 8 lines with "Show more";
     hover: copy, time; a steer marked "↷ Steered".
-  - assistant text: full-width markdown (`TextView`, streaming), no bubble; a meta line on
-    hover under the final answer: copy, model · effort, time.
+  - assistant text: full-width markdown (`TextView`, streaming), no bubble; on hover a copy button
+    under each, and under the final answer model · effort, time.
   - reasoning: one muted line with the latest thought ("Thinking…" shimmering while live),
     expandable to the trace.
   - work: one row per tool with icon, label and status ("Ran cargo test", "Read
@@ -896,8 +896,14 @@ Layout, top to bottom inside the pane's card:
     asks, which show for themselves; expanding a command shows its output (mono, ANSI-coloured,
     capped height), an edit its diff in the changes tab's lines, a search its results, a todo
     its steps, an MCP call its arguments and result.
-  - turn fold: once a run settles, its work before the final answer folds into "Worked for
-    1m 3s ›"; not folded: the live run, failed and interrupted runs, requests, compactions.
+  - how much of the work shows is a person's choice (Settings › Chat, "Work to show"), and what
+    was said shows whichever it is, as an essay followed by a line is still what was asked for:
+    - "One line per step", the default: nothing folds, and each line above opens by a click.
+    - "All output and thinking": every line is open, with all it gave back and every thought; a
+      click closes one.
+    - "One line per turn": once a run settles, its work folds into "Worked for 1m 3s ›", where it
+      started. Not folded: the live run, failed and interrupted runs, requests, compactions. A run
+      with no work has no fold.
   - approval: inline where it was asked, never folded: what is asked (the command in mono;
     for an edit, its file and diff; for a write, the file and its head as added lines), why,
     if the CLI said, then Deny · Allow and a menu: what the host says "Allow for this chat"

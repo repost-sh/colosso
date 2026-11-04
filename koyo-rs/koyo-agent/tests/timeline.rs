@@ -13,7 +13,7 @@ use koyo_agent::protocol::model::{
 };
 use koyo_agent::protocol::requests::{Request, RequestStatus};
 use koyo_agent::replica::Replica;
-use koyo_agent::timeline::{Row, RowId, RowKind, changed, children, rows};
+use koyo_agent::timeline::{Row, RowId, RowKind, WorkFold, changed, children, rows};
 use records::{answer, done, item, message, request, run, snapshot, tool_of};
 
 fn tool(label: &str) -> ItemBody {
@@ -51,7 +51,7 @@ fn shape(replica: &Replica, rows: &[Row]) -> Vec<String> {
 
 /// The rows of `replica`, each run folded.
 fn made(replica: &Replica) -> Vec<Row> {
-    rows(replica, |_| false)
+    rows(replica, |_| WorkFold::Closed)
 }
 
 fn of(replica: &Replica) -> Vec<String> {
@@ -160,7 +160,7 @@ fn a_live_row_shows_unless_what_the_run_does_shows_for_itself() {
 }
 
 #[test]
-fn a_settled_run_folds_its_work_and_keeps_what_was_asked_and_its_answer() {
+fn a_settled_run_folds_only_its_work() {
     let mut snap = snapshot(
         9,
         vec![run("r1", RunStatus::Completed, 5)],
@@ -182,22 +182,44 @@ fn a_settled_run_folds_its_work_and_keeps_what_was_asked_and_its_answer() {
     let replica = Replica::new(snap);
     assert_eq!(
         of(&replica),
-        ["user a", "fold", "request d", "compaction e", "answer g"]
+        ["user a", "fold", "text c", "request d", "compaction e", "answer g"]
     );
 
     let open = HashSet::from([RunId("r1".into())]);
+    let unfolded = |run: &RunId| if open.contains(run) { WorkFold::Open } else { WorkFold::Closed };
+    let all = [
+        "user a",
+        "fold",
+        "work b",
+        "text c",
+        "request d",
+        "compaction e",
+        "work f",
+        "answer g",
+    ];
+    assert_eq!(shape(&replica, &rows(&replica, unfolded)), all);
+
+    let in_the_open = rows(&replica, |_| WorkFold::None);
+    let without_a_fold: Vec<_> = all.into_iter().filter(|row| *row != "fold").collect();
+    assert_eq!(shape(&replica, &in_the_open), without_a_fold);
+}
+
+#[test]
+fn what_was_said_never_folds_however_much_came_after_it() {
+    let essay = |tool_after| {
+        let mut items = vec![done("a", 0, message("An essay, please")), done("b", 1, answer("An essay"))];
+        items.extend(tool_after);
+        items.push(done("d", 3, answer("Anything else?")));
+        replica_of(RunStatus::Completed, items)
+    };
     assert_eq!(
-        shape(&replica, &rows(&replica, |run| open.contains(run))),
-        [
-            "user a",
-            "fold",
-            "work b",
-            "text c",
-            "request d",
-            "compaction e",
-            "work f",
-            "answer g",
-        ]
+        of(&essay(None)),
+        ["user a", "text b", "answer d"],
+        "with no work there's nothing to open"
+    );
+    assert_eq!(
+        of(&essay(Some(done("c", 2, tool("one"))))),
+        ["user a", "text b", "fold", "answer d"]
     );
 }
 

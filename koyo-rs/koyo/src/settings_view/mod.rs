@@ -4,6 +4,7 @@
 mod about;
 mod appearance;
 mod browser;
+mod chat;
 mod components;
 mod editor;
 mod field_dialog;
@@ -32,6 +33,7 @@ use components::{SettingsPageColumn, SettingsSection};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SettingsPage {
     General,
+    Chat,
     Editor,
     Languages,
     Appearance,
@@ -47,6 +49,7 @@ const SIDEBAR_GROUPS: [(&str, &[SettingsPage]); 2] = [
         "Preferences",
         &[
             SettingsPage::General,
+            SettingsPage::Chat,
             SettingsPage::Editor,
             SettingsPage::Languages,
             SettingsPage::Appearance,
@@ -62,6 +65,7 @@ impl SettingsPage {
     pub fn title(self) -> &'static str {
         match self {
             SettingsPage::General => "General",
+            SettingsPage::Chat => "Chat",
             SettingsPage::Editor => "Editor",
             SettingsPage::Languages => "Languages",
             SettingsPage::Appearance => "Appearance",
@@ -75,6 +79,7 @@ impl SettingsPage {
     fn icon(self) -> IconName {
         match self {
             SettingsPage::General => IconName::Settings,
+            SettingsPage::Chat => IconName::MessageSquare,
             SettingsPage::Editor => IconName::SquarePen,
             SettingsPage::Languages => IconName::Languages,
             SettingsPage::Appearance => IconName::SunMoon,
@@ -88,6 +93,7 @@ impl SettingsPage {
     fn sections(self, cx: &App) -> Vec<SettingsSection> {
         match self {
             SettingsPage::General => general::sections(cx),
+            SettingsPage::Chat => chat::sections(cx),
             SettingsPage::Editor => editor::sections(cx),
             SettingsPage::Languages => languages::sections(cx),
             SettingsPage::Appearance => appearance::sections(cx),
@@ -203,6 +209,7 @@ mod tests {
             .collect();
         for page in [
             SettingsPage::General,
+            SettingsPage::Chat,
             SettingsPage::Editor,
             SettingsPage::Languages,
             SettingsPage::Appearance,

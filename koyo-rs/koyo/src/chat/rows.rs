@@ -52,6 +52,9 @@ pub(super) struct Drawing {
     pub(super) timeline: WeakEntity<Timeline>,
     pub(super) rows: Rc<Vec<Row>>,
     pub(super) open: Rc<HashSet<RowId>>,
+    /// Whether a line of work is open until a person closes it, rather than closed until they open
+    /// it.
+    pub(super) all_work_open: bool,
     pub(super) running_since: Option<Instant>,
     pub(super) copied: Option<ItemId>,
     pub(super) cwd: Rc<str>,
@@ -139,6 +142,11 @@ impl Drawing {
         self.thread.update(cx, |thread, cx| {
             thread.text(&id, &text, cx);
         });
+    }
+
+    /// Whether the line of work that goes by `id` shows what's under it.
+    pub(super) fn work_open(&self, id: &RowId) -> bool {
+        self.open.contains(id) != self.all_work_open
     }
 
     /// A click that opens or closes what goes by `id`, drawn in the row at `index`.
@@ -249,13 +257,7 @@ impl Drawing {
             .flex_col()
             .gap_1()
             .child(TextView::new(text))
-            .when_some(meta, |row, meta| {
-                row.child(
-                    hover_meta(&group, self.p)
-                        .child(self.copy_button(id))
-                        .child(meta),
-                )
-            })
+            .child(hover_meta(&group, self.p).child(self.copy_button(id)).children(meta))
     }
 
     /// The live row: what the run is working on and for how long.
@@ -289,7 +291,6 @@ impl Drawing {
     }
 }
 
-/// A message's shape, right or dashed as its row says.
 /// What a message attached, above its words: a picture a fixed size, so the row's height is known
 /// before it's read, and any other file by its name. Each opens where the person would.
 pub(super) fn attached(key: &str, attachments: &[Attachment], p: Palette) -> Div {
@@ -305,6 +306,7 @@ pub(super) fn attached(key: &str, attachments: &[Attachment], p: Palette) -> Div
     div().flex().flex_wrap().justify_end().gap_2().pb_1().children(tiles)
 }
 
+/// A message's shape, right or dashed as its row says.
 pub(super) fn bubble() -> Div {
     div().max_w(relative(0.8)).px(px(14.)).py(px(9.)).rounded(px(16.))
 }
@@ -348,6 +350,9 @@ fn hover_meta(group: &SharedString, p: Palette) -> Div {
 /// The space under a row: a conversation's turns further apart than the lines of its work.
 fn gap_after(kind: &RowKind) -> f32 {
     match kind {
+        // What's said on the way is a paragraph of the same turn, and the room for its copy button
+        // already keeps it from what follows.
+        RowKind::Answer { last: false, .. } => 0.,
         RowKind::Work { .. } | RowKind::Fold { .. } | RowKind::Live { .. } => 10.,
         RowKind::User { .. } | RowKind::Answer { .. } | RowKind::Queued { .. } => 14.,
         _ => 18.,

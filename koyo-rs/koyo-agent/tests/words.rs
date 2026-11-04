@@ -34,6 +34,8 @@ fn work_done_together_is_said_in_a_sentence() {
     assert_eq!(said(&[&agent, &agent]), "Ran 2 agents");
     let thought = done("c", 1, reasoning("Hm"));
     assert_eq!(said(&[&thought, &thought]), "Thought");
+    assert_eq!(said(&[&read, &thought]), "Thought and read a file", "a thought isn't hidden");
+    assert_eq!(said(&[&thought, &read, &ran]), "Thought, read a file and ran a command");
     let refused = Item {
         status: ItemStatus::Declined,
         ..of(ToolFamily::Edit)

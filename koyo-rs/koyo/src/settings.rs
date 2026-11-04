@@ -9,9 +9,11 @@ use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::{Action, App, Context, Global, SharedString, Subscription, Task, Window};
 use serde::{Deserialize, Serialize};
 
+mod chat_work;
 mod language_servers;
 mod migration;
 
+pub use chat_work::{ChatWork, SetChatWork};
 pub use language_servers::{LanguageServers, Scope, SetLanguageServer};
 use migration::migrate;
 
@@ -167,6 +169,8 @@ pub struct Settings {
     pub stop_idle_language_servers: bool,
     /// Which language servers run, everywhere and in each project.
     pub language_servers: LanguageServers,
+    /// How much of what an agent did along the way shows in a chat.
+    pub chat_work: ChatWork,
     /// How a held arrow key repeats.
     pub key_repeat: KeyRepeat,
     /// Where a page's `DevTools` open, and the room they take docked.
@@ -238,6 +242,7 @@ impl Default for Settings {
             most_language_servers: None,
             stop_idle_language_servers: false,
             language_servers: language_servers::every_server(),
+            chat_work: ChatWork::default(),
             key_repeat: KeyRepeat::default(),
             devtools: crate::browser::DevtoolsPlace::default(),
             on_quit: crate::quitting::OnQuit::default(),
@@ -317,6 +322,9 @@ pub fn init(cx: &mut App) {
     });
     cx.on_action(|SetLanguageServer { name, scope, on }: &SetLanguageServer, cx| {
         update(cx, |settings| settings.set_server(name, scope, *on));
+    });
+    cx.on_action(|SetChatWork(work): &SetChatWork, cx| {
+        update(cx, |settings| settings.chat_work = *work);
     });
     cx.on_action(|SetBranchPrefix(prefix): &SetBranchPrefix, cx| {
         update(cx, |settings| settings.branch_prefix = prefix.clone());

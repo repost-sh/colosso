@@ -62,8 +62,19 @@ pub enum RowKind {
     Queued { run: usize },
 }
 
-/// The rows of `replica`, with the settled runs `unfolded` says showing all their work.
-pub fn rows(replica: &Replica, unfolded: impl Fn(&RunId) -> bool) -> Vec<Row> {
+/// How a settled run's work shows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WorkFold {
+    /// Out in the open, as a live run's is.
+    None,
+    /// Behind a line that says so.
+    Closed,
+    /// Under that line, as a person opened it.
+    Open,
+}
+
+/// The rows of `replica`, with each settled run's work as `fold` says.
+pub fn rows(replica: &Replica, fold: impl Fn(&RunId) -> WorkFold) -> Vec<Row> {
     let mut rows = Vec::new();
     let mut seen = HashSet::new();
     let mut first = 0;
@@ -80,7 +91,7 @@ pub fn rows(replica: &Replica, unfolded: impl Fn(&RunId) -> bool) -> Vec<Row> {
                 asking,
                 work: None,
             };
-            made.add(items, unfolded(&run.id));
+            made.add(items, fold(&run.id));
         }
         first += items.len();
     }
@@ -124,9 +135,9 @@ struct RunRows<'a> {
     run: &'a Run,
     /// The place in the replica's items of the first of this run's.
     first: usize,
-    /// The work being gathered.
     /// The request a person can answer now.
     asking: Option<&'a RequestId>,
+    /// The work being gathered.
     work: Option<Work>,
 }
 
@@ -139,26 +150,25 @@ struct Work {
 }
 
 impl RunRows<'_> {
-    fn add(&mut self, items: &[Item], open: bool) {
+    fn add(&mut self, items: &[Item], fold: WorkFold) {
         let top = |item: &&Item| item.parent_id.is_none();
         let answer = items.iter().filter(top).rfind(|item| is_text(item)).map(|item| &item.id);
         // Failed and interrupted runs show what they did, as that's what someone reads them for.
-        let folds = self.run.status == RunStatus::Completed;
-        let mut foldable = folds;
+        let fold = if self.run.status == RunStatus::Completed { fold } else { WorkFold::None };
+        let mut foldable = fold != WorkFold::None;
         for (at, item) in items.iter().enumerate().filter(|(_, item)| top(item)) {
             let place = self.first + at;
-            let last = answer == Some(&item.id);
-            if is_work(item) && !last {
+            if is_work(item) {
                 if foldable {
                     let fold = RowKind::Fold { run: self.index };
                     self.push_run(RowId::Fold(self.run.id.clone()), fold);
                     foldable = false;
                 }
-                if folds && !open {
+                if fold == WorkFold::Closed {
                     continue;
                 }
             }
-            self.item(place, item, last);
+            self.item(place, item, answer == Some(&item.id));
         }
         self.flush();
         self.end(items);
@@ -279,16 +289,14 @@ fn is_text(item: &Item) -> bool {
     matches!(item.body, ItemBody::AssistantText(_))
 }
 
-/// Whether an item is the work a settled run folds. Asks, compactions and what went wrong stay.
+/// Whether an item is the work a settled run folds. What was said stays, however much came after
+/// it, and so do asks, compactions and what went wrong.
 fn is_work(item: &Item) -> bool {
     match &item.body {
-        ItemBody::AssistantText(_)
-        | ItemBody::Reasoning(_)
-        | ItemBody::Tool(_)
-        | ItemBody::Todos(_)
-        | ItemBody::Subagent(_) => true,
+        ItemBody::Reasoning(_) | ItemBody::Tool(_) | ItemBody::Todos(_) | ItemBody::Subagent(_) => true,
         ItemBody::Notice(notice) => notice.level == NoticeLevel::Info,
         ItemBody::UserMessage(_)
+        | ItemBody::AssistantText(_)
         | ItemBody::Request(_)
         | ItemBody::Compaction(_)
         | ItemBody::Unknown { .. } => false,

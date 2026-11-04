@@ -1,7 +1,7 @@
 //! The rows a chat's records make in the tab's list, and what each change draws.
 
 use gpui_kit::{AnyWindowHandle, AppContext as _, Entity, TestAppContext};
-use koyo_agent::protocol::ids::{MessageId, RunId, ThreadId, Time};
+use koyo_agent::protocol::ids::{ItemId, MessageId, RunId, ThreadId, Time};
 use koyo_agent::protocol::methods::ThreadSnapshot;
 use koyo_agent::protocol::model::{
     Delivered, Item, ItemBody, ItemStatus, Prompt, Run, RunStatus, Text, Tool, ToolFamily,
@@ -12,6 +12,7 @@ use koyo_agent::timeline::RowId;
 use super::super::thread::ChatThread;
 use super::super::view::ChatView;
 use super::{AT, answer, appended, chats_of, snapshot, summary, text_of};
+use crate::settings::{self, ChatWork};
 use crate::test_support::{draw, repo, select, shell_with};
 
 /// A run that's over, with a prompt, a tool and an answer.
@@ -112,6 +113,9 @@ fn the_list_holds_a_row_for_what_shows_and_a_fold_or_a_token_changes_only_that(
     let rows = |cx: &TestAppContext| {
         view.read_with(cx, |view, cx| view.scroller.read(cx).item_count())
     };
+    assert_eq!(rows(cx), 3, "the prompt, its work and the answer");
+    cx.update(|cx| settings::update(cx, |settings| settings.chat_work = ChatWork::Turns));
+    draw(window, cx);
     assert_eq!(rows(cx), 3, "the prompt, the fold and the answer");
 
     let timeline = view.read_with(cx, |view, _| view.shown.as_ref().unwrap().timeline.clone());
@@ -126,6 +130,45 @@ fn the_list_holds_a_row_for_what_shows_and_a_fold_or_a_token_changes_only_that(
     draw(window, cx);
     assert_eq!(rows(cx), 4);
     assert!(text_of(&thread, cx).contains("Because of that"));
+}
+
+#[gpui_kit::test]
+fn how_much_of_the_work_shows_is_chosen_and_a_click_still_has_the_last_word(cx: &mut TestAppContext) {
+    let (window, view, _) = shown_chat("chat-work", cx);
+    let timeline = view.read_with(cx, |view, _| view.shown.as_ref().unwrap().timeline.clone());
+    let line = RowId::Item(ItemId("t".into()));
+    let is_open = |cx: &mut TestAppContext| {
+        timeline.update(cx, |timeline, cx| timeline.drawing(cx).work_open(&line))
+    };
+    let click = |cx: &mut TestAppContext| {
+        timeline.update(cx, |timeline, cx| timeline.toggle(line.clone(), 1, cx));
+    };
+    let choose = |work, cx: &mut TestAppContext| {
+        cx.update(|cx| settings::update(cx, |settings| settings.chat_work = work));
+        draw(window, cx);
+    };
+    let has_fold = |cx: &mut TestAppContext| {
+        timeline.read_with(cx, |timeline, _| {
+            timeline.rows.iter().any(|row| matches!(row.id, RowId::Fold(_)))
+        })
+    };
+
+    assert!(!has_fold(cx), "nothing folds unless that's what's chosen");
+    assert!(!is_open(cx), "and a line waits to be opened");
+    click(cx);
+    assert!(is_open(cx));
+
+    choose(ChatWork::Everything, cx);
+    assert!(!has_fold(cx));
+    assert!(is_open(cx), "all of it, and the one opened by hand doesn't now read as closed");
+    click(cx);
+    assert!(!is_open(cx), "one can still be closed");
+
+    choose(ChatWork::Steps, cx);
+    assert!(!is_open(cx), "the one closed by hand doesn't now read as opened");
+
+    choose(ChatWork::Turns, cx);
+    assert!(has_fold(cx));
 }
 
 /// The budget's two sides (`docs/chat.md` 5.4): a token draws no composer, and what's typed no row.

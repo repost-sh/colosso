@@ -39,6 +39,7 @@ pub enum RightPanelChoice {
 #[serde(rename_all = "snake_case")]
 pub enum SettingsPage {
     General,
+    Chat,
     Appearance,
     Editor,
     Languages,
