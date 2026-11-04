@@ -51,14 +51,17 @@ methods! {
     /// The person has seen the thread.
     "threads.read" => ThreadsRead(ThreadParams) -> Empty;
     "threads.delete" => ThreadsDelete(ThreadParams) -> Empty;
-    /// Goes back to before run `run_id`, and says what the person said then.
+    /// What going back to before run `run_id` could do to the files; none when nothing.
+    "threads.filesBack" => ThreadsFilesBack(RunParams) -> FilesBackAnswer;
+    /// Goes back to before run `run_id`, the files too if asked, and says what the person said
+    /// then.
     "threads.rewind" => ThreadsRewind(RewindParams) -> Rewound;
     "turns.send" => TurnsSend(SendParams) -> Sent;
     "turns.stop" => TurnsStop(StopParams) -> Empty;
     "turns.compact" => TurnsCompact(ThreadParams) -> Compacting;
-    "queue.remove" => QueueRemove(QueuedParams) -> Empty;
+    "queue.remove" => QueueRemove(RunParams) -> Empty;
     "queue.edit" => QueueEdit(EditParams) -> Empty;
-    "queue.sendNow" => QueueSendNow(QueuedParams) -> SentNow;
+    "queue.sendNow" => QueueSendNow(RunParams) -> SentNow;
     /// Releases a held queue.
     "queue.resume" => QueueResume(ThreadParams) -> Empty;
     "requests.respond" => RequestsRespond(RespondParams) -> Empty;
@@ -221,6 +224,23 @@ pub struct ThreadParams {
 pub struct RewindParams {
     pub thread_id: ThreadId,
     pub run_id: RunId,
+    pub restore_files: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FilesBackAnswer {
+    pub files_back: Option<FilesBack>,
+}
+
+/// What going back to a message would do to the files the chat changed since: the files, from the
+/// chat's folder, and the lines; and what stands in the way of it, if anything does.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FilesBack {
+    pub files: Vec<String>,
+    pub insertions: u64,
+    pub deletions: u64,
+    pub blocked: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -372,7 +392,7 @@ pub struct Compacting {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct QueuedParams {
+pub struct RunParams {
     pub thread_id: ThreadId,
     pub run_id: RunId,
 }

@@ -5,7 +5,7 @@
 
 import type { UUID } from "node:crypto";
 
-import type { Catalog, Params, ProviderStatus } from "../protocol/methods";
+import type { Catalog, FilesBack, Params, ProviderStatus } from "../protocol/methods";
 import type {
   Effort,
   Failure,
@@ -28,6 +28,9 @@ export interface Capabilities {
   readonly compact: boolean;
   readonly plan: boolean;
 }
+
+/** What putting a conversation's files back would change, by the provider's names for them. */
+export type FileChanges = Omit<FilesBack, "blocked">;
 
 /** What a session is opened with. */
 export interface SessionSpec {
@@ -218,6 +221,17 @@ export interface Provider {
     cwd: string,
     promptId: string,
   ) => Promise<string | null>;
+  /**
+   * What putting the files of conversation `sessionId` back as they were when `promptId` was sent
+   * would change, changing nothing; `null` when the provider has no record of them then.
+   */
+  readonly filesAt: (
+    sessionId: string,
+    cwd: string,
+    promptId: string,
+  ) => Promise<FileChanges | null>;
+  /** Puts them back; refuses when it can't. */
+  readonly restoreFiles: (sessionId: string, cwd: string, promptId: string) => Promise<void>;
   /**
    * The model's reply when asked for a short title for a chat that starts with `prompt`, as
    * it came, if one came; the actor makes the title of it (docs/chat.md 4.5.7).

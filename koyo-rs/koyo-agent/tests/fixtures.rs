@@ -94,6 +94,7 @@ fn every_method_writes_its_request_and_reads_its_result_as_the_fixture_has_them(
     method::<methods::ThreadsUpdate>(tested);
     method::<methods::ThreadsRead>(tested);
     method::<methods::ThreadsDelete>(tested);
+    method::<methods::ThreadsFilesBack>(tested);
     method::<methods::ThreadsRewind>(tested);
     method::<methods::TurnsSend>(tested);
     method::<methods::TurnsStop>(tested);

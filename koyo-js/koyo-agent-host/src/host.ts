@@ -70,8 +70,11 @@ export function handlers(host: Host): Handlers<Client> {
       threads.delete(threadId);
       return {};
     },
-    "threads.rewind": async ({ threadId, runId }) => ({
-      prompt: await threads.rewind(threadId, runId),
+    "threads.filesBack": async ({ threadId, runId }) => ({
+      filesBack: await threads.filesBack(threadId, runId),
+    }),
+    "threads.rewind": async ({ threadId, runId, restoreFiles }) => ({
+      prompt: await threads.rewind(threadId, runId, restoreFiles),
     }),
     "turns.send": ({ threadId, prompt, delivery }) => {
       const actor = threads.actor(threadId);

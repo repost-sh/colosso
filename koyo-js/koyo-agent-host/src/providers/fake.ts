@@ -9,6 +9,7 @@ import type {
   Capabilities,
   Config,
   DriverEvent,
+  FileChanges,
   ItemBody,
   Outcome,
   Provider,
@@ -51,6 +52,12 @@ export class FakeProvider implements Provider {
   settingsMode: Mode | null = null;
   /** What `entryBefore` says, or the error it refuses with. */
   entry: string | null | Error = null;
+  /** What `filesAt` says, or the error it fails with. */
+  changes: FileChanges | null | Error = null;
+  /** The prompts whose files were put back, in order. */
+  readonly restored: string[] = [];
+  /** What `restoreFiles` does to the disk, which may be to fail. */
+  onRestore: (() => void) | undefined;
   readonly #onStart: OnStart | undefined;
 
   constructor(options: FakeOptions = {}) {
@@ -65,6 +72,17 @@ export class FakeProvider implements Provider {
   async entryBefore(_sessionId: string, _cwd: string, _promptId: string): Promise<string | null> {
     const { entry } = this;
     return await (entry instanceof Error ? Promise.reject(entry) : Promise.resolve(entry));
+  }
+
+  async filesAt(_sessionId: string, _cwd: string, _promptId: string): Promise<FileChanges | null> {
+    const { changes } = this;
+    return await (changes instanceof Error ? Promise.reject(changes) : Promise.resolve(changes));
+  }
+
+  async restoreFiles(_sessionId: string, _cwd: string, promptId: string): Promise<void> {
+    this.onRestore?.();
+    this.restored.push(promptId);
+    await Promise.resolve();
   }
 
   /** The session opened last. */

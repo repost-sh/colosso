@@ -23,7 +23,18 @@ const Empty = z.object({});
 /** The host's version (C9): a client meeting another restarts the host, or asks to. */
 const Version = z.int().positive();
 const ThreadParams = z.object({ threadId: ThreadId });
-const QueuedRunParams = z.object({ threadId: ThreadId, runId: RunId });
+const RunParams = z.object({ threadId: ThreadId, runId: RunId });
+/**
+ * What going back to a message would do to the files the chat changed since (C11): the files,
+ * from the chat's folder, and the lines; and what stands in the way of it, if anything does.
+ */
+export const FilesBack = z.object({
+  files: z.array(z.string()),
+  insertions: z.int().nonnegative(),
+  deletions: z.int().nonnegative(),
+  blocked: z.string().nullable(),
+});
+export type FilesBack = z.infer<typeof FilesBack>;
 
 export const ProviderStatus = z.object({
   provider: ProviderId,
@@ -146,9 +157,17 @@ export const methods = {
   },
   "threads.read": { params: ThreadParams, result: Empty },
   "threads.delete": { params: ThreadParams, result: Empty },
-  /** Goes back to before run `runId`, and says what the person said then (C11). */
+  /** What going back to before run `runId` could do to the files; none when nothing (C11). */
+  "threads.filesBack": {
+    params: RunParams,
+    result: z.object({ filesBack: FilesBack.nullable() }),
+  },
+  /**
+   * Goes back to before run `runId`, the files too if `restoreFiles`, and says what the person
+   * said then (C11).
+   */
   "threads.rewind": {
-    params: z.object({ threadId: ThreadId, runId: RunId }),
+    params: z.object({ threadId: ThreadId, runId: RunId, restoreFiles: z.boolean() }),
     result: z.object({ prompt: Prompt }),
   },
   "turns.send": {
@@ -160,12 +179,12 @@ export const methods = {
     result: Empty,
   },
   "turns.compact": { params: ThreadParams, result: z.object({ runId: RunId }) },
-  "queue.remove": { params: QueuedRunParams, result: Empty },
+  "queue.remove": { params: RunParams, result: Empty },
   "queue.edit": {
-    params: QueuedRunParams.extend({ text: z.string(), attachments: z.array(Attachment) }),
+    params: RunParams.extend({ text: z.string(), attachments: z.array(Attachment) }),
     result: Empty,
   },
-  "queue.sendNow": { params: QueuedRunParams, result: z.object({ delivered: Delivered }) },
+  "queue.sendNow": { params: RunParams, result: z.object({ delivered: Delivered }) },
   "queue.resume": { params: ThreadParams, result: Empty },
   "requests.respond": {
     params: z.object({ threadId: ThreadId, requestId: RequestId, response: Response }),

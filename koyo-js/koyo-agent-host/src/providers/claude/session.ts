@@ -47,6 +47,7 @@ export type Conversation = AsyncIterable<SDKMessage> & Pick<
   | "stopTask"
   | "supportedCommands"
   | "initializationResult"
+  | "rewindFiles"
   | "close"
 >;
 

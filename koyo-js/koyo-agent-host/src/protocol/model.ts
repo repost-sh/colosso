@@ -57,6 +57,8 @@ export const Thread = z.object({
    * its later turns (C11), until a turn has gone on from there.
    */
   resumeAt: z.string().min(1).nullable().default(null),
+  /** When the chat last wrote files, as far as anyone knows: a later write is someone else's. */
+  filesSettledAt: Time.nullable().default(null),
   /** Queued runs wait for the person after a stop, a failure or a restart. */
   queueHeld: z.boolean(),
   /** A tab shows it, and will again after a restart (C13). */

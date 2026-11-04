@@ -8,6 +8,7 @@ import {
   type PermissionMode,
   query,
   resolveSettings,
+  type RewindFilesResult,
   type SDKControlInitializeResponse,
   type SessionMessage,
 } from "@anthropic-ai/claude-agent-sdk";
@@ -18,6 +19,7 @@ import { HostError } from "../../protocol/wire";
 import type {
   Capabilities,
   Config,
+  FileChanges,
   Provider,
   ProviderSession,
   SessionSink,
@@ -25,9 +27,9 @@ import type {
 } from "../provider";
 import { commands, MISSING, models, probe, readyStatus } from "./catalog";
 import { type Env, findClaude, loginEnvironment, Versions } from "./environment";
-import { modeOf, titleOptions } from "./options";
+import { once } from "./once";
+import { filesOptions, modeOf, titleOptions } from "./options";
 import { ClaudeSession, type Launch, type Start } from "./session";
-import { Groups } from "./spawn";
 
 /** What Claude needs from the machine, which tests give it their own of. */
 export interface ClaudeDeps {
@@ -49,7 +51,10 @@ export interface ClaudeDeps {
 
 /** How long a title may take. */
 const TITLE_MS = 60_000;
+/** How long the CLI may take over a conversation's files. */
+const FILES_MS = 30_000;
 const MISSING_CLI = "Claude Code isn't installed. Install it, then send the message again.";
+const NO_RECORD_OF_FILES = "Claude has no record of the files from that message.";
 const NOT_IN_CONVERSATION = "Claude's conversation doesn't have that message: it may have been "
   + "compacted away, or never reached it.";
 
@@ -159,33 +164,26 @@ export class ClaudeProvider implements Provider {
     if (found === undefined) {
       return undefined;
     }
-    const groups = new Groups("Claude's title run");
-    const conversation = this.#deps.start({
+    return await once(this.#deps.start, {
+      label: "Claude's title run",
+      ms: TITLE_MS,
       prompt: titlePrompt(prompt),
-      options: titleOptions({
+      options: (spawn) => titleOptions({
         executable: found.executable,
         env: found.env,
         cwd,
-        spawn: groups.spawn,
+        spawn,
       }),
-    });
-    const timer = setTimeout(() => {
-      conversation.close();
-    }, TITLE_MS);
-    let reply: string | undefined;
-    try {
+    }, async (conversation) => {
+      let reply: string | undefined;
       for await (const frame of conversation) {
         if (frame.type === "result") {
           reply = frame.subtype === "success" && !frame.is_error ? frame.result : undefined;
           break;
         }
       }
-    } finally {
-      clearTimeout(timer);
-      conversation.close();
-      await groups.terminate();
-    }
-    return reply;
+      return reply;
+    });
   }
 
   async #found(): Promise<Found | undefined> {
@@ -211,6 +209,51 @@ export class ClaudeProvider implements Provider {
       throw new HostError("conflict", NOT_IN_CONVERSATION);
     }
     return ids[at - 1] ?? null;
+  }
+
+  async filesAt(sessionId: string, cwd: string, promptId: string): Promise<FileChanges | null> {
+    const said = await this.#rewindFiles(sessionId, cwd, promptId, true);
+    return said.canRewind
+      ? {
+          files: said.filesChanged ?? [],
+          insertions: said.insertions ?? 0,
+          deletions: said.deletions ?? 0,
+        }
+      : null;
+  }
+
+  async restoreFiles(sessionId: string, cwd: string, promptId: string): Promise<void> {
+    const said = await this.#rewindFiles(sessionId, cwd, promptId, false);
+    if (!said.canRewind) {
+      throw new HostError("conflict", said.error ?? NO_RECORD_OF_FILES);
+    }
+    if ((said.skippedLinks ?? 0) > 0) {
+      log.warn(`Claude left ${String(said.skippedLinks)} links as they were, going back`);
+    }
+  }
+
+  /** Has a CLI that's told nothing rewind the files: no model, about half a second. */
+  async #rewindFiles(
+    sessionId: string,
+    cwd: string,
+    promptId: string,
+    dryRun: boolean,
+  ): Promise<RewindFilesResult> {
+    const found = await this.#found();
+    if (found === undefined) {
+      throw new HostError("conflict", MISSING_CLI);
+    }
+    return await once(this.#deps.start, {
+      label: "Claude's run over a conversation's files",
+      ms: FILES_MS,
+      options: (spawn) => filesOptions(
+        { executable: found.executable, env: found.env, cwd, spawn },
+        sessionId,
+      ),
+    }, async (conversation) => {
+      await conversation.initializationResult();
+      return await conversation.rewindFiles(promptId, { dryRun });
+    });
   }
 
   /** Whether the conversation `spec` resumes has turns on disk, read until it's found to. */

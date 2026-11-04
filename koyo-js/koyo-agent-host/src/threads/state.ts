@@ -4,11 +4,11 @@
 
 import type { MessageId, RequestId, RunId } from "../protocol/ids";
 import type { Delivered, Rows, ThreadSnapshot } from "../protocol/methods";
-import type { Item, Mode, Request, Run, Thread, ThreadSummary } from "../protocol/model";
+import type { Item, Mode, Prompt, Request, Run, Thread, ThreadSummary } from "../protocol/model";
 import { eventLine, HostError } from "../protocol/wire";
 import type { DriverEvent, ItemEvent } from "../providers/provider";
 import type { Change, Store } from "../store/store";
-import { lost, moved, notice, orphaned, settled, stopBy } from "./records";
+import { lost, moved, notice, orphaned, queuedRun, settled, stopBy } from "./records";
 import { isLive, isSettled, summary } from "./rules";
 import { LiveTurn } from "./turn";
 
@@ -24,6 +24,8 @@ type Heard = ItemEvent | Extract<DriverEvent, { type: "session.ready" | "turn.st
 const OPEN_RUNS = 30;
 
 export class ThreadState {
+  /** Whether the chat is going back to an earlier message, which holds off what would start. */
+  goingBack = false;
   readonly #store: Store;
   readonly #summarized: (summary: ThreadSummary) => void;
   #thread: Thread;
@@ -90,6 +92,14 @@ export class ThreadState {
   /** The run a thread is on, or was on last. */
   latest(): Run | undefined {
     return this.live() ?? this.#ended;
+  }
+
+  /** A new run of `prompt`, unless the chat's going back, which nothing may start under. */
+  queue(prompt: Prompt, at: string): Run {
+    if (this.goingBack) {
+      throw new HostError("conflict", "The chat is going back to an earlier message.");
+    }
+    return queuedRun(this.#thread, prompt, at);
   }
 
   /** The run the queue starts next. */

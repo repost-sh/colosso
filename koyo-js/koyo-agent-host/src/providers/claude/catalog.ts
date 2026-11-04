@@ -9,16 +9,14 @@ import type {
   AccountInfo,
   ModelInfo,
   SDKControlInitializeResponse,
-  SDKUserMessage,
   SlashCommand,
 } from "@anthropic-ai/claude-agent-sdk";
 
 import type { Command, Model, ProviderStatus } from "../../protocol/methods";
-import { Queue } from "../../queue";
 import type { Env } from "./environment";
+import { once } from "./once";
 import { type Place, probeOptions } from "./options";
 import type { Start } from "./session";
-import { Groups } from "./spawn";
 
 /** How long a probe may take to be answered. */
 const PROBE_MS = 25_000;
@@ -27,24 +25,11 @@ const PROBE_MS = 25_000;
 export async function probe(start: Start, place: Omit<Place, "spawn">): Promise<
   SDKControlInitializeResponse
 > {
-  const prompts = new Queue<SDKUserMessage>();
-  const groups = new Groups("Claude's probe");
-  const conversation = start({
-    prompt: prompts,
-    options: probeOptions({ ...place, spawn: groups.spawn }),
-  });
-  const timer = Promise.withResolvers<never>();
-  const timeout = setTimeout(() => {
-    timer.reject(new Error(`Claude didn't answer within ${String(PROBE_MS / 1000)} s.`));
-  }, PROBE_MS);
-  try {
-    return await Promise.race([conversation.initializationResult(), timer.promise]);
-  } finally {
-    clearTimeout(timeout);
-    prompts.end();
-    conversation.close();
-    await groups.terminate();
-  }
+  return await once(start, {
+    label: "Claude's probe",
+    ms: PROBE_MS,
+    options: (spawn) => probeOptions({ ...place, spawn }),
+  }, async (conversation) => await conversation.initializationResult());
 }
 
 /**
