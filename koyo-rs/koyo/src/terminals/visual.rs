@@ -37,6 +37,7 @@ use koyo_term_control::{
 };
 
 use crate::projects::read_worktrees;
+use crate::settings;
 use crate::shell::{NewTerminal, Shell, ToggleRightPanel};
 use crate::test_support::try_git;
 use crate::visual::{Drawn, Result, checkout};
@@ -125,6 +126,15 @@ fn run_shell(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
         text.lines().any(|line| line.ends_with("box-done"))
     })?;
     said.push(format!("{}", drawn.save("colours.png")?.display()));
+
+    // Another font picked while it runs, and back: the grid takes it in as it is.
+    let code_font = |drawn: &mut Drawn, family: Option<&str>| {
+        let family = family.map(str::to_owned);
+        (drawn.cx).update(|cx| settings::update(cx, |settings| settings.fonts.code = family));
+    };
+    code_font(drawn, Some("Menlo"));
+    said.push(format!("{}", drawn.save("colours-menlo.png")?.display()));
+    code_font(drawn, None);
 
     selection(drawn, said)?;
     scrollback(drawn, said)?;

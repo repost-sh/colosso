@@ -281,7 +281,7 @@ impl Locations {
             .pr_1p5()
             .gap_2()
             .rounded(px(5.))
-            .font_family(theme::MONO)
+            .font_family(p.mono)
             .text_xs()
             .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
                 window.focus(&this.focus, cx);

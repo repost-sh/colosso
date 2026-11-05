@@ -6,7 +6,7 @@ use gpui_kit::{ClickEvent, ClipboardItem, Context, Div, ParentElement as _, Styl
 
 use super::ChatComposer;
 use crate::shell::glass;
-use crate::theme::{MONO, Palette};
+use crate::theme::Palette;
 
 const INSTALL: &str = "curl -fsSL https://claude.ai/install.sh | bash";
 
@@ -51,7 +51,7 @@ impl ChatComposer {
                         .py(px(6.))
                         .rounded(px(8.))
                         .bg(p.sunken)
-                        .child(div().flex_1().min_w_0().text_xs().font_family(MONO).child(INSTALL))
+                        .child(div().flex_1().min_w_0().text_xs().font_family(p.mono).child(INSTALL))
                         .child(copy),
                 )
         })

@@ -67,7 +67,7 @@ impl Symbols {
                     .w(px(KIND))
                     .flex_shrink_0()
                     .text_xs()
-                    .font_family(theme::MONO)
+                    .font_family(p.mono)
                     .text_color(p.muted)
                     .child(word(symbol.kind)),
             )

@@ -9,7 +9,7 @@ use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::component::{ActiveTheme as _, Theme};
 use gpui_kit::{
     Action, App, HighlightStyle, Hsla, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent,
-    ParentElement as _, Window, WindowAppearance, actions, div,
+    ParentElement as _, Styled as _, Window, WindowAppearance, actions, div, rems,
 };
 use serde::{Deserialize, Serialize};
 
@@ -18,6 +18,7 @@ use crate::{gradient, settings};
 
 mod accent;
 pub mod card;
+pub mod fonts;
 #[cfg(target_os = "macos")]
 mod system_accent;
 #[cfg(feature = "visual-check")]
@@ -47,10 +48,11 @@ pub const TAB_STRIP_HEIGHT: f32 = 38.;
 pub const ROW_HEIGHT: f32 = 30.;
 /// How wide a settings page's column grows before it centers in the card.
 pub const SETTINGS_PAGE_WIDTH: f32 = 680.;
-pub const MONO: &str = "Menlo";
 
 #[derive(Clone, Copy, Debug)]
 pub struct Palette {
+    /// The family code is in, which goes wherever colours for it do.
+    pub mono: &'static str,
     /// The window's blur shows through this, so its alpha sets how glassy the rails look.
     pub rail_tint: Hsla,
     /// Painted over `rail_tint`, which covers the whole window, so the two alphas stack; and
@@ -142,6 +144,7 @@ const LIGHT_CODE: Code = Code {
 };
 
 const DARK: Palette = Palette {
+    mono: fonts::MONO,
     rail_tint: gray(0.08, 0.55),
     card: gray(0.1, 0.6),
     sunken: gray(0., 0.2),
@@ -162,6 +165,7 @@ const DARK: Palette = Palette {
 };
 
 const LIGHT: Palette = Palette {
+    mono: fonts::MONO,
     rail_tint: gray(0.96, 0.55),
     card: gray(1., 0.65),
     sunken: gray(0., 0.03),
@@ -252,6 +256,7 @@ actions!(
 );
 
 pub fn init(cx: &mut App) {
+    fonts::init(cx);
     cx.on_action(|_: &CycleTheme, cx| set_preference(preference(cx).next(), cx));
     cx.on_action(|_: &UseSystemTheme, cx| set_preference(ThemePreference::System, cx));
     cx.on_action(|_: &UseLightTheme, cx| set_preference(ThemePreference::Light, cx));
@@ -265,16 +270,21 @@ pub fn init(cx: &mut App) {
 }
 
 /// The kit puts inline code on its accent, which is the system's here, not the theme: in every
-/// text view it goes on the shade of a selected row instead. Again each time the theme changes,
-/// as the kit puts its own back then.
+/// text view it goes on the shade of a selected row instead. And its code blocks at a size in
+/// pixels, which go in rems here, as big as ever but for growing with a chat's text. Again each
+/// time the theme changes, as the kit puts its own back then.
 fn code_off_the_accent(cx: &mut App) {
     let code = HighlightStyle {
         background_color: Some(palette(cx).selected),
         ..HighlightStyle::default()
     };
     let style = RenderContext::from_app(cx).style().clone().with_inline_code(code);
-    TextViewDefaults::global(cx).with_style(style).install(cx);
+    let block = style.code_block().clone().text_size(rems(CODE_BLOCK_TEXT));
+    TextViewDefaults::global(cx).with_style(style.with_code_block(block)).install(cx);
 }
+
+/// How big a code block's text is, in rems: the kit's 13 pixels, where a rem is 16.
+const CODE_BLOCK_TEXT: f32 = 13. / 16.;
 
 /// gpui-kit's dark popovers are near black, a hole in the window under a hover card or a
 /// menu; they're lifted to a grey above the card instead, as the light ones sit white on it.
@@ -300,6 +310,7 @@ pub fn palette(cx: &App) -> Palette {
     let dark = cx.theme().mode.is_dark();
     let palette = if dark { DARK } else { LIGHT };
     Palette {
+        mono: fonts::code(cx),
         accent: accent::get(dark, cx),
         card: tinted(palette.card, cx),
         ..palette

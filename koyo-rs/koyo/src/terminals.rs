@@ -184,7 +184,7 @@ pub fn waiting_badge(count: usize, p: Palette) -> gpui_kit::Div {
 /// How terminals look in the theme `p`.
 pub fn look(p: Palette) -> Look {
     Look {
-        font: gpui_kit::font(theme::MONO),
+        font: gpui_kit::font(p.mono),
         font_size: px(13.),
         line_height: 1.2,
         padding: px(8.),

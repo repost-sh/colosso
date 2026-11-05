@@ -459,6 +459,7 @@ impl Render for Shell {
                 root.key_context("Settings")
             })
             .map(|root| Self::handle_actions(root, cx))
+            .font_family(theme::fonts::interface(cx))
             .size_full()
             .relative()
             .flex()

@@ -7,7 +7,7 @@ use gpui_kit::{
 };
 
 use crate::native;
-use crate::settings_view::ticked_slider::{Stops, TickedSlider, WIDTH, ends_row};
+use crate::settings_view::ticked_slider::{Stops, TickedSlider, WIDTH, between_letters, ends_row};
 use crate::theme;
 
 /// What the native slider shows: the stop its thumb is at, and whether it can be moved.
@@ -25,7 +25,11 @@ pub fn slider(slider: &TickedSlider, window: &mut Window, cx: &mut App) -> Optio
         enabled: !slider.disabled,
     };
     let (_, track) = native::host(slider.id, slider.stops, shown, window, cx)?;
-    let ends = ends_row(slider.ends, theme::palette(cx));
+    let p = theme::palette(cx);
+    if slider.letters {
+        return Some(between_letters(track, p).into_any_element());
+    }
+    let ends = ends_row(slider.ends, p);
     let framed = div()
         .w(px(WIDTH))
         .flex()

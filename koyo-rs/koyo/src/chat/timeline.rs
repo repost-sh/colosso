@@ -24,6 +24,7 @@ use super::thread::ChatThread;
 use super::view::ChatViewEvent;
 use crate::settings::{self, ChatWork};
 use crate::theme;
+use crate::theme::fonts::at_chat_size;
 
 /// How long a copy button says it copied.
 const COPIED_FOR: Duration = Duration::from_millis(1500);
@@ -39,6 +40,8 @@ pub(super) struct Timeline {
     pub(super) rows: Rc<Vec<Row>>,
     /// How much of the work shows, as a person chose.
     work: ChatWork,
+    /// How big the text is, as a person chose, in the bits a float compares by.
+    text_size: u32,
     /// What a person opened: a long message, a settled run's work; or a line of work, or with all
     /// of them open, closed.
     open: Rc<HashSet<RowId>>,
@@ -102,7 +105,10 @@ impl Timeline {
         cx: &mut Context<Self>,
     ) -> Self {
         let following = cx.observe(&thread, |timeline, _, cx| timeline.follow(cx));
-        let choosing = settings::on_change(cx, |timeline: &mut Self, cx| timeline.work_chosen(cx));
+        let choosing = settings::on_change(cx, |timeline: &mut Self, cx| {
+            timeline.work_chosen(cx);
+            timeline.text_size_chosen(cx);
+        });
         let mut timeline = Timeline {
             thread,
             catalog,
@@ -110,6 +116,7 @@ impl Timeline {
             cwd,
             composer,
             work: settings::get(cx).chat_work,
+            text_size: settings::get(cx).fonts.chat_size().to_bits(),
             rows: Rc::default(),
             open: Rc::default(),
             running: None,
@@ -174,6 +181,18 @@ impl Timeline {
         self.follow(cx);
         let count = self.rows.len();
         self.scroller.update(cx, |scroller, cx| scroller.remeasure_items(0..count, cx));
+    }
+
+    /// Takes up how big a person now wants the text: every row is another height.
+    fn text_size_chosen(&mut self, cx: &mut Context<Self>) {
+        let text_size = settings::get(cx).fonts.chat_size().to_bits();
+        if text_size == self.text_size {
+            return;
+        }
+        self.text_size = text_size;
+        let count = self.rows.len();
+        self.scroller.update(cx, |scroller, cx| scroller.remeasure_items(0..count, cx));
+        cx.notify();
     }
 
     /// Another chat came over this one, or left: what happened meanwhile is taken in at once.
@@ -245,7 +264,8 @@ impl Render for Timeline {
         }
         let drawing = self.drawing(cx);
         MessageScroller::new("chat-timeline", self.scroller.clone(), move |index, _, cx| {
-            drawing.row(index, cx)
+            let row = drawing.row(index, cx);
+            at_chat_size(row, cx)
         })
         .jump_button(false)
         .with_list_style(StyleRefinement::default().py_0())

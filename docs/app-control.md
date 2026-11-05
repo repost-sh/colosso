@@ -261,7 +261,7 @@ settings_set [settings] I { appearance?: "system"|"light"|"dark", layout?, previ
 ```
 
 Not reachable: `projects` (project tools), `externalControl` (the person only), themes'
-gradients and language server tables `[not built]`.
+gradients, fonts and language server tables `[not built]`.
 
 ### Terminals
 

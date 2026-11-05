@@ -13,14 +13,18 @@ mod chat_details;
 mod chat_mode;
 mod project_scripts;
 mod chat_work;
+mod fonts;
 mod language_servers;
 mod migration;
+mod save_scope;
 
 pub use chat_details::{ChatDetails, DetailsItem, FlipDetailsItem};
 pub use chat_mode::{SetChatMode, chat_mode_label, chat_mode_menu};
 pub use project_scripts::{ProjectScript, ProjectScripts};
 pub use chat_work::{ChatWork, SetChatWork};
+pub use fonts::{CHAT_SIZES, Fonts, SetCodeFont, SetInterfaceFont};
 pub use language_servers::{LanguageServers, Scope, SetLanguageServer};
+pub use save_scope::{SaveScope, SetSaveScope};
 use migration::migrate;
 
 use crate::atomic_file;
@@ -96,35 +100,6 @@ pub enum BranchPrefix {
 #[action(namespace = settings, no_json)]
 pub struct SetPreviewFiles(pub bool);
 
-/// What ⌘S saves: the file shown, as most editors do, or every file with unsaved edits.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum SaveScope {
-    #[default]
-    Shown,
-    All,
-}
-
-/// Sets what ⌘S saves, from the Editor settings' menu.
-#[derive(Clone, Debug, PartialEq, Action)]
-#[action(namespace = settings, no_json)]
-pub struct SetSaveScope(pub SaveScope);
-
-impl SaveScope {
-    pub const ALL: [SaveScope; 2] = [SaveScope::Shown, SaveScope::All];
-
-    pub fn label(self) -> &'static str {
-        match self {
-            SaveScope::Shown => "The file shown",
-            SaveScope::All => "Every file with unsaved edits",
-        }
-    }
-
-    /// A menu of what ⌘S can save, with `self` checked.
-    pub fn menu(self) -> NativeMenu {
-        checked_menu(SaveScope::ALL, self, SaveScope::label, |scope| Box::new(SetSaveScope(scope)))
-    }
-}
-
 /// Picks how many language servers run at once, or no limit, from a menu.
 #[derive(Clone, Debug, PartialEq, Action)]
 #[action(namespace = settings, no_json)]
@@ -142,6 +117,8 @@ pub struct Settings {
     pub appearance: ThemePreference,
     pub light_theme: GradientTheme,
     pub dark_theme: GradientTheme,
+    /// What text is in, and how big a chat's is.
+    pub fonts: Fonts,
     pub layout: Layout,
     pub sidebar_width: f32,
     pub changes_files_width: f32,
@@ -244,6 +221,7 @@ impl Default for Settings {
             appearance: ThemePreference::default(),
             light_theme: GradientTheme::default(),
             dark_theme: GradientTheme::default(),
+            fonts: Fonts::default(),
             layout: Layout::default(),
             sidebar_width: theme::SIDEBAR_WIDTH,
             changes_files_width: theme::CHANGES_FILES_WIDTH,

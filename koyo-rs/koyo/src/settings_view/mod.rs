@@ -8,6 +8,7 @@ mod chat;
 mod components;
 mod editor;
 mod field_dialog;
+mod fonts;
 mod general;
 mod keyboard_shortcuts;
 mod languages;

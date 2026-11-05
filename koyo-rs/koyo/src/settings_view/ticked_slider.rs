@@ -17,6 +17,9 @@ use crate::theme::{self, Palette};
 pub const WIDTH: f32 = 240.;
 /// How big each stop's dot is.
 const TICK: f32 = 3.;
+/// How big the letters either side of a text size's slider are.
+const SMALL_A: f32 = 12.;
+const LARGE_A: f32 = 20.;
 
 /// A setting picked from a few stops: the stops from the left, how the setting is read, and
 /// how a stop is written to it.
@@ -57,6 +60,8 @@ pub struct TickedSlider {
     pub id: &'static str,
     pub stops: Stops,
     pub ends: (&'static str, &'static str),
+    /// Whether it sits between a small and a large "A", in place of the words under its ends.
+    pub letters: bool,
     pub disabled: bool,
 }
 
@@ -73,8 +78,15 @@ impl TickedSlider {
             id,
             stops: Stops { values, get, set },
             ends: ("", ""),
+            letters: false,
             disabled: false,
         }
+    }
+
+    /// Between a small and a large "A", in place of the words under its ends.
+    pub fn between_letters(mut self) -> Self {
+        self.letters = true;
+        self
     }
 
     /// What the words under the left and the right ends say.
@@ -101,6 +113,19 @@ pub fn ends_row((left, right): (&'static str, &'static str), p: Palette) -> Div 
         .child(right)
 }
 
+/// `track` between a small and a large "A", as iOS has its text size: what the slider changes,
+/// shown rather than said.
+pub fn between_letters(track: impl IntoElement, p: Palette) -> Div {
+    let letter = |size: f32| div().flex_shrink_0().text_size(px(size)).text_color(p.text).child("A");
+    div()
+        .flex()
+        .items_center()
+        .gap_2()
+        .child(letter(SMALL_A))
+        .child(div().w(px(WIDTH)).child(track))
+        .child(letter(LARGE_A))
+}
+
 /// The stop nearest `value`, by ratio rather than by difference, as the stops are spaced.
 pub fn nearest(stops: &[f32], value: f32) -> usize {
     let off = |stop: f32| {
@@ -120,6 +145,7 @@ impl RenderOnce for TickedSlider {
             id,
             stops,
             ends,
+            letters,
             disabled,
         } = self;
         let last = stops.values.len().saturating_sub(1);
@@ -161,7 +187,7 @@ impl RenderOnce for TickedSlider {
                 .rounded_full()
                 .bg(p.muted)
         });
-        div()
+        let slider = div()
             .relative()
             .w(px(WIDTH))
             .flex()
@@ -172,18 +198,24 @@ impl RenderOnce for TickedSlider {
                     .child(Slider::new(&state).bg(p.accent)),
             )
             .child(div().relative().h(px(TICK)).children(ticks))
-            .child(ends_row(ends, p).mt(px(3.)))
+            .when(!letters, |slider| slider.child(ends_row(ends, p).mt(px(3.))))
             .when(disabled, |slider| {
                 slider
                     .opacity(0.45)
                     .child(div().absolute().size_full().occlude())
-            })
+            });
+        if letters {
+            between_letters(slider, p).into_any_element()
+        } else {
+            slider.into_any_element()
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::settings::CHAT_SIZES;
     use crate::settings_view::general::{DELAYS, SPEEDS};
 
     /// Stops read and written nowhere: what's tested is which stop they pick.
@@ -197,7 +229,7 @@ mod tests {
 
     #[test]
     fn each_stop_is_picked_by_its_index_from_another() {
-        for values in [&SPEEDS[..], &DELAYS[..]] {
+        for values in [&SPEEDS[..], &DELAYS[..], &CHAT_SIZES[..]] {
             for (index, &stop) in values.iter().enumerate() {
                 assert_eq!(nearest(values, stop), index);
                 // From the stop before, or from the first to the second.

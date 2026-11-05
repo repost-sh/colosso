@@ -14,7 +14,7 @@ use gpui_kit::{
 use super::editor::FileEditor;
 use crate::language::{Prepared, Rename};
 use crate::modal;
-use crate::theme::{self, Palette};
+use crate::theme::Palette;
 
 /// The field over the symbol being renamed.
 pub(super) struct Renaming {
@@ -134,7 +134,7 @@ impl FileEditor {
             .rounded(px(5.))
             .border_color(p.accent)
             .shadow_md()
-            .font_family(theme::MONO)
+            .font_family(p.mono)
             .text_sm();
         let anchored = anchored()
             .position(bounds.origin - point(px(6.), px(4.)))

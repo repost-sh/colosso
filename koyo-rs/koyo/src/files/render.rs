@@ -204,19 +204,19 @@ fn mark(row: &Row, marks: &Marks, p: Palette) -> (Option<Hsla>, Option<Div>) {
         let file = marks.file(&row.path);
         let colour = file.map(|file| file.mark.colour(p));
         let badge =
-            file.map(|file| letter(file.mark, !file.unstaged).text_color(file.mark.colour(p)));
+            file.map(|file| letter(file.mark, !file.unstaged, p).text_color(file.mark.colour(p)));
         (colour, badge)
     }
 }
 
 /// The letter the changes panel shows for a file's status; dimmer once it's all staged.
-fn letter(mark: Mark, staged: bool) -> Div {
+fn letter(mark: Mark, staged: bool, p: Palette) -> Div {
     div()
         .w(px(12.))
         .mr_1()
         .flex_shrink_0()
         .text_xs()
-        .font_family(theme::MONO)
+        .font_family(p.mono)
         .font_weight(FontWeight::BOLD)
         .when(staged, |letter| letter.opacity(0.6))
         .child(mark.letter())

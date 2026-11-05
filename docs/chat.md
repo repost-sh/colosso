@@ -48,7 +48,12 @@ does better. Claude is the only provider, behind a seam another one (Codex) can 
   `control_bar`). Without the glass (older macOS, Reduce Transparency) the fallback is the
   palette's `floating()` fill with a hairline and a shadow.
 - Theme: `theme::palette(cx)` (the card tinted by the gradient theme, `floating()`,
-  `hairline`, `accent`), `CARD_RADIUS = 10`, `MONO = "Menlo"`.
+  `hairline`, `mono`, `accent`), `CARD_RADIUS = 10`. `mono` is the code font the person picked
+  in Settings → Appearance, JetBrains Mono Nerd Font (embedded in the binary) unless they
+  picked another (`theme/fonts.rs`).
+- Text size: the timeline's rows and the composer's text are drawn inside `at_chat_size`, whose
+  rems are the size on the Appearance page's slider (`settings.fonts.chat_size`, 16 by default),
+  so what's in a chat is sized in rems to grow with it. A change measures every row again.
 - Markdown: `gpui-component`'s `TextView` streams (`push_str`, and `set_text` that appends
   when the new text extends the old) and fades new blocks in.
 - Chat primitives in `gpui-component`: `message_scroller` (a `ListState` that follows the

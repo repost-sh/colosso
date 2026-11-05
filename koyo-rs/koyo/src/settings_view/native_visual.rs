@@ -2,8 +2,9 @@
 //! on screen with `AppKit`'s run loop running, so the native controls are composited, and
 //! captured with `screencapture` into `.superpowers/qa/native-controls/`. On the way it moves a
 //! slider and flips a switch as `AppKit` does (their actions sent in the process; no input is
-//! injected), turns the repeat off, scrolls the page and resizes the window, and counts the
-//! window's views before the page shows, while it does, and after it closed, twice.
+//! injected), turns the repeat off, scrolls the page and resizes the window, moves the Appearance
+//! page's text size between its letters, and counts the window's views before the page shows,
+//! while it does, and after it closed, twice.
 //!
 //! ```sh
 //! Q=$PWD/.superpowers/qa/native-controls
@@ -30,7 +31,7 @@ use objc2_app_kit::{
 
 use crate::key_repeat::KeyRepeat;
 use crate::navigation::Route;
-use crate::settings;
+use crate::settings::{self, Fonts};
 use crate::settings_view::SettingsPage;
 use crate::shell::Shell;
 use crate::theme::{self, UseDarkTheme, UseLightTheme};
@@ -177,6 +178,7 @@ async fn check(
         .map_err(|error| error.to_string())?;
     settle(cx).await;
     lines.push(shoot(&ns_window, out, "resized-dark.png", cx).await?);
+    lines.extend(text_size(shell, &ns_window, out, cx).await?);
 
     // Closed, opened again and closed again, it leaves nothing behind.
     for (route, label) in [
@@ -192,6 +194,36 @@ async fn check(
             return fail("a native control outlived its page", &lines);
         }
     }
+    Ok(lines)
+}
+
+/// The Appearance page's text size in both themes, then moved to its last stop as `AppKit` does
+/// once the thumb is dragged there, which has to reach the setting.
+async fn text_size(
+    shell: &Entity<Shell>,
+    window: &NSWindow,
+    out: &std::path::Path,
+    cx: &mut AsyncApp,
+) -> Result<Vec<String>> {
+    go(shell, Route::Settings(SettingsPage::Appearance), cx);
+    cx.update(|cx| settings::update(cx, |settings| settings.fonts = Fonts::default()));
+    settle(cx).await;
+    let mut lines = vec![shoot(window, out, "text-size-dark.png", cx).await?];
+    cx.update(|cx| cx.dispatch_action(&UseLightTheme));
+    settle(cx).await;
+    lines.push(shoot(window, out, "text-size-light.png", cx).await?);
+
+    let size = slider(window, 7)?;
+    let at = size.doubleValue();
+    size.setDoubleValue(6.);
+    act(&size);
+    settle(cx).await;
+    let chat_size = cx.update(|cx| settings::get(cx).fonts.chat_size());
+    lines.push(format!("text size moved from stop {at} to stop 6: chat_size = {chat_size}"));
+    if (chat_size - 22.).abs() > f32::EPSILON {
+        return Err(format!("the move wrote {chat_size}, not 22"));
+    }
+    lines.push(shoot(window, out, "text-size-largest.png", cx).await?);
     Ok(lines)
 }
 

@@ -37,7 +37,7 @@ impl NewWorktreeDialog {
                         .whitespace_nowrap()
                         // Cut from the start, so the end of a long path stays in view.
                         .text_ellipsis_start()
-                        .font_family(theme::MONO)
+                        .font_family(p.mono)
                         .child(text),
                 )
         };

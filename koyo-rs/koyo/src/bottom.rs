@@ -59,7 +59,7 @@ pub fn panel(p: Palette) -> impl IntoElement {
         .border_t_1()
         .border_color(p.hairline)
         .p_3()
-        .font_family(theme::MONO)
+        .font_family(p.mono)
         .text_sm()
         .text_color(p.muted)
         .bg(p.sunken)
