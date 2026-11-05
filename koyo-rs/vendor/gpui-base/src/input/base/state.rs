@@ -4333,10 +4333,19 @@ impl<M: InputModeKind> InputBaseState<M> {
         let wrapped = self
             .display_map
             .wrap_stale_rows(focus, self.relayout_wrap_budget, cx);
-        if (changed || wrapped)
-            && let Some(anchor) = anchor
-        {
-            self.restore_wrap_scroll_anchor(anchor, line_height);
+        if changed || wrapped {
+            if let Some(anchor) = anchor {
+                self.restore_wrap_scroll_anchor(anchor, line_height);
+            }
+            // Another font or size wraps the text differently, and it's neither an
+            // edit nor a new width, the other things that count the rows.
+            if self.is_multi_line() {
+                let rows = self.mode.rows();
+                self.mode.update_auto_grow(&self.display_map);
+                if self.mode.rows() != rows {
+                    cx.notify();
+                }
+            }
         }
         self.spawn_background_wrap(cx);
     }
