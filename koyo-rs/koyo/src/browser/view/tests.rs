@@ -5,6 +5,8 @@ use koyo_browser_ipc::Dialog;
 use gpui_kit::{AnyWindowHandle, TestAppContext, px, size};
 
 use super::*;
+use crate::browser::control::Mode;
+use crate::browser::host::HostStatus;
 // Drawing the window is when the view asks its questions.
 use crate::test_support::{draw, in_window};
 

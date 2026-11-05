@@ -38,17 +38,17 @@ mod state;
 mod switcher;
 mod tab_face;
 mod tab_list;
+mod visits;
 
 pub use actions::{
-    CloseTab, EditTheme, NewBrowserTab, NewChat, NewEditorTab, NewTerminal, ReopenClosedTab,
-    SwitchTab, SwitchTabBack, ToggleBottomPanel, ToggleRightPanel, ToggleSidebar,
-    ToggleSidebarMode, init,
+    CloseTab, EditTheme, NewChat, ReopenClosedTab, SwitchTab, SwitchTabBack, ToggleBottomPanel,
+    ToggleRightPanel, ToggleSidebar, ToggleSidebarMode, init,
 };
 #[cfg(feature = "visual-check")]
-pub use actions::StopTerminal;
+pub use actions::{NewTerminal, StopTerminal};
 use elements::drag_area;
 pub use elements::{
-    action_button, add_project_row, ellipsized, glass, icon, icon_button, new_tab_menu, no_matches,
+    action_button, add_project_row, ellipsized, glass, icon, icon_button, new_tab_button, no_matches,
     project_error, row, search_field, section_label, solid, tab_close_button,
 };
 pub use reorder::TabHand;
@@ -320,7 +320,7 @@ impl Shell {
             (Some(_), None) => note("No checkout selected."),
             (Some(_), Some(branch)) => match branch.tabs.get(branch.active_tab) {
                 Some(tab) => self.tab_content(tab, cx),
-                None => note("No tabs on this branch. ⌘T starts a chat, ⌘P opens a file."),
+                None => note("No tabs on this branch. ⌘T opens a tab, ⌘P opens a file."),
             },
         };
         div().flex_1().min_h_0().child(content)

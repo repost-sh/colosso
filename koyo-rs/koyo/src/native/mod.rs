@@ -18,6 +18,7 @@ pub mod switch;
 mod surface;
 mod target;
 pub mod traffic_lights;
+pub mod window;
 
 pub use host::{Control, host};
 pub use surface::Surface;

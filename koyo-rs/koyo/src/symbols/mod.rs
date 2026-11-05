@@ -16,8 +16,8 @@ use crate::shell::Shell;
 
 actions!(symbols, [DocumentSymbols, WorkspaceSymbols]);
 
-/// ⌘⇧O and ⌘⌥O anywhere (⌘T starts a chat); and in the palette's field, the keys that
-/// move through what it lists, which the field would otherwise take.
+/// ⌘⇧O and ⌘⌥O anywhere (⌘T opens the new-tab launcher); and in the palette's field, the keys
+/// that move through what it lists, which the field would otherwise take.
 pub fn init(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("cmd-shift-o", DocumentSymbols, None),

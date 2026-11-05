@@ -198,6 +198,7 @@ impl BrowserView {
     /// Goes straight to `entry` of the page's history, picked from a list.
     pub(super) fn go_to_entry(&mut self, entry: i64, cx: &mut Context<Self>) {
         self.person_acts(Mode::Implicit, cx);
+        self.goes_through_history();
         let pane = self.pane;
         // A page that's gone has nothing to answer; its own events tell the rest.
         drop(self.browsers.update(cx, |browsers, _| {

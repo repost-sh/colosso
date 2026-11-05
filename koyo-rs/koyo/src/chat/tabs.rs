@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use futures::StreamExt as _;
 use gpui_kit::{
-    Action, App, AppContext as _, Context, Entity, Focusable as _, SharedString, Subscription, Task, Window,
+    App, AppContext as _, Context, Entity, Focusable as _, SharedString, Subscription, Task, Window,
 };
 use koyo_agent::protocol::ids::ThreadId;
 
@@ -15,7 +15,6 @@ use super::view::details::Workplace;
 use super::view::{ChatView, ChatViewEvent};
 use super::{Chats, ChatsEvent};
 use crate::files::Place;
-use crate::menu::MenuItem;
 use crate::model::{PaneKind, Workspace};
 use crate::native::notifications;
 use crate::shell::Shell;
@@ -36,13 +35,8 @@ fn notifications_clicked(cx: &mut Context<Shell>) -> Option<Task<()>> {
     }))
 }
 
-/// How many chats with no tab the new-tab menu lists.
+/// How many chats with no tab the launcher is given to list.
 const RECENT_CHATS: usize = 6;
-
-/// Shows a chat, in the tab showing it or in a new one.
-#[derive(Clone, Debug, PartialEq, Action)]
-#[action(namespace = chat, no_json)]
-pub struct OpenChat(pub ThreadId);
 
 pub struct ChatTabs {
     pub(super) chats: Entity<Chats>,
@@ -52,6 +46,8 @@ pub struct ChatTabs {
     shown: HashSet<ThreadId>,
     /// The pane whose view takes the keyboard once it's made: the chat just opened.
     focus_next: Option<u64>,
+    /// What a pane's chat is told as soon as its view is made: the launcher's message.
+    say_next: Option<(u64, String)>,
     _followed: Subscription,
     _clicked: Option<Task<()>>,
 }
@@ -76,6 +72,7 @@ impl ChatTabs {
             views: HashMap::new(),
             shown: HashSet::new(),
             focus_next: None,
+            say_next: None,
             _followed,
             _clicked,
         }
@@ -186,6 +183,12 @@ impl Shell {
             let focus = view.focus_handle(cx);
             cx.defer_in(window, move |_, window, cx| window.focus(&focus, cx));
         }
+        if let Some((_, text)) = self.chat_tabs.say_next.take_if(|(next, _)| *next == pane) {
+            let composer = view.read(cx).composer.clone();
+            cx.defer_in(window, move |_, window, cx| {
+                composer.update(cx, |composer, cx| composer.say(&text, window, cx));
+            });
+        }
         self.chat_tabs.views.insert(
             pane,
             Made {
@@ -197,10 +200,20 @@ impl Shell {
 
     /// The view of a chat pane that just opened takes the keyboard once it's made.
     pub(crate) fn focus_chat_next(&mut self) {
-        let pane = (self.workspace.branch())
+        self.chat_tabs.focus_next = self.shown_pane();
+    }
+
+    /// The first pane of the tab shown.
+    fn shown_pane(&self) -> Option<u64> {
+        (self.workspace.branch())
             .and_then(|unit| unit.tabs.get(unit.active_tab))
-            .map(|tab| tab.first().id);
-        self.chat_tabs.focus_next = pane;
+            .map(|tab| tab.first().id)
+    }
+
+    /// Opens a new chat on the selected checkout and says `text` to it, as its composer would.
+    pub(crate) fn ask_new_chat(&mut self, text: String, cx: &mut Context<Self>) {
+        self.new_tab(PaneKind::Chat, cx);
+        self.chat_tabs.say_next = self.shown_pane().map(|pane| (pane, text));
     }
 
     /// Shows thread `id`: the tab showing it already, or a new one on its checkout. The pane that
@@ -237,17 +250,17 @@ impl Shell {
         &self.chat_tabs.chats
     }
 
-    /// The chats of the checkout at `worktree` no tab shows, latest first, as a menu's rows.
-    pub(crate) fn recent_chats(&self, worktree: &Path, cx: &App) -> Vec<MenuItem> {
+    /// The chats of the checkout at `worktree` no tab shows, latest first, with their titles.
+    pub(crate) fn chats_without_tabs(&self, worktree: &Path, cx: &App) -> Vec<(ThreadId, SharedString)> {
         let tabs = &self.chat_tabs;
         let mut recent = tabs.chats.read(cx).latest_first(Some(worktree));
         recent.retain(|summary| !tabs.shown.contains(&summary.id));
         recent.truncate(RECENT_CHATS);
-        let rows = recent.into_iter().enumerate().map(|(at, summary)| {
-            let open = Box::new(OpenChat(summary.id.clone()));
-            MenuItem::new(Some(PaneKind::Chat.icon()), summary.title.clone(), open).apart(at == 0)
-        });
-        rows.collect()
+        let titled = |summary: &koyo_agent::protocol::model::ThreadSummary| -> SharedString {
+            let title = summary.title.trim();
+            if title.is_empty() { PaneKind::Chat.new_tab_title().into() } else { title.to_owned().into() }
+        };
+        recent.into_iter().map(|summary| (summary.id.clone(), titled(summary))).collect()
     }
 
     /// The first send of pane `pane` made its thread.

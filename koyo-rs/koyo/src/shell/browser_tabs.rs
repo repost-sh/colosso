@@ -77,7 +77,12 @@ impl Shell {
         cx: &mut Context<Self>,
     ) {
         match event {
-            BrowserEvent::Changed => self.retitle(view, cx),
+            BrowserEvent::Changed => {
+                self.retitle(view, cx);
+                self.note_page(view, cx);
+            }
+            BrowserEvent::Visited(visit) => self.note_visit(view, visit, cx),
+            BrowserEvent::Searched(words) => self.note_search(view, words, cx),
             BrowserEvent::OpenTab(url) => self.open_beside(view, url.clone(), window, cx),
             BrowserEvent::Detach(tools) => self.detach_devtools(view, tools, window, cx),
             BrowserEvent::Undock(tools) => self.remove_browser_pane(tools, cx),
@@ -96,7 +101,7 @@ impl Shell {
     }
 
     /// Where the tab holding `view` is.
-    fn tab_of(&self, view: &Entity<BrowserView>) -> Option<(usize, usize, usize)> {
+    pub(super) fn tab_of(&self, view: &Entity<BrowserView>) -> Option<(usize, usize, usize)> {
         self.pane_of(view).map(|(at, _)| at)
     }
 
@@ -334,7 +339,7 @@ mod tests {
 
     use crate::menu::{self, MenuItem};
     use crate::model::{PaneKind, Tab};
-    use crate::shell::{NewBrowserTab, NewChat};
+    use crate::shell::NewChat;
     use crate::test_support::{repo, select, shell_with};
 
     #[gpui_kit::test]
@@ -362,47 +367,20 @@ mod tests {
         });
     }
 
-    /// The "+" menu dispatches its action on the shell's focus handle.
+    /// A menu is a window of its own; picking a row there dispatches on the shell.
     #[gpui_kit::test]
-    fn the_new_tab_menus_action_opens_a_browser_tab(cx: &mut TestAppContext) {
-        let root = repo("browser-tab-action", &[("README.md", "hi\n")]);
-        let (window, shell) = shell_with(&[&root], cx);
-        select(&shell, &root, cx);
-        cx.update_window(window, |_, window, cx| {
-            window.draw(cx).clear(cx);
-            let focus = shell.read(cx).focus.clone();
-            focus.dispatch_action(&NewBrowserTab, window, cx);
-        })
-        .unwrap();
-        cx.run_until_parked();
-        shell.read_with(cx, |shell, _| {
-            let unit = shell.workspace.branch().expect("a checkout is selected");
-            assert_eq!(unit.tabs.len(), 1, "the action opened a tab");
-            assert!(matches!(&unit.tabs[0], Tab::Single(pane) if pane.kind == PaneKind::Browser));
-        });
-    }
-
-    /// The "+" menu is a window of its own; picking a row there dispatches on the shell.
-    #[gpui_kit::test]
-    fn picking_new_browser_tab_from_the_menu_window_opens_one(cx: &mut TestAppContext) {
+    fn picking_new_chat_from_a_menu_window_opens_one(cx: &mut TestAppContext) {
         let root = repo("browser-tab-menu", &[("README.md", "hi\n")]);
         let (window, shell) = shell_with(&[&root], cx);
         select(&shell, &root, cx);
         cx.update_window(window, |_, window, cx| {
             window.draw(cx).clear(cx);
             let focus = shell.read(cx).focus.clone();
-            let items = vec![
-                MenuItem::new(
-                    Some(gpui_kit::assets::IconName::Plus),
-                    "New Chat",
-                    Box::new(NewChat),
-                ),
-                MenuItem::new(
-                    Some(gpui_kit::assets::IconName::Globe),
-                    "New Browser Tab",
-                    Box::new(NewBrowserTab),
-                ),
-            ];
+            let items = vec![MenuItem::new(
+                Some(gpui_kit::assets::IconName::Plus),
+                "New Chat",
+                Box::new(NewChat),
+            )];
             menu::open_rows(
                 "test-new-tab-menu".into(),
                 Bounds::default(),
@@ -421,12 +399,12 @@ mod tests {
             .find(|handle| *handle != window)
             .expect("the menu opened a window of its own");
         let mut menu_cx = VisualTestContext::from_window(popup, cx);
-        menu_cx.simulate_click(menu::row_center(1), Modifiers::default());
+        menu_cx.simulate_click(menu::row_center(0), Modifiers::default());
         cx.run_until_parked();
         shell.read_with(cx, |shell, _| {
             let unit = shell.workspace.branch().expect("a checkout is selected");
             assert_eq!(unit.tabs.len(), 1, "the row picked opened a tab");
-            assert!(matches!(&unit.tabs[0], Tab::Single(pane) if pane.kind == PaneKind::Browser));
+            assert!(matches!(&unit.tabs[0], Tab::Single(pane) if pane.kind == PaneKind::Chat));
         });
     }
 }

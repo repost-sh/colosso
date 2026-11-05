@@ -4,27 +4,30 @@
 //! press in the window behind it and focus leaving them both. Also the pieces dialogs are made
 //! of.
 
-use std::rc::Rc;
 use std::time::Duration;
 
 use gpui_kit::assets::IconName;
+use gpui_kit::component::Sizable as _;
 use gpui_kit::component::input::{Input, InputState};
-use gpui_kit::component::spinner::Spinner;
-use gpui_kit::component::{Sizable as _, Size};
-use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, AnyView, AnyWindowHandle, App, AppContext as _, ClickEvent, Context, Entity,
-    FontWeight, Global, Hsla, InteractiveElement as _, IntoElement, ParentElement as _, Render,
-    RenderOnce, SharedString, StatefulInteractiveElement as _, Styled, Subscription, TextStyle,
-    Window, WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions, div, point, px,
-    size,
+    AnyElement, AnyView, AnyWindowHandle, App, AppContext as _, Context, Entity, FontWeight,
+    Global, InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString,
+    Styled, Subscription, TextStyle, Window, WindowBackgroundAppearance, WindowBounds, WindowKind,
+    WindowOptions, div, point, px, size,
 };
 
 use crate::shell::icon;
 use crate::theme::{self, Palette};
 
+mod button;
+
+pub use button::{Button, Tone, spinner};
+
 /// How far below the top of the window behind it a dialog sits.
 const TOP: f32 = 72.;
+/// How far down the window behind it a floating bar sits, as a share of its height: high, as
+/// Spotlight's, with room under it for what it lists.
+const FLOATING_TOP: f32 = 0.2;
 /// Between a dialog's edge and what it says.
 pub const PADDING: f32 = 20.;
 /// The height of a dialog's [`footer`].
@@ -132,12 +135,54 @@ fn open_padded<V: Render>(
     cx: &mut App,
     build: impl FnOnce(&mut Window, &mut Context<V>) -> V,
 ) {
+    open_at(TOP, width, height, padding, parent, cx, build);
+}
+
+/// Opens the view `build` makes as a floating bar over `parent`, high in it and edge to edge
+/// with its window: the view pads itself, and fits the window to what it shows with
+/// [`fit_height`].
+pub fn open_floating<V: Render>(
+    width: f32,
+    height: f32,
+    parent: &mut Window,
+    cx: &mut App,
+    build: impl FnOnce(&mut Window, &mut Context<V>) -> V,
+) {
+    let top = (parent.bounds().size.height.as_f32() * FLOATING_TOP).max(TOP);
+    open_at(top, width, height, 0., parent, cx, build);
+}
+
+/// Makes the dialog in `window` `height` high, its top staying where it is, as a list under a
+/// field grows and shrinks.
+pub fn fit_height(height: f32, window: &mut Window, cx: &mut App) {
+    if (window.bounds().size.height.as_f32() - height).abs() < 0.5 {
+        return;
+    }
+    #[cfg(target_os = "macos")]
+    if crate::native::window::fit_height(window, height, cx) {
+        return;
+    }
+    let _ = cx;
+    let width = window.bounds().size.width;
+    window.resize(size(width, px(height)));
+}
+
+/// [`open_padded`], `top` below the top of `parent`.
+fn open_at<V: Render>(
+    top: f32,
+    width: f32,
+    height: f32,
+    padding: f32,
+    parent: &mut Window,
+    cx: &mut App,
+    build: impl FnOnce(&mut Window, &mut Context<V>) -> V,
+) {
     close(cx);
     let frame = parent.bounds();
     let origin = frame.origin
         + point(
             (frame.size.width - px(width)) / 2.,
-            px(TOP).min(frame.size.height - px(height)).max(px(0.)),
+            px(top).min(frame.size.height - px(height)).max(px(0.)),
         );
     let options = WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(gpui_kit::Bounds::new(
@@ -381,118 +426,4 @@ pub fn field(input: Input, p: Palette) -> gpui_kit::Div {
         .border_color(p.hairline)
         .bg(p.raised)
         .child(input.appearance(false).flex_1())
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Tone {
-    Plain,
-    /// The dialog's main action.
-    Primary,
-    /// A main action that can't be undone.
-    Danger,
-}
-
-type ClickHandler = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
-
-/// A dialog's button: a rounded label filled by its tone.
-#[derive(IntoElement)]
-pub struct Button {
-    id: SharedString,
-    label: SharedString,
-    tone: Tone,
-    disabled: bool,
-    busy: bool,
-    on_click: Option<ClickHandler>,
-}
-
-impl Button {
-    pub fn new(id: &'static str, label: impl Into<SharedString>, tone: Tone) -> Self {
-        Button {
-            id: id.into(),
-            label: label.into(),
-            tone,
-            disabled: false,
-            busy: false,
-            on_click: None,
-        }
-    }
-
-    pub fn disabled(mut self, disabled: bool) -> Self {
-        self.disabled = disabled;
-        self
-    }
-
-    /// Spins in place of the label while its action runs, taking no more clicks.
-    pub fn busy(mut self, busy: bool) -> Self {
-        self.busy = busy;
-        self
-    }
-
-    pub fn on_click(
-        mut self,
-        handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
-    ) -> Self {
-        self.on_click = Some(Rc::new(handler));
-        self
-    }
-}
-
-impl RenderOnce for Button {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let p = theme::palette(cx);
-        let (fill, text) = match self.tone {
-            Tone::Plain => (p.raised, p.text),
-            Tone::Primary => (p.text, p.on_text),
-            Tone::Danger => (p.danger, gpui_kit::white()),
-        };
-        div()
-            .id(self.id)
-            .h(px(30.))
-            .px(px(14.))
-            .flex()
-            .items_center()
-            .rounded(px(8.))
-            .bg(fill)
-            .text_color(text)
-            .font_weight(FontWeight::MEDIUM)
-            .when(self.tone == Tone::Plain, |button| {
-                button.border_1().border_color(p.hairline)
-            })
-            .when(self.disabled && !self.busy, |button| button.opacity(0.4))
-            .when_some(
-                self.on_click.filter(|_| !self.disabled && !self.busy),
-                |button, handler| {
-                    button
-                        .cursor_pointer()
-                        // The way the settings' pill buttons answer a hover, for the plain one.
-                        .hover(move |style| match self.tone {
-                            Tone::Plain => style.bg(p.selected),
-                            _ => style.opacity(0.85),
-                        })
-                        .on_click(move |event, window, cx| handler(event, window, cx))
-                },
-            )
-            .relative()
-            // The label stays, unseen, so the button keeps its width.
-            .child(div().when(self.busy, Styled::invisible).child(self.label))
-            .when(self.busy, |button| button.child(spinner(text)))
-    }
-}
-
-/// A spinner centered over its parent, which must be `relative`.
-pub fn spinner(color: Hsla) -> impl IntoElement {
-    div()
-        .absolute()
-        .inset_0()
-        .flex()
-        .items_center()
-        .justify_center()
-        .child(
-            // An open arc turning at an even speed; the default eases each turn, so it stalls.
-            Spinner::new()
-                .icon(IconName::LoaderCircle)
-                .ease(|delta| delta)
-                .with_size(Size::Small)
-                .color(color),
-        )
 }

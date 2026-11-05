@@ -1,13 +1,14 @@
-//! The Browser settings page: where a page's `DevTools` open, the data every project's pages
-//! keep, and the engine they run in.
+//! The Browser settings page: where a page's `DevTools` open, whether the new-tab launcher asks
+//! for search suggestions, the data every project's pages keep, and the engine they run in.
 
 use gpui_kit::{App, AsyncApp, PromptLevel};
 
 use super::components::{MenuButton, PillButton, SettingRow, SettingsSection};
+use super::native_switch::NativeSwitch;
 use crate::{browser, settings};
 
 pub fn sections(cx: &App) -> Vec<SettingsSection> {
-    vec![devtools(cx), data(), engine(cx)]
+    vec![devtools(cx), address(), data(), engine(cx)]
 }
 
 fn devtools(cx: &App) -> SettingsSection {
@@ -24,19 +25,35 @@ fn devtools(cx: &App) -> SettingsSection {
     )
 }
 
+fn address() -> SettingsSection {
+    SettingsSection::new("New tab").row(
+        SettingRow::new("Search suggestions")
+            .description(
+                "While you type in the new-tab bar, ask Google what it suggests, without cookies. \
+                 Off, only your history and open tabs are offered.",
+            )
+            .control(NativeSwitch::new(
+                "search-suggestions",
+                |settings| settings.search_suggestions,
+                |settings, on| settings.search_suggestions = on,
+            )),
+    )
+}
+
 fn data() -> SettingsSection {
     SettingsSection::new("Browsing data").row(
         SettingRow::new("Clear browsing data")
             .description(
-                "Cookies, sign-ins, caches and site storage of every project's pages. Each \
-                 project keeps its own, apart from the others'. Open pages load again.",
+                "Cookies, sign-ins, caches and site storage of every project's pages, each \
+                 project's apart from the others', and the pages visited and searches made. \
+                 Open pages load again.",
             )
             .control(
                 PillButton::new("clear-browsing-data", "Clear…").on_click(|_, window, cx| {
                     let answer = window.prompt(
                         PromptLevel::Warning,
                         "Clear browsing data?",
-                        Some("Every project's pages are signed out and forget what sites stored."),
+                        Some("Every project's pages are signed out and forget what sites stored, and the pages visited are forgotten."),
                         &["Clear", "Cancel"],
                         cx,
                     );

@@ -12,7 +12,7 @@ use gpui_kit::{
 use crate::model::BranchUnit;
 use crate::projects::{AddProject, NewWorktreeIn, project_menu, with_menu, worktree_menu};
 use crate::shell::{
-    Shell, action_button, add_project_row, ellipsized, icon, icon_button, new_tab_menu, no_matches,
+    Shell, action_button, add_project_row, ellipsized, icon, icon_button, new_tab_button, no_matches,
     project_error, row, search_field, section_label, tab_close_button, tab_list, tab_row,
 };
 use crate::theme::{self, Palette};
@@ -210,15 +210,11 @@ pub fn tab_strip(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
         .border_b_1()
         .border_color(p.hairline)
         .child(tab_list(&shell.tab_hand, list, rows, px(4.), p, cx))
-        .when_some(branch, |strip, unit| {
-            strip.child(new_tab_menu(
-                "orca-new-tab-menu",
-                icon_button("orca-new-tab", IconName::Plus, "New tab", cx)
+        .when(branch.is_some(), |strip| {
+            strip.child(
+                new_tab_button("orca-new-tab", cx)
                     .small()
                     .debug_selector(|| "new-tab-button".to_owned()),
-                shell.focus.clone(),
-                cx.weak_entity(),
-                unit.worktree.path.clone(),
-            ))
+            )
         })
 }

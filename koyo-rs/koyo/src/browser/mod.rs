@@ -43,7 +43,7 @@ pub mod visual;
 pub use dock::DOCK_MIN;
 pub use dock::{DevtoolsPlace, Dock, SetDevtoolsDock};
 pub use menu::handle_actions;
-pub use view::{BrowserEvent, BrowserView};
+pub use view::{BrowserEvent, BrowserView, Visit};
 
 /// Starts the engine, so the first page opens as quickly as the next.
 pub fn warm_up(cx: &mut App) {
@@ -51,10 +51,12 @@ pub fn warm_up(cx: &mut App) {
     browsers.update(cx, host::Browsers::start_if_idle);
 }
 
-/// Stops the engine, deletes every project's browsing data, and starts it again.
+/// Stops the engine, deletes every project's browsing data, and starts it again; and forgets
+/// the pages visited and the searches made, which the new-tab launcher offers.
 pub fn clear_data(cx: &mut App) {
     let browsers = host::Browsers::global(cx);
     browsers.update(cx, host::Browsers::clear_data);
+    crate::history::clear_browsing(cx);
 }
 
 /// The packaged engine's version and its Chromium's, once it runs.
@@ -135,9 +137,32 @@ pub fn init(cx: &mut App) {
 /// Schemes of pages worth opening or copying as links.
 pub const LINK_SCHEMES: [&str; 4] = ["http://", "https://", "file://", "about:"];
 
+/// What the person typed in an address: a page to load, or words to search the web for.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Address {
+    Page(String),
+    Search(String),
+}
+
+impl Address {
+    /// The page it loads: the page itself, or the search's results.
+    pub fn into_url(self) -> String {
+        match self {
+            Address::Page(url) => url,
+            Address::Search(words) => search_url(&words),
+        }
+    }
+}
+
 /// What the person typed in the address bar, as a page to load. Hosts and local addresses
 /// load directly; anything else is a web search.
 pub fn address_to_url(text: &str) -> Option<String> {
+    read_address(text).map(Address::into_url)
+}
+
+/// What the person typed in the address bar: hosts and local addresses are pages, anything
+/// else words to search for.
+pub fn read_address(text: &str) -> Option<Address> {
     let text = text.trim();
     if text.is_empty() {
         return None;
@@ -149,10 +174,10 @@ pub fn address_to_url(text: &str) -> Option<String> {
         .chain(&["data:", "chrome://"])
         .any(|scheme| lower.starts_with(scheme))
     {
-        return Some(text.to_owned());
+        return Some(Address::Page(text.to_owned()));
     }
     if text.contains(char::is_whitespace) {
-        return Some(search_url(text));
+        return Some(Address::Search(text.to_owned()));
     }
     let authority = lower.split(['/', '?', '#']).next().unwrap_or_default();
     let host = authority
@@ -172,12 +197,12 @@ pub fn address_to_url(text: &str) -> Option<String> {
         || name.parse::<std::net::Ipv4Addr>().is_ok()
         || name.starts_with('[');
     if local {
-        return Some(format!("http://{text}"));
+        return Some(Address::Page(format!("http://{text}")));
     }
     if port || (name.contains('.') && !name.starts_with('.') && !name.ends_with('.')) {
-        return Some(format!("https://{text}"));
+        return Some(Address::Page(format!("https://{text}")));
     }
-    Some(search_url(text))
+    Some(Address::Search(text.to_owned()))
 }
 
 /// A web search for `query`.

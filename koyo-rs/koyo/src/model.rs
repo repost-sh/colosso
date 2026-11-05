@@ -25,23 +25,6 @@ pub enum PaneKind {
 }
 
 impl PaneKind {
-    pub const ALL: [PaneKind; 4] = [
-        PaneKind::Chat,
-        PaneKind::Terminal,
-        PaneKind::Browser,
-        PaneKind::Editor,
-    ];
-
-    /// The menu entry that opens a tab of this kind.
-    pub fn new_tab_label(self) -> &'static str {
-        match self {
-            PaneKind::Chat => "New Chat",
-            PaneKind::Terminal => "New Terminal",
-            PaneKind::Browser => "New Browser Tab",
-            PaneKind::Editor => "New Editor Tab",
-        }
-    }
-
     pub(crate) fn new_tab_title(self) -> &'static str {
         match self {
             PaneKind::Chat => "New chat",

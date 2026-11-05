@@ -4,9 +4,9 @@
 //! from the top of the screen.
 
 use gpui_kit::Window;
-use objc2::rc::Retained;
-use objc2_app_kit::{NSView, NSWindow, NSWindowButton, NSWindowStyleMask};
-use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+use objc2_app_kit::{NSWindowButton, NSWindowStyleMask};
+
+use super::window::ns_window;
 
 const BUTTONS: [NSWindowButton; 3] = [
     NSWindowButton::CloseButton,
@@ -40,17 +40,4 @@ pub fn fade(window: &Window, alpha: f32) {
             button.setHidden(hidden);
         }
     }
-}
-
-/// The `NSWindow` GPUI draws `window` in; none for a test's window.
-fn ns_window(window: &Window) -> Option<Retained<NSWindow>> {
-    // `Window` has a `window_handle` of its own, GPUI's.
-    let handle = HasWindowHandle::window_handle(window).ok()?;
-    let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
-        return None;
-    };
-    // SAFETY: on macOS the handle is GPUI's view for the window, which the window holds for as
-    // long as it's open, and `window` is open while it's being drawn.
-    let view = unsafe { handle.ns_view.cast::<NSView>().as_ref() };
-    view.window()
 }

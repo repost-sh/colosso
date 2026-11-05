@@ -169,6 +169,8 @@ pub struct Settings {
     pub key_repeat: KeyRepeat,
     /// Where a page's `DevTools` open, and the room they take docked.
     pub devtools: crate::browser::DevtoolsPlace,
+    /// Whether the new-tab launcher asks the search engine what it suggests for what's typed.
+    pub search_suggestions: bool,
     /// What quitting does with the terminals still running.
     pub on_quit: crate::quitting::OnQuit,
     /// Whether clients outside Koyo's terminals may control the app, on which port the
@@ -245,6 +247,7 @@ impl Default for Settings {
             claude_path: None,
             key_repeat: KeyRepeat::default(),
             devtools: crate::browser::DevtoolsPlace::default(),
+            search_suggestions: true,
             on_quit: crate::quitting::OnQuit::default(),
             external_control: crate::control::Policy::default(),
         }
