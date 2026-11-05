@@ -14,6 +14,8 @@ mod devtools;
 mod dialogs;
 mod host;
 #[cfg(target_os = "macos")]
+mod location;
+#[cfg(target_os = "macos")]
 mod mac_app;
 mod menus;
 mod pane;

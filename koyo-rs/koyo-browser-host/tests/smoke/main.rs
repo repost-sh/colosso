@@ -15,6 +15,7 @@
 mod agents;
 mod input;
 mod live_resize;
+mod location;
 mod support;
 
 use agents::{cdp, reply};

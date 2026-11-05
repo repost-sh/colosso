@@ -199,15 +199,18 @@ wrap_display_handler! {
     impl DisplayHandler {
         fn on_address_change(
             &self,
-            _browser: Option<&mut Browser>,
+            browser: Option<&mut Browser>,
             frame: Option<&mut Frame>,
             url: Option<&CefString>,
         ) {
             use cef::ImplFrame;
             if frame.is_some_and(|f| f.is_main() == 1) {
-                host::page_changed(self.pane, |page| {
-                    page.url = url.map(ToString::to_string).unwrap_or_default();
-                });
+                let url = text(url);
+                #[cfg(target_os = "macos")]
+                crate::location::opened(browser, &url);
+                #[cfg(not(target_os = "macos"))]
+                let _ = browser;
+                host::page_changed(self.pane, |page| page.url = url);
             }
         }
 

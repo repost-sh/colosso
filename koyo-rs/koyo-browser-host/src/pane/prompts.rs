@@ -12,7 +12,7 @@ use cef::{
     WrapPermissionHandler, WrapRequestHandler, rc::Rc, wrap_dialog_handler, wrap_jsdialog_handler,
     wrap_permission_handler, wrap_request_handler,
 };
-use koyo_browser_ipc::{Dialog, PaneId};
+use koyo_browser_ipc::{Dialog, PaneId, Permission};
 use std::os::raw::c_int;
 
 /// The handler for `pane`'s network requests: sign-ins, certificate errors, a renderer gone.
@@ -261,13 +261,17 @@ wrap_permission_handler! {
             let Some(callback) = callback else {
                 return 0;
             };
+            let permissions = dialogs::permissions(requested_permissions);
+            let location = permissions.contains(&Permission::Location);
             dialogs::ask(
                 self.pane,
                 &text(requesting_origin),
-                Dialog::Permission {
-                    permissions: dialogs::permissions(requested_permissions),
+                Dialog::Permission { permissions },
+                Waiting::Prompt {
+                    id: prompt_id,
+                    location,
+                    callback: callback.clone(),
                 },
-                Waiting::Prompt(prompt_id, callback.clone()),
             );
             1
         }

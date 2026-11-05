@@ -21,6 +21,8 @@ FRAMEWORK="Chromium Embedded Framework.framework"
 # The app's icon, which macOS shows for the host and its helpers when one asks for
 # something, as for notifications.
 ICON=koyo-rs/koyo/icons/Koyo.icns
+# Why the host would know where the computer is, which macOS shows when it asks the person.
+LOCATION_REASON="Pages open in Koyo can then ask to know where you are. Each one asks you first."
 # The protocol the host speaks, read from where it's defined so the two can't drift.
 IPC_PROTOCOL=$(sed -n 's/^pub const PROTOCOL: u32 = \([0-9][0-9]*\);$/\1/p' \
   koyo-rs/koyo-browser-ipc/src/lib.rs)
@@ -83,6 +85,9 @@ fi
 # The host's Info.plist, and the helpers': background-only agents, no dock icon or menu bar
 # for any of them, the app composing the panes. An ad-hoc build keeps cookies under a fixed
 # key rather than asking for Keychain access after every rebuild; the signature seals this.
+# The host says why it would know where the computer is: macOS asks the person only with a
+# reason, and tells a page where it is only once it has asked (koyo-browser-host's
+# location.rs).
 plist() { # executable identifier helper(yes|no)
   cat <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -123,6 +128,10 @@ PLIST
     <key>MallocNanoZone</key>
     <string>0</string>
   </dict>
+  <key>NSLocationUsageDescription</key>
+  <string>$LOCATION_REASON</string>
+  <key>NSLocationWhenInUseUsageDescription</key>
+  <string>$LOCATION_REASON</string>
 PLIST
     if [ -z "$sign" ]; then
       cat <<PLIST

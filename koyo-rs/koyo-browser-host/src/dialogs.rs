@@ -26,7 +26,12 @@ pub(crate) enum Waiting {
     /// A sign-in.
     Auth(AuthCallback),
     /// A permission prompt, with CEF's id for it.
-    Prompt(u64, PermissionPromptCallback),
+    Prompt {
+        id: u64,
+        /// Whether the page asks to know where the person is.
+        location: bool,
+        callback: PermissionPromptCallback,
+    },
     /// Camera, microphone or screen, with the bits asked for.
     Media(u32, MediaAccessCallback),
     /// An untrusted certificate.
@@ -74,7 +79,7 @@ pub(crate) fn reset(pane: PaneId) {
 pub(crate) fn prompt_dismissed(pane: PaneId, prompt: u64) {
     withdraw(
         pane,
-        |waiting| matches!(waiting, Waiting::Prompt(id, _) if *id == prompt),
+        |waiting| matches!(waiting, Waiting::Prompt { id, .. } if *id == prompt),
     );
 }
 
@@ -101,7 +106,7 @@ fn withdraw(pane: PaneId, which: impl Fn(&Waiting) -> bool) {
 
 fn decline(waiting: Waiting) {
     match waiting {
-        Waiting::Prompt(_, callback) => callback.cont(PermissionRequestResult::DISMISS),
+        Waiting::Prompt { callback, .. } => callback.cont(PermissionRequestResult::DISMISS),
         waiting => resolve(waiting, Answer::Dismiss),
     }
 }
@@ -125,11 +130,20 @@ fn resolve(waiting: Waiting, answer: Answer) {
             }
             _ => callback.cancel(),
         },
-        Waiting::Prompt(_, callback) => callback.cont(if accepted {
-            PermissionRequestResult::ACCEPT
-        } else {
-            PermissionRequestResult::DENY
-        }),
+        Waiting::Prompt {
+            location, callback, ..
+        } => {
+            callback.cont(if accepted {
+                PermissionRequestResult::ACCEPT
+            } else {
+                PermissionRequestResult::DENY
+            });
+            // Chromium reads the position only once macOS lets the host know it.
+            if accepted && location {
+                #[cfg(target_os = "macos")]
+                crate::location::allowed();
+            }
+        }
         Waiting::Media(requested, callback) => {
             if accepted {
                 callback.cont(requested);
