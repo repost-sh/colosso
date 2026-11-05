@@ -1,26 +1,25 @@
-//! The window: translucent rails around a rounded content card, in Orca or Arc layout. The
-//! sidebar slot and the card show whichever route the navigation history is on: the
-//! workspace, or a settings page.
+//! The window: translucent rails around a rounded content card, in Orca or Arc layout, folded
+//! away with the sidebar in compact mode (`rails`). The sidebar slot and the card show
+//! whichever route the navigation history is on: the workspace, or a settings page.
 
 use std::rc::Rc;
-use std::time::{Duration, Instant};
 
-use gpui_kit::assets::IconName;
+use gpui_kit::component::Theme;
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::native_menu::NativeMenu;
-use gpui_kit::component::{Disableable as _, Selectable as _, Theme};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, DragMoveEvent, Entity, FocusHandle, Focusable as _,
     InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, ParentElement as _, Pixels,
-    Point, Render, SharedString, Styled, Subscription, Window, div, ease_in_out, px,
+    Point, Render, SharedString, Styled, Subscription, Window, div, px,
 };
 
 use crate::bottom::StatusBar;
 use crate::chat::ChatTabs;
 use crate::files::Locations;
+use crate::language::ServersListed;
 use crate::model::{PaneKind, Workspace};
-use crate::navigation::{GoBack, GoForward, Navigate, NavigationHistory, OpenSettings, Route};
+use crate::navigation::{NavigationHistory, OpenSettings, Route};
 use crate::right_panel::RightPanel;
 use crate::settings::{self, Layout};
 use crate::settings_view::{self, SettingsSidebar};
@@ -28,12 +27,10 @@ use crate::sidebar::{SidebarFrame, SidebarResize, slide_out};
 use crate::theme::Palette;
 use crate::{arc, backdrop, bottom, gradient, orca, picker, theme};
 
-/// How long the sidebar takes to slide fully in or out.
-const SIDEBAR_SLIDE: Duration = Duration::from_millis(180);
-
 mod actions;
 mod browser_tabs;
 mod elements;
+mod rails;
 mod reopen;
 mod reorder;
 mod splits;
@@ -62,9 +59,9 @@ pub struct Shell {
     pub workspace: Workspace,
     history: Entity<NavigationHistory>,
     settings_sidebar: Entity<SettingsSidebar>,
+    /// Closed, the window is in compact mode: the rails fold away with the sidebar.
     sidebar_open: bool,
-    /// Where the sidebar was and when it started sliding toward `sidebar_open`.
-    sidebar_slide: Option<(f32, Instant)>,
+    rails: rails::Rails,
     /// The selected checkout's changes or files, beside the chat.
     pub right_panel: RightPanel,
     bottom_panel_open: bool,
@@ -84,7 +81,7 @@ pub struct Shell {
     pub tab_hand: Rc<TabHand>,
     /// The places a symbol led to, listed under the tabs, while they are.
     pub locations: Option<Entity<Locations>>,
-    _subscriptions: [Subscription; 8],
+    _subscriptions: [Subscription; 9],
 }
 
 impl Shell {
@@ -99,6 +96,7 @@ impl Shell {
                 .clean_on_escape()
         });
         let chat_tabs = ChatTabs::new(cx);
+        let status_bar = StatusBar::new(cx);
         let _subscriptions = [
             settings::observe(cx),
             cx.observe(&history, |_, _, cx| cx.notify()),
@@ -129,6 +127,11 @@ impl Shell {
             // Every terminal's program follows the app's theme, its tab shown or not.
             settings::on_change(cx, |this, cx| this.terminals.tell_theme(cx)),
             cx.observe_global::<Theme>(|this, cx| this.terminals.tell_theme(cx)),
+            // The status bar is tall only with servers to show.
+            cx.subscribe(status_bar.servers(), |this, _, ServersListed(any), cx| {
+                this.rails.servers = *any;
+                cx.notify();
+            }),
         ];
         Self::guard_closing(window, cx);
         let mut shell = Shell {
@@ -136,10 +139,10 @@ impl Shell {
             history,
             settings_sidebar,
             sidebar_open: settings::get(cx).sidebar_open_on_launch,
-            sidebar_slide: None,
+            rails: rails::Rails::default(),
             right_panel: RightPanel::default(),
             bottom_panel_open: false,
-            status_bar: StatusBar::new(cx),
+            status_bar,
             terminals: crate::terminals::Terminals::default(),
             chat_tabs,
             swipe: None,
@@ -186,19 +189,6 @@ impl Shell {
 
     fn toggle_sidebar(&mut self, _: &ToggleSidebar, _: &mut Window, cx: &mut Context<Self>) {
         self.set_sidebar_open(!self.sidebar_open, cx);
-    }
-
-    /// How far out the sidebar is, from 0 hidden to 1 fully out, and whether it is still sliding.
-    fn sidebar_reveal(&self) -> (f32, bool) {
-        let target = if self.sidebar_open { 1. } else { 0. };
-        let Some((from, start)) = self.sidebar_slide else {
-            return (target, false);
-        };
-        let progress = start.elapsed().as_secs_f32() / SIDEBAR_SLIDE.as_secs_f32();
-        if progress >= 1. {
-            return (target, false);
-        }
-        (from + (target - from) * ease_in_out(progress), true)
     }
 
     fn toggle_bottom_panel(
@@ -254,81 +244,6 @@ impl Shell {
             .separator()
             .menu("Settings…", Box::new(OpenSettings))
             .show(event.position, window, cx);
-    }
-
-    fn top_rail(&self, cx: &App) -> impl IntoElement {
-        let history = self.history.read(cx);
-        div()
-            .h(px(theme::TITLE_BAR_HEIGHT))
-            .flex_shrink_0()
-            .flex()
-            .items_center()
-            .gap_1()
-            .pr(px(theme::GUTTER))
-            .child(drag_area("traffic-lights").w(px(theme::TRAFFIC_LIGHTS_WIDTH)))
-            .child(action_button(
-                "toggle-sidebar",
-                IconName::PanelLeft,
-                "Toggle sidebar",
-                ToggleSidebar,
-                cx,
-            ))
-            .child(
-                action_button("back", IconName::ArrowLeft, "Back", GoBack, cx)
-                    .disabled(!history.can_go_back()),
-            )
-            .child(
-                action_button("forward", IconName::ArrowRight, "Forward", GoForward, cx)
-                    .disabled(!history.can_go_forward()),
-            )
-            .child(drag_area("title").flex_1())
-            .child(self.changes_button(cx))
-            .child(self.files_button(cx))
-    }
-
-    fn icon_rail(&self, cx: &App) -> impl IntoElement {
-        let in_settings = matches!(self.route(cx), Route::Settings(_));
-        let other_layout = format!("Switch to {} layout", Self::layout(cx).other().label());
-        div()
-            .w(px(theme::ICON_RAIL_WIDTH))
-            .flex_shrink_0()
-            .flex()
-            .flex_col()
-            .items_center()
-            .gap_1()
-            .pb(px(theme::GUTTER))
-            .child(
-                icon_button("rail-chats", IconName::MessagesSquare, "Chats", cx)
-                    .selected(!in_settings)
-                    .on_click(|_, window, cx| {
-                        window.dispatch_action(Box::new(Navigate(Route::Workspace)), cx);
-                    }),
-            )
-            .child(icon_button(
-                "rail-changes",
-                IconName::GitPullRequest,
-                "Changes",
-                cx,
-            ))
-            .child(div().flex_1())
-            .child(action_button(
-                "rail-mode",
-                IconName::PanelsTopLeft,
-                other_layout,
-                ToggleSidebarMode,
-                cx,
-            ))
-            .child(theme::toggle(cx))
-            .child(
-                action_button(
-                    "rail-settings",
-                    IconName::Settings,
-                    "Settings",
-                    OpenSettings,
-                    cx,
-                )
-                .selected(in_settings),
-            )
     }
 
     /// What the sidebar slot holds on the current route.
@@ -418,23 +333,20 @@ impl Render for Shell {
         let route = self.route(cx);
         let layout = Self::layout(cx);
         let width = settings::get(cx).sidebar_width();
-        let (reveal, sliding) = self.sidebar_reveal();
-        if sliding {
-            window.request_animation_frame();
-        } else {
-            self.sidebar_slide = None;
-        }
-        let sidebar =
-            (reveal > 0.).then(|| slide_out(self.sidebar(route, layout, cx), width, reveal));
+        let shown = self.move_rails(window, cx);
+        let sidebar = (shown.open.0 > 0.)
+            .then(|| slide_out(self.sidebar(route, layout, cx), width, shown.open.0));
         // Orca keeps the sidebar inside the card, Arc on the glass beside it.
         let (card_sidebar, glass_sidebar) = match layout {
             Layout::Orca => (sidebar, None),
             Layout::Arc => (None, sidebar),
         };
-        let shown = route == Route::Workspace;
-        let right_panel = (self.right_panel).render(shown, self.sidebar_open, window, cx);
+        let on_workspace = route == Route::Workspace;
+        let beside = rails::left_of_chat(self.sidebar_open, cx);
+        let right_panel = (self.right_panel).render(on_workspace, beside, window, cx);
         let main = self.main(route, layout, window, cx);
         let card = div()
+            .debug_selector(|| "shell-card".to_owned())
             .flex_1()
             .min_w_0()
             .mr(px(theme::GUTTER))
@@ -470,17 +382,17 @@ impl Render for Shell {
             })
             .text_color(p.text)
             .child(backdrop::backdrop(cx))
-            .child(self.top_rail(cx))
+            .child(self.top_rail(shown, cx))
             .child(
                 div()
                     .flex_1()
                     .min_h_0()
                     .flex()
-                    .child(self.icon_rail(cx))
+                    .child(self.icon_rail(route, shown, cx))
                     .children(glass_sidebar)
                     .child(card),
             )
-            .child(self.status_bar.render(p))
+            .child(self.status_rail(shown, cx))
     }
 }
 

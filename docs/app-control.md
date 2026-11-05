@@ -135,6 +135,10 @@ settings_open [navigate] I { page?: "general"|"chat"|"appearance"|"editor"|"lang
                          "browser"|"keyboard"|"mcp"|"about" } ; settings_close [navigate] I {}
 ```
 
+`sidebar: false` (or ⌘B) is compact mode: the rails fold with the sidebar until every edge is as
+thin as the gutter right of the card, and the traffic lights are hidden. The status bar is
+tall only while the sidebar is open and the selected checkout has language servers to show.
+
 ### Projects and worktrees
 
 ```

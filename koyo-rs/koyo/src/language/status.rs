@@ -1,6 +1,8 @@
 //! The selected checkout's language servers, in the status bar along the window's bottom:
 //! each with what it's doing, and a menu to restart or stop it, turn it off or on, and show
-//! its log. A view of its own, so a server reporting progress redraws only the servers.
+//! its log. A view of its own, so a server reporting progress redraws only the servers; it
+//! tells the shell only when it starts or stops having any, which the status bar's height
+//! follows.
 
 use std::cell::Cell;
 use std::path::{Path, PathBuf};
@@ -12,8 +14,8 @@ use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Action, AnyElement, App, Bounds, Context, Entity, Hsla, InteractiveElement as _,
-    IntoElement, ParentElement as _, Pixels, Render, SharedString,
+    Action, AnyElement, App, Bounds, Context, Entity, EventEmitter, Hsla,
+    InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Render, SharedString,
     StatefulInteractiveElement as _, Styled, Subscription, Window, div, px,
 };
 
@@ -73,6 +75,12 @@ pub struct ServersStatus {
     _servers: Vec<Subscription>,
 }
 
+/// The selected checkout went from having no servers to show to having some (`true`), or
+/// back.
+pub struct ServersListed(pub bool);
+
+impl EventEmitter<ServersListed> for ServersStatus {}
+
 impl ServersStatus {
     pub fn new(cx: &mut Context<Self>) -> Self {
         let mut status = ServersStatus {
@@ -111,10 +119,14 @@ impl ServersStatus {
             _ => Vec::new(),
         };
         if servers != self.servers {
+            let listed = servers.is_empty() != self.servers.is_empty();
             self._servers = (servers.iter())
                 .map(|server| cx.observe(server, |_, _, cx| cx.notify()))
                 .collect();
             self.servers = servers;
+            if listed {
+                cx.emit(ServersListed(!self.servers.is_empty()));
+            }
         }
         cx.notify();
     }

@@ -1,6 +1,6 @@
 //! What runs along the window's bottom: the status bar, across the whole window on the glass
-//! under the card, with the selected checkout's language servers at its end; and the bottom
-//! panel, under the workspace.
+//! under the card, with the selected checkout's language servers at its end, as tall as the
+//! rails let it be (`shell::rails`); and the bottom panel, under the workspace.
 
 use std::path::Path;
 
@@ -10,9 +10,6 @@ use gpui_kit::{
 
 use crate::language::{self, ServersStatus};
 use crate::theme::{self, Palette};
-
-/// How tall the status bar is, the card's gap above it included.
-const STATUS_BAR_HEIGHT: f32 = 28.;
 
 pub struct StatusBar {
     servers: Entity<ServersStatus>,
@@ -35,10 +32,14 @@ impl StatusBar {
         self.servers.update(cx, |servers, cx| servers.show(root, cx));
     }
 
+    /// The view of the servers, which says when it starts or stops having any.
+    pub fn servers(&self) -> &Entity<ServersStatus> {
+        &self.servers
+    }
+
+    /// The bar's contents, for the rail to lay out at `theme::STATUS_BAR_HEIGHT`.
     pub fn render(&self, p: Palette) -> Div {
         div()
-            .h(px(STATUS_BAR_HEIGHT))
-            .flex_shrink_0()
             .flex()
             .items_center()
             .justify_end()
