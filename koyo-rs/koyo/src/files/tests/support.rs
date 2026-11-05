@@ -147,9 +147,10 @@ pub(crate) fn editing(
     cx.read(|cx| {
         let file = shell.read(cx).viewing().unwrap();
         let file = file.read(cx);
-        let editor = file.editor.read(cx).editor().unwrap().clone();
-        let document = file.editor.read(cx).document().expect("its document");
-        (file.editor.clone(), editor, document)
+        let file_editor = file.editor().expect("a text file's editor").clone();
+        let editor = file_editor.read(cx).editor().unwrap().clone();
+        let document = file_editor.read(cx).document().expect("its document");
+        (file_editor, editor, document)
     })
 }
 

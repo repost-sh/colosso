@@ -76,6 +76,9 @@ gpui-kit = { workspace = true, features = [
 # The frames of bitmaps painted at runtime, and the pictures a chat's message attaches, made to fit
 # what the model takes; the version and the formats GPUI already pulls in.
 image = { version = "0.25", default-features = false, features = ["bmp", "gif", "jpeg", "png", "tiff", "webp"] }
+# SVG files shown as pictures: the renderer GPUI already draws its SVGs with, built with the
+# same features, so it adds nothing to the build. Only what's on screen is drawn, tile by tile.
+resvg = { version = "0.46", default-features = false, features = ["text", "system-fonts", "memmap-fonts", "raster-images"] }
 # Settings on disk; all versions GPUI already pulls in.
 dirs = "6"
 # The log: the facade GPUI and gix already log through, and the clock its lines are stamped
@@ -170,7 +173,17 @@ objc2-user-notifications = { version = "0.3", default-features = false, features
 ] }
 # The browser panes' frames: the host's `IOSurface`s, found from the mach ports it sends,
 # shown as the contents of a layer. All versions GPUI already pulls in.
-objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFBase", "CFCGTypes", "objc2"] }
+objc2-core-foundation = { version = "0.3", default-features = false, features = [
+  "std",
+  "CFBase",
+  "CFCGTypes",
+  "objc2",
+  # The options and properties a picture is read with (viewer/).
+  "CFDictionary",
+  "CFNumber",
+  "CFString",
+  "CFURL",
+] }
 objc2-io-surface = { version = "0.3", default-features = false, features = ["std", "IOSurfaceRef", "IOSurfaceTypes", "libc", "objc2", "objc2-core-foundation"] }
 objc2-quartz-core = { version = "0.3", default-features = false, features = [
   "std",
@@ -185,8 +198,30 @@ objc2-quartz-core = { version = "0.3", default-features = false, features = [
   "CATransaction",
   "objc2-core-graphics",
 ] }
-# An agent's pointer over a page: its shapes (browser/pointer/native.rs).
-objc2-core-graphics = { version = "0.3", default-features = false, features = ["std", "CGPath", "CGColor"] }
+# An agent's pointer over a page: its shapes (browser/pointer/native.rs). Pictures and PDFs
+# shown in a file's tab (viewer/): drawn into bitmaps of their own, a PDF's pages by Quartz,
+# the renderer Preview uses.
+objc2-core-graphics = { version = "0.3", default-features = false, features = [
+  "std",
+  "CGPath",
+  "CGColor",
+  "CGAffineTransform",
+  "CGBitmapContext",
+  "CGColorSpace",
+  "CGContext",
+  "CGImage",
+  "CGPDFDocument",
+  "CGPDFPage",
+] }
+# Pictures shown in a file's tab (viewer/): the system's decoders, which read every format
+# Preview does (HEIC, AVIF, JPEG XL, RAW and the common ones), decode straight to the size
+# shown, turn the photo upright and convert its colours to sRGB, at no cost to the binary.
+objc2-image-io = { version = "0.3", default-features = false, features = [
+  "std",
+  "CGImageProperties",
+  "CGImageSource",
+  "objc2-core-graphics",
+] }
 
 [features]
 # Debug builds only: lets `dx serve --hot-patch` swap render code into the running app.

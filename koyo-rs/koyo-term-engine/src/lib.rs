@@ -15,7 +15,7 @@ mod semantic;
 pub use engine::{Effect, Engine, Progress, Scroll, Size, TextFormat};
 pub use frame::{
     Attrs, Cell, Cursor, CursorFlags, CursorShape, Dirty, Frame, Grapheme, Rgb, Row, RowKind,
-    Scrollbar, Underline, Width,
+    RowLink, Scrollbar, Underline, Width,
 };
 pub use input::{
     Geometry, GridPoint, Key, KeyAction, KeyInput, Mods, MouseAction, MouseButton, MouseInput,

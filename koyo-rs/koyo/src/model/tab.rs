@@ -218,8 +218,7 @@ impl Tab {
     /// The editors of its files with unsaved edits.
     pub fn unsaved(&self, cx: &App) -> Vec<Entity<FileEditor>> {
         (self.files().into_iter())
-            .filter(|file| file.read(cx).is_dirty())
-            .map(|file| file.read(cx).editor.clone())
+            .filter_map(|file| file.read(cx).unsaved().cloned())
             .collect()
     }
 

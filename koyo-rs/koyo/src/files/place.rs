@@ -27,6 +27,13 @@ pub enum At {
     Server(lsp_types::Range, Encoding),
 }
 
+impl At {
+    /// The start of line `line`, counted from 1 as links and compilers print lines.
+    pub fn printed_line(line: u32) -> At {
+        At::Line(line.saturating_sub(1))
+    }
+}
+
 impl Place {
     /// The file at `path`, the cursor where it was or at its start.
     pub fn file(path: impl Into<PathBuf>) -> Place {

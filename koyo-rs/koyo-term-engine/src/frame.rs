@@ -2,6 +2,7 @@
 //! and handed to whoever paints or reads it, so no borrowed engine state crosses a thread or
 //! outlives a frame. Rows are shared, so a frame whose rows didn't change costs a few clones.
 
+use std::ops::Range;
 use std::sync::Arc;
 
 /// A colour, as the engine resolved it: palette indices are already looked up.
@@ -143,6 +144,14 @@ pub enum RowKind {
     PromptContinuation,
 }
 
+/// The run of cells a program made a link of (OSC 8), and where the link goes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RowLink {
+    /// The columns it covers, the tail of a wide character included.
+    pub cols: Range<u16>,
+    pub uri: Arc<str>,
+}
+
 /// One row of the viewport.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Row {
@@ -150,6 +159,8 @@ pub struct Row {
     /// Soft-wrapped onto the next row.
     pub wrapped: bool,
     pub kind: RowKind,
+    /// The links the row shows, left to right; empty for almost every row.
+    pub links: Vec<RowLink>,
 }
 
 /// The cursor's shape, DECSCUSR.

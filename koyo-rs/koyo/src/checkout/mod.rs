@@ -133,6 +133,11 @@ impl Checkout {
         self.documents.open(path, cx)
     }
 
+    /// Has `viewer` show its file again as it's written, while it's open.
+    pub fn watch(&mut self, viewer: &Entity<crate::viewer::Viewer>) {
+        self.documents.watch(viewer);
+    }
+
     /// The document for the file at `path`, absolute, if a view has it open.
     pub fn open_document(&self, path: &Path) -> Option<Entity<Document>> {
         self.documents.find(path)

@@ -73,7 +73,7 @@ fn a_file_viewed_again_is_shown_in_the_editor_it_had(cx: &mut TestAppContext) {
         cx.read(|cx| {
             let file = shell.read(cx).viewing().unwrap();
             let file = file.read(cx);
-            (file.path.clone(), file.editor.clone())
+            (file.path.clone(), file.editor().expect("a text file's editor").clone())
         })
     };
     let (lib, lib_editor) = view("src/lib.rs", cx);

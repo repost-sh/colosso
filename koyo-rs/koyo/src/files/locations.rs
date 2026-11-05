@@ -160,8 +160,7 @@ impl Shell {
     pub(super) fn close_locations(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.locations.take().is_some() {
             if let Some(file) = self.shown_file(window, cx) {
-                let editor = file.read(cx).editor.clone();
-                editor.update(cx, |editor, cx| editor.focus_editor(window, cx));
+                file.update(cx, |file, cx| file.focus(window, cx));
             }
             cx.notify();
         }

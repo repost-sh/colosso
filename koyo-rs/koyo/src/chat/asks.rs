@@ -145,7 +145,11 @@ fn plan(
         .child(
             div()
                 .text_sm()
-                .child(TextView::new(text).when(long && !open, |text| text.max_lines(PLAN_LINES))),
+                .child(
+                    TextView::new(text)
+                        .on_link_click(drawing.opens_links())
+                        .when(long && !open, |text| text.max_lines(PLAN_LINES)),
+                ),
         )
         .when(long, |card| card.child(drawing.show_more(row.clone(), index, open)));
     Some(card.into_any_element())

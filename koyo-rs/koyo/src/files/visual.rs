@@ -186,7 +186,7 @@ fn repeated(drawn: &mut Drawn) -> Result<Vec<String>> {
     let tree = drawn.hold(&format!("tree of {rows} rows"), "down", HOLD, pick)?;
     let editor = (drawn.cx).read(|cx| {
         let viewed = drawn.shell.read(cx).viewing()?;
-        viewed.read(cx).editor.read(cx).editor().cloned()
+        viewed.read(cx).editor()?.read(cx).editor().cloned()
     });
     let editor = editor.ok_or("the file isn't shown in an editor")?;
     (drawn.cx)

@@ -37,7 +37,7 @@ impl Shell {
     /// knows it.
     fn document_symbols(&mut self, _: &DocumentSymbols, window: &mut Window, cx: &mut Context<Self>) {
         let symbols = (self.shown_file(window, cx))
-            .and_then(|file| file.read(cx).editor.read(cx).document_symbols(cx));
+            .and_then(|file| file.read(cx).editor()?.read(cx).document_symbols(cx));
         let Some(symbols) = symbols else {
             return;
         };

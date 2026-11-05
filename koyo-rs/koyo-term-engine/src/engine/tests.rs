@@ -112,3 +112,19 @@ fn programs_are_told_the_hosts_theme() {
     assert_eq!(engine.set_color_scheme(true).unwrap(), None);
     assert_eq!(engine.set_color_scheme(false).unwrap(), Some(b"\x1b[?997;2n".to_vec()));
 }
+
+#[test]
+fn a_link_a_program_prints_covers_its_cells() {
+    let mut engine = Engine::new(Size::cells(30, 3), 1 << 20).unwrap();
+    engine.write(b"see \x1b]8;;file:///abs/a%20b.png\x1b\\a.png\x1b]8;;\x1b\\ or ");
+    engine.write(b"\x1b]8;;https://example.com/\x1b\\\xe5\xad\x97x\x1b]8;;\x1b\\\r\nplain");
+    let frame = engine.frame().unwrap();
+    let links = &frame.rows[0].links;
+    assert_eq!(links.len(), 2, "{links:?}");
+    assert_eq!(links[0].cols, 4..9);
+    assert_eq!(&*links[0].uri, "file:///abs/a%20b.png");
+    // The wide character's tail is the link's too.
+    assert_eq!(links[1].cols, 13..16);
+    assert_eq!(&*links[1].uri, "https://example.com/");
+    assert!(frame.rows[1].links.is_empty());
+}

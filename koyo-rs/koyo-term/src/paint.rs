@@ -3,9 +3,12 @@
 //! strikes, and an input method's composition.
 
 use std::cell::RefCell;
+use std::ops::Range;
 
 use koyo_term_engine::{Attrs, Cell, Frame, Grapheme, Rgb, Underline, Width};
-use gpui_kit::{App, Bounds, Hsla, Pixels, Rgba, SharedString, TextRun, Window, fill, point, size};
+use gpui_kit::{
+    App, Bounds, Hsla, Pixels, Rgba, SharedString, TextRun, Window, fill, point, px, size,
+};
 
 use crate::element::Grid;
 use crate::glyphs::{Glyphs, Look, Style as GlyphStyle};
@@ -151,6 +154,35 @@ impl Painter<'_> {
         }
         if cell.attrs.contains(Attrs::OVERLINE) {
             line(area.origin.y, color, window);
+        }
+    }
+
+    /// The underline under the link the pointer is over with ⌘ held, `cells` a run of
+    /// columns per row: in each cell's own colour, which reads on any background.
+    pub fn link(&self, cells: &[(u16, Range<u16>)], window: &mut Window) {
+        let metrics = self.grid.metrics;
+        let thickness = metrics.stroke.max(px(1.));
+        for (row, cols) in cells {
+            let Some(shown) = self.frame.rows.get(usize::from(*row)) else {
+                continue;
+            };
+            let y = self.row_y(usize::from(*row)) + metrics.underline;
+            for col in cols.clone() {
+                let col = usize::from(col);
+                // A wide character's tail is drawn in the colour of its head.
+                let cell = match shown.cells.get(col) {
+                    Some(cell) if cell.width == Width::SpacerTail && col > 0 => {
+                        shown.cells.get(col - 1)
+                    }
+                    cell => cell,
+                };
+                let Some(cell) = cell else { continue };
+                let x = self.grid.origin.x + metrics.cell_width * col as f32;
+                window.paint_quad(fill(
+                    Bounds::new(point(x, y), size(metrics.cell_width, thickness)),
+                    hsla(colors(cell, self.frame).0),
+                ));
+            }
         }
     }
 

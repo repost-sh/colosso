@@ -18,6 +18,8 @@ use crate::frame::{
     Scrollbar, Underline, Width,
 };
 
+mod links;
+
 /// The grid's size in cells and the cell's size in pixels, which size reports and images use.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Size {
@@ -97,6 +99,8 @@ pub struct Engine {
     cache: HashMap<RowId, Arc<Row>>,
     sequence: u64,
     grapheme: Vec<char>,
+    /// Where a link's URI is read into, grown to the longest seen.
+    uri: Vec<u8>,
     /// Whether the host's theme is dark, once it's said: what a program asking is told.
     dark: Option<bool>,
 }
@@ -140,6 +144,7 @@ impl Engine {
             cache: HashMap::new(),
             sequence: 0,
             grapheme: Vec::with_capacity(8),
+            uri: Vec::new(),
             dark: None,
         })
     }
@@ -297,10 +302,22 @@ impl Engine {
                 } else {
                     let raw = row.raw_row()?;
                     let mut cells = Vec::with_capacity(cols as usize);
+                    // The columns of cells that are links, in a row that may have any.
+                    let linked = raw.has_hyperlink().unwrap_or(false);
+                    let mut linked_cols = Vec::new();
                     let mut cell_iteration = self.cells.update(row)?;
                     while let Some(cell) = cell_iteration.next() {
+                        if linked && cell.raw_cell()?.has_hyperlink().unwrap_or(false) {
+                            linked_cols.push(cells.len() as u16);
+                        }
                         cells.push(read_cell(cell, &mut self.grapheme)?);
                     }
+                    let links = if linked_cols.is_empty() {
+                        Vec::new()
+                    } else {
+                        let y = row.viewport_y()?;
+                        links::read(&self.term, y, &linked_cols, &cells, &mut self.uri)
+                    };
                     Arc::new(Row {
                         cells,
                         wrapped: raw.is_wrapped().unwrap_or(false),
@@ -309,6 +326,7 @@ impl Engine {
                             RowSemanticPrompt::Prompt => RowKind::Prompt,
                             RowSemanticPrompt::Continuation => RowKind::PromptContinuation,
                         },
+                        links,
                     })
                 };
                 cache.insert(id, Arc::clone(&shared));

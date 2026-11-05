@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use koyo_term::{Look, Source, TermClient, TerminalEvent, TerminalView};
+use koyo_term::{LinkTarget, Look, Source, TermClient, TerminalEvent, TerminalView};
 use koyo_term_control::{
     DaemonCommand, Handle, IfExists, OpenRequest, Selector, TermDir, Theme,
 };
@@ -263,9 +263,17 @@ impl Shell {
         }
         let source = self.terminals.sources.get(&id)?.clone();
         let client = self.terminals.client()?;
-        let view = cx.new(|cx| TerminalView::new(client, source, look, window, cx));
-        let events = cx.subscribe(&view, move |this, _, event, cx| {
-            this.terminal_event(id, event, cx);
+        // A path a program prints relative to the checkout is found wherever its shell is.
+        let roots = (self.workspace.terminal_tabs())
+            .find(|(_, tab)| *tab == id)
+            .map(|(worktree, _)| worktree.to_path_buf());
+        let view = cx.new(|cx| {
+            let mut view = TerminalView::new(client, source, look, window, cx);
+            view.set_link_roots(roots.into_iter().collect());
+            view
+        });
+        let events = cx.subscribe_in(&view, window, move |this, _, event, window, cx| {
+            this.terminal_event(id, event, window, cx);
         });
         let responsive = cx.new(|cx| responsive::ResponsiveTerminal::new(id, view.clone(), cx));
         let made = Made {
@@ -368,7 +376,13 @@ impl Shell {
         self.restore_terminals(cx);
     }
 
-    fn terminal_event(&mut self, id: u64, event: &TerminalEvent, cx: &mut Context<Self>) {
+    fn terminal_event(
+        &mut self,
+        id: u64,
+        event: &TerminalEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let title = match event {
             TerminalEvent::Title(title) if !title.is_empty() => title.clone(),
             TerminalEvent::Opened(record) => {
@@ -408,6 +422,10 @@ impl Shell {
                 }
                 return;
             }
+            TerminalEvent::OpenLink(target) => {
+                self.open_link(target, window, cx);
+                return;
+            }
             TerminalEvent::Title(_)
             | TerminalEvent::Bell
             | TerminalEvent::Exited(_)
@@ -415,6 +433,18 @@ impl Shell {
         };
         if self.workspace.retitle_terminal(id, title.into()) {
             cx.notify();
+        }
+    }
+
+    /// Opens what a link ⌘-clicked in a terminal names: a file in a tab, at its line when
+    /// the link gives one, or a page in the browser.
+    fn open_link(&mut self, target: &LinkTarget, window: &mut Window, cx: &mut Context<Self>) {
+        match target {
+            LinkTarget::File { path, line, .. } => {
+                let at = line.map(crate::files::At::printed_line);
+                self.open_path(path, at, window, cx);
+            }
+            LinkTarget::Url(url) => cx.open_url(url),
         }
     }
 

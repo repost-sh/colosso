@@ -18,6 +18,7 @@ use gpui_kit::{
 use similar::{DiffTag, TextDiff};
 
 use crate::changes::Touched;
+use crate::viewer::Viewer;
 
 /// Files past this size are noted rather than opened. The editor builds its buffer on the
 /// main thread: with the first frame, 4 MB of plain text takes 37 ms (44 at worst) on an M4
@@ -191,10 +192,12 @@ impl Document {
 }
 
 /// The checkout's documents, by absolute path. The views showing one hold it; this only
-/// finds it again, so a file opened twice is read once.
+/// finds it again, so a file opened twice is read once. And the viewers showing its files as
+/// what they are, which, as documents are, are read again as their files are written.
 #[derive(Default)]
 pub struct Documents {
     open: HashMap<Arc<Path>, WeakEntity<Document>>,
+    viewers: Vec<WeakEntity<Viewer>>,
 }
 
 impl Documents {
@@ -215,17 +218,31 @@ impl Documents {
         self.open.get(path)?.upgrade()
     }
 
-    /// Reads again the open documents `touched` covers, by their paths under `root`.
+    /// Has `viewer` read its file again as it's written, while it's open.
+    pub fn watch(&mut self, viewer: &Entity<Viewer>) {
+        self.viewers.retain(|viewer| viewer.upgrade().is_some());
+        self.viewers.push(viewer.downgrade());
+    }
+
+    /// Reads again the open documents `touched` covers, by their paths under `root`, and has
+    /// the viewers of the files it covers read them again.
     pub fn touched(&mut self, touched: &[Touched], root: &Path, cx: &mut App) {
+        let covered = |path: &Path| {
+            (path.strip_prefix(root).ok().and_then(Path::to_str))
+                .is_some_and(|relative| touched.iter().any(|touched| touched.covers(relative)))
+        };
         self.open.retain(|_, document| document.upgrade().is_some());
         for (path, document) in &self.open {
-            let Some(relative) = path.strip_prefix(root).ok().and_then(Path::to_str) else {
-                continue;
-            };
-            if touched.iter().any(|touched| touched.covers(relative))
+            if covered(path)
                 && let Some(document) = document.upgrade()
             {
                 document.update(cx, Document::reread);
+            }
+        }
+        self.viewers.retain(|viewer| viewer.upgrade().is_some());
+        for viewer in self.viewers.iter().filter_map(WeakEntity::upgrade) {
+            if covered(viewer.read(cx).path()) {
+                viewer.update(cx, Viewer::reread);
             }
         }
     }

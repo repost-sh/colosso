@@ -6,6 +6,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use gpui_kit::assets::IconName;
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Context, Div, InteractiveElement as _, ParentElement as _, SharedString,
     StatefulInteractiveElement as _, Styled as _, div, px,
@@ -17,6 +18,7 @@ use super::render::BAR;
 use crate::projects::display_path;
 use crate::shell::{ellipsized, icon};
 use crate::theme::Palette;
+use crate::viewer;
 
 /// A piece of the breadcrumb: a folder's or the file's name, and its path as the tree names
 /// it, for a file in the checkout.
@@ -103,7 +105,34 @@ impl FilePane {
             }
             bar = bar.child(piece);
         }
+        if viewer::has_text(&self.path) {
+            bar = bar.child(div().flex_1()).child(self.text_or_drawing(p, cx));
+        }
         bar
+    }
+
+    /// A drawing's two faces, to pick between: the drawing, or its text.
+    fn text_or_drawing(&self, p: Palette, cx: &mut Context<Self>) -> Div {
+        let text = self.shows_text();
+        let face = |id: &'static str, label: &'static str, picked: bool| {
+            div()
+                .id(id)
+                .px_1p5()
+                .rounded(px(4.))
+                .when(picked, |face| face.bg(p.selected).text_color(p.text))
+                .when(!picked, |face| face.cursor_pointer().hover(|style| style.text_color(p.text)))
+                .child(label)
+        };
+        div()
+            .flex()
+            .flex_shrink_0()
+            .gap_0p5()
+            .child(face("show-drawing", "Preview", !text).on_click(cx.listener(
+                |this, _, window, cx| this.show_text(false, window, cx),
+            )))
+            .child(face("show-text", "Source", text).on_click(cx.listener(
+                |this, _, window, cx| this.show_text(true, window, cx),
+            )))
     }
 }
 

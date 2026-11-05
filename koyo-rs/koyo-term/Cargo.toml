@@ -7,6 +7,7 @@ publish.workspace = true
 
 [dependencies]
 koyo-term-control = { path = "../koyo-term-control" }
+percent-encoding = "2.3"
 koyo-term-engine = { path = "../koyo-term-engine" }
 # The VT thread selects over the daemon's stream, the view's commands and its frame timer.
 crossbeam-channel = "0.5"

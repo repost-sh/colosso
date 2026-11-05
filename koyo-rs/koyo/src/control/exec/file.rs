@@ -64,8 +64,11 @@ pub(crate) fn save(input: &FileSaveInput, cx: &mut App) -> Result<Exec, ControlE
         let mut unsaved: Vec<(PathBuf, Entity<FileEditor>)> = Vec::new();
         for file in panes {
             let file = file.read(cx);
-            if file.is_dirty() && !unsaved.iter().any(|(path, _)| *path == file.path) {
-                unsaved.push((file.path.clone(), file.editor.clone()));
+            let editor = file.unsaved();
+            if let Some(editor) = editor
+                && !unsaved.iter().any(|(path, _)| *path == file.path)
+            {
+                unsaved.push((file.path.clone(), editor.clone()));
             }
         }
         Ok(unsaved)

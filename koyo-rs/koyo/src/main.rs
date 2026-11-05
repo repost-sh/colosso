@@ -42,6 +42,7 @@ mod terminals;
 #[cfg(any(test, feature = "visual-check"))]
 mod test_support;
 mod theme;
+mod viewer;
 #[cfg(feature = "visual-check")]
 mod visual;
 
@@ -67,6 +68,7 @@ fn init(cx: &mut App) {
     browser::init(cx);
     right_panel::init(cx);
     files::init(cx);
+    viewer::init(cx);
     navigation::bind_keys(cx);
     go_to_file::init(cx);
     chat::init(cx);

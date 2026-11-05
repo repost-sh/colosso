@@ -175,7 +175,7 @@ async fn hover_asks_the_server_and_a_definition_opens_its_file(cx: &mut TestAppC
     let selected = |cx: &App| {
         let viewed = shell.1.read(cx).viewing()?;
         let viewed = viewed.read(cx);
-        let editor = editor(&viewed.editor, cx)?;
+        let editor = editor(viewed.editor()?, cx)?;
         (viewed.path == other).then(|| editor.read(cx).selected_range())
     };
     let watched = vec![changes(&server, cx), changes(&shell.1, cx)];
@@ -187,7 +187,7 @@ async fn hover_asks_the_server_and_a_definition_opens_its_file(cx: &mut TestAppC
         cx.executor().advance_clock(Duration::from_millis(500));
         cx.run_until_parked();
     }
-    let shown = cx.read(|cx| editor(&shell.1.read(cx).viewing()?.read(cx).editor, cx));
+    let shown = cx.read(|cx| editor(shell.1.read(cx).viewing()?.read(cx).editor()?, cx));
     assert!(
         editor_focused(shell.0, &shown.unwrap(), cx),
         "the definition's editor has the keyboard"

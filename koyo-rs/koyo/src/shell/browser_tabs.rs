@@ -176,9 +176,9 @@ impl Shell {
     pub fn close_pane(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
         let pane = self.workspace.branch().and_then(|unit| unit.pane(id));
         let editors = (pane.and_then(|pane| pane.file.as_ref()))
-            .filter(|file| file.read(cx).is_dirty())
-            .map(|file| vec![file.read(cx).editor.clone()])
-            .unwrap_or_default();
+            .and_then(|file| file.read(cx).unsaved().cloned())
+            .into_iter()
+            .collect();
         let terminals = pane.and_then(|pane| pane.terminal).into_iter().collect();
         self.ask_then(
             editors,

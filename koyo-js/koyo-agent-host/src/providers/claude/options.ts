@@ -88,6 +88,17 @@ function placed(place: Place): Pick<
   };
 }
 
+/**
+ * What Claude Code's own system prompt is told of Koyo: the files a reply names are links,
+ * which Koyo opens in a tab of their own when they're clicked, at the line a link names.
+ */
+export const KOYO_PROMPT =
+  "Koyo shows your replies as Markdown, and opens a link to a file in a tab when it's "
+  + "clicked. When you name a file, or a line in one, write it as a Markdown link whose target "
+  + "is its path, relative to the working directory or absolute, with #L and the line number "
+  + "for a line: [viewer/mod.rs](src/viewer/mod.rs), [mod.rs:42](src/viewer/mod.rs#L42). "
+  + "Don't put these links in backticks.";
+
 /** What a chat's session is opened with beside its spec. */
 interface Opening {
   /** Whether the conversation has turns to continue. */
@@ -97,7 +108,8 @@ interface Opening {
 }
 
 /**
- * A chat session's options: Claude Code's own system prompt (an omitted one is empty), text
+ * A chat session's options: Claude Code's own system prompt (an omitted one is empty) with
+ * what it's told of Koyo (`KOYO_PROMPT`), text
  * as it streams, a subagent's words as well as its tools, what the model thought (left out
  * unless asked for, and asked for by the flag: the `thinking` option would also turn thinking on
  * for someone who has it off), and a permission mode only when the chat or Koyo names one, so
@@ -110,7 +122,7 @@ export function sessionOptions(spec: SessionSpec, place: Place, opening: Opening
     ...placed(place),
     ...(opening.resume ? { resume: spec.sessionId } : { sessionId: spec.sessionId }),
     ...(opening.resume && spec.resumeAt !== null ? { resumeSessionAt: spec.resumeAt } : {}),
-    systemPrompt: { type: "preset", preset: "claude_code" },
+    systemPrompt: { type: "preset", preset: "claude_code", append: KOYO_PROMPT },
     includePartialMessages: true,
     forwardSubagentText: true,
     extraArgs: { "thinking-display": "summarized" },
