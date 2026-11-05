@@ -1,11 +1,16 @@
 //! What the smoke tests share: the engine to start, a session that keeps the host's rings
-//! and hands its frames back, and the pixels read out of a frame.
+//! and hands its frames back, the pixels read out of a frame, and a page to open, serve and
+//! ask things of.
 use koyo_browser_ipc::client::{Connection, Incoming, Launch};
-use koyo_browser_ipc::{AppRequest, HostEvent, PixelSize};
+use koyo_browser_ipc::{AppRequest, HostEvent, PixelSize, Viewport};
 use objc2_io_surface::{IOSurfaceLockOptions, IOSurfaceRef};
 use std::collections::HashMap;
+use std::io::{Read, Write};
+use std::net::TcpListener;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
+
+use crate::agents::cdp;
 
 pub fn launch(test: &str) -> Launch {
     let engine = PathBuf::from(
@@ -169,4 +174,114 @@ impl Session {
 pub fn is_red(pixel: [u8; 4]) -> bool {
     // BGRA: blue, green, red, alpha.
     pixel[2] > 240 && pixel[1] < 16 && pixel[0] < 16
+}
+
+/// The size [`open`] opens a page at.
+const VIEWPORT: Viewport = Viewport {
+    width: 400,
+    height: 300,
+    scale: 1.,
+};
+
+/// Opens `url` as pane 1 and waits for it to load, `title` being its title.
+pub fn open(session: &mut Session, url: &str, title: &str) {
+    session
+        .host
+        .send(&AppRequest::Open {
+            pane: 1,
+            url: url.into(),
+            viewport: VIEWPORT,
+            profile: "smoke".into(),
+        })
+        .expect("open");
+    session.wait("the page to load", |event, _| {
+        matches!(event, HostEvent::Page { pane: 1, state } if state.title == title && !state.loading)
+    });
+}
+
+/// The JSON `expression` makes in pane 1's page, once `settled` holds of it: asked again every
+/// 50 ms of the page's until then, for `within` at most.
+pub fn until(
+    session: &mut Session,
+    expression: &str,
+    what: &str,
+    within: Duration,
+    settled: impl Fn(&serde_json::Value) -> bool,
+) -> serde_json::Value {
+    let later = format!("new Promise(done => setTimeout(() => done({expression}), 50))");
+    let deadline = Instant::now() + within;
+    loop {
+        let text = evaluate(session, &later);
+        let value = serde_json::from_str(text.as_str().expect("JSON text")).expect("JSON");
+        if settled(&value) {
+            return value;
+        }
+        assert!(Instant::now() < deadline, "timed out waiting for {what}");
+    }
+}
+
+/// What `expression` comes to in pane 1's page, a promise awaited. A page that stops
+/// meanwhile fails the test with why.
+pub fn evaluate(session: &mut Session, expression: &str) -> serde_json::Value {
+    static CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    let call = CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let params = serde_json::json!({
+        "expression": expression,
+        "returnByValue": true,
+        "awaitPromise": true,
+    });
+    cdp(session, call, "Runtime.evaluate", params);
+    let mut answer = None;
+    session.wait("the page's answer", |event, _| match event {
+        HostEvent::Gone { reason, .. } => panic!("the page stopped: {reason}"),
+        HostEvent::CdpReply {
+            call: answered,
+            result,
+            error,
+            ..
+        } if *answered == call => {
+            answer = Some((result.clone(), error.clone()));
+            true
+        }
+        _ => false,
+    });
+    let (result, error) = answer.expect("answered");
+    assert_eq!(error, None, "{expression}");
+    let result = result.expect("a result");
+    assert!(
+        result["exceptionDetails"].is_null(),
+        "{expression}: {result}"
+    );
+    result["result"]["value"].clone()
+}
+
+pub fn close(session: Session, launch: &Launch) {
+    session.host.shutdown(Duration::from_secs(10));
+    let _ = std::fs::remove_dir_all(launch.profiles.parent().expect("scratch"));
+}
+
+/// Serves `page` at every path of a local address, which a page needs to change its own:
+/// the address.
+pub fn serve(page: &'static str) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("a local port");
+    let address = format!("http://{}/", listener.local_addr().expect("an address"));
+    std::thread::spawn(move || {
+        for mut stream in listener.incoming().flatten() {
+            let mut request = Vec::new();
+            let mut chunk = [0; 1024];
+            while !request.windows(4).any(|end| end == b"\r\n\r\n") {
+                match stream.read(&mut chunk) {
+                    Ok(read) if read > 0 => request.extend_from_slice(&chunk[..read]),
+                    _ => break,
+                }
+            }
+            let _ = write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\
+                 Content-Length: {}\r\nConnection: close\r\n\r\n{page}",
+                page.len()
+            );
+        }
+    });
+    address
 }

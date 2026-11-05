@@ -2,21 +2,13 @@
 //! measures from an input's time (how long a click took to answer, when a click that goes to
 //! another view of the page started), and stops a page whose click is older than the page.
 
-use koyo_browser_ipc::{
-    AppRequest, HostEvent, KeyKind, Modifiers, MouseButton, MouseKind, Viewport,
-};
-use std::io::{Read, Write};
-use std::net::TcpListener;
+use koyo_browser_ipc::{AppRequest, KeyKind, Modifiers, MouseButton, MouseKind};
 use std::time::Duration;
 
-use crate::agents::cdp;
-use crate::support::{Session, launch};
+use crate::support::{Session, close, evaluate, launch, open, serve, until};
 
-const VIEWPORT: Viewport = Viewport {
-    width: 400,
-    height: 300,
-    scale: 1.,
-};
+/// How long the page has to show what a test waits for.
+const SHOWN: Duration = Duration::from_secs(10);
 
 /// How long a page is left alone before input is played to it, in its own milliseconds: an
 /// input stamped with anything but the time it's played is that far off, or further.
@@ -88,6 +80,7 @@ fn input_reaches_the_page_stamped_with_the_time_it_was_played() {
         &mut session,
         "JSON.stringify(times)",
         "every kind of input to reach the page",
+        SHOWN,
         |times| times.as_object().is_some_and(|times| times.len() == 6),
     );
     for (kind, time) in times.as_object().expect("an object") {
@@ -114,6 +107,7 @@ fn a_click_that_goes_to_another_view_of_the_page_keeps_it_running() {
         &mut session,
         "JSON.stringify([clicked, navigated, document.title, location.pathname])",
         "the engine to take the click for a navigation within the page",
+        SHOWN,
         |times| !times[1].is_null(),
     );
     let (clicked, navigated) = (number(&times[0]), number(&times[1]));
@@ -126,22 +120,6 @@ fn a_click_that_goes_to_another_view_of_the_page_keeps_it_running() {
         (Some("next"), Some("/next"))
     );
     close(session, &launch);
-}
-
-/// Opens `url` as pane 1 and waits for it to load, `title` being its title.
-fn open(session: &mut Session, url: &str, title: &str) {
-    session
-        .host
-        .send(&AppRequest::Open {
-            pane: 1,
-            url: url.into(),
-            viewport: VIEWPORT,
-            profile: "smoke-input".into(),
-        })
-        .expect("open");
-    session.wait("the page to load", |event, _| {
-        matches!(event, HostEvent::Page { pane: 1, state } if state.title == title && !state.loading)
-    });
 }
 
 /// Leaves pane 1's page alone until it is [`SETTLED`] old and has painted.
@@ -176,91 +154,6 @@ fn click(session: &mut Session) {
     }
 }
 
-/// The JSON `expression` makes in pane 1's page, once `settled` holds of it: asked again every
-/// 50 ms of the page's until then.
-fn until(
-    session: &mut Session,
-    expression: &str,
-    what: &str,
-    settled: impl Fn(&serde_json::Value) -> bool,
-) -> serde_json::Value {
-    let later = format!("new Promise(done => setTimeout(() => done({expression}), 50))");
-    for _ in 0..200 {
-        let text = evaluate(session, &later);
-        let value = serde_json::from_str(text.as_str().expect("JSON text")).expect("JSON");
-        if settled(&value) {
-            return value;
-        }
-    }
-    panic!("timed out waiting for {what}");
-}
-
-/// What `expression` comes to in pane 1's page, a promise awaited. A page that stops
-/// meanwhile fails the test with why.
-fn evaluate(session: &mut Session, expression: &str) -> serde_json::Value {
-    static CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-    let call = CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let params = serde_json::json!({
-        "expression": expression,
-        "returnByValue": true,
-        "awaitPromise": true,
-    });
-    cdp(session, call, "Runtime.evaluate", params);
-    let mut answer = None;
-    session.wait("the page's answer", |event, _| match event {
-        HostEvent::Gone { reason, .. } => panic!("the page stopped: {reason}"),
-        HostEvent::CdpReply {
-            call: answered,
-            result,
-            error,
-            ..
-        } if *answered == call => {
-            answer = Some((result.clone(), error.clone()));
-            true
-        }
-        _ => false,
-    });
-    let (result, error) = answer.expect("answered");
-    assert_eq!(error, None, "{expression}");
-    let result = result.expect("a result");
-    assert!(
-        result["exceptionDetails"].is_null(),
-        "{expression}: {result}"
-    );
-    result["result"]["value"].clone()
-}
-
 fn number(value: &serde_json::Value) -> f64 {
     value.as_f64().expect("a number")
-}
-
-fn close(session: Session, launch: &koyo_browser_ipc::client::Launch) {
-    session.host.shutdown(Duration::from_secs(10));
-    let _ = std::fs::remove_dir_all(launch.profiles.parent().expect("scratch"));
-}
-
-/// Serves `page` at every path of a local address, which a page needs to change its own:
-/// the address.
-fn serve(page: &'static str) -> String {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("a local port");
-    let address = format!("http://{}/", listener.local_addr().expect("an address"));
-    std::thread::spawn(move || {
-        for mut stream in listener.incoming().flatten() {
-            let mut request = Vec::new();
-            let mut chunk = [0; 1024];
-            while !request.windows(4).any(|end| end == b"\r\n\r\n") {
-                match stream.read(&mut chunk) {
-                    Ok(read) if read > 0 => request.extend_from_slice(&chunk[..read]),
-                    _ => break,
-                }
-            }
-            let _ = write!(
-                stream,
-                "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\
-                 Content-Length: {}\r\nConnection: close\r\n\r\n{page}",
-                page.len()
-            );
-        }
-    });
-    address
 }
