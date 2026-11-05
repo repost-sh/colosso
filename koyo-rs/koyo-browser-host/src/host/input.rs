@@ -1,4 +1,7 @@
 //! The person's input, as CEF takes it: pointer, wheel, pinch, keys, composition and edits.
+//!
+//! All of it reaches CEF through [`handle`], which plays each input as the event the host's
+//! app is handling: CEF stamps an input with that event's time, not one of its own.
 use super::{browser_of, host_of, with_pane};
 use cef::sys::cef_event_flags_t as Flag;
 use cef::{
@@ -29,6 +32,19 @@ pub(super) struct Trackpad {
 
 /// Plays the person's input to their pane's page; anything else is left alone.
 pub(super) fn handle(request: AppRequest) {
+    played(|| send(request));
+}
+
+/// Runs `input`, which hands CEF an input, as the app's handling of an event that happened
+/// now (`mac_app`).
+fn played(input: impl FnOnce()) {
+    #[cfg(target_os = "macos")]
+    crate::mac_app::playing(input);
+    #[cfg(not(target_os = "macos"))]
+    input();
+}
+
+fn send(request: AppRequest) {
     match request {
         AppRequest::Mouse {
             pane,

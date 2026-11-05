@@ -13,6 +13,7 @@
 )]
 
 mod agents;
+mod input;
 mod live_resize;
 mod support;
 
