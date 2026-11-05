@@ -1,5 +1,5 @@
-//! The chats no tab shows: listed in the new-tab menu, and opening where they're shown already or
-//! in a new tab.
+//! The chats no tab shows: listed in the new-tab launcher, and opening where they're shown
+//! already or in a new tab.
 
 use koyo_agent::protocol::ids::{ThreadId, Time};
 use koyo_agent::protocol::model::ThreadSummary;
@@ -31,15 +31,11 @@ fn the_chats_of_a_checkout_with_no_tab_are_recent_latest_first(cx: &mut TestAppC
     chats.update(cx, |chats, cx| chats.listed(Ok(listed), cx));
     draw(window, cx);
 
-    let labels: Vec<SharedString> = shell.read_with(cx, |shell, cx| {
-        shell.recent_chats(&root, cx).into_iter().map(|row| row.label).collect()
+    let titles: Vec<SharedString> = shell.read_with(cx, |shell, cx| {
+        shell.chats_without_tabs(&root, cx).into_iter().map(|(_, title)| title).collect()
     });
 
-    assert_eq!(labels, ["Newer", "Older"]);
-    let first_apart = shell.read_with(cx, |shell, cx| {
-        shell.recent_chats(&root, cx).iter().map(|row| row.apart).collect::<Vec<bool>>()
-    });
-    assert_eq!(first_apart, [true, false], "a line sets them apart from the kinds of tab");
+    assert_eq!(titles, ["Newer", "Older"]);
 }
 
 #[gpui_kit::test]

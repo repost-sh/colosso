@@ -209,6 +209,13 @@ impl Shell {
         match read.worktrees {
             Ok(worktrees) => {
                 self.workspace.set_worktrees(project, worktrees);
+                let checkouts: Vec<(PathBuf, PathBuf)> = (self.workspace.projects.iter())
+                    .flat_map(|project| {
+                        let main = &project.path;
+                        project.branches.iter().map(|unit| (unit.worktree.path.clone(), main.clone()))
+                    })
+                    .collect();
+                crate::history::know_checkouts(checkouts, cx);
                 self.restore_terminals(cx);
                 self.follow_chats(cx);
             }

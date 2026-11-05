@@ -8,7 +8,7 @@ use gpui_kit::{AppContext as _, FocusHandle, TestAppContext, VisualTestContext};
 use super::SaveDialog;
 use crate::files::At;
 use crate::files::tests::{
-    answer, checkout, dialog, editing, press, shell_showing, tabs, typed, with_shell,
+    answer, checkout, dialog, editing, new_chat, press, shell_showing, tabs, typed, with_shell,
 };
 use crate::modal;
 use crate::navigation::Route;
@@ -24,7 +24,7 @@ fn cmd_w_closes_what_is_looked_at_never_the_window(cx: &mut TestAppContext) {
     let shell_root = cx.read(|cx| shell.read(cx).focus.clone());
 
     // README.md's tab, and a chat after it: ⌘W closes the chat, shown, and then README.md.
-    press(window, "cmd-t", cx);
+    new_chat(window, cx);
     assert_eq!(tabs(&shell, cx), ["README.md", "[New chat]"]);
     press(window, "cmd-w", cx);
     assert_eq!(tabs(&shell, cx), ["[README.md]"]);

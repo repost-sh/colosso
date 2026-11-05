@@ -118,7 +118,7 @@ pub(crate) fn open(
                 );
             }
             let command = (spec.command.clone()).map(login_shell_line).unwrap_or_default();
-            let opening = shell.open_terminal(root.to_path_buf(), spec.name.clone().into(), command, cx);
+            let opening = shell.open_terminal(root.to_path_buf(), spec.name.clone().into(), command, None, cx);
             Opened::Later(cx.spawn_in(window, async move |this, cx| {
                 let pane = opening.await.ok_or_else(|| {
                     ControlError::new(

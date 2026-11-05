@@ -13,7 +13,7 @@ use gpui_kit::{
 use crate::model::BranchUnit;
 use crate::projects::{AddProject, NewWorktreeIn, project_menu, with_menu, worktree_menu};
 use crate::shell::{
-    Shell, action_button, add_project_row, ellipsized, icon, icon_button, new_tab_menu, no_matches,
+    Shell, action_button, add_project_row, ellipsized, icon, new_tab_button, no_matches,
     project_error, row, search_field, section_label, tab_close_button, tab_list, tab_row,
 };
 use crate::theme::{self, Palette};
@@ -258,12 +258,11 @@ fn branch_group(
                     })
                 })
                 .children(shell.checkout_chat_mark(&branch.worktree.path, p, cx))
-                .child(new_tab_menu(
-                    ("arc-new-tab-menu", branch_index),
-                    icon_button(("arc-new-tab", branch_index), IconName::Plus, "New tab", cx)
+                .child(
+                    new_tab_button(("arc-new-tab", branch_index), cx)
                         .xsmall()
-                        // The menu opens its tab on the selected branch unit, so select
-                        // this one on the press that opens the menu.
+                        // The launcher opens its tab on the selected branch unit, so select
+                        // this one on the press that opens it.
                         .on_mouse_down(
                             MouseButton::Left,
                             cx.listener(move |this, _, _, cx| {
@@ -271,10 +270,7 @@ fn branch_group(
                                 cx.notify();
                             }),
                         ),
-                    shell.focus.clone(),
-                    cx.weak_entity(),
-                    branch.worktree.path.clone(),
-                )),
+                ),
             move || worktree_menu(&path, is_main, terminals),
         ))
         .child(tab_list(&shell.tab_hand, list, rows, px(1.), p, cx))

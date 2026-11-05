@@ -241,7 +241,8 @@ terminal sessions. T3 defaults to full access; Koyo doesn't.
 **C13 [decided] A chat is a tab, in a worktree.** Threads are keyed to the worktree's
 checkout path, which is also the agent's `cwd`. The tab face shows the chat's title and
 status; the sidebar's worktree row shows what its chats need. Closing the tab doesn't delete
-the chat: "Recent chats" in the worktree's new-tab menu lists the chats no tab shows. Which
+the chat: the new-tab launcher (`docs/new-tab.md`), in its Chat kind, lists the chats no tab
+shows. Which
 chats have a tab is the thread's own `tabOpen`, kept by the host with the rest of it, so the
 tabs come back with the app as terminals' do (5.2); the app keeps no list of its own. A new
 tab is not a chat until its first send, so empty tabs leave nothing behind.

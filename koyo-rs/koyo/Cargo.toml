@@ -154,8 +154,8 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
   "NSRunLoop",
 ] }
 block2 = "0.6"
-# The window's view, to reach its traffic lights (native/traffic_lights.rs); the version GPUI
-# already pulls in.
+# The window's view, to reach its traffic lights (native/traffic_lights.rs), and the `NSWindow`
+# it's drawn in (native/window.rs); the version GPUI already pulls in.
 raw-window-handle = "0.6"
 # What a chat tells a person who isn't looking (native/notifications.rs).
 objc2-user-notifications = { version = "0.3", default-features = false, features = [

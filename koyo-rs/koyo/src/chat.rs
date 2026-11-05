@@ -51,7 +51,7 @@ pub use composer::{
     ImplementPlan, OpenModelMenu, RecallPrompt, SkipQuestion, StopTurn, TogglePlan,
 };
 pub use subagent_bar::OpenParent;
-pub use tabs::{ChatTabs, OpenChat};
+pub use tabs::ChatTabs;
 pub use view::details::ToggleDetails;
 
 /// How long the loop waits between batches: what arrives meanwhile is applied together.

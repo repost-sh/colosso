@@ -33,6 +33,7 @@ mod responsive;
 mod restore;
 pub(crate) mod states;
 mod stop;
+mod typing;
 #[cfg(feature = "visual-check")]
 pub mod visual;
 mod watch;
@@ -59,6 +60,8 @@ pub struct Terminals {
     panel_share: Option<f32>,
     /// The theme's send to the daemon, waiting for the theme to settle.
     theme_send: Option<Task<()>>,
+    /// What to type into a terminal once the daemon says it's at its prompt, by its tab.
+    typing: HashMap<u64, String>,
 }
 
 /// How long the theme stays the same before the daemon is told it.
@@ -166,6 +169,7 @@ impl Terminals {
             .collect();
         self.views.retain(|id, _| shown.contains(id));
         self.panels.retain(|id, _| shown.contains(id));
+        self.typing.retain(|id, _| shown.contains(id));
         self.sources.retain(|id, _| known.contains(id));
     }
 }
@@ -378,6 +382,7 @@ impl Shell {
                         name: name.clone(),
                     },
                 );
+                self.type_waiting(cx);
                 name
             }
             TerminalEvent::Closed => {

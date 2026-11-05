@@ -8,7 +8,6 @@ use gpui_kit::{
 };
 
 use super::{Shell, switcher};
-use crate::chat::OpenChat;
 use crate::files;
 use crate::model::PaneKind;
 use crate::navigation::{CloseSettings, GoBack, GoForward, Navigate, NavigationHistory, Route};
@@ -27,8 +26,6 @@ actions!(
         NewChat,
         NewTerminal,
         StopTerminal,
-        NewBrowserTab,
-        NewEditorTab,
         ReopenClosedTab,
         CloseTab,
         SwitchTab,
@@ -42,7 +39,6 @@ pub fn init(cx: &mut App) {
         KeyBinding::new("cmd-b", ToggleSidebar, None),
         KeyBinding::new("cmd-alt-b", ToggleRightPanel, None),
         KeyBinding::new("cmd-j", ToggleBottomPanel, None),
-        KeyBinding::new("cmd-t", NewChat, None),
         KeyBinding::new("cmd-shift-t", ReopenClosedTab, None),
         KeyBinding::new("cmd-shift-m", ToggleSidebarMode, None),
         KeyBinding::new("cmd-n", NewWorktree, None),
@@ -89,9 +85,6 @@ impl Shell {
             .map(|root| Self::handle_right_panel(root, cx))
             .on_action(cx.listener(Self::toggle_bottom_panel))
             .on_action(cx.listener(|this, _: &NewChat, _, cx| this.new_tab(PaneKind::Chat, cx)))
-            .on_action(cx.listener(|this, OpenChat(id): &OpenChat, _, cx| {
-                this.open_chat(id, cx);
-            }))
             // ⌘W closes what's looked at: the settings, or else the tab shown, asking about
             // its unsaved edits first. Never the window.
             .on_action(cx.listener(|this, _: &CloseTab, window, cx| {
@@ -122,12 +115,7 @@ impl Shell {
             .on_action(cx.listener(|this, _: &ReopenClosedTab, window, cx| {
                 this.reopen_closed_tab(window, cx);
             }))
-            .on_action(cx.listener(|this, _: &NewBrowserTab, window, cx| {
-                this.open_browser(None, window, cx);
-            }))
-            .on_action(
-                cx.listener(|this, _: &NewEditorTab, _, cx| this.new_tab(PaneKind::Editor, cx)),
-            )
+            .map(|root| Self::handle_launcher(root, cx))
             .map(|root| projects::handle_actions(root, cx))
             .map(browser::handle_actions)
             .map(|root| terminals::handle_actions(root, cx))

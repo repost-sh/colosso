@@ -228,6 +228,15 @@ pub(crate) fn press(window: AnyWindowHandle, keys: &str, cx: &mut TestAppContext
     cx.simulate_keystrokes(window, keys);
 }
 
+/// Opens a new chat in `window` as a person does: ⌘T, Tab to a chat, Enter.
+pub(crate) fn new_chat(window: AnyWindowHandle, cx: &mut TestAppContext) {
+    press(window, "cmd-t", cx);
+    cx.run_until_parked();
+    let launcher = cx.read(modal::window).expect("the launcher");
+    press(launcher, "tab enter", cx);
+    cx.run_until_parked();
+}
+
 /// The dialog on screen, if one is and it shows a `T`: its window and the `T`.
 pub(crate) fn dialog<T: 'static>(cx: &mut TestAppContext) -> Option<(AnyWindowHandle, Entity<T>)> {
     cx.read(|cx| Some((modal::window(cx)?, modal::current::<T>(cx)?)))

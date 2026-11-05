@@ -7,21 +7,24 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
-use koyo_browser_ipc::{self as ipc, AppRequest, Cursor, Go, PageState, PaneId, Viewport};
+use koyo_browser_ipc::{self as ipc, AppRequest, Cursor, PageState, PaneId, Viewport};
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::{
     App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Focusable, Image,
     MouseButton, Pixels, Point, Size, Subscription, Task, WeakEntity, Window,
 };
 
-use super::control::{Control, Mode};
+use super::control::Control;
 use super::dialog::Question;
 use super::dock::{Asked, Devtools};
 use super::find::{ACTUAL_SIZE, FindBar};
 use super::frames::{Frame, Shown};
-use super::host::{Browsers, HostStatus};
+use super::host::Browsers;
+use crate::history::How;
 
 mod lifecycle;
+mod navigation;
+pub use navigation::Visit;
 pub(super) mod sized;
 use super::menu::MenuRequest;
 use super::toolbar;
@@ -37,6 +40,10 @@ pub enum BrowserEvent {
     Undock(Entity<BrowserView>),
     /// The host closed this browser: `DevTools` whose page went away.
     Closed,
+    /// The person searched the web for this from the address.
+    Searched(String),
+    /// A page loaded, as the history keeps it (`navigation.rs`).
+    Visited(Visit),
 }
 
 /// What a pane's browser shows.
@@ -143,6 +150,10 @@ pub struct BrowserView {
     pub(super) zoom: u32,
     /// The page's own icon, once the host has fetched it.
     pub(super) favicon: Option<Arc<Image>>,
+    /// How the page being opened came, which the history's visit of it says, `None` back or
+    /// forward; and the page last told as visited (`navigation.rs`).
+    came: Option<How>,
+    visited: Option<String>,
     /// Responsive mode: the page at a chosen size or as a device, and how it shows.
     pub(super) responsive: super::responsive::State,
     /// What shows an agent at work on the page: its pointer, and the glow while it holds it.
@@ -205,11 +216,7 @@ impl BrowserView {
                 |this, address, event, _, cx| match event {
                     InputEvent::PressEnter { .. } => {
                         let text = address.read(cx).value();
-                        if let Some(url) = super::address_to_url(&text) {
-                            this.person_acts(Mode::Implicit, cx);
-                            this.navigate(url, cx);
-                            this.settle.focus_page = true;
-                        }
+                        this.go_to_typed(&text, cx);
                     }
                     InputEvent::Blur => {
                         this.settle.address_stale = true;
@@ -273,6 +280,8 @@ impl BrowserView {
             find: None,
             zoom: ACTUAL_SIZE,
             favicon: None,
+            came: Some(How::Followed),
+            visited: None,
             responsive,
             marks: super::pointer::Marks::default(),
             _subscriptions: subscriptions,
@@ -352,47 +361,12 @@ impl BrowserView {
         self.send(request, cx);
     }
 
-    pub fn navigate(&mut self, url: String, cx: &mut Context<Self>) {
-        if self.is_inspector() {
-            return;
-        }
-        if matches!(self.status(cx), HostStatus::Failed(_)) {
-            // Asking for a page again is the way to retry.
-            self.restart_host(cx);
-        }
-        self.notice = None;
-        self.target.clone_from(&url);
-        self.page.url.clone_from(&url);
-        (self.page.loading, self.page.progress) = (true, 0);
-        self.send_or_open(
-            AppRequest::Navigate {
-                pane: self.pane,
-                url,
-            },
-            cx,
-        );
-        cx.emit(BrowserEvent::Changed);
-        cx.notify();
-    }
-
-    /// The person moves through the page's history, reloads or stops it.
-    pub(super) fn go(&mut self, to: Go, cx: &mut Context<Self>) {
-        self.person_acts(Mode::Implicit, cx);
-        if to == Go::Reload && matches!(self.notice, Some(Notice::Gone(_))) {
-            // A crashed page needs a new browser, not a reload.
-            self.notice = None;
-            self.opened = None;
-            self.ensure_open(cx);
-            return;
-        }
-        let pane = self.pane;
-        self.send_to_page(AppRequest::Go { pane, to }, cx);
-    }
-
     pub(super) fn page_changed(&mut self, page: PageState, cx: &mut Context<Self>) {
         let gone = self.favicon_named(&page.favicon);
-        let changed = gone || page.url != self.page.url || page.title != self.page.title;
-        if self.page.loading && !page.loading && self.zoom != ACTUAL_SIZE {
+        let loaded = self.page.loading && !page.loading;
+        let moved = page.url != self.page.url;
+        let changed = gone || loaded || moved || page.title != self.page.title;
+        if loaded && self.zoom != ACTUAL_SIZE {
             self.send_zoom(cx);
         }
         // Loading again, the page has what the offered reload would give it.
@@ -404,6 +378,9 @@ impl BrowserView {
         self.settle.address_stale = true;
         if changed {
             cx.emit(BrowserEvent::Changed);
+        }
+        if loaded || (moved && !self.page.loading) {
+            self.loaded(cx);
         }
         cx.notify();
     }

@@ -10,10 +10,11 @@ use crate::chat::{
 };
 use crate::files::Save;
 use crate::go_to_file::GoToFile;
+use crate::launcher::NewTab;
 use crate::navigation::{CloseSettings, GoBack, GoForward, OpenSettings};
 use crate::projects::NewWorktree;
 use crate::shell::{
-    CloseTab, NewChat, ReopenClosedTab, SwitchTab, ToggleBottomPanel, ToggleRightPanel,
+    CloseTab, ReopenClosedTab, SwitchTab, ToggleBottomPanel, ToggleRightPanel,
     ToggleSidebar, ToggleSidebarMode,
 };
 use crate::theme::{self, CycleTheme};
@@ -46,7 +47,7 @@ const SECTIONS: &[(&str, &[Command])] = &[
     (
         "Tabs",
         &[
-            ("New chat", &NewChat),
+            ("New tab: a browser tab, a chat or a terminal", &NewTab),
             ("Reopen the tab closed last", &ReopenClosedTab),
             ("Close the settings, or else the tab shown", &CloseTab),
             ("Switch between tabs, the latest shown first", &SwitchTab),

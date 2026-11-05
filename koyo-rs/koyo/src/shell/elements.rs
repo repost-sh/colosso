@@ -1,7 +1,5 @@
 //! The pieces the window and its sidebars are drawn from: buttons on the glass, rows, the
-//! search field, and the menu of new tabs.
-
-use std::path::PathBuf;
+//! search field, and the + that opens a new tab.
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonCustomVariant, ButtonVariants as _};
@@ -9,47 +7,22 @@ use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::{Disableable as _, Icon, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Action, App, Context, Div, ElementId, Entity, FocusHandle, Hsla, InteractiveElement as _,
+    Action, App, Context, Div, ElementId, Entity, Hsla, InteractiveElement as _,
     IntoElement, MouseButton, MouseDownEvent, ParentElement as _, SharedString, Stateful,
-    StatefulInteractiveElement as _, Styled, div, px, WeakEntity,
+    StatefulInteractiveElement as _, Styled, div, px,
 };
 
-use super::{NewBrowserTab, NewChat, NewEditorTab, NewTerminal, Shell};
-use crate::menu::{self, MenuItem};
-use crate::model::PaneKind;
+use super::Shell;
+use crate::launcher::NewTab;
 use crate::pane::{close_button, tab_button, unsaved_dot};
 use crate::projects::AddProject;
 use crate::theme::{self, Palette};
 
-fn new_tab_action(kind: PaneKind) -> Box<dyn Action> {
-    match kind {
-        PaneKind::Chat => Box::new(NewChat),
-        PaneKind::Terminal => Box::new(NewTerminal),
-        PaneKind::Browser => Box::new(NewBrowserTab),
-        PaneKind::Editor => Box::new(NewEditorTab),
-    }
-}
-
-/// Opens a menu under `trigger` offering a tab of each kind for the selected branch unit, and
-/// the chats of the checkout at `worktree` no tab shows.
-pub fn new_tab_menu(
-    id: impl Into<ElementId>,
-    trigger: Button,
-    target: FocusHandle,
-    shell: WeakEntity<Shell>,
-    worktree: PathBuf,
-) -> impl IntoElement {
-    menu::dropdown(id, trigger, target, move |cx| {
-        let recent = shell.upgrade().map(|shell| shell.read(cx).recent_chats(&worktree, cx));
-        new_tab_items(recent.unwrap_or_default())
-    })
-}
-
-fn new_tab_items(recent: Vec<MenuItem>) -> Vec<MenuItem> {
-    let kinds = PaneKind::ALL.into_iter().map(|kind| {
-        MenuItem::new(Some(kind.icon()), kind.new_tab_label(), new_tab_action(kind))
-    });
-    kinds.chain(recent).collect()
+/// The + that opens the launcher (`docs/new-tab.md`), for a tab on the selected branch unit.
+pub fn new_tab_button(id: impl Into<ElementId>, cx: &App) -> Button {
+    glass_button(id, IconName::Plus, cx)
+        .tooltip_with_action("New tab", &NewTab, None)
+        .on_click(|_, window, cx| window.dispatch_action(Box::new(NewTab), cx))
 }
 
 /// Empty rail space that moves the window, since the app owns titlebar dragging.

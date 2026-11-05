@@ -61,6 +61,7 @@ impl Shell {
         }
         let before = self.terminals.states.takeover.clone();
         if self.terminals.states.apply(event) {
+            self.type_waiting(cx);
             cx.notify();
         }
         let after = &self.terminals.states.takeover;

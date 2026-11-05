@@ -6,7 +6,7 @@ use gpui_kit::{AnyWindowHandle, Modifiers, TestAppContext, VisualTestContext};
 
 use super::Switcher;
 use crate::files::At;
-use crate::files::tests::{checkout, dialog, editing, press, shell_showing, tabs};
+use crate::files::tests::{checkout, dialog, editing, new_chat, press, shell_showing, tabs};
 
 #[gpui_kit::test]
 fn ctrl_tab_lists_the_tabs_latest_first_and_letting_go_shows_the_one_picked(cx: &mut TestAppContext) {
@@ -14,7 +14,7 @@ fn ctrl_tab_lists_the_tabs_latest_first_and_letting_go_shows_the_one_picked(cx: 
     let (window, shell, _) = shell_showing(&root, cx);
     editing(window, &shell, "src/lib.rs", At::Bytes(0..0), cx);
     // A chat among the files, listed as they are.
-    press(window, "cmd-t", cx);
+    new_chat(window, cx);
     editing(window, &shell, "src/main.rs", At::Bytes(0..0), cx);
     // The switcher open, if it is: its window, what it lists and the pick.
     let open = |cx: &mut TestAppContext| {

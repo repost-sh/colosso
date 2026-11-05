@@ -14,6 +14,7 @@ use super::asked::Asked;
 use super::footer::Settings;
 use super::{ChatComposer, ComposerEvent};
 use crate::chat::Chats;
+use crate::history;
 
 impl Chats {
     /// Makes a chat in the checkout at `cwd`, as it starts until a person changes something.
@@ -54,6 +55,12 @@ impl ChatComposer {
         self.send_as(Delivery::Auto, window, cx);
     }
 
+    /// Says `text`, as if it were typed and sent: the launcher's message to a new chat.
+    pub(in crate::chat) fn say(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.text.update(cx, |composer, cx| composer.set_value(text.to_owned(), window, cx));
+        self.send(window, cx);
+    }
+
     /// Sends what's typed and what's attached, after the turn that's on.
     pub(super) fn queue(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.send_as(Delivery::Queue, window, cx);
@@ -88,6 +95,10 @@ impl ChatComposer {
         let message_id = (self.unsent.take())
             .filter(|failed| failed.text == text && failed.attachments == attachments)
             .map_or_else(MessageId::fresh, |failed| failed.message_id);
+        if !text.is_empty() {
+            let place = history::place_of(&self.cwd, cx);
+            history::used(history::Kind::Prompt, &text, &place, cx);
+        }
         let prompt = Prompt {
             message_id,
             text,
