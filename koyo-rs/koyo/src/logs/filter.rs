@@ -11,9 +11,13 @@ const DEFAULT: LevelFilter = LevelFilter::Info;
 
 /// Modules quieter than the rest unless a filter names them, for what they say every launch
 /// that no one can act on.
-const QUIET: [(&str, LevelFilter); 3] = [
+const QUIET: [(&str, LevelFilter); 4] = [
     // macOS lists two of its system fonts twice; GPUI warns about both each launch.
     ("gpui_apple::text_system", LevelFilter::Error),
+    // A Mermaid diagram's SVG carries the CSS of looks it isn't drawn in, `transform: none`
+    // and drop shadows, which the SVG renderer warns about for each element it's on, a page
+    // of warnings for each diagram drawn.
+    ("usvg", LevelFilter::Error),
     // Advice on making elements accessible, said again as focus moves.
     ("gpui::window::a11y", LevelFilter::Warn),
     // An accessibility update sent, at debug, many times a second.

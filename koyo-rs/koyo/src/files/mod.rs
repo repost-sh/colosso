@@ -1,7 +1,7 @@
 //! Files: the selected checkout's files as a tree, in the right panel in place of the
 //! changes; each file opened from it, or from elsewhere, in a workspace tab of its own, in
-//! an editor; and under the tabs, when a symbol's references or definitions were asked
-//! for, the list of them.
+//! an editor, or a markdown file as it reads; and under the tabs, when a symbol's references
+//! or definitions were asked for, the list of them.
 
 mod breadcrumb;
 mod closing;
@@ -10,6 +10,7 @@ mod file_pane;
 mod icons;
 mod link;
 mod locations;
+mod markdown;
 mod open;
 mod panel;
 mod place;
@@ -42,15 +43,20 @@ use crate::settings::{self, SaveScope};
 use crate::shell::{self, Shell};
 use crate::theme::Palette;
 
-gpui_kit::actions!(files, [Save, CloseLocations]);
+gpui_kit::actions!(files, [Save, CloseLocations, TogglePreview]);
 
-/// Binds ⌘S, which saves the file shown, or every file as set, wherever the keyboard is;
-/// and, while the list of places under the tabs has the keyboard, the keys that move along
-/// it, Enter to open the place picked and Escape to close it.
+/// Binds ⌘S, which saves the file shown, or every file as set, wherever the keyboard is; ⌘⇧V,
+/// which shows a markdown file as it reads or as code again, and the keys that scroll it as
+/// it reads; and, while the list of places under the tabs has the keyboard, the keys that
+/// move along it, Enter to open the place picked and Escape to close it.
 pub fn init(cx: &mut App) {
     use crate::list::{Activate, SelectFirst, SelectLast};
     use gpui_kit::KeyBinding;
-    cx.bind_keys([KeyBinding::new("cmd-s", Save, None)]);
+    cx.bind_keys([
+        KeyBinding::new("cmd-s", Save, None),
+        KeyBinding::new("cmd-shift-v", TogglePreview, None),
+    ]);
+    markdown::bind_keys(cx);
     crate::list::bind_keys("Locations", cx);
     let list = Some("Locations");
     cx.bind_keys([
@@ -73,6 +79,20 @@ impl Shell {
             .on_action(cx.listener(|this, open: &OpenLinked, window, cx| {
                 this.open_path(&open.path, open.at.clone(), window, cx);
             }))
+            .on_action(cx.listener(|this, _: &TogglePreview, window, cx| {
+                this.toggle_preview(window, cx);
+            }))
+    }
+
+    /// ⌘⇧V shows the markdown file shown as it reads, or as code again; on a settings page,
+    /// or with any other file shown, nothing.
+    fn toggle_preview(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if matches!(self.route(cx), Route::Settings(_)) {
+            return;
+        }
+        if let Some(file) = self.shown_file(window, cx) {
+            file.update(cx, |file, cx| file.flip(window, cx));
+        }
     }
 
     /// ⌘S saves the file shown or, as set, every file with unsaved edits in the window; on

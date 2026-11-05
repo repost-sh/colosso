@@ -64,6 +64,11 @@ impl EventEmitter<Place> for FileEditor {}
 /// The places a symbol in the file led to, for the shell to list under the tabs.
 impl EventEmitter<Found> for FileEditor {}
 
+/// The text shown changed: typed into, read again, or shown for the first time.
+pub struct Edited;
+
+impl EventEmitter<Edited> for FileEditor {}
+
 impl FileEditor {
     /// A view of `document`, shown once it's read, and typed into if `editable`.
     pub fn new(
@@ -134,6 +139,7 @@ impl FileEditor {
             attached.changed(&shown.editor, cx);
         }
         self.tell_dirty(cx);
+        cx.emit(Edited);
     }
 
     /// Tells the document whether the text shown is other than the file's.
@@ -164,6 +170,12 @@ impl FileEditor {
             Some(shown) => shown.editor.update(cx, |editor, cx| editor.focus(window, cx)),
             None => self.focus_when_shown = true,
         }
+    }
+
+    /// Leaves the keyboard where it is once the text is shown: it was given to something else
+    /// after the editor asked for it.
+    pub fn focus_elsewhere(&mut self) {
+        self.focus_when_shown = false;
     }
 
     /// Whether the editor has the keyboard.
@@ -282,6 +294,7 @@ impl FileEditor {
         });
         self.editor = Some(Shown { editor, _changes });
         self.tell_dirty(cx);
+        cx.emit(Edited);
         self.place(cx);
         if std::mem::take(&mut self.focus_when_shown) {
             self.focus_editor(window, cx);
@@ -295,8 +308,12 @@ impl FileEditor {
         self.editor.as_ref().map(|shown| &shown.editor)
     }
 
-    /// The text it shows, if it's read and shown as text.
-    #[cfg(test)]
+    /// Whether it shows the file's text, read; not while it's read, nor a note why it isn't.
+    pub(super) fn shows_text(&self) -> bool {
+        self.editor.is_some()
+    }
+
+    /// The text it shows, if it's read and shown as text: made a string anew each time.
     pub(crate) fn text(&self, cx: &App) -> Option<SharedString> {
         Some(self.editor.as_ref()?.editor.read(cx).value())
     }
