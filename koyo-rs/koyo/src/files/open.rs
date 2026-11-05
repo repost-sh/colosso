@@ -87,12 +87,14 @@ impl Shell {
             }
             file
         };
-        if let (Some(at), Some(editor)) = (place.at, file.read(cx).editor().cloned()) {
-            editor.update(cx, |editor, cx| editor.reveal(at, cx));
-        }
-        if focus {
-            file.update(cx, |file, cx| file.focus(window, cx));
-        }
+        file.update(cx, |file, cx| {
+            if let Some(at) = place.at {
+                file.reveal(at, cx);
+            }
+            if focus {
+                file.focus(window, cx);
+            }
+        });
         // A file opened is something to look at, so leave settings for it.
         self.navigate(Route::Workspace, cx);
         cx.notify();

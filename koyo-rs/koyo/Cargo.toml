@@ -79,6 +79,12 @@ image = { version = "0.25", default-features = false, features = ["bmp", "gif", 
 # SVG files shown as pictures: the renderer GPUI already draws its SVGs with, built with the
 # same features, so it adds nothing to the build. Only what's on screen is drawn, tile by tile.
 resvg = { version = "0.46", default-features = false, features = ["text", "system-fonts", "memmap-fonts", "raster-images"] }
+# The Mermaid diagrams in a markdown file's preview, drawn without a browser: Zed's engine,
+# laid out as Mermaid lays them out, as SVG GPUI paints; pinned, being an alpha. Its labels
+# are measured in the font they're painted in (merman-export's native fonts), as estimated
+# widths cut them short. ELK's layout, under the EPL, is left out.
+merman = { version = "=0.10.0-alpha.1", default-features = false, features = ["svg", "all-diagrams", "layout-cytoscape", "native-fonts"] }
+merman-export = { version = "=0.10.0-alpha.1", default-features = false, features = ["native-fonts"] }
 # Settings on disk; all versions GPUI already pulls in.
 dirs = "6"
 # The log: the facade GPUI and gix already log through, and the clock its lines are stamped

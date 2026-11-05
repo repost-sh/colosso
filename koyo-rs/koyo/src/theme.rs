@@ -17,6 +17,7 @@ use crate::shell::action_button;
 use crate::{gradient, settings};
 
 mod accent;
+pub use accent::hex;
 pub mod card;
 pub mod fonts;
 #[cfg(target_os = "macos")]
@@ -295,7 +296,7 @@ const CODE_BLOCK_TEXT: f32 = 13. / 16.;
 fn lift_dark_popovers(cx: &mut App) {
     let theme = Theme::global_mut(cx);
     let mut dark = (*theme.dark_theme).clone();
-    dark.colors.popover = Some(accent::hex(DARK_POPOVER));
+    dark.colors.popover = Some(hex(DARK_POPOVER));
     theme.dark_theme = Rc::new(dark);
 }
 

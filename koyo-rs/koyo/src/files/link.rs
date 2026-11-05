@@ -18,7 +18,7 @@ pub struct OpenLinked {
     pub at: Option<At>,
 }
 
-/// What clicking a link in text drawn for a chat in `folder` does: a file it names opens in a
+/// What clicking a link in text drawn for a chat, or for a markdown file, in `folder` does: a file it names opens in a
 /// tab, a page in the browser. A right click does nothing, as it does to any link.
 pub fn opens_links(
     folder: PathBuf,
