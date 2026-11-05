@@ -62,7 +62,7 @@ pub use rename::Prepared;
 pub use symbols::{Symbol, serves, workspace_symbols};
 pub use registry::{Languages, attach, forget, install, locate};
 pub use server::State;
-pub use status::ServersStatus;
+pub use status::{ServersListed, ServersStatus};
 
 use crate::settings;
 

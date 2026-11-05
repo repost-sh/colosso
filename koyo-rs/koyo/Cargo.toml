@@ -131,6 +131,8 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
   "NSEvent",
   "NSView",
   "NSWindow",
+  # The traffic lights, faded in compact mode (native/traffic_lights.rs).
+  "NSButton",
   # The display link an agent's pointer over a page moves by (browser/pointer/native.rs).
   "objc2-quartz-core",
   # The Liquid Glass behind the app's bars over a page (native/liquid.rs).
@@ -152,6 +154,9 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
   "NSRunLoop",
 ] }
 block2 = "0.6"
+# The window's view, to reach its traffic lights (native/traffic_lights.rs); the version GPUI
+# already pulls in.
+raw-window-handle = "0.6"
 # What a chat tells a person who isn't looking (native/notifications.rs).
 objc2-user-notifications = { version = "0.3", default-features = false, features = [
   "std",

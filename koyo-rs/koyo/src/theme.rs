@@ -26,10 +26,14 @@ pub mod visual;
 
 pub const TITLE_BAR_HEIGHT: f32 = 40.;
 pub const TRAFFIC_LIGHT_SIZE: f32 = 14.;
+/// How far down the traffic lights are, centred in the top rail.
+pub const TRAFFIC_LIGHTS_TOP: f32 = (TITLE_BAR_HEIGHT - TRAFFIC_LIGHT_SIZE) / 2.;
 /// Room left of the top-rail buttons for the traffic lights.
 pub const TRAFFIC_LIGHTS_WIDTH: f32 = 78.;
 pub const ICON_RAIL_WIDTH: f32 = 48.;
 pub const GUTTER: f32 = 8.;
+/// How tall the status bar is with servers to show, the card's gap above it included.
+pub const STATUS_BAR_HEIGHT: f32 = 28.;
 pub const CARD_RADIUS: f32 = 10.;
 pub const SIDEBAR_WIDTH: f32 = 260.;
 pub const SIDEBAR_MIN_WIDTH: f32 = 200.;

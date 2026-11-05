@@ -94,10 +94,7 @@ fn open_main_window(cx: &mut App) -> gpui_kit::Result<()> {
         titlebar: Some(TitlebarOptions {
             title: Some("Koyo".into()),
             appears_transparent: true,
-            traffic_light_position: Some(point(
-                px(12.),
-                px((theme::TITLE_BAR_HEIGHT - theme::TRAFFIC_LIGHT_SIZE) / 2.),
-            )),
+            traffic_light_position: Some(point(px(12.), px(theme::TRAFFIC_LIGHTS_TOP))),
         }),
         ..Default::default()
     };

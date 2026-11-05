@@ -2,8 +2,6 @@
 //! and sets them: the sidebar, the bottom panel, the settings pages, and the pane that has
 //! the keyboard.
 
-use std::time::Instant;
-
 use gpui_kit::{App, Context, Focusable as _, Window};
 
 use super::Shell;
@@ -11,21 +9,17 @@ use crate::navigation::Route;
 use crate::settings_view::SettingsPage;
 
 impl Shell {
-    /// Whether the sidebar is open, or sliding open.
+    /// Whether the sidebar is open, or sliding open; closed, the window is in compact mode.
     pub(crate) fn sidebar_open(&self) -> bool {
         self.sidebar_open
     }
 
-    /// Opens or closes the sidebar, sliding it as ⌘B does.
+    /// Opens or closes the sidebar, as ⌘B does, the rails sliding out or folding away with it.
     pub(crate) fn set_sidebar_open(&mut self, open: bool, cx: &mut Context<Self>) {
-        if self.sidebar_open == open {
-            return;
+        if self.sidebar_open != open {
+            self.sidebar_open = open;
+            cx.notify();
         }
-        // Turning around mid-slide starts from wherever the sidebar is now.
-        let (reveal, _) = self.sidebar_reveal();
-        self.sidebar_open = open;
-        self.sidebar_slide = Some((reveal, Instant::now()));
-        cx.notify();
     }
 
     /// Whether the bottom panel is open.

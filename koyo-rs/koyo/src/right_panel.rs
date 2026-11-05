@@ -167,15 +167,16 @@ impl RightPanel {
         (self.checkout()).map_or((0, 0), |checkout| checkout.read(cx).totals())
     }
 
-    /// The right panel as the card shows it, if it's open while it's `shown`.
+    /// The right panel as the card shows it, if it's open while it's `shown`, `beside` being
+    /// how wide what's left of the chat is.
     pub fn render(
         &mut self,
         shown: bool,
-        sidebar_open: bool,
+        beside: f32,
         window: &mut Window,
         cx: &mut App,
     ) -> Option<Div> {
-        self.widest = widest(sidebar_open, window, cx);
+        self.widest = widest(beside, window);
         let panels = self.shown().filter(|_| shown && self.open)?;
         let panel: AnyElement = match self.view {
             View::Changes => panels.changes.clone().map(Entity::into_any_element),
@@ -403,18 +404,10 @@ impl Shell {
     }
 }
 
-/// The widest the right panel can be and leave the chat room beside the rail and the sidebar.
-fn widest(sidebar_open: bool, window: &Window, cx: &App) -> f32 {
-    let sidebar = if sidebar_open {
-        settings::get(cx).sidebar_width()
-    } else {
-        0.
-    };
-    window.viewport_size().width.as_f32()
-        - theme::GUTTER
-        - theme::ICON_RAIL_WIDTH
-        - sidebar
-        - theme::CHAT_MIN_WIDTH
+/// The widest the right panel can be and leave the chat room, `beside` being how wide what's
+/// left of the chat is: the icon rail and the sidebar, or in compact mode the gutter.
+fn widest(beside: f32, window: &Window) -> f32 {
+    window.viewport_size().width.as_f32() - theme::GUTTER - beside - theme::CHAT_MIN_WIDTH
 }
 
 /// Gives `handle` the keyboard if it's `pending`, and then not again.
