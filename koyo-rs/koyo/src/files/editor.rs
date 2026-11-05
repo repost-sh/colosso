@@ -297,7 +297,7 @@ impl FileEditor {
 
     /// The text it shows, if it's read and shown as text.
     #[cfg(test)]
-    pub(super) fn text(&self, cx: &App) -> Option<SharedString> {
+    pub(crate) fn text(&self, cx: &App) -> Option<SharedString> {
         Some(self.editor.as_ref()?.editor.read(cx).value())
     }
 }

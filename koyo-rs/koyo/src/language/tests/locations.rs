@@ -64,13 +64,13 @@ async fn several_definitions_are_listed_and_the_one_picked_opens_its_file(cx: &m
     let selected = |cx: &App| {
         let viewed = files.read(cx).viewing()?;
         let viewed = viewed.read(cx);
-        let editor = editor(&viewed.editor, cx)?;
+        let editor = editor(viewed.editor()?, cx)?;
         (viewed.path == other).then(|| editor.read(cx).selected_range())
     };
     let watched = vec![changes(&server, cx), changes(&files, cx)];
     until(cx, watched, |cx| selected(cx).is_some()).await;
     assert_eq!(cx.read(selected), Some(target));
-    let shown = cx.read(|cx| editor(&files.read(cx).viewing()?.read(cx).editor, cx)).unwrap();
+    let shown = cx.read(|cx| editor(files.read(cx).viewing()?.read(cx).editor()?, cx)).unwrap();
     assert!(editor_focused(shell.0, &shown, cx));
     let _ = std::fs::remove_dir_all(&root);
 }

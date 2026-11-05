@@ -243,7 +243,7 @@ fn viewing(drawn: &Drawn) -> Option<(PathBuf, Entity<FileEditor>)> {
     drawn.cx.read(|cx| {
         let viewed = drawn.shell.read(cx).viewing()?;
         let viewed = viewed.read(cx);
-        Some((viewed.path.clone(), viewed.editor.clone()))
+        Some((viewed.path.clone(), viewed.editor()?.clone()))
     })
 }
 

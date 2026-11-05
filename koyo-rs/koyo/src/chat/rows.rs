@@ -2,6 +2,7 @@
 //! thread holds now. What each row can open is kept by the timeline, not here.
 
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Instant;
 
@@ -271,6 +272,14 @@ impl Drawing {
         self.on_timeline(move |timeline, _, cx| timeline.copy(item.clone(), cx))
     }
 
+    /// What a click on a link in what the chat says does: a file it names opens in a tab, a
+    /// page in the browser.
+    pub(super) fn opens_links(
+        &self,
+    ) -> impl Fn(&SharedString, &ClickEvent, &mut Window, &mut App) + Send + Sync + 'static {
+        crate::files::opens_links(PathBuf::from(&*self.cwd))
+    }
+
     fn answer(&self, id: &ItemId, text: &Entity<TextViewState>, meta: Option<String>) -> Div {
         let group: SharedString = format!("answer-{id}").into();
         div()
@@ -278,7 +287,7 @@ impl Drawing {
             .flex()
             .flex_col()
             .gap_1()
-            .child(TextView::new(text))
+            .child(TextView::new(text).on_link_click(self.opens_links()))
             .child(hover_meta(&group, self.p).child(self.copy_button(id)).children(meta))
     }
 

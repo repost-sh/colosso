@@ -22,6 +22,7 @@
 mod control;
 mod drive;
 mod delete;
+mod links;
 mod panel;
 mod paste;
 mod stop;
@@ -137,6 +138,7 @@ fn run_shell(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     code_font(drawn, None);
 
     selection(drawn, said)?;
+    links::links(drawn, said)?;
     scrollback(drawn, said)?;
     full_screen(drawn, said)?;
     resized(drawn, said)?;

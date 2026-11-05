@@ -19,6 +19,7 @@ use crate::client::TermClient;
 use crate::element::{Grid, PinnedLook, TerminalElement};
 use crate::fit::{Fitting, Scale};
 use crate::glyphs::{Glyphs, Look};
+use crate::links::{LinkTarget, Links};
 use crate::vt::{Command, Vt};
 
 mod link;
@@ -106,6 +107,8 @@ pub enum TerminalEvent {
     PinRefused(u16, u16),
     /// The daemon of another build was replaced: views it turned away may try again.
     DaemonReplaced,
+    /// A link was ⌘-clicked: what it opens.
+    OpenLink(LinkTarget),
 }
 
 pub(crate) enum Link {
@@ -165,6 +168,7 @@ pub struct TerminalView {
     /// Wheel travel short of a whole row, kept for the next event.
     pub(crate) wheel_rest: f32,
     pub(crate) option_as_alt: OptionAsAlt,
+    pub(crate) links: Links,
     exited: Option<Exit>,
     _subscriptions: Vec<gpui_kit::Subscription>,
 }
@@ -225,6 +229,7 @@ impl TerminalView {
             drag: None,
             wheel_rest: 0.,
             option_as_alt: OptionAsAlt::No,
+            links: Links::default(),
             exited: None,
             _subscriptions: subscriptions,
         }
@@ -382,6 +387,7 @@ impl Render for TerminalView {
             focused: self.focus.is_focused(window),
             cursor_on: self.cursor_on,
             marked: self.marked.clone().map(SharedString::from),
+            link: self.links.hovered.clone(),
         };
         let notice = match &self.link {
             Link::Failed(message) => Some(message.clone()),

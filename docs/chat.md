@@ -747,7 +747,9 @@ The behaviours, each with the T3 adapter pitfall it carries (`t3-claude-adapter.
 - **One live `query()` per session**, its prompt an async queue the driver feeds; the
   driver iterates the `Query` itself, not the raw generator (1). Options:
   `pathToClaudeCodeExecutable`, `cwd`, `env` (4.2), `sessionId` or `resume`,
-  `systemPrompt: {type: "preset", preset: "claude_code"}`, `includePartialMessages: true`,
+  `systemPrompt: {type: "preset", preset: "claude_code", append: KOYO_PROMPT}` (the files a
+  reply names written as Markdown links to their paths, which the chat opens in a tab when
+  they're clicked), `includePartialMessages: true`,
   `canUseTool`, `model`, `effort`, `permissionMode` only when the spec names one (4.5.6),
   `allowDangerouslySkipPermissions` with Full access,
   `toolConfig.askUserQuestion.previewFormat: "markdown"`, `spawnClaudeCodeProcess` (4.2).

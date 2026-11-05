@@ -61,7 +61,7 @@ fn a_preview_typed_into_is_kept(cx: &mut TestAppContext) {
     preview("src/lib.rs", cx);
     let editor = cx.read(|cx| {
         let file = shell.read(cx).viewing().unwrap();
-        file.read(cx).editor.read(cx).editor().cloned()
+        file.read(cx).editor()?.read(cx).editor().cloned()
     });
     typed(window, &editor.unwrap(), "// typed\n", cx);
     assert_eq!(tabs(&shell, cx), ["[lib.rs+]"], "kept, and marked unsaved");

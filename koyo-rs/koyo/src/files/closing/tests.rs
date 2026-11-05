@@ -98,7 +98,7 @@ fn a_file_tab_closed_comes_back_with_cmd_shift_t_as_it_is_on_disk(cx: &mut TestA
     assert_eq!(tabs(&shell, cx), ["README.md", "[lib.rs]"], "back where it was, kept");
     let text = cx.read(|cx| {
         let file = shell.read(cx).viewing().unwrap();
-        file.read(cx).editor.read(cx).text(cx)
+        file.read(cx).editor()?.read(cx).text(cx)
     });
     assert_eq!(text.as_deref(), Some("pub fn a() {}\npub fn b() {}\n"), "its edits let go");
     let _ = std::fs::remove_dir_all(&root);

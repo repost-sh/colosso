@@ -18,7 +18,8 @@ use crate::element::Grid;
 use crate::keys;
 use crate::paste::{self, Pasted};
 use crate::view::{
-    Copy, Link, Paste, ScrollPageDown, ScrollPageUp, ScrollToBottom, ScrollToTop, TerminalView,
+    Copy, Link, Paste, ScrollPageDown, ScrollPageUp, ScrollToBottom, ScrollToTop, TerminalEvent,
+    TerminalView,
 };
 use crate::vt::Command;
 
@@ -210,6 +211,15 @@ impl TerminalView {
             return;
         };
         let at = grid.cell_at(event.position);
+        // ⌘-click on a link opens it, rather than selecting or telling the program.
+        if pressed == MouseButton::Left
+            && event.modifiers.platform
+            && event.click_count == 1
+            && let Some(target) = self.link_at(at)
+        {
+            cx.emit(TerminalEvent::OpenLink(target));
+            return;
+        }
         // Shift selects even over a program that tracks the mouse, as in every terminal.
         if self.tracking() && !event.modifiers.shift {
             let input = self.mouse(
@@ -264,8 +274,11 @@ impl TerminalView {
         event: &MouseMoveEvent,
         grid: Grid,
         hovered: bool,
-        _: &mut Context<Self>,
+        cx: &mut Context<Self>,
     ) {
+        // Held over the grid, ⌘ underlines the link under the pointer.
+        let over = hovered && event.modifiers.platform && event.pressed_button.is_none();
+        self.point_at_link(over.then(|| grid.cell_at(event.position)), cx);
         let Some(drag) = &mut self.drag else {
             // Motion with nothing pressed matters only to a program tracking all of it.
             if hovered && self.tracking() {

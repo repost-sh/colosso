@@ -2,6 +2,7 @@ import type { PermissionMode } from "@anthropic-ai/claude-agent-sdk";
 import { afterEach, describe, expect, test } from "bun:test";
 
 import type { Mode } from "../../src/protocol/model";
+import { KOYO_PROMPT } from "../../src/providers/claude/options";
 import { init, success } from "../fixtures/claude/frames";
 import { settle } from "../support/wait";
 import { bench, closeBenches, spec } from "./support";
@@ -19,7 +20,7 @@ describe("a session's options", () => {
       cwd: "/work/rec-cwd",
       env: { PATH: "/usr/bin:/bin", HOME: "/Users/dev" },
       sessionId: opened.sessionId,
-      systemPrompt: { type: "preset", preset: "claude_code" },
+      systemPrompt: { type: "preset", preset: "claude_code", append: KOYO_PROMPT },
       includePartialMessages: true,
       extraArgs: { "thinking-display": "summarized" },
       model: "claude-opus-5-5",

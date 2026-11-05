@@ -8,6 +8,7 @@ mod closing;
 mod editor;
 mod file_pane;
 mod icons;
+mod link;
 mod locations;
 mod open;
 mod panel;
@@ -23,6 +24,7 @@ pub use closing::{Then, ask, ask_before_closing};
 pub use editor::{FileEditor, MOST_COLOURED};
 pub use file_pane::{FilePane, name as file_name};
 pub use icons::file as file_icon;
+pub use link::{OpenLinked, opens_links};
 pub use locations::Locations;
 pub use panel::FilesPanel;
 pub use place::{At, Place, relative};
@@ -68,6 +70,9 @@ impl Shell {
     /// What the window does with the files' actions, wherever the keyboard is.
     pub fn handle_files(root: Div, cx: &mut Context<Self>) -> Div {
         root.on_action(cx.listener(|this, _: &Save, window, cx| this.save(window, cx)))
+            .on_action(cx.listener(|this, open: &OpenLinked, window, cx| {
+                this.open_path(&open.path, open.at.clone(), window, cx);
+            }))
     }
 
     /// ⌘S saves the file shown or, as set, every file with unsaved edits in the window; on
@@ -78,7 +83,7 @@ impl Shell {
         }
         let editors = match settings::get(cx).save_scope {
             SaveScope::Shown => (self.shown_file(window, cx).into_iter())
-                .map(|file| file.read(cx).editor.clone())
+                .filter_map(|file| file.read(cx).editor().cloned())
                 .collect(),
             SaveScope::All => self.unsaved(cx),
         };

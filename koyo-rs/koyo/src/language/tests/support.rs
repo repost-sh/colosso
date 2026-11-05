@@ -231,7 +231,7 @@ pub(super) fn shown(
     cx.read(|cx| {
         let viewed = shell.read(cx).viewing()?;
         let viewed = viewed.read(cx);
-        Some((viewed.path.clone(), viewed.editor.clone()))
+        Some((viewed.path.clone(), viewed.editor()?.clone()))
     })
 }
 

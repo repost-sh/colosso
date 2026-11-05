@@ -71,8 +71,7 @@ impl Shell {
                     .terminal_view(terminal, window, cx)
                     .map(|view| view.focus_handle(cx)),
                 Some((_, Some(file), _)) => {
-                    let editor = file.read(cx).editor.clone();
-                    editor.update(cx, |editor, cx| editor.focus_editor(window, cx));
+                    file.update(cx, |file, cx| file.focus(window, cx));
                     None
                 }
                 Some((_, _, Some(view))) => Some(view.focus_handle(cx)),
@@ -94,11 +93,10 @@ impl Shell {
         let panes = tab.panes();
         let focused = panes.iter().find(|pane| {
             let terminal = pane.terminal.and_then(|id| self.terminals.view(id));
-            let file = pane.file.as_ref().map(|file| file.read(cx).editor.clone());
             let chat = self.chat_tabs.view(pane.id);
             terminal.is_some_and(|view| view.focus_handle(cx).contains_focused(window, cx))
                 || chat.is_some_and(|view| view.focus_handle(cx).contains_focused(window, cx))
-                || file.is_some_and(|editor| editor.read(cx).has_focus(window, cx))
+                || (pane.file.as_ref()).is_some_and(|file| file.read(cx).has_focus(window, cx))
                 || (pane.browser.as_ref())
                     .is_some_and(|view| view.focus_handle(cx).contains_focused(window, cx))
         });

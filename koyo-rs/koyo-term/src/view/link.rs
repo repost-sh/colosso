@@ -312,6 +312,7 @@ impl TerminalView {
                         cx.emit(TerminalEvent::Title(frame.title.clone()));
                     }
                     self.frame = Some(frame);
+                    self.frame_under_pointer(cx);
                     cx.notify();
                 }
             }

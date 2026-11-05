@@ -137,10 +137,7 @@ impl Shell {
         };
         unit.active_tab = at;
         match unit.tabs[at].files().first() {
-            Some(file) => {
-                let editor = file.read(cx).editor.clone();
-                editor.update(cx, |editor, cx| editor.focus_editor(window, cx));
-            }
+            Some(file) => file.update(cx, |file, cx| file.focus(window, cx)),
             None => window.focus(&self.focus, cx),
         }
         cx.notify();

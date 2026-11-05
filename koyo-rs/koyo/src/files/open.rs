@@ -6,12 +6,12 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use gpui_kit::{App, AppContext as _, Context, Entity, Window};
+use gpui_kit::{App, AppContext as _, Context, Entity, WeakEntity, Window};
 
 use super::file_pane::{FilePane, FilePaneEvent};
 use super::panel::FilesEvent;
 use super::{FileEditor, FilesPanel, Place};
-use crate::checkout::Checkout;
+use crate::checkout::{Checkout, Document};
 use crate::go_to_file;
 use crate::language::{self, Found};
 use crate::model::{Pane, Tab};
@@ -19,6 +19,7 @@ use crate::navigation::Route;
 use crate::right_panel::View;
 use crate::settings;
 use crate::shell::Shell;
+use crate::viewer::{self, Viewer};
 
 impl Shell {
     /// Shows the selected checkout's file `place` is in, in a tab of its own, puts the
@@ -35,6 +36,23 @@ impl Shell {
     /// are turned off, when it's in a tab of its own; and gives its editor the keyboard.
     pub fn preview_file(&mut self, place: Place, window: &mut Window, cx: &mut Context<Self>) {
         self.open_file(place, false, true, window, cx);
+    }
+
+    /// Shows the file at `path`, an absolute path someone pointed at (a link in a terminal or
+    /// a chat), as a click in the tree does: previewed, with the keyboard, its cursor `at` a
+    /// place when it's text. Anything but a file is left alone.
+    pub fn open_path(
+        &mut self,
+        path: &Path,
+        at: Option<super::At>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !path.is_file() {
+            log::info!("{} isn't a file to open", path.display());
+            return;
+        }
+        self.preview_file(Place { path: path.to_path_buf(), at }, window, cx);
     }
 
     /// Shows the file `place` is in on the selected checkout, kept open if `kept` or if
@@ -69,15 +87,12 @@ impl Shell {
             }
             file
         };
-        let editor = file.read(cx).editor.clone();
-        editor.update(cx, |editor, cx| {
-            if let Some(at) = place.at {
-                editor.reveal(at, cx);
-            }
-            if focus {
-                editor.focus_editor(window, cx);
-            }
-        });
+        if let (Some(at), Some(editor)) = (place.at, file.read(cx).editor().cloned()) {
+            editor.update(cx, |editor, cx| editor.reveal(at, cx));
+        }
+        if focus {
+            file.update(cx, |file, cx| file.focus(window, cx));
+        }
         // A file opened is something to look at, so leave settings for it.
         self.navigate(Route::Workspace, cx);
         cx.notify();
@@ -126,9 +141,8 @@ impl Shell {
         unit.active_tab = unit.tab_with(id).unwrap_or(unit.active_tab);
     }
 
-    /// The file at `path` of `checkout` in a pane, a preview if `preview`: its editor's
-    /// definitions in other files previewed, and the places a symbol in it leads to listed
-    /// under the tabs.
+    /// The file at `path` of `checkout` in a pane, a preview if `preview`: a picture, a
+    /// drawing or a PDF shown as what it is, anything else as text.
     pub(crate) fn file_pane(
         &mut self,
         path: PathBuf,
@@ -138,12 +152,41 @@ impl Shell {
         cx: &mut Context<Self>,
     ) -> Entity<FilePane> {
         let root = checkout.read(cx).root().clone();
-        let document = checkout.update(cx, |checkout, cx| checkout.document(&path, cx));
         let relative = (path.strip_prefix(&root).ok())
             .and_then(Path::to_str)
             .map(Arc::from);
-        // A file of the checkout is edited in place; one outside it is only read.
-        let editable = relative.is_some();
+        let file = if let Some(kind) = viewer::kind(&path) {
+            let viewer = cx.new(|cx| Viewer::new(path.clone(), kind, cx));
+            // Shown again as it's written, as text is read again.
+            checkout.update(cx, |checkout, _| checkout.watch(&viewer));
+            cx.new(|_| FilePane::with_viewer(path, relative, viewer, preview))
+        } else {
+            // A file of the checkout is edited in place; one outside it is only read.
+            let (document, editor) = self.text(&path, checkout, relative.is_some(), window, cx);
+            cx.new(|cx| FilePane::with_text(path, relative, document, editor, preview, cx))
+        };
+        let checkout = checkout.downgrade();
+        cx.subscribe_in(&file, window, move |this, file, event, window, cx| {
+            this.file_pane_event(file, event, &checkout, window, cx);
+        })
+        .detach();
+        // Its tab shows whether it's a preview and whether it has unsaved edits.
+        cx.observe(&file, |_, _, cx| cx.notify()).detach();
+        file
+    }
+
+    /// The text of the file at `path` of `checkout`: its document, and an editor over it,
+    /// whose definitions in other files are previewed and whose places a symbol leads to
+    /// are listed under the tabs.
+    fn text(
+        &mut self,
+        path: &Path,
+        checkout: &Entity<Checkout>,
+        editable: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> (Entity<Document>, Entity<FileEditor>) {
+        let document = checkout.update(cx, |checkout, cx| checkout.document(path, cx));
         let editor = cx.new(|cx| FileEditor::new(&document, editable, window, cx));
         language::attach(checkout, &editor, cx);
         cx.subscribe_in(&editor, window, |this, _, place: &Place, window, cx| {
@@ -154,17 +197,14 @@ impl Shell {
             this.show_locations(found.clone(), window, cx);
         })
         .detach();
-        let file = cx.new(|cx| FilePane::new(path, relative, document, editor, preview, cx));
-        cx.subscribe_in(&file, window, Self::file_pane_event).detach();
-        // Its tab shows whether it's a preview and whether it has unsaved edits.
-        cx.observe(&file, |_, _, cx| cx.notify()).detach();
-        file
+        (document, editor)
     }
 
     fn file_pane_event(
         &mut self,
-        _: &Entity<FilePane>,
+        file: &Entity<FilePane>,
         event: &FilePaneEvent,
+        checkout: &WeakEntity<Checkout>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -176,6 +216,17 @@ impl Shell {
                 if let Some(files) = self.right_panel.files().cloned() {
                     files.update(cx, |files, cx| files.pick_in_tree(path, window, cx));
                 }
+            }
+            FilePaneEvent::WantsText => {
+                let Some(checkout) = checkout.upgrade() else {
+                    return;
+                };
+                let (path, editable) = (file.read(cx).path.clone(), file.read(cx).relative.is_some());
+                let (document, editor) = self.text(&path, &checkout, editable, window, cx);
+                file.update(cx, |file, cx| {
+                    file.set_text(document, editor, cx);
+                    file.focus(window, cx);
+                });
             }
         }
     }
@@ -209,10 +260,7 @@ impl Shell {
     pub fn shown_file(&self, window: &Window, cx: &App) -> Option<Entity<FilePane>> {
         let unit = self.workspace.branch()?;
         let files = unit.tabs.get(unit.active_tab)?.files();
-        let focused = files.iter().find(|file| {
-            let editor = file.read(cx).editor.read(cx);
-            editor.has_focus(window, cx)
-        });
+        let focused = files.iter().find(|file| file.read(cx).has_focus(window, cx));
         focused.or(files.first()).map(|file| (*file).clone())
     }
 

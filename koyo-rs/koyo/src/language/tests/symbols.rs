@@ -104,7 +104,7 @@ async fn a_symbol_of_the_checkout_is_found_by_name_and_its_file_opened_at_it(cx:
     let selected = |cx: &App| {
         let viewed = files.read(cx).viewing()?;
         let viewed = viewed.read(cx);
-        let editor = editor(&viewed.editor, cx)?;
+        let editor = editor(viewed.editor()?, cx)?;
         (viewed.path == other).then(|| editor.read(cx).selected_range())
     };
     let watched = vec![changes(&server, cx), changes(&files, cx)];

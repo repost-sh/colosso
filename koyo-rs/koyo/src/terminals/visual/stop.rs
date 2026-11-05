@@ -124,7 +124,7 @@ pub(super) fn end_everything(drawn: &mut Drawn, said: &mut Vec<String>) -> Resul
     drawn.until(Duration::from_secs(15), |_| Ok(!socket.exists()))?;
     let kept = dir.remembered();
     if !kept.is_empty() {
-        return Err(format!("the daemon kept {} terminals to run again", kept.len()).into());
+        return Err(format!("the daemon kept {} terminals to run again", kept.len()));
     }
     said.push("End Everything ended a shell ignoring the hangup, kept nothing, stopped".into());
     Ok(())

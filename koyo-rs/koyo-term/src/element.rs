@@ -12,13 +12,14 @@ use koyo_term_engine::{CursorShape, Frame, Geometry, GridPoint, Width};
 use gpui_kit::{
     App, BorderStyle, Bounds, ContentMask, CursorStyle, DispatchPhase, Element, ElementId,
     ElementInputHandler, Entity, FocusHandle, GlobalElementId, Hitbox, HitboxBehavior,
-    InspectorElementId, IntoElement, LayoutId, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    Pixels, Point, ScrollEvent, SharedString, Style, Window, fill, outline, point, px, relative,
-    size,
+    InspectorElementId, IntoElement, LayoutId, ModifiersChangedEvent, MouseDownEvent,
+    MouseMoveEvent, MouseUpEvent, Pixels, Point, ScrollEvent, SharedString, Style, Window, fill,
+    outline, point, px, relative, size,
 };
 
 use crate::fit::{Fitting, Scale};
 use crate::glyphs::{Glyphs, Look, Metrics};
+use crate::links::Found;
 use crate::paint::{Painter, hsla};
 use crate::view::TerminalView;
 
@@ -90,6 +91,8 @@ pub struct TerminalElement {
     pub cursor_on: bool,
     /// What an input method is composing, shown at the cursor.
     pub marked: Option<SharedString>,
+    /// The link under the pointer while ⌘ is held, underlined.
+    pub link: Option<Rc<Found>>,
 }
 
 impl IntoElement for TerminalElement {
@@ -211,7 +214,9 @@ impl Element for TerminalElement {
             .as_ref()
             .is_some_and(|frame| frame.mouse_tracking);
         window.set_cursor_style(
-            if tracking {
+            if self.link.is_some() {
+                CursorStyle::PointingHand
+            } else if tracking {
                 CursorStyle::Arrow
             } else {
                 CursorStyle::IBeam
@@ -251,6 +256,9 @@ impl Element for TerminalElement {
                 };
                 painter.backgrounds(window);
                 painter.text(window);
+                if let Some(link) = &self.link {
+                    painter.link(&link.cells, window);
+                }
                 self.paint_cursor(&painter, window, cx);
             });
         }
@@ -259,7 +267,8 @@ impl Element for TerminalElement {
 
 impl TerminalElement {
     /// The mouse goes to the view: presses over the grid, and moves and releases anywhere,
-    /// so a drag that leaves the grid keeps selecting.
+    /// so a drag that leaves the grid keeps selecting; and ⌘ pressed or let go over the grid,
+    /// which shows or hides the link under the pointer.
     fn listen(&self, prepainted: &Prepainted, window: &mut Window) {
         let grid = prepainted.grid;
         let (view, hitbox) = (self.view.clone(), prepainted.hitbox.clone());
@@ -281,6 +290,12 @@ impl TerminalElement {
             if phase == DispatchPhase::Bubble {
                 view.update(cx, |view, cx| view.mouse_up(event, grid, cx));
             }
+        });
+        let (view, hitbox) = (self.view.clone(), prepainted.hitbox.clone());
+        window.on_modifiers_changed(move |event: &ModifiersChangedEvent, window, cx| {
+            let over = event.modifiers.platform && hitbox.is_hovered(window);
+            let at = over.then(|| grid.cell_at(window.mouse_position()));
+            view.update(cx, |view, cx| view.point_at_link(at, cx));
         });
         let (view, hitbox) = (self.view.clone(), prepainted.hitbox.clone());
         window.on_mouse_event(move |event: &ScrollEvent, phase, window, cx| {

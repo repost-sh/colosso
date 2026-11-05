@@ -130,6 +130,22 @@ pub fn click(drawn: &mut Drawn, at: Point<Pixels>, count: usize) -> Result<()> {
     drawn.draw()
 }
 
+/// Clicks the left button once at `at` with ⌘ held, as a link is opened, and draws.
+pub fn command_click(drawn: &mut Drawn, at: Point<Pixels>) -> Result<()> {
+    let held = |input| match input {
+        PlatformInput::MouseDown(down) => {
+            PlatformInput::MouseDown(MouseDownEvent { modifiers: Modifiers::command(), ..down })
+        }
+        PlatformInput::MouseUp(up) => {
+            PlatformInput::MouseUp(MouseUpEvent { modifiers: Modifiers::command(), ..up })
+        }
+        other => other,
+    };
+    send(drawn, held(mouse_down(at, 1)))?;
+    send(drawn, held(mouse_up(at, 1)))?;
+    drawn.draw()
+}
+
 /// Drags with the left button from `from` to `to`, and draws.
 pub fn drag(drawn: &mut Drawn, from: Point<Pixels>, to: Point<Pixels>) -> Result<()> {
     send(drawn, mouse_down(from, 1))?;
@@ -184,7 +200,7 @@ fn mouse_up(position: Point<Pixels>, click_count: usize) -> PlatformInput {
     })
 }
 
-fn send(drawn: &mut Drawn, input: PlatformInput) -> Result<()> {
+pub fn send(drawn: &mut Drawn, input: PlatformInput) -> Result<()> {
     let window = drawn.window;
     (drawn.cx)
         .update_window(window, |_, window, cx| {
