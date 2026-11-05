@@ -802,7 +802,7 @@ fn status_letter(status: &Status, p: Palette) -> Div {
         .w(px(12.))
         .flex_shrink_0()
         .text_xs()
-        .font_family(theme::MONO)
+        .font_family(p.mono)
         .font_weight(FontWeight::BOLD)
         .text_color(colour)
         .child(letter)
@@ -816,7 +816,7 @@ pub fn counts(added: impl Into<u64>, removed: impl Into<u64>, p: Palette) -> Div
         .flex()
         .gap_1()
         .text_xs()
-        .font_family(theme::MONO)
+        .font_family(p.mono)
         .when(added > 0, |counts| {
             counts.child(div().text_color(p.added).child(format!("+{added}")))
         })

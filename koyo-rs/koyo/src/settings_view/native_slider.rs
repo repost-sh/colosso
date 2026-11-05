@@ -41,6 +41,11 @@ impl NativeSlider {
     pub fn disabled(self, disabled: bool) -> Self {
         NativeSlider(self.0.disabled(disabled))
     }
+
+    /// Between a small and a large "A", in place of the words under its ends.
+    pub fn between_letters(self) -> Self {
+        NativeSlider(self.0.between_letters())
+    }
 }
 
 impl RenderOnce for NativeSlider {

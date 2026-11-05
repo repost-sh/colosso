@@ -14,7 +14,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, ClickEvent, Context, Div, ElementId, Entity, FocusHandle, InteractiveElement as _,
     IntoElement, ParentElement as _, Pixels, SharedString, Stateful,
-    StatefulInteractiveElement as _, Styled as _, WeakEntity, Window, div, px, relative,
+    StatefulInteractiveElement as _, Styled as _, WeakEntity, Window, div, px, relative, rems,
 };
 use koyo_agent::protocol::ids::{ItemId, RunId};
 use koyo_agent::protocol::methods::Catalog;
@@ -40,8 +40,8 @@ const COLLAPSED_LINES: usize = 8;
 /// About how many characters a line of a bubble holds, to tell a long message without laying it
 /// out. A guess only says whether "Show more" is offered: it never hides what can't be opened.
 const BUBBLE_LINE: usize = 72;
-/// How tall a line of a bubble is, which a collapsed one is cut to a number of.
-const BUBBLE_LINE_HEIGHT: f32 = 24.;
+/// How tall a line of a bubble is, in rems, which a collapsed one is cut to a number of.
+const BUBBLE_LINE_HEIGHT: f32 = 1.5;
 /// How big a picture a message attached shows.
 const ATTACHED_PICTURE: f32 = 160.;
 /// How often the live row's highlight moves: slow enough for the rows it redraws not to matter.
@@ -83,6 +83,7 @@ impl Drawing {
             px(row.map_or(0., |row| gap_after(&row.kind)))
         };
         div()
+            .debug_selector(|| format!("chat-row-{index}"))
             .w_full()
             .max_w(px(COLUMN))
             .mx_auto()
@@ -198,9 +199,9 @@ impl Drawing {
             .when(!message.text.is_empty(), |said| {
                 said.child(
                     div()
-                        .line_height(px(BUBBLE_LINE_HEIGHT))
+                        .line_height(rems(BUBBLE_LINE_HEIGHT))
                         .when(long && !open, |text| {
-                            text.max_h(px(COLLAPSED_LINES as f32 * BUBBLE_LINE_HEIGHT))
+                            text.max_h(rems(COLLAPSED_LINES as f32 * BUBBLE_LINE_HEIGHT))
                                 .overflow_hidden()
                         })
                         .child(message.text.clone()),

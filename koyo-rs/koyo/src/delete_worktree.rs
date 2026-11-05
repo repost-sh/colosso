@@ -250,7 +250,7 @@ impl DeleteWorktreeDialog {
             .children(self.loss.changes.iter().take(LISTED_CHANGES).map(|file| {
                 small_line()
                     .pl(px(22.))
-                    .font_family(theme::MONO)
+                    .font_family(p.mono)
                     .text_color(p.muted)
                     .child(file.clone())
             }))
@@ -334,7 +334,7 @@ impl DeleteWorktreeDialog {
                                 div()
                                     .min_w_0()
                                     .truncate()
-                                    .font_family(theme::MONO)
+                                    .font_family(p.mono)
                                     .child(branch.to_owned()),
                             ),
                     )
@@ -394,7 +394,7 @@ impl Render for DeleteWorktreeDialog {
                     .h(px(SMALL_LINE))
                     .line_height(px(SMALL_LINE))
                     .text_xs()
-                    .font_family(theme::MONO)
+                    .font_family(p.mono)
                     .text_color(p.muted)
                     .overflow_hidden()
                     .whitespace_nowrap()

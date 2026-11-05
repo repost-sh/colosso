@@ -16,7 +16,7 @@ use koyo_agent::protocol::model::Hunk;
 use koyo_termd::skip_escape;
 
 use crate::changes::{CodeLine, Half, Look, number_width};
-use crate::theme::{MONO, Palette};
+use crate::theme::Palette;
 
 /// The tallest a tool's output gets before it scrolls.
 const OUTPUT_HEIGHT: f32 = 240.;
@@ -36,7 +36,7 @@ pub(super) fn scroll_box(id: impl Into<ElementId>, p: Palette) -> Stateful<Div> 
 /// The box a tool's text goes in.
 fn boxed(id: String, p: Palette) -> Stateful<Div> {
     scroll_box(SharedString::from(id), p)
-        .font_family(MONO)
+        .font_family(p.mono)
         .text_xs()
         .text_color(p.muted)
 }
@@ -57,7 +57,7 @@ pub(super) fn block(id: String, text: &str, p: Palette) -> Stateful<Div> {
 /// The look of a patch's lines.
 fn look(p: Palette) -> Rc<Look> {
     Rc::new(Look {
-        font: font(MONO),
+        font: font(p.mono),
         font_size: px(DIFF_FONT_SIZE),
         line_height: px(DIFF_LINE_HEIGHT),
         inset: px(0.),

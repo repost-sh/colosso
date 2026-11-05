@@ -406,7 +406,7 @@ fn half(
 
 fn look(wrap: bool, p: Palette, font_size: Pixels) -> Look {
     Look {
-        font: font(theme::MONO),
+        font: font(p.mono),
         font_size,
         line_height: px(LINE_HEIGHT),
         inset: px(12.),

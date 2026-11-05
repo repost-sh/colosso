@@ -1,6 +1,6 @@
 //! The rows a chat's records make in the tab's list, and what each change draws.
 
-use gpui_kit::{AnyWindowHandle, AppContext as _, Entity, TestAppContext};
+use gpui_kit::{AnyWindowHandle, AppContext as _, Entity, TestAppContext, VisualTestContext};
 use koyo_agent::protocol::ids::{ItemId, RunId, ThreadId, Time};
 use koyo_agent::protocol::methods::ThreadSnapshot;
 use koyo_agent::protocol::model::{
@@ -88,6 +88,45 @@ pub(super) fn shown_chat(
     });
     draw(window, cx);
     (window, view, thread)
+}
+
+/// A row's height is measured once, so without measuring again the next would still start where
+/// the row ended at the old size, under its text.
+#[gpui_kit::test]
+fn a_new_text_size_grows_the_rows_and_measures_them_again(cx: &mut TestAppContext) {
+    let (window, _view, _thread) = shown_chat("chat-text-size", cx);
+    let bounds = |at: &'static str, cx: &mut TestAppContext| {
+        VisualTestContext::from_window(window, cx).debug_bounds(at).unwrap()
+    };
+    let before = bounds("chat-row-0", cx);
+    cx.update(|cx| settings::update(cx, |settings| settings.fonts.chat_size = 22.));
+    draw(window, cx);
+    let (grown, next) = (bounds("chat-row-0", cx), bounds("chat-row-1", cx));
+    assert!(grown.size.height > before.size.height, "{before:?} to {grown:?}");
+    assert!(next.origin.y >= grown.origin.y + grown.size.height, "{grown:?} over {next:?}");
+}
+
+/// A draft wraps differently at another size, and a new size is neither an edit nor a new width,
+/// the things that count its rows. Only the line's height growing would leave some of it out of
+/// sight, in a box that was fitted to the old wrapping.
+#[gpui_kit::test]
+fn a_new_text_size_fits_the_composer_to_its_draft_again(cx: &mut TestAppContext) {
+    let (window, view, _thread) = shown_chat("chat-draft-size", cx);
+    let text = view.read_with(cx, |view, cx| view.composer.read(cx).text.clone());
+    cx.update_window(window, |_, window, cx| {
+        text.update(cx, |text, cx| text.set_value("word ".repeat(70), window, cx));
+    })
+    .unwrap();
+    draw(window, cx);
+    let height = |cx: &TestAppContext| {
+        text.read_with(cx, |text, _| f32::from(text.input_bounds().size.height))
+    };
+    let at_16 = height(cx);
+    cx.update(|cx| settings::update(cx, |settings| settings.fonts.chat_size = 22.));
+    draw(window, cx);
+    let at_22 = height(cx);
+    // Its line goes from 20 to 28, rounded, so the same rows would only reach 1.4 times the height.
+    assert!(at_22 >= at_16 * 1.5, "more rows too: {at_16} to {at_22}");
 }
 
 #[gpui_kit::test]

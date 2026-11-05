@@ -388,7 +388,7 @@ mod tests {
             words,
             |kind| if kind.is_some() { marked } else { plain },
             marked,
-            &font("Menlo"),
+            &font(crate::theme::fonts::MONO),
         )
         .into_iter()
         .map(|run| (run.len, run.color != plain, run.background_color.is_some()))

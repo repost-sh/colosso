@@ -406,7 +406,7 @@ fn line() -> Div {
 
 fn mono(text: impl Into<SharedString>, p: Palette) -> Div {
     div()
-        .font_family(theme::MONO)
+        .font_family(p.mono)
         .text_color(p.text)
         .whitespace_normal()
         .child(text.into())

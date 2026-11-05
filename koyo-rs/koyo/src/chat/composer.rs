@@ -62,6 +62,7 @@ use super::{Chats, Connection};
 use crate::menu::Trigger;
 use crate::native::liquid;
 use crate::shell::glass;
+use crate::theme::fonts::at_chat_size;
 use crate::theme::{self, Palette};
 
 pub(super) fn bind_keys(cx: &mut App) {
@@ -374,7 +375,10 @@ impl Render for ChatComposer {
             .children(self.drawer(&typed, p, cx))
             .children(self.held_queue(p, cx))
             .children(self.tiles(p, cx))
-            .child(Textarea::new(&self.text).appearance(false).on_paste(self.takes_paste(cx)))
+            .child(at_chat_size(
+                Textarea::new(&self.text).appearance(false).on_paste(self.takes_paste(cx)),
+                cx,
+            ))
             .child(self.footer(&typed, p, cx))
             .children(self.suggestions(p, window, cx));
         let mut keys = KeyContext::default();

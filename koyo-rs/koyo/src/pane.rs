@@ -9,7 +9,7 @@ use gpui_kit::{
 
 use crate::model::{Pane, PaneKind};
 use crate::shell::icon;
-use crate::theme::{MONO, Palette};
+use crate::theme::Palette;
 
 /// A tab's close button: an X, lit when the pointer's over it.
 pub fn close_button(id: impl Into<ElementId>, p: Palette) -> Stateful<Div> {
@@ -59,7 +59,7 @@ fn terminal(p: Palette) -> AnyElement {
         .size_full()
         .p_4()
         .bg(p.sunken)
-        .font_family(MONO)
+        .font_family(p.mono)
         .text_sm()
         .text_color(p.text)
         .flex()
@@ -112,7 +112,7 @@ fn editor(pane: &Pane, p: Palette) -> AnyElement {
         .child(
             div()
                 .p_4()
-                .font_family(MONO)
+                .font_family(p.mono)
                 .text_sm()
                 .flex()
                 .flex_col()
