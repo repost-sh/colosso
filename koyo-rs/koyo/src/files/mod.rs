@@ -27,6 +27,7 @@ pub use file_pane::{FilePane, name as file_name};
 pub use icons::file as file_icon;
 pub use link::{OpenLinked, opens_links};
 pub use locations::Locations;
+pub use markdown::{Mode as MarkdownMode, SetMarkdownOpensAs};
 pub use panel::FilesPanel;
 pub use place::{At, Place, relative};
 pub use render::ROW;
@@ -57,6 +58,9 @@ pub fn init(cx: &mut App) {
         KeyBinding::new("cmd-shift-v", TogglePreview, None),
     ]);
     markdown::bind_keys(cx);
+    cx.on_action(|SetMarkdownOpensAs(mode): &SetMarkdownOpensAs, cx| {
+        settings::update(cx, |settings| settings.markdown_opens_as = *mode);
+    });
     crate::list::bind_keys("Locations", cx);
     let list = Some("Locations");
     cx.bind_keys([

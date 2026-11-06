@@ -128,6 +128,13 @@ impl TextView {
         self.inner = self.inner.blockquote_style(style);
         self
     }
+    /// Refines the table container over the resolved theme or explicit style:
+    /// `overflow_x: scroll` lets a wide table scroll instead of squeezing its
+    /// columns. Unspecified properties are inherited.
+    pub fn table_style(mut self, style: StyleRefinement) -> Self {
+        self.inner = self.inner.table_style(style);
+        self
+    }
     /// Sets whether a copied selection carries Markdown source or plain text.
     pub fn selection_format(mut self, value: SelectionFormat) -> Self {
         self.inner = self.inner.selection_format(value);

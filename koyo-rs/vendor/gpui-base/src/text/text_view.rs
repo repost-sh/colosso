@@ -159,6 +159,7 @@ pub struct TextView {
     inline_code_style: Option<StyleRefinement>,
     list_style: Option<StyleRefinement>,
     blockquote_style: Option<StyleRefinement>,
+    table_style: Option<StyleRefinement>,
     style: StyleRefinement,
     selectable: bool,
     selection_format: SelectionFormat,
@@ -209,6 +210,7 @@ impl TextView {
             inline_code_style: None,
             list_style: None,
             blockquote_style: None,
+            table_style: None,
             style: StyleRefinement::default(),
             selectable: true,
             selection_format: SelectionFormat::default(),
@@ -235,6 +237,7 @@ impl TextView {
             inline_code_style: None,
             list_style: None,
             blockquote_style: None,
+            table_style: None,
             style: StyleRefinement::default(),
             state: None,
             selectable: true,
@@ -262,6 +265,7 @@ impl TextView {
             inline_code_style: None,
             list_style: None,
             blockquote_style: None,
+            table_style: None,
             style: StyleRefinement::default(),
             state: None,
             selectable: true,
@@ -313,6 +317,15 @@ impl TextView {
     /// Unspecified properties are inherited.
     pub fn blockquote_style(mut self, style: StyleRefinement) -> Self {
         self.blockquote_style = Some(style);
+        self
+    }
+
+    /// Refines the table container over the resolved style. See
+    /// [`TextViewStyle::with_table`] for where it applies: `overflow_x:
+    /// scroll` here lets a wide table scroll instead of squeezing its columns.
+    /// Unspecified properties are inherited.
+    pub fn table_style(mut self, style: StyleRefinement) -> Self {
+        self.table_style = Some(style);
         self
     }
 
@@ -716,7 +729,8 @@ impl Element for TextView {
             text_view_style = &inline_style;
         }
         let block_style;
-        if self.list_style.is_some() || self.blockquote_style.is_some() {
+        if self.list_style.is_some() || self.blockquote_style.is_some() || self.table_style.is_some()
+        {
             let mut style = text_view_style.clone();
             if let Some(refinement) = &self.list_style {
                 let mut marker = style.list_style().clone();
@@ -727,6 +741,11 @@ impl Element for TextView {
                 let mut quote = style.blockquote_style().clone();
                 quote.refine(refinement);
                 style = style.with_blockquote_style(quote);
+            }
+            if let Some(refinement) = &self.table_style {
+                let mut table = style.table().clone();
+                table.refine(refinement);
+                style = style.with_table(table);
             }
             block_style = style;
             text_view_style = &block_style;
@@ -1696,7 +1715,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn list_and_blockquote_view_refinements_keep_unspecified_style_properties(
+    fn list_blockquote_and_table_view_refinements_keep_unspecified_style_properties(
         cx: &mut TestAppContext,
     ) {
         use super::{TextViewDefaults, TextViewStyle};
@@ -1706,6 +1725,11 @@ mod tests {
                 TextView::new(&self.0)
                     .list_style(StyleRefinement::default().text_color(gpui::blue()))
                     .blockquote_style(StyleRefinement::default().border_color(gpui::blue()))
+                    .table_style({
+                        let mut table = StyleRefinement::default();
+                        table.overflow.x = Some(gpui::Overflow::Scroll);
+                        table
+                    })
                     .into_any_element()
             }
         }
@@ -1717,7 +1741,8 @@ mod tests {
                         .with_list_style(
                             StyleRefinement::default().font_weight(gpui::FontWeight::BOLD),
                         )
-                        .with_blockquote_style(StyleRefinement::default().border_l_4()),
+                        .with_blockquote_style(StyleRefinement::default().border_l_4())
+                        .with_table(StyleRefinement::default().rounded(px(6.))),
                 ),
             )
         });
@@ -1734,6 +1759,9 @@ mod tests {
             let quote = style.blockquote_style();
             assert_eq!(quote.border_color, Some(gpui::blue()));
             assert_eq!(quote.border_widths.left, Some(px(4.).into()));
+            let table = style.table();
+            assert_eq!(table.overflow.x, Some(gpui::Overflow::Scroll));
+            assert_eq!(table.corner_radii.top_left, Some(px(6.).into()));
         });
     }
 

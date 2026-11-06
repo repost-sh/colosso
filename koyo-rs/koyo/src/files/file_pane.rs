@@ -4,7 +4,8 @@
 //! is a click away, over the same bar.
 //! It may be a preview, its title in italics, which the next file previewed takes the place
 //! of until it's kept: by a double click on its tab, by Enter in the tree, or by an edit.
-//! A markdown file can be shown as it reads instead, picked on the toggle floating over it.
+//! A markdown file can be shown as it reads instead, as it opens unless set otherwise, picked
+//! on the toggle floating over it.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -110,31 +111,40 @@ pub enum FilePaneEvent {
 impl EventEmitter<FilePaneEvent> for FilePane {}
 
 impl FilePane {
-    /// A file shown as text, in `editor` over `document`.
+    /// A file shown as text, in `editor` over `document`; a markdown file as Settings say it
+    /// opens, or as code when it's opened `at` a place in its text, as [`Self::reveal`] shows it.
     pub fn with_text(
         path: PathBuf,
         relative: Option<Arc<str>>,
         document: Entity<Document>,
         editor: Entity<FileEditor>,
         preview: bool,
+        at: Option<&At>,
         cx: &mut Context<Self>,
     ) -> Self {
         let dirty = document.read(cx).is_dirty();
+        let mode = match at {
+            Some(_) => Mode::Code,
+            None => crate::settings::get(cx).markdown_opens_as,
+        };
         let markdown = markdown::is_markdown(&path).then(|| Markdown {
-            mode: Mode::Code,
+            mode,
             flips: 0,
             preview: None,
             stale: true,
             _edits: cx.subscribe(&editor, |this, _, _: &Edited, cx| this.edited(cx)),
         });
-        FilePane {
+        let mut pane = FilePane {
             path,
             relative,
             body: Body::Text(Text::new(document, editor, cx)),
             markdown,
             preview: preview && !dirty,
             dirty,
-        }
+        };
+        // Shown as it reads from the start, with what its editor has so far.
+        pane.refresh(cx);
+        pane
     }
 
     /// A file shown as what it is, by `viewer`.
@@ -317,7 +327,6 @@ impl FilePane {
 
     /// Shows a markdown file in `mode`, saying whether that's a change.
     fn set_mode(&mut self, mode: Mode, cx: &mut Context<Self>) -> bool {
-        let folder = self.path.parent().map_or_else(PathBuf::new, Path::to_path_buf);
         let Some(markdown) = &mut self.markdown else {
             return false;
         };
@@ -326,9 +335,6 @@ impl FilePane {
         }
         markdown.mode = mode;
         markdown.flips += 1;
-        if mode == Mode::Preview && markdown.preview.is_none() {
-            markdown.preview = Some(cx.new(|cx| MarkdownPreview::new(folder, cx)));
-        }
         self.refresh(cx);
         cx.notify();
         true
@@ -344,17 +350,21 @@ impl FilePane {
     }
 
     /// Has the preview, if it's shown, show the editor's text, if that changed since it last
-    /// did: the text's made anew each time, so not for nothing.
+    /// did: the text's made anew each time, so not for nothing. The preview's made the first
+    /// time it's shown, as it's stale until then.
     fn refresh(&mut self, cx: &mut Context<Self>) {
         let Some(markdown) = (self.markdown.as_mut())
             .filter(|markdown| markdown.stale && markdown.mode == Mode::Preview)
         else {
             return;
         };
-        let Some(preview) = markdown.preview.clone() else {
-            return;
-        };
         markdown.stale = false;
+        let path = &self.path;
+        let preview = (markdown.preview.get_or_insert_with(|| {
+            let folder = path.parent().map_or_else(PathBuf::new, Path::to_path_buf);
+            cx.new(|cx| MarkdownPreview::new(folder, cx))
+        }))
+        .clone();
         let text = (self.editor()).and_then(|editor| editor.read(cx).text(cx));
         preview.update(cx, |preview, cx| preview.set_text(&text.unwrap_or_default(), cx));
     }

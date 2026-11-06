@@ -10,7 +10,7 @@ use gpui_kit::{App, AppContext as _, Context, Entity, WeakEntity, Window};
 
 use super::file_pane::{FilePane, FilePaneEvent};
 use super::panel::FilesEvent;
-use super::{FileEditor, FilesPanel, Place};
+use super::{At, FileEditor, FilesPanel, Place};
 use crate::checkout::{Checkout, Document};
 use crate::go_to_file;
 use crate::language::{self, Found};
@@ -44,7 +44,7 @@ impl Shell {
     pub fn open_path(
         &mut self,
         path: &Path,
-        at: Option<super::At>,
+        at: Option<At>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -79,7 +79,7 @@ impl Shell {
             self.workspace.select_tab(at.0, at.1, at.2);
             file
         } else {
-            let file = self.file_pane(path, &checkout, !kept, window, cx);
+            let file = self.file_pane(path, &checkout, !kept, place.at.as_ref(), window, cx);
             let preview = (!kept).then(|| self.preview_pane(cx)).flatten();
             match preview {
                 Some(id) => self.replace_pane_file(id, &file, cx),
@@ -144,12 +144,14 @@ impl Shell {
     }
 
     /// The file at `path` of `checkout` in a pane, a preview if `preview`: a picture, a
-    /// drawing or a PDF shown as what it is, anything else as text.
+    /// drawing or a PDF shown as what it is, anything else as text; a markdown file as it's set
+    /// to open, or as code when it's opened `at` a place in its text.
     pub(crate) fn file_pane(
         &mut self,
         path: PathBuf,
         checkout: &Entity<Checkout>,
         preview: bool,
+        at: Option<&At>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Entity<FilePane> {
@@ -165,7 +167,7 @@ impl Shell {
         } else {
             // A file of the checkout is edited in place; one outside it is only read.
             let (document, editor) = self.text(&path, checkout, relative.is_some(), window, cx);
-            cx.new(|cx| FilePane::with_text(path, relative, document, editor, preview, cx))
+            cx.new(|cx| FilePane::with_text(path, relative, document, editor, preview, at, cx))
         };
         let checkout = checkout.downgrade();
         cx.subscribe_in(&file, window, move |this, file, event, window, cx| {

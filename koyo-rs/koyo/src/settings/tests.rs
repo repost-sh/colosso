@@ -41,6 +41,8 @@ fn missing_fields_fall_back_to_defaults() {
     assert_eq!(settings.most_language_servers, None);
     assert!(!settings.stop_idle_language_servers);
     assert!(settings.runs_server("rust-analyzer", None));
+    // A markdown file opens as it reads, as GitHub shows it.
+    assert_eq!(settings.markdown_opens_as, crate::files::MarkdownMode::Preview);
     let limited: Settings = serde_json::from_str(r#"{ "most_language_servers": 2 }"#).unwrap();
     assert_eq!(limited.most_language_servers, Some(2));
 }

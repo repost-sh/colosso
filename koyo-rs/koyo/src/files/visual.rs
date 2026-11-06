@@ -7,11 +7,12 @@
 //!   script/cargo run -p koyo --features visual-check -- --visual-check
 //! ```
 
+use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
 use gpui_kit::component::input::RopeExt as _;
-use gpui_kit::{Context, KeyUpEvent, Keystroke, PlatformInput};
+use gpui_kit::{Context, KeyUpEvent, Keystroke, PlatformInput, ScrollDelta, ScrollEvent, point, px};
 
 use super::{FilesPanel, Place};
 use crate::right_panel::{ShowFiles, ToggleChanges};
@@ -64,11 +65,15 @@ fn draw() -> Result<Vec<String>> {
     })?;
     let ignored = drawn.save("files-ignored.png")?;
 
+    // A markdown file, opened as it reads, its table wider than the column; then scrolled
+    // sideways by a swipe over it.
+    let (table, scrolled) = wide_table(&mut drawn)?;
+
     // The changes, opened from their own button in the top bar.
     drawn.cx.dispatch_action(drawn.window, ToggleChanges);
     drawn.pause()?;
     let changes = drawn.save("changes-switch.png")?;
-    let saved = [tree, ignored, changes];
+    let saved = [tree, ignored, table, scrolled, changes];
     let mut lines: Vec<_> = saved
         .iter()
         .map(|path| path.display().to_string())
@@ -205,6 +210,48 @@ fn repeated(drawn: &mut Drawn) -> Result<Vec<String>> {
     };
     let file = drawn.hold("file", "down", HOLD, line)?;
     Ok(vec![tree, file])
+}
+
+/// A markdown file with a table of eleven columns, as a spreadsheet pasted in has, opened as
+/// it reads; then swiped left over the table. The pictures saved, before and after.
+fn wide_table(drawn: &mut Drawn) -> Result<(PathBuf, PathBuf)> {
+    let row = |cells: [&str; 11]| format!("| {} |\n", cells.join(" | "));
+    let mut text = String::from("# Accounts\n\nEach kind of account, where it's opened and what it takes.\n\n");
+    text.push_str(&row(["#", "Kind", "Region", "Currencies", "Bank", "Usage", "Opening", "Payers", "Speed", "Limit", "Regions"]));
+    text.push_str(&row(["---"; 11]));
+    for at in 2..6 {
+        let at = at.to_string();
+        text.push_str(&row([
+            &at,
+            "Multi-currency",
+            "Hong Kong HKG",
+            "USD, EUR, HKD, CNH, GBP, CAD, AUD, JPY, SGD",
+            "A Bank (Hong Kong) Limited",
+            "Platforms and independent sites; goods, logistics, advertising, travel",
+            "One to three days",
+            "Business, individual",
+            "SWIFT in up to three days; HKD and USD local in a day, HKD in real time",
+            "None",
+            "Not for account-opening entities or incoming funds from sanctioned regions, which are listed in full in the screenshot",
+        ]));
+    }
+    text.push_str("\nWords after the table.\n");
+    let path = format!("{OUT}/wide-table.md");
+    let root = crate::visual::checkout()?;
+    std::fs::write(root.join(&path), text).map_err(|error| error.to_string())?;
+    view(drawn, &path)?;
+    drawn.pause()?;
+    let before = drawn.save("markdown-table.png")?;
+    let swipe = ScrollEvent {
+        // Over the table's rows.
+        position: point(px(700.), px(400.)),
+        delta: ScrollDelta::Pixels(point(px(-600.), px(0.))),
+        ..ScrollEvent::default()
+    };
+    drawn.cx.simulate_event(drawn.window, swipe);
+    // Saved mid-swipe, its scrollbar shown.
+    let after = drawn.save("markdown-table-scrolled.png")?;
+    Ok((before, after))
 }
 
 /// Shows the checkout's file at `path` in a tab.

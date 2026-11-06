@@ -1,5 +1,6 @@
 //! A markdown file as it reads: its text laid out in a column, scrolled on its own, by the
 //! wheel or the keys a reader scrolls by, its words selectable and its Mermaid blocks drawn.
+//! A table wider than the column scrolls sideways, its columns kept wide enough to read.
 //! Its links open as a chat's do: one to the web in the browser, one to a file in a tab.
 
 use std::collections::HashSet;
@@ -11,8 +12,8 @@ use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::text::{TextView, TextViewState};
 use gpui_kit::{
     App, AppContext as _, Context, Entity, FocusHandle, Hsla, InteractiveElement as _, IntoElement,
-    KeyBinding, ParentElement as _, Render, ScrollHandle, StatefulInteractiveElement as _,
-    Styled as _, Window, div, point, px,
+    KeyBinding, Overflow, ParentElement as _, Render, ScrollHandle, StatefulInteractiveElement as _,
+    StyleRefinement, Styled as _, Window, div, point, px,
 };
 
 use super::diagram::{self, Card, Key, Look};
@@ -115,6 +116,12 @@ impl MarkdownPreview {
         -self.scroll.offset().y.as_f32()
     }
 
+    /// How tall what it shows is, laid out: as tall as the pane it's in, at the least.
+    #[cfg(test)]
+    pub fn content_height(&self) -> f32 {
+        (self.scroll.max_offset().y + self.scroll.bounds().size.height).as_f32()
+    }
+
     /// Scrolls it `by` down, or up when it's less than nothing, as far as it goes.
     fn scroll_by(&mut self, by: f32, cx: &mut Context<Self>) {
         let offset = self.scroll.offset();
@@ -155,6 +162,15 @@ impl MarkdownPreview {
     }
 }
 
+/// A table's frame as a preview has it: one wider than the column scrolls sideways rather than
+/// squeezing its columns until their words break, each column kept about as wide as its text
+/// takes on two lines, between 160 and 480 points (the text view's scroll layout).
+fn tables() -> StyleRefinement {
+    let mut table = StyleRefinement::default();
+    table.overflow.x = Some(Overflow::Scroll);
+    table
+}
+
 impl Render for MarkdownPreview {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.keep_seen(window, cx);
@@ -162,6 +178,7 @@ impl Render for MarkdownPreview {
         let (card, look) = self.look(p, cx);
         let text = TextView::new(&self.state)
             .selectable(true)
+            .table_style(tables())
             .plugin(MermaidPlugin::new(look, card, p, self.seen.clone()))
             .on_link_click(opens_links(self.folder.clone()));
         div()
