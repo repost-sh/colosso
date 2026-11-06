@@ -347,7 +347,8 @@ per-scope switches and Revoke, clients denied lately with Allow, and Recent acti
 - Browser tools run over CDP through `browser/agent.rs`, its refusals typed (`AgentError`). A
   page the host hasn't opened yet (a tab never shown) answers `browser_unavailable` until it's
   shown once. A tab brought back at launch has no page until it's shown; `browser_list` lists
-  it with its kept address and title and a 0 × 0 viewport (`docs/browser.md` 6). `browser_read` cuts the page's text in the page, near its limit.
+  it with its kept address and title and a 0 × 0 viewport (`docs/browser.md` 6).
+  `browser_read` cuts the page's text in the page, near its limit.
   `browser_screenshot`'s image goes once, as an MCP image block; its structured answer
   carries `data` empty. Keys carry the same key codes the person's own typing does. Snapshot
   refs are `data-koyo-ref` attributes set by the snapshot's script. Editing shortcuts

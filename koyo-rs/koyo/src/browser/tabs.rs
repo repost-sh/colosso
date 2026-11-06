@@ -8,11 +8,11 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use gpui_kit::{App, Context, Subscription, Task, Window};
+use gpui_kit::{App, Context, Window};
 use serde::{Deserialize, Serialize};
 
 use super::toolbar::tab_title;
-use crate::model::{Pane, PaneKind, Unloaded, Workspace};
+use crate::model::{Pane, Tab, Unloaded, Workspace};
 use crate::shell::Shell;
 use crate::{atomic_file, history, settings};
 
@@ -39,7 +39,7 @@ pub struct KeptTab {
     pub title: String,
 }
 
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct File {
     #[serde(default)]
     checkouts: Vec<KeptCheckout>,
@@ -51,11 +51,10 @@ pub struct KeptTabs {
     /// The checkouts read from the file whose tabs aren't back yet: carried through every
     /// write until their checkout is listed, or their project is gone or listed without it.
     waiting: Vec<KeptCheckout>,
-    /// What the file holds, or will once the write coming is done.
+    /// What the file holds, or will once the write due is done.
     kept: Vec<KeptCheckout>,
-    /// The write coming, which a change made meanwhile joins.
-    saving: Option<Task<()>>,
-    _quit: Subscription,
+    /// Whether a write is due, which a change made meanwhile joins.
+    saving: bool,
 }
 
 impl KeptTabs {
@@ -64,36 +63,40 @@ impl KeptTabs {
         let path = settings::data_dir()
             .filter(|_| !cfg!(test))
             .map(|data| data.join(FILE));
-        // A change still settling when the window closes is written, as the next window reads
-        // the file again.
-        cx.on_release(|shell, _| shell.kept_tabs.flush()).detach();
-        Self::at(path, cx)
-    }
-
-    /// What the file at `path` holds. A change still settling when the app quits is written
-    /// on the way out.
-    fn at(path: Option<PathBuf>, cx: &mut Context<Shell>) -> Self {
-        let kept = path.as_deref().map(read_file).unwrap_or_default();
-        let quit = cx.on_app_quit(|shell, _| {
+        // A change still settling when the app quits or the window closes is written then, as
+        // the next window reads the file again.
+        cx.on_app_quit(|shell, _| {
             shell.kept_tabs.flush();
             async {}
-        });
+        })
+        .detach();
+        cx.on_release(|shell, _| shell.kept_tabs.flush()).detach();
+        Self::at(path)
+    }
+
+    /// What the file at `path` holds.
+    fn at(path: Option<PathBuf>) -> Self {
+        let kept = path.as_deref().map(read_file).unwrap_or_default();
         KeptTabs {
             path,
             waiting: kept.clone(),
             kept,
-            saving: None,
-            _quit: quit,
+            saving: false,
         }
     }
 
-    /// Writes what's kept now if a write is coming.
+    /// Where to write what's kept, and its JSON, if a write is due, which then no longer is.
+    fn take_due(&mut self) -> Option<(PathBuf, Vec<u8>)> {
+        if !std::mem::take(&mut self.saving) {
+            return None;
+        }
+        Some((self.path.clone()?, encode(&self.kept)?))
+    }
+
+    /// Writes what's kept now if a write is due.
     fn flush(&mut self) {
-        if self.saving.take().is_some()
-            && let Some(path) = &self.path
-            && let Some(json) = encode(&self.kept)
-        {
-            atomic_file::write(path, &json);
+        if let Some((path, json)) = self.take_due() {
+            atomic_file::write(&path, &json);
         }
     }
 
@@ -109,23 +112,16 @@ impl KeptTabs {
         });
     }
 
-    /// What's kept, from what the panes show and what still waits for its checkout: each
-    /// listed checkout's tabs, then the tabs waiting for theirs.
+    /// What's kept: each listed checkout's tabs, as the panes show them, then the tabs still
+    /// waiting for their checkout.
     fn now(&self, workspace: &Workspace, cx: &App) -> Vec<KeptCheckout> {
-        let waiting_for = |checkout: &Path| -> Vec<KeptTab> {
-            (self.waiting.iter())
-                .filter(|waiting| waiting.checkout == checkout)
-                .flat_map(|waiting| waiting.tabs.iter().cloned())
-                .collect()
-        };
         let mut now = Vec::new();
         for project in &workspace.projects {
             for unit in &project.branches {
-                let mut tabs: Vec<KeptTab> = (unit.tabs.iter())
-                    .flat_map(|tab| tab.panes())
+                let tabs: Vec<KeptTab> = (unit.tabs.iter())
+                    .flat_map(Tab::panes)
                     .filter_map(|pane| kept_tab(pane, cx))
                     .collect();
-                tabs.extend(waiting_for(&unit.worktree.path));
                 if !tabs.is_empty() {
                     now.push(KeptCheckout {
                         project: project.path.clone(),
@@ -135,12 +131,7 @@ impl KeptTabs {
                 }
             }
         }
-        let listed = |checkout: &Path| now.iter().any(|kept| kept.checkout == checkout);
-        let unlisted: Vec<KeptCheckout> = (self.waiting.iter())
-            .filter(|waiting| !listed(&waiting.checkout))
-            .cloned()
-            .collect();
-        now.extend(unlisted);
+        now.extend(self.waiting.iter().cloned());
         now
     }
 }
@@ -148,9 +139,7 @@ impl KeptTabs {
 /// A page pane as it's kept: its address and title. Not `DevTools`, nor a tab with no
 /// address yet, which leaves nothing behind.
 fn kept_tab(pane: &Pane, cx: &App) -> Option<KeptTab> {
-    if pane.kind != PaneKind::Browser
-        || (pane.browser.as_ref()).is_some_and(|view| view.read(cx).is_inspector())
-    {
+    if pane.is_inspector(cx) {
         return None;
     }
     let url = pane.address(cx).filter(|url| !url.is_empty())?;
@@ -194,41 +183,32 @@ impl Shell {
         }
         self.kept_tabs.kept = now;
         let kept = &mut self.kept_tabs;
-        if kept.path.is_none() || kept.saving.is_some() {
+        // A write already due takes this change along.
+        if kept.path.is_none() || std::mem::replace(&mut kept.saving, true) {
             return;
         }
-        kept.saving = Some(cx.spawn(async move |shell, cx| {
+        cx.spawn(async move |shell, cx| {
             cx.background_executor().timer(SAVE_DELAY).await;
-            let encoded = shell.update(cx, |shell, _| {
-                let kept = &mut shell.kept_tabs;
-                // Dropped, the handle would cancel this very write; a change from now on is
-                // the next one's.
-                if let Some(save) = kept.saving.take() {
-                    save.detach();
-                }
-                Some((kept.path.clone()?, encode(&kept.kept)?))
-            });
-            if let Ok(Some((path, json))) = encoded {
+            // Written on the way out meanwhile, it's no longer due.
+            let due = shell.update(cx, |shell, _| shell.kept_tabs.take_due());
+            if let Ok(Some((path, json))) = due {
                 cx.background_executor()
                     .spawn(async move { atomic_file::write(&path, &json) })
                     .await;
             }
-        }));
+        })
+        .detach();
     }
 
-    /// Brings back the tabs of the checkouts listed now, once a window: after the tabs there, in the order they had,
-    /// the tab shown staying shown. Each is titled as it was, with its site's icon if one is
-    /// kept, and has no page until it's shown.
+    /// Brings back the tabs of the checkouts listed now, once a window: after the tabs there,
+    /// in the order they had, the tab shown staying shown. Each is titled as it was, with its
+    /// site's icon if one is kept, and has no page until it's shown.
     pub(crate) fn restore_browser_tabs(&mut self, cx: &mut Context<Self>) {
         let waiting = std::mem::take(&mut self.kept_tabs.waiting);
-        for kept in waiting {
-            let listed = (self.workspace.projects.iter())
-                .flat_map(|project| &project.branches)
-                .any(|unit| unit.worktree.path == kept.checkout);
-            if !listed {
-                self.kept_tabs.waiting.push(kept);
-                continue;
-            }
+        let (listed, waiting): (Vec<_>, Vec<_>) = (waiting.into_iter())
+            .partition(|kept| self.workspace.project_of(&kept.checkout).is_some());
+        self.kept_tabs.waiting = waiting;
+        for kept in listed {
             for tab in kept.tabs {
                 let title = tab_title(&tab.title, &tab.url).into();
                 let unloaded = Unloaded {
@@ -245,36 +225,33 @@ impl Shell {
     /// kept, so the panes draw them. Each opens its page once laid out; its first load is no
     /// new visit, as it was visited before.
     pub fn make_shown_browsers(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(at) = self.workspace.shown_tab() else {
-            return;
-        };
-        let Some(tab) = self.workspace.tab(at) else {
-            return;
-        };
-        let missing: Vec<(u64, String)> = (tab.panes().into_iter())
-            .filter(|pane| pane.browser.is_none())
-            .filter_map(|pane| Some((pane.id, pane.unloaded.as_ref()?.address.clone())))
-            .collect();
+        let missing: Vec<(u64, String)> = (self.workspace.branch_mut())
+            .and_then(|unit| unit.tabs.get_mut(unit.active_tab))
+            .map(|tab| {
+                (tab.panes_mut().into_iter())
+                    .filter_map(|pane| Some((pane.id, pane.unloaded.take()?.address)))
+                    .collect()
+            })
+            .unwrap_or_default();
         if missing.is_empty() {
             return;
         }
-        let project = self.workspace.projects[at.0].path.clone();
+        let Some(project) = (self.workspace.project()).map(|project| project.path.clone()) else {
+            return;
+        };
         for (id, address) in missing {
             let view = self.browser_view(address, &project, window, cx);
             view.update(cx, |view, _| view.mark_restored());
-            let pane = (self.workspace.tab_mut(at))
-                .and_then(|tab| tab.panes_mut().into_iter().find(|pane| pane.id == id));
-            if let Some(pane) = pane {
+            if let Some(pane) = (self.workspace.branch_mut()).and_then(|unit| unit.pane_mut(id)) {
                 pane.browser = Some(view);
-                pane.unloaded = None;
             }
         }
     }
 
     /// From now on the tabs are kept at `path`, as if the app had just started.
     #[cfg(test)]
-    pub(crate) fn keep_browser_tabs_at(&mut self, path: &Path, cx: &mut Context<Self>) {
-        self.kept_tabs = KeptTabs::at(Some(path.to_owned()), cx);
+    pub(crate) fn keep_browser_tabs_at(&mut self, path: &Path) {
+        self.kept_tabs = KeptTabs::at(Some(path.to_owned()));
     }
 }
 

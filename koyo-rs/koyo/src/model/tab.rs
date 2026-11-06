@@ -86,6 +86,11 @@ impl Pane {
         }
     }
 
+    /// Whether it's a browser pane showing another page's `DevTools`.
+    pub fn is_inspector(&self, cx: &App) -> bool {
+        (self.browser.as_ref()).is_some_and(|view| view.read(cx).is_inspector())
+    }
+
     /// The site's icon a browser pane's tab shows: its page's, or the one kept for its address
     /// while it has no view.
     pub fn favicon(&self, cx: &App) -> Option<Arc<Image>> {

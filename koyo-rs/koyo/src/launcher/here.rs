@@ -43,7 +43,7 @@ impl Here {
             .flat_map(|tab| tab.panes())
             .filter(|pane| !shown.contains(&pane.id))
             .filter_map(|pane| {
-                if (pane.browser.as_ref()).is_some_and(|view| view.read(cx).is_inspector()) {
+                if pane.is_inspector(cx) {
                     return None;
                 }
                 // A page brought back at launch and not shown yet has the address it opens at.

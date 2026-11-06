@@ -7,7 +7,7 @@ use gpui_kit::{AnyWindowHandle, AppContext as _, Entity, TestAppContext};
 
 use super::{KeptCheckout, KeptTab, SAVE_DELAY, encode, read_file};
 use crate::browser::BrowserView;
-use crate::model::PaneKind;
+use crate::model::{BranchUnit, PaneKind};
 use crate::projects::read_worktrees;
 use crate::shell::Shell;
 use crate::test_support::{draw, repo, scratch, select, shell_with};
@@ -27,6 +27,11 @@ fn kept(project: &Path, checkout: &Path, tabs: &[KeptTab]) -> KeptCheckout {
     }
 }
 
+/// The main checkout at `root` with one tab, at `url` titled `title`.
+fn one(root: &Path, url: &str, title: &str) -> Vec<KeptCheckout> {
+    vec![kept(root, root, &[tab(url, title)])]
+}
+
 /// A file for the tabs in a scratch folder of `name`'s, holding `checkouts`.
 fn file(name: &str, checkouts: &[KeptCheckout]) -> PathBuf {
     let path = scratch(name).join("browser-tabs.json");
@@ -40,7 +45,7 @@ fn file(name: &str, checkouts: &[KeptCheckout]) -> PathBuf {
 /// again, as it does once the app has started.
 fn launch(shell: &Entity<Shell>, path: &Path, roots: &[&Path], cx: &mut TestAppContext) {
     shell.update(cx, |shell, cx| {
-        shell.keep_browser_tabs_at(path, cx);
+        shell.keep_browser_tabs_at(path);
         for root in roots {
             shell.show_worktrees(root, read_worktrees(root), cx);
         }
@@ -64,12 +69,7 @@ fn browsers(
     cx: &TestAppContext,
 ) -> Vec<(String, String, bool)> {
     cx.read(|cx| {
-        let shell = shell.read(cx);
-        let unit = (shell.workspace.projects.iter())
-            .flat_map(|project| &project.branches)
-            .find(|unit| unit.worktree.path == root)
-            .expect("the checkout is listed");
-        (unit.tabs.iter())
+        (unit(shell.read(cx), root).tabs.iter())
             .flat_map(|tab| tab.panes())
             .filter(|pane| pane.kind == PaneKind::Browser)
             .map(|pane| {
@@ -117,15 +117,20 @@ fn view_of(shell: &Entity<Shell>, pane: u64, cx: &TestAppContext) -> Option<Enti
     })
 }
 
+/// The checkout at `root`.
+fn unit<'a>(shell: &'a Shell, root: &Path) -> &'a BranchUnit {
+    (shell.workspace.projects.iter())
+        .flat_map(|project| &project.branches)
+        .find(|unit| unit.worktree.path == root)
+        .expect("the checkout is listed")
+}
+
 /// The panes of the checkout at `root`'s tabs, each tab's first.
 fn tab_panes(shell: &Entity<Shell>, root: &Path, cx: &TestAppContext) -> Vec<u64> {
     cx.read(|cx| {
-        let shell = shell.read(cx);
-        let unit = (shell.workspace.projects.iter())
-            .flat_map(|project| &project.branches)
-            .find(|unit| unit.worktree.path == root)
-            .expect("the checkout is listed");
-        unit.tabs.iter().map(|tab| tab.first().id).collect()
+        (unit(shell.read(cx), root).tabs.iter())
+            .map(|tab| tab.first().id)
+            .collect()
     })
 }
 
@@ -140,6 +145,25 @@ fn editor_tab(shell: &Entity<Shell>, cx: &mut TestAppContext) {
 
 fn shown(shell: &Entity<Shell>, cx: &TestAppContext) -> Option<(usize, usize, usize)> {
     cx.read(|cx| shell.read(cx).workspace.shown_tab())
+}
+
+/// A checkout of `name`'s with an editor tab shown, and a tab at example.com brought back after
+/// it: the window, the shell, the checkout, the file and the brought-back tab's pane.
+fn brought_back(
+    name: &str,
+    cx: &mut TestAppContext,
+) -> (AnyWindowHandle, Entity<Shell>, PathBuf, PathBuf, u64) {
+    let root = repo(name, &[("README.md", "hi\n")]);
+    let path = file(
+        &format!("{name}-file"),
+        &one(&root, "https://example.com/", "Example"),
+    );
+    let (window, shell) = shell_with(&[&root], cx);
+    select(&shell, &root, cx);
+    editor_tab(&shell, cx);
+    launch(&shell, &path, &[&root], cx);
+    let restored = tab_panes(&shell, &root, cx)[1];
+    (window, shell, root, path, restored)
 }
 
 #[test]
@@ -181,20 +205,14 @@ fn the_file_follows_the_tabs_as_they_open_navigate_and_close(cx: &mut TestAppCon
     let (window, shell) = shell_with(&[&root], cx);
     launch(&shell, &path, &[&root], cx);
     select(&shell, &root, cx);
-    let only = |url: &str, title: &str| vec![kept(&root, &root, &[tab(url, title)])];
 
     let page = open(&shell, window, Some("https://example.com/"), cx);
-    assert_eq!(
-        written(&path, cx),
-        only("https://example.com/", "example.com")
-    );
+    let opened = one(&root, "https://example.com/", "example.com");
+    assert_eq!(written(&path, cx), opened);
 
     // A tab with no address yet leaves nothing behind.
     open(&shell, window, None, cx);
-    assert_eq!(
-        written(&path, cx),
-        only("https://example.com/", "example.com")
-    );
+    assert_eq!(written(&path, cx), opened);
 
     let view = view_of(&shell, page, cx).expect("the page is made as it opens");
     view.update(cx, |view, cx| {
@@ -202,7 +220,7 @@ fn the_file_follows_the_tabs_as_they_open_navigate_and_close(cx: &mut TestAppCon
     });
     assert_eq!(
         written(&path, cx),
-        only("https://example.org/", "example.org")
+        one(&root, "https://example.org/", "example.org")
     );
 
     let page_at = at(&shell, page, cx);
@@ -261,21 +279,8 @@ fn tabs_come_back_after_those_there_in_order_without_taking_the_focus(cx: &mut T
 
 #[gpui_kit::test]
 fn a_tab_brought_back_opens_its_page_only_once_shown(cx: &mut TestAppContext) {
-    let root = repo("kept-tabs-lazy", &[("README.md", "hi\n")]);
-    let path = file(
-        "kept-tabs-lazy-file",
-        &[kept(
-            &root,
-            &root,
-            &[tab("https://example.com/", "Example")],
-        )],
-    );
-    let (window, shell) = shell_with(&[&root], cx);
-    select(&shell, &root, cx);
-    editor_tab(&shell, cx);
-    launch(&shell, &path, &[&root], cx);
+    let (window, shell, root, _, restored) = brought_back("kept-tabs-lazy", cx);
     draw(window, cx);
-    let restored = tab_panes(&shell, &root, cx)[1];
     assert!(
         view_of(&shell, restored, cx).is_none(),
         "not shown, no page"
@@ -299,7 +304,7 @@ fn a_tab_brought_back_opens_its_page_only_once_shown(cx: &mut TestAppContext) {
         "titled as it was until the page says otherwise"
     );
     let unloaded = cx.read(|cx| {
-        let tab = shell.read(cx).workspace.tab(restored_at).cloned();
+        let tab = shell.read(cx).workspace.tab(restored_at);
         tab.map(|tab| tab.first().unloaded.is_some())
     });
     assert_eq!(unloaded, Some(false));
@@ -307,20 +312,7 @@ fn a_tab_brought_back_opens_its_page_only_once_shown(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_tab_brought_back_and_closed_unshown_reopens_at_its_address(cx: &mut TestAppContext) {
-    let root = repo("kept-tabs-reopen", &[("README.md", "hi\n")]);
-    let path = file(
-        "kept-tabs-reopen-file",
-        &[kept(
-            &root,
-            &root,
-            &[tab("https://example.com/", "Example")],
-        )],
-    );
-    let (window, shell) = shell_with(&[&root], cx);
-    select(&shell, &root, cx);
-    editor_tab(&shell, cx);
-    launch(&shell, &path, &[&root], cx);
-    let restored = tab_panes(&shell, &root, cx)[1];
+    let (window, shell, root, path, restored) = brought_back("kept-tabs-reopen", cx);
     let restored_at = at(&shell, restored, cx);
     shell.update(cx, |shell, cx| shell.close_tab_now(restored_at, cx));
     assert_eq!(written(&path, cx), [], "closed, it's gone from the file");
@@ -334,11 +326,7 @@ fn a_tab_brought_back_and_closed_unshown_reopens_at_its_address(cx: &mut TestApp
     cx.read(|cx| assert_eq!(view.read(cx).address(), "https://example.com/"));
     assert_eq!(
         written(&path, cx),
-        [kept(
-            &root,
-            &root,
-            &[tab("https://example.com/", "Example")]
-        )]
+        one(&root, "https://example.com/", "Example")
     );
 }
 
@@ -408,10 +396,6 @@ fn a_change_still_settling_is_written_when_the_app_quits(cx: &mut TestAppContext
 
     assert_eq!(
         read_file(&path),
-        [kept(
-            &root,
-            &root,
-            &[tab("https://example.com/", "example.com")]
-        )]
+        one(&root, "https://example.com/", "example.com")
     );
 }

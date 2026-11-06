@@ -36,26 +36,19 @@ struct LastPages(HashMap<String, u64>);
 
 impl Global for LastPages {}
 
-/// A browser pane brought back at launch whose tab wasn't shown yet: listed with the address
-/// and title it kept, with no page to act on until it's shown (`docs/browser.md` 6).
-struct Unshown {
-    pane: u64,
-    url: String,
-    title: String,
-    worktree: PathBuf,
-}
-
-/// A browser pane as the tools list it.
+/// A browser pane as the tools list it: a page, or one brought back at launch whose tab wasn't
+/// shown yet, listed as it was kept, with no page to act on until it's shown
+/// (`docs/browser.md` 6).
 enum Listed {
     Page(Page),
-    Unshown(Unshown),
+    Unshown(PageInfo),
 }
 
 impl Listed {
     fn pane(&self) -> u64 {
         match self {
             Listed::Page(page) => page.pane,
-            Listed::Unshown(unshown) => unshown.pane,
+            Listed::Unshown(info) => info.pane,
         }
     }
 
@@ -77,21 +70,23 @@ fn pages(cx: &App) -> Result<(Vec<Listed>, Option<u64>), ControlError> {
         for unit in &project.branches {
             for tab in &unit.tabs {
                 for pane in tab.panes() {
-                    let worktree = unit.worktree.path.clone();
                     if let Some(view) = &pane.browser
                         && !view.read(cx).is_inspector()
                     {
                         pages.push(Listed::Page(Page {
                             pane: pane.id,
                             view: view.clone(),
-                            worktree,
+                            worktree: unit.worktree.path.clone(),
                         }));
-                    } else if let (None, Some(unloaded)) = (&pane.browser, &pane.unloaded) {
-                        pages.push(Listed::Unshown(Unshown {
+                    } else if let Some(unloaded) = &pane.unloaded {
+                        pages.push(Listed::Unshown(PageInfo {
                             pane: pane.id,
                             url: unloaded.address.clone(),
                             title: pane.title.to_string(),
-                            worktree,
+                            loading: false,
+                            worktree: unit.worktree.path.display().to_string(),
+                            controller: None,
+                            viewport: agent::unshown_viewport(),
                         }));
                     }
                 }
@@ -236,15 +231,7 @@ pub(crate) fn list(cx: &mut App) -> Result<Value, ControlError> {
                     viewport: facts.viewport,
                 }
             }
-            Listed::Unshown(unshown) => PageInfo {
-                pane: unshown.pane,
-                url: unshown.url.clone(),
-                title: unshown.title.clone(),
-                loading: false,
-                worktree: unshown.worktree.display().to_string(),
-                controller: None,
-                viewport: agent::unshown_viewport(),
-            },
+            Listed::Unshown(info) => info.clone(),
         })
         .collect();
     output(&BrowserListOutput { pages })
