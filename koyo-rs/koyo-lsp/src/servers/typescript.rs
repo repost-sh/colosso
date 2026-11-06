@@ -75,15 +75,19 @@ pub enum Engine {
 pub fn engine(root: &Path) -> Engine {
     let installed = installed(root);
     if let Some(older) = installed.iter().find(|typescript| typescript.version.0 < 7) {
-        return Engine::Vtsls { typescript: older.package.clone() };
+        return Engine::Vtsls {
+            typescript: older.package.clone(),
+        };
     }
     let tsc = TYPESCRIPT.release.target().and_then(|target| {
         let platform = format!("@typescript/typescript-{target}/lib/tsc");
-        (installed.iter().filter(|typescript| typescript.version.0 >= 7))
-            .find_map(|typescript| {
-                let tsc = typescript.package.parent()?.join(&platform);
-                runs(&tsc).then_some(tsc)
-            })
+        (installed
+            .iter()
+            .filter(|typescript| typescript.version.0 >= 7))
+        .find_map(|typescript| {
+            let tsc = typescript.package.parent()?.join(&platform);
+            runs(&tsc).then_some(tsc)
+        })
     });
     Engine::Native { tsc }
 }
@@ -122,7 +126,9 @@ fn installed(root: &Path) -> Vec<Installed> {
         if depth == DEPTH || looked == FOLDERS {
             continue;
         }
-        let Ok(entries) = fs::read_dir(&folder) else { continue };
+        let Ok(entries) = fs::read_dir(&folder) else {
+            continue;
+        };
         for entry in entries.flatten() {
             let is_folder = entry.file_type().is_ok_and(|kind| kind.is_dir());
             if is_folder && looked_into(&entry.file_name().to_string_lossy()) {
@@ -130,7 +136,11 @@ fn installed(root: &Path) -> Vec<Installed> {
             }
         }
     }
-    found.sort_by(|a, b| b.version.cmp(&a.version).then_with(|| a.package.cmp(&b.package)));
+    found.sort_by(|a, b| {
+        b.version
+            .cmp(&a.version)
+            .then_with(|| a.package.cmp(&b.package))
+    });
     found
 }
 
@@ -146,7 +156,11 @@ fn installed_in(folder: &Path) -> Option<Installed> {
 /// The three numbers of a version like `5.9.3`, or of `7.0.0-beta`'s before its dash.
 fn version(text: &str) -> Option<(u64, u64, u64)> {
     let mut numbers = text.split('-').next()?.split('.').map(str::parse);
-    Some((numbers.next()?.ok()?, numbers.next()?.ok()?, numbers.next()?.ok()?))
+    Some((
+        numbers.next()?.ok()?,
+        numbers.next()?.ok()?,
+        numbers.next()?.ok()?,
+    ))
 }
 
 /// The server's settings, the same for both languages: every inlay hint on. The names are
@@ -186,7 +200,11 @@ mod tests {
             None => modules.join("typescript"),
         };
         fs::create_dir_all(&package).unwrap();
-        fs::write(package.join("package.json"), format!(r#"{{"version":"{version}"}}"#)).unwrap();
+        fs::write(
+            package.join("package.json"),
+            format!(r#"{{"version":"{version}"}}"#),
+        )
+        .unwrap();
         if store.is_some() {
             std::os::unix::fs::symlink(&package, modules.join("typescript")).unwrap();
         }
@@ -195,8 +213,14 @@ mod tests {
 
     /// The platform package beside `typescript`, with a `tsc` that runs.
     fn with_platform_package(typescript: &Path) -> PathBuf {
-        let target = TYPESCRIPT.release.target().expect("a platform this test runs on");
-        let lib = typescript.parent().unwrap().join(format!("@typescript/typescript-{target}/lib"));
+        let target = TYPESCRIPT
+            .release
+            .target()
+            .expect("a platform this test runs on");
+        let lib = typescript
+            .parent()
+            .unwrap()
+            .join(format!("@typescript/typescript-{target}/lib"));
         fs::create_dir_all(&lib).unwrap();
         fs::write(lib.join("tsc"), "#!/bin/sh\nexit 0\n").unwrap();
         make_executable(&lib.join("tsc")).unwrap();
@@ -231,7 +255,12 @@ mod tests {
         ];
         assert_eq!(found, expected);
         // The newest older than 7 is the one vtsls runs, wherever it is.
-        assert_eq!(engine(&root), Engine::Vtsls { typescript: real(&deep) });
+        assert_eq!(
+            engine(&root),
+            Engine::Vtsls {
+                typescript: real(&deep)
+            }
+        );
         // Unreadable: not known.
         fs::write(at_root.join("package.json"), "not json").unwrap();
         assert_eq!(installed(&root).len(), 3);
@@ -252,7 +281,12 @@ mod tests {
         let package = with_typescript(&root.join("packages/web"), "7.0.2", store);
         assert_eq!(engine(&root), Engine::Native { tsc: None });
         let tsc = with_platform_package(&package);
-        assert_eq!(engine(&root), Engine::Native { tsc: Some(fs::canonicalize(&tsc).unwrap()) });
+        assert_eq!(
+            engine(&root),
+            Engine::Native {
+                tsc: Some(fs::canonicalize(&tsc).unwrap())
+            }
+        );
         // One that doesn't run is no server.
         fs::write(&tsc, "#!/bin/sh\nexit 1\n").unwrap();
         assert_eq!(engine(&root), Engine::Native { tsc: None });

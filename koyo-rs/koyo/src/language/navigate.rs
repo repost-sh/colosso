@@ -6,9 +6,9 @@ use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use koyo_lsp::uri;
 use gpui_kit::WeakEntity;
 use gpui_kit::component::input::ShowDocumentHandler;
+use koyo_lsp::uri;
 
 use super::server::Server;
 use crate::files::{At, FileEditor, Place};

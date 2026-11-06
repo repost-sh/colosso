@@ -17,16 +17,26 @@ use crate::common::{GREET_TS, data_dir, fixture, probe};
 #[test]
 #[ignore = "installs and runs vtsls; see this file's header"]
 fn vtsls_says_what_a_call_is() {
-    let Some(data) = data_dir("vtsls") else { return };
+    let Some(data) = data_dir("vtsls") else {
+        return;
+    };
     let node = node().expect("Node on PATH");
     let npm = NpmCli { node: node.clone() };
     let took = Instant::now();
     let script = VTSLS.script(&data, &npm).unwrap();
-    eprintln!("{}: installed, {:.1} s", VTSLS.name, took.elapsed().as_secs_f64());
+    eprintln!(
+        "{}: installed, {:.1} s",
+        VTSLS.name,
+        took.elapsed().as_secs_f64()
+    );
     let root = fixture(VTSLS.name, &[(GREET_TS.file, GREET_TS.text)]);
     // Run on the TypeScript vtsls brought along, named as a project's would be.
     let typescript = script.ancestors().nth(4).unwrap().join("typescript");
-    assert!(typescript.join("lib/tsserver.js").is_file(), "{}", typescript.display());
+    assert!(
+        typescript.join("lib/tsserver.js").is_file(),
+        "{}",
+        typescript.display()
+    );
     let launch = VTSLS.launch(node, &script, &root, vtsls_settings(&typescript));
     probe(&launch, &root, &GREET_TS);
 }

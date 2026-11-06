@@ -11,9 +11,9 @@ use std::net::{Shutdown, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+use gpui_kit::{Entity, Modifiers, MouseButton, TestAppContext, VisualTestContext, point, px};
 use koyo_browser_ipc::Go;
 use koyo_browser_ipc::client::Launch;
-use gpui_kit::{Entity, Modifiers, MouseButton, TestAppContext, VisualTestContext, point, px};
 use objc2_io_surface::IOSurfaceLockOptions;
 
 use super::frames::Frame;

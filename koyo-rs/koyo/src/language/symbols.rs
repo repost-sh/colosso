@@ -6,6 +6,9 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use futures::future::join_all;
+use gpui_kit::component::input::Rope;
+use gpui_kit::{App, AppContext as _, Entity, SharedString, Task};
 use koyo_lsp::lsp_types::request::{DocumentSymbolRequest, WorkspaceSymbolRequest};
 use koyo_lsp::lsp_types::{
     DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, OneOf, PartialResultParams,
@@ -13,9 +16,6 @@ use koyo_lsp::lsp_types::{
     WorkspaceSymbolResponse,
 };
 use koyo_lsp::{Encoding, uri};
-use futures::future::join_all;
-use gpui_kit::component::input::Rope;
-use gpui_kit::{App, AppContext as _, Entity, SharedString, Task};
 
 use super::providers::{Hooks, ask, provided};
 use super::registry::Languages;
@@ -81,7 +81,15 @@ fn flatten(
     path: &Arc<Path>,
     out: &mut Vec<Symbol>,
 ) {
-    for DocumentSymbol { name, kind, detail, selection_range, children, .. } in nested {
+    for DocumentSymbol {
+        name,
+        kind,
+        detail,
+        selection_range,
+        children,
+        ..
+    } in nested
+    {
         let at = Some(At::Server(selection_range, encoding));
         let symbol = Symbol {
             detail: detail.map(Into::into),
@@ -89,7 +97,13 @@ fn flatten(
         };
         let name = symbol.name.clone();
         out.push(symbol);
-        flatten(children.unwrap_or_default(), Some(&name), encoding, path, out);
+        flatten(
+            children.unwrap_or_default(),
+            Some(&name),
+            encoding,
+            path,
+            out,
+        );
     }
 }
 
@@ -115,7 +129,13 @@ fn named(
 /// The symbol `info` names, at its range of `path`.
 fn informed(info: SymbolInformation, path: &Arc<Path>, encoding: Encoding) -> Symbol {
     let at = Some(At::Server(info.location.range, encoding));
-    named(info.name, info.kind, info.container_name.map(Into::into), path, at)
+    named(
+        info.name,
+        info.kind,
+        info.container_name.map(Into::into),
+        path,
+        at,
+    )
 }
 
 /// The servers of the checkout at `root`, started or not.
@@ -150,7 +170,9 @@ pub fn workspace_symbols(root: &Path, query: String, cx: &App) -> Task<Vec<Symbo
         .map(|(client, encoding)| {
             let params = params.clone();
             cx.background_spawn(async move {
-                let answer = ask::<WorkspaceSymbolRequest>(&client, &params).await.flatten();
+                let answer = ask::<WorkspaceSymbolRequest>(&client, &params)
+                    .await
+                    .flatten();
                 answer.map_or_else(Vec::new, |answer| found(answer, encoding))
             })
         })
@@ -170,7 +192,9 @@ fn found(answer: WorkspaceSymbolResponse, encoding: Encoding) -> Vec<Symbol> {
         WorkspaceSymbolResponse::Nested(nested) => (nested.into_iter())
             .filter_map(|symbol| {
                 let (uri, at) = match symbol.location {
-                    OneOf::Left(location) => (location.uri, Some(At::Server(location.range, encoding))),
+                    OneOf::Left(location) => {
+                        (location.uri, Some(At::Server(location.range, encoding)))
+                    }
                     // Only the file. The client doesn't offer to ask for the range after, so
                     // no server should say so little.
                     OneOf::Right(location) => (location.uri, None),

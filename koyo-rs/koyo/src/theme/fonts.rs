@@ -60,7 +60,8 @@ impl InUse {
 
 /// The family everything but code is in.
 pub fn interface(cx: &App) -> &'static str {
-    cx.try_global::<InUse>().map_or(SYSTEM, |in_use| in_use.interface)
+    cx.try_global::<InUse>()
+        .map_or(SYSTEM, |in_use| in_use.interface)
 }
 
 /// The family code is in.
@@ -88,7 +89,9 @@ pub(super) fn init(cx: &mut App) {
         log::error!("couldn't load the bundled code font: {error}");
     }
     cx.on_action(|picked: &SetInterfaceFont, cx| {
-        settings::update(cx, |settings| settings.fonts.interface.clone_from(&picked.0));
+        settings::update(cx, |settings| {
+            settings.fonts.interface.clone_from(&picked.0);
+        });
     });
     cx.on_action(|picked: &SetCodeFont, cx| {
         settings::update(cx, |settings| settings.fonts.code.clone_from(&picked.0));
@@ -155,7 +158,10 @@ impl Element for AtRem {
         cx: &mut App,
     ) -> (LayoutId, ()) {
         let child = &mut self.child;
-        (window.with_rem_size(Some(self.rem), |window| child.request_layout(window, cx)), ())
+        (
+            window.with_rem_size(Some(self.rem), |window| child.request_layout(window, cx)),
+            (),
+        )
     }
 
     fn prepaint(
@@ -203,12 +209,26 @@ mod tests {
         let system = AppleTextSystem::new();
         system.add_fonts(faces()).expect("the faces load");
         assert!(system.all_font_names().iter().any(|name| name == MONO));
-        let bold = |font| gpui_kit::Font { weight: FontWeight::BOLD, ..font };
-        let italic = |font| gpui_kit::Font { style: FontStyle::Italic, ..font };
-        let ids = [font(MONO), bold(font(MONO)), italic(font(MONO)), bold(italic(font(MONO)))]
-            .map(|face| system.font_id(&face).expect("the family is there"));
+        let bold = |font| gpui_kit::Font {
+            weight: FontWeight::BOLD,
+            ..font
+        };
+        let italic = |font| gpui_kit::Font {
+            style: FontStyle::Italic,
+            ..font
+        };
+        let ids = [
+            font(MONO),
+            bold(font(MONO)),
+            italic(font(MONO)),
+            bold(italic(font(MONO))),
+        ]
+        .map(|face| system.font_id(&face).expect("the family is there"));
         for (index, id) in ids.iter().enumerate() {
-            assert!(!ids[..index].contains(id), "two styles drew in one face: {ids:?}");
+            assert!(
+                !ids[..index].contains(id),
+                "two styles drew in one face: {ids:?}"
+            );
         }
     }
 
@@ -220,7 +240,13 @@ mod tests {
     #[test]
     fn with_nothing_picked_it_is_the_system_font_and_the_bundled_one() {
         let in_use = InUse::of(&Fonts::default(), listed());
-        assert_eq!(in_use, InUse { interface: SYSTEM, code: MONO });
+        assert_eq!(
+            in_use,
+            InUse {
+                interface: SYSTEM,
+                code: MONO
+            }
+        );
     }
 
     #[test]
@@ -230,7 +256,13 @@ mod tests {
             code: Some("Fira Code".to_owned()),
             ..Fonts::default()
         };
-        assert_eq!(InUse::of(&fonts, listed()), InUse { interface: "Inter", code: "Fira Code" });
+        assert_eq!(
+            InUse::of(&fonts, listed()),
+            InUse {
+                interface: "Inter",
+                code: "Fira Code"
+            }
+        );
     }
 
     #[test]
@@ -240,7 +272,13 @@ mod tests {
             code: Some("Gone".to_owned()),
             ..Fonts::default()
         };
-        assert_eq!(InUse::of(&fonts, listed()), InUse { interface: SYSTEM, code: MONO });
+        assert_eq!(
+            InUse::of(&fonts, listed()),
+            InUse {
+                interface: SYSTEM,
+                code: MONO
+            }
+        );
     }
 
     #[gpui_kit::test]
@@ -270,7 +308,10 @@ mod tests {
             for mode in [ThemeMode::Dark, ThemeMode::Light, ThemeMode::Dark] {
                 Theme::change(mode, None, cx);
                 assert_eq!(cx.theme().mono_font_family.as_ref(), MONO);
-                assert_eq!(base::Theme::global(cx).tokens.typography.mono.as_ref(), MONO);
+                assert_eq!(
+                    base::Theme::global(cx).tokens.typography.mono.as_ref(),
+                    MONO
+                );
             }
         });
     }

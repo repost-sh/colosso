@@ -8,14 +8,14 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use gpui_kit::component::input::{Rope, RopeExt as _};
+use gpui_kit::{App, AppContext as _, AsyncApp, SharedString, Task, WeakEntity};
 use koyo_lsp::lsp_types::request::References;
 use koyo_lsp::lsp_types::{
     self, LocationLink, PartialResultParams, Position, ReferenceContext, ReferenceParams,
     WorkDoneProgressParams,
 };
 use koyo_lsp::{Encoding, IndexedText, uri};
-use gpui_kit::component::input::{Rope, RopeExt as _};
-use gpui_kit::{App, AppContext as _, AsyncApp, SharedString, Task, WeakEntity};
 
 use super::providers::Hooks;
 use super::server::Server;
@@ -65,7 +65,12 @@ const BEFORE: usize = 40;
 
 impl Hooks {
     /// Every reference to the symbol at `offset` of `rope`, the declaration included.
-    pub(super) fn references(&self, rope: &Rope, offset: usize, cx: &mut App) -> Task<Option<Found>> {
+    pub(super) fn references(
+        &self,
+        rope: &Rope,
+        offset: usize,
+        cx: &mut App,
+    ) -> Task<Option<Found>> {
         let Some(asked) = self.ask(rope, cx) else {
             return Task::ready(None);
         };
@@ -84,9 +89,11 @@ impl Hooks {
                         },
                     };
                     let found = asked.ask::<References>(&params).await.flatten();
-                    grouped((found.unwrap_or_default().into_iter()).filter_map(|location| {
-                        Some((uri::to_path(&location.uri)?, location.range))
-                    }))
+                    grouped(
+                        (found.unwrap_or_default().into_iter()).filter_map(|location| {
+                            Some((uri::to_path(&location.uri)?, location.range))
+                        }),
+                    )
                 })
                 .await;
             let title = format!("{} to `{name}`", counted(&places, "reference"));
@@ -175,9 +182,13 @@ async fn located(
     let (texts, encoding) = cx.update(|cx| {
         let server = server.upgrade();
         let server = server.as_ref().map(|server| server.read(cx));
-        let texts: Vec<Option<Arc<IndexedText>>> =
-            (files.iter()).map(|(path, _)| server?.shown_text(path)).collect();
-        (texts, server.map_or(Encoding::default(), |server| server.encoding))
+        let texts: Vec<Option<Arc<IndexedText>>> = (files.iter())
+            .map(|(path, _)| server?.shown_text(path))
+            .collect();
+        (
+            texts,
+            server.map_or(Encoding::default(), |server| server.encoding),
+        )
     });
     cx.background_spawn(async move {
         (files.into_iter().zip(texts))
@@ -285,7 +296,8 @@ mod tests {
     fn places_are_grouped_by_file_in_the_order_met_and_counted_in_words() {
         let (a, b) = (PathBuf::from("/a.rs"), PathBuf::from("/b.rs"));
         let at = |line| lsp_types::Range::new(Position::new(line, 0), Position::new(line, 1));
-        let places = grouped([(b.clone(), at(3)), (a.clone(), at(1)), (b.clone(), at(0))].into_iter());
+        let places =
+            grouped([(b.clone(), at(3)), (a.clone(), at(1)), (b.clone(), at(0))].into_iter());
         assert_eq!(places[0].0, b);
         assert_eq!(places[0].1.len(), 2);
         assert_eq!(places[1].0, a);

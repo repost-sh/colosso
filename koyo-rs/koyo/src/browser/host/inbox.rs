@@ -8,9 +8,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
+use gpui_kit::{Context, Window};
 use koyo_browser_ipc::client::Incoming;
 use koyo_browser_ipc::{PaneId, PixelSize};
-use gpui_kit::{Context, Window};
 
 use super::{Browsers, Host};
 

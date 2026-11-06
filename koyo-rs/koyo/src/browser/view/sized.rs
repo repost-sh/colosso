@@ -8,8 +8,8 @@
 
 use std::time::Duration;
 
-use koyo_browser_ipc::PixelSize;
 use gpui_kit::{App, Entity, Window};
+use koyo_browser_ipc::PixelSize;
 
 use super::BrowserView;
 use crate::browser::frames::Frame;

@@ -49,7 +49,8 @@ impl Workspace {
 
     /// Names each chat pane what `title_of` says its thread is called, if anything.
     pub fn retitle_chats<'a>(&mut self, title_of: impl Fn(&ThreadId) -> Option<&'a str>) {
-        let panes = (self.units_mut()).flat_map(|unit| unit.tabs.iter_mut().flat_map(Tab::panes_mut));
+        let panes =
+            (self.units_mut()).flat_map(|unit| unit.tabs.iter_mut().flat_map(Tab::panes_mut));
         for pane in panes {
             let title = pane.chat.as_ref().and_then(&title_of);
             if let Some(title) = title.filter(|title| *title != pane.title.as_ref()) {
@@ -59,7 +60,9 @@ impl Workspace {
     }
 
     fn units_mut(&mut self) -> impl Iterator<Item = &mut BranchUnit> {
-        self.projects.iter_mut().flat_map(|project| &mut project.branches)
+        self.projects
+            .iter_mut()
+            .flat_map(|project| &mut project.branches)
     }
 }
 
@@ -95,12 +98,20 @@ mod tests {
     fn a_chat_tab_goes_on_its_checkout_unshown_and_only_on_one_that_is_listed() {
         let mut workspace = workspace();
         workspace.new_tab(PaneKind::Chat);
-        assert!(workspace.add_chat_tab("/src/app".as_ref(), thread("t"), false).is_some());
+        assert!(
+            workspace
+                .add_chat_tab("/src/app".as_ref(), thread("t"), false)
+                .is_some()
+        );
         let unit = workspace.branch().unwrap();
         assert_eq!(unit.tabs.len(), 2);
         assert_eq!(unit.active_tab, 0);
         assert_eq!(unit.tabs[1].first().chat, Some(thread("t")));
-        assert!(workspace.add_chat_tab("/src/gone".as_ref(), thread("u"), false).is_none());
+        assert!(
+            workspace
+                .add_chat_tab("/src/gone".as_ref(), thread("u"), false)
+                .is_none()
+        );
     }
 
     #[test]
@@ -122,12 +133,19 @@ mod tests {
         let Some(Tab::Single(chat)) = unit.tabs.pop() else {
             panic!("the chat's tab is one pane");
         };
-        unit.tabs
-            .push(Tab::beside(Tab::Single(terminal.clone()), Tab::Single(chat)));
+        unit.tabs.push(Tab::beside(
+            Tab::Single(terminal.clone()),
+            Tab::Single(chat),
+        ));
         assert_eq!(shown(&workspace), [Some(&thread("t"))]);
         let title = |workspace: &Workspace| {
             let panes = workspace.branch().unwrap().tabs[0].panes();
-            panes.iter().find(|pane| pane.chat.is_some()).unwrap().title.clone()
+            panes
+                .iter()
+                .find(|pane| pane.chat.is_some())
+                .unwrap()
+                .title
+                .clone()
         };
         workspace.retitle_chats(|_| Some("How"));
         assert_eq!(title(&workspace), "How");

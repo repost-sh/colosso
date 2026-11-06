@@ -4,19 +4,19 @@
 //! overlays, as the glass hides what's drawn under it. That draws this view again for any change
 //! under it (a deferred element's reads aren't told apart), so it's kept to very little.
 
+mod context_menu;
 pub(super) mod details;
+mod floating;
 
 use std::path::PathBuf;
 use std::time::Duration;
 
-use gpui_kit::assets::IconName;
 use gpui_kit::component::message_scroller::MessageScrollerState;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Bounds, ClickEvent, Context, ElementId, Entity, EventEmitter,
-    ExternalPaths, FocusHandle, Focusable, InteractiveElement as _, IntoElement,
-    ParentElement as _, Pixels, Render, SharedString, StatefulInteractiveElement as _,
-    StyleRefinement, Styled as _, Subscription, Task, Window, deferred, div, px,
+    App, AppContext as _, Context, Entity, EventEmitter, ExternalPaths, FocusHandle, Focusable,
+    InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Render, SharedString,
+    StyleRefinement, Styled as _, Subscription, Task, Window, div,
 };
 use koyo_agent::protocol::ids::ThreadId;
 
@@ -26,18 +26,11 @@ use super::rewind;
 use super::subagent_bar::{KEYS, OpenParent, SubagentBar, WentToParent};
 use super::thread::ChatThread;
 use super::timeline::{GoBackTo, OpenSubagent, Timeline};
-use details::{Details, OpenIn, ToggleDetails, Workplace};
-use crate::native::liquid;
+use crate::projects::with_menu;
 use crate::settings::ProjectScript;
-use crate::shell::icon;
 use crate::theme;
+use details::{Details, OpenIn, ToggleDetails, Workplace};
 
-/// The widest the timeline and the composer get.
-pub(super) const COLUMN: f32 = 760.;
-/// How far the composer floats above the card's bottom edge.
-const FLOAT: f32 = 12.;
-/// How far the last row keeps from the composer.
-const CLEARANCE: f32 = 12.;
 /// How long after leaving the end the pill back to it shows, so a nudge doesn't flash it.
 const PILL_DELAY: Duration = Duration::from_millis(150);
 /// How many rows from the top the next older runs are asked for, so they're there when reached.
@@ -51,7 +44,10 @@ pub enum ChatViewEvent {
     /// A person opened a file the chat changed.
     OpenFile(PathBuf),
     /// A person ran one of the project's scripts, for the checkout at `folder`.
-    RunScript { script: ProjectScript, folder: PathBuf },
+    RunScript {
+        script: ProjectScript,
+        folder: PathBuf,
+    },
 }
 
 /// A chat a tab has on show, or under what's on show: its timeline and where it scrolled to.
@@ -131,11 +127,18 @@ impl ChatView {
         view
     }
 
-    fn composer_said(&mut self, event: &ComposerEvent, window: &mut Window, cx: &mut Context<Self>) {
+    fn composer_said(
+        &mut self,
+        event: &ComposerEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         match event {
             ComposerEvent::Sent => {
                 if let Some(shown) = self.showing() {
-                    shown.scroller.update(cx, MessageScrollerState::scroll_to_end);
+                    shown
+                        .scroller
+                        .update(cx, MessageScrollerState::scroll_to_end);
                 }
             }
             ComposerEvent::Created(thread, id) => {
@@ -164,18 +167,26 @@ impl ChatView {
             cx.new(|cx| Timeline::new(thread, catalog, scroller, cwd, composer, inset, cx))
         };
         let mut following = vec![
-            cx.subscribe(&timeline, |_, _, event: &ChatViewEvent, cx| cx.emit(event.clone())),
+            cx.subscribe(&timeline, |_, _, event: &ChatViewEvent, cx| {
+                cx.emit(event.clone());
+            }),
             cx.subscribe_in(&timeline, window, Self::went_into),
             cx.subscribe_in(&timeline, window, Self::went_back),
             cx.observe(&scroller, |view, _, cx| view.scrolled(cx)),
         ];
         if let Some(bar) = &bar {
-            following.push(cx.subscribe_in(bar, window, |view, _, _: &WentToParent, window, cx| {
-                view.came_back(window, cx);
-            }));
+            following.push(cx.subscribe_in(
+                bar,
+                window,
+                |view, _, _: &WentToParent, window, cx| {
+                    view.came_back(window, cx);
+                },
+            ));
         }
         if let Some(under) = self.showing() {
-            under.timeline.update(cx, |timeline, cx| timeline.set_covered(true, cx));
+            under
+                .timeline
+                .update(cx, |timeline, cx| timeline.set_covered(true, cx));
         }
         self.shown.push(Shown {
             id: thread.read(cx).id().clone(),
@@ -229,7 +240,9 @@ impl ChatView {
     fn came_back(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.shown.pop();
         if let Some(under) = self.showing() {
-            under.timeline.update(cx, |timeline, cx| timeline.set_covered(false, cx));
+            under
+                .timeline
+                .update(cx, |timeline, cx| timeline.set_covered(false, cx));
         }
         self.showing_changed(window, cx);
     }
@@ -266,7 +279,12 @@ impl ChatView {
         let Some(shown) = self.showing().filter(|_| window.is_window_active()) else {
             return;
         };
-        if self.chats.read(cx).summary(&shown.id).is_some_and(|summary| summary.unread) {
+        if self
+            .chats
+            .read(cx)
+            .summary(&shown.id)
+            .is_some_and(|summary| summary.unread)
+        {
             let (chats, id) = (self.chats.clone(), shown.id.clone());
             cx.defer(move |cx| chats.update(cx, |chats, cx| chats.saw(&id, cx)));
         }
@@ -326,8 +344,12 @@ impl ChatView {
         let Some(oldest) = opened.replica().and_then(|replica| replica.runs.first()) else {
             return;
         };
-        let page = (self.chats.read(cx))
-            .history(opened.id(), Some(oldest.id.clone()), super::HISTORY_PAGE as u32, cx);
+        let page = (self.chats.read(cx)).history(
+            opened.id(),
+            Some(oldest.id.clone()),
+            super::HISTORY_PAGE as u32,
+            cx,
+        );
         shown.can_fetch_older = false;
         cx.spawn(async move |this, cx| {
             let page = page.await;
@@ -351,103 +373,6 @@ impl ChatView {
         })
         .detach();
     }
-
-    /// How far the timeline's last row has to stay from the bottom to clear the glass.
-    fn inset(&self) -> Pixels {
-        self.composer_height + px(FLOAT + CLEARANCE)
-    }
-
-    /// The composer: over the end of the timeline, or in the middle of an empty chat.
-    fn composer_in_place(&self, cx: &Context<Self>) -> AnyElement {
-        let place = div()
-            .absolute()
-            .left_0()
-            .right_0()
-            .flex()
-            .flex_col()
-            .items_center()
-            .on_children_prepainted(self.measures_composer(cx));
-        if let Some(bar) = self.bar() {
-            return deferred(place.bottom(px(FLOAT)).child(bar.clone())).into_any_element();
-        }
-        let place = if self.composer.read(cx).is_new() {
-            place.top_0().bottom_0().justify_center().pb(px(48.))
-        } else {
-            place.bottom(px(FLOAT))
-        };
-        deferred(place.child(self.composer.clone())).into_any_element()
-    }
-
-    /// The composer's height, once it's laid out, for the timeline to keep clear of it. Told a
-    /// frame late, since the timeline drew first.
-    fn measures_composer(
-        &self,
-        cx: &Context<Self>,
-    ) -> impl Fn(Vec<Bounds<Pixels>>, &mut Window, &mut App) + 'static {
-        let view = cx.weak_entity();
-        let held = self.composer_height;
-        move |children, _, cx| {
-            let height = children.first().map_or(Pixels::ZERO, |child| child.size.height);
-            if height != held {
-                let view = view.clone();
-                cx.defer(move |cx| {
-                    view.update(cx, |view, cx| view.composer_measured(height, cx)).ok();
-                });
-            }
-        }
-    }
-
-    fn composer_measured(&mut self, height: Pixels, cx: &mut Context<Self>) {
-        self.composer_height = height;
-        let inset = self.inset();
-        if let Some(shown) = self.showing() {
-            shown.timeline.update(cx, |timeline, cx| timeline.set_inset(inset, cx));
-        }
-        cx.notify();
-    }
-
-    /// The pill back to the end of the timeline, once a person left it.
-    fn scroll_pill(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let composer = self.composer_on_show().map(|composer| composer.read(cx));
-        if !self.pill || composer.is_some_and(ChatComposer::suggesting) {
-            return None;
-        }
-        let queued = composer.map_or(0, ChatComposer::queued);
-        let p = theme::palette(cx);
-        let keyed = ElementId::NamedInteger("chat-pill-glass".into(), cx.entity_id().as_u64());
-        let on_glass = liquid::backdrop(keyed, px(14.), window, cx);
-        let pill = div()
-            .id("chat-scroll-to-end")
-            .relative()
-            .flex()
-            .items_center()
-            .gap_1()
-            .h(px(28.))
-            .px_3()
-            .rounded_full()
-            .occlude()
-            .cursor_pointer()
-            .text_xs()
-            .text_color(p.text);
-        let pill = liquid::floating(pill, on_glass, p)
-            .child(icon(IconName::ChevronDown, 13.))
-            .child("Scroll to end")
-            .when(queued > 0, |pill| pill.child(format!("· {queued} queued")))
-            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
-                if let Some(shown) = this.showing() {
-                    shown.scroller.update(cx, MessageScrollerState::scroll_to_end);
-                }
-            }));
-        let bar = div()
-            .absolute()
-            .bottom(self.inset())
-            .left_0()
-            .right_0()
-            .flex()
-            .justify_center()
-            .child(pill);
-        Some(deferred(bar).into_any_element())
-    }
 }
 
 impl Focusable for ChatView {
@@ -463,8 +388,12 @@ impl Render for ChatView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         details::keep_fresh(self, cx);
         self.note_seen(window, cx);
-        let timeline = (self.showing())
-            .map(|shown| shown.timeline.clone().cached(StyleRefinement::default().size_full()));
+        let timeline = (self.showing()).map(|shown| {
+            shown
+                .timeline
+                .clone()
+                .cached(StyleRefinement::default().size_full())
+        });
         div()
             .id("chat")
             .relative()
@@ -472,13 +401,16 @@ impl Render for ChatView {
             .text_color(theme::palette(cx).text)
             // Wherever the keys are in a subagent's chat: clicking its text takes them from the bar.
             .when(self.bar().is_some(), |chat| {
-                chat.key_context(KEYS).on_action(cx.listener(|this, _: &OpenParent, window, cx| {
-                    this.came_back(window, cx);
-                }))
+                chat.key_context(KEYS)
+                    .on_action(cx.listener(|this, _: &OpenParent, window, cx| {
+                        this.came_back(window, cx);
+                    }))
             })
             .on_drop(cx.listener(|this, dropped: &ExternalPaths, _, cx| {
                 if let Some(composer) = this.composer_on_show() {
-                    composer.update(cx, |composer, cx| composer.attach_paths(dropped.paths(), cx));
+                    composer.update(cx, |composer, cx| {
+                        composer.attach_paths(dropped.paths(), cx);
+                    });
                 }
             }))
             .on_action(cx.listener(|this, _: &ToggleDetails, _, cx| {
@@ -486,6 +418,7 @@ impl Render for ChatView {
                 cx.notify();
             }))
             .on_action(cx.listener(|this, open: &OpenIn, _, cx| details::opened_in(this, open, cx)))
+            .map(|chat| with_menu(chat, context_menu::menu))
             .child(details::measure(cx))
             .children(timeline)
             .children(self.scroll_pill(window, cx))

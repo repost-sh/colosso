@@ -64,10 +64,7 @@ pub fn init() {
     if file().is_some() {
         log_panics();
     }
-    log::info!(
-        "========== Koyo {} ==========",
-        env!("CARGO_PKG_VERSION")
-    );
+    log::info!("========== Koyo {} ==========", env!("CARGO_PKG_VERSION"));
     if let Some(unread) = unread {
         log::warn!("{unread}");
     }

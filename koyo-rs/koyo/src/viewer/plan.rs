@@ -26,7 +26,12 @@ const MOST_OTHER_TILES: usize = 64;
 
 impl Viewer {
     /// The pane was laid out at `viewport`, on a screen of `scale` pixels to a logical one.
-    pub(super) fn set_viewport(&mut self, viewport: (f32, f32), scale: f32, cx: &mut Context<Self>) {
+    pub(super) fn set_viewport(
+        &mut self,
+        viewport: (f32, f32),
+        scale: f32,
+        cx: &mut Context<Self>,
+    ) {
         if (viewport, scale) == (self.viewport, self.scale) {
             return;
         }
@@ -86,7 +91,9 @@ impl Viewer {
         let page = self.pages[0];
         let shown = (page.0.max(page.1) * self.camera.zoom * self.scale).ceil() as u32;
         let wanted = longest(shown, probe.longest());
-        let enough = self.asked_longest.is_some_and(|have| have >= wanted && have <= wanted * 2);
+        let enough = self
+            .asked_longest
+            .is_some_and(|have| have >= wanted && have <= wanted * 2);
         if !enough {
             self.asked_longest = Some(wanted);
             self.ask([Job::Whole(wanted)]);

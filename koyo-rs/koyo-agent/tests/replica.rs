@@ -49,12 +49,18 @@ fn a_change_adds_new_rows_in_their_order_and_replaces_the_ones_it_has_whole() {
     let mut replica = Replica::new(snapshot(
         3,
         vec![run("r1", RunStatus::Running, 3)],
-        vec![item("a", 0, message("Why?"), 2), item("c", 2, answer("Be"), 3)],
+        vec![
+            item("a", 0, message("Why?"), 2),
+            item("c", 2, answer("Be"), 3),
+        ],
     ));
     replica.apply(changed(
         4,
         vec![run("r1", RunStatus::Completed, 4)],
-        vec![item("b", 1, answer("Think"), 4), item("c", 2, answer("Because."), 4)],
+        vec![
+            item("b", 1, answer("Think"), 4),
+            item("c", 2, answer("Because."), 4),
+        ],
     ));
     assert_eq!(replica.seq(), 4);
     assert_eq!(ordinals(&replica), [0, 1, 2]);
@@ -75,13 +81,21 @@ fn text_grows_by_what_is_appended_and_a_whole_row_settles_it() {
     assert!(replica.append(&appended("a", "Bec")));
     assert!(replica.append(&appended("a", "ause")));
     assert_eq!(text_of(&replica, "a"), "Because");
-    replica.apply(changed(2, Vec::new(), vec![item("a", 0, answer("Because."), 2)]));
+    replica.apply(changed(
+        2,
+        Vec::new(),
+        vec![item("a", 0, answer("Because."), 2)],
+    ));
     assert_eq!(text_of(&replica, "a"), "Because.");
 }
 
 #[test]
 fn an_append_to_what_it_does_not_hold_or_to_what_has_no_text_changes_nothing() {
-    let mut replica = Replica::new(snapshot(1, Vec::new(), vec![item("a", 0, message("Why?"), 1)]));
+    let mut replica = Replica::new(snapshot(
+        1,
+        Vec::new(),
+        vec![item("a", 0, message("Why?"), 1)],
+    ));
     let before = replica.clone();
     assert!(!replica.append(&appended("b", "lost")));
     assert!(!replica.append(&appended("a", "lost")));
@@ -90,7 +104,11 @@ fn an_append_to_what_it_does_not_hold_or_to_what_has_no_text_changes_nothing() {
 
 #[test]
 fn a_row_older_than_the_one_held_is_not_taken_though_one_of_the_same_change_is() {
-    let mut replica = Replica::new(snapshot(5, Vec::new(), vec![item("a", 0, answer("New"), 5)]));
+    let mut replica = Replica::new(snapshot(
+        5,
+        Vec::new(),
+        vec![item("a", 0, answer("New"), 5)],
+    ));
     replica.apply(changed(4, Vec::new(), vec![item("a", 0, answer("Old"), 4)]));
     assert_eq!(text_of(&replica, "a"), "New");
     assert_eq!(replica.seq(), 5);
@@ -107,12 +125,18 @@ fn a_reopen_merges_what_changed_while_away_and_keeps_the_rest() {
     let mut replica = Replica::new(snapshot(
         2,
         vec![run("r1", RunStatus::Running, 2)],
-        vec![item("a", 0, message("Why?"), 1), item("b", 1, answer("Part"), 2)],
+        vec![
+            item("a", 0, message("Why?"), 1),
+            item("b", 1, answer("Part"), 2),
+        ],
     ));
     replica.catch_up(snapshot(
         9,
         vec![run("r1", RunStatus::Completed, 9)],
-        vec![item("b", 1, answer("Part and whole"), 9), item("c", 2, answer("More"), 8)],
+        vec![
+            item("b", 1, answer("Part and whole"), 9),
+            item("c", 2, answer("More"), 8),
+        ],
     ));
     assert_eq!(replica.seq(), 9);
     assert_eq!(ordinals(&replica), [0, 1, 2]);
@@ -129,7 +153,10 @@ fn history_goes_before_what_is_held_and_leaves_the_change_number_alone() {
     ));
     replica.prepend(Rows {
         runs: vec![run("r1", RunStatus::Completed, 3)],
-        items: vec![item("a", 0, message("Why?"), 1), item("b", 3, answer("Old"), 3)],
+        items: vec![
+            item("a", 0, message("Why?"), 1),
+            item("b", 3, answer("Old"), 3),
+        ],
         requests: Vec::new(),
     });
     assert_eq!(replica.seq(), 9);
@@ -151,7 +178,12 @@ fn says_what_is_on_what_waits_and_what_was_said_last() {
     let queued = |id, seq| run(id, RunStatus::Queued, seq);
     let snapshot = snapshot(
         5,
-        vec![run("a", RunStatus::Completed, 1), run("b", RunStatus::Running, 2), queued("c", 3), queued("d", 4)],
+        vec![
+            run("a", RunStatus::Completed, 1),
+            run("b", RunStatus::Running, 2),
+            queued("c", 3),
+            queued("d", 4),
+        ],
         vec![
             item("first", 0, message("First."), 1),
             item("answer", 1, answer("Sure."), 2),
@@ -170,7 +202,11 @@ fn says_what_is_on_what_waits_and_what_was_said_last() {
 
 #[test]
 fn says_nothing_is_on_when_nothing_is() {
-    let replica = Replica::new(snapshot(1, vec![run("a", RunStatus::Completed, 1)], Vec::new()));
+    let replica = Replica::new(snapshot(
+        1,
+        vec![run("a", RunStatus::Completed, 1)],
+        Vec::new(),
+    ));
 
     assert!(replica.live().is_none());
     assert_eq!(replica.queued().count(), 0);
@@ -185,7 +221,10 @@ fn a_removed_run_goes_with_what_it_held_and_what_came_since_takes_its_place() {
     };
     let mut replica = Replica::new(snapshot(
         3,
-        vec![run("r1", RunStatus::Completed, 1), run("r2", RunStatus::Completed, 3)],
+        vec![
+            run("r1", RunStatus::Completed, 1),
+            run("r2", RunStatus::Completed, 3),
+        ],
         vec![item("a", 0, message("First"), 1), later("b", 1, 3)],
     ));
 
@@ -195,12 +234,19 @@ fn a_removed_run_goes_with_what_it_held_and_what_came_since_takes_its_place() {
     };
     replica.apply(changed(
         5,
-        vec![run("r2", RunStatus::Removed, 5), run("r3", RunStatus::Completed, 5)],
+        vec![
+            run("r2", RunStatus::Removed, 5),
+            run("r3", RunStatus::Completed, 5),
+        ],
         vec![new],
     ));
 
     let runs: Vec<&str> = replica.runs.iter().map(|run| run.id.0.as_str()).collect();
     assert_eq!(runs, ["r1", "r3"]);
-    let items: Vec<&str> = replica.items.iter().map(|item| item.id.0.as_str()).collect();
+    let items: Vec<&str> = replica
+        .items
+        .iter()
+        .map(|item| item.id.0.as_str())
+        .collect();
     assert_eq!(items, ["a", "c"]);
 }

@@ -6,12 +6,14 @@ mod asks;
 mod attachments;
 mod catalog;
 mod composer;
+mod connection;
 mod drafts;
 mod host;
 mod marks;
+mod message;
 mod notify;
-mod queued;
 mod output;
+mod queued;
 mod rewind;
 mod rows;
 mod status;
@@ -21,6 +23,8 @@ mod tabs;
 mod thread;
 mod timeline;
 mod view;
+#[cfg(feature = "visual-check")]
+pub mod visual;
 mod work;
 
 use std::collections::HashMap;
@@ -28,8 +32,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use futures::StreamExt as _;
-use gpui_kit::{App, AppContext as _, Context, Entity, EventEmitter, SharedString, Subscription, Task, WeakEntity};
+use gpui_kit::{
+    App, AppContext as _, Context, Entity, EventEmitter, SharedString, Subscription, Task,
+    WeakEntity,
+};
 use koyo_agent::agent_client::{AgentClient, Notice};
 use koyo_agent::client::{self, ClientError};
 use koyo_agent::protocol::events::Event;
@@ -37,13 +43,13 @@ use koyo_agent::protocol::ids::{RequestId, RunId, ThreadId};
 use koyo_agent::protocol::methods::{
     Catalog, Delivery, Empty, HistoryParams, Method, OpenParams, RequestsRespond, RespondParams,
     Rows, SendParams, Sent, StopParams, ThreadParams, ThreadsClose, ThreadsHistory, ThreadsOpen,
-    ThreadsUpdate, ThreadsWatch, TurnsSend, TurnsStop, UpdateParams,
+    ThreadsUpdate, TurnsSend, TurnsStop, UpdateParams,
 };
 use koyo_agent::protocol::model::{Prompt, ThreadSummary};
 use koyo_agent::protocol::requests::Response;
 
 use crate::settings;
-use host::agent_client;
+use host::{agent_client, follow};
 use thread::{ChatThread, ThreadEvent};
 
 pub use asks::{AllowRequest, AllowRequestForChat, DenyRequest};
@@ -54,12 +60,8 @@ pub use subagent_bar::OpenParent;
 pub use tabs::ChatTabs;
 pub use view::details::ToggleDetails;
 
-/// How long the loop waits between batches: what arrives meanwhile is applied together.
-const FRAME: Duration = Duration::from_millis(16);
 /// How long after a connection ends it's made again, and the first wait after that fails.
 const FIRST_WAIT: Duration = Duration::from_secs(1);
-/// The longest wait between attempts to reach the host.
-const LONGEST_WAIT: Duration = Duration::from_secs(30);
 /// How many older runs come at a time.
 const HISTORY_PAGE: usize = 30;
 
@@ -84,7 +86,11 @@ pub enum ChatsEvent {
     /// A thread was deleted: its tabs go.
     Removed(ThreadId),
     /// A person who isn't looking should hear what a chat says.
-    News { id: ThreadId, title: String, said: &'static str },
+    News {
+        id: ThreadId,
+        title: String,
+        said: &'static str,
+    },
 }
 
 pub struct Chats {
@@ -174,105 +180,6 @@ impl Chats {
         }
     }
 
-    /// Reaches the host unless it's reached, or being reached.
-    pub fn connect(&mut self, cx: &mut Context<Self>) {
-        if matches!(self.connection, Connection::Idle) {
-            self.reach(Duration::ZERO, cx);
-        }
-    }
-
-    /// Stops a host of another build and starts this one's, as the person chose: its running
-    /// turns stop.
-    pub fn replace_host(&mut self, cx: &mut Context<Self>) {
-        let Some(client) = self.client.clone() else {
-            return;
-        };
-        self.connection = Connection::Connecting;
-        cx.notify();
-        let stopping = cx.background_spawn(async move { client.replace_host() });
-        self.connecting = Some(cx.spawn(async move |this, cx| {
-            let stopped = stopping.await;
-            this.update(cx, |this, cx| match stopped {
-                Ok(()) => this.reach(Duration::ZERO, cx),
-                Err(error) => this.failed(&error, cx),
-            })
-            .ok();
-        }));
-    }
-
-    /// Asks the host for its threads after `wait`, over and over until it answers, then opens
-    /// what was open before: the way back from any connection that ended.
-    fn reach(&mut self, wait: Duration, cx: &mut Context<Self>) {
-        let Some(client) = self.client.clone() else {
-            return;
-        };
-        self.connection = Connection::Connecting;
-        cx.notify();
-        self.connecting = Some(cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(wait).await;
-            let mut wait = FIRST_WAIT;
-            loop {
-                let asking = Arc::clone(&client);
-                let listed = cx
-                    .background_spawn(async move { asking.request::<ThreadsWatch>(&Empty {}) })
-                    .await;
-                let again = this.update(cx, |this, cx| this.listed(listed, cx));
-                if !again.unwrap_or(false) {
-                    return;
-                }
-                cx.background_executor().timer(wait).await;
-                wait = (wait * 2).min(LONGEST_WAIT);
-            }
-        }));
-    }
-
-    /// Takes in the host's list of threads; whether to ask again.
-    fn listed(
-        &mut self,
-        listed: Result<Vec<ThreadSummary>, ClientError>,
-        cx: &mut Context<Self>,
-    ) -> bool {
-        let summaries = match listed {
-            Ok(summaries) => summaries,
-            Err(ClientError::OtherBuild) => {
-                self.connection = Connection::OtherBuild;
-                cx.notify();
-                return false;
-            }
-            Err(error) => {
-                self.failed(&error, cx);
-                return true;
-            }
-        };
-        self.to_restore.get_or_insert_with(|| {
-            let mut tabs: Vec<ThreadId> = (summaries.iter())
-                .filter(|summary| summary.tab_open)
-                .map(|summary| summary.id.clone())
-                .collect();
-            // In the order they were made, as the host's ids sort, so they come back the same.
-            tabs.sort();
-            tabs
-        });
-        self.summaries = (summaries.into_iter())
-            .map(|summary| (summary.id.clone(), summary))
-            .collect();
-        self.connection = Connection::Connected;
-        self.told_config = None;
-        self.tell_config(cx);
-        for thread in self.threads.values().filter_map(WeakEntity::upgrade) {
-            self.open(thread, cx);
-        }
-        self.summaries_changed(cx);
-        cx.notify();
-        false
-    }
-
-    fn failed(&mut self, error: &ClientError, cx: &mut Context<Self>) {
-        log::warn!("can't reach the agent host: {error}");
-        self.connection = Connection::Failed(error.to_string().into());
-        cx.notify();
-    }
-
     /// The open thread `id`, opened now if it isn't. It stays open as long as it's held.
     pub fn thread(&mut self, id: &ThreadId, cx: &mut Context<Self>) -> Entity<ChatThread> {
         if let Some(thread) = self.threads.get(id).and_then(WeakEntity::upgrade) {
@@ -280,7 +187,8 @@ impl Chats {
         }
         let thread = cx.new(|_| ChatThread::new(id.clone()));
         let released = id.clone();
-        cx.observe_release(&thread, move |chats, _, cx| chats.let_go(&released, cx)).detach();
+        cx.observe_release(&thread, move |chats, _, cx| chats.let_go(&released, cx))
+            .detach();
         self.threads.insert(id.clone(), thread.downgrade());
         self.open(thread.clone(), cx);
         thread
@@ -289,7 +197,11 @@ impl Chats {
     /// Nothing holds thread `id` any more. The host hears so, unless it deleted the thread, and
     /// what's kept of it is the host's. It may be open again by now, which isn't this one.
     fn let_go(&mut self, id: &ThreadId, cx: &mut Context<Self>) {
-        if self.threads.get(id).is_some_and(|thread| thread.upgrade().is_none()) {
+        if self
+            .threads
+            .get(id)
+            .is_some_and(|thread| thread.upgrade().is_none())
+        {
             self.threads.remove(id);
             let params = ThreadParams {
                 thread_id: id.clone(),
@@ -335,7 +247,11 @@ impl Chats {
             plan: None,
             tab_open: Some(open),
         };
-        logged(self.ordered::<ThreadsUpdate>(params), "noting a chat's tab", cx);
+        logged(
+            self.ordered::<ThreadsUpdate>(params),
+            "noting a chat's tab",
+            cx,
+        );
     }
 
     /// Sends `prompt` to thread `id`, to go as `delivery` says.
@@ -372,7 +288,11 @@ impl Chats {
             thread_id: id.clone(),
             force: false,
         };
-        logged(self.ordered::<TurnsStop>(params), "stopping a chat's run", cx);
+        logged(
+            self.ordered::<TurnsStop>(params),
+            "stopping a chat's run",
+            cx,
+        );
     }
 
     /// A page of `runs` runs of thread `id`, those sent before `before` or the latest, on its own
@@ -462,24 +382,6 @@ impl Chats {
             self.reach(FIRST_WAIT, cx);
         }
     }
-}
-
-/// The loop over what the host says: it takes one notice, then all that wait, applies them
-/// together and waits out the frame, so that nothing is applied more than once a frame.
-fn follow(client: &AgentClient, cx: &mut Context<Chats>) -> Task<()> {
-    let mut inbox = client.subscribe();
-    cx.spawn(async move |this, cx| {
-        while let Some(first) = inbox.next().await {
-            let mut notices = vec![first];
-            while let Ok(notice) = inbox.try_recv() {
-                notices.push(notice);
-            }
-            if this.update(cx, |this, cx| this.take_in(notices, cx)).is_err() {
-                return;
-            }
-            cx.background_executor().timer(FRAME).await;
-        }
-    })
 }
 
 /// Hears how `request`, in the queue already, went, with word in the log if it failed.

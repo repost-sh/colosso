@@ -122,10 +122,7 @@ pub(crate) fn summary(output: &Value) -> String {
     if output["alreadyRunning"] == true {
         "Koyo is running already".to_owned()
     } else {
-        format!(
-            "Started Koyo; it answered after {} ms",
-            output["waitedMs"]
-        )
+        format!("Started Koyo; it answered after {} ms", output["waitedMs"])
     }
 }
 
@@ -184,15 +181,10 @@ mod tests {
     #[test]
     fn only_an_executable_in_a_bundle_is_opened_as_one() {
         assert_eq!(
-            bundle(Path::new(
-                "/Applications/Koyo.app/Contents/MacOS/koyo"
-            )),
+            bundle(Path::new("/Applications/Koyo.app/Contents/MacOS/koyo")),
             Some(PathBuf::from("/Applications/Koyo.app"))
         );
-        assert_eq!(
-            bundle(Path::new("/work/koyo/target/debug/koyo")),
-            None
-        );
+        assert_eq!(bundle(Path::new("/work/koyo/target/debug/koyo")), None);
         assert_eq!(bundle(Path::new("/Contents/MacOS/koyo")), None);
     }
 }

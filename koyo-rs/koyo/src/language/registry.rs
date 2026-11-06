@@ -104,7 +104,9 @@ pub fn attach(checkout: &Entity<Checkout>, view: &Entity<FileEditor>, cx: &mut A
 pub fn locate(root: &Path, project: &Path, cx: &mut App) {
     with_registry(cx, |registry, cx| {
         if registry.projects.get(root).map(PathBuf::as_path) != Some(project) {
-            registry.projects.insert(root.to_owned(), project.to_owned());
+            registry
+                .projects
+                .insert(root.to_owned(), project.to_owned());
             registry.settings_changed(cx);
         }
     });
@@ -287,7 +289,10 @@ impl Registry {
     /// Stops servers other than `key`'s until starting it keeps within the limit: the least
     /// recently used idle one first, and the least recently used of all when none is idle.
     fn make_room(&mut self, key: &Key, cx: &mut Context<Self>) {
-        let Some(most) = settings::get(cx).most_language_servers.map(|most| most.max(1)) else {
+        let Some(most) = settings::get(cx)
+            .most_language_servers
+            .map(|most| most.max(1))
+        else {
             return;
         };
         loop {

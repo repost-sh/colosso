@@ -11,12 +11,18 @@ use crate::chat::drafts::{self, Draft, DraftOf};
 impl ChatComposer {
     /// Takes up its chat's draft, and shows what's in it.
     pub(super) fn bring_back_draft(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let of = self.thread_id(cx).map_or_else(|| DraftOf::NewChat(self.cwd.clone()), DraftOf::Thread);
+        let of = self
+            .thread_id(cx)
+            .map_or_else(|| DraftOf::NewChat(self.cwd.clone()), DraftOf::Thread);
         let Some(draft) = drafts::take_up(&of, cx) else {
             return;
         };
         self.draft = Some(of);
-        let Draft { text, cursor, attachments } = draft;
+        let Draft {
+            text,
+            cursor,
+            attachments,
+        } = draft;
         if !text.is_empty() {
             self.text.update(cx, |typed, cx| {
                 typed.set_value(text, window, cx);
@@ -44,7 +50,11 @@ impl ChatComposer {
     pub(super) fn after_typed(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.text.update(cx, |typed, cx| {
             let end = typed.value().len();
-            let words = if end == 0 { text.to_owned() } else { format!("\n\n{text}") };
+            let words = if end == 0 {
+                text.to_owned()
+            } else {
+                format!("\n\n{text}")
+            };
             typed.set_selected_range(end..end, cx);
             typed.replace(words, window, cx);
         });
@@ -65,7 +75,9 @@ impl ChatComposer {
         };
         let text = self.text.read(cx);
         let written = Some((text.version(), text.cursor()));
-        if written == self.draft_written && self.kept_attachments().eq(drafts::attachments_of(of, cx)) {
+        if written == self.draft_written
+            && self.kept_attachments().eq(drafts::attachments_of(of, cx))
+        {
             return;
         }
         self.draft_written = written;

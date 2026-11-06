@@ -44,7 +44,9 @@ pub fn open(path: &Path) -> Result<(Pdf, Opened), String> {
     // A page Quartz can't read keeps its place, as a blank letter-sized page, so the pages
     // after it are still the ones their numbers say.
     let pages: Vec<PageBox> = (1..=count)
-        .map(|number| CGPDFDocument::page(Some(&document), number).map_or(LETTER, |page| page_box(&page)))
+        .map(|number| {
+            CGPDFDocument::page(Some(&document), number).map_or(LETTER, |page| page_box(&page))
+        })
         .collect();
     if pages.is_empty() {
         return Err("it has no pages".into());
@@ -70,7 +72,11 @@ fn page_box(page: &CGPDFPage) -> PageBox {
     let crop = CGPDFPage::box_rect(Some(page), CGPDFBox::CropBox);
     let turns = (CGPDFPage::rotation_angle(Some(page)).rem_euclid(360) / 90) as u8;
     let (width, height) = (crop.size.width as f32, crop.size.height as f32);
-    let size = if turns % 2 == 1 { (height, width) } else { (width, height) };
+    let size = if turns % 2 == 1 {
+        (height, width)
+    } else {
+        (width, height)
+    };
     PageBox { crop, turns, size }
 }
 

@@ -19,7 +19,15 @@ fn checkout_and_remote() -> (PathBuf, PathBuf) {
     let remote = root.join("remote.git");
     let work = root.join("work");
     fs::create_dir_all(&work).unwrap();
-    git(&root, &["init", "--bare", "--initial-branch=main", remote.to_str().unwrap()]);
+    git(
+        &root,
+        &[
+            "init",
+            "--bare",
+            "--initial-branch=main",
+            remote.to_str().unwrap(),
+        ],
+    );
     git(&work, &["init", "--initial-branch=main"]);
     for setting in [
         ("user.name", "Test"),
@@ -32,7 +40,10 @@ fn checkout_and_remote() -> (PathBuf, PathBuf) {
     fs::write(work.join("a.txt"), "one\n").unwrap();
     git(&work, &["add", "--all"]);
     git(&work, &["commit", "--message", "First"]);
-    git(&work, &["remote", "add", "origin", remote.to_str().unwrap()]);
+    git(
+        &work,
+        &["remote", "add", "origin", remote.to_str().unwrap()],
+    );
     (work, remote)
 }
 
@@ -63,7 +74,10 @@ fn a_branch_is_published_then_pushed_and_says_how_it_stands() {
 
     checkout.push().unwrap();
     let pushed = checkout.published();
-    let upstream = Ref::Remote { remote: "origin".to_owned(), branch: "main".to_owned() };
+    let upstream = Ref::Remote {
+        remote: "origin".to_owned(),
+        branch: "main".to_owned(),
+    };
     assert_eq!(pushed.upstream, Some(upstream));
     assert_eq!((pushed.ahead, pushed.behind), (0, 0));
     assert!(pushed.on_default);
@@ -99,8 +113,18 @@ fn a_fetch_says_what_was_pushed_from_elsewhere_and_leaves_the_branch_alone() {
     checkout.fetch().unwrap();
     checkout.push().unwrap();
     let elsewhere = work.parent().unwrap().join("elsewhere");
-    git(work.parent().unwrap(), &["clone", remote.to_str().unwrap(), elsewhere.to_str().unwrap()]);
-    git(&elsewhere, &["commit", "--allow-empty", "--message", "From elsewhere"]);
+    git(
+        work.parent().unwrap(),
+        &[
+            "clone",
+            remote.to_str().unwrap(),
+            elsewhere.to_str().unwrap(),
+        ],
+    );
+    git(
+        &elsewhere,
+        &["commit", "--allow-empty", "--message", "From elsewhere"],
+    );
     git(&elsewhere, &["push"]);
     assert_eq!(checkout.published().behind, 0, "it doesn't know yet");
     checkout.fetch().unwrap();

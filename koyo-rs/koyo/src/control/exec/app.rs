@@ -1,13 +1,13 @@
 //! The window: its status, bringing it forward, its panels and layout, and the settings
 //! pages it shows.
 
+use gpui_kit::App;
 use koyo_app_control::ControlError;
 use koyo_app_control::ops::app::{
     AppStatusOutput, LayoutSetInput, LayoutState, McpStatus, RightPanel, RightPanelChoice,
     Selected, SettingsPage,
 };
 use koyo_app_control::ops::shared::Layout;
-use gpui_kit::App;
 use serde_json::Value;
 
 use super::{main_shell, output, try_update_shell, update_shell};

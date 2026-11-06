@@ -8,9 +8,8 @@ use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{ActiveTheme as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Action, Context, Div, InteractiveElement as _, IntoElement,
-    ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled as _, Window,
-    div, px,
+    Action, Context, Div, InteractiveElement as _, IntoElement, ParentElement as _, Render,
+    SharedString, StatefulInteractiveElement as _, Styled as _, Window, div, px,
 };
 
 use super::CONTEXT;
@@ -33,7 +32,13 @@ impl Render for Viewer {
             .debug_selector(|| "viewer-pages".into());
         let body = match &self.state {
             State::Opening => body.child(
-                div().absolute().inset_0().flex().items_center().justify_center().child(spinner(p.muted)),
+                div()
+                    .absolute()
+                    .inset_0()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(spinner(p.muted)),
             ),
             State::Failed(why) => body.child(failed(why.clone(), p)),
             State::Open => body.child(self.pages(p, cx)),
@@ -67,7 +72,9 @@ impl Viewer {
     /// those drawn at the zoom shown lie on top.
     fn pages(&self, p: Palette, cx: &mut Context<Self>) -> Pages {
         let mut tiles: Vec<_> = self.stale.clone();
-        let mut drawn: Vec<_> = (self.tiles.iter()).map(|(key, image)| (*key, image.clone())).collect();
+        let mut drawn: Vec<_> = (self.tiles.iter())
+            .map(|(key, image)| (*key, image.clone()))
+            .collect();
         drawn.sort_by_key(|(key, _)| (key.level == self.level, key.level));
         tiles.extend(drawn);
         let see_through = match self.kind {
@@ -103,7 +110,9 @@ impl Viewer {
             .hover(|style| style.bg(p.hover))
             .child(format!("{:.0}%", self.camera.zoom * 100.))
             .tooltip(|window, cx| {
-                Tooltip::new("Actual Size").action(&ActualSize, Some(CONTEXT)).build(window, cx)
+                Tooltip::new("Actual Size")
+                    .action(&ActualSize, Some(CONTEXT))
+                    .build(window, cx)
             })
             .on_click(cx.listener(|this, _, _, cx| this.zoom_to(1., None, cx)));
         div()
@@ -127,15 +136,38 @@ impl Viewer {
                     .items_center()
                     .gap_0p5()
                     .when(open, |bar| {
-                        bar.child(button("viewer-zoom-out", IconName::ZoomOut, "Zoom Out", &ZoomOut, cx))
-                            .child(zoom)
-                            .child(button("viewer-zoom-in", IconName::ZoomIn, "Zoom In", &ZoomIn, cx))
-                            .child(button("viewer-fit", IconName::Scan, "Zoom to Fit", &ZoomToFit, cx))
+                        bar.child(button(
+                            "viewer-zoom-out",
+                            IconName::ZoomOut,
+                            "Zoom Out",
+                            &ZoomOut,
+                            cx,
+                        ))
+                        .child(zoom)
+                        .child(button(
+                            "viewer-zoom-in",
+                            IconName::ZoomIn,
+                            "Zoom In",
+                            &ZoomIn,
+                            cx,
+                        ))
+                        .child(button(
+                            "viewer-fit",
+                            IconName::Scan,
+                            "Zoom to Fit",
+                            &ZoomToFit,
+                            cx,
+                        ))
                     })
                     .child(
-                        icon_button("viewer-open", IconName::SquareArrowOutUpRight, "Open in Default App", cx)
-                            .xsmall()
-                            .on_click(move |_, _, cx| cx.open_with_system(&path)),
+                        icon_button(
+                            "viewer-open",
+                            IconName::SquareArrowOutUpRight,
+                            "Open in Default App",
+                            cx,
+                        )
+                        .xsmall()
+                        .on_click(move |_, _, cx| cx.open_with_system(&path)),
                     ),
             )
     }

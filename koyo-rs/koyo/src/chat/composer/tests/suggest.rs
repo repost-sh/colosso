@@ -14,7 +14,8 @@ use crate::checkouts;
 use crate::test_support::draw;
 
 fn suggesting(chat: &Asking, cx: &TestAppContext) -> bool {
-    chat.composer.read_with(cx, |composer, _| composer.suggesting())
+    chat.composer
+        .read_with(cx, |composer, _| composer.suggesting())
 }
 
 fn with_commands(name: &str, cx: &mut TestAppContext) -> Asking {
@@ -62,7 +63,9 @@ fn the_rows_have_the_arrows_while_they_show(cx: &mut TestAppContext) {
     press(&chat, "down up down down down enter", cx);
 
     assert_eq!(chat.typed(cx), "", "/compact is done, not said");
-    let asked = chat.composer.read_with(cx, |composer, _| composer.error.clone());
+    let asked = chat
+        .composer
+        .read_with(cx, |composer, _| composer.error.clone());
     assert!(asked.is_some(), "and no host hears it here, which it says");
 }
 
@@ -85,7 +88,13 @@ fn plan_is_asked_for_by_its_command(cx: &mut TestAppContext) {
     type_in(&chat, "/plan", cx);
     press(&chat, "enter", cx);
 
-    assert_eq!(updated(&chat, cx), [UpdateParams { plan: Some(true), ..nothing() }]);
+    assert_eq!(
+        updated(&chat, cx),
+        [UpdateParams {
+            plan: Some(true),
+            ..nothing()
+        }]
+    );
 }
 
 #[gpui_kit::test]
@@ -98,10 +107,16 @@ fn escape_leaves_the_word_alone_until_the_caret_leaves_it(cx: &mut TestAppContex
     assert_eq!(chat.typed(cx), "/re");
 
     type_in(&chat, "v", cx);
-    assert!(!suggesting(&chat, cx), "typing more of it doesn't bring them back");
+    assert!(
+        !suggesting(&chat, cx),
+        "typing more of it doesn't bring them back"
+    );
 
     type_in(&chat, " @", cx);
-    assert!(chat.composer.read_with(cx, |composer, _| composer.dismissed.is_none()));
+    assert!(
+        chat.composer
+            .read_with(cx, |composer, _| composer.dismissed.is_none())
+    );
 }
 
 #[gpui_kit::test]
@@ -112,7 +127,9 @@ fn what_matches_nothing_takes_no_keys(cx: &mut TestAppContext) {
 
     assert!(!suggesting(&chat, cx));
     press(&chat, "enter", cx);
-    let tried = chat.composer.read_with(cx, |composer, _| composer.error.clone());
+    let tried = chat
+        .composer
+        .read_with(cx, |composer, _| composer.error.clone());
     assert!(tried.is_some(), "so enter sends, which no host hears here");
 }
 
@@ -141,7 +158,9 @@ fn an_at_finds_the_files_of_the_checkout_and_names_the_one_picked(cx: &mut TestA
     // The project lists the checkout on a thread of its own, from outside the test's scheduler.
     cx.executor().allow_parking();
     let chat = chat("chat-suggest-files", cx);
-    let cwd = chat.composer.read_with(cx, |composer, _| composer.cwd.clone());
+    let cwd = chat
+        .composer
+        .read_with(cx, |composer, _| composer.cwd.clone());
     let (git, dirs) = checkouts::open_git(&cwd).unwrap();
     let project = cx.update(|cx| checkouts::project(git.root(), dirs, cx));
     let updates = project.subscribe(Feed::Everything);

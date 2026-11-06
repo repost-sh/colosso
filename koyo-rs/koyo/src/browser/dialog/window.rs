@@ -1,13 +1,13 @@
 //! The dialog a question shows in: its words, its fields, and the buttons that answer it
 //! to the page's view. Put away without an answer, it answers no.
 
-use koyo_browser_ipc::Answer;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::{
     AppContext as _, ClickEvent, Context, Entity, FocusHandle, Focusable as _,
     InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, Render,
     StatefulInteractiveElement as _, Styled as _, Subscription, WeakEntity, Window, div,
 };
+use koyo_browser_ipc::Answer;
 
 use super::{Carries, Words};
 use crate::browser::view::BrowserView;

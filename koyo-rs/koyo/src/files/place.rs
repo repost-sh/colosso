@@ -5,8 +5,8 @@
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
-use koyo_lsp::{Encoding, lsp_types};
 use gpui_kit::SharedString;
+use koyo_lsp::{Encoding, lsp_types};
 
 /// A file, relative to its checkout or absolute, and where in it the cursor goes.
 #[derive(Clone, Debug, PartialEq, Eq)]

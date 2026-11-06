@@ -11,14 +11,14 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use futures::StreamExt as _;
+use gpui_kit::{AppContext as _, Context, ScrollHandle, Task};
 use koyo_term::{Notice, TermClient};
 use koyo_term_control::log::{read_since, tail_start};
 use koyo_term_control::{
     ActivityEntry, CommandRecord, EventKind, Handle, LogKind, LogRead, RequestBody, ResponseBody,
     ScreenshotEntry, TerminalRecord,
 };
-use futures::StreamExt as _;
-use gpui_kit::{AppContext as _, Context, ScrollHandle, Task};
 use log::{Log, ReadFrom};
 
 /// How much of a log the panel reads when it opens: its newest lines.

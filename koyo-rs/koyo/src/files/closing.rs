@@ -3,8 +3,8 @@
 
 use futures::future::join_all;
 use gpui_kit::{
-    AnyWindowHandle, App, Context, Entity, IntoElement, ParentElement as _, Render,
-    SharedString, Styled as _, Window, div,
+    AnyWindowHandle, App, Context, Entity, IntoElement, ParentElement as _, Render, SharedString,
+    Styled as _, Window, div,
 };
 
 use super::FileEditor;
@@ -18,7 +18,12 @@ const GAP: f32 = 8.;
 /// Asks over `window` what to do with the unsaved edits in `editors` before the window
 /// closes: it closes unless it's kept.
 pub fn ask_before_closing(editors: Vec<Entity<FileEditor>>, window: &mut Window, cx: &mut App) {
-    ask(editors, Then::CloseWindow(window.window_handle()), window, cx);
+    ask(
+        editors,
+        Then::CloseWindow(window.window_handle()),
+        window,
+        cx,
+    );
 }
 
 /// Asks over `window` what to do with the unsaved edits in `editors` before `then` happens:
@@ -114,7 +119,11 @@ impl SaveDialog {
 impl Render for SaveDialog {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = theme::palette(cx);
-        let save = if self.editors.len() > 1 { "Save All" } else { "Save" };
+        let save = if self.editors.len() > 1 {
+            "Save All"
+        } else {
+            "Save"
+        };
         div()
             .size_full()
             .flex()

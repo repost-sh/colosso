@@ -1,5 +1,7 @@
 use gpui_kit::point;
 
+use super::file::{read, reload};
+use super::migration::migrate;
 use super::*;
 use crate::gradient::Harmony;
 
@@ -42,7 +44,10 @@ fn missing_fields_fall_back_to_defaults() {
     assert!(!settings.stop_idle_language_servers);
     assert!(settings.runs_server("rust-analyzer", None));
     // A markdown file opens as it reads, as GitHub shows it.
-    assert_eq!(settings.markdown_opens_as, crate::files::MarkdownMode::Preview);
+    assert_eq!(
+        settings.markdown_opens_as,
+        crate::files::MarkdownMode::Preview
+    );
     let limited: Settings = serde_json::from_str(r#"{ "most_language_servers": 2 }"#).unwrap();
     assert_eq!(limited.most_language_servers, Some(2));
 }
@@ -112,12 +117,62 @@ fn a_file_with_retired_keys_reads_without_them() {
     assert_eq!(settings.key_repeat, repeat);
     // The TypeScript switch keeps what was set under vtsls's name; the servers that came
     // since are listed, on.
-    let servers: Vec<_> = settings.language_servers.keys().map(String::as_str).collect();
+    let servers: Vec<_> = settings
+        .language_servers
+        .keys()
+        .map(String::as_str)
+        .collect();
     assert_eq!(servers, ["pyrefly", "rust-analyzer", "typescript"]);
     assert!(!settings.runs_server("rust-analyzer", None));
     assert!(!settings.runs_server("typescript", None));
-    assert_eq!(settings.language_servers["typescript"].off_in, [PathBuf::from("/old/project")]);
+    assert_eq!(
+        settings.language_servers["typescript"].off_in,
+        [PathBuf::from("/old/project")]
+    );
     assert!(settings.runs_server("pyrefly", None));
+}
+
+#[test]
+fn what_work_showed_becomes_the_verbosity_that_shows_as_much() {
+    for (work, preset) in [
+        ("Turns", Preset::Quiet),
+        ("Steps", Preset::Normal),
+        ("Everything", Preset::Verbose),
+    ] {
+        let mut value = serde_json::json!({ "chat_work": work });
+        migrate(&mut value);
+        assert!(value.get("chat_work").is_none());
+        let settings: Settings = serde_json::from_value(value).unwrap();
+        assert_eq!(settings.chat_verbosity, preset.verbosity(), "{work}");
+    }
+    let chosen = Preset::Quiet.verbosity().with(Step::Thinking, Shows::All);
+    let mut value = serde_json::json!({ "chat_work": "Everything", "chat_verbosity": chosen });
+    migrate(&mut value);
+    let settings: Settings = serde_json::from_value(value).unwrap();
+    assert_eq!(settings.chat_verbosity, chosen, "what's chosen since stays");
+}
+
+#[test]
+fn a_chat_text_size_picked_before_sizes_came_down_a_notch_keeps_its_place_on_the_slider() {
+    for (old, new) in [(13., 11.), (16., 14.), (18., 15.), (22., 18.), (40., 18.)] {
+        let mut value = serde_json::json!({ "fonts": { "chat_size": old, "code": "Menlo" } });
+        migrate(&mut value);
+        let settings: Settings = serde_json::from_value(value).unwrap();
+        assert_eq!(
+            settings.fonts.chat_size().to_bits(),
+            f32::to_bits(new),
+            "{old}"
+        );
+        assert_eq!(settings.fonts.code.as_deref(), Some("Menlo"));
+    }
+    let mut value = serde_json::json!({ "fonts": { "chat_text_size": 12. } });
+    migrate(&mut value);
+    let settings: Settings = serde_json::from_value(value).unwrap();
+    assert_eq!(
+        settings.fonts.chat_size().to_bits(),
+        12_f32.to_bits(),
+        "a new size stays"
+    );
 }
 
 #[test]
@@ -139,7 +194,11 @@ fn a_language_server_is_turned_off_and_on_everywhere_or_in_a_project() {
     let (app, other) = (Path::new("/src/app"), Path::new("/src/other"));
     let mut settings = Settings::default();
     // Listed in the file for whoever edits it, and on.
-    assert!(serde_json::to_string(&settings).unwrap().contains(r#""rust-analyzer":{"enabled":true"#));
+    assert!(
+        serde_json::to_string(&settings)
+            .unwrap()
+            .contains(r#""rust-analyzer":{"enabled":true"#)
+    );
     assert!(settings.runs_server("rust-analyzer", Some(app)));
 
     settings.set_server("rust-analyzer", &Scope::Project(app.into()), false);

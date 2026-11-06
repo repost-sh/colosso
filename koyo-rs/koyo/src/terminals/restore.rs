@@ -4,9 +4,9 @@
 
 use std::path::PathBuf;
 
+use gpui_kit::{AppContext as _, Context};
 use koyo_term::{Source, is_other_build};
 use koyo_term_control::{ActorKind, RequestBody, ResponseBody, TerminalSummary};
-use gpui_kit::{AppContext as _, Context};
 
 use super::open_request;
 use crate::shell::Shell;

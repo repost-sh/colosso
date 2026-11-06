@@ -3,11 +3,11 @@
 
 use std::collections::HashSet;
 
-use koyo_git::{Change, Checkout as Git, Discarding};
 use gpui_kit::{
     App, Context, Entity, IntoElement, ParentElement as _, Render, SharedString, Styled as _,
     Window, div,
 };
+use koyo_git::{Change, Checkout as Git, Discarding};
 
 use super::view::split_path;
 use crate::checkout::Checkout;

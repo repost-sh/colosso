@@ -5,17 +5,17 @@
 
 use std::ops::Range;
 
-use koyo_lsp::lsp_types::SymbolKind;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, Context, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _,
     Render, SharedString, StatefulInteractiveElement as _, Styled as _, Window, div, px,
 };
+use koyo_lsp::lsp_types::SymbolKind;
 
 use super::view::Symbols;
 use crate::files::ROW;
-use crate::list::styled;
 use crate::list;
+use crate::list::styled;
 use crate::modal;
 use crate::right_panel::{PageDown, PageUp, SelectNext, SelectPrevious, note};
 use crate::shell::{self, ellipsized};
@@ -117,7 +117,11 @@ impl Symbols {
             (true, _) => format!("{known} symbols"),
             (false, _) => format!("{shown} of {known} symbols match"),
         };
-        let listing = if self.asking.is_some() { " listing…" } else { "" };
+        let listing = if self.asking.is_some() {
+            " listing…"
+        } else {
+            ""
+        };
         format!("{counted}{listing}").trim().to_owned().into()
     }
 }

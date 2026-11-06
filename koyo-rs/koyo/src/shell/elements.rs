@@ -7,8 +7,8 @@ use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::{Disableable as _, Icon, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Action, App, Context, Div, ElementId, Entity, Hsla, InteractiveElement as _,
-    IntoElement, MouseButton, MouseDownEvent, ParentElement as _, SharedString, Stateful,
+    Action, App, Context, Div, ElementId, Entity, Hsla, InteractiveElement as _, IntoElement,
+    MouseButton, MouseDownEvent, ParentElement as _, SharedString, Stateful,
     StatefulInteractiveElement as _, Styled, div, px,
 };
 

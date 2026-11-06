@@ -115,8 +115,13 @@ fn orca_strip_narrows_its_tabs_to_fit_beside_the_new_tab_button(cx: &mut TestApp
         });
         draw(window, cx);
         let mut vcx = VisualTestContext::from_window(window, cx);
-        let button = vcx.debug_bounds("new-tab-button").expect("the + button is shown");
-        assert!(button.size.width > px(0.), "with {count} tabs the + button has no width");
+        let button = vcx
+            .debug_bounds("new-tab-button")
+            .expect("the + button is shown");
+        assert!(
+            button.size.width > px(0.),
+            "with {count} tabs the + button has no width"
+        );
         let last = listed(window, count - 1, cx);
         assert!(
             last.right() <= button.left(),

@@ -1,11 +1,11 @@
 //! The changes panel: its file list grouped and acted on, and a file picked in it glided to in
 //! the diffs.
 
-use koyo_git::{Change, Content, FileDiff, Hunk, Lines};
 use gpui_kit::{
-    AnyWindowHandle, AppContext as _, Bounds, Point, TestAppContext, WindowBounds,
-    WindowOptions, size,
+    AnyWindowHandle, AppContext as _, Bounds, Point, TestAppContext, WindowBounds, WindowOptions,
+    size,
 };
+use koyo_git::{Change, Content, FileDiff, Hunk, Lines};
 
 use super::*;
 

@@ -11,9 +11,8 @@ use gpui_kit::component::Sizable as _;
 use gpui_kit::component::text::TextView;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Action, AnyElement, App, ClickEvent, Context, Div, IntoElement, KeyBinding,
-    ParentElement as _, Stateful, StatefulInteractiveElement as _, Styled, Task, Window,
-    actions, div, px,
+    Action, AnyElement, App, ClickEvent, Context, Div, IntoElement, KeyBinding, ParentElement as _,
+    Stateful, StatefulInteractiveElement as _, Styled, Task, Window, actions, div, px,
 };
 use koyo_agent::protocol::ids::RequestId;
 use koyo_agent::protocol::model::Answers;
@@ -46,9 +45,10 @@ pub(super) fn bind_keys(cx: &mut App) {
         KeyBinding::new("enter", NextQuestion, context),
         KeyBinding::new("cmd-backspace", SkipQuestion, context),
     ]);
-    cx.bind_keys((DIGITS.iter().enumerate()).map(|(option, digit)| {
-        KeyBinding::new(digit, ChooseOption(option), context)
-    }));
+    cx.bind_keys(
+        (DIGITS.iter().enumerate())
+            .map(|(option, digit)| KeyBinding::new(digit, ChooseOption(option), context)),
+    );
 }
 
 pub(super) struct QuestionDrawer {
@@ -82,7 +82,9 @@ impl QuestionDrawer {
 
     /// What's chosen of the one that shows.
     fn chosen(&self) -> &[String] {
-        let answer = self.shown().and_then(|question| self.answers.get(&question.id));
+        let answer = self
+            .shown()
+            .and_then(|question| self.answers.get(&question.id));
         answer.map_or(&[], Vec::as_slice)
     }
 
@@ -147,7 +149,11 @@ impl QuestionDrawer {
     /// Which option's preview shows: the one pointed at, or else what's chosen, or else the first.
     fn previewed(&self) -> Option<usize> {
         let options = &self.shown()?.options;
-        let chosen = || options.iter().position(|option| self.chosen().contains(&option.label));
+        let chosen = || {
+            options
+                .iter()
+                .position(|option| self.chosen().contains(&option.label))
+        };
         let at = self.pointing_at.or_else(chosen).unwrap_or(0);
         options.get(at)?.preview.as_ref().map(|_| at)
     }
@@ -159,17 +165,29 @@ impl QuestionDrawer {
             (question.options.iter().enumerate())
                 .map(|(at, option)| self.option_row(at, option, p, cx)),
         );
-        let has_previews = question.options.iter().any(|option| option.preview.is_some());
+        let has_previews = question
+            .options
+            .iter()
+            .any(|option| option.preview.is_some());
         let previewed = self.previewed();
         // All are drawn, one showing: a text view that isn't drawn forgets what it parsed.
         let previews = has_previews.then(|| {
-            scroll_box("chat-question-preview", p).flex_1().min_w_0().p_2().text_xs().children(
-                (question.options.iter().enumerate()).filter_map(|(at, option)| {
-                    let preview = option.preview.clone()?;
-                    let text = TextView::markdown(("chat-option-preview", at), preview);
-                    Some(div().when(previewed != Some(at), Styled::hidden).child(text))
-                }),
-            )
+            scroll_box("chat-question-preview", p)
+                .flex_1()
+                .min_w_0()
+                .p_2()
+                .text_xs()
+                .children(
+                    (question.options.iter().enumerate()).filter_map(|(at, option)| {
+                        let preview = option.preview.clone()?;
+                        let text = TextView::markdown(("chat-option-preview", at), preview);
+                        Some(
+                            div()
+                                .when(previewed != Some(at), Styled::hidden)
+                                .child(text),
+                        )
+                    }),
+                )
         });
         let drawer = div()
             .flex()
@@ -177,8 +195,17 @@ impl QuestionDrawer {
             .gap_2()
             .child(self.heading(question, p, cx))
             .child(div().text_sm().child(question.text.clone()))
-            .child(div().flex().items_start().gap_2().child(options).children(previews))
-            .when(question.multi_select, |drawer| drawer.child(self.next_button(cx)));
+            .child(
+                div()
+                    .flex()
+                    .items_start()
+                    .gap_2()
+                    .child(options)
+                    .children(previews),
+            )
+            .when(question.multi_select, |drawer| {
+                drawer.child(self.next_button(cx))
+            });
         Some(drawer.into_any_element())
     }
 
@@ -201,7 +228,9 @@ impl QuestionDrawer {
                 )
             })
             .child(question.header.clone())
-            .when(count > 1, |row| row.child(format!("{} of {count}", self.at + 1)))
+            .when(count > 1, |row| {
+                row.child(format!("{} of {count}", self.at + 1))
+            })
             .child(div().flex_1())
             .child(
                 glass("chat-question-skip", p.text, cx)
@@ -228,9 +257,13 @@ impl QuestionDrawer {
             .flex()
             .flex_col()
             .child(option.label.clone())
-            .children(option.description.clone().filter(|words| !words.is_empty()).map(|words| {
-                div().text_xs().text_color(p.muted).child(words)
-            }));
+            .children(
+                option
+                    .description
+                    .clone()
+                    .filter(|words| !words.is_empty())
+                    .map(|words| div().text_xs().text_color(p.muted).child(words)),
+            );
         row(("chat-question-option", at), chosen, p)
             .h_auto()
             .items_start()
@@ -375,7 +408,10 @@ mod tests {
         let mut drawer = drawer(vec![asked("one", false), asked("two", false)]);
         assert_eq!(drawer.choose(0), Some(true));
         assert!(drawer.go_on(None));
-        assert!(drawer.chosen().is_empty(), "the next one starts with nothing chosen");
+        assert!(
+            drawer.chosen().is_empty(),
+            "the next one starts with nothing chosen"
+        );
 
         drawer.show(0);
         assert_eq!(drawer.chosen(), ["A"]);

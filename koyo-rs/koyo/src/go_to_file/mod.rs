@@ -13,8 +13,8 @@ use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use koyo_project::Finder;
 use gpui_kit::{App, Context, Div, Global, InteractiveElement as _, KeyBinding, Window, actions};
+use koyo_project::Finder;
 
 use crate::shell::Shell;
 

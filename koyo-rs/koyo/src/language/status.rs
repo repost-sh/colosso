@@ -14,18 +14,18 @@ use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Action, AnyElement, App, Bounds, Context, Entity, EventEmitter, Hsla,
-    InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Render, SharedString,
-    StatefulInteractiveElement as _, Styled, Subscription, Window, div, px,
+    Action, AnyElement, App, Bounds, Context, Entity, EventEmitter, Hsla, InteractiveElement as _,
+    IntoElement, ParentElement as _, Pixels, Render, SharedString, StatefulInteractiveElement as _,
+    Styled, Subscription, Window, div, px,
 };
 
+use super::Kind;
 use super::Languages;
 use super::registry::with_registry;
 use super::server::{Server, State};
-use super::Kind;
 use crate::modal::spinner;
-use crate::shell::icon;
 use crate::settings::{Scope, SetLanguageServer};
+use crate::shell::icon;
 use crate::theme::{self, Palette};
 
 /// Starts the server of a kind in the checkout at a root again, whatever it's doing.
@@ -139,12 +139,14 @@ impl Render for ServersStatus {
         let items: Vec<AnyElement> = (self.servers.iter().enumerate())
             .map(|(index, server)| {
                 let server = server.read(cx);
-                let off = (registry.as_ref())
-                    .is_some_and(|Languages(registry)| {
-                        registry.read(cx).is_off(server.kind(), server.root())
-                    });
+                let off = (registry.as_ref()).is_some_and(|Languages(registry)| {
+                    registry.read(cx).is_off(server.kind(), server.root())
+                });
                 let project = (registry.as_ref()).and_then(|Languages(registry)| {
-                    registry.read(cx).project_of(server.root()).map(Path::to_path_buf)
+                    registry
+                        .read(cx)
+                        .project_of(server.root())
+                        .map(Path::to_path_buf)
                 });
                 item(index, Shown::of(server, off), project, p)
             })
@@ -264,7 +266,10 @@ impl Shown {
         };
         menu = match (self.off, project) {
             (false, Some(project)) => menu
-                .menu("Turn Off for This Project", set(Scope::Project(project), false))
+                .menu(
+                    "Turn Off for This Project",
+                    set(Scope::Project(project), false),
+                )
                 .menu("Turn Off Everywhere", set(Scope::Everywhere, false)),
             (false, None) => menu.menu("Turn Off Everywhere", set(Scope::Everywhere, false)),
             (true, Some(project)) => menu.menu("Turn On", set(Scope::Project(project), true)),
@@ -284,7 +289,10 @@ fn item(index: usize, shown: Shown, project: Option<PathBuf>, p: Palette) -> Any
     let (language, words) = (shown.kind.language(), shown.words());
     let (glyph, colour) = shown.icon(p);
     let mark = if shown.is_busy() {
-        div().relative().size(px(13.)).child(spinner(colour.unwrap_or(p.muted)))
+        div()
+            .relative()
+            .size(px(13.))
+            .child(spinner(colour.unwrap_or(p.muted)))
     } else {
         div().child(icon(glyph, 13.).when_some(colour, Styled::text_color))
     };
@@ -301,7 +309,9 @@ fn item(index: usize, shown: Shown, project: Option<PathBuf>, p: Palette) -> Any
         .on_prepaint(move |bounds, _, _| measured.set(bounds))
         .tooltip(move |window, cx| Tooltip::new(told.clone()).build(window, cx))
         .on_click(move |_, window, cx| {
-            shown.menu(project.clone()).show(bounds.get().origin, window, cx);
+            shown
+                .menu(project.clone())
+                .show(bounds.get().origin, window, cx);
         })
         .child(mark.flex_none())
         .child(language)

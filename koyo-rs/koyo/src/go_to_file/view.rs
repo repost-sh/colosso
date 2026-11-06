@@ -7,13 +7,13 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use koyo_project::{Feed, Finder, MOST_FOUND, Project, Results};
 use futures::StreamExt as _;
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::{
-    AnyWindowHandle, App, AppContext as _, AsyncApp, Context, Entity, Focusable as _, ScrollStrategy,
-    SharedString, Subscription, Task, UniformListScrollHandle, WeakEntity, Window,
+    AnyWindowHandle, App, AppContext as _, AsyncApp, Context, Entity, Focusable as _,
+    ScrollStrategy, SharedString, Subscription, Task, UniformListScrollHandle, WeakEntity, Window,
 };
+use koyo_project::{Feed, Finder, MOST_FOUND, Project, Results};
 
 use super::render::Row;
 use crate::checkout::Checkout;
@@ -59,7 +59,10 @@ pub(crate) async fn follow_files<T: 'static>(
             .background_spawn(async move { finder.set_files(&project.files_by_folder()) }))
         .await;
         let listed = updates.project().scanned().is_some();
-        if this.update(cx, |this, cx| took(this, changed, listed, cx)).is_err() {
+        if this
+            .update(cx, |this, cx| took(this, changed, listed, cx))
+            .is_err()
+        {
             return;
         }
         if !listed {

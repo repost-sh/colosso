@@ -4,11 +4,11 @@
 
 use std::rc::Rc;
 
-use koyo_browser_ipc::{Go, PaneId};
 use gpui_kit::{
     Action, App, ClickEvent, Context, Div, InteractiveElement as _, IntoElement as _,
     ParentElement as _, StatefulInteractiveElement as _, Styled as _, Window, div,
 };
+use koyo_browser_ipc::{Go, PaneId};
 
 use super::devices::DEVICES;
 use super::{Change, Zoom};
@@ -43,7 +43,8 @@ pub fn device_bar(
 ) -> Option<Div> {
     let mode = view.responsive.mode.as_ref()?;
     let (agent, zoom) = (mode.set_by.agent().map(str::to_owned), mode.zoom);
-    let preset = (mode.device).and_then(|device| DEVICES.iter().position(|row| row.id == device.id));
+    let preset =
+        (mode.device).and_then(|device| DEVICES.iter().position(|row| row.id == device.id));
     if view.responsive.fields.is_none() {
         view.responsive.fields = Some(Fields::new(BrowserView::size_typed, window, cx));
     }

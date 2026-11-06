@@ -11,7 +11,13 @@ use crate::history::{self, Place};
 use crate::shell::Shell;
 
 /// Does `act` in `behind`, the window `shell` shows, for what was typed at `place`.
-pub fn launch(shell: &WeakEntity<Shell>, behind: AnyWindowHandle, act: Act, place: &Place, cx: &mut App) {
+pub fn launch(
+    shell: &WeakEntity<Shell>,
+    behind: AnyWindowHandle,
+    act: Act,
+    place: &Place,
+    cx: &mut App,
+) {
     let done = behind.update(cx, |_, window, cx| {
         shell.update(cx, |shell, cx| act_on(shell, act, place, window, cx))
     });
@@ -20,7 +26,13 @@ pub fn launch(shell: &WeakEntity<Shell>, behind: AnyWindowHandle, act: Act, plac
     }
 }
 
-fn act_on(shell: &mut Shell, act: Act, place: &Place, window: &mut Window, cx: &mut Context<Shell>) {
+fn act_on(
+    shell: &mut Shell,
+    act: Act,
+    place: &Place,
+    window: &mut Window,
+    cx: &mut Context<Shell>,
+) {
     match act {
         Act::Empty(Kind::Browser) => shell.open_browser(None, window, cx),
         Act::Empty(kind) => shell.new_tab(kind.pane(), cx),

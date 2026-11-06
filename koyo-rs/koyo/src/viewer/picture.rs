@@ -100,11 +100,22 @@ pub fn probe(path: &Path) -> Result<Probe, String> {
         return Err("it holds no picture".into());
     }
     // SAFETY: as above.
-    let kind = unsafe { source.r#type() }.map(|kind| kind.to_string()).unwrap_or_default();
-    let delays = if count > 1 { delays(&source, &kind, count) } else { Vec::new() };
+    let kind = unsafe { source.r#type() }
+        .map(|kind| kind.to_string())
+        .unwrap_or_default();
+    let delays = if count > 1 {
+        delays(&source, &kind, count)
+    } else {
+        Vec::new()
+    };
     let index = if !delays.is_empty() {
         0
-    } else if count > 1 && matches!(kind.as_str(), "com.microsoft.ico" | "com.apple.icns" | "com.microsoft.cur") {
+    } else if count > 1
+        && matches!(
+            kind.as_str(),
+            "com.microsoft.ico" | "com.apple.icns" | "com.microsoft.cur"
+        )
+    {
         largest(&source, count)
     } else {
         // SAFETY: as above.
@@ -181,7 +192,13 @@ pub fn decode(path: &Path, probe: &Probe, longest: u32) -> Result<Arc<RenderImag
         longest = longest.min(((f64::from(probe.longest()) * scale) as u32).max(1));
     }
     let frames: Vec<_> = if probe.delays.is_empty() {
-        vec![frame(&source, probe.index, longest, probe.see_through, None)?]
+        vec![frame(
+            &source,
+            probe.index,
+            longest,
+            probe.see_through,
+            None,
+        )?]
     } else {
         (probe.delays.iter().enumerate())
             .map(|(index, delay)| frame(&source, index, longest, probe.see_through, Some(*delay)))
@@ -219,7 +236,11 @@ fn frame(
 }
 
 /// `image` in a bitmap GPUI can show.
-fn draw(image: &CGImage, see_through: bool, delay: Option<Duration>) -> Result<image::Frame, String> {
+fn draw(
+    image: &CGImage,
+    see_through: bool,
+    delay: Option<Duration>,
+) -> Result<image::Frame, String> {
     let (width, height) = (CGImage::width(Some(image)), CGImage::height(Some(image)));
     let canvas = Canvas::new(width as u32, height as u32).ok_or("there's no memory to show it")?;
     let rect = CGRect::new(
@@ -310,7 +331,11 @@ fn delays(source: &CGImageSource, kind: &str, count: usize) -> Vec<Duration> {
             return Vec::new();
         };
         let delay = Duration::from_secs_f64(seconds.max(0.));
-        delays.push(if delay < QUICKEST_FRAME { SLOW_FRAME } else { delay });
+        delays.push(if delay < QUICKEST_FRAME {
+            SLOW_FRAME
+        } else {
+            delay
+        });
     }
     delays
 }

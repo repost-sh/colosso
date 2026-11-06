@@ -5,13 +5,13 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use gpui_kit::component::input::EditorState;
+use gpui_kit::{Context, Entity, EntityId, Subscription};
 use koyo_lsp::lsp_types::notification::{
     DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, DidSaveTextDocument,
 };
 use koyo_lsp::lsp_types::{DidCloseTextDocumentParams, TextDocumentIdentifier};
 use koyo_lsp::{Client, IndexedText, uri};
-use gpui_kit::component::input::EditorState;
-use gpui_kit::{Context, Entity, EntityId, Subscription};
 
 use super::server::{Activity, Server};
 use crate::checkout::{Document, DocumentEvent};
@@ -98,7 +98,12 @@ impl Server {
 
     /// `editor` shows the file at `path`: its text goes to the server whole, opening the
     /// file or replacing what it had.
-    pub(super) fn show(&mut self, path: &Path, editor: &Entity<EditorState>, cx: &mut Context<Self>) {
+    pub(super) fn show(
+        &mut self,
+        path: &Path,
+        editor: &Entity<EditorState>,
+        cx: &mut Context<Self>,
+    ) {
         let Some(open) = self.documents.get_mut(path) else {
             return;
         };
@@ -112,7 +117,12 @@ impl Server {
     /// The editor showing the file at `path` edited its text: the server gets the edits
     /// since it last heard, or the whole text again if the editor no longer has them, or
     /// there are too many to be worth it.
-    pub(super) fn changed(&mut self, path: &Path, editor: &Entity<EditorState>, cx: &mut Context<Self>) {
+    pub(super) fn changed(
+        &mut self,
+        path: &Path,
+        editor: &Entity<EditorState>,
+        cx: &mut Context<Self>,
+    ) {
         let Some(open) = self.documents.get_mut(path) else {
             return;
         };

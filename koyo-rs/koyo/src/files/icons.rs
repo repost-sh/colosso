@@ -1,8 +1,8 @@
 //! The icon beside each of the file tree's rows: a folder open or closed, a link, or a
 //! file by what its name says it holds.
 
-use koyo_project::{Entry, Kind};
 use gpui_kit::assets::IconName;
+use koyo_project::{Entry, Kind};
 
 pub fn icon(entry: &Entry, expanded: bool) -> IconName {
     match entry.kind {

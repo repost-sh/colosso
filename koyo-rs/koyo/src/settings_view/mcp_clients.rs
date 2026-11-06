@@ -2,9 +2,9 @@
 //! what it may do and Revoke; those denied lately, with Allow; and the latest activity:
 //! every changing call, and every approval and confirmation.
 
-use koyo_app_control::Scope;
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::{Action, App, SharedString};
+use koyo_app_control::Scope;
 
 use super::components::{MenuButton, PillButton, SettingRow, SettingsSection};
 use crate::control::{self, ActivityEntry, ActivityKind, Decision};

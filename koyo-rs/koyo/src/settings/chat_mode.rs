@@ -19,5 +19,7 @@ pub fn chat_mode_label(mode: Option<Mode>) -> &'static str {
 /// A menu of what a new chat may do, with `current` checked.
 pub fn chat_mode_menu(current: Option<Mode>) -> NativeMenu {
     let choices = std::iter::once(None).chain(Mode::ALL.map(Some));
-    checked_menu(choices, current, chat_mode_label, |mode| Box::new(SetChatMode(mode)))
+    checked_menu(choices, current, chat_mode_label, |mode| {
+        Box::new(SetChatMode(mode))
+    })
 }

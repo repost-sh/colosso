@@ -12,9 +12,9 @@ use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::Button;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Action, AnyElement, App, ClickEvent, Context, Div, Focusable as _, Hsla, InteractiveElement as _,
-    IntoElement, KeyBinding, ParentElement as _, Pixels, SharedString, Styled as _, Svg, Window,
-    actions, div, px, svg,
+    Action, AnyElement, App, ClickEvent, Context, Div, Focusable as _, Hsla,
+    InteractiveElement as _, IntoElement, KeyBinding, ParentElement as _, Pixels, SharedString,
+    Styled as _, Svg, Window, actions, div, px, svg,
 };
 use koyo_agent::client::ClientError;
 use koyo_agent::protocol::ids::ThreadId;
@@ -47,7 +47,11 @@ pub(super) struct SetPermission(pub(super) Mode);
 
 pub(super) fn bind_keys(cx: &mut App) {
     let context = format!("{COMPOSER} > Input");
-    cx.bind_keys([KeyBinding::new("shift-tab", TogglePlan, Some(context.as_str()))]);
+    cx.bind_keys([KeyBinding::new(
+        "shift-tab",
+        TogglePlan,
+        Some(context.as_str()),
+    )]);
 }
 
 /// What a chat is set to.
@@ -104,7 +108,10 @@ impl Settings {
 
 /// How many chips say what they are in a composer `width` wide.
 pub(super) fn labels_fitting(width: Pixels) -> usize {
-    ROOM_FOR_LABELS.iter().filter(|room| width >= px(**room)).count()
+    ROOM_FOR_LABELS
+        .iter()
+        .filter(|room| width >= px(**room))
+        .count()
 }
 
 fn mode_mark(mode: Mode) -> IconName {
@@ -118,10 +125,16 @@ fn mode_mark(mode: Mode) -> IconName {
 
 /// The modes on offer, with a check in place of the mark of the one the chat is in.
 fn permission_rows(current: Mode, can_auto: bool) -> Vec<MenuItem> {
-    let offered = Mode::ALL.into_iter().filter(|mode| *mode != Mode::Auto || can_auto);
+    let offered = Mode::ALL
+        .into_iter()
+        .filter(|mode| *mode != Mode::Auto || can_auto);
     offered
         .map(|mode| {
-            let icon = if mode == current { IconName::Check } else { mode_mark(mode) };
+            let icon = if mode == current {
+                IconName::Check
+            } else {
+                mode_mark(mode)
+            };
             MenuItem::new(Some(icon), mode_label(mode), Box::new(SetPermission(mode)))
         })
         .collect()
@@ -170,7 +183,9 @@ impl ChatComposer {
             cx.notify();
             return;
         };
-        let params = self.settings.changes(&changed, thread.read(cx).id().clone());
+        let params = self
+            .settings
+            .changes(&changed, thread.read(cx).id().clone());
         self.update_thread(params, cx);
     }
 
@@ -236,11 +251,21 @@ impl ChatComposer {
     }
 
     fn model_chip(&self, catalog: &Catalog, p: Palette, cx: &Context<Self>) -> AnyElement {
-        let mark = if self.settings.fast { IconName::Zap } else { IconName::Sparkles };
+        let mark = if self.settings.fast {
+            IconName::Zap
+        } else {
+            IconName::Sparkles
+        };
         let labelled = self.labels >= 1;
-        let button = chip("chat-model", mark, labelled.then(|| self.model_label(catalog)), p.muted, cx)
-            .dropdown_caret(labelled)
-            .tooltip_with_action("Model", &OpenModelMenu, None);
+        let button = chip(
+            "chat-model",
+            mark,
+            labelled.then(|| self.model_label(catalog)),
+            p.muted,
+            cx,
+        )
+        .dropdown_caret(labelled)
+        .tooltip_with_action("Model", &OpenModelMenu, None);
         let pressed = cx.listener(|this, _, window, cx| this.toggle_model_menu(window, cx));
         self.model_menu.wraps(button, pressed).into_any_element()
     }
@@ -252,12 +277,25 @@ impl ChatComposer {
         cx: &App,
     ) -> Option<impl IntoElement + use<>> {
         let mode = self.mode(catalog)?;
-        let color = if mode == catalog.default_mode.unwrap_or(Mode::Ask) { p.muted } else { p.text };
+        let color = if mode == catalog.default_mode.unwrap_or(Mode::Ask) {
+            p.muted
+        } else {
+            p.text
+        };
         let labelled = self.labels >= 3;
-        let can_auto = self.settings.model_in(catalog).is_none_or(|model| model.auto);
-        let trigger = chip("chat-permission", mode_mark(mode), labelled.then(|| mode_label(mode).into()), color, cx)
-            .dropdown_caret(labelled)
-            .tooltip("What the agent may do without asking");
+        let can_auto = self
+            .settings
+            .model_in(catalog)
+            .is_none_or(|model| model.auto);
+        let trigger = chip(
+            "chat-permission",
+            mode_mark(mode),
+            labelled.then(|| mode_label(mode).into()),
+            color,
+            cx,
+        )
+        .dropdown_caret(labelled)
+        .tooltip("What the agent may do without asking");
         Some(menu::dropdown(
             "chat-permission-menu",
             trigger,
@@ -268,10 +306,16 @@ impl ChatComposer {
 
     fn plan_chip(&self, p: Palette, cx: &Context<Self>) -> Button {
         let color = if self.settings.plan { p.text } else { p.muted };
-        chip("chat-plan-toggle", IconName::ListChecks, (self.labels >= 4).then(|| "Plan".into()), color, cx)
-            .toggled(self.settings.plan)
-            .tooltip_with_action("Plan first", &TogglePlan, None)
-            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.toggle_plan(cx)))
+        chip(
+            "chat-plan-toggle",
+            IconName::ListChecks,
+            (self.labels >= 4).then(|| "Plan".into()),
+            color,
+            cx,
+        )
+        .toggled(self.settings.plan)
+        .tooltip_with_action("Plan first", &TogglePlan, None)
+        .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.toggle_plan(cx)))
     }
 
     pub(super) fn toggle_plan(&mut self, cx: &mut Context<Self>) {
@@ -298,9 +342,11 @@ impl ChatComposer {
     pub(super) fn hears_footer(column: Div, cx: &mut Context<Self>) -> Div {
         column
             .on_action(cx.listener(|this, _: &TogglePlan, _, cx| this.toggle_plan(cx)))
-            .on_action(cx.listener(|this, permission: &SetPermission, _: &mut Window, cx| {
-                let mode = permission.0;
-                this.change_settings(|settings| settings.permission = Some(mode), cx);
-            }))
+            .on_action(
+                cx.listener(|this, permission: &SetPermission, _: &mut Window, cx| {
+                    let mode = permission.0;
+                    this.change_settings(|settings| settings.permission = Some(mode), cx);
+                }),
+            )
     }
 }

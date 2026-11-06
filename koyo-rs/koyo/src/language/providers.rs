@@ -11,26 +11,24 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Instant;
 
+use gpui_kit::component::input::{
+    DefinitionProvider, DocumentRangeSemanticTokensProvider, EditorState, HoverProvider,
+    InlayHintProvider, PickDefinitionHandler, Rope,
+};
+use gpui_kit::{App, AppContext as _, Context, Entity, Subscription, Task, WeakEntity, Window, px};
 use koyo_lsp::lsp_types::request::{GotoDefinition, HoverRequest, Request};
 use koyo_lsp::lsp_types::{
     self, GotoDefinitionParams, GotoDefinitionResponse, HoverParams, LocationLink, OneOf,
     ServerCapabilities, TextDocumentIdentifier, TextDocumentPositionParams,
 };
 use koyo_lsp::{Client, Encoding, uri};
-use gpui_kit::component::input::{
-    DefinitionProvider, DocumentRangeSemanticTokensProvider, EditorState, HoverProvider,
-    InlayHintProvider, PickDefinitionHandler, Rope,
-};
-use gpui_kit::{
-    App, AppContext as _, Context, Entity, Subscription, Task, WeakEntity, Window, px,
-};
 
 use super::completions::Completions;
 use super::locations::Found;
 use super::navigate::show_document;
 use super::rename::Prepared;
-use super::symbols::Symbol;
 use super::server::Server;
+use super::symbols::Symbol;
 use super::sync::Shown;
 use super::{Kind, completions, diagnostics};
 use crate::checkout::Checkout;

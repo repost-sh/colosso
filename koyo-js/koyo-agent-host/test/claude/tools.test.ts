@@ -129,7 +129,8 @@ describe("a recorded turn's tools", () => {
         input: { file_path: NOTES, content: "one\n" },
         output: `File created successfully at: ${NOTES}`,
         exitCode: null,
-        patch: [],
+        // The CLI gives no patch of a file it created: its lines are the change.
+        patch: [{ oldStart: 0, oldLines: 0, newStart: 1, newLines: 1, lines: ["+one"] }],
         files: [NOTES],
         server: null,
       }],
@@ -156,6 +157,34 @@ describe("a recorded turn's tools", () => {
         server: null,
       }],
     ]);
+  });
+});
+
+describe("a written file", () => {
+  const written = (structured: unknown): unknown => {
+    const { events, send } = mapped();
+    send(
+      assistant(message("m1", [toolUse("t1", "Write", { file_path: NOTES, content: "x" })])),
+      toolResults([{ id: "t1", content: "Written" }], structured),
+    );
+    const settled = ofType(events, "item.updated")[0]?.item;
+    return settled?.kind === "tool" ? settled.payload.patch : undefined;
+  };
+  const write = { filePath: NOTES, originalFile: null, userModified: false };
+
+  test("that's new is all its lines added", () => {
+    const content = "one\ntwo";
+    expect(written({ ...write, type: "create", content, structuredPatch: [] })).toEqual([
+      { oldStart: 0, oldLines: 0, newStart: 1, newLines: 2, lines: ["+one", "+two"] },
+    ]);
+  });
+
+  test("that's new and empty, or was there already, is the patch the CLI gave", () => {
+    expect(written({ ...write, type: "create", content: "", structuredPatch: [] })).toEqual([]);
+    const patch = [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ["-a", "+b"] }];
+    expect(written({ ...write, type: "update", content: "b", structuredPatch: patch }))
+      .toEqual(patch);
+    expect(written({ ...write, type: "update", content: "b", structuredPatch: [] })).toEqual([]);
   });
 });
 

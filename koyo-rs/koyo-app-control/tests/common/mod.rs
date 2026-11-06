@@ -5,9 +5,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::thread::JoinHandle;
 
-use koyo_app_control::frame::{
-    Call, ClientFrame, MAX_CLIENT_FRAME, MAX_SERVER_FRAME, ServerFrame,
-};
+use koyo_app_control::frame::{Call, ClientFrame, MAX_CLIENT_FRAME, MAX_SERVER_FRAME, ServerFrame};
 use koyo_app_control::transport::{FrameReader, FrameWriter, Listener};
 use koyo_app_control::{Endpoint, Hello, Scope};
 

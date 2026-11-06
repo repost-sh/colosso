@@ -2,8 +2,8 @@
 //! given the keyboard, taken out into a tab of their own, and closed; and files opened and
 //! saved.
 
-use koyo_app_control::ErrorCode;
 use gpui_kit::TestAppContext;
+use koyo_app_control::ErrorCode;
 use serde_json::{Value, json};
 
 use super::{call, controlled, terminal};

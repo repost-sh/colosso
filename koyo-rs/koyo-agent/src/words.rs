@@ -2,7 +2,7 @@
 //! failed. What goes with the words, such as an icon, is the app's.
 
 use crate::protocol::ids::Time;
-use crate::protocol::methods::{Model, listed};
+use crate::protocol::methods::{Catalog, Model, listed};
 use crate::protocol::model::{
     Compaction, Effort, Failure, FailureKind, Item, ItemBody, ItemStatus, Mode, Run, SubagentUsage,
     TodoStatus, Tool, ToolFamily,
@@ -12,10 +12,15 @@ use crate::protocol::requests::{
     Response,
 };
 
-/// What shows under a final answer: "Opus 5.5 · High · 14:30", the model as `models` calls it.
-pub fn answer_meta(run: &Run, models: &[Model]) -> String {
+/// What shows under a final answer: "Opus 5.5 · High · 14:30", the model as `catalog` calls the
+/// one it ran on, which for a run that chose none is the one a chat that chose none says it runs
+/// on; or its id, if it's no longer listed.
+pub fn answer_meta(run: &Run, catalog: &Catalog) -> String {
+    let model = (catalog.model(run.model.as_deref()))
+        .map(|model| model_name(model).to_owned())
+        .or_else(|| run.model.clone());
     let parts = [
-        run.model.as_deref().map(|id| model_called(id, models)),
+        model,
         run.effort.map(|effort| effort_label(effort).to_owned()),
         run.ended_at.as_ref().and_then(clock),
     ];
@@ -128,7 +133,11 @@ pub fn subagent_line(
     took.map_or_else(|| doing.to_owned(), |took| format!("{doing} · {took}"))
 }
 
-fn elapsed(started: &Time, ended: Option<&Time>, now: chrono::DateTime<chrono::Utc>) -> Option<String> {
+fn elapsed(
+    started: &Time,
+    ended: Option<&Time>,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Option<String> {
     let started = parsed(started)?;
     let until = match ended {
         Some(ended) => parsed(ended)?,
@@ -159,7 +168,11 @@ fn tokens(count: u64) -> String {
 pub fn compacted(compaction: &Compaction) -> String {
     match (compaction.before, compaction.after) {
         (Some(before), Some(after)) => {
-            format!("Context compacted · {} → {} tokens", tokens(before), tokens(after))
+            format!(
+                "Context compacted · {} → {} tokens",
+                tokens(before),
+                tokens(after)
+            )
         }
         _ => "Context compacted".to_owned(),
     }
@@ -205,7 +218,9 @@ pub fn work_summary<'a>(items: impl Iterator<Item = &'a Item>) -> String {
         sentence.push_str(part);
     }
     let mut letters = sentence.chars();
-    let first = letters.next().map(|first| first.to_uppercase().chain(letters).collect::<String>());
+    let first = letters
+        .next()
+        .map(|first| first.to_uppercase().chain(letters).collect::<String>());
     match (first, declined) {
         (Some(done), 0) => done,
         (Some(done), declined) => format!("{done} · {declined} declined"),
@@ -291,7 +306,10 @@ pub fn question_lines(request: &Request, questions: &[Question]) -> Vec<String> 
         let what = &question.text;
         match &request.answer {
             Some(Answer::Response(Response::Question { answers })) => {
-                match answers.get(&question.id).filter(|chosen| !chosen.is_empty()) {
+                match answers
+                    .get(&question.id)
+                    .filter(|chosen| !chosen.is_empty())
+                {
                     Some(chosen) => format!("{}: {}", question.header, chosen.join(", ")),
                     None => format!("Skipped: {what}"),
                 }
@@ -351,7 +369,11 @@ pub fn work_line(item: &Item, cwd: &str) -> String {
         }
         ItemBody::Todos(todos) => {
             let done = (todos.todos.iter()).filter(|todo| todo.status == TodoStatus::Completed);
-            format!("Updated the to-dos · {} of {} done", done.count(), todos.todos.len())
+            format!(
+                "Updated the to-dos · {} of {} done",
+                done.count(),
+                todos.todos.len()
+            )
         }
         _ => "Worked".to_owned(),
     }

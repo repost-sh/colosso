@@ -3,11 +3,10 @@
 
 use std::cell::Cell;
 use std::ops::Range;
-use std::rc::Rc;
 use std::path::Path;
+use std::rc::Rc;
 use std::sync::Arc;
 
-use koyo_project::{Kind, Row};
 use gpui_kit::assets::IconName;
 use gpui_kit::base::ElementExt as _;
 use gpui_kit::component::Sizable as _;
@@ -16,12 +15,12 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Action, AnyElement, App, Bounds, ClickEvent, Context, Div, FontWeight, Hsla,
     InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Render, SharedString,
-    StatefulInteractiveElement as _, Styled as _, Window, div, point, px,
-    uniform_list,
+    StatefulInteractiveElement as _, Styled as _, Window, div, point, px, uniform_list,
 };
+use koyo_project::{Kind, Row};
 
-use super::icons;
 use super::panel::FilesPanel;
+use super::{file_label, icons};
 use crate::changes::{Mark, Marks};
 use crate::modal::spinner;
 use crate::projects::{CopyPath, RevealInFinder, with_menu};
@@ -90,18 +89,36 @@ impl FilesPanel {
             .py_1()
             .track_focus(&self.focus)
             .key_context("FilesTree")
-            .on_action(moving(cx, |this: &mut Self, _: &SelectPrevious, cx| this.step(-1, cx)))
-            .on_action(moving(cx, |this: &mut Self, _: &SelectNext, cx| this.step(1, cx)))
-            .on_action(moving(cx, |this: &mut Self, _: &SelectFirst, cx| this.select(0, cx)))
+            .on_action(moving(cx, |this: &mut Self, _: &SelectPrevious, cx| {
+                this.step(-1, cx);
+            }))
+            .on_action(moving(cx, |this: &mut Self, _: &SelectNext, cx| {
+                this.step(1, cx);
+            }))
+            .on_action(moving(cx, |this: &mut Self, _: &SelectFirst, cx| {
+                this.select(0, cx);
+            }))
             .on_action(moving(cx, |this: &mut Self, _: &SelectLast, cx| {
                 this.select(this.rows.len().saturating_sub(1), cx);
             }))
-            .on_action(moving(cx, |this: &mut Self, _: &PageUp, cx| this.page(-1, cx)))
-            .on_action(moving(cx, |this: &mut Self, _: &PageDown, cx| this.page(1, cx)))
-            .on_action(moving(cx, |this: &mut Self, _: &PreviousFile, cx| this.step_file(-1, cx)))
-            .on_action(moving(cx, |this: &mut Self, _: &NextFile, cx| this.step_file(1, cx)))
-            .on_action(moving(cx, |this: &mut Self, _: &Collapse, cx| this.close_or_parent(cx)))
-            .on_action(moving(cx, |this: &mut Self, _: &Expand, cx| this.open_or_child(cx)))
+            .on_action(moving(cx, |this: &mut Self, _: &PageUp, cx| {
+                this.page(-1, cx);
+            }))
+            .on_action(moving(cx, |this: &mut Self, _: &PageDown, cx| {
+                this.page(1, cx);
+            }))
+            .on_action(moving(cx, |this: &mut Self, _: &PreviousFile, cx| {
+                this.step_file(-1, cx);
+            }))
+            .on_action(moving(cx, |this: &mut Self, _: &NextFile, cx| {
+                this.step_file(1, cx);
+            }))
+            .on_action(moving(cx, |this: &mut Self, _: &Collapse, cx| {
+                this.close_or_parent(cx);
+            }))
+            .on_action(moving(cx, |this: &mut Self, _: &Expand, cx| {
+                this.open_or_child(cx);
+            }))
             .on_action(cx.listener(|this, _: &Activate, _, cx| {
                 if let Some(at) = this.cursor() {
                     this.activate(at, true, cx);
@@ -164,22 +181,27 @@ impl FilesPanel {
                 window.focus(&this.focus, cx);
                 this.select(index, cx);
                 let twice = event.click_count() > 1;
-                let folder = this.rows.get(index).is_some_and(|row| row.entry.is_folder());
+                let folder = this
+                    .rows
+                    .get(index)
+                    .is_some_and(|row| row.entry.is_folder());
                 if !(twice && folder) {
                     this.activate(index, twice, cx);
                 }
             }))
             .child(div().w(px(12.)).flex_shrink_0().children(chevron))
-            .child(icon(icons::icon(&shown.entry, shown.expanded), 14.).text_color(p.muted))
-            .child(
+            .child(file_label(
+                icons::icon(&shown.entry, shown.expanded),
+                14.,
                 ellipsized(SharedString::from(shown.entry.name.clone()))
                     .text_color(colour.unwrap_or(p.text))
                     .when(active, |name| name.font_weight(FontWeight::MEDIUM)),
-            )
+                p,
+            ))
             .child(div().flex_1())
             .children(badge);
         let (root, path) = (root.clone(), shown.path.clone());
-        with_menu(element, move || {
+        with_menu(element, move |_, _| {
             let absolute = root.join(&*path);
             NativeMenu::new()
                 .menu("Copy Path", Box::new(CopyPath(absolute.clone())))
@@ -267,6 +289,10 @@ fn rail(p: Palette, cx: &mut Context<FilesPanel>) -> Div {
         .flex()
         .items_center()
         .justify_end()
-        .child(div().on_prepaint(move |bounds, _, _| measured.set(bounds)).child(more))
+        .child(
+            div()
+                .on_prepaint(move |bounds, _, _| measured.set(bounds))
+                .child(more),
+        )
         .text_color(p.muted)
 }

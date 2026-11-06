@@ -44,8 +44,12 @@ pub(crate) fn mock_keychain() -> bool {
 /// The host's own app bundle, `Koyo Browser Host.app`.
 #[cfg(target_os = "macos")]
 pub(crate) fn own_bundle() -> Option<String> {
-    let bundle = objc2_foundation::NSBundle::mainBundle().bundlePath().to_string();
-    let is_app = std::path::Path::new(&bundle).extension().is_some_and(|ext| ext == "app");
+    let bundle = objc2_foundation::NSBundle::mainBundle()
+        .bundlePath()
+        .to_string();
+    let is_app = std::path::Path::new(&bundle)
+        .extension()
+        .is_some_and(|ext| ext == "app");
     is_app.then_some(bundle)
 }
 

@@ -18,9 +18,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use koyo_app_control::{ClientInfo, Command, ControlError, Hello, PROTOCOL_VERSION, Scope};
 use futures::channel::mpsc::UnboundedReceiver;
 use gpui_kit::{AnyWindowHandle, App, Entity, TestAppContext};
+use koyo_app_control::{ClientInfo, Command, ControlError, Hello, PROTOCOL_VERSION, Scope};
 use serde_json::Value;
 
 use super::{Answer, ApprovedClient, Caller, Control, Request, Timeouts, Welcome, handle};

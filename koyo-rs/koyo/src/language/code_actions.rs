@@ -5,14 +5,14 @@
 
 use std::ops::Range;
 
+use gpui_kit::component::input::{CodeActionProvider, EditorState};
+use gpui_kit::{App, AppContext as _, Entity, SharedString, Task, Window};
 use koyo_lsp::lsp_types::request::{CodeActionRequest, CodeActionResolveRequest};
 use koyo_lsp::lsp_types::{
     CodeAction, CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams,
     CodeActionProviderCapability, CodeActionTriggerKind, Command, PartialResultParams,
     WorkDoneProgressParams,
 };
-use gpui_kit::component::input::{CodeActionProvider, EditorState};
-use gpui_kit::{App, AppContext as _, Entity, SharedString, Task, Window};
 
 use super::edits;
 use super::providers::Hooks;
@@ -128,7 +128,10 @@ fn order(action: &CodeAction) -> u8 {
         CodeActionKind::REFACTOR,
         CodeActionKind::SOURCE,
     ];
-    (first.iter().position(|known| kind.starts_with(known.as_str()))).map_or(3, |at| at as u8)
+    (first
+        .iter()
+        .position(|known| kind.starts_with(known.as_str())))
+    .map_or(3, |at| at as u8)
 }
 
 #[cfg(test)]
@@ -162,7 +165,11 @@ mod tests {
         };
         let answer = vec![
             action("Extract", Some(CodeActionKind::REFACTOR_EXTRACT), false),
-            action("Organize", Some(CodeActionKind::SOURCE_ORGANIZE_IMPORTS), false),
+            action(
+                "Organize",
+                Some(CodeActionKind::SOURCE_ORGANIZE_IMPORTS),
+                false,
+            ),
             action("Other", None, false),
             action("Import", Some(CodeActionKind::QUICKFIX), false),
             action("Fix now", Some(CodeActionKind::QUICKFIX), true),
@@ -170,7 +177,13 @@ mod tests {
             CodeActionOrCommand::CodeAction(runs),
             CodeActionOrCommand::Command(run),
         ];
-        let titles: Vec<String> = listed(answer).into_iter().map(|action| action.title).collect();
-        assert_eq!(titles, ["Fix now", "Import", "Extract", "Organize", "Other"]);
+        let titles: Vec<String> = listed(answer)
+            .into_iter()
+            .map(|action| action.title)
+            .collect();
+        assert_eq!(
+            titles,
+            ["Fix now", "Import", "Extract", "Organize", "Other"]
+        );
     }
 }

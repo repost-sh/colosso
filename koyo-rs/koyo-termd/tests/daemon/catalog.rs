@@ -22,8 +22,7 @@ fn an_agent_drives_a_shell_through_the_catalog() {
     let dir = test_dir("catalog");
     let _stop = StopOnDrop(dir.clone());
     // The agent runs in this checkout, which `current` then means.
-    let checkout =
-        std::fs::canonicalize(env!("KOYO_CHECKOUT")).unwrap();
+    let checkout = std::fs::canonicalize(env!("KOYO_CHECKOUT")).unwrap();
     let relay = connect_from(&dir, ClientKind::Relay, Some(checkout));
     let agent = Executor::new(
         relay.connection.clone(),
@@ -156,8 +155,7 @@ fn the_person_takes_it_back(dir: &koyo_term_control::TermDir, agent: &Executor, 
 fn each_agent_sees_its_own_worktrees_terminals() {
     let dir = test_dir("scope");
     let _stop = StopOnDrop(dir.clone());
-    let checkout =
-        std::fs::canonicalize(env!("KOYO_CHECKOUT")).unwrap();
+    let checkout = std::fs::canonicalize(env!("KOYO_CHECKOUT")).unwrap();
     // Another checkout, as far as the daemon reads one: a `.git` with a HEAD.
     let other = dir.root().parent().unwrap().join("other");
     std::fs::create_dir_all(other.join(".git")).unwrap();

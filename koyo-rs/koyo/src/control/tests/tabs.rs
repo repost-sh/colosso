@@ -2,8 +2,8 @@
 //! closed (not over unsaved edits unless they're discarded) and reopened; and the window's
 //! panels, layout and settings pages.
 
-use koyo_app_control::{ErrorCode, Scope};
 use gpui_kit::TestAppContext;
+use koyo_app_control::{ErrorCode, Scope};
 use serde_json::{Value, json};
 
 use super::{allow, call, controlled, external, op, read_shell, send, taken, terminal};

@@ -48,8 +48,8 @@ pub use actions::{
 pub use actions::{NewTerminal, StopTerminal};
 use elements::drag_area;
 pub use elements::{
-    action_button, add_project_row, ellipsized, glass, icon, icon_button, new_tab_button, no_matches,
-    project_error, row, search_field, section_label, solid, tab_close_button,
+    action_button, add_project_row, ellipsized, glass, icon, icon_button, new_tab_button,
+    no_matches, project_error, row, search_field, section_label, solid, tab_close_button,
 };
 pub use reorder::TabHand;
 pub use splits::divider;

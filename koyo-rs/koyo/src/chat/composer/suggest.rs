@@ -10,8 +10,8 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Action as _, AnyElement, App, AppContext as _, ClickEvent, Context, Div, ElementId, FontWeight,
     InteractiveElement as _, IntoElement as _, KeyBinding, ParentElement as _, ScrollStrategy,
-    Stateful, StatefulInteractiveElement as _, Styled as _, Task,
-    UniformListScrollHandle, Window, actions, div, px,
+    Stateful, StatefulInteractiveElement as _, Styled as _, Task, UniformListScrollHandle, Window,
+    actions, div, px,
 };
 use koyo_project::{Finder, Results};
 
@@ -128,7 +128,9 @@ impl ChatComposer {
     /// Whether rows show, over what's above the composer, which has to go: glass only hides what's
     /// drawn under the glass. A token that completes to nothing doesn't take the keys.
     pub(in crate::chat) fn suggesting(&self) -> bool {
-        self.suggest.as_ref().is_some_and(|open| open.found.len() > 0)
+        self.suggest
+            .as_ref()
+            .is_some_and(|open| open.found.len() > 0)
     }
 
     /// What's typed or where the caret is changed, which may be what's being completed.
@@ -152,7 +154,10 @@ impl ChatComposer {
             Some(open) if open.token.kind == token.kind => open.retyped(token),
             _ => {
                 let (found, files) = match token.kind {
-                    TokenKind::File => (Found::Files(Results::default()), Some(self.follow_files(cx))),
+                    TokenKind::File => (
+                        Found::Files(Results::default()),
+                        Some(self.follow_files(cx)),
+                    ),
                     TokenKind::Command => (Found::Commands(Vec::new()), None),
                 };
                 self.suggest = Some(Suggestions {
@@ -325,7 +330,9 @@ impl ChatComposer {
         let open = self.suggest.as_ref().filter(|open| open.found.len() > 0)?;
         let count = open.found.len();
         let rows = cx.processor(move |this: &mut Self, range: Range<usize>, _, cx| {
-            range.filter_map(|at| this.suggestion_row(at, p, cx)).collect()
+            range
+                .filter_map(|at| this.suggestion_row(at, p, cx))
+                .collect()
         });
         let list = list::scrolling("chat-suggestion-rows", count, &open.scroll, rows);
         Some(
@@ -378,6 +385,14 @@ fn command_row(
                 .font_weight(FontWeight::SEMIBOLD)
                 .child(format!("/{}", row.name)),
         )
-        .children(row.hint.clone().map(|hint| div().flex_shrink_0().text_color(p.muted).child(hint)))
-        .child(shell::ellipsized(row.description.clone()).flex_1().text_color(p.muted))
+        .children(
+            row.hint
+                .clone()
+                .map(|hint| div().flex_shrink_0().text_color(p.muted).child(hint)),
+        )
+        .child(
+            shell::ellipsized(row.description.clone())
+                .flex_1()
+                .text_color(p.muted),
+        )
 }

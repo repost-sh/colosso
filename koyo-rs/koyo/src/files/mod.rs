@@ -14,8 +14,8 @@ mod markdown;
 mod open;
 mod panel;
 mod place;
-mod render;
 mod rename;
+mod render;
 #[cfg(test)]
 pub(crate) mod tests;
 #[cfg(feature = "visual-check")]
@@ -25,7 +25,7 @@ pub use closing::{Then, ask, ask_before_closing};
 pub use editor::{FileEditor, MOST_COLOURED};
 pub use file_pane::{FilePane, name as file_name};
 pub use icons::file as file_icon;
-pub use link::{OpenLinked, opens_links};
+pub use link::{FileLinks, OpenLinked, opens_links};
 pub use locations::Locations;
 pub use markdown::{Mode as MarkdownMode, SetMarkdownOpensAs};
 pub use panel::FilesPanel;
@@ -117,6 +117,18 @@ impl Shell {
     }
 }
 
+/// A file as the file tree names it: its icon, dimmed, `size` big, and its `name` beside it. The
+/// tree's rows, the palettes' and a link to a file in a chat all draw one.
+pub fn file_label(icon: IconName, size: f32, name: impl IntoElement, p: Palette) -> Div {
+    div()
+        .flex()
+        .items_center()
+        .gap_1p5()
+        .min_w_0()
+        .child(shell::icon(icon, size).flex_shrink_0().text_color(p.muted))
+        .child(name)
+}
+
 /// A row that names a file, as the palettes list them: its icon, its `name` in bold and its
 /// `folder` dimmed after it, with room for what the caller adds after that.
 pub fn file_row(
@@ -127,12 +139,12 @@ pub fn file_row(
     folder: impl IntoElement,
     p: Palette,
 ) -> Stateful<Div> {
+    let name = div().font_weight(FontWeight::SEMIBOLD).child(name);
     shell::row(id, selected, p)
         .w_full()
         .h(px(ROW))
         .gap_1p5()
         .rounded(px(5.))
-        .child(shell::icon(icon, 14.).text_color(p.muted))
-        .child(div().flex_shrink_0().font_weight(FontWeight::SEMIBOLD).child(name))
+        .child(file_label(icon, 14., name, p).flex_shrink_0())
         .child(shell::ellipsized(folder).flex_1().text_color(p.muted))
 }

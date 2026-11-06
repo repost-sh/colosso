@@ -1,9 +1,9 @@
 //! The chats no tab shows: listed in the new-tab launcher, and opening where they're shown
 //! already or in a new tab.
 
+use gpui_kit::{SharedString, TestAppContext};
 use koyo_agent::protocol::ids::{ThreadId, Time};
 use koyo_agent::protocol::model::ThreadSummary;
-use gpui_kit::{SharedString, TestAppContext};
 
 use super::{chats_of, summary, tabs};
 use crate::test_support::{draw, repo, select, shell_with};
@@ -21,7 +21,12 @@ fn the_chats_of_a_checkout_with_no_tab_are_recent_latest_first(cx: &mut TestAppC
     let (window, shell) = shell_with(&[&root], cx);
     select(&shell, &root, cx);
     let chats = chats_of(&shell, cx);
-    let elsewhere = at("0009", std::path::Path::new("/elsewhere"), "Elsewhere", "2026-11-04T03:00:00Z");
+    let elsewhere = at(
+        "0009",
+        std::path::Path::new("/elsewhere"),
+        "Elsewhere",
+        "2026-11-04T03:00:00Z",
+    );
     let listed = vec![
         at("0001", &root, "Older", "2026-11-04T01:00:00Z"),
         at("0002", &root, "Newer", "2026-11-04T02:00:00Z"),
@@ -32,7 +37,11 @@ fn the_chats_of_a_checkout_with_no_tab_are_recent_latest_first(cx: &mut TestAppC
     draw(window, cx);
 
     let titles: Vec<SharedString> = shell.read_with(cx, |shell, cx| {
-        shell.chats_without_tabs(&root, cx).into_iter().map(|(_, title)| title).collect()
+        shell
+            .chats_without_tabs(&root, cx)
+            .into_iter()
+            .map(|(_, title)| title)
+            .collect()
     });
 
     assert_eq!(titles, ["Newer", "Older"]);
@@ -60,6 +69,8 @@ fn a_recent_chat_opens_in_a_new_tab_and_a_shown_one_where_it_is(cx: &mut TestApp
     draw(window, cx);
     assert_eq!(again, pane);
     assert_eq!(tabs(&shell, cx), ["No tab yet"]);
-    let unknown = shell.update(cx, |shell, cx| shell.open_chat(&ThreadId("nope".into()), cx));
+    let unknown = shell.update(cx, |shell, cx| {
+        shell.open_chat(&ThreadId("nope".into()), cx)
+    });
     assert_eq!(unknown, None);
 }

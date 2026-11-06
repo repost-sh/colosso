@@ -15,6 +15,7 @@
 use std::path::Path;
 use std::time::{Duration, Instant};
 
+use futures::StreamExt;
 use koyo_lsp::lsp_types::notification::{
     DidChangeTextDocument, DidOpenTextDocument, DidSaveTextDocument, PublishDiagnostics,
 };
@@ -27,7 +28,6 @@ use koyo_lsp::lsp_types::{
 };
 use koyo_lsp::servers::{Curl, RUST_ANALYZER};
 use koyo_lsp::{Client, Document, Encoding, IndexedText, LineIndex, Notifications, uri};
-use futures::StreamExt;
 
 use crate::common::{data_dir, fixture, wait};
 
@@ -48,7 +48,9 @@ const MORE: &str =
 #[test]
 #[ignore = "downloads and runs rust-analyzer; see this file's header"]
 fn rust_analyzer_answers_what_an_editor_asks() {
-    let Some(data) = data_dir("rust-analyzer") else { return };
+    let Some(data) = data_dir("rust-analyzer") else {
+        return;
+    };
     let binary = RUST_ANALYZER.install(&data, &Curl).unwrap();
     let root = fixture(
         "rust",

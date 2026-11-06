@@ -372,16 +372,22 @@ mod tests {
 /// Whether the daemon takes `name` for a terminal: `[a-z0-9][a-z0-9-]{0,31}`.
 pub fn is_terminal_name(name: &str) -> bool {
     let mut chars = name.chars();
-    let first = chars.next().is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit());
-    first && name.len() <= 32 && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    let first = chars
+        .next()
+        .is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit());
+    first
+        && name.len() <= 32
+        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
 /// What a terminal can be called after `text`: its letters and digits with dashes for the rest,
 /// short enough for a number to go after it. Nothing, if `text` has neither.
 pub fn name_after(text: &str) -> Option<String> {
     let lower = text.to_ascii_lowercase();
-    let words: Vec<&str> =
-        lower.split(|c: char| !c.is_ascii_alphanumeric()).filter(|word| !word.is_empty()).collect();
+    let words: Vec<&str> = lower
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .collect();
     let short: String = words.join("-").chars().take(28).collect();
     let short = short.trim_end_matches('-');
     (!short.is_empty()).then(|| short.to_owned())
@@ -400,13 +406,19 @@ mod name_tests {
     #[test]
     fn a_name_made_after_any_text_is_one_the_daemon_takes() {
         assert_eq!(name_after("Say hi").as_deref(), Some("say-hi"));
-        assert_eq!(name_after("  npm: run dev!  ").as_deref(), Some("npm-run-dev"));
+        assert_eq!(
+            name_after("  npm: run dev!  ").as_deref(),
+            Some("npm-run-dev")
+        );
         assert_eq!(name_after("日本語"), None);
         let long = "a ".repeat(40);
         for text in ["Say hi", "--x--", "A_b.c", long.as_str()] {
             let name = name_after(text).unwrap();
             assert!(is_terminal_name(&name), "{name}");
-            assert!(is_terminal_name(&format!("{name}-99")), "{name} takes a number");
+            assert!(
+                is_terminal_name(&format!("{name}-99")),
+                "{name} takes a number"
+            );
         }
         assert!(!is_terminal_name("-x"));
         assert!(!is_terminal_name(""));

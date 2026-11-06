@@ -8,7 +8,6 @@
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
-use koyo_git::{Head, Loss};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::Disableable as _;
 use gpui_kit::component::switch::Switch;
@@ -17,6 +16,7 @@ use gpui_kit::{
     AnyWindowHandle, App, Context, IntoElement, ParentElement as _, Render, SharedString,
     Styled as _, WeakEntity, Window, div, px,
 };
+use koyo_git::{Head, Loss};
 
 use crate::modal::{self, Button, LINE, SMALL_LINE, Tone, small_line};
 use crate::projects::display_path;

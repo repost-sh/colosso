@@ -3,11 +3,11 @@
 
 use std::path::{Path, PathBuf};
 
+use gpui_kit::{App, AsyncApp};
 use koyo_app_control::ControlError;
 use koyo_app_control::ops::project::{
     ProjectListOutput, ProjectMoveInput, ProjectOrder, ProjectOutput, ProjectRemoveOutput,
 };
-use gpui_kit::{App, AsyncApp};
 use serde_json::Value;
 
 use super::super::Caller;

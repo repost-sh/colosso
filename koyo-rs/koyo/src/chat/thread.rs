@@ -68,11 +68,7 @@ impl ChatThread {
     }
 
     /// Takes in the answer to an open.
-    pub fn opened(
-        &mut self,
-        opened: Result<ThreadSnapshot, ClientError>,
-        cx: &mut Context<Self>,
-    ) {
+    pub fn opened(&mut self, opened: Result<ThreadSnapshot, ClientError>, cx: &mut Context<Self>) {
         self.opening = false;
         let early = std::mem::take(&mut self.early);
         match opened {

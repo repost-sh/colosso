@@ -6,9 +6,9 @@
 
 use std::time::Duration;
 
+use gpui_kit::{App, AppContext as _, AsyncApp, PromptLevel};
 use koyo_app_control::{ControlError, ErrorCode, Hello, PROTOCOL_VERSION, Scope};
 use koyo_term_control::{Handle, RequestBody, ResponseBody};
-use gpui_kit::{App, AppContext as _, AsyncApp, PromptLevel};
 
 use super::activity::{ActivityKind, Decision};
 use super::confirm::answered;

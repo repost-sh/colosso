@@ -17,21 +17,18 @@ use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
 use gpui_kit::Action;
-use koyo_agent::protocol::ids::MessageId;
-use koyo_agent::protocol::methods::Delivery;
-use koyo_agent::protocol::model::Prompt;
 
 use super::SettingsPage;
 use crate::files::Place;
 use crate::key_repeat::KeyRepeat;
 use crate::navigation::Route;
-use crate::settings::{self, CHAT_SIZES, Fonts};
+use crate::settings::{self, CHAT_SIZES, Fonts, LARGEST_CHAT_SIZE};
 use crate::theme::{UseDarkTheme, UseLightTheme};
 use crate::visual::{Drawn, Result, checkout};
 
 /// Where the pictures go, relative to the checkout.
 const OUT: &str = ".superpowers/qa/settings";
-/// How long the host gets to start a chat, or to say something in it.
+/// How much longer than it waits for a wait may go on, with the app slow to draw.
 const PATIENCE: Duration = Duration::from_secs(20);
 /// How long the chat gets to take in what the fake provider says back.
 const ANSWERED_IN: Duration = Duration::from_secs(4);
@@ -93,7 +90,7 @@ fn draw() -> Result<Vec<String>> {
             settings.fonts = Fonts {
                 interface: Some("Georgia".to_owned()),
                 code: Some("Menlo".to_owned()),
-                chat_size: 22.,
+                chat_size: LARGEST_CHAT_SIZE,
             };
         });
     });
@@ -108,55 +105,35 @@ fn draw() -> Result<Vec<String>> {
 /// A chat with something said in it, at each end of the slider, at the default, and in other
 /// fonts.
 fn chat_in_its_sizes(drawn: &mut Drawn) -> Result<Vec<PathBuf>> {
-    if std::env::var_os("KOYO_AGENT_PROVIDER").is_none_or(|provider| provider != "fake") {
-        return Err("set KOYO_AGENT_PROVIDER=fake, so the chat doesn't go to Claude".into());
-    }
-    let root = checkout()?;
-    let shell = drawn.shell.clone();
-    let chats = drawn.cx.read(|cx| shell.read(cx).chats().clone());
-
-    let made = drawn.cx.read(|cx| chats.read(cx).create(&root));
-    let mut thread = None;
-    drawn.finish(PATIENCE, async { thread = Some(made.await) })?;
-    let id = thread
-        .ok_or("the chat wasn't started")?
-        .map_err(|error| format!("the chat wouldn't start: {error}"))?
-        .id;
-
-    let prompt = Prompt {
-        message_id: MessageId::fresh(),
-        text: SAID.to_owned(),
-        attachments: Vec::new(),
-    };
-    let sent = drawn.cx.read(|cx| chats.read(cx).send(&id, prompt, Delivery::Auto));
-    let mut said = None;
-    drawn.finish(PATIENCE, async { said = Some(sent.await) })?;
-    said.ok_or("nothing was said")?
-        .map_err(|error| format!("the chat wouldn't take it: {error}"))?;
-
-    drawn.cx.update(|cx| {
-        shell.update(cx, |shell, cx| {
-            shell.navigate(Route::Workspace, cx);
-            shell.add_chat(&root, id.clone(), true, cx);
-        });
-        settings::update(cx, |settings| settings.fonts = Fonts::default());
-    });
+    drawn.chat_saying(&checkout()?, SAID)?;
+    drawn
+        .cx
+        .update(|cx| settings::update(cx, |settings| settings.fonts = Fonts::default()));
     let start = Instant::now();
-    drawn.until(ANSWERED_IN + PATIENCE, |_| Ok(start.elapsed() >= ANSWERED_IN))?;
+    drawn.until(ANSWERED_IN + PATIENCE, |_| {
+        Ok(start.elapsed() >= ANSWERED_IN)
+    })?;
 
     let mut saved = Vec::new();
-    let largest = CHAT_SIZES.last().copied().unwrap_or(22.);
-    for size in [16., CHAT_SIZES[0], largest] {
-        let fonts = Fonts { chat_size: size, ..Fonts::default() };
-        drawn.cx.update(|cx| settings::update(cx, |settings| settings.fonts = fonts));
+    let default = Fonts::default().chat_size;
+    for size in [default, CHAT_SIZES[0], LARGEST_CHAT_SIZE] {
+        let fonts = Fonts {
+            chat_size: size,
+            ..Fonts::default()
+        };
+        drawn
+            .cx
+            .update(|cx| settings::update(cx, |settings| settings.fonts = fonts));
         saved.push(drawn.save(&format!("chat-{size}.png"))?);
     }
     let fonts = Fonts {
         interface: Some("Georgia".to_owned()),
         code: Some("Menlo".to_owned()),
-        chat_size: 16.,
+        chat_size: default,
     };
-    drawn.cx.update(|cx| settings::update(cx, |settings| settings.fonts = fonts));
+    drawn
+        .cx
+        .update(|cx| settings::update(cx, |settings| settings.fonts = fonts));
     saved.push(drawn.save("chat-picked.png")?);
     Ok(saved)
 }
@@ -165,20 +142,30 @@ fn chat_in_its_sizes(drawn: &mut Drawn) -> Result<Vec<PathBuf>> {
 /// editor that kept its font from when it opened wouldn't take in.
 fn file_in_its_fonts(drawn: &mut Drawn) -> Result<Vec<PathBuf>> {
     let (window, shell) = (drawn.window, drawn.shell.clone());
-    drawn.cx.update(|cx| settings::update(cx, |settings| settings.fonts = Fonts::default()));
+    drawn
+        .cx
+        .update(|cx| settings::update(cx, |settings| settings.fonts = Fonts::default()));
     (drawn.cx)
         .update_window(window, |_, window, cx| {
             shell.update(cx, |shell, cx| {
-                shell.view_file(Place::file("koyo-rs/koyo/src/settings/fonts.rs"), window, cx);
+                shell.view_file(
+                    Place::file("koyo-rs/koyo/src/settings/fonts.rs"),
+                    window,
+                    cx,
+                );
             });
         })
         .map_err(|error| error.to_string())?;
     let start = Instant::now();
-    drawn.until(ANSWERED_IN + PATIENCE, |_| Ok(start.elapsed() >= ANSWERED_IN))?;
+    drawn.until(ANSWERED_IN + PATIENCE, |_| {
+        Ok(start.elapsed() >= ANSWERED_IN)
+    })?;
     drawn.pause()?;
     let mut saved = vec![drawn.save("file-bundled.png")?];
     drawn.cx.update(|cx| {
-        settings::update(cx, |settings| settings.fonts.code = Some("Menlo".to_owned()));
+        settings::update(cx, |settings| {
+            settings.fonts.code = Some("Menlo".to_owned());
+        });
     });
     saved.push(drawn.save("file-picked.png")?);
     Ok(saved)

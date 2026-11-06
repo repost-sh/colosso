@@ -2,7 +2,6 @@
 //! mode and the inspector. And what's shown over the page itself: the start page, a notice when the
 //! engine or the page failed, and the bar that says who has the page when it's contested.
 
-use koyo_browser_ipc::{Go, PageState};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::input::Input;
 use gpui_kit::component::native_menu::NativeMenu;
@@ -10,10 +9,10 @@ use gpui_kit::component::{Disableable as _, Selectable as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, ClickEvent, Context, Div, ElementId, Focusable as _, FontWeight,
-    InteractiveElement as _,
-    IntoElement, MouseButton, MouseDownEvent, ParentElement as _, StatefulInteractiveElement as _,
-    Styled as _, Window, deferred, div, px, relative,
+    InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, ParentElement as _,
+    StatefulInteractiveElement as _, Styled as _, Window, deferred, div, px, relative,
 };
+use koyo_browser_ipc::{Go, PageState};
 
 use super::control::{Holder, Mode};
 use super::host::HostStatus;
@@ -217,7 +216,8 @@ pub(super) fn control_bar(
     cx: &mut Context<BrowserView>,
 ) -> Option<AnyElement> {
     let p = theme::palette(cx);
-    let (text, id, label, on_click): (_, _, _, OnClick) = if let Some(agent) = view.control.agent() {
+    let (text, id, label, on_click): (_, _, _, OnClick) = if let Some(agent) = view.control.agent()
+    {
         let take = cx.listener(|this, _: &ClickEvent, _, cx| this.person_acts(Mode::Explicit, cx));
         let text = format!("{} is using this tab", agent.label);
         (text, "browser-take-control", "Take control", Box::new(take))

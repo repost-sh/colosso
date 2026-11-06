@@ -60,7 +60,9 @@ impl Control for EffortSlider {
 
     fn acted(&self, view: &NSSlider, _: Option<usize>, cx: &mut App) {
         let at = slider::stop(view);
-        self.panel.update(cx, |panel, cx| panel.slide_to(at, cx)).ok();
+        self.panel
+            .update(cx, |panel, cx| panel.slide_to(at, cx))
+            .ok();
     }
 }
 
@@ -89,14 +91,20 @@ impl EffortPanel {
         };
         self.at = at;
         cx.notify();
-        self.composer.update(cx, |composer, cx| composer.say_effort(effort, cx)).ok();
+        self.composer
+            .update(cx, |composer, cx| composer.say_effort(effort, cx))
+            .ok();
     }
 }
 
 impl Render for EffortPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = theme::palette(cx);
-        let says = |at: usize| self.efforts.get(at).map_or("", |effort| effort_label(*effort));
+        let says = |at: usize| {
+            self.efforts
+                .get(at)
+                .map_or("", |effort| effort_label(*effort))
+        };
         let ends = (says(0), says(self.efforts.len().saturating_sub(1)));
         let control = EffortSlider {
             panel: cx.weak_entity(),
@@ -126,7 +134,11 @@ impl ChatComposer {
     /// The effort that shows on `model`: what the chat is set to, or else what the person's settings
     /// choose, as near as it gets. None if it has no efforts to choose.
     fn effort_on(&self, model: &Model, cx: &App) -> Option<Effort> {
-        model.fitted(self.settings.effort.unwrap_or(settings::get(cx).chat_effort))
+        model.fitted(
+            self.settings
+                .effort
+                .unwrap_or(settings::get(cx).chat_effort),
+        )
     }
 
     /// Has the chat set to the effort that shows, which goes ahead of the message about to be sent.
@@ -153,7 +165,13 @@ impl ChatComposer {
         let composer = cx.weak_entity();
         self.effort_menu.toggle_panel(
             size(px(PANEL_WIDTH), px(PANEL_HEIGHT)),
-            |cx| cx.new(|_| EffortPanel { composer, efforts, at }),
+            |cx| {
+                cx.new(|_| EffortPanel {
+                    composer,
+                    efforts,
+                    at,
+                })
+            },
             window,
             cx,
         );
@@ -168,7 +186,10 @@ impl ChatComposer {
             self.change_settings(|settings| settings.effort = Some(effort), cx);
             return;
         };
-        let params = UpdateParams { effort: Some(Some(effort)), ..UpdateParams::of(id) };
+        let params = UpdateParams {
+            effort: Some(Some(effort)),
+            ..UpdateParams::of(id)
+        };
         self.update_thread(params, cx);
     }
 

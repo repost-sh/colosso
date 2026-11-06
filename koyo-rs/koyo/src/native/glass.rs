@@ -41,14 +41,19 @@ impl PopoverBackdrop for Glass {
 /// The glass behind the card being drawn, kept as long as the card is: made the frame it
 /// first shows, and taken out of the window the frame it doesn't.
 fn pane(window: &mut Window, cx: &mut App) -> Entity<Kept<Native>> {
-    surface::keep(ElementId::Name("popover-glass".into()), window, cx, |window| {
-        Native::new(window)
-            .inspect_err(|why| {
-                static SAID: Once = Once::new();
-                SAID.call_once(|| log::info!("the editor's cards stay opaque: {why}"));
-            })
-            .ok()
-    })
+    surface::keep(
+        ElementId::Name("popover-glass".into()),
+        window,
+        cx,
+        |window| {
+            Native::new(window)
+                .inspect_err(|why| {
+                    static SAID: Once = Once::new();
+                    SAID.call_once(|| log::info!("the editor's cards stay opaque: {why}"));
+                })
+                .ok()
+        },
+    )
 }
 
 struct Native {

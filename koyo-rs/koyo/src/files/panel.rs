@@ -5,12 +5,12 @@
 
 use std::sync::Arc;
 
-use koyo_project::{Feed, Kind, Project, Reveal, Rows, Update};
 use futures::StreamExt as _;
 use gpui_kit::{
     App, Context, Entity, EventEmitter, FocusHandle, ScrollStrategy, Subscription, Task,
     UniformListScrollHandle, Window,
 };
+use koyo_project::{Feed, Kind, Project, Reveal, Rows, Update};
 
 use super::Place;
 use super::render::ROW;

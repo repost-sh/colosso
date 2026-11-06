@@ -25,9 +25,13 @@ pub(super) fn paste(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     let command = "printf 'pasted=[%s]\\n' ";
     (drawn.cx).update(|cx| view.update(cx, |view, _| view.paste_text(command.into())));
     drop(view);
-    wait(drawn, "the command before the path", |text| text.contains("pasted=[%s]"))?;
+    wait(drawn, "the command before the path", |text| {
+        text.contains("pasted=[%s]")
+    })?;
     press(drawn, "cmd-v")?;
-    wait(drawn, "the image's path at the prompt", |text| unwrapped(text).contains(".png"))?;
+    wait(drawn, "the image's path at the prompt", |text| {
+        unwrapped(text).contains(".png")
+    })?;
     press(drawn, "enter")?;
     wait(drawn, "the shell to read the path back", |text| {
         unwrapped(text).contains("pasted=[/")
@@ -38,8 +42,13 @@ pub(super) fn paste(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
         .ok_or("the shell printed no path")?;
     let saved = std::fs::read(path).map_err(|error| format!("{path}: {error}"))?;
     if saved != IMAGE {
-        return Err(format!("{path} doesn't hold the image: {} bytes", saved.len()));
+        return Err(format!(
+            "{path} doesn't hold the image: {} bytes",
+            saved.len()
+        ));
     }
-    said.push(format!("an image pasted as {path}, whose bytes are the image's"));
+    said.push(format!(
+        "an image pasted as {path}, whose bytes are the image's"
+    ));
     Ok(())
 }

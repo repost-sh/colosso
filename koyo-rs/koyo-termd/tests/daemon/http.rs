@@ -191,8 +191,7 @@ fn pinned(person: &Client, handle: &Handle) -> Option<Pinned> {
 fn an_http_sessions_pin_goes_when_its_client_ends_it_or_the_server_stops() {
     let dir = test_dir("http");
     let _stop = StopOnDrop(dir.clone());
-    let checkout =
-        std::fs::canonicalize(env!("KOYO_CHECKOUT")).unwrap();
+    let checkout = std::fs::canonicalize(env!("KOYO_CHECKOUT")).unwrap();
     let cwd = dir.root().parent().unwrap().to_path_buf();
     let person = connect(&dir, ClientKind::App);
     let config = Config {

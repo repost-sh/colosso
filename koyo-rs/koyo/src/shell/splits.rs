@@ -142,11 +142,7 @@ const HEADER: f32 = 28.;
 
 impl Shell {
     /// The shown tab: its pane, or its split.
-    pub(super) fn tab_content(
-        &self,
-        tab: &Tab,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
+    pub(super) fn tab_content(&self, tab: &Tab, cx: &mut Context<Self>) -> AnyElement {
         let p = theme::palette(cx);
         let in_hand = cx.has_active_drag();
         self.part(tab, Vec::new(), p, in_hand, cx)

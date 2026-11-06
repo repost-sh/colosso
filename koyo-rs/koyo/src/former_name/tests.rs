@@ -24,7 +24,10 @@ fn colossos_data_moves_once_its_daemon_has_stopped() {
     assert!(moved.unwrap());
     assert_eq!(stopped.take(), Some(former.join("term")));
     assert!(!former.exists());
-    assert_eq!(fs::read_to_string(data.join("settings.json")).unwrap(), "{}");
+    assert_eq!(
+        fs::read_to_string(data.join("settings.json")).unwrap(),
+        "{}"
+    );
     assert!(data.join("term").is_dir());
     assert!(!data.join("control/colosso-control.sock").exists());
 }
@@ -59,6 +62,9 @@ fn colossos_logs_move_under_koyos_names() {
     move_log_folder(&former, &logs).unwrap();
     assert!(!former.exists());
     assert_eq!(fs::read_to_string(logs.join("Koyo.log")).unwrap(), "now");
-    assert_eq!(fs::read_to_string(logs.join("Koyo.log.old")).unwrap(), "before");
+    assert_eq!(
+        fs::read_to_string(logs.join("Koyo.log.old")).unwrap(),
+        "before"
+    );
     assert!(logs.join("language-servers").is_dir());
 }

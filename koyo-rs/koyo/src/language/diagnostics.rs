@@ -8,11 +8,11 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use koyo_lsp::lsp_types::{self, PublishDiagnosticsParams};
-use koyo_lsp::uri;
 use gpui_kit::Context;
 use gpui_kit::base::input::Diagnostic;
 use gpui_kit::component::input::EditorState;
+use koyo_lsp::lsp_types::{self, PublishDiagnosticsParams};
+use koyo_lsp::uri;
 
 use super::server::Server;
 

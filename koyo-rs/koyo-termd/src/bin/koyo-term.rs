@@ -17,12 +17,12 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crossbeam_channel::Receiver;
 use koyo_term_control::{
     AttachMode, ClientKind, Connection, DaemonCommand, EventKind, Handle, Hello, IfExists, Message,
     OpenRequest, RequestBody, ResponseBody, Selector, Size, TermDir,
 };
 use koyo_term_engine::{Engine, TextFormat};
-use crossbeam_channel::Receiver;
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();

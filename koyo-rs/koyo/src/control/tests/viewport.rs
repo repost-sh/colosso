@@ -5,8 +5,8 @@
 
 use std::time::Duration;
 
-use koyo_app_control::{ControlError, ErrorCode};
 use gpui_kit::TestAppContext;
+use koyo_app_control::{ControlError, ErrorCode};
 use serde_json::{Value, json};
 
 use super::{Caller, call, controlled, op, send, taken, terminal};

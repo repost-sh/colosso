@@ -4,9 +4,9 @@
 
 use std::path::{Path, PathBuf};
 
-use koyo_git::{Head, Worktree};
 use gpui_kit::SharedString;
 use gpui_kit::assets::IconName;
+use koyo_git::{Head, Worktree};
 
 mod chats;
 mod closed;
@@ -389,7 +389,12 @@ impl Workspace {
     }
 
     pub fn tab(&self, (project, branch, tab): (usize, usize, usize)) -> Option<&Tab> {
-        self.projects.get(project)?.branches.get(branch)?.tabs.get(tab)
+        self.projects
+            .get(project)?
+            .branches
+            .get(branch)?
+            .tabs
+            .get(tab)
     }
 
     pub fn tab_mut(&mut self, (project, branch, tab): (usize, usize, usize)) -> Option<&mut Tab> {

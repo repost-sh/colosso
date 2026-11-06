@@ -48,21 +48,21 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
+use gpui_kit::component::input::{GoToDefinition, ShowCompletions};
+use gpui_kit::{App, KeyBinding, actions};
 use koyo_lsp::Launch;
 use koyo_lsp::servers::typescript::{self, Engine};
 use koyo_lsp::servers::{
     Curl, NpmCli, PYREFLY, RUST_ANALYZER, ServerSpec, TYPESCRIPT, VTSLS, node, vtsls_settings,
 };
-use gpui_kit::component::input::{GoToDefinition, ShowCompletions};
-use gpui_kit::{App, KeyBinding, actions};
 
 pub use locations::Found;
 pub use providers::Attached;
-pub use rename::Prepared;
-pub use symbols::{Symbol, serves, workspace_symbols};
 pub use registry::{Languages, attach, forget, install, locate};
+pub use rename::Prepared;
 pub use server::State;
 pub use status::{ServersListed, ServersStatus};
+pub use symbols::{Symbol, serves, workspace_symbols};
 
 use crate::settings;
 
@@ -144,8 +144,10 @@ fn file(path: &Path) -> Option<(Kind, &'static str)> {
         ("pyi", Kind::Python, "python"),
     ];
     let extension = path.extension()?.to_str()?;
-    (KNOWN.iter().find(|(known, ..)| known.eq_ignore_ascii_case(extension)))
-        .map(|&(_, kind, language_id)| (kind, language_id))
+    (KNOWN
+        .iter()
+        .find(|(known, ..)| known.eq_ignore_ascii_case(extension)))
+    .map(|&(_, kind, language_id)| (kind, language_id))
 }
 
 /// The language the file at `path` is opened on its server as.
@@ -173,7 +175,8 @@ pub fn init(cx: &mut App) {
 fn managed() -> Launcher {
     let data = settings::data_dir();
     Arc::new(move |kind, root| {
-        let data = (data.as_deref()).ok_or_else(|| "there's no folder to fetch it into".to_owned())?;
+        let data =
+            (data.as_deref()).ok_or_else(|| "there's no folder to fetch it into".to_owned())?;
         match kind {
             Kind::Rust => binary_server(&RUST_ANALYZER, data, root),
             Kind::TypeScript => typescript_server(data, root),
@@ -184,7 +187,9 @@ fn managed() -> Launcher {
 
 /// `server`'s binary: the project's own or PATH's when one runs, else the managed one.
 fn binary_server(server: &ServerSpec, data: &Path, root: &Path) -> Result<Launch, String> {
-    let binary = server.binary(root, data, &Curl).map_err(|error| error.to_string())?;
+    let binary = server
+        .binary(root, data, &Curl)
+        .map_err(|error| error.to_string())?;
     Ok(server.launch(binary, root))
 }
 
@@ -195,14 +200,20 @@ fn binary_server(server: &ServerSpec, data: &Path, root: &Path) -> Result<Launch
 /// project builds with.
 fn typescript_server(data: &Path, root: &Path) -> Result<Launch, String> {
     let engine = typescript::engine(root);
-    if let Engine::Vtsls { typescript } = &engine && let Some(node) = node() {
+    if let Engine::Vtsls { typescript } = &engine
+        && let Some(node) = node()
+    {
         let npm = NpmCli { node: node.clone() };
-        let script = VTSLS.script(data, &npm).map_err(|error| error.to_string())?;
+        let script = VTSLS
+            .script(data, &npm)
+            .map_err(|error| error.to_string())?;
         return Ok(VTSLS.launch(node, &script, root, vtsls_settings(typescript)));
     }
     let tsc = match engine {
         Engine::Native { tsc: Some(tsc) } => tsc,
-        _ => TYPESCRIPT.install(data, &Curl).map_err(|error| error.to_string())?,
+        _ => TYPESCRIPT
+            .install(data, &Curl)
+            .map_err(|error| error.to_string())?,
     };
     Ok(TYPESCRIPT.launch(tsc, root))
 }

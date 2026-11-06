@@ -2,7 +2,6 @@
 //! person drags, or detached into a pane of their own beside it in the tab. Where the last
 //! ones went is where the next ones open, and the docked size holds for every page.
 
-use koyo_browser_ipc as ipc;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::component::{Selectable as _, Sizable as _};
@@ -12,6 +11,7 @@ use gpui_kit::{
     InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, MouseUpEvent,
     ParentElement as _, Render, Stateful, Styled, Subscription, Window, deferred, div, px,
 };
+use koyo_browser_ipc as ipc;
 use serde::{Deserialize, Serialize};
 
 use super::find::ACTUAL_SIZE;

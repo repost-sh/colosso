@@ -9,13 +9,13 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use crossbeam_channel::{Receiver, Sender};
+use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
 use koyo_term_control::{
     AttachMode, ClientError, ClientKind, Connection, DAEMON_VERSION, DaemonCommand, ErrorCode,
     Event, EventKind, Handle, Hello, Message, Output, ProtocolError, RequestBody, ResponseBody,
     SNAPSHOT_FORMAT, Size, SnapshotChunk, TermDir, TerminalRecord, Theme, Welcome,
 };
-use crossbeam_channel::{Receiver, Sender};
-use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
 use parking_lot::Mutex;
 
 /// What reaches a terminal's VT thread from the daemon.

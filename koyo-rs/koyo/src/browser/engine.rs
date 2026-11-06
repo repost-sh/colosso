@@ -33,9 +33,7 @@ fn manifest(folder: &Path) -> Option<Manifest> {
     let text = std::fs::read_to_string(folder.join("engine.json")).ok()?;
     serde_json::from_str::<Manifest>(&text)
         .ok()
-        .filter(|manifest| {
-            manifest.ipc == koyo_browser_ipc::PROTOCOL && !manifest.host.is_empty()
-        })
+        .filter(|manifest| manifest.ipc == koyo_browser_ipc::PROTOCOL && !manifest.host.is_empty())
 }
 
 /// The host executable in the engine at `folder`, when the engine is one this app can use.

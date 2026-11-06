@@ -207,12 +207,18 @@ impl Tab {
 
     /// The latest turn any of its panes was shown at.
     pub fn shown_at(&self) -> u64 {
-        (self.panes().iter()).map(|pane| pane.shown_at).max().unwrap_or(0)
+        (self.panes().iter())
+            .map(|pane| pane.shown_at)
+            .max()
+            .unwrap_or(0)
     }
 
     /// The files its panes show, left to right and top to bottom.
     pub fn files(&self) -> Vec<&Entity<FilePane>> {
-        self.panes().into_iter().filter_map(|pane| pane.file.as_ref()).collect()
+        self.panes()
+            .into_iter()
+            .filter_map(|pane| pane.file.as_ref())
+            .collect()
     }
 
     /// The editors of its files with unsaved edits.

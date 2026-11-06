@@ -9,12 +9,13 @@ use std::mem;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use koyo_git::{Change, Checkout as Git};
-use koyo_project::{Feed, GitDirs, Project};
 use futures::StreamExt as _;
 use gpui_kit::gpui::{
-    AppContext as _, AsyncApp, Context, Entity, EventEmitter, Subscription, Task, WeakEntity, Window,
+    AppContext as _, AsyncApp, Context, Entity, EventEmitter, Subscription, Task, WeakEntity,
+    Window,
 };
+use koyo_git::{Change, Checkout as Git};
+use koyo_project::{Feed, GitDirs, Project};
 
 use documents::Documents;
 pub use documents::read_at_most;
@@ -78,7 +79,9 @@ impl Checkout {
         });
         let path = root.clone();
         let opening = cx.spawn(async move |this, cx| {
-            let opened = cx.background_spawn(async move { checkouts::open_git(&path) }).await;
+            let opened = cx
+                .background_spawn(async move { checkouts::open_git(&path) })
+                .await;
             this.update(cx, |this, cx| this.opened(opened, cx)).ok();
         });
         Checkout {
@@ -273,7 +276,10 @@ impl Checkout {
     }
 
     pub(crate) fn touched(&mut self, touched: Vec<Touched>, cx: &mut Context<Self>) {
-        if touched.iter().any(|touched| matches!(touched, Touched::Head | Touched::Everything)) {
+        if touched
+            .iter()
+            .any(|touched| matches!(touched, Touched::Head | Touched::Everything))
+        {
             cx.emit(HeadMoved);
         }
         self.documents.touched(&touched, &self.root, cx);

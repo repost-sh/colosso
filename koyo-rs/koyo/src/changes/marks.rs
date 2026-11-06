@@ -4,8 +4,8 @@
 
 use std::collections::HashMap;
 
-use koyo_git::{Change, Status};
 use gpui_kit::Hsla;
+use koyo_git::{Change, Status};
 
 use crate::theme::Palette;
 

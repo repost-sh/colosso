@@ -198,8 +198,15 @@ mod tests {
     fn an_install_that_leaves_no_script_fails_and_leaves_nothing() {
         let data = scratch("no-script");
         let failed = VTSLS.script(&data, &Nothing);
-        assert!(matches!(failed, Err(LspError::Install(why)) if why.contains("has no bin/vtsls.js")));
-        assert!(fs::read_dir(data.join("servers/vtsls")).unwrap().next().is_none());
+        assert!(
+            matches!(failed, Err(LspError::Install(why)) if why.contains("has no bin/vtsls.js"))
+        );
+        assert!(
+            fs::read_dir(data.join("servers/vtsls"))
+                .unwrap()
+                .next()
+                .is_none()
+        );
         let _ = fs::remove_dir_all(&data);
     }
 
@@ -219,11 +226,19 @@ mod tests {
     fn a_launch_runs_the_script_with_node_on_the_typescript_named() {
         let node = PathBuf::from("/usr/local/bin/node");
         let settings = vtsls_settings(Path::new("/work/api/node_modules/typescript"));
-        let launch = VTSLS.launch(node.clone(), Path::new("/data/vtsls.js"), Path::new("/work"), settings);
+        let launch = VTSLS.launch(
+            node.clone(),
+            Path::new("/data/vtsls.js"),
+            Path::new("/work"),
+            settings,
+        );
         assert_eq!(launch.program, node);
         assert_eq!(launch.args, ["/data/vtsls.js", "--stdio"]);
         assert_eq!(launch.cwd, PathBuf::from("/work"));
-        assert_eq!(launch.settings["typescript"]["tsdk"], "/work/api/node_modules/typescript/lib");
+        assert_eq!(
+            launch.settings["typescript"]["tsdk"],
+            "/work/api/node_modules/typescript/lib"
+        );
         assert_eq!(launch.settings["vtsls"]["autoUseWorkspaceTsdk"], true);
         assert!(launch.settings["typescript"].get("inlayHints").is_some());
     }

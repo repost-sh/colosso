@@ -23,12 +23,12 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use bytes::Bytes;
+use crossbeam_channel::{Receiver, Sender, after, bounded, never, tick, unbounded};
 use koyo_term_control::{
     Actor, Controller, ErrorCode, EventKind, Exit, ProtocolError, Size, Status, TerminalRecord,
     Theme, now_ms,
 };
 use koyo_term_engine::{Engine, PromptScanner};
-use crossbeam_channel::{Receiver, Sender, after, bounded, never, tick, unbounded};
 use parking_lot::Mutex;
 
 use crate::journal::Journal;
@@ -453,10 +453,7 @@ impl Session {
     }
 
     fn refresh_preview(&mut self) {
-        let text = match self
-            .engine
-            .screen_text(koyo_term_engine::TextFormat::Plain)
-        {
+        let text = match self.engine.screen_text(koyo_term_engine::TextFormat::Plain) {
             Ok(text) => text,
             Err(error) => {
                 log::debug!(

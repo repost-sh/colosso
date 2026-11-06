@@ -9,12 +9,20 @@ use super::support::*;
 use crate::test_support::repo;
 
 #[gpui_kit::test]
-async fn f2_renames_the_symbol_here_and_in_the_other_file_and_escape_leaves_it(cx: &mut TestAppContext) {
-    let root = repo("language-rename", &[("src/lib.rs", LIB), ("src/other.rs", OTHER)]);
+async fn f2_renames_the_symbol_here_and_in_the_other_file_and_escape_leaves_it(
+    cx: &mut TestAppContext,
+) {
+    let root = repo(
+        "language-rename",
+        &[("src/lib.rs", LIB), ("src/other.rs", OTHER)],
+    );
     let (call, call_range) = find(LIB, "target");
     let (_, target_range) = find(OTHER, "target");
     let (launcher, _) = launcher(move |root, _| {
-        let (lib, other) = (uri(&root.join("src/lib.rs")), uri(&root.join("src/other.rs")));
+        let (lib, other) = (
+            uri(&root.join("src/lib.rs")),
+            uri(&root.join("src/other.rs")),
+        );
         let capabilities = json!({"renameProvider": {"prepareProvider": true}});
         let mut script = started_with(root, "src/lib.rs", capabilities);
         script.extend([
@@ -61,7 +69,10 @@ async fn f2_renames_the_symbol_here_and_in_the_other_file_and_escape_leaves_it(c
     cx.simulate_keystrokes(shell.0, "a i m enter");
     let renamed = LIB.replace("other::target()", "other::aim()");
     let watched = vec![changes(&server, cx), changes(&lib_editor, cx)];
-    until(cx, watched, |cx| lib_editor.read(cx).value().as_ref() == renamed).await;
+    until(cx, watched, |cx| {
+        lib_editor.read(cx).value().as_ref() == renamed
+    })
+    .await;
     assert!(cx.read(|cx| field(cx).is_none()));
     assert!(editor_focused(shell.0, &lib_editor, cx));
     // ...and in the other file, on disk, once the write's run.

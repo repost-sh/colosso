@@ -35,7 +35,9 @@ fn a_copied_file_pastes_its_path_and_not_the_name_finder_copies_with_it() {
     ]);
     assert_eq!(
         pasted(copied),
-        Some(Pasted::Text(r"/Users/me/My\ Shots/one.png /tmp/two.png".to_owned()))
+        Some(Pasted::Text(
+            r"/Users/me/My\ Shots/one.png /tmp/two.png".to_owned()
+        ))
     );
 }
 
@@ -75,8 +77,14 @@ fn a_tiff_becomes_a_png_programs_can_read() {
     let dir = scratch("tiff");
     let picture = image::RgbaImage::from_pixel(3, 2, image::Rgba([200, 30, 40, 255]));
     let mut tiff = Cursor::new(Vec::new());
-    picture.write_to(&mut tiff, image::ImageFormat::Tiff).unwrap();
-    let saved = save_in(&dir, &Image::from_bytes(ImageFormat::Tiff, tiff.into_inner())).unwrap();
+    picture
+        .write_to(&mut tiff, image::ImageFormat::Tiff)
+        .unwrap();
+    let saved = save_in(
+        &dir,
+        &Image::from_bytes(ImageFormat::Tiff, tiff.into_inner()),
+    )
+    .unwrap();
     assert_eq!(saved.extension().unwrap(), "png");
     let bytes = std::fs::read(&saved).unwrap();
     let read = image::load_from_memory_with_format(&bytes, image::ImageFormat::Png).unwrap();

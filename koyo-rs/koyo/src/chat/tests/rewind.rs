@@ -10,7 +10,10 @@ use super::super::timeline::can_go_back;
 use super::{run, snapshot};
 
 fn with_run(status: RunStatus) -> ThreadSnapshot {
-    ThreadSnapshot { runs: vec![run("r", status, "Why?", 1)], ..snapshot("t", 1, Vec::new()) }
+    ThreadSnapshot {
+        runs: vec![run("r", status, "Why?", 1)],
+        ..snapshot("t", 1, Vec::new())
+    }
 }
 
 #[test]
@@ -24,8 +27,14 @@ fn what_restoring_changes_is_said_by_name_up_to_two_files() {
         })
     };
     assert_eq!(said(&["src/a.rs"]), "Restoring changes a.rs (+3 −12).");
-    assert_eq!(said(&["src/a.rs", "b.md"]), "Restoring changes a.rs and b.md (+3 −12).");
-    assert_eq!(said(&["src/a.rs", "b.md", "c"]), "Restoring changes a.rs and 2 other files (+3 −12).");
+    assert_eq!(
+        said(&["src/a.rs", "b.md"]),
+        "Restoring changes a.rs and b.md (+3 −12)."
+    );
+    assert_eq!(
+        said(&["src/a.rs", "b.md", "c"]),
+        "Restoring changes a.rs and 2 other files (+3 −12)."
+    );
 }
 
 #[test]

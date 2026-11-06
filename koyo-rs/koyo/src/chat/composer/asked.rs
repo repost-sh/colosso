@@ -33,14 +33,21 @@ actions!(chat, [ImplementPlan]);
 
 pub(super) fn bind_keys(cx: &mut App) {
     let context = format!("{PLANNED} > Input");
-    cx.bind_keys([KeyBinding::new("cmd-enter", ImplementPlan, Some(context.as_str()))]);
+    cx.bind_keys([KeyBinding::new(
+        "cmd-enter",
+        ImplementPlan,
+        Some(context.as_str()),
+    )]);
 }
 
 pub(super) enum Asked {
     Nothing,
     /// What the keys answer, and what's typed declines; for this chat if that's something it can
     /// be allowed for.
-    Approval { request: RequestId, for_chat: bool },
+    Approval {
+        request: RequestId,
+        for_chat: bool,
+    },
     Question(QuestionDrawer),
     /// A plan: its drawer implements it, and what's typed refines it.
     Plan(RequestId),
@@ -152,7 +159,10 @@ impl ChatComposer {
         let request = request.clone();
         #[cfg(test)]
         self.said.push((request.clone(), response.clone()));
-        let answered = self.chats.read(cx).respond(thread.read(cx).id(), request, response);
+        let answered = self
+            .chats
+            .read(cx)
+            .respond(thread.read(cx).id(), request, response);
         self.error = None;
         cx.spawn_in(window, async move |this, cx| {
             if let Err(error) = answered.await {
@@ -194,7 +204,10 @@ impl ChatComposer {
 
     /// Asks where to keep the plan of `request`, and writes it there.
     fn save_plan(&mut self, request: &RequestId, cx: &mut Context<Self>) {
-        let replica = self.thread.as_ref().and_then(|thread| thread.read(cx).replica());
+        let replica = self
+            .thread
+            .as_ref()
+            .and_then(|thread| thread.read(cx).replica());
         let Some(markdown) = replica.and_then(|replica| replica.plan(request)) else {
             return;
         };
@@ -204,7 +217,9 @@ impl ChatComposer {
             let Some(path) = panel.await.ok().and_then(Result::ok).flatten() else {
                 return;
             };
-            let writing = cx.background_executor().spawn(async move { std::fs::write(path, markdown) });
+            let writing = cx
+                .background_executor()
+                .spawn(async move { std::fs::write(path, markdown) });
             if let Err(why) = writing.await {
                 log::warn!("a plan wasn't saved: {why}");
                 this.update(cx, |this, cx| {
@@ -229,7 +244,10 @@ impl ChatComposer {
     pub(super) fn hears_answers(column: Div, cx: &mut Context<Self>) -> Div {
         column
             .on_action(Self::answers::<AllowRequest>(Decision::Allow, cx))
-            .on_action(Self::answers::<AllowRequestForChat>(Decision::AllowSession, cx))
+            .on_action(Self::answers::<AllowRequestForChat>(
+                Decision::AllowSession,
+                cx,
+            ))
             .on_action(Self::answers::<DenyRequest>(Decision::Deny, cx))
             .on_action(Self::answers::<StopRequest>(Decision::Cancel, cx))
             .on_action(cx.listener(|this, choice: &ChooseOption, window, cx| {
@@ -273,7 +291,12 @@ fn plan_ready(typed: &str, p: Palette, cx: &mut Context<ChatComposer>) -> Div {
 
 /// `drawn`, attached above what's typed, with a rule between them.
 pub(super) fn attached_above(drawn: impl IntoElement, p: Palette) -> Div {
-    div().flex().flex_col().gap_2().child(drawn).child(div().h(px(1.)).bg(p.hairline))
+    div()
+        .flex()
+        .flex_col()
+        .gap_2()
+        .child(drawn)
+        .child(div().h(px(1.)).bg(p.hairline))
 }
 
 /// A drawer of a line: what it's about, and the two things to do about it, the one it leads to

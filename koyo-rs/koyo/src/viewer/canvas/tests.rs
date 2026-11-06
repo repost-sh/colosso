@@ -1,4 +1,6 @@
-use super::{Camera, Fit, GAP, PAD, clamp, fit_zoom, layout, offset, page_in_sight, step, zoom_about};
+use super::{
+    Camera, Fit, GAP, PAD, clamp, fit_zoom, layout, offset, page_in_sight, step, zoom_about,
+};
 
 fn close(a: f32, b: f32) -> bool {
     (a - b).abs() < 0.01
@@ -20,13 +22,21 @@ fn a_picture_fits_whole_and_is_never_blown_up_past_its_size() {
     assert!(close(small, 1.), "a small picture shows at its size");
     let wide = fit_zoom(&[(2000., 1000.)], (800. + 2. * PAD, 600.), fit);
     assert!(close(wide, 0.4), "a wide one fits the pane's width: {wide}");
-    let drawing = fit_zoom(&[(24., 24.)], (300. + 2. * PAD, 600.), Fit::Whole { most: None });
+    let drawing = fit_zoom(
+        &[(24., 24.)],
+        (300. + 2. * PAD, 600.),
+        Fit::Whole { most: None },
+    );
     assert!(close(drawing, 12.5), "a drawing fills the pane: {drawing}");
 }
 
 #[test]
 fn a_document_fits_the_panes_width() {
-    let zoom = fit_zoom(&[(612., 792.), (400., 500.)], (612. + 2. * PAD, 300.), Fit::Width);
+    let zoom = fit_zoom(
+        &[(612., 792.), (400., 500.)],
+        (612. + 2. * PAD, 300.),
+        Fit::Width,
+    );
     assert!(close(zoom, 1.));
 }
 
@@ -54,10 +64,16 @@ fn zooming_keeps_the_point_under_the_pointer_still() {
         let laid = layout(&pages, camera.zoom);
         let (left, top) = offset(laid.size, viewport, camera.scroll);
         let page = laid.pages[0];
-        ((anchor.0 - left - page.x) / camera.zoom, (anchor.1 - top - page.y) / camera.zoom)
+        (
+            (anchor.0 - left - page.x) / camera.zoom,
+            (anchor.1 - top - page.y) / camera.zoom,
+        )
     };
     let (before, after) = (point(camera), point(zoomed));
-    assert!(close(before.0, after.0) && close(before.1, after.1), "{before:?} {after:?}");
+    assert!(
+        close(before.0, after.0) && close(before.1, after.1),
+        "{before:?} {after:?}"
+    );
     assert!(!zoomed.fit, "a zoom leaves fitting");
 }
 

@@ -52,7 +52,14 @@ impl Shell {
             log::info!("{} isn't a file to open", path.display());
             return;
         }
-        self.preview_file(Place { path: path.to_path_buf(), at }, window, cx);
+        self.preview_file(
+            Place {
+                path: path.to_path_buf(),
+                at,
+            },
+            window,
+            cx,
+        );
     }
 
     /// Shows the file `place` is in on the selected checkout, kept open if `kept` or if
@@ -67,7 +74,10 @@ impl Shell {
         cx: &mut Context<Self>,
     ) {
         let Some(checkout) = self.selected_checkout(window, cx) else {
-            log::warn!("no checkout is selected to open {} on", place.path.display());
+            log::warn!(
+                "no checkout is selected to open {} on",
+                place.path.display()
+            );
             return;
         };
         let kept = kept || !settings::get(cx).preview_files;
@@ -83,7 +93,9 @@ impl Shell {
             let preview = (!kept).then(|| self.preview_pane(cx)).flatten();
             match preview {
                 Some(id) => self.replace_pane_file(id, &file, cx),
-                None => self.workspace.open_beside_shown(Tab::Single(Pane::file(file.clone(), cx))),
+                None => self
+                    .workspace
+                    .open_beside_shown(Tab::Single(Pane::file(file.clone(), cx))),
             }
             file
         };
@@ -101,7 +113,11 @@ impl Shell {
     }
 
     /// The selected checkout, made now if the shell hasn't followed the selection to it yet.
-    fn selected_checkout(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<Entity<Checkout>> {
+    fn selected_checkout(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<Entity<Checkout>> {
         if self.right_panel.checkout().is_none() {
             self.follow_selection(window, cx);
         }
@@ -110,11 +126,18 @@ impl Shell {
 
     /// The tab on the selected checkout showing the file at `path`, as `(project, branch,
     /// tab)`, and the pane showing it.
-    fn open_already(&self, path: &Path, cx: &App) -> Option<((usize, usize, usize), Entity<FilePane>)> {
+    fn open_already(
+        &self,
+        path: &Path,
+        cx: &App,
+    ) -> Option<((usize, usize, usize), Entity<FilePane>)> {
         let (project, branch, _) = self.workspace.shown_tab()?;
         let unit = self.workspace.branch()?;
         unit.tabs.iter().enumerate().find_map(|(at, tab)| {
-            let file = tab.files().into_iter().find(|file| file.read(cx).path == path)?;
+            let file = tab
+                .files()
+                .into_iter()
+                .find(|file| file.read(cx).path == path)?;
             Some(((project, branch, at), file.clone()))
         })
     }
@@ -225,7 +248,8 @@ impl Shell {
                 let Some(checkout) = checkout.upgrade() else {
                     return;
                 };
-                let (path, editable) = (file.read(cx).path.clone(), file.read(cx).relative.is_some());
+                let (path, editable) =
+                    (file.read(cx).path.clone(), file.read(cx).relative.is_some());
                 let (document, editor) = self.text(&path, &checkout, editable, window, cx);
                 file.update(cx, |file, cx| {
                     file.set_text(document, editor, cx);
@@ -264,7 +288,9 @@ impl Shell {
     pub fn shown_file(&self, window: &Window, cx: &App) -> Option<Entity<FilePane>> {
         let unit = self.workspace.branch()?;
         let files = unit.tabs.get(unit.active_tab)?.files();
-        let focused = files.iter().find(|file| file.read(cx).has_focus(window, cx));
+        let focused = files
+            .iter()
+            .find(|file| file.read(cx).has_focus(window, cx));
         focused.or(files.first()).map(|file| (*file).clone())
     }
 
@@ -282,7 +308,11 @@ impl Shell {
     #[cfg(any(test, feature = "visual-check"))]
     pub fn viewing(&self) -> Option<Entity<FilePane>> {
         let unit = self.workspace.branch()?;
-        unit.tabs.get(unit.active_tab)?.files().first().map(|file| (*file).clone())
+        unit.tabs
+            .get(unit.active_tab)?
+            .files()
+            .first()
+            .map(|file| (*file).clone())
     }
 
     /// Lets go of every file open on the checkout at `root`, whatever it has unsaved: their

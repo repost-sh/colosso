@@ -7,13 +7,13 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+use crossbeam_channel::{Receiver, Sender, never, select};
+use futures::channel::mpsc::UnboundedSender;
 use koyo_term_control::{Connection, EventKind, Handle, Output, RequestBody, SnapshotChunk};
 use koyo_term_engine::{
     Effect, Engine, Frame, Geometry, GridPoint, KeyAction, MouseInput, OptionAsAlt, Rgb, Scroll,
     SelectUnit, Size,
 };
-use crossbeam_channel::{Receiver, Sender, never, select};
-use futures::channel::mpsc::UnboundedSender;
 use parking_lot::Mutex;
 
 use crate::client::Stream;

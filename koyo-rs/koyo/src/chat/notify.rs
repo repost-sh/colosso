@@ -68,8 +68,14 @@ mod tests {
     #[test]
     fn a_chat_says_so_when_its_work_ends() {
         let working = summary(Status::Working, None);
-        assert_eq!(news(&working, &summary(Status::Idle, None)), Some("Finished"));
-        assert_eq!(news(&working, &summary(Status::Failed, None)), Some("Stopped with an error"));
+        assert_eq!(
+            news(&working, &summary(Status::Idle, None)),
+            Some("Finished")
+        );
+        assert_eq!(
+            news(&working, &summary(Status::Failed, None)),
+            Some("Stopped with an error")
+        );
     }
 
     #[test]

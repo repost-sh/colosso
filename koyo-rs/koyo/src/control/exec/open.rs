@@ -4,11 +4,11 @@
 
 use std::path::{Path, PathBuf};
 
+use gpui_kit::{App, AsyncApp, Context, Task, Window};
 use koyo_app_control::ops::shared::{PaneKind, PaneSpec};
 use koyo_app_control::{ControlError, ErrorCode};
-use koyo_term_control::terminal::{is_terminal_name, login_shell_line};
 use koyo_term_control::Handle;
-use gpui_kit::{App, AsyncApp, Context, Task, Window};
+use koyo_term_control::terminal::{is_terminal_name, login_shell_line};
 use serde_json::Value;
 
 use super::Exec;
@@ -117,8 +117,16 @@ pub(crate) fn open(
                         }),
                 );
             }
-            let command = (spec.command.clone()).map(login_shell_line).unwrap_or_default();
-            let opening = shell.open_terminal(root.to_path_buf(), spec.name.clone().into(), command, None, cx);
+            let command = (spec.command.clone())
+                .map(login_shell_line)
+                .unwrap_or_default();
+            let opening = shell.open_terminal(
+                root.to_path_buf(),
+                spec.name.clone().into(),
+                command,
+                None,
+                cx,
+            );
             Opened::Later(cx.spawn_in(window, async move |this, cx| {
                 let pane = opening.await.ok_or_else(|| {
                     ControlError::new(

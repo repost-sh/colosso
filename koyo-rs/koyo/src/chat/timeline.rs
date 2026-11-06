@@ -3,26 +3,28 @@
 //! change of structure derives the rows again and replaces only those that differ; a token touches
 //! none of this, only its own text (`docs/chat.md` 5.4).
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use gpui_kit::component::message_scroller::{MessageScroller, MessageScrollerState};
 use gpui_kit::{
-    ClipboardItem, Context, Entity, EventEmitter, FocusHandle, IntoElement, Pixels, Render, StyleRefinement,
-    Styled as _, Subscription, Task, Window,
+    App, AppContext as _, ClipboardItem, Context, Entity, EventEmitter, FocusHandle, IntoElement,
+    Pixels, Render, StyleRefinement, Styled as _, Subscription, Task, Window,
 };
 use koyo_agent::protocol::ids::{ItemId, RunId, ThreadId};
 use koyo_agent::protocol::methods::Catalog;
-use koyo_agent::protocol::model::{ItemBody, ItemStatus};
+use koyo_agent::protocol::model::{Hunk, ItemBody, ItemStatus};
 use koyo_agent::replica::Replica;
 use koyo_agent::timeline::{Row, RowId, RowKind, WorkFold, changed, rows};
 
+use super::output::{PatchColours, patch_colours};
 use super::queued::QueuedEdit;
 use super::rows::Drawing;
 use super::thread::ChatThread;
 use super::view::ChatViewEvent;
-use crate::settings::{self, ChatWork};
+use super::work::{patch_of, stands_alone};
+use crate::settings::{self, ChatWidth, Verbosity};
 use crate::theme;
 use crate::theme::fonts::at_chat_size;
 
@@ -39,12 +41,17 @@ pub(super) struct Timeline {
     pub(super) composer: FocusHandle,
     pub(super) rows: Rc<Vec<Row>>,
     /// How much of the work shows, as a person chose.
-    work: ChatWork,
-    /// How big the text is, as a person chose, in the bits a float compares by.
-    text_size: u32,
-    /// What a person opened: a long message, a settled run's work; or a line of work, or with all
-    /// of them open, closed.
+    verbosity: Verbosity,
+    /// How big the text is, in the bits a float compares by, and how wide the column, as a person
+    /// chose.
+    layout: (u32, ChatWidth),
+    /// What a person opened: a long message, a settled run's work, a line of work; or a line of
+    /// work that showed more, closed to its line.
     open: Rc<HashSet<RowId>>,
+    /// The colours of the diffs worked out so far, by item, and the items they're being worked
+    /// out for. A diff shows plain until its colours are.
+    pub(super) colours: Rc<HashMap<ItemId, Rc<PatchColours>>>,
+    colouring: HashSet<ItemId>,
     /// What the live row shows, and since when.
     running: Option<(ItemId, Instant)>,
     /// Whether another chat is over this one, so it has nothing to keep up with until it's back.
@@ -106,8 +113,8 @@ impl Timeline {
     ) -> Self {
         let following = cx.observe(&thread, |timeline, _, cx| timeline.follow(cx));
         let choosing = settings::on_change(cx, |timeline: &mut Self, cx| {
-            timeline.work_chosen(cx);
-            timeline.text_size_chosen(cx);
+            timeline.verbosity_chosen(cx);
+            timeline.layout_chosen(cx);
         });
         let mut timeline = Timeline {
             thread,
@@ -115,10 +122,12 @@ impl Timeline {
             scroller,
             cwd,
             composer,
-            work: settings::get(cx).chat_work,
-            text_size: settings::get(cx).fonts.chat_size().to_bits(),
+            verbosity: settings::get(cx).chat_verbosity,
+            layout: layout(cx),
             rows: Rc::default(),
             open: Rc::default(),
+            colours: Rc::default(),
+            colouring: HashSet::new(),
             running: None,
             covered: false,
             ticking: None,
@@ -140,12 +149,19 @@ impl Timeline {
             return;
         }
         let replica = self.thread.read(cx).replica();
-        let fold = |run: &RunId| match self.work {
-            ChatWork::Steps | ChatWork::Everything => WorkFold::None,
-            ChatWork::Turns if self.open.contains(&RowId::Fold(run.clone())) => WorkFold::Open,
-            ChatWork::Turns => WorkFold::Closed,
+        let verbosity = self.verbosity;
+        let fold = |run: &RunId| {
+            if !verbosity.fold_turns {
+                WorkFold::None
+            } else if self.open.contains(&RowId::Fold(run.clone())) {
+                WorkFold::Open
+            } else {
+                WorkFold::Closed
+            }
         };
-        let new = replica.map_or_else(Vec::new, |replica| rows(replica, fold));
+        let alone = |item: &_| stands_alone(item, verbosity);
+        let new = replica.map_or_else(Vec::new, |replica| rows(replica, fold, alone));
+        let uncoloured = replica.map_or_else(Vec::new, |replica| self.uncoloured(replica));
         let running = replica.and_then(|replica| running_item(replica, &new));
         let subagent_running = replica.is_some_and(|replica| {
             (replica.items.iter()).any(|item| {
@@ -164,35 +180,90 @@ impl Timeline {
             });
         }
         self.rows = Rc::new(new);
-        keep_ticking(&mut self.ticking, self.running.is_some() || subagent_running, cx);
+        self.colour(uncoloured, cx);
+        keep_ticking(
+            &mut self.ticking,
+            self.running.is_some() || subagent_running,
+            cx,
+        );
         self.follow_queued_edit(cx);
         cx.notify();
     }
 
-    /// Takes up how much of the work a person now wants to see, which starts over what they opened
-    /// and closed against what they had: every row may be another height.
-    fn work_chosen(&mut self, cx: &mut Context<Self>) {
-        let work = settings::get(cx).chat_work;
-        if work == self.work {
-            return;
+    /// The changes the thread holds whose colours nobody's working out yet: each one's item, the
+    /// file it changed, and its patch.
+    fn uncoloured(&mut self, replica: &Replica) -> Vec<(ItemId, String, Vec<Hunk>)> {
+        let mut found = Vec::new();
+        for item in &replica.items {
+            let ItemBody::Tool(tool) = &item.body else {
+                continue;
+            };
+            let Some(patch) = patch_of(tool).filter(|_| !self.colouring.contains(&item.id)) else {
+                continue;
+            };
+            self.colouring.insert(item.id.clone());
+            let file = tool.files.first().unwrap_or(&tool.label).clone();
+            found.push((item.id.clone(), file, patch.to_vec()));
         }
-        self.work = work;
-        self.open = Rc::default();
-        self.follow(cx);
-        let count = self.rows.len();
-        self.scroller.update(cx, |scroller, cx| scroller.remeasure_items(0..count, cx));
+        found
     }
 
-    /// Takes up how big a person now wants the text: every row is another height.
-    fn text_size_chosen(&mut self, cx: &mut Context<Self>) {
-        let text_size = settings::get(cx).fonts.chat_size().to_bits();
-        if text_size == self.text_size {
+    /// Works out the colours of `changes` off the main thread, and draws them once they are.
+    fn colour(&mut self, changes: Vec<(ItemId, String, Vec<Hunk>)>, cx: &mut Context<Self>) {
+        if changes.is_empty() {
             return;
         }
-        self.text_size = text_size;
-        let count = self.rows.len();
-        self.scroller.update(cx, |scroller, cx| scroller.remeasure_items(0..count, cx));
+        let worked_out = cx.background_spawn(async move {
+            (changes.into_iter())
+                .map(|(id, file, patch)| (id, patch_colours(&file, &patch)))
+                .collect::<Vec<_>>()
+        });
+        cx.spawn(async move |this, cx| {
+            let colours = worked_out.await;
+            this.update(cx, |timeline, cx| {
+                let held = Rc::make_mut(&mut timeline.colours);
+                held.extend(
+                    colours
+                        .into_iter()
+                        .map(|(id, colours)| (id, Rc::new(colours))),
+                );
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Takes up how much of the work a person now wants to see, which starts over what they opened
+    /// and closed against what they had: every row may be another height.
+    fn verbosity_chosen(&mut self, cx: &mut Context<Self>) {
+        let verbosity = settings::get(cx).chat_verbosity;
+        if verbosity == self.verbosity {
+            return;
+        }
+        self.verbosity = verbosity;
+        self.open = Rc::default();
+        self.follow(cx);
+        self.remeasure(cx);
+    }
+
+    /// Takes up how big a person now wants the text, or how wide the column: every row may be
+    /// another height, or wrap another way.
+    fn layout_chosen(&mut self, cx: &mut Context<Self>) {
+        let layout = layout(cx);
+        if layout == self.layout {
+            return;
+        }
+        self.layout = layout;
+        self.remeasure(cx);
         cx.notify();
+    }
+
+    /// Has every row measured again.
+    fn remeasure(&self, cx: &mut Context<Self>) {
+        let count = self.rows.len();
+        self.scroller
+            .update(cx, |scroller, cx| scroller.remeasure_items(0..count, cx));
     }
 
     /// Another chat came over this one, or left: what happened meanwhile is taken in at once.
@@ -263,10 +334,14 @@ impl Render for Timeline {
             self.renders += 1;
         }
         let drawing = self.drawing(cx);
-        MessageScroller::new("chat-timeline", self.scroller.clone(), move |index, _, cx| {
-            let row = drawing.row(index, cx);
-            at_chat_size(row, cx)
-        })
+        MessageScroller::new(
+            "chat-timeline",
+            self.scroller.clone(),
+            move |index, _, cx| {
+                let row = drawing.row(index, cx);
+                at_chat_size(row, cx)
+            },
+        )
         .jump_button(false)
         .with_list_style(StyleRefinement::default().py_0())
         .with_row_style(StyleRefinement::default().px_0().pb_0())
@@ -284,17 +359,27 @@ impl Timeline {
             timeline: cx.weak_entity(),
             rows: Rc::clone(&self.rows),
             open: Rc::clone(&self.open),
-            all_work_open: self.work == ChatWork::Everything,
+            verbosity: self.verbosity,
+            width: self.layout.1,
+            colours: Rc::clone(&self.colours),
             running_since: self.running.as_ref().map(|(_, since)| *since),
             copied: self.copied.as_ref().map(|(id, _)| id.clone()),
             cwd: Rc::clone(&self.cwd),
-            queued_edit: (self.queued_edit.as_ref()).map(|edit| (edit.run.clone(), edit.text.clone())),
+            queued_edit: (self.queued_edit.as_ref())
+                .map(|edit| (edit.run.clone(), edit.text.clone())),
             composer: self.composer.clone(),
             can_go_back: self.thread.read(cx).replica().is_some_and(can_go_back),
             inset: self.inset,
             p: theme::palette(cx),
         }
     }
+}
+
+/// How big a chat's text is and how wide its column, as they're compared for whether every row
+/// needs measuring again.
+fn layout(cx: &App) -> (u32, ChatWidth) {
+    let chosen = settings::get(cx);
+    (chosen.fonts.chat_size().to_bits(), chosen.chat_width)
 }
 
 /// Whether the host would let a chat go back: not a subagent's, nothing at work or waiting.

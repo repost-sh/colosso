@@ -6,9 +6,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use koyo_app_control::{
-    Client, ClientInfo, Command, ControlError, Endpoint, Hello, Notice, Topic,
-};
+use koyo_app_control::{Client, ClientInfo, Command, ControlError, Endpoint, Hello, Notice, Topic};
 use parking_lot::Mutex;
 use serde_json::Value;
 

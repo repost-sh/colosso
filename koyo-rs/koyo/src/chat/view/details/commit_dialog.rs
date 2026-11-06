@@ -21,14 +21,23 @@ pub(super) fn open(files: usize, checkout: Entity<Checkout>, window: &mut Window
     modal::open(WIDTH, HEIGHT, window, cx, |window, cx| {
         let message = cx.new(|cx| InputState::new(window, cx).placeholder("What changed, and why"));
         message.focus_handle(cx).focus(window, cx);
-        let _typing = cx.subscribe_in(&message, window, |this: &mut CommitDialog, _, event, window, cx| {
-            match event {
+        let _typing = cx.subscribe_in(
+            &message,
+            window,
+            |this: &mut CommitDialog, _, event, window, cx| match event {
                 InputEvent::Change => cx.notify(),
                 InputEvent::PressEnter { .. } => this.commit(window, cx),
                 _ => {}
-            }
-        });
-        CommitDialog { files, checkout, message, busy: false, error: None, _typing }
+            },
+        );
+        CommitDialog {
+            files,
+            checkout,
+            message,
+            busy: false,
+            error: None,
+            _typing,
+        }
     });
 }
 
@@ -50,11 +59,14 @@ impl CommitDialog {
         self.busy = true;
         self.error = None;
         cx.notify();
-        let running =
-            self.checkout.update(cx, |checkout, cx| checkout.run(move |git| git.commit_all(&message), cx));
+        let running = self.checkout.update(cx, |checkout, cx| {
+            checkout.run(move |git| git.commit_all(&message), cx)
+        });
         cx.spawn_in(window, async move |this, cx| {
             match running.await {
-                Ok(()) => this.update_in(cx, |_, window, cx| modal::dismiss(window, cx)).ok(),
+                Ok(()) => this
+                    .update_in(cx, |_, window, cx| modal::dismiss(window, cx))
+                    .ok(),
                 Err(error) => this
                     .update(cx, |this, cx| {
                         this.busy = false;
@@ -76,8 +88,14 @@ impl Render for CommitDialog {
             .size_full()
             .flex()
             .flex_col()
-            .child(modal::heading(format!("Commit {}", counted(self.files, "file"))))
-            .child(div().mt(px(OVER)).child(modal::field(Input::new(&self.message).disabled(self.busy), p)))
+            .child(modal::heading(format!(
+                "Commit {}",
+                counted(self.files, "file")
+            )))
+            .child(div().mt(px(OVER)).child(modal::field(
+                Input::new(&self.message).disabled(self.busy),
+                p,
+            )))
             .child(
                 modal::footer(self.error.clone(), p)
                     .mt(px(UNDER))

@@ -46,7 +46,10 @@ mod tests {
     #[test]
     fn scripts_are_kept_by_project_and_go_with_the_last_of_them() {
         let (one, two) = (Path::new("/one"), Path::new("/two"));
-        let script = |name: &str| ProjectScript { name: name.to_owned(), command: "true".to_owned() };
+        let script = |name: &str| ProjectScript {
+            name: name.to_owned(),
+            command: "true".to_owned(),
+        };
         let mut scripts = ProjectScripts::default();
         scripts.add(one.to_owned(), script("a"));
         scripts.add(one.to_owned(), script("b"));

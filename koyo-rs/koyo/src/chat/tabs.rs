@@ -117,7 +117,10 @@ impl Shell {
     ) -> Option<Entity<ChatView>> {
         let unit = self.workspace.branch()?;
         let panes = unit.tabs.get(unit.active_tab)?.panes();
-        let mut chats = panes.iter().filter(|pane| pane.kind == PaneKind::Chat).peekable();
+        let mut chats = panes
+            .iter()
+            .filter(|pane| pane.kind == PaneKind::Chat)
+            .peekable();
         let first = chats.peek()?.id;
         let missing: Vec<(u64, Option<ThreadId>)> = chats
             .filter(|pane| !self.chat_tabs.views.contains_key(&pane.id))
@@ -140,10 +143,14 @@ impl Shell {
 
     /// Tells the shown tab's chats where they work, once the right panel holds its checkout.
     fn tell_chats_where_they_work(&self, cx: &mut Context<Self>) {
-        let (Some(project), Some(unit)) = (self.workspace.project(), self.workspace.branch()) else {
+        let (Some(project), Some(unit)) = (self.workspace.project(), self.workspace.branch())
+        else {
             return;
         };
-        let held = self.right_panel.checkout().filter(|checkout| *checkout.read(cx).root() == unit.worktree.path);
+        let held = self
+            .right_panel
+            .checkout()
+            .filter(|checkout| *checkout.read(cx).root() == unit.worktree.path);
         let (Some(checkout), Some(tab)) = (held, unit.tabs.get(unit.active_tab)) else {
             return;
         };
@@ -172,13 +179,19 @@ impl Shell {
     ) {
         let chats = self.chat_tabs.chats.clone();
         let view = cx.new(|cx| ChatView::new(chats, cwd, place, thread, window, cx));
-        let events = cx.subscribe_in(&view, window, move |this, _, event, window, cx| match event {
-            ChatViewEvent::Created(id) => this.chat_created(pane, id.clone(), cx),
-            ChatViewEvent::OpenFile(path) => {
-                this.open_file(Place::file(path.clone()), true, true, window, cx);
-            }
-            ChatViewEvent::RunScript { script, folder } => this.run_script(folder.clone(), script, cx),
-        });
+        let events = cx.subscribe_in(
+            &view,
+            window,
+            move |this, _, event, window, cx| match event {
+                ChatViewEvent::Created(id) => this.chat_created(pane, id.clone(), cx),
+                ChatViewEvent::OpenFile(path) => {
+                    this.open_file(Place::file(path.clone()), true, true, window, cx);
+                }
+                ChatViewEvent::RunScript { script, folder } => {
+                    this.run_script(folder.clone(), script, cx);
+                }
+            },
+        );
         if self.chat_tabs.focus_next.take() == Some(pane) {
             let focus = view.focus_handle(cx);
             cx.defer_in(window, move |_, window, cx| window.focus(&focus, cx));
@@ -219,7 +232,10 @@ impl Shell {
     /// Shows thread `id`: the tab showing it already, or a new one on its checkout. The pane that
     /// shows it; `None` if there's no such chat, or its checkout isn't listed.
     pub(crate) fn open_chat(&mut self, id: &ThreadId, cx: &mut Context<Self>) -> Option<u64> {
-        if let Some((at, pane)) = self.workspace.find_pane(|pane| pane.chat.as_ref() == Some(id)) {
+        if let Some((at, pane)) = self
+            .workspace
+            .find_pane(|pane| pane.chat.as_ref() == Some(id))
+        {
             self.workspace.select_tab(at.0, at.1, at.2);
             cx.notify();
             return Some(pane);
@@ -251,16 +267,27 @@ impl Shell {
     }
 
     /// The chats of the checkout at `worktree` no tab shows, latest first, with their titles.
-    pub(crate) fn chats_without_tabs(&self, worktree: &Path, cx: &App) -> Vec<(ThreadId, SharedString)> {
+    pub(crate) fn chats_without_tabs(
+        &self,
+        worktree: &Path,
+        cx: &App,
+    ) -> Vec<(ThreadId, SharedString)> {
         let tabs = &self.chat_tabs;
         let mut recent = tabs.chats.read(cx).latest_first(Some(worktree));
         recent.retain(|summary| !tabs.shown.contains(&summary.id));
         recent.truncate(RECENT_CHATS);
         let titled = |summary: &koyo_agent::protocol::model::ThreadSummary| -> SharedString {
             let title = summary.title.trim();
-            if title.is_empty() { PaneKind::Chat.new_tab_title().into() } else { title.to_owned().into() }
+            if title.is_empty() {
+                PaneKind::Chat.new_tab_title().into()
+            } else {
+                title.to_owned().into()
+            }
         };
-        recent.into_iter().map(|summary| (summary.id.clone(), titled(summary))).collect()
+        recent
+            .into_iter()
+            .map(|summary| (summary.id.clone(), titled(summary)))
+            .collect()
     }
 
     /// The first send of pane `pane` made its thread.
@@ -295,7 +322,12 @@ impl Shell {
         };
         for (id, cwd) in waiting {
             let shown = (self.workspace.chat_panes()).any(|(_, thread)| thread == Some(&id));
-            if shown || self.workspace.add_chat_tab(&cwd, id.clone(), false).is_some() {
+            if shown
+                || self
+                    .workspace
+                    .add_chat_tab(&cwd, id.clone(), false)
+                    .is_some()
+            {
                 chats.update(cx, |chats, _| chats.restored(&id));
             }
         }

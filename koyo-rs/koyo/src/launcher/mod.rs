@@ -15,7 +15,9 @@ mod tests;
 mod view;
 
 use gpui_kit::assets::IconName;
-use gpui_kit::{App, Context, Div, Hsla, InteractiveElement as _, KeyBinding, Window, actions, hsla};
+use gpui_kit::{
+    App, Context, Div, Hsla, InteractiveElement as _, KeyBinding, Window, actions, hsla,
+};
 
 #[cfg(test)]
 pub use self::view::Launcher;

@@ -20,8 +20,8 @@ pub use fit::Scale;
 pub use glyphs::Look;
 pub use links::{LinkTarget, link_target};
 pub use view::{
-    CONTEXT, Copy, MAC_EDITING, Paste, ScrollPageDown, ScrollPageUp, ScrollToBottom, ScrollToTop, Source,
-    TerminalEvent, TerminalView, ToggleResponsive,
+    CONTEXT, Copy, MAC_EDITING, Paste, ScrollPageDown, ScrollPageUp, ScrollToBottom, ScrollToTop,
+    Source, TerminalEvent, TerminalView, ToggleResponsive,
 };
 
 /// Binds the terminal view's keys; call once when the app starts.

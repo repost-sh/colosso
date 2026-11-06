@@ -25,7 +25,8 @@ impl ChatComposer {
                 .small()
                 .label("Check again")
                 .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
-                    this.chats.update(cx, |chats, cx| chats.ask_for_provider(true, cx));
+                    this.chats
+                        .update(cx, |chats, cx| chats.ask_for_provider(true, cx));
                 }));
             div()
                 .pb_3()
@@ -38,7 +39,11 @@ impl ChatComposer {
                         .flex()
                         .items_center()
                         .justify_between()
-                        .child(div().text_color(p.text).child("Claude Code isn't installed"))
+                        .child(
+                            div()
+                                .text_color(p.text)
+                                .child("Claude Code isn't installed"),
+                        )
                         .child(again),
                 )
                 .child(
@@ -51,7 +56,14 @@ impl ChatComposer {
                         .py(px(6.))
                         .rounded(px(8.))
                         .bg(p.sunken)
-                        .child(div().flex_1().min_w_0().text_xs().font_family(p.mono).child(INSTALL))
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .text_xs()
+                                .font_family(p.mono)
+                                .child(INSTALL),
+                        )
                         .child(copy),
                 )
         })

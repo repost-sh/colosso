@@ -7,16 +7,16 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use gpui_kit::component::input::{
+    CompletionHighlighter, CompletionProvider, Rope, RopeExt as _, is_identifier_char,
+};
+use gpui_kit::{App, AppContext as _, Task, Window};
 use koyo_lsp::lsp_types::request::{Completion, ResolveCompletionItem};
 use koyo_lsp::lsp_types::{
     self, CompletionContext, CompletionItem, CompletionParams, CompletionResponse,
     CompletionTextEdit, CompletionTriggerKind, PartialResultParams, Position,
     WorkDoneProgressParams,
 };
-use gpui_kit::component::input::{
-    CompletionHighlighter, CompletionProvider, Rope, RopeExt as _, is_identifier_char,
-};
-use gpui_kit::{App, AppContext as _, Task, Window};
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
 
@@ -59,7 +59,11 @@ impl Completions {
     /// The list for the word `query` begun at `start`, ranked and brought up to the word,
     /// if the server's list holds everything for it.
     fn ranked(&mut self, start: usize, query: &str) -> Option<Vec<CompletionItem>> {
-        let Completions { matcher, chars, list } = self;
+        let Completions {
+            matcher,
+            chars,
+            list,
+        } = self;
         let list = list.as_mut()?;
         if list.start != start || list.incomplete || !query.starts_with(&list.asked_for) {
             return None;
@@ -71,7 +75,14 @@ impl Completions {
 
     /// Keeps `items`, the server's list for the word `asked_for` begun at `start`, asked
     /// at `caret`.
-    fn keep(&mut self, start: usize, caret: Position, asked_for: String, incomplete: bool, items: Vec<CompletionItem>) {
+    fn keep(
+        &mut self,
+        start: usize,
+        caret: Position,
+        asked_for: String,
+        incomplete: bool,
+        items: Vec<CompletionItem>,
+    ) {
         self.list = Some(List {
             start,
             caret,
@@ -206,7 +217,12 @@ pub(super) fn highlighter() -> Rc<CompletionHighlighter> {
         if query.is_empty() {
             return Vec::new();
         }
-        let Highlighting { matcher, chars, indices, pattern } = &mut *highlighting.borrow_mut();
+        let Highlighting {
+            matcher,
+            chars,
+            indices,
+            pattern,
+        } = &mut *highlighting.borrow_mut();
         let (_, pattern) = match pattern {
             Some(parsed) if parsed.0 == query => parsed,
             slot => slot.insert((
@@ -294,7 +310,8 @@ impl CompletionProvider for Hooks {
                         partial_result_params: PartialResultParams::default(),
                         context: Some(context),
                     };
-                    let (items, incomplete) = match asked.ask::<Completion>(&params).await.flatten() {
+                    let (items, incomplete) = match asked.ask::<Completion>(&params).await.flatten()
+                    {
                         Some(CompletionResponse::Array(items)) => (items, false),
                         Some(CompletionResponse::List(list)) => (list.items, list.is_incomplete),
                         None => (Vec::new(), false),
@@ -302,7 +319,12 @@ impl CompletionProvider for Hooks {
                     let items = (items.into_iter())
                         .map(|item| asked.row_for_editor(item))
                         .collect::<Vec<_>>();
-                    let ranked = rank(&items, &query, &mut Matcher::new(Config::DEFAULT), &mut Vec::new());
+                    let ranked = rank(
+                        &items,
+                        &query,
+                        &mut Matcher::new(Config::DEFAULT),
+                        &mut Vec::new(),
+                    );
                     (items, ranked, incomplete)
                 })
                 .await;
@@ -312,7 +334,11 @@ impl CompletionProvider for Hooks {
     }
 
     /// The row filled in by the server, once; a row filled in already comes from the list.
-    fn resolve(&self, item: CompletionItem, cx: &mut App) -> Task<gpui_kit::Result<CompletionItem>> {
+    fn resolve(
+        &self,
+        item: CompletionItem,
+        cx: &mut App,
+    ) -> Task<gpui_kit::Result<CompletionItem>> {
         if let Some(filled) = self.completions.borrow().filled(&item) {
             return Task::ready(Ok(filled));
         }
@@ -341,7 +367,8 @@ impl CompletionProvider for Hooks {
 impl Hooks {
     /// Whether the server completes words at all.
     fn offers_completions(&self, cx: &App) -> bool {
-        (self.capabilities(cx)).is_some_and(|capabilities| capabilities.completion_provider.is_some())
+        (self.capabilities(cx))
+            .is_some_and(|capabilities| capabilities.completion_provider.is_some())
     }
 
     /// Whether `text` is a character the server asked to hear of as it's typed.
@@ -355,99 +382,4 @@ impl Hooks {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn item(label: &str, sort_text: Option<&str>, preselect: bool) -> CompletionItem {
-        CompletionItem {
-            label: label.to_owned(),
-            sort_text: sort_text.map(str::to_owned),
-            preselect: Some(preselect),
-            ..CompletionItem::default()
-        }
-    }
-
-    fn labels(items: &[CompletionItem]) -> Vec<&str> {
-        items.iter().map(|item| item.label.as_str()).collect()
-    }
-
-    fn ranked(items: &[CompletionItem], query: &str) -> Vec<CompletionItem> {
-        rank(items, query, &mut Matcher::new(Config::DEFAULT), &mut Vec::new())
-    }
-
-    #[test]
-    fn rows_are_ranked_by_match_then_preselection_then_sort_text() {
-        let items = [
-            item("other_thing", None, false),
-            item("grab", None, false),
-            item("greet", None, true),
-            item("GREP_ALL", Some("0000"), false),
-        ];
-        assert_eq!(labels(&ranked(&items, "gr")), ["greet", "GREP_ALL", "grab"]);
-        assert_eq!(labels(&ranked(&items, "grb")), ["grab"]);
-        assert_eq!(labels(&ranked(&items, "zzz")), Vec::<&str>::new());
-        // Nothing typed: the server's order, the preselected row first.
-        assert_eq!(
-            labels(&ranked(&items, "")),
-            ["greet", "GREP_ALL", "grab", "other_thing"]
-        );
-    }
-
-    #[test]
-    fn a_row_is_matched_by_its_filter_text_and_painted_on_its_label() {
-        let mut full = item("greet(…)", None, false);
-        full.filter_text = Some("greet".to_owned());
-        assert_eq!(labels(&ranked(&[full.clone()], "gre")), ["greet(…)"]);
-        let highlight = highlighter();
-        assert_eq!(highlight("gre", &full), vec![0..3]);
-        assert_eq!(highlight("gt", &full), vec![0..1, 4..5]);
-        assert_eq!(highlight("", &full), Vec::<std::ops::Range<usize>>::new());
-    }
-
-    #[test]
-    fn a_list_serves_longer_words_moved_past_what_was_typed_unless_incomplete() {
-        let edit = |start: u32, end: u32| lsp_types::TextEdit {
-            range: lsp_types::Range::new(Position::new(1, start), Position::new(1, end)),
-            new_text: "greet()".to_owned(),
-        };
-        let mut greet = item("greet", None, false);
-        greet.text_edit = Some(CompletionTextEdit::Edit(edit(4, 5)));
-        greet.additional_text_edits = Some(vec![
-            lsp_types::TextEdit::new(lsp_types::Range::new(Position::new(0, 0), Position::new(0, 0)), "use g;\n".into()),
-            edit(9, 9),
-        ]);
-        let mut completions = Completions::default();
-        assert!(completions.ranked(4, "g").is_none(), "nothing listed yet");
-        completions.keep(4, Position::new(1, 5), "g".to_owned(), false, vec![greet, item("grab", None, false)]);
-        let served = completions.ranked(4, "gre").unwrap();
-        assert_eq!(labels(&served), ["greet"]);
-        // The word's edit ends at the caret, which the "re" typed since moved; so did an
-        // edit after it on the line, but not one on another line.
-        let Some(CompletionTextEdit::Edit(text_edit)) = &served[0].text_edit else {
-            panic!("the edit as given");
-        };
-        assert_eq!(text_edit.range, lsp_types::Range::new(Position::new(1, 4), Position::new(1, 7)));
-        let additional = served[0].additional_text_edits.as_ref().unwrap();
-        assert_eq!(additional[0].range.end, Position::new(0, 0));
-        assert_eq!(additional[1].range, lsp_types::Range::new(Position::new(1, 11), Position::new(1, 11)));
-        assert!(completions.ranked(4, "a").is_none(), "another word");
-        assert!(completions.ranked(5, "gre").is_none(), "another start");
-        // A row filled in stays so, brought up to the word.
-        let mut filled = item("greet", None, false);
-        filled.detail = Some("fn greet()".to_owned());
-        filled.text_edit = Some(CompletionTextEdit::Edit(edit(4, 5)));
-        assert!(completions.filled(&filled).is_none());
-        let back = completions.fill(filled.clone());
-        assert_eq!(back.detail.as_deref(), Some("fn greet()"));
-        let kept = completions.filled(&filled).unwrap();
-        let Some(CompletionTextEdit::Edit(text_edit)) = &kept.text_edit else {
-            panic!("the edit as given");
-        };
-        assert_eq!(text_edit.range.end, Position::new(1, 7));
-        assert_eq!(completions.ranked(4, "gree").unwrap()[0].detail.as_deref(), Some("fn greet()"));
-        let mut incomplete = Completions::default();
-        incomplete.keep(4, Position::new(1, 5), "g".to_owned(), true, Vec::new());
-        assert!(incomplete.ranked(4, "gre").is_none(), "incomplete: asked again");
-        assert!(incomplete.incomplete_at(4));
-    }
-}
+mod tests;

@@ -4,6 +4,9 @@
 #[path = "support/records.rs"]
 mod records;
 
+#[path = "timeline/live.rs"]
+mod live;
+
 use std::collections::HashSet;
 
 use koyo_agent::protocol::ids::{ItemId, RequestId, RunId};
@@ -14,7 +17,7 @@ use koyo_agent::protocol::model::{
 use koyo_agent::protocol::requests::{Request, RequestStatus};
 use koyo_agent::replica::Replica;
 use koyo_agent::timeline::{Row, RowId, RowKind, WorkFold, changed, rows};
-use records::{answer, done, item, message, request, run, snapshot, subagent, tool_of};
+use records::{answer, done, message, request, run, snapshot, subagent, tool_of};
 
 fn tool(label: &str) -> ItemBody {
     ItemBody::Tool(tool_of(ToolFamily::Read, label))
@@ -34,10 +37,16 @@ fn shape(replica: &Replica, rows: &[Row]) -> Vec<String> {
                 format!("{} {}", if *last { "answer" } else { "text" }, id(item))
             }
             RowKind::Work { items } => {
-                format!("work {}", items.iter().map(id).collect::<Vec<_>>().join(","))
+                format!(
+                    "work {}",
+                    items.iter().map(id).collect::<Vec<_>>().join(",")
+                )
             }
             RowKind::Subagents { items } => {
-                format!("agents {}", items.iter().map(id).collect::<Vec<_>>().join(" "))
+                format!(
+                    "agents {}",
+                    items.iter().map(id).collect::<Vec<_>>().join(" ")
+                )
             }
             RowKind::Live { .. } => "live".to_owned(),
             RowKind::Fold { .. } => "fold".to_owned(),
@@ -54,7 +63,7 @@ fn shape(replica: &Replica, rows: &[Row]) -> Vec<String> {
 
 /// The rows of `replica`, each run folded.
 fn made(replica: &Replica) -> Vec<Row> {
-    rows(replica, |_| WorkFold::Closed)
+    rows(replica, |_| WorkFold::Closed, |_| false)
 }
 
 fn of(replica: &Replica) -> Vec<String> {
@@ -75,7 +84,10 @@ fn replica_of(status: RunStatus, items: Vec<Item>) -> Replica {
 fn a_message_and_its_answer_are_a_row_each_with_nothing_to_fold() {
     let replica = replica(
         vec![run("r1", RunStatus::Completed, 5)],
-        vec![done("a", 0, message("Why?")), done("b", 1, answer("Because."))],
+        vec![
+            done("a", 0, message("Why?")),
+            done("b", 1, answer("Because.")),
+        ],
     );
     assert_eq!(of(&replica), ["user a", "answer b"]);
 }
@@ -102,64 +114,36 @@ fn tools_one_after_the_other_are_one_row_that_goes_by_the_first() {
 }
 
 #[test]
-fn what_is_running_is_the_live_row_and_joins_its_group_when_done() {
-    let running = Item {
-        status: ItemStatus::Running,
-        ..item("c", 2, tool("two"), 2)
-    };
-    let items = vec![done("b", 1, tool("one")), running.clone()];
-    let working = replica(vec![run("r1", RunStatus::Running, 5)], items);
-    let shown = made(&working);
-    assert_eq!(shape(&working, &shown), ["work b", "live"]);
-    assert_eq!(shown[1].kind, RowKind::Live { item: Some(1) });
-
-    let finished = Item {
-        status: ItemStatus::Completed,
-        seq: 6,
-        ..running
-    };
-    let items = vec![done("b", 1, tool("one")), finished];
-    let later = replica_of(RunStatus::Running, items);
-    let after = made(&later);
-    assert_eq!(shape(&later, &after), ["work b,c", "live"]);
-    assert_eq!(after[0].id, shown[0].id, "a group keeps its id as it grows");
-    assert_eq!(after[1].id, shown[1].id, "the live row keeps its id");
-    assert_eq!(after[0].seq, 6);
-}
-
-#[test]
-fn a_group_that_starts_running_goes_by_the_same_id_once_it_is_done() {
-    let running = Item {
-        status: ItemStatus::Running,
-        ..item("b", 1, tool("one"), 1)
-    };
-    let items = vec![running, done("c", 2, tool("two"))];
-    let working = replica_of(RunStatus::Running, items);
-    let shown = made(&working);
-    assert_eq!(shape(&working, &shown), ["work c", "live"]);
-    assert_eq!(shown[0].id, RowId::Work(ItemId("b".into())));
-}
-
-#[test]
-fn a_live_row_shows_unless_what_the_run_does_shows_for_itself() {
-    // Nothing yet, not even an item: it still has its row.
-    let starting = replica(vec![run("r1", RunStatus::Starting, 5)], Vec::new());
-    assert_eq!(made(&starting)[0].kind, RowKind::Live { item: None });
-
-    let text = Item {
-        status: ItemStatus::Running,
-        ..item("b", 1, answer("So"), 1)
-    };
-    let writing = replica_of(RunStatus::Running, vec![text]);
-    assert_eq!(of(&writing), ["answer b"]);
-
-    let mut snap = snapshot(
-        9,
-        vec![run("r1", RunStatus::Running, 5)],
-        vec![done("b", 1, asks("q1"))],
+fn work_that_shows_more_than_a_line_has_a_row_of_its_own_in_the_order_it_came() {
+    let edit = |label: &str| ItemBody::Tool(tool_of(ToolFamily::Edit, label));
+    let items = vec![
+        done("a", 0, message("Fix it")),
+        done("b", 1, tool("one")),
+        done("c", 2, tool("two")),
+        done("d", 3, edit("src/main.rs")),
+        done("e", 4, tool("three")),
+        done("f", 5, edit("src/lib.rs")),
+        done("g", 6, edit("src/cli.rs")),
+        done("h", 7, answer("Fixed")),
+    ];
+    let replica = replica_of(RunStatus::Completed, items);
+    let edits =
+        |item: &Item| matches!(&item.body, ItemBody::Tool(tool) if tool.family == ToolFamily::Edit);
+    let shown = rows(&replica, |_| WorkFold::None, edits);
+    assert_eq!(
+        shape(&replica, &shown),
+        [
+            "user a", "work b,c", "work d", "work e", "work f", "work g", "answer h",
+        ]
     );
-    snap.requests = vec![request("q1", RequestStatus::Pending)];
-    assert_eq!(of(&Replica::new(snap)), ["request b"]);
+    assert_eq!(shown[2].id, RowId::Work(ItemId("d".into())));
+    assert_eq!(shown[4].id, RowId::Work(ItemId("f".into())));
+    let folded = rows(&replica, |_| WorkFold::Closed, edits);
+    assert_eq!(
+        shape(&replica, &folded),
+        ["user a", "fold", "answer h"],
+        "a fold holds them too"
+    );
 }
 
 #[test]
@@ -172,11 +156,15 @@ fn a_settled_run_folds_only_its_work() {
             done("b", 1, tool("one")),
             done("c", 2, answer("Looking")),
             done("d", 3, asks("q1")),
-            done("e", 4, ItemBody::Compaction(Compaction {
-                trigger: CompactionTrigger::Auto,
-                before: None,
-                after: None,
-            })),
+            done(
+                "e",
+                4,
+                ItemBody::Compaction(Compaction {
+                    trigger: CompactionTrigger::Auto,
+                    before: None,
+                    after: None,
+                }),
+            ),
             done("f", 5, tool("two")),
             done("g", 6, answer("Done")),
         ],
@@ -185,11 +173,24 @@ fn a_settled_run_folds_only_its_work() {
     let replica = Replica::new(snap);
     assert_eq!(
         of(&replica),
-        ["user a", "fold", "text c", "request d", "compaction e", "answer g"]
+        [
+            "user a",
+            "fold",
+            "text c",
+            "request d",
+            "compaction e",
+            "answer g"
+        ]
     );
 
     let open = HashSet::from([RunId("r1".into())]);
-    let unfolded = |run: &RunId| if open.contains(run) { WorkFold::Open } else { WorkFold::Closed };
+    let unfolded = |run: &RunId| {
+        if open.contains(run) {
+            WorkFold::Open
+        } else {
+            WorkFold::Closed
+        }
+    };
     let all = [
         "user a",
         "fold",
@@ -200,9 +201,9 @@ fn a_settled_run_folds_only_its_work() {
         "work f",
         "answer g",
     ];
-    assert_eq!(shape(&replica, &rows(&replica, unfolded)), all);
+    assert_eq!(shape(&replica, &rows(&replica, unfolded, |_| false)), all);
 
-    let in_the_open = rows(&replica, |_| WorkFold::None);
+    let in_the_open = rows(&replica, |_| WorkFold::None, |_| false);
     let without_a_fold: Vec<_> = all.into_iter().filter(|row| *row != "fold").collect();
     assert_eq!(shape(&replica, &in_the_open), without_a_fold);
 }
@@ -210,7 +211,10 @@ fn a_settled_run_folds_only_its_work() {
 #[test]
 fn what_was_said_never_folds_however_much_came_after_it() {
     let essay = |tool_after| {
-        let mut items = vec![done("a", 0, message("An essay, please")), done("b", 1, answer("An essay"))];
+        let mut items = vec![
+            done("a", 0, message("An essay, please")),
+            done("b", 1, answer("An essay")),
+        ];
         items.extend(tool_after);
         items.push(done("d", 3, answer("Anything else?")));
         replica_of(RunStatus::Completed, items)
@@ -259,17 +263,21 @@ fn a_note_stays_unless_it_is_only_for_information() {
             text: "Retrying".into(),
         })
     };
-    let replica = replica_of(RunStatus::Completed, vec![
-        done("a", 0, note(NoticeLevel::Info)),
-        done("b", 1, note(NoticeLevel::Warning)),
-        done("c", 2, answer("Done")),
-    ]);
+    let replica = replica_of(
+        RunStatus::Completed,
+        vec![
+            done("a", 0, note(NoticeLevel::Info)),
+            done("b", 1, note(NoticeLevel::Warning)),
+            done("c", 2, answer("Done")),
+        ],
+    );
     assert_eq!(of(&replica), ["fold", "notice b", "answer c"]);
 }
 
 #[test]
 fn subagents_one_after_the_other_are_a_row_that_stays_when_the_run_folds() {
-    let agent = |id: &str, ordinal| done(id, ordinal, ItemBody::Subagent(Box::new(subagent("Check"))));
+    let agent =
+        |id: &str, ordinal| done(id, ordinal, ItemBody::Subagent(Box::new(subagent("Check"))));
     let items = vec![
         done("a", 0, tool("first")),
         agent("b", 1),
@@ -279,22 +287,22 @@ fn subagents_one_after_the_other_are_a_row_that_stays_when_the_run_folds() {
         done("f", 5, answer("Done")),
     ];
     let replica = replica_of(RunStatus::Completed, items);
-    let open = rows(&replica, |_| WorkFold::Open);
-    assert_eq!(shape(&replica, &open)[1..], [
-        "work a",
-        "agents b c",
-        "work d",
-        "agents e",
-        "answer f",
-    ]);
+    let open = rows(&replica, |_| WorkFold::Open, |_| false);
+    assert_eq!(
+        shape(&replica, &open)[1..],
+        ["work a", "agents b c", "work d", "agents e", "answer f",]
+    );
     assert_eq!(of(&replica), ["fold", "agents b c e", "answer f"]);
     let folded: Vec<_> = made(&replica).into_iter().map(|row| row.id).collect();
     let id = |item: &str| ItemId(item.into());
-    assert_eq!(folded, [
-        RowId::Fold(RunId("r1".into())),
-        RowId::Subagents(id("b")),
-        RowId::Item(id("f")),
-    ]);
+    assert_eq!(
+        folded,
+        [
+            RowId::Fold(RunId("r1".into())),
+            RowId::Subagents(id("b")),
+            RowId::Item(id("f")),
+        ]
+    );
 }
 
 #[test]
@@ -304,11 +312,17 @@ fn a_running_subagent_shows_for_itself_and_the_live_row_says_the_rest() {
         ..done("a", 0, ItemBody::Subagent(Box::new(subagent("Check"))))
     };
     let replica = replica_of(RunStatus::Running, vec![running]);
-    let kinds: Vec<_> = rows(&replica, |_| WorkFold::None).into_iter().map(|row| row.kind).collect();
-    assert_eq!(kinds, [
-        RowKind::Subagents { items: vec![0] },
-        RowKind::Live { item: None },
-    ]);
+    let kinds: Vec<_> = rows(&replica, |_| WorkFold::None, |_| false)
+        .into_iter()
+        .map(|row| row.kind)
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            RowKind::Subagents { items: vec![0] },
+            RowKind::Live { item: None },
+        ]
+    );
 }
 
 #[test]
@@ -357,7 +371,11 @@ fn a_change_replaces_only_the_rows_it_touched() {
     assert_eq!(changed(&old, &[at("a", 1)]), Some((1..3, 0)));
     // An answer that stops being the last loses the line under it, with nothing else changed.
     let last = |last| Row {
-        kind: RowKind::Answer { item: 0, run: 0, last },
+        kind: RowKind::Answer {
+            item: 0,
+            run: 0,
+            last,
+        },
         ..at("a", 1)
     };
     assert_eq!(changed(&[last(true)], &[last(false)]), Some((0..1, 1)));
@@ -382,15 +400,26 @@ fn the_oldest_request_waiting_is_the_one_asked_and_the_next_is_once_it_is_answer
     let mut snap = snapshot(9, vec![run("r1", RunStatus::Running, 5)], items);
     snap.requests = vec![waiting("q1", 3), waiting("q2", 4)];
     let mut replica = Replica::new(snap);
-    assert_eq!(replica.asking().map(|asked| asked.id.0.as_str()), Some("q1"));
+    assert_eq!(
+        replica.asking().map(|asked| asked.id.0.as_str()),
+        Some("q1")
+    );
     assert_eq!(asked(&replica), [false, true]);
     let before = made(&replica);
 
     replica.requests.remove(0);
-    replica.requests.insert(0, request("q1", RequestStatus::Answered));
+    replica
+        .requests
+        .insert(0, request("q1", RequestStatus::Answered));
 
-    assert_eq!(replica.asking().map(|asked| asked.id.0.as_str()), Some("q2"));
+    assert_eq!(
+        replica.asking().map(|asked| asked.id.0.as_str()),
+        Some("q2")
+    );
     assert_eq!(asked(&replica), [true, false]);
     let after = made(&replica);
-    assert!(changed(&before, &after).is_some(), "the row now asked is drawn anew");
+    assert!(
+        changed(&before, &after).is_some(),
+        "the row now asked is drawn anew"
+    );
 }

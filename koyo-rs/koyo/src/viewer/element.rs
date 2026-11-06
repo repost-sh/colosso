@@ -125,7 +125,10 @@ impl Element for Pages {
             .map(|page| {
                 let page = page.shifted((left, top));
                 Bounds::new(
-                    point(snap(bounds.origin.x + px(page.x)), snap(bounds.origin.y + px(page.y))),
+                    point(
+                        snap(bounds.origin.x + px(page.x)),
+                        snap(bounds.origin.y + px(page.y)),
+                    ),
                     size(px(page.width), px(page.height)),
                 )
             })
@@ -138,7 +141,11 @@ impl Element for Pages {
                 }
                 if let Some(edge) = self.paper {
                     window.paint_quad(fill(*page, gpui_kit::white()));
-                    window.paint_quad(outline(page.dilate(px(1.)), edge, gpui_kit::BorderStyle::Solid));
+                    window.paint_quad(outline(
+                        page.dilate(px(1.)),
+                        edge,
+                        gpui_kit::BorderStyle::Solid,
+                    ));
                 }
                 if let Some(dark) = self.checker {
                     paint_checker(seen, dark, window);
@@ -147,7 +154,14 @@ impl Element for Pages {
             if let (Some((picture, frame)), Some(page)) = (&self.picture, placed.first()) {
                 let seen = page.intersect(&bounds);
                 window
-                    .paint_image(seen, *page, Corners::default(), picture.clone(), *frame, false)
+                    .paint_image(
+                        seen,
+                        *page,
+                        Corners::default(),
+                        picture.clone(),
+                        *frame,
+                        false,
+                    )
                     .ok();
             }
             for (key, image) in &self.tiles {
@@ -168,7 +182,9 @@ impl Element for Pages {
                 );
                 let seen = shown.intersect(page).intersect(&bounds);
                 if !seen.is_empty() {
-                    window.paint_image(seen, shown, Corners::default(), image.clone(), 0, false).ok();
+                    window
+                        .paint_image(seen, shown, Corners::default(), image.clone(), 0, false)
+                        .ok();
                 }
             }
         });

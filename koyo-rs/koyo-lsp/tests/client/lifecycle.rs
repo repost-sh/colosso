@@ -3,9 +3,9 @@
 
 use std::time::{Duration, Instant};
 
-use koyo_lsp::{Encoding, Event, Exit, LspError, uri};
 use futures::StreamExt;
 use futures::channel::mpsc::UnboundedReceiver;
+use koyo_lsp::{Encoding, Event, Exit, LspError, uri};
 use serde_json::json;
 
 use crate::common::{Echo, Received, fake, fake_logged, root, wait};

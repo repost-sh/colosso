@@ -1,8 +1,8 @@
 //! The Languages settings page: which languages get a language server, for go to definition,
 //! hover, diagnostics, completions and the rest, and how the servers are run.
 
-use koyo_lsp::servers::{PYREFLY, RUST_ANALYZER, TYPESCRIPT};
 use gpui_kit::App;
+use koyo_lsp::servers::{PYREFLY, RUST_ANALYZER, TYPESCRIPT};
 
 use super::components::{MenuButton, SettingRow, SettingsSection};
 use super::native_switch::NativeSwitch;

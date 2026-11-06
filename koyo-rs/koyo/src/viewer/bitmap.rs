@@ -65,7 +65,10 @@ impl Canvas {
     pub fn bounds(&self) -> CGRect {
         CGRect::new(
             objc2_core_foundation::CGPoint::new(0., 0.),
-            objc2_core_foundation::CGSize::new(CGFloat::from(self.width), CGFloat::from(self.height)),
+            objc2_core_foundation::CGSize::new(
+                CGFloat::from(self.width),
+                CGFloat::from(self.height),
+            ),
         )
     }
 
@@ -77,7 +80,11 @@ impl Canvas {
 
     /// The pixels as a frame GPUI can show, held on screen for `delay` when it's one of an
     /// animation's. Quartz's multiplied colours are taken back out when `see_through`.
-    pub fn into_frame(self, see_through: bool, delay: Option<std::time::Duration>) -> Option<Frame> {
+    pub fn into_frame(
+        self,
+        see_through: bool,
+        delay: Option<std::time::Duration>,
+    ) -> Option<Frame> {
         let Canvas {
             width,
             height,
@@ -90,9 +97,7 @@ impl Canvas {
         }
         let buffer = RgbaImage::from_raw(width, height, pixels)?;
         Some(match delay {
-            Some(delay) => {
-                Frame::from_parts(buffer, 0, 0, Delay::from_saturating_duration(delay))
-            }
+            Some(delay) => Frame::from_parts(buffer, 0, 0, Delay::from_saturating_duration(delay)),
             None => Frame::new(buffer),
         })
     }
@@ -101,7 +106,11 @@ impl Canvas {
 /// Takes each pixel's colour back out of its alpha, as GPUI blends sprites with the colour
 /// unmultiplied. Opaque and clear pixels are as they are.
 pub fn unpremultiply(pixels: &mut [u8]) {
-    pixels.as_chunks_mut::<4>().0.iter_mut().for_each(unpremultiplied);
+    pixels
+        .as_chunks_mut::<4>()
+        .0
+        .iter_mut()
+        .for_each(unpremultiplied);
 }
 
 /// One pixel's colour taken back out of its alpha.

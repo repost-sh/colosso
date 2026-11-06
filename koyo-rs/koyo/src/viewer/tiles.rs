@@ -163,6 +163,9 @@ mod tests {
             height: 2000.,
         };
         let shown = key.shown_at((1000., 1000.), page, 2.);
-        assert_eq!((shown.x, shown.y, shown.width), (10. + 1024., 20. + 1024., 976.));
+        assert_eq!(
+            (shown.x, shown.y, shown.width),
+            (10. + 1024., 20. + 1024., 976.)
+        );
     }
 }

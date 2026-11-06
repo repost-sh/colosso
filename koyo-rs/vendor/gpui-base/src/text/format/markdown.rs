@@ -764,7 +764,22 @@ fn parse_paragraph(
         custom.set_span(span);
         let custom = custom.with_inline_source(parse_cx.node_source(node).unwrap_or_default());
         let text = custom.as_text().to_string();
-        paragraph.push(InlineNode::custom(custom));
+        let mut inline = InlineNode::custom(custom);
+        // A link a plugin draws another way is still the link: a click on it goes where it
+        // goes, as a click on a custom node inside a link does.
+        if let Node::Link(link) = node {
+            let mark = TextMark {
+                link: Some(LinkMark {
+                    url: link.url.clone().into(),
+                    title: link.title.clone().map(Into::into),
+                    drawn: true,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            };
+            inline.marks.push((0..inline.text.len(), mark));
+        }
+        paragraph.push(inline);
         return text;
     }
 
@@ -925,6 +940,7 @@ fn parse_paragraph(
                 url: "".into(),
                 title: link.label.clone().map(Into::into),
                 identifier: Some(link.identifier.clone().into()),
+                drawn: false,
             };
 
             text = merge_children_with_mark(
@@ -1145,6 +1161,7 @@ fn ast_to_node(source: &str, value: mdast::Node, cx: &mut NodeContext) -> BlockN
                     url: def.url.clone().into(),
                     identifier: Some(def.identifier.clone().into()),
                     title: def.title.clone().map(Into::into),
+                    drawn: false,
                 },
             );
 

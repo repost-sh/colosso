@@ -49,7 +49,13 @@ impl Here {
                     None => (String::new(), None),
                 };
                 let title = pane.title.clone();
-                Some(OpenTab { pane: pane.id, kind: pane.kind, title, url, favicon })
+                Some(OpenTab {
+                    pane: pane.id,
+                    kind: pane.kind,
+                    title,
+                    url,
+                    favicon,
+                })
             })
             .collect();
         let chats = shell.chats_without_tabs(&unit.worktree.path, cx);
@@ -65,6 +71,7 @@ impl Here {
     /// `www.` or trailing slash.
     pub fn tab_showing(&self, url: &str) -> Option<&OpenTab> {
         let key = history::same_page_key(url);
-        self.tabs_of(PaneKind::Browser).find(|tab| history::same_page_key(&tab.url) == key)
+        self.tabs_of(PaneKind::Browser)
+            .find(|tab| history::same_page_key(&tab.url) == key)
     }
 }

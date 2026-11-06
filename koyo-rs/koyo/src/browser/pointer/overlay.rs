@@ -17,8 +17,8 @@ use objc2::rc::Retained;
 use objc2_app_kit::NSView;
 
 use super::native::Native;
-use crate::browser::responsive::to_window;
 use super::{Glow, Next, Pointer, Shot};
+use crate::browser::responsive::to_window;
 use crate::browser::view::BrowserView;
 use crate::gradient;
 

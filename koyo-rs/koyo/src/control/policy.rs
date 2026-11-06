@@ -3,8 +3,8 @@
 //! them, and the clients the person allowed, each with its scopes and last use. Only the
 //! person changes it, in Settings, through the functions here; no operation reads or sets it.
 
-use koyo_app_control::Scope;
 use gpui_kit::App;
+use koyo_app_control::Scope;
 use serde::{Deserialize, Serialize};
 
 use super::Control;

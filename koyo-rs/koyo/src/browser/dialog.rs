@@ -6,8 +6,8 @@
 
 use std::path::PathBuf;
 
-use koyo_browser_ipc::{Answer, AppRequest, Dialog, FileMode, Permission};
 use gpui_kit::{Context, PathPromptOptions, Window};
+use koyo_browser_ipc::{Answer, AppRequest, Dialog, FileMode, Permission};
 
 use super::view::BrowserView;
 use crate::modal;

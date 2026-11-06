@@ -86,8 +86,7 @@ fn an_agent_drives_a_shell_over_mcp() {
     let dir = test_dir("mcp");
     let _stop = StopOnDrop(dir.clone());
     let _daemon = connect(&dir, ClientKind::Cli);
-    let checkout =
-        std::fs::canonicalize(env!("KOYO_CHECKOUT")).unwrap();
+    let checkout = std::fs::canonicalize(env!("KOYO_CHECKOUT")).unwrap();
     let config = Config {
         dir: dir.clone(),
         daemon: DaemonCommand::binary(DAEMON),
@@ -107,9 +106,8 @@ fn an_agent_drives_a_shell_over_mcp() {
     runtime.block_on(async move {
         let (ours, theirs) = tokio::io::duplex(1 << 20);
         // No app runs in this test: the app's tools answer that it isn't running.
-        let connect = koyo_term_mcp::socket_backend(Err(
-            koyo_app_control::ControlError::app_not_running(),
-        ));
+        let connect =
+            koyo_term_mcp::socket_backend(Err(koyo_app_control::ControlError::app_not_running()));
         let server = koyo_term_mcp::Server::new(config, &connect, None);
         let server = tokio::spawn(koyo_term_mcp::serve(server, tokio::io::split(theirs)));
         let (reader, writer) = tokio::io::split(ours);

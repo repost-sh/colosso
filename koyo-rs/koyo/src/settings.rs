@@ -11,21 +11,27 @@ use serde::{Deserialize, Serialize};
 
 mod chat_details;
 mod chat_mode;
-mod project_scripts;
-mod chat_work;
+mod chat_verbosity;
+mod chat_width;
+mod file;
 mod fonts;
 mod language_servers;
 mod migration;
+mod project_scripts;
 mod save_scope;
 
 pub use chat_details::{ChatDetails, DetailsItem, FlipDetailsItem};
 pub use chat_mode::{SetChatMode, chat_mode_label, chat_mode_menu};
-pub use project_scripts::{ProjectScript, ProjectScripts};
-pub use chat_work::{ChatWork, SetChatWork};
-pub use fonts::{CHAT_SIZES, Fonts, SetCodeFont, SetInterfaceFont};
+pub use chat_verbosity::{Preset, SetChatVerbosity, Shows, Step, Verbosity};
+pub use chat_width::{ChatWidth, SetChatWidth};
+#[cfg(any(test, feature = "visual-check"))]
+pub use fonts::LARGEST_CHAT_SIZE;
+pub use fonts::{
+    CHAT_SIZES, Fonts, SetChatTextSize, SetCodeFont, SetInterfaceFont, chat_size_menu,
+};
 pub use language_servers::{LanguageServers, Scope, SetLanguageServer};
+pub use project_scripts::{ProjectScript, ProjectScripts};
 pub use save_scope::{SaveScope, SetSaveScope};
-use migration::migrate;
 
 use crate::atomic_file;
 use crate::gradient::GradientTheme;
@@ -68,7 +74,9 @@ impl Layout {
 
     /// A menu of the layouts with `self` checked.
     pub fn menu(self) -> NativeMenu {
-        checked_menu(Layout::ALL, self, Layout::label, |layout| Box::new(SetLayout(layout)))
+        checked_menu(Layout::ALL, self, Layout::label, |layout| {
+            Box::new(SetLayout(layout))
+        })
     }
 }
 
@@ -112,7 +120,10 @@ pub struct SetBranchPrefix(pub BranchPrefix);
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
-#[expect(clippy::struct_excessive_bools, reason = "a settings file: each switch is one")]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "a settings file: each switch is one"
+)]
 pub struct Settings {
     pub appearance: ThemePreference,
     pub light_theme: GradientTheme,
@@ -157,9 +168,11 @@ pub struct Settings {
     /// Which language servers run, everywhere and in each project.
     pub language_servers: LanguageServers,
     /// How much of what an agent did along the way shows in a chat.
-    pub chat_work: ChatWork,
+    pub chat_verbosity: Verbosity,
     /// What the details card over a chat shows, and whether it's up.
     pub chat_details: ChatDetails,
+    /// How wide a chat's timeline and composer get.
+    pub chat_width: ChatWidth,
     /// The commands a person keeps for each project.
     pub project_scripts: ProjectScripts,
     /// How hard the agent works in a chat not set to anything else, as far as its model can.
@@ -243,8 +256,9 @@ impl Default for Settings {
             most_language_servers: None,
             stop_idle_language_servers: false,
             language_servers: language_servers::every_server(),
-            chat_work: ChatWork::default(),
+            chat_verbosity: Verbosity::default(),
             chat_details: ChatDetails::default(),
+            chat_width: ChatWidth::default(),
             project_scripts: ProjectScripts::default(),
             chat_effort: koyo_agent::protocol::model::Effort::Xhigh,
             chat_mode: None,
@@ -294,8 +308,8 @@ pub fn init(cx: &mut App) {
         .or_else(|| dirs::data_dir().map(|dir| dir.join(APP_ID)))
         .map(|dir| dir.join(FILE))
         .filter(|_| !cfg!(test));
-    let settings = path.as_deref().map(load).unwrap_or_default();
-    let seen = path.as_deref().and_then(modified);
+    let settings = path.as_deref().map(file::load).unwrap_or_default();
+    let seen = path.as_deref().and_then(file::modified);
     cx.set_global(Store {
         settings,
         path,
@@ -311,7 +325,7 @@ pub fn init(cx: &mut App) {
             cx.background_executor()
                 .timer(Duration::from_millis(500))
                 .await;
-            cx.update(reload);
+            cx.update(file::reload);
         }
     })
     .detach();
@@ -324,14 +338,24 @@ pub fn init(cx: &mut App) {
     cx.on_action(|SetSaveScope(scope): &SetSaveScope, cx| {
         update(cx, |settings| settings.save_scope = *scope);
     });
-    cx.on_action(|SetMostLanguageServers(most): &SetMostLanguageServers, cx| {
-        update(cx, |settings| settings.most_language_servers = *most);
+    cx.on_action(
+        |SetMostLanguageServers(most): &SetMostLanguageServers, cx| {
+            update(cx, |settings| settings.most_language_servers = *most);
+        },
+    );
+    cx.on_action(
+        |SetLanguageServer { name, scope, on }: &SetLanguageServer, cx| {
+            update(cx, |settings| settings.set_server(name, scope, *on));
+        },
+    );
+    cx.on_action(|SetChatVerbosity(verbosity): &SetChatVerbosity, cx| {
+        update(cx, |settings| settings.chat_verbosity = *verbosity);
     });
-    cx.on_action(|SetLanguageServer { name, scope, on }: &SetLanguageServer, cx| {
-        update(cx, |settings| settings.set_server(name, scope, *on));
+    cx.on_action(|SetChatWidth(width): &SetChatWidth, cx| {
+        update(cx, |settings| settings.chat_width = *width);
     });
-    cx.on_action(|SetChatWork(work): &SetChatWork, cx| {
-        update(cx, |settings| settings.chat_work = *work);
+    cx.on_action(|SetChatTextSize(size): &SetChatTextSize, cx| {
+        update(cx, |settings| settings.fonts.chat_size = *size);
     });
     cx.on_action(|SetChatMode(mode): &SetChatMode, cx| {
         update(cx, |settings| settings.chat_mode = *mode);
@@ -345,7 +369,7 @@ pub fn init(cx: &mut App) {
     // A change still settling when the app quits is written on the way out.
     cx.on_app_quit(|cx| {
         if cx.global_mut::<Store>().pending.take().is_some()
-            && let Some((path, json)) = encode(cx)
+            && let Some((path, json)) = file::encode(cx)
         {
             atomic_file::write(&path, &json);
         }
@@ -401,10 +425,10 @@ pub fn update(cx: &mut App, change: impl FnOnce(&mut Settings)) {
     cx.global_mut::<Store>().settings = settings;
     let save = cx.spawn(async move |cx| {
         cx.background_executor().timer(SAVE_DELAY).await;
-        if let Some((path, json)) = cx.update(encode) {
+        if let Some((path, json)) = cx.update(file::encode) {
             let written = cx.background_executor().spawn(async move {
                 atomic_file::write(&path, &json);
-                modified(&path)
+                file::modified(&path)
             });
             let seen = written.await;
             cx.update(|cx| {
@@ -415,69 +439,6 @@ pub fn update(cx: &mut App, change: impl FnOnce(&mut Settings)) {
     });
     let store = cx.global_mut::<Store>();
     (store.pending, store.unsaved) = (Some(save), true);
-}
-
-/// Takes up an edit made to the file outside the app since it was last read or written,
-/// unless a change made in the app is still to be written; an edit that doesn't read as
-/// settings, as one half done may not, is noted and left until the next.
-fn reload(cx: &mut App) {
-    let store = cx.global::<Store>();
-    let Some(path) = store.path.clone().filter(|_| !store.unsaved) else {
-        return;
-    };
-    let changed = modified(&path);
-    if changed == store.seen {
-        return;
-    }
-    let read = read(&path);
-    let store = cx.global_mut::<Store>();
-    store.seen = changed;
-    match read {
-        Ok(settings) if settings != store.settings => store.settings = settings,
-        Ok(_) => {}
-        Err(error) => log::warn!("not taking up {}: {error}", path.display()),
-    }
-}
-
-/// When the file at `path` last changed, if it's there.
-fn modified(path: &Path) -> Option<SystemTime> {
-    std::fs::metadata(path)
-        .and_then(|metadata| metadata.modified())
-        .ok()
-}
-
-fn read(path: &Path) -> Result<Settings, String> {
-    let bytes = std::fs::read(path).map_err(|error| error.to_string())?;
-    let mut value = serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
-    migrate(&mut value);
-    let mut settings: Settings = serde_json::from_value(value).map_err(|error| error.to_string())?;
-    settings.list_every_server();
-    Ok(settings)
-}
-
-fn load(path: &Path) -> Settings {
-    match read(path) {
-        Ok(settings) => settings,
-        // Before anything was saved.
-        Err(_) if !path.exists() => Settings::default(),
-        Err(error) => {
-            log::warn!("ignoring unreadable {}: {error}", path.display());
-            Settings::default()
-        }
-    }
-}
-
-/// The settings file's path and the JSON to write there.
-fn encode(cx: &mut App) -> Option<(PathBuf, Vec<u8>)> {
-    let store = cx.global::<Store>();
-    let path = store.path.clone()?;
-    match serde_json::to_vec_pretty(&store.settings) {
-        Ok(json) => Some((path, json)),
-        Err(error) => {
-            log::error!("couldn't encode the settings: {error}");
-            None
-        }
-    }
 }
 
 #[cfg(test)]

@@ -18,8 +18,8 @@ use super::tab_face::Face;
 use super::{Shell, SwitchTab, SwitchTabBack};
 use crate::files::{ROW, file_row};
 use crate::list::{self, Activate, PageDown, PageUp, SelectNext, SelectPrevious};
-use crate::model::Tab;
 use crate::modal;
+use crate::model::Tab;
 use crate::pane::unsaved_dot;
 use crate::theme::{self, Palette};
 
@@ -108,7 +108,10 @@ fn rows(shell: &Shell, cx: &App) -> Vec<Row> {
                 (Tab::Single(_), [file]) => {
                     let file = file.read(cx);
                     // The path as the tree names it, or whole outside the checkout: its folder.
-                    let shown = file.relative.as_deref().map_or(file.path.as_path(), Path::new);
+                    let shown = file
+                        .relative
+                        .as_deref()
+                        .map_or(file.path.as_path(), Path::new);
                     (shown.parent()).map_or(String::new(), |folder| folder.display().to_string())
                 }
                 _ => String::new(),
@@ -196,15 +199,24 @@ impl Switcher {
         let Some(row) = self.rows.get(index) else {
             return div().into_any_element();
         };
-        let name = div().when(row.preview, Styled::italic).child(row.name.clone());
+        let name = div()
+            .when(row.preview, Styled::italic)
+            .child(row.name.clone());
         let selected = index == self.selected;
-        file_row(("tab-switcher-row", index), selected, row.icon, name, row.folder.clone(), p)
-            .on_click(cx.listener(move |this, _, window, cx| {
-                this.selected = index;
-                this.pick(window, cx);
-            }))
-            .when(row.dirty, |row| row.child(unsaved_dot(p)))
-            .into_any_element()
+        file_row(
+            ("tab-switcher-row", index),
+            selected,
+            row.icon,
+            name,
+            row.folder.clone(),
+            p,
+        )
+        .on_click(cx.listener(move |this, _, window, cx| {
+            this.selected = index;
+            this.pick(window, cx);
+        }))
+        .when(row.dirty, |row| row.child(unsaved_dot(p)))
+        .into_any_element()
     }
 }
 
@@ -226,11 +238,13 @@ impl Render for Switcher {
             .on_action(cx.listener(|this, _: &SwitchTabBack, _, cx| this.step(-1, cx)))
             .on_action(cx.listener(|this, _: &Activate, window, cx| this.pick(window, cx)))
             // Letting go of ⌃ shows the tab picked.
-            .on_modifiers_changed(cx.listener(|this, event: &ModifiersChangedEvent, window, cx| {
-                if !event.modifiers.control {
-                    this.pick(window, cx);
-                }
-            }))
+            .on_modifiers_changed(
+                cx.listener(|this, event: &ModifiersChangedEvent, window, cx| {
+                    if !event.modifiers.control {
+                        this.pick(window, cx);
+                    }
+                }),
+            )
     }
 }
 

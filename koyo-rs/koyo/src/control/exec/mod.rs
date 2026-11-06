@@ -16,9 +16,9 @@ mod settings;
 mod tab;
 mod worktree;
 
-use koyo_app_control::{Command, ControlError};
 use gpui_kit::base::Root;
 use gpui_kit::{AnyWindowHandle, App, Context, Entity, Task, Window};
+use koyo_app_control::{Command, ControlError};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -140,9 +140,7 @@ pub(crate) fn main_shell(cx: &App) -> Option<(AnyWindowHandle, Entity<Shell>)> {
 
 /// Why an operation on the window can't be carried out while it's closed.
 pub(crate) fn window_closed() -> ControlError {
-    ControlError::not_found(
-        "Koyo's window is closed. Call app_focus to open it, then try again.",
-    )
+    ControlError::not_found("Koyo's window is closed. Call app_focus to open it, then try again.")
 }
 
 /// Runs `change` on the shell in its window.
@@ -171,7 +169,6 @@ pub(crate) fn try_update_shell<R>(
 
 /// `value` as JSON.
 pub(crate) fn output<T: Serialize>(value: &T) -> Result<Value, ControlError> {
-    serde_json::to_value(value).map_err(|error| {
-        ControlError::internal(format!("Koyo couldn't write its answer: {error}"))
-    })
+    serde_json::to_value(value)
+        .map_err(|error| ControlError::internal(format!("Koyo couldn't write its answer: {error}")))
 }

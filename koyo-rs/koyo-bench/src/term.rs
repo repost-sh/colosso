@@ -11,13 +11,13 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, Result, anyhow, bail};
+use crossbeam_channel::{Receiver, RecvTimeoutError};
 use koyo_term_control::client::{self, inbox};
 use koyo_term_control::{
     AttachMode, ClientKind, Connection, DaemonCommand, Handle, Hello, IfExists, Message,
     OpenRequest, Output, RequestBody, ResponseBody, Size, TermDir,
 };
 use koyo_term_engine::{Engine, TextFormat};
-use crossbeam_channel::{Receiver, RecvTimeoutError};
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 
 use crate::fixtures::{checkout_root, in_checkout};

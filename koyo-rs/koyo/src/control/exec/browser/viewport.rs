@@ -4,11 +4,11 @@
 
 use std::time::Duration;
 
+use gpui_kit::{App, AsyncApp};
 use koyo_app_control::ControlError;
 use koyo_app_control::ops::browser::{
     BrowserViewportInput, BrowserViewportOutput, DeviceName, ImageFormat, Orientation, ViewportZoom,
 };
-use gpui_kit::{App, AsyncApp};
 
 use super::super::{Caller, Exec, output};
 use super::acts::capture;

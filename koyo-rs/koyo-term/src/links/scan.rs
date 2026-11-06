@@ -84,18 +84,20 @@ fn url(text: &[char], at: usize) -> Option<Range<usize>> {
 /// The file path around `at`. Its run of characters is tried whole and in the pieces its
 /// brackets and separators make, longest first, so `Read(src/a.rs)` finds `src/a.rs` while
 /// `app/(auth)/page.tsx` is found whole: the first that's a file is the one.
-fn path(
-    text: &[char],
-    at: usize,
-    file: &mut Resolve<'_>,
-) -> Option<(Range<usize>, LinkTarget)> {
+fn path(text: &[char], at: usize, file: &mut Resolve<'_>) -> Option<(Range<usize>, LinkTarget)> {
     let run = run(text, at, ends_path)?;
     let splits = |i: &usize| {
         text.get(*i)
             .is_some_and(|c| matches!(c, '(' | ')' | '[' | ']' | '{' | '}' | ',' | '=' | ';'))
     };
     let starts: Vec<usize> = std::iter::once(run.start)
-        .chain((run.start..at).rev().filter(splits).take(SPLITS).map(|i| i + 1))
+        .chain(
+            (run.start..at)
+                .rev()
+                .filter(splits)
+                .take(SPLITS)
+                .map(|i| i + 1),
+        )
         .collect();
     let ends: Vec<usize> = std::iter::once(run.end)
         .chain((at + 1..run.end).filter(splits).take(SPLITS))
@@ -126,7 +128,10 @@ pub(crate) fn located(shown: &str, file: &mut Resolve<'_>) -> Option<(usize, Lin
             .chain(std::iter::once((text, None, None)))
             .find_map(|(path, line, column)| {
                 let path = file(path)?;
-                Some((text.chars().count(), LinkTarget::File { path, line, column }))
+                Some((
+                    text.chars().count(),
+                    LinkTarget::File { path, line, column },
+                ))
             })
     })
 }

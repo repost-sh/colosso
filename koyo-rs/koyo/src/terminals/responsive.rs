@@ -8,13 +8,13 @@
 use std::ops::RangeInclusive;
 use std::rc::Rc;
 
+use gpui_kit::{
+    Action, App, ClickEvent, Context, Div, Entity, Focusable as _, InteractiveElement as _,
+    IntoElement, ParentElement as _, Pixels, Render, SharedString, Styled as _, Subscription,
+    Window, div, px, size,
+};
 use koyo_term::{Scale, TerminalEvent, TerminalView, ToggleResponsive};
 use koyo_term_control::{ActorKind, PIN_CELLS};
-use gpui_kit::{
-    Action, App, ClickEvent, Context, Div, Entity, Focusable as _,
-    InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Render, SharedString,
-    Styled as _, Subscription, Window, div, px, size,
-};
 
 use crate::responsive::bar::{self, Bar, Fields};
 use crate::responsive::{Drag, GUTTER, Resizable, Zoom, grips};
@@ -97,10 +97,8 @@ impl ResponsiveTerminal {
         if view.pinned().is_some() {
             return Some((laid.size.width, laid.size.height));
         }
-        let room = crate::responsive::room(size(
-            laid.size.width,
-            laid.size.height - px(bar::HEIGHT),
-        ));
+        let room =
+            crate::responsive::room(size(laid.size.width, laid.size.height - px(bar::HEIGHT)));
         Some((room.width, room.height))
     }
 
@@ -278,7 +276,8 @@ fn turn(preset: (u16, u16), turned: bool) -> (u16, u16) {
 /// The preset picked, while `size` is its size as it's turned: a size from elsewhere (a
 /// drag, a field, an agent) is a free one.
 fn preset_at(preset: Option<(usize, bool)>, size: (u16, u16)) -> Option<(usize, bool)> {
-    preset.filter(|(at, turned)| PRESETS.get(*at).map(|preset| turn(*preset, *turned)) == Some(size))
+    preset
+        .filter(|(at, turned)| PRESETS.get(*at).map(|preset| turn(*preset, *turned)) == Some(size))
 }
 
 impl Resizable for ResponsiveTerminal {
@@ -339,7 +338,12 @@ impl Render for ResponsiveTerminal {
                 host: cx.entity(),
                 free,
             })
-            .children(grips::label(self.drag.as_ref(), cols.into(), rows.into(), p));
+            .children(grips::label(
+                self.drag.as_ref(),
+                cols.into(),
+                rows.into(),
+                p,
+            ));
         root.children(bar).child(area)
     }
 }

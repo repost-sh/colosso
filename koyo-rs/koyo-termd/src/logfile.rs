@@ -62,10 +62,7 @@ impl Log for Logger {
                 .write(&line),
         };
         if let Err(error) = written {
-            let _ = writeln!(
-                io::stderr(),
-                "koyo-termd: couldn't write the log: {error}"
-            );
+            let _ = writeln!(io::stderr(), "koyo-termd: couldn't write the log: {error}");
         }
     }
 

@@ -10,8 +10,11 @@ use std::collections::HashMap;
 use std::ops::Range;
 use std::sync::OnceLock;
 
-use koyo_git::{Content, Lines};
+use gpui_kit::Hsla;
+use koyo_git::Content;
 use syntect::parsing::{ParseState, Scope, ScopeStack, ScopeStackOp, SyntaxReference, SyntaxSet};
+
+use crate::theme::Palette;
 
 /// Files with more lines than this on a side show plain.
 const LONGEST_HIGHLIGHTED: usize = 20_000;
@@ -54,9 +57,18 @@ pub fn highlight(path: &str, content: &Content) -> Option<Highlights> {
     let syntaxes = syntaxes();
     let syntax = syntax_for(syntaxes, path, new.iter().next().or(old.iter().next()))?;
     Some(Highlights {
-        old: side(syntaxes, syntax, old),
-        new: side(syntaxes, syntax, new),
+        old: side(syntaxes, syntax, old.iter()),
+        new: side(syntaxes, syntax, new.iter()),
     })
+}
+
+/// The highlights for `lines` one after the other in a file at `path`, as a stretch of it a diff
+/// shows, or `None` if its kind of file isn't known. A stretch starting in a comment or a string
+/// colours its first lines as code: it's read from where it starts.
+pub fn highlight_lines(path: &str, lines: &[&str]) -> Option<Vec<LineTokens>> {
+    let syntaxes = syntaxes();
+    let syntax = syntax_for(syntaxes, path, lines.first().copied())?;
+    Some(side(syntaxes, syntax, lines.iter().copied()))
 }
 
 /// bat's syntaxes, loaded the first time they're asked for.
@@ -80,11 +92,14 @@ fn syntax_for<'a>(
         .filter(|syntax| syntax.name != "Plain Text")
 }
 
-fn side(syntaxes: &SyntaxSet, syntax: &SyntaxReference, lines: &Lines) -> Vec<LineTokens> {
+fn side<'a>(
+    syntaxes: &SyntaxSet,
+    syntax: &SyntaxReference,
+    lines: impl Iterator<Item = &'a str>,
+) -> Vec<LineTokens> {
     let mut state = ParseState::new(syntax);
     let mut stack = ScopeStack::new();
     lines
-        .iter()
         .map(|line| {
             if line.len() > LONGEST_LINE {
                 return Vec::new();
@@ -128,6 +143,20 @@ fn token_of(stack: &ScopeStack) -> Option<Token> {
     })
 }
 
+/// The palette's colour for code of a kind.
+pub fn token_colour(token: Token, p: Palette) -> Hsla {
+    match token {
+        Token::Comment => p.code.comment,
+        Token::Keyword => p.code.keyword,
+        Token::String => p.code.string,
+        Token::Constant => p.code.number,
+        Token::Function => p.code.function,
+        Token::Type => p.code.kind,
+        Token::Tag => p.code.tag,
+        Token::Attribute => p.code.attribute,
+    }
+}
+
 /// The kind a `TextMate` scope name like `entity.name.function.rust` stands for.
 fn kind_of(scope: &str) -> Option<Token> {
     const KINDS: [(&str, Token); 15] = [
@@ -159,7 +188,7 @@ fn kind_of(scope: &str) -> Option<Token> {
 
 #[cfg(test)]
 mod tests {
-    use koyo_git::Hunk;
+    use koyo_git::{Hunk, Lines};
 
     use super::*;
 
@@ -206,6 +235,15 @@ mod tests {
         assert!(highlight("crates/app/Cargo.toml", &text("", "[package]")).is_some());
         assert!(highlight("bin/run", &text("", "#!/bin/bash\necho hi")).is_some());
         assert!(highlight("notes.unknownext", &text("", "plain words")).is_none());
+    }
+
+    #[test]
+    fn a_stretch_of_a_file_is_highlighted_as_it_reads() {
+        let lines = ["fn main() {", "    let s = \"hi\";", "}"];
+        let tokens = highlight_lines("src/main.rs", &lines).unwrap();
+        assert_eq!(tokens.len(), 3);
+        assert!(kinds(lines[1], &tokens[1]).contains(&("\"hi\"", Token::String)));
+        assert!(highlight_lines("notes.unknownext", &["plain"]).is_none());
     }
 
     #[test]

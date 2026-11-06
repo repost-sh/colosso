@@ -5,6 +5,7 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+use futures::executor::block_on;
 use koyo_lsp::lsp_types::notification::{DidOpenTextDocument, Notification};
 use koyo_lsp::lsp_types::request::{HoverRequest, Request};
 use koyo_lsp::lsp_types::{
@@ -12,7 +13,6 @@ use koyo_lsp::lsp_types::{
     WorkDoneProgressParams,
 };
 use koyo_lsp::{Client, Document, Launch, LineIndex, LspError, uri, within};
-use futures::executor::block_on;
 use serde_json::{Value, json};
 
 /// A request the fake answers however its script says.
@@ -171,7 +171,10 @@ pub fn probe(launch: &Launch, root: &Path, call: &Call) {
             }
         }
     });
-    eprintln!("{name}: hover in {:.0} ms", took.elapsed().as_secs_f64() * 1000.);
+    eprintln!(
+        "{name}: hover in {:.0} ms",
+        took.elapsed().as_secs_f64() * 1000.
+    );
     let said = match hover.contents {
         HoverContents::Markup(markup) => markup.value,
         HoverContents::Scalar(MarkedString::String(text)) => text,

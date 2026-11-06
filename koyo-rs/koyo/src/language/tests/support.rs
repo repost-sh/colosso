@@ -7,11 +7,11 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use koyo_lsp::Launch;
 use futures::StreamExt as _;
 use futures::stream::{self, LocalBoxStream};
 use gpui_kit::component::input::EditorState;
 use gpui_kit::{AnyWindowHandle, App, AppContext as _, Entity, TestAppContext};
+use koyo_lsp::Launch;
 use serde_json::{Value, json};
 
 use crate::files::{FileEditor, Place};
@@ -97,10 +97,7 @@ pub(super) fn status(health: &str, message: Option<&str>) -> Value {
 }
 
 pub(super) fn uri(path: &Path) -> String {
-    koyo_lsp::uri::from_path(path)
-        .unwrap()
-        .as_str()
-        .to_owned()
+    koyo_lsp::uri::from_path(path).unwrap().as_str().to_owned()
 }
 
 /// Where `needle` is in `text`: its bytes, and the same as a UTF-16 range.
@@ -178,7 +175,12 @@ pub(super) type Ready = (
 
 /// Shows the file at `path` of the checkout at `root` in a window, with the fake `launcher`
 /// runs as its server, and waits for the server to be ready.
-pub(super) async fn ready(root: &Path, path: &str, launcher: Launcher, cx: &mut TestAppContext) -> Ready {
+pub(super) async fn ready(
+    root: &Path,
+    path: &str,
+    launcher: Launcher,
+    cx: &mut TestAppContext,
+) -> Ready {
     let shell = shell(&[root], launcher, cx);
     let view = open(&shell, root, path, cx);
     let server = server(root, cx).unwrap();

@@ -2,14 +2,14 @@
 //! written on threads of their own, and an in-process client calling from a thread. The test
 //! thread answers what they hand the UI thread, as the app's loop would.
 
-use koyo_app_control::frame::{MAX_CLIENT_FRAME, MAX_SERVER_FRAME};
-use koyo_app_control::transport::{Connection, FrameReader};
-use koyo_app_control::{ClientFrame, ClientInfo, ErrorCode, Scope, ServerFrame};
 use futures::StreamExt as _;
 use futures::channel::oneshot;
 use futures::executor::block_on;
 use futures::future::{Either, select};
 use gpui_kit::TestAppContext;
+use koyo_app_control::frame::{MAX_CLIENT_FRAME, MAX_SERVER_FRAME};
+use koyo_app_control::transport::{Connection, FrameReader};
+use koyo_app_control::{ClientFrame, ClientInfo, ErrorCode, Scope, ServerFrame};
 use serde_json::{Value, json};
 
 use super::{Rig, allow, controlled, hello_of, op, terminal};

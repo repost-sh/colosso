@@ -2,8 +2,8 @@
 //! with a `requestId`, the person's confirmation of a destructive call, the executor, the
 //! activity log, and the answer.
 
-use koyo_app_control::{Command, ControlError};
 use gpui_kit::{App, AsyncApp};
+use koyo_app_control::{Command, ControlError};
 use serde_json::Value;
 
 use super::activity::{ActivityKind, Decision};

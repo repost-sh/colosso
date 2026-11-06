@@ -8,10 +8,10 @@
 #[cfg(test)]
 mod common;
 
+use common::{next_call, spawn_app, temp_dir};
 use koyo_app_control::cli::{self, CLIENT_NAME, Invocation};
 use koyo_app_control::frame::{MAX_SERVER_FRAME, ServerFrame};
 use koyo_app_control::{ControlError, Endpoint, ErrorCode, Scope, catalog};
-use common::{next_call, spawn_app, temp_dir};
 use serde_json::{Value, json};
 
 #[cfg(test)]

@@ -11,8 +11,8 @@ mod common;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use koyo_git::{Head, NewWorktree, Ref, Repo, Start};
 use common::git;
+use koyo_git::{Head, NewWorktree, Ref, Repo, Start};
 
 struct Fixture {
     root: PathBuf,

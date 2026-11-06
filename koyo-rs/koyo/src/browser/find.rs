@@ -2,7 +2,6 @@
 //! until it's back to the page's own size; and searched for text in a bar over the page's
 //! top right, the matches counted, Return going to the next and Shift-Return back.
 
-use koyo_browser_ipc::{AppRequest, ViewAction};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::Button;
@@ -11,6 +10,7 @@ use gpui_kit::{
     AppContext as _, Context, Div, Entity, InteractiveElement as _, KeyDownEvent,
     ParentElement as _, Styled as _, Subscription, Window, div, px,
 };
+use koyo_browser_ipc::{AppRequest, ViewAction};
 
 use super::view::BrowserView;
 use crate::shell::{glass, icon_button};

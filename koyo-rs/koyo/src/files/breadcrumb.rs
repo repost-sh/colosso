@@ -41,7 +41,10 @@ pub(super) fn crumbs(path: &Path, relative: Option<&str>) -> Vec<Crumb> {
             });
             from = at + 1;
         }
-    } else if let Some(folder) = path.parent().filter(|folder| !folder.as_os_str().is_empty()) {
+    } else if let Some(folder) = path
+        .parent()
+        .filter(|folder| !folder.as_os_str().is_empty())
+    {
         crumbs.push(Crumb {
             label: display_path(folder).into(),
             path: None,
@@ -82,7 +85,11 @@ impl FilePane {
                 .debug_selector(move || format!("crumb-{index}"));
             let mut piece = if index == last {
                 let file = icon(file_icon(&crumb.label), 14.).text_color(p.muted);
-                piece.flex_shrink_0().text_color(p.text).child(file).child(crumb.label)
+                piece
+                    .flex_shrink_0()
+                    .text_color(p.text)
+                    .child(file)
+                    .child(crumb.label)
             } else if crumb.path.is_some() {
                 piece.min_w_0().child(ellipsized(crumb.label))
             } else {
@@ -120,19 +127,24 @@ impl FilePane {
                 .px_1p5()
                 .rounded(px(4.))
                 .when(picked, |face| face.bg(p.selected).text_color(p.text))
-                .when(!picked, |face| face.cursor_pointer().hover(|style| style.text_color(p.text)))
+                .when(!picked, |face| {
+                    face.cursor_pointer()
+                        .hover(|style| style.text_color(p.text))
+                })
                 .child(label)
         };
         div()
             .flex()
             .flex_shrink_0()
             .gap_0p5()
-            .child(face("show-drawing", "Preview", !text).on_click(cx.listener(
-                |this, _, window, cx| this.show_text(false, window, cx),
-            )))
-            .child(face("show-text", "Source", text).on_click(cx.listener(
-                |this, _, window, cx| this.show_text(true, window, cx),
-            )))
+            .child(
+                face("show-drawing", "Preview", !text)
+                    .on_click(cx.listener(|this, _, window, cx| this.show_text(false, window, cx))),
+            )
+            .child(
+                face("show-text", "Source", text)
+                    .on_click(cx.listener(|this, _, window, cx| this.show_text(true, window, cx))),
+            )
     }
 }
 

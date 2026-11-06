@@ -65,7 +65,10 @@ async fn inlay_hints_show_what_the_server_infers_and_follow_the_text(cx: &mut Te
     after_the_pause(shell.0, &server, &editor, cx, |cx| inlays(cx).len() == 2).await;
     assert_eq!(
         cx.read(inlays),
-        [inlay(x.end, ": u32", Bias::Right), inlay(one.start, "n: ", Bias::Left)]
+        [
+            inlay(x.end, ": u32", Bias::Right),
+            inlay(one.start, "n: ", Bias::Left)
+        ]
     );
 
     // A character typed before them moves both at once, before the server is asked again;
@@ -74,7 +77,10 @@ async fn inlay_hints_show_what_the_server_infers_and_follow_the_text(cx: &mut Te
     cx.simulate_keystrokes(shell.0, "y->y");
     assert_eq!(
         cx.read(inlays),
-        [inlay(x.end + 1, ": u32", Bias::Right), inlay(one.start + 1, "n: ", Bias::Left)]
+        [
+            inlay(x.end + 1, ": u32", Bias::Right),
+            inlay(one.start + 1, "n: ", Bias::Left)
+        ]
     );
     after_the_pause(shell.0, &server, &editor, cx, |cx| inlays(cx).len() == 1).await;
     assert_eq!(cx.read(inlays), [inlay(x.end + 1, ": u32", Bias::Right)]);
@@ -95,7 +101,10 @@ async fn inlay_hints_show_what_the_server_infers_and_follow_the_text(cx: &mut Te
     cx.simulate_keystrokes(shell.0, "y->y");
     assert_eq!(cx.read(inlays), [inlay(x.end + 2, ": u32", Bias::Right)]);
     let watched = vec![changes(&server, cx)];
-    until(cx, watched, |cx| server.read(cx).hints_refreshed == refreshed + 1).await;
+    until(cx, watched, |cx| {
+        server.read(cx).hints_refreshed == refreshed + 1
+    })
+    .await;
     after_the_pause(shell.0, &server, &editor, cx, |cx| inlays(cx).is_empty()).await;
     let _ = std::fs::remove_dir_all(&root);
 }

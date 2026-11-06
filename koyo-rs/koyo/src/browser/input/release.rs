@@ -11,8 +11,8 @@
 //! button held while there are any belies them: the window is then had to let them go
 //! (`let_go`).
 
-use koyo_browser_ipc::MouseKind;
 use gpui_kit::{Context, MouseUpEvent, Pixels, PlatformInput, Point, Window};
+use koyo_browser_ipc::MouseKind;
 
 use crate::browser::view::BrowserView;
 

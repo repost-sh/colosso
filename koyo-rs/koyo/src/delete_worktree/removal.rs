@@ -5,19 +5,15 @@
 
 use std::path::PathBuf;
 
-use koyo_git::{Loss, Repo};
 use gpui_kit::{App, AppContext as _, Task, WeakEntity};
+use koyo_git::{Loss, Repo};
 
 use crate::projects::read_worktrees;
 use crate::shell::Shell;
 
 /// Asks git off the main thread what deleting the worktree at `path`, of the project whose
 /// main checkout is `project`, would lose.
-pub(crate) fn inspect(
-    project: PathBuf,
-    path: PathBuf,
-    cx: &App,
-) -> Task<koyo_git::Result<Loss>> {
+pub(crate) fn inspect(project: PathBuf, path: PathBuf, cx: &App) -> Task<koyo_git::Result<Loss>> {
     cx.background_spawn(async move { Repo::open(&project)?.inspect_removal(&path) })
 }
 

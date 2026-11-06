@@ -5,9 +5,9 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
+use gpui_kit::{AppContext as _, Context, Entity, Task};
 use koyo_term::{Source, TerminalView};
 use koyo_term_control::{Handle, OpenRequest, RequestBody, ResponseBody, Selector, terminal};
-use gpui_kit::{AppContext as _, Context, Entity, Task};
 
 use super::{Terminals, free_name, open_request, shell_name};
 use crate::settings::ProjectScript;
@@ -56,15 +56,22 @@ impl Shell {
         else {
             return;
         };
-        self.open_terminal(worktree, None.into(), Vec::new(), None, cx).detach();
+        self.open_terminal(worktree, None.into(), Vec::new(), None, cx)
+            .detach();
     }
 
     /// Runs `script` through the login shell in the checkout at `worktree`, in a new tab called
     /// after it: it runs again each time a person asks.
-    pub fn run_script(&mut self, worktree: PathBuf, script: &ProjectScript, cx: &mut Context<Self>) {
+    pub fn run_script(
+        &mut self,
+        worktree: PathBuf,
+        script: &ProjectScript,
+        cx: &mut Context<Self>,
+    ) {
         let name = terminal::name_after(&script.name).unwrap_or_else(|| "script".to_owned());
         let command = terminal::login_shell_line(script.command.clone());
-        self.open_terminal(worktree, Naming::After(name), command, None, cx).detach();
+        self.open_terminal(worktree, Naming::After(name), command, None, cx)
+            .detach();
     }
 
     /// Opens a terminal in the checkout at `worktree`, in a new tab that's shown and takes the

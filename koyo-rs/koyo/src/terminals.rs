@@ -9,16 +9,14 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use koyo_term::{LinkTarget, Look, Source, TermClient, TerminalEvent, TerminalView};
-use koyo_term_control::{
-    DaemonCommand, Handle, IfExists, OpenRequest, Selector, TermDir, Theme,
-};
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Entity, Focusable as _, Hsla,
-    InteractiveElement as _, IntoElement as _, ParentElement as _, Rgba, Styled as _,
-    Subscription, Task, Window, div, px,
+    InteractiveElement as _, IntoElement as _, ParentElement as _, Rgba, Styled as _, Subscription,
+    Task, Window, div, px,
 };
+use koyo_term::{LinkTarget, Look, Source, TermClient, TerminalEvent, TerminalView};
+use koyo_term_control::{DaemonCommand, Handle, IfExists, OpenRequest, Selector, TermDir, Theme};
 
 use crate::model::{Pane, Workspace};
 use crate::settings;
@@ -298,7 +296,12 @@ impl Shell {
     ) -> Option<Entity<TerminalView>> {
         let ids: Vec<u64> = (self.workspace.branch())
             .and_then(|branch| branch.tabs.get(branch.active_tab))
-            .map(|tab| tab.panes().iter().filter_map(|pane| pane.terminal).collect())
+            .map(|tab| {
+                tab.panes()
+                    .iter()
+                    .filter_map(|pane| pane.terminal)
+                    .collect()
+            })
             .unwrap_or_default();
         let mut first = None;
         for id in ids {
@@ -312,12 +315,7 @@ impl Shell {
 
     /// What `pane` shows: its chat or its terminal when its view is made, else what
     /// `crate::pane` draws for its kind.
-    pub fn pane_content(
-        &self,
-        pane: &Pane,
-        p: Palette,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
+    pub fn pane_content(&self, pane: &Pane, p: Palette, cx: &mut Context<Self>) -> AnyElement {
         if let Some(chat) = self.chat_tabs.view(pane.id) {
             return chat.clone().into_any_element();
         }

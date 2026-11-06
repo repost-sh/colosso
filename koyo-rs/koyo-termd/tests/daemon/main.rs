@@ -13,13 +13,13 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use crossbeam_channel::Receiver;
 use koyo_term_control::{
     AttachMode, ClientError, ClientKind, Connection, DaemonCommand, ErrorCode, EventKind, Handle,
     Hello, IfExists, Message, OpenRequest, PROTOCOL, RequestBody, ResponseBody, ScreenRead,
     Selector, Size, Status, TermDir, TerminalRecord, TerminalSummary, Welcome,
 };
 use koyo_term_engine::{Engine, TextFormat};
-use crossbeam_channel::Receiver;
 
 mod catalog;
 mod catchup;
@@ -255,8 +255,7 @@ fn a_terminal_outlives_its_client_and_reattaches_from_a_snapshot() {
     assert!(!existed);
     assert_eq!(terminal.name, "echoer");
     // target/ is inside this checkout, which the daemon found without being told.
-    let checkout =
-        std::fs::canonicalize(env!("KOYO_CHECKOUT")).unwrap();
+    let checkout = std::fs::canonicalize(env!("KOYO_CHECKOUT")).unwrap();
     assert_eq!(
         terminal
             .worktree

@@ -3,13 +3,13 @@
 //! siblings): a row a line, expanded by a click; Follow, Jump to latest and Clear on the
 //! activity; "Failed only" on the commands.
 
-use koyo_term_control::{ActivityEntry, ActorKind, CommandRecord, ScreenshotEntry};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, Context, Div, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _,
     Render, ScrollEvent, SharedString, Stateful, StatefulInteractiveElement as _, Styled as _,
     Window, div, img, px,
 };
+use koyo_term_control::{ActivityEntry, ActorKind, CommandRecord, ScreenshotEntry};
 
 use super::super::header::words;
 use super::{ActivityPanel, PanelTab};

@@ -1,8 +1,8 @@
 //! The trackpad over a page: scrolling it, and pinching it to zoom in or out around the
 //! pinch, as Chrome does.
 
-use koyo_browser_ipc::{AppRequest, PinchPhase};
 use gpui_kit::{Context, PinchEvent, ScrollDelta, ScrollEvent, TouchPhase};
+use koyo_browser_ipc::{AppRequest, PinchPhase};
 
 use super::input::modifiers_of;
 use super::view::BrowserView;

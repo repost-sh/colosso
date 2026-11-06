@@ -1,8 +1,8 @@
 //! The view in a window: a start page nobody holds that starts the host, the lease once the
 //! person acts, and the questions it asks one at a time.
 
-use koyo_browser_ipc::Dialog;
 use gpui_kit::{AnyWindowHandle, TestAppContext, px, size};
+use koyo_browser_ipc::Dialog;
 
 use super::*;
 use crate::browser::control::Mode;

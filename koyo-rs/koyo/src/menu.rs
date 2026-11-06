@@ -15,8 +15,8 @@ use gpui_kit::component::kbd::Kbd;
 use gpui_kit::{
     Action, AnyWindowHandle, App, AppContext as _, Bounds, Context, ElementId, Entity, FocusHandle,
     Global, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, ParentElement as _,
-    Pixels, Render, Rems, SharedString, Size, Styled as _, Window, WindowBackgroundAppearance, WindowBounds,
-    WindowKind, WindowOptions, div, point, px, size,
+    Pixels, Rems, Render, SharedString, Size, Styled as _, Window, WindowBackgroundAppearance,
+    WindowBounds, WindowKind, WindowOptions, div, point, px, size,
 };
 
 use self::view::{Menu, Rows};
@@ -71,7 +71,13 @@ impl MenuItem {
         label: impl Into<SharedString>,
         action: Box<dyn Action>,
     ) -> Self {
-        MenuItem { icon, label: label.into(), action, switch: None, apart: false }
+        MenuItem {
+            icon,
+            label: label.into(),
+            action,
+            switch: None,
+            apart: false,
+        }
     }
 
     /// A switch, on or off.
@@ -163,7 +169,15 @@ impl Trigger {
     ) {
         if self.clears_the_way(cx) {
             let items = items(cx);
-            open_rows(self.id.clone(), self.bounds.get(), items, highlighted, target, window, cx);
+            open_rows(
+                self.id.clone(),
+                self.bounds.get(),
+                items,
+                highlighted,
+                target,
+                window,
+                cx,
+            );
         }
     }
 
@@ -177,7 +191,14 @@ impl Trigger {
     ) {
         if self.clears_the_way(cx) {
             let panel = panel(cx);
-            open_surface(self.id.clone(), self.bounds.get(), extent, panel, window, cx);
+            open_surface(
+                self.id.clone(),
+                self.bounds.get(),
+                extent,
+                panel,
+                window,
+                cx,
+            );
         }
     }
 
@@ -239,7 +260,9 @@ fn close(cx: &mut App) {
         return;
     };
     cx.defer(move |cx| {
-        window.update(cx, |_, window, _| window.remove_window()).ok();
+        window
+            .update(cx, |_, window, _| window.remove_window())
+            .ok();
     });
 }
 
@@ -263,7 +286,12 @@ pub(crate) fn open_rows(
     let extent = fitted(&items, window);
     let target = target.clone();
     let parent = window.window_handle();
-    let rows = cx.new(|_| Rows { items, highlighted, target, parent });
+    let rows = cx.new(|_| Rows {
+        items,
+        highlighted,
+        target,
+        parent,
+    });
     open_surface(id, anchor, extent, rows, window, cx);
 }
 
@@ -330,7 +358,9 @@ fn open_surface<B: MenuBody>(
                         return;
                     }
                     let key = event.keystroke.key.as_str();
-                    let heard = hearing.update(cx, |body, cx| body.hears(key, cx)).unwrap_or(false);
+                    let heard = hearing
+                        .update(cx, |body, cx| body.hears(key, cx))
+                        .unwrap_or(false);
                     let closing = !heard && matches!(key, "escape" | "enter");
                     if closing {
                         close(cx);
@@ -372,7 +402,9 @@ fn fitted(items: &[(MenuItem, Option<Kbd>)], window: &Window) -> Size<Pixels> {
     };
     let longest = items.iter().map(|row| {
         let label = &row.0.label;
-        let line = window.text_system().shape_line(label.clone(), font_size, &[run(label)], None);
+        let line = window
+            .text_system()
+            .shape_line(label.clone(), font_size, &[run(label)], None);
         line.width + beside(row)
     });
     // A pixel over, for a label to fit in what it measures rather than wrap at its very end.
@@ -383,8 +415,17 @@ fn fitted(items: &[(MenuItem, Option<Kbd>)], window: &Window) -> Size<Pixels> {
         let room = width - px(PADDING * 2.) - beside(row);
         let lines = (window.text_system())
             .shape_text(label.clone(), font_size, &[run(label)], Some(room), None)
-            .map_or(1, |shaped| shaped.iter().map(|line| line.wrap_boundaries.len() + 1).sum());
-        let above = if separated(items, index) { SEPARATOR } else { 0. };
+            .map_or(1, |shaped| {
+                shaped
+                    .iter()
+                    .map(|line| line.wrap_boundaries.len() + 1)
+                    .sum()
+            });
+        let above = if separated(items, index) {
+            SEPARATOR
+        } else {
+            0.
+        };
         above + theme::ROW_HEIGHT + LABEL_LINE * (lines - 1) as f32
     });
     size(width, px(PADDING * 2. + rows.sum::<f32>()))
@@ -411,12 +452,24 @@ mod tests {
         opener
             .update(cx, |opener, window, cx| {
                 let target = opener.0.clone();
-                open_rows("test-menu".into(), Bounds::default(), Vec::new(), None, &target, window, cx);
+                open_rows(
+                    "test-menu".into(),
+                    Bounds::default(),
+                    Vec::new(),
+                    None,
+                    &target,
+                    window,
+                    cx,
+                );
             })
             .unwrap();
         cx.run_until_parked();
         let parent: AnyWindowHandle = opener.into();
-        let menu = cx.windows().into_iter().find(|window| *window != parent).unwrap();
+        let menu = cx
+            .windows()
+            .into_iter()
+            .find(|window| *window != parent)
+            .unwrap();
         (opener, menu)
     }
 
@@ -428,6 +481,9 @@ mod tests {
         menu.update(cx, |_, _, cx| close(cx)).unwrap();
         cx.run_until_parked();
 
-        assert!(!cx.windows().contains(&menu), "nothing else could ever close it");
+        assert!(
+            !cx.windows().contains(&menu),
+            "nothing else could ever close it"
+        );
     }
 }

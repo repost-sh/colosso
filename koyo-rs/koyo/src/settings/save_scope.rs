@@ -31,6 +31,8 @@ impl SaveScope {
 
     /// A menu of what ⌘S can save, with `self` checked.
     pub fn menu(self) -> NativeMenu {
-        checked_menu(SaveScope::ALL, self, SaveScope::label, |scope| Box::new(SetSaveScope(scope)))
+        checked_menu(SaveScope::ALL, self, SaveScope::label, |scope| {
+            Box::new(SetSaveScope(scope))
+        })
     }
 }

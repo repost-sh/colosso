@@ -3,8 +3,8 @@
 //! so it shows at the prompt and goes into the shell's own history, and the shell stays when it's
 //! done. Typed before the prompt, the terminal would echo it above the prompt.
 
-use koyo_term_control::{Handle, RequestBody, SendRequest, Status, terminal};
 use gpui_kit::{AppContext as _, Context};
+use koyo_term_control::{Handle, RequestBody, SendRequest, Status, terminal};
 
 use super::open::Naming;
 use super::shell_name;
@@ -14,11 +14,16 @@ impl Shell {
     /// Opens a shell in the selected checkout, in a new tab named after `line`, and types `line`
     /// into it once it's at its prompt.
     pub(crate) fn run_in_new_terminal(&mut self, line: String, cx: &mut Context<Self>) {
-        let Some(worktree) = self.workspace.branch().map(|unit| unit.worktree.path.clone()) else {
+        let Some(worktree) = self
+            .workspace
+            .branch()
+            .map(|unit| unit.worktree.path.clone())
+        else {
             return;
         };
         let name = Naming::After(terminal::name_after(&line).unwrap_or_else(shell_name));
-        self.open_terminal(worktree, name, Vec::new(), Some(line), cx).detach();
+        self.open_terminal(worktree, name, Vec::new(), Some(line), cx)
+            .detach();
     }
 
     /// What waits to be typed goes into each terminal the daemon now says is idle: at its prompt,
@@ -31,7 +36,12 @@ impl Shell {
         let terminals = &self.terminals;
         let ready: Vec<(u64, Handle)> = (terminals.typing.keys())
             .filter_map(|id| Some((*id, terminals.handle_of(*id)?.clone())))
-            .filter(|(_, handle)| terminals.states.get(handle).is_some_and(|state| state.status == Status::Idle))
+            .filter(|(_, handle)| {
+                terminals
+                    .states
+                    .get(handle)
+                    .is_some_and(|state| state.status == Status::Idle)
+            })
             .collect();
         for (id, handle) in ready {
             if let Some(line) = self.terminals.typing.remove(&id) {
@@ -102,23 +112,44 @@ mod tests {
     }
 
     #[gpui_kit::test]
-    fn a_command_waits_while_its_shell_starts_or_rings_and_goes_once_it_is_idle(cx: &mut TestAppContext) {
+    fn a_command_waits_while_its_shell_starts_or_rings_and_goes_once_it_is_idle(
+        cx: &mut TestAppContext,
+    ) {
         let root = repo("typing-waits", &[("README.md", "hi\n")]);
         let (_, shell) = shell_with(&[&root], cx);
         shell.update(cx, |shell, cx| {
             let handle = Handle::generate();
-            let id = shell.terminals.add(Source::Existing { handle: handle.clone(), name: "zsh".into() });
+            let id = shell.terminals.add(Source::Existing {
+                handle: handle.clone(),
+                name: "zsh".into(),
+            });
             shell.terminals.typing.insert(id, "echo hi".into());
-            shell.terminals.states.upsert(&record(&handle, Status::Running));
+            shell
+                .terminals
+                .states
+                .upsert(&record(&handle, Status::Running));
             shell.type_waiting(cx);
-            assert!(shell.terminals.typing.contains_key(&id), "still starting up");
+            assert!(
+                shell.terminals.typing.contains_key(&id),
+                "still starting up"
+            );
             let now = |status: Status, reason: &str| Event {
                 handle: handle.clone(),
-                kind: EventKind::Status { status, reason: reason.into(), progress: None },
+                kind: EventKind::Status {
+                    status,
+                    reason: reason.into(),
+                    progress: None,
+                },
             };
-            shell.terminals.states.apply(&now(Status::NeedsInput, "bell"));
+            shell
+                .terminals
+                .states
+                .apply(&now(Status::NeedsInput, "bell"));
             shell.type_waiting(cx);
-            assert!(shell.terminals.typing.contains_key(&id), "a bell isn't a prompt");
+            assert!(
+                shell.terminals.typing.contains_key(&id),
+                "a bell isn't a prompt"
+            );
             shell.terminals.states.apply(&now(Status::Idle, "prompt"));
             shell.type_waiting(cx);
             assert!(shell.terminals.typing.is_empty(), "typed at the prompt");

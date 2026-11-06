@@ -36,8 +36,8 @@ use support::{Host, scratch, stand_in, stand_in_for};
 
 /// The executable `script/agent-host` builds, which `script/check` runs before these tests.
 fn compiled_host() -> PathBuf {
-    let host = PathBuf::from(env!("KOYO_CHECKOUT"))
-        .join("koyo-js/koyo-agent-host/dist/koyo-agent-host");
+    let host =
+        PathBuf::from(env!("KOYO_CHECKOUT")).join("koyo-js/koyo-agent-host/dist/koyo-agent-host");
     assert!(
         host.is_file(),
         "{} isn't there: run script/agent-host first",
@@ -133,7 +133,10 @@ fn settled(replica: &Replica) -> bool {
 fn signal_host(dir: &DaemonDir, signal: &str) {
     let stream = UnixStream::connect(dir.socket()).unwrap();
     let pid = Client::over(stream, ClientKind::Test).unwrap().hello.pid;
-    (Command::new("kill").args([signal, &pid.to_string()]).status()).unwrap();
+    (Command::new("kill")
+        .args([signal, &pid.to_string()])
+        .status())
+    .unwrap();
 }
 
 /// Waits for the next `Disconnected`, skipping events.
@@ -275,7 +278,10 @@ fn a_host_of_another_build_that_is_busy_waits_for_the_person() {
     );
     let client = never_starting(&dir);
     let refused = client.request::<ThreadsRead>(&read_params());
-    assert!(matches!(refused, Err(ClientError::OtherBuild)), "{refused:?}");
+    assert!(
+        matches!(refused, Err(ClientError::OtherBuild)),
+        "{refused:?}"
+    );
 
     // The person chose to restart the chats: it's stopped, and nothing listens.
     client.replace_host().unwrap();

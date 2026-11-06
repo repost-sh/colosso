@@ -4,12 +4,12 @@
 
 use std::time::Duration;
 
-use koyo_browser_ipc::PaneId;
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::{
     Action, Context, Div, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent,
     ParentElement as _, Pixels, Point, Window, div, point, px,
 };
+use koyo_browser_ipc::PaneId;
 use serde::Deserialize;
 
 use super::control::Mode;

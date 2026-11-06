@@ -16,7 +16,6 @@ use std::ops::Range;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use koyo_git::{Change, Checkout as Git, Discarding, Status};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::{Selectable as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -26,6 +25,7 @@ use gpui_kit::{
     ParentElement as _, Render, ScrollStrategy, StatefulInteractiveElement as _, Styled,
     Subscription, UniformListScrollHandle, Window, div, px, uniform_list,
 };
+use koyo_git::{Change, Checkout as Git, Discarding, Status};
 
 use super::discard;
 use super::file_view::{FileView, Key};
@@ -787,7 +787,6 @@ impl ChangesPanel {
         })
         .detach();
     }
-
 }
 
 /// A path's folder and file name.

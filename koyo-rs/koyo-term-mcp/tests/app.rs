@@ -9,12 +9,12 @@ pub mod common;
 
 use std::sync::Arc;
 
-use koyo_app_control::{APP_LAUNCH, APP_LAUNCH_TITLE, ControlError, catalog, summarize};
-use koyo_term_control::catalog::{CATALOG, Scope};
-use koyo_term_mcp::{Launcher, Server, socket_backend};
 use common::{
     CLIENT, FakeApp, Heard, call, config, connect, endpoint, failure, relay, scratch, texts,
 };
+use koyo_app_control::{APP_LAUNCH, APP_LAUNCH_TITLE, ControlError, catalog, summarize};
+use koyo_term_control::catalog::{CATALOG, Scope};
+use koyo_term_mcp::{Launcher, Server, socket_backend};
 use rmcp::model::{ProtocolVersion, ReadResourceRequestParams, ResourceContents};
 use serde_json::{Value, json};
 

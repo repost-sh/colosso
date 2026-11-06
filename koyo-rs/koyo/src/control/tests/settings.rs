@@ -1,8 +1,8 @@
 //! The settings an operation reads and sets: the allowlist only, never the projects or the
 //! control policy, and nothing changed by a call refused in part.
 
-use koyo_app_control::{Command, ErrorCode};
 use gpui_kit::TestAppContext;
+use koyo_app_control::{Command, ErrorCode};
 use serde_json::json;
 
 use super::{call, controlled, terminal};

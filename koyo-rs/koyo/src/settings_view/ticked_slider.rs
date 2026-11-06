@@ -116,7 +116,13 @@ pub fn ends_row((left, right): (&'static str, &'static str), p: Palette) -> Div 
 /// `track` between a small and a large "A", as iOS has its text size: what the slider changes,
 /// shown rather than said.
 pub fn between_letters(track: impl IntoElement, p: Palette) -> Div {
-    let letter = |size: f32| div().flex_shrink_0().text_size(px(size)).text_color(p.text).child("A");
+    let letter = |size: f32| {
+        div()
+            .flex_shrink_0()
+            .text_size(px(size))
+            .text_color(p.text)
+            .child("A")
+    };
     div()
         .flex()
         .items_center()
@@ -198,7 +204,9 @@ impl RenderOnce for TickedSlider {
                     .child(Slider::new(&state).bg(p.accent)),
             )
             .child(div().relative().h(px(TICK)).children(ticks))
-            .when(!letters, |slider| slider.child(ends_row(ends, p).mt(px(3.))))
+            .when(!letters, |slider| {
+                slider.child(ends_row(ends, p).mt(px(3.)))
+            })
             .when(disabled, |slider| {
                 slider
                     .opacity(0.45)

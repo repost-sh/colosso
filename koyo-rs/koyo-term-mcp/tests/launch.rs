@@ -11,9 +11,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
+use common::{FakeApp, call, connect, endpoint, failure, relay, scratch, texts};
 use koyo_app_control::{APP_LAUNCH, Endpoint};
 use koyo_term_mcp::{Launcher, Spawner};
-use common::{FakeApp, call, connect, endpoint, failure, relay, scratch, texts};
 use parking_lot::Mutex;
 use rmcp::model::ProtocolVersion;
 use serde_json::json;
@@ -68,10 +68,7 @@ async fn a_stopped_app_is_started_and_waited_for() {
         (&json!(true), &json!(false))
     );
     assert!(output["waitedMs"].is_u64(), "{output}");
-    assert!(
-        texts(&result)[0].starts_with("Started Koyo"),
-        "{result:?}"
-    );
+    assert!(texts(&result)[0].starts_with("Started Koyo"), "{result:?}");
     assert_eq!(start.starts.load(Ordering::SeqCst), 1);
 
     // The started app answers the next call.

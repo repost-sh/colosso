@@ -5,13 +5,13 @@
 //! already, reloaded. What the person typed in the address that isn't one is a search, which
 //! the history keeps too.
 
-use koyo_browser_ipc::{AppRequest, Go};
 use gpui_kit::Context;
+use koyo_browser_ipc::{AppRequest, Go};
 
 use super::{BrowserEvent, BrowserView, Notice};
 use crate::browser::control::Mode;
-use crate::browser::{Address, read_address, search_url};
 use crate::browser::host::HostStatus;
+use crate::browser::{Address, read_address, search_url};
 use crate::history::How;
 
 /// A page the pane loaded, as the history keeps it: `how` it came, or `None` when it was gone
@@ -105,7 +105,8 @@ impl BrowserView {
     /// The page the pane shows, loaded, and its title; `None` while it loads, or failed to.
     pub fn loaded_page(&self) -> Option<(&str, &str)> {
         let loaded = !self.page.loading && !self.page.url.is_empty() && self.notice.is_none();
-        (loaded && !self.is_inspector()).then_some((self.page.url.as_str(), self.page.title.as_str()))
+        (loaded && !self.is_inspector())
+            .then_some((self.page.url.as_str(), self.page.title.as_str()))
     }
 
     /// The page finished loading, or moved to another address loaded: a visit, how it came told
@@ -116,7 +117,11 @@ impl BrowserView {
             return;
         };
         let again = self.visited.as_deref() == Some(url);
-        let visit = Visit { url: url.to_owned(), title: title.to_owned(), how: came.filter(|_| !again) };
+        let visit = Visit {
+            url: url.to_owned(),
+            title: title.to_owned(),
+            how: came.filter(|_| !again),
+        };
         self.visited = Some(visit.url.clone());
         cx.emit(BrowserEvent::Visited(visit));
     }
@@ -128,8 +133,8 @@ mod tests {
     use std::path::Path;
     use std::rc::Rc;
 
-    use koyo_browser_ipc::PageState;
     use gpui_kit::{AppContext as _, TestAppContext, px, size};
+    use koyo_browser_ipc::PageState;
 
     use super::*;
     use crate::test_support::in_window;
@@ -138,7 +143,9 @@ mod tests {
     type Told = Vec<(String, Option<How>)>;
 
     #[gpui_kit::test]
-    fn a_page_is_told_once_loaded_how_it_came_and_a_reload_or_back_is_no_new_visit(cx: &mut TestAppContext) {
+    fn a_page_is_told_once_loaded_how_it_came_and_a_reload_or_back_is_no_new_visit(
+        cx: &mut TestAppContext,
+    ) {
         cx.update(crate::init);
         let (_, view) = in_window(size(px(800.), px(600.)), cx, |window, cx| {
             cx.new(|cx| BrowserView::new(String::new(), Path::new("/work/app"), window, cx))
@@ -159,7 +166,11 @@ mod tests {
             loading,
             ..PageState::default()
         };
-        let (a, b, c) = ("https://a.example/", "https://b.example/", "https://c.example/");
+        let (a, b, c) = (
+            "https://a.example/",
+            "https://b.example/",
+            "https://c.example/",
+        );
         view.update(cx, |view, cx| {
             view.came = Some(How::Typed);
             view.page_changed(page(a, true, ""), cx);
@@ -179,7 +190,13 @@ mod tests {
         let followed = Some(How::Followed);
         assert_eq!(
             *told.borrow(),
-            [(a.into(), typed), (a.into(), None), (b.into(), followed), (a.into(), None), (c.into(), followed)]
+            [
+                (a.into(), typed),
+                (a.into(), None),
+                (b.into(), followed),
+                (a.into(), None),
+                (c.into(), followed)
+            ]
         );
     }
 }

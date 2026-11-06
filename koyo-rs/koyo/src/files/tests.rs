@@ -66,14 +66,19 @@ fn a_file_viewed_again_is_shown_in_the_editor_it_had(cx: &mut TestAppContext) {
     let (window, shell, files) = shell_showing(&root, cx);
     let view = |path: &str, cx: &mut TestAppContext| {
         (cx.update_window(window, |_, window, cx| {
-            shell.update(cx, |shell, cx| shell.view_file(Place::file(path), window, cx));
+            shell.update(cx, |shell, cx| {
+                shell.view_file(Place::file(path), window, cx);
+            });
         }))
         .unwrap();
         cx.run_until_parked();
         cx.read(|cx| {
             let file = shell.read(cx).viewing().unwrap();
             let file = file.read(cx);
-            (file.path.clone(), file.editor().expect("a text file's editor").clone())
+            (
+                file.path.clone(),
+                file.editor().expect("a text file's editor").clone(),
+            )
         })
     };
     let (lib, lib_editor) = view("src/lib.rs", cx);
@@ -130,7 +135,10 @@ fn cmd_s_saves_the_file_shown_or_every_unsaved_one_as_set(cx: &mut TestAppContex
     cx.update(|cx| settings::update(cx, |settings| settings.save_scope = SaveScope::All));
     edit("src/main.rs", "// again\n", cx);
     save(cx);
-    assert_eq!(on_disk("src/lib.rs"), "// lib\npub fn a() {}\npub fn b() {}\n");
+    assert_eq!(
+        on_disk("src/lib.rs"),
+        "// lib\npub fn a() {}\npub fn b() {}\n"
+    );
     assert_eq!(on_disk("src/main.rs"), "// again\n// main\nfn main() {}\n");
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -182,7 +190,11 @@ fn a_file_read_again_goes_into_its_editor_as_edits(cx: &mut TestAppContext) {
     };
     // Written by another program, the file's read again, and the lines that differ go into
     // the editor as edits: the cursor keeps its place, in the same editor.
-    write(&root, "src/lib.rs", b"// first\npub fn a() {}\npub fn b() {}\n");
+    write(
+        &root,
+        "src/lib.rs",
+        b"// first\npub fn a() {}\npub fn b() {}\n",
+    );
     touch(cx);
     let text = |cx: &TestAppContext| cx.read(|cx| view.read(cx).text(cx).unwrap());
     assert_eq!(text(cx), "// first\npub fn a() {}\npub fn b() {}\n");
@@ -254,7 +266,9 @@ fn the_keyboard_walks_the_tree_and_shows_files(cx: &mut TestAppContext) {
     let _asking = cx.update(|cx| {
         cx.subscribe(&panel, move |_, event: &FilesEvent, _| {
             let FilesEvent::Open { place, kept } = event;
-            heard.borrow_mut().push((place.path.display().to_string(), *kept));
+            heard
+                .borrow_mut()
+                .push((place.path.display().to_string(), *kept));
         })
     });
     let press = |keys: &str, cx: &mut TestAppContext| {

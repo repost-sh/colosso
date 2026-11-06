@@ -7,7 +7,7 @@ mod records;
 use std::collections::BTreeMap;
 
 use koyo_agent::protocol::ids::{MessageId, RunId, Time};
-use koyo_agent::protocol::methods::Model;
+use koyo_agent::protocol::methods::{Catalog, Model};
 use koyo_agent::protocol::model::{
     Compaction, CompactionTrigger, Effort, Item, ItemBody, ItemStatus, Run, RunStatus, ToolFamily,
 };
@@ -25,31 +25,64 @@ use serde_json::json;
 #[test]
 fn work_done_together_is_said_in_a_sentence() {
     let of = |family| done("a", 1, ItemBody::Tool(tool_of(family, "a")));
-    let (read, ran, web) = (of(ToolFamily::Read), of(ToolFamily::Command), of(ToolFamily::Web));
+    let (read, ran, web) = (
+        of(ToolFamily::Read),
+        of(ToolFamily::Command),
+        of(ToolFamily::Web),
+    );
     let said = |items: &[&Item]| work_summary(items.iter().copied());
     assert_eq!(said(&[&read]), "Read a file");
-    assert_eq!(said(&[&read, &read, &read, &ran, &ran]), "Read 3 files and ran 2 commands");
-    assert_eq!(said(&[&ran, &read, &web, &web]), "Ran a command, read a file and searched the web");
+    assert_eq!(
+        said(&[&read, &read, &read, &ran, &ran]),
+        "Read 3 files and ran 2 commands"
+    );
+    assert_eq!(
+        said(&[&ran, &read, &web, &web]),
+        "Ran a command, read a file and searched the web"
+    );
     let thought = done("c", 1, reasoning("Hm"));
     assert_eq!(said(&[&thought, &thought]), "Thought");
-    assert_eq!(said(&[&read, &thought]), "Thought and read a file", "a thought isn't hidden");
-    assert_eq!(said(&[&thought, &read, &ran]), "Thought, read a file and ran a command");
+    assert_eq!(
+        said(&[&read, &thought]),
+        "Thought and read a file",
+        "a thought isn't hidden"
+    );
+    assert_eq!(
+        said(&[&thought, &read, &ran]),
+        "Thought, read a file and ran a command"
+    );
     let refused = Item {
         status: ItemStatus::Declined,
         ..of(ToolFamily::Edit)
     };
-    assert_eq!(said(&[&read, &refused]), "Read a file · 1 declined", "it changed nothing");
+    assert_eq!(
+        said(&[&read, &refused]),
+        "Read a file · 1 declined",
+        "it changed nothing"
+    );
     assert_eq!(said(&[&refused, &refused]), "2 declined");
 }
 
 #[test]
 fn a_tools_line_says_what_it_did_with_paths_from_the_checkout() {
     let command = tool_of(ToolFamily::Command, "cargo test");
-    assert_eq!(tool_line(&command, ItemStatus::Running, "/work"), "Running cargo test");
-    assert_eq!(tool_line(&command, ItemStatus::Completed, "/work"), "Ran cargo test");
-    assert_eq!(tool_line(&command, ItemStatus::Declined, "/work"), "cargo test");
+    assert_eq!(
+        tool_line(&command, ItemStatus::Running, "/work"),
+        "Running cargo test"
+    );
+    assert_eq!(
+        tool_line(&command, ItemStatus::Completed, "/work"),
+        "Ran cargo test"
+    );
+    assert_eq!(
+        tool_line(&command, ItemStatus::Declined, "/work"),
+        "cargo test"
+    );
     let read = tool_of(ToolFamily::Read, "/work/koyo/src/main.rs");
-    assert_eq!(tool_line(&read, ItemStatus::Completed, "/work/koyo/"), "Read src/main.rs");
+    assert_eq!(
+        tool_line(&read, ItemStatus::Completed, "/work/koyo/"),
+        "Read src/main.rs"
+    );
     let search = tool_of(ToolFamily::Search, "fn main in /work/koyo/src");
     assert_eq!(
         tool_line(&search, ItemStatus::Completed, "/work/koyo"),
@@ -88,7 +121,12 @@ fn times_and_tokens_are_said_as_a_person_would() {
     let mut settled = run("r1", RunStatus::Completed, 5);
     settled.model = Some("claude-opus".into());
     settled.effort = Some(Effort::Xhigh);
-    assert_eq!(answer_meta(&settled, &[]), "claude-opus · Extra high", "it isn't listed");
+    let none = Catalog::default();
+    assert_eq!(
+        answer_meta(&settled, &none),
+        "claude-opus · Extra high",
+        "it isn't listed"
+    );
     let listed = Model {
         id: "claude-opus".into(),
         runs: None,
@@ -98,7 +136,22 @@ fn times_and_tokens_are_said_as_a_person_would() {
         fast: false,
         auto: false,
     };
-    assert_eq!(answer_meta(&settled, &[listed]), "Opus 5.5 · Extra high");
+    let catalog = Catalog {
+        models: vec![listed],
+        ..Catalog::default()
+    };
+    assert_eq!(answer_meta(&settled, &catalog), "Opus 5.5 · Extra high");
+    settled.model = None;
+    assert_eq!(
+        answer_meta(&settled, &catalog),
+        "Opus 5.5 · Extra high",
+        "a run that chose no model ran on the first the provider lists"
+    );
+    assert_eq!(
+        answer_meta(&settled, &none),
+        "Extra high",
+        "with none listed there's none to say"
+    );
 }
 
 #[test]
@@ -113,9 +166,21 @@ fn a_model_runs_at_the_effort_nearest_below_what_is_asked_for() {
         auto: false,
     };
     let some = model(&[Effort::Medium, Effort::High]);
-    assert_eq!(some.fitted(Effort::High), Some(Effort::High), "it has that one");
-    assert_eq!(some.fitted(Effort::Max), Some(Effort::High), "the nearest below");
-    assert_eq!(some.fitted(Effort::Low), Some(Effort::Medium), "the least it has");
+    assert_eq!(
+        some.fitted(Effort::High),
+        Some(Effort::High),
+        "it has that one"
+    );
+    assert_eq!(
+        some.fitted(Effort::Max),
+        Some(Effort::High),
+        "the nearest below"
+    );
+    assert_eq!(
+        some.fitted(Effort::Low),
+        Some(Effort::Medium),
+        "the least it has"
+    );
     assert_eq!(model(&[]).fitted(Effort::High), None);
 }
 
@@ -147,17 +212,26 @@ fn a_settled_approval_says_what_was_decided_of_what() {
     };
     let command = approval("cargo test");
     let edit = approval("/work/src/a.rs");
-    assert_eq!(line(Some((Decision::Allow, None)), &command), "Allowed cargo test");
+    assert_eq!(
+        line(Some((Decision::Allow, None)), &command),
+        "Allowed cargo test"
+    );
     assert_eq!(
         line(Some((Decision::AllowSession, None)), &edit),
         "Allowed src/a.rs for this chat",
     );
-    assert_eq!(line(Some((Decision::Deny, None)), &command), "Denied cargo test");
+    assert_eq!(
+        line(Some((Decision::Deny, None)), &command),
+        "Denied cargo test"
+    );
     assert_eq!(
         line(Some((Decision::Deny, Some("Not that one"))), &command),
         "Denied cargo test: Not that one",
     );
-    assert_eq!(line(Some((Decision::Cancel, None)), &command), "Stopped at cargo test");
+    assert_eq!(
+        line(Some((Decision::Cancel, None)), &command),
+        "Stopped at cargo test"
+    );
     assert_eq!(line(None, &command), "No longer asked: cargo test");
 }
 
@@ -184,14 +258,20 @@ fn a_run_worked_for_as_long_as_it_took_less_what_it_waited_on_a_person_for() {
     };
 
     assert_eq!(worked_for(&done, &[]).as_deref(), Some("50s"));
-    assert_eq!(worked_for(&done, &[asked.clone(), elsewhere]).as_deref(), Some("14s"));
+    assert_eq!(
+        worked_for(&done, &[asked.clone(), elsewhere]).as_deref(),
+        Some("14s")
+    );
 
     let left_at_a_restart = Request {
         created_at: at(40),
         resolved_at: Some(Time("2026-11-03T10:30:00.000Z".into())),
         ..asked
     };
-    assert_eq!(worked_for(&done, &[left_at_a_restart]).as_deref(), Some("40s"));
+    assert_eq!(
+        worked_for(&done, &[left_at_a_restart]).as_deref(),
+        Some("40s")
+    );
 
     let plan = request("p", RequestStatus::Answered);
     let plan = Request {
@@ -199,7 +279,11 @@ fn a_run_worked_for_as_long_as_it_took_less_what_it_waited_on_a_person_for() {
         resolved_at: Some(Time("2026-11-03T10:30:00.000Z".into())),
         ..plan
     };
-    assert_eq!(worked_for(&done, &[plan]).as_deref(), Some("50s"), "nothing waited on it");
+    assert_eq!(
+        worked_for(&done, &[plan]).as_deref(),
+        Some("50s"),
+        "nothing waited on it"
+    );
 }
 
 fn indentation() -> Question {
@@ -235,40 +319,77 @@ fn a_question_says_what_was_asked_and_then_what_the_person_said() {
         Answer::Response(Response::Question { answers })
     };
 
-    assert_eq!(lines(&request("q", RequestStatus::Pending)), ["Asked: Tabs or spaces?"]);
+    assert_eq!(
+        lines(&request("q", RequestStatus::Pending)),
+        ["Asked: Tabs or spaces?"]
+    );
     assert_eq!(lines(&answered(chose(&["Tabs"]))), ["Indentation: Tabs"]);
-    assert_eq!(lines(&answered(chose(&["Tabs", "Both"]))), ["Indentation: Tabs, Both"]);
-    let skipped = Answer::Response(Response::Question { answers: BTreeMap::new() });
+    assert_eq!(
+        lines(&answered(chose(&["Tabs", "Both"]))),
+        ["Indentation: Tabs, Both"]
+    );
+    let skipped = Answer::Response(Response::Question {
+        answers: BTreeMap::new(),
+    });
     assert_eq!(lines(&answered(skipped)), ["Skipped: Tabs or spaces?"]);
-    let by_message = Answer::Message { message_id: MessageId("m".into()) };
-    assert_eq!(lines(&answered(by_message)), ["Answered by your message: Tabs or spaces?"]);
-    assert_eq!(lines(&request("q", RequestStatus::Expired)), ["No longer asked: Tabs or spaces?"]);
+    let by_message = Answer::Message {
+        message_id: MessageId("m".into()),
+    };
+    assert_eq!(
+        lines(&answered(by_message)),
+        ["Answered by your message: Tabs or spaces?"]
+    );
+    assert_eq!(
+        lines(&request("q", RequestStatus::Expired)),
+        ["No longer asked: Tabs or spaces?"]
+    );
 }
 
 #[test]
 fn a_plan_is_titled_by_its_first_heading() {
-    assert_eq!(plan_parts("# Ship it\n\n1. Build\n"), (Some("Ship it"), "1. Build\n"));
+    assert_eq!(
+        plan_parts("# Ship it\n\n1. Build\n"),
+        (Some("Ship it"), "1. Build\n")
+    );
     assert_eq!(plan_parts("\n## Ship it"), (Some("Ship it"), ""));
     assert_eq!(
         plan_parts("First this.\n\n# Ship it\nThen."),
         (Some("Ship it"), "First this.\n\n# Ship it\nThen."),
         "there's more above it to read",
     );
-    assert_eq!(plan_parts("#hashtag\n1. Build"), (None, "#hashtag\n1. Build"));
+    assert_eq!(
+        plan_parts("#hashtag\n1. Build"),
+        (None, "#hashtag\n1. Build")
+    );
 }
 
 #[test]
 fn a_plan_says_what_became_of_it() {
     let plan = |decision| Answer::Response(Response::Plan { decision });
     assert_eq!(plan_outcome(&request("p", RequestStatus::Pending)), None);
-    assert_eq!(plan_outcome(&answered(plan(PlanDecision::Implement))), Some("Implemented"));
-    assert_eq!(plan_outcome(&answered(plan(PlanDecision::Dismiss))), Some("Dismissed"));
-    let by_message = Answer::Message { message_id: MessageId("m".into()) };
-    assert_eq!(plan_outcome(&answered(by_message)), Some("Refined by your message"));
+    assert_eq!(
+        plan_outcome(&answered(plan(PlanDecision::Implement))),
+        Some("Implemented")
+    );
+    assert_eq!(
+        plan_outcome(&answered(plan(PlanDecision::Dismiss))),
+        Some("Dismissed")
+    );
+    let by_message = Answer::Message {
+        message_id: MessageId("m".into()),
+    };
+    assert_eq!(
+        plan_outcome(&answered(by_message)),
+        Some("Refined by your message")
+    );
 }
 
 #[test]
 fn how_full_a_conversation_is_is_said_in_a_line() {
     assert_eq!(context_line(84_000, 200_000), "42 % · 84k of 200k");
-    assert_eq!(context_line(10, 0), "0 % · 10 of 0", "a model that says it holds nothing");
+    assert_eq!(
+        context_line(10, 0),
+        "0 % · 10 of 0",
+        "a model that says it holds nothing"
+    );
 }

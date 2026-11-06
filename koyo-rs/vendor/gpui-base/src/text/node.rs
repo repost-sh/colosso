@@ -777,6 +777,9 @@ pub struct LinkMark {
     /// Optional identifier for footnotes.
     pub identifier: Option<SharedString>,
     pub title: Option<SharedString>,
+    /// Whether a plugin draws the whole link, as a custom node, which then takes none of a link's
+    /// colour or underline: it still opens on a click.
+    pub drawn: bool,
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -3077,8 +3080,11 @@ impl Paragraph {
                                 .unwrap_or(link)
                                 .clone(),
                         );
-                        object_style.color = Some(node_cx.style.link());
-                        object_style.underline = Some(link_underline(&node_cx.style));
+                        // A link a plugin draws whole looks as the plugin says.
+                        if !link.drawn {
+                            object_style.color = Some(node_cx.style.link());
+                            object_style.underline = Some(link_underline(&node_cx.style));
+                        }
                     }
                 }
                 let rendered_node = node.clone();

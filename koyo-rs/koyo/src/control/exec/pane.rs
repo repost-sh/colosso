@@ -1,12 +1,10 @@
 //! Panes: split with a pane moved or a new one, given the keyboard, resized in their split,
 //! taken out of their split into a tab of their own, and closed.
 
-use koyo_app_control::ControlError;
-use koyo_app_control::ops::pane::{
-    PaneResizeInput, PaneResizeOutput, PaneSplitInput, SplitSource,
-};
-use koyo_app_control::ops::shared::Edge;
 use gpui_kit::App;
+use koyo_app_control::ControlError;
+use koyo_app_control::ops::pane::{PaneResizeInput, PaneResizeOutput, PaneSplitInput, SplitSource};
+use koyo_app_control::ops::shared::Edge;
 use serde_json::Value;
 
 use super::open::Opened;

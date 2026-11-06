@@ -71,7 +71,11 @@ impl ChatComposer {
     pub(super) fn context_ring(&self, p: Palette, cx: &Context<Self>) -> Option<AnyElement> {
         let (held, room) = self.context?;
         let percent = context_percent(held, room);
-        let color = if percent >= NEARLY_FULL { p.danger } else { p.muted };
+        let color = if percent >= NEARLY_FULL {
+            p.danger
+        } else {
+            p.muted
+        };
         let line = SharedString::from(context_line(held, room));
         let shown = div()
             .id("chat-context-ring")

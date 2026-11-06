@@ -17,8 +17,8 @@ use gpui_kit::component::attachment::{
     Attachment as Tile, AttachmentContent, AttachmentMedia, AttachmentTitle,
 };
 use gpui_kit::{
-    App, AppContext as _, Asset, Axis, ClipboardEntry, ClipboardItem, ElementId, ImageCacheError, ParentElement as _,
-    RenderImage, SharedString, Styled as _, Window, px,
+    App, AppContext as _, Asset, Axis, ClipboardEntry, ClipboardItem, ElementId, ImageCacheError,
+    ParentElement as _, RenderImage, SharedString, Styled as _, Window, px,
 };
 use image::codecs::jpeg::JpegEncoder;
 use image::imageops::FilterType;
@@ -112,7 +112,10 @@ pub(super) fn keep(source: Source, folder: &Path) -> Result<Attachment, String> 
 
 /// What `source` is kept as in `folder`, and its type.
 fn kept(source: Source, folder: &Path) -> Result<(String, String), Failed> {
-    DirBuilder::new().recursive(true).mode(0o700).create(folder)?;
+    DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(folder)?;
     let path = match source {
         Source::Picture(bytes) => return keep_picture(bytes, folder),
         Source::File(path) => path,
@@ -134,15 +137,22 @@ fn kept(source: Source, folder: &Path) -> Result<(String, String), Failed> {
 /// Whether the file at `path` is a picture this can read, whatever it's called.
 fn is_picture(path: &Path) -> bool {
     let reader = ImageReader::open(path).and_then(ImageReader::with_guessed_format);
-    reader.is_ok_and(|reader| reader.format().is_some_and(|format| format.reading_enabled()))
+    reader.is_ok_and(|reader| {
+        reader
+            .format()
+            .is_some_and(|format| format.reading_enabled())
+    })
 }
 
 fn keep_picture(bytes: Vec<u8>, folder: &Path) -> Result<(String, String), Failed> {
     let (bytes, format) = fitted(bytes)?;
     let extension = format.extensions_str().first().copied().unwrap_or("image");
     let file = fresh_name(extension);
-    let mut written =
-        OpenOptions::new().write(true).create_new(true).mode(0o600).open(folder.join(&file))?;
+    let mut written = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(folder.join(&file))?;
     written.write_all(&bytes)?;
     Ok((file, format.to_mime_type().to_owned()))
 }
@@ -186,7 +196,10 @@ fn as_jpeg(picture: &DynamicImage) -> Result<Vec<u8>, Failed> {
 }
 
 fn model_takes(format: ImageFormat) -> bool {
-    matches!(format, ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Gif | ImageFormat::WebP)
+    matches!(
+        format,
+        ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::Gif | ImageFormat::WebP
+    )
 }
 
 fn fresh_name(extension: &str) -> String {
@@ -208,21 +221,24 @@ pub(super) fn tile(
         Some(path) => tile
             .axis(Axis::Vertical)
             .size(px(side))
-            .media(AttachmentMedia::new().src(move |window: &mut Window, cx: &mut App| {
-                window.use_asset::<Thumbnail>(&path, cx)
-            })),
+            .media(
+                AttachmentMedia::new().src(move |window: &mut Window, cx: &mut App| {
+                    window.use_asset::<Thumbnail>(&path, cx)
+                }),
+            ),
         None => tile
             .w(px(FILE_TILE))
             .media(AttachmentMedia::new().child(icon(file_icon(&attachment.name), 14.)))
-            .content(
-                AttachmentContent::new().title(AttachmentTitle::new(attachment.name.clone())),
-            ),
+            .content(AttachmentContent::new().title(AttachmentTitle::new(attachment.name.clone()))),
     }
 }
 
 /// A tile with nothing in it yet, in the theme's colours over the glass or a bubble.
 pub(super) fn bare_tile(id: impl Into<ElementId>, p: Palette) -> Tile {
-    Tile::new().id(id).bg(p.text.opacity(0.08)).border_color(p.hairline)
+    Tile::new()
+        .id(id)
+        .bg(p.text.opacity(0.08))
+        .border_color(p.hairline)
 }
 
 /// A picture as a tile draws it. The size a tile can show, as the picture itself could be 2048 px
@@ -233,20 +249,28 @@ impl Asset for Thumbnail {
     type Source = PathBuf;
     type Output = Result<Arc<RenderImage>, ImageCacheError>;
 
-    #[expect(clippy::manual_async_fn, reason = "an async fn would hold on to the App it's given")]
+    #[expect(
+        clippy::manual_async_fn,
+        reason = "an async fn would hold on to the App it's given"
+    )]
     fn load(path: PathBuf, _: &mut App) -> impl Future<Output = Self::Output> + Send + 'static {
         async move {
-            let bytes = fs::read(path).map_err(|error: io::Error| ImageCacheError::Io(Arc::new(error)))?;
-            let picture =
-                image::load_from_memory(&bytes).map_err(|error| ImageCacheError::Image(Arc::new(error)))?;
-            Ok(Arc::new(RenderImage::new(vec![Frame::new(thumbnail(&picture))])))
+            let bytes =
+                fs::read(path).map_err(|error: io::Error| ImageCacheError::Io(Arc::new(error)))?;
+            let picture = image::load_from_memory(&bytes)
+                .map_err(|error| ImageCacheError::Image(Arc::new(error)))?;
+            Ok(Arc::new(RenderImage::new(vec![Frame::new(thumbnail(
+                &picture,
+            ))])))
         }
     }
 }
 
 /// A small copy of `picture`, filling the square, its pixels in the blue-first order GPUI draws.
 fn thumbnail(picture: &DynamicImage) -> RgbaImage {
-    let mut small = picture.resize_to_fill(THUMBNAIL, THUMBNAIL, FilterType::Triangle).into_rgba8();
+    let mut small = picture
+        .resize_to_fill(THUMBNAIL, THUMBNAIL, FilterType::Triangle)
+        .into_rgba8();
     for pixel in small.as_chunks_mut::<4>().0 {
         pixel.swap(0, 2);
     }
@@ -263,12 +287,16 @@ mod tests {
 
     fn encoded(picture: RgbImage, format: ImageFormat) -> Vec<u8> {
         let mut bytes = Vec::new();
-        DynamicImage::ImageRgb8(picture).write_to(&mut Cursor::new(&mut bytes), format).unwrap();
+        DynamicImage::ImageRgb8(picture)
+            .write_to(&mut Cursor::new(&mut bytes), format)
+            .unwrap();
         bytes
     }
 
     fn sides(bytes: &[u8]) -> (u32, u32) {
-        let reader = ImageReader::new(Cursor::new(bytes)).with_guessed_format().unwrap();
+        let reader = ImageReader::new(Cursor::new(bytes))
+            .with_guessed_format()
+            .unwrap();
         reader.into_dimensions().unwrap()
     }
 
@@ -339,12 +367,18 @@ mod tests {
 
         assert_eq!(kept.name, "Pasted image");
         assert_eq!(kept.mime, "image/png");
-        assert_eq!(Path::new(&kept.file).extension().and_then(OsStr::to_str), Some("png"));
+        assert_eq!(
+            Path::new(&kept.file).extension().and_then(OsStr::to_str),
+            Some("png")
+        );
         let path = folder.join(&kept.file);
         assert_eq!(fs::read(&path).unwrap(), bytes);
         let mode = |path: &Path| fs::metadata(path).unwrap().permissions().mode() & 0o777;
         assert_eq!((mode(&path), mode(&folder)), (0o600, 0o700));
-        assert_ne!(keep(Source::Picture(bytes), &folder).unwrap().file, kept.file);
+        assert_ne!(
+            keep(Source::Picture(bytes), &folder).unwrap().file,
+            kept.file
+        );
     }
 
     #[test]
@@ -355,7 +389,10 @@ mod tests {
 
         let kept = keep(Source::File(path), &root.join("attachments")).unwrap();
 
-        assert_eq!((kept.name.as_str(), kept.mime.as_str()), ("shot.dat", "image/png"));
+        assert_eq!(
+            (kept.name.as_str(), kept.mime.as_str()),
+            ("shot.dat", "image/png")
+        );
     }
 
     #[test]
@@ -367,9 +404,18 @@ mod tests {
 
         let kept = keep(Source::File(path.clone()), &folder).unwrap();
 
-        assert_eq!((kept.name.as_str(), kept.mime.as_str()), ("notes.md", SOME_FILE));
-        assert_eq!(Path::new(&kept.file).extension().and_then(OsStr::to_str), Some("md"));
-        assert_eq!(fs::read_to_string(folder.join(&kept.file)).unwrap(), "# Notes\n");
+        assert_eq!(
+            (kept.name.as_str(), kept.mime.as_str()),
+            ("notes.md", SOME_FILE)
+        );
+        assert_eq!(
+            Path::new(&kept.file).extension().and_then(OsStr::to_str),
+            Some("md")
+        );
+        assert_eq!(
+            fs::read_to_string(folder.join(&kept.file)).unwrap(),
+            "# Notes\n"
+        );
         assert!(path.exists(), "the person's own stays");
     }
 
@@ -407,8 +453,14 @@ mod tests {
         };
         assert_eq!(
             sources_of(&pasted),
-            [Source::Picture(vec![1, 2, 3]), Source::File(PathBuf::from("/a/b.txt"))],
+            [
+                Source::Picture(vec![1, 2, 3]),
+                Source::File(PathBuf::from("/a/b.txt"))
+            ],
         );
-        assert_eq!(sources_of(&ClipboardItem::new_string("words".to_owned())), []);
+        assert_eq!(
+            sources_of(&ClipboardItem::new_string("words".to_owned())),
+            []
+        );
     }
 }

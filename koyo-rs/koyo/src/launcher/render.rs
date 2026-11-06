@@ -6,13 +6,13 @@
 //! shrinks with the rows.
 
 use gpui_kit::assets::IconName;
-use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::{
-    AnyElement, Context, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _,
-    Keystroke, Render, StatefulInteractiveElement as _, Styled as _, Window, div, img, px,
-};
 use gpui_kit::component::input::Input;
 use gpui_kit::component::kbd::Kbd;
+use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::{
+    AnyElement, Context, FontWeight, InteractiveElement as _, IntoElement, Keystroke,
+    ParentElement as _, Render, StatefulInteractiveElement as _, Styled as _, Window, div, img, px,
+};
 
 use super::rows::{Act, Glyph, Row};
 use super::view::{FIELD, LIST_PADDING, Launcher, ROW, height};
@@ -42,22 +42,22 @@ impl Render for Launcher {
             .flex()
             .flex_col()
             .on_action(cx.listener(|this, _: &NextKind, window, cx| this.step_kind(1, window, cx)))
-            .on_action(cx.listener(|this, _: &PreviousKind, window, cx| this.step_kind(-1, window, cx)))
+            .on_action(
+                cx.listener(|this, _: &PreviousKind, window, cx| this.step_kind(-1, window, cx)),
+            )
             .on_action(cx.listener(|this, _: &SelectNext, _, cx| this.step(1, cx)))
             .on_action(cx.listener(|this, _: &SelectPrevious, _, cx| this.step(-1, cx)))
-            .on_action(cx.listener(|this, _: &AcceptSuggestion, window, cx| this.accept(window, cx)))
+            .on_action(
+                cx.listener(|this, _: &AcceptSuggestion, window, cx| this.accept(window, cx)),
+            )
             .on_action(cx.listener(|this, _: &RemoveFromHistory, _, cx| this.remove_selected(cx)))
             // ⌘T again closes it, as Zen's does.
             .on_action(|_: &NewTab, window, cx| modal::dismiss(window, cx))
             .child(self.field(p, cx))
             .when(!rows.is_empty(), |launcher| {
-                launcher.child(div().h(px(1.)).bg(p.hairline)).child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .p(px(LIST_PADDING))
-                        .children(rows),
-                )
+                launcher
+                    .child(div().h(px(1.)).bg(p.hairline))
+                    .child(div().flex().flex_col().p(px(LIST_PADDING)).children(rows))
             })
     }
 }
@@ -130,14 +130,25 @@ impl Launcher {
             .rounded(px(8.))
             .child(glyph(row, p))
             .child(text(row, p))
-            .children(row.hint.map(|hint| hint_of(hint, matches!(row.act, Act::Switch(_)), selected, p)))
-            .when(removable, |line| line.child(self.remove_button(at, row, p, cx)))
+            .children(
+                row.hint
+                    .map(|hint| hint_of(hint, matches!(row.act, Act::Switch(_)), selected, p)),
+            )
+            .when(removable, |line| {
+                line.child(self.remove_button(at, row, p, cx))
+            })
             .on_click(cx.listener(move |this, _, window, cx| this.pick(Some(at), window, cx)))
             .into_any_element()
     }
 
     /// The × that forgets what row `at` shows.
-    fn remove_button(&self, at: usize, row: &Row, p: Palette, cx: &mut Context<Self>) -> impl IntoElement {
+    fn remove_button(
+        &self,
+        at: usize,
+        row: &Row,
+        p: Palette,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let entry = row.entry.clone();
         close_button(("launcher-remove", at), p)
             .debug_selector(|| "launcher-remove".into())
@@ -173,7 +184,11 @@ fn text(row: &Row, p: Palette) -> impl IntoElement {
             .min_w_0()
             .text_color(p.muted)
             .child(" — ")
-            .child(ellipsized(styled(&row.detail, &row.detail_matched, p.accent)))
+            .child(ellipsized(styled(
+                &row.detail,
+                &row.detail_matched,
+                p.accent,
+            )))
     });
     div()
         .flex_1()
@@ -181,7 +196,11 @@ fn text(row: &Row, p: Palette) -> impl IntoElement {
         .flex()
         .items_center()
         .text_sm()
-        .child(ellipsized(styled(&row.title, &row.title_matched, p.accent)).flex_shrink_0().max_w_full())
+        .child(
+            ellipsized(styled(&row.title, &row.title_matched, p.accent))
+                .flex_shrink_0()
+                .max_w_full(),
+        )
         .children(detail)
 }
 

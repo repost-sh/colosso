@@ -57,7 +57,9 @@ impl ChatComposer {
 
     /// Says `text`, as if it were typed and sent: the launcher's message to a new chat.
     pub(in crate::chat) fn say(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
-        self.text.update(cx, |composer, cx| composer.set_value(text.to_owned(), window, cx));
+        self.text.update(cx, |composer, cx| {
+            composer.set_value(text.to_owned(), window, cx);
+        });
         self.send(window, cx);
     }
 
@@ -71,7 +73,8 @@ impl ChatComposer {
         if !self.can_send(&text) {
             return;
         }
-        self.text.update(cx, |composer, cx| composer.set_value("", window, cx));
+        self.text
+            .update(cx, |composer, cx| composer.set_value("", window, cx));
         self.error = None;
         cx.emit(ComposerEvent::Sent);
         cx.notify();

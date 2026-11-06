@@ -45,9 +45,11 @@ fn files(cx: &App) -> SettingsSection {
                      Code shows its text. Opened at a line, from a search say, it shows its \
                      code. The toggle over it, or ⌘⇧V, shows the other.",
                 )
-                .control(MenuButton::new("markdown-opens-as", markdown.label(), |cx| {
-                    settings::get(cx).markdown_opens_as.menu()
-                })),
+                .control(MenuButton::new(
+                    "markdown-opens-as",
+                    markdown.label(),
+                    |cx| settings::get(cx).markdown_opens_as.menu(),
+                )),
         )
 }
 

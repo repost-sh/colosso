@@ -11,10 +11,9 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, ClickEvent, Context, FocusHandle, FontWeight, InteractiveElement as _,
-    IntoElement, ParentElement as _, Render, ScrollStrategy, SharedString,
-    StatefulInteractiveElement as _, Styled as _, Task, UniformListScrollHandle, WeakEntity,
-    Window, div, px, uniform_list,
+    AnyElement, ClickEvent, Context, FocusHandle, FontWeight, InteractiveElement as _, IntoElement,
+    ParentElement as _, Render, ScrollStrategy, SharedString, StatefulInteractiveElement as _,
+    Styled as _, Task, UniformListScrollHandle, WeakEntity, Window, div, px, uniform_list,
 };
 
 use super::file_pane::name;
@@ -115,7 +114,8 @@ impl Locations {
         self.select(landed, cx);
         self.peeking = cx.spawn_in(window, async move |this, cx| {
             cx.background_executor().timer(PEEK_DELAY).await;
-            this.update_in(cx, |this, window, cx| this.open(false, window, cx)).ok();
+            this.update_in(cx, |this, window, cx| this.open(false, window, cx))
+                .ok();
         });
     }
 
@@ -137,17 +137,28 @@ impl Locations {
             at: Some(file.rows[row].at.clone()),
         };
         // Kept, it takes the keyboard; previewed, the list keeps it to go on stepping.
-        (self.shell.update(cx, |shell, cx| shell.open_file(place, kept, kept, window, cx))).ok();
+        (self.shell.update(cx, |shell, cx| {
+            shell.open_file(place, kept, kept, window, cx);
+        }))
+        .ok();
     }
 
     fn close(&self, window: &mut Window, cx: &mut Context<Self>) {
-        (self.shell.update(cx, |shell, cx| shell.close_locations(window, cx))).ok();
+        (self
+            .shell
+            .update(cx, |shell, cx| shell.close_locations(window, cx)))
+        .ok();
     }
 }
 
 impl Shell {
     /// Lists `found` under the tabs, in place of any list there, and gives it the keyboard.
-    pub(super) fn show_locations(&mut self, found: Found, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn show_locations(
+        &mut self,
+        found: Found,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let shell = cx.entity().downgrade();
         let locations = cx.new(|cx| Locations::new(found, shell, cx));
         let focus = locations.read(cx).focus.clone();
@@ -178,7 +189,9 @@ impl Render for Locations {
                 self.items.len(),
                 cx.processor(|this, range: Range<usize>, _, cx| {
                     let p = theme::palette(cx);
-                    range.map(|index| this.row(index, p, cx)).collect::<Vec<_>>()
+                    range
+                        .map(|index| this.row(index, p, cx))
+                        .collect::<Vec<_>>()
                 }),
             )
             .track_scroll(&self.scroll)
@@ -196,10 +209,16 @@ impl Render for Locations {
             .bg(p.sunken)
             .track_focus(&self.focus)
             .key_context("Locations")
-            .on_action(cx.listener(|this, _: &SelectPrevious, window, cx| this.step(-1, window, cx)))
+            .on_action(
+                cx.listener(|this, _: &SelectPrevious, window, cx| this.step(-1, window, cx)),
+            )
             .on_action(cx.listener(|this, _: &SelectNext, window, cx| this.step(1, window, cx)))
-            .on_action(cx.listener(|this, _: &SelectFirst, window, cx| this.step(isize::MIN, window, cx)))
-            .on_action(cx.listener(|this, _: &SelectLast, window, cx| this.step(isize::MAX, window, cx)))
+            .on_action(
+                cx.listener(|this, _: &SelectFirst, window, cx| this.step(isize::MIN, window, cx)),
+            )
+            .on_action(
+                cx.listener(|this, _: &SelectLast, window, cx| this.step(isize::MAX, window, cx)),
+            )
             .on_action(cx.listener(|this, _: &PageUp, window, cx| {
                 this.step(-page(&this.scroll, ROW), window, cx);
             }))
@@ -221,7 +240,11 @@ impl Locations {
             .pl_3()
             .pr_1p5()
             .text_xs()
-            .child(ellipsized(self.found.title.clone()).flex_1().text_color(p.text))
+            .child(
+                ellipsized(self.found.title.clone())
+                    .flex_1()
+                    .text_color(p.text),
+            )
             .child(
                 icon_button("locations-close", IconName::X, "Close", cx)
                     .xsmall()
@@ -272,7 +295,11 @@ impl Locations {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let located = &self.found.files[file].rows[place];
-        let text = styled(&located.text, std::slice::from_ref(&located.matched), p.accent);
+        let text = styled(
+            &located.text,
+            std::slice::from_ref(&located.matched),
+            p.accent,
+        );
         row(("locations-row", at), self.selected == at, p)
             .w_full()
             .h(px(ROW))

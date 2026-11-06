@@ -1,15 +1,42 @@
-//! Finding the agent host, a client for it, and what it's told of Koyo's settings.
+//! Finding the agent host, a client for it, what it's told of Koyo's settings, and the loop over
+//! what it says.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
-use gpui_kit::Context;
+use futures::StreamExt as _;
+use gpui_kit::{Context, Task};
 use koyo_agent::agent_client::AgentClient;
 use koyo_agent::client;
 use koyo_agent::protocol::methods::{Config, ConfigSet};
 
 use super::{Chats, Connection};
 use crate::settings;
+
+/// How long the loop waits between batches: what arrives meanwhile is applied together.
+const FRAME: Duration = Duration::from_millis(16);
+
+/// The loop over what the host says: it takes one notice, then all that wait, applies them
+/// together and waits out the frame, so that nothing is applied more than once a frame.
+pub(super) fn follow(client: &AgentClient, cx: &mut Context<Chats>) -> Task<()> {
+    let mut inbox = client.subscribe();
+    cx.spawn(async move |this, cx| {
+        while let Some(first) = inbox.next().await {
+            let mut notices = vec![first];
+            while let Ok(notice) = inbox.try_recv() {
+                notices.push(notice);
+            }
+            if this
+                .update(cx, |this, cx| this.take_in(notices, cx))
+                .is_err()
+            {
+                return;
+            }
+            cx.background_executor().timer(FRAME).await;
+        }
+    })
+}
 
 impl Chats {
     /// Tells the host what Koyo's settings say, if that's news: the next session it opens follows
@@ -66,7 +93,8 @@ fn host_beside(executable: &Path) -> Option<PathBuf> {
 
 #[cfg(debug_assertions)]
 fn host_in_checkout() -> Option<PathBuf> {
-    let host = Path::new(env!("KOYO_CHECKOUT")).join("koyo-js/koyo-agent-host/dist/koyo-agent-host");
+    let host =
+        Path::new(env!("KOYO_CHECKOUT")).join("koyo-js/koyo-agent-host/dist/koyo-agent-host");
     host.is_file().then_some(host)
 }
 

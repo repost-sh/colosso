@@ -5,12 +5,12 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use koyo_browser_ipc::{PixelSize, mach};
 use futures::StreamExt as _;
 use futures::channel::mpsc;
 use gpui_kit::{
     AppContext as _, Bounds, Context, Corners, Pixels, PlatformInput, Task, WeakEntity, Window, px,
 };
+use koyo_browser_ipc::{PixelSize, mach};
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, NSObjectProtocol};
 use objc2::{MainThreadMarker, MainThreadOnly, define_class, msg_send};
@@ -233,7 +233,11 @@ impl Shown {
             .filter(|(shared, _)| *shared)
             .fold(CACornerMask::empty(), |mask, (_, corner)| mask | corner);
         if self.rounded.replace(rounded) != Some(rounded) {
-            let radius = if rounded.is_empty() { px(0.) } else { px(theme::CARD_RADIUS) };
+            let radius = if rounded.is_empty() {
+                px(0.)
+            } else {
+                px(theme::CARD_RADIUS)
+            };
             native.layer.setCornerRadius(f64::from(f32::from(radius)));
             native.layer.setMaskedCorners(rounded);
         }

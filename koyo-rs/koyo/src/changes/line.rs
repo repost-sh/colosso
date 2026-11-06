@@ -88,10 +88,15 @@ struct Columns {
 }
 
 /// Room left of the code, and right of it.
-const CODE_LEFT: f32 = 8.;
-const CODE_RIGHT: f32 = 12.;
+pub const CODE_LEFT: f32 = 8.;
+pub const CODE_RIGHT: f32 = 12.;
 /// Room right of a line number.
-const NUMBER_RIGHT: f32 = 6.;
+pub const NUMBER_RIGHT: f32 = 6.;
+/// How strongly an added or removed line's tint shows: behind the line, behind its numbers too,
+/// and behind the words it changed.
+pub const LINE_TINT: f32 = 0.1;
+pub const NUMBERS_TINT: f32 = 0.08;
+pub const WORDS_TINT: f32 = 0.3;
 
 impl Columns {
     fn new(width: Pixels, halves: usize, look: &Look) -> Self {
@@ -280,9 +285,12 @@ impl Element for CodeLine {
                 continue;
             }
             if let Some(tint) = half.tint {
-                window.paint_quad(fill(area, tint.alpha(0.1)));
+                window.paint_quad(fill(area, tint.alpha(LINE_TINT)));
                 let gutters = size(half.number_width * half.numbers.len() as f32, height);
-                window.paint_quad(fill(Bounds::new(area.origin, gutters), tint.alpha(0.08)));
+                window.paint_quad(fill(
+                    Bounds::new(area.origin, gutters),
+                    tint.alpha(NUMBERS_TINT),
+                ));
             }
             for (column, number) in shaped.numbers[index].iter().enumerate() {
                 let Some(number) = number else {
@@ -316,16 +324,18 @@ impl Element for CodeLine {
     }
 }
 
-/// The text runs for a line `len` bytes long: coloured by its `tokens`, which are in order and
-/// don't overlap, plain elsewhere, with the changed `words` marked behind.
-pub fn runs(
-    len: usize,
-    tokens: &[(Range<u32>, Token)],
-    words: &[Range<usize>],
-    colour: impl Fn(Option<Token>) -> Hsla,
-    marked: Hsla,
-    font: &Font,
-) -> Vec<TextRun> {
+/// A stretch of a line's code in one look: the kind of token it's in, if it's in one, and
+/// whether it's among the words a change changed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Span {
+    pub len: usize,
+    pub kind: Option<Token>,
+    pub marked: bool,
+}
+
+/// The spans of a line `len` bytes long: in the kinds of its `tokens`, which are in order and
+/// don't overlap, plain elsewhere, with the changed `words` marked.
+pub fn spans(len: usize, tokens: &[(Range<u32>, Token)], words: &[Range<usize>]) -> Vec<Span> {
     let mut edges: Vec<usize> = vec![0, len];
     for (range, _) in tokens {
         edges.extend([range.start as usize, range.end as usize]);
@@ -336,7 +346,7 @@ pub fn runs(
     edges.retain(|&edge| edge <= len);
     edges.sort_unstable();
     edges.dedup();
-    let mut runs: Vec<TextRun> = Vec::new();
+    let mut spans: Vec<Span> = Vec::new();
     let mut token = tokens.iter().peekable();
     for pair in edges.windows(2) {
         let (start, end) = (pair[0], pair[1]);
@@ -348,16 +358,39 @@ pub fn runs(
             .peek()
             .filter(|(range, _)| range.start as usize <= start)
             .map(|(_, kind)| *kind);
-        let background = (words.iter())
-            .any(|word| word.start <= start && end <= word.end)
-            .then_some(marked);
-        let foreground = colour(kind);
+        let marked = (words.iter()).any(|word| word.start <= start && end <= word.end);
+        match spans.last_mut() {
+            Some(last) if last.kind == kind && last.marked == marked => last.len += end - start,
+            _ => spans.push(Span {
+                len: end - start,
+                kind,
+                marked,
+            }),
+        }
+    }
+    spans
+}
+
+/// The text runs for a line `len` bytes long: its `spans`, each in the colour `colour` gives its
+/// kind, the marked ones with `marked` behind.
+pub fn runs(
+    len: usize,
+    tokens: &[(Range<u32>, Token)],
+    words: &[Range<usize>],
+    colour: impl Fn(Option<Token>) -> Hsla,
+    marked: Hsla,
+    font: &Font,
+) -> Vec<TextRun> {
+    let mut runs: Vec<TextRun> = Vec::new();
+    for span in spans(len, tokens, words) {
+        let foreground = colour(span.kind);
+        let background = span.marked.then_some(marked);
         match runs.last_mut() {
             Some(last) if last.color == foreground && last.background_color == background => {
-                last.len += end - start;
+                last.len += span.len;
             }
             _ => runs.push(TextRun {
-                len: end - start,
+                len: span.len,
                 font: font.clone(),
                 color: foreground,
                 background_color: background,

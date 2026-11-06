@@ -8,7 +8,6 @@ use std::cell::{Cell as Shared, RefCell};
 use std::rc::Rc;
 use std::sync::Arc;
 
-use koyo_term_engine::{CursorShape, Frame, Geometry, GridPoint, Width};
 use gpui_kit::{
     App, BorderStyle, Bounds, ContentMask, CursorStyle, DispatchPhase, Element, ElementId,
     ElementInputHandler, Entity, FocusHandle, GlobalElementId, Hitbox, HitboxBehavior,
@@ -16,6 +15,7 @@ use gpui_kit::{
     MouseMoveEvent, MouseUpEvent, Pixels, Point, ScrollEvent, SharedString, Style, Window, fill,
     outline, point, px, relative, size,
 };
+use koyo_term_engine::{CursorShape, Frame, Geometry, GridPoint, Width};
 
 use crate::fit::{Fitting, Scale};
 use crate::glyphs::{Glyphs, Look, Metrics};
@@ -241,7 +241,11 @@ impl Element for TerminalElement {
         } else {
             // What's behind the terminal shows through its default background; a program's own
             // background is painted solid.
-            if self.frame.as_ref().is_some_and(|frame| frame.background_overridden) {
+            if self
+                .frame
+                .as_ref()
+                .is_some_and(|frame| frame.background_overridden)
+            {
                 window.paint_quad(fill(bounds, hsla(background)));
             }
             bounds

@@ -5,8 +5,8 @@
 
 use std::path::{Path, PathBuf};
 
-use koyo_git::{NewWorktree, Ref, Repo, Start, Worktree};
 use gpui_kit::{App, AppContext as _, Task, WeakEntity};
+use koyo_git::{NewWorktree, Ref, Repo, Start, Worktree};
 
 use crate::projects::read_worktrees;
 use crate::settings::BranchPrefix;

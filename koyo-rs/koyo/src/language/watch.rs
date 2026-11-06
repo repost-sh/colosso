@@ -5,15 +5,15 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use futures::StreamExt as _;
+use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
+use gpui_kit::{AppContext as _, Context, Task};
 use koyo_lsp::lsp_types::notification::DidChangeWatchedFiles;
 use koyo_lsp::lsp_types::{
     DidChangeWatchedFilesParams, FileChangeType, FileEvent, FileSystemWatcher, GlobPattern, OneOf,
 };
 use koyo_lsp::uri;
 use koyo_project::{Feed, Project, Written};
-use futures::StreamExt as _;
-use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
-use gpui_kit::{AppContext as _, Context, Task};
 
 use super::server::Server;
 

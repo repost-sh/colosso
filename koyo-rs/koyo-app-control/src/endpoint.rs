@@ -47,9 +47,7 @@ impl Endpoint {
     /// `internal` when the platform has no data folder; as [`Endpoint::for_data_dir`].
     pub fn from_env() -> Result<Endpoint, ControlError> {
         let dir = data_dir().ok_or_else(|| {
-            ControlError::internal(
-                "This system has no data folder for Koyo. Set KOYO_DATA_DIR.",
-            )
+            ControlError::internal("This system has no data folder for Koyo. Set KOYO_DATA_DIR.")
         })?;
         Endpoint::for_data_dir(&dir)
     }

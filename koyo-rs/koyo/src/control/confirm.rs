@@ -4,10 +4,10 @@
 
 use std::time::Duration;
 
-use koyo_app_control::ControlError;
 use futures::channel::oneshot;
 use futures::future::{Either, select};
 use gpui_kit::{App, AsyncApp, PromptLevel, Task};
+use koyo_app_control::ControlError;
 
 use super::activity::Decision;
 use super::exec::{main_shell, window_closed};

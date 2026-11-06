@@ -16,8 +16,8 @@ use gpui_kit::{
     point, px, relative, size,
 };
 
-pub use hand::{Drop, TabHand};
 use hand::List;
+pub use hand::{Drop, TabHand};
 
 mod hand;
 

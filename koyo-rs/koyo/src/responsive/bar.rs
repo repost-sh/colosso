@@ -16,8 +16,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Action, AnyElement, App, AppContext as _, ClickEvent, Context, Div, ElementId, Entity,
     Focusable as _, InteractiveElement as _, KeyDownEvent, MouseButton, MouseDownEvent,
-    ParentElement as _, SharedString, Stateful, Styled as _,
-    Subscription, Window, div, px,
+    ParentElement as _, SharedString, Stateful, Styled as _, Subscription, Window, div, px,
 };
 
 use super::Zoom;
@@ -63,20 +62,23 @@ impl Fields {
         window: &mut Window,
         cx: &mut Context<V>,
     ) -> Self {
-        let field = |window: &mut Window, cx: &mut Context<V>| {
-            cx.new(|cx| InputState::new(window, cx))
-        };
+        let field =
+            |window: &mut Window, cx: &mut Context<V>| cx.new(|cx| InputState::new(window, cx));
         let (width, height) = (field(window, cx), field(window, cx));
         let heard = |field: &Entity<InputState>, window: &mut Window, cx: &mut Context<V>| {
-            cx.subscribe_in(field, window, move |this, field, event, window, cx| match event {
-                InputEvent::PressEnter { .. } => typed(this, window, cx),
-                // Left without Enter, a field shows the content's size again, from its start.
-                InputEvent::Blur => {
-                    shown_from_start(field, window, cx);
-                    cx.notify();
-                }
-                InputEvent::Change | InputEvent::Focus => {}
-            })
+            cx.subscribe_in(
+                field,
+                window,
+                move |this, field, event, window, cx| match event {
+                    InputEvent::PressEnter { .. } => typed(this, window, cx),
+                    // Left without Enter, a field shows the content's size again, from its start.
+                    InputEvent::Blur => {
+                        shown_from_start(field, window, cx);
+                        cx.notify();
+                    }
+                    InputEvent::Change | InputEvent::Focus => {}
+                },
+            )
         };
         let subscriptions = vec![heard(&width, window, cx), heard(&height, window, cx)];
         Fields {
@@ -245,12 +247,7 @@ fn menu_chip(
 }
 
 /// A number field of the size; Escape puts the content's number back.
-fn field(
-    state: &Entity<InputState>,
-    enabled: bool,
-    p: Palette,
-    restore: &Restore,
-) -> Div {
+fn field(state: &Entity<InputState>, enabled: bool, p: Palette, restore: &Restore) -> Div {
     let restore = Rc::clone(restore);
     div()
         .w(px(56.))
