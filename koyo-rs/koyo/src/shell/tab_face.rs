@@ -46,7 +46,7 @@ impl Face {
                 (None, Some(_)) => IconName::FileDiff,
                 (None, None) => pane.kind.icon(),
             },
-            favicon: (pane.browser.as_ref()).and_then(|view| view.read(cx).favicon()),
+            favicon: pane.favicon(cx),
             title: pane.title.clone(),
             preview: file.is_some_and(FilePane::is_preview),
             dirty: file.is_some_and(FilePane::is_dirty),

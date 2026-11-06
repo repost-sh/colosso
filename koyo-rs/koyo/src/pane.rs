@@ -76,7 +76,8 @@ fn terminal(p: Palette) -> AnyElement {
         .into_any_element()
 }
 
-/// A browser pane is its page's view; the app makes none without one.
+/// A browser pane is its page's view, made by the time its tab is shown
+/// (`Shell::make_shown_browsers`).
 fn browser(pane: &Pane) -> AnyElement {
     (pane.browser.clone()).map_or_else(
         || gpui_kit::Empty.into_any_element(),

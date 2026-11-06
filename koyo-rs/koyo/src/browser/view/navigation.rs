@@ -39,6 +39,12 @@ impl BrowserView {
         self.came = Some(How::Typed);
     }
 
+    /// The page the pane opens first is a tab's brought back at launch, visited before: its
+    /// load is no new visit, as Firefox counts none for a restored session.
+    pub fn mark_restored(&mut self) {
+        self.came = None;
+    }
+
     /// Goes where the person typed `text` in the address: to the page, or a search for it.
     pub(in crate::browser) fn go_to_typed(&mut self, text: &str, cx: &mut Context<Self>) {
         let Some(address) = read_address(text) else {

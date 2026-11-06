@@ -59,6 +59,8 @@ impl Shell {
         self.workspace.select_tab(at.0, at.1, at.2);
         self.navigate(Route::Workspace, cx);
         self.follow_selection(window, cx);
+        // A page brought back at launch is made as its tab is shown, to take the keyboard.
+        self.make_shown_browsers(window, cx);
         let pane = (self.workspace.tab(at))
             .and_then(|tab| tab.panes().into_iter().find(|pane| pane.id == id))
             .map(|pane| (pane.terminal, pane.file.clone(), pane.browser.clone()));

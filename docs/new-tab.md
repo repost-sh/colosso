@@ -101,7 +101,8 @@ How a visit is marked (`browser/view/navigation.rs`):
 - **Typed** when it came from the address bar or the launcher.
 - **Followed** for links and agents.
 - **Not counted** for back, forward or a pick from the history list, since Firefox counts
-  no new visit for session history.
+  no new visit for session history; nor for the first load of a tab brought back at launch
+  (`docs/browser.md` 5), as Firefox counts none for a restored session.
 
 A tab tells its visit once, when the page finishes loading or moves to another address
 (`BrowserEvent::Visited`), so an icon or a title arriving meanwhile can't use up how the

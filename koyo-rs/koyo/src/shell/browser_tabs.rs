@@ -57,7 +57,7 @@ impl Shell {
     }
 
     /// A page of `project`'s profile at `url`, the shell hearing what it says.
-    pub(super) fn browser_view(
+    pub(crate) fn browser_view(
         &mut self,
         url: String,
         project: &std::path::Path,
@@ -286,6 +286,13 @@ impl Shell {
             .filter(|pane| pane.changes.is_some())
             .map(|pane| pane.id)
             .collect();
+        // A page brought back at launch and never shown has the address it would open at.
+        let addresses = (tab.panes().into_iter())
+            .filter(|pane| {
+                !(pane.browser.as_ref()).is_some_and(|view| view.read(cx).is_inspector())
+            })
+            .filter_map(|pane| Some((pane.id, pane.address(cx)?)))
+            .collect();
         let panes: Vec<_> = tab
             .panes()
             .into_iter()
@@ -294,12 +301,6 @@ impl Shell {
         for view in panes.iter().filter_map(|(_, view)| view.clone()) {
             self.let_devtools_go(view, cx);
         }
-        let addresses = (panes.iter())
-            .filter_map(|(id, view)| {
-                let view = view.as_ref()?.read(cx);
-                (!view.is_inspector()).then(|| (*id, view.address()))
-            })
-            .collect();
         // Panes elsewhere that closed may have moved the tab.
         let unit = &self.workspace.projects[project].branches[branch];
         let checkout = unit.worktree.path.clone();

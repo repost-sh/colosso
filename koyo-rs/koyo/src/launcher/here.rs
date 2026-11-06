@@ -43,11 +43,11 @@ impl Here {
             .flat_map(|tab| tab.panes())
             .filter(|pane| !shown.contains(&pane.id))
             .filter_map(|pane| {
-                let (url, favicon) = match &pane.browser {
-                    Some(view) if view.read(cx).is_inspector() => return None,
-                    Some(view) => (view.read(cx).address(), view.read(cx).favicon()),
-                    None => (String::new(), None),
-                };
+                if (pane.browser.as_ref()).is_some_and(|view| view.read(cx).is_inspector()) {
+                    return None;
+                }
+                // A page brought back at launch and not shown yet has the address it opens at.
+                let (url, favicon) = (pane.address(cx).unwrap_or_default(), pane.favicon(cx));
                 let title = pane.title.clone();
                 Some(OpenTab {
                     pane: pane.id,

@@ -8,13 +8,14 @@ use gpui_kit::SharedString;
 use gpui_kit::assets::IconName;
 use koyo_git::{Head, Worktree};
 
+mod browsers;
 mod chats;
 mod closed;
 mod moves;
 mod tab;
 mod terminals;
 pub use closed::ClosedTab;
-pub use tab::{Edge, Pane, SPLIT_MIN, Split, SplitAxis, Tab};
+pub use tab::{Edge, Pane, SPLIT_MIN, Split, SplitAxis, Tab, Unloaded};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PaneKind {

@@ -2,9 +2,10 @@
 //! split again. A tab dropped on a side of a pane splits it; a pane taken out leaves its
 //! split to the other side.
 
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use gpui_kit::{App, Entity, SharedString};
+use gpui_kit::{App, Entity, Image, SharedString};
 use koyo_agent::protocol::ids::ThreadId;
 
 use super::PaneKind;
@@ -23,6 +24,9 @@ pub struct Pane {
     pub title: SharedString,
     /// The page a browser pane shows, once the shell has made it.
     pub browser: Option<Entity<BrowserView>>,
+    /// A browser pane's page while it has no view: a tab brought back at launch, its page made
+    /// when the tab is first shown (`docs/browser.md` 5). Boxed, as few panes have one.
+    pub unloaded: Option<Box<Unloaded>>,
     /// The file an editor pane shows, once the shell has opened one in it.
     pub file: Option<Entity<FilePane>>,
     /// The checkout's diffs, when it's an editor pane showing them rather than a file.
@@ -44,6 +48,7 @@ impl Pane {
             kind,
             title: kind.new_tab_title().into(),
             browser: None,
+            unloaded: None,
             file: None,
             changes: None,
             shown_at: 0,
@@ -58,6 +63,36 @@ impl Pane {
             title: view.read(cx).title().into(),
             browser: Some(view),
             ..Pane::new(PaneKind::Browser)
+        }
+    }
+
+    /// A browser pane with no view yet, titled `title`, that opens `unloaded`'s address once
+    /// its tab is shown.
+    pub fn unloaded(unloaded: Unloaded, title: SharedString) -> Self {
+        Pane {
+            title,
+            unloaded: Some(Box::new(unloaded)),
+            ..Pane::new(PaneKind::Browser)
+        }
+    }
+
+    /// The address a browser pane shows, or opens once its tab is shown; `None` for another
+    /// kind.
+    pub fn address(&self, cx: &App) -> Option<String> {
+        match (&self.browser, &self.unloaded) {
+            (Some(view), _) => Some(view.read(cx).address()),
+            (None, Some(unloaded)) => Some(unloaded.address.clone()),
+            (None, None) => None,
+        }
+    }
+
+    /// The site's icon a browser pane's tab shows: its page's, or the one kept for its address
+    /// while it has no view.
+    pub fn favicon(&self, cx: &App) -> Option<Arc<Image>> {
+        match (&self.browser, &self.unloaded) {
+            (Some(view), _) => view.read(cx).favicon(),
+            (None, Some(unloaded)) => unloaded.favicon.clone(),
+            (None, None) => None,
         }
     }
 
@@ -78,6 +113,14 @@ impl Pane {
             ..Pane::new(PaneKind::Editor)
         }
     }
+}
+
+/// What a browser pane with no view yet opens once its tab is shown.
+#[derive(Clone, Debug)]
+pub struct Unloaded {
+    pub address: String,
+    /// The icon kept for the address's site, shown on the tab meanwhile.
+    pub favicon: Option<Arc<Image>>,
 }
 
 /// How a split lays its two sides out.
