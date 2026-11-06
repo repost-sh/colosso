@@ -23,13 +23,14 @@ use crate::test_support::{draw, repo, select, shell_with};
 
 pub(super) mod asks;
 mod config;
-mod turn;
-mod drawers;
 mod details;
+mod drawers;
 mod drawing;
+mod pointer;
 mod recent;
 mod rewind;
 mod seen;
+mod turn;
 
 const AT: &str = "2026-11-03T10:00:00.000Z";
 
@@ -169,9 +170,8 @@ fn notifications(
 ) -> usize {
     let seen = std::rc::Rc::new(std::cell::Cell::new(0));
     let counting = seen.clone();
-    let _observing = cx.update(|cx| {
-        cx.observe(thread, move |_, _| counting.set(counting.get() + 1))
-    });
+    let _observing =
+        cx.update(|cx| cx.observe(thread, move |_, _| counting.set(counting.get() + 1)));
     thread.update(cx, act);
     cx.run_until_parked();
     seen.get()
@@ -181,7 +181,10 @@ fn notifications(
 fn tabs(shell: &Entity<Shell>, cx: &TestAppContext) -> Vec<String> {
     shell.read_with(cx, |shell, _| {
         let unit = shell.workspace.branch().unwrap();
-        unit.tabs.iter().map(|tab| tab.first().title.to_string()).collect()
+        unit.tabs
+            .iter()
+            .map(|tab| tab.first().title.to_string())
+            .collect()
     })
 }
 
@@ -262,7 +265,9 @@ fn a_text_already_drawn_grows_and_is_settled_with_the_rows(cx: &mut TestAppConte
     let shows = |cx: &mut TestAppContext| {
         // The view parses in the background, and shows what it has parsed.
         cx.run_until_parked();
-        view.read_with(cx, |view, _| view.rendered_text().as_str().trim_end().to_owned())
+        view.read_with(cx, |view, _| {
+            view.rendered_text().as_str().trim_end().to_owned()
+        })
     };
     thread.update(cx, |thread, cx| {
         thread.take_in(vec![appended("a", "lo"), appended("a", "!")], cx);

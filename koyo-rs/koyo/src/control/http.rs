@@ -6,13 +6,13 @@
 
 use std::sync::{Arc, Mutex};
 
+use futures::channel::mpsc::UnboundedSender;
+use gpui_kit::App;
 use koyo_app_control::{ClientInfo, Command, ControlError, Notice, Topic};
 use koyo_term_control::TermDir;
 use koyo_term_control::catalog::Scope as TerminalScope;
 use koyo_term_mcp::http::HttpServer;
 use koyo_term_mcp::{Backend, Config, Connect, NoticeSink};
-use futures::channel::mpsc::UnboundedSender;
-use gpui_kit::App;
 use serde_json::Value;
 
 use super::in_process::InProcess;

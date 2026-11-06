@@ -12,8 +12,8 @@ use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::component::text::{TextView, TextViewState};
 use gpui_kit::{
     App, AppContext as _, Context, Entity, FocusHandle, Hsla, InteractiveElement as _, IntoElement,
-    KeyBinding, Overflow, ParentElement as _, Render, ScrollHandle, StatefulInteractiveElement as _,
-    StyleRefinement, Styled as _, Window, div, point, px,
+    KeyBinding, Overflow, ParentElement as _, Render, ScrollHandle,
+    StatefulInteractiveElement as _, StyleRefinement, Styled as _, Window, div, point, px,
 };
 
 use super::diagram::{self, Card, Key, Look};

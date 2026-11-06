@@ -78,22 +78,34 @@ fn a_path_in_a_tool_header_is_found() {
 fn a_line_and_column_after_a_path_are_kept() {
     assert_eq!(
         link("error at src/foo.rs:42:7", "foo"),
-        Some((file("/work/src/foo.rs", Some(42), Some(7)), "src/foo.rs:42:7".to_owned()))
+        Some((
+            file("/work/src/foo.rs", Some(42), Some(7)),
+            "src/foo.rs:42:7".to_owned()
+        ))
     );
     assert_eq!(
         link("src/foo.rs:42", "42"),
-        Some((file("/work/src/foo.rs", Some(42), None), "src/foo.rs:42".to_owned()))
+        Some((
+            file("/work/src/foo.rs", Some(42), None),
+            "src/foo.rs:42".to_owned()
+        ))
     );
 }
 
 #[test]
 fn a_full_stop_or_colon_after_a_path_is_left_out() {
-    let foo = Some((file("/work/src/foo.rs", None, None), "src/foo.rs".to_owned()));
+    let foo = Some((
+        file("/work/src/foo.rs", None, None),
+        "src/foo.rs".to_owned(),
+    ));
     assert_eq!(link("It's in src/foo.rs.", "foo"), foo);
     assert_eq!(link("In src/foo.rs: a warning", "foo"), foo);
     assert_eq!(
         link("src/foo.rs:42: unused import", "src"),
-        Some((file("/work/src/foo.rs", Some(42), None), "src/foo.rs:42".to_owned()))
+        Some((
+            file("/work/src/foo.rs", Some(42), None),
+            "src/foo.rs:42".to_owned()
+        ))
     );
 }
 
@@ -101,7 +113,10 @@ fn a_full_stop_or_colon_after_a_path_is_left_out() {
 fn absolute_home_and_dotted_paths_are_found() {
     assert_eq!(
         link("Saved /abs/path/shot.png", "shot"),
-        Some((file("/abs/path/shot.png", None, None), "/abs/path/shot.png".to_owned()))
+        Some((
+            file("/abs/path/shot.png", None, None),
+            "/abs/path/shot.png".to_owned()
+        ))
     );
     assert_eq!(
         link("open ~/x/y.pdf", "y.pdf"),
@@ -109,7 +124,10 @@ fn absolute_home_and_dotted_paths_are_found() {
     );
     assert_eq!(
         link("see ./docs/diagram.svg", "docs"),
-        Some((file("/work/docs/diagram.svg", None, None), "./docs/diagram.svg".to_owned()))
+        Some((
+            file("/work/docs/diagram.svg", None, None),
+            "./docs/diagram.svg".to_owned()
+        ))
     );
 }
 
@@ -140,10 +158,16 @@ fn a_url_leaves_out_what_a_sentence_puts_after_it() {
         url("https://example.com/a")
     );
     assert_eq!(
-        link("docs: https://en.wikipedia.org/wiki/Rust_(language)).", "wiki"),
+        link(
+            "docs: https://en.wikipedia.org/wiki/Rust_(language)).",
+            "wiki"
+        ),
         url("https://en.wikipedia.org/wiki/Rust_(language)")
     );
-    assert_eq!(link("at http://localhost:3000/,", "http"), url("http://localhost:3000/"));
+    assert_eq!(
+        link("at http://localhost:3000/,", "http"),
+        url("http://localhost:3000/")
+    );
     assert_eq!(link("just https:// alone", "https"), None);
 }
 
@@ -192,7 +216,14 @@ fn a_folder_is_no_link() {
     assert_eq!(links.find(&frame, GridPoint { col: 1, row: 0 }), None);
     assert_eq!(links.find(&frame, GridPoint { col: 6, row: 0 }), None);
     let found = links.find(&frame, GridPoint { col: 10, row: 0 }).unwrap();
-    assert_eq!(found.target, file(&crate_folder.join("src/links.rs").to_string_lossy(), None, None));
+    assert_eq!(
+        found.target,
+        file(
+            &crate_folder.join("src/links.rs").to_string_lossy(),
+            None,
+            None
+        )
+    );
 }
 
 #[test]
@@ -254,8 +285,14 @@ fn a_file_uri_is_decoded() {
 
 #[test]
 fn the_shells_folder_is_read_from_either_uri_its_integration_sends() {
-    assert_eq!(shell_folder("file://host/a%20b"), Some(PathBuf::from("/a b")));
-    assert_eq!(shell_folder("kitty-shell-cwd://host/a b"), Some(PathBuf::from("/a b")));
+    assert_eq!(
+        shell_folder("file://host/a%20b"),
+        Some(PathBuf::from("/a b"))
+    );
+    assert_eq!(
+        shell_folder("kitty-shell-cwd://host/a b"),
+        Some(PathBuf::from("/a b"))
+    );
     assert_eq!(shell_folder(""), None);
 }
 

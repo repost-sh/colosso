@@ -27,10 +27,7 @@ use crate::shell::{Shell, ToggleRightPanel};
 use crate::sidebar::resize_handle;
 use crate::theme::{self, Palette};
 
-actions!(
-    right_panel,
-    [ShowFiles, ToggleChanges, ToggleFiles]
-);
+actions!(right_panel, [ShowFiles, ToggleChanges, ToggleFiles]);
 
 pub use crate::list::{
     Activate, Collapse, Expand, NextFile, PageDown, PageUp, PreviousFile, SelectFirst, SelectLast,
@@ -371,7 +368,11 @@ impl Shell {
 
     /// The selected checkout's changes panel, made now if it isn't, as the panel would be on
     /// it.
-    pub(crate) fn changes_panel(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<Entity<ChangesPanel>> {
+    pub(crate) fn changes_panel(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<Entity<ChangesPanel>> {
         let root = self.right_panel.selected.clone()?;
         let panels = self.right_panel.checkouts.get_mut(&root)?;
         Some(panels.changes(window, cx))
@@ -379,7 +380,12 @@ impl Shell {
 
     /// Shows the file `place` is in from a dialog over `behind`, in a tab: as
     /// [`Self::view_file`] does, in that window.
-    pub fn view_behind(shell: &WeakEntity<Shell>, behind: AnyWindowHandle, place: Place, cx: &mut App) {
+    pub fn view_behind(
+        shell: &WeakEntity<Shell>,
+        behind: AnyWindowHandle,
+        place: Place,
+        cx: &mut App,
+    ) {
         let shown = behind.update(cx, |_, window, cx| {
             shell.update(cx, |shell, cx| shell.view_file(place, window, cx))
         });

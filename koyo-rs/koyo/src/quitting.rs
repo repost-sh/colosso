@@ -50,7 +50,9 @@ impl OnQuit {
 
     /// A menu of the choices with `self` checked.
     pub fn menu(self) -> gpui_kit::component::native_menu::NativeMenu {
-        checked_menu(OnQuit::ALL, self, OnQuit::label, |choice| Box::new(SetOnQuit(choice)))
+        checked_menu(OnQuit::ALL, self, OnQuit::label, |choice| {
+            Box::new(SetOnQuit(choice))
+        })
     }
 }
 
@@ -66,7 +68,9 @@ pub fn init(cx: &mut App) {
 /// The menu bar: macOS gives the first menu the app's name, and with no window open, no view
 /// is left to hear ⌘Q but the menu.
 pub fn set_menu(cx: &App) {
-    cx.set_menus(vec![Menu::new("Koyo").items([MenuItem::action("Quit Koyo", Quit)])]);
+    cx.set_menus(vec![
+        Menu::new("Koyo").items([MenuItem::action("Quit Koyo", Quit)]),
+    ]);
 }
 
 /// What the daemon runs and keeps: the terminals to end, and the names of those running.
@@ -102,7 +106,12 @@ fn quit(cx: &mut App) {
         return deal_with_terminals(cx);
     }
     (window.update(cx, |_, window, cx| {
-        files::ask(unsaved, Then::Close(Box::new(deal_with_terminals)), window, cx);
+        files::ask(
+            unsaved,
+            Then::Close(Box::new(deal_with_terminals)),
+            window,
+            cx,
+        );
     }))
     .ok();
 }
@@ -123,11 +132,13 @@ fn deal_with_terminals(cx: &mut App) {
     cx.spawn(async move |cx| {
         let listing = Arc::clone(&client);
         let listed = cx.background_spawn(async move { listed(&listing) }).await;
-        cx.update(|cx| match next(settings::get(cx).on_quit, listed.running.len()) {
-            Next::Quit => cx.quit(),
-            Next::End => end_then_quit(client, listed.handles, cx),
-            Next::Ask => ask(client, listed, cx),
-        });
+        cx.update(
+            |cx| match next(settings::get(cx).on_quit, listed.running.len()) {
+                Next::Quit => cx.quit(),
+                Next::End => end_then_quit(client, listed.handles, cx),
+                Next::Ask => ask(client, listed, cx),
+            },
+        );
     })
     .detach();
 }
@@ -269,7 +280,12 @@ impl Render for QuitDialog {
             .flex_col()
             .gap(px(GAP))
             .child(modal::heading("Quit Koyo?"))
-            .child(div().h(px(2. * LINE)).overflow_hidden().child(self.what_runs()))
+            .child(
+                div()
+                    .h(px(2. * LINE))
+                    .overflow_hidden()
+                    .child(self.what_runs()),
+            )
             .child(
                 modal::small_line()
                     .text_color(p.muted)

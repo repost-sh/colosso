@@ -5,11 +5,11 @@
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use koyo_project::Feed;
 use gpui_kit::component::input::EditorState;
 use gpui_kit::{
     AnyWindowHandle, AppContext as _, Context, Entity, TestAppContext, Window, px, size,
 };
+use koyo_project::Feed;
 
 use super::super::closing::SaveDialog;
 use super::super::{At, FileEditor, FilePane, FilesPanel, Place};
@@ -168,13 +168,25 @@ pub(crate) fn tabs(shell: &Entity<Shell>, cx: &TestAppContext) -> Vec<String> {
                 let panes: Vec<String> = (tab.panes().into_iter())
                     .map(|pane| {
                         let file = pane.file.as_ref().map(|file| file.read(cx));
-                        let preview = if file.is_some_and(FilePane::is_preview) { "*" } else { "" };
-                        let dirty = if file.is_some_and(FilePane::is_dirty) { "+" } else { "" };
+                        let preview = if file.is_some_and(FilePane::is_preview) {
+                            "*"
+                        } else {
+                            ""
+                        };
+                        let dirty = if file.is_some_and(FilePane::is_dirty) {
+                            "+"
+                        } else {
+                            ""
+                        };
                         format!("{}{preview}{dirty}", pane.title)
                     })
                     .collect();
                 let name = panes.join("|");
-                if at == unit.active_tab { format!("[{name}]") } else { name }
+                if at == unit.active_tab {
+                    format!("[{name}]")
+                } else {
+                    name
+                }
             })
             .collect()
     })
@@ -218,7 +230,9 @@ pub(crate) fn shell_with_tree(
     select(&shell, root, cx);
     cx.dispatch_action(window, right_panel::ShowFiles);
     cx.run_until_parked();
-    let files = cx.read(|cx| shell.read(cx).right_panel.files().cloned()).expect("the Files panel");
+    let files = cx
+        .read(|cx| shell.read(cx).right_panel.files().cloned())
+        .expect("the Files panel");
     settle(&files, cx, |files| files.scanned);
     (window, shell, files)
 }

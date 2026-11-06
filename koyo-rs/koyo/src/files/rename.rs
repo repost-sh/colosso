@@ -38,8 +38,10 @@ impl FileEditor {
         let prepared = attached.prepare_rename(&shown.editor, cx);
         self.asking = cx.spawn_in(window, async move |this, cx| {
             if let Some(prepared) = prepared.await {
-                this.update_in(cx, |this, window, cx| this.show_rename(prepared, window, cx))
-                    .ok();
+                this.update_in(cx, |this, window, cx| {
+                    this.show_rename(prepared, window, cx);
+                })
+                .ok();
             }
         });
     }
@@ -54,7 +56,10 @@ impl FileEditor {
             return;
         }
         // Carried past what was typed while the server was asked.
-        let Some(range) = editor.read(cx).translate_range(prepared.range, prepared.version) else {
+        let Some(range) = editor
+            .read(cx)
+            .translate_range(prepared.range, prepared.version)
+        else {
             return;
         };
         let input = cx.new(|cx| InputState::new(window, cx));

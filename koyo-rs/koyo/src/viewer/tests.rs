@@ -82,17 +82,28 @@ fn a_png_is_read_at_its_size_with_its_see_through_pixels_as_they_were() {
     assert!(near(pixel(&image, 0, 10, 10), [255, 0, 0, 255]));
     assert!(near(pixel(&image, 0, 290, 10), [0, 255, 0, 255]));
     // Quartz multiplies the colour by its alpha; it's taken back out for GPUI.
-    assert!(near(pixel(&image, 0, 290, 190), [0, 255, 0, 128]), "{:?}", pixel(&image, 0, 290, 190));
+    assert!(
+        near(pixel(&image, 0, 290, 190), [0, 255, 0, 128]),
+        "{:?}",
+        pixel(&image, 0, 290, 190)
+    );
 }
 
 #[test]
 fn a_jpeg_is_decoded_no_larger_than_it_is_shown() {
     let folder = scratch("viewer-jpeg");
     let opaque = RgbaImage::from_fn(800, 400, |x, _| {
-        if x < 400 { Rgba([255, 0, 0, 255]) } else { Rgba([0, 0, 255, 255]) }
+        if x < 400 {
+            Rgba([255, 0, 0, 255])
+        } else {
+            Rgba([0, 0, 255, 255])
+        }
     });
     let path = folder.join("wide.jpg");
-    image::DynamicImage::ImageRgba8(opaque).to_rgb8().save(&path).unwrap();
+    image::DynamicImage::ImageRgba8(opaque)
+        .to_rgb8()
+        .save(&path)
+        .unwrap();
     let probe = picture::probe(&path).unwrap();
     assert_eq!(probe.pixels, (800, 400));
     assert!(!probe.see_through);
@@ -109,7 +120,11 @@ fn a_photo_saved_on_its_side_is_shown_upright() {
     // Red on top, blue below, as the sensor saw it; its EXIF says to turn it a quarter
     // clockwise to show it.
     let sensor = RgbaImage::from_fn(80, 40, |_, y| {
-        if y < 20 { Rgba([255, 0, 0, 255]) } else { Rgba([0, 0, 255, 255]) }
+        if y < 20 {
+            Rgba([255, 0, 0, 255])
+        } else {
+            Rgba([0, 0, 255, 255])
+        }
     });
     let mut jpeg = Vec::new();
     image::DynamicImage::ImageRgba8(sensor)
@@ -124,8 +139,16 @@ fn a_photo_saved_on_its_side_is_shown_upright() {
     let image = picture::decode(&path, &probe, 80).unwrap();
     assert_eq!(size(&image, 0), (40, 80));
     // Turned a quarter clockwise, the top (red) is on the right.
-    assert!(near(pixel(&image, 0, 35, 40), [255, 0, 0, 255]), "{:?}", pixel(&image, 0, 35, 40));
-    assert!(near(pixel(&image, 0, 5, 40), [0, 0, 255, 255]), "{:?}", pixel(&image, 0, 5, 40));
+    assert!(
+        near(pixel(&image, 0, 35, 40), [255, 0, 0, 255]),
+        "{:?}",
+        pixel(&image, 0, 35, 40)
+    );
+    assert!(
+        near(pixel(&image, 0, 5, 40), [0, 0, 255, 255]),
+        "{:?}",
+        pixel(&image, 0, 5, 40)
+    );
 }
 
 /// `jpeg` with an EXIF block saying the camera was held at `orientation`.
@@ -149,7 +172,11 @@ fn with_orientation(jpeg: &[u8], orientation: u8) -> Vec<u8> {
 fn a_moving_gif_keeps_every_frame_and_how_long_each_shows() {
     let folder = scratch("viewer-gif");
     let path = folder.join("moving.gif");
-    let colours = [Rgba([255, 0, 0, 255]), Rgba([0, 255, 0, 255]), Rgba([0, 0, 255, 255])];
+    let colours = [
+        Rgba([255, 0, 0, 255]),
+        Rgba([0, 255, 0, 255]),
+        Rgba([0, 0, 255, 255]),
+    ];
     let delays = [50, 200, 0];
     {
         let file = std::fs::File::create(&path).unwrap();
@@ -210,7 +237,10 @@ fn two_pages() -> Vec<u8> {
         "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Contents 5 0 R >>".to_string(),
         "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Rotate 90 /Contents 5 0 R >>"
             .to_string(),
-        format!("<< /Length {} >>\nstream\n{content}\nendstream", content.len()),
+        format!(
+            "<< /Length {} >>\nstream\n{content}\nendstream",
+            content.len()
+        ),
     ];
     let mut pdf = b"%PDF-1.4\n".to_vec();
     let mut offsets = Vec::new();
@@ -224,8 +254,11 @@ fn two_pages() -> Vec<u8> {
         pdf.extend(format!("{offset:010} 00000 n \n").bytes());
     }
     pdf.extend(
-        format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n", objects.len() + 1)
-            .bytes(),
+        format!(
+            "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n",
+            objects.len() + 1
+        )
+        .bytes(),
     );
     pdf
 }
@@ -262,7 +295,11 @@ fn a_pdf_page_is_drawn_on_white_paper_and_a_turned_one_upright() {
     // Turned a quarter clockwise, the bottom left quarter is the top left one.
     let turned = document.draw(tile(1, 1.)).unwrap();
     assert_eq!(size(&turned, 0), (100, 200));
-    assert!(near(pixel(&turned, 0, 25, 50), black), "{:?}", pixel(&turned, 0, 25, 50));
+    assert!(
+        near(pixel(&turned, 0, 25, 50), black),
+        "{:?}",
+        pixel(&turned, 0, 25, 50)
+    );
     assert!(near(pixel(&turned, 0, 75, 50), white));
     assert!(near(pixel(&turned, 0, 25, 150), white));
 

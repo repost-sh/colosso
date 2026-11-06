@@ -5,13 +5,13 @@ use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
 
-use koyo_browser_ipc as ipc;
 use gpui_kit::{
     AnyWindowHandle, AppContext as _, Context, DispatchPhase, Entity, IntoElement, Modifiers,
     MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, NavigationDirection,
     ParentElement as _, Pixels, PlatformInput, Point, Render, Styled as _, TestAppContext, Window,
     canvas, div, point, px, size,
 };
+use koyo_browser_ipc as ipc;
 
 use crate::browser::view::BrowserView;
 use crate::test_support::{draw, in_window};

@@ -29,12 +29,12 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use koyo_app_control::transport::{BindError, Listener};
-use koyo_app_control::{CONFIRM_TIMEOUT, ControlError, Endpoint, Hello, Scope, Topic};
-use koyo_term::TermClient;
 use futures::StreamExt as _;
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
 use gpui_kit::{App, Global, Subscription};
+use koyo_app_control::transport::{BindError, Listener};
+use koyo_app_control::{CONFIRM_TIMEOUT, ControlError, Endpoint, Hello, Scope, Topic};
+use koyo_term::TermClient;
 
 // What the Settings page reads and changes.
 pub use activity::{ActivityEntry, ActivityKind, Decision};

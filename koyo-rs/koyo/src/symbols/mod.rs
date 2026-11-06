@@ -35,17 +35,32 @@ impl Shell {
 
     /// Opens the palette on the symbols of the file shown, while one is and a server
     /// knows it.
-    fn document_symbols(&mut self, _: &DocumentSymbols, window: &mut Window, cx: &mut Context<Self>) {
+    fn document_symbols(
+        &mut self,
+        _: &DocumentSymbols,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let symbols = (self.shown_file(window, cx))
             .and_then(|file| file.read(cx).editor()?.read(cx).document_symbols(cx));
         let Some(symbols) = symbols else {
             return;
         };
-        view::open(Source::Document(symbols), cx.entity().downgrade(), window, cx);
+        view::open(
+            Source::Document(symbols),
+            cx.entity().downgrade(),
+            window,
+            cx,
+        );
     }
 
     /// Opens the palette that finds a symbol of the selected checkout by name.
-    fn workspace_symbols(&mut self, _: &WorkspaceSymbols, window: &mut Window, cx: &mut Context<Self>) {
+    fn workspace_symbols(
+        &mut self,
+        _: &WorkspaceSymbols,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some(checkout) = self.right_panel.checkout() else {
             return;
         };

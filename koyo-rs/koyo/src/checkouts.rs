@@ -6,9 +6,9 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Weak};
 
+use gpui_kit::{App, Global};
 use koyo_git::Checkout as Git;
 use koyo_project::{GitDirs, Options, Project};
-use gpui_kit::{App, Global};
 
 /// The projects open, by checkout root. Each closes once the last panel holding it lets go.
 #[derive(Default)]

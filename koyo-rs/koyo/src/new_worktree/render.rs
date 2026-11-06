@@ -1,7 +1,6 @@
 //! How the New Worktree dialog looks: the name, what creating would make, the branches to
 //! start from, and the buttons.
 
-use koyo_git::{NewWorktree, Ref};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::Disableable as _;
 use gpui_kit::component::input::Input;
@@ -11,6 +10,7 @@ use gpui_kit::{
     App, Context, InteractiveElement as _, IntoElement, ParentElement as _, Render,
     StatefulInteractiveElement as _, Styled as _, Window, div, px,
 };
+use koyo_git::{NewWorktree, Ref};
 
 use super::NewWorktreeDialog;
 use crate::modal::{self, Button, Tone};

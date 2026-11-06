@@ -82,7 +82,7 @@ pub fn sidebar(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
                             .child(project.name.clone()),
                         {
                             let path = path.clone();
-                            move || project_menu(&path)
+                            move |_, _| project_menu(&path)
                         },
                     ))
                     .child(search_field(&shell.search, p).rounded(px(8.)).bg(p.hover))
@@ -271,7 +271,7 @@ fn branch_group(
                             }),
                         ),
                 ),
-            move || worktree_menu(&path, is_main, terminals),
+            move |_, _| worktree_menu(&path, is_main, terminals),
         ))
         .child(tab_list(&shell.tab_hand, list, rows, px(1.), p, cx))
 }

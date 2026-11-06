@@ -29,8 +29,9 @@ impl TerminalElement {
         let person = f32::from(self.look.font_size);
         let font = match self.scale {
             Scale::Percent(percent) => fit::font_at(percent, person),
-            Scale::Held => (self.fitting.get().font())
-                .unwrap_or_else(|| self.fit(bounds, cells, window, cx)),
+            Scale::Held => {
+                (self.fitting.get().font()).unwrap_or_else(|| self.fit(bounds, cells, window, cx))
+            }
             Scale::Fit => self.fit(bounds, cells, window, cx),
         };
         let look = if font.to_bits() == person.to_bits() {

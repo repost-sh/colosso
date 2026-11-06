@@ -13,8 +13,13 @@ use crate::symbols::Symbols;
 use crate::test_support::repo;
 
 #[gpui_kit::test]
-async fn the_file_s_symbols_are_listed_narrowed_as_typed_and_the_one_picked_selected(cx: &mut TestAppContext) {
-    let root = repo("language-document-symbols", &[("src/lib.rs", LIB), ("src/other.rs", OTHER)]);
+async fn the_file_s_symbols_are_listed_narrowed_as_typed_and_the_one_picked_selected(
+    cx: &mut TestAppContext,
+) {
+    let root = repo(
+        "language-document-symbols",
+        &[("src/lib.rs", LIB), ("src/other.rs", OTHER)],
+    );
     let (greet, greet_range) = find(LIB, "greet");
     let (_, other_range) = find(LIB, "other");
     let (_, s_range) = find(LIB, "s");
@@ -36,7 +41,9 @@ async fn the_file_s_symbols_are_listed_narrowed_as_typed_and_the_one_picked_sele
 
     // The palette lists the symbols, the nested one after what it's in.
     cx.simulate_keystrokes(shell.0, "cmd-shift-o");
-    let palette = cx.read(modal::current::<Symbols>).expect("the palette opened");
+    let palette = cx
+        .read(modal::current::<Symbols>)
+        .expect("the palette opened");
     let window = cx.read(modal::window).unwrap();
     let watched = vec![changes(&server, cx), changes(&palette, cx)];
     until(cx, watched, |cx| !palette.read(cx).rows().is_empty()).await;
@@ -44,7 +51,10 @@ async fn the_file_s_symbols_are_listed_narrowed_as_typed_and_the_one_picked_sele
     let names: Vec<(&str, Option<&str>)> = (rows.iter())
         .map(|(name, container, ..)| (name.as_str(), container.as_deref()))
         .collect();
-    assert_eq!(names, [("other", None), ("greet", None), ("s", Some("greet"))]);
+    assert_eq!(
+        names,
+        [("other", None), ("greet", None), ("s", Some("greet"))]
+    );
 
     // Typing narrows them, the characters typed marked; Enter selects the one picked.
     cx.simulate_keystrokes(window, "g r");
@@ -61,8 +71,13 @@ async fn the_file_s_symbols_are_listed_narrowed_as_typed_and_the_one_picked_sele
 }
 
 #[gpui_kit::test]
-async fn a_symbol_of_the_checkout_is_found_by_name_and_its_file_opened_at_it(cx: &mut TestAppContext) {
-    let root = repo("language-workspace-symbols", &[("src/lib.rs", LIB), ("src/other.rs", OTHER)]);
+async fn a_symbol_of_the_checkout_is_found_by_name_and_its_file_opened_at_it(
+    cx: &mut TestAppContext,
+) {
+    let root = repo(
+        "language-workspace-symbols",
+        &[("src/lib.rs", LIB), ("src/other.rs", OTHER)],
+    );
     let (target, target_range) = find(OTHER, "target");
     let (launcher, _) = launcher(move |root, _| {
         let mut script = started_with(root, "src/lib.rs", json!({"workspaceSymbolProvider": true}));
@@ -80,7 +95,9 @@ async fn a_symbol_of_the_checkout_is_found_by_name_and_its_file_opened_at_it(cx:
     place_caret(shell.0, &lib_editor, 0, cx);
 
     cx.simulate_keystrokes(shell.0, "cmd-alt-o");
-    let palette = cx.read(modal::current::<Symbols>).expect("the palette opened");
+    let palette = cx
+        .read(modal::current::<Symbols>)
+        .expect("the palette opened");
     let window = cx.read(modal::window).unwrap();
     cx.simulate_keystrokes(window, "t a r");
     cx.executor().advance_clock(Duration::from_millis(150));

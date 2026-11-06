@@ -5,12 +5,12 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use koyo_git::{Repo, Worktree};
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::{
     Action, App, AppContext as _, ClipboardItem, Context, Div, InteractiveElement, MouseButton,
     MouseDownEvent, PathPromptOptions, Task, Window, actions,
 };
+use koyo_git::{Repo, Worktree};
 
 use crate::model::PaneKind;
 use crate::settings;
@@ -47,14 +47,17 @@ pub struct RevealInFinder(pub PathBuf);
 #[action(namespace = projects, no_json)]
 pub struct CopyPath(pub PathBuf);
 
-/// Has `element` open the menu `build` makes where it is right-clicked.
-pub fn with_menu<E: InteractiveElement>(element: E, build: impl Fn() -> NativeMenu + 'static) -> E {
+/// Has `element` open the menu `build` makes where it is right-clicked, rather than any menu of
+/// what it's in.
+pub fn with_menu<E: InteractiveElement>(
+    element: E,
+    build: impl Fn(&mut Window, &mut App) -> NativeMenu + 'static,
+) -> E {
     element.on_mouse_down(
         MouseButton::Right,
         move |event: &MouseDownEvent, window, cx| {
-            // The rails have a menu of their own.
             cx.stop_propagation();
-            build().show(event.position, window, cx);
+            build(window, cx).show(event.position, window, cx);
         },
     )
 }
@@ -212,7 +215,10 @@ impl Shell {
                 let checkouts: Vec<(PathBuf, PathBuf)> = (self.workspace.projects.iter())
                     .flat_map(|project| {
                         let main = &project.path;
-                        project.branches.iter().map(|unit| (unit.worktree.path.clone(), main.clone()))
+                        project
+                            .branches
+                            .iter()
+                            .map(|unit| (unit.worktree.path.clone(), main.clone()))
                     })
                     .collect();
                 crate::history::know_checkouts(checkouts, cx);

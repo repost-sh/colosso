@@ -6,9 +6,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
+use gpui_kit::{AppContext as _, Context, EventEmitter, SharedString, Task};
 use koyo_lsp::lsp_types::{NumberOrString, ProgressParams, ProgressParamsValue, WorkDoneProgress};
 use koyo_lsp::{Client, Encoding, Event, Exit, Health, IndexedText, LspError};
-use gpui_kit::{AppContext as _, Context, EventEmitter, SharedString, Task};
 
 use super::diagnostics::Published;
 use super::heard::{Heard, follow, hear};
@@ -190,7 +190,10 @@ impl Server {
             self.log.begin();
         }
         let (kind, root) = (self.kind, self.root.clone());
-        self.tell(log::Level::Info, &format!("starting, in {}", root.display()));
+        self.tell(
+            log::Level::Info,
+            &format!("starting, in {}", root.display()),
+        );
         let log = self.log.path().map(Path::to_path_buf);
         self.running = Some(cx.spawn(async move |this, cx| {
             let launching = root.clone();
@@ -271,7 +274,12 @@ impl Server {
 
     /// Says `line` of the server in the app's log, as `level`, and in its own.
     fn tell(&self, level: log::Level, line: &str) {
-        log::log!(level, "{} for {}: {line}", self.kind.name(), self.root.display());
+        log::log!(
+            level,
+            "{} for {}: {line}",
+            self.kind.name(),
+            self.root.display()
+        );
         self.log.note(line);
     }
 

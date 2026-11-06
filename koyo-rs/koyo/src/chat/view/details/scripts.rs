@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::{
-    App, AppContext as _, ClickEvent, Context, Div, Entity, Focusable as _, InteractiveElement as _,
-    IntoElement, ParentElement as _, Render, SharedString, Stateful,
+    App, AppContext as _, ClickEvent, Context, Div, Entity, Focusable as _,
+    InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString, Stateful,
     StatefulInteractiveElement as _, Styled as _, Subscription, Window, div, px,
 };
 
@@ -31,9 +31,15 @@ const LINE: &str = "chat-details-script";
 pub(super) fn section(view: &ChatView, p: Palette, cx: &Context<ChatView>) -> Option<Div> {
     let place = view.details.place.as_ref()?;
     let project = place.project.clone();
-    let scripts = settings::get(cx).project_scripts.of(&project).iter().cloned();
-    let lines: Vec<_> =
-        scripts.enumerate().map(|(at, script)| line(&project, &place.folder, at, script, p, cx)).collect();
+    let scripts = settings::get(cx)
+        .project_scripts
+        .of(&project)
+        .iter()
+        .cloned();
+    let lines: Vec<_> = scripts
+        .enumerate()
+        .map(|(at, script)| line(&project, &place.folder, at, script, p, cx))
+        .collect();
     let add = row(IconName::Plus, p).child(ellipsized("Add a script…"));
     let add = clickable(add, "chat-details-add-script", p)
         .on_click(move |_, window, cx| open_adding(project.clone(), window, cx));
@@ -56,10 +62,16 @@ fn line(
             cx.stop_propagation();
             settings::update(cx, |settings| settings.project_scripts.remove(&project, at));
         });
-    let says = row(IconName::Play, p).group(LINE).child(ellipsized(script.name.clone()).flex_1()).child(remove);
+    let says = row(IconName::Play, p)
+        .group(LINE)
+        .child(ellipsized(script.name.clone()).flex_1())
+        .child(remove);
     clickable(says, ("chat-details-script", at), p).on_click(cx.listener(
         move |_, _: &ClickEvent, _, cx| {
-            cx.emit(ChatViewEvent::RunScript { script: script.clone(), folder: folder.clone() });
+            cx.emit(ChatViewEvent::RunScript {
+                script: script.clone(),
+                folder: folder.clone(),
+            });
         },
     ))
 }
@@ -67,21 +79,37 @@ fn line(
 fn open_adding(project: PathBuf, window: &mut Window, cx: &mut App) {
     modal::open(WIDTH, HEIGHT, window, cx, |window, cx| {
         let name = cx.new(|cx| InputState::new(window, cx).placeholder("Name, like Dev server"));
-        let command = cx.new(|cx| InputState::new(window, cx).placeholder("Command, like npm run dev"));
+        let command =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Command, like npm run dev"));
         name.focus_handle(cx).focus(window, cx);
         let _typing = [
-            cx.subscribe_in(&name, window, |this: &mut AddScript, _, event, window, cx| match event {
-                InputEvent::Change => cx.notify(),
-                InputEvent::PressEnter { .. } => this.command.focus_handle(cx).focus(window, cx),
-                _ => {}
-            }),
-            cx.subscribe_in(&command, window, |this: &mut AddScript, _, event, window, cx| match event {
-                InputEvent::Change => cx.notify(),
-                InputEvent::PressEnter { .. } => this.add(window, cx),
-                _ => {}
-            }),
+            cx.subscribe_in(
+                &name,
+                window,
+                |this: &mut AddScript, _, event, window, cx| match event {
+                    InputEvent::Change => cx.notify(),
+                    InputEvent::PressEnter { .. } => {
+                        this.command.focus_handle(cx).focus(window, cx);
+                    }
+                    _ => {}
+                },
+            ),
+            cx.subscribe_in(
+                &command,
+                window,
+                |this: &mut AddScript, _, event, window, cx| match event {
+                    InputEvent::Change => cx.notify(),
+                    InputEvent::PressEnter { .. } => this.add(window, cx),
+                    _ => {}
+                },
+            ),
         ];
-        AddScript { project, name, command, _typing }
+        AddScript {
+            project,
+            name,
+            command,
+            _typing,
+        }
     });
 }
 

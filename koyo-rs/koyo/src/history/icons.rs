@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use gpui_kit::{App, Global, Image, ImageFormat};
 
-use super::rank::host;
+use super::address::host;
 use crate::settings;
 
 /// The folder, in the app's data folder.
@@ -23,13 +23,21 @@ struct Icons {
 impl Global for Icons {}
 
 fn folder() -> Option<PathBuf> {
-    settings::data_dir().filter(|_| !cfg!(test)).map(|data| data.join(FOLDER))
+    settings::data_dir()
+        .filter(|_| !cfg!(test))
+        .map(|data| data.join(FOLDER))
 }
 
 /// Where the icon of `host` is kept: its name, made safe for a file's.
 fn file(host: &str) -> Option<PathBuf> {
     let name: String = (host.chars())
-        .map(|c| if c.is_ascii_alphanumeric() || c == '.' || c == '-' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '.' || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     folder().map(|folder| folder.join(format!("{name}.png")))
 }

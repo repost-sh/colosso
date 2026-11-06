@@ -1,11 +1,11 @@
 //! The window's projects, worktrees, tabs and panes as the operations' outputs describe them.
 
+use gpui_kit::App;
 use koyo_app_control::ControlError;
 use koyo_app_control::ops::shared::{
     Axis, PaneInfo, PaneKind, PanePlace, PaneTree, ProjectInfo, WorktreeInfo,
 };
 use koyo_git::Head;
-use gpui_kit::App;
 
 use super::select::{self, TabAt};
 use crate::files::FilePane;

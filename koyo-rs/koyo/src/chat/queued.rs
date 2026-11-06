@@ -6,9 +6,10 @@
 use gpui_kit::component::input::{InputEvent, Textarea, TextareaState};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Action, AnyWindowHandle, App, AppContext as _, ClickEvent, Context, Div, Entity, Focusable as _,
-    InteractiveElement as _, KeyBinding, ParentElement as _, SharedString, Stateful,
-    StatefulInteractiveElement as _, Styled as _, Subscription, Window, actions, div, px, relative,
+    Action, AnyWindowHandle, App, AppContext as _, ClickEvent, Context, Div, Entity,
+    Focusable as _, InteractiveElement as _, KeyBinding, ParentElement as _, SharedString,
+    Stateful, StatefulInteractiveElement as _, Styled as _, Subscription, Window, actions, div, px,
+    relative,
 };
 use koyo_agent::protocol::ids::RunId;
 use koyo_agent::protocol::model::{Attachment, Run};
@@ -50,7 +51,11 @@ pub(super) struct GiveBackEdit(pub(super) String);
 
 pub(super) fn bind_keys(cx: &mut App) {
     let editing = format!("{EDITING} > Input");
-    cx.bind_keys([KeyBinding::new("escape", CancelQueuedEdit, Some(editing.as_str()))]);
+    cx.bind_keys([KeyBinding::new(
+        "escape",
+        CancelQueuedEdit,
+        Some(editing.as_str()),
+    )]);
 }
 
 /// A queued message being changed, where it shows.
@@ -72,7 +77,11 @@ impl Timeline {
         let Some(said) = said.map(|queued| queued.prompt.text.clone()) else {
             return;
         };
-        let text = cx.new(|cx| TextareaState::new(window, cx).auto_grow(1, 12).submit_on_enter(true));
+        let text = cx.new(|cx| {
+            TextareaState::new(window, cx)
+                .auto_grow(1, 12)
+                .submit_on_enter(true)
+        });
         text.update(cx, |text, cx| text.insert(said.clone(), window, cx));
         let hearing = cx.subscribe_in(&text, window, |this, _, event, window, cx| match event {
             InputEvent::PressEnter { shift: false, .. } => this.save_queued_edit(window, cx),
@@ -97,7 +106,9 @@ impl Timeline {
         };
         let id = RowId::Queued(edit.run.clone());
         if let Some(index) = self.rows.iter().position(|row| row.id == id) {
-            self.scroller.update(cx, |scroller, cx| scroller.remeasure_items(index..index + 1, cx));
+            self.scroller.update(cx, |scroller, cx| {
+                scroller.remeasure_items(index..index + 1, cx)
+            });
         }
         cx.notify();
     }
@@ -128,7 +139,11 @@ impl Timeline {
         let changed = text != edit.said;
         self.end_queued_edit(window, cx);
         if changed {
-            let saved = SaveQueued { run, text, attachments };
+            let saved = SaveQueued {
+                run,
+                text,
+                attachments,
+            };
             self.composer.dispatch_action(&saved, window, cx);
         }
     }
@@ -174,7 +189,10 @@ impl Drawing {
                 said.child(attached(&run.id.0, &prompt.attachments, p))
             });
         let row = div().flex().flex_col().items_end().gap_1();
-        let editing = self.queued_edit.as_ref().filter(|(editing, _)| *editing == run.id);
+        let editing = self
+            .queued_edit
+            .as_ref()
+            .filter(|(editing, _)| *editing == run.id);
         if let Some((_, text)) = editing {
             let said = said.w(relative(0.8)).text_color(p.text);
             return row
@@ -188,15 +206,25 @@ impl Drawing {
         }
         let said = said
             .text_color(p.muted)
-            .when(!prompt.text.is_empty(), |said| said.child(prompt.text.clone()));
+            .when(!prompt.text.is_empty(), |said| {
+                said.child(prompt.text.clone())
+            });
         let id = run.id.clone();
         let edits = self.on_timeline(move |this, window, cx| {
             this.edit_queued(id.clone(), window, cx);
         });
         row.child(said).child(self.queue_actions().children([
-            self.queue_action(run, "Send now", says(self, Box::new(SendQueuedNow(run.id.clone())))),
+            self.queue_action(
+                run,
+                "Send now",
+                says(self, Box::new(SendQueuedNow(run.id.clone()))),
+            ),
             self.queue_action(run, "Edit", edits),
-            self.queue_action(run, "Remove", says(self, Box::new(RemoveQueued(run.id.clone())))),
+            self.queue_action(
+                run,
+                "Remove",
+                says(self, Box::new(RemoveQueued(run.id.clone()))),
+            ),
         ]))
     }
 

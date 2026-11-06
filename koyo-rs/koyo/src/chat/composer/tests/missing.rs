@@ -14,7 +14,9 @@ fn a_chat_says_so_only_while_claude_code_is_missing(cx: &mut TestAppContext) {
     };
     assert!(!says(cx));
 
-    let held = chat.composer.read_with(cx, |composer, cx| composer.chats.read(cx).claude_missing.clone());
+    let held = chat.composer.read_with(cx, |composer, cx| {
+        composer.chats.read(cx).claude_missing.clone()
+    });
     held.update(cx, |held, cx| {
         *held = true;
         cx.notify();

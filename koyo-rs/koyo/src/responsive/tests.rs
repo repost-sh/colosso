@@ -60,7 +60,10 @@ fn grips_sit_outside_the_content_and_size_a_page_within_its_limits() {
         grip: Grip::Corner,
         ..drag
     };
-    assert_eq!(corner.size_at(point(px(310.), px(310.)), &limits), (440, 820));
+    assert_eq!(
+        corner.size_at(point(px(310.), px(310.)), &limits),
+        (440, 820)
+    );
     let bottom = Drag {
         grip: Grip::Bottom,
         ..drag
@@ -104,7 +107,10 @@ fn a_terminals_grips_size_it_in_whole_cells_within_its_limits() {
         width: 999,
         ..corner
     };
-    assert_eq!(right.size_at(point(px(500.), px(100.)), &limits), (1000, 24));
+    assert_eq!(
+        right.size_at(point(px(500.), px(100.)), &limits),
+        (1000, 24)
+    );
 }
 
 #[test]

@@ -3,8 +3,8 @@
 
 use std::time::{Duration, Instant};
 
-use koyo_project::Feed;
 use gpui_kit::{AnyWindowHandle, AppContext as _, Entity, TestAppContext};
+use koyo_project::Feed;
 
 use super::super::ChangesPanel;
 use crate::checkout::Checkout;
@@ -19,7 +19,9 @@ fn settle(panel: &Entity<ChangesPanel>, cx: &mut TestAppContext, done: impl Fn(&
     cx.run_until_parked();
     let checkout = cx.read(|cx| panel.read(cx).checkout().clone());
     let project = cx.read(|cx| checkout.read(cx).project().cloned());
-    let updates = project.expect("the checkout opened").subscribe(Feed::Everything);
+    let updates = project
+        .expect("the checkout opened")
+        .subscribe(Feed::Everything);
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
         cx.run_until_parked();
@@ -70,13 +72,24 @@ fn a_file_picked_in_the_list_shows_the_one_changes_tab_which_comes_back_once_clo
     let panel = panel.expect("the changes panel");
     settle(&panel, cx, |checkout| checkout.files().len() == 2);
     let before = tabs(&shell, cx);
-    assert_eq!(diffs_tabs(&shell, cx), 0, "nothing's picked yet: {before:?}");
+    assert_eq!(
+        diffs_tabs(&shell, cx),
+        0,
+        "nothing's picked yet: {before:?}"
+    );
 
     // Picked, a file opens the diffs right after the tab shown, and shows them.
     press_in_list(window, &panel, "j", cx);
     let opened = tabs(&shell, cx);
-    let shown = before.iter().position(|tab| tab.starts_with('[')).map_or(0, |at| at + 1);
-    assert_eq!(opened.get(shown).map(String::as_str), Some("[Changes]"), "{opened:?}");
+    let shown = before
+        .iter()
+        .position(|tab| tab.starts_with('['))
+        .map_or(0, |at| at + 1);
+    assert_eq!(
+        opened.get(shown).map(String::as_str),
+        Some("[Changes]"),
+        "{opened:?}"
+    );
     // Another file picked: the same tab, scrolled on.
     press_in_list(window, &panel, "k", cx);
     assert_eq!(tabs(&shell, cx), opened);

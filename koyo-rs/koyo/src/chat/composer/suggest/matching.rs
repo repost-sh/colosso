@@ -26,7 +26,9 @@ pub(super) enum TokenKind {
 pub(super) fn token_at(text: &str, cursor: usize) -> Option<Token> {
     let before = text.get(..cursor)?;
     let after = text.get(cursor..)?;
-    let start = before.trim_end_matches(|at: char| !at.is_whitespace()).len();
+    let start = before
+        .trim_end_matches(|at: char| !at.is_whitespace())
+        .len();
     let end = cursor + after.find(char::is_whitespace).unwrap_or(after.len());
     let word = before.get(start..)?;
     let (kind, query) = match (word.strip_prefix('@'), word.strip_prefix('/')) {
@@ -55,7 +57,11 @@ const OWN: [(&str, &str, Own); 5] = [
     ("model", "Choose the model", Own::Model),
     ("effort", "Choose how hard the agent works", Own::Effort),
     ("plan", "Plan first, or stop planning first", Own::Plan),
-    ("compact", "Summarize the conversation, to free up context", Own::Compact),
+    (
+        "compact",
+        "Summarize the conversation, to free up context",
+        Own::Compact,
+    ),
     ("clear", "Start a new chat", Own::Clear),
 ];
 
@@ -81,7 +87,9 @@ pub(super) fn commands_matching(query: &str, listed: &[Command], begun: bool) ->
             own: Some(own),
         });
     let theirs = (listed.iter())
-        .filter(|command| has_it(&command.name) && !OWN.iter().any(|(name, _, _)| *name == command.name))
+        .filter(|command| {
+            has_it(&command.name) && !OWN.iter().any(|(name, _, _)| *name == command.name)
+        })
         .map(|command| CommandRow {
             name: command.name.clone().into(),
             hint: command.argument_hint.clone().map(Into::into),
@@ -114,13 +122,22 @@ mod tests {
     #[test]
     fn a_word_that_starts_with_an_at_names_a_file_wherever_it_is() {
         assert_eq!(token("@", 1), Some((TokenKind::File, 0..1, String::new())));
-        assert_eq!(token("see @src/ma", 11), Some((TokenKind::File, 4..11, "src/ma".into())));
-        assert_eq!(token("a\n@b c", 4), Some((TokenKind::File, 2..4, "b".into())));
+        assert_eq!(
+            token("see @src/ma", 11),
+            Some((TokenKind::File, 4..11, "src/ma".into()))
+        );
+        assert_eq!(
+            token("a\n@b c", 4),
+            Some((TokenKind::File, 2..4, "b".into()))
+        );
     }
 
     #[test]
     fn all_of_the_word_goes_though_only_what_is_before_the_caret_is_looked_for() {
-        assert_eq!(token("@main.rs next", 3), Some((TokenKind::File, 0..8, "ma".into())));
+        assert_eq!(
+            token("@main.rs next", 3),
+            Some((TokenKind::File, 0..8, "ma".into()))
+        );
     }
 
     #[test]
@@ -130,7 +147,10 @@ mod tests {
 
     #[test]
     fn a_slash_is_a_command_only_as_the_first_word() {
-        assert_eq!(token("/rev", 4), Some((TokenKind::Command, 0..4, "rev".into())));
+        assert_eq!(
+            token("/rev", 4),
+            Some((TokenKind::Command, 0..4, "rev".into()))
+        );
         assert_eq!(token("/review this", 12), None);
         assert_eq!(token("see /usr", 8), None);
     }
@@ -148,7 +168,10 @@ mod tests {
 
     #[test]
     fn a_word_of_other_scripts_is_measured_in_bytes() {
-        assert_eq!(token("é @日本", 10), Some((TokenKind::File, 3..10, "日本".into())));
+        assert_eq!(
+            token("é @日本", 10),
+            Some((TokenKind::File, 3..10, "日本".into()))
+        );
     }
 
     fn command(name: &str) -> Command {
@@ -167,20 +190,32 @@ mod tests {
     fn koyos_own_commands_come_first_and_stand_in_for_the_agents() {
         let listed = [command("review"), command("compact")];
         let rows = commands_matching("", &listed, true);
-        assert_eq!(names(&rows), ["model", "effort", "plan", "compact", "clear", "review"]);
+        assert_eq!(
+            names(&rows),
+            ["model", "effort", "plan", "compact", "clear", "review"]
+        );
         assert_eq!(rows.get(3).and_then(|row| row.own), Some(Own::Compact));
     }
 
     #[test]
     fn a_chat_that_has_not_begun_has_nothing_to_compact() {
-        assert_eq!(names(&commands_matching("", &[], false)), ["model", "effort", "plan", "clear"]);
+        assert_eq!(
+            names(&commands_matching("", &[], false)),
+            ["model", "effort", "plan", "clear"]
+        );
     }
 
     #[test]
     fn a_name_that_starts_with_it_goes_ahead_of_one_that_only_has_it() {
         let listed = [command("code-review"), command("review")];
-        assert_eq!(names(&commands_matching("rev", &listed, true)), ["review", "code-review"]);
-        assert_eq!(names(&commands_matching("REV", &listed, true)), ["review", "code-review"]);
+        assert_eq!(
+            names(&commands_matching("rev", &listed, true)),
+            ["review", "code-review"]
+        );
+        assert_eq!(
+            names(&commands_matching("REV", &listed, true)),
+            ["review", "code-review"]
+        );
     }
 
     #[test]

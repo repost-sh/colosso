@@ -5,10 +5,10 @@
 use std::cell::RefCell;
 use std::ops::Range;
 
-use koyo_term_engine::{Attrs, Cell, Frame, Grapheme, Rgb, Underline, Width};
 use gpui_kit::{
     App, Bounds, Hsla, Pixels, Rgba, SharedString, TextRun, Window, fill, point, px, size,
 };
+use koyo_term_engine::{Attrs, Cell, Frame, Grapheme, Rgb, Underline, Width};
 
 use crate::element::Grid;
 use crate::glyphs::{Glyphs, Look, Style as GlyphStyle};

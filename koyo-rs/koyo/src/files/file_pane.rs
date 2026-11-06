@@ -70,7 +70,11 @@ struct Text {
 }
 
 impl Text {
-    fn new(document: Entity<Document>, editor: Entity<FileEditor>, cx: &mut Context<FilePane>) -> Text {
+    fn new(
+        document: Entity<Document>,
+        editor: Entity<FileEditor>,
+        cx: &mut Context<FilePane>,
+    ) -> Text {
         let _changes = cx.observe(&document, |this, document, cx| {
             let dirty = document.read(cx).is_dirty();
             let preview = this.preview && !dirty;
@@ -178,7 +182,12 @@ impl FilePane {
         self.dirty = document.read(cx).is_dirty();
         self.preview = self.preview && !self.dirty;
         let text = Text::new(document, editor, cx);
-        if let Body::Viewer { source, showing_source, .. } = &mut self.body {
+        if let Body::Viewer {
+            source,
+            showing_source,
+            ..
+        } = &mut self.body
+        {
             (*source, *showing_source) = (Some(text), true);
         }
         cx.notify();
@@ -187,7 +196,10 @@ impl FilePane {
     /// The editor over its text, if it has one; for a drawing, whether or not it's shown.
     pub fn editor(&self) -> Option<&Entity<FileEditor>> {
         match &self.body {
-            Body::Text(text) | Body::Viewer { source: Some(text), .. } => Some(&text.editor),
+            Body::Text(text)
+            | Body::Viewer {
+                source: Some(text), ..
+            } => Some(&text.editor),
             Body::Viewer { source: None, .. } => None,
         }
     }
@@ -231,7 +243,12 @@ impl FilePane {
     /// Shows a drawing's text, or the drawing again; the shell is asked for an editor the
     /// first time its text is shown. The keyboard goes to what's shown.
     pub fn show_text(&mut self, text: bool, window: &mut Window, cx: &mut Context<Self>) {
-        let Body::Viewer { source, showing_source, .. } = &mut self.body else {
+        let Body::Viewer {
+            source,
+            showing_source,
+            ..
+        } = &mut self.body
+        else {
             return;
         };
         if text && !crate::viewer::has_text(&self.path) {
@@ -265,15 +282,22 @@ impl FilePane {
     /// Whether what it shows has the keyboard.
     pub fn has_focus(&self, window: &Window, cx: &App) -> bool {
         let previewing = (self.shown_preview()).is_some_and(|preview| {
-            preview.read(cx).focus_handle(cx).contains_focused(window, cx)
+            preview
+                .read(cx)
+                .focus_handle(cx)
+                .contains_focused(window, cx)
         });
-        previewing || match &self.body {
-            Body::Text(text) => text.editor.read(cx).has_focus(window, cx),
-            Body::Viewer { viewer, source, .. } => {
-                (source.as_ref()).is_some_and(|text| text.editor.read(cx).has_focus(window, cx))
-                    || viewer.read(cx).focus_handle(cx).contains_focused(window, cx)
+        previewing
+            || match &self.body {
+                Body::Text(text) => text.editor.read(cx).has_focus(window, cx),
+                Body::Viewer { viewer, source, .. } => {
+                    (source.as_ref()).is_some_and(|text| text.editor.read(cx).has_focus(window, cx))
+                        || viewer
+                            .read(cx)
+                            .focus_handle(cx)
+                            .contains_focused(window, cx)
+                }
             }
-        }
     }
 
     /// Whether the next file previewed takes its place.
@@ -301,7 +325,9 @@ impl FilePane {
 
     /// How its file's shown: as code, unless it's markdown shown as it reads.
     pub fn mode(&self) -> Mode {
-        self.markdown.as_ref().map_or(Mode::Code, |markdown| markdown.mode)
+        self.markdown
+            .as_ref()
+            .map_or(Mode::Code, |markdown| markdown.mode)
     }
 
     /// Shows the place `at` in its text, a markdown file shown as it reads shown as code again.
@@ -366,12 +392,17 @@ impl FilePane {
         }))
         .clone();
         let text = (self.editor()).and_then(|editor| editor.read(cx).text(cx));
-        preview.update(cx, |preview, cx| preview.set_text(&text.unwrap_or_default(), cx));
+        preview.update(cx, |preview, cx| {
+            preview.set_text(&text.unwrap_or_default(), cx);
+        });
     }
 
     /// The preview, while the file's shown as it reads.
     pub fn shown_preview(&self) -> Option<&Entity<MarkdownPreview>> {
-        let markdown = self.markdown.as_ref().filter(|markdown| markdown.mode == Mode::Preview)?;
+        let markdown = self
+            .markdown
+            .as_ref()
+            .filter(|markdown| markdown.mode == Mode::Preview)?;
         markdown.preview.as_ref()
     }
 }

@@ -21,7 +21,12 @@ use super::{AT, answer};
 use crate::menu;
 use crate::test_support::draw;
 
-pub(in crate::chat) fn request(id: &str, status: RequestStatus, for_chat: bool, seq: u64) -> Request {
+pub(in crate::chat) fn request(
+    id: &str,
+    status: RequestStatus,
+    for_chat: bool,
+    seq: u64,
+) -> Request {
     Request {
         id: RequestId(id.into()),
         thread_id: ThreadId("0001".into()),
@@ -84,7 +89,11 @@ pub(in crate::chat) struct Asking {
 
 impl Asking {
     /// A chat's tab with the composer focused, and `requests` waiting on the person.
-    pub(in crate::chat) fn new(name: &str, requests: Vec<Request>, cx: &mut TestAppContext) -> Asking {
+    pub(in crate::chat) fn new(
+        name: &str,
+        requests: Vec<Request>,
+        cx: &mut TestAppContext,
+    ) -> Asking {
         let (window, view, thread) = shown_chat(name, cx);
         holds(&thread, requests, 10, cx);
         let composer = view.read_with(cx, |view, _| view.composer.clone());
@@ -102,7 +111,8 @@ impl Asking {
     }
 
     pub(in crate::chat) fn said(&self, cx: &TestAppContext) -> Vec<(RequestId, Response)> {
-        self.composer.read_with(cx, |composer, _| composer.said.clone())
+        self.composer
+            .read_with(cx, |composer, _| composer.said.clone())
     }
 
     pub(in crate::chat) fn typed(&self, cx: &TestAppContext) -> String {
@@ -184,7 +194,10 @@ fn what_is_typed_declines_with_its_words(cx: &mut TestAppContext) {
     chat.keys("n o space w a y", cx);
     chat.keys("enter", cx);
 
-    assert_eq!(chat.said(cx), [approval_of("q1", Decision::Deny, Some("no way"))]);
+    assert_eq!(
+        chat.said(cx),
+        [approval_of("q1", Decision::Deny, Some("no way"))]
+    );
 }
 
 #[gpui_kit::test]
@@ -203,7 +216,10 @@ fn the_oldest_request_is_answered_first_and_then_the_next(cx: &mut TestAppContex
     draw(chat.window, cx);
     chat.keys("cmd-enter", cx);
 
-    assert_eq!(chat.said(cx).last(), Some(&approval_of("q2", Decision::Allow, None)));
+    assert_eq!(
+        chat.said(cx).last(),
+        Some(&approval_of("q2", Decision::Allow, None))
+    );
 }
 
 #[gpui_kit::test]
@@ -234,7 +250,15 @@ fn a_row_of_the_menu_says_its_answer_to_the_composer(cx: &mut TestAppContext) {
     cx.update_window(chat.window, |_, window, cx| {
         let target = chat.composer.read(cx).focus_handle(cx);
         let items = answers_past_allow(Some("Allow Bash(cargo test:*) for this chat".into()));
-        menu::open_rows("test-chat-menu".into(), Bounds::default(), items, None, &target, window, cx);
+        menu::open_rows(
+            "test-chat-menu".into(),
+            Bounds::default(),
+            items,
+            None,
+            &target,
+            window,
+            cx,
+        );
     })
     .unwrap();
     cx.run_until_parked();
@@ -242,8 +266,12 @@ fn a_row_of_the_menu_says_its_answer_to_the_composer(cx: &mut TestAppContext) {
         .find(|handle| *handle != chat.window)
         .expect("the menu opened a window of its own");
 
-    VisualTestContext::from_window(popup, cx).simulate_click(menu::row_center(0), Modifiers::default());
+    VisualTestContext::from_window(popup, cx)
+        .simulate_click(menu::row_center(0), Modifiers::default());
     cx.run_until_parked();
 
-    assert_eq!(chat.said(cx), [approval_of("q1", Decision::AllowSession, None)]);
+    assert_eq!(
+        chat.said(cx),
+        [approval_of("q1", Decision::AllowSession, None)]
+    );
 }

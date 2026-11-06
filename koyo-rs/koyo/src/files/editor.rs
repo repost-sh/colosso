@@ -9,15 +9,14 @@
 use std::ops::Range;
 use std::path::Path;
 
-use koyo_lsp::LineIndex;
 use gpui_kit::assets::IconName;
 use gpui_kit::component::input::{Editor, EditorState, InputEvent, RopeExt as _};
 use gpui_kit::{
     App, AppContext as _, Context, Entity, EventEmitter, Focusable as _, InteractiveElement as _,
-    IntoElement,
-    ParentElement as _, Render, SharedString, Styled as _, Subscription, Task, WeakEntity,
-    Window, div,
+    IntoElement, ParentElement as _, Render, SharedString, Styled as _, Subscription, Task,
+    WeakEntity, Window, div,
 };
+use koyo_lsp::LineIndex;
 
 use super::rename::Renaming;
 use super::{At, Place};
@@ -77,12 +76,11 @@ impl FileEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let _document = cx.subscribe_in(document, window, |this, _, event, window, cx| {
-            match event {
+        let _document =
+            cx.subscribe_in(document, window, |this, _, event, window, cx| match event {
                 DocumentEvent::Read { edits } => this.read(edits.as_deref(), window, cx),
                 DocumentEvent::Saved => this.tell_dirty(cx),
-            }
-        });
+            });
         let mut view = FileEditor {
             document: document.downgrade(),
             editable,
@@ -167,7 +165,9 @@ impl FileEditor {
     /// Gives the editor the keyboard, now if the text is shown, or once it is.
     pub fn focus_editor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         match &self.editor {
-            Some(shown) => shown.editor.update(cx, |editor, cx| editor.focus(window, cx)),
+            Some(shown) => shown
+                .editor
+                .update(cx, |editor, cx| editor.focus(window, cx)),
             None => self.focus_when_shown = true,
         }
     }
@@ -180,8 +180,13 @@ impl FileEditor {
 
     /// Whether the editor has the keyboard.
     pub fn has_focus(&self, window: &Window, cx: &App) -> bool {
-        (self.editor.as_ref())
-            .is_some_and(|shown| shown.editor.read(cx).focus_handle(cx).contains_focused(window, cx))
+        (self.editor.as_ref()).is_some_and(|shown| {
+            shown
+                .editor
+                .read(cx)
+                .focus_handle(cx)
+                .contains_focused(window, cx)
+        })
     }
 
     /// Asks the server for every reference to the symbol at the caret, and has the panel
@@ -244,7 +249,12 @@ impl FileEditor {
     /// The file was read again. As `edits` from the text it held, they go into the editor
     /// as such, so the cursor and the undo history keep their places; unless the text shown
     /// was other than the file's already, when it stays, unsaved. Otherwise it's shown over.
-    fn read(&mut self, edits: Option<&[(Range<usize>, String)]>, window: &mut Window, cx: &mut Context<Self>) {
+    fn read(
+        &mut self,
+        edits: Option<&[(Range<usize>, String)]>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let (Some(shown), Some(edits)) = (&self.editor, edits) else {
             self.show(window, cx);
             return;
@@ -256,7 +266,9 @@ impl FileEditor {
             self.tell_dirty(cx);
             return;
         }
-        shown.editor.update(cx, |editor, cx| editor.edit(edits, window, cx));
+        shown
+            .editor
+            .update(cx, |editor, cx| editor.edit(edits, window, cx));
     }
 
     /// Puts the document's text in a new editor, or the note saying why there's none.
@@ -339,7 +351,10 @@ impl Render for FileEditor {
             return content.child(editor).children(field);
         }
         let document = self.document.upgrade();
-        let note: SharedString = match document.as_ref().map(|document| document.read(cx).content()) {
+        let note: SharedString = match document
+            .as_ref()
+            .map(|document| document.read(cx).content())
+        {
             None | Some(Content::Reading | Content::Text(_)) => {
                 return content.child(spinner(p.muted));
             }

@@ -2,8 +2,8 @@
 //! a snapshot's ref or a selector, the page as text, Markdown or HTML, and the snapshot that
 //! marks elements with refs.
 
-use koyo_app_control::ControlError;
 use gpui_kit::AsyncApp;
+use koyo_app_control::ControlError;
 use serde_json::{Value, json};
 
 use super::super::Caller;

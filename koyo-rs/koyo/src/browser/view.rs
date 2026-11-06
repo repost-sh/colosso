@@ -7,12 +7,12 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
-use koyo_browser_ipc::{self as ipc, AppRequest, Cursor, PageState, PaneId, Viewport};
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::{
     App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Focusable, Image,
     MouseButton, Pixels, Point, Size, Subscription, Task, WeakEntity, Window,
 };
+use koyo_browser_ipc::{self as ipc, AppRequest, Cursor, PageState, PaneId, Viewport};
 
 use super::control::Control;
 use super::dialog::Question;

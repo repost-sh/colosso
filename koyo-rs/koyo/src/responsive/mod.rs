@@ -8,8 +8,8 @@
 pub mod bar;
 pub mod grips;
 
-use koyo_app_control::ops::browser::{FitWord, ViewportZoom};
 use gpui_kit::{BorderStyle, Bounds, Pixels, Size, Window, outline, point, px, size};
+use koyo_app_control::ops::browser::{FitWord, ViewportZoom};
 
 pub use grips::{Drag, Grip, Resizable};
 
@@ -88,7 +88,11 @@ pub fn room(size: Size<Pixels>) -> Size<Pixels> {
 
 /// The 1 px line round content shown at `shown`.
 pub fn paint_outline(shown: Bounds<Pixels>, p: Palette, window: &mut Window) {
-    window.paint_quad(outline(shown.dilate(px(1.)), p.hairline, BorderStyle::Solid));
+    window.paint_quad(outline(
+        shown.dilate(px(1.)),
+        p.hairline,
+        BorderStyle::Solid,
+    ));
 }
 
 #[cfg(test)]

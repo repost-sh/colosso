@@ -7,10 +7,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use futures::StreamExt as _;
-use gpui_kit::{
-    AppContext as _, Context, FocusHandle, Focusable, RenderImage, SharedString,
-    Task,
-};
+use gpui_kit::{AppContext as _, Context, FocusHandle, Focusable, RenderImage, SharedString, Task};
 
 use super::Kind;
 use super::bitmap::release;
@@ -75,7 +72,8 @@ impl Focusable for Viewer {
 impl Viewer {
     /// A viewer of the file at `path`, shown as `kind`, which it starts reading at once.
     pub fn new(path: PathBuf, kind: Kind, cx: &mut Context<Self>) -> Self {
-        cx.on_release(|this: &mut Viewer, cx| this.forget_all(cx)).detach();
+        cx.on_release(|this: &mut Viewer, cx| this.forget_all(cx))
+            .detach();
         let mut viewer = Viewer {
             path,
             kind,
@@ -118,7 +116,10 @@ impl Viewer {
     fn read(&mut self, cx: &mut Context<Self>) {
         let (sender, mut received) = futures::channel::mpsc::unbounded();
         let path = self.path.clone();
-        let name = path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+        let name = path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default();
         let started = match self.kind {
             Kind::Picture => Lane::start(&name, move || picture::open(&path), sender),
             Kind::Svg => Lane::start(&name, move || svg::open(&path), sender),
@@ -201,7 +202,10 @@ impl Viewer {
         let pages = match opened {
             Opened::Picture(probe) => {
                 let density = probe.density as f32;
-                let pages = vec![(probe.pixels.0 as f32 / density, probe.pixels.1 as f32 / density)];
+                let pages = vec![(
+                    probe.pixels.0 as f32 / density,
+                    probe.pixels.1 as f32 / density,
+                )];
                 self.probe = Some(probe);
                 self.asked_longest = None;
                 pages
@@ -246,7 +250,10 @@ impl Viewer {
         let delays: Vec<Duration> = (self.probe.as_ref())
             .map(|probe| probe.delays.clone())
             .unwrap_or_default();
-        let frames = self.picture.as_ref().map_or(0, |picture| picture.frame_count());
+        let frames = self
+            .picture
+            .as_ref()
+            .map_or(0, |picture| picture.frame_count());
         if delays.len() < 2 || frames != delays.len() {
             self.animating = None;
             return;

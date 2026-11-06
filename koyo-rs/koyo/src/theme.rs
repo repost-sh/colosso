@@ -8,8 +8,8 @@ use gpui_kit::base::text::editor_host::RenderContext;
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::component::{ActiveTheme as _, Theme};
 use gpui_kit::{
-    Action, App, HighlightStyle, Hsla, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent,
-    ParentElement as _, Styled as _, Window, WindowAppearance, actions, div, rems,
+    Action, App, HighlightStyle, Hsla, InteractiveElement as _, IntoElement, MouseButton,
+    MouseDownEvent, ParentElement as _, Styled as _, Window, WindowAppearance, actions, div, rems,
 };
 use serde::{Deserialize, Serialize};
 
@@ -283,9 +283,14 @@ fn code_off_the_accent(cx: &mut App) {
         background_color: Some(palette(cx).selected),
         ..HighlightStyle::default()
     };
-    let style = RenderContext::from_app(cx).style().clone().with_inline_code(code);
+    let style = RenderContext::from_app(cx)
+        .style()
+        .clone()
+        .with_inline_code(code);
     let block = style.code_block().clone().text_size(rems(CODE_BLOCK_TEXT));
-    TextViewDefaults::global(cx).with_style(style.with_code_block(block)).install(cx);
+    TextViewDefaults::global(cx)
+        .with_style(style.with_code_block(block))
+        .install(cx);
 }
 
 /// How big a code block's text is, in rems: the kit's 13 pixels, where a rem is 16.
@@ -377,7 +382,10 @@ mod tests {
     use super::*;
 
     fn inline_code(cx: &App) -> Option<Hsla> {
-        RenderContext::from_app(cx).style().inline_code().background_color
+        RenderContext::from_app(cx)
+            .style()
+            .inline_code()
+            .background_color
     }
 
     #[gpui_kit::test]

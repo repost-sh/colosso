@@ -50,15 +50,32 @@ pub fn section(cx: &App) -> SettingsSection {
 
 /// The family `in_use`, or what the menus call it if it's the default.
 fn label(in_use: &'static str, default: &str, default_label: &'static str) -> SharedString {
-    if in_use == default { default_label } else { in_use }.into()
+    if in_use == default {
+        default_label
+    } else {
+        in_use
+    }
+    .into()
 }
 
 fn interface_menu(cx: &App) -> NativeMenu {
-    menu(fonts::interface(cx), fonts::SYSTEM, SYSTEM_LABEL, |family| Box::new(SetInterfaceFont(family)), cx)
+    menu(
+        fonts::interface(cx),
+        fonts::SYSTEM,
+        SYSTEM_LABEL,
+        |family| Box::new(SetInterfaceFont(family)),
+        cx,
+    )
 }
 
 fn code_menu(cx: &App) -> NativeMenu {
-    menu(fonts::code(cx), fonts::MONO, BUNDLED_LABEL, |family| Box::new(SetCodeFont(family)), cx)
+    menu(
+        fonts::code(cx),
+        fonts::MONO,
+        BUNDLED_LABEL,
+        |family| Box::new(SetCodeFont(family)),
+        cx,
+    )
 }
 
 /// The default, then every family there is by name, with the one `in_use` checked. Picking the

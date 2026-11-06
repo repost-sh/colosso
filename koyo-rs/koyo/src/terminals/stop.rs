@@ -10,8 +10,8 @@ use std::sync::Arc;
 
 use koyo_term::{Source, TermClient};
 
-use koyo_term_control::{Handle, RequestBody, Status};
 use gpui_kit::{AppContext as _, Context, Focusable as _, PromptLevel, SharedString, Window};
+use koyo_term_control::{Handle, RequestBody, Status};
 
 use super::open_request;
 use super::states::State;

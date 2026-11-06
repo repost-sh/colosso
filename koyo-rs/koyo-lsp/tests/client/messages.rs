@@ -2,12 +2,12 @@
 
 use std::sync::Arc;
 
+use futures::StreamExt;
+use futures::future::join;
 use koyo_lsp::lsp_types::error_codes::REQUEST_CANCELLED;
 use koyo_lsp::lsp_types::notification::{LogMessage, Progress, PublishDiagnostics, ShowMessage};
 use koyo_lsp::lsp_types::{MessageType, NumberOrString, ProgressParamsValue, WorkDoneProgress};
 use koyo_lsp::{LspError, ResponseError};
-use futures::StreamExt;
-use futures::future::join;
 use serde_json::{Value, json};
 
 use crate::common::{Echo, Number, Received, fake, wait};

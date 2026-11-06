@@ -44,7 +44,9 @@ impl Replica {
 
     /// The messages waiting their turn, the next to go first.
     pub fn queued(&self) -> impl Iterator<Item = &Run> {
-        self.runs.iter().filter(|run| run.status == RunStatus::Queued)
+        self.runs
+            .iter()
+            .filter(|run| run.status == RunStatus::Queued)
     }
 
     /// Run `id`, if it's still waiting its turn.
@@ -55,7 +57,9 @@ impl Replica {
     /// The words a person last said to the agent: what's queued hasn't been said yet.
     pub fn last_said(&self) -> Option<&str> {
         self.items.iter().rev().find_map(|item| match &item.body {
-            ItemBody::UserMessage(message) if !message.text.is_empty() => Some(message.text.as_str()),
+            ItemBody::UserMessage(message) if !message.text.is_empty() => {
+                Some(message.text.as_str())
+            }
             _ => None,
         })
     }
@@ -127,17 +131,29 @@ impl Replica {
     fn merge(&mut self, runs: Vec<Run>, items: Vec<Item>, requests: Vec<Request>) {
         // A removed run is gone with what it held: what a person went back past. What takes its
         // place in the timeline comes with this.
-        let (gone, runs): (Vec<Run>, Vec<Run>) =
-            runs.into_iter().partition(|run| run.status == RunStatus::Removed);
+        let (gone, runs): (Vec<Run>, Vec<Run>) = runs
+            .into_iter()
+            .partition(|run| run.status == RunStatus::Removed);
         if !gone.is_empty() {
             let gone: HashSet<&RunId> = gone.iter().map(|run| &run.id).collect();
             self.runs.retain(|run| !gone.contains(&run.id));
             self.items.retain(|item| !gone.contains(&item.run_id));
-            self.requests.retain(|request| !gone.contains(&request.run_id));
+            self.requests
+                .retain(|request| !gone.contains(&request.run_id));
         }
         merge_rows(&mut self.runs, runs, |a, b| a.id.cmp(&b.id), |run| run.seq);
-        merge_rows(&mut self.items, items, |a, b| a.ordinal.cmp(&b.ordinal), |item| item.seq);
-        merge_rows(&mut self.requests, requests, |a, b| a.id.cmp(&b.id), |request| request.seq);
+        merge_rows(
+            &mut self.items,
+            items,
+            |a, b| a.ordinal.cmp(&b.ordinal),
+            |item| item.seq,
+        );
+        merge_rows(
+            &mut self.requests,
+            requests,
+            |a, b| a.id.cmp(&b.id),
+            |request| request.seq,
+        );
     }
 }
 

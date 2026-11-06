@@ -20,8 +20,8 @@
 //! ```
 
 mod control;
-mod drive;
 mod delete;
+mod drive;
 mod links;
 mod panel;
 mod paste;
@@ -33,9 +33,7 @@ use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
 use koyo_term::{ScrollPageUp, ScrollToBottom, TermClient};
-use koyo_term_control::{
-    ClientKind, DaemonCommand, Hello, TermDir,
-};
+use koyo_term_control::{ClientKind, DaemonCommand, Hello, TermDir};
 
 use crate::projects::read_worktrees;
 use crate::settings;
@@ -83,9 +81,12 @@ fn draw() -> Result<Vec<String>> {
     let found = run_shell(&mut drawn, &mut said);
     // The check's daemon goes with it, whatever happened, stopped through the app's own
     // client so the views that lose it don't start it again.
-    let client = drawn.cx.update(|cx| shell.update(cx, |shell, _| shell.terminal_client()));
-    let client = client
-        .unwrap_or_else(|| TermClient::new(TermDir::at(term.clone()), DaemonCommand::binary("koyo")));
+    let client = drawn
+        .cx
+        .update(|cx| shell.update(cx, |shell, _| shell.terminal_client()));
+    let client = client.unwrap_or_else(|| {
+        TermClient::new(TermDir::at(term.clone()), DaemonCommand::binary("koyo"))
+    });
     if let Err(error) = client.shutdown() {
         said.push(format!("couldn't stop the check's daemon: {error}"));
     }
@@ -106,10 +107,14 @@ fn run_shell(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
         started.elapsed().as_millis()
     ));
     let had = focused(drawn)?;
-    said.push(format!("the new terminal had the keyboard on its own: {had}"));
+    said.push(format!(
+        "the new terminal had the keyboard on its own: {had}"
+    ));
 
     type_line(drawn, "echo hello-koyo")?;
-    wait(drawn, "echo's output", |text| text.matches("hello-koyo").count() >= 2)?;
+    wait(drawn, "echo's output", |text| {
+        text.matches("hello-koyo").count() >= 2
+    })?;
     said.push(format!("{}", drawn.save("shell.png")?.display()));
     keys(drawn)?;
     paste::paste(drawn, said)?;
@@ -162,14 +167,18 @@ fn keys(drawn: &mut Drawn) -> Result<()> {
     // Pressed the instant Enter is, Ctrl-C reaches the shell before its job holds the
     // terminal; a person is never that quick.
     let started = Instant::now();
-    wait_until(drawn, "a moment", |_| Ok(started.elapsed() >= Duration::from_millis(300)))?;
+    wait_until(drawn, "a moment", |_| {
+        Ok(started.elapsed() >= Duration::from_millis(300))
+    })?;
     press(drawn, "ctrl-c")?;
     type_line(drawn, "echo interrupted")?;
     wait(drawn, "a command after Ctrl-C", |text| {
         text.lines().any(|line| line == "interrupted")
     })?;
     type_line(drawn, "echo café-ü")?;
-    wait(drawn, "accented text", |text| text.lines().any(|line| line == "café-ü"))?;
+    wait(drawn, "accented text", |text| {
+        text.lines().any(|line| line == "café-ü")
+    })?;
     program_keys(drawn)
 }
 
@@ -177,11 +186,17 @@ fn keys(drawn: &mut Drawn) -> Result<()> {
 /// completes the command, and ⌘⌫ deletes the line, as `MAC_EDITING` has it.
 fn program_keys(drawn: &mut Drawn) -> Result<()> {
     type_keys(drawn, "whoam")?;
-    wait(drawn, "the start of a command", |text| text.trim_end().ends_with("whoam"))?;
+    wait(drawn, "the start of a command", |text| {
+        text.trim_end().ends_with("whoam")
+    })?;
     press(drawn, "tab")?;
-    wait(drawn, "Tab's completion", |text| text.trim_end().ends_with("whoami"))?;
+    wait(drawn, "Tab's completion", |text| {
+        text.trim_end().ends_with("whoami")
+    })?;
     press(drawn, "cmd-backspace")?;
-    wait(drawn, "⌘⌫ to delete the line", |text| !text.trim_end().ends_with("whoami"))?;
+    wait(drawn, "⌘⌫ to delete the line", |text| {
+        !text.trim_end().ends_with("whoami")
+    })?;
     type_line(drawn, "echo keys-reached")?;
     wait(drawn, "a command on the emptied line", |text| {
         text.lines().any(|line| line == "keys-reached")
@@ -214,7 +229,9 @@ fn selection(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
 fn scrollback(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     let started = Instant::now();
     type_line(drawn, "seq 1 100000")?;
-    wait(drawn, "seq's last line", |text| text.lines().any(|line| line == "100000"))?;
+    wait(drawn, "seq's last line", |text| {
+        text.lines().any(|line| line == "100000")
+    })?;
     said.push(format!(
         "seq 1 100000 was drawn to its end {} ms after Enter",
         started.elapsed().as_millis()
@@ -225,14 +242,18 @@ fn scrollback(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     })?;
     said.push(format!("{}", drawn.save("scrolled.png")?.display()));
     act(drawn, Box::new(ScrollToBottom))?;
-    wait(drawn, "the bottom again", |text| text.lines().any(|line| line == "100000"))?;
+    wait(drawn, "the bottom again", |text| {
+        text.lines().any(|line| line == "100000")
+    })?;
     let at = cell(drawn, 10, 10)?;
     wheel(drawn, at, 5.)?;
     wait(drawn, "the wheel's history", |text| {
         !text.contains("100000") && text.lines().any(|line| line == "99995")
     })?;
     act(drawn, Box::new(ScrollToBottom))?;
-    wait(drawn, "the bottom after the wheel", |text| text.contains("100000"))
+    wait(drawn, "the bottom after the wheel", |text| {
+        text.contains("100000")
+    })
 }
 
 /// A program on the alternate screen, and the shell's screen back after it.
@@ -265,7 +286,9 @@ fn resized(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     focused(drawn)?;
     type_line(drawn, "stty size")?;
     let expected = format!("{rows} {cols}");
-    wait(drawn, "the shell's size", |text| text.lines().any(|line| line == expected))?;
+    wait(drawn, "the shell's size", |text| {
+        text.lines().any(|line| line == expected)
+    })?;
     said.push(format!(
         "the right panel took the tab from {cols_before} columns to {cols}, as its shell reads"
     ));
@@ -299,8 +322,13 @@ fn after_restart(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     (drawn.cx).update(|cx| shell.update(cx, Shell::let_go_of_shown_terminal));
     wait_until(drawn, "the tab to go", |drawn| Ok(terminal(drawn).is_err()))?;
     wait_until(drawn, "its view to go", |_| Ok(closed.upgrade().is_none()))?;
-    let client = drawn.cx.update(|cx| shell.update(cx, |shell, _| shell.terminal_client()));
-    let dir = client.ok_or("the app has no terminal client")?.dir().clone();
+    let client = drawn
+        .cx
+        .update(|cx| shell.update(cx, |shell, _| shell.terminal_client()));
+    let dir = client
+        .ok_or("the app has no terminal client")?
+        .dir()
+        .clone();
     stop_daemon(&dir)?;
     wait_until(drawn, "the daemon to stop", |_| Ok(!dir.socket().exists()))?;
     (drawn.cx).update(|cx| shell.update(cx, Shell::restore_terminals_again));

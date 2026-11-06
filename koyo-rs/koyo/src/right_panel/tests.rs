@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
 use gpui_kit::{
-    Action, AnyWindowHandle, Entity, Modifiers, MouseButton, Pixels, Point, TestAppContext, VisualTestContext, point,
+    Action, AnyWindowHandle, Entity, Modifiers, MouseButton, Pixels, Point, TestAppContext,
+    VisualTestContext, point,
 };
 
 use super::*;
@@ -98,7 +99,11 @@ fn a_dragged_edge_moves_as_it_goes_and_is_saved_once_let_go(cx: &mut TestAppCont
         assert!((before - after - 60.).abs() < GRAB, "{before} to {after}");
         assert_eq!(saved(cx), set, "nothing's saved mid-drag");
     });
-    assert!((saved(cx) - set - 60.).abs() < GRAB, "{set} to {}", saved(cx));
+    assert!(
+        (saved(cx) - set - 60.).abs() < GRAB,
+        "{set} to {}",
+        saved(cx)
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 

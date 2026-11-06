@@ -187,8 +187,11 @@ impl Catalog {
 
 /// The model of `models` that goes by `id`: its own, or that of what it runs.
 pub fn listed<'a>(models: &'a [Model], id: &str) -> Option<&'a Model> {
-    (models.iter().find(|model| model.id == id))
-        .or_else(|| models.iter().find(|model| model.runs.as_deref() == Some(id)))
+    (models.iter().find(|model| model.id == id)).or_else(|| {
+        models
+            .iter()
+            .find(|model| model.runs.as_deref() == Some(id))
+    })
 }
 
 impl Model {

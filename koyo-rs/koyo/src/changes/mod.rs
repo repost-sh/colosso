@@ -15,7 +15,11 @@ mod view;
 mod watch;
 
 pub use file_view::FileView;
-pub use line::{CodeLine, Half, Look, number_width};
+pub use highlight::{LineTokens, highlight_lines, token_colour};
+pub use line::{
+    CODE_LEFT, CODE_RIGHT, LINE_TINT, NUMBER_RIGHT, NUMBERS_TINT, Span, WORDS_TINT, number_width,
+    spans,
+};
 pub use marks::{Mark, Marks};
 pub use reread::{Read, Stale, read};
 pub use view::{ChangesEvent, ChangesPanel, ChangesTab, counts};

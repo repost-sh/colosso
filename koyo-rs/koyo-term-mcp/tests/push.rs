@@ -10,8 +10,8 @@ pub mod common;
 
 use std::sync::Arc;
 
-use koyo_app_control::Topic;
 use common::{FakeApp, HEARING, Heard, call, connect, endpoint, legacy, next, relay, scratch};
+use koyo_app_control::Topic;
 use rmcp::model::{ProtocolVersion, ServerNotification, SubscriptionFilter};
 use serde_json::json;
 

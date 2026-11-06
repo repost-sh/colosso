@@ -31,7 +31,7 @@ use objc2_app_kit::{
 
 use crate::key_repeat::KeyRepeat;
 use crate::navigation::Route;
-use crate::settings::{self, Fonts};
+use crate::settings::{self, Fonts, LARGEST_CHAT_SIZE};
 use crate::settings_view::SettingsPage;
 use crate::shell::Shell;
 use crate::theme::{self, UseDarkTheme, UseLightTheme};
@@ -219,9 +219,13 @@ async fn text_size(
     act(&size);
     settle(cx).await;
     let chat_size = cx.update(|cx| settings::get(cx).fonts.chat_size());
-    lines.push(format!("text size moved from stop {at} to stop 6: chat_size = {chat_size}"));
-    if (chat_size - 22.).abs() > f32::EPSILON {
-        return Err(format!("the move wrote {chat_size}, not 22"));
+    lines.push(format!(
+        "text size moved from stop {at} to stop 6: chat_size = {chat_size}"
+    ));
+    if (chat_size - LARGEST_CHAT_SIZE).abs() > f32::EPSILON {
+        return Err(format!(
+            "the move wrote {chat_size}, not {LARGEST_CHAT_SIZE}"
+        ));
     }
     lines.push(shoot(window, out, "text-size-largest.png", cx).await?);
     Ok(lines)

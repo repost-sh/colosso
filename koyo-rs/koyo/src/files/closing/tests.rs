@@ -37,14 +37,18 @@ fn cmd_w_closes_what_is_looked_at_never_the_window(cx: &mut TestAppContext) {
     typed(window, &editor, "// lib\n", cx);
     focus(shell_root, cx);
     press(window, "cmd-w", cx);
-    let asked = dialog::<SaveDialog>(cx).map(|(_, asked)| cx.read(|cx| asked.read(cx).title.to_string()));
+    let asked =
+        dialog::<SaveDialog>(cx).map(|(_, asked)| cx.read(|cx| asked.read(cx).title.to_string()));
     assert_eq!(asked.as_deref(), Some("Save the changes to lib.rs?"));
     assert_eq!(tabs(&shell, cx), ["[lib.rs+]"], "open until answered");
     answer(cx, SaveDialog::close);
     assert!(tabs(&shell, cx).is_empty());
     // On a settings page, ⌘W closes the settings.
     press(window, "cmd-,", cx);
-    assert!(matches!(cx.read(|cx| shell.read(cx).route(cx)), Route::Settings(_)));
+    assert!(matches!(
+        cx.read(|cx| shell.read(cx).route(cx)),
+        Route::Settings(_)
+    ));
     press(window, "cmd-w", cx);
     assert_eq!(cx.read(|cx| shell.read(cx).route(cx)), Route::Workspace);
     assert_eq!(cx.read(|cx| cx.windows().len()), 1, "never the window");
@@ -68,14 +72,18 @@ fn a_pane_of_a_split_with_unsaved_edits_is_asked_about_alone(cx: &mut TestAppCon
         let unit = shell.read(cx).workspace.branch().unwrap();
         unit.tabs[0].panes()[1].id
     });
-    with_shell(window, &shell, cx, |shell, window, cx| shell.close_pane(lib, window, cx));
+    with_shell(window, &shell, cx, |shell, window, cx| {
+        shell.close_pane(lib, window, cx);
+    });
     cx.run_until_parked();
     assert!(dialog::<SaveDialog>(cx).is_some(), "asked about lib.rs");
     // Kept: nothing closes.
     answer(cx, |_, window, cx| modal::dismiss(window, cx));
     assert_eq!(tabs(&shell, cx), ["[README.md|lib.rs+]"]);
     // Saved: written, and only its pane goes.
-    with_shell(window, &shell, cx, |shell, window, cx| shell.close_pane(lib, window, cx));
+    with_shell(window, &shell, cx, |shell, window, cx| {
+        shell.close_pane(lib, window, cx);
+    });
     cx.run_until_parked();
     answer(cx, SaveDialog::save);
     assert_eq!(tabs(&shell, cx), ["[README.md]"]);
@@ -95,12 +103,20 @@ fn a_file_tab_closed_comes_back_with_cmd_shift_t_as_it_is_on_disk(cx: &mut TestA
     assert_eq!(tabs(&shell, cx), ["[README.md]"]);
     press(window, "cmd-shift-t", cx);
     cx.run_until_parked();
-    assert_eq!(tabs(&shell, cx), ["README.md", "[lib.rs]"], "back where it was, kept");
+    assert_eq!(
+        tabs(&shell, cx),
+        ["README.md", "[lib.rs]"],
+        "back where it was, kept"
+    );
     let text = cx.read(|cx| {
         let file = shell.read(cx).viewing().unwrap();
         file.read(cx).editor()?.read(cx).text(cx)
     });
-    assert_eq!(text.as_deref(), Some("pub fn a() {}\npub fn b() {}\n"), "its edits let go");
+    assert_eq!(
+        text.as_deref(),
+        Some("pub fn a() {}\npub fn b() {}\n"),
+        "its edits let go"
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -134,7 +150,10 @@ fn the_red_button_asks_about_every_unsaved_file(cx: &mut TestAppContext) {
     assert!(!close(cx));
     answer(cx, SaveDialog::save);
     assert_eq!(windows(cx), 0);
-    assert_eq!(on_disk("src/lib.rs"), "// lib\npub fn a() {}\npub fn b() {}\n");
+    assert_eq!(
+        on_disk("src/lib.rs"),
+        "// lib\npub fn a() {}\npub fn b() {}\n"
+    );
     assert_eq!(on_disk("README.md"), "# edited\n# Test\n");
     let _ = std::fs::remove_dir_all(&root);
 }

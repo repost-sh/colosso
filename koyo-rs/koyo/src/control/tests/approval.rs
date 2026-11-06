@@ -2,8 +2,8 @@
 //! while external control is off and asked about once per name, the person's answers and
 //! silence, and the policy functions the Settings page calls.
 
-use koyo_app_control::{ErrorCode, Scope};
 use gpui_kit::TestAppContext;
+use koyo_app_control::{ErrorCode, Scope};
 use serde_json::json;
 
 use super::{

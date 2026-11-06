@@ -3,8 +3,8 @@
 
 use std::sync::{Arc, Mutex};
 
-use koyo_app_control::{ErrorCode, Scope, Topic};
 use gpui_kit::TestAppContext;
+use koyo_app_control::{ErrorCode, Scope, Topic};
 use serde_json::json;
 
 use super::{

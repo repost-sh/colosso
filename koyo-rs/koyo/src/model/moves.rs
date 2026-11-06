@@ -19,7 +19,10 @@ impl BranchUnit {
     /// Pane `id`, in whichever tab holds it, to change.
     pub fn pane_mut(&mut self, id: u64) -> Option<&mut Pane> {
         let at = self.tab_with(id)?;
-        self.tabs[at].panes_mut().into_iter().find(|pane| pane.id == id)
+        self.tabs[at]
+            .panes_mut()
+            .into_iter()
+            .find(|pane| pane.id == id)
     }
 
     /// Puts the tab at `from` at `edge` of pane `target`, in whichever tab holds it, and

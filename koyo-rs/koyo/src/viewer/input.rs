@@ -38,7 +38,12 @@ const DOUBLING: f32 = 200.;
 
 impl Viewer {
     /// Zooms to `zoom` about `anchor`, a point of the pane, or its middle.
-    pub(super) fn zoom_to(&mut self, zoom: f32, anchor: Option<(f32, f32)>, cx: &mut Context<Self>) {
+    pub(super) fn zoom_to(
+        &mut self,
+        zoom: f32,
+        anchor: Option<(f32, f32)>,
+        cx: &mut Context<Self>,
+    ) {
         if self.pages.is_empty() {
             return;
         }
@@ -66,19 +71,33 @@ impl Viewer {
     }
 
     /// The wheel over the pages, `origin` being the pane's top left corner in the window.
-    pub(super) fn wheel(&mut self, event: &ScrollEvent, origin: Point<Pixels>, cx: &mut Context<Self>) {
+    pub(super) fn wheel(
+        &mut self,
+        event: &ScrollEvent,
+        origin: Point<Pixels>,
+        cx: &mut Context<Self>,
+    ) {
         let delta = event.delta.pixel_delta(px(WHEEL_LINE));
         let (dx, dy) = (f32::from(delta.x), f32::from(delta.y));
         if event.modifiers.platform {
             let anchor = local(event.position, origin);
-            self.zoom_to(self.camera.zoom * 2f32.powf(dy / DOUBLING), Some(anchor), cx);
+            self.zoom_to(
+                self.camera.zoom * 2f32.powf(dy / DOUBLING),
+                Some(anchor),
+                cx,
+            );
         } else {
             // The wheel's deltas say where the pages go; the scroll is how far they've gone.
             self.scroll_by((-dx, -dy), cx);
         }
     }
 
-    pub(super) fn pinch(&mut self, event: &PinchEvent, origin: Point<Pixels>, cx: &mut Context<Self>) {
+    pub(super) fn pinch(
+        &mut self,
+        event: &PinchEvent,
+        origin: Point<Pixels>,
+        cx: &mut Context<Self>,
+    ) {
         let anchor = local(event.position, origin);
         self.zoom_to(self.camera.zoom * (1. + event.delta), Some(anchor), cx);
     }
@@ -107,7 +126,12 @@ impl Viewer {
     }
 
     /// The pointer moved: while dragging, the pages follow it.
-    pub(super) fn drag_to(&mut self, event: &MouseMoveEvent, origin: Point<Pixels>, cx: &mut Context<Self>) {
+    pub(super) fn drag_to(
+        &mut self,
+        event: &MouseMoveEvent,
+        origin: Point<Pixels>,
+        cx: &mut Context<Self>,
+    ) {
         let Some(from) = self.drag else {
             return;
         };
@@ -171,5 +195,8 @@ impl Viewer {
 
 /// `position` in the window as a point of the pane whose top left corner is at `origin`.
 fn local(position: Point<Pixels>, origin: Point<Pixels>) -> (f32, f32) {
-    (f32::from(position.x - origin.x), f32::from(position.y - origin.y))
+    (
+        f32::from(position.x - origin.x),
+        f32::from(position.y - origin.y),
+    )
 }

@@ -51,7 +51,10 @@ impl Drawing {
         let p = self.p;
         let (text, level) = match &item.body {
             ItemBody::Notice(notice) => (notice.text.as_str(), notice.level),
-            _ => ("This takes a newer version of Koyo to show.", NoticeLevel::Info),
+            _ => (
+                "This takes a newer version of Koyo to show.",
+                NoticeLevel::Info,
+            ),
         };
         let (mark, color) = match level {
             NoticeLevel::Info => (IconName::Info, p.muted),
@@ -70,7 +73,10 @@ impl Drawing {
     }
 
     pub(super) fn stopped(&self, run: &Run) -> AnyElement {
-        let by_host = run.stop.as_ref().is_some_and(|stop| stop.by == StoppedBy::Host);
+        let by_host = run
+            .stop
+            .as_ref()
+            .is_some_and(|stop| stop.by == StoppedBy::Host);
         self.divider(
             if by_host {
                 "This response was interrupted"
@@ -124,7 +130,9 @@ impl Drawing {
             .hover(|row| row.text_color(p.text))
             .child(ellipsized(shown))
             .child(counts(file.added, file.removed, p))
-            .on_click(self.on_timeline(move |_, _, cx| cx.emit(ChatViewEvent::OpenFile(path.clone()))))
+            .on_click(
+                self.on_timeline(move |_, _, cx| cx.emit(ChatViewEvent::OpenFile(path.clone()))),
+            )
     }
 }
 

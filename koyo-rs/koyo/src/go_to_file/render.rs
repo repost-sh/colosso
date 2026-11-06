@@ -5,13 +5,13 @@
 
 use std::ops::Range;
 
-use koyo_project::Results;
 use gpui_kit::assets::IconName;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, Context, Div, ElementId, InteractiveElement as _, IntoElement, ParentElement as _,
     Render, SharedString, Stateful, StatefulInteractiveElement as _, Styled as _, Window, div,
 };
+use koyo_project::Results;
 
 use super::view::GoToFile;
 use crate::files::{file_icon, file_row};
@@ -50,7 +50,12 @@ impl Row {
     }
 
     /// The row, its folder dimmed and what matched in the accent colour.
-    pub(crate) fn draw(&self, id: impl Into<ElementId>, selected: bool, p: Palette) -> Stateful<Div> {
+    pub(crate) fn draw(
+        &self,
+        id: impl Into<ElementId>,
+        selected: bool,
+        p: Palette,
+    ) -> Stateful<Div> {
         let name = styled(&self.name, &self.name_matched, p.accent);
         let folder = styled(&self.folder, &self.folder_matched, p.accent);
         file_row(id, selected, self.icon, name, folder, p)

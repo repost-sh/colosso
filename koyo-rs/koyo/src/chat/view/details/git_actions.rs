@@ -42,7 +42,10 @@ enum Next {
     Push(u32),
     Pull(u32),
     /// Neither can be: its branch and its upstream each have what the other hasn't.
-    Diverged { ahead: u32, behind: u32 },
+    Diverged {
+        ahead: u32,
+        behind: u32,
+    },
     CreatePullRequest,
 }
 
@@ -79,14 +82,26 @@ impl GitState {
         let known = self.facts.take();
         let (pull_request, on_github) = match asked {
             Asked::Answered(pull_request) => (pull_request, true),
-            Asked::NoAnswer => known.map_or((None, false), |known| (known.pull_request, known.on_github)),
+            Asked::NoAnswer => {
+                known.map_or((None, false), |known| (known.pull_request, known.on_github))
+            }
         };
-        self.facts = Some(Facts { published, pull_request, on_github });
+        self.facts = Some(Facts {
+            published,
+            pull_request,
+            on_github,
+        });
     }
 }
 
 fn next(facts: &Facts) -> Option<Next> {
-    let Published { remote, upstream, ahead, behind, on_default } = &facts.published;
+    let Published {
+        remote,
+        upstream,
+        ahead,
+        behind,
+        on_default,
+    } = &facts.published;
     remote.as_ref()?;
     if upstream.is_none() {
         return Some(Next::Publish);
@@ -107,7 +122,12 @@ pub(in super::super) fn keep_fresh(view: &mut ChatView, cx: &mut Context<ChatVie
     if view.details.git.fresh.is_some() || !shown {
         return;
     }
-    let Some(git) = view.details.place.as_ref().and_then(|place| place.checkout.read(cx).git()) else {
+    let Some(git) = view
+        .details
+        .place
+        .as_ref()
+        .and_then(|place| place.checkout.read(cx).git())
+    else {
         return;
     };
     view.details.git.fresh = Some(cx.spawn(async move |this, cx| {
@@ -121,7 +141,8 @@ pub(in super::super) fn keep_fresh(view: &mut ChatView, cx: &mut Context<ChatVie
         .ok();
         let fetching = git.clone();
         // Without the network, what's known here still holds.
-        cx.background_spawn(async move { fetching.fetch().ok() }).await;
+        cx.background_spawn(async move { fetching.fetch().ok() })
+            .await;
         let (published, asked) = cx
             .background_spawn(async move {
                 let published = git.published();
@@ -150,7 +171,11 @@ pub(in crate::chat) fn went_old(view: &mut ChatView, cx: &mut Context<ChatView>)
 
 /// The window's active again: a person may have done something with the branch elsewhere.
 pub(in super::super) fn window_active_again(view: &mut ChatView, cx: &mut Context<ChatView>) {
-    let recent = view.details.git.read_at.is_some_and(|at| at.elapsed() < RECENT);
+    let recent = view
+        .details
+        .git
+        .read_at
+        .is_some_and(|at| at.elapsed() < RECENT);
     if !recent {
         went_old(view, cx);
     }
@@ -164,7 +189,12 @@ fn act(
     does: fn(&Git) -> koyo_git::Result<()>,
     cx: &mut Context<ChatView>,
 ) {
-    let Some(checkout) = view.details.place.as_ref().map(|place| place.checkout.clone()) else {
+    let Some(checkout) = view
+        .details
+        .place
+        .as_ref()
+        .map(|place| place.checkout.clone())
+    else {
         return;
     };
     let git = &mut view.details.git;
@@ -206,7 +236,12 @@ pub(super) fn rows(view: &ChatView, p: Palette, cx: &Context<ChatView>) -> Optio
         .when(files > 0, |section| section.child(commit_row(files, p, cx)))
         .children(next.map(|next| next_row(view, &next, p, cx)))
         .children(state.error.clone().map(|error| {
-            div().px(px(10.)).py(px(4.)).text_xs().text_color(p.danger).child(error)
+            div()
+                .px(px(10.))
+                .py(px(4.))
+                .text_xs()
+                .text_color(p.danger)
+                .child(error)
         }));
     (!empty).then_some(section)
 }
@@ -215,10 +250,18 @@ fn next_row(view: &ChatView, next: &Next, p: Palette, cx: &Context<ChatView>) ->
     let push = IconName::ArrowUp;
     let (what, mark, says, does): (_, _, _, fn(&Git) -> koyo_git::Result<()>) = match next {
         Next::Publish => ("publish", push, "Publish branch".to_owned(), Git::push),
-        Next::Push(ahead) => ("push", push, format!("Push {}", counted(*ahead, "commit")), Git::push),
-        Next::Pull(behind) => {
-            ("pull", IconName::ArrowDown, format!("Pull {}", counted(*behind, "commit")), Git::pull)
-        }
+        Next::Push(ahead) => (
+            "push",
+            push,
+            format!("Push {}", counted(*ahead, "commit")),
+            Git::push,
+        ),
+        Next::Pull(behind) => (
+            "pull",
+            IconName::ArrowDown,
+            format!("Pull {}", counted(*behind, "commit")),
+            Git::pull,
+        ),
         Next::CreatePullRequest => (
             "create a pull request",
             IconName::GitPullRequest,
@@ -227,13 +270,23 @@ fn next_row(view: &ChatView, next: &Next, p: Palette, cx: &Context<ChatView>) ->
         ),
         Next::Diverged { ahead, behind } => {
             let says = format!("{ahead} ahead, {behind} behind its upstream");
-            return row(IconName::GitBranch, p).child(ellipsized(says).flex_1()).into_any_element();
+            return row(IconName::GitBranch, p)
+                .child(ellipsized(says).flex_1())
+                .into_any_element();
         }
     };
     let busy = view.details.git.doing == Some(what);
-    let line = row(mark, p).child(ellipsized(says).flex_1()).when(busy, |line| {
-        line.child(div().relative().flex_shrink_0().size(px(13.)).child(modal::spinner(p.muted)))
-    });
+    let line = row(mark, p)
+        .child(ellipsized(says).flex_1())
+        .when(busy, |line| {
+            line.child(
+                div()
+                    .relative()
+                    .flex_shrink_0()
+                    .size(px(13.))
+                    .child(modal::spinner(p.muted)),
+            )
+        });
     clickable(line, what, p)
         .debug_selector(move || what.to_owned())
         .on_click(cx.listener(move |view, _: &ClickEvent, _, cx| act(view, what, does, cx)))
@@ -243,9 +296,9 @@ fn next_row(view: &ChatView, next: &Next, p: Palette, cx: &Context<ChatView>) ->
 fn commit_row(files: usize, p: Palette, cx: &Context<ChatView>) -> impl IntoElement + use<> {
     let says = format!("Commit {}…", counted(files, "file"));
     let line = row(IconName::Check, p).child(ellipsized(says).flex_1());
-    clickable(line, "chat-details-commit", p).on_click(cx.listener(
-        move |view, _: &ClickEvent, window, cx| commit_files(view, files, window, cx),
-    ))
+    clickable(line, "chat-details-commit", p).on_click(
+        cx.listener(move |view, _: &ClickEvent, window, cx| commit_files(view, files, window, cx)),
+    )
 }
 
 /// Opens the dialog that commits `files`.
@@ -281,7 +334,10 @@ mod tests {
     use super::*;
 
     fn facts(tracked: bool, (ahead, behind): (u32, u32)) -> Facts {
-        let upstream = Ref::Remote { remote: "origin".to_owned(), branch: "work".to_owned() };
+        let upstream = Ref::Remote {
+            remote: "origin".to_owned(),
+            branch: "work".to_owned(),
+        };
         Facts {
             published: Published {
                 remote: Some("origin".to_owned()),
@@ -309,19 +365,34 @@ mod tests {
         assert_eq!(next(&facts(false, (0, 0))), Some(Next::Publish));
         assert_eq!(next(&facts(true, (2, 0))), Some(Next::Push(2)));
         assert_eq!(next(&facts(true, (0, 3))), Some(Next::Pull(3)));
-        assert_eq!(next(&facts(true, (2, 3))), Some(Next::Diverged { ahead: 2, behind: 3 }));
+        assert_eq!(
+            next(&facts(true, (2, 3))),
+            Some(Next::Diverged {
+                ahead: 2,
+                behind: 3
+            })
+        );
         assert_eq!(next(&facts(true, (0, 0))), Some(Next::CreatePullRequest));
     }
 
     #[test]
     fn a_pull_request_is_only_offered_where_there_can_be_a_new_one() {
         let settled = || facts(true, (0, 0));
-        let not_github = Facts { on_github: false, ..settled() };
+        let not_github = Facts {
+            on_github: false,
+            ..settled()
+        };
         assert_eq!(next(&not_github), None);
         let mut default_branch = settled();
         default_branch.published.on_default = true;
         assert_eq!(next(&default_branch), None);
-        assert_eq!(next(&Facts { pull_request: Some(pull_request()), ..settled() }), None);
+        assert_eq!(
+            next(&Facts {
+                pull_request: Some(pull_request()),
+                ..settled()
+            }),
+            None
+        );
     }
 
     #[test]

@@ -12,12 +12,12 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
+use futures::channel::mpsc::UnboundedSender;
 use koyo_app_control::frame::{FrameError, MAX_CLIENT_FRAME, MAX_SERVER_FRAME, decode_client};
 use koyo_app_control::transport::{Connection, FrameReader, FrameWriter, Listener};
 use koyo_app_control::{
     ClientFrame, Command, ControlError, Endpoint, HELLO_TIMEOUT, ServerFrame, check_request_id,
 };
-use futures::channel::mpsc::UnboundedSender;
 
 use super::pipeline::Pending;
 use super::{Caller, Request, Welcome, ask, next_connection, topics};

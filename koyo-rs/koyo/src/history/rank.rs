@@ -7,6 +7,7 @@
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 
+use super::address::{display_url, host, strip_scheme};
 use super::{Entry, History, How, Kind, Learned, Place, SAMPLED};
 
 /// A day, in seconds.
@@ -48,7 +49,10 @@ fn weight(how: How) -> f64 {
 pub(crate) fn strength(entry: &Entry, now: i64) -> f64 {
     let decay = std::f64::consts::LN_2 / HALF_LIFE_DAYS;
     let (sum, n) = (entry.uses.iter().rev().take(SAMPLED)).fold((0., 0.), |(sum, n), used| {
-        (sum + weight(used.how) * (-decay * days(now - used.at)).exp(), n + 1.)
+        (
+            sum + weight(used.how) * (-decay * days(now - used.at)).exp(),
+            n + 1.,
+        )
     });
     if n == 0. {
         return 0.;
@@ -98,7 +102,14 @@ impl History {
     /// The entries of `kind` for `query`, best first, at most `most`. Typed, they hold every word
     /// of it: up to three picked before after typing it first, the rest by frecency. With nothing
     /// typed, a browser's top sites or the latest words; either way those of `place` first.
-    pub fn find(&self, kind: Kind, query: &str, place: &Place, most: usize, now: i64) -> Vec<Found> {
+    pub fn find(
+        &self,
+        kind: Kind,
+        query: &str,
+        place: &Place,
+        most: usize,
+        now: i64,
+    ) -> Vec<Found> {
         let tokens: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
         if tokens.is_empty() {
             return match kind {
@@ -113,13 +124,17 @@ impl History {
             .filter(|entry| !found.iter().any(|learned| learned.text == entry.text))
             .filter_map(|entry| Some((entry, holds(entry, &tokens)?)))
             .collect();
-        let enough_at_words = held.iter().filter(|(_, at_words)| *at_words).count() >= ENOUGH_AT_WORDS;
+        let enough_at_words =
+            held.iter().filter(|(_, at_words)| *at_words).count() >= ENOUGH_AT_WORDS;
         let mut ranked: Vec<(f64, &Entry)> = (held.into_iter())
             .filter(|(_, at_words)| *at_words || !enough_at_words)
             .map(|(entry, _)| {
                 let starts = kind != Kind::Page && starts_with_ignoring_case(&entry.text, &typed);
                 let prefix = if starts { PREFIX } else { 1. };
-                (strength(entry, now) * nearness(entry, place) * prefix, entry)
+                (
+                    strength(entry, now) * nearness(entry, place) * prefix,
+                    entry,
+                )
             })
             .collect();
         ranked.sort_by(|a, b| b.0.total_cmp(&a.0));
@@ -147,8 +162,13 @@ impl History {
             .map(|(weight, _, entry)| (weight, entry))
             .collect();
         // Ties go to the page used last, the store keeping it last.
-        hosts.sort_by(|a, b| b.0.total_cmp(&a.0).then_with(|| b.1.last_used().cmp(&a.1.last_used())));
-        (hosts.into_iter().take(most)).map(|(_, entry)| shown(entry, &[])).collect()
+        hosts.sort_by(|a, b| {
+            b.0.total_cmp(&a.0)
+                .then_with(|| b.1.last_used().cmp(&a.1.last_used()))
+        });
+        (hosts.into_iter().take(most))
+            .map(|(_, entry)| shown(entry, &[]))
+            .collect()
     }
 
     /// Words with nothing typed, the latest first, those used in `place`'s project ahead.
@@ -159,12 +179,21 @@ impl History {
             let here = nearness(entry, place) > 1.;
             std::cmp::Reverse((here, entry.last_used()))
         });
-        (entries.into_iter().take(most)).map(|entry| shown(entry, &[])).collect()
+        (entries.into_iter().take(most))
+            .map(|entry| shown(entry, &[]))
+            .collect()
     }
 
     /// The entries of `kind` picked before after typing something `query` starts, the most picked
     /// first, and those picked after typing it exactly counting twice; at most `most`.
-    fn learned_for(&self, kind: Kind, query: &str, tokens: &[String], most: usize, now: i64) -> Vec<Found> {
+    fn learned_for(
+        &self,
+        kind: Kind,
+        query: &str,
+        tokens: &[String],
+        most: usize,
+        now: i64,
+    ) -> Vec<Found> {
         let typed = query.trim().to_lowercase();
         let mut learned: Vec<(f32, &Learned)> = (self.learned.iter())
             .filter(|learned| learned.kind == kind && learned.input.starts_with(&typed))
@@ -184,7 +213,10 @@ impl History {
                 continue;
             }
             if let Some(entry) = self.of(kind).find(|entry| entry.text == learned.text) {
-                found.push(Found { learned: true, ..shown(entry, tokens) });
+                found.push(Found {
+                    learned: true,
+                    ..shown(entry, tokens)
+                });
             }
         }
         found
@@ -217,7 +249,9 @@ impl History {
         }
         let scored: Vec<(String, f64)> = (hosts.into_iter())
             .filter(|(_, (.., typed_days))| !typed_days.is_empty())
-            .map(|(host, (sum, pages, typed_days))| (host, sum / pages as f64 * typed_days.len() as f64))
+            .map(|(host, (sum, pages, typed_days))| {
+                (host, sum / pages as f64 * typed_days.len() as f64)
+            })
             .collect();
         let threshold = median(scored.iter().map(|(_, score)| *score).collect());
         Origins { scored, threshold }
@@ -251,18 +285,34 @@ impl Origins {
 fn median(mut scores: Vec<f64>) -> f64 {
     scores.sort_by(f64::total_cmp);
     let lower = scores.len().div_ceil(2);
-    lower.checked_sub(1).and_then(|at| scores.get(at)).copied().unwrap_or(0.)
+    lower
+        .checked_sub(1)
+        .and_then(|at| scores.get(at))
+        .copied()
+        .unwrap_or(0.)
 }
 
 /// Whether every one of `tokens` is in `entry`'s title or address, or its words: if so, whether
 /// each starts a word there.
 pub(super) fn holds(entry: &Entry, tokens: &[String]) -> Option<bool> {
-    let address = if entry.kind == Kind::Page { strip_scheme(&entry.text) } else { "" };
-    let title = if entry.kind == Kind::Page { entry.title.as_str() } else { entry.text.as_str() };
+    let address = if entry.kind == Kind::Page {
+        strip_scheme(&entry.text)
+    } else {
+        ""
+    };
+    let title = if entry.kind == Kind::Page {
+        entry.title.as_str()
+    } else {
+        entry.text.as_str()
+    };
     let mut at_words = true;
     for token in tokens {
         let (in_title, title_word) = hits(title, token);
-        let (in_address, address_word) = if title_word { (true, true) } else { hits(address, token) };
+        let (in_address, address_word) = if title_word {
+            (true, true)
+        } else {
+            hits(address, token)
+        };
         if !(in_title || in_address) {
             return None;
         }
@@ -276,7 +326,10 @@ pub(super) fn holds(entry: &Entry, tokens: &[String]) -> Option<bool> {
 fn hits(text: &str, token: &str) -> (bool, bool) {
     if !(text.is_ascii() && token.is_ascii()) {
         let found = find_all(text, token);
-        return (!found.is_empty(), found.iter().any(|range| at_word(text, range.start)));
+        return (
+            !found.is_empty(),
+            found.iter().any(|range| at_word(text, range.start)),
+        );
     }
     let (bytes, wanted) = (text.as_bytes(), token.as_bytes());
     if wanted.is_empty() || wanted.len() > bytes.len() {
@@ -297,7 +350,9 @@ fn hits(text: &str, token: &str) -> (bool, bool) {
 /// Whether `text` starts with `prefix`, lowercased, ignoring case.
 fn starts_with_ignoring_case(text: &str, prefix: &str) -> bool {
     if text.is_ascii() {
-        return text.get(..prefix.len()).is_some_and(|start| start.eq_ignore_ascii_case(prefix));
+        return text
+            .get(..prefix.len())
+            .is_some_and(|start| start.eq_ignore_ascii_case(prefix));
     }
     text.to_lowercase().starts_with(prefix)
 }
@@ -319,13 +374,22 @@ fn shown(entry: &Entry, tokens: &[String]) -> Found {
         Kind::Page => {
             let address = display_url(&entry.text);
             let title = entry.title.trim();
-            if title.is_empty() { (address, String::new()) } else { (title.to_owned(), address) }
+            if title.is_empty() {
+                (address, String::new())
+            } else {
+                (title.to_owned(), address)
+            }
         }
-        _ => (entry.text.split_whitespace().collect::<Vec<_>>().join(" "), String::new()),
+        _ => (
+            entry.text.split_whitespace().collect::<Vec<_>>().join(" "),
+            String::new(),
+        ),
     };
     let marked = |text: &str| {
-        let mut ranges: Vec<Range<usize>> =
-            tokens.iter().flat_map(|token| find_all(text, token)).collect();
+        let mut ranges: Vec<Range<usize>> = tokens
+            .iter()
+            .flat_map(|token| find_all(text, token))
+            .collect();
         ranges.sort_by_key(|range| range.start);
         ranges
     };
@@ -361,55 +425,6 @@ fn find_all(text: &str, token: &str) -> Vec<Range<usize>> {
             Some(first.start..last.end)
         })
         .collect()
-}
-
-/// An address as Firefox shows it: `https://` and then `www.` left out, where `http://` stays to
-/// say the page isn't secure, and a lone trailing slash dropped.
-pub fn display_url(url: &str) -> String {
-    let secure = url.get(..8).is_some_and(|start| start.eq_ignore_ascii_case("https://"));
-    let shown = if secure { strip_www(&url[8..]) } else { url };
-    let bare = strip_scheme(shown);
-    match bare.split_once('/') {
-        Some((_, "")) => shown.trim_end_matches('/').to_owned(),
-        _ => shown.to_owned(),
-    }
-}
-
-/// The host of the web page at `url`, lowercased, without `www.`, its port kept.
-pub fn host(url: &str) -> Option<String> {
-    let lower = url.to_ascii_lowercase();
-    if !(lower.starts_with("http://") || lower.starts_with("https://")) {
-        return None;
-    }
-    let bare = strip_www(strip_scheme(&lower));
-    let authority = bare.split(['/', '?', '#']).next()?;
-    let host = authority.rsplit_once('@').map_or(authority, |(_, host)| host);
-    (!host.is_empty()).then(|| host.to_owned())
-}
-
-fn strip_scheme(url: &str) -> &str {
-    ["https://", "http://"]
-        .iter()
-        .find_map(|scheme| {
-            url.get(..scheme.len())
-                .filter(|start| start.eq_ignore_ascii_case(scheme))
-                .map(|_| &url[scheme.len()..])
-        })
-        .unwrap_or(url)
-}
-
-fn strip_www(url: &str) -> &str {
-    match url.get(..4) {
-        Some(start) if start.eq_ignore_ascii_case("www.") => &url[4..],
-        _ => url,
-    }
-}
-
-/// What tells two addresses apart as pages, as Firefox's switch-to-tab and deduping do: not their
-/// scheme, `www.`, case, or an empty query or trailing slash.
-pub fn same_page_key(url: &str) -> String {
-    let bare = strip_www(strip_scheme(url)).to_lowercase();
-    bare.trim_end_matches(['/', '?']).to_owned()
 }
 
 /// Whether every word of `query` is in one of `fields`, ignoring case: if so, for each field, the

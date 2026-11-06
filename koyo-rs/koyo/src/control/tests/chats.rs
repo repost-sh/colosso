@@ -37,7 +37,10 @@ fn hears(rig: &Rig, summaries: Vec<ThreadSummary>, cx: &mut TestAppContext) {
 
 fn ids(listed: &Value) -> Vec<&str> {
     let chats = listed["chats"].as_array().unwrap();
-    chats.iter().map(|chat| chat["id"].as_str().unwrap()).collect()
+    chats
+        .iter()
+        .map(|chat| chat["id"].as_str().unwrap())
+        .collect()
 }
 
 #[gpui_kit::test]
@@ -73,7 +76,11 @@ fn a_chat_opens_in_a_tab_and_opening_it_again_finds_that_tab(cx: &mut TestAppCon
     let root = repo("control-chat-open", &[("README.md", "hi\n")]);
     let rig = controlled("control-chat-open", &[&root], cx);
     select(&rig.shell, &root, cx);
-    hears(&rig, vec![summary("one", &root, "2026-11-04T10:00:00Z")], cx);
+    hears(
+        &rig,
+        vec![summary("one", &root, "2026-11-04T10:00:00Z")],
+        cx,
+    );
     let agent = terminal("term_1");
 
     let opened = call(&agent, "chat_open", json!({ "chat": "one" }), cx).unwrap();
@@ -92,7 +99,11 @@ fn what_names_no_chat_or_says_nothing_is_refused(cx: &mut TestAppContext) {
     let root = repo("control-chat-refused", &[("README.md", "hi\n")]);
     let rig = controlled("control-chat-refused", &[&root], cx);
     select(&rig.shell, &root, cx);
-    hears(&rig, vec![summary("one", &root, "2026-11-04T10:00:00Z")], cx);
+    hears(
+        &rig,
+        vec![summary("one", &root, "2026-11-04T10:00:00Z")],
+        cx,
+    );
     let agent = terminal("term_1");
 
     for (operation, input) in [

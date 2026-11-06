@@ -230,8 +230,7 @@ fn pins_outside_the_limits_or_on_a_program_that_ended_are_refused() {
 fn an_agent_sizes_a_terminal_by_opening_it_and_resizing_it_and_reads_the_redraw() {
     let dir = test_dir("pin-mcp");
     let _stop = StopOnDrop(dir.clone());
-    let checkout =
-        std::fs::canonicalize(env!("KOYO_CHECKOUT")).unwrap();
+    let checkout = std::fs::canonicalize(env!("KOYO_CHECKOUT")).unwrap();
     let relay = connect_from(&dir, ClientKind::Relay, Some(checkout));
     let agent = Executor::new(
         relay.connection.clone(),
@@ -302,8 +301,7 @@ fn an_agent_sizes_a_terminal_by_opening_it_and_resizing_it_and_reads_the_redraw(
 fn an_open_pins_its_size_only_with_the_hold_and_says_so_when_refused() {
     let dir = test_dir("pin-open");
     let _stop = StopOnDrop(dir.clone());
-    let checkout =
-        std::fs::canonicalize(env!("KOYO_CHECKOUT")).unwrap();
+    let checkout = std::fs::canonicalize(env!("KOYO_CHECKOUT")).unwrap();
     let agent = |relay: &Client| {
         Executor::new(
             relay.connection.clone(),

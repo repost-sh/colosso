@@ -47,8 +47,15 @@ fn installed() -> &'static [&'static str] {
     static INSTALLED: OnceLock<Vec<&'static str>> = OnceLock::new();
     INSTALLED.get_or_init(|| {
         let mine = dirs::home_dir().map(|home| home.join("Applications"));
-        let folders: Vec<PathBuf> = [Some(PathBuf::from("/Applications")), mine].into_iter().flatten().collect();
-        let here = |editor: &&str| folders.iter().any(|folder| folder.join(format!("{editor}.app")).exists());
+        let folders: Vec<PathBuf> = [Some(PathBuf::from("/Applications")), mine]
+            .into_iter()
+            .flatten()
+            .collect();
+        let here = |editor: &&str| {
+            folders
+                .iter()
+                .any(|folder| folder.join(format!("{editor}.app")).exists())
+        };
         EDITORS.into_iter().filter(here).collect()
     })
 }
@@ -56,7 +63,11 @@ fn installed() -> &'static [&'static str] {
 fn open(editor: &'static str, folder: &Path, cx: &App) {
     let folder = folder.to_owned();
     cx.background_spawn(async move {
-        let opened = Command::new("/usr/bin/open").arg("-a").arg(editor).arg(&folder).status();
+        let opened = Command::new("/usr/bin/open")
+            .arg("-a")
+            .arg(editor)
+            .arg(&folder)
+            .status();
         if let Err(error) = opened {
             log::warn!("couldn't open {} in {editor}: {error}", folder.display());
         }
@@ -69,7 +80,9 @@ pub(in super::super) fn opened_in(view: &ChatView, OpenIn(editor): &OpenIn, cx: 
     if let Some(place) = &view.details.place {
         open(editor, &place.folder, cx);
     }
-    settings::update(cx, |settings| settings.chat_details.editor = Some((*editor).to_owned()));
+    settings::update(cx, |settings| {
+        settings.chat_details.editor = Some((*editor).to_owned());
+    });
 }
 
 /// The line that opens the checkout in the editor chosen, with the rest in a menu at its end.
@@ -81,7 +94,10 @@ pub(super) fn line(view: &ChatView, p: Palette, cx: &App) -> Option<Div> {
         .or_else(|| editors.first())
         .copied()?;
     let folder = place.folder.clone();
-    let opens = row(IconName::SquareArrowOutUpRight, p).flex_1().min_w_0().child(ellipsized(format!("Open in {editor}")));
+    let opens = row(IconName::SquareArrowOutUpRight, p)
+        .flex_1()
+        .min_w_0()
+        .child(ellipsized(format!("Open in {editor}")));
     let opens = clickable(opens, "chat-details-open-in", p)
         .on_click(move |_, _, cx| open(editor, &folder, cx));
     let others = menu::dropdown(
@@ -95,5 +111,12 @@ pub(super) fn line(view: &ChatView, p: Palette, cx: &App) -> Option<Div> {
                 .collect()
         },
     );
-    Some(div().flex().items_center().gap(px(2.)).child(opens).child(others))
+    Some(
+        div()
+            .flex()
+            .items_center()
+            .gap(px(2.))
+            .child(opens)
+            .child(others),
+    )
 }

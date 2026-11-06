@@ -44,7 +44,8 @@ pub fn host<C: Control>(
     window: &mut Window,
     cx: &mut App,
 ) -> Option<(Size<Pixels>, Div)> {
-    let hosted = window.use_keyed_state(id.into(), cx, |window, cx| Hosted::new(control, window, cx));
+    let hosted =
+        window.use_keyed_state(id.into(), cx, |window, cx| Hosted::new(control, window, cx));
     let size = hosted.update(cx, |hosted, _| {
         let native = hosted.native.as_ref()?;
         if hosted.shown != Some(shown) {

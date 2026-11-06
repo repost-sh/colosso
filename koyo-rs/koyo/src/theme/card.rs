@@ -40,8 +40,14 @@ pub fn shared_corners(bounds: Bounds<Pixels>, window: &Window, cx: &App) -> Corn
         return Corners::default();
     };
     let near = |a: Pixels, b: Pixels| (a - b).abs() <= px(NEAR);
-    let (left, right) = (near(bounds.left(), card.left()), near(bounds.right(), card.right()));
-    let (top, bottom) = (near(bounds.top(), card.top()), near(bounds.bottom(), card.bottom()));
+    let (left, right) = (
+        near(bounds.left(), card.left()),
+        near(bounds.right(), card.right()),
+    );
+    let (top, bottom) = (
+        near(bounds.top(), card.top()),
+        near(bounds.bottom(), card.bottom()),
+    );
     Corners {
         top_left: top && left,
         top_right: top && right,

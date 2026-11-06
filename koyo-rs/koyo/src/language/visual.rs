@@ -14,9 +14,9 @@ use std::process::{Command, ExitCode};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use koyo_lsp::servers::{Curl, RUST_ANALYZER};
 use gpui_kit::component::input::EditorState;
 use gpui_kit::{Entity, Modifiers, MouseButton};
+use koyo_lsp::servers::{Curl, RUST_ANALYZER};
 
 use super::server::{Server, State};
 use super::{Languages, Launcher, install};
@@ -52,8 +52,11 @@ fn draw() -> Result<Vec<String>> {
         // The managed rust-analyzer, not whatever PATH has, so the check draws the same
         // everywhere.
         let launcher: Launcher = Arc::new(|_, root| {
-            let data = settings::data_dir().ok_or_else(|| "there's no folder to fetch it into".to_owned())?;
-            let binary = RUST_ANALYZER.install(&data, &Curl).map_err(|error| error.to_string())?;
+            let data = settings::data_dir()
+                .ok_or_else(|| "there's no folder to fetch it into".to_owned())?;
+            let binary = RUST_ANALYZER
+                .install(&data, &Curl)
+                .map_err(|error| error.to_string())?;
             Ok(RUST_ANALYZER.launch(binary, root))
         });
         install(launcher, cx);

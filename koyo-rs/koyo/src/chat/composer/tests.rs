@@ -18,6 +18,7 @@ use crate::test_support::draw;
 mod drafts;
 
 mod attach;
+mod effort;
 mod missing;
 mod suggest;
 
@@ -48,7 +49,9 @@ fn catalog() -> Catalog {
 
 /// The host now says the chat can choose from `to`.
 fn catalog_is(chat: &Asking, to: Catalog, cx: &mut TestAppContext) {
-    let held = chat.composer.read_with(cx, |composer, _| composer.catalog.clone());
+    let held = chat
+        .composer
+        .read_with(cx, |composer, _| composer.catalog.clone());
     held.update(cx, |held, cx| {
         *held = to;
         cx.notify();
@@ -68,7 +71,8 @@ fn nothing() -> UpdateParams {
 }
 
 fn updated(chat: &Asking, cx: &TestAppContext) -> Vec<UpdateParams> {
-    chat.composer.read_with(cx, |composer, _| composer.updated.clone())
+    chat.composer
+        .read_with(cx, |composer, _| composer.updated.clone())
 }
 
 /// Presses `keys` one by one, each let go as a person would: an arrow not let go is held.
@@ -95,42 +99,19 @@ fn set_to(chat: &Asking, set: impl FnOnce(&mut Thread), seq: u64, cx: &mut TestA
         items: Vec::new(),
         requests: Vec::new(),
     }));
-    chat.thread.update(cx, |thread, cx| thread.take_in(vec![event], cx));
+    chat.thread
+        .update(cx, |thread, cx| thread.take_in(vec![event], cx));
     draw(chat.window, cx);
 }
 
 fn settings(chat: &Asking, cx: &TestAppContext) -> Settings {
-    chat.composer.read_with(cx, |composer, _| composer.settings.clone())
+    chat.composer
+        .read_with(cx, |composer, _| composer.settings.clone())
 }
 
 fn picking(chat: &Asking, cx: &TestAppContext) -> bool {
-    chat.composer.read_with(cx, |composer, cx| composer.model_menu.is_open(cx))
-}
-
-fn sliding(chat: &Asking, cx: &TestAppContext) -> bool {
-    chat.composer.read_with(cx, |composer, cx| composer.effort_menu.is_open(cx))
-}
-
-/// A thread on `model` at `effort`, with the slider open on it.
-fn slider_on(
-    name: &str,
-    model: &str,
-    effort: Option<Effort>,
-    cx: &mut TestAppContext,
-) -> Asking {
-    let chat = chat(name, cx);
-    set_to(
-        &chat,
-        |thread| {
-            thread.model = Some(model.into());
-            thread.effort = effort;
-        },
-        11,
-        cx,
-    );
-    type_in(&chat, "/eff", cx);
-    chat.keys("enter", cx);
-    chat
+    chat.composer
+        .read_with(cx, |composer, cx| composer.model_menu.is_open(cx))
 }
 
 #[gpui_kit::test]
@@ -139,7 +120,13 @@ fn the_key_for_the_plan_asks_for_that_and_shows_what_the_thread_then_says(cx: &m
 
     chat.keys("shift-tab", cx);
 
-    assert_eq!(updated(&chat, cx), [UpdateParams { plan: Some(true), ..nothing() }]);
+    assert_eq!(
+        updated(&chat, cx),
+        [UpdateParams {
+            plan: Some(true),
+            ..nothing()
+        }]
+    );
     assert!(!settings(&chat, cx).plan, "it isn't so until the host says");
     set_to(&chat, |thread| thread.plan = true, 11, cx);
     assert!(settings(&chat, cx).plan);
@@ -152,7 +139,10 @@ fn the_keys_of_the_menu_pick_a_model(cx: &mut TestAppContext) {
     press(&chat, "ctrl-m down enter", cx);
     assert_eq!(
         updated(&chat, cx),
-        [UpdateParams { model: Some(Some("second".into())), ..nothing() }],
+        [UpdateParams {
+            model: Some(Some("second".into())),
+            ..nothing()
+        }],
     );
     assert!(!picking(&chat, cx), "picking closes it");
     assert_eq!(chat.typed(cx), "", "and none of it went into what's typed");
@@ -188,7 +178,10 @@ fn escape_closes_the_menu_and_the_keys_go_back_to_what_is_typed(cx: &mut TestApp
     chat.keys("b", cx);
     assert_eq!(chat.typed(cx), "ab", "they're the input's again");
     chat.keys("enter", cx);
-    let models = updated(&chat, cx).into_iter().filter(|asked| asked.model.is_some()).count();
+    let models = updated(&chat, cx)
+        .into_iter()
+        .filter(|asked| asked.model.is_some())
+        .count();
     assert_eq!(models, 0, "and picking is over");
 }
 
@@ -229,130 +222,28 @@ fn a_model_keeps_only_what_it_can_do(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
-fn a_model_keeps_the_effort_it_can_run_at(cx: &mut TestAppContext) {
-    let chat = chat("chat-footer-keeps-effort", cx);
-    set_to(&chat, |thread| thread.effort = Some(Effort::High), 11, cx);
-
-    press(&chat, "ctrl-m down enter", cx);
-
-    assert_eq!(
-        updated(&chat, cx),
-        [UpdateParams { model: Some(Some("second".into())), ..nothing() }],
-    );
-}
-
-#[gpui_kit::test]
-fn a_model_takes_the_nearest_effort_below_the_one_it_can_not_run_at(cx: &mut TestAppContext) {
-    let chat = chat("chat-footer-nearest-effort", cx);
-    set_to(&chat, |thread| thread.effort = Some(Effort::Max), 11, cx);
-
-    press(&chat, "ctrl-m down enter", cx);
-
-    assert_eq!(
-        updated(&chat, cx),
-        [UpdateParams {
-            model: Some(Some("second".into())),
-            effort: Some(Some(Effort::High)),
-            ..nothing()
-        }],
-    );
-}
-
-#[gpui_kit::test]
-fn the_slider_opens_on_what_shows_and_each_move_goes_to_the_host(cx: &mut TestAppContext) {
-    let chat = slider_on("chat-footer-slider", "first", Some(Effort::High), cx);
-    assert!(sliding(&chat, cx));
-    assert_eq!(chat.typed(cx), "", "the command that opened it is gone");
-
-    press(&chat, "left left right", cx);
-
-    let efforts: Vec<_> = updated(&chat, cx).into_iter().map(|asked| asked.effort).collect();
-    assert_eq!(
-        efforts,
-        [Some(Some(Effort::Low)), Some(Some(Effort::High))],
-        "it stops at the end, and the second goes though the thread, not caught up, is still at it",
-    );
-
-    press(&chat, "escape", cx);
-    assert!(!sliding(&chat, cx));
-    chat.keys("a", cx);
-    assert_eq!(chat.typed(cx), "a", "and the keys are what's typed's again");
-}
-
-#[gpui_kit::test]
-fn a_model_with_no_efforts_has_no_slider(cx: &mut TestAppContext) {
-    let chat = slider_on("chat-footer-no-slider", "third", None, cx);
-
-    assert!(!sliding(&chat, cx));
-}
-
-#[gpui_kit::test]
-fn a_popover_opened_closes_the_other(cx: &mut TestAppContext) {
-    let chat = slider_on("chat-footer-one-popover", "first", None, cx);
-
-    press(&chat, "ctrl-m", cx);
-
-    assert!(!sliding(&chat, cx));
-    assert!(picking(&chat, cx));
-}
-
-#[gpui_kit::test]
-fn the_slider_closes_on_another_model(cx: &mut TestAppContext) {
-    let chat = slider_on("chat-footer-slider-model", "first", None, cx);
-
-    set_to(&chat, |thread| thread.model = Some("second".into()), 12, cx);
-
-    assert!(!sliding(&chat, cx));
-}
-
-#[gpui_kit::test]
-fn what_shows_is_what_runs(cx: &mut TestAppContext) {
-    let chat = chat("chat-footer-runs", cx);
-    set_to(&chat, |thread| thread.model = Some("second".into()), 11, cx);
-
-    chat.keys("a enter", cx);
-
-    assert_eq!(
-        updated(&chat, cx),
-        [UpdateParams { effort: Some(Some(Effort::High)), ..nothing() }],
-        "not set to an effort, it takes Extra high as near as its model gets, ahead of the message",
-    );
-}
-
-#[gpui_kit::test]
-fn a_chat_set_to_an_effort_keeps_it_when_it_sends(cx: &mut TestAppContext) {
-    let chat = chat("chat-footer-keeps-set", cx);
-    set_to(&chat, |thread| thread.effort = Some(Effort::Low), 11, cx);
-
-    chat.keys("a enter", cx);
-
-    assert_eq!(updated(&chat, cx), []);
-}
-
-#[gpui_kit::test]
-fn the_settings_choose_the_effort_of_a_chat_not_set_to_one(cx: &mut TestAppContext) {
-    let chat = chat("chat-footer-setting", cx);
-    cx.update(|cx| crate::settings::update(cx, |settings| settings.chat_effort = Effort::Low));
-    draw(chat.window, cx);
-
-    chat.keys("a enter", cx);
-
-    assert_eq!(updated(&chat, cx), [UpdateParams { effort: Some(Some(Effort::Low)), ..nothing() }]);
-}
-
-#[gpui_kit::test]
 fn fast_is_the_last_row_if_the_model_of_the_chat_can_go_fast(cx: &mut TestAppContext) {
     let chat = chat("chat-footer-fast", cx);
 
     press(&chat, "ctrl-m down down down enter", cx);
-    assert_eq!(updated(&chat, cx), [UpdateParams { fast: Some(true), ..nothing() }]);
+    assert_eq!(
+        updated(&chat, cx),
+        [UpdateParams {
+            fast: Some(true),
+            ..nothing()
+        }]
+    );
 
     press(&chat, "escape", cx);
     set_to(&chat, |thread| thread.model = Some("second".into()), 11, cx);
     press(&chat, "ctrl-m down down down enter", cx);
     assert_eq!(
         updated(&chat, cx).last(),
-        Some(&UpdateParams { model: Some(Some("third".into())), permission: Some(Some(Mode::Ask)), ..nothing() }),
+        Some(&UpdateParams {
+            model: Some(Some("third".into())),
+            permission: Some(Some(Mode::Ask)),
+            ..nothing()
+        }),
         "the second model can't, so the last row is the last model",
     );
 }
@@ -365,7 +256,10 @@ fn how_much_the_agent_may_do_is_all_that_is_asked_for(cx: &mut TestAppContext) {
 
     assert_eq!(
         updated(&chat, cx),
-        [UpdateParams { permission: Some(Some(Mode::FullAccess)), ..nothing() }],
+        [UpdateParams {
+            permission: Some(Some(Mode::FullAccess)),
+            ..nothing()
+        }],
     );
 }
 
@@ -386,7 +280,9 @@ fn compacting_says_why_it_did_not_happen(cx: &mut TestAppContext) {
     chat.composer.update(cx, super::ChatComposer::compact);
     cx.run_until_parked();
 
-    let error = chat.composer.read_with(cx, |composer, _| composer.error.clone());
+    let error = chat
+        .composer
+        .read_with(cx, |composer, _| composer.error.clone());
     assert!(error.is_some(), "no host heard it");
 }
 
@@ -395,14 +291,17 @@ fn the_ring_opens_how_full_it_is_and_closes_it(cx: &mut TestAppContext) {
     let chat = chat("chat-footer-context", cx);
     let press = |cx: &mut TestAppContext| {
         cx.update_window(chat.window, |_, window, cx| {
-            chat.composer.update(cx, |composer, cx| composer.toggle_context(window, cx));
+            chat.composer
+                .update(cx, |composer, cx| composer.toggle_context(window, cx));
         })
         .unwrap();
-        chat.composer.read_with(cx, |composer, cx| composer.context_menu.is_open(cx))
+        chat.composer
+            .read_with(cx, |composer, cx| composer.context_menu.is_open(cx))
     };
     assert!(!press(cx), "no run has said yet");
 
-    chat.composer.update(cx, |composer, _| composer.context = Some((86, 967)));
+    chat.composer
+        .update(cx, |composer, _| composer.context = Some((86, 967)));
 
     assert!(press(cx));
     assert!(!press(cx));
@@ -436,10 +335,17 @@ fn the_menu_has_the_keys_ahead_of_what_is_asked(cx: &mut TestAppContext) {
     assert_eq!(chat.said(cx), [], "it's what's asked that waits");
     assert_eq!(
         updated(&chat, cx),
-        [UpdateParams { model: Some(Some("second".into())), ..nothing() }],
+        [UpdateParams {
+            model: Some(Some("second".into())),
+            ..nothing()
+        }],
     );
     chat.keys("1", cx);
-    assert_eq!(chat.typed(cx), "", "and once it's closed a digit chooses again");
+    assert_eq!(
+        chat.typed(cx),
+        "",
+        "and once it's closed a digit chooses again"
+    );
 }
 
 #[gpui_kit::test]
@@ -448,7 +354,14 @@ fn a_page_of_rows_stops_at_the_end(cx: &mut TestAppContext) {
 
     press(&chat, "ctrl-m pagedown enter", cx);
 
-    assert_eq!(updated(&chat, cx), [UpdateParams { fast: Some(true), ..nothing() }], "Fast is the last");
+    assert_eq!(
+        updated(&chat, cx),
+        [UpdateParams {
+            fast: Some(true),
+            ..nothing()
+        }],
+        "Fast is the last"
+    );
 }
 
 #[gpui_kit::test]
@@ -465,7 +378,8 @@ fn fast_flips_where_it_is_and_the_menu_stays_up(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn a_new_chat_holds_what_it_will_start_with(cx: &mut TestAppContext) {
     let chat = chat("chat-footer-new", cx);
-    chat.composer.update(cx, |composer, _| composer.thread = None);
+    chat.composer
+        .update(cx, |composer, _| composer.thread = None);
 
     press(&chat, "ctrl-m down enter shift-tab", cx);
     type_in(&chat, "/eff", cx);
@@ -493,7 +407,11 @@ fn the_chips_say_less_from_the_end_as_the_composer_narrows() {
 fn type_in(chat: &Asking, typed: &str, cx: &mut TestAppContext) {
     let (composer, typed) = (chat.composer.clone(), typed.to_owned());
     cx.update_window(chat.window, |_, window, cx| {
-        composer.read(cx).text.clone().update(cx, |text, cx| text.insert(typed, window, cx));
+        composer
+            .read(cx)
+            .text
+            .clone()
+            .update(cx, |text, cx| text.insert(typed, window, cx));
     })
     .unwrap();
     draw(chat.window, cx);

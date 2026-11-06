@@ -6,13 +6,13 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::{fs, io};
 
+use gpui_kit::component::input::EditorState;
+use gpui_kit::{App, AppContext as _, AsyncWindowContext, WeakEntity, Window};
 use koyo_lsp::lsp_types::{
     self, AnnotatedTextEdit, DocumentChangeOperation, DocumentChanges, OneOf, TextEdit, Uri,
     WorkspaceEdit,
 };
 use koyo_lsp::{Encoding, IndexedText, uri};
-use gpui_kit::component::input::EditorState;
-use gpui_kit::{App, AppContext as _, AsyncWindowContext, WeakEntity, Window};
 
 use super::providers::{Asked, Hooks};
 use crate::checkout::{Checkout, Document};
@@ -123,7 +123,9 @@ fn per_file(edit: WorkspaceEdit) -> Result<Vec<(Uri, Vec<TextEdit>)>, String> {
     let mut files = Vec::new();
     match edit.document_changes {
         Some(DocumentChanges::Edits(edits)) => {
-            files.extend((edits.into_iter()).map(|edit| (edit.text_document.uri, plain(edit.edits))));
+            files.extend(
+                (edits.into_iter()).map(|edit| (edit.text_document.uri, plain(edit.edits))),
+            );
         }
         Some(DocumentChanges::Operations(operations)) => {
             for operation in operations {
@@ -132,7 +134,10 @@ fn per_file(edit: WorkspaceEdit) -> Result<Vec<(Uri, Vec<TextEdit>)>, String> {
                         files.push((edit.text_document.uri, plain(edit.edits)));
                     }
                     DocumentChangeOperation::Op(_) => {
-                        return Err("it creates, renames or deletes a file, which isn't done yet".to_owned());
+                        return Err(
+                            "it creates, renames or deletes a file, which isn't done yet"
+                                .to_owned(),
+                        );
                     }
                 }
             }
@@ -234,13 +239,11 @@ mod tests {
 
         let by_operation = WorkspaceEdit {
             document_changes: Some(DocumentChanges::Operations(vec![
-                DocumentChangeOperation::Op(lsp_types::ResourceOp::Create(
-                    lsp_types::CreateFile {
-                        uri,
-                        options: None,
-                        annotation_id: None,
-                    },
-                )),
+                DocumentChangeOperation::Op(lsp_types::ResourceOp::Create(lsp_types::CreateFile {
+                    uri,
+                    options: None,
+                    annotation_id: None,
+                })),
             ])),
             ..WorkspaceEdit::default()
         };

@@ -12,14 +12,12 @@ use std::sync::Arc;
 use std::sync::mpsc;
 use std::time::Duration;
 
+use common::{next_call, spawn_app, temp_dir};
 use koyo_app_control::frame::{ClientFrame, MAX_CLIENT_FRAME, MAX_SERVER_FRAME, ServerFrame};
 use koyo_app_control::ops::app::{AppStatus, AppStatusOutput};
 use koyo_app_control::ops::shared::NoInput;
 use koyo_app_control::transport::Listener;
-use koyo_app_control::{
-    Client, ClientInfo, ControlError, ErrorCode, Hello, Notice, Scope, Topic,
-};
-use common::{next_call, spawn_app, temp_dir};
+use koyo_app_control::{Client, ClientInfo, ControlError, ErrorCode, Hello, Notice, Scope, Topic};
 use serde_json::json;
 
 /// How long a test waits for something that should come at once, before failing.

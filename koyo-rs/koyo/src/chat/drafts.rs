@@ -57,7 +57,11 @@ impl Global for Drafts {}
 pub(super) fn init(cx: &mut App) {
     // Tests read and write none of a person's.
     let data = settings::data_dir().filter(|_| !cfg!(test));
-    open(data.map(|data| client::host_dir(&data).root().join(FILE)), attachments::folder(), cx);
+    open(
+        data.map(|data| client::host_dir(&data).root().join(FILE)),
+        attachments::folder(),
+        cx,
+    );
     // A change still settling when the app quits is written on the way out.
     cx.on_app_quit(|cx| {
         let drafts = cx.global_mut::<Drafts>();
@@ -111,13 +115,19 @@ pub(super) fn attachments_folder(cx: &App) -> Option<PathBuf> {
 
 /// What `of`'s draft attaches.
 pub(super) fn attachments_of<'a>(of: &DraftOf, cx: &'a App) -> &'a [Attachment] {
-    cx.global::<Drafts>().kept.get(of).map_or(&[], |draft| &draft.attachments)
+    cx.global::<Drafts>()
+        .kept
+        .get(of)
+        .map_or(&[], |draft| &draft.attachments)
 }
 
 /// Takes up `of`'s draft to write to, and says what's in it; `None` if another composer has it.
 pub(super) fn take_up(of: &DraftOf, cx: &mut App) -> Option<Draft> {
     let drafts = cx.global_mut::<Drafts>();
-    drafts.held.insert(of.clone()).then(|| drafts.kept.get(of).cloned().unwrap_or_default())
+    drafts
+        .held
+        .insert(of.clone())
+        .then(|| drafts.kept.get(of).cloned().unwrap_or_default())
 }
 
 /// Stops writing to `of`'s draft, which stays as it is.
@@ -170,7 +180,9 @@ fn save(cx: &mut App) {
             Some((drafts.path.clone()?, drafts.kept.clone()))
         });
         if let Some((path, kept)) = now {
-            cx.background_executor().spawn(async move { write_file(&path, &kept) }).await;
+            cx.background_executor()
+                .spawn(async move { write_file(&path, &kept) })
+                .await;
         }
     });
     cx.global_mut::<Drafts>().pending = Some(save);

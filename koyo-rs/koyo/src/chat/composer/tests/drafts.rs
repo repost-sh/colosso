@@ -4,7 +4,9 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use gpui_kit::{AnyWindowHandle, AppContext as _, Context, Entity, TestAppContext, Window, px, size};
+use gpui_kit::{
+    AnyWindowHandle, AppContext as _, Context, Entity, TestAppContext, Window, px, size,
+};
 use koyo_agent::agent_client::Notice;
 use koyo_agent::protocol::events::{Event, Removed};
 use koyo_agent::protocol::ids::{MessageId, ThreadId};
@@ -82,7 +84,8 @@ impl Open {
         then: impl FnOnce(&mut ChatComposer, &mut Window, &mut Context<ChatComposer>),
     ) {
         cx.update_window(self.window, |_, window, cx| {
-            self.composer.update(cx, |composer, cx| then(composer, window, cx));
+            self.composer
+                .update(cx, |composer, cx| then(composer, window, cx));
         })
         .unwrap();
         cx.run_until_parked();
@@ -90,25 +93,33 @@ impl Open {
 
     fn write(&self, text: &str, cx: &mut TestAppContext) {
         self.with(cx, |composer, window, cx| {
-            composer.text.update(cx, |typed, cx| typed.set_value(text.to_owned(), window, cx));
+            composer
+                .text
+                .update(cx, |typed, cx| typed.set_value(text.to_owned(), window, cx));
         });
     }
 
     fn attach(&self, path: &PathBuf, cx: &mut TestAppContext) {
-        self.with(cx, |composer, _, cx| composer.attach_paths(std::slice::from_ref(path), cx));
+        self.with(cx, |composer, _, cx| {
+            composer.attach_paths(std::slice::from_ref(path), cx);
+        });
     }
 
     fn typed(&self, cx: &TestAppContext) -> String {
-        self.composer.read_with(cx, |composer, cx| composer.text.read(cx).value().to_string())
+        self.composer.read_with(cx, |composer, cx| {
+            composer.text.read(cx).value().to_string()
+        })
     }
 
     fn tiles(&self, cx: &TestAppContext) -> usize {
-        self.composer.read_with(cx, |composer, _| composer.attached.len())
+        self.composer
+            .read_with(cx, |composer, _| composer.attached.len())
     }
 
     /// Its window goes, and it with that.
     fn close(self, cx: &mut TestAppContext) {
-        cx.update_window(self.window, |_, window, _| window.remove_window()).unwrap();
+        cx.update_window(self.window, |_, window, _| window.remove_window())
+            .unwrap();
         drop(self.composer);
         // What's dropped is released as the next update ends.
         cx.update(|_| {});
@@ -127,13 +138,22 @@ fn a_chat_opened_again_has_what_was_being_written_with_the_caret_where_it_was(
     let place = Place::new("draft-thread", cx);
     let open = Open::thread(&place, cx);
     open.write("hello world", cx);
-    open.with(cx, |composer, _, cx| composer.text.update(cx, |typed, cx| typed.set_selected_range(5..5, cx)));
+    open.with(cx, |composer, _, cx| {
+        composer
+            .text
+            .update(cx, |typed, cx| typed.set_selected_range(5..5, cx));
+    });
     open.close(cx);
 
     let again = Open::thread(&place, cx);
 
     assert_eq!(again.typed(cx), "hello world");
-    assert_eq!(again.composer.read_with(cx, |composer, cx| composer.text.read(cx).cursor()), 5);
+    assert_eq!(
+        again
+            .composer
+            .read_with(cx, |composer, cx| composer.text.read(cx).cursor()),
+        5
+    );
 }
 
 #[gpui_kit::test]
@@ -184,12 +204,18 @@ fn what_is_written_while_a_new_chat_is_made_goes_to_its_thread(cx: &mut TestAppC
     let place = Place::new("draft-created", cx);
     let open = Open::new_chat(&place, cx);
     open.write("and another thing", cx);
-    assert_eq!(kept_text(&place.new_chat(), cx).as_deref(), Some("and another thing"));
+    assert_eq!(
+        kept_text(&place.new_chat(), cx).as_deref(),
+        Some("and another thing")
+    );
 
     open.with(cx, |composer, _, cx| composer.draft_goes_to(&place.id, cx));
 
     assert_eq!(kept_text(&place.new_chat(), cx), None);
-    assert_eq!(kept_text(&place.thread(), cx).as_deref(), Some("and another thing"));
+    assert_eq!(
+        kept_text(&place.thread(), cx).as_deref(),
+        Some("and another thing")
+    );
     assert_eq!(Open::new_chat(&place, cx).typed(cx), "");
 }
 
@@ -207,7 +233,10 @@ fn a_second_composer_on_a_chat_starts_empty_and_keeps_nothing(cx: &mut TestAppCo
 
     // Its going leaves the first one's alone.
     first.write("still mine", cx);
-    assert_eq!(kept_text(&place.thread(), cx).as_deref(), Some("still mine"));
+    assert_eq!(
+        kept_text(&place.thread(), cx).as_deref(),
+        Some("still mine")
+    );
 }
 
 #[gpui_kit::test]
@@ -220,7 +249,9 @@ fn what_a_draft_attaches_outlives_its_tab_and_goes_with_its_tile(cx: &mut TestAp
 
     let again = Open::thread(&place, cx);
     assert_eq!(again.tiles(cx), 1);
-    let tile = again.composer.read_with(cx, |composer, _| composer.attached[0].id());
+    let tile = again
+        .composer
+        .read_with(cx, |composer, _| composer.attached[0].id());
     again.with(cx, |composer, _, cx| composer.detach(tile, cx));
 
     assert_eq!(kept_files(&place.files), 0);
@@ -325,10 +356,14 @@ fn words_taken_back_go_after_whats_typed_with_the_files_that_are_still_there(
     let place = Place::new("draft-take-back", cx);
     let open = Open::thread(&place, cx);
     open.attach(&place.note, cx);
-    let kept: Vec<Attachment> =
-        open.composer.read_with(cx, |composer, _| composer.kept_attachments().cloned().collect());
+    let kept: Vec<Attachment> = open.composer.read_with(cx, |composer, _| {
+        composer.kept_attachments().cloned().collect()
+    });
     open.with(cx, |composer, _, _| composer.attached.clear());
-    let gone = Attachment { file: "gone.txt".into(), ..kept[0].clone() };
+    let gone = Attachment {
+        file: "gone.txt".into(),
+        ..kept[0].clone()
+    };
     open.write("typed", cx);
 
     open.with(cx, |composer, window, cx| {
@@ -342,6 +377,8 @@ fn words_taken_back_go_after_whats_typed_with_the_files_that_are_still_there(
 
     assert_eq!(open.typed(cx), "typed\n\nsaid");
     assert_eq!(open.tiles(cx), 1, "what's gone would only stop it going");
-    let caret = open.composer.read_with(cx, |composer, cx| composer.text.read(cx).cursor());
+    let caret = open
+        .composer
+        .read_with(cx, |composer, cx| composer.text.read(cx).cursor());
     assert_eq!(caret, "typed\n\nsaid".len());
 }

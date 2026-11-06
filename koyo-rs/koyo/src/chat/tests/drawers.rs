@@ -67,7 +67,10 @@ fn a_single_choice_goes_on_by_itself_after_a_moment(cx: &mut TestAppContext) {
     assert_eq!(chat.said(cx), [], "it shows what was chosen first");
     a_moment_passes(&chat, cx);
 
-    assert_eq!(chat.said(cx), [answer(&[("Tabs?", &["Tabs"]), ("Which?", &["Vim"])])]);
+    assert_eq!(
+        chat.said(cx),
+        [answer(&[("Tabs?", &["Tabs"]), ("Which?", &["Vim"])])]
+    );
 }
 
 #[gpui_kit::test]
@@ -82,7 +85,11 @@ fn several_are_chosen_and_then_gone_on_from(cx: &mut TestAppContext) {
     chat.keys("2", cx);
     chat.keys("1", cx);
     a_moment_passes(&chat, cx);
-    assert_eq!(chat.said(cx), [], "it waits for a person to say they're done");
+    assert_eq!(
+        chat.said(cx),
+        [],
+        "it waits for a person to say they're done"
+    );
     chat.keys("enter", cx);
 
     assert_eq!(chat.said(cx), [answer(&[("Which?", &["Helix", "Vim"])])]);
@@ -98,7 +105,11 @@ fn what_is_typed_is_the_other_answer(cx: &mut TestAppContext) {
 
     chat.keys("b o t h", cx);
     chat.keys("1", cx);
-    assert_eq!(chat.typed(cx), "both1", "with something typed a digit is a digit");
+    assert_eq!(
+        chat.typed(cx),
+        "both1",
+        "with something typed a digit is a digit"
+    );
     chat.keys("enter", cx);
     assert_eq!(chat.typed(cx), "", "it was taken");
     assert_eq!(chat.said(cx), [], "the second question is still to answer");
@@ -109,7 +120,10 @@ fn what_is_typed_is_the_other_answer(cx: &mut TestAppContext) {
 
     assert_eq!(
         chat.said(cx),
-        [answer(&[("Tabs?", &["both1"]), ("Which?", &["Vim", "mine"])])],
+        [answer(&[
+            ("Tabs?", &["both1"]),
+            ("Which?", &["Vim", "mine"])
+        ])],
     );
 }
 
@@ -151,7 +165,10 @@ fn an_answer_that_did_not_go_can_be_given_again(cx: &mut TestAppContext) {
 
     assert_eq!(
         chat.said(cx),
-        [answer(&[("Tabs?", &["Tabs"])]), answer(&[("Tabs?", &["Spaces"])])],
+        [
+            answer(&[("Tabs?", &["Tabs"])]),
+            answer(&[("Tabs?", &["Spaces"])])
+        ],
     );
 }
 
@@ -173,7 +190,9 @@ fn a_settled_question_takes_its_drawer_and_keys_with_it(cx: &mut TestAppContext)
 }
 
 #[gpui_kit::test]
-fn a_question_the_agent_stopped_waiting_on_is_answered_by_the_next_message(cx: &mut TestAppContext) {
+fn a_question_the_agent_stopped_waiting_on_is_answered_by_the_next_message(
+    cx: &mut TestAppContext,
+) {
     let pending = asking(RequestPayload::Question(Questions {
         questions: vec![asked("Tabs?", false, &["Tabs", "Spaces"])],
         live: false,
@@ -212,10 +231,14 @@ fn what_is_typed_at_a_plan_goes_as_a_message(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn a_plan_shows_in_its_place_and_copies_whole(cx: &mut TestAppContext) {
     let chat = Asking::new("chat-plan-row", vec![plan()], cx);
-    let timeline = chat.view.read_with(cx, |view, _| view.showing().unwrap().timeline.clone());
+    let timeline = chat
+        .view
+        .read_with(cx, |view, _| view.showing().unwrap().timeline.clone());
     let item = koyo_agent::protocol::ids::ItemId("asks-q1".into());
 
-    let text = chat.thread.read_with(cx, |thread, _| thread.drawn_text(&item).is_some());
+    let text = chat
+        .thread
+        .read_with(cx, |thread, _| thread.drawn_text(&item).is_some());
     assert!(text, "drawing the row made the view of its text");
 
     timeline.update(cx, |timeline, cx| timeline.copy(item, cx));

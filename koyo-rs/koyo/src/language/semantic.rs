@@ -9,14 +9,14 @@
 
 use std::ops::Range;
 
+use gpui_kit::component::input::{DocumentRangeSemanticTokensProvider, Rope};
+use gpui_kit::{App, AppContext as _, Task, Window};
 use koyo_lsp::lsp_types::request::SemanticTokensFullRequest;
 use koyo_lsp::lsp_types::{
     self, PartialResultParams, Position, SemanticToken, SemanticTokenType, SemanticTokens,
     SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensParams, SemanticTokensResult,
     SemanticTokensServerCapabilities, WorkDoneProgressParams,
 };
-use gpui_kit::component::input::{DocumentRangeSemanticTokensProvider, Rope};
-use gpui_kit::{App, AppContext as _, Task, Window};
 
 use super::providers::Hooks;
 
@@ -46,7 +46,10 @@ const NAMES: [&str; 19] = [
 impl DocumentRangeSemanticTokensProvider for Hooks {
     fn legend(&self) -> SemanticTokensLegend {
         SemanticTokensLegend {
-            token_types: NAMES.iter().map(|name| SemanticTokenType::new(name)).collect(),
+            token_types: NAMES
+                .iter()
+                .map(|name| SemanticTokenType::new(name))
+                .collect(),
             token_modifiers: Vec::new(),
         }
     }
@@ -78,7 +81,11 @@ impl DocumentRangeSemanticTokensProvider for Hooks {
                 work_done_progress_params: WorkDoneProgressParams::default(),
                 partial_result_params: PartialResultParams::default(),
             };
-            let data = match asked.ask::<SemanticTokensFullRequest>(&params).await.flatten() {
+            let data = match asked
+                .ask::<SemanticTokensFullRequest>(&params)
+                .await
+                .flatten()
+            {
                 Some(SemanticTokensResult::Tokens(tokens)) => tokens.data,
                 Some(SemanticTokensResult::Partial(partial)) => partial.data,
                 None => return not_now("the server gave no tokens"),
@@ -123,10 +130,18 @@ struct Mapping {
 
 impl Mapping {
     fn new(legend: &SemanticTokensLegend) -> Mapping {
-        let names: Vec<&str> = (legend.token_types.iter()).map(|kind| named(kind.as_str())).collect();
+        let names: Vec<&str> = (legend.token_types.iter())
+            .map(|kind| named(kind.as_str()))
+            .collect();
         let types = names.iter().map(|name| index(name)).collect();
         let documented = (names.iter())
-            .map(|name| index(if *name == "comment" { "comment.doc" } else { name }))
+            .map(|name| {
+                index(if *name == "comment" {
+                    "comment.doc"
+                } else {
+                    name
+                })
+            })
             .collect();
         let documentation = (legend.token_modifiers.iter())
             .position(|modifier| modifier.as_str() == "documentation")
@@ -156,7 +171,11 @@ impl Mapping {
                 read.character += token.delta_start;
             }
             let documented = token.token_modifiers_bitset & self.documentation != 0;
-            let kinds = if documented { &self.documented } else { &self.types };
+            let kinds = if documented {
+                &self.documented
+            } else {
+                &self.types
+            };
             let Some(kind) = kinds.get(token.token_type as usize).copied().flatten() else {
                 continue;
             };
@@ -166,7 +185,11 @@ impl Mapping {
                 continue;
             }
             let delta_line = start.line - last.line;
-            let delta_start = if delta_line == 0 { start.character - last.character } else { start.character };
+            let delta_start = if delta_line == 0 {
+                start.character - last.character
+            } else {
+                start.character
+            };
             out.push(SemanticToken {
                 delta_line,
                 delta_start,
@@ -213,7 +236,13 @@ mod tests {
 
     use super::*;
 
-    fn token(delta_line: u32, delta_start: u32, length: u32, kind: u32, modifiers: u32) -> SemanticToken {
+    fn token(
+        delta_line: u32,
+        delta_start: u32,
+        length: u32,
+        kind: u32,
+        modifiers: u32,
+    ) -> SemanticToken {
         SemanticToken {
             delta_line,
             delta_start,
@@ -241,11 +270,17 @@ mod tests {
                 SemanticTokenType::NAMESPACE,
                 SemanticTokenType::KEYWORD,
             ],
-            token_modifiers: vec![SemanticTokenModifier::STATIC, SemanticTokenModifier::DOCUMENTATION],
+            token_modifiers: vec![
+                SemanticTokenModifier::STATIC,
+                SemanticTokenModifier::DOCUMENTATION,
+            ],
         };
         let mapping = Mapping::new(&legend);
         assert_eq!(mapping.types, [index("comment"), None, index("keyword")]);
-        assert_eq!(mapping.documented, [index("comment.doc"), None, index("keyword")]);
+        assert_eq!(
+            mapping.documented,
+            [index("comment.doc"), None, index("keyword")]
+        );
         assert_eq!(mapping.documentation, 0b10);
         let kind = |name| index(name).unwrap();
         // UTF-16 positions: the crab counts two there, one to the editor.

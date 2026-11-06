@@ -62,7 +62,9 @@ impl Links {
     pub fn find(&mut self, frame: &Frame, at: GridPoint) -> Option<Found> {
         let home = std::env::var_os("HOME").map(PathBuf::from);
         let Links { roots, files, .. } = self;
-        find(frame, at, roots, home.as_deref(), &mut |path| files.is_file(path))
+        find(frame, at, roots, home.as_deref(), &mut |path| {
+            files.is_file(path)
+        })
     }
 }
 
@@ -126,8 +128,11 @@ pub(crate) fn find(
 pub fn link_target(target: &str, folders: &[PathBuf]) -> Option<LinkTarget> {
     let target = target.trim();
     let home = std::env::var_os("HOME").map(PathBuf::from);
-    let mut file =
-        |shown: &str| resolve(shown, None, folders, home.as_deref(), &mut |path| path.is_file());
+    let mut file = |shown: &str| {
+        resolve(shown, None, folders, home.as_deref(), &mut |path| {
+            path.is_file()
+        })
+    };
     if target.contains("://") {
         return scan::target(target, &mut file);
     }
@@ -143,7 +148,11 @@ pub fn link_target(target: &str, folders: &[PathBuf]) -> Option<LinkTarget> {
 /// `found`, at `line` when it's a file whose own text names none.
 fn at_line(found: LinkTarget, line: Option<u32>) -> LinkTarget {
     match found {
-        LinkTarget::File { path, line: None, column } => LinkTarget::File { path, line, column },
+        LinkTarget::File {
+            path,
+            line: None,
+            column,
+        } => LinkTarget::File { path, line, column },
         found => found,
     }
 }
@@ -161,7 +170,9 @@ fn resolve(
         return None;
     }
     if let Some(rest) = shown.strip_prefix("~/") {
-        return home.map(|home| tidied(&home.join(rest))).filter(|path| is_file(path));
+        return home
+            .map(|home| tidied(&home.join(rest)))
+            .filter(|path| is_file(path));
     }
     let path = Path::new(shown);
     if path.is_absolute() {

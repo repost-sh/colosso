@@ -10,8 +10,8 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use koyo_lsp::servers::{PYREFLY, RUST_ANALYZER, TYPESCRIPT};
 use gpui_kit::Action;
+use koyo_lsp::servers::{PYREFLY, RUST_ANALYZER, TYPESCRIPT};
 use serde::{Deserialize, Serialize};
 
 use super::Settings;
@@ -76,7 +76,8 @@ impl Settings {
     /// without one.
     pub fn runs_server(&self, name: &str, project: Option<&Path>) -> bool {
         self.language_servers.get(name).is_none_or(|server| {
-            server.enabled && project.is_none_or(|project| !server.off_in.iter().any(|off| off == project))
+            server.enabled
+                && project.is_none_or(|project| !server.off_in.iter().any(|off| off == project))
         })
     }
 

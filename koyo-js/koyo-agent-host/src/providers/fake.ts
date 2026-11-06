@@ -1,7 +1,8 @@
 // A provider that runs no agent (docs/chat.md C6), for tests: each session records what the
 // actor asked of it and reports what its test tells it to, through the same sink a real
 // driver reports to. Given `answer`, its sessions answer each turn by themselves instead, for
-// the host run end to end (`KOYO_AGENT_PROVIDER=fake`).
+// the host run end to end (`KOYO_AGENT_PROVIDER=fake`); a turn that starts `Show your work`
+// first does the work Claude would, for the chat's visual check to draw.
 
 import type { Catalog, ProviderStatus } from "../protocol/methods";
 import type { Mode, ProviderId, RequestPayload, Response } from "../protocol/model";
@@ -226,11 +227,112 @@ export class FakeSession implements ProviderSession {
   }
 }
 
+/** What a turn starts with for the fake to do some work before it answers. */
+const SHOW_WORK = "Show your work";
+
+type ToolPayload = Extract<ItemBody, { kind: "tool" }>["payload"];
+
+/** The work a turn that asks for it does: it thinks, reads, edits, tests, writes and plans. */
+function work(session: FakeSession, turn: number): void {
+  const done = (key: string, item: ItemBody, started: ItemBody = item): void => {
+    const id = `${key}-${String(turn)}`;
+    session.report({ type: "item.started", key: id, item: started });
+    session.report({ type: "item.updated", key: id, item, status: "completed" });
+  };
+  const tool = (key: string, payload: ToolPayload): void => {
+    const started = { ...payload, output: null, exitCode: null, patch: null };
+    done(key, { kind: "tool", payload }, { kind: "tool", payload: started });
+  };
+  const base = { input: {}, output: null, exitCode: null, patch: null, files: [], server: null };
+  done("thought", {
+    kind: "reasoning",
+    payload: { text: "The last line goes missing when a file doesn't end in a newline." },
+  });
+  tool("read", {
+    ...base, name: "Read", family: "read", label: "src/lines.rs", files: ["src/lines.rs"],
+    output: [
+      "1\tpub fn lines(text: &str) -> Vec<&str> {",
+      "2\t    text.split_terminator('\\n').collect()",
+      "3\t}",
+    ].join("\n"),
+  });
+  tool("search", {
+    ...base, name: "Grep", family: "search", label: "split_terminator",
+    output: "src/lines.rs:2\nsrc/main.rs:12",
+  });
+  tool("edit", {
+    ...base, name: "Edit", family: "edit", label: "src/lines.rs", files: ["src/lines.rs"],
+    patch: [
+      {
+        oldStart: 1, oldLines: 4, newStart: 1, newLines: 5, lines: [
+          " /// The lines of `text`, the last one kept whether or not a newline ends it.",
+          " pub fn lines(text: &str) -> Vec<&str> {",
+          "-    text.split_terminator('\\n').collect()",
+          "+    let trimmed = text.strip_suffix('\\n').unwrap_or(text);",
+          "+    trimmed.split('\\n').collect()",
+          " }",
+        ],
+      },
+      {
+        oldStart: 40, oldLines: 3, newStart: 41, newLines: 3, lines: [
+          " #[cfg(test)]",
+          "-mod test {",
+          "+mod tests {",
+          "     use super::*;",
+        ],
+      },
+    ],
+  });
+  const printed = [
+    "   Compiling lines v0.1.0 (/work/lines)",
+    "    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.42s",
+    "     Running unittests src/lib.rs (target/debug/deps/lines-3f2a)",
+    "",
+    "running 4 tests",
+    "test tests::empty_text_has_no_lines ... ok",
+    "test tests::a_trailing_newline_starts_no_line ... ok",
+    "test tests::the_last_line_is_kept ... ok",
+    "test tests::windows_endings_stay ... ok",
+    "",
+    "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out",
+  ];
+  tool("command", {
+    ...base, name: "Bash", family: "command", label: "cargo test", exitCode: 0,
+    output: printed.join("\n"),
+  });
+  tool("write", {
+    ...base, name: "Write", family: "edit", label: "tests/lines.rs", files: ["tests/lines.rs"],
+    patch: [{
+      oldStart: 0, oldLines: 0, newStart: 1, newLines: 6, lines: [
+        "+use lines::lines;",
+        "+",
+        "+#[test]",
+        "+fn the_last_line_is_kept() {",
+        "+    assert_eq!(lines(\"a\\nb\"), [\"a\", \"b\"]);",
+        "+}",
+      ],
+    }],
+  });
+  done("todos", {
+    kind: "todos",
+    payload: {
+      todos: [
+        { text: "Keep the last line", status: "completed" },
+        { text: "Test it", status: "completed" },
+        { text: "Say what changed", status: "in_progress" },
+      ],
+    },
+  });
+}
+
 /** Answers `turn` at once with its text said back, streamed in two pieces. */
 export function answer(session: FakeSession, turn: TurnInput): void {
   const key = `answer-${String(session.turns.length)}`;
   const opening = "You said: ";
   session.started();
+  if (turn.text.startsWith(SHOW_WORK)) {
+    work(session, session.turns.length);
+  }
   session.startsText(key);
   session.report({ type: "item.appended", key, text: opening });
   session.report({ type: "item.appended", key, text: turn.text });

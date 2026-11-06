@@ -39,31 +39,58 @@ pub struct Row {
 /// What a row shows, by places in the replica's `items`, `runs` and `requests`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RowKind {
-    User { item: usize, run: usize },
+    User {
+        item: usize,
+        run: usize,
+    },
     /// Assistant text; `last` when it's the run's final answer.
-    Answer { item: usize, run: usize, last: bool },
+    Answer {
+        item: usize,
+        run: usize,
+        last: bool,
+    },
     /// Tools, thinking and to-dos one after the other, none of them running.
-    Work { items: Vec<usize> },
+    Work {
+        items: Vec<usize>,
+    },
     /// Subagents one after the other, each showing how it's doing whatever its run does.
-    Subagents { items: Vec<usize> },
+    Subagents {
+        items: Vec<usize>,
+    },
     /// What a live run is working on, `None` before there's anything to say. Its id never changes
     /// while the run works. There's none while the run writes or asks, which show themselves.
-    Live { item: Option<usize> },
+    Live {
+        item: Option<usize>,
+    },
     /// A settled run's work, which shows while this row is open.
-    Fold { run: usize },
+    Fold {
+        run: usize,
+    },
     /// `asking` when it's the one a person can answer now, of those waiting.
     Request {
         item: usize,
         request: usize,
         asking: bool,
     },
-    Compaction { item: usize },
+    Compaction {
+        item: usize,
+    },
     /// A note in the timeline, or an item of a kind this build doesn't know.
-    Notice { item: usize },
-    Failure { run: usize },
-    Stopped { run: usize },
-    Files { run: usize },
-    Queued { run: usize },
+    Notice {
+        item: usize,
+    },
+    Failure {
+        run: usize,
+    },
+    Stopped {
+        run: usize,
+    },
+    Files {
+        run: usize,
+    },
+    Queued {
+        run: usize,
+    },
 }
 
 /// How a settled run's work shows.
@@ -77,8 +104,14 @@ pub enum WorkFold {
     Open,
 }
 
-/// The rows of `replica`, with each settled run's work as `fold` says.
-pub fn rows(replica: &Replica, fold: impl Fn(&RunId) -> WorkFold) -> Vec<Row> {
+/// The rows of `replica`, with each settled run's work as `fold` says, and each item of work
+/// that's `alone` in a row of its own rather than with the work beside it: one that shows more
+/// than its line, as a diff or what a command printed, reads in the order it came.
+pub fn rows(
+    replica: &Replica,
+    fold: impl Fn(&RunId) -> WorkFold,
+    alone: impl Fn(&Item) -> bool,
+) -> Vec<Row> {
     let mut rows = Vec::new();
     let mut seen = HashSet::new();
     let mut first = 0;
@@ -94,6 +127,7 @@ pub fn rows(replica: &Replica, fold: impl Fn(&RunId) -> WorkFold) -> Vec<Row> {
                 first,
                 asking,
                 work: None,
+                alone: &alone,
             };
             made.add(items, fold(&run.id));
         }
@@ -118,7 +152,9 @@ pub fn rows(replica: &Replica, fold: impl Fn(&RunId) -> WorkFold) -> Vec<Row> {
 
 /// The run `item` is of, and its place.
 fn run_of<'a>(replica: &'a Replica, item: &Item) -> Option<(usize, &'a Run)> {
-    let index = (replica.runs).binary_search_by(|run| run.id.cmp(&item.run_id)).ok()?;
+    let index = (replica.runs)
+        .binary_search_by(|run| run.id.cmp(&item.run_id))
+        .ok()?;
     Some((index, replica.runs.get(index)?))
 }
 
@@ -143,6 +179,8 @@ struct RunRows<'a> {
     asking: Option<&'a RequestId>,
     /// The work being gathered.
     work: Option<Work>,
+    /// Whether an item of work has a row of its own.
+    alone: &'a dyn Fn(&Item) -> bool,
 }
 
 /// Work one item after the other: the item it starts with, whichever state that's in, the places
@@ -155,9 +193,16 @@ struct Work {
 
 impl RunRows<'_> {
     fn add(&mut self, items: &[Item], fold: WorkFold) {
-        let answer = items.iter().rfind(|item| is_text(item)).map(|item| &item.id);
+        let answer = items
+            .iter()
+            .rfind(|item| is_text(item))
+            .map(|item| &item.id);
         // Failed and interrupted runs show what they did, as that's what someone reads them for.
-        let fold = if self.run.status == RunStatus::Completed { fold } else { WorkFold::None };
+        let fold = if self.run.status == RunStatus::Completed {
+            fold
+        } else {
+            WorkFold::None
+        };
         let mut foldable = fold != WorkFold::None;
         for (at, item) in items.iter().enumerate() {
             let place = self.first + at;
@@ -242,14 +287,27 @@ impl RunRows<'_> {
     }
 
     /// Adds an item to the work under way, which what's running stays out of while the run's
-    /// live: it's what the live row shows.
+    /// live: it's what the live row shows. One that's alone ends the work under way and has a
+    /// row of its own once it's done; while it runs it leaves the work beside it be.
     fn gather(&mut self, place: usize, item: &Item) {
+        let live = self.run.status.is_live() && item.status == ItemStatus::Running;
+        if (self.alone)(item) {
+            if !live {
+                self.flush();
+                self.rows.push(Row {
+                    id: RowId::Work(item.id.clone()),
+                    seq: item.seq,
+                    kind: RowKind::Work { items: vec![place] },
+                });
+            }
+            return;
+        }
         let work = self.work.get_or_insert_with(|| Work {
             start: item.id.clone(),
             items: Vec::new(),
             seq: 0,
         });
-        if !(self.run.status.is_live() && item.status == ItemStatus::Running) {
+        if !live {
             work.items.push(place);
             work.seq = work.seq.max(item.seq);
         }
@@ -286,7 +344,9 @@ impl RunRows<'_> {
             self.push_run(RowId::Files(id.clone()), RowKind::Files { run: index });
         }
         match self.run.status {
-            RunStatus::Failed => self.push_run(RowId::Failure(id.clone()), RowKind::Failure { run: index }),
+            RunStatus::Failed => {
+                self.push_run(RowId::Failure(id.clone()), RowKind::Failure { run: index });
+            }
             RunStatus::Interrupted => {
                 self.push_run(RowId::Stopped(id.clone()), RowKind::Stopped { run: index });
             }
@@ -296,8 +356,9 @@ impl RunRows<'_> {
 
     /// The live row, unless what the run is doing shows for itself: its answer, or its request.
     fn live(&mut self, items: &[Item]) {
-        let asking = (self.replica.requests.iter())
-            .any(|request| request.run_id == self.run.id && request.status == RequestStatus::Pending);
+        let asking = (self.replica.requests.iter()).any(|request| {
+            request.run_id == self.run.id && request.status == RequestStatus::Pending
+        });
         if asking {
             return;
         }
@@ -345,7 +406,9 @@ pub fn changed(old: &[Row], new: &[Row]) -> Option<(Range<usize>, usize)> {
         _ => false,
     };
     let same = |a: &Row, b: &Row| a.id == b.id && a.seq == b.seq && told(a) == told(b);
-    let before = (old.iter().zip(new)).take_while(|(a, b)| same(a, b)).count();
+    let before = (old.iter().zip(new))
+        .take_while(|(a, b)| same(a, b))
+        .count();
     if before == old.len() && before == new.len() {
         return None;
     }

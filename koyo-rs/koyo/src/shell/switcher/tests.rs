@@ -9,7 +9,9 @@ use crate::files::At;
 use crate::files::tests::{checkout, dialog, editing, new_chat, press, shell_showing, tabs};
 
 #[gpui_kit::test]
-fn ctrl_tab_lists_the_tabs_latest_first_and_letting_go_shows_the_one_picked(cx: &mut TestAppContext) {
+fn ctrl_tab_lists_the_tabs_latest_first_and_letting_go_shows_the_one_picked(
+    cx: &mut TestAppContext,
+) {
     let root = checkout("shell-switcher");
     let (window, shell, _) = shell_showing(&root, cx);
     editing(window, &shell, "src/lib.rs", At::Bytes(0..0), cx);
@@ -21,14 +23,15 @@ fn ctrl_tab_lists_the_tabs_latest_first_and_letting_go_shows_the_one_picked(cx: 
         let (window, switcher) = dialog::<Switcher>(cx)?;
         cx.read(|cx| {
             let switcher = switcher.read(cx);
-            let names: Vec<String> = (switcher.rows.iter()).map(|row| row.name.to_string()).collect();
+            let names: Vec<String> = (switcher.rows.iter())
+                .map(|row| row.name.to_string())
+                .collect();
             Some((window, names, switcher.selected))
         })
     };
     let picked = |cx: &mut TestAppContext| open(cx).map(|open| open.2);
-    let shown = |cx: &TestAppContext| {
-        (tabs(&shell, cx).into_iter()).find(|tab| tab.starts_with('['))
-    };
+    let shown =
+        |cx: &TestAppContext| (tabs(&shell, cx).into_iter()).find(|tab| tab.starts_with('['));
     let let_go = |window: AnyWindowHandle, cx: &mut TestAppContext| {
         VisualTestContext::from_window(window, cx).simulate_modifiers_change(Modifiers::none());
     };

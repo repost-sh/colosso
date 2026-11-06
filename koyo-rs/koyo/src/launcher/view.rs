@@ -40,13 +40,21 @@ impl Global for Dismissed {}
 pub fn open(shell: WeakEntity<Shell>, here: Here, window: &mut Window, cx: &mut App) {
     let behind = window.window_handle();
     let (text, kind) = match cx.try_global::<Dismissed>() {
-        Some(dismissed) if dismissed.at.elapsed() < REMEMBERED => (dismissed.text.clone(), dismissed.kind),
+        Some(dismissed) if dismissed.at.elapsed() < REMEMBERED => {
+            (dismissed.text.clone(), dismissed.kind)
+        }
         _ => (String::new(), Kind::Browser),
     };
     if cx.has_global::<Dismissed>() {
         cx.remove_global::<Dismissed>();
     }
-    let query = Query { kind, typed: &text, autofilled: None, here: &here, suggested: &[] };
+    let query = Query {
+        kind,
+        typed: &text,
+        autofilled: None,
+        here: &here,
+        suggested: &[],
+    };
     let rows = rows::rows(&query, cx);
     modal::open_floating(WIDTH, height(rows.len()), window, cx, |window, cx| {
         Launcher::new(shell, here, behind, (text, kind), rows, window, cx)
@@ -55,7 +63,11 @@ pub fn open(shell: WeakEntity<Shell>, here: Here, window: &mut Window, cx: &mut 
 
 /// How high the launcher is with `rows` rows.
 pub fn height(rows: usize) -> f32 {
-    if rows == 0 { FIELD } else { FIELD + 1. + 2. * LIST_PADDING + rows as f32 * ROW }
+    if rows == 0 {
+        FIELD
+    } else {
+        FIELD + 1. + 2. * LIST_PADDING + rows as f32 * ROW
+    }
 }
 
 pub struct Launcher {
@@ -112,7 +124,11 @@ impl Launcher {
             cx.on_release(|this, cx| {
                 if !this.picked && !this.typed.trim().is_empty() {
                     let (text, kind) = (this.typed.clone(), this.kind);
-                    cx.set_global(Dismissed { text, kind, at: Instant::now() });
+                    cx.set_global(Dismissed {
+                        text,
+                        kind,
+                        at: Instant::now(),
+                    });
                 }
             }),
         ];
@@ -160,10 +176,15 @@ impl Launcher {
         if !self.typed.is_ascii() {
             return;
         }
-        let origins = (self.origins).get_or_insert_with(|| history::get(cx).origins(history::now()));
+        let origins =
+            (self.origins).get_or_insert_with(|| history::get(cx).origins(history::now()));
         let typed = &self.typed;
         let host = origins.complete(typed);
-        let Some(rest) = host.as_ref().and_then(|host| host.get(typed.len()..)).filter(|rest| !rest.is_empty()) else {
+        let Some(rest) = host
+            .as_ref()
+            .and_then(|host| host.get(typed.len()..))
+            .filter(|rest| !rest.is_empty())
+        else {
             return;
         };
         let filled = format!("{typed}{rest}");
@@ -200,7 +221,8 @@ impl Launcher {
     fn suggest(&mut self, cx: &mut Context<Self>) {
         let typed = self.typed.trim().to_owned();
         let lower = typed.to_lowercase();
-        self.suggested.retain(|suggested| suggested.to_lowercase().starts_with(&lower));
+        self.suggested
+            .retain(|suggested| suggested.to_lowercase().starts_with(&lower));
         self.suggesting = None;
         if self.kind != Kind::Browser || !super::suggest::wanted(&typed, cx) {
             self.suggested.clear();
@@ -216,7 +238,9 @@ impl Launcher {
                     this.suggested = suggested;
                     let selected = this.selected;
                     this.refresh(cx);
-                    this.selected = selected.filter(|at| *at < this.rows.len()).or(this.selected);
+                    this.selected = selected
+                        .filter(|at| *at < this.rows.len())
+                        .or(this.selected);
                 }
             })
             .ok();
@@ -248,7 +272,11 @@ impl Launcher {
     pub(super) fn accept(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let (value, cursor, selection) = {
             let input = self.input.read(cx);
-            (input.value().to_string(), input.cursor(), input.selected_range())
+            (
+                input.value().to_string(),
+                input.cursor(),
+                input.selected_range(),
+            )
         };
         let text = if self.autofilled.is_some() && selection.end == value.len() {
             value
@@ -270,7 +298,9 @@ impl Launcher {
 
     /// Forgets the picked row's entry, if it shows one; otherwise ⇧⌫ edits the field.
     pub(super) fn remove_selected(&mut self, cx: &mut Context<Self>) {
-        let entry = self.selected.and_then(|at| self.rows.get(at)?.entry.clone());
+        let entry = self
+            .selected
+            .and_then(|at| self.rows.get(at)?.entry.clone());
         let Some((kind, text)) = entry else {
             return cx.propagate();
         };

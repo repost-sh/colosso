@@ -5,8 +5,6 @@
 
 use std::sync::Arc;
 
-use koyo_term::{TermClient, ToggleResponsive};
-use koyo_term_control::{RequestBody, Status};
 use gpui_kit::component::button::Button;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::prelude::FluentBuilder as _;
@@ -14,6 +12,8 @@ use gpui_kit::{
     App, AppContext as _, Context, Div, Hsla, InteractiveElement as _, ParentElement as _,
     SharedString, Stateful, StatefulInteractiveElement as _, Styled as _, div, px,
 };
+use koyo_term::{TermClient, ToggleResponsive};
+use koyo_term_control::{RequestBody, Status};
 
 use super::responsive::ResponsiveTerminal;
 use super::states::{State, most_urgent};

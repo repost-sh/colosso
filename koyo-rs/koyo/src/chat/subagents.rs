@@ -64,9 +64,13 @@ fn line(
     let p = drawing.p;
     // Open until a person closes it, whatever they're doing by then.
     let open = !drawing.open.contains(id);
-    let stacked = agents.iter().take(STACKED).enumerate().map(|(at, (item, _))| {
-        avatar(item.status, p).when(at > 0, |avatar| avatar.ml(px(-OVERLAP)))
-    });
+    let stacked = agents
+        .iter()
+        .take(STACKED)
+        .enumerate()
+        .map(|(at, (item, _))| {
+            avatar(item.status, p).when(at > 0, |avatar| avatar.ml(px(-OVERLAP)))
+        });
     let more = agents.len().saturating_sub(STACKED);
     div()
         .flex()
@@ -77,20 +81,36 @@ fn line(
                 .gap_2()
                 .child(div().flex().items_center().children(stacked))
                 .when(more > 0, |row| row.child(format!("+{more}")))
-                .child(format!("{} subagents · {}", agents.len(), how_they_are(agents)))
+                .child(format!(
+                    "{} subagents · {}",
+                    agents.len(),
+                    how_they_are(agents)
+                ))
                 .child(chevron(open))
                 .on_click(drawing.opens(id.clone(), index)),
         )
         .when(open, |row| {
-            row.children(agents.iter().map(|(item, agent)| card(drawing, item, agent, moving)))
+            row.children(
+                agents
+                    .iter()
+                    .map(|(item, agent)| card(drawing, item, agent, moving)),
+            )
         })
 }
 
 /// How subagents are doing together, what's worst first.
 fn how_they_are(agents: &[(&Item, &Subagent)]) -> String {
-    let count = |status| agents.iter().filter(|(item, _)| item.status == status).count();
+    let count = |status| {
+        agents
+            .iter()
+            .filter(|(item, _)| item.status == status)
+            .count()
+    };
     let said: Vec<String> = [
-        (count(ItemStatus::Running) + count(ItemStatus::Pending), "running"),
+        (
+            count(ItemStatus::Running) + count(ItemStatus::Pending),
+            "running",
+        ),
         (count(ItemStatus::Failed), "failed"),
         (count(ItemStatus::Interrupted), "stopped"),
         (count(ItemStatus::Completed), "done"),
@@ -109,7 +129,11 @@ fn card(drawing: &Drawing, item: &Item, agent: &Subagent, moving: bool) -> State
     let doing = subagent_status(item.status);
     let (started, ended) = (agent.started_at.as_ref(), agent.ended_at.as_ref());
     let status = subagent_line(doing, started, ended, drawing.now);
-    let color = if item.status == ItemStatus::Failed { p.danger } else { p.muted };
+    let color = if item.status == ItemStatus::Failed {
+        p.danger
+    } else {
+        p.muted
+    };
     div()
         .id(SharedString::from(format!("subagent-{}", item.id)))
         .flex()
@@ -128,14 +152,29 @@ fn card(drawing: &Drawing, item: &Item, agent: &Subagent, moving: bool) -> State
                 .min_w_0()
                 .flex()
                 .flex_col()
-                .child(ellipsized(agent.description.clone()).text_sm().text_color(p.text))
+                .child(
+                    ellipsized(agent.description.clone())
+                        .text_sm()
+                        .text_color(p.text),
+                )
                 .children(detail(item, agent, moving, p)),
         )
-        .child(div().flex_shrink_0().text_xs().text_color(color).child(status))
+        .child(
+            div()
+                .flex_shrink_0()
+                .text_xs()
+                .text_color(color)
+                .child(status),
+        )
         .when_some(agent.thread_id.clone(), |row, thread| {
             row.cursor_pointer()
                 .hover(|row| row.bg(p.hover))
-                .child(div().flex_shrink_0().text_color(p.muted).child(chevron(false)))
+                .child(
+                    div()
+                        .flex_shrink_0()
+                        .text_color(p.muted)
+                        .child(chevron(false)),
+                )
                 .on_click(drawing.on_timeline(move |_, _, cx| {
                     cx.emit(OpenSubagent(thread.clone()));
                 }))
@@ -145,16 +184,25 @@ fn card(drawing: &Drawing, item: &Item, agent: &Subagent, moving: bool) -> State
 /// The line under its name: what it's doing, or the start of what it said.
 fn detail(item: &Item, agent: &Subagent, moving: bool, p: Palette) -> Option<Div> {
     let line = if is_running(item) {
-        let doing = agent.progress.clone().unwrap_or_else(|| "Working…".to_owned());
+        let doing = agent
+            .progress
+            .clone()
+            .unwrap_or_else(|| "Working…".to_owned());
         let used = agent.usage.as_ref().map(subagent_used);
         let says = used.map_or_else(|| doing.clone(), |used| format!("{doing} · {used}"));
         if moving {
-            ShimmerText::new(says).max_fps(SHIMMER_FPS).into_any_element()
+            ShimmerText::new(says)
+                .max_fps(SHIMMER_FPS)
+                .into_any_element()
         } else {
             says.into_any_element()
         }
     } else {
-        let said = agent.summary.as_deref()?.lines().find(|line| !line.trim().is_empty())?;
+        let said = agent
+            .summary
+            .as_deref()?
+            .lines()
+            .find(|line| !line.trim().is_empty())?;
         said.trim().to_owned().into_any_element()
     };
     Some(ellipsized(line).text_xs().text_color(p.muted))
@@ -186,7 +234,11 @@ pub(super) fn avatar(status: ItemStatus, p: Palette) -> Div {
 }
 
 fn little_guy() -> Svg {
-    svg().data(CLAUDE.as_bytes()).w(px(18.)).h(px(10.)).text_color(rgb(CLAUDE_ORANGE))
+    svg()
+        .data(CLAUDE.as_bytes())
+        .w(px(18.))
+        .h(px(10.))
+        .text_color(rgb(CLAUDE_ORANGE))
 }
 
 fn dot(status: ItemStatus, p: Palette) -> Hsla {

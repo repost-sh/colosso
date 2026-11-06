@@ -56,7 +56,10 @@ impl Git {
     /// The GitHub CLI in place of git, run in `dir`, where it's installed.
     pub(crate) fn github_cli(dir: &Path) -> Result<Self> {
         let folders = std::env::split_paths(search_path());
-        let Some(gh) = folders.map(|folder| folder.join("gh")).find(|gh| gh.is_file()) else {
+        let Some(gh) = folders
+            .map(|folder| folder.join("gh"))
+            .find(|gh| gh.is_file())
+        else {
             return Err(GitError::refused("The GitHub CLI isn't installed."));
         };
         let mut command = Command::new(gh);

@@ -14,8 +14,8 @@ use crate::launcher::NewTab;
 use crate::navigation::{CloseSettings, GoBack, GoForward, OpenSettings};
 use crate::projects::NewWorktree;
 use crate::shell::{
-    CloseTab, ReopenClosedTab, SwitchTab, ToggleBottomPanel, ToggleRightPanel,
-    ToggleSidebar, ToggleSidebarMode,
+    CloseTab, ReopenClosedTab, SwitchTab, ToggleBottomPanel, ToggleRightPanel, ToggleSidebar,
+    ToggleSidebarMode,
 };
 use crate::theme::{self, CycleTheme};
 
@@ -66,16 +66,13 @@ const SECTIONS: &[(&str, &[Command])] = &[
             ("Allow it for the rest of the chat", &AllowRequestForChat),
             ("Deny what's asked", &DenyRequest),
             ("Skip a question", &SkipQuestion),
-            ("Back from a subagent to the chat it started in", &OpenParent),
+            (
+                "Back from a subagent to the chat it started in",
+                &OpenParent,
+            ),
         ],
     ),
-    (
-        "Files",
-        &[
-            ("Go to file", &GoToFile),
-            ("Save", &Save),
-        ],
-    ),
+    ("Files", &[("Go to file", &GoToFile), ("Save", &Save)]),
 ];
 
 pub fn sections(cx: &App) -> Vec<SettingsSection> {
@@ -120,8 +117,10 @@ mod tests {
     fn every_chat_command_has_its_key(cx: &mut TestAppContext) {
         cx.update(|cx| {
             chat::init(cx);
-            let (_, commands) =
-                SECTIONS.iter().find(|(title, _)| *title == "Chat").expect("a Chat section");
+            let (_, commands) = SECTIONS
+                .iter()
+                .find(|(title, _)| *title == "Chat")
+                .expect("a Chat section");
             for (label, action) in *commands {
                 assert!(keys(*action, cx).is_some(), "{label} has no key");
             }

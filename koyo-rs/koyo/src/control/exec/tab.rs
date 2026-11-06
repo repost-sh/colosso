@@ -2,13 +2,13 @@
 //! closed (refused over unsaved edits unless they're discarded, which the person confirms)
 //! and reopened.
 
+use gpui_kit::{App, Context, Window};
 use koyo_app_control::ControlError;
 use koyo_app_control::ops::shared::Closed;
 use koyo_app_control::ops::tab::{
     CloseInput, Place, TabInfo, TabListInput, TabListOutput, TabMoveInput, TabOpenInput,
     TabSelectInput, TabTarget, WorktreeTabs,
 };
-use gpui_kit::{App, Context, Window};
 use serde_json::Value;
 
 use super::super::Caller;

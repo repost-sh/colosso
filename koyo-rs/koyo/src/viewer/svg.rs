@@ -32,9 +32,14 @@ pub struct Svg {
 /// Parses the drawing at `path`, gzipped (`.svgz`) or not; pictures it links to are found
 /// beside it.
 pub fn open(path: &Path) -> Result<(Svg, Opened), String> {
-    let bytes = std::fs::metadata(path).map_err(|error| error.to_string())?.len();
+    let bytes = std::fs::metadata(path)
+        .map_err(|error| error.to_string())?
+        .len();
     if bytes > MOST_BYTES {
-        return Err(format!("it's {} MB, more than a drawing is opened at", bytes >> 20));
+        return Err(format!(
+            "it's {} MB, more than a drawing is opened at",
+            bytes >> 20
+        ));
     }
     let data = std::fs::read(path).map_err(|error| error.to_string())?;
     let tree = usvg::Tree::from_data(&data, &options(path)).map_err(|error| error.to_string())?;
@@ -46,19 +51,23 @@ pub fn open(path: &Path) -> Result<(Svg, Opened), String> {
 /// How a drawing at `path` is parsed: with no fonts until its text asks for them.
 fn options(path: &Path) -> usvg::Options<'static> {
     let default = usvg::FontResolver::default_font_selector();
-    let select_font = Box::new(move |font: &usvg::Font, fonts: &mut Arc<fontdb::Database>| {
-        if fonts.is_empty() {
-            *fonts = Arc::clone(&SYSTEM_FONTS);
-        }
-        default(font, fonts).or_else(|| {
-            // A family the system hasn't got, or one of CSS's own names: any sans-serif.
-            let query = fontdb::Query {
-                families: &[fontdb::Family::SansSerif],
-                ..fontdb::Query::default()
-            };
-            fonts.query(&query).or_else(|| fonts.faces().next().map(|face| face.id))
-        })
-    });
+    let select_font = Box::new(
+        move |font: &usvg::Font, fonts: &mut Arc<fontdb::Database>| {
+            if fonts.is_empty() {
+                *fonts = Arc::clone(&SYSTEM_FONTS);
+            }
+            default(font, fonts).or_else(|| {
+                // A family the system hasn't got, or one of CSS's own names: any sans-serif.
+                let query = fontdb::Query {
+                    families: &[fontdb::Family::SansSerif],
+                    ..fontdb::Query::default()
+                };
+                fonts
+                    .query(&query)
+                    .or_else(|| fonts.faces().next().map(|face| face.id))
+            })
+        },
+    );
     usvg::Options {
         resources_dir: path.parent().map(Path::to_path_buf),
         font_resolver: usvg::FontResolver {

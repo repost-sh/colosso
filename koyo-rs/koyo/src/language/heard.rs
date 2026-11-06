@@ -3,12 +3,12 @@
 
 use std::sync::Arc;
 
-use koyo_lsp::lsp_types::notification::{Progress, PublishDiagnostics};
-use koyo_lsp::lsp_types::{ProgressParams, PublishDiagnosticsParams};
-use koyo_lsp::{Client, Event, ServerStatus, ServerStatusParams};
 use futures::StreamExt as _;
 use futures::stream::{self, LocalBoxStream};
 use gpui_kit::{AsyncApp, WeakEntity};
+use koyo_lsp::lsp_types::notification::{Progress, PublishDiagnostics};
+use koyo_lsp::lsp_types::{ProgressParams, PublishDiagnosticsParams};
+use koyo_lsp::{Client, Event, ServerStatus, ServerStatusParams};
 
 use super::server::Server;
 

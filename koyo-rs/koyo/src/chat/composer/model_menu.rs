@@ -24,7 +24,11 @@ struct SetModel(String);
 
 pub(super) fn bind_keys(cx: &mut App) {
     let always = format!("{COMPOSER} > Input");
-    cx.bind_keys([KeyBinding::new("ctrl-m", OpenModelMenu, Some(always.as_str()))]);
+    cx.bind_keys([KeyBinding::new(
+        "ctrl-m",
+        OpenModelMenu,
+        Some(always.as_str()),
+    )]);
 }
 
 /// What `model` keeps of what's chosen: it can't be set to what it can't do, and a mode it can't
@@ -72,10 +76,14 @@ impl ChatComposer {
         }
         let items = rows(catalog, &self.settings);
         let shown = self.settings.model.as_deref();
-        let at = catalog.models.iter().position(|model| Some(model.id.as_str()) == shown);
+        let at = catalog
+            .models
+            .iter()
+            .position(|model| Some(model.id.as_str()) == shown);
         self.suggest = None;
         let target = self.focus_handle(cx);
-        self.model_menu.toggle(|_| items, Some(at.unwrap_or(0)), &target, window, cx);
+        self.model_menu
+            .toggle(|_| items, Some(at.unwrap_or(0)), &target, window, cx);
         window.focus(&target, cx);
         cx.notify();
     }

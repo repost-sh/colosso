@@ -15,8 +15,8 @@ pub mod devices;
 pub mod grips;
 mod pane;
 
-use koyo_browser_ipc::{PixelSize, Viewport};
 use gpui_kit::{Bounds, Pixels, Point, Size, point};
+use koyo_browser_ipc::{PixelSize, Viewport};
 use serde_json::{Value, json};
 
 pub use crate::responsive::{Grip, Zoom};

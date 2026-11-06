@@ -10,9 +10,9 @@ use std::sync::{Arc, mpsc};
 use lsp_types::error_codes::REQUEST_FAILED;
 use lsp_types::notification::{DidChangeWatchedFiles, Notification};
 use lsp_types::request::{
-    ApplyWorkspaceEdit, InlayHintRefreshRequest, RegisterCapability, Request, SemanticTokensRefresh,
-    ShowDocument, ShowMessageRequest, UnregisterCapability, WorkDoneProgressCreate,
-    WorkspaceConfiguration,
+    ApplyWorkspaceEdit, InlayHintRefreshRequest, RegisterCapability, Request,
+    SemanticTokensRefresh, ShowDocument, ShowMessageRequest, UnregisterCapability,
+    WorkDoneProgressCreate, WorkspaceConfiguration,
 };
 use lsp_types::{
     ConfigurationParams, DidChangeWatchedFilesRegistrationOptions, FileSystemWatcher, Registration,

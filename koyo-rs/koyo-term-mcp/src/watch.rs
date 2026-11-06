@@ -7,10 +7,10 @@ use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use crossbeam_channel::{Receiver, RecvTimeoutError};
 use koyo_app_control::Topic;
 use koyo_term_control::exec::Executor;
 use koyo_term_control::{Event, EventKind, Handle, LogKind, Message};
-use crossbeam_channel::{Receiver, RecvTimeoutError};
 use parking_lot::Mutex;
 use tokio::sync::broadcast;
 

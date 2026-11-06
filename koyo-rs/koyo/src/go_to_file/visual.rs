@@ -14,9 +14,9 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use koyo_project::{MOST_FOUND, Project};
 use gpui_kit::{AnyWindowHandle, App, Entity, Keystroke, Window};
 use image::{RgbaImage, imageops};
+use koyo_project::{MOST_FOUND, Project};
 
 use super::view::GoToFile;
 use crate::files::Place;

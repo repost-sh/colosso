@@ -5,13 +5,13 @@
 use std::ops::Range;
 use std::time::Duration;
 
-use koyo_term_engine::{
-    GridPoint, KeyAction, MouseAction, MouseButton, MouseInput, Scroll, SelectUnit,
-};
 use gpui_kit::{
     AppContext as _, Bounds, ClipboardItem, Context, EntityInputHandler, KeyDownEvent, KeyUpEvent,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, ScrollEvent, UTF16Selection, Window,
     point, size,
+};
+use koyo_term_engine::{
+    GridPoint, KeyAction, MouseAction, MouseButton, MouseInput, Scroll, SelectUnit,
 };
 
 use crate::element::Grid;
@@ -109,7 +109,9 @@ impl TerminalView {
             Some(Pasted::Text(text)) => self.paste_text(text),
             Some(Pasted::Image(image)) => {
                 cx.spawn(async move |this, cx| {
-                    let saved = cx.background_spawn(async move { paste::save(&image) }).await;
+                    let saved = cx
+                        .background_spawn(async move { paste::save(&image) })
+                        .await;
                     match saved {
                         Ok(path) => {
                             let _ = this.update(cx, |this, _| this.paste_text(path));

@@ -4,6 +4,7 @@
 
 use std::path::PathBuf;
 
+use gpui_kit::{App, AppContext as _, AsyncApp, Task, WeakEntity};
 use koyo_app_control::ControlError;
 use koyo_app_control::ops::shared::count;
 use koyo_app_control::ops::worktree::{
@@ -11,7 +12,6 @@ use koyo_app_control::ops::worktree::{
     WorktreeDeleteInput, WorktreeDeleteOutput, WorktreeSelectInput, WorktreeSelectOutput,
 };
 use koyo_git::{Head, Loss, Ref};
-use gpui_kit::{App, AppContext as _, AsyncApp, Task, WeakEntity};
 use serde_json::Value;
 
 use super::super::Caller;

@@ -30,7 +30,11 @@ fn a_preview_gives_way_to_the_next_until_its_kept(cx: &mut TestAppContext) {
     };
     assert_eq!(open("src/lib.rs", false, cx), ["[lib.rs*]"]);
     assert_eq!(open("README.md", false, cx), ["[README.md*]"]);
-    assert_eq!(selected(&files, cx).as_deref(), Some("README.md"), "picked in the tree");
+    assert_eq!(
+        selected(&files, cx).as_deref(),
+        Some("README.md"),
+        "picked in the tree"
+    );
     // A file opened for good opens right after the tab shown; the preview stays.
     assert_eq!(open("src/main.rs", true, cx), ["README.md*", "[main.rs]"]);
     // The next preview takes the preview's tab, where it is.
@@ -42,9 +46,15 @@ fn a_preview_gives_way_to_the_next_until_its_kept(cx: &mut TestAppContext) {
         let (project, branch, _) = shell.workspace.shown_tab().unwrap();
         shell.keep_tab((project, branch, 0), cx);
     });
-    assert_eq!(open("README.md", false, cx), ["new.txt", "main.rs", "[README.md*]"]);
+    assert_eq!(
+        open("README.md", false, cx),
+        ["new.txt", "main.rs", "[README.md*]"]
+    );
     // Opening the preview's file for good keeps it.
-    assert_eq!(open("README.md", true, cx), ["new.txt", "main.rs", "[README.md]"]);
+    assert_eq!(
+        open("README.md", true, cx),
+        ["new.txt", "main.rs", "[README.md]"]
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -111,7 +121,9 @@ fn the_tree_opens_files_in_tabs_and_follows_the_tab_shown(cx: &mut TestAppContex
     press("end", cx);
     assert_eq!(selected(&files, cx).as_deref(), Some("README.md"));
     assert_eq!(tabs(&shell, cx), ["[new.txt]", "README.md*"]);
-    with(window, &files, cx, |files, _, cx| files.activate(4, false, cx));
+    with(window, &files, cx, |files, _, cx| {
+        files.activate(4, false, cx);
+    });
     cx.run_until_parked();
     assert_eq!(tabs(&shell, cx), ["new.txt", "[README.md]"]);
     let _ = std::fs::remove_dir_all(&root);
@@ -140,7 +152,10 @@ fn a_tab_with_unsaved_edits_asks_before_it_closes(cx: &mut TestAppContext) {
     assert_eq!(tabs(&shell, cx), ["[lib.rs+]"], "still open, asked");
     answer(cx, SaveDialog::save);
     assert!(tabs(&shell, cx).is_empty(), "closed once saved");
-    assert!(dialog::<SaveDialog>(cx).is_none(), "the question's answered");
+    assert!(
+        dialog::<SaveDialog>(cx).is_none(),
+        "the question's answered"
+    );
     let on_disk = || std::fs::read_to_string(&lib).unwrap();
     assert_eq!(on_disk(), "// kept\npub fn a() {}\npub fn b() {}\n");
     // Not saved: the tab closes, the file as it was.

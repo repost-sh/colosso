@@ -99,7 +99,9 @@ impl ChatComposer {
         move |pasted, _, cx| {
             let sources = attachments::sources_of(pasted);
             !sources.is_empty()
-                && composer.update(cx, |composer, cx| composer.attach(sources, cx)).is_ok()
+                && composer
+                    .update(cx, |composer, cx| composer.attach(sources, cx))
+                    .is_ok()
         }
     }
 
@@ -113,7 +115,8 @@ impl ChatComposer {
         });
         cx.spawn(async move |this, cx| {
             if let Ok(Ok(Some(paths))) = chosen.await {
-                this.update(cx, |this, cx| this.attach_paths(&paths, cx)).ok();
+                this.update(cx, |this, cx| this.attach_paths(&paths, cx))
+                    .ok();
             }
         })
         .detach();
@@ -121,7 +124,10 @@ impl ChatComposer {
 
     /// Everything attached, for a message that's going, which it now goes with.
     pub(super) fn take_attached(&mut self) -> Vec<Attachment> {
-        std::mem::take(&mut self.attached).into_iter().filter_map(|held| held.kept).collect()
+        std::mem::take(&mut self.attached)
+            .into_iter()
+            .filter_map(|held| held.kept)
+            .collect()
     }
 
     /// A message didn't go, so what it attached comes back.
@@ -138,7 +144,9 @@ impl ChatComposer {
 
     /// Takes a tile away, and what it kept with it.
     pub(super) fn detach(&mut self, id: usize, cx: &mut Context<Self>) {
-        let (gone, left) = std::mem::take(&mut self.attached).into_iter().partition(|held| held.id == id);
+        let (gone, left) = std::mem::take(&mut self.attached)
+            .into_iter()
+            .partition(|held| held.id == id);
         self.attached = left;
         self.forget(gone, cx);
         cx.notify();
@@ -158,11 +166,11 @@ impl ChatComposer {
     /// The tiles, if anything's attached.
     pub(super) fn tiles(&self, p: Palette, cx: &Context<Self>) -> Option<Div> {
         (!self.attached.is_empty()).then(|| {
-            div()
-                .flex()
-                .flex_wrap()
-                .gap_2()
-                .children(self.attached.iter().map(|attached| self.tile(attached, p, cx)))
+            div().flex().flex_wrap().gap_2().children(
+                self.attached
+                    .iter()
+                    .map(|attached| self.tile(attached, p, cx)),
+            )
         })
     }
 

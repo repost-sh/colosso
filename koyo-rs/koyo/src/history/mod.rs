@@ -5,6 +5,7 @@
 //! for every project, those used in the checkout at hand ranked higher. It's kept in a file in the
 //! app's data folder, written a moment after a change settles.
 
+mod address;
 mod icons;
 mod rank;
 #[cfg(test)]
@@ -17,8 +18,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use gpui_kit::{App, Global, Task};
 use serde::{Deserialize, Serialize};
 
+pub use address::{display_url, same_page_key};
 pub use icons::{icon, keep_icon};
-pub use rank::{Found, Origins, display_url, match_words, same_page_key};
+pub use rank::{Found, Origins, match_words};
 
 use crate::{atomic_file, settings};
 
@@ -150,7 +152,10 @@ pub fn init(cx: &mut App) {
     let path = settings::data_dir()
         .filter(|_| !cfg!(test))
         .map(|data| data.join(FILE));
-    let history = History { path: path.clone(), ..path.as_deref().map(load).unwrap_or_default() };
+    let history = History {
+        path: path.clone(),
+        ..path.as_deref().map(load).unwrap_or_default()
+    };
     cx.set_global(history);
     // A change still settling when the app quits is written on the way out.
     cx.on_app_quit(|cx| {
@@ -203,7 +208,9 @@ fn update(cx: &mut App, change: impl FnOnce(&mut History)) {
             Some((history.path.clone()?, history.encode()))
         });
         if let Some((path, json)) = encoded {
-            cx.background_executor().spawn(async move { atomic_file::write(&path, &json) }).await;
+            cx.background_executor()
+                .spawn(async move { atomic_file::write(&path, &json) })
+                .await;
         }
     });
     cx.global_mut::<History>().saving = Some(save);
@@ -227,7 +234,10 @@ pub fn visited(url: &str, title: &str, how: How, place: &Place, cx: &mut App) {
 /// visit, as Firefox counts none for a reload or its session history.
 pub fn retitled(url: &str, title: &str, cx: &mut App) {
     let stale = cx.try_global::<History>().is_some_and(|history| {
-        !title.is_empty() && history.of(Kind::Page).any(|entry| entry.text == url && entry.title != title)
+        !title.is_empty()
+            && history
+                .of(Kind::Page)
+                .any(|entry| entry.text == url && entry.title != title)
     });
     if stale {
         update(cx, |history| {
@@ -251,7 +261,9 @@ pub fn know_checkouts(checkouts: impl IntoIterator<Item = (PathBuf, PathBuf)>, c
 
 /// Where something done in the checkout at `worktree` was done.
 pub fn place_of(worktree: &Path, cx: &App) -> Place {
-    let project = cx.try_global::<History>().and_then(|history| history.projects.get(worktree));
+    let project = cx
+        .try_global::<History>()
+        .and_then(|history| history.projects.get(worktree));
     Place {
         worktree: worktree.to_owned(),
         project: project.cloned().unwrap_or_else(|| worktree.to_owned()),
@@ -290,8 +302,12 @@ pub fn picked(kind: Kind, input: &str, text: &str, cx: &mut App) {
 /// Forgets the entry of `kind` with `text`, and what was learned of it.
 pub fn remove(kind: Kind, text: &str, cx: &mut App) {
     update(cx, |history| {
-        history.entries.retain(|entry| !(entry.kind == kind && entry.text == text));
-        history.learned.retain(|learned| !(learned.kind == kind && learned.text == text));
+        history
+            .entries
+            .retain(|entry| !(entry.kind == kind && entry.text == text));
+        history
+            .learned
+            .retain(|learned| !(learned.kind == kind && learned.text == text));
     });
 }
 
@@ -327,7 +343,10 @@ impl History {
 
     fn used_at(&mut self, kind: Kind, text: &str, used: Use, place: &Place) -> &mut Entry {
         // The entry used last goes last, so entries used within the same second keep their order.
-        let found = self.entries.iter().position(|entry| entry.kind == kind && entry.text == text);
+        let found = self
+            .entries
+            .iter()
+            .position(|entry| entry.kind == kind && entry.text == text);
         let entry = if let Some(at) = found {
             self.entries.remove(at)
         } else {
@@ -357,7 +376,11 @@ impl History {
 
     /// Lets the least frecent entry of `kind` go when there are as many as are kept.
     fn make_room(&mut self, kind: Kind) {
-        let kept = if kind == Kind::Page { KEPT_PAGES } else { KEPT_WORDS };
+        let kept = if kind == Kind::Page {
+            KEPT_PAGES
+        } else {
+            KEPT_WORDS
+        };
         if self.of(kind).count() < kept {
             return;
         }
@@ -370,7 +393,8 @@ impl History {
         if let Some(at) = least {
             // Removed in place, so the entries keep the order they were last used in.
             let gone = self.entries.remove(at);
-            self.learned.retain(|learned| !(learned.kind == kind && learned.text == gone.text));
+            self.learned
+                .retain(|learned| !(learned.kind == kind && learned.text == gone.text));
         }
     }
 
@@ -390,7 +414,13 @@ impl History {
         {
             self.learned.swap_remove(least);
         }
-        self.learned.push(Learned { kind, input, text: text.to_owned(), uses: 1., at });
+        self.learned.push(Learned {
+            kind,
+            input,
+            text: text.to_owned(),
+            uses: 1.,
+            at,
+        });
     }
 }
 

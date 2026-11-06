@@ -4,12 +4,12 @@
 
 use std::ops::Range;
 
+use gpui_kit::component::input::{Bias, Inlay, InlayHintProvider, Rope};
+use gpui_kit::{App, AppContext as _, SharedString, Task, Window};
 use koyo_lsp::lsp_types::request::InlayHintRequest;
 use koyo_lsp::lsp_types::{
     InlayHint, InlayHintKind, InlayHintLabel, InlayHintParams, WorkDoneProgressParams,
 };
-use gpui_kit::component::input::{Bias, Inlay, InlayHintProvider, Rope};
-use gpui_kit::{App, AppContext as _, SharedString, Task, Window};
 
 use super::providers::{Hooks, provided};
 
@@ -54,7 +54,11 @@ fn label(hint: &InlayHint) -> SharedString {
     }
     match &hint.label {
         InlayHintLabel::String(text) => label.push_str(text),
-        InlayHintLabel::LabelParts(parts) => parts.iter().for_each(|part| label.push_str(&part.value)),
+        InlayHintLabel::LabelParts(parts) => {
+            for part in parts {
+                label.push_str(&part.value);
+            }
+        }
     }
     if hint.padding_right == Some(true) {
         label.push(' ');
@@ -111,6 +115,10 @@ mod tests {
         assert_eq!(label(&parameter).as_ref(), "name: ");
         assert_eq!(bias(parameter.kind), Bias::Left);
         assert_eq!(bias(typed.kind), Bias::Right);
-        assert_eq!(bias(None), Bias::Right, "rust-analyzer's chaining hints end a line");
+        assert_eq!(
+            bias(None),
+            Bias::Right,
+            "rust-analyzer's chaining hints end a line"
+        );
     }
 }

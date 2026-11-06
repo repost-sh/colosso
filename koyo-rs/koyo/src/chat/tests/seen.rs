@@ -31,7 +31,12 @@ fn shown(name: &str, in_front: bool, cx: &mut TestAppContext) -> Chat {
     chats.update(cx, |chats, cx| {
         chats.listed(Ok(vec![summary("0001", &root, "A chat", true)]), cx);
     });
-    let chat = Chat { window, shell, chats, root };
+    let chat = Chat {
+        window,
+        shell,
+        chats,
+        root,
+    };
     if in_front {
         chat.front(cx);
     } else {
@@ -42,13 +47,15 @@ fn shown(name: &str, in_front: bool, cx: &mut TestAppContext) -> Chat {
 
 impl Chat {
     fn front(&self, cx: &mut TestAppContext) {
-        cx.update_window(self.window, |_, window, _| window.activate_window()).unwrap();
+        cx.update_window(self.window, |_, window, _| window.activate_window())
+            .unwrap();
         draw(self.window, cx);
     }
 
     fn is_unread(&self, cx: &TestAppContext) -> bool {
         let id = ThreadId("0001".into());
-        self.chats.read_with(cx, |chats, _| chats.summary(&id).unwrap().unread)
+        self.chats
+            .read_with(cx, |chats, _| chats.summary(&id).unwrap().unread)
     }
 }
 
@@ -83,7 +90,9 @@ fn what_a_chat_has_new_is_seen_at_once_with_its_tab_on_show_in_front(cx: &mut Te
 fn what_a_chat_has_new_waits_for_its_tab(cx: &mut TestAppContext) {
     let chat = shown("chat-seen-tab", true, cx);
     chat.shell.update(cx, |shell, cx| {
-        shell.workspace.add_chat_tab(&chat.root, ThreadId("0002".into()), false);
+        shell
+            .workspace
+            .add_chat_tab(&chat.root, ThreadId("0002".into()), false);
         shell.workspace.select_tab(0, 0, 1);
         cx.notify();
     });
@@ -110,7 +119,10 @@ fn working(root: &Path) -> ThreadSummary {
 impl Chat {
     fn hears(&self, summary: ThreadSummary, cx: &mut TestAppContext) {
         self.chats.update(cx, |chats, cx| {
-            chats.take_in(vec![Notice::Event(Box::new(Event::ThreadSummary(summary)))], cx);
+            chats.take_in(
+                vec![Notice::Event(Box::new(Event::ThreadSummary(summary)))],
+                cx,
+            );
         });
         draw(self.window, cx);
     }

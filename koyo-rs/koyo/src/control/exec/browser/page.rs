@@ -5,13 +5,13 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+use gpui_kit::{App, AsyncApp, Entity, Global};
 use koyo_app_control::ControlError;
 use koyo_app_control::ops::browser::{
     BrowserClaimInput, BrowserGoInput, BrowserListOutput, BrowserNavigateInput, BrowserWaitInput,
     BrowserWaitOutput, DEFAULT_TIMEOUT_MS, GoAction, Lease, MAX_TIMEOUT_MS, PageInfo, PageOutput,
     WaitFor, WaitUntil,
 };
-use gpui_kit::{App, AsyncApp, Entity, Global};
 use serde_json::Value;
 
 use super::super::{Caller, Exec, main_shell, output, window_closed};

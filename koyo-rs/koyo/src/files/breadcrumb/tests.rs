@@ -17,16 +17,25 @@ fn the_crumbs_are_the_folders_as_the_tree_names_them_then_the_file() {
         path: path.map(Into::into),
     };
     assert_eq!(
-        crumbs(Path::new("/r/src/nested/deep.rs"), Some("src/nested/deep.rs")),
+        crumbs(
+            Path::new("/r/src/nested/deep.rs"),
+            Some("src/nested/deep.rs")
+        ),
         [
             crumb("src", Some("src")),
             crumb("nested", Some("src/nested")),
             crumb("deep.rs", Some("src/nested/deep.rs")),
         ]
     );
-    assert_eq!(crumbs(Path::new("/r/README.md"), Some("README.md")), [crumb("README.md", Some("README.md"))]);
+    assert_eq!(
+        crumbs(Path::new("/r/README.md"), Some("README.md")),
+        [crumb("README.md", Some("README.md"))]
+    );
     // Outside the checkout: the whole folder, which the tree hasn't got, then the file.
-    assert_eq!(crumbs(Path::new("/opt/x/lib.rs"), None), [crumb("/opt/x", None), crumb("lib.rs", None)]);
+    assert_eq!(
+        crumbs(Path::new("/opt/x/lib.rs"), None),
+        [crumb("/opt/x", None), crumb("lib.rs", None)]
+    );
 }
 
 #[gpui_kit::test]
@@ -39,7 +48,9 @@ fn a_crumb_clicked_is_picked_in_the_tree_with_its_folders_opened(cx: &mut TestAp
         let src = panel.rows.position("src").expect("src listed");
         panel.toggle(src, cx);
     });
-    let listed = |path: &str, cx: &mut VisualTestContext| cx.read(|cx| panel.read(cx).rows.position(path).is_some());
+    let listed = |path: &str, cx: &mut VisualTestContext| {
+        cx.read(|cx| panel.read(cx).rows.position(path).is_some())
+    };
     let selected = |cx: &mut VisualTestContext| {
         cx.read(|cx| panel.read(cx).selected.as_deref().map(str::to_owned))
     };
@@ -63,9 +74,19 @@ fn a_crumb_clicked_is_picked_in_the_tree_with_its_folders_opened(cx: &mut TestAp
     // With the tree closed, a crumb clicked opens it.
     cx.dispatch_action(crate::right_panel::ToggleFiles);
     cx.run_until_parked();
-    assert!(!cx.read(|cx| shell.read(cx).right_panel.shows(crate::right_panel::View::Files)));
+    assert!(!cx.read(|cx| {
+        shell
+            .read(cx)
+            .right_panel
+            .shows(crate::right_panel::View::Files)
+    }));
     click("crumb-1", cx);
-    assert!(cx.read(|cx| shell.read(cx).right_panel.shows(crate::right_panel::View::Files)));
+    assert!(cx.read(|cx| {
+        shell
+            .read(cx)
+            .right_panel
+            .shows(crate::right_panel::View::Files)
+    }));
     assert_eq!(selected(cx).as_deref(), Some("src/nested"));
     let _ = std::fs::remove_dir_all(&root);
 }

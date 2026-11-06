@@ -10,7 +10,11 @@ pub fn is_on(switch: &NSSwitch) -> bool {
 /// Flips the switch only if it isn't `on` already: the flip it's reporting, it may still be moving.
 pub fn show(switch: &NSSwitch, on: bool) {
     if is_on(switch) != on {
-        let state = if on { NSControlStateValueOn } else { NSControlStateValueOff };
+        let state = if on {
+            NSControlStateValueOn
+        } else {
+            NSControlStateValueOff
+        };
         switch.setState(state);
     }
 }

@@ -2,6 +2,7 @@
 //! snapshot, its image, an expression's value, and clicks, typing, keys and scrolling, which
 //! go in as the person's input would.
 
+use gpui_kit::{App, AsyncApp};
 use koyo_app_control::ControlError;
 use koyo_app_control::ops::browser::{
     BrowserClickInput, BrowserEvalInput, BrowserEvalOutput, BrowserPressKeyInput, BrowserReadInput,
@@ -9,7 +10,6 @@ use koyo_app_control::ops::browser::{
     BrowserSnapshotInput, BrowserSnapshotOutput, BrowserTypeInput, ImageFormat, MouseButton,
     ReadFormat,
 };
-use gpui_kit::{App, AsyncApp};
 use serde_json::{Value, json};
 
 use super::super::{Caller, Exec, output};

@@ -12,8 +12,9 @@ use gpui_kit::{
 use crate::model::BranchUnit;
 use crate::projects::{AddProject, NewWorktreeIn, project_menu, with_menu, worktree_menu};
 use crate::shell::{
-    Shell, action_button, add_project_row, ellipsized, icon, icon_button, new_tab_button, no_matches,
-    project_error, row, search_field, section_label, tab_close_button, tab_list, tab_row,
+    Shell, action_button, add_project_row, ellipsized, icon, icon_button, new_tab_button,
+    no_matches, project_error, row, search_field, section_label, tab_close_button, tab_list,
+    tab_row,
 };
 use crate::theme::{self, Palette};
 
@@ -98,7 +99,7 @@ pub fn sidebar(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
                         ),
                     {
                         let path = project.path.clone();
-                        move || project_menu(&path)
+                        move |_, _| project_menu(&path)
                     },
                 ))
                 .when_some(project.error.clone(), |group, error| {
@@ -132,7 +133,7 @@ fn branch_row(
             selected,
             p,
         ),
-        move || worktree_menu(&path, is_main, terminals),
+        move |_, _| worktree_menu(&path, is_main, terminals),
     )
     .pl_6()
     .when(!selected, |row| row.text_color(p.muted))
@@ -145,7 +146,9 @@ fn branch_row(
     .when(is_main, |row| {
         row.child(div().text_xs().text_color(p.muted).child("checkout"))
     })
-    .when(waiting > 0, |row| row.child(crate::terminals::waiting_badge(waiting, p)))
+    .when(waiting > 0, |row| {
+        row.child(crate::terminals::waiting_badge(waiting, p))
+    })
     .children(chat_mark)
 }
 

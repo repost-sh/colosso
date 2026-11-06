@@ -237,10 +237,7 @@ impl Client {
     ) -> Result<Op::Output, ControlError> {
         let output = self.call_command(&Op::command(input), request_id)?;
         serde_json::from_value(output).map_err(|error| {
-            ControlError::internal(format!(
-                "Koyo answered {} unexpectedly: {error}",
-                Op::NAME
-            ))
+            ControlError::internal(format!("Koyo answered {} unexpectedly: {error}", Op::NAME))
         })
     }
 

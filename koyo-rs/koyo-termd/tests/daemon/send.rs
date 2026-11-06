@@ -35,7 +35,8 @@ fn an_agent_sends_text_and_keys_and_reads_the_screen_without_attaching() {
     let agent = connect(&dir, ClientKind::Relay);
     let handle = open_zsh(&person, &dir).handle;
     wait_until("the prompt", || {
-        agent.screen(&handle)
+        agent
+            .screen(&handle)
             .lines
             .iter()
             .any(|line| line.starts_with('%'))
@@ -68,7 +69,8 @@ fn an_agent_sends_text_and_keys_and_reads_the_screen_without_attaching() {
     let sent = agent.connection.request(RequestBody::Send(typed)).unwrap();
     assert_eq!(sent, ResponseBody::Sent { bytes: 19 });
     wait_until("the agent's output on the screen", || {
-        agent.screen(&handle)
+        agent
+            .screen(&handle)
             .lines
             .iter()
             .any(|line| line == "sent-by-agent")

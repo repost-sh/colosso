@@ -1,8 +1,8 @@
 //! Projects as the project operations change them: added by a folder in their repository,
 //! selected, reordered and taken out, the sidebar's list saved each time.
 
-use koyo_app_control::ErrorCode;
 use gpui_kit::TestAppContext;
+use koyo_app_control::ErrorCode;
 use serde_json::json;
 
 use super::{call, controlled, read_shell, terminal};

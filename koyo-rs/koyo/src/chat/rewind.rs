@@ -7,8 +7,8 @@
 use std::path::Path;
 
 use gpui_kit::{
-    AnyWindowHandle, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render,
-    SharedString, Styled as _, Task, Window, div, px,
+    AnyWindowHandle, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _,
+    Render, SharedString, Styled as _, Task, Window, div, px,
 };
 use koyo_agent::client::ClientError;
 use koyo_agent::protocol::ids::{RunId, ThreadId};
@@ -62,11 +62,17 @@ pub(super) fn confirm(
     let title = modal::heading_height(&TITLE.into(), WIDTH, window);
     let height = 2. * modal::PADDING + title + GAP + 4. * SMALL_LINE + 2. * GAP + modal::FOOTER;
     modal::open(WIDTH, height, window, cx, |window, cx| {
-        let params = RunParams { thread_id: thread.clone(), run_id: run.clone() };
-        let asked = chats.read(cx).ahead_of_queue::<ThreadsFilesBack>(params, cx);
+        let params = RunParams {
+            thread_id: thread.clone(),
+            run_id: run.clone(),
+        };
+        let asked = chats
+            .read(cx)
+            .ahead_of_queue::<ThreadsFilesBack>(params, cx);
         cx.spawn_in(window, async move |this, cx| {
             let answer = asked.await;
-            this.update(cx, |this: &mut GoingBack, cx| this.heard(answer, cx)).ok();
+            this.update(cx, |this: &mut GoingBack, cx| this.heard(answer, cx))
+                .ok();
         })
         .detach();
         GoingBack {
@@ -95,9 +101,9 @@ impl Files {
         match self {
             Files::Looking => (LOOKING.to_owned(), None),
             Files::Stay => (FILES_STAY.to_owned(), None),
-            Files::Back(FilesBack { blocked: Some(why), .. }) => {
-                (FILES_STAY.to_owned(), Some(why.clone()))
-            }
+            Files::Back(FilesBack {
+                blocked: Some(why), ..
+            }) => (FILES_STAY.to_owned(), Some(why.clone())),
             Files::Back(back) => (restoring(back), Some(WHAT_RESTORING_LEAVES.to_owned())),
         }
     }
@@ -116,7 +122,10 @@ pub(super) fn restoring(back: &FilesBack) -> String {
         [one, two] => format!("{} and {}", name(one), name(two)),
         [first, rest @ ..] => format!("{} and {} other files", name(first), rest.len()),
     };
-    format!("Restoring changes {names} (+{} −{}).", back.insertions, back.deletions)
+    format!(
+        "Restoring changes {names} (+{} −{}).",
+        back.insertions, back.deletions
+    )
 }
 
 struct GoingBack {
@@ -136,7 +145,9 @@ impl GoingBack {
     /// The host's answer on the files. Not knowing only leaves them where they are.
     fn heard(&mut self, answer: Result<FilesBackAnswer, ClientError>, cx: &mut Context<Self>) {
         self.files = match answer {
-            Ok(FilesBackAnswer { files_back: Some(back) }) => Files::Back(back),
+            Ok(FilesBackAnswer {
+                files_back: Some(back),
+            }) => Files::Back(back),
             Ok(FilesBackAnswer { files_back: None }) => Files::Stay,
             Err(error) => {
                 log::warn!("what going back would do to the files: {error}");
@@ -153,9 +164,15 @@ impl GoingBack {
         self.going = Some(restore_files);
         self.error = None;
         cx.notify();
-        let params =
-            RewindParams { thread_id: self.thread.clone(), run_id: self.run.clone(), restore_files };
-        let gone = self.chats.read(cx).ahead_of_queue::<ThreadsRewind>(params, cx);
+        let params = RewindParams {
+            thread_id: self.thread.clone(),
+            run_id: self.run.clone(),
+            restore_files,
+        };
+        let gone = self
+            .chats
+            .read(cx)
+            .ahead_of_queue::<ThreadsRewind>(params, cx);
         cx.spawn_in(window, async move |this, cx| {
             let gone = gone.await;
             this.update_in(cx, |this, window, cx| match gone {
@@ -214,7 +231,9 @@ impl Render for GoingBack {
                     .child(
                         Button::new("go-back-confirm", "Go Back", Tone::Danger)
                             .busy(self.going == Some(false))
-                            .on_click(cx.listener(|this, _, window, cx| this.go(false, window, cx))),
+                            .on_click(
+                                cx.listener(|this, _, window, cx| this.go(false, window, cx)),
+                            ),
                     ),
             )
     }

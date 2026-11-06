@@ -29,7 +29,8 @@ impl StatusBar {
             language::locate(root, project, cx);
         }
         let root = selected.map(|(root, _)| root);
-        self.servers.update(cx, |servers, cx| servers.show(root, cx));
+        self.servers
+            .update(cx, |servers, cx| servers.show(root, cx));
     }
 
     /// The view of the servers, which says when it starts or stops having any.

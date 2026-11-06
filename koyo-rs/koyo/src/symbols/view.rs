@@ -174,7 +174,9 @@ impl Symbols {
             })
             .collect();
         shown.sort_by_key(|row| std::cmp::Reverse(row.0));
-        self.shown = (shown.into_iter()).map(|(_, index, matched)| (index, matched)).collect();
+        self.shown = (shown.into_iter())
+            .map(|(_, index, matched)| (index, matched))
+            .collect();
         self.selected = 0;
         self.scroll.scroll_to_item(0, ScrollStrategy::Top);
         cx.notify();
@@ -225,7 +227,9 @@ impl Symbols {
             .map(|(at, matched)| {
                 let symbol = &self.known[*at];
                 let container = symbol.container.as_ref().map(ToString::to_string);
-                let marked = (matched.iter()).map(|range| &symbol.name[range.clone()]).collect();
+                let marked = (matched.iter())
+                    .map(|range| &symbol.name[range.clone()])
+                    .collect();
                 let file = self.file_of(symbol).map(|file| file.to_string());
                 (symbol.name.to_string(), container, marked, file)
             })

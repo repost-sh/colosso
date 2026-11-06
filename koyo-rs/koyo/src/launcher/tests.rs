@@ -6,8 +6,8 @@ use std::path::Path;
 
 use gpui_kit::{AnyWindowHandle, App, Entity, TestAppContext};
 
-use super::rows::{self, Act, Query};
 use super::here::{Here, OpenTab};
+use super::rows::{self, Act, Query};
 use super::{Kind, Launcher};
 use crate::files::tests::{dialog, press, tabs};
 use crate::history::{self, Place};
@@ -16,7 +16,10 @@ use crate::shell::Shell;
 use crate::test_support::{draw, repo, select, shell_with};
 
 /// A shell over a checkout of its own, selected.
-fn shell(name: &str, cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<Shell>, std::path::PathBuf) {
+fn shell(
+    name: &str,
+    cx: &mut TestAppContext,
+) -> (AnyWindowHandle, Entity<Shell>, std::path::PathBuf) {
     let root = repo(name, &[("README.md", "hi\n")]);
     let (window, shell) = shell_with(&[&root], cx);
     select(&shell, &root, cx);
@@ -42,14 +45,21 @@ fn rows_of(launcher: &Entity<Launcher>, cx: &TestAppContext) -> Vec<String> {
         (launcher.rows.iter().enumerate())
             .map(|(at, row)| {
                 let title = row.title.to_string();
-                if launcher.selected == Some(at) { format!("[{title}]") } else { title }
+                if launcher.selected == Some(at) {
+                    format!("[{title}]")
+                } else {
+                    title
+                }
             })
             .collect()
     })
 }
 
 fn place(root: &Path) -> Place {
-    Place { worktree: root.to_owned(), project: root.to_owned() }
+    Place {
+        worktree: root.to_owned(),
+        project: root.to_owned(),
+    }
 }
 
 #[gpui_kit::test]
@@ -78,7 +88,11 @@ fn enter_with_nothing_typed_opens_an_empty_tab_of_the_kind(cx: &mut TestAppConte
     press(launcher_window, "enter", cx);
     cx.run_until_parked();
     assert!(dialog::<Launcher>(cx).is_none(), "it closes once it's done");
-    assert_eq!(tabs(&shell, cx), ["[New tab]"], "a browser tab on the start page");
+    assert_eq!(
+        tabs(&shell, cx),
+        ["[New tab]"],
+        "a browser tab on the start page"
+    );
 
     let (launcher_window, _) = launch(window, cx);
     press(launcher_window, "tab enter", cx);
@@ -96,15 +110,26 @@ fn commands_run_before_are_offered_latest_first_and_filtered_as_typed(cx: &mut T
     let (launcher_window, launcher) = launch(window, cx);
     press(launcher_window, "shift-tab", cx);
     assert_eq!(kind(&launcher, cx), Kind::Terminal);
-    assert_eq!(rows_of(&launcher, cx), ["npm run dev", "cargo test"], "nothing picked with nothing typed");
+    assert_eq!(
+        rows_of(&launcher, cx),
+        ["npm run dev", "cargo test"],
+        "nothing picked with nothing typed"
+    );
 
     cx.simulate_input(launcher_window, "car");
     cx.run_until_parked();
-    assert_eq!(rows_of(&launcher, cx), ["[car]", "cargo test"], "running what's typed comes first");
+    assert_eq!(
+        rows_of(&launcher, cx),
+        ["[car]", "cargo test"],
+        "running what's typed comes first"
+    );
     // ⇧⌫ forgets the row picked, when it's the history's.
     press(launcher_window, "down shift-backspace", cx);
     assert_eq!(rows_of(&launcher, cx), ["[car]"]);
-    assert_eq!(cx.read(|cx| history::get(cx).of(history::Kind::Command).count()), 1);
+    assert_eq!(
+        cx.read(|cx| history::get(cx).of(history::Kind::Command).count()),
+        1
+    );
     // → takes the row's text into the field.
     cx.update(|cx| history::used(history::Kind::Command, "cargo build", &place(&root), cx));
     cx.simulate_input(launcher_window, "g");
@@ -124,9 +149,15 @@ fn a_message_typed_for_a_chat_opens_one_that_says_it(cx: &mut TestAppContext) {
     draw(window, cx);
     assert_eq!(tabs(&shell, cx), ["[New chat]"]);
     let said: Vec<String> = cx.read(|cx| {
-        (history::get(cx).of(history::Kind::Prompt)).map(|entry| entry.text.clone()).collect()
+        (history::get(cx).of(history::Kind::Prompt))
+            .map(|entry| entry.text.clone())
+            .collect()
     });
-    assert_eq!(said, ["why is the build slow"], "the new chat's composer sent it");
+    assert_eq!(
+        said,
+        ["why is the build slow"],
+        "the new chat's composer sent it"
+    );
 }
 
 #[gpui_kit::test]
@@ -151,7 +182,9 @@ fn an_address_typed_opens_its_page_and_words_are_searched(cx: &mut TestAppContex
     press(launcher_window, "enter", cx);
     cx.run_until_parked();
     let searched: Vec<String> = cx.read(|cx| {
-        (history::get(cx).of(history::Kind::Search)).map(|entry| entry.text.clone()).collect()
+        (history::get(cx).of(history::Kind::Search))
+            .map(|entry| entry.text.clone())
+            .collect()
     });
     assert_eq!(searched, ["rust gpui"]);
     assert_eq!(tabs(&shell, cx).len(), 2);
@@ -176,11 +209,23 @@ fn text_dismissed_is_offered_again_when_it_opens_next(cx: &mut TestAppContext) {
 
 /// A browser tab open on `url`, titled `title`.
 fn tab(pane: u64, title: &str, url: &str) -> OpenTab {
-    OpenTab { pane, kind: PaneKind::Browser, title: title.to_owned().into(), url: url.to_owned(), favicon: None }
+    OpenTab {
+        pane,
+        kind: PaneKind::Browser,
+        title: title.to_owned().into(),
+        url: url.to_owned(),
+        favicon: None,
+    }
 }
 
 fn browser_rows(here: &Here, typed: &str, suggested: &[String], cx: &mut App) -> Vec<rows::Row> {
-    let query = Query { kind: Kind::Browser, typed, autofilled: None, here, suggested };
+    let query = Query {
+        kind: Kind::Browser,
+        typed,
+        autofilled: None,
+        here,
+        suggested,
+    };
     rows::rows(&query, cx)
 }
 
@@ -190,26 +235,64 @@ fn a_page_a_tab_shows_is_switched_to_and_searches_share_the_rows(cx: &mut TestAp
     cx.update(crate::init);
     let here = Here {
         place: place(Path::new("/work/app")),
-        tabs: vec![tab(7, "Zen Browser", "https://github.com/zen-browser/desktop")],
+        tabs: vec![tab(
+            7,
+            "Zen Browser",
+            "https://github.com/zen-browser/desktop",
+        )],
         chats: Vec::new(),
     };
     cx.update(|cx| {
         let elsewhere = place(Path::new("/elsewhere"));
-        history::visited("https://github.com/zen-browser/desktop", "Zen", history::How::Typed, &elsewhere, cx);
+        history::visited(
+            "https://github.com/zen-browser/desktop",
+            "Zen",
+            history::How::Typed,
+            &elsewhere,
+            cx,
+        );
         for n in 0..12 {
             let url = format!("https://zen.example/{n}");
-            history::visited(&url, &format!("zen {n}"), history::How::Followed, &elsewhere, cx);
+            history::visited(
+                &url,
+                &format!("zen {n}"),
+                history::How::Followed,
+                &elsewhere,
+                cx,
+            );
         }
         let suggested: Vec<String> = (0..12).map(|n| format!("zen suggestion {n}")).collect();
         let rows = browser_rows(&here, "zen", &suggested, cx);
         assert_eq!(rows.len(), rows::MOST);
-        assert_eq!(rows[0].act, Act::Search("zen".into()), "searching what's typed first");
-        let searches = rows.iter().filter(|row| matches!(row.act, Act::Search(_))).count();
-        assert_eq!(searches, 1 + 6, "two rows in three of those left are searches");
-        let switch = rows.iter().find(|row| row.act == Act::Switch(7)).expect("the tab is switched to");
+        assert_eq!(
+            rows[0].act,
+            Act::Search("zen".into()),
+            "searching what's typed first"
+        );
+        let searches = rows
+            .iter()
+            .filter(|row| matches!(row.act, Act::Search(_)))
+            .count();
+        assert_eq!(
+            searches,
+            1 + 6,
+            "two rows in three of those left are searches"
+        );
+        let switch = rows
+            .iter()
+            .find(|row| row.act == Act::Switch(7))
+            .expect("the tab is switched to");
         assert_eq!(switch.title, "Zen Browser");
-        assert_eq!(switch.title_matched, [0..3], "what matched in the tab's own title");
-        assert!(!rows.iter().any(|row| row.act == Act::Visit("https://github.com/zen-browser/desktop".into())));
+        assert_eq!(
+            switch.title_matched,
+            [0..3],
+            "what matched in the tab's own title"
+        );
+        assert!(
+            !rows
+                .iter()
+                .any(|row| row.act == Act::Visit("https://github.com/zen-browser/desktop".into()))
+        );
     });
 }
 
@@ -218,9 +301,16 @@ fn suggestions_answer_the_words_asked_about_only() {
     let body = br#"["rust gp",["rust gpui","rust gpu programming"],[],{}]"#;
     assert_eq!(
         super::suggest::parse("Rust gp", body),
-        Some(vec!["rust gpui".to_owned(), "rust gpu programming".to_owned()])
+        Some(vec![
+            "rust gpui".to_owned(),
+            "rust gpu programming".to_owned()
+        ])
     );
-    assert_eq!(super::suggest::parse("other", body), None, "a late answer to other words");
+    assert_eq!(
+        super::suggest::parse("other", body),
+        None,
+        "a late answer to other words"
+    );
     assert_eq!(super::suggest::parse("x", b"not json"), None);
     assert!(!super::suggest::is_address("rust gpui"));
     assert!(super::suggest::is_address("example.com"));
@@ -230,12 +320,36 @@ fn suggestions_answer_the_words_asked_about_only() {
 #[gpui_kit::test]
 fn the_page_the_first_row_visits_is_not_listed_again(cx: &mut TestAppContext) {
     cx.update(crate::init);
-    let here = Here { place: place(Path::new("/work/app")), tabs: Vec::new(), chats: Vec::new() };
+    let here = Here {
+        place: place(Path::new("/work/app")),
+        tabs: Vec::new(),
+        chats: Vec::new(),
+    };
     cx.update(|cx| {
-        history::visited("https://example.com/", "Example Domain", history::How::Typed, &here.place, cx);
-        let query = Query { kind: Kind::Browser, typed: "exa", autofilled: Some("example.com"), here: &here, suggested: &[] };
+        history::visited(
+            "https://example.com/",
+            "Example Domain",
+            history::How::Typed,
+            &here.place,
+            cx,
+        );
+        let query = Query {
+            kind: Kind::Browser,
+            typed: "exa",
+            autofilled: Some("example.com"),
+            here: &here,
+            suggested: &[],
+        };
         let rows = rows::rows(&query, cx);
-        let visits: Vec<&Act> = rows.iter().map(|row| &row.act).filter(|act| matches!(act, Act::Visit(_))).collect();
-        assert_eq!(visits, [&Act::Visit("https://example.com/".into())], "the autofilled page, once");
+        let visits: Vec<&Act> = rows
+            .iter()
+            .map(|row| &row.act)
+            .filter(|act| matches!(act, Act::Visit(_)))
+            .collect();
+        assert_eq!(
+            visits,
+            [&Act::Visit("https://example.com/".into())],
+            "the autofilled page, once"
+        );
     });
 }

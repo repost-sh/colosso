@@ -99,16 +99,16 @@ impl Document {
                 .background_spawn(async move {
                     let content = read(&path);
                     let edits = match (&old, &content) {
-                        (Some(old), Content::Text(new)) if old != new => {
-                            Some(line_edits(old, new))
-                        }
+                        (Some(old), Content::Text(new)) if old != new => Some(line_edits(old, new)),
                         _ => None,
                     };
                     (content, edits)
                 })
                 .await;
-            this.update(cx, |this, cx| this.set_content(generation, content, edits, cx))
-                .ok();
+            this.update(cx, |this, cx| {
+                this.set_content(generation, content, edits, cx);
+            })
+            .ok();
         }));
     }
 
@@ -116,7 +116,10 @@ impl Document {
     /// it's read once more when that's done. Read the same, nothing's said.
     pub fn reread(&mut self, cx: &mut Context<Self>) {
         if self.dirty {
-            log::info!("{} changed on disk under unsaved edits", self.path.display());
+            log::info!(
+                "{} changed on disk under unsaved edits",
+                self.path.display()
+            );
         } else if self._reading.is_some() {
             self.again = true;
         } else {
@@ -140,7 +143,11 @@ impl Document {
     /// Writes `text`, the view's text, to the file off the main thread. Written, the
     /// document holds it, and a read begun before is read over. Done once it's written, or
     /// with why it couldn't be; dropped, the write may not happen.
-    pub fn save(&mut self, text: SharedString, cx: &mut Context<Self>) -> Task<Result<(), SharedString>> {
+    pub fn save(
+        &mut self,
+        text: SharedString,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<(), SharedString>> {
         let path = self.path.clone();
         let written = cx.background_spawn({
             let text = text.clone();

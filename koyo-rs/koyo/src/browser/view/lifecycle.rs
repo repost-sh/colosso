@@ -1,8 +1,8 @@
 //! A page's life in the host: opened once the host runs and the pane has a size, opened
 //! again after the host restarts, and the requests that go to it meanwhile.
 
-use koyo_browser_ipc::{AppRequest, Viewport};
 use gpui_kit::{App, Context};
+use koyo_browser_ipc::{AppRequest, Viewport};
 
 use super::sized::Dragging;
 use super::{BrowserView, Kind};

@@ -113,10 +113,7 @@ fn case_matters_only_once_a_capital_is_typed() {
 fn slashes_match_between_folders() {
     let finder = finder(REPO);
     assert_eq!(first(&finder, "src/main").as_deref(), Some("src/main.rs"));
-    assert_eq!(
-        found(&finder, "koyo/main"),
-        ["crates/koyo/src/main.rs"]
-    );
+    assert_eq!(found(&finder, "koyo/main"), ["crates/koyo/src/main.rs"]);
 }
 
 #[test]
@@ -179,10 +176,7 @@ fn files_added_and_removed_are_found_and_no_longer_found() {
     let finder = Finder::new();
     assert!(finder.set_files(&listed));
     assert!(!finder.set_files(&refolder(&listed, &paths)));
-    assert_eq!(
-        found(&finder, "hovr"),
-        ["crates/koyo/src/cache/hover.rs"]
-    );
+    assert_eq!(found(&finder, "hovr"), ["crates/koyo/src/cache/hover.rs"]);
     paths.push("crates/koyo/src/hover/mod.rs");
     paths.push("new/hover_new.rs");
     listed = refolder(&listed, &paths);

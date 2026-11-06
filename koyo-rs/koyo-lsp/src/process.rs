@@ -274,7 +274,10 @@ fn read_stderr(stderr: ChildStderr, shared: &Shared, mut log: Option<File>, done
             // In one write, so the app's own lines in the same log don't land inside it. A log
             // that can't be written to anymore is let go of; the app's log still has the line.
             let whole = format!("{line}\n");
-            if log.as_mut().is_some_and(|file| file.write_all(whole.as_bytes()).is_err()) {
+            if log
+                .as_mut()
+                .is_some_and(|file| file.write_all(whole.as_bytes()).is_err())
+            {
                 log = None;
             }
             shared.stderr_line(line.to_owned());

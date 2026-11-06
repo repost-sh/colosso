@@ -25,7 +25,11 @@ impl Log {
             || "root".to_owned(),
             |name| name.to_string_lossy().into_owned(),
         );
-        let name = format!("{}-{checkout}-{:08x}.log", kind.name(), hasher.finish() as u32);
+        let name = format!(
+            "{}-{checkout}-{:08x}.log",
+            kind.name(),
+            hasher.finish() as u32
+        );
         Log(logs::servers_dir().map(|dir| dir.join(name)))
     }
 

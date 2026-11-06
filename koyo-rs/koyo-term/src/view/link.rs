@@ -5,11 +5,11 @@
 
 use std::sync::Arc;
 
+use futures::StreamExt as _;
+use gpui_kit::{AppContext as _, Context};
 use koyo_term_control::{
     AttachMode, EventKind, Handle, OpenRequest, RequestBody, ResponseBody, Size,
 };
-use futures::StreamExt as _;
-use gpui_kit::{AppContext as _, Context};
 
 use super::{Link, TerminalEvent, TerminalView};
 use crate::client::{TermClient, is_other_build};

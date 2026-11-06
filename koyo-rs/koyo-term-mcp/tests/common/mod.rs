@@ -13,15 +13,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use koyo_app_control::frame::{
-    Call, ClientFrame, MAX_CLIENT_FRAME, MAX_SERVER_FRAME, ServerFrame,
-};
+use crossbeam_channel::{Receiver, Sender};
+use koyo_app_control::frame::{Call, ClientFrame, MAX_CLIENT_FRAME, MAX_SERVER_FRAME, ServerFrame};
 use koyo_app_control::transport::{Connection, FrameWriter, Listener};
 use koyo_app_control::{ControlError, Endpoint, Hello, Scope as AppScope, Topic};
 use koyo_term_control::catalog::Scope;
 use koyo_term_control::{DaemonCommand, TermDir};
 use koyo_term_mcp::{Config, Launcher, Server, serve, socket_backend};
-use crossbeam_channel::{Receiver, Sender};
 use parking_lot::Mutex;
 use rmcp::model::{
     CallToolRequestParams, CallToolResult, ClientCapabilities, ClientConfig, ClientRequest,
@@ -46,7 +44,9 @@ pub const CLIENT: &str = "e2e-client";
 /// # Panics
 /// When the folder can't be made.
 pub fn scratch(name: &str) -> PathBuf {
-    let dir = Path::new(env!("KOYO_TARGET_DIR")).join("tmp").join(format!("mcp-{name}"));
+    let dir = Path::new(env!("KOYO_TARGET_DIR"))
+        .join("tmp")
+        .join(format!("mcp-{name}"));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir

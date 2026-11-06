@@ -57,7 +57,6 @@ use self::suggest::{SUGGESTING, Suggestions};
 use self::turn::{RECALLING, STOPPABLE, Turn};
 use super::drafts::{self, DraftOf};
 use super::thread::ChatThread;
-use super::view::COLUMN;
 use super::{Chats, Connection};
 use crate::menu::Trigger;
 use crate::native::liquid;
@@ -173,12 +172,13 @@ impl ChatComposer {
         });
         let claude_missing = chats.read(cx).claude_missing.clone();
         let subscriptions = vec![
-            cx.subscribe_in(&text, window, |this, _, event, window, cx| {
-                match event {
-                    InputEvent::PressEnter { secondary: true, shift: false } => this.queue(window, cx),
-                    InputEvent::PressEnter { shift: false, .. } => this.send(window, cx),
-                    _ => {}
-                }
+            cx.subscribe_in(&text, window, |this, _, event, window, cx| match event {
+                InputEvent::PressEnter {
+                    secondary: true,
+                    shift: false,
+                } => this.queue(window, cx),
+                InputEvent::PressEnter { shift: false, .. } => this.send(window, cx),
+                _ => {}
             }),
             cx.observe(&chats, |this, chats, cx| {
                 let connection = chats.read(cx).connection().clone();
@@ -260,9 +260,10 @@ impl ChatComposer {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self._subscriptions.push(cx.observe_in(&thread, window, |this, _, window, cx| {
-            this.thread_changed(window, cx);
-        }));
+        self._subscriptions
+            .push(cx.observe_in(&thread, window, |this, _, window, cx| {
+                this.thread_changed(window, cx);
+            }));
         self.thread = Some(thread);
         self.thread_changed(window, cx);
     }
@@ -279,7 +280,8 @@ impl ChatComposer {
         if self.asked.request() != asking.map(|asked| &asked.id) {
             self.asked = asking.map_or(Asked::Nothing, Asked::of);
             let placeholder = self.asked.placeholder();
-            self.text.update(cx, |text, cx| text.set_placeholder(placeholder, window, cx));
+            self.text
+                .update(cx, |text, cx| text.set_placeholder(placeholder, window, cx));
             cx.notify();
         }
         if self.failed != failed {
@@ -309,18 +311,19 @@ impl ChatComposer {
     /// What's in the way: why the last send failed, why the chat can't be shown, or how things
     /// are with the host.
     fn note(&self, p: Palette, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let (text, restart): (SharedString, bool) = match (&self.error, &self.failed, &self.connection) {
-            (Some(error), _, _) => (error.clone(), false),
-            (None, Some(failed), _) => (failed.clone(), false),
-            (None, None, Connection::Failed(why)) => (why.clone(), false),
-            (None, None, Connection::OtherBuild) => (
-                "Chats are running on another build of Koyo. Restart them to use this one; \
+        let (text, restart): (SharedString, bool) =
+            match (&self.error, &self.failed, &self.connection) {
+                (Some(error), _, _) => (error.clone(), false),
+                (None, Some(failed), _) => (failed.clone(), false),
+                (None, None, Connection::Failed(why)) => (why.clone(), false),
+                (None, None, Connection::OtherBuild) => (
+                    "Chats are running on another build of Koyo. Restart them to use this one; \
                  running turns stop."
-                    .into(),
-                true,
-            ),
-            _ => return None,
-        };
+                        .into(),
+                    true,
+                ),
+                _ => return None,
+            };
         let row = div()
             .pb_2()
             .flex()
@@ -376,7 +379,9 @@ impl Render for ChatComposer {
             .children(self.held_queue(p, cx))
             .children(self.tiles(p, cx))
             .child(at_chat_size(
-                Textarea::new(&self.text).appearance(false).on_paste(self.takes_paste(cx)),
+                Textarea::new(&self.text)
+                    .appearance(false)
+                    .on_paste(self.takes_paste(cx)),
                 cx,
             ))
             .child(self.footer(&typed, p, cx))
@@ -402,7 +407,7 @@ impl Render for ChatComposer {
             .key_context(keys)
             .relative()
             .w_full()
-            .max_w(px(COLUMN))
+            .map(|column| crate::settings::get(cx).chat_width.column_of(column))
             .px_6()
             .flex()
             .flex_col()

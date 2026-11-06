@@ -73,9 +73,11 @@ impl Render for Spin {
         let holder = div().size(px(SPINNER));
         if is_frontmost(cx) {
             let turning = Animation::new(TURN).repeat().with_max_fps(SPINNER_FPS);
-            holder.child(spinner.with_animation("chat-working", turning, |spinner, delta| {
-                spinner.transform(Transformation::rotate(percentage(delta)))
-            }))
+            holder.child(
+                spinner.with_animation("chat-working", turning, |spinner, delta| {
+                    spinner.transform(Transformation::rotate(percentage(delta)))
+                }),
+            )
         } else {
             holder.child(spinner)
         }
@@ -92,7 +94,9 @@ fn spinner(place: String, cx: &mut App) -> Div {
     let held = cx.default_global::<Spinners>().0.get(&place).cloned();
     let spin = held.unwrap_or_else(|| {
         let spin = cx.new(|_| Spin);
-        cx.default_global::<Spinners>().0.insert(place, spin.clone());
+        cx.default_global::<Spinners>()
+            .0
+            .insert(place, spin.clone());
         spin
     });
     div().flex_shrink_0().child(spin)
@@ -113,7 +117,10 @@ impl Chats {
     /// The summaries changed: what the rows say follows, and whoever shows them hears.
     pub(super) fn summaries_changed(&mut self, cx: &mut Context<Self>) {
         self.checkout_marks = checkout_marks(self.summaries.values());
-        let working = self.summaries.values().any(|summary| summary.status == Status::Working);
+        let working = self
+            .summaries
+            .values()
+            .any(|summary| summary.status == Status::Working);
         if !working && cx.has_global::<Spinners>() {
             cx.remove_global::<Spinners>();
         }
@@ -127,7 +134,11 @@ impl Chats {
             let params = ThreadParams {
                 thread_id: id.clone(),
             };
-            logged(self.ordered::<ThreadsRead>(params), "noting a chat was seen", cx);
+            logged(
+                self.ordered::<ThreadsRead>(params),
+                "noting a chat was seen",
+                cx,
+            );
             self.summaries_changed(cx);
         }
     }
@@ -201,10 +212,19 @@ mod tests {
 
     #[test]
     fn a_chat_says_what_it_is_up_to_and_nothing_once_seen() {
-        assert_eq!(ChatMark::of(&summary(Status::Working, false)), Some(ChatMark::Working));
-        assert_eq!(ChatMark::of(&summary(Status::Idle, true)), Some(ChatMark::Unread));
+        assert_eq!(
+            ChatMark::of(&summary(Status::Working, false)),
+            Some(ChatMark::Working)
+        );
+        assert_eq!(
+            ChatMark::of(&summary(Status::Idle, true)),
+            Some(ChatMark::Unread)
+        );
         assert_eq!(ChatMark::of(&summary(Status::Idle, false)), None);
-        assert_eq!(ChatMark::of(&summary(Status::Failed, true)), Some(ChatMark::Failed));
+        assert_eq!(
+            ChatMark::of(&summary(Status::Failed, true)),
+            Some(ChatMark::Failed)
+        );
         assert_eq!(ChatMark::of(&summary(Status::Failed, false)), None);
     }
 

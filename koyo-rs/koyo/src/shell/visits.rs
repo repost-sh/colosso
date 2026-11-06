@@ -11,7 +11,12 @@ use crate::history::{self, Place};
 impl Shell {
     /// `view` loaded a page: a visit of its checkout's, unless it came back or forward or is the
     /// page the tab showed already, which only retitles it.
-    pub(super) fn note_visit(&mut self, view: &Entity<BrowserView>, visit: &Visit, cx: &mut Context<Self>) {
+    pub(super) fn note_visit(
+        &mut self,
+        view: &Entity<BrowserView>,
+        visit: &Visit,
+        cx: &mut Context<Self>,
+    ) {
         match visit.how {
             Some(how) => {
                 if let Some(place) = self.tab_of(view).and_then(|at| self.place_at(at)) {
@@ -36,7 +41,12 @@ impl Shell {
     }
 
     /// The person searched the web for `words` from `view`'s address.
-    pub(super) fn note_search(&mut self, view: &Entity<BrowserView>, words: &str, cx: &mut Context<Self>) {
+    pub(super) fn note_search(
+        &mut self,
+        view: &Entity<BrowserView>,
+        words: &str,
+        cx: &mut Context<Self>,
+    ) {
         if let Some(place) = self.tab_of(view).and_then(|at| self.place_at(at)) {
             history::used(history::Kind::Search, words, &place, cx);
         }
@@ -54,6 +64,9 @@ impl Shell {
     fn place_at(&self, (project, branch, _): (usize, usize, usize)) -> Option<Place> {
         let project = self.workspace.projects.get(project)?;
         let unit = project.branches.get(branch)?;
-        Some(Place { worktree: unit.worktree.path.clone(), project: project.path.clone() })
+        Some(Place {
+            worktree: unit.worktree.path.clone(),
+            project: project.path.clone(),
+        })
     }
 }

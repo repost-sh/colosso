@@ -5,12 +5,12 @@
 
 use std::ops::Range;
 
+use gpui_kit::component::input::{EditorState, Rope, RopeExt as _};
+use gpui_kit::{App, AppContext as _, Entity, Task, Window};
 use koyo_lsp::lsp_types::request::{PrepareRenameRequest, Rename};
 use koyo_lsp::lsp_types::{
     OneOf, PrepareRenameResponse, RenameOptions, RenameParams, WorkDoneProgressParams,
 };
-use gpui_kit::component::input::{EditorState, Rope, RopeExt as _};
-use gpui_kit::{App, AppContext as _, Entity, Task, Window};
 
 use super::edits;
 use super::providers::{Asked, Hooks};
@@ -39,29 +39,39 @@ impl Hooks {
         let Some(asked) = self.ask(rope, cx) else {
             return Task::ready(None);
         };
-        let provider = (self.capabilities(cx)).and_then(|capabilities| capabilities.rename_provider.clone());
+        let provider =
+            (self.capabilities(cx)).and_then(|capabilities| capabilities.rename_provider.clone());
         let prepares = match provider {
             None | Some(OneOf::Left(false)) => {
                 log::info!("{} doesn't rename", self.kind.name());
                 return Task::ready(None);
             }
             Some(OneOf::Left(true)) => false,
-            Some(OneOf::Right(RenameOptions { prepare_provider, .. })) => prepare_provider == Some(true),
+            Some(OneOf::Right(RenameOptions {
+                prepare_provider, ..
+            })) => prepare_provider == Some(true),
         };
         let word = rope.word_range(offset);
         if !prepares {
             return Task::ready(word.and_then(|range| named(&asked, range)));
         }
         cx.background_spawn(async move {
-            let answer = asked.ask::<PrepareRenameRequest>(&asked.at(offset)).await.flatten();
+            let answer = asked
+                .ask::<PrepareRenameRequest>(&asked.at(offset))
+                .await
+                .flatten();
             match answer? {
                 PrepareRenameResponse::Range(range) => named(&asked, asked.bytes(range)),
-                PrepareRenameResponse::RangeWithPlaceholder { range, placeholder } => Some(Prepared {
-                    range: asked.bytes(range),
-                    version: asked.version(),
-                    name: placeholder,
-                }),
-                PrepareRenameResponse::DefaultBehavior { .. } => word.and_then(|range| named(&asked, range)),
+                PrepareRenameResponse::RangeWithPlaceholder { range, placeholder } => {
+                    Some(Prepared {
+                        range: asked.bytes(range),
+                        version: asked.version(),
+                        name: placeholder,
+                    })
+                }
+                PrepareRenameResponse::DefaultBehavior { .. } => {
+                    word.and_then(|range| named(&asked, range))
+                }
             }
         })
     }

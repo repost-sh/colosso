@@ -12,7 +12,9 @@ use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
 use gpui_kit::component::input::RopeExt as _;
-use gpui_kit::{Context, KeyUpEvent, Keystroke, PlatformInput, ScrollDelta, ScrollEvent, point, px};
+use gpui_kit::{
+    Context, KeyUpEvent, Keystroke, PlatformInput, ScrollDelta, ScrollEvent, point, px,
+};
 
 use super::{FilesPanel, Place};
 use crate::right_panel::{ShowFiles, ToggleChanges};
@@ -216,8 +218,22 @@ fn repeated(drawn: &mut Drawn) -> Result<Vec<String>> {
 /// it reads; then swiped left over the table. The pictures saved, before and after.
 fn wide_table(drawn: &mut Drawn) -> Result<(PathBuf, PathBuf)> {
     let row = |cells: [&str; 11]| format!("| {} |\n", cells.join(" | "));
-    let mut text = String::from("# Accounts\n\nEach kind of account, where it's opened and what it takes.\n\n");
-    text.push_str(&row(["#", "Kind", "Region", "Currencies", "Bank", "Usage", "Opening", "Payers", "Speed", "Limit", "Regions"]));
+    let mut text = String::from(
+        "# Accounts\n\nEach kind of account, where it's opened and what it takes.\n\n",
+    );
+    text.push_str(&row([
+        "#",
+        "Kind",
+        "Region",
+        "Currencies",
+        "Bank",
+        "Usage",
+        "Opening",
+        "Payers",
+        "Speed",
+        "Limit",
+        "Regions",
+    ]));
     text.push_str(&row(["---"; 11]));
     for at in 2..6 {
         let at = at.to_string();

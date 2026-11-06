@@ -5,13 +5,13 @@
 
 use std::ops::Range;
 
-use koyo_browser_ipc::{self as ipc, AppRequest, Cursor, Go, Ime, KeyKind, MouseKind};
 use gpui_kit::{
     Bounds, Context, CursorStyle, Div, EntityInputHandler, InteractiveElement as _, KeyDownEvent,
     KeyUpEvent, Keystroke, Modifiers, ModifiersChangedEvent, MouseButton, MouseDownEvent,
     MouseMoveEvent, MouseUpEvent, NavigationDirection, Pixels, PlatformInput, Point, Stateful,
     UTF16Selection, Window, point, px, size,
 };
+use koyo_browser_ipc::{self as ipc, AppRequest, Cursor, Go, Ime, KeyKind, MouseKind};
 
 use super::control::Mode;
 use super::keys::{characters, key_codes};

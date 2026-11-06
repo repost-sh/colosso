@@ -29,7 +29,10 @@ use crate::menu::{self, MenuItem};
 use crate::shell::{ellipsized, glass, icon, icon_button, solid};
 use crate::theme::Palette;
 
-actions!(chat, [AllowRequest, AllowRequestForChat, DenyRequest, StopRequest]);
+actions!(
+    chat,
+    [AllowRequest, AllowRequestForChat, DenyRequest, StopRequest]
+);
 
 /// Asks where to keep the plan of this request.
 #[derive(Clone, Debug, PartialEq, Action)]
@@ -72,7 +75,9 @@ pub(super) fn request(
             .child(ellipsized(approval_line(request, approval, &drawing.cwd)))
             .into_any_element(),
         RequestPayload::Question(asked) => question(drawing, request, asked),
-        RequestPayload::Plan { markdown } => plan(drawing, request, markdown, item, row, index, cx)?,
+        RequestPayload::Plan { markdown } => {
+            plan(drawing, request, markdown, item, row, index, cx)?
+        }
         RequestPayload::Unknown(_) => div()
             .text_sm()
             .text_color(p.muted)
@@ -89,7 +94,11 @@ fn question(drawing: &Drawing, request: &Request, asked: &Questions) -> AnyEleme
     let lines = question_lines(request, &asked.questions);
     let waits_for_message = request.status == RequestStatus::Pending && !asked.live;
     let options = (asked.questions.iter().filter(|_| waits_for_message)).map(|question| {
-        let labels: Vec<&str> = question.options.iter().map(|option| option.label.as_str()).collect();
+        let labels: Vec<&str> = question
+            .options
+            .iter()
+            .map(|option| option.label.as_str())
+            .collect();
         div().pl_5().text_xs().child(labels.join(" · "))
     });
     div()
@@ -97,9 +106,11 @@ fn question(drawing: &Drawing, request: &Request, asked: &Questions) -> AnyEleme
         .flex_col()
         .gap_1()
         .text_color(p.muted)
-        .children(lines.into_iter().map(|said| {
-            marked(IconName::CircleQuestionMark, p.muted).child(ellipsized(said))
-        }))
+        .children(
+            lines
+                .into_iter()
+                .map(|said| marked(IconName::CircleQuestionMark, p.muted).child(ellipsized(said))),
+        )
         .children(options)
         .into_any_element()
 }
@@ -119,14 +130,28 @@ fn plan(
     let (title, body) = plan_parts(markdown);
     // Past so many lines with something on them, each at least a line tall, there's always more
     // to show. It's only ever cut where it says so.
-    let long = body.lines().filter(|line| !line.trim().is_empty()).nth(PLAN_LINES).is_some();
+    let long = body
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .nth(PLAN_LINES)
+        .is_some();
     let open = drawing.open.contains(row);
-    let copy = icon_button(("chat-plan-copy", index), drawing.copy_mark(item), "Copy", cx)
-        .small()
-        .on_click(drawing.copies(item));
-    let save = icon_button(("chat-plan-save", index), IconName::Download, "Save as…", cx)
-        .small()
-        .on_click(says(drawing, Box::new(SavePlan(request.id.clone()))));
+    let copy = icon_button(
+        ("chat-plan-copy", index),
+        drawing.copy_mark(item),
+        "Copy",
+        cx,
+    )
+    .small()
+    .on_click(drawing.copies(item));
+    let save = icon_button(
+        ("chat-plan-save", index),
+        IconName::Download,
+        "Save as…",
+        cx,
+    )
+    .small()
+    .on_click(says(drawing, Box::new(SavePlan(request.id.clone()))));
     let heading = div()
         .flex()
         .items_center()
@@ -141,17 +166,21 @@ fn plan(
         .child(save);
     let card = frame(p, request.status == RequestStatus::Pending)
         .child(heading)
-        .children(title.map(|title| div().font_weight(FontWeight::SEMIBOLD).child(title.to_owned())))
-        .child(
+        .children(title.map(|title| {
             div()
-                .text_sm()
-                .child(
-                    TextView::new(text)
-                        .on_link_click(drawing.opens_links())
-                        .when(long && !open, |text| text.max_lines(PLAN_LINES)),
-                ),
+                .font_weight(FontWeight::SEMIBOLD)
+                .child(title.to_owned())
+        }))
+        .child(
+            div().text_sm().child(
+                TextView::new(text)
+                    .on_link_click(drawing.opens_links())
+                    .when(long && !open, |text| text.max_lines(PLAN_LINES)),
+            ),
         )
-        .when(long, |card| card.child(drawing.show_more(row.clone(), index, open)));
+        .when(long, |card| {
+            card.child(drawing.show_more(row.clone(), index, open))
+        });
     Some(card.into_any_element())
 }
 
@@ -245,9 +274,14 @@ fn buttons(
         .label("Allow")
         .tooltip("⌘↩ with nothing typed")
         .on_click(says(drawing, Box::new(AllowRequest)));
-    let more = icon_button(("chat-allow-more", index), IconName::ChevronDown, "More answers", cx)
-        .small()
-        .disabled(!asking);
+    let more = icon_button(
+        ("chat-allow-more", index),
+        IconName::ChevronDown,
+        "More answers",
+        cx,
+    )
+    .small()
+    .disabled(!asking);
     let row = div()
         .flex()
         .items_center()
@@ -271,9 +305,8 @@ fn buttons(
 
 /// Allowing for the chat, in what the host says that adds, when it can be; and stopping.
 pub(super) fn answers_past_allow(for_chat: Option<SharedString>) -> Vec<MenuItem> {
-    let allow = for_chat.map(|label| {
-        MenuItem::new(Some(IconName::Check), label, Box::new(AllowRequestForChat))
-    });
+    let allow = for_chat
+        .map(|label| MenuItem::new(Some(IconName::Check), label, Box::new(AllowRequestForChat)));
     let stop = MenuItem::new(Some(IconName::CircleX), "Stop", Box::new(StopRequest));
     allow.into_iter().chain([stop]).collect()
 }

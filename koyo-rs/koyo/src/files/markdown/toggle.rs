@@ -36,7 +36,12 @@ const SLIDE: Duration = Duration::from_millis(320);
 
 /// The toggle for a tab showing its markdown file in `mode`, picked `flips` times: its thumb
 /// slides across each time, not when it's first drawn.
-pub fn toggle(mode: Mode, flips: usize, window: &mut Window, cx: &mut Context<FilePane>) -> AnyElement {
+pub fn toggle(
+    mode: Mode,
+    flips: usize,
+    window: &mut Window,
+    cx: &mut Context<FilePane>,
+) -> AnyElement {
     let p = crate::theme::palette(cx);
     let id = cx.entity_id().as_u64();
     let glass_id = ElementId::NamedInteger("markdown-toggle-glass".into(), id);
@@ -64,7 +69,9 @@ pub fn toggle(mode: Mode, flips: usize, window: &mut Window, cx: &mut Context<Fi
         let slide = Animation::new(SLIDE).with_easing(settle);
         let key = ElementId::NamedInteger("markdown-toggle-thumb".into(), flips as u64);
         (thumb.with_animation(key, slide, move |thumb, t| {
-            thumb.left(px(from.0 + (to.0 - from.0) * t)).w(px(from.1 + (to.1 - from.1) * t))
+            thumb
+                .left(px(from.0 + (to.0 - from.0) * t))
+                .w(px(from.1 + (to.1 - from.1) * t))
         }))
         .into_any_element()
     };
@@ -87,7 +94,12 @@ pub fn toggle(mode: Mode, flips: usize, window: &mut Window, cx: &mut Context<Fi
 }
 
 /// The segment that shows the file in `mode`, the one shown being `shown`.
-fn segment(mode: Mode, shown: Mode, p: Palette, cx: &mut Context<FilePane>) -> impl IntoElement + use<> {
+fn segment(
+    mode: Mode,
+    shown: Mode,
+    p: Palette,
+    cx: &mut Context<FilePane>,
+) -> impl IntoElement + use<> {
     let (mark, id) = match mode {
         Mode::Code => (IconName::CodeXml, "markdown-toggle-code"),
         Mode::Preview => (IconName::Eye, "markdown-toggle-preview"),
@@ -107,10 +119,16 @@ fn segment(mode: Mode, shown: Mode, p: Palette, cx: &mut Context<FilePane>) -> i
         .rounded_full()
         .cursor_pointer()
         .text_color(if on { p.text } else { p.muted })
-        .when(!on, |segment| segment.hover(move |segment| segment.text_color(p.text)))
+        .when(!on, |segment| {
+            segment.hover(move |segment| segment.text_color(p.text))
+        })
         .child(icon(mark, 13.))
         .child(name)
-        .tooltip(move |window, cx| Tooltip::new(name).action(&TogglePreview, None).build(window, cx))
+        .tooltip(move |window, cx| {
+            Tooltip::new(name)
+                .action(&TogglePreview, None)
+                .build(window, cx)
+        })
         .on_click(cx.listener(move |pane, _: &ClickEvent, window, cx| {
             pane.show_as(mode, window, cx);
         }))

@@ -3,6 +3,11 @@
 
 use serde_json::{Map, Value};
 
+use super::{CHAT_SIZES, Preset};
+
+/// The sizes a chat's text could be, under `fonts.chat_size`, before they came down a notch.
+const OLD_CHAT_SIZES: [f64; 7] = [13., 14., 15., 16., 18., 20., 22.];
+
 /// Settings a file may hold that the app no longer has, each where it was and why it went.
 /// A key that changes what it means goes here under its old name; one that only changes
 /// its name goes in [`RENAMED`].
@@ -50,13 +55,52 @@ pub(super) fn migrate(value: &mut Value) {
             object.entry(new).or_insert(moved);
         }
     }
+    chat_work(value);
+    chat_size(value);
+}
+
+/// A chat's text sizes came down a notch: what was picked of the old ones is the size at the same
+/// place on the slider now, the old default the new one.
+fn chat_size(value: &mut Value) {
+    let Some(fonts) = object_within(value, &["fonts"]) else {
+        return;
+    };
+    let Some(old) = fonts.remove("chat_size").and_then(|old| old.as_f64()) else {
+        return;
+    };
+    let distance = |stop: &f64| (stop - old).abs();
+    let place = (0..OLD_CHAT_SIZES.len())
+        .min_by(|a, b| distance(&OLD_CHAT_SIZES[*a]).total_cmp(&distance(&OLD_CHAT_SIZES[*b])));
+    if let Some(size) = place.and_then(|place| CHAT_SIZES.get(place)) {
+        fonts
+            .entry("chat_text_size")
+            .or_insert(Value::from(f64::from(*size)));
+    }
+}
+
+/// "Work to show" became Verbosity, a choice for each kind of step: what was picked of the three
+/// it had is the preset that shows as much.
+fn chat_work(value: &mut Value) {
+    let Some(object) = value.as_object_mut() else {
+        return;
+    };
+    let Some(work) = object.remove("chat_work") else {
+        return;
+    };
+    let preset = match work.as_str() {
+        Some("Turns") => Preset::Quiet,
+        Some("Everything") => Preset::Verbose,
+        _ => Preset::Normal,
+    };
+    if let Ok(verbosity) = serde_json::to_value(preset.verbosity()) {
+        object.entry("chat_verbosity").or_insert(verbosity);
+    }
 }
 
 /// The object at `path` in `value`, if there's one.
-fn object_within<'a>(
-    value: &'a mut Value,
-    path: &[&str],
-) -> Option<&'a mut Map<String, Value>> {
-    let value = path.iter().try_fold(value, |value, key| value.get_mut(*key))?;
+fn object_within<'a>(value: &'a mut Value, path: &[&str]) -> Option<&'a mut Map<String, Value>> {
+    let value = path
+        .iter()
+        .try_fold(value, |value, key| value.get_mut(*key))?;
     value.as_object_mut()
 }

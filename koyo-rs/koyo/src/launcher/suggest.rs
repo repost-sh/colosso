@@ -36,7 +36,10 @@ pub fn wanted(typed: &str, cx: &App) -> bool {
 
 /// Whether `typed` loads as a page rather than searched for.
 pub fn is_address(typed: &str) -> bool {
-    matches!(browser::read_address(typed), Some(browser::Address::Page(_)))
+    matches!(
+        browser::read_address(typed),
+        Some(browser::Address::Page(_))
+    )
 }
 
 /// Asks what's suggested for `query` once typing pauses; nothing when it fails or is late.

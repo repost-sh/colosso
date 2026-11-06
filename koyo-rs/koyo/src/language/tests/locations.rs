@@ -46,10 +46,17 @@ async fn several_definitions_are_listed_and_the_one_picked_opens_its_file(cx: &m
     let (found, selected) = cx.read(listed).unwrap();
     assert_eq!(found.title.as_ref(), "2 definitions of `target`");
     assert_eq!(selected, Some((0, 0)));
-    let paths: Vec<&str> = found.files.iter().map(|file| file.relative.as_ref()).collect();
+    let paths: Vec<&str> = found
+        .files
+        .iter()
+        .map(|file| file.relative.as_ref())
+        .collect();
     assert_eq!(paths, ["src/lib.rs", "src/other.rs"]);
     let row = &found.files[0].rows[0];
-    assert_eq!((row.line, row.text.as_ref()), (2, "pub fn greet() -> u32 {"));
+    assert_eq!(
+        (row.line, row.text.as_ref()),
+        (2, "pub fn greet() -> u32 {")
+    );
     assert_eq!(&row.text[row.matched.clone()], "greet");
     assert_eq!(row.at, At::Bytes(greet));
     let row = &found.files[1].rows[0];
@@ -70,7 +77,9 @@ async fn several_definitions_are_listed_and_the_one_picked_opens_its_file(cx: &m
     let watched = vec![changes(&server, cx), changes(&files, cx)];
     until(cx, watched, |cx| selected(cx).is_some()).await;
     assert_eq!(cx.read(selected), Some(target));
-    let shown = cx.read(|cx| editor(files.read(cx).viewing()?.read(cx).editor()?, cx)).unwrap();
+    let shown = cx
+        .read(|cx| editor(files.read(cx).viewing()?.read(cx).editor()?, cx))
+        .unwrap();
     assert!(editor_focused(shell.0, &shown, cx));
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -107,16 +116,32 @@ async fn references_are_listed_by_file_and_escape_closes_the_list(cx: &mut TestA
     until(cx, watched, |cx| listed(cx).is_some()).await;
     let found = cx.read(listed).unwrap();
     assert_eq!(found.title.as_ref(), "3 references to `target`");
-    let paths: Vec<&str> = found.files.iter().map(|file| file.relative.as_ref()).collect();
+    let paths: Vec<&str> = found
+        .files
+        .iter()
+        .map(|file| file.relative.as_ref())
+        .collect();
     assert_eq!(paths, ["src/other.rs", "src/lib.rs"]);
     let rows: Vec<(u32, &str, &str, At)> = (found.files.iter())
         .flat_map(|file| file.rows.iter())
-        .map(|row| (row.line, row.text.as_ref(), &row.text[row.matched.clone()], row.at.clone()))
+        .map(|row| {
+            (
+                row.line,
+                row.text.as_ref(),
+                &row.text[row.matched.clone()],
+                row.at.clone(),
+            )
+        })
         .collect();
     assert_eq!(
         rows,
         [
-            (1, "pub const S: &str = \"é🦀\"; pub fn target() -> u32 { 42 }", "target", At::Bytes(target)),
+            (
+                1,
+                "pub const S: &str = \"é🦀\"; pub fn target() -> u32 { 42 }",
+                "target",
+                At::Bytes(target)
+            ),
             (2, "pub fn greet() -> u32 {", "greet", At::Bytes(greet)),
             (4, "other::target()", "target", At::Bytes(call)),
         ]

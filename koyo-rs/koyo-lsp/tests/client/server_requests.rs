@@ -2,10 +2,10 @@
 
 use std::thread;
 
+use futures::StreamExt;
 use koyo_lsp::lsp_types::request::{ApplyWorkspaceEdit, ShowDocument, WorkspaceConfiguration};
 use koyo_lsp::lsp_types::{ApplyWorkspaceEditResponse, GlobPattern};
 use koyo_lsp::{Event, ResponseError};
-use futures::StreamExt;
 use serde_json::{Value, json};
 
 use crate::common::{Echo, Received, fake, wait};
@@ -120,7 +120,11 @@ fn an_inlay_hint_refresh_is_answered_at_once_and_passed_on() {
 #[test]
 fn a_semantic_tokens_refresh_is_answered_at_once_and_passed_on() {
     let mut script = vec![json!({"recv": "fake/echo"})];
-    script.extend(ask("refresh", "workspace/semanticTokens/refresh", &Value::Null));
+    script.extend(ask(
+        "refresh",
+        "workspace/semanticTokens/refresh",
+        &Value::Null,
+    ));
     script.push(json!({"reply": 0, "result": null}));
     let client = fake(&Value::Array(script));
     let mut events = client.events();

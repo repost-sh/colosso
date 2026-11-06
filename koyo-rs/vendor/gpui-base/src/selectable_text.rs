@@ -1,9 +1,9 @@
 use std::ops::Range;
 
 use gpui::{
-    App, BorderStyle, Bounds, Corners, Edges, Element, ElementId, GlobalElementId, Hitbox,
-    HitboxBehavior, Hsla, InspectorElementId, IntoElement, LayoutId, PaintQuad, Pixels, Point,
-    SharedString, StyledText, TextStyleRefinement, Window, transparent_black,
+    App, BorderStyle, Bounds, Corners, Edges, Element, ElementId, GlobalElementId, HighlightStyle,
+    Hitbox, HitboxBehavior, Hsla, InspectorElementId, IntoElement, LayoutId, PaintQuad, Pixels,
+    Point, SharedString, StyledText, TextStyleRefinement, Window, transparent_black,
 };
 
 use crate::{TextSelection, TextSelectionHandle, TextSelectionRegistration, TextSelectionRun};
@@ -21,7 +21,9 @@ pub struct SelectableText {
     handle: Option<TextSelectionHandle>,
     text: SharedString,
     styled_text: StyledText,
-    document_order: u64,
+    /// Its place in reading order among the others sharing its handle; with
+    /// none, the order the window's text is painted in, as a [`crate::text::TextView`]'s.
+    document_order: Option<u64>,
     text_style: Option<TextStyleRefinement>,
     selection_color: Option<Hsla>,
 }
@@ -47,7 +49,7 @@ impl SelectableText {
             handle,
             styled_text: StyledText::new(text.clone()),
             text,
-            document_order: 0,
+            document_order: None,
             text_style: None,
             selection_color: None,
         }
@@ -55,13 +57,24 @@ impl SelectableText {
 
     /// Places this run in reading order among the others sharing its handle.
     pub fn document_order(mut self, order: u64) -> Self {
-        self.document_order = order;
+        self.document_order = Some(order);
         self
     }
 
     /// Sets the text style the run is laid out and painted with.
     pub fn text_style(mut self, style: TextStyleRefinement) -> Self {
         self.text_style = Some(style);
+        self
+    }
+
+    /// Styles ranges of the text over the style it's laid out with, as
+    /// [`StyledText::with_highlights`] does: colours, say, or a background
+    /// behind some words. The ranges are in order and don't overlap.
+    pub fn with_highlights(
+        mut self,
+        highlights: impl IntoIterator<Item = (Range<usize>, HighlightStyle)>,
+    ) -> Self {
+        self.styled_text = self.styled_text.with_highlights(highlights);
         self
     }
 
@@ -188,8 +201,12 @@ impl Element for SelectableText {
         self.styled_text
             .prepaint(global_id, inspector_id, bounds, &mut (), window, cx);
         let hitbox = window.insert_hitbox(bounds, HitboxBehavior::Normal);
-        let registration = TextSelectionRegistration::new(hitbox.clone(), bounds)
-            .with_document_order(self.document_order)
+        let registration = TextSelectionRegistration::new(hitbox.clone(), bounds);
+        let registration = match self.document_order {
+            Some(order) => registration.with_document_order(order),
+            None => registration.in_paint_order(),
+        };
+        let registration = registration
             .with_text_bounds(vec![bounds])
             .with_rendered_element(handle, window, cx);
         handle.register(registration, window, cx);
@@ -211,7 +228,7 @@ impl Element for SelectableText {
         let projection = handle.update_runs(
             &[
                 TextSelectionRun::new(self.text.clone(), layout.clone(), bounds)
-                    .with_document_order(self.document_order),
+                    .with_document_order(self.document_order.unwrap_or_default()),
             ],
             cx,
         );

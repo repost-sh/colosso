@@ -3,7 +3,11 @@
 // approval of it shows a person.
 
 import { LEGACY_TOOL_NAME_ALIASES } from "@anthropic-ai/claude-agent-sdk";
-import type { BashOutput, FileEditOutput } from "@anthropic-ai/claude-agent-sdk/sdk-tools";
+import type {
+  BashOutput,
+  FileEditOutput,
+  FileWriteOutput,
+} from "@anthropic-ai/claude-agent-sdk/sdk-tools";
 import { z } from "zod";
 
 import { Hunk, type ToolFamily } from "../../protocol/model";
@@ -27,6 +31,10 @@ const AnyJson = z.json();
 // can't drift from them unseen.
 const Patched: z.ZodType<Pick<FileEditOutput, "structuredPatch">> = z.object({
   structuredPatch: z.array(Hunk),
+});
+const Created: z.ZodType<Pick<FileWriteOutput, "type" | "content">> = z.object({
+  type: z.literal("create"),
+  content: z.string(),
 });
 const Printed: z.ZodType<Pick<BashOutput, "stdout" | "stderr">> = z.object({
   stdout: z.string(),
@@ -180,7 +188,6 @@ export interface ToolResult {
 export function toolSettled(started: ToolBody, result: ToolResult): ToolBody {
   const { family: kind } = started.payload;
   const printed = kind === "command" ? Printed.safeParse(result.structured) : undefined;
-  const patch = kind === "edit" ? Patched.safeParse(result.structured) : undefined;
   const output = printed?.success === true
     ? [printed.data.stdout, printed.data.stderr].filter((part) => part !== "").join("\n")
     : result.text;
@@ -190,8 +197,38 @@ export function toolSettled(started: ToolBody, result: ToolResult): ToolBody {
       ...started.payload,
       output: tail(output),
       exitCode: kind === "command" ? exitCode(result) : null,
-      patch: patch?.success === true ? boundedPatch(patch.data.structuredPatch) : null,
+      patch: kind === "edit" ? patchOf(result.structured) : null,
     },
+  };
+}
+
+/**
+ * The change an edit made, as an item keeps it: the CLI's patch, or for a file it created, which
+ * it gives none of, the file's lines as added ones.
+ */
+function patchOf(structured: unknown): Hunk[] | null {
+  const patched = Patched.safeParse(structured);
+  if (!patched.success) {
+    return null;
+  }
+  const created = Created.safeParse(structured);
+  const { structuredPatch } = patched.data;
+  const isNew = structuredPatch.length === 0 && created.success && created.data.content !== "";
+  return boundedPatch(isNew ? [added(created.data.content)] : structuredPatch);
+}
+
+/** A new file's lines as one hunk of added lines; a newline it ends with starts no line. */
+function added(content: string): Hunk {
+  const lines = content.split("\n");
+  if (lines.at(-1) === "") {
+    lines.pop();
+  }
+  return {
+    oldStart: 0,
+    oldLines: 0,
+    newStart: 1,
+    newLines: lines.length,
+    lines: lines.map((line) => `+${line}`),
   };
 }
 

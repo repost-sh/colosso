@@ -287,7 +287,12 @@ mod tests {
         let release = release(&bytes, Archive::Tarball, "package/lib/tsc");
         let failed = install("ts", &release, &data, &Canned::new(b"something else"));
         assert!(matches!(failed, Err(LspError::Install(why)) if why.contains("SHA-256")));
-        assert!(fs::read_dir(data.join("servers/ts")).unwrap().next().is_none());
+        assert!(
+            fs::read_dir(data.join("servers/ts"))
+                .unwrap()
+                .next()
+                .is_none()
+        );
         let _ = fs::remove_dir_all(&data);
     }
 
@@ -297,8 +302,15 @@ mod tests {
         let bytes = tarball(&[("package/README.md", "nothing here\n")]);
         let release = release(&bytes, Archive::Tarball, "package/lib/tsc");
         let failed = install("ts", &release, &data, &Canned::new(&bytes));
-        assert!(matches!(failed, Err(LspError::Install(why)) if why.contains("has no package/lib/tsc")));
-        assert!(fs::read_dir(data.join("servers/ts")).unwrap().next().is_none());
+        assert!(
+            matches!(failed, Err(LspError::Install(why)) if why.contains("has no package/lib/tsc"))
+        );
+        assert!(
+            fs::read_dir(data.join("servers/ts"))
+                .unwrap()
+                .next()
+                .is_none()
+        );
         let _ = fs::remove_dir_all(&data);
     }
 
@@ -310,7 +322,9 @@ mod tests {
             ..release(b"", Archive::Gzip, "tool")
         };
         let failed = install("tool", &release, &data, &Canned::new(b""));
-        assert!(matches!(failed, Err(LspError::Install(why)) if why == "tool 1.0 has no download for this platform"));
+        assert!(
+            matches!(failed, Err(LspError::Install(why)) if why == "tool 1.0 has no download for this platform")
+        );
         let _ = fs::remove_dir_all(&data);
     }
 }

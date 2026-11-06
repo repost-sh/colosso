@@ -38,7 +38,13 @@ pub enum Effort {
 
 impl Effort {
     /// Every effort, from the least.
-    pub const ALL: [Effort; 5] = [Effort::Low, Effort::Medium, Effort::High, Effort::Xhigh, Effort::Max];
+    pub const ALL: [Effort; 5] = [
+        Effort::Low,
+        Effort::Medium,
+        Effort::High,
+        Effort::Xhigh,
+        Effort::Max,
+    ];
 }
 
 /// A file the app put in the host's attachments folder, named there.

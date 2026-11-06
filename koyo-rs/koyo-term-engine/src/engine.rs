@@ -202,9 +202,7 @@ impl Engine {
     }
 
     pub fn is_bracketed_paste(&self) -> bool {
-        self.term
-            .mode(Mode::BRACKETED_PASTE)
-            .unwrap_or(false)
+        self.term.mode(Mode::BRACKETED_PASTE).unwrap_or(false)
     }
 
     pub fn scrollbar(&self) -> Scrollbar {
@@ -240,7 +238,11 @@ impl Engine {
     /// to it.
     pub fn set_color_scheme(&mut self, dark: bool) -> Result<Option<Vec<u8>>> {
         let changed = self.dark.replace(dark).is_some_and(|was| was != dark);
-        let scheme = if dark { ColorScheme::Dark } else { ColorScheme::Light };
+        let scheme = if dark {
+            ColorScheme::Dark
+        } else {
+            ColorScheme::Light
+        };
         self.term.set_color_scheme(Some(scheme));
         if !changed || !self.term.mode(Mode::COLOR_SCHEME_REPORT)? {
             return Ok(None);

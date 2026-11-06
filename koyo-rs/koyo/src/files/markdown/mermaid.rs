@@ -34,7 +34,12 @@ pub struct MermaidPlugin {
 
 impl MermaidPlugin {
     pub fn new(look: Look, card: Card, p: Palette, seen: Arc<Mutex<HashSet<Key>>>) -> Self {
-        MermaidPlugin { look, card, p, seen }
+        MermaidPlugin {
+            look,
+            card,
+            p,
+            seen,
+        }
     }
 }
 
@@ -55,7 +60,11 @@ impl MarkdownPlugin for MermaidPlugin {
         NAME
     }
 
-    fn parse(&self, node: &markdown_ast::Node, cx: &MarkdownParseContext<'_>) -> Option<MarkdownNode> {
+    fn parse(
+        &self,
+        node: &markdown_ast::Node,
+        cx: &MarkdownParseContext<'_>,
+    ) -> Option<MarkdownNode> {
         let markdown_ast::Node::Code(code) = node else {
             return None;
         };
@@ -64,7 +73,11 @@ impl MarkdownPlugin for MermaidPlugin {
         }
         let markdown = cx.node_source(node).unwrap_or(&code.value).to_owned();
         let source = SharedString::from(code.value.clone());
-        Some(MarkdownNode::new(NAME, Source(source.clone())).text(source).markdown(markdown))
+        Some(
+            MarkdownNode::new(NAME, Source(source.clone()))
+                .text(source)
+                .markdown(markdown),
+        )
     }
 
     fn render(&self, node: &MarkdownNode, window: &mut Window, cx: &mut App) -> impl IntoElement {

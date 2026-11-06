@@ -82,7 +82,11 @@ impl Lane {
 
     /// Has the thread draw `jobs`, first to last, in place of whatever it hadn't got to.
     pub fn want(&self, jobs: impl IntoIterator<Item = Job>) {
-        let mut queue = self.shared.queue.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut queue = self
+            .shared
+            .queue
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         queue.jobs.clear();
         queue.jobs.extend(jobs);
         drop(queue);
@@ -92,7 +96,11 @@ impl Lane {
 
 impl Drop for Lane {
     fn drop(&mut self) {
-        let mut queue = self.shared.queue.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut queue = self
+            .shared
+            .queue
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         queue.closed = true;
         queue.jobs.clear();
         drop(queue);
@@ -138,6 +146,9 @@ fn next(shared: &Shared) -> Option<Job> {
         if let Some(job) = queue.jobs.pop_front() {
             return Some(job);
         }
-        queue = shared.wake.wait(queue).unwrap_or_else(PoisonError::into_inner);
+        queue = shared
+            .wake
+            .wait(queue)
+            .unwrap_or_else(PoisonError::into_inner);
     }
 }

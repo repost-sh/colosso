@@ -58,7 +58,12 @@ impl Shell {
             return;
         };
         let opened: Vec<_> = (files.iter())
-            .map(|(id, path)| (*id, self.file_pane(path.clone(), &checkout, false, None, window, cx)))
+            .map(|(id, path)| {
+                (
+                    *id,
+                    self.file_pane(path.clone(), &checkout, false, None, window, cx),
+                )
+            })
             .collect();
         let Some(tab) = self.workspace.tab_mut(at) else {
             return;

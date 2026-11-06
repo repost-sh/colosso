@@ -12,13 +12,21 @@ use crate::modal;
 use crate::test_support::{draw, git, scratch, write};
 
 fn subject(folder: &Path) -> String {
-    let log = Command::new("git").args(["log", "-1", "--format=%s"]).current_dir(folder).output();
-    String::from_utf8(log.unwrap().stdout).unwrap().trim().to_owned()
+    let log = Command::new("git")
+        .args(["log", "-1", "--format=%s"])
+        .current_dir(folder)
+        .output();
+    String::from_utf8(log.unwrap().stdout)
+        .unwrap()
+        .trim()
+        .to_owned()
 }
 
 /// Whether the card has the line called `what` that does something with the branch.
 fn offers(what: &'static str, window: AnyWindowHandle, cx: &mut TestAppContext) -> bool {
-    VisualTestContext::from_window(window, cx).debug_bounds(what).is_some()
+    VisualTestContext::from_window(window, cx)
+        .debug_bounds(what)
+        .is_some()
 }
 
 #[gpui_kit::test]
@@ -27,7 +35,10 @@ fn the_card_commits_what_changed_and_publishes_it(cx: &mut TestAppContext) {
     let folder = view.read_with(cx, |view, _| view.details_folder()).unwrap();
     let remote = scratch("chat-details-git-remote");
     git(&remote, &["init", "-q", "--bare", "-b", "main"]);
-    git(&folder, &["remote", "add", "origin", remote.to_str().unwrap()]);
+    git(
+        &folder,
+        &["remote", "add", "origin", remote.to_str().unwrap()],
+    );
     for (setting, value) in [
         ("user.name", "Test"),
         ("user.email", "test@example.com"),
@@ -57,12 +68,16 @@ fn the_card_commits_what_changed_and_publishes_it(cx: &mut TestAppContext) {
     cx.simulate_keystrokes(dialog, "enter");
     cx.run_until_parked();
     assert_eq!(subject(&folder), "Work");
-    assert!(cx.update(|cx| modal::window(cx)).is_none(), "the dialog goes once it's done");
+    assert!(
+        cx.update(|cx| modal::window(cx)).is_none(),
+        "the dialog goes once it's done"
+    );
 
     draw(window, cx);
     let publish = VisualTestContext::from_window(window, cx).debug_bounds("publish");
     let publish = publish.expect("the card still offers to publish");
-    VisualTestContext::from_window(window, cx).simulate_click(publish.center(), Modifiers::default());
+    VisualTestContext::from_window(window, cx)
+        .simulate_click(publish.center(), Modifiers::default());
     draw(window, cx);
     draw(window, cx);
     assert_eq!(subject(&remote), "Work");

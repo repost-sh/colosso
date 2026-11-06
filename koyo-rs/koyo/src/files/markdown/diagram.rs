@@ -77,7 +77,11 @@ impl Asset for Diagram {
             let svg = draw(&source, &look)?;
             let image = (renderer.render_single_frame(svg.text.as_bytes(), 1.))
                 .map_err(|why| why.to_string())?;
-            Ok(Arc::new(Drawn { image, width: svg.width, height: svg.height }))
+            Ok(Arc::new(Drawn {
+                image,
+                width: svg.width,
+                height: svg.height,
+            }))
         }
     }
 }
@@ -113,6 +117,107 @@ impl Look {
     }
 }
 
+/// What's painted the page's own colour: the ground, the boxes of labels on lines, a Gantt chart's
+/// alternate sections, the numbers on a sequence's arrows, a class's odd rows, a pie's rims.
+const GROUND: &[&str] = &[
+    "background",
+    "edgeLabelBackground",
+    "relationLabelBackground",
+    "altSectionBkgColor",
+    "attributeBackgroundColorOdd",
+    "sequenceNumberColor",
+    "pieStrokeColor",
+];
+
+/// The nodes' fill, a tint of the accent: a flowchart's, a sequence's actors, a state's, a task's.
+const FILL: &[&str] = &[
+    "primaryColor",
+    "mainBkg",
+    "actorBkg",
+    "stateBkg",
+    "taskBkgColor",
+];
+
+/// The nodes' borders, the accent stronger: a flowchart's, an actor's, an activation's, a task's,
+/// and the ring of a state diagram's end.
+const BORDER: &[&str] = &[
+    "primaryBorderColor",
+    "nodeBorder",
+    "actorBorder",
+    "activationBorderColor",
+    "taskBorderColor",
+    "activeTaskBorderColor",
+    "innerEndBackground",
+];
+
+/// Every label and title, in the text's colour.
+const TEXT: &[&str] = &[
+    "primaryTextColor",
+    "secondaryTextColor",
+    "tertiaryTextColor",
+    "nodeTextColor",
+    "textColor",
+    "titleColor",
+    "noteTextColor",
+    "actorTextColor",
+    "signalTextColor",
+    "labelTextColor",
+    "loopTextColor",
+    "pieTitleTextColor",
+    "pieLegendTextColor",
+    "classText",
+    "labelColor",
+    "stateLabelColor",
+    "transitionLabelColor",
+    "relationLabelColor",
+    "taskTextColor",
+    "taskTextDarkColor",
+    "taskTextOutsideColor",
+    "taskTextLightColor",
+    "taskTextClickableColor",
+];
+
+/// The lines between nodes and their arrowheads, the text's colour thinned.
+const LINE: &[&str] = &[
+    "lineColor",
+    "arrowheadColor",
+    "signalColor",
+    "specialStateColor",
+    "transitionColor",
+    "relationColor",
+];
+
+/// What sits behind the nodes, the text's colour faint: clusters, label boxes, activations,
+/// composite states, a class's even rows, a Gantt chart's sections, its tasks done and days off.
+const SURFACE: &[&str] = &[
+    "secondaryColor",
+    "tertiaryColor",
+    "clusterBkg",
+    "labelBoxBkgColor",
+    "activationBkgColor",
+    "altBackground",
+    "compositeBackground",
+    "compositeTitleBackground",
+    "attributeBackgroundColorEven",
+    "doneTaskBkgColor",
+    "sectionBkgColor",
+    "sectionBkgColor2",
+    "excludeBkgColor",
+];
+
+/// The rules, the text's colour thinned less: the secondary borders, a cluster's, an actor's
+/// line, a label box's, a pie's outer rim, a Gantt chart's grid and its done tasks' borders.
+const RULE: &[&str] = &[
+    "secondaryBorderColor",
+    "tertiaryBorderColor",
+    "clusterBorder",
+    "actorLineColor",
+    "labelBoxBorderColor",
+    "pieOuterStrokeColor",
+    "gridColor",
+    "doneTaskBorderColor",
+];
+
 /// Mermaid's `base` theme in `p`'s colours on `paper`, with every variable a diagram reads set,
 /// so none is derived from a colour Mermaid picked.
 fn config(p: Palette, paper: Hsla, dark: bool) -> Value {
@@ -140,45 +245,14 @@ fn config(p: Palette, paper: Hsla, dark: bool) -> Value {
     };
     set(&["fontFamily"], FAMILY);
     set(&["fontSize"], "14px");
-    set(&["background", "edgeLabelBackground", "relationLabelBackground"], &ground);
-    set(&["altSectionBkgColor", "attributeBackgroundColorOdd", "sequenceNumberColor"], &ground);
-    set(&["pieStrokeColor"], &ground);
-    set(&["primaryColor", "mainBkg", "actorBkg", "stateBkg", "taskBkgColor"], &fill);
-    set(&["primaryBorderColor", "nodeBorder", "actorBorder", "activationBorderColor"], &border);
-    set(&["taskBorderColor", "activeTaskBorderColor", "innerEndBackground"], &border);
+    set(GROUND, &ground);
+    set(FILL, &fill);
+    set(BORDER, &border);
     set(&["activeTaskBkgColor"], &strong);
-    set(
-        &[
-            "primaryTextColor", "secondaryTextColor", "tertiaryTextColor", "nodeTextColor",
-            "textColor", "titleColor", "noteTextColor", "actorTextColor", "signalTextColor",
-            "labelTextColor", "loopTextColor", "pieTitleTextColor", "pieLegendTextColor",
-            "classText", "labelColor", "stateLabelColor", "transitionLabelColor",
-            "relationLabelColor", "taskTextColor", "taskTextDarkColor", "taskTextOutsideColor",
-            "taskTextLightColor", "taskTextClickableColor",
-        ],
-        &text,
-    );
-    set(
-        &["lineColor", "arrowheadColor", "signalColor", "specialStateColor", "transitionColor"],
-        &line,
-    );
-    set(&["relationColor"], &line);
-    set(
-        &[
-            "secondaryColor", "tertiaryColor", "clusterBkg", "labelBoxBkgColor",
-            "activationBkgColor", "altBackground", "compositeBackground",
-            "compositeTitleBackground", "attributeBackgroundColorEven", "doneTaskBkgColor",
-            "sectionBkgColor", "sectionBkgColor2", "excludeBkgColor",
-        ],
-        &surface,
-    );
-    set(
-        &[
-            "secondaryBorderColor", "tertiaryBorderColor", "clusterBorder", "actorLineColor",
-            "labelBoxBorderColor", "pieOuterStrokeColor", "gridColor", "doneTaskBorderColor",
-        ],
-        &rule,
-    );
+    set(TEXT, &text);
+    set(LINE, &line);
+    set(SURFACE, &surface);
+    set(RULE, &rule);
     set(&["noteBkgColor"], &note);
     set(&["noteBorderColor"], &note_border);
     set(&["critBkgColor"], &critical);
@@ -193,7 +267,16 @@ fn config(p: Palette, paper: Hsla, dark: bool) -> Value {
     // which go together in either theme; a branch underlined in its own colour, whole, where
     // Mermaid would take the slice's inverse.
     let c = p.code;
-    let slices = [c.function, c.string, c.number, c.keyword, c.kind, c.tag, c.attribute, p.accent];
+    let slices = [
+        c.function,
+        c.string,
+        c.number,
+        c.keyword,
+        c.kind,
+        c.tag,
+        c.attribute,
+        p.accent,
+    ];
     for (at, colour) in slices.into_iter().enumerate() {
         let slice = over(colour, pick(0.62, 0.8));
         let keys = [
@@ -205,7 +288,10 @@ fn config(p: Palette, paper: Hsla, dark: bool) -> Value {
         for key in keys {
             variables.insert(key, Value::from(slice.as_ref()));
         }
-        variables.insert(format!("cScaleInv{at}"), Value::from(over(colour, 1.).as_ref()));
+        variables.insert(
+            format!("cScaleInv{at}"),
+            Value::from(over(colour, 1.).as_ref()),
+        );
     }
     serde_json::json!({
         "theme": "base",
@@ -222,7 +308,8 @@ fn blend(over: Hsla, amount: f32, under: Hsla) -> Hsla {
 /// Draws `source` in `look`: its SVG, or what merman said was wrong with it.
 pub fn draw(source: &str, look: &Look) -> Result<Svg, SharedString> {
     let config: Value = serde_json::from_str(&look.0).map_err(|why| why.to_string())?;
-    let engine = MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(config));
+    let engine =
+        MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(config));
     let renderer = Renderer::new().with_presentation_engine(engine);
     let environment = match fonts() {
         Some(fonts) => (SvgEnvironment::deterministic().with_native_font_context(fonts.clone()))
@@ -242,7 +329,11 @@ pub fn draw(source: &str, look: &Look) -> Result<Svg, SharedString> {
     };
     let text = svg.svg().to_owned();
     let (width, height) = size(&text).ok_or("The diagram came out with no size.")?;
-    Ok(Svg { text, width, height })
+    Ok(Svg {
+        text,
+        width,
+        height,
+    })
 }
 
 /// The faces labels are measured in, read the first time a diagram's drawn; none where the
@@ -252,11 +343,15 @@ fn fonts() -> Option<&'static NativeFontContext> {
     FONTS
         .get_or_init(|| {
             let bytes = std::fs::read(FONT_FILE)
-                .inspect_err(|why| log::info!("no {FONT_FILE} to measure diagrams' labels in: {why}"))
+                .inspect_err(|why| {
+                    log::info!("no {FONT_FILE} to measure diagrams' labels in: {why}");
+                })
                 .ok()?;
             let limits = NativeFontLimits::default();
             NativeFontContext::from_font_bytes([bytes], limits, &OperationControl::new())
-                .inspect_err(|why| log::warn!("couldn't measure diagrams' labels in {FAMILY}: {why}"))
+                .inspect_err(|why| {
+                    log::warn!("couldn't measure diagrams' labels in {FAMILY}: {why}");
+                })
                 .ok()
         })
         .as_ref()

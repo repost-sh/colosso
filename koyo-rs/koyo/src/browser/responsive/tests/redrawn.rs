@@ -2,11 +2,11 @@
 //! of sight, an old frame at its own scale until a new one comes, a grip let go outside the
 //! window, and a free size on a denser screen.
 
-use koyo_browser_ipc::{PixelSize, Viewport};
 use gpui_kit::{
     Bounds, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PlatformInput,
     TestAppContext, VisualTestContext, point, px, size,
 };
+use koyo_browser_ipc::{PixelSize, Viewport};
 
 use super::super::devices::{self, find};
 use super::super::{Change, Choice, Device, frame_scale};
@@ -226,7 +226,10 @@ fn a_grip_held_is_told_as_a_drag_and_its_let_go_too(cx: &mut TestAppContext) {
     draw(window, cx);
     view.read_with(cx, |view, _| {
         assert_eq!(view.viewport.map(|viewport| viewport.width), Some(dragged));
-        assert!(!view.drag_sent, "let go: told again at the size it ended at");
+        assert!(
+            !view.drag_sent,
+            "let go: told again at the size it ended at"
+        );
     });
 }
 

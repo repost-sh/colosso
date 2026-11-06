@@ -12,13 +12,17 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
-use koyo_project::Feed;
 use gpui_kit::base::Root;
 use gpui_kit::{
     AnyWindowHandle, AppContext as _, Entity, KeyUpEvent, Keystroke, PlatformInput,
     VisualTestAppContext, px, size,
 };
+use koyo_agent::protocol::ids::{MessageId, ThreadId};
+use koyo_agent::protocol::methods::Delivery;
+use koyo_agent::protocol::model::Prompt;
+use koyo_project::Feed;
 
+use crate::navigation::Route;
 use crate::projects::read_worktrees;
 use crate::shell::Shell;
 use crate::theme::UseLightTheme;
@@ -29,6 +33,8 @@ pub type Result<T> = std::result::Result<T, String>;
 const PARK: Duration = Duration::from_secs(5);
 /// How often a wait draws the window, so what changes meanwhile is laid out.
 const FRAME: Duration = Duration::from_millis(100);
+/// How long the host gets to start a chat, or to take what's said in it.
+const HOST_PATIENCE: Duration = Duration::from_secs(20);
 
 /// Runs a check: says each line `draw` returns, the pictures it saved and what it measured,
 /// or why it couldn't.
@@ -45,7 +51,9 @@ pub fn report(found: Result<Vec<String>>) -> bool {
     match found {
         Ok(lines) => {
             let mut out = std::io::stdout().lock();
-            (lines.iter()).try_for_each(|line| writeln!(out, "{line}")).is_ok()
+            (lines.iter())
+                .try_for_each(|line| writeln!(out, "{line}"))
+                .is_ok()
         }
         Err(why) => {
             let _ = writeln!(std::io::stderr().lock(), "visual check failed: {why}");
@@ -238,6 +246,43 @@ impl Drawn {
             });
         }
         Ok(())
+    }
+
+    /// Starts a chat in `root` on the fake provider, says `said` in it and shows its tab: its id,
+    /// once the host took what was said. What the provider says back is still to come.
+    pub fn chat_saying(&mut self, root: &Path, said: &str) -> Result<ThreadId> {
+        if std::env::var_os("KOYO_AGENT_PROVIDER").is_none_or(|provider| provider != "fake") {
+            return Err("set KOYO_AGENT_PROVIDER=fake, so the chat doesn't go to Claude".into());
+        }
+        let shell = self.shell.clone();
+        let chats = self.cx.read(|cx| shell.read(cx).chats().clone());
+        let made = self.cx.read(|cx| chats.read(cx).create(root));
+        let mut thread = None;
+        self.finish(HOST_PATIENCE, async { thread = Some(made.await) })?;
+        let id = thread
+            .ok_or("the chat wasn't started")?
+            .map_err(|error| format!("the chat wouldn't start: {error}"))?
+            .id;
+        let prompt = Prompt {
+            message_id: MessageId::fresh(),
+            text: said.to_owned(),
+            attachments: Vec::new(),
+        };
+        let sent = self
+            .cx
+            .read(|cx| chats.read(cx).send(&id, prompt, Delivery::Auto));
+        let mut taken = None;
+        self.finish(HOST_PATIENCE, async { taken = Some(sent.await) })?;
+        taken
+            .ok_or("nothing was said")?
+            .map_err(|error| format!("the chat wouldn't take it: {error}"))?;
+        self.cx.update(|cx| {
+            shell.update(cx, |shell, cx| {
+                shell.navigate(Route::Workspace, cx);
+                shell.add_chat(root, id.clone(), true, cx);
+            });
+        });
+        Ok(id)
     }
 
     /// Holds `key` down for `held` at 120 frames a second, the app's repeater driving it,

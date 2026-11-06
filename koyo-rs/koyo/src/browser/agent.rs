@@ -4,13 +4,13 @@
 
 use std::time::Duration;
 
+use futures::channel::oneshot;
+use gpui_kit::{App, Context, Entity};
 use koyo_app_control::ops::browser::{
     DeviceName, Orientation, Viewport as ViewportFacts, ViewportMode,
 };
 use koyo_browser_ipc::AppRequest;
 pub use koyo_browser_ipc::{Go, Viewport};
-use futures::channel::oneshot;
-use gpui_kit::{App, Context, Entity};
 
 use super::control::Holder;
 pub use super::control::{Actor, Mode, Refused};

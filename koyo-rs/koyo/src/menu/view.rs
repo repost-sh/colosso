@@ -1,18 +1,18 @@
 //! What a menu's window shows: the surface every menu has, and the rows most of them hold.
 
-use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::component::kbd::Kbd;
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, AnyView, AnyWindowHandle, Context, Div, ElementId, FocusHandle,
     InteractiveElement as _, IntoElement, MouseMoveEvent, ParentElement as _, Render, Stateful,
     StatefulInteractiveElement as _, Styled as _, Subscription, Window, div, px,
 };
 
+use super::switch::row_switch;
 use super::{
     ICON, LABEL_LINE, LABEL_SIZE, MenuBody, MenuItem, PADDING, PAGE, ROW_GAP, ROW_PADDING,
     SEPARATOR_MARGIN, SHORTCUT, close, separated,
 };
-use super::switch::row_switch;
 use crate::list;
 use crate::shell::icon;
 use crate::theme::{self, Palette};
@@ -111,7 +111,9 @@ impl Rows {
                 close(cx);
             }
             parent
-                .update(cx, |_, window, cx| target.dispatch_action(&*action, window, cx))
+                .update(cx, |_, window, cx| {
+                    target.dispatch_action(&*action, window, cx);
+                })
                 .ok();
         });
     }
@@ -124,7 +126,11 @@ impl Rows {
         p: Palette,
         cx: &Context<Self>,
     ) -> Stateful<Div> {
-        let keys = || shortcut.clone().map(|keys| keys.appearance(false).into_any_element());
+        let keys = || {
+            shortcut
+                .clone()
+                .map(|keys| keys.appearance(false).into_any_element())
+        };
         row(index)
             .when(highlighted, |row| row.bg(p.selected))
             // Moved, as it may rest on a row while the keys go elsewhere.
@@ -169,16 +175,29 @@ impl Render for Rows {
         let switches: Vec<_> = (self.items.iter().enumerate())
             .map(|(index, (item, _))| item.switch.map(|on| row_switch(index, on, window, cx)))
             .collect();
-        let rows = self.items.iter().zip(switches).enumerate().map(|(index, (row, switch))| {
-            let line = separated(&self.items, index).then(|| {
-                div().h(px(1.)).mx(px(ROW_PADDING)).my(px(SEPARATOR_MARGIN)).bg(p.hairline)
+        let rows = self
+            .items
+            .iter()
+            .zip(switches)
+            .enumerate()
+            .map(|(index, (row, switch))| {
+                let line = separated(&self.items, index).then(|| {
+                    div()
+                        .h(px(1.))
+                        .mx(px(ROW_PADDING))
+                        .my(px(SEPARATOR_MARGIN))
+                        .bg(p.hairline)
+                });
+                let highlighted = self.highlighted == Some(index);
+                div().flex_shrink_0().children(line).child(Self::row(
+                    index,
+                    row,
+                    switch,
+                    highlighted,
+                    p,
+                    cx,
+                ))
             });
-            let highlighted = self.highlighted == Some(index);
-            div()
-                .flex_shrink_0()
-                .children(line)
-                .child(Self::row(index, row, switch, highlighted, p, cx))
-        });
         div().size_full().flex().flex_col().children(rows)
     }
 }

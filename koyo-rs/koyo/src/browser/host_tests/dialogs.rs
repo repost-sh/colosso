@@ -3,8 +3,8 @@
 
 use std::time::Instant;
 
-use koyo_browser_ipc::Dialog;
 use gpui_kit::{Entity, TestAppContext, VisualTestContext};
+use koyo_browser_ipc::Dialog;
 
 use super::{PATIENCE, finish, open, wait_for, wait_for_title};
 use crate::browser::view::BrowserView;

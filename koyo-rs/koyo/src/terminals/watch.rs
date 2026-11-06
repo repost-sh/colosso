@@ -6,12 +6,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use koyo_term::{Notice, Source, TermClient};
-use koyo_term_control::{
-    ActorKind, Event, EventKind, RequestBody, ResponseBody, TerminalRecord,
-};
 use futures::StreamExt as _;
 use gpui_kit::{AppContext as _, AsyncApp, Context, WeakEntity};
+use koyo_term::{Notice, Source, TermClient};
+use koyo_term_control::{ActorKind, Event, EventKind, RequestBody, ResponseBody, TerminalRecord};
 
 use super::states::NOTICE_SECS;
 use crate::shell::Shell;

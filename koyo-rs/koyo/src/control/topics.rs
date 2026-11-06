@@ -8,8 +8,8 @@ use std::collections::{BTreeSet, HashMap};
 use std::hash::{DefaultHasher, Hash as _, Hasher as _};
 use std::time::Duration;
 
-use koyo_app_control::{ControlError, Scope, Topic};
 use gpui_kit::{App, AsyncApp, Subscription};
+use koyo_app_control::{ControlError, Scope, Topic};
 
 use super::{Answer, Caller, Control, exec, gate};
 use crate::settings;

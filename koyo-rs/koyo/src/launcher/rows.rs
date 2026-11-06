@@ -132,7 +132,13 @@ fn browser_empty(here: &Here, cx: &mut App) -> Vec<Row> {
         .take(MOST_EMPTY_TABS)
         .map(|tab| switch(tab, Vec::new(), Vec::new()))
         .collect();
-    let top = history::get(cx).find(history::Kind::Page, "", &here.place, MOST_EMPTY, history::now());
+    let top = history::get(cx).find(
+        history::Kind::Page,
+        "",
+        &here.place,
+        MOST_EMPTY,
+        history::now(),
+    );
     let pages = (top.into_iter())
         .filter(|found| here.tab_showing(&found.text).is_none())
         .map(|found| page(found, cx));
@@ -153,17 +159,32 @@ fn browser(query: &Query, typed: &str, cx: &mut App) -> Vec<Row> {
     match (query.autofilled, &address) {
         (Some(host), _) => rows.push(origin(host, cx)),
         (None, Some(url)) => {
-            rows.push(Row::new(page_glyph(url, cx), typed.to_owned(), Act::Visit(url.clone())).hint("Visit"));
+            rows.push(
+                Row::new(
+                    page_glyph(url, cx),
+                    typed.to_owned(),
+                    Act::Visit(url.clone()),
+                )
+                .hint("Visit"),
+            );
         }
         (None, None) => {}
     }
     // An address without a scheme might be a search too, as Firefox offers.
     let has_scheme = typed.contains("://") || typed.starts_with("about:");
     if address.is_none() || !has_scheme {
-        let search = Row::new(Glyph::Icon(IconName::Search), typed.to_owned(), Act::Search(typed.to_owned()));
+        let search = Row::new(
+            Glyph::Icon(IconName::Search),
+            typed.to_owned(),
+            Act::Search(typed.to_owned()),
+        );
         rows.push(search.hint("Search with Google"));
     }
-    let suggestions = if address.is_none() { searches(query, typed, cx) } else { Vec::new() };
+    let suggestions = if address.is_none() {
+        searches(query, typed, cx)
+    } else {
+        Vec::new()
+    };
     // A page the first row visits already isn't listed again, as Firefox drops what dupes its
     // first result; a tab showing it still is, to switch to.
     let first = rows.first().and_then(|row| match &row.act {
@@ -176,7 +197,9 @@ fn browser(query: &Query, typed: &str, cx: &mut App) -> Vec<Row> {
     // Of the rows left, searches take two in three and pages the rest, as Firefox shares them out
     // with suggestions shown first; either takes what the other leaves.
     let room = MOST.saturating_sub(rows.len());
-    let searches_room = (room * 2).div_ceil(3).max(room.saturating_sub(general.len()));
+    let searches_room = (room * 2)
+        .div_ceil(3)
+        .max(room.saturating_sub(general.len()));
     let taken = suggestions.len().min(searches_room);
     rows.extend(suggestions.into_iter().take(taken));
     rows.extend(general.into_iter().take(room - taken));
@@ -190,7 +213,10 @@ fn origin(host: &str, cx: &mut App) -> Row {
         .map(|home| (home.text.clone(), home.title.trim().to_owned()));
     let (url, title) = match home {
         Some((url, title)) => (url, Some(title).filter(|title| !title.is_empty())),
-        None => (address_to_url(host).unwrap_or_else(|| host.to_owned()), None),
+        None => (
+            address_to_url(host).unwrap_or_else(|| host.to_owned()),
+            None,
+        ),
     };
     let shown = title.clone().unwrap_or_else(|| host.to_owned());
     let mut row = Row::new(page_glyph(&url, cx), shown, Act::Visit(url));
@@ -203,7 +229,13 @@ fn origin(host: &str, cx: &mut App) -> Row {
 /// The searches for what's typed: up to two made before, then the search engine's suggestions,
 /// none the same as what's typed or each other, nor an address.
 fn searches(query: &Query, typed: &str, cx: &App) -> Vec<Row> {
-    let past = history::get(cx).find(history::Kind::Search, typed, &query.here.place, MOST_PAST_SEARCHES + 1, history::now());
+    let past = history::get(cx).find(
+        history::Kind::Search,
+        typed,
+        &query.here.place,
+        MOST_PAST_SEARCHES + 1,
+        history::now(),
+    );
     let mut seen: Vec<String> = vec![typed.to_lowercase()];
     let mut rows = Vec::new();
     for found in past {
@@ -211,7 +243,11 @@ fn searches(query: &Query, typed: &str, cx: &App) -> Vec<Row> {
             continue;
         }
         seen.push(found.text.to_lowercase());
-        let mut row = Row::new(Glyph::Icon(IconName::Clock), found.title.clone(), Act::Search(found.text.clone()));
+        let mut row = Row::new(
+            Glyph::Icon(IconName::Clock),
+            found.title.clone(),
+            Act::Search(found.text.clone()),
+        );
         row.title_matched = found.title_matched;
         row.entry = Some((history::Kind::Search, found.text));
         rows.push(row);
@@ -222,7 +258,11 @@ fn searches(query: &Query, typed: &str, cx: &App) -> Vec<Row> {
             continue;
         }
         seen.push(lower);
-        let mut row = Row::new(Glyph::Icon(IconName::Search), suggested.clone(), Act::Search(suggested.clone()));
+        let mut row = Row::new(
+            Glyph::Icon(IconName::Search),
+            suggested.clone(),
+            Act::Search(suggested.clone()),
+        );
         row.title_matched = match_one(suggested, typed).unwrap_or_default();
         rows.push(row);
     }
@@ -244,7 +284,9 @@ fn pages(here: &Here, typed: &str, now: i64, cx: &mut App) -> Vec<Row> {
             _ => page(found, cx),
         })
         .collect();
-    let unmatched = here.tabs_of(PaneKind::Browser).filter(|tab| !switched.contains(&tab.pane));
+    let unmatched = here
+        .tabs_of(PaneKind::Browser)
+        .filter(|tab| !switched.contains(&tab.pane));
     rows.extend(unmatched.filter_map(|tab| matching_tab(tab, typed)));
     rows
 }
@@ -282,7 +324,11 @@ fn match_one(field: &str, typed: &str) -> Option<Vec<Range<usize>>> {
 }
 
 /// A switch to the open tab `tab`, the bytes of its title and address given matched.
-fn switch(tab: &OpenTab, title_matched: Vec<Range<usize>>, detail_matched: Vec<Range<usize>>) -> Row {
+fn switch(
+    tab: &OpenTab,
+    title_matched: Vec<Range<usize>>,
+    detail_matched: Vec<Range<usize>>,
+) -> Row {
     let glyph = match &tab.favicon {
         Some(icon) => Glyph::Image(Arc::clone(icon)),
         None => Glyph::Icon(tab.kind.icon()),
@@ -316,7 +362,11 @@ fn chat_empty(here: &Here, cx: &App) -> Vec<Row> {
 /// A chat's rows for `typed`: asking a new chat, then its tabs and chats that match, then what was
 /// said before.
 fn chat(here: &Here, typed: &str, cx: &App) -> Vec<Row> {
-    let ask = Row::new(Glyph::Icon(IconName::MessageSquare), typed.to_owned(), Act::Ask(typed.to_owned()));
+    let ask = Row::new(
+        Glyph::Icon(IconName::MessageSquare),
+        typed.to_owned(),
+        Act::Ask(typed.to_owned()),
+    );
     let mut rows = vec![ask.hint("Ask in a New Chat")];
     rows.extend(tabs_matching(here, PaneKind::Chat, typed));
     for (id, title) in &here.chats {
@@ -331,14 +381,22 @@ fn chat(here: &Here, typed: &str, cx: &App) -> Vec<Row> {
 
 /// A chat no tab shows, which picking brings back.
 fn resume(id: &ThreadId, title: SharedString, title_matched: Vec<Range<usize>>) -> Row {
-    let mut row = Row::new(Glyph::Icon(IconName::MessagesSquare), title, Act::Resume(id.clone()));
+    let mut row = Row::new(
+        Glyph::Icon(IconName::MessagesSquare),
+        title,
+        Act::Resume(id.clone()),
+    );
     row.title_matched = title_matched;
     row.hint("Open Chat")
 }
 
 /// A terminal's rows for `typed`: running it, then its tabs that match, then the commands run before.
 fn terminal(here: &Here, typed: &str, cx: &App) -> Vec<Row> {
-    let run = Row::new(Glyph::Icon(IconName::SquareTerminal), typed.to_owned(), Act::Run(typed.to_owned()));
+    let run = Row::new(
+        Glyph::Icon(IconName::SquareTerminal),
+        typed.to_owned(),
+        Act::Run(typed.to_owned()),
+    );
     let mut rows = vec![run.hint("Run in a New Terminal")];
     rows.extend(tabs_matching(here, PaneKind::Terminal, typed));
     let room = MOST.saturating_sub(rows.len());
@@ -353,7 +411,11 @@ fn words(kind: history::Kind, typed: &str, here: &Here, most: usize, cx: &App) -
         .filter(|found| found.text.trim() != typed)
         .take(most)
         .map(|found| {
-            let act = if kind == history::Kind::Prompt { Act::Ask(found.text.clone()) } else { Act::Run(found.text.clone()) };
+            let act = if kind == history::Kind::Prompt {
+                Act::Ask(found.text.clone())
+            } else {
+                Act::Run(found.text.clone())
+            };
             let mut row = Row::new(Glyph::Icon(IconName::Clock), found.title, act);
             row.title_matched = found.title_matched;
             row.entry = Some((kind, found.text));

@@ -13,8 +13,8 @@ pub const LEAST_ZOOM: f32 = 0.02;
 pub const MOST_ZOOM: f32 = 64.;
 /// The zooms ⌘= and ⌘- step through, as a browser's do.
 const STEPS: [f32; 25] = [
-    0.05, 0.1, 0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1., 1.1, 1.25, 1.5, 1.75, 2., 2.5, 3., 4., 5.,
-    6., 8., 12., 16., 24., 32., 64.,
+    0.05, 0.1, 0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1., 1.1, 1.25, 1.5, 1.75, 2., 2.5, 3., 4., 5., 6.,
+    8., 12., 16., 24., 32., 64.,
 ];
 
 /// A rectangle in logical pixels.
@@ -99,7 +99,10 @@ pub struct Layout {
 
 /// `pages`, sized in points, laid out at `zoom`.
 pub fn layout(pages: &[(f32, f32)], zoom: f32) -> Layout {
-    let widest = pages.iter().map(|(width, _)| width * zoom).fold(0., f32::max);
+    let widest = pages
+        .iter()
+        .map(|(width, _)| width * zoom)
+        .fold(0., f32::max);
     let mut y = PAD;
     let mut rects = Vec::with_capacity(pages.len());
     for (width, height) in pages {
@@ -112,7 +115,11 @@ pub fn layout(pages: &[(f32, f32)], zoom: f32) -> Layout {
         });
         y += height + GAP;
     }
-    let height = if pages.is_empty() { 2. * PAD } else { y - GAP + PAD };
+    let height = if pages.is_empty() {
+        2. * PAD
+    } else {
+        y - GAP + PAD
+    };
     Layout {
         pages: rects,
         size: (widest + 2. * PAD, height),

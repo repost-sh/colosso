@@ -26,9 +26,8 @@ use objc2::rc::Retained;
 use objc2::runtime::{AnyClass, NSObjectProtocol as _};
 use objc2::{MainThreadMarker, MainThreadOnly as _, msg_send, sel};
 use objc2_app_kit::{
-    NSAppearance, NSAppearanceCustomization as _, NSAppearanceNameAqua,
-    NSAppearanceNameDarkAqua, NSAutoresizingMaskOptions, NSColor, NSGlassEffectView,
-    NSGlassEffectViewStyle, NSView,
+    NSAppearance, NSAppearanceCustomization as _, NSAppearanceNameAqua, NSAppearanceNameDarkAqua,
+    NSAutoresizingMaskOptions, NSColor, NSGlassEffectView, NSGlassEffectViewStyle, NSView,
 };
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 use objc2_quartz_core::kCACornerCurveContinuous;
@@ -166,7 +165,9 @@ impl Native {
         let was_dark = self.dark.replace(Some(dark));
         if was_dark != Some(dark) {
             if was_dark == Some(true) {
-                self.view.replace(glass_in(&self.shown)).removeFromSuperview();
+                self.view
+                    .replace(glass_in(&self.shown))
+                    .removeFromSuperview();
                 self.corners.set(None);
             }
             let view = self.view.borrow();

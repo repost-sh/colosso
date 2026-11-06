@@ -7,13 +7,13 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
-use koyo_term_control::{Exit, Handle, OpenRequest, Pinned, Size, TerminalRecord};
-use koyo_term_engine::{Cursor, Frame, OptionAsAlt};
 use gpui_kit::{
     Action, App, Bounds, Context, EventEmitter, FocusHandle, Focusable, InteractiveElement as _,
     IntoElement, KeyBinding, NoAction, ParentElement as _, Pixels, Render, SharedString,
     StatefulInteractiveElement as _, Styled as _, Task, Window, actions, div, point, px, size,
 };
+use koyo_term_control::{Exit, Handle, OpenRequest, Pinned, Size, TerminalRecord};
+use koyo_term_engine::{Cursor, Frame, OptionAsAlt};
 
 use crate::client::TermClient;
 use crate::element::{Grid, PinnedLook, TerminalElement};
@@ -24,7 +24,6 @@ use crate::vt::{Command, Vt};
 
 mod link;
 mod responsive;
-
 
 actions!(
     terminal,

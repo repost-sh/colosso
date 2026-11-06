@@ -5,19 +5,19 @@
 
 use std::rc::Rc;
 
-use koyo_git::{Content, Status};
 use gpui_kit::assets::IconName;
 use gpui_kit::component::{Selectable as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, Context, Div, Empty, Entity, Font, FontWeight, Hsla, InteractiveElement as _,
-    IntoElement, ParentElement as _, Pixels, Render, SharedString,
-    StatefulInteractiveElement as _, Styled, Subscription, Window, div, font, list, px,
+    IntoElement, ParentElement as _, Pixels, Render, SharedString, StatefulInteractiveElement as _,
+    Styled, Subscription, Window, div, font, list, px,
 };
+use koyo_git::{Content, Status};
 
 use super::super::file_view::FileView;
-use super::super::highlight::Token;
-use super::super::line::{CodeLine, Half, Look, runs};
+use super::super::highlight::{Token, token_colour};
+use super::super::line::{CodeLine, Half, Look, WORDS_TINT, runs};
 use super::super::rows::{Layout, Row};
 use super::{ChangesPanel, LINE_HEIGHT, counts, split_path, status_letter};
 use crate::right_panel::panel_header;
@@ -302,14 +302,12 @@ fn note_for(file: &FileView) -> String {
     }
 }
 
-
 fn renamed_from(status: &Status) -> Option<&str> {
     match status {
         Status::Renamed { from } => Some(from),
         _ => None,
     }
 }
-
 
 /// Five blocks shared between added and removed lines, as a glance at the size of a change.
 fn stats_bar(added: u32, removed: u32, p: Palette) -> Div {
@@ -335,7 +333,6 @@ fn stats_bar(added: u32, removed: u32, p: Palette) -> Div {
         }))
 }
 
-
 /// The width of a line-number column wide enough for every line of `file`.
 fn number_width(file: &FileView) -> f32 {
     let lines = match &file.diff.content {
@@ -343,19 +340,6 @@ fn number_width(file: &FileView) -> f32 {
         _ => 0,
     };
     super::super::line::number_width(lines)
-}
-
-fn token_colour(token: Token, p: Palette) -> Hsla {
-    match token {
-        Token::Comment => p.code.comment,
-        Token::Keyword => p.code.keyword,
-        Token::String => p.code.string,
-        Token::Constant => p.code.number,
-        Token::Function => p.code.function,
-        Token::Type => p.code.kind,
-        Token::Tag => p.code.tag,
-        Token::Attribute => p.code.attribute,
-    }
 }
 
 /// How the diff's lines look in palette `p`, wrapped or not, with code `font_size` big.
@@ -393,7 +377,7 @@ fn half(
         (tokens.and_then(|tokens| tokens.get(line as usize))).map_or(&[][..], Vec::as_slice);
     let words = (tint.and(words).and_then(|words| words.get(&line))).map_or(&[][..], Vec::as_slice);
     let colour = |kind: Option<Token>| kind.map_or(p.text, |kind| token_colour(kind, p));
-    let marked = tint.unwrap_or(p.text).alpha(0.3);
+    let marked = tint.unwrap_or(p.text).alpha(WORDS_TINT);
     Half {
         numbers,
         number_width,
@@ -417,4 +401,3 @@ fn look(wrap: bool, p: Palette, font_size: Pixels) -> Look {
         wrap,
     }
 }
-

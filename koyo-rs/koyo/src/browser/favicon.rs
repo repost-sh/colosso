@@ -36,8 +36,8 @@ impl BrowserView {
 mod tests {
     use std::path::Path;
 
-    use koyo_browser_ipc::PageState;
     use gpui_kit::{AppContext as _, TestAppContext, px, size};
+    use koyo_browser_ipc::PageState;
 
     use super::*;
     use crate::test_support::in_window;

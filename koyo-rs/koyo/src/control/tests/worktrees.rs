@@ -4,8 +4,8 @@
 
 use std::process::Command as Process;
 
-use koyo_app_control::{ErrorCode, Scope};
 use gpui_kit::TestAppContext;
+use koyo_app_control::{ErrorCode, Scope};
 use serde_json::json;
 
 use super::{allow, call, controlled, external, op, path_of, read_shell, send, taken, terminal};

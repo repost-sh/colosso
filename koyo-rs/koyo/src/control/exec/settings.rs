@@ -4,12 +4,12 @@
 
 use std::path::PathBuf;
 
+use gpui_kit::App;
 use koyo_app_control::ControlError;
 use koyo_app_control::ops::settings::{
     Appearance, BranchPrefix, Devtools, DevtoolsDock, SaveScope, SettingsSetInput, SettingsValues,
 };
 use koyo_app_control::ops::shared::Layout;
-use gpui_kit::App;
 use serde_json::Value;
 
 use super::{info, output};

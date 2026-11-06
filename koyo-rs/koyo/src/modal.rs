@@ -11,8 +11,8 @@ use gpui_kit::component::Sizable as _;
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::{
     AnyElement, AnyView, AnyWindowHandle, App, AppContext as _, Context, Entity, FontWeight,
-    Global, InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString,
-    Styled, Subscription, TextStyle, Window, WindowBackgroundAppearance, WindowBounds, WindowKind,
+    Global, InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString, Styled,
+    Subscription, TextStyle, Window, WindowBackgroundAppearance, WindowBounds, WindowKind,
     WindowOptions, div, point, px, size,
 };
 
@@ -373,8 +373,13 @@ pub fn heading_height(text: &SharedString, width: f32, window: &Window) -> f32 {
         ..TextStyle::default()
     };
     let (run, wrap) = (style.to_run(text.len()), Some(px(width - 2. * PADDING)));
-    let shaped = (window.text_system()).shape_text(text.clone(), px(HEADING_SIZE), &[run], wrap, None);
-    let lines: usize = shaped.map_or(1, |lines| (lines.iter()).map(|line| 1 + line.wrap_boundaries().len()).sum());
+    let shaped =
+        (window.text_system()).shape_text(text.clone(), px(HEADING_SIZE), &[run], wrap, None);
+    let lines: usize = shaped.map_or(1, |lines| {
+        (lines.iter())
+            .map(|line| 1 + line.wrap_boundaries().len())
+            .sum()
+    });
     lines.min(MOST_HEADING_LINES) as f32 * HEADING_LINE
 }
 
@@ -388,14 +393,14 @@ pub fn footer(error: Option<SharedString>, p: Palette) -> gpui_kit::Div {
         .items_center()
         .gap_2()
         .child(
-        div()
-            .flex_1()
-            .min_w_0()
-            .text_xs()
-            .line_clamp(2)
-            .text_color(p.danger)
-            .children(error),
-    )
+            div()
+                .flex_1()
+                .min_w_0()
+                .text_xs()
+                .line_clamp(2)
+                .text_color(p.danger)
+                .children(error),
+        )
 }
 
 /// The button that closes a dialog without doing anything.

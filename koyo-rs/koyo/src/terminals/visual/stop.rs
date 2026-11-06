@@ -56,7 +56,9 @@ fn closed(drawn: &mut Drawn, first: &Handle, said: &mut Vec<String>) -> Result<(
         state.status == Status::Idle && state.reason == "prompt"
     })?;
     type_line(drawn, &format!("echo {MARK}"))?;
-    wait(drawn, "the shell's output", |text| text.lines().any(|line| line == MARK))?;
+    wait(drawn, "the shell's output", |text| {
+        text.lines().any(|line| line == MARK)
+    })?;
     control::holds(drawn, "the shell back at its prompt", |state| {
         state.status == Status::Idle && state.reason == "prompt"
     })?;
@@ -71,7 +73,9 @@ fn closed(drawn: &mut Drawn, first: &Handle, said: &mut Vec<String>) -> Result<(
 
     let shell = drawn.shell.clone();
     let tabs = |drawn: &mut Drawn| {
-        drawn.cx.read(|cx| shell.read(cx).workspace.terminal_tabs().count())
+        drawn
+            .cx
+            .read(|cx| shell.read(cx).workspace.terminal_tabs().count())
     };
     let before = tabs(drawn);
     (drawn.cx).update(|cx| shell.update(cx, Shell::restore_terminals_again));
@@ -103,7 +107,9 @@ fn closed(drawn: &mut Drawn, first: &Handle, said: &mut Vec<String>) -> Result<(
 /// nothing is kept to run again at the next launch, and the daemon stopped.
 pub(super) fn end_everything(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     type_line(drawn, "trap '' HUP; while :; do sleep 1; done")?;
-    control::holds(drawn, "the slow shell's loop", |state| state.status == Status::Running)?;
+    control::holds(drawn, "the slow shell's loop", |state| {
+        state.status == Status::Running
+    })?;
     asked_on_quitting(drawn, said)?;
     let shell = drawn.shell.clone();
     let client = (drawn.cx)
@@ -113,18 +119,26 @@ pub(super) fn end_everything(drawn: &mut Drawn, said: &mut Vec<String>) -> Resul
         worktree: None,
         status: None,
     };
-    let listed = client.request(list).map_err(|error| format!("listing: {error}"))?;
+    let listed = client
+        .request(list)
+        .map_err(|error| format!("listing: {error}"))?;
     let ResponseBody::Terminals { terminals } = listed else {
         return Err("the daemon answered the list with something else".into());
     };
-    let handles = terminals.into_iter().map(|summary| summary.record.handle).collect();
+    let handles = terminals
+        .into_iter()
+        .map(|summary| summary.record.handle)
+        .collect();
     let dir = client.dir().clone();
     (drawn.cx).update(|cx| crate::quitting::end_then_quit(client, handles, cx));
     let socket = dir.socket();
     drawn.until(Duration::from_secs(15), |_| Ok(!socket.exists()))?;
     let kept = dir.remembered();
     if !kept.is_empty() {
-        return Err(format!("the daemon kept {} terminals to run again", kept.len()));
+        return Err(format!(
+            "the daemon kept {} terminals to run again",
+            kept.len()
+        ));
     }
     said.push("End Everything ended a shell ignoring the hangup, kept nothing, stopped".into());
     Ok(())

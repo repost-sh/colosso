@@ -6,9 +6,9 @@
 mod diagram;
 mod mermaid;
 mod preview;
-mod toggle;
 #[cfg(test)]
 mod tests;
+mod toggle;
 
 use std::path::Path;
 
@@ -48,7 +48,9 @@ impl Mode {
 
     /// A menu of how a markdown file can open, with `self` checked.
     pub fn menu(self) -> NativeMenu {
-        checked_menu(Mode::ALL, self, Mode::label, |mode| Box::new(SetMarkdownOpensAs(mode)))
+        checked_menu(Mode::ALL, self, Mode::label, |mode| {
+            Box::new(SetMarkdownOpensAs(mode))
+        })
     }
 
     /// The other one.

@@ -90,7 +90,10 @@ impl ServerSpec {
 
 /// The first `name` in `folders` that answers `--version`: a rustup proxy for a component
 /// that isn't installed is on PATH, and doesn't.
-pub(crate) fn first_that_runs(folders: impl IntoIterator<Item = PathBuf>, name: &str) -> Option<PathBuf> {
+pub(crate) fn first_that_runs(
+    folders: impl IntoIterator<Item = PathBuf>,
+    name: &str,
+) -> Option<PathBuf> {
     (folders.into_iter().map(|folder| folder.join(name)))
         .filter(|candidate| candidate.is_file())
         .find(|candidate| runs(candidate))

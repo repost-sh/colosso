@@ -47,7 +47,9 @@ impl Checkout {
             return Err(GitError::refused("A commit needs a message."));
         }
         Git::new(self.root()).args(["add", "--all"]).run()?;
-        Git::new(self.root()).args(["commit", "--message", message]).run()
+        Git::new(self.root())
+            .args(["commit", "--message", message])
+            .run()
     }
 
     /// How its branch stands, as far as git knows without asking the remote.
@@ -70,7 +72,10 @@ impl Checkout {
 
     /// The remote it goes to: `origin`, or the first there is.
     fn remote(&self) -> Option<String> {
-        let remotes = Git::new(self.root()).arg("remote").read_optional().unwrap_or_default();
+        let remotes = Git::new(self.root())
+            .arg("remote")
+            .read_optional()
+            .unwrap_or_default();
         let origin = remotes.lines().find(|remote| *remote == "origin");
         origin.or_else(|| remotes.lines().next()).map(str::to_owned)
     }
@@ -86,14 +91,22 @@ impl Checkout {
     /// Whether it's on the branch new worktrees start from, as pull requests go into that.
     fn on_default(&self) -> bool {
         let dir = self.root();
-        let Some(branch) = Git::new(dir).args(["branch", "--show-current"]).read_optional() else {
+        let Some(branch) = Git::new(dir)
+            .args(["branch", "--show-current"])
+            .read_optional()
+        else {
             return false;
         };
         let origin_head = Git::new(dir)
             .args(["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"])
             .read_optional();
         let listed = Git::new(dir)
-            .args(["for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes"])
+            .args([
+                "for-each-ref",
+                "--format=%(refname)",
+                "refs/heads",
+                "refs/remotes",
+            ])
             .read_optional()
             .unwrap_or_default();
         refs::default_base(origin_head.as_deref(), &refs::parse_refs(&listed))
@@ -103,7 +116,9 @@ impl Checkout {
     /// Asks the remote its branch tracks what's new there, for `published` to know of.
     pub fn fetch(&self) -> Result<()> {
         match self.upstream() {
-            Some(Ref::Remote { remote, branch }) => fetch_remote_branch(self.root(), &remote, &branch),
+            Some(Ref::Remote { remote, branch }) => {
+                fetch_remote_branch(self.root(), &remote, &branch)
+            }
             _ => Ok(()),
         }
     }
@@ -111,7 +126,9 @@ impl Checkout {
     /// Pushes its branch, publishing it if it never was.
     pub fn push(&self) -> Result<()> {
         let Some(remote) = self.remote() else {
-            return Err(GitError::refused("This repository has no remote to push to."));
+            return Err(GitError::refused(
+                "This repository has no remote to push to.",
+            ));
         };
         let push = Git::new(self.root()).arg("push");
         if self.upstream().is_some() {
@@ -139,14 +156,19 @@ impl Checkout {
 
     /// Opens a pull request of its branch, in the words of its commits.
     pub fn create_pull_request(&self) -> Result<()> {
-        Git::github_cli(self.root())?.args(["pr", "create", "--fill"]).run()
+        Git::github_cli(self.root())?
+            .args(["pr", "create", "--fill"])
+            .run()
     }
 }
 
 /// `rev-list --left-right --count`'s "behind\tahead".
 fn parse_counts(counts: &str) -> (u32, u32) {
     let (behind, ahead) = counts.split_once('\t').unwrap_or(("0", "0"));
-    (behind.trim().parse().unwrap_or(0), ahead.trim().parse().unwrap_or(0))
+    (
+        behind.trim().parse().unwrap_or(0),
+        ahead.trim().parse().unwrap_or(0),
+    )
 }
 
 /// A pull request as `TEMPLATE` prints it.
@@ -163,7 +185,12 @@ fn parse_pull_request(said: &str) -> Option<PullRequest> {
         _ if draft => PullRequestState::Draft,
         _ => PullRequestState::Open,
     };
-    Some(PullRequest { number, title, state, url })
+    Some(PullRequest {
+        number,
+        title,
+        state,
+        url,
+    })
 }
 
 #[cfg(test)]

@@ -170,14 +170,17 @@ pub(crate) fn base_key(branch: &str) -> String {
 /// The user the GitHub CLI is signed in as, from its own config: no network involved.
 fn github_cli_user(dir: &Path) -> Option<String> {
     let user = Git::github_cli(dir).ok()?;
-    user.args(["config", "get", "-h", "github.com", "user"]).read_optional()
+    user.args(["config", "get", "-h", "github.com", "user"])
+        .read_optional()
 }
 
 /// Brings the copy here of `remote`'s `branch` up to date.
 pub(crate) fn fetch_remote_branch(dir: &Path, remote: &str, branch: &str) -> Result<()> {
     Git::new(dir)
         .args(["fetch", "--quiet", "--no-tags", "--no-auto-gc", remote])
-        .arg(format!("+refs/heads/{branch}:refs/remotes/{remote}/{branch}"))
+        .arg(format!(
+            "+refs/heads/{branch}:refs/remotes/{remote}/{branch}"
+        ))
         .run()
 }
 

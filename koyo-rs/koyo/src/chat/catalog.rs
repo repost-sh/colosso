@@ -23,7 +23,11 @@ impl Chats {
             self.catalogs.insert(cwd.to_owned(), held.downgrade());
             held
         });
-        if let Some(client) = self.client.as_ref().filter(|_| self.connection == Connection::Connected) {
+        if let Some(client) = self
+            .client
+            .as_ref()
+            .filter(|_| self.connection == Connection::Connected)
+        {
             ask_for_catalog(client, cwd, held.clone(), cx);
         }
         held
@@ -58,7 +62,9 @@ impl Chats {
         let asked = cx.background_spawn(async move { client.request::<ProvidersStatus>(&params) });
         cx.spawn(async move |chats, cx| match asked.await {
             Ok(statuses) => {
-                let missing = statuses.iter().any(|status| status.state == ProviderState::Missing);
+                let missing = statuses
+                    .iter()
+                    .any(|status| status.state == ProviderState::Missing);
                 let turned_up = held.update(cx, |held, cx| {
                     let was = std::mem::replace(held, missing);
                     if was != missing {

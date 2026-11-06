@@ -928,7 +928,7 @@ Layout, top to bottom inside the pane's card:
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                timeline (gpui list, centred column ≤ 760 px)  │
+│        timeline (gpui list, centred column ≤ 760 / 1080 px)   │
 │                               ┌──────────────────────────┐   │
 │                               │ user bubble              │   │
 │                               └──────────────────────────┘   │
@@ -969,6 +969,19 @@ Layout, top to bottom inside the pane's card:
   row clears the glass.
 - **Empty chat.** The composer sits centred with the worktree's name above it ("Chat in
   koyo / claude-chat-agent-sdk") and moves to the bottom on the first send.
+- **Width and text size.** The timeline, the composer and a subagent's bar share one column, as
+  wide as Settings › Chat › Width says: Narrow (760 px, the default), Wide (1080 px) or Full
+  width, the pane's. The details card is beside a column only where the pane has room for both,
+  never beside a full-width one, over which it comes up when asked for. A chat's text is 11 to
+  18 pt, 14 by default (Settings › Appearance); a size saved before the sizes came down a notch,
+  under `chat_size`, is read as the one at the same place on the slider.
+- **Right-click menu.** A right-click on the chat, where what's under the pointer has no menu of
+  its own, offers Copy when text is selected, then Width, Text Size and Verbosity, each the
+  setting of the same name.
+- **Selecting text.** What a chat shows can be dragged over and copied, as in a terminal: the
+  person's messages, Claude's answers, a step's line, what a tool printed or was given, the code
+  of a diff (not its line numbers), thoughts and to-dos. A drag across rows copies them in the
+  order they read, a line each; a click that ends a drag opens nothing.
 - **Timeline rows** (from T3 UI 2.1), derived by a pure `rows(thread, view) -> Vec<Row>`
   with stable row ids; what a person opened and each text's markdown view are kept by id
   across derivations:
@@ -977,25 +990,39 @@ Layout, top to bottom inside the pane's card:
     images above the text; long messages collapse past 8 lines with "Show more";
     hover: copy, time; a steer marked "↷ Steered".
   - assistant text: full-width markdown (`TextView`, streaming), no bubble; on hover a copy button
-    under each, and under the final answer model · effort, time.
-  - reasoning: one muted line with the latest thought ("Thinking…" shimmering while live),
-    expandable to the trace.
+    under each, and under the final answer model · effort, time, the model being the provider's
+    default, as the footer names it, for a run that chose none. A link to a file that's there
+    reads as the file tree names it, its icon and name (`files::file_label`), and opens it on a
+    click as any link to a file does; a link to a page stays a link.
+  - reasoning: one muted line in italics with the latest thought ("Thinking…" shimmering while
+    live), expandable to the trace, in italics too.
   - work: one row per tool with icon, label and status ("Ran cargo test", "Read
-    src/main.rs", "Changed 3 files", "Searched the web"); consecutive tools form a group
-    whose header is a summary sentence ("Read 3 files and ran 2 commands"); the live row is
-    one row whose id never changes while the turn works, showing the running tool and its
+    src/main.rs", "Changed 3 files", "Searched the web"), an edit's with the lines it added and
+    removed ("+3 −5"); consecutive tools form a group whose header is a summary sentence ("Read
+    3 files and ran 2 commands"), except a step of a kind that shows more than its line, which
+    has a row of its own so the work reads in the order it came, as Claude Code's does; the live
+    row is one row whose id never changes while the turn works, showing the running tool and its
     elapsed time ("Running cargo test · 41s"), and gone while the answer writes or a request
-    asks, which show for themselves; expanding a command shows its output (mono, ANSI-coloured,
-    capped height), an edit its diff in the changes tab's lines, a search its results, a todo
+    asks, which show for themselves; opened, a command shows its output (mono, ANSI-coloured,
+    capped height), an edit its diff in the changes tab's lines and colours (the file's syntax,
+    the words a replaced line changed, "⋯" between hunks; plain until the colours are worked out
+    off the main thread), a file it created all its lines as added, a search its results, a todo
     its steps, an MCP call its arguments and result.
-  - how much of the work shows is a person's choice (Settings › Chat, "Work to show"), and what
-    was said shows whichever it is, as an essay followed by a line is still what was asked for:
-    - "One line per step", the default: nothing folds, and each line above opens by a click.
-    - "All output and thinking": every line is open, with all it gave back and every thought; a
-      click closes one.
-    - "One line per turn": once a run settles, its work folds into "Worked for 1m 3s ›", where it
-      started. Not folded: the live run, failed and interrupted runs, requests, compactions. A run
-      with no work has no fold.
+  - how much of the work shows is a person's choice, its verbosity (Settings › Chat ›
+    Verbosity), and what was said shows whichever it is, as an essay followed by a line is still
+    what was asked for. Each kind of step shows its line, a few lines of what it gave back ("…
+    +12 lines" opens the rest; a command's last lines, as they say how it went, any other's
+    first), or all of it: code changes (one line or the diff), command output (one line, the
+    last lines, all of it), other tools (one line, the first lines, all of it), thinking and
+    to-dos (one line or all of it). A click takes a step from what's chosen to all of it, or
+    from all of it to its line. Three presets, and Custom once a kind is set by hand:
+    - "Normal", the default, as Claude Code shows it: every change's diff, the last lines of
+      every command, the to-dos; reads, searches and thinking a line each, together.
+    - "Verbose": every step open, with all it gave back and every thought.
+    - "Quiet": each step a line, and once a run settles, its work folds into "Worked for 1m 3s
+      ›", where it started (Finished turns: One line). Not folded: the live run, failed and
+      interrupted runs, requests, compactions. A run with no work has no fold.
+    A settings file from before, with "Work to show", reads as the preset that shows as much.
   - approval: inline where it was asked, never folded: what is asked (the command in mono;
     for an edit, its file and diff; for a write, the file and its head as added lines), why,
     if the CLI said, then Deny · Allow and a menu: what the host says "Allow for this chat"

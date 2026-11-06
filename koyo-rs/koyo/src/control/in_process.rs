@@ -6,13 +6,13 @@
 use std::sync::Mutex;
 use std::sync::mpsc;
 
+use futures::channel::mpsc::UnboundedSender;
+#[cfg(test)]
+use gpui_kit::App;
 use koyo_app_control::{
     CALL_TIMEOUT, CONFIRM_TIMEOUT, ClientInfo, Command, ControlError, HELLO_TIMEOUT, Hello, Scope,
     Topic, check_request_id,
 };
-use futures::channel::mpsc::UnboundedSender;
-#[cfg(test)]
-use gpui_kit::App;
 use serde_json::Value;
 
 #[cfg(test)]

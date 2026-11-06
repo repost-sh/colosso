@@ -1,8 +1,8 @@
 //! The gate every call passes first: what the caller is granted now, and whether that
 //! covers every scope the call needs.
 
-use koyo_app_control::{Command, ControlError, Scope};
 use gpui_kit::App;
+use koyo_app_control::{Command, ControlError, Scope};
 
 use super::Caller;
 use crate::settings;

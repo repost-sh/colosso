@@ -2,9 +2,9 @@
 //! app's own rows for links, images and selected text. Picks come back as actions on the
 //! window, which the shell routes to the page.
 
-use koyo_browser_ipc::{self as ipc, AppRequest, MenuEntry, MenuTarget, PaneId};
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::{Action, App, ClipboardItem, Context, Div, InteractiveElement as _, Window};
+use koyo_browser_ipc::{self as ipc, AppRequest, MenuEntry, MenuTarget, PaneId};
 
 use super::control::Mode;
 use super::host::Browsers;

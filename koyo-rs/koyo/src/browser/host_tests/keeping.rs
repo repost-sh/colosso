@@ -2,11 +2,11 @@
 
 use std::path::Path;
 
-use koyo_browser_ipc::Go;
 use gpui_kit::{
     AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _,
     TestAppContext, Window, div,
 };
+use koyo_browser_ipc::Go;
 
 use super::super::host::HostStatus;
 use super::super::view::BrowserView;

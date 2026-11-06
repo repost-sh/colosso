@@ -3,11 +3,11 @@
 
 use std::time::Duration;
 
-use koyo_term::TerminalView;
 use gpui_kit::{
     Action, Entity, Focusable as _, Keystroke, Modifiers, MouseButton, MouseDownEvent,
     MouseMoveEvent, MouseUpEvent, Pixels, PlatformInput, Point, ScrollDelta, ScrollEvent, point,
 };
+use koyo_term::TerminalView;
 
 use crate::visual::{Drawn, Result};
 
@@ -17,7 +17,8 @@ pub const PATIENCE: Duration = Duration::from_secs(20);
 /// The terminal tab shown.
 pub fn terminal(drawn: &mut Drawn) -> Result<Entity<TerminalView>> {
     let shell = drawn.shell.clone();
-    (drawn.cx.read(|cx| shell.read(cx).shown_terminal())).ok_or_else(|| "no terminal is shown".into())
+    (drawn.cx.read(|cx| shell.read(cx).shown_terminal()))
+        .ok_or_else(|| "no terminal is shown".into())
 }
 
 /// The text of the terminal tab shown, a line per row from the top.
@@ -89,7 +90,9 @@ pub fn type_keys(drawn: &mut Drawn, line: &str) -> Result<()> {
             key_char: Some(c.to_string()),
         };
         (drawn.cx)
-            .update_window(window, |_, window, cx| window.dispatch_keystroke(keystroke, cx))
+            .update_window(window, |_, window, cx| {
+                window.dispatch_keystroke(keystroke, cx)
+            })
             .map_err(|error| error.to_string())?;
     }
     Ok(())
@@ -100,7 +103,9 @@ pub fn press(drawn: &mut Drawn, key: &'static str) -> Result<()> {
     let keystroke = Keystroke::parse(key).map_err(|error| error.to_string())?;
     let window = drawn.window;
     (drawn.cx)
-        .update_window(window, |_, window, cx| window.dispatch_keystroke(keystroke, cx))
+        .update_window(window, |_, window, cx| {
+            window.dispatch_keystroke(keystroke, cx)
+        })
         .map_err(|error| error.to_string())?;
     drawn.draw()
 }
@@ -133,12 +138,14 @@ pub fn click(drawn: &mut Drawn, at: Point<Pixels>, count: usize) -> Result<()> {
 /// Clicks the left button once at `at` with ⌘ held, as a link is opened, and draws.
 pub fn command_click(drawn: &mut Drawn, at: Point<Pixels>) -> Result<()> {
     let held = |input| match input {
-        PlatformInput::MouseDown(down) => {
-            PlatformInput::MouseDown(MouseDownEvent { modifiers: Modifiers::command(), ..down })
-        }
-        PlatformInput::MouseUp(up) => {
-            PlatformInput::MouseUp(MouseUpEvent { modifiers: Modifiers::command(), ..up })
-        }
+        PlatformInput::MouseDown(down) => PlatformInput::MouseDown(MouseDownEvent {
+            modifiers: Modifiers::command(),
+            ..down
+        }),
+        PlatformInput::MouseUp(up) => PlatformInput::MouseUp(MouseUpEvent {
+            modifiers: Modifiers::command(),
+            ..up
+        }),
         other => other,
     };
     send(drawn, held(mouse_down(at, 1)))?;

@@ -36,7 +36,8 @@ impl Shell {
             self.workspace.select_tab(project, branch, at);
         } else {
             let changes = cx.new(|cx| ChangesTab::new(panel.clone(), cx));
-            self.workspace.open_beside_shown(Tab::Single(Pane::changes(changes)));
+            self.workspace
+                .open_beside_shown(Tab::Single(Pane::changes(changes)));
         }
         // The diffs are something to look at, so leave settings for them.
         self.navigate(Route::Workspace, cx);
@@ -63,7 +64,11 @@ impl Shell {
         let Some(tab) = self.workspace.tab_mut(at) else {
             return;
         };
-        for pane in tab.panes_mut().into_iter().filter(|pane| ids.contains(&pane.id)) {
+        for pane in tab
+            .panes_mut()
+            .into_iter()
+            .filter(|pane| ids.contains(&pane.id))
+        {
             pane.changes = Some(cx.new(|cx| ChangesTab::new(panel.clone(), cx)));
         }
     }

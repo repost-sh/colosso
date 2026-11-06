@@ -5,12 +5,12 @@
 
 use std::path::PathBuf;
 
-use koyo_git::{NewWorktree, Ref};
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::{
     AnyWindowHandle, App, AppContext as _, Context, Entity, Focusable as _, ScrollHandle,
     SharedString, Subscription, WeakEntity, Window,
 };
+use koyo_git::{NewWorktree, Ref};
 
 use crate::modal;
 use crate::settings;

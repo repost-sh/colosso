@@ -8,9 +8,9 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
-    App, ClickEvent, Context, Div, InteractiveElement as _, KeyBinding,
-    ModifiersChangedEvent, ParentElement as _, Stateful, StatefulInteractiveElement as _,
-    Styled as _, Window, actions, div, px,
+    App, ClickEvent, Context, Div, InteractiveElement as _, KeyBinding, ModifiersChangedEvent,
+    ParentElement as _, Stateful, StatefulInteractiveElement as _, Styled as _, Window, actions,
+    div, px,
 };
 use koyo_agent::client::ClientError;
 use koyo_agent::protocol::ids::{RunId, ThreadId};
@@ -117,7 +117,8 @@ impl ChatComposer {
         M::Result: Send + 'static,
     {
         #[cfg(test)]
-        self.asked_host.push((M::NAME, serde_json::to_value(&params).unwrap()));
+        self.asked_host
+            .push((M::NAME, serde_json::to_value(&params).unwrap()));
         self.chats.read(cx).ordered::<M>(params)
     }
 
@@ -159,11 +160,15 @@ impl ChatComposer {
 
     /// What was said last comes back to be said again, or changed first.
     fn recall(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let replica = self.thread.as_ref().and_then(|thread| thread.read(cx).replica());
+        let replica = self
+            .thread
+            .as_ref()
+            .and_then(|thread| thread.read(cx).replica());
         let Some(said) = replica.and_then(Replica::last_said).map(str::to_owned) else {
             return;
         };
-        self.text.update(cx, |text, cx| text.insert(said, window, cx));
+        self.text
+            .update(cx, |text, cx| text.insert(said, window, cx));
     }
 
     /// What names `run` of the chat, if there's a thread for it to be of.
@@ -208,7 +213,10 @@ impl ChatComposer {
         let asked = self.asking::<QueueEdit>(params, cx);
         cx.spawn_in(window, async move |this, cx| {
             if asked.await.is_err() {
-                this.update_in(cx, |this, window, cx| this.give_back_edit(&text, window, cx)).ok();
+                this.update_in(cx, |this, window, cx| {
+                    this.give_back_edit(&text, window, cx);
+                })
+                .ok();
             }
         })
         .detach();
@@ -231,9 +239,13 @@ impl ChatComposer {
 
     /// Takes everything off the queue.
     pub(in crate::chat) fn clear_queue(&mut self, cx: &mut Context<Self>) {
-        let replica = self.thread.as_ref().and_then(|thread| thread.read(cx).replica());
-        let runs: Vec<RunId> =
-            replica.map_or_else(Vec::new, |held| held.queued().map(|run| run.id.clone()).collect());
+        let replica = self
+            .thread
+            .as_ref()
+            .and_then(|thread| thread.read(cx).replica());
+        let runs: Vec<RunId> = replica.map_or_else(Vec::new, |held| {
+            held.queued().map(|run| run.id.clone()).collect()
+        });
         for run in &runs {
             self.remove_queued(run, cx);
         }
@@ -271,7 +283,12 @@ impl ChatComposer {
 
     /// The button at the end of the footer: it sends what there is to send, and with nothing to
     /// send, stops the turn if there's one on.
-    pub(super) fn send_or_stop(&self, typed: &str, p: Palette, cx: &Context<Self>) -> Stateful<Div> {
+    pub(super) fn send_or_stop(
+        &self,
+        typed: &str,
+        p: Palette,
+        cx: &Context<Self>,
+    ) -> Stateful<Div> {
         let button = div()
             .id("chat-send")
             .relative()
@@ -284,7 +301,11 @@ impl ChatComposer {
         let off = p.text.opacity(0.08);
         if self.can_send(typed) {
             let queues = self.turn.is_on() && self.secondary_held;
-            let mark = if queues { IconName::ListEnd } else { IconName::ArrowUp };
+            let mark = if queues {
+                IconName::ListEnd
+            } else {
+                IconName::ArrowUp
+            };
             return button
                 .bg(p.text)
                 .text_color(p.on_text)
@@ -299,7 +320,10 @@ impl ChatComposer {
                 }));
         }
         if !self.turn.is_on() {
-            return button.bg(off).text_color(p.muted).child(icon(IconName::ArrowUp, 15.));
+            return button
+                .bg(off)
+                .text_color(p.muted)
+                .child(icon(IconName::ArrowUp, 15.));
         }
         if self.waits_to_stop() {
             return button.bg(off).child(modal::spinner(p.muted));
@@ -311,7 +335,9 @@ impl ChatComposer {
             .hover(move |button| button.bg(p.text.opacity(0.16)))
             .child(div().size(px(10.)).rounded(px(2.)).bg(p.text))
             .tooltip(move |window, cx| {
-                Tooltip::new(says).action(&StopTurn, Some(COMPOSER)).build(window, cx)
+                Tooltip::new(says)
+                    .action(&StopTurn, Some(COMPOSER))
+                    .build(window, cx)
             })
             .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.stop(cx)))
     }
@@ -327,12 +353,17 @@ impl ChatComposer {
         } else {
             format!("{count} queued messages are waiting")
         };
-        let clear = glass("chat-queue-clear", p.text, cx).small().label("Clear").on_click(
-            cx.listener(|this, _: &ClickEvent, _, cx| this.clear_queue(cx)),
-        );
-        let send = solid("chat-queue-send", true, cx).small().label("Send").on_click(
-            cx.listener(|this, _: &ClickEvent, _, cx| this.send_held_queue(cx)),
-        );
-        Some(attached_above(drawer_line(IconName::ListEnd, says, clear, send), p))
+        let clear = glass("chat-queue-clear", p.text, cx)
+            .small()
+            .label("Clear")
+            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.clear_queue(cx)));
+        let send = solid("chat-queue-send", true, cx)
+            .small()
+            .label("Send")
+            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.send_held_queue(cx)));
+        Some(attached_above(
+            drawer_line(IconName::ListEnd, says, clear, send),
+            p,
+        ))
     }
 }

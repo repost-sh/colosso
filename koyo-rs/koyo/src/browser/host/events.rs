@@ -1,9 +1,9 @@
 //! What the host says, routed to the pane views: page state, cursors, questions, menus,
 //! and frames, whose rings arrive on a channel of their own.
 
+use gpui_kit::Context;
 use koyo_browser_ipc::client::Incoming;
 use koyo_browser_ipc::{self as ipc, AppRequest, HostEvent, PaneId, PixelSize};
-use gpui_kit::Context;
 
 use super::Browsers;
 use crate::browser::frames::{self, Frame};

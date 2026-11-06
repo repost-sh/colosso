@@ -72,7 +72,9 @@ impl LineIndex {
             + match encoding {
                 Encoding::Utf8 => line.floor_char_boundary(character),
                 Encoding::Utf16 | Encoding::Utf32 if line.is_ascii() => character.min(line.len()),
-                Encoding::Utf32 => (line.char_indices().nth(character)).map_or(line.len(), |(at, _)| at),
+                Encoding::Utf32 => {
+                    (line.char_indices().nth(character)).map_or(line.len(), |(at, _)| at)
+                }
                 Encoding::Utf16 => {
                     let mut units = 0;
                     line.char_indices()
@@ -224,7 +226,10 @@ mod tests {
             Position::new(1, 2)
         );
         assert_eq!(index.offset(text, Position::new(1, 2), Encoding::Utf32), b);
-        assert_eq!(index.offset(text, Position::new(1, 9), Encoding::Utf32), text.len());
+        assert_eq!(
+            index.offset(text, Position::new(1, 9), Encoding::Utf32),
+            text.len()
+        );
     }
 
     #[test]
@@ -263,9 +268,15 @@ mod tests {
         assert_eq!(index.offsets(text, range, Encoding::Utf16), emoji);
         // Backwards, it's empty where it starts; past the line's end, before its `\r\n`.
         let backwards = lsp_types::Range::new(Position::new(1, 3), Position::new(0, 0));
-        assert_eq!(index.offsets(text, backwards, Encoding::Utf16), emoji.end..emoji.end);
+        assert_eq!(
+            index.offsets(text, backwards, Encoding::Utf16),
+            emoji.end..emoji.end
+        );
         let past = lsp_types::Range::new(Position::new(1, 0), Position::new(1, 99));
-        assert_eq!(index.offsets(text, past, Encoding::Utf8), 2.."x\na😀b".len());
+        assert_eq!(
+            index.offsets(text, past, Encoding::Utf8),
+            2.."x\na😀b".len()
+        );
     }
 
     #[test]

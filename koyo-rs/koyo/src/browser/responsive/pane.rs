@@ -3,8 +3,8 @@
 //! the person drags or types, as the pane is next drawn, its emulation sent to the page's
 //! session, and the one mapping between the window and the page shown scaled in it.
 
-use koyo_browser_ipc::{self as ipc, Viewport};
 use gpui_kit::{Bounds, Context, Pixels, Point, Size, Window, point, px, size};
+use koyo_browser_ipc::{self as ipc, Viewport};
 
 use super::bar::HEIGHT as BAR;
 use super::devices::{self, Device};
@@ -215,8 +215,8 @@ impl BrowserView {
         let mode = kept.as_ref().unwrap_or(mode);
         // A grip in hand keeps the scale it was taken at, a pixel's size then, so the edge
         // follows the pointer.
-        let fit = (self.responsive.drag.as_ref())
-            .map_or_else(|| mode.fit(area.size), |drag| drag.unit.0);
+        let fit =
+            (self.responsive.drag.as_ref()).map_or_else(|| mode.fit(area.size), |drag| drag.unit.0);
         let shown = place(area, mode.width, mode.height, fit);
         (mode.viewport(window), shown, fit)
     }
