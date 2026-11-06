@@ -34,6 +34,7 @@ mod menu;
 mod page;
 mod pointer;
 mod responsive;
+mod tabs;
 mod toolbar;
 mod trackpad;
 mod view;
@@ -43,6 +44,7 @@ pub mod visual;
 pub use dock::DOCK_MIN;
 pub use dock::{DevtoolsPlace, Dock, SetDevtoolsDock};
 pub use menu::handle_actions;
+pub use tabs::KeptTabs;
 pub use view::{BrowserEvent, BrowserView, Visit};
 
 /// Starts the engine, so the first page opens as quickly as the next.

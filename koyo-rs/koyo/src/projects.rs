@@ -224,6 +224,7 @@ impl Shell {
                 crate::history::know_checkouts(checkouts, cx);
                 self.restore_terminals(cx);
                 self.follow_chats(cx);
+                self.restore_browser_tabs(cx);
             }
             Err(error) => self.workspace.set_error(project, error.message),
         }

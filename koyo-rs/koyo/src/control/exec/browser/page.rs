@@ -36,8 +36,40 @@ struct LastPages(HashMap<String, u64>);
 
 impl Global for LastPages {}
 
+/// A browser pane brought back at launch whose tab wasn't shown yet: listed with the address
+/// and title it kept, with no page to act on until it's shown (`docs/browser.md` 6).
+struct Unshown {
+    pane: u64,
+    url: String,
+    title: String,
+    worktree: PathBuf,
+}
+
+/// A browser pane as the tools list it.
+enum Listed {
+    Page(Page),
+    Unshown(Unshown),
+}
+
+impl Listed {
+    fn pane(&self) -> u64 {
+        match self {
+            Listed::Page(page) => page.pane,
+            Listed::Unshown(unshown) => unshown.pane,
+        }
+    }
+
+    /// Its page, to act on; an unshown one has none yet.
+    fn page(&self) -> Result<Page, ControlError> {
+        match self {
+            Listed::Page(page) => Ok(page.clone()),
+            Listed::Unshown(_) => Err(not_open()),
+        }
+    }
+}
+
 /// Every browser pane in the window, `DevTools` left out, and which is in the tab shown.
-fn pages(cx: &App) -> Result<(Vec<Page>, Option<u64>), ControlError> {
+fn pages(cx: &App) -> Result<(Vec<Listed>, Option<u64>), ControlError> {
     let (_, shell) = main_shell(cx).ok_or_else(window_closed)?;
     let workspace = &shell.read(cx).workspace;
     let mut pages = Vec::new();
@@ -45,14 +77,22 @@ fn pages(cx: &App) -> Result<(Vec<Page>, Option<u64>), ControlError> {
         for unit in &project.branches {
             for tab in &unit.tabs {
                 for pane in tab.panes() {
+                    let worktree = unit.worktree.path.clone();
                     if let Some(view) = &pane.browser
                         && !view.read(cx).is_inspector()
                     {
-                        pages.push(Page {
+                        pages.push(Listed::Page(Page {
                             pane: pane.id,
                             view: view.clone(),
-                            worktree: unit.worktree.path.clone(),
-                        });
+                            worktree,
+                        }));
+                    } else if let (None, Some(unloaded)) = (&pane.browser, &pane.unloaded) {
+                        pages.push(Listed::Unshown(Unshown {
+                            pane: pane.id,
+                            url: unloaded.address.clone(),
+                            title: pane.title.to_string(),
+                            worktree,
+                        }));
                     }
                 }
             }
@@ -62,7 +102,7 @@ fn pages(cx: &App) -> Result<(Vec<Page>, Option<u64>), ControlError> {
         .and_then(|at| workspace.tab(at))
         .and_then(|tab| {
             (tab.panes().into_iter())
-                .find(|pane| pane.browser.is_some())
+                .find(|pane| pane.browser.is_some() || pane.unloaded.is_some())
                 .map(|pane| pane.id)
         });
     Ok((pages, shown))
@@ -75,30 +115,31 @@ pub(super) fn resolve(
     cx: &mut App,
 ) -> Result<Page, ControlError> {
     let (pages, shown) = pages(cx)?;
-    let find = |id: u64| pages.iter().find(|page| page.pane == id).cloned();
+    let find = |id: u64| pages.iter().find(|page| page.pane() == id);
     if let Some(id) = pane {
-        return find(id).ok_or_else(|| {
+        let found = find(id).ok_or_else(|| {
             ControlError::not_found(format!(
                 "Pane {id} isn't a browser page; browser_list lists them."
             ))
         });
+        return found.and_then(Listed::page);
     }
     let last = (cx.try_global::<LastPages>())
         .and_then(|last| last.0.get(&caller.key()).copied())
         .and_then(find);
     if let Some(page) = last.or_else(|| shown.and_then(find)) {
-        return Ok(page);
+        return page.page();
     }
     match pages.as_slice() {
         [] => Err(ControlError::not_found(
             "There's no browser page; tab_open with kind browser opens one.",
         )),
-        [only] => Ok(only.clone()),
+        [only] => only.page(),
         many => Err(ControlError::ambiguous(
             "Several browser pages are open; name one with `pane`.",
             &many
                 .iter()
-                .map(|page| page.pane.to_string())
+                .map(|page| page.pane().to_string())
                 .collect::<Vec<_>>(),
         )),
     }
@@ -138,11 +179,16 @@ pub(super) fn refused(refused: Refused) -> ControlError {
 fn failed(error: AgentError) -> ControlError {
     match error {
         AgentError::Refused(why) => refused(why),
-        AgentError::NotOpen => ControlError::browser_unavailable(
-            "The page isn't open in the browser engine yet; show its tab once (tab_select or \
-             pane_focus) and try again.",
-        ),
+        AgentError::NotOpen => not_open(),
     }
+}
+
+/// The page has no browser yet: its tab wasn't shown.
+fn not_open() -> ControlError {
+    ControlError::browser_unavailable(
+        "The page isn't open in the browser engine yet; show its tab once (tab_select or \
+         pane_focus) and try again.",
+    )
 }
 
 /// Runs `method` on `page`, under its lease for `caller` when `acts`: its result.
@@ -177,17 +223,28 @@ pub(super) fn now(page: &Page, cx: &App) -> PageOutput {
 pub(crate) fn list(cx: &mut App) -> Result<Value, ControlError> {
     let (pages, _) = pages(cx)?;
     let pages = (pages.iter())
-        .map(|page| {
-            let facts = page.view.read(cx).facts(cx);
-            PageInfo {
-                pane: page.pane,
-                url: facts.url,
-                title: facts.title,
-                loading: facts.loading,
-                worktree: page.worktree.display().to_string(),
-                controller: facts.controller,
-                viewport: facts.viewport,
+        .map(|listed| match listed {
+            Listed::Page(page) => {
+                let facts = page.view.read(cx).facts(cx);
+                PageInfo {
+                    pane: page.pane,
+                    url: facts.url,
+                    title: facts.title,
+                    loading: facts.loading,
+                    worktree: page.worktree.display().to_string(),
+                    controller: facts.controller,
+                    viewport: facts.viewport,
+                }
             }
+            Listed::Unshown(unshown) => PageInfo {
+                pane: unshown.pane,
+                url: unshown.url.clone(),
+                title: unshown.title.clone(),
+                loading: false,
+                worktree: unshown.worktree.display().to_string(),
+                controller: None,
+                viewport: agent::unshown_viewport(),
+            },
         })
         .collect();
     output(&BrowserListOutput { pages })

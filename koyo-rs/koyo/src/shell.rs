@@ -15,6 +15,7 @@ use gpui_kit::{
 };
 
 use crate::bottom::StatusBar;
+use crate::browser::KeptTabs;
 use crate::chat::ChatTabs;
 use crate::files::Locations;
 use crate::language::ServersListed;
@@ -70,6 +71,8 @@ pub struct Shell {
     pub terminals: crate::terminals::Terminals,
     /// The chats the tabs show.
     pub chat_tabs: ChatTabs,
+    /// The browser tabs kept for the next launch.
+    pub kept_tabs: KeptTabs,
     /// Horizontal travel of a two-finger swipe in progress over the Arc sidebar.
     pub swipe: Option<f32>,
     pub focus: FocusHandle,
@@ -96,6 +99,7 @@ impl Shell {
                 .clean_on_escape()
         });
         let chat_tabs = ChatTabs::new(cx);
+        let kept_tabs = KeptTabs::new(cx);
         let status_bar = StatusBar::new(cx);
         let _subscriptions = [
             settings::observe(cx),
@@ -119,6 +123,7 @@ impl Shell {
                 // Closed terminal tabs let their views go, which detaches them.
                 this.terminals.retain(&this.workspace);
                 this.chat_tabs.retain(&this.workspace, cx);
+                this.keep_browser_tabs(cx);
             }),
             // What had the keyboard is gone, as a closed panel's list is: actions then start
             // at the window's root, above the shell's, and the top bar's buttons and keys
@@ -145,6 +150,7 @@ impl Shell {
             status_bar,
             terminals: crate::terminals::Terminals::default(),
             chat_tabs,
+            kept_tabs,
             swipe: None,
             focus,
             search,
@@ -291,9 +297,11 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
-        // The shown tab's terminal and chat panes have their views before the panes draw them.
+        // The shown tab's terminal, chat and browser panes have their views before the panes
+        // draw them.
         let terminal = self.make_shown_terminals(window, cx);
         let chat = self.make_shown_chats(window, cx);
+        self.make_shown_browsers(window, cx);
         // Shown with nothing else holding the keyboard, one of them takes it. Only then, as
         // reading a view here makes this draw again whenever that view changes.
         if self.focus.is_focused(window) {

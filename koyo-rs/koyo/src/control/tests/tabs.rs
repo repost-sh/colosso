@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 use super::{allow, call, controlled, external, op, read_shell, send, taken, terminal};
 use crate::files::At;
 use crate::files::tests::support::{editing, typed};
-use crate::test_support::{repo, select};
+use crate::test_support::{draw, repo, select};
 
 /// The kinds of the selected worktree's tabs' panes, the shown tab's in brackets.
 fn shown_tabs(listed: &Value) -> Vec<String> {
@@ -211,4 +211,55 @@ fn the_window_s_panels_layout_and_settings_pages_follow_the_calls(cx: &mut TestA
     assert_eq!(pages["pages"], json!([]), "no browser page is open");
     let refused = call(&agent, "browser_read", json!({}), cx).unwrap_err();
     assert_eq!(refused.code, ErrorCode::NotFound, "there's no page to read");
+}
+
+/// A tab brought back at launch and not shown yet: listed with its address and title, its page
+/// answering `browser_unavailable` until its tab is shown, which makes it.
+#[gpui_kit::test]
+fn a_page_brought_back_waits_to_be_shown_for_the_browser_tools(cx: &mut TestAppContext) {
+    let root = repo("control-unshown", &[("README.md", "hi\n")]);
+    let rig = controlled("control-unshown", &[&root], cx);
+    select(&rig.shell, &root, cx);
+    let unloaded = crate::model::Unloaded {
+        address: "https://example.com/".into(),
+        favicon: None,
+    };
+    let pane = rig.shell.update(cx, |shell, cx| {
+        shell.workspace.new_tab(crate::model::PaneKind::Editor);
+        let pane = shell
+            .workspace
+            .add_unloaded_tab(&root, unloaded, "Example".into());
+        cx.notify();
+        pane.unwrap()
+    });
+    draw(rig.window, cx);
+    let agent = terminal("term_1");
+    let listed = call(&agent, "tab_list", json!({}), cx).unwrap();
+    let tabs = &listed["worktrees"][0]["tabs"];
+    assert_eq!(tabs[1]["panes"][0]["url"], json!("https://example.com/"));
+    let browsers = call(&agent, "browser_list", json!({}), cx).unwrap();
+    let first = &browsers["pages"][0];
+    assert_eq!(
+        (
+            first["pane"].clone(),
+            first["url"].clone(),
+            first["title"].clone()
+        ),
+        (json!(pane), json!("https://example.com/"), json!("Example"))
+    );
+    assert_eq!(first["viewport"]["width"], json!(0), "not laid out");
+    let read = call(&agent, "browser_read", json!({ "pane": pane }), cx).unwrap_err();
+    assert_eq!(read.code, ErrorCode::BrowserUnavailable);
+    let unnamed = call(&agent, "browser_read", json!({}), cx).unwrap_err();
+    assert_eq!(unnamed.code, ErrorCode::BrowserUnavailable, "the only page");
+
+    call(&agent, "tab_select", json!({ "index": 1 }), cx).unwrap();
+    draw(rig.window, cx);
+    let made = read_shell(&rig, cx, |shell, _| {
+        let unit = shell.workspace.branch().unwrap();
+        unit.tabs[1].first().browser.is_some()
+    });
+    assert!(made, "shown, its page is made");
+    let browsers = call(&agent, "browser_list", json!({}), cx).unwrap();
+    assert_eq!(browsers["pages"][0]["url"], json!("https://example.com/"));
 }

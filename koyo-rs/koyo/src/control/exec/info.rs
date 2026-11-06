@@ -80,7 +80,7 @@ pub(crate) fn pane(shell: &Shell, pane: &Pane, focused: bool, cx: &App) -> PaneI
         pane: pane.id,
         kind,
         title: pane.title.to_string(),
-        url: (pane.browser.as_ref()).map(|view| view.read(cx).address()),
+        url: pane.address(cx),
         file: file.map(|file| file.path.display().to_string()),
         unsaved: file.map(FilePane::is_dirty),
         terminal: terminal.map(|handle| handle.to_string()),

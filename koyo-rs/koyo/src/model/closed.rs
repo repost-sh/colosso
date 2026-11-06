@@ -31,6 +31,7 @@ impl Workspace {
     pub fn remember_closed(&mut self, mut closed: ClosedTab) {
         for pane in closed.tab.panes_mut() {
             pane.browser = None;
+            pane.unloaded = None;
             pane.file = None;
             pane.changes = None;
         }

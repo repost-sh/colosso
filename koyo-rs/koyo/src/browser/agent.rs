@@ -30,6 +30,35 @@ pub enum AgentError {
     NotOpen,
 }
 
+/// The viewport of a page that fills its pane, at `viewport`, shown at `shown_percent`.
+fn filling(viewport: Viewport, shown_percent: u32) -> ViewportFacts {
+    ViewportFacts {
+        mode: ViewportMode::Fill,
+        device: None,
+        width: viewport.width,
+        height: viewport.height,
+        scale: f64::from(viewport.scale),
+        mobile: false,
+        touch: false,
+        user_agent: None,
+        orientation: orientation(viewport.width > viewport.height),
+        zoom: Zoom::Fit.into(),
+        shown_percent,
+        set_by: None,
+    }
+}
+
+/// The viewport of a page brought back at launch whose tab wasn't shown yet: it fills a pane
+/// not laid out, 0 × 0.
+pub fn unshown_viewport() -> ViewportFacts {
+    let viewport = Viewport {
+        width: 0,
+        height: 0,
+        scale: 1.,
+    };
+    filling(viewport, 100)
+}
+
 /// A page as an agent sees it.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PageFacts {
@@ -71,20 +100,7 @@ impl BrowserView {
                 height: 0,
                 scale: window,
             });
-            return ViewportFacts {
-                mode: ViewportMode::Fill,
-                device: None,
-                width: viewport.width,
-                height: viewport.height,
-                scale: f64::from(viewport.scale),
-                mobile: false,
-                touch: false,
-                user_agent: None,
-                orientation: orientation(viewport.width > viewport.height),
-                zoom: Zoom::Fit.into(),
-                shown_percent,
-                set_by: None,
-            };
+            return filling(viewport, shown_percent);
         };
         let major = self.browsers.read(cx).chromium_major().unwrap_or_default();
         let emulated = mode.emulation(&major);
