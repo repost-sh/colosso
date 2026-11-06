@@ -4,16 +4,26 @@
 
 use gpui_kit::{App, AsyncApp, Window};
 use objc2::rc::Retained;
-use objc2_app_kit::{NSView, NSWindow};
+use objc2_app_kit::{NSView, NSViewLayerContentsPlacement, NSWindow};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
 /// Makes `window`'s content `height` high, its top edge staying where it is; false when it has
 /// no `NSWindow`, as a test's window hasn't. The frame changes once the app is free of the update
 /// asking for it: `AppKit` tells GPUI of a resize as it happens, which can't be heard mid-update.
+///
+/// The frame GPUI drew last is the old height. Left to itself, Core Animation stretches it to the
+/// new one until GPUI's next frame, which comes late while the app is busy: a launcher whose rows
+/// come and go showed its field squashed or stretched. So the frame is pinned to the top-left
+/// rather than stretched, which a view laid out from its top shows right, and drawn again at the
+/// new height before the resize reaches the screen, in the same Core Animation transaction.
 pub fn fit_height(window: &Window, height: f32, cx: &mut App) -> bool {
-    let Some(ns_window) = ns_window(window) else {
+    let Some(view) = gpui_view(window) else {
         return false;
     };
+    let Some(ns_window) = view.window() else {
+        return false;
+    };
+    view.setLayerContentsPlacement(NSViewLayerContentsPlacement::TopLeft);
     let height = f64::from(height);
     cx.spawn(async move |_: &mut AsyncApp| {
         let frame = ns_window.frame();
@@ -24,6 +34,11 @@ pub fn fit_height(window: &Window, height: f32, cx: &mut App) -> bool {
         // Screen coordinates rise from the bottom: the top stays where it is as the bottom moves.
         fitted.origin.y = frame.origin.y + frame.size.height - fitted.size.height;
         ns_window.setFrame_display(fitted, true);
+        // GPUI heard the resize as it happened; its view draws its layer when asked to display it,
+        // presenting in the transaction the new frame commits in.
+        if let Some(layer) = view.layer() {
+            layer.display();
+        }
     })
     .detach();
     true
@@ -31,12 +46,17 @@ pub fn fit_height(window: &Window, height: f32, cx: &mut App) -> bool {
 
 /// The `NSWindow` GPUI draws `window` in; none for a test's window.
 pub(super) fn ns_window(window: &Window) -> Option<Retained<NSWindow>> {
+    gpui_view(window)?.window()
+}
+
+/// The view GPUI draws `window` in, its layer GPUI's; none for a test's window.
+fn gpui_view(window: &Window) -> Option<Retained<NSView>> {
     let handle = HasWindowHandle::window_handle(window).ok()?;
     let RawWindowHandle::AppKit(appkit) = handle.as_raw() else {
         return None;
     };
-    // SAFETY: an `AppKit` handle's view is the window's content view, which `AppKit` keeps for
-    // as long as the window is open, and the window is open while it's being drawn in.
+    // SAFETY: an `AppKit` handle's view is the view GPUI draws in, which `AppKit` keeps for as
+    // long as the window is open, and the window is open while it's being drawn in.
     let view: &NSView = unsafe { appkit.ns_view.cast().as_ref() };
-    view.window()
+    Some(Retained::from(view))
 }
