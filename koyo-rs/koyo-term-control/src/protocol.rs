@@ -19,7 +19,7 @@ pub const PROTOCOL: u32 = 4;
 /// The daemon's version, in `Welcome::daemon_version`: the app has a daemon of another one
 /// restarted for its own (`docs/terminals.md` 5.1). Any change to what the daemon runs bumps
 /// it (`script/daemon-version`).
-pub const DAEMON_VERSION: u32 = 3;
+pub const DAEMON_VERSION: u32 = 4;
 /// The engine snapshot format carried in `Snapshot` frames.
 pub const SNAPSHOT_FORMAT: u16 = 1;
 
