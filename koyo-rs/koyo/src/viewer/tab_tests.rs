@@ -209,5 +209,13 @@ fn a_link_to_a_file_opens_it_in_a_tab(cx: &mut TestAppContext) {
     assert_eq!(open(&root.join("shot.png"), None, cx), ["[shot.png*]"]);
     // A path to nothing opens nothing.
     assert_eq!(open(&root.join("gone.png"), None, cx), ["[shot.png*]"]);
+    // A picture outside the checkout, as one pasted into a terminal is kept in the temporary
+    // folder and Claude Code links its `[Image #1]` to it, opens too, shown as what it is.
+    let elsewhere = crate::test_support::scratch("viewer-tab-link-pasted");
+    picture(&elsewhere, "koyo-paste-1.png", 30, 20);
+    assert_eq!(open(&elsewhere.join("koyo-paste-1.png"), None, cx), ["[koyo-paste-1.png*]"]);
+    let viewer = shown_viewer(&shell, cx);
+    until(window, cx, |cx| cx.read(|cx| viewer.read(cx).is_drawn()));
     let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&elsewhere);
 }

@@ -210,6 +210,11 @@ fn inherits(key: &str) -> bool {
 /// the terminal, and the shell integration for
 /// `program`; `TERM` is Ghostty's own when its terminfo could be written, `xterm-256color`
 /// otherwise. `COLORFGBG` says whether the app's theme is `dark`, once it's known.
+/// `FORCE_HYPERLINK` says the terminal opens the links a program makes of its text (OSC 8),
+/// which programs that don't know `TERM_PROGRAM=Koyo` otherwise print as plain text: Claude
+/// Code's `[Image #1]` among them, a link to the picture only where links are said to work.
+/// Node's `supports-hyperlinks` takes it before asking whether its output is a terminal, so
+/// such a program writes links into a pipe or a file too: the price until they know Koyo.
 fn environment(
     handle: &Handle,
     worktree: Option<&WorktreeRef>,
@@ -239,6 +244,7 @@ fn environment(
         ));
     }
     env.push(("COLORTERM".into(), "truecolor".into()));
+    env.push(("FORCE_HYPERLINK".into(), "1".into()));
     if let Some(dark) = dark {
         // White on black, or black on white, in the 16 colours' numbers.
         let colors = if dark { "15;0" } else { "0;15" };
@@ -343,6 +349,8 @@ mod tests {
         assert!(seen.contains("ASKED_FOR=yes"), "{seen}");
         assert!(seen.contains("HOME="), "{seen}");
         assert!(!seen.contains("CARGO_PKG_NAME="), "{seen}");
+        // Told the terminal opens the links it makes of its text.
+        assert!(seen.contains("FORCE_HYPERLINK=1"), "{seen}");
     }
 
     #[test]
