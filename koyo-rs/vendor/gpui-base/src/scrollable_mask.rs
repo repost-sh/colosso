@@ -12,7 +12,7 @@ use gpui::{
 };
 use gpui::{Corners, Pixels};
 
-use crate::{AxisExt, OngoingScrollExt as _, ScrollbarHandle, StyledExt as _};
+use crate::{AxisExt, OngoingScrollExt as _, Scrollbar, ScrollbarHandle, StyledExt as _};
 
 thread_local! {
     static LAST_HORIZONTAL_SCROLL_CLAIM: Cell<Option<HorizontalScrollClaim>> =
@@ -71,7 +71,9 @@ fn caller_id() -> ElementId {
 /// GPUI's native `overflow_x_scroll` maps vertical wheel input onto horizontal
 /// scrolling when there is no vertical overflow. This wrapper keeps the visual
 /// clipping and scroll offset, while delegating wheel input to [`ScrollableMask`]
-/// so vertical wheel events can continue bubbling to the parent scroller.
+/// so vertical wheel events can continue bubbling to the parent scroller. A
+/// horizontal [`Scrollbar`] over its bottom edge shows where it is scrolled to,
+/// and can be dragged, as a scrolling code block's vertical one can.
 pub(crate) fn horizontal_scroll_area(
     id: impl Into<ElementId>,
     scroll_handle: &ScrollHandle,
@@ -98,7 +100,9 @@ pub(crate) fn horizontal_scroll_area(
         frame_border: px(0.),
     };
 
+    // Its id scopes the scrollbar's state to this area, as each table needs its own.
     div()
+        .id(id.clone())
         .w_full()
         .relative()
         .child(
@@ -112,6 +116,13 @@ pub(crate) fn horizontal_scroll_area(
         )
         .child(ScrollableMask::new(Axis::Horizontal, scroll_handle).id(id))
         .child(frame)
+        // A sibling too, so it stays at the viewport's edge as the content moves.
+        .child(
+            div()
+                .absolute()
+                .inset_0()
+                .child(Scrollbar::horizontal(scroll_handle)),
+        )
 }
 
 /// Keeps a rounded scroll viewport's corners clean at every scroll offset.

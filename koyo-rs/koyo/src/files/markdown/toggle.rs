@@ -88,10 +88,11 @@ pub fn toggle(mode: Mode, flips: usize, window: &mut Window, cx: &mut Context<Fi
 
 /// The segment that shows the file in `mode`, the one shown being `shown`.
 fn segment(mode: Mode, shown: Mode, p: Palette, cx: &mut Context<FilePane>) -> impl IntoElement + use<> {
-    let (mark, name, id) = match mode {
-        Mode::Code => (IconName::CodeXml, "Code", "markdown-toggle-code"),
-        Mode::Preview => (IconName::Eye, "Preview", "markdown-toggle-preview"),
+    let (mark, id) = match mode {
+        Mode::Code => (IconName::CodeXml, "markdown-toggle-code"),
+        Mode::Preview => (IconName::Eye, "markdown-toggle-preview"),
     };
+    let name = mode.label();
     let width = place(mode).1;
     let on = mode == shown;
     div()

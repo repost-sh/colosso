@@ -1,5 +1,5 @@
-//! The Editor settings page: how files open from the tree and what ⌘S saves, and what
-//! the code shows over its text.
+//! The Editor settings page: how files open from the tree, what ⌘S saves and how a markdown
+//! file opens, and what the code shows over its text.
 
 use gpui_kit::App;
 
@@ -13,6 +13,7 @@ pub fn sections(cx: &App) -> Vec<SettingsSection> {
 
 fn files(cx: &App) -> SettingsSection {
     let scope = settings::get(cx).save_scope;
+    let markdown = settings::get(cx).markdown_opens_as;
     SettingsSection::new("Files")
         .row(
             SettingRow::new("Preview files")
@@ -35,6 +36,17 @@ fn files(cx: &App) -> SettingsSection {
                 )
                 .control(MenuButton::new("save-scope", scope.label(), |cx| {
                     settings::get(cx).save_scope.menu()
+                })),
+        )
+        .row(
+            SettingRow::new("Markdown opens in")
+                .description(
+                    "Preview shows a markdown file as it reads, its tables and diagrams drawn; \
+                     Code shows its text. Opened at a line, from a search say, it shows its \
+                     code. The toggle over it, or ⌘⇧V, shows the other.",
+                )
+                .control(MenuButton::new("markdown-opens-as", markdown.label(), |cx| {
+                    settings::get(cx).markdown_opens_as.menu()
                 })),
         )
 }

@@ -129,6 +129,9 @@ pub struct Settings {
     pub preview_files: bool,
     /// What ⌘S saves: the file shown, or every file with unsaved edits in the window.
     pub save_scope: SaveScope,
+    /// How a markdown file opens: as it reads, as GitHub shows it, or as its code. Opened at a
+    /// place in its text, a search result say, it opens as code either way.
+    pub markdown_opens_as: crate::files::MarkdownMode,
     /// Whether the types and parameter names a language server infers are shown greyed in
     /// the code where they'd go (inlay hints). On, as in Zed and VS Code.
     pub inlay_hints: bool,
@@ -230,6 +233,7 @@ impl Default for Settings {
             files_tree_width: theme::FILES_TREE_WIDTH,
             preview_files: true,
             save_scope: SaveScope::default(),
+            markdown_opens_as: crate::files::MarkdownMode::Preview,
             inlay_hints: true,
             semantic_colouring: true,
             sidebar_open_on_launch: true,

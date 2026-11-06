@@ -4,7 +4,7 @@ use gpui_kit::{AnyWindowHandle, App, AppContext as _, Entity, SharedString, Test
 
 use super::diagram::{self, Card, Diagram, Look};
 use super::mermaid::{PADDING, is_mermaid};
-use super::{MarkdownPreview, Mode, is_markdown};
+use super::{MarkdownPreview, Mode, SetMarkdownOpensAs, is_markdown};
 use crate::files::tests::{checkout, editing, press, shell_showing, typed, with_shell};
 use crate::files::{At, Place};
 use crate::settings;
@@ -65,6 +65,25 @@ fn previewed(window: AnyWindowHandle, shell: &Entity<Shell>, path: &str, cx: &mu
     draw(window, cx);
 }
 
+/// Shows the checkout's file at `path` as it reads in a window 1600 wide and `height` tall,
+/// laid out at that size.
+fn laid_out(
+    window: AnyWindowHandle,
+    shell: &Entity<Shell>,
+    path: &str,
+    height: f32,
+    cx: &mut TestAppContext,
+) -> gpui_kit::VisualTestContext {
+    previewed(window, shell, path, cx);
+    let mut visual = gpui_kit::VisualTestContext::from_window(window, cx);
+    visual.simulate_resize(gpui_kit::size(gpui_kit::px(1600.), gpui_kit::px(height)));
+    for _ in 0..3 {
+        visual.run_until_parked();
+        visual.update(|window, cx| window.draw(cx).clear(cx));
+    }
+    visual
+}
+
 /// What `read` makes of the preview the shown tab shows.
 fn preview<R>(
     shell: &Entity<Shell>,
@@ -117,27 +136,57 @@ fn a_diagram_mermaid_cant_draw_says_why(cx: &mut TestAppContext) {
     assert!(diagram::draw("not a diagram at all", &look).is_err());
 }
 
+/// Whether what the shown tab shows has the keyboard.
+fn has_focus(window: AnyWindowHandle, shell: &Entity<Shell>, cx: &mut TestAppContext) -> bool {
+    cx.update_window(window, |_, window, cx| {
+        let file = shell.read(cx).viewing().unwrap();
+        file.read(cx).has_focus(window, cx)
+    })
+    .unwrap()
+}
+
 #[gpui_kit::test]
 fn a_markdown_file_flips_between_its_code_and_how_it_reads(cx: &mut TestAppContext) {
     let root = checkout("markdown-flip");
     let (window, shell, _) = shell_showing(&root, cx);
-    // README.md opens as code.
-    assert_eq!(mode(&shell, cx), Mode::Code);
-    // ⌘⇧V shows it as it reads, and back.
-    press(window, "cmd-shift-v", cx);
     draw(window, cx);
+    // README.md opens as it reads, with the keyboard.
     assert_eq!(mode(&shell, cx), Mode::Preview);
     assert_eq!(preview(&shell, cx, MarkdownPreview::text).trim(), "Test");
-    let preview_has_focus = cx
-        .update_window(window, |_, window, cx| {
-            let file = shell.read(cx).viewing().unwrap();
-            file.read(cx).has_focus(window, cx)
-        })
-        .unwrap();
-    assert!(preview_has_focus, "the keyboard goes with what's shown");
-    press(window, "cmd-shift-v", cx);
-    draw(window, cx);
-    assert_eq!(mode(&shell, cx), Mode::Code);
+    assert!(has_focus(window, &shell, cx), "the keyboard goes with what's shown");
+    // ⌘⇧V shows its code, and back.
+    for shown in [Mode::Code, Mode::Preview] {
+        press(window, "cmd-shift-v", cx);
+        draw(window, cx);
+        assert_eq!(mode(&shell, cx), shown);
+        assert!(has_focus(window, &shell, cx), "the keyboard goes with what's shown");
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[gpui_kit::test]
+fn a_markdown_file_opens_as_set_and_as_code_at_a_place(cx: &mut TestAppContext) {
+    let root = checkout("markdown-opens");
+    for name in ["one", "two", "three"] {
+        write(&root, &format!("docs/{name}.md"), b"# A page\n\nWords.\n");
+    }
+    let (window, shell, _) = shell_showing(&root, cx);
+    let open = |place: Place, cx: &mut TestAppContext| {
+        with_shell(window, &shell, cx, |shell, window, cx| shell.view_file(place, window, cx));
+        draw(window, cx);
+        mode(&shell, cx)
+    };
+    // Set to open as code, from the Editor settings' menu.
+    cx.dispatch_action(window, SetMarkdownOpensAs(Mode::Code));
+    assert_eq!(cx.read(|cx| settings::get(cx).markdown_opens_as), Mode::Code);
+    assert_eq!(open(Place::file("docs/one.md"), cx), Mode::Code);
+    // A file open already stays as it's shown.
+    assert_eq!(open(Place::file("README.md"), cx), Mode::Preview);
+    // As it reads again; opened at a place in its text, as a search result is, as code.
+    cx.dispatch_action(window, SetMarkdownOpensAs(Mode::Preview));
+    assert_eq!(open(Place::file("docs/two.md"), cx), Mode::Preview);
+    let at_a_line = Place { path: "docs/three.md".into(), at: Some(At::Line(2)) };
+    assert_eq!(open(at_a_line, cx), Mode::Code);
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -266,13 +315,7 @@ fn a_diagram_is_as_big_as_it_s_drawn_or_as_the_column_lets_it_be(cx: &mut TestAp
     let look = cx.update(|cx| look(cx));
     // The diagram's size, and its card's, shown in a window this wide.
     let shown = |name: &str, cx: &mut TestAppContext| {
-        previewed(window, &shell, &format!("docs/{name}.md"), cx);
-        let mut visual = gpui_kit::VisualTestContext::from_window(window, cx);
-        visual.simulate_resize(gpui_kit::size(gpui_kit::px(1600.), gpui_kit::px(1000.)));
-        for _ in 0..3 {
-            visual.run_until_parked();
-            visual.update(|window, cx| window.draw(cx).clear(cx));
-        }
+        let mut visual = laid_out(window, &shell, &format!("docs/{name}.md"), 1000., cx);
         let mut size = |at| {
             let size = visual.debug_bounds(at).unwrap_or_else(|| panic!("no {at}")).size;
             (size.width.as_f32(), size.height.as_f32())
@@ -294,6 +337,31 @@ fn a_diagram_is_as_big_as_it_s_drawn_or_as_the_column_lets_it_be(cx: &mut TestAp
     assert!(width < drawn.width - 50., "{said}");
     assert!(near(height, width * drawn.height / drawn.width), "{said}");
     assert!(near(card, height + around), "{said}");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[gpui_kit::test]
+fn a_table_wider_than_the_column_scrolls_sideways_rather_than_squeezing(cx: &mut TestAppContext) {
+    let root = checkout("markdown-table");
+    // Ten columns, three rows: of a dozen words a cell, as a spreadsheet pasted in has, far
+    // wider than the column; and of a word, which fits it.
+    let table = |cell: &str| {
+        let row = |cell: &str| format!("|{}\n", format!(" {cell} |").repeat(10));
+        row("Column") + &row("---") + &row(cell).repeat(3)
+    };
+    let words = "Hong Kong and Singapore with USD, EUR and GBP local in two days";
+    write(&root, "docs/wide.md", table(words).as_bytes());
+    write(&root, "docs/narrow.md", table("Word").as_bytes());
+    let (window, shell, _) = shell_showing(&root, cx);
+    // How tall the file at `path` is, shown as it reads in a window too short for either.
+    let tall = |path: &str, cx: &mut TestAppContext| {
+        laid_out(window, &shell, path, 300., cx);
+        preview(&shell, cx, |preview, _| preview.content_height())
+    };
+    let (wide, narrow) = (tall("docs/wide.md", cx), tall("docs/narrow.md", cx));
+    // Its columns kept wide enough to read, a row of a dozen words is a line or two taller than
+    // one of a word; squeezed into the column, a word or two a line, it was four times as tall.
+    assert!(wide < 2. * narrow, "{wide} for the wide table, {narrow} for the narrow one");
     let _ = std::fs::remove_dir_all(&root);
 }
 
