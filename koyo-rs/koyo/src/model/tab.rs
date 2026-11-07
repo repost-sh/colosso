@@ -22,12 +22,8 @@ pub struct Pane {
     pub id: u64,
     pub kind: PaneKind,
     pub title: SharedString,
-    /// The page a browser pane shows, once the shell has made it (`view`, `set_view`).
-    pub(super) browser: Option<Entity<BrowserView>>,
-    /// A browser pane's page while it has no view: a tab brought back at launch, its page made
-    /// when the tab is first shown (`docs/browser.md` 5). Never set beside `browser`. Boxed, as
-    /// few panes have one.
-    pub(super) unloaded: Option<Box<Unloaded>>,
+    /// A browser pane's page, or what it opens once its tab is shown (`view`, `set_view`).
+    pub(super) page: Option<Page>,
     /// The file an editor pane shows, once the shell has opened one in it.
     pub file: Option<Entity<FilePane>>,
     /// The checkout's diffs, when it's an editor pane showing them rather than a file.
@@ -48,8 +44,7 @@ impl Pane {
             id: NEXT_PANE.fetch_add(1, Ordering::Relaxed),
             kind,
             title: kind.new_tab_title().into(),
-            browser: None,
-            unloaded: None,
+            page: None,
             file: None,
             changes: None,
             shown_at: 0,
@@ -62,7 +57,7 @@ impl Pane {
     pub fn browser(view: Entity<BrowserView>, cx: &App) -> Self {
         Pane {
             title: view.read(cx).title().into(),
-            browser: Some(view),
+            page: Some(Page::Made(view)),
             ..Pane::new(PaneKind::Browser)
         }
     }
@@ -72,54 +67,54 @@ impl Pane {
     pub fn unloaded(unloaded: Unloaded, title: SharedString) -> Self {
         Pane {
             title,
-            unloaded: Some(Box::new(unloaded)),
+            page: Some(Page::Unloaded(Box::new(unloaded))),
             ..Pane::new(PaneKind::Browser)
         }
     }
 
     /// The page a browser pane shows, once it's made.
     pub fn view(&self) -> Option<&Entity<BrowserView>> {
-        self.browser.as_ref()
+        match &self.page {
+            Some(Page::Made(view)) => Some(view),
+            Some(Page::Unloaded(_)) | None => None,
+        }
     }
 
     /// The pane shows `view` from now on, and no longer holds an address to open.
     pub fn set_view(&mut self, view: Entity<BrowserView>) {
-        self.browser = Some(view);
-        self.unloaded = None;
-    }
-
-    /// The address and icon a browser pane with no view holds, taken as its page is made.
-    pub fn take_unloaded(&mut self) -> Option<Unloaded> {
-        self.unloaded.take().map(|unloaded| *unloaded)
+        self.page = Some(Page::Made(view));
     }
 
     /// The address a browser pane with no view opens once its tab is shown.
     pub fn unloaded_address(&self) -> Option<&str> {
-        (self.unloaded.as_ref()).map(|unloaded| unloaded.address.as_str())
+        match &self.page {
+            Some(Page::Unloaded(unloaded)) => Some(&unloaded.address),
+            Some(Page::Made(_)) | None => None,
+        }
     }
 
     /// The address a browser pane shows, or opens once its tab is shown; `None` for another
     /// kind.
     pub fn address(&self, cx: &App) -> Option<String> {
-        match (&self.browser, &self.unloaded) {
-            (Some(view), _) => Some(view.read(cx).address()),
-            (None, Some(unloaded)) => Some(unloaded.address.clone()),
-            (None, None) => None,
+        match &self.page {
+            Some(Page::Made(view)) => Some(view.read(cx).address()),
+            Some(Page::Unloaded(unloaded)) => Some(unloaded.address.clone()),
+            None => None,
         }
     }
 
     /// Whether it's a browser pane showing another page's `DevTools`.
     pub fn is_inspector(&self, cx: &App) -> bool {
-        (self.browser.as_ref()).is_some_and(|view| view.read(cx).is_inspector())
+        self.view().is_some_and(|view| view.read(cx).is_inspector())
     }
 
     /// The site's icon a browser pane's tab shows: its page's, or the one kept for its address
     /// while it has no view.
     pub fn favicon(&self, cx: &App) -> Option<Arc<Image>> {
-        match (&self.browser, &self.unloaded) {
-            (Some(view), _) => view.read(cx).favicon(),
-            (None, Some(unloaded)) => unloaded.favicon.clone(),
-            (None, None) => None,
+        match &self.page {
+            Some(Page::Made(view)) => view.read(cx).favicon(),
+            Some(Page::Unloaded(unloaded)) => unloaded.favicon.clone(),
+            None => None,
         }
     }
 
@@ -140,6 +135,15 @@ impl Pane {
             ..Pane::new(PaneKind::Editor)
         }
     }
+}
+
+/// A browser pane's page: made, or what it opens once its tab is shown, never both.
+#[derive(Clone, Debug)]
+pub(super) enum Page {
+    Made(Entity<BrowserView>),
+    /// A tab brought back at launch, its page made when the tab is first shown
+    /// (`docs/browser.md` 5). Boxed, as few panes have one.
+    Unloaded(Box<Unloaded>),
 }
 
 /// What a browser pane with no view yet opens once its tab is shown.

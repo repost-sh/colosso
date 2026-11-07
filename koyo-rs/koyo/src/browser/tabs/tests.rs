@@ -186,7 +186,7 @@ fn the_file_reads_back_what_was_written_and_a_bad_one_is_no_tabs() {
     ];
     let path = file("kept-tabs-file", &checkouts);
     assert_eq!(read_file(&path), checkouts);
-    let json: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    let json: serde_json::Value = crate::kept_file::read(&path).unwrap();
     assert_eq!(json["checkouts"][1]["checkout"], "/src/app-feature");
     assert_eq!(
         json["checkouts"][0]["tabs"][0]["url"],

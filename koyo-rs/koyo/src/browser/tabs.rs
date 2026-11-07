@@ -64,11 +64,12 @@ impl KeptTabs {
         // A change still settling when the app quits or the window closes is written then, as
         // the next window reads the file again.
         cx.on_app_quit(|shell, _| {
-            shell.kept_tabs.flush();
+            kept_file::write_now(shell.kept_tabs.due());
             async {}
         })
         .detach();
-        cx.on_release(|shell, _| shell.kept_tabs.flush()).detach();
+        cx.on_release(|shell, _| kept_file::write_now(shell.kept_tabs.due()))
+            .detach();
         Self::at(path)
     }
 
@@ -83,15 +84,8 @@ impl KeptTabs {
     }
 
     /// Where to write what's kept, and its JSON, if a write is due, which then no longer is.
-    fn take_due(&mut self) -> Option<(PathBuf, Vec<u8>)> {
+    fn due(&mut self) -> Option<(PathBuf, Vec<u8>)> {
         Some((self.file.take_due()?, encode(&self.kept)?))
-    }
-
-    /// Writes what's kept now if a write is due.
-    fn flush(&mut self) {
-        if let Some((path, json)) = self.take_due() {
-            kept_file::write_now(&path, &json);
-        }
     }
 
     /// Drops what waits for a checkout that won't come: its project gone, or listed without it.
@@ -167,9 +161,7 @@ impl Shell {
         if self.kept_tabs.file.changed() {
             let shell = cx.weak_entity();
             kept_file::write_later(cx, SAVE_DELAY, move |cx| {
-                shell
-                    .update(cx, |shell, _| shell.kept_tabs.take_due())
-                    .ok()?
+                shell.update(cx, |shell, _| shell.kept_tabs.due()).ok()?
             });
         }
     }
@@ -199,20 +191,21 @@ impl Shell {
     /// kept, so the panes draw them. Each opens its page once laid out; its first load is no
     /// new visit, as it was visited before.
     pub fn make_shown_browsers(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let missing: Vec<(u64, String)> = (self.workspace.branch_mut())
-            .and_then(|unit| unit.tabs.get_mut(unit.active_tab))
+        let Some(project) = self.workspace.project() else {
+            return;
+        };
+        let missing: Vec<(u64, String)> = (project.branch())
+            .and_then(|unit| unit.tabs.get(unit.active_tab))
             .map(|tab| {
-                (tab.panes_mut().into_iter())
-                    .filter_map(|pane| Some((pane.id, pane.take_unloaded()?.address)))
+                (tab.panes().into_iter())
+                    .filter_map(|pane| Some((pane.id, pane.unloaded_address()?.to_owned())))
                     .collect()
             })
             .unwrap_or_default();
         if missing.is_empty() {
             return;
         }
-        let Some(project) = (self.workspace.project()).map(|project| project.path.clone()) else {
-            return;
-        };
+        let project = project.path.clone();
         for (id, address) in missing {
             let view = self.browser_view(address, &project, window, cx);
             view.update(cx, |view, _| view.mark_restored());

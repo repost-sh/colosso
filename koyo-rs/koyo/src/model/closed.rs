@@ -30,8 +30,7 @@ impl Workspace {
     /// files are let go: what a file had unsaved is gone with it.
     pub fn remember_closed(&mut self, mut closed: ClosedTab) {
         for pane in closed.tab.panes_mut() {
-            pane.browser = None;
-            pane.unloaded = None;
+            pane.page = None;
             pane.file = None;
             pane.changes = None;
         }

@@ -158,19 +158,13 @@ pub fn init(cx: &mut App) {
     };
     cx.set_global(history);
     // A change still settling when the app quits is written on the way out.
-    cx.on_app_quit(|cx| {
-        if let Some((path, json)) = due(cx) {
-            kept_file::write_now(&path, &json);
-        }
-        async {}
-    })
-    .detach();
+    kept_file::write_on_quit(cx, due);
 }
 
 /// Where to write the history, and its JSON, if a write is due, which then no longer is.
 fn due(cx: &mut App) -> Option<(PathBuf, Vec<u8>)> {
     let history = cx.global_mut::<History>();
-    Some((history.file.take_due()?, history.encode()))
+    Some((history.file.take_due()?, kept_file::encode(history)?))
 }
 
 /// The history, to read.
@@ -297,11 +291,6 @@ pub fn clear_browsing(cx: &mut App) {
 }
 
 impl History {
-    /// What's written: the entries and what was learned, borrowed as they are.
-    fn encode(&self) -> Vec<u8> {
-        serde_json::to_vec(self).unwrap_or_default()
-    }
-
     /// Every entry of `kind`.
     pub fn of(&self, kind: Kind) -> impl DoubleEndedIterator<Item = &Entry> {
         self.entries.iter().filter(move |entry| entry.kind == kind)

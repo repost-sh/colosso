@@ -62,13 +62,7 @@ pub(super) fn init(cx: &mut App) {
         cx,
     );
     // A change still settling when the app quits is written on the way out.
-    cx.on_app_quit(|cx| {
-        if let Some((path, json)) = due(cx) {
-            kept_file::write_now(&path, &json);
-        }
-        async {}
-    })
-    .detach();
+    kept_file::write_on_quit(cx, due);
 }
 
 fn open(path: Option<PathBuf>, attachments: Option<PathBuf>, cx: &mut App) {

@@ -1,8 +1,9 @@
 //! A file the app keeps as JSON in its data folder, as the chat drafts, the history and the
 //! browser tabs are: read as it starts, or nothing if it can't be; written a moment after a
 //! change, with whatever changed meanwhile, so changes as steady as typing can't put the write
-//! off for good; and written once more on the way out if a write is still due. Each write goes
-//! through `atomic_file`, off the main thread but for the last.
+//! off for good; and written once more on the way out if a write is still due. Compact, as the
+//! history runs to thousands of entries. Each write goes through `atomic_file`, off the main
+//! thread but for the last.
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -28,7 +29,7 @@ pub fn read<T: DeserializeOwned>(path: &Path) -> Option<T> {
 
 /// `value` as the JSON to write, or `None` if it can't be, which is said.
 pub fn encode<T: Serialize + ?Sized>(value: &T) -> Option<Vec<u8>> {
-    serde_json::to_vec_pretty(value)
+    serde_json::to_vec(value)
         .inspect_err(|error| log::error!("couldn't encode a file to keep: {error}"))
         .ok()
 }
@@ -82,9 +83,23 @@ pub fn write_later(
     .detach();
 }
 
-/// Writes `json` to `path` now, as the app quits.
-pub fn write_now(path: &Path, json: &[u8]) {
-    atomic_file::write(path, json);
+/// Writes, as the app quits, what `take` gives then: where, and the JSON, if a write is due.
+pub fn write_on_quit(
+    cx: &mut App,
+    mut take: impl FnMut(&mut App) -> Option<(PathBuf, Vec<u8>)> + 'static,
+) {
+    cx.on_app_quit(move |cx| {
+        write_now(take(cx));
+        async {}
+    })
+    .detach();
+}
+
+/// Writes `due`, where and the JSON, now, if there's a write due.
+pub fn write_now(due: Option<(PathBuf, Vec<u8>)>) {
+    if let Some((path, json)) = due {
+        atomic_file::write(&path, &json);
+    }
 }
 
 #[cfg(test)]
@@ -140,7 +155,7 @@ mod tests {
             say("three", cx);
             let words = cx.global_mut::<Words>();
             let due = words.file.take_due().expect("a write is due");
-            super::write_now(&due, &encode(&words.words).unwrap());
+            super::write_now(Some((due.clone(), encode(&words.words).unwrap())));
             std::fs::remove_file(&due).unwrap();
         });
         cx.executor().advance_clock(DELAY);

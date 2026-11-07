@@ -120,7 +120,7 @@ the tab is what makes the page, so the tools don't make one of their own.
 | `koyo/src/kept_file.rs` | Reading the file, the write a moment after a change, and the write on quit |
 | `koyo/src/browser/tabs.rs` | The file, the rule (`keep_browser_tabs`), restoring and `make_shown_browsers` |
 | `koyo/src/browser/tabs/tests.rs` | The file, the rule, restore order and focus, pages made when shown, ⌘⇧T, quit |
-| `koyo/src/model/tab.rs` | A pane's page or its kept address, never both (`view`, `set_view`, `take_unloaded`), `Pane::address`, `Pane::favicon` |
+| `koyo/src/model/tab.rs` | A pane's page or its kept address, never both (`Page`, `view`, `set_view`, `unloaded_address`), `Pane::address`, `Pane::favicon` |
 | `koyo/src/model/browsers.rs` | `Workspace::add_unloaded_tab` |
 | `koyo/src/projects.rs` | `show_worktrees`, where restoring runs |
 | `koyo/src/shell.rs` | The shell's observer, where the rule runs, and `workspace_content` |
