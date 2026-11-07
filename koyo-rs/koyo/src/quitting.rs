@@ -1,8 +1,10 @@
-//! Quitting: ⌘Q and the app's menu, where macOS looks for it. Terminals outlive the app in
-//! their daemon, so a person quitting with some running says whether they end or stay, or has
-//! said so for good in Settings → General. Unsaved edits are asked about first. Quitting from
-//! the Dock or by logging out can't be held up to ask, and leaves terminals running.
+//! Quitting: ⌘Q and the app's menu, where macOS looks for it. Terminals outlive the app in their
+//! daemon and chats in the agent host, so a person quitting with some still running says whether
+//! they keep running or stop, or has said so for good in Settings → General. Unsaved edits are
+//! asked about first. Quitting from the Dock or by logging out can't be held up to ask, and leaves
+//! them running.
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -11,19 +13,23 @@ use gpui_kit::{
     Action, App, AppContext as _, Context, FontWeight, IntoElement, KeyBinding, Menu, MenuItem,
     ParentElement as _, Render, SharedString, Styled as _, Window, actions, div, px,
 };
+use koyo_agent::agent_client::AgentClient;
+use koyo_agent::protocol::methods::{Empty, ThreadsWatch};
+use koyo_agent::protocol::model::{Status, ThreadSummary};
 use koyo_term::TermClient;
 use koyo_term_control::{Handle, RequestBody, ResponseBody};
 use serde::{Deserialize, Serialize};
 
 use crate::files::{self, Then};
 use crate::modal::{self, Button, FOOTER, HEADING_LINE, LINE, PADDING, SMALL_LINE, Tone};
+use crate::model::PaneKind;
 use crate::settings::{self, checked_menu};
 use crate::terminals::{close_all, daemon_client};
 use crate::theme;
 
 actions!(app, [Quit]);
 
-/// What quitting does with the terminals still running.
+/// What quitting does with the terminals and chats still running.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OnQuit {
     #[default]
@@ -43,8 +49,8 @@ impl OnQuit {
     pub fn label(self) -> &'static str {
         match self {
             OnQuit::Ask => "Ask every time",
-            OnQuit::Keep => "Keep terminals running",
-            OnQuit::End => "End everything",
+            OnQuit::Keep => "Keep running",
+            OnQuit::End => "Stop everything",
         }
     }
 
@@ -73,14 +79,16 @@ pub fn set_menu(cx: &App) {
     ]);
 }
 
-/// What the daemon runs and keeps: the terminals to end, and the names of those running.
+/// What runs on without the app: the daemon's terminals, to end, with the names of those
+/// running, and the titles of the host's chats still at work.
 #[derive(Default)]
 struct Listed {
     handles: Vec<Handle>,
     running: Vec<String>,
+    chats: Vec<String>,
 }
 
-/// What's next, by what's been chosen and how many terminals run.
+/// What's next, by what's been chosen and how much runs.
 #[derive(Debug, PartialEq)]
 enum Next {
     Quit,
@@ -96,19 +104,19 @@ fn next(choice: OnQuit, running: usize) -> Next {
     }
 }
 
-/// Asks about unsaved edits, then goes on to the terminals.
+/// Asks about unsaved edits, then goes on to what runs.
 fn quit(cx: &mut App) {
     let Some((window, shell)) = crate::control::main_shell(cx) else {
-        return deal_with_terminals(cx);
+        return deal_with_what_runs(cx);
     };
     let unsaved = shell.read(cx).unsaved(cx);
     if unsaved.is_empty() {
-        return deal_with_terminals(cx);
+        return deal_with_what_runs(cx);
     }
     (window.update(cx, |_, window, cx| {
         files::ask(
             unsaved,
-            Then::Close(Box::new(deal_with_terminals)),
+            Then::Close(Box::new(deal_with_what_runs)),
             window,
             cx,
         );
@@ -116,29 +124,52 @@ fn quit(cx: &mut App) {
     .ok();
 }
 
-/// Acts on the choice made, looking first for what runs in the daemon unless it can't matter.
-fn deal_with_terminals(cx: &mut App) {
+/// What stopping everything ends, where it runs: the daemon's terminals, and the agent host
+/// through the app's own client when there is one, which then starts it no more.
+pub(crate) struct Running {
+    pub(crate) terminals: Option<Arc<TermClient>>,
+    pub(crate) handles: Vec<Handle>,
+    /// The app's data folder, which the agent host serves chats from.
+    pub(crate) data: Option<PathBuf>,
+    pub(crate) chats: Option<Arc<AgentClient>>,
+}
+
+/// Acts on the choice made, looking first for what runs on unless it can't matter.
+fn deal_with_what_runs(cx: &mut App) {
     if settings::get(cx).on_quit == OnQuit::Keep {
         return cx.quit();
     }
     let shown = crate::control::main_shell(cx);
-    // The app's own client where there is one: its views then don't start the daemon again.
-    let client = shown
+    // The app's own clients where there are some: its views then don't start a daemon again.
+    let terminals = shown
+        .clone()
         .and_then(|(_, shell)| shell.update(cx, |shell, _| shell.terminals.client()))
         .or_else(daemon_client);
-    let Some(client) = client else {
-        return cx.quit();
-    };
+    let chats = shown.and_then(|(_, shell)| shell.read(cx).chats().read(cx).client());
+    let data = settings::data_dir().filter(|_| !cfg!(test));
     cx.spawn(async move |cx| {
-        let listing = Arc::clone(&client);
-        let listed = cx.background_spawn(async move { listed(&listing) }).await;
-        cx.update(
-            |cx| match next(settings::get(cx).on_quit, listed.running.len()) {
+        let (listing, asking) = (terminals.clone(), data.clone());
+        let listed = cx
+            .background_spawn(async move {
+                let mut listed = listing.map(|client| listed(&client)).unwrap_or_default();
+                listed.chats = asking.map(|data| at_work(&data)).unwrap_or_default();
+                listed
+            })
+            .await;
+        cx.update(|cx| {
+            let running = Running {
+                terminals,
+                handles: listed.handles.clone(),
+                data,
+                chats,
+            };
+            let count = listed.running.len() + listed.chats.len();
+            match next(settings::get(cx).on_quit, count) {
                 Next::Quit => cx.quit(),
-                Next::End => end_then_quit(client, listed.handles, cx),
-                Next::Ask => ask(client, listed, cx),
-            },
-        );
+                Next::End => stop_then_quit(running, cx),
+                Next::Ask => ask(running, listed, cx),
+            }
+        });
     })
     .detach();
 }
@@ -167,13 +198,51 @@ fn listed(client: &TermClient) -> Listed {
     found
 }
 
-/// Closes `handles` rather than only stopping the daemon, whose shells would run again at the
-/// next launch, as after a restart; then stops the daemon and quits. A close is answered
+/// The titles of the host's chats still at work, asked of a host that runs in the app's data
+/// folder `data`, starting none.
+fn at_work(data: &Path) -> Vec<String> {
+    let dir = koyo_agent::client::host_dir(data);
+    let summaries = match koyo_agent::client::request_if_running::<ThreadsWatch>(&dir, &Empty {}) {
+        Ok(summaries) => summaries.unwrap_or_default(),
+        Err(error) => {
+            log::warn!("couldn't list the chats at work before quitting: {error}");
+            return Vec::new();
+        }
+    };
+    let mut titles: Vec<String> = (summaries.iter())
+        .filter(|summary| works(summary))
+        .map(|summary| match summary.title.trim() {
+            "" => PaneKind::Chat.new_tab_title().to_owned(),
+            title => title.to_owned(),
+        })
+        .collect();
+    titles.sort();
+    titles
+}
+
+/// Whether a chat is at work: a turn running, a question waiting for the person, or tasks of
+/// the agent's running in the background, all of which stopping the host would end.
+fn works(summary: &ThreadSummary) -> bool {
+    summary.status == Status::Working || summary.needs.is_some() || summary.background
+}
+
+/// Closes the terminals rather than only stopping their daemon, whose shells would run again at
+/// the next launch, as after a restart, then stops the daemon; stops the agent host, which stops
+/// each chat's turn and ends what it runs in the background; then quits. A close is answered
 /// before its program has gone, and stopping the daemon then would keep the terminal, so this
 /// waits for the list to empty, for as long as the daemon gives a program to end.
-pub(crate) fn end_then_quit(client: Arc<TermClient>, handles: Vec<Handle>, cx: &mut App) {
+pub(crate) fn stop_then_quit(running: Running, cx: &mut App) {
+    let Running {
+        terminals,
+        handles,
+        data,
+        chats,
+    } = running;
     let executor = cx.background_executor().clone();
     let ending = cx.background_spawn(async move {
+        let Some(client) = terminals else {
+            return;
+        };
         close_all(&client, handles);
         let given_up = Instant::now() + ENDING;
         while !listed(&client).handles.is_empty() && Instant::now() < given_up {
@@ -183,15 +252,28 @@ pub(crate) fn end_then_quit(client: Arc<TermClient>, handles: Vec<Handle>, cx: &
             log::warn!("couldn't stop the terminal daemon: {error}");
         }
     });
+    let stopping = cx.background_spawn(async move {
+        let stopped = match (chats, data) {
+            (Some(client), _) => client.stop_for_good(),
+            (None, Some(data)) => {
+                koyo_agent::client::stop_host(&koyo_agent::client::host_dir(&data))
+            }
+            (None, None) => Ok(()),
+        };
+        if let Err(error) = stopped {
+            log::warn!("couldn't stop the agent host: {error}");
+        }
+    });
     cx.spawn(async move |cx| {
         ending.await;
+        stopping.await;
         cx.update(|cx| cx.quit());
     })
     .detach();
 }
 
 /// Asks over the window, opening it again if it was closed.
-fn ask(client: Arc<TermClient>, listed: Listed, cx: &mut App) {
+fn ask(running: Running, listed: Listed, cx: &mut App) {
     if crate::control::main_shell(cx).is_none()
         && let Err(error) = crate::open_main_window(cx)
     {
@@ -200,11 +282,11 @@ fn ask(client: Arc<TermClient>, listed: Listed, cx: &mut App) {
     let Some((window, _)) = crate::control::main_shell(cx) else {
         return cx.quit();
     };
-    let Listed { handles, running } = listed;
     let dialog = QuitDialog {
-        running,
+        running: listed.running,
+        chats: listed.chats,
         remember: false,
-        end: Some(Box::new(move |cx| end_then_quit(client, handles, cx))),
+        end: Some(Box::new(move |cx| stop_then_quit(running, cx))),
     };
     (window.update(cx, |_, window, cx| {
         modal::open(WIDTH, HEIGHT, window, cx, |_, _| dialog);
@@ -228,11 +310,14 @@ const HEIGHT: f32 = 2. * PADDING
     + 2. * GAP
     + FOOTER;
 
-/// Ends everything and quits.
+/// Stops everything and quits.
 type End = Box<dyn FnOnce(&mut App)>;
 
 pub(crate) struct QuitDialog {
+    /// The terminals still running, by name.
     running: Vec<String>,
+    /// The chats still at work, by title.
+    chats: Vec<String>,
     remember: bool,
     /// Taken once it's chosen.
     end: Option<End>,
@@ -240,12 +325,27 @@ pub(crate) struct QuitDialog {
 
 impl QuitDialog {
     fn what_runs(&self) -> SharedString {
-        let names = self.running.join(", ");
-        match self.running.len() {
-            1 => format!("A terminal is still running: {names}."),
-            count => format!("{count} terminals are still running: {names}."),
+        let names = [self.running.as_slice(), self.chats.as_slice()]
+            .concat()
+            .join(", ");
+        let (terminals, chats) = (self.running.len(), self.chats.len());
+        let said = match (terminals, chats) {
+            (1, 0) => format!("A terminal is still running: {names}"),
+            (count, 0) => format!("{count} terminals are still running: {names}"),
+            (0, 1) => format!("A chat is still running: {names}"),
+            (0, count) => format!("{count} chats are still running: {names}"),
+            _ => format!(
+                "{} and {} are still running: {names}",
+                counted(terminals, "terminal"),
+                counted(chats, "chat")
+            ),
+        };
+        // A chat's title may end its own sentence.
+        if said.ends_with(['.', '!', '?', '…']) {
+            said.into()
+        } else {
+            format!("{said}.").into()
         }
-        .into()
     }
 
     /// Takes the choice in for good if asked to.
@@ -260,7 +360,8 @@ impl QuitDialog {
         cx.quit();
     }
 
-    fn end(&mut self, cx: &mut Context<Self>) {
+    /// Stops everything and quits, as its Stop Everything button does.
+    pub(crate) fn end(&mut self, cx: &mut Context<Self>) {
         let Some(end) = self.end.take() else {
             return;
         };
@@ -289,7 +390,7 @@ impl Render for QuitDialog {
             .child(
                 modal::small_line()
                     .text_color(p.muted)
-                    .child("Keep running to carry on next launch, or end everything for good."),
+                    .child("They carry on while Koyo is closed, unless you stop everything."),
             )
             .child(
                 div()
@@ -325,11 +426,20 @@ impl Render for QuitDialog {
                             .on_click(cx.listener(|this, _, _, cx| this.keep(cx))),
                     )
                     .child(
-                        Button::new("quit-end", "End Everything", Tone::Danger)
+                        Button::new("quit-end", "Stop Everything", Tone::Danger)
                             .busy(ending)
                             .on_click(cx.listener(|this, _, _, cx| this.end(cx))),
                     ),
             )
+    }
+}
+
+/// `count` of `what`, as "1 chat" or "2 chats".
+fn counted(count: usize, what: &str) -> String {
+    if count == 1 {
+        format!("1 {what}")
+    } else {
+        format!("{count} {what}s")
     }
 }
 

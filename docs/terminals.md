@@ -341,10 +341,11 @@ the daemon runs the operations (8.1). Loopback HTTP is deferred.
   - `terminals/<handle>/{activity.jsonl, commands.jsonl, screenshots.jsonl, screenshots/}`
     (5.8) and `terminals/<handle>/snapshot.bin` (optional, 5.9).
   - `mcp.token` (0600): secret for app-launched agents, regenerated at daemon start.
-- Quitting the app (⌘Q, the menu) with terminals running asks whether to end them or keep them,
-  unless a choice was kept (Settings → General; `koyo-rs/koyo/src/quitting.rs`). Ending closes
-  each terminal, so none runs again at the next launch, then stops the daemon. The Dock and a
-  logout can't be held up to ask, and keep them.
+- Quitting the app (⌘Q, the menu) with terminals or chats running asks whether to keep them
+  running or stop everything, unless a choice was kept (Settings → General;
+  `koyo-rs/koyo/src/quitting.rs`). Stopping closes each terminal, so none runs again at the
+  next launch, then stops the daemon, and shuts the agent host down (`docs/chat.md` 4.1). The
+  Dock and a logout can't be held up to ask, and keep them.
 - Shutdown: `Shutdown` frame from an authorized client, or SIGTERM. The daemon sends SIGHUP
   to every child, waits up to 5 s, then SIGKILL. It never stops because a client left.
 - Upgrade: a new build does not replace a running daemon that holds terminals. It connects,
@@ -1368,9 +1369,9 @@ onto `for: text|gone|stable|idle|exit|prompt`; its `snapshot -i` refs onto
 - "Needs input" terminals bubble up: sidebar count, a dock badge later, and an optional
   notification routed from OSC 9/777 with the terminal and branch in its title.
 - Terminals are closed by closing their tabs, not by closing the window. Quitting the app asks
-  whether to end them or keep them (5.1). A "Stop all terminals of this branch" exists in the
-  branch menu, with confirmation listing processes. **As implemented (M5):** "Stop
-  Terminals…" in the checkout row's menu, shown while it has terminals, asks with each
+  whether to keep them running or stop everything (5.1). A "Stop all terminals of this branch"
+  exists in the branch menu, with confirmation listing processes. **As implemented (M5):**
+  "Stop Terminals…" in the checkout row's menu, shown while it has terminals, asks with each
   terminal's name and status.
 - Settings → Terminals: font, scrollback, MCP HTTP on/off and port, external client grants,
   "Show the activity panel in new terminals", log and screenshot retention caps, "Export

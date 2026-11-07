@@ -61,6 +61,7 @@ pub(in crate::chat) fn summary(id: &str, cwd: &Path, title: &str, tab_open: bool
         model: None,
         status: Status::Idle,
         needs: None,
+        background: false,
         queued: 0,
         unread: false,
         tab_open,

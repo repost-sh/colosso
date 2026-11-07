@@ -256,7 +256,9 @@ impl Drawn {
         }
         let shell = self.shell.clone();
         let chats = self.cx.read(|cx| shell.read(cx).chats().clone());
-        let made = self.cx.read(|cx| chats.read(cx).create(root));
+        let made = self
+            .cx
+            .update(|cx| chats.update(cx, |chats, cx| chats.create(root, cx)));
         let mut thread = None;
         self.finish(HOST_PATIENCE, async { thread = Some(made.await) })?;
         let id = thread

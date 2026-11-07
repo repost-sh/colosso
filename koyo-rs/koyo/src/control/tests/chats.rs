@@ -22,6 +22,7 @@ pub(super) fn summary(id: &str, cwd: &Path, at: &str) -> ThreadSummary {
         model: None,
         status: Status::Working,
         needs: Some(RequestKind::Approval),
+        background: false,
         queued: 1,
         unread: true,
         tab_open: false,

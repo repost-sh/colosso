@@ -18,7 +18,8 @@ A chat is a tab, like a terminal or a browser page, and belongs to a worktree: t
 in that checkout. Claude runs through Anthropic's own Agent SDK inside a small host program
 that Koyo ships, compiled from strict TypeScript into one executable, so nobody needs Node.
 The host outlives the window, as the terminal daemon does: quitting or updating Koyo leaves a
-running turn running, and reopening Koyo shows where it got to, approvals still waiting. The
+running turn running, unless the person stops everything as they quit, and reopening Koyo shows
+where it got to, approvals still waiting. The
 app is a typed client that renders: a timeline that streams the answer as it is written and
 folds the work behind it, and a Liquid Glass composer floating over it with the model, effort,
 permission and plan controls. Every behaviour T3 Code learned the hard way about driving
@@ -324,6 +325,12 @@ megabyte keeping `host.log.old` (`src/log.ts`); stderr only in the foreground. W
   live request for 10 minutes, the host closes its sessions and exits. A pending approval
   keeps it alive: it waits for a person, who will open Koyo. A task in the background keeps it
   alive too: closing its session would end it.
+- Quitting the app with a chat at work (a turn running, a question waiting for the person, a
+  task in the background) asks, as with terminals (`docs/terminals.md` 5.1;
+  `koyo-rs/koyo/src/quitting.rs`): Keep running leaves the host carrying on, and the app shows
+  what it did when it opens again; Stop everything shuts the host down (below). The app asks a
+  host that runs what's at work, starting none to ask, and once it stopped the host its own
+  client starts none again.
 - Live sessions: a thread's CLI process stays alive between turns, which saves a spawn;
   at most 4 are alive at once (the least recently used is closed first) and each closes after
   5 minutes idle; neither rule closes one with a task in the background. The next turn resumes
@@ -513,13 +520,14 @@ Request {
 
 ThreadSummary = id, cwd, title, provider, model, updatedAt,
   status: "idle"|"working"|"failed", needs: "approval"|"question"|"plan" | null,
-  queued: count, unread: bool
+  background: bool, queued: count, unread: bool
 ```
 
 Derived, never stored (T3: status written twice drifts):
 - `status`, in one function: working while a run is starting, running or stopping; failed
   when the latest settled run failed; else idle. `needs` from the oldest pending request.
-  `unread` when the latest settled run ended after `readAt`.
+  `unread` when the latest settled run ended after `readAt`. `background` while the thread's
+  `backgroundTasks` isn't 0 (4.5.6).
 - The stop divider ("You stopped this response") from `Run.stop`; the failure row from
   `Run.failure`; Force stop offered once `stop.requestedAt` is 10 s old and the run is still
   stopping; the user message of a run from its `user_message` item.
@@ -649,11 +657,12 @@ which only the session's process can start, and the task ends with that process.
 a run with no message of the person's (`turn.adopted`, 4.7), shown like any other. Once no
 task runs, the session closes after 5 minutes idle, as after a turn. The provider says how
 many tasks run each time that changes (the `background` event, kept as
-`Thread.backgroundTasks`); a task the provider says isn't activity, as a housekeeping one,
-doesn't count. A session that ends anyway ends its tasks with it: the host is stopped or
-replaced, or crashes, or a settings change reopens it. The next turn resumes the conversation,
-and Claude tells the agent they stopped. A task that never ends, as a dev server, keeps the
-session, and the host, until the agent stops it or the chat is deleted.
+`Thread.backgroundTasks`), and lists show it as the summary's `background`; a task the
+provider says isn't activity, as a housekeeping one, doesn't count. A session that ends anyway
+ends its tasks with it: the host is stopped or replaced, or crashes, or a settings change
+reopens it. The next turn resumes the conversation, and Claude tells the agent they stopped. A
+task that never ends, as a dev server, keeps the session, and the host, until the agent stops
+it, the chat is deleted, or Koyo quits with Stop everything.
 
 #### 4.5.7 Titles
 

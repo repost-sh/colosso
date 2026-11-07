@@ -72,3 +72,35 @@ describe("a chat's background", () => {
     expect(chats.actor.thread.backgroundTasks).toBe(0);
   });
 });
+
+describe("a chat's summary", () => {
+  test("says the agent has tasks running in the background, as that changes", async () => {
+    const chats = harness();
+    await running(chats);
+    const session = chats.provider.session;
+    session.finished();
+    await settle();
+    expect(chats.actor.summary().background).toBe(false);
+    session.report({ type: "background", tasks: 2 });
+    await settle();
+    expect(chats.summaries.at(-1)).toMatchObject({ status: "idle", background: true });
+    const told = chats.summaries.length;
+    session.report({ type: "background", tasks: 1 });
+    await settle();
+    expect(chats.summaries).toHaveLength(told);
+    session.report({ type: "background", tasks: 0 });
+    await settle();
+    expect(chats.summaries.at(-1)?.background).toBe(false);
+  });
+
+  test("stops saying so once the session goes", async () => {
+    const chats = harness();
+    await running(chats);
+    const session = chats.provider.session;
+    session.report({ type: "background", tasks: 1 });
+    session.finished();
+    session.report({ type: "session.ended", error: null });
+    await settle();
+    expect(chats.summaries.at(-1)?.background).toBe(false);
+  });
+});

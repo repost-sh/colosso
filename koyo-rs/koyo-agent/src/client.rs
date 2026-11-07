@@ -260,6 +260,19 @@ fn read_loop(stream: UnixStream, waiting: &Waiting, events: &Sender<Event>) {
     waiting.replies.lock().clear();
 }
 
+/// Asks the host in `dir` for `M` if one listens there, starting none: `None` when none does,
+/// as there's then nothing of it to ask about. Blocks like `Client::request`.
+pub fn request_if_running<M: Method>(
+    dir: &DaemonDir,
+    params: &M::Params,
+) -> Result<Option<M::Result>, ClientError> {
+    let Ok(stream) = UnixStream::connect(dir.socket()) else {
+        return Ok(None);
+    };
+    let connected = Client::over(stream, ClientKind::App)?;
+    connected.client.request::<M>(params).map(Some)
+}
+
 /// Stops the host in `dir` so another build's can start in its place: asked to shut down,
 /// which a host of any version answers, else signalled, then killed if it doesn't stop
 /// (`koyo_daemon::stop`). Returns once nothing listens in `dir`.
