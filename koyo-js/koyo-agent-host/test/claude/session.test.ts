@@ -4,6 +4,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { Mode } from "../../src/protocol/model";
 import { KOYO_PROMPT, KOYO_TOOLS_PROMPT } from "../../src/providers/claude/options";
 import { init, success } from "../fixtures/claude/frames";
+import { backgroundTasks } from "../fixtures/claude/tasks";
 import { settle } from "../support/wait";
 import { bench, closeBenches, spec } from "./support";
 
@@ -212,6 +213,22 @@ describe("a settings change", () => {
     expect(second.query.options.model).toBe("claude-opus-5-5");
     expect(second.query.options.resume).toBe(first.query.options.sessionId);
     expect(made.sink.of("session.ended")).toEqual([]);
+  });
+});
+
+describe("what a session runs in the background", () => {
+  test("goes with a process that restarts", async () => {
+    const made = bench(spec(), { resumable: true });
+    const first = await made.turn();
+    first.query.send(init("default", { echo: [first.promptId] }), success([first.promptId]));
+    first.query.send(backgroundTasks({ type: "local_bash" }));
+    await settle();
+    first.query.refuses = true;
+    made.session.configure({ model: "claude-opus-5-5" });
+    await settle();
+    await made.turn("Go on.");
+    await settle();
+    expect(made.sink.of("background").map((event) => event.tasks)).toEqual([1, 0]);
   });
 });
 
