@@ -97,7 +97,7 @@ fn pages(cx: &App) -> Result<(Vec<Listed>, Option<u64>), ControlError> {
         .and_then(|at| workspace.tab(at))
         .and_then(|tab| {
             (tab.panes().into_iter())
-                .find(|pane| pane.view().is_some() || pane.unloaded_address().is_some())
+                .find(|pane| pane.address(cx).is_some())
                 .map(|pane| pane.id)
         });
     Ok((pages, shown))
