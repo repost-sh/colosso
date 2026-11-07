@@ -98,8 +98,8 @@ export const methods = {
       version: Version,
     }),
     /**
-     * `busy` while a run is live, a request waits or another client is here (another build's
-     * app uses it), so another build waits to replace it.
+     * `busy` while a run is live, a task runs in the background, a request waits or another
+     * client is here (another build's app uses it), so another build waits to replace it.
      */
     result: z.object({ version: Version, pid: z.int().positive(), busy: z.boolean() }),
   },

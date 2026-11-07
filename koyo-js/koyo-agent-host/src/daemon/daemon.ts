@@ -1,7 +1,8 @@
 // The host's process (docs/chat.md 4.1): it takes its folder's lock or leaves the folder to
 // the host that holds it, settles what a host before it left live, serves its socket, says
 // it's ready once it listens, and stops on `shutdown`, SIGTERM or SIGINT, or after ten minutes
-// with no client, no live run and no question waiting on a person.
+// with no client, no live run, nothing running in the background and no question waiting on a
+// person.
 
 import { mkdirSync, rmSync } from "node:fs";
 

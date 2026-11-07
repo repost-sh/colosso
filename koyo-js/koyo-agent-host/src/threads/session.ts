@@ -1,7 +1,8 @@
-// A thread's one provider session (docs/chat.md 4.5.6): opened for a turn, kept between turns,
-// closed after a while idle or when another thread needs the room. What a session reports is
-// handed on as a step of its own, after the one running; what a dropped session reports
-// reaches nothing, so a session killed mid-turn can't change the turn after it.
+// A thread's one provider session (docs/chat.md 4.5.6): opened for a turn, kept between turns
+// and while it runs tasks in the background, closed after a while idle or when another thread
+// needs the room. What a session reports is handed on as a step of its own, after the one
+// running; what a dropped session reports reaches nothing, so a session killed mid-turn can't
+// change the turn after it.
 
 import { errorMessage, log } from "../log";
 import type { RequestPayload, Thread } from "../protocol/model";
@@ -63,11 +64,19 @@ export class SessionSlot {
   /** Which session reports are from: a dropped one's reach nothing. */
   #epoch = 0;
   #idle: Timer | undefined;
+  /** Whether what lives in the thread would end with the session. */
+  readonly #busy: () => boolean;
 
-  constructor(provider: Provider, later: (work: () => void) => void, reports: Reports) {
+  constructor(
+    provider: Provider,
+    later: (work: () => void) => void,
+    reports: Reports,
+    busy: () => boolean,
+  ) {
     this.#provider = provider;
     this.#later = later;
     this.#reports = reports;
+    this.#busy = busy;
   }
 
   /** The session, when one is open. */
@@ -87,7 +96,7 @@ export class SessionSlot {
       event: (event) => {
         this.#later(() => {
           if (current()) {
-            this.#reports.event(event);
+            this.#heard(event);
           }
         });
       },
@@ -165,20 +174,29 @@ export class SessionSlot {
     this.#session?.live.stopSubagent(key);
   }
 
+  /** Tells what the session reported. Once nothing runs in the background, which kept it, it
+   * idles as it does after a turn. */
+  #heard(event: DriverEvent): void {
+    this.#reports.event(event);
+    if (event.type === "background" && event.tasks === 0) {
+      this.idleSoon();
+    }
+  }
+
   /** Whether reports come from the session open now, as they come. */
   #current(): () => boolean {
     const epoch = this.#epoch;
     return () => epoch === this.#epoch;
   }
 
-  /** Closes the session a while from now, unless a turn wants it first or `busy` says so. */
-  idleSoon(busy: () => boolean): void {
+  /** Closes the session a while from now, unless a turn wants it first or it's busy then. */
+  idleSoon(): void {
     clearTimeout(this.#idle);
     if (this.#session === undefined) {
       return;
     }
     this.#idle = setTimeout(() => {
-      if (!busy()) {
+      if (!this.#busy()) {
         this.close();
       }
     }, IDLE_MS);

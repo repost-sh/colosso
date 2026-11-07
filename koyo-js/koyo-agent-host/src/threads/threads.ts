@@ -175,7 +175,7 @@ export class Threads {
     });
   }
 
-  /** Whether any thread has a live run or waits on its person. */
+  /** Whether any thread has a live run, runs a task in the background or waits on its person. */
   busy(): boolean {
     return [...this.#actors.values()].some((actor) => actor.busy());
   }

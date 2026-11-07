@@ -188,14 +188,15 @@ exact schema types. Rejected: termd's binary framing (built for PTY bytes); gRPC
 protocol module, beside a fingerprint of what the executable is built from (the package's
 sources, `bun.lock`, the Bun version), in `koyo-rs/daemon-version.txt` next to termd's line;
 `script/daemon-version` checks both, and `bump` or `keep` settles a change, so a comment-only
-edit doesn't count as a new host. The hello's answer carries the version. Same: use the
-host. Different and the host is idle (no live run, no pending request): stop it and start
-the app's, without asking. Different and busy: the chat shows "Chats are running on another
-build of Koyo. Restart them to use this one; running turns stop." with "Restart chats", as
-terminals do (D12). Busy also means another client is connected, so two builds in use at once
-leave the choice to the person rather than take turns replacing each other. The hello is the
-one exchange every version keeps. Rejected: a hash of the sources as the build's id (automatic, but every edit, a comment included, would turn a
-busy host away; and it would be a second compatibility scheme beside termd's).
+edit doesn't count as a new host. The hello's answer carries the version. Same: use the host.
+Different and the host is idle (no live run, no task in the background, no pending request):
+stop it and start the app's, without asking. Different and busy: the chat shows "Chats are
+running on another build of Koyo. Restart them to use this one; running turns stop." with
+"Restart chats", as terminals do (D12). Busy also means another client is connected, so two
+builds in use at once leave the choice to the person rather than take turns replacing each
+other. The hello is the one exchange every version keeps. Rejected: a hash of the sources as
+the build's id (automatic, but every edit, a comment included, would turn a busy host away;
+and it would be a second compatibility scheme beside termd's).
 
 **C10 [decided] Assistant text streams.** The driver turns `text_delta` and
 `thinking_delta` stream events into appends per content block, reconciled with the
@@ -319,12 +320,14 @@ megabyte keeping `host.log.old` (`src/log.ts`); stderr only in the foreground. W
 - A client that stops reading (a hung app, a debugger) is cut off once 32 MiB wait for it;
   it reconnects and catches up with `sinceSeq` (5.1). On shutdown, each client is let go only
   once what it's owed has gone, the `shutdown` reply among it.
-- Idle exit: with no client connected, no live run and no pending live request for 10
-  minutes, the host closes its sessions and exits. A pending approval keeps it alive: it
-  waits for a person, who will open Koyo.
+- Idle exit: with no client connected, no live run, no task in the background and no pending
+  live request for 10 minutes, the host closes its sessions and exits. A pending approval
+  keeps it alive: it waits for a person, who will open Koyo. A task in the background keeps it
+  alive too: closing its session would end it.
 - Live sessions: a thread's CLI process stays alive between turns, which saves a spawn;
   at most 4 are alive at once (the least recently used is closed first) and each closes after
-  5 minutes idle. The next turn resumes the session (4.5.6).
+  5 minutes idle; neither rule closes one with a task in the background. The next turn resumes
+  the session (4.5.6).
 - Shutdown (`shutdown` or SIGTERM): stop accepting, interrupt live runs (5 s at most), settle
   them interrupted by the host, expire live approvals, close sessions (each CLI's process
   group gets SIGTERM, then SIGKILL after 5 s), close the store, remove the socket, exit.
@@ -368,8 +371,9 @@ H→C  {"event": "thread.changed", "params": {...}}      // unsolicited
 
 ```
 hello       {client: {kind: "app"|"cli"|"test"}, version} → {version, pid, busy}
-            `version` is `HOST_VERSION` (C9); `busy` while a run is live, a request waits or
-            another client is here, so two builds of the app don't take turns stopping it.
+            `version` is `HOST_VERSION` (C9); `busy` while a run is live, a task runs in the
+            background (4.5.6), a request waits or another client is here, so two builds of
+            the app don't take turns stopping it.
             A hello of another version is answered, so the app can see whom it met, and that
             client may then only call `shutdown`; before a hello, nothing else is answered
             but `not_allowed`.
@@ -624,18 +628,32 @@ starts and a notice says the earlier context wasn't available (T3 adapter pitfal
 The session id is minted by the host and stored before the first turn (the SDK's `sessionId`
 option), so a crash before the first frame still resumes the right conversation.
 
-Model and effort changes apply to the live session (`setModel`, `applyFlagSettings`) before
-the next turn; a permission change with `setPermissionMode`; a change the live session can't
-take reopens it with resume, refused while a background task runs (adapter pitfalls 24, 27,
-28). The session says at once which it is (`configure` returns `"applied"` or `"reopen"`), so
-a turn the same step starts, as implementing a plan does, never runs on the old settings; a
-change that fails to apply is the session's to recover from, by reopening before its next
-turn. An interrupt the session can't deliver ends its process, and the run with it.
+Model and effort changes apply to the live session (`setModel`, `applyFlagSettings`) before the
+next turn; a permission change with `setPermissionMode`; a change the live session can't take
+reopens it with resume (adapter pitfalls 24, 27, 28), which ends a task in the background:
+refusing the change while one runs isn't built yet. The session says at once which it is
+(`configure` returns `"applied"` or `"reopen"`), so a turn the same step starts, as implementing
+a plan does, never runs on the old settings; a change that fails to apply is the session's to
+recover from, by reopening before its next turn. An interrupt the session can't deliver ends its
+process, and the run with it.
 
 A session opens in the chat's mode, else Koyo's default (`config.set`), else `null`, which
 leaves the choice to the provider's settings. A change to the chat's mode reaches a live
 session the same way. A change to Koyo's default leaves a live session in the mode it has,
 until it next opens.
+
+A session with a task in the background doesn't idle-close or get evicted. A task in the
+background is a shell the agent started with `run_in_background`, a Monitor, or a subagent
+(4.5.10). The agent ends its turn and waits for it: its end starts a turn of the agent's own,
+which only the session's process can start, and the task ends with that process. That turn is
+a run with no message of the person's (`turn.adopted`, 4.7), shown like any other. Once no
+task runs, the session closes after 5 minutes idle, as after a turn. The provider says how
+many tasks run each time that changes (the `background` event, kept as
+`Thread.backgroundTasks`); a task the provider says isn't activity, as a housekeeping one,
+doesn't count. A session that ends anyway ends its tasks with it: the host is stopped or
+replaced, or crashes, or a settings change reopens it. The next turn resumes the conversation,
+and Claude tells the agent they stopped. A task that never ends, as a dev server, keeps the
+session, and the host, until the agent stops it or the chat is deleted.
 
 #### 4.5.7 Titles
 
@@ -674,7 +692,8 @@ no session, so open, history and recovery need nothing new, and it's left out of
 it does; its timeline comes through `subagent.event` as any turn's items do.
 
 The row is written outside the run's `LiveTurn`, so a run settling doesn't close it. One in the
-background outlives its run, and a session with one running doesn't idle-close or get evicted.
+background outlives its run, and a session with one running doesn't idle-close or get evicted,
+as with any task in the background (4.5.6).
 Its requests go to the parent's timeline, on the live or the last run, and last until the session
 goes. Nothing can be said to a subagent (`turns.send` is a conflict); `turns.stop` on its thread
 stops it alone and never kills the session. A host that comes back settles both row and thread.
@@ -729,6 +748,7 @@ DriverEvent = session.ready {mode} | turn.started {promptId}
   | item.updated {key, item, status} | usage {usage} | request {request}
   | notice {level, text}
   | turn.finished {outcome: "completed"|"interrupted"|"failed", failure, usage}
+  | background {tasks}                  // how many run in the background, as that changes
   | session.ended {error}
 ```
 
@@ -769,12 +789,16 @@ The behaviours, each with the T3 adapter pitfall it carries (`t3-claude-adapter.
   task ends) get a run of their own with no user message: `turn.adopted`. A result that names
   no turn of ours shows what was held for it rather than dropping it (6, 7, 8).
 - **Background.** `background_tasks_changed` lists every task the CLI runs in the background
-  whenever that list changes, whatever turn runs: the shells and Monitors the agent started and
-  the subagents running past their turn, which it goes on from as they end. Those it marks
+  whenever that list changes, whatever turn runs: the shells and Monitors the agent started
+  and the subagents running past their turn, which it goes on from as they end. Those it marks
   `ambient` (watchers it started on its own) aren't the agent's work. Their count is the
   thread's `backgroundTasks`, sent as the `background` driver event when it changes, and none
   once the CLI's process restarts or the session goes, as the list is the process's. A session
-  isn't kept open for them: one that idle-closes with a shell or Monitor running ends it.
+  with one running is kept open, as each one's end starts a turn only its process can (4.5.6).
+  As recorded (CLI 2.1.319): a shell started with `run_in_background` and a Monitor are both
+  `local_bash` tasks, neither `ambient`. Each one's end, and each line a Monitor prints,
+  starts a turn whose result's `origin` is `task-notification`; the list loses an ended task
+  before that turn's first frame.
 - **Text and thinking** stream per content block (C10). Thinking is shown as reasoning, as
   the CLI shows it, and asked for by `--thinking-display summarized`: left alone, Claude Code
   sends thinking blocks with no text, and the SDK's `thinking` option would also turn thinking on

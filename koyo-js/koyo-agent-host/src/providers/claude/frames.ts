@@ -263,7 +263,8 @@ export class Frames {
         this.#notice("error", UNSAVED);
         return;
       }
-      // A task's frames are `Subagents.hears`' before any comes here.
+      // A task's frames are `Subagents.hears`' before any comes here, and what runs in the
+      // background is `Background.hears`'.
       case "init":
       case "control_request_progress":
       case "hook_started":

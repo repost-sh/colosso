@@ -107,6 +107,14 @@ export class ThreadState {
     return this.#unsettled.find((run) => run.status === "queued");
   }
 
+  /**
+   * Whether a run is live or the agent has tasks running in the background, which go with the
+   * session: their ends start turns of the agent's own (docs/chat.md 4.5.6).
+   */
+  atWork(): boolean {
+    return this.live() !== undefined || this.#thread.backgroundTasks > 0;
+  }
+
   /** The agent has `tasks` running in the background now. */
   background(tasks: number): void {
     if (tasks !== this.#thread.backgroundTasks) {

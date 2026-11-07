@@ -80,7 +80,7 @@ export class ThreadActor {
       gone: () => {
         this.#sessionGone();
       },
-    });
+    }, () => this.busy());
     this.#subagents = new Subagents({
       root: this,
       now: cx.now,
@@ -89,7 +89,7 @@ export class ThreadActor {
         this.#session.stopSubagent(key);
       },
       ended: () => {
-        this.#session.idleSoon(() => this.busy());
+        this.#session.idleSoon();
       },
     });
   }
@@ -132,9 +132,9 @@ export class ThreadActor {
     return this.#state.summary();
   }
 
-  /** Whether a run or a subagent is live, or the agent waits on the person. */
+  /** Whether a run, a subagent or a background task is live, or the agent waits on the person. */
   busy(): boolean {
-    return this.#state.live() !== undefined || this.#requests.waiting() || this.#subagents.live();
+    return this.#state.atWork() || this.#requests.waiting() || this.#subagents.live();
   }
 
   hasSession(): boolean {
@@ -415,7 +415,7 @@ export class ThreadActor {
       items: ended.items,
       requests: this.#requests.release(ended.run, at),
     });
-    this.#session.idleSoon(() => this.busy());
+    this.#session.idleSoon();
     this.#next();
   }
 
