@@ -9,6 +9,7 @@
 //! What it shows of the thread and the host it holds a copy of. A view is drawn again each time
 //! what it read is updated, told or not, and every token updates both.
 
+pub(super) mod activity;
 mod asked;
 mod attach;
 mod context;
@@ -29,6 +30,7 @@ pub use question::SkipQuestion;
 pub use turn::{RecallPrompt, StopTurn};
 
 use std::path::PathBuf;
+use std::rc::Rc;
 
 use gpui_kit::base::ElementExt as _;
 use gpui_kit::component::Sizable as _;
@@ -50,6 +52,7 @@ use koyo_agent::protocol::model::Prompt;
 use koyo_agent::protocol::requests::Response;
 use koyo_agent::replica::Replica;
 
+use self::activity::{Activity, Placement};
 use self::asked::Asked;
 use self::attach::Attached;
 use self::footer::{COMPOSER, ROOM_FOR_LABELS, Settings, labels_fitting};
@@ -63,6 +66,9 @@ use crate::native::liquid;
 use crate::shell::glass;
 use crate::theme::fonts::at_chat_size;
 use crate::theme::{self, Palette};
+
+/// How round the composer's corners are, its glass's and its edge's.
+const RADIUS: f32 = 18.;
 
 pub(super) fn bind_keys(cx: &mut App) {
     asked::bind_keys(cx);
@@ -127,6 +133,10 @@ pub(super) struct ChatComposer {
     draft_written: Option<(u64, usize)>,
     /// Where the chat's turn is.
     turn: Turn,
+    /// The edge that shows the chat working, which the tab lays over it.
+    pub(super) activity: Entity<Activity>,
+    /// Where it and its glass were last laid out, for the edge.
+    placement: Rc<Placement>,
     /// Waits for a stop to have taken too long.
     forcing: Option<Task<()>>,
     /// Whether a stop has taken long enough for the turn to be ended instead.
@@ -204,6 +214,8 @@ impl ChatComposer {
             cx.on_release(|this: &mut Self, cx| this.let_go(cx)),
         ];
         let connection = chats.read(cx).connection().clone();
+        let placement = Rc::new(Placement::default());
+        let activity = cx.new(|cx| Activity::new(placement.clone(), window, cx));
         let mut composer = ChatComposer {
             chats,
             catalog,
@@ -230,6 +242,8 @@ impl ChatComposer {
             draft: None,
             draft_written: None,
             turn: Turn::default(),
+            activity,
+            placement,
             forcing: None,
             can_force: false,
             secondary_held: false,
@@ -276,6 +290,7 @@ impl ChatComposer {
         let settings = replica.map(|replica| Settings::of(&replica.thread));
         let context = replica.and_then(Replica::context);
         let turn = replica.map_or_else(Turn::default, Turn::of);
+        let working = replica.is_some_and(Replica::working);
         let asking = replica.and_then(Replica::asking);
         if self.asked.request() != asking.map(|asked| &asked.id) {
             self.asked = asking.map_or(Asked::Nothing, Asked::of);
@@ -289,6 +304,10 @@ impl ChatComposer {
             cx.notify();
         }
         self.follow_turn(turn, cx);
+        // Told only when it changes, as every token comes through here.
+        if self.activity.read(cx).working() != working {
+            (self.activity).update(cx, |activity, cx| activity.set_working(working, cx));
+        }
         if let Some(settings) = settings.filter(|settings| *settings != self.settings) {
             // The slider's stops are the efforts of the model it opened on.
             if settings.model != self.settings.model {
@@ -361,7 +380,7 @@ impl Render for ChatComposer {
         }
         let p = theme::palette(cx);
         let keyed = ElementId::NamedInteger("chat-composer-glass".into(), cx.entity_id().as_u64());
-        let on_glass = liquid::backdrop(keyed, px(18.), window, cx);
+        let on_glass = liquid::backdrop(keyed, px(RADIUS), window, cx);
         let surface = div()
             .relative()
             .w_full()
@@ -371,7 +390,7 @@ impl Render for ChatComposer {
             .pt_3()
             .pb_2()
             .px_3()
-            .rounded(px(18.))
+            .rounded(px(RADIUS))
             .occlude();
         let typed = self.text.read(cx).value();
         let surface = Self::takes_drops(liquid::floating(surface, on_glass, p), p, cx)
@@ -386,6 +405,12 @@ impl Render for ChatComposer {
             ))
             .child(self.footer(&typed, p, cx))
             .children(self.suggestions(p, window, cx));
+        // Measured round it, so what's measured is its glass, or its hairline where there's none.
+        let placement = self.placement.clone();
+        let surface = div()
+            .w_full()
+            .child(surface)
+            .on_prepaint(move |bounds, _, _| placement.glass_at(bounds));
         let mut keys = KeyContext::default();
         keys.add(COMPOSER);
         // A popover has the keys while it's open, ahead of what's asked.
@@ -402,12 +427,13 @@ impl Render for ChatComposer {
         }
         let composer = cx.weak_entity();
         let labels = self.labels;
+        let placement = self.placement.clone();
         let hearing = Self::hears_turn(Self::hears_footer(Self::hears_answers(div(), cx), cx), cx);
         self.hears_suggestions(Self::hears_model_menu(hearing, cx), cx)
             .key_context(keys)
             .relative()
+            // As wide as the column the tab holds it in, with the edge over it.
             .w_full()
-            .map(|column| crate::settings::get(cx).chat_width.column_of(column))
             .px_6()
             .flex()
             .flex_col()
@@ -431,6 +457,7 @@ impl Render for ChatComposer {
             .child(surface)
             // Told a frame late, as it's measured once drawn.
             .on_prepaint(move |bounds, _, cx| {
+                placement.composer_at(bounds);
                 let fitting = labels_fitting(bounds.size.width);
                 if fitting != labels {
                     cx.defer(move |cx| {

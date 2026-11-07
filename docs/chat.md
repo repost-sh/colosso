@@ -45,8 +45,10 @@ does better. Claude is the only provider, behind a seam another one (Codex) can 
 - Liquid Glass: `native/liquid.rs::backdrop(id, radius, dark, window, cx)` puts an
   `NSGlassEffectView` in a native surface above GPUI's base layer and below its overlays;
   what is drawn on the glass goes in `deferred(...)` (pattern: `browser/toolbar.rs`,
-  `control_bar`). Without the glass (older macOS, Reduce Transparency) the fallback is the
-  palette's `floating()` fill with a hairline and a shadow.
+  `control_bar`). The glass's own bright edge is cut off; `liquid::floating` draws a faint line
+  of the palette's `glass_edge` just inside the element's corners instead. Without the glass
+  (older macOS, Reduce Transparency) the fallback is the palette's `floating()` fill with a
+  hairline and a shadow.
 - Theme: `theme::palette(cx)` (the card tinted by the gradient theme, `floating()`,
   `hairline`, `mono`, `accent`), `CARD_RADIUS = 10`. `mono` is the code font the person picked
   in Settings → Appearance, JetBrains Mono Nerd Font (embedded in the binary) unless they
@@ -455,6 +457,8 @@ Thread {
   queueHeld: bool,
   tabOpen: bool,              // a tab shows it, and will again after a restart (C13)
   parent: {threadId, itemId} | null,   // the row of the thread that started it (4.5.10)
+  backgroundTasks: n,         // what the agent has running in the background now (4.7); 0
+                              // while no session runs, and as a host that stopped comes back
   createdAt, updatedAt, readAt, seq
 }
 
@@ -758,6 +762,13 @@ The behaviours, each with the T3 adapter pitfall it carries (`t3-claude-adapter.
   Frames that arrive while no turn is running (the CLI's own wake turns, when a background
   task ends) get a run of their own with no user message: `turn.adopted`. A result that names
   no turn of ours shows what was held for it rather than dropping it (6, 7, 8).
+- **Background.** `background_tasks_changed` lists every task the CLI runs in the background
+  whenever that list changes, whatever turn runs: the shells and Monitors the agent started and
+  the subagents running past their turn, which it goes on from as they end. Those it marks
+  `ambient` (watchers it started on its own) aren't the agent's work. Their count is the
+  thread's `backgroundTasks`, sent as the `background` driver event when it changes, and none
+  once the CLI's process restarts or the session goes, as the list is the process's. A session
+  isn't kept open for them: one that idle-closes with a shell or Monitor running ends it.
 - **Text and thinking** stream per content block (C10). Thinking is shown as reasoning, as
   the CLI shows it, and asked for by `--thinking-display summarized`: left alone, Claude Code
   sends thinking blocks with no text, and the SDK's `thinking` option would also turn thinking on
@@ -963,10 +974,27 @@ Layout, top to bottom inside the pane's card:
 - **Glass.** The composer and its drawers are one `liquid::backdrop` (radius 18) floating
   12 px above the card's bottom edge, its content in `deferred`; the scroll-to-end pill,
   the suggestions and the menus are glass too. On a dark theme it's the clear style with a 45%
-  dark tint, so the page shows through; on a light one, glass as `AppKit` makes it. Fallback:
-  `floating()` + hairline + shadow.
+  dark tint, so the page shows through; on a light one, glass as `AppKit` makes it. Every glass
+  element has a faint line just inside its edge, round its own corners, in place of the bright
+  one the glass draws, which is cut off: `glass_edge`, 1 pt, the theme's tint (the hue of the
+  gradient theme's first colour, as the card's) at 8 % (dark) or 7 % (light), an inset shadow
+  that takes no room. Fallback: `floating()` + hairline + shadow.
   The timeline's bottom inset is the composer's measured height plus 24 px, so the last
   row clears the glass.
+- **Working edge.** While the chat works, a brighter stretch of the composer's faint edge goes
+  slowly round it, clockwise from the send button's corner: 120 pt long, brightest in its middle
+  and fading to nothing at its ends, at 110 pt/s, at most 24 steps a second. It fades in over
+  0.7 s as work starts and out over 1.1 s as it ends, going on round meanwhile. A chat works
+  while its turn runs and isn't waiting on a person, while any of its subagents runs (one can
+  after the turn that started it), or while the agent has a shell or a Monitor running in the
+  background that it'll go on from (`Thread.backgroundTasks`), a dev server left running among
+  them; waiting on a person alone, it doesn't. Settings › Chat › Composer › While it works:
+  "Subtle line" (the default), "Clear line" (brighter, 170 pt, 1.5 pt wide), "Still edge" (the
+  whole edge a little brighter, holding still) or "Off" (the faint edge only). A line holds still
+  as that brighter edge where motion isn't wanted: Reduce motion (read as the app starts), or
+  Koyo not in front. Nothing is drawn for it once nothing works. Only the composer has it; a
+  subagent's bar and the other glass keep the faint edge. It's laid over the composer by the tab,
+  not drawn in it, and draws where the composer last said its glass is.
 - **Empty chat.** The composer sits centred with the worktree's name above it ("Chat in
   koyo / claude-chat-agent-sdk") and moves to the bottom on the first send.
 - **Width and text size.** The timeline, the composer and a subagent's bar share one column, as
@@ -1122,6 +1150,10 @@ Layout, top to bottom inside the pane's card:
 - A thread opens with its latest 30 runs; older ones load as the person scrolls up.
 - A tab's elapsed label ticks once a second, only while a tool is running; the shimmer moves at
   20 fps, whatever the display's rate, so the rows it draws again don't matter.
+- The composer's working edge is a view of its own, so its steps draw neither the composer nor
+  the timeline (the tab around it is drawn for each, as for anything floating over a chat); at
+  most 24 a second while it moves or fades, none while it holds still, and none once nothing
+  works.
 
 ---
 

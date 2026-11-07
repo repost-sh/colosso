@@ -183,7 +183,7 @@ fn card(drawing: &Drawing, item: &Item, agent: &Subagent, moving: bool) -> State
 
 /// The line under its name: what it's doing, or the start of what it said.
 fn detail(item: &Item, agent: &Subagent, moving: bool, p: Palette) -> Option<Div> {
-    let line = if is_running(item) {
+    let line = if item.status.is_open() {
         let doing = agent
             .progress
             .clone()
@@ -248,8 +248,4 @@ fn dot(status: ItemStatus, p: Palette) -> Hsla {
         ItemStatus::Failed => p.danger,
         ItemStatus::Declined | ItemStatus::Interrupted => p.muted,
     }
-}
-
-fn is_running(item: &Item) -> bool {
-    matches!(item.status, ItemStatus::Running | ItemStatus::Pending)
 }

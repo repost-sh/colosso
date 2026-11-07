@@ -3,6 +3,7 @@
 import { randomUUID } from "node:crypto";
 
 import type {
+  SDKBackgroundTasksChangedMessage,
   SDKTaskNotificationMessage,
   SDKTaskProgressMessage,
   SDKTaskStartedMessage,
@@ -11,6 +12,25 @@ import type {
 } from "@anthropic-ai/claude-agent-sdk";
 
 import { SESSION } from "./frames";
+
+/** The CLI's list of what runs in the background, by task type, `ambient` for one that isn't
+ * the agent's work. */
+export function backgroundTasks(
+  ...tasks: readonly { readonly type: string; readonly ambient?: boolean }[]
+): SDKBackgroundTasksChangedMessage {
+  return {
+    type: "system",
+    subtype: "background_tasks_changed",
+    tasks: tasks.map(({ type, ambient }, at) => ({
+      task_id: `task-${String(at)}`,
+      task_type: type,
+      description: `${type} ${String(at)}`,
+      ...(ambient === undefined ? {} : { ambient }),
+    })),
+    uuid: randomUUID(),
+    session_id: SESSION,
+  };
+}
 
 export function taskNotification(
   taskId: string,

@@ -314,6 +314,8 @@ export class ClaudeSession implements ProviderSession {
     }
     if (conversation !== this.#conversation) {
       log.debug("A process Claude's session restarted away from ended.");
+      // What it ran in the background went with it, once the last it said has been heard.
+      this.#frames.background.reset();
       return;
     }
     if (why === null && !this.#heard && !this.#closing && this.#stderr.trim() !== "") {

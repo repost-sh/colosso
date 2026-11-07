@@ -25,7 +25,7 @@ use objc2_quartz_core::{
 };
 
 use super::overlay::{BODY, GLOW, HAIRLINE, RIM, RING, outline};
-use super::{Glow, Next, Pointer};
+use super::{Glow, Next, Pointer, glow};
 use crate::browser::frames::PageView;
 
 /// The display's full rate, up to 120 Hz where it refreshes that fast.
@@ -162,7 +162,7 @@ impl Native {
 
         let scene = Scene {
             pointer: Pointer::default(),
-            glow: Glow::default(),
+            glow: glow(),
             tint: None,
             edge,
             fit: 1.,

@@ -64,6 +64,17 @@ impl Replica {
         })
     }
 
+    /// Whether the agent's at work for the chat: its turn runs and isn't waiting on a person, a
+    /// subagent of its is still going, which one can be after the turn that started it, or it has
+    /// something running in the background it'll go on from, a shell or a Monitor.
+    pub fn working(&self) -> bool {
+        let turn = self.live().is_some() && self.asking().is_none();
+        turn || self.thread.background_tasks > 0
+            // The latest first, as a subagent still going most likely is.
+            || (self.items.iter().rev())
+                .any(|item| matches!(item.body, ItemBody::Subagent(_)) && item.status.is_open())
+    }
+
     /// What the agent waits on a person for now: the oldest request still waiting, as they're
     /// answered one at a time. A waiting request's sequence is when it was asked.
     pub fn asking(&self) -> Option<&Request> {

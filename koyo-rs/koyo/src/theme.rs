@@ -67,6 +67,10 @@ pub struct Palette {
     pub sunken: Hsla,
     pub raised: Hsla,
     pub hairline: Hsla,
+    /// The line round Liquid Glass, inside its edge: fainter than a hairline, as the glass reads
+    /// as its own surface already and the line only keeps it from melting into a page like it.
+    /// Tinted by the gradient theme's first colour, as the card is.
+    pub glass_edge: Hsla,
     pub text: Hsla,
     /// Solid, for marks drawn on a `text`-colored fill.
     pub on_text: Hsla,
@@ -155,6 +159,7 @@ const DARK: Palette = Palette {
     sunken: gray(0., 0.2),
     raised: gray(1., 0.05),
     hairline: gray(1., 0.08),
+    glass_edge: gray(0.85, 0.08),
     text: gray(1., 0.9),
     on_text: gray(0.1, 1.),
     muted: gray(1., 0.5),
@@ -176,6 +181,7 @@ const LIGHT: Palette = Palette {
     sunken: gray(0., 0.03),
     raised: gray(0., 0.05),
     hairline: gray(0., 0.09),
+    glass_edge: gray(0.2, 0.07),
     text: gray(0., 0.87),
     on_text: gray(1., 1.),
     muted: gray(0., 0.5),
@@ -319,10 +325,12 @@ pub fn follow_window_appearance(window: &Window) {
 pub fn palette(cx: &App) -> Palette {
     let dark = cx.theme().mode.is_dark();
     let palette = if dark { DARK } else { LIGHT };
+    let primary = gradient::current(cx).primary();
     Palette {
         mono: fonts::code(cx),
         accent: accent::get(dark, cx),
-        card: tinted(palette.card, cx),
+        card: tinted(palette.card, primary, CARD_SATURATION),
+        glass_edge: tinted(palette.glass_edge, primary, EDGE_SATURATION),
         ..palette
     }
 }
@@ -331,13 +339,18 @@ pub fn palette(cx: &App) -> Palette {
 /// it, little enough not to compete with what's on the card.
 const CARD_SATURATION: f32 = 0.5;
 
-/// `card` in the hue of the gradient theme's first colour, at the card's own lightness and
-/// alpha: in the dark a deep shade of the theme, not gray. Gray while no colour is picked.
-fn tinted(card: Hsla, cx: &App) -> Hsla {
-    gradient::current(cx).primary().map_or(card, |colour| Hsla {
+/// How much of the theme colour's saturation the line round glass keeps: more than the card, as
+/// so faint a line shows little of any hue.
+const EDGE_SATURATION: f32 = 0.7;
+
+/// `shade` in the hue of `primary`, the gradient theme's first colour, keeping `saturation` of
+/// that colour's, at the shade's own lightness and alpha: the card, in the dark, a deep shade of
+/// the theme, not gray. Gray while no colour is picked.
+fn tinted(shade: Hsla, primary: Option<Hsla>, saturation: f32) -> Hsla {
+    primary.map_or(shade, |colour| Hsla {
         h: colour.h,
-        s: colour.s * CARD_SATURATION,
-        ..card
+        s: colour.s * saturation,
+        ..shade
     })
 }
 

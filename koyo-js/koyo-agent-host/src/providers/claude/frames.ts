@@ -21,6 +21,7 @@ import type {
 import { log } from "../../log";
 import type { Item, NoticeLevel, Usage } from "../../protocol/model";
 import type { DriverEvent, ItemBody, Outcome } from "../provider";
+import { Background } from "./background";
 import { classify, type Ending, LIMITED, resultUsage, type Signs } from "./results";
 import { settleResults, Steps } from "./steps";
 import { Subagents } from "./subagents";
@@ -44,6 +45,8 @@ const UNSAVED = "Claude couldn't save this conversation: the disk is full.";
 export class Frames {
   /** The subagents of the conversation, whose frames are theirs whatever turn runs. */
   readonly subagents: Subagents;
+  /** What runs in the background, which the CLI says whatever turn runs. */
+  readonly background: Background;
   readonly #emit: (event: DriverEvent) => void;
   readonly #steps: Steps;
   readonly #meter = new Meter();
@@ -60,6 +63,7 @@ export class Frames {
   constructor(emit: (event: DriverEvent) => void, stopMs: number) {
     this.#emit = emit;
     this.subagents = new Subagents(emit, stopMs);
+    this.background = new Background(emit);
     this.#steps = new Steps(emit, this.subagents, null);
     this.#texts = new Texts(emit);
   }

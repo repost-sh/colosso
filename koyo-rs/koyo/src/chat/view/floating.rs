@@ -40,12 +40,22 @@ impl ChatView {
         if let Some(bar) = self.bar() {
             return deferred(place.bottom(px(FLOAT)).child(bar.clone())).into_any_element();
         }
-        let place = if self.composer.read(cx).is_new() {
+        let composer = self.composer.read(cx);
+        let place = if composer.is_new() {
             place.top_0().bottom_0().justify_center().pb(px(48.))
         } else {
             place.bottom(px(FLOAT))
         };
-        deferred(place.child(self.composer.clone())).into_any_element()
+        // The edge that shows the chat working is laid over the composer, as wide as it is, rather
+        // than drawn in it, so its steps draw this view and not the composer
+        // (`composer/activity.rs`).
+        let held = div()
+            .relative()
+            .w_full()
+            .map(|held| crate::settings::get(cx).chat_width.column_of(held))
+            .child(self.composer.clone())
+            .child(composer.activity.clone());
+        deferred(place.child(held)).into_any_element()
     }
 
     /// The composer's height, once it's laid out, for the timeline to keep clear of it. Told a

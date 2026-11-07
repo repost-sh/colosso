@@ -9,6 +9,7 @@ use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::{Action, App, Context, Global, SharedString, Subscription, Task, Window};
 use serde::{Deserialize, Serialize};
 
+mod chat_activity;
 mod chat_details;
 mod chat_mode;
 mod chat_verbosity;
@@ -20,6 +21,7 @@ mod migration;
 mod project_scripts;
 mod save_scope;
 
+pub use chat_activity::{ChatActivity, SetChatActivity};
 pub use chat_details::{ChatDetails, DetailsItem, FlipDetailsItem};
 pub use chat_mode::{SetChatMode, chat_mode_label, chat_mode_menu};
 pub use chat_verbosity::{Preset, SetChatVerbosity, Shows, Step, Verbosity};
@@ -173,6 +175,8 @@ pub struct Settings {
     pub chat_details: ChatDetails,
     /// How wide a chat's timeline and composer get.
     pub chat_width: ChatWidth,
+    /// What the composer's edge does while the agent or a subagent works.
+    pub chat_activity: ChatActivity,
     /// The commands a person keeps for each project.
     pub project_scripts: ProjectScripts,
     /// How hard the agent works in a chat not set to anything else, as far as its model can.
@@ -259,6 +263,7 @@ impl Default for Settings {
             chat_verbosity: Verbosity::default(),
             chat_details: ChatDetails::default(),
             chat_width: ChatWidth::default(),
+            chat_activity: ChatActivity::default(),
             project_scripts: ProjectScripts::default(),
             chat_effort: koyo_agent::protocol::model::Effort::Xhigh,
             chat_mode: None,
@@ -353,6 +358,9 @@ pub fn init(cx: &mut App) {
     });
     cx.on_action(|SetChatWidth(width): &SetChatWidth, cx| {
         update(cx, |settings| settings.chat_width = *width);
+    });
+    cx.on_action(|SetChatActivity(activity): &SetChatActivity, cx| {
+        update(cx, |settings| settings.chat_activity = *activity);
     });
     cx.on_action(|SetChatTextSize(size): &SetChatTextSize, cx| {
         update(cx, |settings| settings.fonts.chat_size = *size);

@@ -12,15 +12,17 @@
 //! the element, since anything more would hide the page from the pointer: so the shadow would be
 //! cut off at the element's rectangle and show only in its corners, as grey squares on a light page.
 //! The bright line along that edge is left out as well: the glass is a little larger than what
-//! shows of it.
+//! shows of it. In its place GPUI draws a faint one of the theme's, `Palette::glass_edge`, just
+//! inside the element's corners, so a glass element doesn't melt into a page as light or as dark
+//! as it is.
 
 use std::cell::{Cell, RefCell};
 use std::sync::Once;
 
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::{
-    AnyElement, App, Bounds, ElementId, IntoElement as _, ParentElement, Pixels, Styled, Window,
-    canvas,
+    AnyElement, App, Bounds, BoxShadow, ElementId, Hsla, IntoElement as _, ParentElement, Pixels,
+    Styled, Window, canvas, px,
 };
 use objc2::rc::Retained;
 use objc2::runtime::{AnyClass, NSObjectProtocol as _};
@@ -42,17 +44,28 @@ const DARK_SHADE: f64 = 0.45;
 /// its own edge, which isn't wanted.
 const EDGE: f64 = 2.;
 
-/// `surface`, floating over what's under it: with `glass` behind what it holds, or a raised fill
-/// where there's none.
+/// How wide the faint line round glass is, in points.
+pub const EDGE_WIDTH: f32 = 1.;
+
+/// `surface`, floating over what's under it: with `glass` behind what it holds and a faint line
+/// round it, or a raised fill where there's none.
 pub fn floating<E: ParentElement + Styled>(surface: E, glass: Option<AnyElement>, p: Palette) -> E {
     match glass {
-        Some(glass) => surface.child(glass),
+        Some(glass) => surface.child(glass).shadow(vec![edge(p.glass_edge)]),
         None => surface
             .bg(p.floating())
             .border_1()
             .border_color(p.hairline)
             .shadow_md(),
     }
+}
+
+/// A line of `colour` just inside an element's edge, round its own corners: an inset shadow that
+/// doesn't blur, which takes no room, so what's on the glass sits where it did without one.
+fn edge(colour: Hsla) -> BoxShadow {
+    BoxShadow::new(px(0.), px(0.), colour)
+        .spread_radius(px(EDGE_WIDTH))
+        .inset()
 }
 
 /// Glass to put behind the element it's a child of, filling it, its corners `radius` round

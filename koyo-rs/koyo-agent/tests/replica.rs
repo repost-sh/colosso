@@ -12,9 +12,11 @@ mod records;
 use koyo_agent::protocol::events::{Appended, Changed};
 use koyo_agent::protocol::ids::{ItemId, RunId, ThreadId};
 use koyo_agent::protocol::methods::Rows;
-use koyo_agent::protocol::model::{Item, Run, RunStatus};
+use koyo_agent::protocol::methods::ThreadSnapshot;
+use koyo_agent::protocol::model::{Item, ItemBody, ItemStatus, Run, RunStatus};
+use koyo_agent::protocol::requests::RequestStatus;
 use koyo_agent::replica::Replica;
-use records::{THREAD, answer, item, message, run, snapshot, thread};
+use records::{THREAD, answer, item, message, request, run, snapshot, subagent, thread};
 
 fn changed(seq: u64, runs: Vec<Run>, items: Vec<Item>) -> Changed {
     Changed {
@@ -249,4 +251,41 @@ fn a_removed_run_goes_with_what_it_held_and_what_came_since_takes_its_place() {
         .map(|item| item.id.0.as_str())
         .collect();
     assert_eq!(items, ["a", "c"]);
+}
+
+#[test]
+fn the_agent_works_while_its_turn_runs_unwaited_or_while_anything_it_started_runs() {
+    let held = |status: RunStatus, agent: Option<ItemStatus>, waits: bool, background: u64| {
+        let agent = agent.map(|status| Item {
+            status,
+            ..item("s", 1, ItemBody::Subagent(Box::new(subagent("Look"))), 3)
+        });
+        let mut replica = Replica::new(ThreadSnapshot {
+            requests: (waits.then(|| request("q", RequestStatus::Pending)))
+                .into_iter()
+                .collect(),
+            ..snapshot(9, vec![run("r1", status, 1)], agent.into_iter().collect())
+        });
+        replica.thread.background_tasks = background;
+        replica
+    };
+    assert!(held(RunStatus::Running, None, false, 0).working());
+    assert!(!held(RunStatus::Completed, None, false, 0).working());
+    assert!(
+        !held(RunStatus::Running, None, true, 0).working(),
+        "a turn waiting on a person isn't working"
+    );
+    assert!(
+        held(RunStatus::Completed, Some(ItemStatus::Running), false, 0).working(),
+        "a subagent running on past the turn that started it is"
+    );
+    assert!(
+        held(RunStatus::Running, Some(ItemStatus::Pending), true, 0).working(),
+        "and one still going while the turn waits on a person"
+    );
+    assert!(!held(RunStatus::Completed, Some(ItemStatus::Completed), false, 0).working());
+    assert!(
+        held(RunStatus::Completed, None, false, 1).working(),
+        "and a Monitor running past the turn"
+    );
 }

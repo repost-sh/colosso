@@ -11,7 +11,7 @@ import { type Method, methods, type Params, type Result } from "./methods";
  * The host's version (docs/chat.md C9), which `script/daemon-version` keeps beside a
  * fingerprint of the host's sources: a change a running host must restart for raises it.
  */
-export const HOST_VERSION = 14;
+export const HOST_VERSION = 15;
 
 /** The longest line either side accepts. */
 export const MAX_LINE_BYTES = 8 * 1024 * 1024;
