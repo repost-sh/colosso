@@ -130,7 +130,13 @@ pub(super) fn end_everything(drawn: &mut Drawn, said: &mut Vec<String>) -> Resul
         .map(|summary| summary.record.handle)
         .collect();
     let dir = client.dir().clone();
-    (drawn.cx).update(|cx| crate::quitting::end_then_quit(client, handles, cx));
+    let running = crate::quitting::Running {
+        terminals: Some(client),
+        handles,
+        data: None,
+        chats: None,
+    };
+    (drawn.cx).update(|cx| crate::quitting::stop_then_quit(running, cx));
     let socket = dir.socket();
     drawn.until(Duration::from_secs(15), |_| Ok(!socket.exists()))?;
     let kept = dir.remembered();

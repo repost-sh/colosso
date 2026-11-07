@@ -375,6 +375,8 @@ export const ThreadSummary = z.object({
   status: Status,
   /** What the oldest pending request asks of the person. */
   needs: RequestKind.nullable(),
+  /** Whether the agent has tasks running in the background (`Thread.backgroundTasks`, 4.5.6). */
+  background: z.boolean(),
   queued: Count,
   unread: z.boolean(),
   tabOpen: z.boolean(),

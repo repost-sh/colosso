@@ -1,13 +1,14 @@
 //! The app's one client of the agent host (`docs/chat.md` 5.1), as `TermClient` is of termd.
 //! Nothing connects until the first request, and a request made after the connection ended
-//! connects again, which starts a host that's gone. Every connection tells the host Koyo's
-//! settings before anything else, so whatever request starts a host, its sessions open as they
-//! say. Whoever subscribed hears every event of every connection, and word when one ends, ahead
-//! of anything from the next.
+//! connects again, which starts a host that's gone, unless the host was stopped for good, as
+//! quitting does. Every connection tells the host Koyo's settings before anything else, so
+//! whatever request starts a host, its sessions open as they say. Whoever subscribed hears every
+//! event of every connection, and word when one ends, ahead of anything from the next.
 
 use std::future::Future;
 use std::process::Command;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 
 use crossbeam_channel::{Receiver, Sender};
@@ -45,6 +46,8 @@ pub struct AgentClient {
     dir: DaemonDir,
     command: Box<dyn Fn() -> Command + Send + Sync>,
     live: Mutex<Option<Live>>,
+    /// Whether the host was stopped for good: nothing connects, or starts it, again.
+    stopped: AtomicBool,
     subscribers: Arc<Subscribers>,
     queue: Sender<Job>,
     /// Koyo's settings, which every connection tells the host first.
@@ -70,6 +73,7 @@ impl AgentClient {
             dir,
             command: Box::new(command),
             live: Mutex::new(None),
+            stopped: AtomicBool::new(false),
             subscribers: Arc::default(),
             queue,
             config: Mutex::new(None),
@@ -130,9 +134,21 @@ impl AgentClient {
         stop_host(&self.dir)
     }
 
+    /// Stops the host for good, as quitting with Stop everything does: its running turns stop
+    /// and what its chats run in the background ends, and this client starts it no more. Blocks
+    /// like `request`.
+    pub fn stop_for_good(&self) -> Result<(), ClientError> {
+        let _live = self.live.lock();
+        self.stopped.store(true, Ordering::Release);
+        stop_host(&self.dir)
+    }
+
     /// The connection in use, made first if it isn't open.
     fn connection(&self) -> Result<Arc<Client>, ClientError> {
         let mut live = self.live.lock();
+        if self.stopped.load(Ordering::Acquire) {
+            return Err(ClientError::Closed);
+        }
         if let Some(open) = live.as_ref().filter(|live| !live.client.is_closed()) {
             return Ok(Arc::clone(&open.client));
         }

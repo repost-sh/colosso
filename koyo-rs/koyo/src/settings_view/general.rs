@@ -1,6 +1,6 @@
 //! General: how the sidebar opens, which layout holds it, and how wide it is; where new
 //! worktrees go and what their branches are named under; how a held arrow key repeats; and
-//! what quitting does with the terminals still running.
+//! what quitting does with the terminals and chats still running.
 
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::{
@@ -31,8 +31,8 @@ pub fn sections(cx: &App) -> Vec<SettingsSection> {
 fn quitting(cx: &App) -> SettingsSection {
     let choice = settings::get(cx).on_quit;
     SettingsSection::new("Quitting").row(
-        SettingRow::new("When you quit with terminals running")
-            .description("Kept, they run on and are back next launch. Ended, they're gone.")
+        SettingRow::new("When you quit with terminals or chats running")
+            .description("Kept, they carry on while Koyo is closed. Stopped, they end.")
             .control(MenuButton::new("on-quit", choice.label(), |cx| {
                 settings::get(cx).on_quit.menu()
             })),

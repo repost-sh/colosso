@@ -456,6 +456,9 @@ pub struct ThreadSummary {
     pub status: Status,
     /// What the oldest pending request asks of the person.
     pub needs: Option<RequestKind>,
+    /// Whether the agent runs tasks in the background, as a shell or a Monitor
+    /// (`docs/chat.md` 4.5.6).
+    pub background: bool,
     pub queued: u64,
     pub unread: bool,
     pub tab_open: bool,

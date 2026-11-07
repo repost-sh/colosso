@@ -165,6 +165,11 @@ impl Chats {
         &self.connection
     }
 
+    /// The app's client of the agent host, when it has one.
+    pub fn client(&self) -> Option<Arc<AgentClient>> {
+        self.client.clone()
+    }
+
     pub fn summary(&self, id: &ThreadId) -> Option<&ThreadSummary> {
         self.summaries.get(id)
     }

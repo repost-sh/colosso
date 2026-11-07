@@ -84,6 +84,7 @@ export function summary(thread: Thread, state: State): ThreadSummary {
     model: thread.model,
     status: status(state),
     needs: needs(state.pending),
+    background: thread.backgroundTasks > 0,
     queued: state.unsettled.filter((run) => run.status === "queued").length,
     unread: unread(thread, state),
     tabOpen: thread.tabOpen,

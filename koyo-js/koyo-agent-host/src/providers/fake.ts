@@ -2,7 +2,8 @@
 // actor asked of it and reports what its test tells it to, through the same sink a real
 // driver reports to. Given `answer`, its sessions answer each turn by themselves instead, for
 // the host run end to end (`KOYO_AGENT_PROVIDER=fake`); a turn that starts `Show your work`
-// first does the work Claude would, for the chat's visual check to draw.
+// first does the work Claude would, for the chat's visual check to draw, and one that starts
+// `Keep working in the background` leaves a task running there, as a background shell would.
 
 import type { Catalog, ProviderStatus } from "../protocol/methods";
 import type { Mode, ProviderId, RequestPayload, Response } from "../protocol/model";
@@ -229,6 +230,8 @@ export class FakeSession implements ProviderSession {
 
 /** What a turn starts with for the fake to do some work before it answers. */
 const SHOW_WORK = "Show your work";
+/** What a turn starts with for the fake to leave a task running in the background. */
+const IN_BACKGROUND = "Keep working in the background";
 
 type ToolPayload = Extract<ItemBody, { kind: "tool" }>["payload"];
 
@@ -332,6 +335,9 @@ export function answer(session: FakeSession, turn: TurnInput): void {
   session.started();
   if (turn.text.startsWith(SHOW_WORK)) {
     work(session, session.turns.length);
+  }
+  if (turn.text.startsWith(IN_BACKGROUND)) {
+    session.report({ type: "background", tasks: 1 });
   }
   session.startsText(key);
   session.report({ type: "item.appended", key, text: opening });
