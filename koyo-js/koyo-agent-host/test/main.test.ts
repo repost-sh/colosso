@@ -35,6 +35,7 @@ async function firstLine(stdout: ReadableStream<Uint8Array>): Promise<string | u
 test("starts in its folder, answers a message and exits once asked to stop", async () => {
   const root = scratch();
   const host = Bun.spawn([process.execPath, MAIN, "--dir", root, "--foreground"], {
+    cwd: root,
     env: { ...process.env, KOYO_AGENT_PROVIDER: "fake" },
     stdout: "pipe",
     stderr: "ignore",

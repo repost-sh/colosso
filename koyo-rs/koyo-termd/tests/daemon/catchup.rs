@@ -23,7 +23,7 @@ struct Slow {
 
 impl Slow {
     fn connect(dir: &TermDir) -> Slow {
-        let stream = UnixStream::connect(dir.socket()).unwrap();
+        let stream = koyo_daemon::connect(&dir.socket()).unwrap();
         stream.set_read_timeout(Some(WAIT)).unwrap();
         let mut slow = Slow {
             stream,

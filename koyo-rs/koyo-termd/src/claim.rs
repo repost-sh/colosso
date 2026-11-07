@@ -63,10 +63,10 @@ pub fn claim(dir: &TermDir) -> io::Result<Claimed> {
 
 fn listen(dir: &TermDir) -> io::Result<UnixListener> {
     let path = dir.socket();
-    let listener = match UnixListener::bind(&path) {
+    let listener = match koyo_daemon::bind(&path) {
         Ok(listener) => listener,
         Err(error) if error.kind() == ErrorKind::AddrInUse => {
-            if UnixStream::connect(&path).is_ok() {
+            if koyo_daemon::connect(&path).is_ok() {
                 return Err(io::Error::new(
                     ErrorKind::AddrInUse,
                     format!("{} is in use without its lock held", path.display()),
@@ -74,7 +74,7 @@ fn listen(dir: &TermDir) -> io::Result<UnixListener> {
             }
             // Left behind by a daemon that died: the lock is ours, so the socket is too.
             fs::remove_file(&path)?;
-            UnixListener::bind(&path)?
+            koyo_daemon::bind(&path)?
         }
         Err(error) => return Err(error),
     };

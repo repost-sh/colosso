@@ -9,6 +9,7 @@ import { HOST_VERSION } from "../../src/protocol/wire";
 import { Queue } from "../../src/queue";
 import { LineReader } from "../../src/server/lines";
 import { Outbox } from "../../src/server/outbox";
+import { socketAddress } from "../../src/socket";
 
 const encoder = new TextEncoder();
 
@@ -43,7 +44,7 @@ export class LineClient {
     const lines = new Queue<Line>();
     const outbox = new Outbox();
     const socket = await Bun.connect({
-      unix: path,
+      unix: socketAddress(path),
       socket: {
         data(_socket, chunk) {
           const read = reader.push(chunk);

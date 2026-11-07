@@ -16,6 +16,7 @@ import {
   readLine,
   resultLine,
 } from "../protocol/wire";
+import { socketAddress } from "../socket";
 import { Client } from "./client";
 
 export interface Server {
@@ -29,7 +30,7 @@ export interface Server {
 export function serve(path: string, handlers: Handlers<Client>): Server {
   const clients = new Set<Client>();
   const listener = Bun.listen<Client>({
-    unix: path,
+    unix: socketAddress(path),
     socket: {
       open(socket) {
         socket.data = new Client(socket);

@@ -1,6 +1,6 @@
-// Folders tests write in: inside the checkout, in `.superpowers/t/`, which git ignores, and
-// named short, as a socket's path can't pass 104 bytes. Each is removed by `removeScratch`,
-// which a test file runs after each test.
+// Folders tests write in: inside the checkout, in `.superpowers/t/`, which git ignores. A
+// socket in one is reached by the way there from the workspace however deep the checkout is
+// (`socketAddress`). Each is removed by `removeScratch`, which a test file runs after each test.
 
 import { mkdirSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";

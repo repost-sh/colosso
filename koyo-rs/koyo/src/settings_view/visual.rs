@@ -3,8 +3,6 @@
 //! they first show and with others picked, and a chat in the fake provider's words at the ends of
 //! the text size's slider and in other fonts, saved as PNGs in `.superpowers/qa/settings/`:
 //!
-//! The agent host's folder is short, as a socket's path can't be long.
-//!
 //! ```sh
 //! mkdir -p .superpowers/c/tmp &&
 //!   KOYO_AGENT_PROVIDER=fake KOYO_DATA_DIR=$PWD/.superpowers/c TMPDIR=$PWD/.superpowers/c/tmp \

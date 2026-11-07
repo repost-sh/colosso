@@ -6,6 +6,8 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+# Reaching the daemon's socket however deep its folder is.
+koyo-daemon = { path = "../koyo-daemon" }
 koyo-term-control = { path = "../koyo-term-control" }
 percent-encoding = "2.3"
 koyo-term-engine = { path = "../koyo-term-engine" }

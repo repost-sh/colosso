@@ -10,7 +10,6 @@
 
 mod support;
 
-use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
@@ -131,7 +130,7 @@ fn settled(replica: &Replica) -> bool {
 
 /// Sends the host in `dir` a signal.
 fn signal_host(dir: &DaemonDir, signal: &str) {
-    let stream = UnixStream::connect(dir.socket()).unwrap();
+    let stream = koyo_daemon::connect(&dir.socket()).unwrap();
     let pid = Client::over(stream, ClientKind::Test).unwrap().hello.pid;
     (Command::new("kill")
         .args([signal, &pid.to_string()])
@@ -211,7 +210,7 @@ fn a_host_started_from_a_thread_with_signals_blocked_still_stops_on_a_signal() {
     client.request::<ThreadsWatch>(&Empty {}).unwrap();
     signal_host(&dir, "-TERM");
     let limit = Instant::now() + Duration::from_secs(5);
-    while UnixStream::connect(dir.socket()).is_ok() {
+    while koyo_daemon::connect(&dir.socket()).is_ok() {
         assert!(Instant::now() < limit, "the host didn't stop on SIGTERM");
         std::thread::park_timeout(Duration::from_millis(20));
     }
@@ -314,7 +313,7 @@ fn a_host_of_another_build_that_is_busy_waits_for_the_person() {
     // The person chose to restart the chats: it's stopped, and nothing listens.
     client.replace_host().unwrap();
     host.join().unwrap();
-    assert!(UnixStream::connect(dir.socket()).is_err());
+    assert!(koyo_daemon::connect(&dir.socket()).is_err());
 }
 
 #[test]

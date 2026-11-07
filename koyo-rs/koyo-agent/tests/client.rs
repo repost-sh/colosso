@@ -8,7 +8,6 @@
 
 mod support;
 
-use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::time::Duration;
 
@@ -32,8 +31,11 @@ fn replies_go_to_their_requests_and_events_to_the_channel_until_the_host_hangs_u
         let error = json!({ "code": "thread_not_found", "message": "There is no such chat." });
         host.send(&json!({ "id": read["id"], "error": error }));
     });
-    let connected =
-        Client::over(UnixStream::connect(dir.socket()).unwrap(), ClientKind::Test).unwrap();
+    let connected = Client::over(
+        koyo_daemon::connect(&dir.socket()).unwrap(),
+        ClientKind::Test,
+    )
+    .unwrap();
     assert_eq!(connected.hello.version, HOST_VERSION);
     assert_eq!(connected.hello.pid, 4242);
 
@@ -80,7 +82,7 @@ fn a_host_of_another_version_is_asked_to_shut_down_and_stops_listening() {
     });
     client::stop_host(&dir).unwrap();
     host.join().unwrap();
-    assert!(UnixStream::connect(dir.socket()).is_err());
+    assert!(koyo_daemon::connect(&dir.socket()).is_err());
     // Nothing listening is nothing to stop.
     client::stop_host(&dir).unwrap();
 }

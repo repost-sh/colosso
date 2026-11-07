@@ -2,8 +2,6 @@
 //! it takes the client's hello, signalled through its lock's pid when it refuses it, and its
 //! terminals remembered for the daemon started next.
 
-use std::os::unix::net::UnixStream;
-
 use koyo_term_control::client::{inbox, stop_daemon};
 use koyo_term_control::{ClientError, ClientKind, Connection, ErrorCode, PROTOCOL};
 
@@ -28,7 +26,7 @@ fn a_daemon_that_refuses_the_hello_is_stopped_by_its_pid() {
         other => panic!("{:?}", other.map(|(_, welcome)| welcome)),
     }
     stop_daemon(&dir, &later).unwrap();
-    assert!(UnixStream::connect(dir.socket()).is_err());
+    assert!(koyo_daemon::connect(&dir.socket()).is_err());
 
     // The next daemon has the terminal, ended by the restart.
     let again = connect(&dir, ClientKind::App);
@@ -44,7 +42,7 @@ fn a_daemon_that_takes_the_hello_is_asked_to_stop() {
     let _stop = StopOnDrop(dir.clone());
     let _person = connect(&dir, ClientKind::App);
     stop_daemon(&dir, &hello(ClientKind::App, None)).unwrap();
-    assert!(UnixStream::connect(dir.socket()).is_err());
+    assert!(koyo_daemon::connect(&dir.socket()).is_err());
     // With none running, there's nothing to stop.
     stop_daemon(&dir, &hello(ClientKind::App, None)).unwrap();
 }

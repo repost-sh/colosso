@@ -11,6 +11,8 @@ description = "The app-control MCP's no-UI half: operations, scopes, errors, fra
 crossbeam-channel = "0.5"
 # The platform's data folder, the version the app already uses.
 dirs = "6"
+# The control socket, bound and reached however deep its folder is.
+koyo-daemon = { path = "../koyo-daemon" }
 # The user id the fallback socket folder is named after.
 libc = "0.2"
 parking_lot = "0.12"

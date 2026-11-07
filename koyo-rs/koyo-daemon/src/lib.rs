@@ -2,7 +2,8 @@
 //! the agent host (`docs/chat.md` 4.1). Each keeps the same files in a folder of its own: a
 //! socket, trusted only while the lock beside it is held; the lock, holding the daemon's pid;
 //! a start lock, under which one client starts the daemon; and its log. What a client says
-//! once connected is its protocol's, not this crate's.
+//! once connected is its protocol's, not this crate's. A socket is reached however deep its
+//! folder is (`socket`), as a daemon runs in its folder.
 
 use std::io::{self, BufRead as _, BufReader, Read as _};
 use std::os::unix::net::UnixStream;
@@ -10,6 +11,10 @@ use std::os::unix::process::CommandExt as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
+
+mod socket;
+
+pub use socket::{SOCKET_PATH_MAX, bind, connect, socket_address};
 
 /// A daemon's folder, and its files there, named after the daemon.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -66,24 +71,24 @@ pub fn connect_or_start(
     dir: &DaemonDir,
     command: impl FnOnce() -> Command,
 ) -> io::Result<UnixStream> {
-    match UnixStream::connect(dir.socket()) {
+    match connect(&dir.socket()) {
         Err(error) if not_running(&error) => {}
         other => return other,
     }
     std::fs::create_dir_all(dir.root())?;
     let lock = std::fs::File::create(dir.start_lock())?;
     lock.lock()?;
-    match UnixStream::connect(dir.socket()) {
+    match connect(&dir.socket()) {
         Err(error) if not_running(&error) => {}
         other => return other,
     }
     start(dir, command())?;
-    UnixStream::connect(dir.socket())
+    connect(&dir.socket())
 }
 
-/// Starts the daemon `command` runs, told its folder with `--dir`: detached, in a process
-/// group of its own, its stderr in its log. Returns once it says it listens, the line
-/// `ready` on its stdout.
+/// Starts the daemon `command` runs, told its folder with `--dir` and working in it, so it
+/// reaches its socket by name: detached, in a process group of its own, its stderr in its log.
+/// Returns once it says it listens, the line `ready` on its stdout.
 pub fn start(dir: &DaemonDir, mut command: Command) -> io::Result<()> {
     let log = std::fs::OpenOptions::new()
         .create(true)
@@ -103,6 +108,7 @@ pub fn start(dir: &DaemonDir, mut command: Command) -> io::Result<()> {
     let mut child = command
         .arg("--dir")
         .arg(dir.root())
+        .current_dir(dir.root())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(log)
@@ -140,7 +146,7 @@ const KILL_WAIT: Duration = Duration::from_secs(5);
 /// keep the new one from ever starting. Returns once nothing listens in `dir`; nothing
 /// listening is nothing to do.
 pub fn stop(dir: &DaemonDir, ask: impl FnOnce(UnixStream) -> bool) -> io::Result<()> {
-    match UnixStream::connect(dir.socket()) {
+    match connect(&dir.socket()) {
         Ok(stream) => {
             if !ask(stream) {
                 signal(dir, libc::SIGTERM)?;
@@ -170,7 +176,7 @@ pub fn stop(dir: &DaemonDir, ask: impl FnOnce(UnixStream) -> bool) -> io::Result
 /// Whether nothing listens in `dir` within `wait`.
 fn stopped_within(dir: &DaemonDir, wait: Duration) -> bool {
     let until = Instant::now() + wait;
-    while UnixStream::connect(dir.socket()).is_ok() {
+    while connect(&dir.socket()).is_ok() {
         if Instant::now() >= until {
             return false;
         }
