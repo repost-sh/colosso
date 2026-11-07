@@ -178,11 +178,13 @@ fn failed(error: AgentError) -> ControlError {
     }
 }
 
-/// The page has no browser yet: its tab wasn't shown.
+/// The page isn't open in the browser engine: one an agent opened is as soon as the engine
+/// runs; any other, a tab brought back at launch say, once its tab is shown.
 fn not_open() -> ControlError {
     ControlError::browser_unavailable(
-        "The page isn't open in the browser engine yet; show its tab once (tab_select or \
-         pane_focus) and try again.",
+        "The page isn't open in the browser engine yet. A page opened by an agent opens as \
+         soon as the engine runs: try again shortly. Any other opens once its tab is shown \
+         (tab_select or pane_focus).",
     )
 }
 

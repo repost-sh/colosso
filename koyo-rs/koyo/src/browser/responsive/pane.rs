@@ -306,6 +306,19 @@ impl BrowserView {
         (scale > 0. && room.width > px(0.)).then(|| filling(room, scale))
     }
 
+    /// The viewport the page is wanted at though no pane has drawn it: the mode's, else the
+    /// size a pane assumes until it's drawn.
+    pub(in crate::browser) fn undrawn_viewport(&self) -> Viewport {
+        self.wanted_viewport().unwrap_or_else(|| {
+            let (width, height) = PANE_UNDRAWN;
+            Viewport {
+                width,
+                height,
+                scale: self.window_scale(),
+            }
+        })
+    }
+
     /// Turns responsive mode on, at the pane's size, or off. Inspectors have none.
     pub(in crate::browser) fn toggle_responsive(&mut self, cx: &mut Context<Self>) {
         let mode = self.responsive.mode.is_none().then(|| {

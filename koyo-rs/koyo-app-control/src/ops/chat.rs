@@ -199,7 +199,9 @@ pub struct ChatCreateInput {
     pub worktree: Option<String>,
     /// What to say to the agent first.
     pub text: String,
-    /// Show the new tab; true when left out.
+    /// Show the chat's tab, switching the window to its worktree. Left out, the person's
+    /// choice in Settings → MCP server decides, and by default it only joins its worktree's
+    /// tabs. Pass true only when the person asked to see it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub select: Option<bool>,
 }
@@ -225,7 +227,9 @@ impl Operation for ChatCreate {
     const SCOPE: Scope = Scope::Manage;
     const DESCRIPTION: &'static str = "Starts a chat with the agent in a worktree, set as a new \
         chat is in Settings, in a tab of its own, and says `text` to it. The agent then works in \
-        that checkout, as far as its permissions let it.";
+        that checkout, as far as its permissions let it. The window shows the tab only with \
+        `select: true`, or with `select` left out when the person chose in Settings to see what \
+        agents open.";
     const HINTS: Hints = Hints::CHANGE;
     type Input = ChatCreateInput;
     type Output = ChatCreated;

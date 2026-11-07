@@ -28,7 +28,11 @@ command's output from a cursor on; terminal_log reads what happened.
 The person comes first. `person_has_control` means the person took that terminal or \
 browser page: do not wait for it, do not retry, do not take it over. Read it if you need \
 its content, and open or pick another terminal or page for your own work; return to it \
-only when the person gives it back or tells you to.
+only when the person gives it back or tells you to. What you make or open (project_add, \
+worktree_create, tab_open, pane_split, file_open, changes_open, chat_create) works whether \
+it's shown or not. With `select` left out, the person's setting in Settings → MCP server \
+decides whether the window switches to it; by default it doesn't, and it's only listed. \
+Pass `select: true` only when the person asked to see it.
 
 Failures are results with `{ code, message, retryable }`. `app_not_running` means \
 Koyo isn't running: call app_launch, then try again. `control_disabled` means the \

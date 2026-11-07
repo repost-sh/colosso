@@ -238,7 +238,8 @@ impl Shell {
             let Some(folder) = picked.await else {
                 return;
             };
-            let Ok(adding) = this.update(cx, |this, cx| this.add_project_at(folder, cx)) else {
+            let Ok(adding) = this.update(cx, |this, cx| this.add_project_at(folder, true, cx))
+            else {
                 return;
             };
             if let Err(error) = adding.await {
@@ -252,11 +253,12 @@ impl Shell {
     }
 
     /// Adds the repository `folder` is in, by its main checkout, once git has listed its
-    /// worktrees off the main thread, and selects it. Done with the main checkout's path, or
-    /// with why it couldn't be added.
+    /// worktrees off the main thread, and selects it when `select`. Done with the main
+    /// checkout's path, or with why it couldn't be added.
     pub fn add_project_at(
         &mut self,
         folder: PathBuf,
+        select: bool,
         cx: &mut Context<Self>,
     ) -> Task<Result<PathBuf, String>> {
         cx.spawn(async move |this, cx| {
@@ -269,7 +271,11 @@ impl Shell {
                 .await
                 .map_err(|error| error.message)?;
             this.update(cx, |this, cx| {
+                let selected = this.workspace.active_project;
                 let project = this.workspace.add_project(path.clone());
+                if !select {
+                    this.workspace.active_project = selected;
+                }
                 this.workspace.set_worktrees(project, worktrees);
                 this.save_projects(cx);
                 cx.notify();

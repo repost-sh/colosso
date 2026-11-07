@@ -67,6 +67,11 @@ pub struct ProjectAddInput {
     /// An absolute path to a git repository, or a folder inside one: its main checkout is
     /// added.
     pub path: String,
+    /// Select the project, switching the window to it. Left out, the person's choice in
+    /// Settings → MCP server decides, and by default it's only listed in the sidebar. Pass
+    /// true only when the person asked to see it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub select: Option<bool>,
 }
 
 /// `project_add`: a repository into the sidebar.
@@ -78,16 +83,18 @@ impl Operation for ProjectAdd {
     const TITLE: &'static str = "Add project";
     const SUBJECT: &'static [&'static str] = &["path"];
     const SCOPE: Scope = Scope::Manage;
-    const DESCRIPTION: &'static str = "Adds a git repository to the sidebar and selects it. The folder must be a repository or inside one, whose main checkout is added; one already there is selected.";
+    const DESCRIPTION: &'static str = "Adds a git repository to the sidebar, unless it's there already. The folder must be a repository or inside one, whose main checkout is added. The window switches to it only with `select: true`, or with `select` left out when the person chose in Settings to see what agents open.";
     const HINTS: Hints = Hints::IDEMPOTENT;
     type Input = ProjectAddInput;
     type Output = ProjectOutput;
 
     fn summary(output: &ProjectOutput) -> String {
-        format!(
-            "Added and selected {} ({})",
-            output.project.name, output.project.path
-        )
+        let added = if output.project.selected {
+            "Added and selected"
+        } else {
+            "Added"
+        };
+        format!("{added} {} ({})", output.project.name, output.project.path)
     }
 }
 

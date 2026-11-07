@@ -15,9 +15,10 @@ use koyo_app_control::ops::chat::{
 };
 use serde_json::Value;
 
-use super::super::Caller;
+use super::super::{Caller, policy};
 use super::{Exec, info, main_shell, output, select, try_update_shell, window_closed};
 use crate::chat::Chats;
+use crate::navigation::Route;
 use crate::shell::Shell;
 
 /// How many turns of a chat are read when the input doesn't say.
@@ -129,7 +130,8 @@ pub(crate) fn open(input: &ChatInput, cx: &mut App) -> Result<Value, ControlErro
     })
 }
 
-/// Starts a chat in the worktree `input` names, in a tab of its own, and says its text to it.
+/// Starts a chat in the worktree `input` names, in a tab of its own, and says its text to it:
+/// the tab shown when `select` says, or as the person set what agents open to show.
 pub(crate) fn create(
     caller: &Caller,
     input: ChatCreateInput,
@@ -141,7 +143,7 @@ pub(crate) fn create(
     let cwd = worktree_path(caller, shell, input.worktree.as_deref())?;
     let chats = shell.chats().clone();
     let made = chats.read(cx).create(&cwd);
-    let select = input.select != Some(false);
+    let select = policy::shows(input.select, cx);
     Ok(Exec::Later(cx.spawn(async move |cx: &mut AsyncApp| {
         let thread = made
             .await
@@ -151,12 +153,16 @@ pub(crate) fn create(
         sent.await
             .map_err(|error| refused("say that to the new chat", &error))?;
         cx.update(|cx| {
-            try_update_shell(cx, |shell, _, cx| {
+            try_update_shell(cx, |shell, window, cx| {
                 let pane = shell
                     .add_chat(&cwd, id.clone(), select, cx)
                     .ok_or_else(|| {
                         ControlError::not_found("The worktree went before its chat could show.")
                     })?;
+                if select {
+                    shell.navigate(Route::Workspace, cx);
+                    shell.follow_selection(window, cx);
+                }
                 output(&ChatCreated {
                     chat: id.0.clone(),
                     place: info::place(shell, pane)?,

@@ -1,7 +1,8 @@
 //! The control policy, kept in `settings.json` under `externalControl`: whether clients
 //! outside Koyo's terminals may control the app, the port the MCP server listens on for
-//! them, and the clients the person allowed, each with its scopes and last use. Only the
-//! person changes it, in Settings, through the functions here; no operation reads or sets it.
+//! them, the clients the person allowed, each with its scopes and last use, and whether
+//! what any agent opens is shown when its call doesn't say. Only the person changes it, in
+//! Settings, through the functions here; no operation reads or sets it.
 
 use gpui_kit::App;
 use koyo_app_control::Scope;
@@ -13,7 +14,8 @@ use crate::settings;
 
 pub use koyo_term_mcp::http::DEFAULT_PORT;
 
-/// Who may control Koyo from outside its terminals.
+/// Who may control Koyo from outside its terminals, and what any agent's call does to the
+/// window when it doesn't say.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Policy {
@@ -23,6 +25,12 @@ pub struct Policy {
     pub port: u16,
     /// The clients the person allowed, in the order they were allowed.
     pub clients: Vec<ApprovedClient>,
+    /// Whether what an agent makes or opens (a project, a worktree, a tab, a split, a file,
+    /// the changes, a chat) is shown, the window switching to it, when the call leaves
+    /// `select` out. Off until the person turns it on: it's listed in the sidebar and the tab
+    /// strip, and the window stays where it was. A call that says `select` gets what it says.
+    /// It holds for every caller, agents in Koyo's terminals too.
+    pub show_what_agents_open: bool,
 }
 
 impl Default for Policy {
@@ -31,6 +39,7 @@ impl Default for Policy {
             enabled: false,
             port: DEFAULT_PORT,
             clients: Vec::new(),
+            show_what_agents_open: false,
         }
     }
 }
@@ -76,6 +85,12 @@ impl Policy {
 /// The policy as it stands.
 pub fn policy(cx: &App) -> Policy {
     settings::get(cx).external_control.clone()
+}
+
+/// Whether a call that makes or opens something shows it: as its `select` says, else as the
+/// person set what agents open to show.
+pub(crate) fn shows(select: Option<bool>, cx: &App) -> bool {
+    select.unwrap_or_else(|| settings::get(cx).external_control.show_what_agents_open)
 }
 
 /// Turns external control on or off. Off, hellos and calls of external clients are
@@ -202,7 +217,8 @@ mod tests {
                 "port": 6272,
                 "clients": [
                     { "name": "Claude Code", "scopes": ["read"], "approvedAt": 1, "lastUsed": 2 }
-                ]
+                ],
+                "showWhatAgentsOpen": false
             })
         );
     }

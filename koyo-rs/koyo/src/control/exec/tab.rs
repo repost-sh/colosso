@@ -11,8 +11,8 @@ use koyo_app_control::ops::tab::{
 };
 use serde_json::Value;
 
-use super::super::Caller;
 use super::super::confirm::Question;
+use super::super::{Caller, policy};
 use super::select::{self, TabAt};
 use super::{Exec, info, open, output, try_update_shell};
 use crate::navigation::Route;
@@ -88,48 +88,8 @@ fn tabs_output(
     output(&TabListOutput { worktrees })
 }
 
-/// What was selected before a tab opened without being shown, to show again.
-struct Selection {
-    project: usize,
-    branch: usize,
-    /// The worktree the tab opened on, and the tab it showed.
-    target: TabAt,
-}
-
-impl Selection {
-    fn of(shell: &Shell, (project, branch): (usize, usize)) -> Selection {
-        let workspace = &shell.workspace;
-        Selection {
-            project: workspace.active_project,
-            branch: workspace
-                .project()
-                .map_or(0, |project| project.active_branch),
-            target: (
-                project,
-                branch,
-                workspace.projects[project].branches[branch].active_tab,
-            ),
-        }
-    }
-
-    fn restore(&self, shell: &mut Shell, window: &mut Window, cx: &mut Context<Shell>) {
-        let workspace = &mut shell.workspace;
-        let (project, branch, tab) = self.target;
-        if let Some(unit) = workspace.unit_mut(project, branch)
-            && tab < unit.tabs.len()
-        {
-            unit.active_tab = tab;
-        }
-        if workspace.unit_mut(self.project, self.branch).is_some() {
-            workspace.select_branch(self.project, self.branch);
-        }
-        shell.follow_selection(window, cx);
-        cx.notify();
-    }
-}
-
-/// Opens a tab of the kind `input` asks for on its worktree, as the New Tab menu would; shown
-/// unless `select` is false.
+/// Opens a tab of the kind `input` asks for on its worktree, as the New Tab menu would: shown
+/// when `select` says, or as the person set what agents open to show, else out of sight.
 pub(crate) fn open(
     caller: &Caller,
     input: &TabOpenInput,
@@ -137,19 +97,15 @@ pub(crate) fn open(
 ) -> Result<Exec, ControlError> {
     let spec = input.spec();
     open::check(&spec)?;
-    let shown = input.select.unwrap_or(true);
+    let shown = policy::shows(input.select, cx);
     let beside = input.place == Some(Place::Beside);
-    let (opened, before) = try_update_shell(cx, |shell, window, cx| {
+    let opened = try_update_shell(cx, |shell, window, cx| {
         let at = select::worktree(caller, &shell.workspace, input.worktree.as_deref(), None)?;
-        let before = Selection::of(shell, at);
-        let root = open::show_worktree(shell, at, window, cx);
-        Ok((open::open(shell, &root, &spec, beside, window, cx), before))
+        Ok(open::open_on(shell, at, &spec, beside, shown, window, cx))
     })?;
     Ok(opened.then(cx, move |pane, cx| {
-        try_update_shell(cx, |shell, window, cx| {
-            if !shown {
-                before.restore(shell, window, cx);
-            }
+        try_update_shell(cx, |shell, _, cx| {
+            open::open_unseen_page(shell, pane, cx);
             output(&info::place(shell, pane)?)
         })
     }))

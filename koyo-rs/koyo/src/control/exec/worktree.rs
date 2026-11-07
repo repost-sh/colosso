@@ -14,8 +14,8 @@ use koyo_app_control::ops::worktree::{
 use koyo_git::{Head, Loss, Ref};
 use serde_json::Value;
 
-use super::super::Caller;
 use super::super::confirm::Question;
+use super::super::{Caller, policy};
 use super::{
     Exec, info, main_shell, output, select, try_update_shell, update_shell, window_closed,
 };
@@ -96,8 +96,8 @@ pub(crate) fn branches(
     })))
 }
 
-/// Makes a worktree as the New Worktree dialog does, and shows it: selected with a chat open
-/// on it unless `select` is false.
+/// Makes a worktree as the New Worktree dialog does, and lists it: selected with a chat open on
+/// it when `select` says, or as the person set what agents open to show.
 pub(crate) fn create(
     caller: &Caller,
     input: WorktreeCreateInput,
@@ -110,6 +110,7 @@ pub(crate) fn create(
             "Name the branch to work on as `base` when `existing` is true.",
         ));
     }
+    let select = policy::shows(input.select, cx);
     let settings = settings::get(cx);
     let prefix = settings.branch_prefix.clone();
     let parent = settings.worktrees_dir(&project.folder);
@@ -134,7 +135,6 @@ pub(crate) fn create(
         };
         let request = new_worktree::request(input.name, base, existing, branches.prefix, parent);
         let Project { shell, path, .. } = project;
-        let select = input.select.unwrap_or(true);
         let creating =
             cx.update(|cx| new_worktree::create(shell, path, branches.repo, request, select, cx));
         let worktree = creating.await.map_err(git_failed)?;

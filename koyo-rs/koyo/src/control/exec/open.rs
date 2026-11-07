@@ -1,6 +1,7 @@
 //! Opening a pane of any kind on a checkout, as the New Tab menu would, for `tab_open`,
 //! `pane_split` and `file_open`: a terminal, new or one the daemon runs already; a browser
-//! page; a file in an editor, at a line and column; the checkout's Changes; a chat.
+//! page; a file in an editor, at a line and column; the checkout's Changes; a chat. Shown, or
+//! out of sight with the window kept where it was (`kept`).
 
 use std::path::{Path, PathBuf};
 
@@ -12,6 +13,8 @@ use koyo_term_control::terminal::{is_terminal_name, login_shell_line};
 use serde_json::Value;
 
 use super::Exec;
+use super::kept::Kept;
+use crate::browser::BrowserView;
 use crate::files::{At, Place};
 use crate::model::{self, Pane, Tab};
 use crate::navigation::Route;
@@ -36,6 +39,76 @@ pub(crate) fn show_worktree(
         .worktree
         .path
         .clone()
+}
+
+/// Runs `opening` on the checkout at `(project, branch)`, which an opening goes through as
+/// the person's menus do: selected, and followed by the right panel when the opening reads
+/// it there (`panel`: a file, the Changes) or shows. Not `shown`, the window is put back as it
+/// was before anything is drawn ([`Kept`]), and a checkout the person never looked at gets no
+/// panels unless the opening needs them.
+pub(crate) fn on_checkout<T>(
+    shell: &mut Shell,
+    (project, branch): (usize, usize),
+    (shown, panel): (bool, bool),
+    window: &mut Window,
+    cx: &mut Context<Shell>,
+    opening: impl FnOnce(&mut Shell, &Path, &mut Window, &mut Context<Shell>) -> T,
+) -> T {
+    let kept = (!shown).then(|| Kept::of(shell, (project, branch), window, cx));
+    let root = if shown || panel {
+        show_worktree(shell, (project, branch), window, cx)
+    } else {
+        shell.workspace.select_branch(project, branch);
+        shell.workspace.projects[project].branches[branch]
+            .worktree
+            .path
+            .clone()
+    };
+    let opened = opening(shell, &root, window, cx);
+    if let Some(kept) = kept {
+        kept.restore(shell, window, cx);
+    }
+    opened
+}
+
+/// Opens the pane `spec` describes on the checkout at `at`, as [`open`] does: shown, the
+/// window switching to it, or out of sight, the window kept where it was.
+pub(crate) fn open_on(
+    shell: &mut Shell,
+    at: (usize, usize),
+    spec: &PaneSpec,
+    beside: bool,
+    shown: bool,
+    window: &mut Window,
+    cx: &mut Context<Shell>,
+) -> Opened {
+    // A file opens through the checkout's right panel, and so do the Changes.
+    let panel = spec.kind == PaneKind::Changes || spec.file.is_some();
+    on_checkout(
+        shell,
+        at,
+        (shown, panel),
+        window,
+        cx,
+        |shell, root, window, cx| open(shell, root, spec, beside, shown, window, cx),
+    )
+}
+
+/// Opens the page of browser pane `pane` in the browser engine when the window doesn't draw
+/// it: a page opens once it's drawn, and the browser tools reach it only once it's open.
+pub(crate) fn open_unseen_page(shell: &mut Shell, pane: u64, cx: &mut Context<Shell>) {
+    let workspace = &shell.workspace;
+    let Some((at, _)) = workspace.find_pane(|found| found.id == pane) else {
+        return;
+    };
+    if shell.route(cx) == Route::Workspace && workspace.shown_tab() == Some(at) {
+        return;
+    }
+    let view = (workspace.projects[at.0].branches[at.1].pane(pane))
+        .and_then(|found| found.browser.clone());
+    if let Some(view) = view {
+        view.update(cx, BrowserView::open_out_of_sight);
+    }
 }
 
 impl Opened {
@@ -92,12 +165,15 @@ pub(crate) fn check(spec: &PaneSpec) -> Result<(), ControlError> {
 }
 
 /// Opens the pane `spec` describes on the selected checkout, at `root`, in a tab of its own:
-/// after the shown tab when `beside`, else after the last.
+/// after the shown tab when `beside`, else after the last. Unless `shown`, a terminal's tab
+/// comes without being shown and a file's editor without the keyboard, the window being
+/// put back by whoever opens it out of sight.
 pub(crate) fn open(
     shell: &mut Shell,
     root: &Path,
     spec: &PaneSpec,
     beside: bool,
+    shown: bool,
     window: &mut Window,
     cx: &mut Context<Shell>,
 ) -> Opened {
@@ -125,6 +201,7 @@ pub(crate) fn open(
                 spec.name.clone().into(),
                 command,
                 None,
+                shown,
                 cx,
             );
             Opened::Later(cx.spawn_in(window, async move |this, cx| {
@@ -165,7 +242,7 @@ pub(crate) fn open(
                 root,
                 file,
                 (spec.line, spec.column),
-                true,
+                (true, shown),
                 window,
                 cx,
             )),
@@ -201,13 +278,14 @@ fn push(shell: &mut Shell, pane: Pane, beside: bool, cx: &mut Context<Shell>) ->
 
 /// Shows the file at `file`, relative to the selected checkout at `root` unless it's
 /// absolute, as the tree does, at a line and a column counted from 1, kept open unless
-/// `kept` is false and previews are on; its pane.
+/// `kept` is false and previews are on, its editor taking the keyboard when `focus`; its
+/// pane.
 pub(crate) fn open_file(
     shell: &mut Shell,
     root: &Path,
     file: &str,
     (line, column): (Option<u32>, Option<u32>),
-    kept: bool,
+    (kept, focus): (bool, bool),
     window: &mut Window,
     cx: &mut Context<Shell>,
 ) -> Result<u64, ControlError> {
@@ -231,7 +309,7 @@ pub(crate) fn open_file(
             at,
         },
         kept,
-        true,
+        focus,
         window,
         cx,
     );

@@ -56,7 +56,7 @@ impl Shell {
         else {
             return;
         };
-        self.open_terminal(worktree, None.into(), Vec::new(), None, cx)
+        self.open_terminal(worktree, None.into(), Vec::new(), None, true, cx)
             .detach();
     }
 
@@ -70,20 +70,22 @@ impl Shell {
     ) {
         let name = terminal::name_after(&script.name).unwrap_or_else(|| "script".to_owned());
         let command = terminal::login_shell_line(script.command.clone());
-        self.open_terminal(worktree, Naming::After(name), command, None, cx)
+        self.open_terminal(worktree, Naming::After(name), command, None, true, cx)
             .detach();
     }
 
     /// Opens a terminal in the checkout at `worktree`, in a new tab that's shown and takes the
-    /// keyboard, called as `name` says and running `command`, or the login shell when it's empty,
-    /// `typed` typed into it once it's at its prompt. Done with the tab's pane once it's added;
-    /// with `None` when the daemon can't be reached or the checkout isn't listed.
+    /// keyboard when `shown`, else only joins the checkout's tabs, called as `name` says and
+    /// running `command`, or the login shell when it's empty, `typed` typed into it once it's at
+    /// its prompt. Done with the tab's pane once it's added; with `None` when the daemon can't
+    /// be reached or the checkout isn't listed.
     pub(crate) fn open_terminal(
         &mut self,
         worktree: PathBuf,
         name: Naming,
         command: Vec<String>,
         typed: Option<String>,
+        shown: bool,
         cx: &mut Context<Self>,
     ) -> Task<Option<u64>> {
         let Some(client) = self.terminals.client() else {
@@ -141,13 +143,15 @@ impl Shell {
                     ..open_request(&worktree, name.clone())
                 };
                 let id = this.terminals.add(Source::Open(Box::new(request)));
-                this.terminals.focus_next = Some(id);
+                if shown {
+                    this.terminals.focus_next = Some(id);
+                }
                 if let Some(typed) = typed {
                     this.terminals.typing.insert(id, typed);
                 }
                 let pane = this
                     .workspace
-                    .add_terminal_tab(&worktree, id, name.into(), true);
+                    .add_terminal_tab(&worktree, id, name.into(), shown);
                 cx.notify();
                 pane
             })

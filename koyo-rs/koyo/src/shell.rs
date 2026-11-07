@@ -189,6 +189,14 @@ impl Shell {
         self.update_history(|history| history.push(route), cx);
     }
 
+    /// Goes back to `route`, as Back does, when something opened out of sight just left it
+    /// for the workspace.
+    pub(crate) fn come_back(&mut self, route: Route, cx: &mut Context<Self>) {
+        if self.route(cx) != route {
+            self.update_history(NavigationHistory::go_back, cx);
+        }
+    }
+
     fn open_settings(&mut self, _: &OpenSettings, _: &mut Window, cx: &mut Context<Self>) {
         self.open_settings_page(None, cx);
     }

@@ -8,6 +8,7 @@ mod browser;
 mod chat;
 mod file;
 mod info;
+mod kept;
 mod open;
 mod pane;
 mod project;
@@ -54,7 +55,7 @@ pub(crate) fn run(caller: &Caller, command: Command, cx: &mut App) -> Exec {
         C::SettingsOpen(input) => Exec::Ready(app::settings_open(input.page, cx)),
         C::SettingsClose(_) => Exec::Ready(app::settings_close(cx)),
         C::ProjectList(_) => Exec::Ready(project::list(cx)),
-        C::ProjectAdd(input) => project::add(caller, &input.path, cx).into(),
+        C::ProjectAdd(input) => project::add(caller, &input, cx).into(),
         C::ProjectSelect(input) => Exec::Ready(project::select(&input.project, cx)),
         C::ProjectRemove(input) => Exec::Ready(project::remove(&input.project, cx)),
         C::ProjectMove(input) => Exec::Ready(project::move_to(&input, cx)),
@@ -77,9 +78,7 @@ pub(crate) fn run(caller: &Caller, command: Command, cx: &mut App) -> Exec {
         C::PaneClose(input) => Exec::Ready(tab::close(&input, false, cx)),
         C::FileOpen(input) => file::open(caller, &input, cx),
         C::FileSave(input) => file::save(&input, cx).into(),
-        C::ChangesOpen(input) => {
-            Exec::Ready(file::changes_open(caller, input.worktree.as_deref(), cx))
-        }
+        C::ChangesOpen(input) => Exec::Ready(file::changes_open(caller, &input, cx)),
         C::ChatList(input) => Exec::Ready(chat::list(caller, &input, cx)),
         C::ChatRead(input) => chat::read(&input, cx).into(),
         C::ChatOpen(input) => Exec::Ready(chat::open(&input, cx)),

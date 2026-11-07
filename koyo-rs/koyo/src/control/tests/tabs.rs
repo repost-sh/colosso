@@ -41,7 +41,8 @@ fn tabs_open_select_move_close_and_reopen(cx: &mut TestAppContext) {
     let chat = call(&agent, "tab_open", json!({ "kind": "chat" }), cx).unwrap();
     assert_eq!(chat["tab"], json!(0));
     assert_eq!(chat["worktree"], json!(root));
-    let file = json!({ "kind": "editor", "file": "src/lib.rs", "line": 1, "column": 5 });
+    let file =
+        json!({ "kind": "editor", "file": "src/lib.rs", "line": 1, "column": 5, "select": true });
     let editor = call(&agent, "tab_open", file, cx).unwrap();
     assert_eq!(editor["tab"], json!(1));
     let page = json!({ "kind": "browser", "url": "https://example.com/", "place": "beside", "select": false });

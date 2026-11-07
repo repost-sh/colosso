@@ -9,6 +9,7 @@ mod panes;
 mod pipeline;
 mod projects;
 mod settings;
+mod shown;
 mod socket;
 mod tabs;
 mod viewport;

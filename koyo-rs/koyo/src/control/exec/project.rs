@@ -6,11 +6,12 @@ use std::path::{Path, PathBuf};
 use gpui_kit::{App, AsyncApp};
 use koyo_app_control::ControlError;
 use koyo_app_control::ops::project::{
-    ProjectListOutput, ProjectMoveInput, ProjectOrder, ProjectOutput, ProjectRemoveOutput,
+    ProjectAddInput, ProjectListOutput, ProjectMoveInput, ProjectOrder, ProjectOutput,
+    ProjectRemoveOutput,
 };
 use serde_json::Value;
 
-use super::super::Caller;
+use super::super::{Caller, policy};
 use super::{
     Exec, info, main_shell, output, select, try_update_shell, update_shell, window_closed,
 };
@@ -25,20 +26,26 @@ pub(crate) fn list(cx: &mut App) -> Result<Value, ControlError> {
     output(&ProjectListOutput { projects })
 }
 
-/// Adds the repository the folder at `path` is in, by its main checkout, and selects it; a
-/// relative path is the caller's working folder's.
-pub(crate) fn add(caller: &Caller, path: &str, cx: &mut App) -> Result<Exec, ControlError> {
+/// Adds the repository the folder at `input`'s path is in, by its main checkout; a relative
+/// path is the caller's working folder's. Selected when `select` says, or as the person set
+/// what agents open to show.
+pub(crate) fn add(
+    caller: &Caller,
+    input: &ProjectAddInput,
+    cx: &mut App,
+) -> Result<Exec, ControlError> {
     let folder = match &caller.cwd {
-        Some(cwd) => cwd.join(path),
-        None => PathBuf::from(path),
+        Some(cwd) => cwd.join(&input.path),
+        None => PathBuf::from(&input.path),
     };
+    let shown = policy::shows(input.select, cx);
     if !folder.is_dir() {
         return Err(ControlError::not_found(format!(
             "No folder is at {}.",
             folder.display()
         )));
     }
-    let adding = update_shell(cx, |shell, _, cx| shell.add_project_at(folder, cx))?;
+    let adding = update_shell(cx, |shell, _, cx| shell.add_project_at(folder, shown, cx))?;
     Ok(Exec::Later(cx.spawn(async move |cx: &mut AsyncApp| {
         let path = adding.await.map_err(|message| {
             ControlError::invalid_input(format!("That folder isn't in a git repository: {message}"))

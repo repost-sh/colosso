@@ -35,16 +35,34 @@ read it again.
 An `ambiguous` failure lists what the input could mean in `details.candidates`: pick one
 and call again.
 
+## What the person sees of your work
+
+The person decides whether the window switches to what an agent makes or opens.
+`project_add`, `worktree_create`, `tab_open`, `pane_split`, `file_open`, `changes_open` and
+`chat_create` take `select`:
+
+- Left out, the person's choice in Settings → MCP server decides. By default the window
+  stays where they are: what you made is listed in the sidebar and the tab strip, and
+  nothing takes their keyboard or leaves the settings page they're on.
+- `select: true` switches the window to it. Pass it only when the person asked to see it.
+- `select: false` keeps it out of sight whatever they chose.
+
+What you open out of sight works as if shown: a terminal runs, a browser page loads and
+the browser tools drive it. `worktree_select`, `project_select`, `tab_select`,
+`pane_focus`, `chat_open`, `settings_open` and `app_focus` exist to show something and
+always do, as does `tab_reopen`, which puts back the tab closed last as ⇧⌘T does.
+
 ## Projects and worktrees
 
 - `project_add` with a `path` adds a git repository (or the repository the folder is in)
-  and selects it; `project_select`, `project_move` (`to`, an index) and `project_remove`
+  to the sidebar; `project_select`, `project_move` (`to`, an index) and `project_remove`
   (out of the sidebar; its files and worktrees stay on disk) take a `project`.
 - Before creating a worktree, `worktree_branches` gives the branches, the default base, the
   branch prefix and the folder new worktrees go in.
 - `worktree_create` with a `name` makes a branch `<prefix>/<slug>` from `base` (or works on
   `base` itself with `existing: true`) in the project's worktrees folder, as the New
-  Worktree dialog does, and switches to it unless `select: false`.
+  Worktree dialog does, and lists it in the sidebar; with `select: true` the window
+  switches to it, with a chat open on it.
 - `worktree_select` switches to a worktree.
 - `worktree_delete` deletes a checkout with its tabs and terminals. It never deletes the
   main checkout, and the person confirms every call in the window.
@@ -78,9 +96,9 @@ The terminal tools (`terminal_*`) drive terminals whatever tab shows them; the
 `chat_list` lists a worktree's chats with an agent (`all` for every worktree's), whether a tab
 shows them or not, each with its `id`, `status` and what it `needs` of a person.
 
-- `chat_create` starts a chat in a worktree and says `text` to it, in a tab of its own (with
-  `select: false` it isn't shown). `chat_send` says `text` to a chat: it joins the turn running,
-  or with `queue` waits for it.
+- `chat_create` starts a chat in a worktree and says `text` to it, in a tab of its own, shown
+  only as `select` and the person's setting say. `chat_send` says `text` to a chat: it joins the
+  turn running, or with `queue` waits for it.
 - `chat_read` gives what was said in the latest `turns` (5 when left out). Poll `chat_list` for
   when `status` is back to `idle`, then read.
 - `chat_open` shows a chat; `chat_stop` asks what it's running to stop.
@@ -94,7 +112,7 @@ chat stays `working` until they do. Tell them rather than wait on it.
 - `file_open` opens a `path` in an editor at a `line` and `column`, in a split with
   `split`, or as a preview tab with `preview: true`.
 - `file_save` writes one editor's edits (`pane`) or every editor's (`all: true`).
-- `changes_open` shows a worktree's changes.
+- `changes_open` opens a worktree's Changes tab, its diff.
 
 ## Browser pages
 

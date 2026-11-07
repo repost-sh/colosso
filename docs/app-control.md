@@ -110,15 +110,41 @@ fails `request_conflict` (retryable). Deviation from monocode, where sessions sk
 confirmations: Koyo's terminal agents have no provider layer deciding MCP calls for
 them, so the window asks.
 
-The control policy (on/off, port, approved clients with scopes and last use) lives in
-`settings.json` under `externalControl`; no operation can read or change it.
-`settings_set` cannot reach it. The activity log keeps every changing call (refused or
-not) and every approval/confirmation decision, the latest 200, in memory; reads aren't
-logged.
+The control policy (on/off, port, approved clients with scopes and last use, and whether
+the window switches to what agents open, `showWhatAgentsOpen`, 5) lives in `settings.json`
+under `externalControl`; no operation can read or change it, so no agent can switch it
+back on for itself. The executors only follow it. `settings_set` cannot reach it. The
+activity log keeps every changing call (refused or not) and every approval/confirmation
+decision, the latest 200, in memory; reads aren't logged.
 
 ## 5. Tool catalog [decided; schemas proposed]
 
 Hints: R read-only, I idempotent change, C change, D destructive. Scope in brackets.
+
+### Shown or out of sight [decided 2026-11-06]
+
+The person decides whether the window switches to what an agent makes or opens, not the
+agent. `project_add`, `worktree_create`, `tab_open`, `pane_split`, `file_open`,
+`changes_open` and `chat_create` take `select?: bool`:
+
+- `select` left out follows Settings → MCP server → Switch to what agents open
+  (`externalControl.showWhatAgentsOpen`), off by default. Off, what the agent made is listed
+  in the sidebar and the tab strip, and the window stays where it was: the selected
+  checkout, the tab each checkout shows, the settings page the person is on, and what has
+  the keyboard. On, the window switches to it as the person's own menus would.
+- `select: true` or `select: false` gets what it says, whatever the setting. Agents are told
+  to pass `true` only when the person asked to see the thing.
+- What opens out of sight works as if shown: a terminal starts, a file's editor is ready,
+  a browser page opens in the engine at once (11) so the browser tools drive it.
+- For every caller: agents in Koyo's terminals, external clients and `koyo app`. The
+  person's own menus and dialogs are unaffected, and so are terminals an agent opens with
+  `terminal_open`, which already come as tabs that aren't shown.
+
+Operations whose point is to show something always do: `project_select`,
+`worktree_select`, `tab_select`, `pane_focus`, `chat_open`, `settings_open`,
+`settings_close`, `app_focus`; and `tab_reopen`, which puts back the tab closed last as
+⇧⌘T does. `tab_move` and `pane_detach` change which tab their own checkout shows, never the
+selected checkout.
 
 ### App and window
 
@@ -144,17 +170,20 @@ tall only while the sidebar is open and the selected checkout has language serve
 ```
 project_list   [read] R  {} → { projects: [{ path, name, selected, error?, worktrees: [{ path,
                           branch?, detached?, main, selected, tabs, terminals }] }] }
-project_add    [manage] I { path } → project; the folder must be a git repository (or inside
-                          one: its main checkout is added); selects it
+project_add    [manage] I { path, select?: bool (default: the person's setting) } → project;
+                          the folder must be a git repository (or inside one: its main
+                          checkout is added); listed in the sidebar
 project_select [navigate] I { project }
 project_remove [manage] D-hint, no confirm { project } → takes it out of the sidebar; files stay
 project_move   [manage] I { project, to: index }
 worktree_branches [read] R { project? } → { branches: [{ name, remote, current }], defaultBase,
                           prefix, worktreesDir }
 worktree_create [manage] C { project?, name, base?: branch, existing?: bool (work on `base`
-                          itself), select?: bool (default true) } → { worktree: { path, branch } }
+                          itself), select?: bool (default: the person's setting) } → { worktree:
+                          { path, branch } }
                           Same naming as the New Worktree dialog: `<prefix>/<slug>` under
-                          `settings.worktrees_dir(project)`.
+                          `settings.worktrees_dir(project)`. Shown, it's selected with a chat
+                          open on it, as the dialog leaves it.
 worktree_select [navigate] I { worktree, project? } → selects the checkout (switches to it)
 worktree_delete [destructive] D, confirmed { worktree, force?: bool } → refuses the main
                           checkout; the prompt names lost commits, changes, terminals
@@ -170,7 +199,8 @@ tab_list   [read] R { worktree?, all?: bool } → { worktrees: [{ path, tabs: [{
              PaneTree = { pane } | { axis: "row"|"column", ratio, first, second }
 tab_open   [navigate] C { worktree?, kind, url?, file?, line?, column?, terminal?: handle,
              name?: string (new terminal's), command?: string (new terminal's), place?:
-             "end"|"beside" (default end), select?: bool (default true) } → { pane, tab }
+             "end"|"beside" (default end), select?: bool (default: the person's setting) }
+             → { pane, tab }
              Opens the kind as the menu would; `terminal` reveals an existing daemon terminal.
 tab_select [navigate] I { pane } | { worktree?, index }
 tab_move   [navigate] I { pane, to: index }
@@ -180,7 +210,7 @@ tab_close  [navigate] I { pane } → refuses with `unsaved_changes` (listing fil
 tab_reopen [navigate] C {} → reopens the latest closed tab
 pane_split [navigate] C { pane (target), edge: "left"|"right"|"top"|"bottom",
              move?: pane (an existing pane, taken from its tab) | kind + tab_open's fields
-             (a new pane) } → { pane, tab }
+             (a new pane), select?: bool (default: the person's setting) } → { pane, tab }
 pane_focus [navigate] I { pane } → selects its tab and gives it the keyboard
 pane_resize [navigate] I { pane, ratio } → the split holding the pane gives that pane `ratio`
 pane_detach [navigate] I { pane } → moves the pane out of its split into a tab of its own
@@ -196,8 +226,8 @@ chat_list   [read] R { worktree?, all?: bool } → { chats: [{ id, title, worktr
 chat_read   [read] R { chat, turns?: n (default 5) } → { status, messages: [{ role:
               "user"|"assistant", text }] }, oldest first, without the work between the words
 chat_open   [navigate] I { chat } → { pane, tab, worktree }: the tab showing it, or a new one
-chat_create [manage] C { worktree?, text, select?: bool (default true) } → { chat, place }:
-              a new chat, set as Settings says, told `text`
+chat_create [manage] C { worktree?, text, select?: bool (default: the person's setting) } →
+              { chat, place }: a new chat, set as Settings says, told `text`
 chat_send   [manage] C { chat, text, queue?: bool } → { turn }: starts a turn, or joins the one
               running unless `queue`
 chat_stop   [manage] I { chat } → asks what's running to stop
@@ -210,9 +240,12 @@ from here: `chat_list` says what a chat waits for, and the person answers in the
 ### Files
 
 ```
-file_open  [navigate] C { path, line?, column?, worktree?, preview?: bool, split?: edge } → { pane }
+file_open  [navigate] C { path, line?, column?, worktree?, preview?: bool, split?: edge,
+             select?: bool (default: the person's setting; shown, its editor takes the
+             keyboard) } → { pane }
 file_save  [manage] I { pane? | all: true } → { saved: [path] }
-changes_open [navigate] C { worktree? } → the Changes tab
+changes_open [navigate] C { worktree?, select?: bool (default: the person's setting) } → the
+             Changes tab
 ```
 
 ### Browser (on the app's browser panes, via CDP `AppRequest::Cdp`)
@@ -312,16 +345,20 @@ The MCP `instructions` say: you are connected to Koyo, the app the person works 
 projects, worktrees, tabs, panes, browser pages, settings and terminals are driven
 through these tools, never by editing Koyo's files; start with `app_status` or
 `project_list`; pane ids come from `tab_list`; the human rule for terminals and pages
-(`person_has_control`: leave it, use another). The `terminal_guide` prompt stays; a
-`koyo_guide` prompt covers the app tools at length.
+(`person_has_control`: leave it, use another); what an agent makes or opens shows as the
+person chose when `select` is left out, so pass `select: true` only when the person asked
+to see it (5). The `terminal_guide` prompt stays; a `koyo_guide` prompt covers the app
+tools at length.
 
 ## 9. Settings → MCP server [decided]
 
 A Settings page "MCP server": the switch, the server URL with Copy, a port field when the
-port is taken, "Add to" buttons (Claude Code and Codex copy the command, Cursor and VS
-Code open their install links, as monocode `settings/pages/mcp_clients.rs`), the stdio
-command for agents (`claude mcp add koyo -- <exe> mcp`), approved clients with last use,
-per-scope switches and Revoke, clients denied lately with Allow, and Recent activity.
+port is taken, an "Agents" section with Switch to what agents open (off; shown whether the
+server is on or not, since it holds for agents in Koyo's terminals too), "Add to" buttons
+(Claude Code and Codex copy the command, Cursor and VS Code open their install links, as
+monocode `settings/pages/mcp_clients.rs`), the stdio command for agents (`claude mcp add
+koyo -- <exe> mcp`), approved clients with last use, per-scope switches and Revoke,
+clients denied lately with Allow, and Recent activity.
 
 ## 10. Testing [decided]
 
@@ -345,10 +382,13 @@ per-scope switches and Revoke, clients denied lately with Allow, and Recent acti
 - `koyo mcp` lists 60 tools (14 terminal, 45 app, `app_launch`); HTTP lists 59 (no
   `app_launch`). The server is named `koyo`.
 - Browser tools run over CDP through `browser/agent.rs`, its refusals typed (`AgentError`). A
-  page the host hasn't opened yet (a tab never shown) answers `browser_unavailable` until it's
-  shown once. A tab brought back at launch has no page until it's shown; `browser_list` lists
-  it with its kept address and title and a 0 × 0 viewport (`docs/browser.md` 6).
-  `browser_read` cuts the page's text in the page, near its limit.
+  page opens in the engine once its pane is drawn. One an agent opened out of sight is opened
+  at once at 1280×800, the size a pane assumes before it's drawn
+  (`BrowserView::open_out_of_sight`), told it's out of sight when the engine already runs,
+  and takes its pane's size once shown. Any other page never shown answers
+  `browser_unavailable` until it's shown once. A tab brought back at launch has no page until
+  it's shown; `browser_list` lists it with its kept address and title and a 0 × 0 viewport
+  (`docs/browser.md` 6). `browser_read` cuts the page's text in the page, near its limit.
   `browser_screenshot`'s image goes once, as an MCP image block; its structured answer
   carries `data` empty. Keys carry the same key codes the person's own typing does. Snapshot
   refs are `data-koyo-ref` attributes set by the snapshot's script. Editing shortcuts
@@ -371,3 +411,176 @@ per-scope switches and Revoke, clients denied lately with Allow, and Recent acti
 - Not built: the activity and denied lists don't push a change notification to the Settings
   page (it redraws on the next settings change); `app_status.focused` and the App topic don't
   follow window focus.
+- Shown or out of sight (5, 2026-11-06): `control::policy::shows` resolves a call's `select`
+  against `externalControl.showWhatAgentsOpen`. An opening out of sight goes through the
+  selected checkout as the menus do (`control/exec/open.rs` `on_checkout`; the right panel
+  follows it there only for a file or the Changes, which open through it, so a checkout the
+  person never looked at gets no panels), then `control/exec/kept.rs` puts the window back
+  in the same change (selection, the checkout's shown tab found by a pane in it, the settings page
+  by one step Back, the keyboard), so nothing is drawn in between. A new terminal's tab
+  arrives once the daemon answers, not shown and without the keyboard (`open_terminal`'s
+  `shown`); `add_project_at` and `add_chat` take `select` themselves.
+
+## 12. Defaults the person sets for agents [proposed]
+
+The window switching to what agents open (5) was the first behaviour taken from the agents
+and the hard-coded defaults and handed to the person. These are the others a person could
+reasonably want to choose. None is built. Each says what happens today and where, the
+setting proposed and its default (today's behaviour unless said), whom it protects, and
+where it lives:
+
+- `externalControl`: out of every agent's reach (4). For anything an agent could turn to
+  its own advantage against the person: more reach, less asking, more interruption. The
+  switches go on Settings → MCP server, Agents.
+- Ordinary settings: the person's other preferences, on the page they belong to. Left out
+  of `settings_set`'s allowlist unless said.
+
+### 12.1 Bringing Koyo forward
+
+- Today: `app_focus` activates the app and its window (`control/exec/app.rs`, `cx.activate`,
+  `activate_window`), from whatever app the person is in. The prompt allowing a new client
+  activates the window (`control/auth.rs`); a destructive call's confirmation is a sheet on
+  the window and doesn't (`control/confirm.rs`), so it can wait two minutes unseen and fail
+  `user_declined`. `app_launch` starts Koyo when it isn't running
+  (`koyo-term-mcp/src/launch.rs`).
+- Proposed: `externalControl.bringForward: "always" | "toAsk" | "never"`, default `"always"`.
+  `"toAsk"`: only a prompt waiting on the person (approval, confirmation) activates the
+  window; `app_focus` opens a closed window without activating it and bounces the Dock
+  icon. `"never"`: prompts bounce the Dock icon too. And `externalControl.agentsStartKoyo:
+  bool`, default on; off, `app_launch` fails `control_disabled`, read by the relay from
+  `settings.json` since the app isn't running.
+- Protects: the person's focus in another app; the same interruption as switching, across
+  apps.
+- Home: `externalControl`.
+
+### 12.2 Asking before destructive calls
+
+- Today: every destructive call is confirmed in the window, for every caller
+  (`Operation::CONFIRM`, `control/confirm.rs`, two minutes). Agents in Koyo's terminals
+  can't make one at all: `Scope::TERMINAL_AGENT` has no `destructive`
+  (`koyo-app-control/src/scope.rs`, `control/gate.rs`), so `worktree_delete` fails
+  `scope_denied` for the agent that made the worktree.
+- Proposed: `externalControl.confirm: "always" | "whenWorkIsLost"`, default `"always"`.
+  `"whenWorkIsLost"` skips the prompt when the question finds nothing to lose: a
+  worktree with no changes, every commit on a branch, no terminal running
+  (`exec/worktree.rs` `losses` already counts them). Discarding unsaved edits always loses
+  them, so it always asks. No "never".
+- Protects: uncommitted changes, unpushed commits, unsaved edits, running terminals.
+- Home: `externalControl`.
+
+### 12.3 What agents in Koyo's terminals may do
+
+- Today: `read navigate manage browser settings`, without asking and not changeable
+  (`Scope::TERMINAL_AGENT`, `control/gate.rs`); `settings` lets them change appearance,
+  layout and the rest of `settings_set`'s allowlist.
+- Proposed: `externalControl.terminalAgents: [scope]`, default today's, with the same
+  scopes menu as an approved client's. Adding `destructive` lets them delete worktrees and
+  discard edits, each still confirmed (12.2); removing `settings` keeps them off the
+  settings.
+- Protects: the person's work and setup from agents they started themselves, which act
+  without any approval prompt.
+- Home: `externalControl`.
+
+### 12.4 What a newly allowed client may do
+
+- Today: Allow grants `Scope::DEFAULT_GRANT`, `read navigate manage browser`
+  (`koyo-app-control/src/scope.rs`, `control/policy.rs` `approve`); `browser` drives
+  pages signed in with the person's sessions.
+- Proposed: `externalControl.newClientScopes: [scope]`, default today's, set with a scopes
+  menu above the clients list; the prompt says what it grants.
+- Protects: the person's data and signed-in pages from a client allowed in a hurry.
+- Home: `externalControl`.
+
+### 12.5 A client the person denied
+
+- Today: Deny is remembered ten minutes, then the client's next hello asks again
+  (`control/auth.rs` `DENIAL_MEMORY`); the prompt waits two minutes (`APPROVAL_TIMEOUT`).
+- Proposed: `externalControl.denials: "tenMinutes" | "untilQuit" | "always"`, default
+  `"tenMinutes"`; `"always"` keeps a Blocked list on the page, each with Unblock.
+- Protects: the person from a client asking again and again.
+- Home: `externalControl`.
+
+### 12.6 Chats agents start
+
+- Today: `chat_create` starts a chat set as a new chat is in Settings → Chat
+  (`chat_mode`, `chat_effort`; `control/exec/chat.rs`), so a client holding only `manage`
+  gets an agent working in the checkout with whatever the person's new chats may do,
+  `FullAccess` included. Nothing marks the chat as an agent's. It notifies as any chat does
+  (`chat/notify.rs`: needs the person, or finished, while Koyo isn't frontmost). Whether
+  its tab shows is 5.
+- Proposed: `externalControl.agentChats.mode: Mode | "asNewChats"`, default `"asNewChats"`;
+  set to `ask` or `acceptEdits` it caps what an agent-started chat may do without asking.
+  `agentChats.mark: bool`, default on (not built today): the tab and Recent chats say
+  "Started by Claude Code". `agentChats.notify: "asAnyChat" | "whenItNeedsYou" | "never"`,
+  default `"asAnyChat"`.
+- Protects: `mode`, the person from a client reaching more through a chat than its scopes
+  give it; `mark` and `notify`, the person's attention.
+- Home: `mode` in `externalControl`; `mark` and `notify` in the ordinary settings, on the
+  Chat page.
+
+### 12.7 How long the person's use holds a page or a terminal
+
+- Today: a page the person clicks or types in is theirs until 5 s after their last act
+  (`browser/control.rs` `IMPLICIT_HOLD`), then agents may act again. A terminal they type
+  in is theirs until they give it back, never released by time (`docs/terminals.md`
+  D11, the daemon). Take control holds either until given back.
+- Proposed: `externalControl.personHold: { pages: seconds | "untilGivenBack", terminals:
+  seconds | "untilGivenBack" }`, defaults `5` and `"untilGivenBack"`; seconds from 2 to 60.
+- Protects: the person while they're using a page or a terminal an agent works in.
+- Home: `externalControl`: an agent shortening it would take pages from the person sooner.
+
+### 12.8 Where agents' tabs open
+
+- Today: `tab_open` puts a tab after the last unless `place: "beside"` (`ops/tab.rs`
+  `Place`); `chat_create` and new terminals go after the last (`model/terminals.rs`
+  `add_pane_tab`); `file_open` and `changes_open` open beside the shown tab, as the
+  person's own do (`files/open.rs`, `changes/open.rs`).
+- Proposed: `externalControl.tabsOpen: "end" | "beside"`, default `"end"`: where a tab
+  goes when the call leaves `place` out, for every operation that opens one.
+- Protects: the order of the person's tab strip, which with 5's default fills with tabs
+  they haven't looked at.
+- Home: `externalControl`, with the other defaults for agents' calls; nothing an agent
+  gains by changing it, but nothing an agent needs to change either.
+
+### 12.9 Files agents open
+
+- Today: `file_open` keeps each file in a tab of its own unless `preview: true`
+  (`exec/file.rs`); the person's own clicks in the tree preview (`previewFiles`).
+- Proposed: `externalControl.filesOpenAs: "tab" | "preview"`, default `"tab"`: the default
+  of a `preview` left out. `"preview"` keeps an agent's files in the one preview tab the
+  next file replaces.
+- Protects: the tab strip from piling up with files opened out of sight.
+- Home: `externalControl`.
+
+### 12.10 The agent's pointer in pages
+
+- Today: `browser_click` shows the agent's pointer travelling to the point and waits for
+  it, 0.38 to 0.9 s by distance (`browser/pointer.rs`), with a glow while an agent holds
+  the page; none with reduced motion. It waits on a page out of sight too, where nobody
+  sees it.
+- Proposed: `externalControl.showAgentPointer: bool`, default on. Off, the glow stays and
+  clicks don't wait. Separately, a fix rather than a setting: skip the wait on a page out
+  of sight.
+- Protects: the person's view of what agents do in pages (on), against agents' speed (off).
+- Home: `externalControl`: an agent turning it off would act less visibly.
+
+### Not proposed
+
+- A setting per kind for 5 (pages out of sight, chats shown, say): one switch covers it,
+  and `select` covers the exceptions. Revisit if people ask for pages treated apart.
+- Prompt timeouts (two minutes) and receipt and activity sizes: nobody's preference.
+- Turning confirmations off altogether: 12.2's `"whenWorkIsLost"` is as far as it goes.
+
+### What to build first
+
+1. 12.1, bringing Koyo forward: the same interruption as 5, one app over, and small
+   (`exec/app.rs`, `auth.rs`); with `"toAsk"`, a confirmation no longer waits unseen.
+2. 12.2 with 12.3: asking only when work would be lost, and letting terminal agents
+   delete what they made. The question already counts the losses; together they make
+   cleaning up an agent's worktrees possible without a prompt for nothing.
+3. 12.6's `mode`: closes the way a `manage`-only client reaches `FullAccess` through a
+   chat.
+4. 12.4: a scopes menu the page already has.
+
+Then 12.8 and 12.9, which matter more now that agents' tabs open out of sight, and the
+rest as people ask.
