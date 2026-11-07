@@ -4,6 +4,10 @@ use std::path::PathBuf;
 
 use koyo_app_control::{ClientInfo, Hello};
 
+/// The kinds of agent Koyo runs, as `Caller::key` names them: `chat:<id>`, `terminal:<handle>`.
+const CHAT: &str = "chat";
+const TERMINAL: &str = "terminal";
+
 /// A client that said hello, as it said it: self-reported, so it names the caller in
 /// prompts and the activity log, and picks its defaults, but proves nothing.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -36,10 +40,19 @@ impl Caller {
         }
     }
 
-    /// Where in Koyo it runs, for an agent Koyo runs: `("chat", id)`, else `("terminal", handle)`.
+    /// Where in Koyo it runs, for an agent Koyo runs: `(CHAT, id)`, else `(TERMINAL, handle)`.
     fn agent(&self) -> Option<(&'static str, &str)> {
-        (self.chat.as_deref().map(|id| ("chat", id)))
-            .or_else(|| self.terminal.as_deref().map(|handle| ("terminal", handle)))
+        (self.chat.as_deref().map(|id| (CHAT, id)))
+            .or_else(|| self.terminal.as_deref().map(|handle| (TERMINAL, handle)))
+    }
+
+    /// Whether an external client's `name` would pass for an agent Koyo runs, as `key` names
+    /// them.
+    pub fn agent_name(name: &str) -> bool {
+        [CHAT, TERMINAL].into_iter().any(|kind| {
+            name.strip_prefix(kind)
+                .is_some_and(|rest| rest.starts_with(':'))
+        })
     }
 
     /// What receipts, prompts and the activity log know the caller by: `chat:<id>` for a

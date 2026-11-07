@@ -111,7 +111,7 @@ pub struct Chats {
     to_restore: Option<Vec<ThreadId>>,
     /// The attempt to reach the host under way, if any.
     connecting: Option<Task<()>>,
-    /// What the host last heard of Koyo's settings on this connection.
+    /// Koyo's settings as the client last kept them, which every connection tells the host first.
     told_config: Option<koyo_agent::protocol::methods::Config>,
     _settings: Subscription,
     /// The loop over what the host says.
@@ -154,6 +154,7 @@ impl Chats {
             _settings: settings::on_change(cx, Self::tell_config),
             _following,
         };
+        chats.tell_config(cx);
         if settings::data_dir().is_some_and(|data| client::has_store(&client::host_dir(&data))) {
             chats.connect(cx);
         }
@@ -166,6 +167,13 @@ impl Chats {
 
     pub fn summary(&self, id: &ThreadId) -> Option<&ThreadSummary> {
         self.summaries.get(id)
+    }
+
+    /// Whether thread `id` is one of the host's; `None` while that can't be told, as the host
+    /// hasn't listed its threads yet.
+    pub fn knows(&self, id: &ThreadId) -> Option<bool> {
+        let known = self.summaries.contains_key(id);
+        (known || self.connection == Connection::Connected).then_some(known)
     }
 
     /// The threads to bring back as tabs, once the host has listed them.

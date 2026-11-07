@@ -9,9 +9,9 @@ use futures::StreamExt as _;
 use gpui_kit::{Context, Task};
 use koyo_agent::agent_client::AgentClient;
 use koyo_agent::client;
-use koyo_agent::protocol::methods::{Config, ConfigSet};
+use koyo_agent::protocol::methods::Config;
 
-use super::{Chats, Connection};
+use super::Chats;
 use crate::settings;
 
 /// How long the loop waits between batches: what arrives meanwhile is applied together.
@@ -39,16 +39,10 @@ pub(super) fn follow(client: &AgentClient, cx: &mut Context<Chats>) -> Task<()> 
 }
 
 impl Chats {
-    /// Tells the host what Koyo's settings say, if that's news and it's being reached or was: the
-    /// next session it opens follows them, and a new chat starts as they say. What didn't reach
-    /// it is told again once the host lists its chats.
+    /// Gives the client what Koyo's settings say, if that's news: every connection tells the host
+    /// first, so the next session it opens follows them and a new chat starts as they say. A host
+    /// reached now is told at once.
     pub(super) fn tell_config(&mut self, cx: &mut Context<Self>) {
-        if !matches!(
-            self.connection,
-            Connection::Connecting | Connection::Connected
-        ) {
-            return;
-        }
         let settings = settings::get(cx);
         let config = Config {
             claude_path: settings.claude_path.clone(),
@@ -62,20 +56,16 @@ impl Chats {
         if self.told_config.as_ref() == Some(&config) {
             return;
         }
-        let told = self.ordered::<ConfigSet>(config.clone());
         self.told_config = Some(config.clone());
+        let Some(told) = (self.client.as_ref()).and_then(|client| client.set_config(config)) else {
+            return;
+        };
         // What the host offers has Koyo's settings in it, so it's asked for once it's heard them.
-        cx.spawn(async move |chats, cx| {
-            let failed = told.await.is_err_and(|error| {
-                log::warn!("telling the host its settings: {error}");
-                true
-            });
-            let _ = chats.update(cx, |chats, cx| {
-                if failed && chats.told_config.as_ref() == Some(&config) {
-                    chats.told_config = None;
-                }
-                chats.refresh_catalogs(cx);
-            });
+        cx.spawn(async move |chats, cx| match told.await {
+            Ok(_) => {
+                let _ = chats.update(cx, Chats::refresh_catalogs);
+            }
+            Err(error) => log::warn!("telling the host its settings: {error}"),
         })
         .detach();
     }

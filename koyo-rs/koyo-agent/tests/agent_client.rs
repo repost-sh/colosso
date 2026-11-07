@@ -24,8 +24,8 @@ use koyo_agent::client::{self, Client, ClientError};
 use koyo_agent::protocol::events::Event;
 use koyo_agent::protocol::ids::{MessageId, ThreadId};
 use koyo_agent::protocol::methods::{
-    ClientKind, CreateParams, Delivery, Empty, OpenParams, SendParams, ThreadParams, ThreadsCreate,
-    ThreadsOpen, ThreadsRead, ThreadsWatch, TurnsSend,
+    ClientKind, Config, CreateParams, Delivery, Empty, OpenParams, SendParams, ThreadParams,
+    ThreadsCreate, ThreadsOpen, ThreadsRead, ThreadsWatch, TurnsSend,
 };
 use koyo_agent::protocol::model::{ItemBody, Prompt, RunStatus};
 use koyo_agent::protocol::wire::HOST_VERSION;
@@ -241,6 +241,34 @@ fn what_is_asked_in_order_reaches_the_host_in_order_though_nobody_awaits_it() {
     for answer in answers {
         block_on(answer).unwrap();
     }
+}
+
+#[test]
+fn a_connection_tells_the_host_koyos_settings_before_what_made_it() {
+    let dir = scratch();
+    let config = Config {
+        claude_path: None,
+        default_mode: None,
+        koyo_tools: Some("/Applications/Koyo.app/Contents/MacOS/koyo".into()),
+    };
+    let told = serde_json::to_value(&config).unwrap();
+    let host = stand_in(&dir, move |mut host: Host| {
+        host.greet("app", HOST_VERSION);
+        let set = host.request();
+        assert_eq!(
+            (&set["method"], &set["params"]),
+            (&json!("config.set"), &told)
+        );
+        host.send(&json!({ "id": set["id"], "result": {} }));
+        let read = host.request();
+        assert_eq!(read["method"], "threads.read");
+        host.send(&json!({ "id": read["id"], "result": {} }));
+    });
+    let client = never_starting(&dir);
+    // Kept, with nothing connected: no host is told, or started.
+    assert!(client.set_config(config).is_none());
+    client.request::<ThreadsRead>(&read_params()).unwrap();
+    host.join().unwrap();
 }
 
 #[test]

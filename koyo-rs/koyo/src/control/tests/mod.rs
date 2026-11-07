@@ -77,14 +77,8 @@ fn controlled(name: &str, roots: &[&Path], cx: &mut TestAppContext) -> Rig {
 /// An agent in Koyo terminal `handle`.
 fn terminal(handle: &str) -> Caller {
     Caller {
-        client: ClientInfo {
-            name: "koyo app".into(),
-            version: "test".into(),
-        },
         terminal: Some(handle.into()),
-        chat: None,
-        worktree: None,
-        cwd: None,
+        ..external("koyo app")
     }
 }
 

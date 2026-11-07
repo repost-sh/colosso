@@ -1,7 +1,9 @@
 //! The app's one client of the agent host (`docs/chat.md` 5.1), as `TermClient` is of termd.
 //! Nothing connects until the first request, and a request made after the connection ended
-//! connects again, which starts a host that's gone. Whoever subscribed hears every event of
-//! every connection, and word when one ends, ahead of anything from the next.
+//! connects again, which starts a host that's gone. Every connection tells the host Koyo's
+//! settings before anything else, so whatever request starts a host, its sessions open as they
+//! say. Whoever subscribed hears every event of every connection, and word when one ends, ahead
+//! of anything from the next.
 
 use std::future::Future;
 use std::process::Command;
@@ -16,7 +18,7 @@ use parking_lot::Mutex;
 
 use crate::client::{Client, ClientError, Connected, stop_host};
 use crate::protocol::events::Event;
-use crate::protocol::methods::{ClientKind, Method};
+use crate::protocol::methods::{ClientKind, Config, ConfigSet, Empty, Method};
 use crate::protocol::wire::HOST_VERSION;
 
 /// What a subscriber hears.
@@ -45,6 +47,8 @@ pub struct AgentClient {
     live: Mutex<Option<Live>>,
     subscribers: Arc<Subscribers>,
     queue: Sender<Job>,
+    /// Koyo's settings, which every connection tells the host first.
+    config: Mutex<Option<Config>>,
 }
 
 impl AgentClient {
@@ -68,6 +72,7 @@ impl AgentClient {
             live: Mutex::new(None),
             subscribers: Arc::default(),
             queue,
+            config: Mutex::new(None),
         }))
     }
 
@@ -105,6 +110,18 @@ impl AgentClient {
         async move { answer.await.unwrap_or(Err(ClientError::Closed)) }
     }
 
+    /// Keeps Koyo's settings, which every connection from now on tells the host first. With a
+    /// connection open, the host is told now, after what's asked already; with none, nothing is
+    /// told and no host is started.
+    pub fn set_config(
+        self: &Arc<Self>,
+        config: Config,
+    ) -> Option<impl Future<Output = Result<Empty, ClientError>> + Send + 'static + use<>> {
+        *self.config.lock() = Some(config.clone());
+        let open = (self.live.lock().as_ref()).is_some_and(|live| !live.client.is_closed());
+        open.then(|| self.ordered::<ConfigSet>(config))
+    }
+
     /// Stops a host of another build, once the person chose to: the next request starts this
     /// build's in its place. Its running turns stop (`docs/chat.md` C9). Blocks like `request`.
     pub fn replace_host(&self) -> Result<(), ClientError> {
@@ -126,6 +143,10 @@ impl AgentClient {
             log::error!("the agent client's event thread panicked");
         }
         let connected = self.connect()?;
+        let config = self.config.lock().clone();
+        if let Some(config) = config {
+            connected.client.request::<ConfigSet>(&config)?;
+        }
         let client = Arc::new(connected.client);
         let (events, subscribers) = (connected.events, Arc::clone(&self.subscribers));
         let pump = std::thread::Builder::new()
