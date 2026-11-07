@@ -1227,9 +1227,10 @@ Each milestone ends with `script/check` green, the simplify pass, and its commit
     tools are off, its hello and its calls are refused (`control_disabled`). Terminal tools go
     to the daemon, so a session that's already open keeps them until it closes.
   - Steering lives in `KOYO_TOOLS_PROMPT`, which only chats get. It covers the three asks:
-    `worktree_create` with `select: false`, so the window stays on the chat, and `chat_create`
-    for work in the new worktree, as the chat's own folder doesn't move; `tab_open` with
-    `kind: "browser"`; and `terminal_open` with a command rather than Bash in the background.
+    `worktree_create`, and `chat_create` for work in the new worktree, as the chat's own folder
+    doesn't move; `tab_open` with `kind: "browser"` and `select: true` when the person asked to
+    see the page, as what an agent opens otherwise stays out of sight (`docs/app-control.md`);
+    and `terminal_open` with a command rather than Bash in the background.
     The server's `INSTRUCTIONS` go to every client and stay neutral: an external client's
     person may be looking at its own browser. Koyo's tools come first unless the person names
     another. Koyo can't remove the person's own tools (VS Code's browser, agent-browser,
