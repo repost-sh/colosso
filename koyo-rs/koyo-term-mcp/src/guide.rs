@@ -36,7 +36,8 @@ Pass `select: true` only when the person asked to see it.
 
 Failures are results with `{ code, message, retryable }`. `app_not_running` means \
 Koyo isn't running: call app_launch, then try again. `control_disabled` means the \
-person has to turn on Settings → MCP server, `scope_denied` that the person hasn't \
+person has to turn on Settings → MCP server (for a chat, Settings → Chat → Koyo tools), \
+`scope_denied` that the person hasn't \
 allowed this client that kind of change, and `user_declined` that the person refused (or \
 didn't answer within two minutes) the confirmation Koyo shows before deleting or \
 discarding, so nothing changed. The koyo_guide and terminal_guide prompts say more.";

@@ -246,6 +246,15 @@ fn settings_tell_a_reset_from_a_field_left_out() {
 }
 
 #[test]
+fn an_agent_cant_set_what_chats_run_with() {
+    // A chat could choose its next session's program or mode, or its own tools.
+    for setting in ["claudePath", "chatMode", "koyoTools", "externalControl"] {
+        let refused = Command::parse("settings_set", json!({ setting: null })).unwrap_err();
+        assert!(refused.message.contains("unknown field"), "{setting}");
+    }
+}
+
+#[test]
 fn summaries_read_the_outputs_of_their_operation() {
     let page = json!({ "pane": 3, "url": "http://localhost:3000", "title": "Home" });
     let text = summarize("browser_navigate", &page).unwrap();
@@ -282,7 +291,7 @@ fn ids_are_the_wire_names() {
         [Scope::Read, Scope::Navigate, Scope::Manage, Scope::Browser]
     );
     assert_eq!(
-        Scope::TERMINAL_AGENT,
+        Scope::AGENT,
         [
             Scope::Read,
             Scope::Navigate,

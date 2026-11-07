@@ -46,7 +46,8 @@ pub enum ActivityKind {
 pub struct ActivityEntry {
     /// When, in milliseconds since the Unix epoch.
     pub at: u64,
-    /// The client: its name, or `terminal:<handle>` for an agent in a terminal.
+    /// The client: its name, `terminal:<handle>` for an agent in a terminal, or `chat:<id>`
+    /// for a chat's.
     pub client: String,
     pub kind: ActivityKind,
 }

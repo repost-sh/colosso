@@ -39,25 +39,43 @@ pub(super) fn follow(client: &AgentClient, cx: &mut Context<Chats>) -> Task<()> 
 }
 
 impl Chats {
-    /// Tells the host what Koyo's settings say, if that's news: the next session it opens follows
-    /// them, and a new chat starts as they say.
+    /// Tells the host what Koyo's settings say, if that's news and it's being reached or was: the
+    /// next session it opens follows them, and a new chat starts as they say. What didn't reach
+    /// it is told again once the host lists its chats.
     pub(super) fn tell_config(&mut self, cx: &mut Context<Self>) {
+        if !matches!(
+            self.connection,
+            Connection::Connecting | Connection::Connected
+        ) {
+            return;
+        }
         let settings = settings::get(cx);
         let config = Config {
             claude_path: settings.claude_path.clone(),
             default_mode: settings.chat_mode,
+            // This executable, so a debug build's chats reach this build's `koyo mcp`.
+            koyo_tools: (settings.koyo_tools)
+                .then(std::env::current_exe)
+                .and_then(Result::ok)
+                .map(|koyo| koyo.to_string_lossy().into_owned()),
         };
-        if self.connection != Connection::Connected || self.told_config.as_ref() == Some(&config) {
+        if self.told_config.as_ref() == Some(&config) {
             return;
         }
         let told = self.ordered::<ConfigSet>(config.clone());
-        self.told_config = Some(config);
+        self.told_config = Some(config.clone());
         // What the host offers has Koyo's settings in it, so it's asked for once it's heard them.
         cx.spawn(async move |chats, cx| {
-            if let Err(error) = told.await {
+            let failed = told.await.is_err_and(|error| {
                 log::warn!("telling the host its settings: {error}");
-            }
-            let _ = chats.update(cx, Chats::refresh_catalogs);
+                true
+            });
+            let _ = chats.update(cx, |chats, cx| {
+                if failed && chats.told_config.as_ref() == Some(&config) {
+                    chats.told_config = None;
+                }
+                chats.refresh_catalogs(cx);
+            });
         })
         .detach();
     }

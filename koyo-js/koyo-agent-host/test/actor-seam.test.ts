@@ -95,11 +95,11 @@ describe("a session's mode", () => {
     neither.actor.send(prompt("Go."), "auto");
     expect(neither.provider.session.spec.permission).toBeNull();
     const koyos = harness();
-    koyos.config = { claudePath: null, defaultMode: "auto" };
+    koyos.config = { claudePath: null, defaultMode: "auto", koyoTools: null };
     koyos.actor.send(prompt("Go."), "auto");
     expect(koyos.provider.session.spec.permission).toBe("auto");
     const own = harness();
-    own.config = { claudePath: null, defaultMode: "auto" };
+    own.config = { claudePath: null, defaultMode: "auto", koyoTools: null };
     own.actor.update({ permission: "ask" });
     own.actor.send(prompt("Go."), "auto");
     expect(own.provider.session.spec.permission).toBe("ask");
@@ -107,14 +107,14 @@ describe("a session's mode", () => {
 
   test("changes on a live session the same way, and only when the chat's changes", async () => {
     const chats = harness();
-    chats.config = { claudePath: null, defaultMode: "auto" };
+    chats.config = { claudePath: null, defaultMode: "auto", koyoTools: null };
     await running(chats);
     const session = chats.provider.session;
     chats.actor.update({ permission: "ask" });
     chats.actor.update({ permission: null });
     expect(session.changes).toStrictEqual([{ permission: "ask" }, { permission: "auto" }]);
     // Koyo's default changing leaves a live session in the mode it has.
-    chats.config = { claudePath: null, defaultMode: "accept_edits" };
+    chats.config = { claudePath: null, defaultMode: "accept_edits", koyoTools: null };
     chats.actor.update({ model: "claude-opus-5-5" });
     expect(session.changes.at(-1)).toStrictEqual({ model: "claude-opus-5-5" });
   });

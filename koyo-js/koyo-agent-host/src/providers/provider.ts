@@ -34,6 +34,8 @@ export type FileChanges = Omit<FilesBack, "blocked">;
 
 /** What a session is opened with. */
 export interface SessionSpec {
+  /** The chat's id, which Koyo's MCP server names it by. */
+  readonly threadId: string;
   readonly cwd: string;
   /** The conversation's id, minted by the host before the first turn. */
   readonly sessionId: string;
@@ -50,6 +52,8 @@ export interface SessionSpec {
   readonly plan: boolean;
   /** The entry of the conversation to go on from, dropping what came after; else its latest. */
   readonly resumeAt: string | null;
+  /** The `koyo` the session starts as Koyo's MCP server, as Koyo's settings say (`config.set`). */
+  readonly koyoTools: string | null;
 }
 
 /** A change to a live session's settings. */

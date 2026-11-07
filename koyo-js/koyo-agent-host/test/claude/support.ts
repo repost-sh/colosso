@@ -267,6 +267,7 @@ export function toolRequest(change: Partial<ToolRequest> = {}): ToolRequest {
 
 export function spec(change: Partial<SessionSpec> = {}): SessionSpec {
   return {
+    threadId: "019a5c1e-7d42-7b3a-9c4e-1f2a3b4c5d6e",
     cwd: "/work/rec-cwd",
     sessionId: randomUUID(),
     resume: false,
@@ -276,6 +277,7 @@ export function spec(change: Partial<SessionSpec> = {}): SessionSpec {
     fast: false,
     permission: "ask",
     plan: false,
+    koyoTools: null,
     ...change,
   };
 }

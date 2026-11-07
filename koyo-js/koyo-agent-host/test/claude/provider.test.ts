@@ -51,13 +51,15 @@ describe("Claude's status", () => {
       account: { email: "dev@example.com", plan: "max" },
       message: null,
     });
-    // The probe starts the CLI and nothing more: no transcript, hooks or MCP servers.
+    // The probe starts the CLI and nothing more: no transcript, hooks or MCP servers, Koyo's
+    // tools included.
     expect(queries[0]?.options).toMatchObject({
       persistSession: false,
       settings: { disableAllHooks: true },
       mcpServers: {},
       strictMcpConfig: true,
     });
+    expect(queries[0]?.options.allowedTools).toBeUndefined();
     expect(queries[0]?.closed).toBe(true);
     await claude.status(false);
     expect(queries).toHaveLength(1);
@@ -71,7 +73,7 @@ describe("Claude's status", () => {
 
   test("looks for claude where Koyo's setting says first", async () => {
     const { claude, looked } = provider();
-    claude.setConfig({ claudePath: "/Users/dev/bin/claude", defaultMode: null });
+    claude.setConfig({ claudePath: "/Users/dev/bin/claude", defaultMode: null, koyoTools: null });
     expect(await claude.status(false)).toMatchObject({ executable: "/Users/dev/bin/claude" });
     expect(looked).toEqual(["/Users/dev/bin/claude"]);
   });
@@ -125,7 +127,7 @@ describe("the catalog", () => {
 
   test("reports Claude's own default mode, whatever Koyo's settings name", async () => {
     const { claude } = provider();
-    claude.setConfig({ claudePath: null, defaultMode: "auto" });
+    claude.setConfig({ claudePath: null, defaultMode: "auto", koyoTools: null });
     expect((await claude.catalog("/work/a")).defaultMode).toBe("accept_edits");
   });
 
@@ -221,6 +223,7 @@ describe("a conversation's files", () => {
     expect(query.rewinds).toEqual([{ promptId: "p", dryRun: true }]);
     expect(query.options).toMatchObject({ resume: "s", enableFileCheckpointing: true });
     expect(query.options.settings).toEqual({ disableAllHooks: true });
+    expect(query.options).toMatchObject({ mcpServers: {}, strictMcpConfig: true });
     expect(query.prompts).toEqual([]);
     expect(query.closed).toBe(true);
   });
@@ -290,6 +293,7 @@ describe("a title", () => {
       persistSession: false,
       maxTurns: 1,
     });
+    expect(query?.options.mcpServers).toBeUndefined();
     expect(query?.closed).toBe(true);
   });
 

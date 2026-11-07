@@ -108,6 +108,11 @@ export const methods = {
     params: z.object({
       claudePath: z.string().min(1).nullable(),
       defaultMode: Mode.nullable(),
+      /**
+       * The app's own `koyo`, which a chat's session starts as its `koyo` MCP server
+       * (`koyo mcp`), so the chat drives Koyo; `null` while Koyo tools are off.
+       */
+      koyoTools: z.string().min(1).nullable(),
     }),
     result: Empty,
   },

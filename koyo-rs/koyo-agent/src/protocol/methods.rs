@@ -103,6 +103,9 @@ pub struct HelloResult {
 pub struct Config {
     pub claude_path: Option<String>,
     pub default_mode: Option<Mode>,
+    /// The app's own `koyo`, which a chat's session starts as its `koyo` MCP server
+    /// (`koyo mcp`), so the chat drives Koyo; `None` while Koyo tools are off.
+    pub koyo_tools: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

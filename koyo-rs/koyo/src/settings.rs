@@ -185,6 +185,9 @@ pub struct Settings {
     pub chat_mode: Option<koyo_agent::protocol::model::Mode>,
     /// Where the `claude` program is; with none, it's looked for.
     pub claude_path: Option<String>,
+    /// Whether a chat's agent drives Koyo with Koyo's own tools: its MCP server, registered in
+    /// each session a chat opens, and trusted as an agent in a Koyo terminal is.
+    pub koyo_tools: bool,
     /// How a held arrow key repeats.
     pub key_repeat: KeyRepeat,
     /// Where a page's `DevTools` open, and the room they take docked.
@@ -268,6 +271,7 @@ impl Default for Settings {
             chat_effort: koyo_agent::protocol::model::Effort::Xhigh,
             chat_mode: None,
             claude_path: None,
+            koyo_tools: true,
             key_repeat: KeyRepeat::default(),
             devtools: crate::browser::DevtoolsPlace::default(),
             search_suggestions: true,

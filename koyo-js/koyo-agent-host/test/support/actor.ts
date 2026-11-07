@@ -29,7 +29,7 @@ export class Harness {
   readonly lines: unknown[] = [];
   readonly id: ThreadId;
   /** Koyo's settings, as the actor reads them. */
-  config: Config = { claudePath: null, defaultMode: null };
+  config: Config = { claudePath: null, defaultMode: null, koyoTools: null };
   #tick = 0;
   #actor: ThreadActor | undefined;
 

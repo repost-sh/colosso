@@ -2,7 +2,7 @@ import type { PermissionMode } from "@anthropic-ai/claude-agent-sdk";
 import { afterEach, describe, expect, test } from "bun:test";
 
 import type { Mode } from "../../src/protocol/model";
-import { KOYO_PROMPT } from "../../src/providers/claude/options";
+import { KOYO_PROMPT, KOYO_TOOLS_PROMPT } from "../../src/providers/claude/options";
 import { init, success } from "../fixtures/claude/frames";
 import { settle } from "../support/wait";
 import { bench, closeBenches, spec } from "./support";
@@ -84,6 +84,43 @@ describe("a session's options", () => {
     expect(query.options.resume).toBeUndefined();
     expect(query.options.sessionId).toBe(opened.sessionId);
     expect(made.sink.of("notice")).toEqual([{ type: "notice", level: "warning", text: FRESH }]);
+  });
+});
+
+describe("Koyo's tools in a session", () => {
+  const KOYO = "/Applications/Koyo.app/Contents/MacOS/koyo";
+
+  test("are Koyo's own server naming the chat, its reads allowed, Claude's worktrees taken away",
+    async () => {
+      const opened = spec({ koyoTools: KOYO });
+      const { options } = await bench(opened).query();
+      expect(options.mcpServers).toEqual({
+        koyo: { type: "stdio", command: KOYO, args: ["mcp"], env: { KOYO_CHAT: opened.threadId } },
+      });
+      expect(options.allowedTools).toContain("mcp__koyo__terminal_read");
+      expect(options.allowedTools).toContain("mcp__koyo__browser_snapshot");
+      expect(options.allowedTools).not.toContain("mcp__koyo__worktree_create");
+      expect(options.allowedTools).not.toContain("mcp__koyo__terminal_send");
+      expect(options.disallowedTools).toEqual([
+        "EnterWorktree",
+        "ExitWorktree",
+        "mcp__koyo__worktree_delete",
+        "mcp__koyo__app_launch",
+      ]);
+      expect(options.systemPrompt).toEqual({
+        type: "preset",
+        preset: "claude_code",
+        append: `${KOYO_PROMPT}\n\n${KOYO_TOOLS_PROMPT}`,
+      });
+    });
+
+  test("aren't there while they're off, nor said", async () => {
+    const { options } = await bench(spec({ koyoTools: null })).query();
+    expect(options.mcpServers).toBeUndefined();
+    expect(options.allowedTools).toBeUndefined();
+    expect(options.disallowedTools).toBeUndefined();
+    expect(options.systemPrompt)
+      .toEqual({ type: "preset", preset: "claude_code", append: KOYO_PROMPT });
   });
 });
 

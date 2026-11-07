@@ -42,6 +42,10 @@ pub struct Hello {
     /// The Koyo terminal the caller runs in (`KOYO_TERMINAL`, a `term_…` handle).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub terminal: Option<String>,
+    /// The Koyo chat whose agent calls (`KOYO_CHAT`, the chat's id): Koyo's MCP server in a
+    /// chat's session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chat: Option<String>,
     /// The caller's worktree (`KOYO_WORKTREE`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worktree: Option<String>,
@@ -59,18 +63,20 @@ impl Hello {
             protocol: PROTOCOL_VERSION,
             client,
             terminal: None,
+            chat: None,
             worktree: None,
             cwd: None,
             pid: std::process::id(),
         }
     }
 
-    /// A hello from this process as `client`, with the terminal and worktree its
-    /// environment names (`KOYO_TERMINAL`, `KOYO_WORKTREE`) and its working folder.
+    /// A hello from this process as `client`, with the terminal, chat and worktree its
+    /// environment names (`KOYO_TERMINAL`, `KOYO_CHAT`, `KOYO_WORKTREE`) and its working folder.
     pub fn from_env(client: ClientInfo) -> Hello {
         let var = |name: &str| std::env::var(name).ok().filter(|value| !value.is_empty());
         Hello {
             terminal: var("KOYO_TERMINAL"),
+            chat: var("KOYO_CHAT"),
             worktree: var("KOYO_WORKTREE"),
             cwd: std::env::current_dir()
                 .ok()
