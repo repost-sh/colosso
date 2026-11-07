@@ -57,12 +57,8 @@ mod tests {
         assert_eq!(Some(added.id), pane);
         assert_eq!(added.kind, PaneKind::Browser);
         assert_eq!(added.title, "Example");
-        assert!(added.browser.is_none(), "no page until it's shown");
-        let address = added
-            .unloaded
-            .as_ref()
-            .map(|unloaded| unloaded.address.as_str());
-        assert_eq!(address, Some("https://example.com/"));
+        assert!(added.view().is_none(), "no page until it's shown");
+        assert_eq!(added.unloaded_address(), Some("https://example.com/"));
         let gone = workspace.add_unloaded_tab(
             "/src/gone".as_ref(),
             unloaded("https://example.org/"),

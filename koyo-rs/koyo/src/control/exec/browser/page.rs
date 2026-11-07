@@ -70,7 +70,7 @@ fn pages(cx: &App) -> Result<(Vec<Listed>, Option<u64>), ControlError> {
         for unit in &project.branches {
             for tab in &unit.tabs {
                 for pane in tab.panes() {
-                    if let Some(view) = &pane.browser
+                    if let Some(view) = pane.view()
                         && !view.read(cx).is_inspector()
                     {
                         pages.push(Listed::Page(Page {
@@ -78,10 +78,10 @@ fn pages(cx: &App) -> Result<(Vec<Listed>, Option<u64>), ControlError> {
                             view: view.clone(),
                             worktree: unit.worktree.path.clone(),
                         }));
-                    } else if let Some(unloaded) = &pane.unloaded {
+                    } else if let Some(address) = pane.unloaded_address() {
                         pages.push(Listed::Unshown(PageInfo {
                             pane: pane.id,
-                            url: unloaded.address.clone(),
+                            url: address.to_owned(),
                             title: pane.title.to_string(),
                             loading: false,
                             worktree: unit.worktree.path.display().to_string(),
@@ -97,7 +97,7 @@ fn pages(cx: &App) -> Result<(Vec<Listed>, Option<u64>), ControlError> {
         .and_then(|at| workspace.tab(at))
         .and_then(|tab| {
             (tab.panes().into_iter())
-                .find(|pane| pane.browser.is_some() || pane.unloaded.is_some())
+                .find(|pane| pane.view().is_some() || pane.unloaded_address().is_some())
                 .map(|pane| pane.id)
         });
     Ok((pages, shown))

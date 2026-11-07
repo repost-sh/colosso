@@ -258,7 +258,7 @@ fn a_page_brought_back_waits_to_be_shown_for_the_browser_tools(cx: &mut TestAppC
     draw(rig.window, cx);
     let made = read_shell(&rig, cx, |shell, _| {
         let unit = shell.workspace.branch().unwrap();
-        unit.tabs[1].first().browser.is_some()
+        unit.tabs[1].first().view().is_some()
     });
     assert!(made, "shown, its page is made");
     let browsers = call(&agent, "browser_list", json!({}), cx).unwrap();

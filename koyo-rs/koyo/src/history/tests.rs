@@ -377,7 +377,7 @@ fn changes_are_written_a_moment_after_the_first_however_steady_they_come(cx: &mu
     let file = crate::test_support::scratch("history-saves").join(super::FILE);
     cx.update(|cx| {
         super::init(cx);
-        cx.global_mut::<History>().path = Some(file.clone());
+        cx.global_mut::<History>().file = crate::kept_file::KeptFile::new(Some(file.clone()));
     });
     let said = |text: &str, cx: &mut TestAppContext| {
         cx.update(|cx| super::used(Kind::Prompt, text, &here(), cx));

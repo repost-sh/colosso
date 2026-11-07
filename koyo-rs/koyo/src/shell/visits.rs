@@ -54,7 +54,7 @@ impl Shell {
 
     /// The page browser pane `pane` opens first was asked for by name, in the launcher.
     pub(crate) fn mark_typed(&mut self, pane: u64, cx: &mut Context<Self>) {
-        let view = (self.workspace.branch()).and_then(|unit| unit.pane(pane)?.browser.clone());
+        let view = (self.workspace.branch()).and_then(|unit| unit.pane(pane)?.view().cloned());
         if let Some(view) = view {
             view.update(cx, |view, _| view.mark_typed());
         }

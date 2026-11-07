@@ -4,7 +4,6 @@
 //! went; it's written a moment later and on the way out. A checkout's tabs come back once it's
 //! listed, without taking the focus, and none of their pages opens until its tab is shown.
 
-use std::io;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -12,9 +11,10 @@ use gpui_kit::{App, Context, Window};
 use serde::{Deserialize, Serialize};
 
 use super::toolbar::tab_title;
+use crate::kept_file::{self, KeptFile};
 use crate::model::{Pane, Tab, Unloaded, Workspace};
 use crate::shell::Shell;
-use crate::{atomic_file, history, settings};
+use crate::{history, settings};
 
 /// What the file is called, in the app's data folder.
 const FILE: &str = "browser-tabs.json";
@@ -47,14 +47,12 @@ struct File {
 
 pub struct KeptTabs {
     /// Where they're kept, if the app has a folder to keep them in.
-    path: Option<PathBuf>,
+    file: KeptFile,
     /// The checkouts read from the file whose tabs aren't back yet: carried through every
     /// write until their checkout is listed, or their project is gone or listed without it.
     waiting: Vec<KeptCheckout>,
     /// What the file holds, or will once the write due is done.
     kept: Vec<KeptCheckout>,
-    /// Whether a write is due, which a change made meanwhile joins.
-    saving: bool,
 }
 
 impl KeptTabs {
@@ -78,25 +76,21 @@ impl KeptTabs {
     fn at(path: Option<PathBuf>) -> Self {
         let kept = path.as_deref().map(read_file).unwrap_or_default();
         KeptTabs {
-            path,
+            file: KeptFile::new(path),
             waiting: kept.clone(),
             kept,
-            saving: false,
         }
     }
 
     /// Where to write what's kept, and its JSON, if a write is due, which then no longer is.
     fn take_due(&mut self) -> Option<(PathBuf, Vec<u8>)> {
-        if !std::mem::take(&mut self.saving) {
-            return None;
-        }
-        Some((self.path.clone()?, encode(&self.kept)?))
+        Some((self.file.take_due()?, encode(&self.kept)?))
     }
 
     /// Writes what's kept now if a write is due.
     fn flush(&mut self) {
         if let Some((path, json)) = self.take_due() {
-            atomic_file::write(&path, &json);
+            kept_file::write_now(&path, &json);
         }
     }
 
@@ -151,25 +145,13 @@ fn kept_tab(pane: &Pane, cx: &App) -> Option<KeptTab> {
 
 /// What's in the file, or nothing if it can't be read: tabs aren't worth stopping for.
 fn read_file(path: &Path) -> Vec<KeptCheckout> {
-    let read = std::fs::read(path).and_then(|json| {
-        let file: File = serde_json::from_slice(&json)?;
-        Ok(file.checkouts)
-    });
-    read.unwrap_or_else(|error: io::Error| {
-        if error.kind() != io::ErrorKind::NotFound {
-            log::warn!("couldn't read {}: {error}", path.display());
-        }
-        Vec::new()
-    })
+    (kept_file::read::<File>(path)).map_or_else(Vec::new, |file| file.checkouts)
 }
 
 fn encode(kept: &[KeptCheckout]) -> Option<Vec<u8>> {
-    let file = File {
+    kept_file::encode(&File {
         checkouts: kept.to_vec(),
-    };
-    serde_json::to_vec_pretty(&file)
-        .inspect_err(|error| log::error!("couldn't encode the browser tabs: {error}"))
-        .ok()
+    })
 }
 
 impl Shell {
@@ -182,22 +164,14 @@ impl Shell {
             return;
         }
         self.kept_tabs.kept = now;
-        let kept = &mut self.kept_tabs;
-        // A write already due takes this change along.
-        if kept.path.is_none() || std::mem::replace(&mut kept.saving, true) {
-            return;
+        if self.kept_tabs.file.changed() {
+            let shell = cx.weak_entity();
+            kept_file::write_later(cx, SAVE_DELAY, move |cx| {
+                shell
+                    .update(cx, |shell, _| shell.kept_tabs.take_due())
+                    .ok()?
+            });
         }
-        cx.spawn(async move |shell, cx| {
-            cx.background_executor().timer(SAVE_DELAY).await;
-            // Written on the way out meanwhile, it's no longer due.
-            let due = shell.update(cx, |shell, _| shell.kept_tabs.take_due());
-            if let Ok(Some((path, json))) = due {
-                cx.background_executor()
-                    .spawn(async move { atomic_file::write(&path, &json) })
-                    .await;
-            }
-        })
-        .detach();
     }
 
     /// Brings back the tabs of the checkouts listed now, once a window: after the tabs there,
@@ -229,7 +203,7 @@ impl Shell {
             .and_then(|unit| unit.tabs.get_mut(unit.active_tab))
             .map(|tab| {
                 (tab.panes_mut().into_iter())
-                    .filter_map(|pane| Some((pane.id, pane.unloaded.take()?.address)))
+                    .filter_map(|pane| Some((pane.id, pane.take_unloaded()?.address)))
                     .collect()
             })
             .unwrap_or_default();
@@ -243,7 +217,7 @@ impl Shell {
             let view = self.browser_view(address, &project, window, cx);
             view.update(cx, |view, _| view.mark_restored());
             if let Some(pane) = (self.workspace.branch_mut()).and_then(|unit| unit.pane_mut(id)) {
-                pane.browser = Some(view);
+                pane.set_view(view);
             }
         }
     }

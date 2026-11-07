@@ -79,7 +79,7 @@ fn terminal(p: Palette) -> AnyElement {
 /// A browser pane is its page's view, made by the time its tab is shown
 /// (`Shell::make_shown_browsers`).
 fn browser(pane: &Pane) -> AnyElement {
-    (pane.browser.clone()).map_or_else(
+    (pane.view().cloned()).map_or_else(
         || gpui_kit::Empty.into_any_element(),
         IntoElement::into_any_element,
     )
