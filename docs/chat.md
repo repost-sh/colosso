@@ -51,7 +51,9 @@ does better. Claude is the only provider, behind a seam another one (Codex) can 
   (older macOS, Reduce Transparency) the fallback is the palette's `floating()` fill with a
   hairline and a shadow.
 - Theme: `theme::palette(cx)` (the card tinted by the gradient theme, `floating()`,
-  `hairline`, `mono`, `accent`), `CARD_RADIUS = 10`. `mono` is the code font the person picked
+  `hairline`, `mono`, `accent`, and the washes: `wash`, `faint_wash`, `wash_line`, shades of the
+  gradient theme's hue laid thin over the card for what stands apart from text), `CARD_RADIUS =
+  10`. `mono` is the code font the person picked
   in Settings → Appearance, JetBrains Mono Nerd Font (embedded in the binary) unless they
   picked another (`theme/fonts.rs`).
 - Text size: the timeline's rows and the composer's text are drawn inside `at_chat_size`, whose
@@ -1019,7 +1021,7 @@ Layout, top to bottom inside the pane's card:
 - **Glass.** The composer and its drawers are one `liquid::backdrop` (radius 18) floating
   12 px above the card's bottom edge, its content in `deferred`; the scroll-to-end pill,
   the suggestions and the menus are glass too. On a dark theme it's the clear style with a 45%
-  dark tint, so the page shows through; on a light one, glass as `AppKit` makes it. Every glass
+  tint of the card's colour, a deep shade of the theme, so the page shows through; on a light one, glass as `AppKit` makes it. Every glass
   element has a faint line just inside its edge, round its own corners, in place of the bright
   one the glass draws, which is cut off: `glass_edge`, 1 pt, the theme's tint (the hue of the
   gradient theme's first colour, as the card's) at 8 % (dark) or 7 % (light), an inset shadow
@@ -1058,15 +1060,20 @@ Layout, top to bottom inside the pane's card:
 - **Timeline rows** (from T3 UI 2.1), derived by a pure `rows(thread, view) -> Vec<Row>`
   with stable row ids; what a person opened and each text's markdown view are kept by id
   across derivations:
-  - user message: a bubble on the right, at most 80 % wide, in the shade of a selected row, which
-    over the tinted card is the theme's own (never the system's accent, which isn't the theme);
+  - user message: a bubble on the right, at most 80 % wide, in the palette's `wash`, the theme's
+    hue laid thin over the card (never the system's accent, which isn't the theme);
     images above the text; long messages collapse past 8 lines with "Show more";
     hover: copy, time; a steer marked "↷ Steered".
   - assistant text: full-width markdown (`TextView`, streaming), no bubble; on hover a copy button
     under each, and under the final answer model · effort, time, the model being the provider's
     default, as the footer names it, for a run that chose none. A link to a file that's there
     reads as the file tree names it, its icon and name (`files::file_label`), and opens it on a
-    click as any link to a file does; a link to a page stays a link.
+    click as any link to a file does; a link to a page stays a link. What markdown sets apart
+    is washed, never the kit's solid greys, which sat on a card of any colour as slabs of
+    another (`theme/text.rs`, every text view): a code block and a table's body in `faint_wash`,
+    a table's head and inline code in `wash`, their edges, rules and a quote's bar in
+    `wash_line`; a tool's output and a diff go in `faint_wash` too, so code reads the same
+    wherever a chat shows it.
   - reasoning: one muted line in italics with the latest thought ("Thinking…" shimmering while
     live), expandable to the trace, in italics too.
   - work: one row per tool with icon, label and status ("Ran cargo test", "Read

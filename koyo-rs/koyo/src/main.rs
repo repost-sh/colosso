@@ -159,6 +159,10 @@ fn main() -> ExitCode {
     if std::env::args().any(|arg| arg == "--visual-check-chat") {
         return chat::visual::run();
     }
+    #[cfg(feature = "visual-check")]
+    if std::env::args().any(|arg| arg == "--visual-check-chat-theme") {
+        return chat::visual::run_theme();
+    }
     #[cfg(all(target_os = "macos", feature = "visual-check"))]
     if std::env::args().any(|arg| arg == "--visual-check-native-controls") {
         return settings_view::native_visual::run();

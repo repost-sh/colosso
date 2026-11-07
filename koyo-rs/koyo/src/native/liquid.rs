@@ -3,8 +3,9 @@
 //! so the element's content, drawn among them, shows over the glass. It's rounded as the element is, and light or dark as
 //! the app's theme is, whatever's behind it, so the theme's text reads on it over a page of
 //! any colour: left to itself, the glass would go light over a light page and dark over a
-//! dark one. In a window that can't host a native view, as a test's can't, or before
-//! macOS 26, there's none, and the element keeps a fill of its own.
+//! dark one. Dark, it's shaded in the card's colour, so it's of the theme as the card is. In a
+//! window that can't host a native view, as a test's can't, or before macOS 26, there's none,
+//! and the element keeps a fill of its own.
 //!
 //! It moves only when the element does: a frame that moves nothing tells `AppKit` nothing.
 //!
@@ -22,7 +23,7 @@ use std::sync::Once;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::{
     AnyElement, App, Bounds, BoxShadow, ElementId, Hsla, IntoElement as _, ParentElement, Pixels,
-    Styled, Window, canvas, px,
+    Rgba, Styled, Window, canvas, px,
 };
 use objc2::rc::Retained;
 use objc2::runtime::{AnyClass, NSObjectProtocol as _};
@@ -35,11 +36,11 @@ use objc2_foundation::{NSPoint, NSRect, NSSize};
 use objc2_quartz_core::kCACornerCurveContinuous;
 
 use super::surface::{self, Hosted, Surface};
-use crate::theme::Palette;
+use crate::theme::{self, Palette};
 
-/// How dark the glass is on a dark theme: its clear style, which the page shows through, shaded so
-/// the theme's text reads on it. Glass as it's made would hide the page.
-const DARK_SHADE: f64 = 0.45;
+/// How dark the glass is on a dark theme: its clear style, which the page shows through, shaded in
+/// the card's colour so the theme's text reads on it. Glass as it's made would hide the page.
+const DARK_SHADE: f32 = 0.45;
 /// How far the glass goes past what shows of it, in points: past the bright line it draws along
 /// its own edge, which isn't wanted.
 const EDGE: f64 = 2.;
@@ -78,7 +79,11 @@ pub fn backdrop(
     window: &mut Window,
     cx: &mut App,
 ) -> Option<AnyElement> {
-    let dark = cx.theme().mode.is_dark();
+    let look = if cx.theme().mode.is_dark() {
+        Look::Dark(theme::palette(cx).card.alpha(DARK_SHADE))
+    } else {
+        Look::Light
+    };
     let pane = surface::keep(id, window, cx, |window| {
         Native::new(window)
             .inspect_err(|why| {
@@ -98,7 +103,7 @@ pub fn backdrop(
             let clip = window.content_mask().bounds;
             pane.update(cx, |pane, _| {
                 if let Some(native) = &pane.0 {
-                    native.place(bounds, clip, radius, dark, window);
+                    native.place(bounds, clip, radius, look, window);
                 }
             });
         },
@@ -117,9 +122,23 @@ struct Native {
     /// As it's made on a light theme. Back from a dark one it's made again, as no style there is
     /// goes back to that: the regular style is a glass of its own, whiter and flatter.
     view: RefCell<Retained<NSGlassEffectView>>,
-    /// The corners and the appearance the glass was last given.
+    /// The corners the glass was last given.
     corners: Cell<Option<f64>>,
-    dark: Cell<Option<bool>>,
+    /// How it was last told to look: none until it's placed.
+    look: Cell<Option<Look>>,
+}
+
+/// How glass looks: as `AppKit` makes it on a light theme, clear and shaded on a dark one.
+#[derive(Clone, Copy, PartialEq)]
+enum Look {
+    Light,
+    Dark(Hsla),
+}
+
+/// `colour` as `AppKit` takes it, in sRGB as GPUI draws.
+fn ns_colour(colour: Hsla) -> Retained<NSColor> {
+    let Rgba { r, g, b, a } = colour.into();
+    NSColor::colorWithSRGBRed_green_blue_alpha(r.into(), g.into(), b.into(), a.into())
 }
 
 /// New glass in `shown`, `EDGE` past it all round whatever size it goes to.
@@ -162,20 +181,22 @@ impl Native {
             shown,
             view,
             corners: Cell::new(None),
-            dark: Cell::new(None),
+            look: Cell::new(None),
         })
     }
 
-    /// Puts the glass over `bounds`, as much of it as `clip` shows.
+    /// Puts the glass over `bounds`, as much of it as `clip` shows, looking as `look` says.
     fn place(
         &self,
         bounds: Bounds<Pixels>,
         clip: Bounds<Pixels>,
         radius: Pixels,
-        dark: bool,
+        look: Look,
         window: &Window,
     ) {
-        let was_dark = self.dark.replace(Some(dark));
+        let was = self.look.replace(Some(look));
+        let dark = |look: Look| matches!(look, Look::Dark(_));
+        let (was_dark, dark) = (was.map(dark), dark(look));
         if was_dark != Some(dark) {
             if was_dark == Some(true) {
                 self.view
@@ -195,8 +216,13 @@ impl Native {
             view.setAppearance(NSAppearance::appearanceNamed(name).as_deref());
             if dark {
                 view.setStyle(NSGlassEffectViewStyle::Clear);
-                view.setTintColor(Some(&NSColor::colorWithWhite_alpha(0., DARK_SHADE)));
             }
+        }
+        // Again as the theme's colour changes, which leaves the appearance as it was.
+        if let Look::Dark(shade) = look
+            && was != Some(look)
+        {
+            self.view.borrow().setTintColor(Some(&ns_colour(shade)));
         }
         let corners = f64::from(f32::from(radius.min(bounds.size.height / 2.)));
         if self.corners.replace(Some(corners)) != Some(corners) {

@@ -3,13 +3,11 @@
 use std::rc::Rc;
 
 use gpui_kit::assets::IconName;
-use gpui_kit::base::TextViewDefaults;
-use gpui_kit::base::text::editor_host::RenderContext;
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::component::{ActiveTheme as _, Theme};
 use gpui_kit::{
-    Action, App, HighlightStyle, Hsla, InteractiveElement as _, IntoElement, MouseButton,
-    MouseDownEvent, ParentElement as _, Styled as _, Window, WindowAppearance, actions, div, rems,
+    Action, App, Hsla, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent,
+    ParentElement as _, Window, WindowAppearance, actions, div,
 };
 use serde::{Deserialize, Serialize};
 
@@ -22,6 +20,7 @@ pub mod card;
 pub mod fonts;
 #[cfg(target_os = "macos")]
 mod system_accent;
+mod text;
 #[cfg(feature = "visual-check")]
 pub mod visual;
 
@@ -71,6 +70,17 @@ pub struct Palette {
     /// as its own surface already and the line only keeps it from melting into a page like it.
     /// Tinted by the gradient theme's first colour, as the card is.
     pub glass_edge: Hsla,
+    /// What stands apart from the text it's in, in a chat and wherever markdown shows: a message a
+    /// person sent, code inline, a table's head. A shade of the theme laid thin over the card, so
+    /// the card shows through it as the window shows through the card. Tinted by the gradient
+    /// theme's first colour, as the card is.
+    pub wash: Hsla,
+    /// Fainter than `wash`, for what's set apart over more room: a code block, a table's body, what
+    /// a tool gave back. Tinted as `wash` is.
+    pub faint_wash: Hsla,
+    /// The lines round and through what's washed: a code block's edge, a table's rules, a quote's
+    /// bar. Tinted as `wash` is.
+    pub wash_line: Hsla,
     pub text: Hsla,
     /// Solid, for marks drawn on a `text`-colored fill.
     pub on_text: Hsla,
@@ -160,6 +170,9 @@ const DARK: Palette = Palette {
     raised: gray(1., 0.05),
     hairline: gray(1., 0.08),
     glass_edge: gray(0.85, 0.08),
+    wash: gray(0.78, 0.14),
+    faint_wash: gray(0.78, 0.05),
+    wash_line: gray(0.8, 0.12),
     text: gray(1., 0.9),
     on_text: gray(0.1, 1.),
     muted: gray(1., 0.5),
@@ -182,6 +195,9 @@ const LIGHT: Palette = Palette {
     raised: gray(0., 0.05),
     hairline: gray(0., 0.09),
     glass_edge: gray(0.2, 0.07),
+    wash: gray(0.35, 0.07),
+    faint_wash: gray(0.35, 0.03),
+    wash_line: gray(0.3, 0.12),
     text: gray(0., 0.87),
     on_text: gray(1., 1.),
     muted: gray(0., 0.5),
@@ -275,32 +291,9 @@ pub fn init(cx: &mut App) {
     lift_dark_popovers(cx);
     #[cfg(target_os = "macos")]
     system_accent::follow(cx);
-    cx.observe_global::<Theme>(code_off_the_accent).detach();
     set_preference(settings::get(cx).appearance, cx);
-    code_off_the_accent(cx);
+    text::init(cx);
 }
-
-/// The kit puts inline code on its accent, which is the system's here, not the theme: in every
-/// text view it goes on the shade of a selected row instead. And its code blocks at a size in
-/// pixels, which go in rems here, as big as ever but for growing with a chat's text. Again each
-/// time the theme changes, as the kit puts its own back then.
-fn code_off_the_accent(cx: &mut App) {
-    let code = HighlightStyle {
-        background_color: Some(palette(cx).selected),
-        ..HighlightStyle::default()
-    };
-    let style = RenderContext::from_app(cx)
-        .style()
-        .clone()
-        .with_inline_code(code);
-    let block = style.code_block().clone().text_size(rems(CODE_BLOCK_TEXT));
-    TextViewDefaults::global(cx)
-        .with_style(style.with_code_block(block))
-        .install(cx);
-}
-
-/// How big a code block's text is, in rems: the kit's 13 pixels, where a rem is 16.
-const CODE_BLOCK_TEXT: f32 = 13. / 16.;
 
 /// gpui-kit's dark popovers are near black, a hole in the window under a hover card or a
 /// menu; they're lifted to a grey above the card instead, as the light ones sit white on it.
@@ -331,6 +324,9 @@ pub fn palette(cx: &App) -> Palette {
         accent: accent::get(dark, cx),
         card: tinted(palette.card, primary, CARD_SATURATION),
         glass_edge: tinted(palette.glass_edge, primary, EDGE_SATURATION),
+        wash: tinted(palette.wash, primary, WASH_SATURATION),
+        faint_wash: tinted(palette.faint_wash, primary, WASH_SATURATION),
+        wash_line: tinted(palette.wash_line, primary, WASH_SATURATION),
         ..palette
     }
 }
@@ -342,6 +338,10 @@ const CARD_SATURATION: f32 = 0.5;
 /// How much of the theme colour's saturation the line round glass keeps: more than the card, as
 /// so faint a line shows little of any hue.
 const EDGE_SATURATION: f32 = 0.7;
+
+/// How much of the theme colour's saturation the washes keep: more than the card, as they're laid
+/// thinner over it, and their hue is what sets them apart from it.
+const WASH_SATURATION: f32 = 0.6;
 
 /// `shade` in the hue of `primary`, the gradient theme's first colour, keeping `saturation` of
 /// that colour's, at the shade's own lightness and alpha: the card, in the dark, a deep shade of
@@ -386,31 +386,4 @@ pub fn toggle(cx: &App) -> impl IntoElement {
             CycleTheme,
             cx,
         ))
-}
-
-#[cfg(test)]
-mod tests {
-    use gpui_kit::TestAppContext;
-
-    use super::*;
-
-    fn inline_code(cx: &App) -> Option<Hsla> {
-        RenderContext::from_app(cx)
-            .style()
-            .inline_code()
-            .background_color
-    }
-
-    #[gpui_kit::test]
-    fn inline_code_stays_on_the_theme_whichever_appearance_it_takes(cx: &mut TestAppContext) {
-        cx.update(crate::init);
-        cx.update(|cx| set_preference(ThemePreference::Dark, cx));
-        let dark = cx.read(|cx| (inline_code(cx), palette(cx).selected));
-        assert_eq!(dark.0, Some(dark.1));
-        // The kit puts its own back as the theme changes.
-        cx.update(|cx| set_preference(ThemePreference::Light, cx));
-        let light = cx.read(|cx| (inline_code(cx), palette(cx).selected));
-        assert_eq!(light.0, Some(light.1));
-        assert_ne!(dark.1, light.1);
-    }
 }

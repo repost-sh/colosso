@@ -184,7 +184,7 @@ impl Drawing {
         let said = bubble()
             .border_1()
             .border_dashed()
-            .border_color(p.hairline)
+            .border_color(p.wash_line)
             .when(!prompt.attachments.is_empty(), |said| {
                 said.child(attached(&run.id.0, &prompt.attachments, p))
             });
