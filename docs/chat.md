@@ -841,7 +841,9 @@ No GPUI here: what doesn't draw is tested without compiling the app.
   requests with timeouts, events into a channel that disconnects when the connection ends.
 - `agent_client.rs`, `AgentClient`: the app's one client, as `TermClient` is for termd. Nothing
   connects until the first request; a request made after the connection ended connects again,
-  which starts a host that's gone. `subscribe()` gives a `futures` stream of
+  which starts a host that's gone. Every connection tells the host Koyo's settings first
+  (`config.set`, kept with `set_config`, which tells an open connection at once and starts no
+  host), so whatever request starts a host, its sessions open as they say. `subscribe()` gives a `futures` stream of
   `Notice::{Event, Disconnected}`, made once per connection by a thread that moves its events
   there. Two ways to ask:
   - `request::<M>` blocks, on whichever thread calls it, for what may take a while and depends
@@ -885,10 +887,8 @@ No GPUI here: what doesn't draw is tested without compiling the app.
   another build, failed with why), the threads still to bring back, the catalog by cwd and the
   provider status. It knows nothing of the shell; views ask it for what they need, and the shell
   follows its events. A person who has no store yet (`chats.sqlite`) runs no host until their
-  first chat tab, which reaches it before making the chat. Each time the app reaches the host,
-  first or after a connection ended, Koyo's settings (`config.set`) go ahead of anything asked
-  next, so the session a chat's request opens follows them; they're told again once the host
-  lists its chats, and on every change while it's reached.
+  first chat tab, which reaches it before making the chat, so the window lists its chats. The
+  client keeps Koyo's settings from the start and on every change (5.1).
 - `ChatTabs`, in `Shell.chat_tabs`: each chat pane's view by pane id, and the threads the panes
   show.
 - `Pane.chat: Option<ThreadId>`: which thread a chat pane shows; `None` while it's a new chat.

@@ -44,16 +44,12 @@ impl Chats {
     }
 
     /// Asks the host for its threads after `wait`, over and over until it answers, then opens
-    /// what was open before: the way back from any connection that ended. Koyo's settings go
-    /// first, ahead of whatever is asked of the host next, so a host a chat's request starts
-    /// opens that chat's session as they say.
+    /// what was open before: the way back from any connection that ended.
     pub(super) fn reach(&mut self, wait: Duration, cx: &mut Context<Self>) {
         let Some(client) = self.client.clone() else {
             return;
         };
         self.connection = Connection::Connecting;
-        self.told_config = None;
-        self.tell_config(cx);
         cx.notify();
         self.connecting = Some(cx.spawn(async move |this, cx| {
             cx.background_executor().timer(wait).await;
@@ -104,7 +100,8 @@ impl Chats {
             .map(|summary| (summary.id.clone(), summary))
             .collect();
         self.connection = Connection::Connected;
-        self.tell_config(cx);
+        // What the host offers has Koyo's settings in it, which the connection told it first.
+        self.refresh_catalogs(cx);
         for thread in self.threads.values().filter_map(WeakEntity::upgrade) {
             self.open(thread, cx);
         }

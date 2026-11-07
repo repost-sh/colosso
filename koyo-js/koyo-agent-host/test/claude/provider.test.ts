@@ -221,9 +221,13 @@ describe("a conversation's files", () => {
     });
     const query = only(queries);
     expect(query.rewinds).toEqual([{ promptId: "p", dryRun: true }]);
-    expect(query.options).toMatchObject({ resume: "s", enableFileCheckpointing: true });
+    expect(query.options).toMatchObject({
+      resume: "s",
+      enableFileCheckpointing: true,
+      mcpServers: {},
+      strictMcpConfig: true,
+    });
     expect(query.options.settings).toEqual({ disableAllHooks: true });
-    expect(query.options).toMatchObject({ mcpServers: {}, strictMcpConfig: true });
     expect(query.prompts).toEqual([]);
     expect(query.closed).toBe(true);
   });

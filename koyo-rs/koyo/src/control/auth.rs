@@ -16,7 +16,6 @@ use super::activity::{ActivityKind, Decision};
 use super::confirm::answered;
 use super::exec::main_shell;
 use super::{Answer, Caller, Control, Welcome, gate, policy};
-use crate::chat::Connection;
 use crate::settings;
 
 /// How long the prompt allowing a client waits for an answer.
@@ -54,15 +53,12 @@ fn chat_hello(caller: Caller, id: &str, reply: Answer<Welcome>, cx: &mut App) {
         Ok(grant) => grant,
         Err(refused) => return reply(Err(refused)),
     };
-    let (known, heard) = main_shell(cx).map_or((false, false), |(_, shell)| {
-        let chats = shell.read(cx).chats().read(cx);
-        let known = chats.summary(&ThreadId(id.to_owned())).is_some();
-        (known, *chats.connection() == Connection::Connected)
-    });
-    reply(match (known, heard) {
-        (true, _) => Ok(Welcome { caller, grant }),
-        (false, true) => Err(ControlError::not_found(format!("Koyo has no chat {id}."))),
-        (false, false) => Err(ControlError::not_found(
+    let known = main_shell(cx)
+        .and_then(|(_, shell)| (shell.read(cx).chats().read(cx)).knows(&ThreadId(id.to_owned())));
+    reply(match known {
+        Some(true) => Ok(Welcome { caller, grant }),
+        Some(false) => Err(ControlError::not_found(format!("Koyo has no chat {id}."))),
+        None => Err(ControlError::not_found(
             "Koyo's window hasn't heard its chats from the agent host yet; try again in a moment.",
         )
         .retryable(true)),
@@ -138,7 +134,7 @@ fn daemon(cx: &mut App) -> Option<std::sync::Arc<koyo_term::TermClient>> {
 /// Answers an external client's hello.
 fn external_hello(caller: Caller, reply: Answer<Welcome>, cx: &mut App) {
     let name = caller.client.name.clone();
-    if name.trim().is_empty() || name.starts_with("terminal:") || name.starts_with("chat:") {
+    if name.trim().is_empty() || Caller::agent_name(&name) {
         return reply(Err(ControlError::invalid_input(
             "A client's name can't be empty or start with `terminal:` or `chat:`.",
         )));
