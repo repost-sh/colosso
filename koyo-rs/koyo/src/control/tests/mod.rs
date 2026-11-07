@@ -82,8 +82,17 @@ fn terminal(handle: &str) -> Caller {
             version: "test".into(),
         },
         terminal: Some(handle.into()),
+        chat: None,
         worktree: None,
         cwd: None,
+    }
+}
+
+/// The agent of Koyo chat `id`, as Koyo's MCP server in its session says hello.
+fn chat(id: &str) -> Caller {
+    Caller {
+        chat: Some(id.into()),
+        ..external("claude-code")
     }
 }
 
@@ -95,6 +104,7 @@ fn external(name: &str) -> Caller {
             version: "test".into(),
         },
         terminal: None,
+        chat: None,
         worktree: None,
         cwd: None,
     }
@@ -106,6 +116,7 @@ fn hello_of(caller: &Caller) -> Hello {
         protocol: PROTOCOL_VERSION,
         client: caller.client.clone(),
         terminal: caller.terminal.clone(),
+        chat: caller.chat.clone(),
         worktree: None,
         cwd: None,
         pid: 1,

@@ -1,5 +1,6 @@
 //! Hellos (`docs/app-control.md` 4). An agent in a Koyo terminal is welcomed with what
-//! such agents may do once the terminal daemon says its terminal exists. Any other client is
+//! such agents may do once the terminal daemon says its terminal exists, and a chat's agent
+//! once the window knows the chat, while Koyo tools are on. Any other client is
 //! external: refused while external control is off; welcomed with its scopes once the person
 //! has allowed it; else the person is asked in the window, once per client name however many
 //! hellos wait, for two minutes. A Deny is remembered for ten minutes.
@@ -7,13 +8,15 @@
 use std::time::Duration;
 
 use gpui_kit::{App, AppContext as _, AsyncApp, PromptLevel};
+use koyo_agent::protocol::ids::ThreadId;
 use koyo_app_control::{ControlError, ErrorCode, Hello, PROTOCOL_VERSION, Scope};
 use koyo_term_control::{Handle, RequestBody, ResponseBody};
 
 use super::activity::{ActivityKind, Decision};
 use super::confirm::answered;
 use super::exec::main_shell;
-use super::{Answer, Caller, Control, Welcome, policy};
+use super::{Answer, Caller, Control, Welcome, gate, policy};
+use crate::chat::Connection;
 use crate::settings;
 
 /// How long the prompt allowing a client waits for an answer.
@@ -36,17 +39,41 @@ pub(crate) fn hello(hello: &Hello, reply: Answer<Welcome>, cx: &mut App) {
         ))));
     }
     let caller = Caller::from_hello(hello);
-    match caller.terminal.clone() {
-        Some(handle) => terminal_hello(caller, handle, reply, cx),
-        None => external_hello(caller, reply, cx),
+    match (caller.chat.clone(), caller.terminal.clone()) {
+        (Some(id), _) => chat_hello(caller, &id, reply, cx),
+        (None, Some(handle)) => terminal_hello(caller, handle, reply, cx),
+        (None, None) => external_hello(caller, reply, cx),
     }
+}
+
+/// Welcomes the agent of chat `id` with what the gate grants it, once the window knows the chat.
+/// Before the window has heard its chats from the host, a chat it doesn't know may yet be one,
+/// so it may say hello again.
+fn chat_hello(caller: Caller, id: &str, reply: Answer<Welcome>, cx: &mut App) {
+    let grant = match gate::grant(&caller, cx) {
+        Ok(grant) => grant,
+        Err(refused) => return reply(Err(refused)),
+    };
+    let (known, heard) = main_shell(cx).map_or((false, false), |(_, shell)| {
+        let chats = shell.read(cx).chats().read(cx);
+        let known = chats.summary(&ThreadId(id.to_owned())).is_some();
+        (known, *chats.connection() == Connection::Connected)
+    });
+    reply(match (known, heard) {
+        (true, _) => Ok(Welcome { caller, grant }),
+        (false, true) => Err(ControlError::not_found(format!("Koyo has no chat {id}."))),
+        (false, false) => Err(ControlError::not_found(
+            "Koyo's window hasn't heard its chats from the agent host yet; try again in a moment.",
+        )
+        .retryable(true)),
+    });
 }
 
 /// Welcomes an agent in Koyo terminal `handle`, once the daemon says the terminal exists.
 fn terminal_hello(caller: Caller, handle: String, reply: Answer<Welcome>, cx: &mut App) {
     let welcome = |caller| Welcome {
         caller,
-        grant: Scope::TERMINAL_AGENT.to_vec(),
+        grant: Scope::AGENT.to_vec(),
     };
     let unknown = move || {
         ControlError::new(
@@ -111,9 +138,9 @@ fn daemon(cx: &mut App) -> Option<std::sync::Arc<koyo_term::TermClient>> {
 /// Answers an external client's hello.
 fn external_hello(caller: Caller, reply: Answer<Welcome>, cx: &mut App) {
     let name = caller.client.name.clone();
-    if name.trim().is_empty() || name.starts_with("terminal:") {
+    if name.trim().is_empty() || name.starts_with("terminal:") || name.starts_with("chat:") {
         return reply(Err(ControlError::invalid_input(
-            "A client's name can't be empty or start with `terminal:`.",
+            "A client's name can't be empty or start with `terminal:` or `chat:`.",
         )));
     }
     let policy = &settings::get(cx).external_control;

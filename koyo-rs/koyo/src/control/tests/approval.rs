@@ -1,14 +1,15 @@
-//! Hellos: agents in Koyo's terminals welcomed without asking, external clients refused
-//! while external control is off and asked about once per name, the person's answers and
-//! silence, and the policy functions the Settings page calls.
+//! Hellos: agents in Koyo's terminals and chats welcomed without asking, external clients
+//! refused while external control is off and asked about once per name, the person's answers
+//! and silence, and the policy functions the Settings page calls.
 
 use gpui_kit::TestAppContext;
 use koyo_app_control::{ErrorCode, Scope};
 use serde_json::json;
 
+use super::chats::summary;
 use super::{
-    APPROVAL, DENIAL, activity, allow, call, controlled, external, hello, send_hello, taken,
-    terminal,
+    APPROVAL, DENIAL, activity, allow, call, chat, controlled, external, hello, read_shell,
+    send_hello, taken, terminal,
 };
 use crate::control::{
     ActivityKind, Control, DEFAULT_PORT, Decision, allow_denied, denied, policy, revoke,
@@ -22,7 +23,7 @@ fn an_agent_in_a_koyo_terminal_is_welcomed_without_asking(cx: &mut TestAppContex
     let _rig = controlled("control-hello-terminal", &[&root], cx);
     cx.update(|cx| Control::get_mut(cx).test_terminals.insert("term_1".into()));
     let welcome = hello(&terminal("term_1"), cx).unwrap();
-    assert_eq!(welcome.grant, Scope::TERMINAL_AGENT.to_vec());
+    assert_eq!(welcome.grant, Scope::AGENT.to_vec());
     assert!(!cx.has_pending_prompt(), "nobody was asked");
     // A terminal Koyo doesn't run doesn't pass for one, however the client names it.
     let refused = hello(&terminal("term_gone"), cx).unwrap_err();
@@ -37,12 +38,56 @@ fn an_external_client_is_refused_while_external_control_is_off(cx: &mut TestAppC
     assert_eq!(refused.code, ErrorCode::ControlDisabled);
     assert!(!cx.has_pending_prompt());
     cx.update(|cx| set_enabled(true, cx));
-    let refused = hello(&external("terminal:term_1"), cx).unwrap_err();
+    for name in ["terminal:term_1", "chat:019a5c1e"] {
+        let refused = hello(&external(name), cx).unwrap_err();
+        assert_eq!(
+            refused.code,
+            ErrorCode::InvalidInput,
+            "names of terminals and chats aren't for external clients: {name}"
+        );
+    }
+}
+
+#[gpui_kit::test]
+fn a_chats_agent_is_welcomed_without_asking_once_the_window_knows_the_chat(
+    cx: &mut TestAppContext,
+) {
+    let root = repo("control-hello-chat", &[("README.md", "hi\n")]);
+    let rig = controlled("control-hello-chat", &[&root], cx);
+    // Before the window has heard its chats from the host, a chat may yet be one of them.
+    let early = hello(&chat("019a"), cx).unwrap_err();
+    assert_eq!(early.code, ErrorCode::NotFound);
+    assert!(early.retryable);
+
+    let chats = read_shell(&rig, cx, |shell, _| shell.chats().clone());
+    let listed = vec![summary("019a", &root, "2026-11-06T10:00:00Z")];
+    chats.update(cx, |chats, cx| chats.hear_list(listed, cx));
+    // External control is off, and nobody is asked: the chat is Koyo's own.
+    let welcome = hello(&chat("019a"), cx).unwrap();
+    assert_eq!(welcome.grant, Scope::AGENT.to_vec());
+    assert!(!cx.has_pending_prompt(), "nobody was asked");
+    let agent = welcome.caller;
+    assert_eq!(agent.key(), "chat:019a");
+    assert_eq!(agent.label(), "claude-code (in chat 019a)");
+    call(&agent, "layout_set", json!({ "sidebar": false }), cx).unwrap();
     assert_eq!(
-        refused.code,
-        ErrorCode::InvalidInput,
-        "names of terminals aren't for external clients"
+        activity(cx)[0].client,
+        "chat:019a",
+        "the log names the chat"
     );
+
+    // A chat the window doesn't know doesn't pass for one, now that it has heard them all.
+    let refused = hello(&chat("019b"), cx).unwrap_err();
+    assert_eq!(refused.code, ErrorCode::NotFound);
+    assert!(!refused.retryable);
+
+    // With Koyo tools off, the chat is refused, and so are the calls of one let in before.
+    cx.update(|cx| crate::settings::update(cx, |settings| settings.koyo_tools = false));
+    let off = hello(&chat("019a"), cx).unwrap_err();
+    assert_eq!(off.code, ErrorCode::ControlDisabled);
+    assert!(off.message.contains("Settings → Chat"), "{}", off.message);
+    let refused = call(&agent, "app_status", json!({}), cx).unwrap_err();
+    assert_eq!(refused.code, ErrorCode::ControlDisabled);
 }
 
 #[gpui_kit::test]

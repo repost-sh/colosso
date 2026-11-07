@@ -1,6 +1,6 @@
-//! The Chat settings page: what chats run on, what an agent may do and how hard it works in a new
-//! chat, how wide a chat is and what its composer shows while it works, and how much of its work
-//! shows, its verbosity.
+//! The Chat settings page: what chats run on and whether they have Koyo's tools, what an agent
+//! may do and how hard it works in a new chat, how wide a chat is and what its composer shows
+//! while it works, and how much of its work shows, its verbosity.
 
 use std::path::Path;
 
@@ -12,6 +12,7 @@ use koyo_agent::words::effort_label;
 use super::components::{MenuButton, SettingRow, SettingsSection};
 use super::field_dialog::{self, Field};
 use super::native_slider::NativeSlider;
+use super::native_switch::NativeSwitch;
 use super::ticked_slider::nearest;
 use crate::projects::display_path;
 use crate::settings::{self, Step, chat_mode_label, chat_mode_menu};
@@ -83,18 +84,33 @@ fn claude_menu(path: Option<&str>) -> NativeMenu {
 
 fn agent(cx: &App) -> SettingsSection {
     let current = settings::get(cx);
-    SettingsSection::new("Claude Code").row(
-        SettingRow::new("Program")
-            .description(
-                "What chats run on. Koyo looks on your shell's PATH and where it's usually \
-                 installed. Chats follow a change from the next time they start.",
-            )
-            .control(MenuButton::new(
-                "claude-path",
-                claude_label(current.claude_path.as_deref()),
-                |cx| claude_menu(settings::get(cx).claude_path.as_deref()),
-            )),
-    )
+    SettingsSection::new("Claude Code")
+        .row(
+            SettingRow::new("Program")
+                .description(
+                    "What chats run on. Koyo looks on your shell's PATH and where it's usually \
+                     installed. Chats follow a change from the next time they start.",
+                )
+                .control(MenuButton::new(
+                    "claude-path",
+                    claude_label(current.claude_path.as_deref()),
+                    |cx| claude_menu(settings::get(cx).claude_path.as_deref()),
+                )),
+        )
+        .row(
+            SettingRow::new("Koyo tools")
+                .description(
+                    "Chats work in Koyo with its own tools: they make worktrees, open pages in \
+                     its browser and run programs in its terminals, where you see them. What a \
+                     tool changes asks you first, as the chat's permissions say. Chats follow a \
+                     change from the next time they start.",
+                )
+                .control(NativeSwitch::new(
+                    "koyo-tools",
+                    |settings| settings.koyo_tools,
+                    |settings, on| settings.koyo_tools = on,
+                )),
+        )
 }
 
 fn new_chats(cx: &App) -> SettingsSection {

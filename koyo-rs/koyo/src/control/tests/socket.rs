@@ -51,10 +51,7 @@ fn a_socket_client_says_hello_and_its_calls_are_answered(cx: &mut TestAppContext
     let hello = ClientFrame::Hello(hello_of(&terminal("term_1")));
     writer.write(&hello, MAX_CLIENT_FRAME).unwrap();
     answer_next(&mut rig, &mut served, cx);
-    let grant: Vec<&str> = Scope::TERMINAL_AGENT
-        .iter()
-        .map(|scope| scope.id())
-        .collect();
+    let grant: Vec<&str> = Scope::AGENT.iter().map(|scope| scope.id()).collect();
     assert_eq!(
         next_frame(&mut reader),
         json!({ "type": "welcome", "grant": grant })

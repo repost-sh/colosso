@@ -4,8 +4,9 @@
 // reaches nothing, so a session killed mid-turn can't change the turn after it.
 
 import { errorMessage, log } from "../log";
-import type { Mode, RequestPayload, Thread } from "../protocol/model";
+import type { RequestPayload, Thread } from "../protocol/model";
 import type {
+  Config,
   DriverEvent,
   Provider,
   ProviderSession,
@@ -20,10 +21,11 @@ const IDLE_MS = 5 * 60_000;
 
 /**
  * The session `thread` runs its turns in, as conversation `sessionId`: in the chat's mode, or
- * Koyo's `defaultMode` when it names none (C12).
+ * Koyo's `defaultMode` when it names none (C12), with Koyo's tools while Koyo's settings say.
  */
-export function specFor(thread: Thread, sessionId: string, defaultMode: Mode | null): SessionSpec {
+export function specFor(thread: Thread, sessionId: string, config: Config): SessionSpec {
   return {
+    threadId: thread.id,
     cwd: thread.cwd,
     sessionId,
     // The thread had a conversation before, so there's one to resume.
@@ -31,9 +33,10 @@ export function specFor(thread: Thread, sessionId: string, defaultMode: Mode | n
     model: thread.model,
     effort: thread.effort,
     fast: thread.fast,
-    permission: thread.permission ?? defaultMode,
+    permission: thread.permission ?? config.defaultMode,
     plan: thread.plan,
     resumeAt: thread.resumeAt,
+    koyoTools: config.koyoTools,
   };
 }
 

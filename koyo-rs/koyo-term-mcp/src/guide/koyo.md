@@ -166,8 +166,8 @@ returns the first result instead of acting again; the same id with other input f
 timeout or a lost connection.
 
 What a client may do comes in scopes: `read`, `navigate`, `manage`, `browser`, `settings`
-and `destructive`. An agent in a Koyo terminal holds all but `destructive`. Any other
-client is first allowed by the person, once, and holds `read`, `navigate`, `manage` and
+and `destructive`. An agent in a Koyo terminal or chat holds all but `destructive`. Any
+other client is first allowed by the person, once, and holds `read`, `navigate`, `manage` and
 `browser`; the person switches on `settings` and `destructive` in Settings → MCP server.
 `scope_denied` names the missing scope in `details.scope`.
 
@@ -187,7 +187,7 @@ A failure has a `code`, a `message` and `retryable`; retry only what is retryabl
 | `scope_denied` | The person hasn't allowed `details.scope`; ask them, or do without. |
 | `user_declined` | The person said no, or didn't answer; nothing changed. Don't repeat it unasked. |
 | `request_conflict` | The `requestId` was used with other input, or a confirmation of yours is waiting. |
-| `control_disabled` | The person has to turn on Settings → MCP server. |
+| `control_disabled` | The person has to turn on Settings → MCP server; for a chat, Settings → Chat → Koyo tools. |
 | `app_not_running` | Koyo isn't running: call `app_launch`, then try again. When a connection was lost mid-call, the call may have acted: check, or repeat it with the same `requestId`. |
 | `unsaved_changes` | Save `details.files` first, or discard them with the person's confirmation. |
 | `person_has_control` | The person holds the page or terminal. A page they're only using comes back 5 s after they stop (`retryable`): wait, then retry. Otherwise use another. |

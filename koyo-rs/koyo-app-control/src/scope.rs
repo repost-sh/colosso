@@ -43,9 +43,9 @@ impl Scope {
     pub const DEFAULT_GRANT: [Scope; 4] =
         [Scope::Read, Scope::Navigate, Scope::Manage, Scope::Browser];
 
-    /// What an agent in a Koyo terminal gets without asking: everything but
-    /// `destructive`, whose calls the window confirms regardless.
-    pub const TERMINAL_AGENT: [Scope; 5] = [
+    /// What an agent Koyo runs, in one of its terminals or its chats, gets without asking:
+    /// everything but `destructive`, whose calls the window confirms regardless.
+    pub const AGENT: [Scope; 5] = [
         Scope::Read,
         Scope::Navigate,
         Scope::Manage,

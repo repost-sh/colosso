@@ -374,7 +374,7 @@ hello       {client: {kind: "app"|"cli"|"test"}, version} → {version, pid, bus
             client may then only call `shutdown`; before a hello, nothing else is answered
             but `not_allowed`.
 shutdown    {} → {}
-config.set  {claudePath, defaultMode} → {}
+config.set  {claudePath, defaultMode, koyoTools} → {}
 providers.status {refresh: bool} → [ProviderStatus]
             {provider, state: "ready"|"missing"|"signed_out"|"error", executable, version,
              account: {email, plan}, message}
@@ -757,6 +757,12 @@ The behaviours, each with the T3 adapter pitfall it carries (`t3-claude-adapter.
   `canUseTool`, `model`, `effort`, `permissionMode` only when the spec names one (4.5.6),
   `allowDangerouslySkipPermissions` with Full access,
   `toolConfig.askUserQuestion.previewFormat: "markdown"`, `spawnClaudeCodeProcess` (4.2).
+  While Koyo tools are on (O1): `mcpServers: {koyo: {type: "stdio", command: <the app's koyo>,
+  args: ["mcp"], env: {KOYO_CHAT: <thread id>}}}`, `allowedTools` the server's 18 read-only
+  tools (`mcp__koyo__…`), `disallowedTools: ["EnterWorktree", "ExitWorktree",
+  "mcp__koyo__worktree_delete", "mcp__koyo__app_launch"]`, and `KOYO_TOOLS_PROMPT` appended
+  after `KOYO_PROMPT`. The
+  probe, the files query and the title keep registering nothing.
 - **Prompt identity.** Each prompt gets a fresh uuid; root frames are credited to a turn
   only once the CLI echoes it (`user_message_uuid(s)`) or reports it in `command_lifecycle`.
   Frames that arrive while no turn is running (the CLI's own wake turns, when a background
@@ -879,7 +885,10 @@ No GPUI here: what doesn't draw is tested without compiling the app.
   another build, failed with why), the threads still to bring back, the catalog by cwd and the
   provider status. It knows nothing of the shell; views ask it for what they need, and the shell
   follows its events. A person who has no store yet (`chats.sqlite`) runs no host until their
-  first chat tab.
+  first chat tab, which reaches it before making the chat. Each time the app reaches the host,
+  first or after a connection ended, Koyo's settings (`config.set`) go ahead of anything asked
+  next, so the session a chat's request opens follows them; they're told again once the host
+  lists its chats, and on every change while it's reached.
 - `ChatTabs`, in `Shell.chat_tabs`: each chat pane's view by pane id, and the threads the panes
   show.
 - `Pane.chat: Option<ThreadId>`: which thread a chat pane shows; `None` while it's a new chat.
@@ -1200,9 +1209,49 @@ Each milestone ends with `script/check` green, the simplify pass, and its commit
 
 ## 8. Open decisions
 
-- **O1 [open] Koyo's MCP server in chat sessions** (the terminal and browser tools of
-  `docs/terminals.md` 8), so the chat's Claude can drive Koyo's terminals. Default: no for
-  v1; a setting once the tools are scoped to the chat's worktree.
+- **O1 [decided] Koyo's MCP server in chat sessions.** Every live chat session registers
+  Koyo's own server, so "create a worktree", "open … in the browser" and "run the dev server"
+  go to `worktree_create`, `tab_open` and `browser_*`, and `terminal_open`, `terminal_wait`
+  and `terminal_read`, where the person sees them.
+  - Registration: `config.set` carries `koyoTools`, the app's own `koyo`
+    (`current_exe()`, so a debug build's chats reach its own build), or `null` while Settings
+    → Chat → Koyo tools is off. Each session takes it when it opens (`SessionSpec.koyoTools`)
+    and adds a `koyo` stdio entry to the SDK's `mcpServers`: `koyo mcp` with `KOYO_CHAT` set
+    to the chat's id (4.7). Nothing is written to the person's Claude config, and their own
+    servers still load.
+  - Trust: the relay's hello names the chat (`chat`, from `KOYO_CHAT`). The app welcomes it as
+    it welcomes an agent in a Koyo terminal (`docs/app-control.md` 4): no MCP-server switch, no
+    prompt, the agent grant `read navigate manage browser settings`, `destructive` withheld. It
+    welcomes it only when the window knows the chat; before the window has heard its chats
+    from the host, the refusal is retryable. The activity log names it `chat:<id>`. While Koyo
+    tools are off, its hello and its calls are refused (`control_disabled`). Terminal tools go
+    to the daemon, so a session that's already open keeps them until it closes.
+  - Steering lives in `KOYO_TOOLS_PROMPT`, which only chats get. It covers the three asks:
+    `worktree_create` with `select: false`, so the window stays on the chat, and `chat_create`
+    for work in the new worktree, as the chat's own folder doesn't move; `tab_open` with
+    `kind: "browser"`; and `terminal_open` with a command rather than Bash in the background.
+    The server's `INSTRUCTIONS` go to every client and stay neutral: an external client's
+    person may be looking at its own browser. Koyo's tools come first unless the person names
+    another. Koyo can't remove the person's own tools (VS Code's browser, agent-browser,
+    tmux-dev, orca). With its tools on, it removes Claude's `EnterWorktree` and
+    `ExitWorktree` in favour of `worktree_create`: they move the session's folder where the
+    chat can't follow. It also removes `worktree_delete`, which isn't granted, and
+    `app_launch`, which a chat would only call once the person quit Koyo.
+  - Approvals: the read-only tools run without asking, as Claude Code's own reads do. A test
+    holds the list to the catalogs. Every other Koyo tool asks as the chat's mode says, under
+    family `mcp`.
+  - Default on, which overturns the earlier "no for v1, until scoped to the chat's worktree".
+    The tools aren't scoped to the worktree: they reach the whole window, as a terminal agent's
+    do. What they change goes through the chat's own approvals, and nothing destructive is
+    granted.
+  - Rejected: the external path, which would need Settings → MCP server and an approval prompt
+    for a server Koyo started itself. A wrapper script, or an entry in the person's
+    `~/.claude.json` or `.mcp.json`, which would reach their sessions outside Koyo too.
+    Steering in `INSTRUCTIONS`, for the reason above. `alwaysLoad`, which would put 66 schemas
+    in every prompt rather than behind tool search.
+  - Not done: refusing `chat_send` and `chat_stop` aimed at the calling chat itself, a label
+    with the chat's title rather than its id, and the hello of a chat whose window is closed
+    (refused, as the window's chats can't be read).
 - **O2 [decided] Installing Claude Code** when it's missing: a chat shows the install command
   to copy and a "Check again" button, over the composer. Opening a terminal tab with the
   command is left for later.

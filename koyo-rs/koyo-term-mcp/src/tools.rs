@@ -132,15 +132,39 @@ fn refused(structured: Value, message: &str) -> CallToolResult {
 mod tests {
     use super::*;
 
+    /// Every terminal scope, so every tool is listed.
+    const ALL: [Scope; 4] = [Scope::Read, Scope::Write, Scope::Manage, Scope::Destructive];
+
     #[test]
     fn no_app_tool_is_lost_to_a_terminal_name() {
-        let all = [Scope::Read, Scope::Write, Scope::Manage, Scope::Destructive];
-        let listed = list(&all, true);
+        let listed = list(&ALL, true);
         assert_eq!(listed.len(), CATALOG.len() + catalog().len() + 1);
         let mut names: Vec<_> = listed.iter().map(|tool| tool.name.clone()).collect();
         names.sort();
         names.dedup();
         assert_eq!(names.len(), listed.len(), "every tool name is unique");
+    }
+
+    /// A chat runs the tools that only read without asking (`KOYO_READS` in the agent host's
+    /// options.ts), so that list is exactly the read-only ones.
+    #[test]
+    fn a_chat_runs_without_asking_exactly_the_tools_that_only_read() {
+        let path = std::path::Path::new(env!("KOYO_CHECKOUT"))
+            .join("koyo-js/koyo-agent-host/src/providers/claude/options.ts");
+        let source = std::fs::read_to_string(path).unwrap();
+        let (_, names) = source.split_once("const KOYO_READS = [").unwrap();
+        let (names, _) = names.split_once("];").unwrap();
+        let mut allowed: Vec<&str> = (names.split(','))
+            .map(|name| name.trim().trim_matches('"'))
+            .filter(|name| !name.is_empty())
+            .collect();
+        allowed.sort_unstable();
+        let mut reads: Vec<String> = (list(&ALL, true).into_iter())
+            .filter(|tool| tool.annotations.as_ref().and_then(|a| a.read_only_hint) == Some(true))
+            .map(|tool| tool.name.to_string())
+            .collect();
+        reads.sort_unstable();
+        assert_eq!(allowed, reads);
     }
 
     #[test]

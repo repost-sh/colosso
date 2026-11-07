@@ -19,10 +19,23 @@ use crate::history;
 impl Chats {
     /// Makes a chat in the checkout at `cwd`, as it starts until a person changes something.
     pub(crate) fn create(
-        &self,
+        &mut self,
         cwd: &Path,
+        cx: &mut Context<Self>,
     ) -> impl Future<Output = Result<Thread, ClientError>> + use<> {
-        self.ordered::<ThreadsCreate>(Settings::default().to_create(cwd))
+        self.create_as(&Settings::default(), cwd, cx)
+    }
+
+    /// Makes a chat in the checkout at `cwd`, set as `settings` say, reaching the host first so
+    /// it hears Koyo's settings before it opens the chat's session.
+    fn create_as(
+        &mut self,
+        settings: &Settings,
+        cwd: &Path,
+        cx: &mut Context<Self>,
+    ) -> impl Future<Output = Result<Thread, ClientError>> + use<> {
+        self.connect(cx);
+        self.ordered::<ThreadsCreate>(settings.to_create(cwd))
     }
 }
 
@@ -142,8 +155,9 @@ impl ChatComposer {
     /// A new chat's first send: its thread is made, then opened, then told the message.
     fn create_and_send(&mut self, prompt: Prompt, window: &mut Window, cx: &mut Context<Self>) {
         self.creating = true;
-        let params = self.settings.to_create(&self.cwd);
-        let made = self.chats.read(cx).ordered::<ThreadsCreate>(params);
+        let made = (self.chats).update(cx, |chats, cx| {
+            chats.create_as(&self.settings, &self.cwd, cx)
+        });
         cx.spawn_in(window, async move |this, cx| {
             let made = made.await;
             this.update_in(cx, |this, window, cx| {

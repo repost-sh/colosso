@@ -33,6 +33,7 @@ fn hello() {
             version: "2.1.0".into(),
         },
         terminal: Some("term_01JD".into()),
+        chat: None,
         worktree: Some("/w/feat".into()),
         cwd: Some("/w/feat/src".into()),
         pid: 4242,
@@ -40,6 +41,17 @@ fn hello() {
     client(
         &ClientFrame::Hello(hello.clone()),
         r#"{"type":"hello","protocol":1,"client":{"name":"Claude Code","version":"2.1.0"},"terminal":"term_01JD","worktree":"/w/feat","cwd":"/w/feat/src","pid":4242}"#,
+    );
+    // Koyo's MCP server in a chat's session names the chat.
+    let chat = Hello {
+        terminal: None,
+        chat: Some("019a5c1e-7d42-7b3a-9c4e-1f2a3b4c5d6e".into()),
+        worktree: None,
+        ..hello.clone()
+    };
+    client(
+        &ClientFrame::Hello(chat),
+        r#"{"type":"hello","protocol":1,"client":{"name":"Claude Code","version":"2.1.0"},"chat":"019a5c1e-7d42-7b3a-9c4e-1f2a3b4c5d6e","cwd":"/w/feat/src","pid":4242}"#,
     );
     let bare = Hello {
         terminal: None,

@@ -4,7 +4,8 @@
     "method": "config.set",
     "params": {
       "claudePath": null,
-      "defaultMode": "accept_edits"
+      "defaultMode": "accept_edits",
+      "koyoTools": "/Applications/Koyo.app/Contents/MacOS/koyo"
     }
   },
   "response": {

@@ -142,7 +142,7 @@ pub(crate) fn create(
     let shell = shell.read(cx);
     let cwd = worktree_path(caller, shell, input.worktree.as_deref())?;
     let chats = shell.chats().clone();
-    let made = chats.read(cx).create(&cwd);
+    let made = chats.update(cx, |chats, cx| chats.create(&cwd, cx));
     let select = policy::shows(input.select, cx);
     Ok(Exec::Later(cx.spawn(async move |cx: &mut AsyncApp| {
         let thread = made

@@ -99,6 +99,73 @@ export const KOYO_PROMPT =
   + "for a line: [viewer/mod.rs](src/viewer/mod.rs), [mod.rs:42](src/viewer/mod.rs#L42). "
   + "Don't put these links in backticks.";
 
+/**
+ * What Claude Code is told while it has Koyo's tools (docs/chat.md O1): they show their work in
+ * the window the person looks at, so the person's other browsers and terminals wait to be named.
+ */
+export const KOYO_TOOLS_PROMPT =
+  "Koyo's own tools, the koyo MCP server, drive the window the person is looking at: use them "
+  + "rather than other tools unless the person names another.\n"
+  + "- A worktree: mcp__koyo__worktree_create, which makes it where Koyo keeps worktrees, on a "
+  + "branch of its name, as Koyo's New Worktree does; with `select: false` unless they ask to go "
+  + "there. Never git worktree or EnterWorktree. Your working folder stays where it is: to work "
+  + "in the new worktree, start a chat there with mcp__koyo__chat_create.\n"
+  + "- A web page: mcp__koyo__tab_open with `kind: \"browser\"` and the `url`, then the "
+  + "mcp__koyo__browser_* tools.\n"
+  + "- A server, an app or a command the person asks you to run: mcp__koyo__terminal_open with a "
+  + "`name` and the `command`, then mcp__koyo__terminal_wait and mcp__koyo__terminal_read, not "
+  + "Bash in the background. Bash stays for your own short commands.";
+
+/**
+ * The tools of Koyo's MCP server that only read, its `read` and `terminal.read` scopes', which
+ * run without asking as Claude Code's own reads do. A test holds them to the catalogs.
+ */
+const KOYO_READS = [
+  "app_status",
+  "project_list",
+  "worktree_branches",
+  "worktree_list",
+  "tab_list",
+  "chat_list",
+  "chat_read",
+  "settings_get",
+  "browser_list",
+  "browser_read",
+  "browser_snapshot",
+  "browser_screenshot",
+  "browser_wait",
+  "terminal_list",
+  "terminal_read",
+  "terminal_wait",
+  "terminal_control",
+  "terminal_log",
+];
+
+/**
+ * Koyo's tools for chat `threadId`: `koyo mcp` from the app's own `koyo`, naming the chat, which
+ * the app trusts as it trusts an agent in its terminals; its reads allowed; and what a chat
+ * shouldn't reach for taken away: Claude's own worktrees, which move the session's folder where
+ * the chat can't follow, deleting a worktree, which an agent isn't granted, and launching Koyo,
+ * which a chat would do only once the person quit it.
+ */
+function koyoTools(koyo: string, threadId: string): Pick<
+  Options,
+  "mcpServers" | "allowedTools" | "disallowedTools"
+> {
+  return {
+    mcpServers: {
+      koyo: { type: "stdio", command: koyo, args: ["mcp"], env: { KOYO_CHAT: threadId } },
+    },
+    allowedTools: KOYO_READS.map((name) => `mcp__koyo__${name}`),
+    disallowedTools: [
+      "EnterWorktree",
+      "ExitWorktree",
+      "mcp__koyo__worktree_delete",
+      "mcp__koyo__app_launch",
+    ],
+  };
+}
+
 /** What a chat's session is opened with beside its spec. */
 interface Opening {
   /** Whether the conversation has turns to continue. */
@@ -109,7 +176,7 @@ interface Opening {
 
 /**
  * A chat session's options: Claude Code's own system prompt (an omitted one is empty) with
- * what it's told of Koyo (`KOYO_PROMPT`), text
+ * what it's told of Koyo (`KOYO_PROMPT`), and of Koyo's tools while it has them, text
  * as it streams, a subagent's words as well as its tools, what the model thought (left out
  * unless asked for, and asked for by the flag: the `thinking` option would also turn thinking on
  * for someone who has it off), and a permission mode only when the chat or Koyo names one, so
@@ -118,11 +185,14 @@ interface Opening {
 export function sessionOptions(spec: SessionSpec, place: Place, opening: Opening): Options {
   const mode = spec.permission;
   const permissionMode = requested(spec.plan, mode);
+  const koyo = spec.koyoTools;
+  const append = koyo === null ? KOYO_PROMPT : `${KOYO_PROMPT}\n\n${KOYO_TOOLS_PROMPT}`;
   return {
     ...placed(place),
     ...(opening.resume ? { resume: spec.sessionId } : { sessionId: spec.sessionId }),
     ...(opening.resume && spec.resumeAt !== null ? { resumeSessionAt: spec.resumeAt } : {}),
-    systemPrompt: { type: "preset", preset: "claude_code", append: KOYO_PROMPT },
+    systemPrompt: { type: "preset", preset: "claude_code", append },
+    ...(koyo === null ? {} : koyoTools(koyo, spec.threadId)),
     includePartialMessages: true,
     forwardSubagentText: true,
     extraArgs: { "thinking-display": "summarized" },

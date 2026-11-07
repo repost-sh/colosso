@@ -113,7 +113,11 @@ describe("the host", () => {
   test("hands Koyo's settings to its providers, and answers the catalog with them", async () => {
     const chats = host();
     const app = await client(chats);
-    const config: Config = { claudePath: "/Users/ana/bin/claude", defaultMode: "auto" };
+    const config: Config = {
+      claudePath: "/Users/ana/bin/claude",
+      defaultMode: "auto",
+      koyoTools: "/Applications/Koyo.app/Contents/MacOS/koyo",
+    };
     const catalog = { provider: "fake", cwd: chats.dir };
     chats.provider.settingsMode = "accept_edits";
     app.request(1, "catalog", catalog);
@@ -125,14 +129,19 @@ describe("the host", () => {
     expect(await app.next()).toMatchObject({ line: { result: { defaultMode: "auto" } } });
   });
 
-  test("opens a chat that names no mode in Koyo's default", async () => {
+  test("opens a chat that names no mode in Koyo's default, with Koyo's tools", async () => {
     const chats = host();
     const app = await client(chats);
-    app.request(1, "config.set", { claudePath: null, defaultMode: "accept_edits" });
+    const koyoTools = "/Applications/Koyo.app/Contents/MacOS/koyo";
+    app.request(1, "config.set", { claudePath: null, defaultMode: "accept_edits", koyoTools });
     await app.next();
     const thread = chats.threads.create(CREATE);
     chats.threads.actor(thread.id).send(prompt("Find the flaky test."), "auto");
-    expect(chats.provider.session.spec.permission).toBe("accept_edits");
+    expect(chats.provider.session.spec).toMatchObject({
+      threadId: thread.id,
+      permission: "accept_edits",
+      koyoTools,
+    });
   });
 
   test("tells a thread's changes in step order, each before the answer that made it", async () => {

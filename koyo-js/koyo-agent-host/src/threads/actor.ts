@@ -357,7 +357,7 @@ export class ThreadActor {
     });
     this.#state.startTurn(run);
     try {
-      const spec = specFor(thread, sessionId, this.#cx.config().defaultMode);
+      const spec = specFor(thread, sessionId, this.#cx.config());
       const session = this.#session.ensure(spec);
       const input = turnInput(PlainUUID.parse(run.id), run.prompt, this.#cx.attachments, "turn");
       session.start(input);

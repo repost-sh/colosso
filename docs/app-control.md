@@ -84,12 +84,14 @@ As monocode and `docs/terminals.md` 8.2:
 | Caller | How it says hello | Approval | Grant |
 | --- | --- | --- | --- |
 | An agent in a Koyo terminal | relay with `KOYO_TERMINAL` set (`terminal: term_…`, `worktree`) and the terminal exists in the daemon | none | `read navigate manage browser settings` |
+| An agent in a Koyo chat | the relay a chat's session starts (`docs/chat.md` O1), with `KOYO_CHAT` set (`chat: <thread id>`); the window knows the chat and Settings → Chat → Koyo tools is on | none; Settings → MCP server needn't be on | as a terminal agent; with Koyo tools off, `control_disabled` for its hello and its calls |
 | An external MCP client (stdio relay without a terminal, or HTTP) | `clientInfo.name` (HTTP: `initialize`, else `User-Agent` product, else `MCP client`) | first time per name: “Allow “Claude Code” to control Koyo?” Allow / Deny, 2 min timeout, Deny remembered 10 min | `read navigate manage browser`; `settings` and `destructive` off until switched on in Settings |
-| `koyo app` CLI | as an external client named `koyo app` unless `KOYO_TERMINAL` is set | as above | as above |
+| `koyo app` CLI | as an external client named `koyo app` unless `KOYO_TERMINAL` or `KOYO_CHAT` is set | as above | as above |
 
 The socket's trust boundary is the user id (any process of the user can reach it), so
 approval is consent, not security; names are self-reported. External names may not start
-with `terminal:`.
+with `terminal:` or `chat:`. Receipts, prompts, page leases and the activity log know a
+caller by `terminal:<handle>`, `chat:<id>` or its name.
 
 Scopes:
 
@@ -311,14 +313,14 @@ terminal in the window; `terminal_open` keeps revealing a tab as before.
 - **Socket**: `<data_dir>/control/koyo-control.sock` (`settings::data_dir()`, so
   `KOYO_DATA_DIR` moves it), mode 0600, folder 0700; when the path is over 100 bytes,
   `$TMPDIR/koyo-<uid>-<hash8>/control.sock`. Frames are newline-delimited JSON:
-  `{"type":"hello","protocol":1,"client":{name,version},"terminal"?,"worktree"?,"cwd"?,"pid"}`
+  `{"type":"hello","protocol":1,"client":{name,version},"terminal"?,"chat"?,"worktree"?,"cwd"?,"pid"}`
   → `{"type":"welcome","grant":[scopes]}` or an error; then `{"type":"call","id":n,
   "requestId"?,"operation":…,"input":{…}}` → `{"type":"result","id":n,"output":…}` |
   `{"type":"error","id":n,"error":{…}}`; `{"type":"subscribe","topics":[…]}` →
   `{"type":"event","topic":…}`. Calls on one connection may interleave (client multiplexes).
 - **stdio relay**: `koyo mcp` (existing subcommand), now the unified server. Without a
   running app, app tools fail `app_not_running` (with `app_launch` listed); with external
-  control off and no `KOYO_TERMINAL`, `control_disabled`.
+  control off and neither `KOYO_TERMINAL` nor `KOYO_CHAT`, `control_disabled`.
 - **HTTP**: the app serves rmcp Streamable HTTP at `http://127.0.0.1:6272/mcp` while
   Settings → MCP server is on (off by default; port is a setting). `127.0.0.1` only;
   `Host` must be `127.0.0.1:<port>` or `localhost:<port>`; an `Origin` other than those is
@@ -373,14 +375,15 @@ clients denied lately with Allow, and Recent activity.
 
 ## 11. As implemented (2026-11-02)
 
-- Crates: `koyo-rs/koyo-app-control` (45 operations, frames, socket, client, `koyo app`),
+- Crates: `koyo-rs/koyo-app-control` (51 operations, frames, socket, client, `koyo app`),
   `koyo-rs/koyo/src/control/` (listener, gate, approval, confirmations, receipts, activity,
   topics, in-process client, HTTP server in `control/http.rs`, executors in `control/exec/`,
   browser executors in `control/exec/browser/`), `koyo-rs/koyo-term-mcp` (the unified server:
   `backend.rs`, `socket.rs`, `app.rs`, `tools.rs`, `launch.rs`, `subscriptions.rs`,
   `http.rs`), the Settings page in `settings_view/mcp_server.rs` and `mcp_clients.rs`.
-- `koyo mcp` lists 60 tools (14 terminal, 45 app, `app_launch`); HTTP lists 59 (no
-  `app_launch`). The server is named `koyo`.
+- `koyo mcp` lists 66 tools (14 terminal, 51 app, `app_launch`); HTTP lists 65 (no
+  `app_launch`). The server is named `koyo`. A chat's session registers it under that name,
+  with `KOYO_CHAT` (`docs/chat.md` O1).
 - Browser tools run over CDP through `browser/agent.rs`, its refusals typed (`AgentError`). A
   page opens in the engine once its pane is drawn. One an agent opened out of sight is opened
   at once at 1280×800, the size a pane assumes before it's drawn
@@ -400,8 +403,10 @@ clients denied lately with Allow, and Recent activity.
   else `settled: false`). With `screenshot: true` its output carries
   `mimeType` and `data` at the top, which the relay turns into an image block as
   `browser_screenshot`'s.
-- Agents in terminals get `read navigate manage browser settings`, never `destructive`
-  without the confirmation prompt; every destructive call is confirmed in the window.
+- Agents in terminals and chats get `read navigate manage browser settings`
+  (`Scope::AGENT`), never `destructive`; every destructive call is confirmed in the window.
+  A chat's agent is welcomed once the window knows the chat; before the window has heard its
+  chats from the host, the refusal is `not_found` with `retryable: true`.
 - `tab_close` on a terminal tab leaves the terminal running, as the tab's × does.
 - `project_add` of a folder inside a repository adds that repository's main checkout.
 - Just after launch, before git has listed a project's worktrees, a worktree not found is

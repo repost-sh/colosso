@@ -190,6 +190,11 @@ impl Chats {
         });
         self.take_in(said.collect(), cx);
     }
+
+    /// Takes `summaries` in as the host's list of its chats, which a connection starts with.
+    pub(crate) fn hear_list(&mut self, summaries: Vec<ThreadSummary>, cx: &mut Context<Self>) {
+        self.listed(Ok(summaries), cx);
+    }
 }
 
 #[cfg(test)]

@@ -13,7 +13,7 @@ use serde_json::{Value, json};
 use super::{Rig, allow, call, controlled, external, read_shell, terminal};
 use crate::test_support::{repo, select};
 
-fn summary(id: &str, cwd: &Path, at: &str) -> ThreadSummary {
+pub(super) fn summary(id: &str, cwd: &Path, at: &str) -> ThreadSummary {
     ThreadSummary {
         id: ThreadId(id.into()),
         cwd: cwd.to_string_lossy().into_owned(),

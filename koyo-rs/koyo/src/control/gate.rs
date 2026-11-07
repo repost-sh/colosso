@@ -2,16 +2,23 @@
 //! covers every scope the call needs.
 
 use gpui_kit::App;
-use koyo_app_control::{Command, ControlError, Scope};
+use koyo_app_control::{Command, ControlError, ErrorCode, Scope};
 
 use super::Caller;
 use crate::settings;
 
-/// What `caller` may do now: an agent in a Koyo terminal what such agents may, an
-/// external client what the person allowed it, as long as external control is on.
+/// What `caller` may do now: an agent in a Koyo terminal what such agents may, and a chat's
+/// as long as Koyo tools are on; an external client what the person allowed it, as long as
+/// external control is on.
 pub(crate) fn grant(caller: &Caller, cx: &App) -> Result<Vec<Scope>, ControlError> {
+    if caller.chat.is_some() && !settings::get(cx).koyo_tools {
+        return Err(ControlError::new(
+            ErrorCode::ControlDisabled,
+            "Koyo tools are off for chats; the person can turn them on in Settings → Chat.",
+        ));
+    }
     if !caller.external() {
-        return Ok(Scope::TERMINAL_AGENT.to_vec());
+        return Ok(Scope::AGENT.to_vec());
     }
     let policy = &settings::get(cx).external_control;
     if !policy.enabled {
