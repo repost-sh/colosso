@@ -266,7 +266,7 @@ pub fn request_if_running<M: Method>(
     dir: &DaemonDir,
     params: &M::Params,
 ) -> Result<Option<M::Result>, ClientError> {
-    let Ok(stream) = UnixStream::connect(dir.socket()) else {
+    let Ok(stream) = koyo_daemon::connect(&dir.socket()) else {
         return Ok(None);
     };
     let connected = Client::over(stream, ClientKind::App)?;

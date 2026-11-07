@@ -85,7 +85,7 @@ impl Connection {
         hello: &Hello,
         inbox: Sender<Message>,
     ) -> Result<(Arc<Connection>, Welcome), ClientError> {
-        Connection::over(UnixStream::connect(socket)?, hello, inbox)
+        Connection::over(koyo_daemon::connect(socket)?, hello, inbox)
     }
 
     /// Says hello over `stream`, connected to the daemon, and starts the reader thread, as

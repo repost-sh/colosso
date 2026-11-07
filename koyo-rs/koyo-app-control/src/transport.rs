@@ -78,7 +78,7 @@ impl Listener {
                 )));
             }
             Ok(_) => {
-                if UnixStream::connect(&path).is_ok() {
+                if koyo_daemon::connect(&path).is_ok() {
                     return Err(BindError::InUse(path));
                 }
                 fs::remove_file(&path)?;
@@ -86,7 +86,7 @@ impl Listener {
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
             Err(error) => return Err(error.into()),
         }
-        let socket = UnixListener::bind(&path)?;
+        let socket = koyo_daemon::bind(&path)?;
         fs::set_permissions(&path, Permissions::from_mode(0o600))?;
         let found = fs::symlink_metadata(&path)?;
         Ok(Listener {
@@ -161,7 +161,7 @@ impl Connection {
     /// # Errors
     /// `NotFound` or `ConnectionRefused` when nothing listens there ([`nobody_listening`]).
     pub fn connect(endpoint: &Endpoint) -> io::Result<Connection> {
-        UnixStream::connect(endpoint.path()).map(|stream| Connection { stream })
+        koyo_daemon::connect(endpoint.path()).map(|stream| Connection { stream })
     }
 
     /// A connected pair, for tests that need no socket file.

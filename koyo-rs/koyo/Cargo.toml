@@ -8,6 +8,8 @@ publish.workspace = true
 [dependencies]
 # The chats: the agent host's protocol and client (`docs/chat.md` 5.1).
 koyo-agent = { path = "../koyo-agent" }
+# A daemon's socket, reached however deep its folder is, as the visual checks stand in for one.
+koyo-daemon = { path = "../koyo-daemon" }
 # App control: the operations agents and scripts drive the window with, the control socket and
 # `koyo app`, the CLI the app runs from its own executable.
 koyo-app-control = { path = "../koyo-app-control" }

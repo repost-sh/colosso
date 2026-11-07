@@ -6,8 +6,6 @@
 //! dialog quitting opens then, which names it; its Stop Everything stops the agent host, which
 //! nothing starts again.
 //!
-//! The agent host's folder is short, as a socket's path can't be long.
-//!
 //! ```sh
 //! mkdir -p .superpowers/c/tmp &&
 //!   KOYO_AGENT_PROVIDER=fake KOYO_DATA_DIR=$PWD/.superpowers/c TMPDIR=$PWD/.superpowers/c/tmp \

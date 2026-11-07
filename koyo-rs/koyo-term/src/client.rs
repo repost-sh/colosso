@@ -264,8 +264,7 @@ impl TermClient {
     }
 
     fn is_running(&self) -> bool {
-        self.connection().is_some()
-            || std::os::unix::net::UnixStream::connect(self.dir.socket()).is_ok()
+        self.connection().is_some() || koyo_daemon::connect(&self.dir.socket()).is_ok()
     }
 
     /// Attaches `handle` for a view of `size`: its stream starts with a snapshot.

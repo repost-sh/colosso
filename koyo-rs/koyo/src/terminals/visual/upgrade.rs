@@ -4,7 +4,7 @@
 //! and the shell runs again on this build's daemon.
 
 use std::io::{Read as _, Write as _};
-use std::os::unix::net::{UnixListener, UnixStream};
+use std::os::unix::net::UnixStream;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -82,7 +82,7 @@ struct Older {
 impl Older {
     fn start(dir: &TermDir) -> Result<Older> {
         let socket = dir.socket();
-        let listener = UnixListener::bind(&socket)
+        let listener = koyo_daemon::bind(&socket)
             .map_err(|error| format!("couldn't stand in for the daemon: {error}"))?;
         let stopped = Arc::new(AtomicBool::new(false));
         let done = Arc::clone(&stopped);

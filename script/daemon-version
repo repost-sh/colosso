@@ -58,7 +58,8 @@ set_version() {
 termd_fingerprint() {
   crates=$(../script/cargo tree --quiet --offline -p koyo-termd -e normal,build --prefix none |
     LC_ALL=C sort -u)
-  folders=$(printf '%s\n' "$crates" | sed -n "s|.*($PWD/\(.*\))\$|\1|p")
+  # A crate met again in the tree is marked `(*)` after its folder.
+  folders=$(printf '%s\n' "$crates" | sed -n "s|.*($PWD/\([^)]*\)).*|\1|p" | LC_ALL=C sort -u)
   {
     printf '%s\n' "$crates" | sed "s|($PWD/|(|"
     # shellcheck disable=SC2086 # one word per folder

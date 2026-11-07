@@ -1,6 +1,5 @@
 //! Stopping another build's daemon to start this one's (`docs/terminals.md` 5.1).
 
-use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -46,7 +45,7 @@ fn a_daemon_that_ignores_sigterm_is_killed_so_this_builds_can_start() {
         &mut ready,
     )
     .expect("ready");
-    assert!(UnixStream::connect(dir.socket()).is_ok(), "it listens");
+    assert!(koyo_daemon::connect(&dir.socket()).is_ok(), "it listens");
 
     let start = Instant::now();
     let stopped = stop_daemon(&dir, &Hello::new(ClientKind::App, "test", "0"));
@@ -64,7 +63,7 @@ fn a_daemon_that_ignores_sigterm_is_killed_so_this_builds_can_start() {
 
     assert!(stopped.is_ok(), "stopped: {stopped:?}");
     assert!(
-        UnixStream::connect(dir.socket()).is_err(),
+        koyo_daemon::connect(&dir.socket()).is_err(),
         "nothing listens"
     );
     assert!(!status.success(), "killed, not ended by itself: {status:?}");

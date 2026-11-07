@@ -334,6 +334,11 @@ the daemon runs the operations (8.1). Loopback HTTP is deferred.
 - Single-instance guarantee: `flock` on `<dir>/daemon.lock` holding the pid; the socket path
   is only trusted when the lock is held (pattern from agent-terminal
   `cli/src/native/daemon/claim/mod.rs:11-31`).
+- A socket address holds at most 103 bytes of path on macOS, and a daemon's folder can be
+  deeper (a checkout's scratch folder, a long `KOYO_DATA_DIR`). A socket is reached by its path
+  when that fits, else by the way to it from the working directory
+  (`koyo_daemon::socket_address`, `bind`, `connect`): a daemon runs in its own folder, so it
+  binds its socket by name, and a test runs in its package, inside the checkout.
 - Files, under `settings::data_dir()/term/` (macOS: `~/Library/Application Support/Koyo/term/`):
   - `daemon.sock` (mode 0600), `daemon.lock`, `daemon.version` (protocol + build),
     `daemon.log` (rotated, size-bounded).

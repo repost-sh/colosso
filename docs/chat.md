@@ -307,6 +307,9 @@ only while `host.lock` is held; `start.lock`, under which a client checks again 
 the host; a `ready` line on stdout once it listens; `host.log`, which starts over at a
 megabyte keeping `host.log.old` (`src/log.ts`); stderr only in the foreground. What differs:
 
+- The socket is reached however deep the folder is, as termd's is (`docs/terminals.md` 5.1): by
+  the way to it from the working directory when its path is too long for a socket address
+  (`src/socket.ts`). The host runs in its folder, so it listens on `host.sock` by name.
 - The host is its own executable, `koyo-agent-host --dir <agents>`, not a subcommand of the
   app: it's Bun's, not Rust's. Compiled with `--no-compile-autoload-dotenv` and
   `--no-compile-autoload-bunfig`, so no `.env` or `bunfig.toml` near it changes it.

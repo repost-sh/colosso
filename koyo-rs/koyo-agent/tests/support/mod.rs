@@ -10,9 +10,9 @@ use koyo_agent::protocol::wire::HOST_VERSION;
 use koyo_daemon::DaemonDir;
 use serde_json::{Value, json};
 
-/// A host's folder of the test's own, under the checkout's ignored `.superpowers/t`. The path
-/// is kept short (the checkout's canonical one, the socket right in it), as a socket's can't
-/// pass 104 bytes.
+/// A host's folder of the test's own, under the checkout's ignored `.superpowers/t`, its socket
+/// right in it: reached by the way from the package however deep the checkout is
+/// (`koyo_daemon::socket_address`).
 pub fn scratch() -> DaemonDir {
     static MADE: AtomicUsize = AtomicUsize::new(0);
     let made = MADE.fetch_add(1, Ordering::Relaxed);
@@ -88,7 +88,7 @@ pub fn stand_in_for(
     dir: &DaemonDir,
     connections: Vec<Box<dyn FnOnce(Host) + Send>>,
 ) -> JoinHandle<()> {
-    let listener = UnixListener::bind(dir.socket()).unwrap();
+    let listener = koyo_daemon::bind(&dir.socket()).unwrap();
     let socket = dir.socket();
     std::thread::spawn(move || {
         for serve in connections {

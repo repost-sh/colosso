@@ -9,8 +9,8 @@
 //! show.
 //!
 //! The daemon, its shell and what they write stay in the checkout: the shell's home is a
-//! scratch folder, and the daemon's folder is short, as a socket's path can't be long. The
-//! check starts the daemon afresh in it, so no earlier run's terminals come back.
+//! scratch folder, and the daemon's folder is in the checkout too. The check starts the daemon
+//! afresh in it, so no earlier run's terminals come back.
 //!
 //! ```sh
 //! mkdir -p .superpowers/t/home .superpowers/t/tmp && touch .superpowers/t/home/.zshrc &&

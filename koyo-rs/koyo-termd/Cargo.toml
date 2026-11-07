@@ -18,6 +18,8 @@ name = "koyo-term"
 path = "src/bin/koyo-term.rs"
 
 [dependencies]
+# Listening on its socket however deep its folder is.
+koyo-daemon = { path = "../koyo-daemon" }
 koyo-term-control = { path = "../koyo-term-control" }
 koyo-term-engine = { path = "../koyo-term-engine" }
 bytes = "1"

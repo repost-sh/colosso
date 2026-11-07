@@ -5,6 +5,7 @@
 import { chmodSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
+import { SOCKET_PATH_MAX, socketAddress } from "../socket";
 import { type Lock, takeLock } from "./lock";
 
 export interface Folder {
@@ -30,17 +31,15 @@ export function folder(root: string): Folder {
   };
 }
 
-/** A socket path's limit on macOS, its terminating zero included. */
-const MAX_SOCKET_PATH = 104;
-
 /**
  * Makes the folder this user's alone and takes its lock, then clears the way for the socket: a
  * socket left there was a host's that died, since the lock is ours. Answers who holds the lock
  * when another host does.
  */
 export function claim(dir: Folder): Lock {
-  if (Buffer.byteLength(dir.socket) >= MAX_SOCKET_PATH) {
-    throw new Error(`The socket path ${dir.socket} is too long; use a shorter KOYO_DATA_DIR.`);
+  if (Buffer.byteLength(socketAddress(dir.socket)) > SOCKET_PATH_MAX) {
+    const where = `${dir.socket}, even from ${process.cwd()},`;
+    throw new Error(`The socket path ${where} is too long; use a shorter KOYO_DATA_DIR.`);
   }
   mkdirSync(dir.root, { recursive: true, mode: 0o700 });
   chmodSync(dir.root, 0o700);
