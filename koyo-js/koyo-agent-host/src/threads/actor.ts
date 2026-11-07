@@ -446,6 +446,10 @@ export class ThreadActor {
         this.#requests.proposed(event.request);
         return;
       }
+      case "background": {
+        this.#state.background(event.tasks);
+        return;
+      }
       case "subagent.started":
       case "subagent.changed":
       case "subagent.event":
@@ -468,10 +472,7 @@ export class ThreadActor {
   /** What lived in the session beside its turn went with it. */
   #sessionGone(): void {
     this.#subagents.lost();
-    const requests = this.#requests.releaseSubagents(this.#cx.now());
-    if (requests.length > 0) {
-      this.#state.commit({ requests });
-    }
+    this.#state.sessionGone(this.#requests.releaseSubagents(this.#cx.now()));
   }
 
   #sessionEnded(error: string | null): void {

@@ -213,7 +213,7 @@ export class Turns {
 
   /** A frame of the conversation, credited to the running turn once the CLI took it. */
   frame(frame: SDKMessage): void {
-    if (this.#frames.subagents.hears(frame)) {
+    if (this.#frames.subagents.hears(frame) || this.#frames.background.hears(frame)) {
       return;
     }
     if (frame.type === "result") {

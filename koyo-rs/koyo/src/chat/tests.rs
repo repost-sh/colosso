@@ -21,6 +21,7 @@ use crate::model::PaneKind;
 use crate::shell::Shell;
 use crate::test_support::{draw, repo, select, shell_with};
 
+mod activity;
 pub(super) mod asks;
 mod config;
 mod details;
@@ -86,6 +87,7 @@ pub(super) fn snapshot(id: &str, seq: u64, items: Vec<Item>) -> ThreadSnapshot {
             queue_held: false,
             tab_open: true,
             parent: None,
+            background_tasks: 0,
             created_at: Time(AT.into()),
             updated_at: Time(AT.into()),
             read_at: None,

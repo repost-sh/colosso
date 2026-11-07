@@ -17,7 +17,7 @@ use objc2::rc::Retained;
 use objc2_app_kit::NSView;
 
 use super::native::Native;
-use super::{Glow, Next, Pointer, Shot};
+use super::{Glow, Next, Pointer, Shot, glow};
 use crate::browser::responsive::to_window;
 use crate::browser::view::BrowserView;
 use crate::gradient;
@@ -42,12 +42,22 @@ pub(super) const HAIRLINE: f32 = 0.45;
 
 /// A page's agent marks: its pointer, its glow, the pointer's layers in the page's view, and
 /// the wake-up for the pointer's fade.
-#[derive(Default)]
 pub struct Marks {
     pub pointer: Pointer,
     pub glow: Glow,
     native: Option<Native>,
     wake: Option<(Instant, Task<()>)>,
+}
+
+impl Default for Marks {
+    fn default() -> Self {
+        Marks {
+            pointer: Pointer::default(),
+            glow: glow(),
+            native: None,
+            wake: None,
+        }
+    }
 }
 
 impl BrowserView {

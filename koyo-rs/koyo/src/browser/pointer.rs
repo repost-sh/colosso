@@ -13,11 +13,13 @@ use std::time::{Duration, Instant};
 
 use gpui_kit::{Point, Size, point};
 
+use crate::fade::{progress, smooth};
+
 mod glow;
 mod native;
 mod overlay;
 
-pub use glow::Glow;
+pub use glow::{Glow, glow};
 pub(super) use overlay::{Marks, overlay};
 
 /// How long the pointer rests after its last move or click before it fades.
@@ -181,22 +183,9 @@ fn turn(from: f32, to: f32) -> f32 {
     if turn > PI { turn - 2. * PI } else { turn }
 }
 
-/// 0 to 1 over `span` from `since`, at `now`.
-fn progress(since: Instant, span: Duration, now: Instant) -> f32 {
-    if span.is_zero() {
-        return 1.;
-    }
-    (now.saturating_duration_since(since).as_secs_f32() / span.as_secs_f32()).clamp(0., 1.)
-}
-
 /// Eases in and out, its speed and acceleration nothing at either end.
 fn smoother(t: f32) -> f32 {
     t * t * t * (t * (t * 6. - 15.) + 10.)
-}
-
-/// Eases in and out, its speed nothing at either end.
-fn smooth(t: f32) -> f32 {
-    t * t * (3. - 2. * t)
 }
 
 /// How long a move along `length` of arc takes: longer moves are faster, not much longer.

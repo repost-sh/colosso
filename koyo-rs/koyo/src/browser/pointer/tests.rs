@@ -152,7 +152,7 @@ fn less_motion_jumps_and_the_person_taking_the_page_hides_it() {
 #[test]
 fn the_glow_comes_and_goes_from_where_it_was() {
     let start = Instant::now();
-    let mut glow = Glow::default();
+    let mut glow = glow();
     assert!(glow.level(start).abs() < 1e-6);
     glow.set(true, start);
     assert!(glow.changing(at(start, 100)));

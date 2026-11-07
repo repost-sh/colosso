@@ -107,6 +107,29 @@ export class ThreadState {
     return this.#unsettled.find((run) => run.status === "queued");
   }
 
+  /** The agent has `tasks` running in the background now. */
+  background(tasks: number): void {
+    if (tasks !== this.#thread.backgroundTasks) {
+      this.commit({ thread: { ...this.#thread, backgroundTasks: tasks } });
+    }
+  }
+
+  /** The session went, and what ran in it beside its turn: its background, and its subagents'
+   * `requests`, released. */
+  sessionGone(requests: readonly Request[]): void {
+    const thread = this.#quieted(null);
+    if (thread !== null || requests.length > 0) {
+      this.commit({ thread, requests });
+    }
+  }
+
+  /** `changed`, or else the thread, with nothing in the background; `changed` as it is when
+   * that's so already. */
+  #quieted(changed: Thread | null): Thread | null {
+    const thread = changed ?? this.#thread;
+    return thread.backgroundTasks === 0 ? changed : { ...thread, backgroundTasks: 0 };
+  }
+
   /** The thread with its queue held, when something is queued and it isn't yet. */
   holding(): Thread | null {
     const nothingToHold = this.#thread.queueHeld || this.next() === undefined;
@@ -297,7 +320,8 @@ export class ThreadState {
     // A background subagent's row outlives its run, so this looks past the runs that were live.
     const items = this.#store.openItems(this.#thread.id).map((item) => lost(item, at));
     const requests = this.#pending.flatMap((request) => orphaned(request, at) ?? []);
-    const thread = this.holding();
+    // What ran in the background went with the host's sessions.
+    const thread = this.#quieted(this.holding());
     if (runs.length > 0 || items.length > 0 || requests.length > 0 || thread !== null) {
       this.commit({ thread, runs, items, requests });
     }

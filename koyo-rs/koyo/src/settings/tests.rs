@@ -43,6 +43,8 @@ fn missing_fields_fall_back_to_defaults() {
     assert_eq!(settings.most_language_servers, None);
     assert!(!settings.stop_idle_language_servers);
     assert!(settings.runs_server("rust-analyzer", None));
+    // The composer's edge shows a chat working with a subtle line.
+    assert_eq!(settings.chat_activity, ChatActivity::Subtle);
     // A markdown file opens as it reads, as GitHub shows it.
     assert_eq!(
         settings.markdown_opens_as,
@@ -173,6 +175,21 @@ fn a_chat_text_size_picked_before_sizes_came_down_a_notch_keeps_its_place_on_the
         12_f32.to_bits(),
         "a new size stays"
     );
+}
+
+#[test]
+fn what_the_composer_shows_while_a_chat_works_is_kept() {
+    for activity in ChatActivity::ALL {
+        let settings = Settings {
+            chat_activity: activity,
+            ..Settings::default()
+        };
+        let json = serde_json::to_value(&settings).unwrap();
+        assert_eq!(json["chat_activity"], format!("{activity:?}"));
+        assert_eq!(serde_json::from_value::<Settings>(json).unwrap(), settings);
+    }
+    let off: Settings = serde_json::from_str(r#"{ "chat_activity": "Off" }"#).unwrap();
+    assert_eq!(off.chat_activity, ChatActivity::Off);
 }
 
 #[test]

@@ -35,8 +35,8 @@ pub(super) fn section(
     if agents.is_empty() {
         return None;
     }
-    let running = |item: &Item| matches!(item.status, ItemStatus::Running | ItemStatus::Pending);
-    let (working, done): (Vec<_>, Vec<_>) = agents.into_iter().partition(|(item, _)| running(item));
+    let (working, done): (Vec<_>, Vec<_>) =
+        (agents.into_iter()).partition(|(item, _)| item.status.is_open());
     let open = view.details.previous;
     let line = row(IconName::Bot, p)
         .child(

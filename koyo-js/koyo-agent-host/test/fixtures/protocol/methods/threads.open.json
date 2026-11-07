@@ -27,6 +27,7 @@
         "queueHeld": false,
         "tabOpen": true,
         "parent": null,
+        "backgroundTasks": 1,
         "createdAt": "2026-11-03T18:02:11.204Z",
         "updatedAt": "2026-11-03T18:09:40.877Z",
         "readAt": "2026-11-03T18:05:02.000Z",

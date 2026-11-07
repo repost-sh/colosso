@@ -101,6 +101,11 @@ pub struct Thread {
     pub tab_open: bool,
     /// The row of the thread that started it, for a subagent's: it runs on its own.
     pub parent: Option<Box<ThreadParent>>,
+    /// How many tasks the agent has running in the background, as its session last said: shells,
+    /// Monitors, subagents past their turn. It goes on from them as they end, so the chat isn't
+    /// done. None while no session runs, and from a host from before it said.
+    #[serde(default)]
+    pub background_tasks: u64,
     pub created_at: Time,
     pub updated_at: Time,
     pub read_at: Option<Time>,
@@ -225,6 +230,13 @@ pub enum ItemStatus {
     Failed,
     Declined,
     Interrupted,
+}
+
+impl ItemStatus {
+    /// Whether it's still going: not started yet, or running.
+    pub fn is_open(self) -> bool {
+        matches!(self, ItemStatus::Pending | ItemStatus::Running)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]

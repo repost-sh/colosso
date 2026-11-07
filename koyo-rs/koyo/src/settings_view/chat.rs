@@ -1,5 +1,6 @@
 //! The Chat settings page: what chats run on, what an agent may do and how hard it works in a new
-//! chat, and how much of its work shows, its verbosity.
+//! chat, how wide a chat is and what its composer shows while it works, and how much of its work
+//! shows, its verbosity.
 
 use std::path::Path;
 
@@ -21,7 +22,13 @@ actions!(settings, [EditClaudePath, ClearClaudePath]);
 const EFFORT_STOPS: [f32; 5] = [0., 1., 2., 3., 4.];
 
 pub fn sections(cx: &App) -> Vec<SettingsSection> {
-    vec![agent(cx), new_chats(cx), layout(cx), verbosity(cx)]
+    vec![
+        agent(cx),
+        new_chats(cx),
+        layout(cx),
+        composer(cx),
+        verbosity(cx),
+    ]
 }
 
 fn effort_stop(effort: Effort) -> f32 {
@@ -163,6 +170,22 @@ fn layout(cx: &App) -> SettingsSection {
             )
             .control(MenuButton::new("chat-width", width.label(), |cx| {
                 settings::get(cx).chat_width.menu()
+            })),
+    )
+}
+
+fn composer(cx: &App) -> SettingsSection {
+    let activity = settings::get(cx).chat_activity;
+    SettingsSection::new("Composer").row(
+        SettingRow::new("While it works")
+            .description(
+                "How the composer's edge shows the agent or one of its subagents working: a subtle \
+                 line going slowly round it, a clearer one, or the edge a little brighter, holding \
+                 still, as a line does with Reduce motion on or Koyo in the background. Off leaves \
+                 it as faint as any glass's.",
+            )
+            .control(MenuButton::new("chat-activity", activity.label(), |cx| {
+                settings::get(cx).chat_activity.menu()
             })),
     )
 }

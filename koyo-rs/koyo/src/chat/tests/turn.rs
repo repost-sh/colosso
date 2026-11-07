@@ -19,7 +19,13 @@ use super::{run, snapshot};
 use crate::test_support::draw;
 
 /// The host now says these runs, and whether the queue waits for a person.
-fn runs_are(chat: &Asking, runs: Vec<Run>, held: bool, seq: u64, cx: &mut TestAppContext) {
+pub(super) fn runs_are(
+    chat: &Asking,
+    runs: Vec<Run>,
+    held: bool,
+    seq: u64,
+    cx: &mut TestAppContext,
+) {
     let mut thread = snapshot("0001", seq, Vec::new()).thread;
     thread.queue_held = held;
     let event = ThreadEvent::Changed(Box::new(Changed {

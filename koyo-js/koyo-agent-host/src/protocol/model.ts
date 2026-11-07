@@ -65,6 +65,12 @@ export const Thread = z.object({
   tabOpen: z.boolean(),
   /** The row of the thread that started it, for a subagent's: it runs on its own (4.5.10). */
   parent: z.object({ threadId: ThreadId, itemId: ItemId }).nullable().default(null),
+  /**
+   * How many tasks the agent has running in the background, as its session last said: shells,
+   * Monitors, subagents past their turn. It goes on from them as they end, so the chat isn't done.
+   * None while no session runs.
+   */
+  backgroundTasks: Count.default(0),
   createdAt: Time,
   updatedAt: Time,
   readAt: Time.nullable(),

@@ -9,6 +9,7 @@ mod checkout;
 mod checkouts;
 mod control;
 mod delete_worktree;
+mod fade;
 mod files;
 mod former_name;
 mod go_to_file;
