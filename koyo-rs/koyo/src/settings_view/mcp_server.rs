@@ -1,7 +1,7 @@
 //! The MCP server page (`docs/app-control.md` 9): the switch that serves Koyo's MCP over
-//! HTTP on localhost, its URL and port, one-click setup for the usual clients, and the
-//! stdio command agents start. The clients the person allowed and what they did are in
-//! `mcp_clients`.
+//! HTTP on localhost, its URL and port, whether the window switches to what agents open,
+//! one-click setup for the usual clients, and the stdio command agents start. The clients
+//! the person allowed and what they did are in `mcp_clients`.
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
@@ -19,7 +19,7 @@ use crate::theme;
 const SERVER_NAME: &str = "koyo";
 
 pub fn sections(cx: &App) -> Vec<SettingsSection> {
-    let mut sections = vec![server(cx)];
+    let mut sections = vec![server(cx), agents()];
     if control::policy(cx).enabled {
         sections.push(clients_setup(cx));
     }
@@ -81,6 +81,25 @@ fn server(cx: &App) -> SettingsSection {
             ),
     );
     section
+}
+
+/// What agents' calls do to the window when they don't say: for every agent, those in Koyo's
+/// terminals too, so it shows whether the server is on or not.
+fn agents() -> SettingsSection {
+    SettingsSection::new("Agents").row(
+        SettingRow::new("Switch to what agents open")
+            .description(
+                "When an agent makes a worktree, opens a tab, a file or the changes, splits a \
+                 pane, adds a project or starts a chat, the window switches to it. Off, it's \
+                 listed in the sidebar and the tab strip and the window stays where you are. \
+                 An agent you ask to show you something still does.",
+            )
+            .control(NativeSwitch::new(
+                "mcp-show-what-agents-open",
+                |settings| settings.external_control.show_what_agents_open,
+                |settings, on| settings.external_control.show_what_agents_open = on,
+            )),
+    )
 }
 
 fn clients_setup(cx: &App) -> SettingsSection {

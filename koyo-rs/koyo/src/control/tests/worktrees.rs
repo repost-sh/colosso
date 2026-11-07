@@ -31,7 +31,8 @@ fn a_worktree_is_made_listed_and_selected(cx: &mut TestAppContext) {
     let rig = controlled("control-worktree-create", &[&root], cx);
     select(&rig.shell, &root, cx);
     let agent = terminal("term_1");
-    let created = call(&agent, "worktree_create", json!({ "name": "Feat x" }), cx).unwrap();
+    let made = json!({ "name": "Feat x", "select": true });
+    let created = call(&agent, "worktree_create", made, cx).unwrap();
     let path = path_of(&created["worktree"]["path"]);
     assert_eq!(created["worktree"]["branch"], json!("feat-x"));
     assert_eq!(

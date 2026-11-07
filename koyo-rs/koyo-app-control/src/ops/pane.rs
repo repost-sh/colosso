@@ -43,6 +43,11 @@ pub struct PaneSplitInput {
     /// A new terminal's command line; the login shell when left out.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub command: Option<String>,
+    /// Show the tab with the split, switching the window to its worktree. Left out, the
+    /// person's choice in Settings → MCP server decides, and by default the window stays
+    /// where it was. Pass true only when the person asked to see it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub select: Option<bool>,
 }
 
 /// What goes into a split.
@@ -96,7 +101,7 @@ impl Operation for PaneSplit {
     const TITLE: &'static str = "Split pane";
     const SUBJECT: &'static [&'static str] = &["pane"];
     const SCOPE: Scope = Scope::Navigate;
-    const DESCRIPTION: &'static str = "Splits `pane` and puts another pane on its `edge`: an existing one taken from its tab (`move`), or a new one of a `kind` with tab_open's fields. Answers the placed pane's id and tab.";
+    const DESCRIPTION: &'static str = "Splits `pane` and puts another pane on its `edge`: an existing one taken from its tab (`move`), or a new one of a `kind` with tab_open's fields. The window switches to the split's tab only with `select: true`, or with `select` left out when the person chose in Settings to see what agents open. Answers the placed pane's id and tab.";
     const HINTS: Hints = Hints::CHANGE;
     type Input = PaneSplitInput;
     type Output = PanePlace;

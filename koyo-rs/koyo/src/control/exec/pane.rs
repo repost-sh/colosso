@@ -7,9 +7,11 @@ use koyo_app_control::ops::pane::{PaneResizeInput, PaneResizeOutput, PaneSplitIn
 use koyo_app_control::ops::shared::Edge;
 use serde_json::Value;
 
+use super::super::policy;
 use super::open::Opened;
 use super::{Exec, info, open, output, select, try_update_shell};
 use crate::model::{self, SPLIT_MIN, Tab};
+use crate::navigation::Route;
 
 impl From<Edge> for model::Edge {
     fn from(edge: Edge) -> model::Edge {
@@ -23,9 +25,12 @@ impl From<Edge> for model::Edge {
 }
 
 /// Splits the pane `input` names with a pane at an edge: one moved from its tab on the same
-/// checkout, or a new one of a kind, opened as `tab_open` would open it.
+/// checkout, or a new one of a kind, opened as `tab_open` would open it. The split's tab is
+/// shown when `select` says, or as the person set what agents open to show; else the window
+/// stays where it was, and so does the tab its checkout shows.
 pub(crate) fn split(input: &PaneSplitInput, cx: &mut App) -> Result<Exec, ControlError> {
     let (source, target, side) = (input.source()?, input.pane, input.edge.into());
+    let shown = policy::shows(input.select, cx);
     let opened = try_update_shell(cx, |shell, window, cx| {
         let (project, branch, _) = select::pane(&shell.workspace, target)?;
         match source {
@@ -40,13 +45,13 @@ pub(crate) fn split(input: &PaneSplitInput, cx: &mut App) -> Result<Exec, Contro
             }
             SplitSource::New(spec) => {
                 open::check(&spec)?;
-                let root = open::show_worktree(shell, (project, branch), window, cx);
-                Ok(open::open(shell, &root, &spec, false, window, cx))
+                let at = (project, branch);
+                Ok(open::open_on(shell, at, &spec, false, shown, window, cx))
             }
         }
     })?;
     Ok(opened.then(cx, move |pane, cx| {
-        try_update_shell(cx, |shell, _, cx| {
+        try_update_shell(cx, |shell, window, cx| {
             let (project, branch, _) = select::pane(&shell.workspace, target)?;
             let unit = (shell.workspace.unit_mut(project, branch))
                 .ok_or_else(|| ControlError::not_found("The pane's worktree went away."))?;
@@ -55,9 +60,19 @@ pub(crate) fn split(input: &PaneSplitInput, cx: &mut App) -> Result<Exec, Contro
                     "That pane is open on another worktree, so it can't split this one.",
                 ));
             }
+            // The tab the checkout shows, found again by a pane of it: moving the pane shows
+            // the split's tab instead.
+            let showing = unit.tabs.get(unit.active_tab).map(|tab| tab.first().id);
             if !unit.move_pane(pane, target, side) {
                 return Err(ControlError::invalid_input("A pane can't split itself."));
             }
+            if shown {
+                open::show_worktree(shell, (project, branch), window, cx);
+                shell.navigate(Route::Workspace, cx);
+            } else if let Some(at) = showing.and_then(|first| unit.tab_with(first)) {
+                unit.active_tab = at;
+            }
+            open::open_unseen_page(shell, pane, cx);
             cx.notify();
             output(&info::place(shell, pane)?)
         })

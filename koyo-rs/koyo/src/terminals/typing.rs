@@ -22,7 +22,7 @@ impl Shell {
             return;
         };
         let name = Naming::After(terminal::name_after(&line).unwrap_or_else(shell_name));
-        self.open_terminal(worktree, name, Vec::new(), Some(line), cx)
+        self.open_terminal(worktree, name, Vec::new(), Some(line), true, cx)
             .detach();
     }
 

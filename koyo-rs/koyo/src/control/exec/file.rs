@@ -5,34 +5,55 @@ use std::path::PathBuf;
 
 use gpui_kit::{App, AsyncApp, Entity};
 use koyo_app_control::ControlError;
-use koyo_app_control::ops::file::{FileOpenInput, FileSaveInput, FileSaveOutput, SaveTarget};
+use koyo_app_control::ops::file::{
+    ChangesOpenInput, FileOpenInput, FileSaveInput, FileSaveOutput, SaveTarget,
+};
 use serde_json::Value;
 
-use super::super::Caller;
+use super::super::{Caller, policy};
 use super::{Exec, info, open, output, select, try_update_shell};
 use crate::files::FileEditor;
 use crate::model::Tab;
 
-/// Opens a file on its worktree, relative to the checkout unless it's absolute.
+/// Opens a file on its worktree, relative to the checkout unless it's absolute: shown, its
+/// editor taking the keyboard, when `select` says or as the person set what agents open to
+/// show; else out of sight, the window kept where it was.
 pub(crate) fn open(caller: &Caller, input: &FileOpenInput, cx: &mut App) -> Exec {
+    let shown = policy::shows(input.select, cx);
     let opened = try_update_shell(cx, |shell, window, cx| {
-        let (project, branch) =
-            select::worktree(caller, &shell.workspace, input.worktree.as_deref(), None)?;
-        let root = open::show_worktree(shell, (project, branch), window, cx);
-        let beside = input.split.and_then(|_| shell.focused_pane(window, cx));
-        let kept = !input.preview.unwrap_or(false);
-        let position = (input.line, input.column);
+        let at = select::worktree(caller, &shell.workspace, input.worktree.as_deref(), None)?;
         if input.line.is_none() && input.column.is_some() {
             return Err(ControlError::invalid_input("`column` needs a `line`."));
         }
-        let pane = open::open_file(shell, &root, &input.path, position, kept, window, cx)?;
-        if let (Some(edge), Some(target)) = (input.split, beside)
-            && target != pane
-            && let Some(unit) = shell.workspace.unit_mut(project, branch)
-        {
-            unit.move_pane(pane, target, edge.into());
-            cx.notify();
-        }
+        let pane = open::on_checkout(
+            shell,
+            at,
+            (shown, true),
+            window,
+            cx,
+            |shell, root, window, cx| {
+                let beside = input.split.and_then(|_| shell.focused_pane(window, cx));
+                let kept = !input.preview.unwrap_or(false);
+                let position = (input.line, input.column);
+                let pane = open::open_file(
+                    shell,
+                    root,
+                    &input.path,
+                    position,
+                    (kept, shown),
+                    window,
+                    cx,
+                )?;
+                if let (Some(edge), Some(target)) = (input.split, beside)
+                    && target != pane
+                    && let Some(unit) = shell.workspace.unit_mut(at.0, at.1)
+                {
+                    unit.move_pane(pane, target, edge.into());
+                    cx.notify();
+                }
+                Ok::<_, ControlError>(pane)
+            },
+        )?;
         output(&info::place(shell, pane)?)
     });
     Exec::Ready(opened)
@@ -92,17 +113,24 @@ pub(crate) fn save(input: &FileSaveInput, cx: &mut App) -> Result<Exec, ControlE
     })))
 }
 
-/// Shows a worktree's Changes tab, opening it if it isn't open.
+/// Opens a worktree's Changes tab, or finds it when it's open: shown when `select` says or as
+/// the person set what agents open to show, else out of sight.
 pub(crate) fn changes_open(
     caller: &Caller,
-    worktree: Option<&str>,
+    input: &ChangesOpenInput,
     cx: &mut App,
 ) -> Result<Value, ControlError> {
+    let shown = policy::shows(input.select, cx);
     try_update_shell(cx, |shell, window, cx| {
-        let (project, branch) = select::worktree(caller, &shell.workspace, worktree, None)?;
-        shell.workspace.select_branch(project, branch);
-        shell.follow_selection(window, cx);
-        let pane = open::open_changes(shell, window, cx)?;
+        let at = select::worktree(caller, &shell.workspace, input.worktree.as_deref(), None)?;
+        let pane = open::on_checkout(
+            shell,
+            at,
+            (shown, true),
+            window,
+            cx,
+            |shell, _, window, cx| open::open_changes(shell, window, cx),
+        )?;
         output(&info::place(shell, pane)?)
     })
 }

@@ -29,6 +29,12 @@ pub struct FileOpenInput {
     /// Open it in a split on this side of the focused pane instead of a tab.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub split: Option<Edge>,
+    /// Show the file's tab, switching the window to its worktree, and give its editor the
+    /// keyboard. Left out, the person's choice in Settings → MCP server decides, and by
+    /// default it only joins its worktree's tabs. Pass true only when the person asked to see
+    /// it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub select: Option<bool>,
 }
 
 /// `file_open`: a file in an editor.
@@ -40,7 +46,7 @@ impl Operation for FileOpen {
     const TITLE: &'static str = "Open file";
     const SUBJECT: &'static [&'static str] = &["path"];
     const SCOPE: Scope = Scope::Navigate;
-    const DESCRIPTION: &'static str = "Opens a file in an editor tab (or a split, with `split`) at a line and column, showing the tab its editor already has when it's open. Doesn't change the file.";
+    const DESCRIPTION: &'static str = "Opens a file in an editor tab (or a split, with `split`) at a line and column, or finds the tab its editor already has. The window shows it only with `select: true`, or with `select` left out when the person chose in Settings to see what agents open. Doesn't change the file.";
     const HINTS: Hints = Hints::CHANGE;
     type Input = FileOpenInput;
     type Output = PanePlace;
@@ -126,6 +132,11 @@ pub struct ChangesOpenInput {
     /// selected one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worktree: Option<String>,
+    /// Show the Changes tab, switching the window to its worktree. Left out, the person's
+    /// choice in Settings → MCP server decides, and by default it only joins its worktree's
+    /// tabs. Pass true only when the person asked to see it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub select: Option<bool>,
 }
 
 /// `changes_open`: the Changes tab.
@@ -137,8 +148,7 @@ impl Operation for ChangesOpen {
     const TITLE: &'static str = "Open changes";
     const SUBJECT: &'static [&'static str] = &["worktree"];
     const SCOPE: Scope = Scope::Navigate;
-    const DESCRIPTION: &'static str =
-        "Opens a worktree's Changes tab, the diff of what it changed, or shows it when it's open.";
+    const DESCRIPTION: &'static str = "Opens a worktree's Changes tab, the diff of what it changed, or finds it when it's open. The window shows it only with `select: true`, or with `select` left out when the person chose in Settings to see what agents open.";
     const HINTS: Hints = Hints::CHANGE;
     type Input = ChangesOpenInput;
     type Output = PanePlace;

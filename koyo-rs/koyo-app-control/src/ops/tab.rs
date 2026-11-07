@@ -127,7 +127,9 @@ pub struct TabOpenInput {
     /// `end` (the default) or `beside` the selected tab.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub place: Option<Place>,
-    /// Show the new tab; true when left out.
+    /// Show the new tab, switching the window to its worktree. Left out, the person's choice
+    /// in Settings → MCP server decides, and by default it only joins its worktree's tabs.
+    /// Pass true only when the person asked to see it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub select: Option<bool>,
 }
@@ -157,7 +159,7 @@ impl Operation for TabOpen {
     const TITLE: &'static str = "Open tab";
     const SUBJECT: &'static [&'static str] = &["kind", "url", "file", "terminal"];
     const SCOPE: Scope = Scope::Navigate;
-    const DESCRIPTION: &'static str = "Opens a tab of a kind as the menu would: a terminal (new, or an existing one by `terminal` handle), a browser page at `url`, a `file` in an editor at `line`, the changes, or a chat. Answers the new pane's id and tab.";
+    const DESCRIPTION: &'static str = "Opens a tab of a kind as the menu would: a terminal (new, or an existing one by `terminal` handle), a browser page at `url`, a `file` in an editor at `line`, the changes, or a chat. The window shows it only with `select: true`, or with `select` left out when the person chose in Settings to see what agents open; otherwise it joins its worktree's tabs and the window stays where it was. Answers the new pane's id and tab.";
     const HINTS: Hints = Hints::CHANGE;
     type Input = TabOpenInput;
     type Output = PanePlace;

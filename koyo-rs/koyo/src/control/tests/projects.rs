@@ -14,11 +14,11 @@ fn projects_are_added_selected_moved_and_removed(cx: &mut TestAppContext) {
     let second = repo("control-projects-b", &[("src/lib.rs", "pub fn b() {}\n")]);
     let rig = controlled("control-projects", &[&first], cx);
     let agent = terminal("term_1");
-    // A folder inside the repository adds it by its main checkout, selected.
+    // A folder inside the repository adds it by its main checkout, selected as asked.
     let added = call(
         &agent,
         "project_add",
-        json!({ "path": second.join("src") }),
+        json!({ "path": second.join("src"), "select": true }),
         cx,
     )
     .unwrap();

@@ -121,6 +121,21 @@ impl BrowserView {
         }
     }
 
+    /// Opens the page in the host though no pane draws it, as an agent's page opened out of
+    /// sight needs for the browser tools to reach it: at the size a pane assumes before it's
+    /// drawn, until it's drawn at its own, and painting nothing meanwhile. A page opens on
+    /// its own only once it's drawn.
+    pub(crate) fn open_out_of_sight(&mut self, cx: &mut Context<Self>) {
+        if self.viewport.is_some() || self.is_inspector() {
+            return;
+        }
+        let viewport = self.undrawn_viewport();
+        self.viewport_changed(viewport, Dragging::No, cx);
+        if self.is_open(cx) {
+            self.set_visible(false, cx);
+        }
+    }
+
     /// The host started, stopped or failed.
     pub(in crate::browser) fn host_changed(&mut self, cx: &mut Context<Self>) {
         let epoch = self.browsers.read(cx).epoch();

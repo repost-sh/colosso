@@ -83,7 +83,9 @@ pub struct WorktreeCreateInput {
     /// Work on `base` itself instead of a new branch.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub existing: Option<bool>,
-    /// Switch the window to the new worktree; true when left out.
+    /// Show the new worktree, switching the window to it. Left out, the person's choice in
+    /// Settings → MCP server decides, and by default it's only listed in the sidebar. Pass
+    /// true only when the person asked to see it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub select: Option<bool>,
 }
@@ -115,7 +117,7 @@ impl Operation for WorktreeCreate {
     const TITLE: &'static str = "Create worktree";
     const SUBJECT: &'static [&'static str] = &["name"];
     const SCOPE: Scope = Scope::Manage;
-    const DESCRIPTION: &'static str = "Creates a worktree of a project as the New Worktree dialog does: a branch `<prefix>/<slug>` from `base` (or `base` itself with `existing`), checked out in the project's worktrees folder, and switches to it unless `select` is false.";
+    const DESCRIPTION: &'static str = "Creates a worktree of a project as the New Worktree dialog does: a branch `<prefix>/<slug>` from `base` (or `base` itself with `existing`), checked out in the project's worktrees folder, and lists it in the sidebar. The window switches to it, with a chat open on it, only with `select: true`, or with `select` left out when the person chose in Settings to see what agents open.";
     const HINTS: Hints = Hints::CHANGE;
     type Input = WorktreeCreateInput;
     type Output = WorktreeCreateOutput;
