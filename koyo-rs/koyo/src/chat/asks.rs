@@ -193,9 +193,9 @@ fn frame(p: Palette, waiting: bool) -> Div {
         .p_3()
         .rounded(px(12.))
         .border_1()
-        .border_color(p.hairline)
+        .border_color(p.wash_line)
         .when(waiting, |frame| {
-            frame.border_color(p.text.opacity(0.3)).bg(p.raised)
+            frame.border_color(p.text.opacity(0.3)).bg(p.faint_wash)
         })
 }
 

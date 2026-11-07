@@ -45,7 +45,7 @@ impl Drawing {
             clock(&run.requested_at)
         };
         let said = bubble()
-            .bg(p.selected)
+            .bg(p.wash)
             .when(!message.attachments.is_empty(), |said| {
                 said.child(attached(&item.id.0, &message.attachments, p))
             })

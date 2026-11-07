@@ -29,14 +29,14 @@ const DIFF_HEIGHT: f32 = 432.;
 const DIFF_FONT_SIZE: f32 = 12.;
 const DIFF_LINE_HEIGHT: f32 = 18.;
 
-/// A sunken box, which scrolls past a height.
+/// A box washed as code in an answer is, which scrolls past a height.
 pub(super) fn scroll_box(id: impl Into<ElementId>, p: Palette) -> Stateful<Div> {
     div()
         .id(id)
         .max_h(px(OUTPUT_HEIGHT))
         .overflow_y_scroll()
         .rounded(px(8.))
-        .bg(p.sunken)
+        .bg(p.faint_wash)
 }
 
 /// The box a tool's text goes in.

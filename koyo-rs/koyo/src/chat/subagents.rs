@@ -143,8 +143,8 @@ fn card(drawing: &Drawing, item: &Item, agent: &Subagent, moving: bool) -> State
         .py_2()
         .rounded(px(10.))
         .border_1()
-        .border_color(p.hairline)
-        .bg(p.raised)
+        .border_color(p.wash_line)
+        .bg(p.faint_wash)
         .child(avatar(item.status, p))
         .child(
             div()
