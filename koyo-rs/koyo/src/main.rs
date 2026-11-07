@@ -14,6 +14,7 @@ mod former_name;
 mod go_to_file;
 mod gradient;
 mod history;
+mod kept_file;
 mod key_repeat;
 mod language;
 mod launcher;

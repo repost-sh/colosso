@@ -63,7 +63,7 @@ impl Shell {
         self.make_shown_browsers(window, cx);
         let pane = (self.workspace.tab(at))
             .and_then(|tab| tab.panes().into_iter().find(|pane| pane.id == id))
-            .map(|pane| (pane.terminal, pane.file.clone(), pane.browser.clone()));
+            .map(|pane| (pane.terminal, pane.file.clone(), pane.view().cloned()));
         self.make_shown_chats(window, cx);
         let focus = if let Some(chat) = self.chat_tabs.view(id) {
             Some(chat.focus_handle(cx))
@@ -99,7 +99,8 @@ impl Shell {
             terminal.is_some_and(|view| view.focus_handle(cx).contains_focused(window, cx))
                 || chat.is_some_and(|view| view.focus_handle(cx).contains_focused(window, cx))
                 || (pane.file.as_ref()).is_some_and(|file| file.read(cx).has_focus(window, cx))
-                || (pane.browser.as_ref())
+                || pane
+                    .view()
                     .is_some_and(|view| view.focus_handle(cx).contains_focused(window, cx))
         });
         focused.or(panes.first()).map(|pane| pane.id)

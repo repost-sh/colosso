@@ -96,8 +96,7 @@ impl Shell {
 
     /// The pane showing `view`: where its tab is, as `(project, branch, tab)`, and its id.
     fn pane_of(&self, view: &Entity<BrowserView>) -> Option<((usize, usize, usize), u64)> {
-        self.workspace
-            .find_pane(|pane| pane.browser.as_ref() == Some(view))
+        self.workspace.find_pane(|pane| pane.view() == Some(view))
     }
 
     /// Where the tab holding `view` is.
@@ -197,7 +196,7 @@ impl Shell {
             return;
         };
         let unit = self.workspace.unit_mut(project, branch);
-        let view = unit.and_then(|unit| unit.pane(id)?.browser.clone());
+        let view = unit.and_then(|unit| unit.pane(id)?.view().cloned());
         if let Some(view) = view {
             self.let_devtools_go(view, cx);
         }
@@ -294,7 +293,7 @@ impl Shell {
         let panes: Vec<_> = tab
             .panes()
             .into_iter()
-            .map(|pane| (pane.id, pane.browser.clone()))
+            .map(|pane| (pane.id, pane.view().cloned()))
             .collect();
         for view in panes.iter().filter_map(|(_, view)| view.clone()) {
             self.let_devtools_go(view, cx);
@@ -358,10 +357,7 @@ mod tests {
                 panic!("a single pane");
             };
             assert_eq!(pane.kind, PaneKind::Browser);
-            let view = pane
-                .browser
-                .as_ref()
-                .expect("the pane shows a browser view");
+            let view = pane.view().expect("the pane shows a browser view");
             assert!(view.read(cx).is_start_page());
         });
     }

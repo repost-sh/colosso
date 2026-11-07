@@ -94,7 +94,7 @@ fn page(shell: &Entity<Shell>, cx: &mut TestAppContext) -> Entity<BrowserView> {
         let unit = shell.workspace.branch().unwrap();
         let tab = &unit.tabs[unit.active_tab];
         let pane = tab.panes()[0];
-        pane.browser.clone().expect("a browser pane")
+        pane.view().cloned().expect("a browser pane")
     })
 }
 
@@ -139,7 +139,7 @@ fn devtools_dock_at_every_side_detach_into_a_split_and_close_with_their_page(
         .unwrap();
     shell.read_with(cx, |shell, _| {
         let unit = shell.workspace.branch().unwrap();
-        let second = unit.tabs[unit.active_tab].panes()[1].browser.clone();
+        let second = unit.tabs[unit.active_tab].panes()[1].view().cloned();
         assert_eq!(second.as_ref(), Some(&tools), "right of the page");
     });
 

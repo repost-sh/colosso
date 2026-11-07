@@ -53,9 +53,9 @@ it), beside `history.json`:
   to bottom.
 - Kept: page panes with an address. Not `DevTools`, and not a tab with no address yet (a new
   tab's start page): an empty browser tab leaves nothing behind, as an empty chat tab doesn't.
-- Written through `atomic_file::write` 500 ms after a change, with whatever else changed
-  meanwhile; and on quit and when the window closes, if a write is due. A file that can't be
-  read is no tabs.
+- Written 500 ms after a change, with whatever else changed meanwhile; and on quit and when
+  the window closes, if a write is due. A file that can't be read is no tabs. `kept_file`
+  does the reading and writing, as it does for the chat drafts and the history.
 
 ## 3. One rule for what's kept [decided]
 
@@ -81,8 +81,9 @@ project removed): every one of them changes the shell.
 
 ## 5. Pages made when shown [decided]
 
-- A restored pane holds `Pane::unloaded` (the address and the site's icon) and no
-  `BrowserView`. `Shell::make_shown_browsers` makes the shown tab's missing views with
+- A restored pane holds its address and the site's icon (`Unloaded`) and no `BrowserView`;
+  the model keeps a pane from holding both (`Pane::set_view` lets the address go).
+  `Shell::make_shown_browsers` makes the shown tab's missing views with
   `BrowserView::new(address, …)`, from `Shell::workspace_content` beside
   `make_shown_terminals` and `make_shown_chats`, and from `focus_pane`, so a page focused
   through the launcher or app control takes the keyboard. The page opens once it's laid out
@@ -116,9 +117,10 @@ the tab is what makes the page, so the tools don't make one of their own.
 
 | Path | What |
 | --- | --- |
+| `koyo/src/kept_file.rs` | Reading the file, the write a moment after a change, and the write on quit |
 | `koyo/src/browser/tabs.rs` | The file, the rule (`keep_browser_tabs`), restoring and `make_shown_browsers` |
 | `koyo/src/browser/tabs/tests.rs` | The file, the rule, restore order and focus, pages made when shown, ⌘⇧T, quit |
-| `koyo/src/model/tab.rs` | `Pane::unloaded`, `Pane::address`, `Pane::favicon` |
+| `koyo/src/model/tab.rs` | A pane's page or its kept address, never both (`view`, `set_view`, `take_unloaded`), `Pane::address`, `Pane::favicon` |
 | `koyo/src/model/browsers.rs` | `Workspace::add_unloaded_tab` |
 | `koyo/src/projects.rs` | `show_worktrees`, where restoring runs |
 | `koyo/src/shell.rs` | The shell's observer, where the rule runs, and `workspace_content` |

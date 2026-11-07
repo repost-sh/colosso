@@ -30,7 +30,7 @@ impl Shell {
                 .map(|(_, address)| address.clone())
                 .unwrap_or_default();
             // Titled as it was until the page says otherwise.
-            pane.browser = Some(self.browser_view(address, &project, window, cx));
+            pane.set_view(self.browser_view(address, &project, window, cx));
         }
         self.workspace.restore_tab(at, tab);
         self.reopen_files(at, &closed.files, window, cx);

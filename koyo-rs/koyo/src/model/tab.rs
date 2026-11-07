@@ -22,11 +22,12 @@ pub struct Pane {
     pub id: u64,
     pub kind: PaneKind,
     pub title: SharedString,
-    /// The page a browser pane shows, once the shell has made it.
-    pub browser: Option<Entity<BrowserView>>,
+    /// The page a browser pane shows, once the shell has made it (`view`, `set_view`).
+    pub(super) browser: Option<Entity<BrowserView>>,
     /// A browser pane's page while it has no view: a tab brought back at launch, its page made
-    /// when the tab is first shown (`docs/browser.md` 5). Boxed, as few panes have one.
-    pub unloaded: Option<Box<Unloaded>>,
+    /// when the tab is first shown (`docs/browser.md` 5). Never set beside `browser`. Boxed, as
+    /// few panes have one.
+    pub(super) unloaded: Option<Box<Unloaded>>,
     /// The file an editor pane shows, once the shell has opened one in it.
     pub file: Option<Entity<FilePane>>,
     /// The checkout's diffs, when it's an editor pane showing them rather than a file.
@@ -74,6 +75,27 @@ impl Pane {
             unloaded: Some(Box::new(unloaded)),
             ..Pane::new(PaneKind::Browser)
         }
+    }
+
+    /// The page a browser pane shows, once it's made.
+    pub fn view(&self) -> Option<&Entity<BrowserView>> {
+        self.browser.as_ref()
+    }
+
+    /// The pane shows `view` from now on, and no longer holds an address to open.
+    pub fn set_view(&mut self, view: Entity<BrowserView>) {
+        self.browser = Some(view);
+        self.unloaded = None;
+    }
+
+    /// The address and icon a browser pane with no view holds, taken as its page is made.
+    pub fn take_unloaded(&mut self) -> Option<Unloaded> {
+        self.unloaded.take().map(|unloaded| *unloaded)
+    }
+
+    /// The address a browser pane with no view opens once its tab is shown.
+    pub fn unloaded_address(&self) -> Option<&str> {
+        (self.unloaded.as_ref()).map(|unloaded| unloaded.address.as_str())
     }
 
     /// The address a browser pane shows, or opens once its tab is shown; `None` for another

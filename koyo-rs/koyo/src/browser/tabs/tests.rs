@@ -74,7 +74,7 @@ fn browsers(
             .filter(|pane| pane.kind == PaneKind::Browser)
             .map(|pane| {
                 let address = pane.address(cx).unwrap_or_default();
-                (pane.title.to_string(), address, pane.browser.is_some())
+                (pane.title.to_string(), address, pane.view().is_some())
             })
             .collect()
     })
@@ -113,7 +113,7 @@ fn view_of(shell: &Entity<Shell>, pane: u64, cx: &TestAppContext) -> Option<Enti
     cx.read(|cx| {
         let tab = shell.read(cx).workspace.tab(at)?;
         let pane = tab.panes().into_iter().find(|found| found.id == pane)?;
-        pane.browser.clone()
+        pane.view().cloned()
     })
 }
 
@@ -305,7 +305,7 @@ fn a_tab_brought_back_opens_its_page_only_once_shown(cx: &mut TestAppContext) {
     );
     let unloaded = cx.read(|cx| {
         let tab = shell.read(cx).workspace.tab(restored_at);
-        tab.map(|tab| tab.first().unloaded.is_some())
+        tab.map(|tab| tab.first().unloaded_address().is_some())
     });
     assert_eq!(unloaded, Some(false));
 }

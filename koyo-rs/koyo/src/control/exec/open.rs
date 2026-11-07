@@ -105,7 +105,7 @@ pub(crate) fn open_unseen_page(shell: &mut Shell, pane: u64, cx: &mut Context<Sh
         return;
     }
     let view = (workspace.projects[at.0].branches[at.1].pane(pane))
-        .and_then(|found| found.browser.clone());
+        .and_then(|found| found.view().cloned());
     if let Some(view) = view {
         view.update(cx, BrowserView::open_out_of_sight);
     }

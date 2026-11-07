@@ -1,23 +1,24 @@
 //! What's being written in each chat and isn't sent yet (`docs/chat.md` 5.2): a draft for each
 //! thread, and one for the new chat of each folder, there again when the chat next opens, after a
-//! restart too. They're kept in a file in the host's folder, where it looks to see which attachments
-//! they name, written a moment after the last change and on the way out. A composer takes up its
-//! chat's draft to write to and is the only one that does: two couldn't both own the files it
-//! attaches, which the draft keeps until they're sent or taken away.
+//! restart too. They're kept in a file in the host's folder, where it looks to see which
+//! attachments they name, written a moment after a change, with what's typed meanwhile, and on the
+//! way out (`kept_file`). A composer takes up its chat's draft to write to and is the only one that
+//! does: two couldn't both own the files it attaches, which the draft keeps until they're sent or
+//! taken away.
 
 use std::collections::{HashMap, HashSet};
-use std::io;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Duration;
 
-use gpui_kit::{App, Global, Task};
+use gpui_kit::{App, Global};
 use koyo_agent::client;
 use koyo_agent::protocol::ids::ThreadId;
 use koyo_agent::protocol::model::Attachment;
 use serde::{Deserialize, Serialize};
 
 use super::attachments;
-use crate::{atomic_file, settings};
+use crate::kept_file::{self, KeptFile};
+use crate::settings;
 
 const SAVE_DELAY: Duration = Duration::from_millis(300);
 const FILE: &str = "chat-drafts.json";
@@ -43,11 +44,9 @@ struct Drafts {
     /// None of them empty.
     kept: HashMap<DraftOf, Draft>,
     /// Where they're saved, if the app has a folder to save them in.
-    path: Option<PathBuf>,
+    file: KeptFile,
     /// Where what they attach is kept.
     attachments: Option<PathBuf>,
-    /// The save waiting for changes to settle; replacing it cancels it.
-    pending: Option<Task<()>>,
     /// The chats whose draft a composer has up.
     held: HashSet<DraftOf>,
 }
@@ -64,11 +63,8 @@ pub(super) fn init(cx: &mut App) {
     );
     // A change still settling when the app quits is written on the way out.
     cx.on_app_quit(|cx| {
-        let drafts = cx.global_mut::<Drafts>();
-        if drafts.pending.take().is_some()
-            && let Some(path) = &drafts.path
-        {
-            write_file(path, &drafts.kept);
+        if let Some((path, json)) = due(cx) {
+            kept_file::write_now(&path, &json);
         }
         async {}
     })
@@ -76,36 +72,23 @@ pub(super) fn init(cx: &mut App) {
 }
 
 fn open(path: Option<PathBuf>, attachments: Option<PathBuf>, cx: &mut App) {
+    // A draft isn't worth stopping for: a file that can't be read is none. JSON can't have a
+    // chat as a key, so it's a list.
+    let listed: Option<Vec<(DraftOf, Draft)>> = path.as_deref().and_then(kept_file::read);
     cx.set_global(Drafts {
-        kept: path.as_deref().map(read_file).unwrap_or_default(),
-        path,
+        kept: listed.unwrap_or_default().into_iter().collect(),
+        file: KeptFile::new(path),
         attachments,
-        pending: None,
         held: HashSet::new(),
     });
 }
 
-/// What's in the file, or nothing if it can't be read: a draft isn't worth stopping for.
-fn read_file(path: &Path) -> HashMap<DraftOf, Draft> {
-    let kept = std::fs::read(path).and_then(|json| {
-        let listed: Vec<(DraftOf, Draft)> = serde_json::from_slice(&json)?;
-        Ok(listed.into_iter().collect())
-    });
-    kept.unwrap_or_else(|error: io::Error| {
-        if error.kind() != io::ErrorKind::NotFound {
-            log::warn!("couldn't read {}: {error}", path.display());
-        }
-        HashMap::new()
-    })
-}
-
-/// JSON can't have a chat as a key, so it's a list.
-fn write_file(path: &Path, kept: &HashMap<DraftOf, Draft>) {
-    let listed: Vec<(&DraftOf, &Draft)> = kept.iter().collect();
-    match serde_json::to_vec_pretty(&listed) {
-        Ok(json) => atomic_file::write(path, &json),
-        Err(error) => log::error!("couldn't encode the drafts: {error}"),
-    }
+/// Where to write the drafts, and their JSON, if a write is due, which then no longer is.
+fn due(cx: &mut App) -> Option<(PathBuf, Vec<u8>)> {
+    let drafts = cx.global_mut::<Drafts>();
+    let path = drafts.file.take_due()?;
+    let listed: Vec<(&DraftOf, &Draft)> = drafts.kept.iter().collect();
+    Some((path, kept_file::encode(&listed)?))
 }
 
 /// Where what's attached to a message being written is kept.
@@ -173,19 +156,9 @@ pub(super) fn thread_removed(id: &ThreadId, cx: &mut App) {
 }
 
 fn save(cx: &mut App) {
-    let save = cx.spawn(async move |cx| {
-        cx.background_executor().timer(SAVE_DELAY).await;
-        let now = cx.update(|cx| {
-            let drafts = cx.global::<Drafts>();
-            Some((drafts.path.clone()?, drafts.kept.clone()))
-        });
-        if let Some((path, kept)) = now {
-            cx.background_executor()
-                .spawn(async move { write_file(&path, &kept) })
-                .await;
-        }
-    });
-    cx.global_mut::<Drafts>().pending = Some(save);
+    if cx.global_mut::<Drafts>().file.changed() {
+        kept_file::write_later(cx, SAVE_DELAY, due);
+    }
 }
 
 /// What `of`'s draft holds now.
@@ -196,12 +169,12 @@ pub(super) fn kept(of: &DraftOf, cx: &App) -> Option<Draft> {
 
 /// From now on they're kept at `path`, as if the app had just started.
 #[cfg(test)]
-pub(super) fn open_at(path: &Path, cx: &mut App) {
+pub(super) fn open_at(path: &std::path::Path, cx: &mut App) {
     open(Some(path.to_owned()), None, cx);
 }
 
 /// From now on what they attach is kept in `folder`.
 #[cfg(test)]
-pub(super) fn attach_into(folder: &Path, cx: &mut App) {
+pub(super) fn attach_into(folder: &std::path::Path, cx: &mut App) {
     cx.global_mut::<Drafts>().attachments = Some(folder.to_owned());
 }

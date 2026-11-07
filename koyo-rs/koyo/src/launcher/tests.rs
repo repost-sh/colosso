@@ -173,7 +173,7 @@ fn an_address_typed_opens_its_page_and_words_are_searched(cx: &mut TestAppContex
     let address = cx.read(|cx| {
         let unit = shell.read(cx).workspace.branch().expect("a checkout");
         let pane = unit.tabs[0].first();
-        pane.browser.as_ref().map(|view| view.read(cx).address())
+        pane.view().map(|view| view.read(cx).address())
     });
     assert_eq!(address.as_deref(), Some("https://example.com/docs"));
 

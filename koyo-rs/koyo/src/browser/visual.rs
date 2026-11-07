@@ -340,7 +340,7 @@ impl Check {
 fn shown_page(shell: &Entity<Shell>, cx: &App) -> Option<Entity<BrowserView>> {
     let unit = shell.read(cx).workspace.branch()?;
     let tab = unit.tabs.get(unit.active_tab)?;
-    tab.panes().first()?.browser.clone()
+    tab.panes().first()?.view().cloned()
 }
 
 /// Whether `view` shows the page titled `title`, loaded and painted.

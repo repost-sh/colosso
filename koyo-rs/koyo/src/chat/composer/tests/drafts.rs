@@ -306,7 +306,7 @@ fn a_deleted_thread_takes_its_draft_and_its_files_with_it(cx: &mut TestAppContex
 }
 
 #[gpui_kit::test]
-fn a_draft_is_saved_a_moment_after_the_last_change_for_the_next_start(cx: &mut TestAppContext) {
+fn a_draft_is_saved_a_moment_after_a_change_for_the_next_start(cx: &mut TestAppContext) {
     let place = Place::new("draft-saved", cx);
     let path = scratch("draft-saved-file").join("chat-drafts.json");
     cx.update(|cx| drafts::open_at(&path, cx));

@@ -3,7 +3,7 @@
 //! is kept with its latest uses, how each came about and where, and what was typed before each was
 //! picked from the launcher, ranked as Firefox's address bar ranks its places (`rank`). One history
 //! for every project, those used in the checkout at hand ranked higher. It's kept in a file in the
-//! app's data folder, written a moment after a change settles.
+//! app's data folder, written a moment after a change (`kept_file`).
 
 mod address;
 mod icons;
@@ -15,14 +15,15 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use gpui_kit::{App, Global, Task};
+use gpui_kit::{App, Global};
 use serde::{Deserialize, Serialize};
 
 pub use address::{display_url, same_page_key};
 pub use icons::{icon, keep_icon};
 pub use rank::{Found, Origins, match_words};
 
-use crate::{atomic_file, settings};
+use crate::kept_file::{self, KeptFile};
+use crate::settings;
 
 /// What the file is called, in the app's data folder.
 const FILE: &str = "history.json";
@@ -131,11 +132,9 @@ pub struct History {
     /// The project each checkout listed belongs to, by its main checkout.
     #[serde(skip)]
     projects: HashMap<PathBuf, PathBuf>,
+    /// Where it's kept, if the app has a folder to keep it in.
     #[serde(skip)]
-    path: Option<PathBuf>,
-    /// The write coming, which a change made meanwhile joins.
-    #[serde(skip)]
-    saving: Option<Task<()>>,
+    file: KeptFile,
 }
 
 impl Global for History {}
@@ -152,32 +151,26 @@ pub fn init(cx: &mut App) {
     let path = settings::data_dir()
         .filter(|_| !cfg!(test))
         .map(|data| data.join(FILE));
+    let read: Option<History> = path.as_deref().and_then(kept_file::read);
     let history = History {
-        path: path.clone(),
-        ..path.as_deref().map(load).unwrap_or_default()
+        file: KeptFile::new(path),
+        ..read.unwrap_or_default()
     };
     cx.set_global(history);
     // A change still settling when the app quits is written on the way out.
     cx.on_app_quit(|cx| {
-        let history = cx.global_mut::<History>();
-        if history.saving.take().is_some()
-            && let Some(path) = history.path.clone()
-        {
-            atomic_file::write(&path, &history.encode());
+        if let Some((path, json)) = due(cx) {
+            kept_file::write_now(&path, &json);
         }
         async {}
     })
     .detach();
 }
 
-fn load(path: &Path) -> History {
-    let Ok(json) = std::fs::read(path) else {
-        return History::default();
-    };
-    serde_json::from_slice(&json).unwrap_or_else(|error| {
-        log::warn!("couldn't read the history at {}: {error}", path.display());
-        History::default()
-    })
+/// Where to write the history, and its JSON, if a write is due, which then no longer is.
+fn due(cx: &mut App) -> Option<(PathBuf, Vec<u8>)> {
+    let history = cx.global_mut::<History>();
+    Some((history.file.take_due()?, history.encode()))
 }
 
 /// The history, to read.
@@ -191,29 +184,11 @@ fn update(cx: &mut App, change: impl FnOnce(&mut History)) {
     if cx.try_global::<History>().is_none() {
         return;
     }
-    change(cx.global_mut::<History>());
-    let history = cx.global::<History>();
-    if history.path.is_none() || history.saving.is_some() {
-        return;
+    let history = cx.global_mut::<History>();
+    change(history);
+    if history.file.changed() {
+        kept_file::write_later(cx, SAVE_DELAY, due);
     }
-    let save = cx.spawn(async move |cx| {
-        cx.background_executor().timer(SAVE_DELAY).await;
-        let encoded = cx.update(|cx| {
-            let history = cx.global_mut::<History>();
-            // Dropped, the handle would cancel this very write; a change from now on is the
-            // next one's.
-            if let Some(save) = history.saving.take() {
-                save.detach();
-            }
-            Some((history.path.clone()?, history.encode()))
-        });
-        if let Some((path, json)) = encoded {
-            cx.background_executor()
-                .spawn(async move { atomic_file::write(&path, &json) })
-                .await;
-        }
-    });
-    cx.global_mut::<History>().saving = Some(save);
 }
 
 /// A browser tab loaded the page at `url`, titled `title`, in `place`, having come `how`: a
