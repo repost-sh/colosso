@@ -61,14 +61,12 @@ fn tabs_output(
 ) -> Result<Value, ControlError> {
     let workspace = &shell.workspace;
     let focused = shell.focused_pane(window, cx);
-    let selected = (
-        workspace.active_project,
-        workspace.project().map(|project| project.active_branch),
-    );
+    let selected =
+        (workspace.active_project()).zip(workspace.project().map(|project| project.active_branch));
     let worktrees = (units.iter())
         .map(|&(project, branch)| {
             let unit = &workspace.projects[project].branches[branch];
-            let shown = selected == (project, Some(branch));
+            let shown = selected == Some((project, branch));
             let tabs = (unit.tabs.iter().enumerate())
                 .map(|(index, tab)| TabInfo {
                     index: info::count(index),

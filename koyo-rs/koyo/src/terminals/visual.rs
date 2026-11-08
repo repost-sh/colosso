@@ -71,6 +71,7 @@ fn draw() -> Result<Vec<String>> {
         shell.update(cx, |shell, cx| {
             let project = shell.workspace.add_project(repo.clone());
             shell.show_worktrees(&repo, read_worktrees(&repo), cx);
+            shell.save_projects(cx);
             shell.workspace.select_worktree(project, &repo)
         })
     });

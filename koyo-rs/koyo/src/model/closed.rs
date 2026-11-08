@@ -44,16 +44,7 @@ impl Workspace {
     /// `(project, branch, tab)`. Tabs of checkouts gone since are let go.
     pub fn take_closed(&mut self) -> Option<(ClosedTab, (usize, usize, usize))> {
         while let Some(closed) = self.closed.pop() {
-            let found = self
-                .projects
-                .iter()
-                .enumerate()
-                .find_map(|(project, listed)| {
-                    (listed.branches.iter())
-                        .position(|unit| unit.worktree.path == closed.checkout)
-                        .map(|branch| (project, branch))
-                });
-            if let Some((project, branch)) = found {
+            if let Some((project, branch)) = self.unit_at(&closed.checkout) {
                 let at = closed
                     .at
                     .min(self.projects[project].branches[branch].tabs.len());

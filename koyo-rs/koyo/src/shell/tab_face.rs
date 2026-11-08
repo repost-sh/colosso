@@ -20,6 +20,8 @@ use crate::theme::Palette;
 
 /// The widest a chip of a split gets in the strip.
 const CHIP_MAX: f32 = 180.;
+/// A pane's close button, which a half of a split down the sidebar makes room for as it shows.
+const CLOSE: f32 = 18.;
 
 /// What a pane shows as in a tab: its icon, or its page's own, and its title.
 #[derive(Clone)]
@@ -91,31 +93,17 @@ impl Face {
     }
 }
 
-/// A split tab's panes, by their `faces`, as chips in a list along `axis`: down the
-/// sidebar they share its width evenly; along the strip each is as wide as its title, to a
-/// point. The active tab's chips show their close buttons, as do the sidebar's others
-/// while hovered.
-pub fn split_chips(
-    faces: &[Face],
-    (axis, active): (Axis, bool),
-    p: Palette,
-    cx: &mut Context<Shell>,
-) -> Div {
+/// A split tab's panes, by their `faces`, in a list along `axis`. Down the sidebar they're as
+/// Arc has them (`split_halves`); along the strip they're chips, each as wide as its title, to a
+/// point, each with its close button.
+pub fn split_chips(faces: &[Face], axis: Axis, p: Palette, cx: &mut Context<Shell>) -> Div {
+    if axis == Axis::Vertical {
+        return split_halves(faces, p, cx);
+    }
     let chips = faces.iter().map(|face| {
-        let close = pane_close_button("pane-chip-close", face.id, face.dirty, p, cx).when(
-            axis == Axis::Vertical && !active,
-            |close| {
-                close
-                    .opacity(0.)
-                    .group_hover("pane-chip", |style| style.opacity(1.))
-            },
-        );
+        let close = pane_close_button("pane-chip-close", face.id, face.dirty, p, cx);
         face.chip()
-            .group("pane-chip")
-            .map(|chip| match axis {
-                Axis::Vertical => chip.flex_1(),
-                Axis::Horizontal => chip.max_w(px(CHIP_MAX)),
-            })
+            .max_w(px(CHIP_MAX))
             .pl_1p5()
             .pr_0p5()
             .bg(p.hover)
@@ -128,4 +116,64 @@ pub fn split_chips(
         .items_center()
         .gap_1()
         .children(chips)
+}
+
+/// A split tab's panes down the sidebar, as Arc has them (`docs/arc-sidebar.md` 5).
+fn split_halves(faces: &[Face], p: Palette, cx: &mut Context<Shell>) -> Div {
+    let mut parts: Vec<AnyElement> = Vec::new();
+    for (at, face) in faces.iter().enumerate() {
+        if at > 0 {
+            parts.push(
+                div()
+                    .w(px(1.))
+                    .h(px(16.))
+                    .flex_shrink_0()
+                    .bg(p.text.opacity(0.2))
+                    .into_any_element(),
+            );
+        }
+        // It takes room only while it shows, so the title has all the half till then.
+        let close = div()
+            .flex_shrink_0()
+            .overflow_hidden()
+            .when(!face.dirty, |close| {
+                close
+                    .w(px(0.))
+                    .group_hover("pane-half", |style| style.w(px(CLOSE)))
+            })
+            .child(pane_close_button(
+                "pane-chip-close",
+                face.id,
+                face.dirty,
+                p,
+                cx,
+            ));
+        parts.push(
+            div()
+                .group("pane-half")
+                .flex_1()
+                .min_w_0()
+                .h_full()
+                .flex()
+                .items_center()
+                .gap(px(10.))
+                .child(
+                    div()
+                        .flex_shrink_0()
+                        .text_color(p.text.opacity(0.75))
+                        .child(face.icon(16.)),
+                )
+                .child(face.label().flex_1())
+                .child(close)
+                .into_any_element(),
+        );
+    }
+    div()
+        .flex_1()
+        .min_w_0()
+        .h_full()
+        .flex()
+        .items_center()
+        .gap(px(10.))
+        .children(parts)
 }

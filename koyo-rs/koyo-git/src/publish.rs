@@ -70,14 +70,9 @@ impl Checkout {
         }
     }
 
-    /// The remote it goes to: `origin`, or the first there is.
+    /// The remote it goes to.
     fn remote(&self) -> Option<String> {
-        let remotes = Git::new(self.root())
-            .arg("remote")
-            .read_optional()
-            .unwrap_or_default();
-        let origin = remotes.lines().find(|remote| *remote == "origin");
-        origin.or_else(|| remotes.lines().next()).map(str::to_owned)
+        crate::default_remote(self.root())
     }
 
     /// The branch its branch tracks.

@@ -49,7 +49,7 @@ pub fn tab_list(
 pub fn tab_row(
     row: Stateful<Div>,
     (at, tab): ((usize, usize, usize), &Tab),
-    (axis, active, hand): (Axis, bool, &Rc<TabHand>),
+    (axis, hand): (Axis, &Rc<TabHand>),
     p: Palette,
     cx: &mut Context<Shell>,
     single: impl FnOnce(Stateful<Div>, &Face, &mut Context<Shell>) -> Stateful<Div>,
@@ -57,7 +57,11 @@ pub fn tab_row(
     let faces = Face::all(tab, cx);
     let row = match (tab, faces.first()) {
         (Tab::Single(_), Some(face)) => single(row, face, cx),
-        _ => (row.px(px(3.))).child(split_chips(&faces, (axis, active), p, cx)),
+        // Along the strip a split's chips fill the row nearly to its edge; down the sidebar its
+        // halves keep the row's own room, as a single pane does.
+        _ => row
+            .when(axis == Axis::Horizontal, |row| row.px(px(3.)))
+            .child(split_chips(&faces, axis, p, cx)),
     };
     let key = tab.first().id;
     let row = tab_drag(row, (at, key), (axis, hand), faces, p, cx);
@@ -96,10 +100,14 @@ fn tab_drag(
         })
         .drag_over::<DraggedPane>(move |style, held, _, _| match held.what {
             Dragged::Pane(_) => style.bg(p.hover),
+            // A tab from another checkout's list would go here.
+            Dragged::Tab(project, branch, _) if (project, branch) != (at.0, at.1) => {
+                style.bg(p.hover)
+            }
             Dragged::Tab(..) => style,
         })
         .on_drop(cx.listener(move |this, held: &DraggedPane, _, cx| {
-            this.drop_on_strip(held.what, at, cx);
+            this.drop_on_strip(held, at, cx);
         }))
 }
 

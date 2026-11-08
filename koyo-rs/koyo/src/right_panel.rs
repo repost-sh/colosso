@@ -12,9 +12,9 @@ use std::path::{Path, PathBuf};
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, AnyWindowHandle, App, AppContext as _, Context, Div, DragMoveEvent, Empty, Entity,
-    FocusHandle, InteractiveElement as _, IntoElement, KeyBinding, ParentElement as _, Render,
-    Styled, Subscription, WeakEntity, Window, actions, div, px,
+    AnyElement, AnyWindowHandle, App, AppContext as _, Context, DispatchPhase, Div, DragMoveEvent,
+    Empty, Entity, FocusHandle, InteractiveElement as _, IntoElement, KeyBinding, MouseUpEvent,
+    ParentElement as _, Styled, Subscription, WeakEntity, Window, actions, canvas, div, px,
 };
 
 use crate::changes::ChangesPanel;
@@ -24,7 +24,6 @@ use crate::language;
 use crate::navigation::Route;
 use crate::settings;
 use crate::shell::{Shell, ToggleRightPanel};
-use crate::sidebar::resize_handle;
 use crate::theme::{self, Palette};
 
 actions!(right_panel, [ShowFiles, ToggleChanges, ToggleFiles]);
@@ -80,15 +79,9 @@ impl View {
     }
 }
 
-/// The drag payload while the right panel's left border is being dragged.
+/// The drag payload while the right panel's left edge is being dragged.
 #[derive(Clone)]
 pub struct RightPanelResize;
-
-impl Render for RightPanelResize {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        Empty
-    }
-}
 
 /// One checkout's panels, each made the first time it's shown.
 struct Panels {
@@ -182,18 +175,29 @@ impl RightPanel {
         .unwrap_or_else(|| Empty.into_any_element());
         let width = self.width(cx);
         let p = theme::palette(cx);
-        let panel = div()
-            .h_full()
-            .min_w_0()
-            .relative()
-            .w(px(width))
-            .flex_shrink_0()
-            .border_l_1()
-            .border_color(p.hairline)
-            .child(panel)
-            // Over the panel's edge, so it's grabbed before what's under it.
-            .child(resize_handle("right-panel-resize", RightPanelResize).left_0());
-        Some(panel)
+        let islands = theme::card::islands(cx);
+        // Before it, what's grabbed to resize it: the glass before its island in Arc, a hairline
+        // along the card in Orca.
+        Some(
+            div()
+                .h_full()
+                .flex_shrink_0()
+                .flex()
+                .child(theme::card::seam(
+                    "right-panel-resize",
+                    true,
+                    RightPanelResize,
+                    p,
+                    islands,
+                ))
+                .child(
+                    theme::card::part(p, islands)
+                        .h_full()
+                        .w(px(width))
+                        .flex_shrink_0()
+                        .child(panel),
+                ),
+        )
     }
 
     /// The panel's width as set for what it shows, or as its edge is being dragged, within
@@ -207,10 +211,10 @@ impl RightPanel {
             .max(min)
     }
 
-    /// Saves the width the panel's edge was dragged to, once it's let go.
-    fn let_go(&mut self, cx: &mut App) {
+    /// Saves the width the panel's edge was dragged to, once it's let go: whether it was.
+    fn let_go(&mut self, cx: &mut App) -> bool {
         if self.dragged.is_none() {
-            return;
+            return false;
         }
         let width = self.width(cx);
         self.dragged = None;
@@ -219,6 +223,7 @@ impl RightPanel {
             View::Changes => settings.changes_files_width = width,
             View::Files => settings.files_tree_width = width,
         });
+        true
     }
 
     /// Makes the panels of the checkout at `path`, unless it has them.
@@ -262,11 +267,31 @@ impl Shell {
         .map(|root| Self::handle_symbols(root, cx))
         .map(|root| Self::handle_files(root, cx))
         .on_drag_move(cx.listener(Self::resize_right_panel))
-        // The root's everywhere, so it hears the edge let go wherever that is.
-        .capture_any_mouse_up(cx.listener(|this, _, _, cx| {
-            this.right_panel.let_go(cx);
-            cx.notify();
-        }))
+        .child(Self::hearing_let_go(cx))
+    }
+
+    /// Hears the edge let go wherever the pointer is. The root's own listeners hear only what's
+    /// over the root, and the pointer is over the edge's handle then, which takes the mouse for
+    /// itself; the window hears everything.
+    fn hearing_let_go(cx: &Context<Self>) -> impl IntoElement {
+        let shell = cx.weak_entity();
+        canvas(
+            |_, _, _| (),
+            move |_, (), window, _| {
+                window.on_mouse_event(move |_: &MouseUpEvent, phase, _, cx| {
+                    if phase == DispatchPhase::Bubble {
+                        (shell.update(cx, |this, cx| {
+                            if this.right_panel.let_go(cx) {
+                                cx.notify();
+                            }
+                        }))
+                        .ok();
+                    }
+                });
+            },
+        )
+        .absolute()
+        .size_0()
     }
 
     /// Shows `view` in the right panel, opening it if it's closed, and gives it the keyboard.
@@ -411,7 +436,7 @@ impl Shell {
 }
 
 /// The widest the right panel can be and leave the chat room, `beside` being how wide what's
-/// left of the chat is: the icon rail and the sidebar, or in compact mode the gutter.
+/// left of the chat is: the left gutter and the sidebar, or in compact mode the gutter alone.
 fn widest(beside: f32, window: &Window) -> f32 {
     window.viewport_size().width.as_f32() - theme::GUTTER - beside - theme::CHAT_MIN_WIDTH
 }

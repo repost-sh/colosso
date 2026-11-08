@@ -18,7 +18,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use gpui_kit::{App, Global};
 use serde::{Deserialize, Serialize};
 
-pub use address::{display_url, same_page_key};
+pub use address::{display_url, host, same_page_key};
 pub use icons::{icon, keep_icon};
 pub use rank::{Found, Origins, match_words};
 

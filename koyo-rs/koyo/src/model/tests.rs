@@ -137,12 +137,62 @@ fn only_the_newest_closed_tabs_are_kept() {
 }
 
 #[test]
-fn stepping_projects_stops_at_both_ends() {
-    let mut workspace = Workspace::new(&["/a".into(), "/b".into(), "/c".into()]);
-    workspace.step_project(-1);
-    assert_eq!(workspace.active_project, 0);
-    workspace.step_project(10);
-    assert_eq!(workspace.active_project, 2);
+fn a_tab_moves_to_another_checkout_and_shows_there() {
+    let mut workspace = workspace(&["feat"]);
+    for title in ["one", "two"] {
+        workspace
+            .unit_mut(0, 0)
+            .unwrap()
+            .tabs
+            .push(Tab::Single(Pane {
+                title: title.into(),
+                ..Pane::new(PaneKind::Chat)
+            }));
+    }
+    workspace
+        .unit_mut(0, 1)
+        .unwrap()
+        .tabs
+        .push(Tab::Single(Pane {
+            title: "three".into(),
+            ..Pane::new(PaneKind::Chat)
+        }));
+    let titles = |workspace: &Workspace, branch: usize| -> Vec<String> {
+        (workspace.projects[0].branches[branch].tabs.iter())
+            .map(|tab| tab.first().title.to_string())
+            .collect()
+    };
+    assert!(workspace.move_tab_to_checkout((0, 0, 1), (0, 1), 0));
+    assert_eq!(titles(&workspace, 0), ["one"]);
+    assert_eq!(titles(&workspace, 1), ["two", "three"]);
+    assert_eq!(
+        workspace.shown_tab(),
+        Some((0, 1, 0)),
+        "it shows where it went"
+    );
+    // Past the end, it goes last; on its own checkout, nothing moves.
+    assert!(workspace.move_tab_to_checkout((0, 0, 0), (0, 1), 9));
+    assert_eq!(titles(&workspace, 1), ["two", "three", "one"]);
+    assert!(!workspace.move_tab_to_checkout((0, 1, 0), (0, 1), 2));
+    assert!(!workspace.move_tab_to_checkout((0, 1, 0), (0, 5), 0));
+}
+
+#[test]
+fn projects_are_called_what_they_were_named_in_koyo_or_their_folder() {
+    let mut workspace = Workspace::new(&["/src/app".into(), "/src/site".into()]);
+    let mut looks = crate::spaces::ProjectLooks::new();
+    looks.insert(
+        "/src/site".into(),
+        crate::spaces::ProjectLook {
+            name: Some("Website".into()),
+            icon: None,
+        },
+    );
+    workspace.name_projects(&looks);
+    assert_eq!(workspace.projects[0].name, "app");
+    assert_eq!(workspace.projects[1].name, "Website");
+    workspace.name_projects(&crate::spaces::ProjectLooks::new());
+    assert_eq!(workspace.projects[1].name, "site");
 }
 
 #[test]
@@ -186,16 +236,28 @@ fn adding_a_project_twice_selects_the_first() {
     let mut workspace = Workspace::new(&["/a".into(), "/b".into()]);
     assert_eq!(workspace.add_project("/a".into()), 0);
     assert_eq!(workspace.add_project("/c".into()), 2);
-    assert_eq!(workspace.active_project, 2);
+    assert_eq!(workspace.active_project(), Some(2));
     assert_eq!(workspace.projects.len(), 3);
+}
+
+#[test]
+fn showing_no_project_answers_none_everywhere_until_one_is_selected() {
+    let mut workspace = Workspace::new(&["/a".into(), "/b".into()]);
+    workspace.select_project(None);
+    assert!(workspace.project().is_none());
+    assert!(workspace.branch().is_none() && workspace.shown_tab().is_none());
+    workspace.select_project(Some(5));
+    assert!(workspace.project().is_none(), "past the list is none too");
+    workspace.select_project(Some(1));
+    assert_eq!(workspace.active_project(), Some(1));
 }
 
 #[test]
 fn removing_the_selected_last_project_selects_the_one_before() {
     let mut workspace = Workspace::new(&["/a".into(), "/b".into()]);
-    workspace.active_project = 1;
+    workspace.select_project(Some(1));
     workspace.remove_project(1);
-    assert_eq!(workspace.active_project, 0);
+    assert_eq!(workspace.active_project(), Some(0));
     workspace.remove_project(0);
     assert!(workspace.project().is_none());
 }

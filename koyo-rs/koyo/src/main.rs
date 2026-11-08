@@ -39,11 +39,13 @@ mod settings;
 mod settings_view;
 mod shell;
 mod sidebar;
+mod spaces;
 mod symbols;
 mod terminals;
 #[cfg(any(test, feature = "visual-check"))]
 mod test_support;
 mod theme;
+mod toggle;
 mod viewer;
 #[cfg(feature = "visual-check")]
 mod visual;
@@ -102,17 +104,21 @@ fn open_main_window(cx: &mut App) -> gpui_kit::Result<()> {
         titlebar: Some(TitlebarOptions {
             title: Some("Koyo".into()),
             appears_transparent: true,
-            traffic_light_position: Some(point(px(12.), px(theme::TRAFFIC_LIGHTS_TOP))),
+            traffic_light_position: Some(point(
+                px(theme::TRAFFIC_LIGHTS_LEFT),
+                px(theme::TRAFFIC_LIGHTS_TOP),
+            )),
         }),
         ..Default::default()
     };
-    cx.open_window(options, |window, cx| {
+    let opened = cx.open_window(options, |window, cx| {
         theme::follow_window_appearance(window);
         let shell = cx.new(|cx| shell::Shell::new(window, cx));
         // gpui-kit's root paints the theme background by default, covering the blur.
         cx.new(|cx| Root::new(shell, window, cx).bg(transparent_black()))
-    })
-    .map(|_| ())
+    })?;
+    modal::refresh_edge(opened.into(), cx);
+    Ok(())
 }
 
 fn main() -> ExitCode {
@@ -170,6 +176,10 @@ fn main() -> ExitCode {
     #[cfg(feature = "visual-check")]
     if std::env::args().any(|arg| arg == "--visual-check-accent") {
         return theme::visual::run();
+    }
+    #[cfg(feature = "visual-check")]
+    if std::env::args().any(|arg| arg == "--visual-check-arc") {
+        return arc::visual::run();
     }
     #[cfg(feature = "visual-check")]
     if std::env::args().any(|arg| arg == "--visual-check-terminal") {

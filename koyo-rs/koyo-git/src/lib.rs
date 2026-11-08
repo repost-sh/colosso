@@ -32,6 +32,14 @@ pub use refs::Ref;
 pub use remove::Loss;
 pub use worktree::{Head, Worktree};
 
+/// The remote the repository at `dir` goes by: `origin`, or the first there is; `None` with no
+/// remote.
+pub fn default_remote(dir: &Path) -> Option<String> {
+    let remotes = Git::new(dir).arg("remote").read_optional()?;
+    let origin = remotes.lines().find(|remote| *remote == "origin");
+    origin.or_else(|| remotes.lines().next()).map(str::to_owned)
+}
+
 /// A repository, reached through its main checkout.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Repo {
@@ -75,6 +83,14 @@ impl Repo {
             .map(|name| name.to_string_lossy())
             .unwrap_or_default();
         name.strip_suffix(".git").unwrap_or(&name).to_owned()
+    }
+
+    /// Where the repository's remote (`default_remote`) fetches from; `None` with no remote.
+    pub fn remote_url(&self) -> Option<String> {
+        let remote = default_remote(&self.path)?;
+        Git::new(&self.path)
+            .args(["remote", "get-url", &remote])
+            .read_optional()
     }
 
     /// Every checkout but those whose folder is gone.

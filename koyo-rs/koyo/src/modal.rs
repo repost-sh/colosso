@@ -184,21 +184,8 @@ fn open_at<V: Render>(
             (frame.size.width - px(width)) / 2.,
             px(top).min(frame.size.height - px(height)).max(px(0.)),
         );
-    let options = WindowOptions {
-        window_bounds: Some(WindowBounds::Windowed(gpui_kit::Bounds::new(
-            origin,
-            size(px(width), px(height)),
-        ))),
-        titlebar: None,
-        focus: true,
-        kind: WindowKind::PopUp,
-        is_movable: false,
-        is_resizable: false,
-        is_minimizable: false,
-        window_background: WindowBackgroundAppearance::Blurred,
-        display_id: parent.display(cx).map(|display| display.id()),
-        ..Default::default()
-    };
+    let bounds = gpui_kit::Bounds::new(origin, size(px(width), px(height)));
+    let options = popup_options(bounds, true, parent, cx);
     let parent_handle = parent.window_handle();
     let opened = cx.open_window(options, |window, cx| {
         let content = cx.new(|cx| build(window, cx));
@@ -228,8 +215,40 @@ fn open_at<V: Render>(
         })
     });
     if let Ok(handle) = opened {
+        refresh_edge(handle.into(), cx);
         cx.set_global(OpenModal(Some(handle.into())));
     }
+}
+
+/// What a glass window over `parent` opens with, at `bounds` on its screen: no title bar, not
+/// moved or resized, and taking the keyboard if it should `focus`.
+pub fn popup_options(
+    bounds: gpui_kit::Bounds<gpui_kit::Pixels>,
+    focus: bool,
+    parent: &Window,
+    cx: &App,
+) -> WindowOptions {
+    WindowOptions {
+        window_bounds: Some(WindowBounds::Windowed(bounds)),
+        titlebar: None,
+        focus,
+        kind: WindowKind::PopUp,
+        is_movable: false,
+        is_resizable: false,
+        is_minimizable: false,
+        window_background: WindowBackgroundAppearance::Blurred,
+        display_id: parent.display(cx).map(|display| display.id()),
+        ..Default::default()
+    }
+}
+
+/// Has a window just opened drawn with its edge as it looks once drawn, not as its first frame
+/// left it (`native::window::refresh_edge`); off macOS there's nothing to do.
+pub fn refresh_edge(window: AnyWindowHandle, cx: &mut App) {
+    #[cfg(target_os = "macos")]
+    crate::native::window::refresh_edge(window, cx);
+    #[cfg(not(target_os = "macos"))]
+    let _ = (window, cx);
 }
 
 /// Closes the dialog, from outside it. It can't reach its own window from inside it.

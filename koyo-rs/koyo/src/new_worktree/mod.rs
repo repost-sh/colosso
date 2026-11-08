@@ -26,13 +26,32 @@ const HEIGHT: f32 = 520.;
 
 /// Opens the dialog for a new worktree of the project whose main checkout is `project`.
 pub fn open(shell: WeakEntity<Shell>, project: PathBuf, window: &mut Window, cx: &mut App) {
+    open_named(shell, project, "", window, cx);
+}
+
+/// Opens the dialog for a new worktree of the project at `project`, its name `name` already,
+/// as the launcher's Worktree kind hands it over (`docs/arc-sidebar.md` 8).
+pub fn open_named(
+    shell: WeakEntity<Shell>,
+    project: PathBuf,
+    name: &str,
+    window: &mut Window,
+    cx: &mut App,
+) {
     let behind = window.window_handle();
+    let name = name.trim().to_owned();
     modal::open(WIDTH, HEIGHT, window, cx, |window, cx| {
-        NewWorktreeDialog::new(shell, project, behind, window, cx)
+        let dialog = NewWorktreeDialog::new(shell, project, behind, window, cx);
+        if !name.is_empty() {
+            dialog
+                .name
+                .update(cx, |input, cx| input.set_value(name, window, cx));
+        }
+        dialog
     });
 }
 
-struct NewWorktreeDialog {
+pub(crate) struct NewWorktreeDialog {
     shell: WeakEntity<Shell>,
     project_path: PathBuf,
     project_name: SharedString,
@@ -56,6 +75,12 @@ struct NewWorktreeDialog {
 }
 
 impl NewWorktreeDialog {
+    /// The name in the dialog's field.
+    #[cfg(test)]
+    pub(crate) fn typed_name(&self, cx: &App) -> String {
+        self.name.read(cx).value().to_string()
+    }
+
     fn new(
         shell: WeakEntity<Shell>,
         project_path: PathBuf,

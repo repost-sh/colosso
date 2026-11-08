@@ -2,22 +2,18 @@
 
 use std::rc::Rc;
 
-use gpui_kit::assets::IconName;
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::component::{ActiveTheme as _, Theme};
-use gpui_kit::{
-    Action, App, Hsla, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent,
-    ParentElement as _, Window, WindowAppearance, actions, div,
-};
+use gpui_kit::{Action, App, Hsla, Window, WindowAppearance, actions};
 use serde::{Deserialize, Serialize};
 
-use crate::shell::action_button;
 use crate::{gradient, settings};
 
 mod accent;
 pub use accent::hex;
 pub mod card;
 pub mod fonts;
+pub mod hover;
 #[cfg(target_os = "macos")]
 mod system_accent;
 mod text;
@@ -26,11 +22,12 @@ pub mod visual;
 
 pub const TITLE_BAR_HEIGHT: f32 = 40.;
 pub const TRAFFIC_LIGHT_SIZE: f32 = 14.;
-/// How far down the traffic lights are, centred in the top rail.
+/// How far down the traffic lights are, centred in the top rail, level with its buttons.
 pub const TRAFFIC_LIGHTS_TOP: f32 = (TITLE_BAR_HEIGHT - TRAFFIC_LIGHT_SIZE) / 2.;
+/// How far in from the window's left edge the first of them is.
+pub const TRAFFIC_LIGHTS_LEFT: f32 = 12.;
 /// Room left of the top-rail buttons for the traffic lights.
 pub const TRAFFIC_LIGHTS_WIDTH: f32 = 78.;
-pub const ICON_RAIL_WIDTH: f32 = 48.;
 pub const GUTTER: f32 = 8.;
 /// How tall the status bar is with servers to show, the card's gap above it included.
 pub const STATUS_BAR_HEIGHT: f32 = 28.;
@@ -243,14 +240,6 @@ impl ThemePreference {
         }
     }
 
-    pub fn icon(self) -> IconName {
-        match self {
-            ThemePreference::System => IconName::SunMoon,
-            ThemePreference::Light => IconName::Sun,
-            ThemePreference::Dark => IconName::Moon,
-        }
-    }
-
     pub fn action(self) -> Box<dyn Action> {
         match self {
             ThemePreference::System => Box::new(UseSystemTheme),
@@ -364,26 +353,4 @@ fn set_preference(preference: ThemePreference, cx: &mut App) {
     let forced = preference.forced_appearance();
     cx.set_window_appearance(forced);
     Theme::change(forced.unwrap_or_else(|| cx.window_appearance()), None, cx);
-}
-
-/// The rail's theme button: a click cycles System, Light and Dark; a right-click picks one
-/// from a native menu.
-pub fn toggle(cx: &App) -> impl IntoElement {
-    let preference = preference(cx);
-    div()
-        .on_mouse_down(
-            MouseButton::Right,
-            move |event: &MouseDownEvent, window, cx| {
-                // This menu stands in for the one the rest of the rails open.
-                cx.stop_propagation();
-                preference.menu().show(event.position, window, cx);
-            },
-        )
-        .child(action_button(
-            "rail-theme",
-            preference.icon(),
-            format!("Theme: {}", preference.label()),
-            CycleTheme,
-            cx,
-        ))
 }

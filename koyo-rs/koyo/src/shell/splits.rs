@@ -10,10 +10,9 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, AppContext as _, Context, Div, DragMoveEvent, ElementId, EmptyView,
-    InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, Pixels, Point, Render,
-    SharedString, StatefulInteractiveElement as _, Styled, Window, deferred, div, point, px,
-    relative,
+    AnyElement, AppContext as _, Context, DragMoveEvent, InteractiveElement as _, IntoElement,
+    MouseButton, ParentElement as _, Pixels, Point, Render, SharedString,
+    StatefulInteractiveElement as _, Styled, Window, deferred, div, point, px, relative,
 };
 
 use super::elements::pane_close_button;
@@ -22,6 +21,7 @@ use super::tab_face::Face;
 use super::{Shell, icon};
 use crate::model::{Edge, Pane, SPLIT_MIN, Split, SplitAxis, Tab};
 use crate::pane::tab_button;
+use crate::theme::card::part;
 use crate::theme::{self, Palette};
 
 /// What's in hand, to split a pane with or to put in the strip.
@@ -95,47 +95,6 @@ impl Render for DraggedPane {
 /// A split's divider in hand, by the split's path in its tab.
 #[derive(Clone)]
 pub struct SplitDivider(Vec<bool>);
-
-/// The line between two sides, `row` when they sit side by side, picked up a few pixels either
-/// side of it to drag `payload`. The part picked up is among the window's overlays, so a page
-/// either side, in a native layer over the window, doesn't hide the part of it over the page.
-pub fn divider<T: Clone + 'static>(
-    id: impl Into<ElementId>,
-    selector: SharedString,
-    row: bool,
-    payload: T,
-    p: Palette,
-) -> Div {
-    let handle = div()
-        .id(id)
-        .debug_selector(move || selector.to_string())
-        .absolute()
-        .occlude()
-        .map(|handle| {
-            if row {
-                handle
-                    .top_0()
-                    .bottom_0()
-                    .left(px(-6.))
-                    .w(px(13.))
-                    .cursor_col_resize()
-            } else {
-                handle
-                    .left_0()
-                    .right_0()
-                    .top(px(-6.))
-                    .h(px(13.))
-                    .cursor_row_resize()
-            }
-        })
-        .on_drag(payload, |_, _, _, cx| cx.new(|_| EmptyView));
-    let line = div().flex_shrink_0().relative().bg(p.hairline);
-    if row {
-        line.w(px(1.)).h_full().child(deferred(handle))
-    } else {
-        line.h(px(1.)).w_full().child(deferred(handle))
-    }
-}
 
 /// The height of the header over each pane of a split.
 const HEADER: f32 = 28.;
@@ -218,7 +177,13 @@ impl Shell {
                     })
                     .child(first),
             )
-            .child(divider(id.clone(), id, row, SplitDivider(path), p))
+            .child(theme::card::seam(
+                id,
+                row,
+                SplitDivider(path),
+                p,
+                theme::card::islands(cx),
+            ))
             .child(div().flex_1().min_w_0().min_h_0().flex().child(second))
             .into_any_element()
     }
@@ -247,11 +212,9 @@ impl Shell {
         in_hand: bool,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        div()
-            .relative()
+        // In Arc an island of its own, a split's sides the glass apart.
+        part(p, theme::card::islands(cx))
             .size_full()
-            .min_w_0()
-            .min_h_0()
             .flex()
             .flex_col()
             .when(in_split, |part| part.child(self.pane_header(pane, p, cx)))
@@ -348,20 +311,46 @@ impl Shell {
     }
 
     /// `held` dropped on the tab at `at` in the strip: a pane of a split goes where that tab
-    /// is. A tab is its list's to place, as it's let go.
+    /// is, and so does a tab from another checkout's list. A tab of this list is the list's to
+    /// place, as it's let go.
     pub(super) fn drop_on_strip(
         &mut self,
-        held: Dragged,
+        held: &DraggedPane,
         at: (usize, usize, usize),
         cx: &mut Context<Self>,
     ) {
         let (project, branch, to) = at;
-        let Dragged::Pane(id) = held else {
+        match held.what {
+            Dragged::Pane(id) => {
+                if let Some(unit) = self.workspace.unit_mut(project, branch)
+                    && unit.pane_to_tab(id, to)
+                {
+                    cx.notify();
+                }
+            }
+            // From another checkout's list: it goes where the tab it's dropped on is.
+            Dragged::Tab(..) => self.drop_tab_on_checkout(held, (project, branch), to, cx),
+        }
+    }
+
+    /// A tab from another checkout's list in the Arc sidebar, let go over the checkout `to`,
+    /// as `(project, branch)`: it moves there, at `at` among its tabs, and shows
+    /// (`docs/arc-sidebar.md` 5). It's found by its pane, as its place may have changed since it
+    /// was taken up; one from the checkout itself is its list's to place.
+    pub(crate) fn drop_tab_on_checkout(
+        &mut self,
+        held: &DraggedPane,
+        to: (usize, usize),
+        at: usize,
+        cx: &mut Context<Self>,
+    ) {
+        let (Dragged::Tab(..), Some(face)) = (held.what, held.faces.first()) else {
             return;
         };
-        if let Some(unit) = self.workspace.unit_mut(project, branch)
-            && unit.pane_to_tab(id, to)
-        {
+        let Some((from, _)) = self.workspace.find_pane(|pane| pane.id == face.id) else {
+            return;
+        };
+        if self.workspace.move_tab_to_checkout(from, to, at) {
             cx.notify();
         }
     }
@@ -369,7 +358,7 @@ impl Shell {
     /// The selected checkout, as `(project, branch)`.
     fn selected_branch(&self) -> Option<(usize, usize)> {
         let project = self.workspace.project()?;
-        Some((self.workspace.active_project, project.active_branch))
+        Some((self.workspace.active_project()?, project.active_branch))
     }
 }
 

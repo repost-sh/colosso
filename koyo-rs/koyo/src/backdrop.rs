@@ -199,16 +199,20 @@ fn render_grain() -> Arc<RenderImage> {
     Arc::new(RenderImage::new(vec![Frame::new(image)]))
 }
 
-/// The window gradient last rendered, the fades and pixel size it was rendered for.
+/// A window gradient rendered, with the fades and pixel size it was rendered for.
 struct WindowImage {
     fades: Vec<Fade>,
     size: (u32, u32),
     image: Arc<RenderImage>,
 }
 
+/// How many window gradients are kept: a space's each, so switching back and forth between
+/// spaces with themes of their own renders none again.
+const KEPT_WINDOWS: usize = 4;
+
 #[derive(Default)]
 struct Images {
-    window: Option<WindowImage>,
+    window: Vec<WindowImage>,
     grain: Option<Arc<RenderImage>>,
     swatches: HashMap<[Rgb; 3], Arc<RenderImage>>,
 }
@@ -245,20 +249,22 @@ fn paint_window(bounds: Bounds<Pixels>, fades: Vec<Fade>, window: &mut Window, c
         |side: Pixels| ((side.as_f32() / DOWNSCALE).ceil() as u32 / SIZE_STEP + 1) * SIZE_STEP;
     let scaled = (scaled(bounds.size.width), scaled(bounds.size.height));
     let images = cx.default_global::<Images>();
-    let image = match &images.window {
-        Some(painted) if painted.fades == fades && painted.size == scaled => painted.image.clone(),
-        _ => {
-            let image = render(&fades, scaled.0, scaled.1);
-            let painted = WindowImage {
-                fades,
-                size: scaled,
-                image: image.clone(),
-            };
-            if let Some(old) = images.window.replace(painted) {
-                window.drop_image(old.image).ok();
-            }
-            image
+    let kept =
+        (images.window.iter()).position(|painted| painted.fades == fades && painted.size == scaled);
+    let image = if let Some(index) = kept {
+        images.window[index].image.clone()
+    } else {
+        let image = render(&fades, scaled.0, scaled.1);
+        images.window.push(WindowImage {
+            fades,
+            size: scaled,
+            image: image.clone(),
+        });
+        if images.window.len() > KEPT_WINDOWS {
+            let old = images.window.remove(0);
+            window.drop_image(old.image).ok();
         }
+        image
     };
     window
         .paint_image(bounds, bounds, Corners::default(), image, 0, false)

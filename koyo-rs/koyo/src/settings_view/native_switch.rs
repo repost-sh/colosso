@@ -1,16 +1,11 @@
-//! A setting turned on and off by a switch `AppKit` draws: an `NSSwitch` hosted in the window,
-//! so macOS gives it its own knob (Liquid Glass while it's held, on macOS 26), its motion and
-//! the system's accent. Off macOS, or in a window that can't host a native view (a test's),
-//! it's gpui-kit's switch instead.
+//! A setting turned on and off by a switch `AppKit` draws (`crate::toggle`): macOS's own knob
+//! (Liquid Glass while it's held, on macOS 26), its motion and the system's accent; gpui-kit's
+//! switch off macOS, or in a window that can't host a native view (a test's).
 
-#[cfg(target_os = "macos")]
-mod appkit;
-
-use gpui_kit::component::switch::Switch;
 use gpui_kit::{App, IntoElement, RenderOnce, Window};
 
 use crate::settings::{self, Settings};
-use crate::theme;
+use crate::toggle::Toggle;
 
 /// A setting on or off, as `get` reads it and `set` writes it.
 #[derive(IntoElement, Clone, Copy)]
@@ -29,17 +24,10 @@ impl NativeSwitch {
 }
 
 impl RenderOnce for NativeSwitch {
-    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        #[cfg(target_os = "macos")]
-        if let Some(switch) = appkit::switch(self, window, cx) {
-            return switch;
-        }
-        let _ = window;
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let set = self.set;
-        Switch::new(self.id)
-            .checked((self.get)(settings::get(cx)))
-            .color(theme::palette(cx).accent)
-            .on_click(move |on, _, cx| settings::update(cx, |settings| set(settings, *on)))
-            .into_any_element()
+        Toggle::new(self.id, (self.get)(settings::get(cx)), move |on, cx| {
+            settings::update(cx, |settings| set(settings, on));
+        })
     }
 }

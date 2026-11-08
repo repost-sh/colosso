@@ -34,16 +34,7 @@ impl Workspace {
         pane: Pane,
         select: bool,
     ) -> Option<u64> {
-        let found = self
-            .projects
-            .iter()
-            .enumerate()
-            .find_map(|(project, listed)| {
-                (listed.branches.iter())
-                    .position(|unit| unit.worktree.path == worktree)
-                    .map(|branch| (project, branch))
-            });
-        let (project, branch) = found?;
+        let (project, branch) = self.unit_at(worktree)?;
         let unit = &mut self.projects[project].branches[branch];
         let pane_id = pane.id;
         unit.tabs.push(Tab::Single(pane));

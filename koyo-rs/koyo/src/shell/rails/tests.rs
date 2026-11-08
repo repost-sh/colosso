@@ -55,7 +55,7 @@ fn cmd_b_folds_every_rail_as_thin_as_the_gutter_and_brings_them_back(cx: &mut Te
             Layout::Orca => 0.,
             Layout::Arc => cx.read(|cx| settings::get(cx).sidebar_width()),
         };
-        let left = px(theme::ICON_RAIL_WIDTH + sidebar);
+        let left = px(theme::GUTTER + sidebar);
         assert_eq!(
             out.origin,
             point(left, px(theme::TITLE_BAR_HEIGHT)),
@@ -79,6 +79,9 @@ fn cmd_b_folds_every_rail_as_thin_as_the_gutter_and_brings_them_back(cx: &mut Te
 #[gpui_kit::test]
 fn the_rails_move_to_compact_mode_rather_than_jump(cx: &mut TestAppContext) {
     let (window, shell) = shell_with(&[], cx);
+    // In Arc the sidebar is left of the card, which slides with it; in Orca, with no rail down
+    // the left any more, the card's left edge stays at the gutter.
+    cx.update(|cx| settings::update(cx, |settings| settings.layout = Layout::Arc));
     draw(window, cx);
     let out = card(window, cx);
 

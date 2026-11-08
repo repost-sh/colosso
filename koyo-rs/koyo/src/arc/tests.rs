@@ -1,0 +1,370 @@
+//! The Arc sidebar's shell side (`docs/arc-sidebar.md`): spaces shown and followed, a project
+//! moved, a space deleted with its projects, a worktree cleared, and what the address bar says.
+
+use std::path::Path;
+
+use gpui_kit::{
+    Action, AnyWindowHandle, AppContext as _, Entity, Modifiers, MouseButton, TestAppContext,
+    VisualTestContext, point, px,
+};
+
+use super::actions::{ClearWorktree, MoveProjectToNewSpace, NewSpace};
+use super::clear::Clear;
+use super::delete_space::DeleteSpace;
+use crate::files::tests::{dialog, tabs};
+use crate::model::{Pane, PaneKind, Tab, Unloaded};
+use crate::navigation::Route;
+use crate::projects::read_worktrees;
+use crate::settings::{self, Layout};
+use crate::settings_view::SettingsPage;
+use crate::shell::{CloseTab, Shell};
+use crate::test_support::{draw, git, repo, select, shell_with};
+
+/// The shell in the Arc layout with a project for each of `names`, saved, the first selected.
+fn arc_shell(
+    names: &[&str],
+    cx: &mut TestAppContext,
+) -> (AnyWindowHandle, Entity<Shell>, Vec<std::path::PathBuf>) {
+    let roots: Vec<_> = (names.iter())
+        .map(|name| repo(name, &[("README.md", "hi\n")]))
+        .collect();
+    let refs: Vec<&Path> = roots.iter().map(std::path::PathBuf::as_path).collect();
+    let (window, shell) = shell_with(&refs, cx);
+    cx.update(|cx| settings::update(cx, |settings| settings.layout = Layout::Arc));
+    // Spaces switch at once, rather than sliding over frames these tests don't step through.
+    cx.update(|cx| cx.set_reduce_motion(true));
+    shell.update(cx, Shell::save_projects);
+    select(&shell, &roots[0], cx);
+    draw(window, cx);
+    (window, shell, roots)
+}
+
+fn act(window: AnyWindowHandle, action: impl Action, cx: &mut TestAppContext) {
+    (cx.update_window(window, |_, window, cx| {
+        window.dispatch_action(Box::new(action), cx);
+    }))
+    .unwrap();
+    cx.run_until_parked();
+    draw(window, cx);
+}
+
+/// The selected project's folder, and the space shown.
+fn shown(shell: &Entity<Shell>, cx: &TestAppContext) -> (std::path::PathBuf, usize) {
+    cx.read(|cx| {
+        let project = shell.read(cx).workspace.project().unwrap().path.clone();
+        (project, settings::get(cx).space)
+    })
+}
+
+fn chat(title: &str) -> Tab {
+    let mut pane = Pane::new(PaneKind::Chat);
+    pane.title = title.to_owned().into();
+    Tab::Single(pane)
+}
+
+#[gpui_kit::test]
+fn a_space_shows_the_project_it_showed_last_and_an_empty_one_hides_the_others(
+    cx: &mut TestAppContext,
+) {
+    let (window, shell, roots) = arc_shell(&["arc-spaces-app", "arc-spaces-site"], cx);
+    let (app, site) = (roots[0].clone(), roots[1].clone());
+    assert_eq!(shown(&shell, cx), (app.clone(), 0));
+
+    act(window, MoveProjectToNewSpace(site.clone()), cx);
+    assert_eq!(
+        shown(&shell, cx),
+        (site.clone(), 1),
+        "the project's shown in its new space"
+    );
+    cx.read(|cx| {
+        let spaces = &settings::get(cx).spaces;
+        assert_eq!(spaces[0].projects, vec![app.clone()]);
+        assert_eq!(spaces[1].projects, vec![site.clone()]);
+    });
+
+    shell.update(cx, |shell, cx| shell.show_space(0, cx));
+    cx.run_until_parked();
+    assert_eq!(shown(&shell, cx), (app, 0));
+
+    // A tab on the project, which the empty space hides along with it.
+    shell.update(cx, |shell, _| {
+        shell
+            .workspace
+            .branch_mut()
+            .unwrap()
+            .tabs
+            .push(chat("hidden"));
+    });
+    act(window, NewSpace, cx);
+    let hidden = cx.read(|cx| shell.read(cx).workspace.project().is_none());
+    assert!(
+        hidden,
+        "an empty space shows no project, so none of another space's tabs"
+    );
+    assert_eq!(cx.read(|cx| settings::get(cx).space), 2);
+    let tabs = |cx: &mut TestAppContext| {
+        cx.read(|cx| shell.read(cx).workspace.projects[0].branches[0].tabs.len())
+    };
+    let before = tabs(cx);
+    act(window, CloseTab, cx);
+    assert_eq!(
+        tabs(cx),
+        before,
+        "⌘W has no tab to close while no project is shown"
+    );
+
+    // Selected some other way, as app control or the Orca layout select, the project's
+    // space is shown.
+    shell.update(cx, |shell, cx| {
+        let site = shell.workspace.project_index(&site).unwrap();
+        shell.workspace.select_project(Some(site));
+        cx.notify();
+    });
+    cx.run_until_parked();
+    assert_eq!(shown(&shell, cx), (site, 1));
+}
+
+#[gpui_kit::test]
+fn deleting_a_space_can_take_its_projects_out_of_koyo(cx: &mut TestAppContext) {
+    let (window, shell, roots) = arc_shell(&["arc-delete-app", "arc-delete-site"], cx);
+    act(window, MoveProjectToNewSpace(roots[1].clone()), cx);
+    act(window, super::actions::DeleteSpace, cx);
+    let (dialog_window, asked) = dialog::<DeleteSpace>(cx).expect("it asks first");
+    (cx.update_window(dialog_window, |_, window, cx| {
+        asked.update(cx, |asked, cx| {
+            asked.remove = true;
+            asked.delete(window, cx);
+        });
+    }))
+    .unwrap();
+    cx.run_until_parked();
+    cx.read(|cx| {
+        let settings = settings::get(cx);
+        assert_eq!(settings.spaces.len(), 1);
+        assert_eq!(settings.projects, vec![roots[0].clone()]);
+        let workspace = &shell.read(cx).workspace;
+        assert_eq!(workspace.projects.len(), 1);
+        assert_eq!(workspace.projects[0].path, roots[0]);
+    });
+    assert_eq!(shown(&shell, cx), (roots[0].clone(), 0));
+}
+
+#[gpui_kit::test]
+fn clear_asks_first_then_closes_every_tab_of_the_worktree(cx: &mut TestAppContext) {
+    let (window, shell, roots) = arc_shell(&["arc-clear"], cx);
+    shell.update(cx, |shell, cx| {
+        for title in ["one", "two", "three"] {
+            shell.workspace.push_tab(chat(title));
+        }
+        cx.notify();
+    });
+    draw(window, cx);
+    act(window, ClearWorktree(roots[0].clone()), cx);
+    let (dialog_window, asked) = dialog::<Clear>(cx).expect("Clear asks first");
+    assert_eq!(
+        tabs(&shell, cx).len(),
+        3,
+        "nothing closes until it's agreed"
+    );
+    (cx.update_window(dialog_window, |_, window, cx| {
+        asked.update(cx, |asked, cx| asked.clear(window, cx));
+    }))
+    .unwrap();
+    cx.run_until_parked();
+    assert!(tabs(&shell, cx).is_empty());
+    // They can come back, as any tab closed can.
+    let closed = shell.update(cx, |shell, _| shell.workspace.take_closed().is_some());
+    assert!(closed);
+}
+
+#[gpui_kit::test]
+fn the_address_bar_says_what_is_shown(cx: &mut TestAppContext) {
+    let (window, shell, _) = arc_shell(&["arc-address"], cx);
+    let said = |shell: &Entity<Shell>, cx: &TestAppContext| {
+        cx.read(|cx| super::top::said(shell.read(cx), cx).0.to_string())
+    };
+    assert_eq!(said(&shell, cx), "No tab open");
+    let page = Pane::unloaded(
+        Unloaded {
+            address: "https://www.example.com/docs?page=2".into(),
+            favicon: None,
+        },
+        "Example".into(),
+    );
+    let shown = [
+        (Tab::Single(page), "example.com"),
+        (chat("Plan the release"), "Plan the release"),
+        (Tab::Single(Pane::new(PaneKind::Terminal)), "zsh"),
+        (Tab::Single(Pane::new(PaneKind::Editor)), "File"),
+    ];
+    for (tab, expected) in shown {
+        shell.update(cx, |shell, cx| {
+            shell.workspace.push_tab(tab);
+            cx.notify();
+        });
+        assert_eq!(said(&shell, cx), expected);
+    }
+    shell.update(cx, |shell, cx| {
+        shell.navigate(Route::Settings(SettingsPage::General), cx);
+    });
+    draw(window, cx);
+    assert_eq!(said(&shell, cx), "Settings");
+}
+
+#[gpui_kit::test]
+fn a_tab_and_its_projects_tile_say_when_a_chat_wants_the_person(cx: &mut TestAppContext) {
+    use koyo_agent::protocol::ids::{ThreadId, Time};
+    use koyo_agent::protocol::model::{Status, ThreadSummary};
+    use koyo_agent::protocol::requests::RequestKind;
+
+    use crate::chat::Activity;
+
+    let (window, shell, roots) = arc_shell(&["arc-attention"], cx);
+    let thread = ThreadId("0001".into());
+    // The chat's tab isn't the one shown, so nothing marks it seen.
+    shell.update(cx, |shell, cx| {
+        let mut pane = Pane::new(PaneKind::Chat);
+        pane.title = "A chat".into();
+        pane.chat = Some(thread.clone());
+        shell.workspace.push_tab(Tab::Single(pane));
+        shell.workspace.push_tab(chat("another"));
+        cx.notify();
+    });
+    draw(window, cx);
+    let worktree = roots[0].clone();
+    let hear =
+        |status: Status, needs: Option<RequestKind>, unread: bool, cx: &mut TestAppContext| {
+            let summary = ThreadSummary {
+                id: thread.clone(),
+                cwd: worktree.to_string_lossy().into_owned(),
+                title: "A chat".into(),
+                provider: "claude".into(),
+                model: None,
+                status,
+                needs,
+                background: false,
+                queued: 0,
+                unread,
+                tab_open: true,
+                updated_at: Time("2026-11-08T10:00:00Z".into()),
+            };
+            let chats = shell.read_with(cx, |shell, _| shell.chats().clone());
+            chats.update(cx, |chats, cx| chats.hear_summaries(vec![summary], cx));
+            cx.run_until_parked();
+        };
+    let told = |cx: &TestAppContext| {
+        cx.read(|cx| {
+            let shell = shell.read(cx);
+            let tab = &shell.workspace.branch().unwrap().tabs[0];
+            let activity = shell.checkout_activity(&worktree, cx);
+            (shell.tab_wants_attention(tab, cx), activity)
+        })
+    };
+    hear(Status::Working, None, false, cx);
+    assert_eq!(
+        told(cx),
+        (false, Activity::Working),
+        "working: a spinner on the tile only"
+    );
+    hear(Status::Idle, None, true, cx);
+    assert_eq!(
+        told(cx),
+        (true, Activity::Attention),
+        "done and unread: a dot"
+    );
+    hear(Status::Working, Some(RequestKind::Approval), false, cx);
+    assert_eq!(told(cx), (true, Activity::Attention), "asking: a dot");
+    hear(Status::Idle, None, false, cx);
+    assert_eq!(told(cx), (false, Activity::Quiet), "seen: nothing");
+}
+
+/// Takes up what `from` names by its middle and lets it go over the middle of what `to` names,
+/// drawing at each step as a person's drag would be drawn.
+fn drag(window: AnyWindowHandle, from: &'static str, to: &'static str, cx: &mut TestAppContext) {
+    let none = Modifiers::default();
+    let mut vcx = VisualTestContext::from_window(window, cx);
+    let held = vcx.debug_bounds(from).expect("what's dragged").center();
+    let target = vcx.debug_bounds(to).expect("where it's dropped").center();
+    vcx.simulate_mouse_down(held, MouseButton::Left, none);
+    vcx.simulate_mouse_move(held + point(px(3.), px(3.)), Some(MouseButton::Left), none);
+    draw(window, cx);
+    let mut vcx = VisualTestContext::from_window(window, cx);
+    vcx.simulate_mouse_move(target, Some(MouseButton::Left), none);
+    draw(window, cx);
+    let mut vcx = VisualTestContext::from_window(window, cx);
+    vcx.simulate_mouse_up(target, MouseButton::Left, none);
+    draw(window, cx);
+}
+
+#[gpui_kit::test]
+fn a_tab_dragged_onto_another_worktree_moves_there(cx: &mut TestAppContext) {
+    let (window, shell, roots) = arc_shell(&["arc-drag-across"], cx);
+    let root = roots[0].clone();
+    let feat = root.with_file_name("arc-drag-across-feat");
+    let _ = std::fs::remove_dir_all(&feat);
+    git(
+        &root,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "feat",
+            feat.to_str().unwrap(),
+        ],
+    );
+    shell.update(cx, |shell, cx| {
+        shell.show_worktrees(&root, read_worktrees(&root), cx);
+        for title in ["one", "two"] {
+            shell.workspace.push_tab(chat(title));
+        }
+        cx.notify();
+    });
+    draw(window, cx);
+    let titles = |branch: usize, cx: &TestAppContext| -> Vec<String> {
+        cx.read(|cx| {
+            let units = &shell.read(cx).workspace.projects[0].branches;
+            (units[branch].tabs.iter())
+                .map(|tab| tab.first().title.to_string())
+                .collect()
+        })
+    };
+    assert_eq!(titles(0, cx), ["one", "two"]);
+
+    drag(window, "tab-0-0-0", "arc-divider-1", cx);
+    assert_eq!(titles(0, cx), ["two"], "it left its own worktree");
+    assert_eq!(titles(1, cx), ["one"], "and went to the other's");
+    let shown = cx.read(|cx| shell.read(cx).workspace.shown_tab());
+    assert_eq!(shown, Some((0, 1, 0)), "where it shows");
+}
+
+#[gpui_kit::test]
+fn a_space_slides_out_the_next_slides_in_and_both_come_to_rest(cx: &mut TestAppContext) {
+    let (window, shell, roots) = arc_shell(&["arc-slide-app", "arc-slide-site"], cx);
+    act(window, MoveProjectToNewSpace(roots[1].clone()), cx);
+    assert_eq!(shown(&shell, cx).1, 1);
+    cx.update(|cx| cx.set_reduce_motion(false));
+    shell.update(cx, |shell, cx| shell.slide_to_space(0, cx));
+    let offset = |cx: &TestAppContext| shell.read_with(cx, |shell, _| shell.swipe.offset);
+    let frame = std::time::Duration::from_millis(8);
+    let mut seen = Vec::new();
+    for _ in 0..240 {
+        cx.executor().advance_clock(frame);
+        // The display asks for the next frame, as the settling space wants one.
+        (cx.update_window(window, |_, window, cx| window.simulate_next_frame(cx))).unwrap();
+        draw(window, cx);
+        seen.push((offset(cx), shown(&shell, cx).1));
+    }
+    // Going back a space, the space shown moves right, out; the one before comes in from the
+    // left, still moving right, and settles.
+    assert!(
+        seen.iter()
+            .any(|&(offset, space)| space == 1 && offset > 1.)
+    );
+    assert!(
+        seen.iter()
+            .any(|&(offset, space)| space == 0 && offset < -1.)
+    );
+    assert_eq!(seen.last().copied(), Some((0., 0)));
+    assert_eq!(shown(&shell, cx), (roots[0].clone(), 0));
+}

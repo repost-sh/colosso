@@ -21,7 +21,10 @@ pub(super) fn reload(cx: &mut App) {
     if changed == store.seen {
         return;
     }
-    let read = read(&path);
+    let read = read(&path).map(|mut settings| {
+        settings.reconcile_spaces();
+        settings
+    });
     let store = cx.global_mut::<Store>();
     store.seen = changed;
     match read {

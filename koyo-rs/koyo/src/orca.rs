@@ -107,7 +107,7 @@ pub fn sidebar(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
                 })
                 .children(branches.into_iter().map(|branch_index| {
                     let branch = &project.branches[branch_index];
-                    let selected = project_index == workspace.active_project
+                    let selected = Some(project_index) == workspace.active_project()
                         && branch_index == project.active_branch;
                     branch_row(shell, project_index, branch_index, branch, selected, p, cx)
                 }))
@@ -155,7 +155,8 @@ fn branch_row(
 pub fn tab_strip(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
     let p = theme::palette(cx);
     let workspace = &shell.workspace;
-    let project_index = workspace.active_project;
+    // With no project shown there's no branch, and so no tab the place is asked for.
+    let project_index = workspace.active_project().unwrap_or_default();
     let branch_index = workspace
         .project()
         .map_or(0, |project| project.active_branch);
@@ -187,7 +188,7 @@ pub fn tab_strip(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
                     MouseButton::Middle,
                     cx.listener(move |this, _, window, cx| this.close_tab_at(at, window, cx)),
                 );
-            let list = (Axis::Horizontal, active, &shell.tab_hand);
+            let list = (Axis::Horizontal, &shell.tab_hand);
             let (dot, split_dot) = shell.tab_dots(tab, p, cx);
             let row = row.children(split_dot);
             tab_row(row, (at, tab), list, p, cx, |row, face, cx| {

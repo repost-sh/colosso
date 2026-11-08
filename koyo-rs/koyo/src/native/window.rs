@@ -2,7 +2,7 @@
 //! top, where GPUI's resize keeps the bottom edge, as `AppKit` does; and its traffic lights
 //! (`traffic_lights.rs`).
 
-use gpui_kit::{App, AsyncApp, Window};
+use gpui_kit::{AnyWindowHandle, App, AsyncApp, Window};
 use objc2::rc::Retained;
 use objc2_app_kit::{NSView, NSViewLayerContentsPlacement, NSWindow};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -42,6 +42,31 @@ pub fn fit_height(window: &Window, height: f32, cx: &mut App) -> bool {
     })
     .detach();
     true
+}
+
+/// Has macOS work out `window`'s shadow and edge again from what's drawn in it by now. It works
+/// them out from a see-through window's content once, as the window first shows, and keeps them
+/// until a resize: drawn before the content had settled, the edge along the window's foot came
+/// out ragged, patches of the desktop's blur where the rim should be. So it's asked again once
+/// the first frames are in, and once more after, for what comes late.
+pub fn refresh_edge(window: AnyWindowHandle, cx: &mut App) {
+    cx.spawn(async move |cx: &mut AsyncApp| {
+        for wait in [100, 400, 1000] {
+            cx.background_executor()
+                .timer(std::time::Duration::from_millis(wait))
+                .await;
+            // Looked up each time: a card's window may well have gone by now.
+            let refreshed = window.update(cx, |_, window, _| {
+                if let Some(ns_window) = ns_window(window) {
+                    ns_window.invalidateShadow();
+                }
+            });
+            if refreshed.is_err() {
+                return;
+            }
+        }
+    })
+    .detach();
 }
 
 /// The `NSWindow` GPUI draws `window` in; none for a test's window.

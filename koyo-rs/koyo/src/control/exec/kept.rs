@@ -14,7 +14,8 @@ use crate::shell::Shell;
 pub(crate) struct Kept {
     route: Route,
     /// The selected project and its selected checkout.
-    selected: (usize, usize),
+    /// The project and branch selected, if a project was shown.
+    selected: Option<(usize, usize)>,
     /// The checkout opened on, and a pane of the tab it showed, when it had one: found by
     /// the pane, since an opening may take a tab out before it.
     target: (usize, usize, Option<u64>),
@@ -34,12 +35,8 @@ impl Kept {
         let unit = &workspace.projects[project].branches[branch];
         Kept {
             route: shell.route(cx),
-            selected: (
-                workspace.active_project,
-                workspace
-                    .project()
-                    .map_or(0, |project| project.active_branch),
-            ),
+            selected: (workspace.active_project())
+                .zip(workspace.project().map(|project| project.active_branch)),
             target: (
                 project,
                 branch,
@@ -58,11 +55,13 @@ impl Kept {
         {
             unit.active_tab = at;
         }
-        let (project, branch) = self.selected;
-        if shell.workspace.unit_mut(project, branch).is_some() {
-            shell.workspace.select_branch(project, branch);
-        } else if project < shell.workspace.projects.len() {
-            shell.workspace.active_project = project;
+        match self.selected {
+            Some((project, branch)) if shell.workspace.unit_mut(project, branch).is_some() => {
+                shell.workspace.select_branch(project, branch);
+            }
+            selected => shell
+                .workspace
+                .select_project(selected.map(|(project, _)| project)),
         }
         shell.follow_selection(window, cx);
         shell.come_back(self.route, cx);

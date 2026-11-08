@@ -28,6 +28,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::{App, IntoElement, ParentElement as _};
 
 pub use chat::{ClearClaudePath, EditClaudePath, edit_claude_path};
+pub use components::MenuButton;
 pub use general::{EditBranchPrefix, edit_branch_prefix};
 pub use mcp_agents::{EditPagesOpenAt, edit_pages_open_at};
 pub use settings_sidebar::SettingsSidebar;

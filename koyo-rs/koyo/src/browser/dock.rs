@@ -228,7 +228,7 @@ impl BrowserView {
             .child(bar(&me, &self.title(), dock, p, cx))
             .child(div().flex_1().min_h_0().min_w_0().child(tools));
         let id = self.pane;
-        let divider = crate::shell::divider(
+        let divider = theme::card::divider(
             ("devtools-divider", id),
             "devtools-divider".into(),
             row,
@@ -377,7 +377,10 @@ impl Render for BrowserView {
                 })
                 .child(div().flex_1().min_h_0().w_full().child(page));
         }
-        let toolbar = toolbar::toolbar(self, window, cx);
+        // In the Arc layout the sidebar has the page's back, forward, reload and address, and
+        // its right-click menu responsive mode and the DevTools (`docs/arc-sidebar.md` 2).
+        let arc = settings::get(cx).layout == settings::Layout::Arc;
+        let toolbar = (!arc).then(|| toolbar::toolbar(self, window, cx));
         let device = super::responsive::bar::device_bar(self, window, cx);
         let body = self.body(page, device, cx);
         column
@@ -396,7 +399,7 @@ impl Render for BrowserView {
                     cx.stop_propagation();
                 }
             }))
-            .child(toolbar)
+            .children(toolbar)
             .child(body)
     }
 }

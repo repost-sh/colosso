@@ -9,8 +9,6 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use gpui_kit::assets::IconName;
-use gpui_kit::component::Disableable as _;
-use gpui_kit::component::switch::Switch;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyWindowHandle, App, Context, IntoElement, ParentElement as _, Render, SharedString,
@@ -22,6 +20,7 @@ use crate::modal::{self, Button, LINE, SMALL_LINE, Tone, small_line};
 use crate::projects::display_path;
 use crate::shell::{Shell, ellipsized, icon};
 use crate::theme;
+use crate::toggle::Toggle;
 
 mod removal;
 
@@ -349,14 +348,17 @@ impl DeleteWorktreeDialog {
                     ),
             )
             .child(
-                Switch::new("delete-worktree-branch")
-                    .checked(self.delete_branch)
-                    .color(if warn { p.danger } else { p.accent })
-                    .disabled(self.deleting)
-                    .on_click(cx.listener(|this, checked: &bool, _, cx| {
-                        this.delete_branch = *checked;
-                        cx.notify();
-                    })),
+                // The settings' switch, macOS's own; the line over it says when it loses
+                // commits, in red.
+                Toggle::for_view(
+                    "delete-worktree-branch",
+                    self.delete_branch,
+                    cx,
+                    |dialog, on| {
+                        dialog.delete_branch = on;
+                    },
+                )
+                .enabled(!self.deleting),
             )
     }
 }

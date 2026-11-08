@@ -21,8 +21,18 @@ pub enum Pick {
     Copy(String),
     /// Show the element under the pointer in the page's `DevTools`.
     Inspect,
+    /// Show the page's `DevTools`, or hide them.
+    DevTools,
     /// Turn responsive mode on or off.
     Responsive,
+}
+
+/// What a page's own rows at the menu's end say: whether it's in responsive mode, and
+/// whether its `DevTools` are up.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct PageRows {
+    responsive: bool,
+    inspecting: bool,
 }
 
 /// A row picked from the context menu `menu` of the page `pane`.
@@ -32,14 +42,6 @@ pub struct MenuPick {
     pub pane: PaneId,
     pub menu: u64,
     pub pick: Pick,
-}
-
-/// The person takes the page `pane`, or gives it back.
-#[derive(Clone, Debug, PartialEq, Action)]
-#[action(namespace = browser, no_json)]
-pub struct Lease {
-    pub pane: PaneId,
-    pub take: bool,
 }
 
 /// A context menu the host sent, waiting for a render to show it.
@@ -116,10 +118,11 @@ fn command(entry: &MenuEntry) -> Option<Row> {
     })
 }
 
-/// Every row of the menu, with no leading, trailing or doubled rules. A page (`Some`,
-/// saying whether it's in responsive mode) ends with Responsive mode and Inspect, as
-/// Chrome's menus end with Inspect; `DevTools` (`None`) have neither.
-fn rows(entries: &[MenuEntry], target: &MenuTarget, page: Option<bool>) -> Vec<Row> {
+/// Every row of the menu, with no leading, trailing or doubled rules. A page (`Some`)
+/// ends with Responsive mode, Inspect and Show or Hide `DevTools`, as Chrome's menus end with
+/// Inspect: the page's toolbar had the switches for them, and in the Arc layout it has no
+/// toolbar (`docs/arc-sidebar.md` 2). `DevTools` (`None`) have none of them.
+fn rows(entries: &[MenuEntry], target: &MenuTarget, page: Option<PageRows>) -> Vec<Row> {
     let mut rows = own_rows(target);
     rows.extend(entries.iter().map(|entry| match entry {
         MenuEntry::Separator => Row::Separator,
@@ -129,12 +132,12 @@ fn rows(entries: &[MenuEntry], target: &MenuTarget, page: Option<bool>) -> Vec<R
             rows: entries.iter().filter_map(command).collect(),
         },
     }));
-    if let Some(responsive) = page {
+    if let Some(page) = page {
         rows.push(Row::Separator);
         rows.push(Row::Item {
             label: "Responsive mode".into(),
             disabled: false,
-            checked: Some(responsive),
+            checked: Some(page.responsive),
             pick: Pick::Responsive,
         });
         rows.push(Row::Item {
@@ -142,6 +145,17 @@ fn rows(entries: &[MenuEntry], target: &MenuTarget, page: Option<bool>) -> Vec<R
             disabled: false,
             checked: None,
             pick: Pick::Inspect,
+        });
+        rows.push(Row::Item {
+            label: if page.inspecting {
+                "Hide DevTools"
+            } else {
+                "Show DevTools"
+            }
+            .into(),
+            disabled: false,
+            checked: None,
+            pick: Pick::DevTools,
         });
     }
     let mut tidy: Vec<Row> = Vec::with_capacity(rows.len());
@@ -232,7 +246,10 @@ impl BrowserView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let page = (!self.is_inspector()).then_some(self.responsive.mode.is_some());
+        let page = (!self.is_inspector()).then_some(PageRows {
+            responsive: self.responsive.mode.is_some(),
+            inspecting: self.devtools.is_some(),
+        });
         let rows = rows(&request.entries, &request.target, page);
         if rows.is_empty() {
             self.menu_command(request.id, None, cx);
@@ -282,6 +299,7 @@ impl BrowserView {
             Pick::OpenTab(url) => cx.emit(BrowserEvent::OpenTab(url)),
             Pick::Copy(text) => cx.write_to_clipboard(ClipboardItem::new_string(text)),
             Pick::Inspect => self.inspect(Some(page_at), cx),
+            Pick::DevTools => self.inspect(None, cx),
             Pick::Responsive => self.toggle_responsive(cx),
         }
         cx.notify();
@@ -300,8 +318,8 @@ impl BrowserView {
     }
 }
 
-/// What the window does with the menus' picks, history lists' included, and the lease
-/// chip's choices: routes them to the page they name, wherever the keyboard is.
+/// What the window does with the menus' picks, history lists' included: routes them to the
+/// page they name, wherever the keyboard is.
 pub fn handle_actions(root: Div) -> Div {
     let root = super::responsive::bar::handle_actions(root);
     root.on_action(|pick: &MenuPick, _, cx| {
@@ -311,15 +329,6 @@ pub fn handle_actions(root: Div) -> Div {
     })
     .on_action(|pick: &super::history::HistoryPick, _, cx| {
         with_view(pick.pane, cx, |view, cx| view.go_to_entry(pick.entry, cx));
-    })
-    .on_action(|lease: &Lease, _, cx| {
-        with_view(lease.pane, cx, |view, cx| {
-            if lease.take {
-                view.person_acts(Mode::Explicit, cx);
-            } else {
-                view.give_back(cx);
-            }
-        });
     })
 }
 
@@ -373,7 +382,7 @@ mod tests {
             ..MenuTarget::default()
         };
         assert_eq!(
-            picks(&rows(&entries, &target, Some(false))),
+            picks(&rows(&entries, &target, Some(PageRows::default()))),
             [
                 "OpenTab(\"https://example.com/a\")",
                 "Copy(\"https://example.com/a\")",
@@ -383,7 +392,8 @@ mod tests {
                 "Engine(132)",
                 "-",
                 "Responsive",
-                "Inspect"
+                "Inspect",
+                "DevTools"
             ]
         );
         assert_eq!(
@@ -393,7 +403,14 @@ mod tests {
             Some("Engine(132)"),
             "DevTools have no inspector of their own, nor responsive mode"
         );
-        let on = rows(&entries, &target, Some(true));
+        let on = rows(
+            &entries,
+            &target,
+            Some(PageRows {
+                responsive: true,
+                inspecting: true,
+            }),
+        );
         assert!(
             on.iter().any(|row| matches!(
                 row,
@@ -404,6 +421,13 @@ mod tests {
                 }
             )),
             "the row is checked while the mode is on"
+        );
+        assert!(
+            on.iter().any(|row| matches!(
+                row,
+                Row::Item { pick: Pick::DevTools, label, .. } if label == "Hide DevTools"
+            )),
+            "with DevTools up, the row hides them"
         );
     }
 

@@ -13,8 +13,7 @@ use gpui_kit::{
     ElementId, FontWeight, Global, Hsla, InteractiveElement as _, IntoElement, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, PathBuilder, Pixels, Point,
     Render, SpringConfig, SpringState, StatefulInteractiveElement as _, Styled as _, Subscription,
-    Window, WindowBackgroundAppearance, WindowBounds, WindowKind, WindowOptions, canvas, div,
-    ease_in_out, linear_color_stop, linear_gradient, point, px, size,
+    Window, canvas, div, ease_in_out, linear_color_stop, linear_gradient, point, px, size,
 };
 
 use crate::backdrop;
@@ -98,21 +97,8 @@ pub fn open(position: Point<Pixels>, window: &mut Window, cx: &mut App) {
         origin.x = origin.x.min(area.right() - px(WIDTH)).max(area.left());
         origin.y = origin.y.min(area.bottom() - px(HEIGHT)).max(area.top());
     }
-    let options = WindowOptions {
-        window_bounds: Some(WindowBounds::Windowed(gpui_kit::Bounds::new(
-            origin,
-            size(px(WIDTH), px(HEIGHT)),
-        ))),
-        titlebar: None,
-        focus: false,
-        kind: WindowKind::PopUp,
-        is_movable: false,
-        is_resizable: false,
-        is_minimizable: false,
-        window_background: WindowBackgroundAppearance::Blurred,
-        display_id: display.map(|display| display.id()),
-        ..Default::default()
-    };
+    let bounds = gpui_kit::Bounds::new(origin, size(px(WIDTH), px(HEIGHT)));
+    let options = crate::modal::popup_options(bounds, false, window, cx);
     let parent = window.window_handle();
     let opened = cx.open_window(options, |picker_window, cx| {
         cx.new(|cx| Picker {
