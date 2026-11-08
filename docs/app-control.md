@@ -112,12 +112,16 @@ fails `request_conflict` (retryable). Deviation from monocode, where sessions sk
 confirmations: Koyo's terminal agents have no provider layer deciding MCP calls for
 them, so the window asks.
 
-The control policy (on/off, port, approved clients with scopes and last use, and whether
-the window switches to what agents open, `showWhatAgentsOpen`, 5) lives in `settings.json`
-under `externalControl`; no operation can read or change it, so no agent can switch it
-back on for itself. The executors only follow it. `settings_set` cannot reach it. The
-activity log keeps every changing call (refused or not) and every approval/confirmation
-decision, the latest 200, in memory; reads aren't logged.
+The control policy (on/off, port, approved clients with scopes and last use, whether the
+window switches to what agents open, `showWhatAgentsOpen`, and the size a page an agent
+opens starts at, `pagesOpenAt`, 5) lives in `settings.json` under `externalControl`; no
+operation can read or change it, so no agent can switch it back on for itself. The
+executors only follow it. `settings_set` cannot reach it. The activity log keeps every
+changing call (refused or not) and every approval/confirmation decision, the latest 200, in
+memory; reads aren't logged. Agents read it with `activity_list` (5, Activity): an agent in
+a Koyo terminal or chat reads every client's entries, an external client only its own, so
+it can't learn which other clients the person allowed (a name is all it would need to pass
+for one).
 
 ## 5. Tool catalog [decided; schemas proposed]
 
@@ -141,6 +145,29 @@ agent. `project_add`, `worktree_create`, `tab_open`, `pane_split`, `file_open`,
 - For every caller: agents in Koyo's terminals, external clients and `koyo app`. The
   person's own menus and dialogs are unaffected, and so are terminals an agent opens with
   `terminal_open`, which already come as tabs that aren't shown.
+
+### Pages agents open [decided 2026-11-08]
+
+A browser page an agent opens (`tab_open` or `pane_split` with `kind: "browser"`) starts in
+responsive mode at 1440 × 900, a desktop screen's size, scaled down to fit its pane
+(`docs/responsive.md` 4.1, 9), so it lays out and screenshots as on a desktop whatever the
+pane's size. The pages the person opens fill their pane, as before.
+
+- `viewport` left out follows Settings → MCP server → Pages agents open
+  (`externalControl.pagesOpenAt`): `{ "width": 1440, "height": 900 }` by default, a size of
+  the person's own, or `"fill"`.
+- `viewport` given gets what it says, whatever the setting, in `browser_viewport`'s shape
+  (`ops/browser/viewport.rs` `OpenViewport`): `{ width?, height? }` (a side left out is the
+  default's, or the pane's when the default fills it), `{ device, orientation? }`, or
+  `{ fill: true }`. A viewport no page takes is `invalid_input`, refused before anything
+  opens.
+- For every caller, as 5's switch. The device bar says "Set by" the agent, as for
+  `browser_viewport`. Nothing is remembered: a page brought back at launch fills its pane
+  (`docs/browser.md` 7).
+- `browser_navigate` never opens a page: with none open it fails `not_found`, pointing at
+  `tab_open`. `tab_reopen` (⇧⌘T's) opens the closed tab's pages again at their addresses,
+  filling their panes, and a tab a page opens (a link to a new tab) fills its pane: neither
+  is an agent opening a page.
 
 Operations whose point is to show something always do: `project_select`,
 `worktree_select`, `tab_select`, `pane_focus`, `chat_open`, `settings_open`,
@@ -199,11 +226,14 @@ tab_list   [read] R { worktree?, all?: bool } → { worktrees: [{ path, tabs: [{
              PaneInfo = { pane, kind: "terminal"|"browser"|"editor"|"changes"|"chat", title,
              url?, file?, unsaved?, terminal?: handle, focused }
              PaneTree = { pane } | { axis: "row"|"column", ratio, first, second }
-tab_open   [navigate] C { worktree?, kind, url?, file?, line?, column?, terminal?: handle,
+tab_open   [navigate] C { worktree?, kind, url?, viewport?: OpenViewport (a page's, default:
+             the person's setting, 1440 × 900), file?, line?, column?, terminal?: handle,
              name?: string (new terminal's), command?: string (new terminal's), place?:
              "end"|"beside" (default end), select?: bool (default: the person's setting) }
              → { pane, tab }
              Opens the kind as the menu would; `terminal` reveals an existing daemon terminal.
+             OpenViewport = { device?, width?, height?, orientation?, fill?: true }
+             (`browser_viewport`'s fields, Pages agents open above)
 tab_select [navigate] I { pane } | { worktree?, index }
 tab_move   [navigate] I { pane, to: index }
 tab_close  [navigate] I { pane } → refuses with `unsaved_changes` (listing files) when an
@@ -211,8 +241,9 @@ tab_close  [navigate] I { pane } → refuses with `unsaved_changes` (listing fil
              [destructive] and is confirmed
 tab_reopen [navigate] C {} → reopens the latest closed tab
 pane_split [navigate] C { pane (target), edge: "left"|"right"|"top"|"bottom",
-             move?: pane (an existing pane, taken from its tab) | kind + tab_open's fields
-             (a new pane), select?: bool (default: the person's setting) } → { pane, tab }
+             move?: pane (an existing pane, taken from its tab) | kind + tab_open's fields,
+             `viewport` among them (a new pane), select?: bool (default: the person's
+             setting) } → { pane, tab }
 pane_focus [navigate] I { pane } → selects its tab and gives it the keyboard
 pane_resize [navigate] I { pane, ratio } → the split holding the pane gives that pane `ratio`
 pane_detach [navigate] I { pane } → moves the pane out of its split into a tab of its own
@@ -268,6 +299,7 @@ motion), and sends a ring out where it lands; the pointer fades 6 s after its la
 browser_list     [read] R {} → { pages: [{ pane, url, title, loading, worktree, controller?,
                    viewport }] }
 browser_navigate [browser] C { pane?, url, wait?: "load"|"none" (default load), timeoutMs? }
+                   → an open page's; it never opens one
 browser_go       [browser] C { pane?, action: "back"|"forward"|"reload" }
 browser_read     [read] R { pane?, format?: "text"|"markdown"|"html" (default text),
                    selector?, limit? } → { url, title, content, truncated }
@@ -287,6 +319,21 @@ browser_viewport [browser] I { pane?, device?, width?, height?, scale?, mobile?,
                    → { viewport, settled } (+ image block with `screenshot`); responsive mode,
                    `docs/responsive.md` 4.1
 ```
+
+### Activity
+
+```
+activity_list [read] R { limit?: n (default 50, at most 200) } → { entries: [{ at, client,
+                kind: "call"|"approval"|"confirmation", operation?, summary?, error?: { code,
+                message }, question?, decision?: "allowed"|"denied"|"timed_out" }],
+                onlyYours }, newest first
+```
+
+The activity log of 4, which Settings no longer lists. A read, so `read` like every read and
+not logged itself. An agent in a Koyo terminal or chat lists every client's entries; an
+external client lists its own (`onlyYours: true`): its calls, its approval, the
+confirmations of its calls. `client` is the log's key: a client's name, `terminal:<handle>`
+or `chat:<id>`.
 
 ### Settings
 
@@ -355,12 +402,15 @@ tools at length.
 ## 9. Settings → MCP server [decided]
 
 A Settings page "MCP server": the switch, the server URL with Copy, a port field when the
-port is taken, an "Agents" section with Switch to what agents open (off; shown whether the
-server is on or not, since it holds for agents in Koyo's terminals too), "Add to" buttons
-(Claude Code and Codex copy the command, Cursor and VS Code open their install links, as
-monocode `settings/pages/mcp_clients.rs`), the stdio command for agents (`claude mcp add
-koyo -- <exe> mcp`), approved clients with last use, per-scope switches and Revoke,
-clients denied lately with Allow, and Recent activity.
+port is taken, an "Agents" section (shown whether the server is on or not, since it holds
+for agents in Koyo's terminals and chats too) with Switch to what agents open (off) and
+Pages agents open (a menu: 1440 × 900, the default; a size of the person's own, once set;
+Other size…, a dialog taking a width × height, each 50 to 8192; Fill the pane), "Add to"
+buttons (Claude Code and Codex copy the command, Cursor and VS Code open their install
+links, as monocode `settings/pages/mcp_clients.rs`), the stdio command for agents (`claude
+mcp add koyo -- <exe> mcp`), approved clients with last use, per-scope switches and Revoke,
+and clients denied lately with Allow. What clients did isn't listed here (2026-11-08): the
+owner found the list of no use, and agents read the log with `activity_list` (5).
 
 ## 10. Testing [decided]
 
@@ -375,20 +425,22 @@ clients denied lately with Allow, and Recent activity.
 
 ## 11. As implemented (2026-11-02)
 
-- Crates: `koyo-rs/koyo-app-control` (51 operations, frames, socket, client, `koyo app`),
+- Crates: `koyo-rs/koyo-app-control` (52 operations, frames, socket, client, `koyo app`),
   `koyo-rs/koyo/src/control/` (listener, gate, approval, confirmations, receipts, activity,
   topics, in-process client, HTTP server in `control/http.rs`, executors in `control/exec/`,
   browser executors in `control/exec/browser/`), `koyo-rs/koyo-term-mcp` (the unified server:
   `backend.rs`, `socket.rs`, `app.rs`, `tools.rs`, `launch.rs`, `subscriptions.rs`,
-  `http.rs`), the Settings page in `settings_view/mcp_server.rs` and `mcp_clients.rs`.
-- `koyo mcp` lists 66 tools (14 terminal, 51 app, `app_launch`); HTTP lists 65 (no
+  `http.rs`), the Settings page in `settings_view/mcp_server.rs`, `mcp_agents.rs` (the
+  Agents section) and `mcp_clients.rs`.
+- `koyo mcp` lists 67 tools (14 terminal, 52 app, `app_launch`); HTTP lists 66 (no
   `app_launch`). The server is named `koyo`. A chat's session registers it under that name,
   with `KOYO_CHAT` (`docs/chat.md` O1).
 - Browser tools run over CDP through `browser/agent.rs`, its refusals typed (`AgentError`). A
   page opens in the engine once its pane is drawn. One an agent opened out of sight is opened
-  at once at 1280×800, the size a pane assumes before it's drawn
-  (`BrowserView::open_out_of_sight`), told it's out of sight when the engine already runs,
-  and takes its pane's size once shown. Any other page never shown answers
+  at once (`BrowserView::open_out_of_sight`) at its responsive mode's size (1440 × 900 by
+  default, 2026-11-08), or, filling its pane, at 1280×800, the size a pane assumes before it's
+  drawn; it's told it's out of sight when the engine already runs, and once shown a page
+  filling its pane takes the pane's size. Any other page never shown answers
   `browser_unavailable` until it's shown once. A tab brought back at launch has no page until
   it's shown; `browser_list` lists it with its kept address and title and a 0 × 0 viewport
   (`docs/browser.md` 6). `browser_read` cuts the page's text in the page, near its limit.
@@ -413,8 +465,8 @@ clients denied lately with Allow, and Recent activity.
   answered `not_found` with `retryable: true`.
 - An HTTP session follows each topic once; a client's `lastUsed` is saved at most once a
   minute.
-- Not built: the activity and denied lists don't push a change notification to the Settings
-  page (it redraws on the next settings change); `app_status.focused` and the App topic don't
+- Not built: the denied list doesn't push a change notification to the Settings page (it
+  redraws on the next settings change); `app_status.focused` and the App topic don't
   follow window focus.
 - Shown or out of sight (5, 2026-11-06): `control::policy::shows` resolves a call's `select`
   against `externalControl.showWhatAgentsOpen`. An opening out of sight goes through the
@@ -425,11 +477,25 @@ clients denied lately with Allow, and Recent activity.
   by one step Back, the keyboard), so nothing is drawn in between. A new terminal's tab
   arrives once the daemon answers, not shown and without the keyboard (`open_terminal`'s
   `shown`); `add_project_at` and `add_chat` take `select` themselves.
+- `activity_list` (5, 2026-11-08): `ops/activity.rs`, executor `control/exec/activity.rs`
+  over `control::policy::activity`, read in place; the log's decisions are the operation's
+  `ActivityDecision`; the log's size is `ops::activity::KEPT`, which
+  `control/activity.rs` keeps to. Recent activity left Settings → MCP server the same day.
+- Pages agents open (5, 2026-11-08): `control/exec/open.rs` `open_on`, the opening both
+  `tab_open` and `pane_split` go through, checks the pane's fields and makes the mode
+  (`page_mode`) from the call's `viewport` (`control/exec/browser/viewport.rs`
+  `opening_change`, `browser_viewport`'s mapping) and `externalControl.pagesOpenAt`
+  (`control::pages_open_at`), through `browser/responsive/opening.rs` `opening`, which
+  resolves it as `browser_viewport`'s change over the default, before anything opens.
+  `Shell::open_browser_tab` takes the mode and sets it on the view it makes
+  (`BrowserView::start_in`), before anything is sent, so the page opens at that size, out of
+  sight or once drawn. The Agents section is `settings_view/mcp_agents.rs`.
 
 ## 12. Defaults the person sets for agents [proposed]
 
 The window switching to what agents open (5) was the first behaviour taken from the agents
-and the hard-coded defaults and handed to the person. These are the others a person could
+and the hard-coded defaults and handed to the person; the size pages agents open start at
+(5, Pages agents open, 2026-11-08) the second. These are the others a person could
 reasonably want to choose. None is built. Each says what happens today and where, the
 setting proposed and its default (today's behaviour unless said), whom it protects, and
 where it lives:

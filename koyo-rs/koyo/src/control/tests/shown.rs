@@ -107,7 +107,9 @@ fn a_tab_an_agent_opens_leaves_the_window_where_it_was_unless_shown(cx: &mut Tes
     for kind in [
         json!({ "kind": "chat" }),
         json!({ "kind": "editor", "file": "README.md" }),
-        json!({ "kind": "browser", "url": "https://example.com/" }),
+        // Filling its pane, so it opens at the size a pane assumes undrawn; an agent's page
+        // starts at 1440 × 900 otherwise (`viewport.rs`).
+        json!({ "kind": "browser", "url": "https://example.com/", "viewport": { "fill": true } }),
         json!({ "kind": "changes" }),
     ] {
         let mut input = kind.clone();

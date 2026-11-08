@@ -4,6 +4,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use super::browser::OpenViewport;
 use super::shared::{
     Closed, NoInput, PaneId, PaneInfo, PaneKind, PanePlace, PaneSpec, PaneTree, count,
 };
@@ -106,6 +107,12 @@ pub struct TabOpenInput {
     /// A browser tab's address; a blank page when left out.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
+    /// A browser page's viewport as it opens, as `browser_viewport` sets one: `{ width,
+    /// height }` for responsive mode at that size, `{ device }` for a phone or tablet, or
+    /// `{ fill: true }` to fill the pane. Left out, the person's default in Settings → MCP
+    /// server: responsive mode at 1440 × 900 unless they changed it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub viewport: Option<OpenViewport>,
     /// An editor tab's file, absolute or relative to the worktree.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub file: Option<String>,
@@ -146,6 +153,7 @@ impl TabOpenInput {
             terminal: self.terminal.clone(),
             name: self.name.clone(),
             command: self.command.clone(),
+            viewport: self.viewport.clone(),
         }
     }
 }
@@ -159,7 +167,7 @@ impl Operation for TabOpen {
     const TITLE: &'static str = "Open tab";
     const SUBJECT: &'static [&'static str] = &["kind", "url", "file", "terminal"];
     const SCOPE: Scope = Scope::Navigate;
-    const DESCRIPTION: &'static str = "Opens a tab of a kind as the menu would: a terminal (new, or an existing one by `terminal` handle), a browser page at `url`, a `file` in an editor at `line`, the changes, or a chat. The window shows it only with `select: true`, or with `select` left out when the person chose in Settings to see what agents open; otherwise it joins its worktree's tabs and the window stays where it was. Answers the new pane's id and tab.";
+    const DESCRIPTION: &'static str = "Opens a tab of a kind as the menu would: a terminal (new, or an existing one by `terminal` handle), a browser page at `url`, a `file` in an editor at `line`, the changes, or a chat. A browser page opens in responsive mode at 1440 × 900 (the person's default in Settings → MCP server), scaled down to fit its pane; `viewport` asks for another size, a `device`, or `fill: true` to fill the pane. The window shows it only with `select: true`, or with `select` left out when the person chose in Settings to see what agents open; otherwise it joins its worktree's tabs and the window stays where it was. Answers the new pane's id and tab.";
     const HINTS: Hints = Hints::CHANGE;
     type Input = TabOpenInput;
     type Output = PanePlace;

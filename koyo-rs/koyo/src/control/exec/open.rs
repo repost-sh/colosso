@@ -1,7 +1,8 @@
 //! Opening a pane of any kind on a checkout, as the New Tab menu would, for `tab_open`,
 //! `pane_split` and `file_open`: a terminal, new or one the daemon runs already; a browser
-//! page; a file in an editor, at a line and column; the checkout's Changes; a chat. Shown, or
-//! out of sight with the window kept where it was (`kept`).
+//! page, in responsive mode at the size its call or the person's default says
+//! (`page_mode`); a file in an editor, at a line and column; the checkout's Changes; a chat.
+//! Shown, or out of sight with the window kept where it was (`kept`).
 
 use std::path::{Path, PathBuf};
 
@@ -12,9 +13,12 @@ use koyo_term_control::Handle;
 use koyo_term_control::terminal::{is_terminal_name, login_shell_line};
 use serde_json::Value;
 
-use super::Exec;
+use super::super::{Caller, policy};
 use super::kept::Kept;
+use super::{Exec, browser};
 use crate::browser::BrowserView;
+use crate::browser::Responsive;
+use crate::browser::agent::{self, SetBy};
 use crate::files::{At, Place};
 use crate::model::{self, Pane, Tab};
 use crate::navigation::Route;
@@ -71,27 +75,52 @@ pub(crate) fn on_checkout<T>(
     opened
 }
 
-/// Opens the pane `spec` describes on the checkout at `at`, as [`open`] does: shown, the
-/// window switching to it, or out of sight, the window kept where it was.
+/// Opens the pane `spec` describes for `caller` on the checkout at `at`, as [`open`] does:
+/// shown, the window switching to it, or out of sight, the window kept where it was; a page
+/// in the mode its `viewport` or the person's default for agents' pages says. Fields its kind
+/// doesn't take, or a `viewport` no page takes, are refused before anything opens.
 pub(crate) fn open_on(
     shell: &mut Shell,
+    caller: &Caller,
     at: (usize, usize),
     spec: &PaneSpec,
-    beside: bool,
-    shown: bool,
+    (beside, shown): (bool, bool),
     window: &mut Window,
     cx: &mut Context<Shell>,
-) -> Opened {
+) -> Result<Opened, ControlError> {
+    check(spec)?;
+    let mode = page_mode(caller, spec, window, cx)?;
     // A file opens through the checkout's right panel, and so do the Changes.
     let panel = spec.kind == PaneKind::Changes || spec.file.is_some();
-    on_checkout(
+    Ok(on_checkout(
         shell,
         at,
         (shown, panel),
         window,
         cx,
-        |shell, root, window, cx| open(shell, root, spec, beside, shown, window, cx),
-    )
+        |shell, root, window, cx| open(shell, root, spec, mode, (beside, shown), window, cx),
+    ))
+}
+
+/// The responsive mode the page `spec` opens for `caller` starts in, in `window`: as its
+/// `viewport` asks, else as the person set pages agents open to; `None` when it fills its
+/// pane, or isn't a page.
+fn page_mode(
+    caller: &Caller,
+    spec: &PaneSpec,
+    window: &Window,
+    cx: &App,
+) -> Result<Option<Responsive>, ControlError> {
+    if spec.kind != PaneKind::Browser {
+        return Ok(None);
+    }
+    let asked = (spec.viewport.as_ref())
+        .map(browser::opening_change)
+        .transpose()?;
+    let default = policy::pages_open_at(cx).size();
+    let by = SetBy::Agent(caller.label());
+    agent::opening(asked.as_ref(), default, window.scale_factor(), &by)
+        .map_err(ControlError::invalid_input)
 }
 
 /// Opens the page of browser pane `pane` in the browser engine when the window doesn't draw
@@ -130,18 +159,19 @@ impl Opened {
 }
 
 /// Refuses fields of `spec` its kind doesn't take.
-pub(crate) fn check(spec: &PaneSpec) -> Result<(), ControlError> {
+fn check(spec: &PaneSpec) -> Result<(), ControlError> {
     let terminal = spec.terminal.is_some() || spec.name.is_some() || spec.command.is_some();
     let file = spec.file.is_some() || spec.line.is_some() || spec.column.is_some();
+    let page = spec.url.is_some() || spec.viewport.is_some();
     let stray = match spec.kind {
         PaneKind::Terminal => (spec.terminal.is_some()
             && (spec.name.is_some() || spec.command.is_some()))
         .then_some("`terminal` (an existing terminal) with `name` or `command` (a new one)")
-        .or_else(|| (spec.url.is_some() || file).then_some("`url`, `file`, `line` or `column`")),
+        .or_else(|| (page || file).then_some("`url`, `viewport`, `file`, `line` or `column`")),
         PaneKind::Browser => (terminal || file).then_some("terminal or file fields"),
-        PaneKind::Editor => (terminal || spec.url.is_some()).then_some("terminal fields or `url`"),
+        PaneKind::Editor => (terminal || page).then_some("terminal fields, `url` or `viewport`"),
         PaneKind::Changes | PaneKind::Chat => {
-            (terminal || file || spec.url.is_some()).then_some("terminal, file or browser fields")
+            (terminal || file || page).then_some("terminal, file or browser fields")
         }
     };
     let positional = spec.file.is_none() && (spec.line.is_some() || spec.column.is_some());
@@ -165,15 +195,16 @@ pub(crate) fn check(spec: &PaneSpec) -> Result<(), ControlError> {
 }
 
 /// Opens the pane `spec` describes on the selected checkout, at `root`, in a tab of its own:
-/// after the shown tab when `beside`, else after the last. Unless `shown`, a terminal's tab
+/// after the shown tab when `beside`, else after the last; a page starting in `mode`. Unless
+/// `shown`, a terminal's tab
 /// comes without being shown and a file's editor without the keyboard, the window being
 /// put back by whoever opens it out of sight.
-pub(crate) fn open(
+fn open(
     shell: &mut Shell,
     root: &Path,
     spec: &PaneSpec,
-    beside: bool,
-    shown: bool,
+    mode: Option<Responsive>,
+    (beside, shown): (bool, bool),
     window: &mut Window,
     cx: &mut Context<Shell>,
 ) -> Opened {
@@ -231,7 +262,7 @@ pub(crate) fn open(
         }
         PaneKind::Browser => Opened::Now(
             shell
-                .open_browser_tab(spec.url.clone(), beside, window, cx)
+                .open_browser_tab(spec.url.clone(), beside, mode, window, cx)
                 .ok_or_else(|| {
                     ControlError::not_found("No checkout is selected to open a page on.")
                 }),

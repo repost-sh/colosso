@@ -202,4 +202,5 @@ registry! {
     ChatStop => ops::chat::ChatStop,
     SettingsGet => ops::settings::SettingsGet,
     SettingsSet => ops::settings::SettingsSet,
+    ActivityList => ops::activity::ActivityList,
 }

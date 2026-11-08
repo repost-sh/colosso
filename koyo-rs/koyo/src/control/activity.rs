@@ -1,25 +1,17 @@
 //! The activity log: every changing call, refused or not, and every decision the person made
 //! about a client or a destructive call, the latest 200, kept in memory while the app runs.
-//! Reads aren't logged.
+//! Reads aren't logged. Agents read it with `activity_list` (`exec/activity.rs`).
 
 use std::collections::VecDeque;
 
 use koyo_app_control::ControlError;
+/// What the person decided when asked: allowed (or confirmed), denied (or cancelled), or no
+/// answer in time, which counts as denied; as `activity_list` says it.
+pub use koyo_app_control::ops::activity::ActivityDecision as Decision;
 pub(crate) use koyo_term_control::now_ms;
 
-/// How many entries the log keeps.
-pub(crate) const KEPT: usize = 200;
-
-/// What the person decided when asked.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Decision {
-    /// Allowed the client, or confirmed the call.
-    Allowed,
-    /// Denied the client, or cancelled the call.
-    Denied,
-    /// Didn't answer in time, which counts as denied.
-    TimedOut,
-}
+/// How many entries the log keeps, the most `activity_list` lists.
+pub(crate) const KEPT: usize = koyo_app_control::ops::activity::KEPT as usize;
 
 /// What happened.
 #[derive(Clone, Debug, PartialEq)]
@@ -71,9 +63,9 @@ impl Activity {
         });
     }
 
-    /// The latest `count` entries, newest first.
-    pub fn entries(&self, count: usize) -> Vec<ActivityEntry> {
-        self.entries.iter().rev().take(count).cloned().collect()
+    /// The entries, newest first.
+    pub fn newest(&self) -> impl Iterator<Item = &ActivityEntry> {
+        self.entries.iter().rev()
     }
 }
 
@@ -90,7 +82,7 @@ mod tests {
                 ActivityKind::Approval(Decision::Allowed),
             );
         }
-        let entries = activity.entries(usize::MAX);
+        let entries: Vec<_> = activity.newest().collect();
         assert_eq!(entries.len(), KEPT);
         assert_eq!(entries[0].client, format!("client-{}", KEPT + 4));
         assert_eq!(entries[KEPT - 1].client, "client-5");

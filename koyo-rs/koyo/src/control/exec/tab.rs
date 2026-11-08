@@ -89,19 +89,19 @@ fn tabs_output(
 }
 
 /// Opens a tab of the kind `input` asks for on its worktree, as the New Tab menu would: shown
-/// when `select` says, or as the person set what agents open to show, else out of sight.
+/// when `select` says, or as the person set what agents open to show, else out of sight; a
+/// page at the viewport its call or the person's default for agents' pages says.
 pub(crate) fn open(
     caller: &Caller,
     input: &TabOpenInput,
     cx: &mut App,
 ) -> Result<Exec, ControlError> {
     let spec = input.spec();
-    open::check(&spec)?;
     let shown = policy::shows(input.select, cx);
     let beside = input.place == Some(Place::Beside);
     let opened = try_update_shell(cx, |shell, window, cx| {
         let at = select::worktree(caller, &shell.workspace, input.worktree.as_deref(), None)?;
-        Ok(open::open_on(shell, at, &spec, beside, shown, window, cx))
+        open::open_on(shell, caller, at, &spec, (beside, shown), window, cx)
     })?;
     Ok(opened.then(cx, move |pane, cx| {
         try_update_shell(cx, |shell, _, cx| {

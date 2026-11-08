@@ -3,6 +3,7 @@
 //! file being written answers from a task, git's work off the UI thread. A destructive call
 //! first has its question for the person made, naming exactly what it would do.
 
+mod activity;
 mod app;
 mod browser;
 mod chat;
@@ -71,7 +72,7 @@ pub(crate) fn run(caller: &Caller, command: Command, cx: &mut App) -> Exec {
         C::TabMove(input) => Exec::Ready(tab::move_to(&input, cx)),
         C::TabClose(input) => Exec::Ready(tab::close(&input, true, cx)),
         C::TabReopen(_) => Exec::Ready(tab::reopen(cx)),
-        C::PaneSplit(input) => pane::split(&input, cx).into(),
+        C::PaneSplit(input) => pane::split(caller, &input, cx).into(),
         C::PaneFocus(input) => Exec::Ready(pane::focus(input.pane, cx)),
         C::PaneResize(input) => Exec::Ready(pane::resize(&input, cx)),
         C::PaneDetach(input) => Exec::Ready(pane::detach(input.pane, cx)),
@@ -87,6 +88,7 @@ pub(crate) fn run(caller: &Caller, command: Command, cx: &mut App) -> Exec {
         C::ChatStop(input) => Exec::Ready(chat::stop(&input, cx)),
         C::SettingsGet(_) => Exec::Ready(settings::get(cx)),
         C::SettingsSet(input) => Exec::Ready(settings::set(input, cx)),
+        C::ActivityList(input) => Exec::Ready(activity::list(caller, &input, cx)),
         C::BrowserList(_) => Exec::Ready(browser::list(cx)),
         C::BrowserClaim(input) => Exec::Ready(browser::claim(caller, &input, cx)),
         C::BrowserRelease(input) => Exec::Ready(browser::release(caller, input.pane, cx)),

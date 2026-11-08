@@ -36,18 +36,19 @@ use koyo_app_control::transport::{BindError, Listener};
 use koyo_app_control::{CONFIRM_TIMEOUT, ControlError, Endpoint, Hello, Scope, Topic};
 use koyo_term::TermClient;
 
-// What the Settings page reads and changes.
-pub use activity::{ActivityEntry, ActivityKind, Decision};
+#[cfg(test)]
+pub(crate) use activity::{ActivityEntry, ActivityKind, Decision};
 pub(crate) use caller::Caller;
 pub(crate) use exec::main_shell;
 pub use http::state as http_state;
 #[cfg(test)]
 pub(crate) use in_process::InProcess;
 #[cfg(test)]
-pub(crate) use policy::{ApprovedClient, set_enabled};
+pub(crate) use policy::{ApprovedClient, activity, set_enabled};
+// What the Settings page reads and changes.
 pub use policy::{
-    DEFAULT_PORT, Policy, activity, allow_denied, denied, policy, revoke, set_client_scopes,
-    set_port,
+    DEFAULT_PORT, PageSize, Policy, allow_denied, denied, pages_open_at, policy, revoke,
+    set_client_scopes, set_pages_open_at, set_port,
 };
 
 use crate::settings;

@@ -3,6 +3,7 @@
 //! the window's shell looked at after. Timers are the test clock's, so a two-minute prompt
 //! times out when the test says.
 
+mod activity;
 mod approval;
 mod chats;
 mod panes;
@@ -204,7 +205,7 @@ fn allow(name: &str, scopes: &[Scope], cx: &mut TestAppContext) {
 
 /// The activity log, newest first.
 fn activity(cx: &TestAppContext) -> Vec<super::ActivityEntry> {
-    cx.read(|cx| super::activity(usize::MAX, cx))
+    cx.read(|cx| super::activity(cx).cloned().collect())
 }
 
 /// Reads `read` off the shell.

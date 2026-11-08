@@ -6,7 +6,7 @@
 use gpui_kit::{App, AppContext as _, Context, Entity, Window};
 
 use super::Shell;
-use crate::browser::{BrowserEvent, BrowserView, Dock};
+use crate::browser::{BrowserEvent, BrowserView, Dock, Responsive};
 use crate::files::{self, FileEditor, Then};
 use crate::model::{ClosedTab, Edge, Pane, Tab};
 use crate::navigation::Route;
@@ -20,16 +20,18 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.open_browser_tab(url, false, window, cx);
+        self.open_browser_tab(url, false, None, window, cx);
     }
 
     /// Opens a browser tab on the selected checkout, at `url` or on the start page with the
     /// address ready to type in, after its last tab or, when `beside`, right after the tab
-    /// shown; shows it, and gives back its pane.
+    /// shown, its page starting in responsive `mode` when one is given (an agent's page,
+    /// `docs/responsive.md` 9); shows it, and gives back its pane.
     pub(crate) fn open_browser_tab(
         &mut self,
         url: Option<String>,
         beside: bool,
+        mode: Option<Responsive>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<u64> {
@@ -40,6 +42,9 @@ impl Shell {
         let url = url.unwrap_or_default();
         let start = url.is_empty();
         let view = self.browser_view(url, &project, window, cx);
+        if let Some(mode) = mode {
+            view.update(cx, |view, _| view.start_in(mode));
+        }
         let pane = Pane::browser(view.clone(), cx);
         let id = pane.id;
         if beside {
