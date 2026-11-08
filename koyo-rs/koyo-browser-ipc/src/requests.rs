@@ -1,7 +1,8 @@
 //! What the app asks of the host: panes opened, sized and closed, and what the person does
 //! in them.
 use crate::{
-    Answer, KeyKind, Modifiers, MouseButton, MouseKind, PaneId, PinchPhase, Point, Viewport,
+    Answer, KeyKind, Modifiers, MouseButton, MouseKind, PaneId, PasskeyAnswer, PinchPhase, Point,
+    Viewport,
 };
 use serde::{Deserialize, Serialize};
 
@@ -176,6 +177,15 @@ pub enum AppRequest {
         /// The answer.
         answer: Answer,
     },
+    /// The answer to a [`HostEvent::Passkey`].
+    Passkey {
+        /// The pane.
+        pane: PaneId,
+        /// The request, as the host numbered it.
+        request: u64,
+        /// The passkey, or why there's none.
+        answer: PasskeyAnswer,
+    },
     /// What the person picked from a [`HostEvent::ContextMenu`].
     MenuCommand {
         /// The pane.
@@ -245,6 +255,7 @@ impl AppRequest {
             | Self::Release { pane, .. }
             | Self::Edit { pane, .. }
             | Self::Answer { pane, .. }
+            | Self::Passkey { pane, .. }
             | Self::MenuCommand { pane, .. }
             | Self::Cdp { pane, .. } => Some(*pane),
             Self::Shutdown => None,

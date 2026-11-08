@@ -107,18 +107,15 @@ impl Browsers {
                 dialog,
                 origin,
                 question,
-            } => {
-                let asked = self.update_view(pane, cx, |view, cx| {
-                    view.dialog_opened(dialog, origin, question, cx);
-                });
-                if asked.is_none() {
-                    // Nobody to ask: the page gets a no.
-                    self.send(AppRequest::Answer {
-                        pane,
-                        dialog,
-                        answer: ipc::Answer::Dismiss,
-                    });
-                }
+            } => self.dialog_opened(pane, dialog, origin, question, cx),
+            HostEvent::Passkey {
+                pane,
+                request,
+                origin,
+                ask,
+            } => self.passkey_asked(pane, request, origin, *ask, cx),
+            HostEvent::PasskeyWithdrawn { pane, request } => {
+                self.update_view(pane, cx, |view, _| view.passkey_withdrawn(request));
             }
             HostEvent::DialogClosed { pane, dialog } => {
                 self.update_view(pane, cx, |view, cx| view.dialog_closed(dialog, cx));
@@ -142,6 +139,52 @@ impl Browsers {
                     });
                 }
             }
+        }
+    }
+
+    /// A page's question, for its view to ask the person; answered no when the view is gone.
+    fn dialog_opened(
+        &mut self,
+        pane: PaneId,
+        dialog: u64,
+        origin: String,
+        question: ipc::Dialog,
+        cx: &mut Context<Self>,
+    ) {
+        let asked = self.update_view(pane, cx, |view, cx| {
+            view.dialog_opened(dialog, origin, question, cx);
+        });
+        if asked.is_none() {
+            self.send(AppRequest::Answer {
+                pane,
+                dialog,
+                answer: ipc::Answer::Dismiss,
+            });
+        }
+    }
+
+    /// A page's passkey request, for its view to ask the system for; turned down when the
+    /// view is gone.
+    fn passkey_asked(
+        &mut self,
+        pane: PaneId,
+        request: u64,
+        origin: String,
+        ask: ipc::PasskeyAsk,
+        cx: &mut Context<Self>,
+    ) {
+        let asked = self.update_view(pane, cx, |view, cx| {
+            view.passkey_asked(request, origin, ask, cx);
+        });
+        if asked.is_none() {
+            self.send(AppRequest::Passkey {
+                pane,
+                request,
+                answer: ipc::PasskeyAnswer::refused(
+                    ipc::PasskeyError::NotAllowed,
+                    "The page is closed.",
+                ),
+            });
         }
     }
 

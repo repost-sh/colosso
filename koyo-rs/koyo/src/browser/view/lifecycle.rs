@@ -166,6 +166,7 @@ impl BrowserView {
             self.opened = None;
             // The host that asked is gone.
             self.dialogs.clear();
+            self.forget_passkey();
             self.menu_request = None;
             self.open_menu = None;
             self.frame = None;

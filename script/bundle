@@ -8,21 +8,99 @@
 # (koyo-rs/koyo/src/chat/host.rs), its icon, and the browser engine in its Contents/Frameworks,
 # likewise (koyo-rs/koyo/src/browser/engine.rs), signed ad hoc: enough to run on this Mac, not
 # to hand out, which needs a release identity and notarization.
+#
+#   script/bundle --sign "Developer ID Application: <Org> (<TEAMID>)" [--profile <file>]
+#
+# signs it with a Developer ID identity instead, with the hardened runtime notarization needs.
+# With --profile, a Developer ID provisioning profile for dev.koyo.desktop that carries Apple's
+# browser-passkey entitlement, the app claims that entitlement and embeds the profile, so its
+# pages can use passkeys (docs/browser.md 9). The profile is checked before anything is built.
+# An ad-hoc build never claims an entitlement: macOS won't start an app that claims a managed
+# one without its profile.
 set -eu
 cd "$(dirname "$0")/.."
 
 export CARGO_HOME="${CARGO_HOME:-$PWD/.cargo-home}"
 
+# The managed entitlement macOS asks of a browser before its passkey sheet takes requests for
+# any site; the app checks for it at start (koyo-rs/koyo/src/browser/passkeys/mod.rs).
+PASSKEYS=com.apple.developer.web-browser.public-key-credential
+BUNDLE_ID=dev.koyo.desktop
+
+identity=""
+profile=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --sign) identity="$2"; shift ;;
+    --profile) profile="$2"; shift ;;
+    *) echo "script/bundle: unknown option $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+if [ -n "$profile" ] && [ -z "$identity" ]; then
+  echo "script/bundle: --profile needs --sign: a profile is for a Developer ID signature" >&2
+  exit 2
+fi
+
 version=$(sed -n 's/^version = "\(.*\)"$/\1/p' koyo-rs/koyo/Cargo.toml | head -1)
 out=koyo-rs/target/bundle
 app="$out/Koyo.app"
 engine="$out/engine"
+mkdir -p "$out"
+
+# The profile, read and checked: it names the team, is for this app, and carries the passkey
+# entitlement. What the app claims is written from it, so the two can't disagree.
+entitlements=""
+if [ -n "$profile" ]; then
+  decoded="$out/profile.plist"
+  if ! security cms -D -i "$profile" > "$decoded" 2>/dev/null; then
+    echo "script/bundle: $profile is not a provisioning profile" >&2
+    exit 1
+  fi
+  value() { plutil -extract "$1" raw -o - "$decoded" 2>/dev/null || true; }
+  team=$(value TeamIdentifier.0)
+  app_id=$(value 'Entitlements.com\.apple\.application-identifier')
+  granted=$(value "Entitlements.$(printf %s "$PASSKEYS" | sed 's/\./\\./g')")
+  if [ -z "$team" ] || [ "$app_id" != "$team.$BUNDLE_ID" ]; then
+    echo "script/bundle: the profile is for ${app_id:-no app}, not $team.$BUNDLE_ID" >&2
+    exit 1
+  fi
+  if [ "$granted" != true ]; then
+    echo "script/bundle: the profile doesn't carry $PASSKEYS; Apple grants it on request" >&2
+    echo "(docs/browser.md 9.4)" >&2
+    exit 1
+  fi
+  entitlements="$out/Koyo.entitlements"
+  cat > "$entitlements" <<ENTITLEMENTS
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>com.apple.application-identifier</key>
+  <string>$team.$BUNDLE_ID</string>
+  <key>com.apple.developer.team-identifier</key>
+  <string>$team</string>
+  <key>$PASSKEYS</key>
+  <true/>
+</dict>
+</plist>
+ENTITLEMENTS
+  plutil -lint -s "$entitlements"
+fi
+if [ -n "$identity" ] && ! security find-identity -v -p codesigning | grep -qF "\"$identity\""; then
+  echo "script/bundle: no signing identity \"$identity\" in the keychain" >&2
+  exit 1
+fi
 
 script/cargo build -p koyo --release
 script/agent-host
 # Packaged afresh, so the one version here is the lockfile's CEF.
 rm -rf "$engine"
-script/browser-engine --release --out "$PWD/$engine"
+if [ -n "$identity" ]; then
+  script/browser-engine --release --out "$PWD/$engine" --sign "$identity"
+else
+  script/browser-engine --release --out "$PWD/$engine"
+fi
 
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$app/Contents/Frameworks"
@@ -57,7 +135,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>CFBundleIconFile</key>
   <string>Koyo</string>
   <key>CFBundleIdentifier</key>
-  <string>dev.koyo.desktop</string>
+  <string>$BUNDLE_ID</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>
@@ -89,7 +167,32 @@ cat > "$app/Contents/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
-# The engine is signed already, inside out; this seals the app round it.
-codesign --force --timestamp=none --sign - "$app"
+# The engine is signed already, inside out; this seals the app round it, the agent host first.
+if [ -n "$identity" ]; then
+  set -- --force --timestamp --options runtime --sign "$identity"
+  codesign "$@" "$app/Contents/MacOS/koyo-agent-host"
+  if [ -n "$entitlements" ]; then
+    cp "$profile" "$app/Contents/embedded.provisionprofile"
+    codesign "$@" --entitlements "$entitlements" "$app"
+  else
+    codesign "$@" "$app"
+  fi
+else
+  codesign --force --timestamp=none --sign - "$app"
+fi
 codesign --verify --strict "$app"
+# What the app claims, said back: the passkey entitlement only with its profile, and nothing
+# at all signed ad hoc.
+claimed=$(codesign -d --entitlements - --xml "$app" 2>/dev/null || true)
+if [ -n "$entitlements" ]; then
+  case "$claimed" in
+    *"$PASSKEYS"*) echo "Signed for passkeys ($team.$BUNDLE_ID)" ;;
+    *) echo "script/bundle: the signature doesn't carry $PASSKEYS" >&2; exit 1 ;;
+  esac
+  echo "Notarize before handing it out: docs/browser.md 9.4"
+elif [ -n "$claimed" ]; then
+  echo "script/bundle: the app claims entitlements without a profile:" >&2
+  echo "$claimed" >&2
+  exit 1
+fi
 echo "Built $app"

@@ -300,6 +300,7 @@ pub(crate) fn browser_created(pane: PaneId, browser: &Browser) {
 pub(crate) fn browser_closed(pane: PaneId) {
     crate::dialogs::pane_closed(pane);
     crate::menus::pane_closed(pane);
+    crate::passkeys::pane_gone(pane);
     let (done, devtools, calls) = with(|host| {
         let mut closed = host.panes.remove(&pane);
         let mut calls: Vec<u64> = closed
@@ -404,5 +405,6 @@ pub(super) fn exit_fullscreen(pane: PaneId) {
 }
 
 pub(crate) fn renderer_gone(pane: PaneId, reason: String) {
+    crate::passkeys::pane_gone(pane);
     send(&HostEvent::Gone { pane, reason });
 }

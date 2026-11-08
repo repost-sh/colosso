@@ -70,7 +70,7 @@ pub fn refresh_edge(window: AnyWindowHandle, cx: &mut App) {
 }
 
 /// The `NSWindow` GPUI draws `window` in; none for a test's window.
-pub(super) fn ns_window(window: &Window) -> Option<Retained<NSWindow>> {
+pub(crate) fn ns_window(window: &Window) -> Option<Retained<NSWindow>> {
     gpui_view(window)?.window()
 }
 
