@@ -24,12 +24,18 @@ pub mod profiles;
 mod dialogs;
 mod events;
 mod input;
+mod passkeys;
 mod requests;
 
 pub use dialogs::{Answer, Dialog, FileMode, MenuEntry, MenuTarget, Permission};
 pub use events::{Cursor, HostEvent, PageState};
 pub use input::{
     KeyKind, Modifiers, MouseButton, MouseKind, PinchPhase, PixelSize, Point, Viewport,
+};
+pub use passkeys::{
+    Assertion, AuthenticatorSelection, Bytes, Created, Creation, CredentialDescriptor,
+    CredentialParameters, Extensions, Got, PasskeyAnswer, PasskeyAsk, PasskeyError, Refusal,
+    RelyingParty, User,
 };
 pub use requests::{AppRequest, Edit, Go, Ime, ViewAction};
 
@@ -43,7 +49,9 @@ pub use requests::{AppRequest, Edit, Go, Ime, ViewAction};
 /// 6: page icons ([`PageState::favicon`], [`HostEvent::Favicon`]).
 /// 7: trackpad pinches ([`AppRequest::Pinch`]).
 /// 8: a page's full screen ([`HostEvent::Fullscreen`], [`AppRequest::ExitFullscreen`]).
-pub const PROTOCOL: u32 = 8;
+/// 9: passkeys ([`Hello::passkeys`], [`HostEvent::Passkey`], [`HostEvent::PasskeyWithdrawn`],
+/// [`AppRequest::Passkey`]).
+pub const PROTOCOL: u32 = 9;
 
 /// Frames larger than this are refused, so a confused peer cannot make the
 /// other side allocate without bound.
@@ -71,6 +79,11 @@ pub struct Hello {
     pub protocol: u32,
     /// The token the host was started with.
     pub token: String,
+    /// Whether the app can ask the system for passkeys: it is signed with Apple's
+    /// browser-passkey entitlement. Without it the host turns a page's passkey requests down
+    /// at once, so the page offers its other ways of signing in.
+    #[serde(default)]
+    pub passkeys: bool,
 }
 
 /// A pane, by the app's id for it.

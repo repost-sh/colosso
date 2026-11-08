@@ -152,6 +152,8 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
   "block2",
   "NSArray",
   "NSData",
+  # How the passkey sheet ended (browser/passkeys/sheet/).
+  "NSError",
   "NSGeometry",
   "NSNotification",
   "NSOperation",
@@ -200,6 +202,46 @@ objc2-quartz-core = { version = "0.3", default-features = false, features = [
   "CALayer",
   "objc2-core-foundation",
 ] }
+# Passkeys for the browser's pages (browser/passkeys/): the system's passkey sheet, which asks
+# iCloud Keychain, the person's other credential providers, a phone or a security key.
+objc2-authentication-services = { version = "0.3", default-features = false, features = [
+  "std",
+  "ASAuthorization",
+  "ASAuthorizationController",
+  "ASAuthorizationCredential",
+  "ASAuthorizationError",
+  "ASAuthorizationPlatformPublicKeyCredentialAssertion",
+  "ASAuthorizationPlatformPublicKeyCredentialAssertionRequest",
+  "ASAuthorizationPlatformPublicKeyCredentialDescriptor",
+  "ASAuthorizationPlatformPublicKeyCredentialProvider",
+  "ASAuthorizationPlatformPublicKeyCredentialRegistration",
+  "ASAuthorizationPlatformPublicKeyCredentialRegistrationRequest",
+  "ASAuthorizationPublicKeyCredentialAssertion",
+  "ASAuthorizationPublicKeyCredentialAssertionRequest",
+  "ASAuthorizationPublicKeyCredentialConstants",
+  "ASAuthorizationPublicKeyCredentialDescriptor",
+  "ASAuthorizationPublicKeyCredentialParameters",
+  "ASAuthorizationPublicKeyCredentialRegistration",
+  "ASAuthorizationPublicKeyCredentialRegistrationRequest",
+  "ASAuthorizationRequest",
+  "ASAuthorizationSecurityKeyPublicKeyCredentialAssertion",
+  "ASAuthorizationSecurityKeyPublicKeyCredentialAssertionRequest",
+  "ASAuthorizationSecurityKeyPublicKeyCredentialDescriptor",
+  "ASAuthorizationSecurityKeyPublicKeyCredentialProvider",
+  "ASAuthorizationSecurityKeyPublicKeyCredentialRegistration",
+  "ASAuthorizationSecurityKeyPublicKeyCredentialRegistrationRequest",
+  "ASAuthorizationWebBrowserPlatformPublicKeyCredentialAssertionRequest",
+  "ASAuthorizationWebBrowserPlatformPublicKeyCredentialProvider",
+  "ASAuthorizationWebBrowserPlatformPublicKeyCredentialRegistrationRequest",
+  "ASAuthorizationWebBrowserSecurityKeyPublicKeyCredentialProvider",
+  "ASCOSEConstants",
+  "ASFoundation",
+  "ASPublicKeyCredential",
+  "ASPublicKeyCredentialClientData",
+] }
+# Whether the app is signed with Apple's browser-passkey entitlement, read off its own task
+# (browser/passkeys/), which it asks for passkeys only once it is.
+objc2-security = { version = "0.3", default-features = false, features = ["std", "SecTask"] }
 # Pictures and PDFs shown in a file's tab (viewer/): drawn into bitmaps of their own, a PDF's
 # pages by Quartz, the renderer Preview uses.
 objc2-core-graphics = { version = "0.3", default-features = false, features = [

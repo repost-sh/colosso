@@ -184,6 +184,7 @@ pub(crate) fn run(args: &Args) -> Result<(), String> {
         );
         return Err(message);
     }
+    crate::passkeys::enable(hello.passkeys);
     let reader = stream.try_clone().map_err(|e| e.to_string())?;
     let _ = WRITER.set(Mutex::new(stream));
 
@@ -349,6 +350,11 @@ fn handle(request: AppRequest) {
             menu,
             command,
         } => crate::menus::command(pane, menu, command),
+        AppRequest::Passkey {
+            pane,
+            request,
+            answer,
+        } => crate::passkeys::answered(pane, request, &answer),
         AppRequest::OpenDevTools {
             pane,
             devtools,

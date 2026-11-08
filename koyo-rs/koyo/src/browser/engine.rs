@@ -109,6 +109,7 @@ pub fn launch() -> Result<Launch, String> {
     Ok(Launch {
         executable,
         profiles,
+        passkeys: super::passkeys::entitled(),
     })
 }
 

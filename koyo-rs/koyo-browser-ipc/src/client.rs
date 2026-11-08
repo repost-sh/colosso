@@ -29,6 +29,8 @@ pub struct Launch {
     pub executable: PathBuf,
     /// CEF's root cache: one folder per profile inside it.
     pub profiles: PathBuf,
+    /// Whether the app can ask the system for passkeys ([`Hello::passkeys`]).
+    pub passkeys: bool,
 }
 
 /// What the host sends the app.
@@ -77,13 +79,18 @@ pub fn token() -> io::Result<String> {
 
 /// Sends [`Hello`] and returns the engine and Chromium versions. A host that
 /// exits first closes its end, which ends the wait.
-fn handshake(stream: &mut UnixStream, token: String) -> io::Result<(String, String)> {
+fn handshake(
+    stream: &mut UnixStream,
+    token: String,
+    passkeys: bool,
+) -> io::Result<(String, String)> {
     stream.set_read_timeout(Some(START_TIMEOUT))?;
     crate::write_frame(
         stream,
         &Hello {
             protocol: PROTOCOL,
             token,
+            passkeys,
         },
     )?;
     let ready = crate::read_frame::<HostEvent>(stream)?;
@@ -165,7 +172,7 @@ impl Connection {
         let mut child = command.spawn()?;
         // The host holds its end now; ours closing is how it learns we left.
         drop(host_end);
-        let (engine, chromium) = match handshake(&mut stream, token) {
+        let (engine, chromium) = match handshake(&mut stream, token, launch.passkeys) {
             Ok(versions) => versions,
             Err(e) => {
                 let exited = child.try_wait().ok().flatten();

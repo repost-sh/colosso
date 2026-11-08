@@ -32,6 +32,7 @@ mod input;
 pub(crate) mod keys;
 mod menu;
 mod page;
+mod passkeys;
 mod pointer;
 mod responsive;
 mod tabs;

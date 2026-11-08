@@ -160,6 +160,7 @@ fn hello_needs_the_same_protocol_and_token() {
     let hello = |protocol, token: &str| Hello {
         protocol,
         token: token.into(),
+        passkeys: false,
     };
     assert!(check_hello(&hello(PROTOCOL, "secret"), "secret").is_ok());
     assert!(check_hello(&hello(PROTOCOL, "secreT"), "secret").is_err());

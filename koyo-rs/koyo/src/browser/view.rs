@@ -149,6 +149,8 @@ pub struct BrowserView {
     pub(super) responsive: super::responsive::State,
     /// What shows an agent at work on the page: its pointer, and the glow while it holds it.
     pub(super) marks: super::pointer::Marks,
+    /// The passkey the page asked for, while it waits on the system's sheet.
+    pub(super) passkey: super::passkeys::Passkey,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -272,6 +274,7 @@ impl BrowserView {
             visited: None,
             responsive,
             marks: super::pointer::Marks::default(),
+            passkey: super::passkeys::Passkey::default(),
             _subscriptions: subscriptions,
         }
     }
@@ -322,6 +325,7 @@ impl BrowserView {
     pub(super) fn closed(&mut self, cx: &mut Context<Self>) {
         self.opened = None;
         self.frame = None;
+        self.forget_passkey();
         // A page closed full screen leaves it: the window comes out of full screen with it.
         if self.is_fullscreen() {
             self.fullscreen_changed(false, cx);
@@ -449,6 +453,7 @@ impl BrowserView {
             self.show_menu(&request, window, cx);
         }
         self.ask_next(window, cx);
+        self.ask_passkey(window, cx);
         let editing = self.address.read(cx).focus_handle(cx).is_focused(window);
         if self.settle.address_stale && !editing {
             self.settle.address_stale = false;

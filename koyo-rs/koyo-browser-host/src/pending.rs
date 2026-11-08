@@ -31,6 +31,11 @@ impl<T> Pending<T> {
         }
     }
 
+    /// Whether a value is kept for `pane`.
+    pub(crate) fn has(&self, pane: PaneId) -> bool {
+        self.waiting.values().any(|(p, _)| *p == pane)
+    }
+
     /// Takes every value `which` picks, with its number.
     pub(crate) fn take(&mut self, which: impl Fn(PaneId, &T) -> bool) -> Vec<(u64, T)> {
         self.waiting

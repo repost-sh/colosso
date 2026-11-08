@@ -4,14 +4,15 @@ use crate::host;
 use cef::{
     AcceleratedPaintInfo, Browser, BrowserSettings, CefString, CefStringList, Client,
     ContextMenuHandler, ContextMenuParams, CursorInfo, CursorType, DialogHandler, DictionaryValue,
-    DisplayHandler, FindHandler, Frame, ImplClient, ImplContextMenuHandler, ImplDisplayHandler,
-    ImplFindHandler, ImplLifeSpanHandler, ImplLoadHandler, ImplRenderHandler, JsdialogHandler,
-    LifeSpanHandler, LoadHandler, MenuModel, PaintElementType, PermissionHandler, PopupFeatures,
-    Rect, RenderHandler, RequestHandler, RunContextMenuCallback, ScreenInfo, WindowInfo,
+    DisplayHandler, FindHandler, Frame, FrameHandler, ImplClient, ImplContextMenuHandler,
+    ImplDisplayHandler, ImplFindHandler, ImplFrameHandler, ImplLifeSpanHandler, ImplLoadHandler,
+    ImplRenderHandler, JsdialogHandler, LifeSpanHandler, LoadHandler, MenuModel, PaintElementType,
+    PermissionHandler, PopupFeatures, ProcessId, ProcessMessage, Rect, RenderHandler,
+    RequestHandler, RunContextMenuCallback, ScreenInfo, TransitionType, WindowInfo,
     WindowOpenDisposition, WrapClient, WrapContextMenuHandler, WrapDisplayHandler, WrapFindHandler,
-    WrapLifeSpanHandler, WrapLoadHandler, WrapRenderHandler, rc::Rc, wrap_client,
-    wrap_context_menu_handler, wrap_display_handler, wrap_find_handler, wrap_life_span_handler,
-    wrap_load_handler, wrap_render_handler,
+    WrapFrameHandler, WrapLifeSpanHandler, WrapLoadHandler, WrapRenderHandler, rc::Rc, wrap_client,
+    wrap_context_menu_handler, wrap_display_handler, wrap_find_handler, wrap_frame_handler,
+    wrap_life_span_handler, wrap_load_handler, wrap_render_handler,
 };
 use koyo_browser_ipc::{Cursor, HostEvent, PaneId};
 use std::os::raw::c_int;
@@ -61,6 +62,46 @@ wrap_client! {
         }
         fn find_handler(&self) -> Option<FindHandler> {
             Some(PaneFind::new(self.pane))
+        }
+        fn frame_handler(&self) -> Option<FrameHandler> {
+            Some(PaneFrames::new(self.pane))
+        }
+        fn on_process_message_received(
+            &self,
+            browser: Option<&mut Browser>,
+            frame: Option<&mut Frame>,
+            _source_process: ProcessId,
+            message: Option<&mut ProcessMessage>,
+        ) -> c_int {
+            let (Some(browser), Some(frame), Some(message)) = (browser, frame, message) else {
+                return 0;
+            };
+            c_int::from(crate::passkeys::from_renderer(self.pane, browser, frame, message))
+        }
+    }
+}
+
+wrap_frame_handler! {
+    struct PaneFrames {
+        pane: PaneId,
+    }
+
+    impl FrameHandler {
+        fn on_frame_detached(&self, browser: Option<&mut Browser>, frame: Option<&mut Frame>) {
+            if let Some(browser) = browser {
+                crate::passkeys::frames_changed(self.pane, browser, frame.map(|f| &*f));
+            }
+        }
+
+        fn on_main_frame_changed(
+            &self,
+            browser: Option<&mut Browser>,
+            _old_frame: Option<&mut Frame>,
+            _new_frame: Option<&mut Frame>,
+        ) {
+            if let Some(browser) = browser {
+                crate::passkeys::frames_changed(self.pane, browser, None);
+            }
         }
     }
 }
@@ -285,6 +326,17 @@ wrap_load_handler! {
                 page.can_go_forward = can_go_forward != 0;
             });
             host::loading_changed(self.pane, is_loading != 0);
+        }
+
+        fn on_load_start(
+            &self,
+            browser: Option<&mut Browser>,
+            frame: Option<&mut Frame>,
+            _transition_type: TransitionType,
+        ) {
+            if let (Some(browser), Some(frame)) = (browser, frame) {
+                crate::passkeys::load_started(self.pane, browser, frame);
+            }
         }
     }
 }

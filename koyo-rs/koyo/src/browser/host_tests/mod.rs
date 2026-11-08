@@ -25,6 +25,7 @@ mod input;
 mod keeping;
 mod loading;
 mod looking;
+mod passkeys;
 
 /// How long a page may take to do what a test waits for.
 const PATIENCE: Duration = Duration::from_secs(30);
@@ -36,7 +37,19 @@ fn open<'a>(
     url: &str,
     cx: &'a mut TestAppContext,
 ) -> (Entity<BrowserView>, &'a mut VisualTestContext, PathBuf) {
+    open_with(test, url, |_| {}, cx)
+}
+
+/// As [`open`], with `setup` run on the app before the host starts: to change how it's
+/// launched, say.
+fn open_with<'a>(
+    test: &str,
+    url: &str,
+    setup: impl FnOnce(&mut gpui_kit::App),
+    cx: &'a mut TestAppContext,
+) -> (Entity<BrowserView>, &'a mut VisualTestContext, PathBuf) {
     let scratch = prepare(test, cx);
+    cx.update(setup);
     let url = url.to_owned();
     let (view, cx) = cx.add_window_view(|window, cx| {
         BrowserView::new(url, Path::new("/work/browser-test"), window, cx)
@@ -54,6 +67,7 @@ fn prepare(test: &str, cx: &mut TestAppContext) -> PathBuf {
     let launch = Launch {
         executable,
         profiles: scratch.join("profiles"),
+        passkeys: false,
     };
     cx.update(|cx| {
         crate::init(cx);

@@ -1,5 +1,5 @@
 //! What the host tells the app: pages changing, frames ready, and what each page asks.
-use crate::{Dialog, MenuEntry, MenuTarget, PaneId, PixelSize};
+use crate::{Dialog, MenuEntry, MenuTarget, PaneId, PasskeyAsk, PixelSize};
 use serde::{Deserialize, Serialize};
 
 /// The pointer the page asks for.
@@ -192,6 +192,28 @@ pub enum HostEvent {
         entries: Vec<MenuEntry>,
         /// What the menu is for.
         target: MenuTarget,
+    },
+    /// A page asks for a passkey, which the app gets from the system's passkey sheet and
+    /// answers with [`AppRequest::Passkey`]; until then the page's promise waits. The host has
+    /// checked `ask` against the frame's origin, and sends it only when the app said in
+    /// [`crate::Hello`] that it can ask for passkeys.
+    Passkey {
+        /// The pane.
+        pane: PaneId,
+        /// The host's number for the request, unique while the host runs.
+        request: u64,
+        /// The origin of the frame that asks, as the engine knows it: `https://example.com`.
+        origin: String,
+        /// What it asks for.
+        ask: Box<PasskeyAsk>,
+    },
+    /// A passkey request went away without an answer: the page aborted it, navigated or
+    /// closed. The app takes its sheet down; an answer that comes anyway is dropped.
+    PasskeyWithdrawn {
+        /// The pane.
+        pane: PaneId,
+        /// The request.
+        request: u64,
     },
     /// The answer to [`AppRequest::Cdp`].
     CdpReply {

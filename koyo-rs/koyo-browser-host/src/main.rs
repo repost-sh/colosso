@@ -19,6 +19,7 @@ mod location;
 mod mac_app;
 mod menus;
 mod pane;
+mod passkeys;
 mod pending;
 #[cfg(target_os = "macos")]
 mod surfaces;

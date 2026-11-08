@@ -29,6 +29,7 @@ pub fn launch(test: &str) -> Launch {
     Launch {
         executable: engine.join(manifest["host"].as_str().expect("host path")),
         profiles: scratch.join("profiles"),
+        passkeys: false,
     }
 }
 
@@ -177,7 +178,7 @@ pub fn is_red(pixel: [u8; 4]) -> bool {
 }
 
 /// The size [`open`] opens a page at.
-const VIEWPORT: Viewport = Viewport {
+pub const VIEWPORT: Viewport = Viewport {
     width: 400,
     height: 300,
     scale: 1.,
