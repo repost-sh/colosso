@@ -1,7 +1,8 @@
 //! Responsive mode's sums (fit, placement, the pointer's way into the page, grips), what an
 //! agent's change resolves to, and a view in a window: the protocol commands its page's
 //! session is sent on setting, clearing and reopening, and the lease, which the person's
-//! changes leave alone and an agent's need.
+//! changes leave alone and an agent's need. What a page an agent opens starts in is in
+//! `opening`.
 
 use std::path::Path;
 
@@ -16,6 +17,7 @@ use crate::browser::view::BrowserView;
 use crate::responsive::GUTTER;
 use crate::test_support::{draw, in_window};
 
+mod opening;
 mod redrawn;
 
 fn iphone() -> &'static Device {

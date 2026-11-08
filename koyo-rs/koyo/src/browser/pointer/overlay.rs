@@ -106,7 +106,7 @@ impl BrowserView {
     }
 
     /// How much of its true size the page shows at.
-    fn fit(&self) -> f32 {
+    pub(in crate::browser) fn fit(&self) -> f32 {
         if self.responsive.fit > 0. {
             self.responsive.fit
         } else {

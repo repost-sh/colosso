@@ -1,8 +1,9 @@
 //! The control policy, kept in `settings.json` under `externalControl`: whether clients
 //! outside Koyo's terminals may control the app, the port the MCP server listens on for
-//! them, the clients the person allowed, each with its scopes and last use, and whether
-//! what any agent opens is shown when its call doesn't say. Only the person changes it, in
-//! Settings, through the functions here; no operation reads or sets it.
+//! them, the clients the person allowed, each with its scopes and last use, whether what any
+//! agent opens is shown when its call doesn't say, and the size a page an agent opens starts
+//! at. Only the person changes it, in Settings, through the functions here; no operation
+//! reads or sets it.
 
 use gpui_kit::App;
 use koyo_app_control::Scope;
@@ -31,6 +32,10 @@ pub struct Policy {
     /// strip, and the window stays where it was. A call that says `select` gets what it says.
     /// It holds for every caller, agents in Koyo's terminals too.
     pub show_what_agents_open: bool,
+    /// What a browser page an agent opens starts at when its call leaves `viewport` out:
+    /// responsive mode at a size, 1440 × 900 until the person changes it, or filling its
+    /// pane as the person's own pages do. Not remembered for the page past the app's run.
+    pub pages_open_at: PageSize,
 }
 
 impl Default for Policy {
@@ -40,6 +45,37 @@ impl Default for Policy {
             port: DEFAULT_PORT,
             clients: Vec::new(),
             show_what_agents_open: false,
+            pages_open_at: PageSize::AGENT,
+        }
+    }
+}
+
+/// The size a browser page starts at: `"fill"`, filling its pane, or `{ "width", "height" }`
+/// in CSS pixels, in responsive mode.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PageSize {
+    Fill,
+    #[serde(untagged)]
+    Size {
+        width: u32,
+        height: u32,
+    },
+}
+
+impl PageSize {
+    /// A desktop's, 1440 × 900: what pages agents open start at by default, as the tool
+    /// descriptions say.
+    pub const AGENT: PageSize = PageSize::Size {
+        width: 1440,
+        height: 900,
+    };
+
+    /// Its width and height, unless it fills the pane.
+    pub fn size(self) -> Option<(u32, u32)> {
+        match self {
+            PageSize::Fill => None,
+            PageSize::Size { width, height } => Some((width, height)),
         }
     }
 }
@@ -87,10 +123,22 @@ pub fn policy(cx: &App) -> Policy {
     settings::get(cx).external_control.clone()
 }
 
+/// The size a page an agent opens starts at when its call leaves `viewport` out.
+pub fn pages_open_at(cx: &App) -> PageSize {
+    settings::get(cx).external_control.pages_open_at
+}
+
 /// Whether a call that makes or opens something shows it: as its `select` says, else as the
 /// person set what agents open to show.
 pub(crate) fn shows(select: Option<bool>, cx: &App) -> bool {
     select.unwrap_or_else(|| settings::get(cx).external_control.show_what_agents_open)
+}
+
+/// Sets the size a page an agent opens starts at, its call leaving it out.
+pub fn set_pages_open_at(size: PageSize, cx: &mut App) {
+    settings::update(cx, |settings| {
+        settings.external_control.pages_open_at = size;
+    });
 }
 
 /// Turns external control on or off. Off, hellos and calls of external clients are
@@ -152,11 +200,11 @@ pub fn denied(cx: &App) -> Vec<String> {
     names
 }
 
-/// The latest `count` entries of the activity log, newest first.
-pub fn activity(count: usize, cx: &App) -> Vec<ActivityEntry> {
-    cx.try_global::<Control>()
-        .map(|control| control.activity.entries(count))
-        .unwrap_or_default()
+/// The activity log, newest entry first.
+pub fn activity(cx: &App) -> impl Iterator<Item = &ActivityEntry> {
+    (cx.try_global::<Control>())
+        .into_iter()
+        .flat_map(|control| control.activity.newest())
 }
 
 /// Allows `name` with the default grant.
@@ -218,8 +266,45 @@ mod tests {
                 "clients": [
                     { "name": "Claude Code", "scopes": ["read"], "approvedAt": 1, "lastUsed": 2 }
                 ],
-                "showWhatAgentsOpen": false
+                "showWhatAgentsOpen": false,
+                "pagesOpenAt": { "width": 1440, "height": 900 }
             })
         );
+    }
+
+    #[test]
+    fn pages_agents_open_start_at_a_size_or_fill_their_pane() {
+        assert_eq!(Policy::default().pages_open_at.size(), Some((1440, 900)));
+        let read = |json| {
+            serde_json::from_value::<Policy>(json)
+                .unwrap()
+                .pages_open_at
+        };
+        assert_eq!(read(serde_json::json!({})), PageSize::AGENT);
+        assert_eq!(
+            read(serde_json::json!({ "pagesOpenAt": "fill" })),
+            PageSize::Fill
+        );
+        assert_eq!(
+            read(serde_json::json!({ "pagesOpenAt": { "width": 1920, "height": 1080 } })),
+            PageSize::Size {
+                width: 1920,
+                height: 1080
+            }
+        );
+        assert_eq!(PageSize::Fill.size(), None);
+        assert_eq!(
+            serde_json::to_value(PageSize::Fill).unwrap(),
+            serde_json::json!("fill")
+        );
+        for wrong in [
+            serde_json::json!({ "pagesOpenAt": "half" }),
+            serde_json::json!({ "pagesOpenAt": { "width": 1440 } }),
+        ] {
+            assert!(
+                serde_json::from_value::<Policy>(wrong.clone()).is_err(),
+                "{wrong}"
+            );
+        }
     }
 }

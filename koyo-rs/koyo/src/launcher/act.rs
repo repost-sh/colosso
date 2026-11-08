@@ -37,7 +37,7 @@ fn act_on(
         Act::Empty(Kind::Browser) => shell.open_browser(None, window, cx),
         Act::Empty(kind) => shell.new_tab(kind.pane(), cx),
         Act::Visit(url) => {
-            if let Some(pane) = shell.open_browser_tab(Some(url), false, window, cx) {
+            if let Some(pane) = shell.open_browser_tab(Some(url), false, None, window, cx) {
                 shell.mark_typed(pane, cx);
             }
         }

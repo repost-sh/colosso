@@ -8,11 +8,13 @@
 //! share (`crate::responsive`): centred under the device bar (`bar`), with grips on its
 //! edges to drag it to a size (`grips`); the view's side of it is in `pane`.
 //!
-//! Nothing of it is remembered across restarts: every pane opens filling its space.
+//! Nothing of it is remembered across restarts: every pane the person opens fills its space,
+//! and a page an agent opens starts at the size the person set for those (`opening`).
 
 pub mod bar;
 pub mod devices;
 pub mod grips;
+mod opening;
 mod pane;
 
 use gpui_kit::{Bounds, Pixels, Point, Size, point};
@@ -22,6 +24,7 @@ use serde_json::{Value, json};
 pub use crate::responsive::{Grip, Zoom};
 pub use devices::Device;
 use devices::Override;
+pub use opening::opening;
 pub use pane::{Change, Choice, State, ViewportRefused};
 
 /// Who set the page's size or device.

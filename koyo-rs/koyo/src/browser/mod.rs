@@ -44,6 +44,7 @@ pub mod visual;
 pub use dock::DOCK_MIN;
 pub use dock::{DevtoolsPlace, Dock, SetDevtoolsDock};
 pub use menu::handle_actions;
+pub use responsive::{Responsive, devices};
 pub use tabs::KeptTabs;
 pub use view::{BrowserEvent, BrowserView, Visit};
 

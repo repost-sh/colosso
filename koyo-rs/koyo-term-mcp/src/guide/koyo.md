@@ -17,6 +17,9 @@ Koyo only through them: never edit its settings, data or other files.
   split layout and its panes: the pane id, kind, title, address, file, unsaved edits,
   terminal handle and focus.
 - `browser_list` lists the browser panes, with who controls each page.
+- `activity_list` lists what clients did lately, newest first: every changing call with
+  its summary or error, and the person's answers to approvals and confirmations. An agent
+  in a Koyo terminal or chat reads every client's entries; any other client its own.
 
 The same reads are resources: `koyo://app`, `koyo://projects`, `koyo://tabs` and
 `koyo://settings`. Each can be subscribed to; an update says only that it changed, so
@@ -71,8 +74,8 @@ always do, as does `tab_reopen`, which puts back the tab closed last as ⇧⌘T 
 
 - `tab_open` opens a tab as the menu would. `kind` is `terminal`, `browser`, `editor`,
   `changes` or `chat`; a terminal takes a `name` and a `command`, or reveals an existing
-  daemon terminal by its `terminal` handle; a browser page takes a `url`; an editor a
-  `file`, `line` and `column`. `place: "beside"` opens it next to the current tab. It
+  daemon terminal by its `terminal` handle; a browser page takes a `url` and a
+  `viewport`; an editor a `file`, `line` and `column`. `place: "beside"` opens it next to the current tab. It
   answers the new pane's id, its tab and its worktree.
 - `tab_select` (by `pane`, or by `index` in a worktree), `tab_move` (`to`, an index),
   `tab_close` and `tab_reopen` (the tab closed last).
@@ -117,7 +120,15 @@ chat stays `working` until they do. Tell them rather than wait on it.
 ## Browser pages
 
 Open a page with `tab_open` (`kind: "browser"`, `url`) or `pane_split`, and find one with
-`browser_list`.
+`browser_list`. `browser_navigate` moves a page that's open; it never opens one.
+
+A page you open starts in responsive mode at 1440 × 900, a desktop screen's size, scaled
+down to fit its pane, so it lays out and screenshots as on a desktop whatever the
+pane's size. That's the person's default for pages agents open, in Settings → MCP server;
+they may have chosen another size, or to have pages fill their pane. To open one otherwise,
+pass `viewport` as `browser_viewport` takes it: `{ "width": 1280, "height": 720 }`,
+`{ "device": "iphone-15" }`, or `{ "fill": true }` for the whole pane. `browser_list` shows
+what each page got.
 
 Reading needs nothing more: `browser_read` gives the page as text, Markdown or HTML, whole
 or one element's (`selector`); `browser_snapshot` gives its accessibility tree with

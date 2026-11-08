@@ -97,6 +97,11 @@ project removed): every one of them changes the shell.
 
 ## 6. Agents [decided]
 
+A page an agent opens (`tab_open`, `pane_split`) starts in responsive mode at the person's
+size for agents' pages, 1440 × 900 by default, or at the `viewport` its call asks for
+(`docs/responsive.md` 4.1, 9). A restored page isn't one an agent opens: it fills its pane
+once shown, whoever opened it before.
+
 `browser_list` lists a restored page whose tab wasn't shown yet, with its kept address and
 title, `loading: false` and a 0 × 0 viewport. Every browser tool that names it, or means it
 for lack of another, answers `browser_unavailable` until its tab is shown (`tab_select`,
@@ -108,8 +113,8 @@ the tab is what makes the page, so the tools don't make one of their own.
 - A page's back and forward history, its scroll position and what was typed in its forms:
   CEF offers no way to restore them.
 - Splits and docked or detached `DevTools`: each page comes back as a tab of its own.
-- Which tab was selected, responsive mode (`docs/responsive.md` 1), zoom, and who held a
-  page's lease.
+- Which tab was selected, responsive mode (`docs/responsive.md` 1; a page an agent opened at
+  1440 × 900 comes back filling its pane), zoom, and who held a page's lease.
 - [not built] Unloading tabs in the background during a session: a page made stays until its
   tab closes.
 

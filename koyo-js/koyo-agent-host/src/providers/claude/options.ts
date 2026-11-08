@@ -129,6 +129,7 @@ const KOYO_READS = [
   "chat_list",
   "chat_read",
   "settings_get",
+  "activity_list",
   "browser_list",
   "browser_read",
   "browser_snapshot",

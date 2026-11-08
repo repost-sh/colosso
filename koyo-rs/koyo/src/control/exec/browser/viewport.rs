@@ -7,7 +7,8 @@ use std::time::Duration;
 use gpui_kit::{App, AsyncApp};
 use koyo_app_control::ControlError;
 use koyo_app_control::ops::browser::{
-    BrowserViewportInput, BrowserViewportOutput, DeviceName, ImageFormat, Orientation, ViewportZoom,
+    BrowserViewportInput, BrowserViewportOutput, DeviceName, ImageFormat, OpenViewport,
+    Orientation, ViewportZoom,
 };
 
 use super::super::{Caller, Exec, output};
@@ -20,8 +21,21 @@ use crate::browser::agent::{self, Choice, Viewport, ViewportChange, ViewportRefu
 const POLL: Duration = Duration::from_millis(100);
 const POLLS: u32 = 50;
 
+/// What a page opening at `viewport` (`tab_open`, `pane_split`) asks of responsive mode: as
+/// `browser_viewport` with those fields would.
+pub(crate) fn opening_change(viewport: &OpenViewport) -> Result<ViewportChange, ControlError> {
+    change(&BrowserViewportInput {
+        device: viewport.device,
+        width: viewport.width,
+        height: viewport.height,
+        orientation: viewport.orientation,
+        fill: viewport.fill,
+        ..BrowserViewportInput::default()
+    })
+}
+
 /// What `input` asks of responsive mode, the combinations no page takes refused.
-pub(super) fn change(input: &BrowserViewportInput) -> Result<ViewportChange, ControlError> {
+fn change(input: &BrowserViewportInput) -> Result<ViewportChange, ControlError> {
     let device = match input.device {
         None => None,
         Some(DeviceName::Responsive) => Some(Choice::Free),

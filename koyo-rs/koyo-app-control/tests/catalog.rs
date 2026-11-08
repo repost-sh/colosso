@@ -3,6 +3,8 @@
 
 use std::collections::BTreeSet;
 
+use koyo_app_control::ops::browser::OpenViewport;
+use koyo_app_control::ops::pane::SplitSource;
 use koyo_app_control::ops::settings::{BranchPrefix, SettingsSetInput};
 use koyo_app_control::ops::tab::CloseInput;
 use koyo_app_control::{
@@ -28,7 +30,7 @@ fn names_are_valid_unique_and_clear_of_the_terminals() {
         );
         assert_ne!(terminal.name, APP_LAUNCH);
     }
-    assert_eq!(names.len(), 51);
+    assert_eq!(names.len(), 52);
 }
 
 #[test]
@@ -366,4 +368,114 @@ fn browser_viewport_takes_the_presets_by_name_a_zoom_and_a_request_id() {
         listed.contains("viewport"),
         "browser_list's pages carry their viewport"
     );
+}
+
+#[test]
+fn activity_list_is_a_read_with_a_limit() {
+    let descriptor = catalog()
+        .into_iter()
+        .find(|descriptor| descriptor.name == "activity_list")
+        .expect("activity_list is in the catalog");
+    assert_eq!(descriptor.scope, Scope::Read);
+    assert_eq!(descriptor.hints, koyo_app_control::Hints::READ);
+    assert!(!descriptor.confirm && descriptor.also.is_empty());
+    let properties = &descriptor.input_schema["properties"];
+    assert!(properties.get("limit").is_some());
+    assert!(
+        properties.get(REQUEST_ID).is_none(),
+        "a read takes no requestId"
+    );
+    let output = serde_json::to_string(&descriptor.output_schema).unwrap();
+    for field in [
+        "entries",
+        "onlyYours",
+        "decision",
+        "timed_out",
+        "confirmation",
+    ] {
+        assert!(output.contains(field), "{field} in {output}");
+    }
+    for input in [json!({}), json!({ "limit": 10 }), Value::Null] {
+        let parsed = Command::parse("activity_list", input.clone());
+        assert!(parsed.is_ok(), "{input}: {parsed:?}");
+    }
+    for input in [
+        json!({ "limit": -1 }),
+        json!({ "limit": "ten" }),
+        json!({ "client": "x" }),
+    ] {
+        let error = Command::parse("activity_list", input.clone()).unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidInput, "{input}");
+    }
+}
+
+#[test]
+fn a_browser_page_an_agent_opens_takes_a_viewport() {
+    for name in ["tab_open", "pane_split"] {
+        let descriptor = catalog()
+            .into_iter()
+            .find(|descriptor| descriptor.name == name)
+            .unwrap();
+        assert!(
+            descriptor.input_schema["properties"]
+                .get("viewport")
+                .is_some(),
+            "{name}"
+        );
+        // Agents learn the default from the description.
+        assert!(descriptor.description.contains("1440 × 900"), "{name}");
+    }
+    let Command::TabOpen(sized) = Command::parse(
+        "tab_open",
+        json!({ "kind": "browser", "url": "http://localhost", "viewport": { "width": 1280, "height": 720 } }),
+    )
+    .unwrap() else {
+        panic!("tab_open parsed as another command");
+    };
+    assert_eq!(
+        sized.spec().viewport,
+        Some(OpenViewport {
+            width: Some(1280),
+            height: Some(720),
+            ..OpenViewport::default()
+        })
+    );
+    // Left out, the app applies the person's default.
+    let Command::TabOpen(plain) = Command::parse("tab_open", json!({ "kind": "browser" })).unwrap()
+    else {
+        panic!("tab_open parsed as another command");
+    };
+    assert_eq!(plain.spec().viewport, None);
+    let Command::PaneSplit(split) = Command::parse(
+        "pane_split",
+        json!({ "pane": 3, "edge": "right", "kind": "browser", "viewport": { "fill": true } }),
+    )
+    .unwrap() else {
+        panic!("pane_split parsed as another command");
+    };
+    let SplitSource::New(spec) = split.source().unwrap() else {
+        panic!("a new pane");
+    };
+    assert_eq!(spec.viewport.and_then(|viewport| viewport.fill), Some(true));
+    // A pane moved keeps its own page.
+    let Command::PaneSplit(moved) = Command::parse(
+        "pane_split",
+        json!({ "pane": 3, "edge": "top", "move": 9, "viewport": { "fill": true } }),
+    )
+    .unwrap() else {
+        panic!("pane_split parsed as another command");
+    };
+    assert_eq!(moved.source().unwrap_err().code, ErrorCode::InvalidInput);
+    for viewport in [
+        json!({ "zoom": "fit" }),
+        json!({ "device": "nokia-3310" }),
+        json!(true),
+    ] {
+        let error = Command::parse(
+            "tab_open",
+            json!({ "kind": "browser", "viewport": viewport }),
+        )
+        .unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidInput, "{viewport}");
+    }
 }

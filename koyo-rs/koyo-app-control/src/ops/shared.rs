@@ -4,6 +4,8 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use super::browser::OpenViewport;
+
 /// A pane's id: stable while the app runs, listed by `tab_list`.
 pub type PaneId = u64;
 
@@ -214,6 +216,8 @@ pub struct PaneSpec {
     pub terminal: Option<String>,
     pub name: Option<String>,
     pub command: Option<String>,
+    /// A browser page's viewport as it opens; the person's default when `None`.
+    pub viewport: Option<OpenViewport>,
 }
 
 #[expect(

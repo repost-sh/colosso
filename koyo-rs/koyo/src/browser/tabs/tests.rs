@@ -95,7 +95,7 @@ fn open(
     let url = url.map(str::to_owned);
     let opened = cx.update_window(window, |_, window, cx| {
         shell.update(cx, |shell, cx| {
-            shell.open_browser_tab(url, false, window, cx)
+            shell.open_browser_tab(url, false, None, window, cx)
         })
     });
     opened.unwrap().expect("a checkout is selected")

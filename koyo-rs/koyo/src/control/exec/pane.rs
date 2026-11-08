@@ -7,7 +7,7 @@ use koyo_app_control::ops::pane::{PaneResizeInput, PaneResizeOutput, PaneSplitIn
 use koyo_app_control::ops::shared::Edge;
 use serde_json::Value;
 
-use super::super::policy;
+use super::super::{Caller, policy};
 use super::open::Opened;
 use super::{Exec, info, open, output, select, try_update_shell};
 use crate::model::{self, SPLIT_MIN, Tab};
@@ -25,10 +25,15 @@ impl From<Edge> for model::Edge {
 }
 
 /// Splits the pane `input` names with a pane at an edge: one moved from its tab on the same
-/// checkout, or a new one of a kind, opened as `tab_open` would open it. The split's tab is
+/// checkout, or a new one of a kind, opened as `tab_open` would open it for `caller`, a page
+/// at the viewport its call or the person's default says. The split's tab is
 /// shown when `select` says, or as the person set what agents open to show; else the window
 /// stays where it was, and so does the tab its checkout shows.
-pub(crate) fn split(input: &PaneSplitInput, cx: &mut App) -> Result<Exec, ControlError> {
+pub(crate) fn split(
+    caller: &Caller,
+    input: &PaneSplitInput,
+    cx: &mut App,
+) -> Result<Exec, ControlError> {
     let (source, target, side) = (input.source()?, input.pane, input.edge.into());
     let shown = policy::shows(input.select, cx);
     let opened = try_update_shell(cx, |shell, window, cx| {
@@ -44,9 +49,8 @@ pub(crate) fn split(input: &PaneSplitInput, cx: &mut App) -> Result<Exec, Contro
                 Ok(Opened::Now(Ok(moved)))
             }
             SplitSource::New(spec) => {
-                open::check(&spec)?;
                 let at = (project, branch);
-                Ok(open::open_on(shell, at, &spec, false, shown, window, cx))
+                open::open_on(shell, caller, at, &spec, (false, shown), window, cx)
             }
         }
     })?;

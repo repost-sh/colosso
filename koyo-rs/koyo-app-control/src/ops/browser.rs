@@ -27,8 +27,8 @@ pub use act::{
     WaitUntil,
 };
 pub use viewport::{
-    BrowserViewport, BrowserViewportInput, BrowserViewportOutput, DeviceName, FitWord, Orientation,
-    Viewport, ViewportMode, ViewportZoom,
+    BrowserViewport, BrowserViewportInput, BrowserViewportOutput, DeviceName, FitWord,
+    OpenViewport, Orientation, Viewport, ViewportMode, ViewportZoom,
 };
 
 use super::shared::{PaneId, count};

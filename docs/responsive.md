@@ -25,7 +25,10 @@ Status marks: `[decided]`, `[proposed]` (designed here, confirmed by implementat
   is taller than most panes), scrolling inside the pane (the whole page isn't in sight).
 - **Not remembered across restarts.** Every pane opens filling its space after the app
   starts. A browser pane's mode lives in the view; a terminal's pin is owned by the
-  connection that set it and goes with it (section 3.2).
+  connection that set it and goes with it (section 3.2). Since 2026-11-08 a page an agent
+  opens starts in responsive mode at the person's size for agents' pages (section 9): a
+  default applied as the page opens, not a mode remembered, so after a restart every page
+  comes back filling its pane.
 
 ## 2. Browser pages
 
@@ -235,6 +238,34 @@ Viewport = { mode: "fill"|"responsive"|"device", device?, width, height, scale, 
 - `browser_list`'s pages gain `viewport` (`mode: "fill"` with the element's size when off),
   so reading needs no tool of its own. `browser_screenshot` captures the emulated viewport.
 
+Opening a page (2026-11-08, section 9): `tab_open` and `pane_split` with `kind: "browser"`
+take the same fields as `viewport`, the page starting in that mode before it opens:
+
+```
+tab_open   { kind: "browser", url?, viewport?: OpenViewport, … }
+pane_split { pane, edge, kind: "browser", url?, viewport?: OpenViewport, … }
+OpenViewport = { device?: "responsive"|"iphone-se"|…, width?, height?,
+                 orientation?: "portrait"|"landscape", fill?: true }
+```
+
+- Left out, the person's default for pages agents open applies (Settings → MCP server →
+  Agents → Pages agents open, `externalControl.pagesOpenAt`): Responsive at 1440 × 900, at
+  the window's scale, desktop behaviour, `zoom: "fit"`, unless they set another size or Fill
+  the pane.
+- Given, it's resolved as a `browser_viewport` change over that default: `width` or
+  `height` alone keeps the default's other side (the 1280 × 800 a pane assumes undrawn when
+  the default fills the pane); a `device` is its preset, turned by `orientation`;
+  `orientation` alone turns the default's size; `fill: true` fills the pane, with nothing else.
+  `scale`, `mobile`, `touch`, `userAgent`, `zoom` and `screenshot` are `browser_viewport`'s
+  only: set them on the open page. An empty `viewport`, or one no page takes, is
+  `invalid_input`, and nothing opens.
+- No lease is taken by opening; the first act claims the page as before. The device bar
+  says "Set by" the agent that opened it, `browser_list` shows the viewport, and
+  `fill: true` through `browser_viewport` ends the mode as on any page.
+- `browser_navigate` only moves a page that's open (with none, `not_found`), so it opens
+  nothing to size. The person's own pages, the pages `tab_reopen` opens again (⇧⌘T's) and
+  tabs a page opens fill their pane.
+
 ### 4.2 `terminal_resize` (terminal catalog, `koyo-term-control/src/catalog`)
 
 `docs/terminals.md` 8.5's line, built, with unpinning:
@@ -415,3 +446,41 @@ one size per frame, and says whether a drag is under way (`AppRequest::Resize { 
 - A daemon of another build that doesn't stop on `Shutdown` or SIGTERM within 5 s is now
   killed with SIGKILL (`koyo-term-control/src/client.rs`, `stop_daemon`), so "Restart
   terminals" can't hang on it (test `koyo-term-control/tests/stop.rs`).
+
+## 9. Pages agents open (2026-11-08) [decided]
+
+The owner's decisions of 2026-11-08, built the same day:
+
+- **An agent's page starts at a desktop's size.** A browser page an agent opens through the
+  MCP (`tab_open`, `pane_split`) starts in responsive mode at a free 1440 × 900, a desktop
+  screen's size, scaled down to fit its pane (`zoom: "fit"`), not filling the
+  pane: what an agent lays out, reads and screenshots is the same whatever the pane's size,
+  and it's a desktop's. Pages the person opens are unchanged: they fill their pane.
+- **The agent may ask for another.** An optional `viewport` on those calls, in
+  `browser_viewport`'s shape (4.1): a size, a preset, or `fill: true` for the old behaviour.
+  The tool descriptions name the default.
+- **The person sets the default.** Settings → MCP server → Agents, beside Switch to what
+  agents open, since it only applies to what agents open: Pages agents open, a menu of
+  1440 × 900, a size of their own (Other size…, a width × height from 50 to 8192 each) and
+  Fill the pane. It lives in `externalControl` with the other defaults for agents' calls
+  (`docs/app-control.md` 4, 12), out of `settings_set`'s reach, default
+  `{ "width": 1440, "height": 900 }`, `"fill"` to turn it off.
+- **1440 × 900, not 1920 × 1080.** The owner first asked for 1920 × 1080, the most common
+  desktop resolution, and changed the default to 1440 × 900 the same day; 1920 × 1080 stays
+  a size an agent or the person can ask for.
+- **Still not remembered.** The default applies as a page opens; a page's mode isn't kept
+  across restarts (section 1), so a page an agent opened comes back filling its pane
+  (`docs/browser.md` 7). Changing the default changes what the next page an agent opens
+  gets, not the pages open already.
+- Where it lives: `koyo-app-control/src/ops/browser/viewport.rs` (`OpenViewport`),
+  `koyo/src/browser/responsive/opening.rs` (`opening`, `BrowserView::start_in`),
+  `koyo/src/control/exec/open.rs` (`open_on`, `page_mode`), `Shell::open_browser_tab`'s
+  `mode`, `koyo/src/control/policy.rs` (`PageSize`, `pagesOpenAt`, `pages_open_at`),
+  `koyo/src/settings_view/mcp_agents.rs` (the Agents section). Tests: the catalog's
+  `a_browser_page_an_agent_opens_takes_a_viewport`, `browser/responsive/tests/opening.rs`,
+  `control/tests/viewport.rs`
+  `a_page_an_agent_opens_starts_at_the_persons_size_for_agents_pages`. Pictures: the browser
+  visual check (`--visual-check-browser`, `browser/visual/opened.rs`) saves an agent's page at
+  the default, with the device bar, and Settings → MCP server (`agent-opened.png`,
+  `settings-mcp*.png` in `.superpowers/qa/browser/`); its pictures lay a page in at the scale
+  it shows at.

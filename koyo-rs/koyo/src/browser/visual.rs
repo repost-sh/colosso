@@ -1,10 +1,11 @@
 //! A browser tab driven as a person drives it, on the real engine, drawn as the app draws it
 //! and saved as PNGs in `.superpowers/qa/browser/`: the start page, an address typed and a page
 //! loading, a link clicked and history walked back, find, zoom, `DevTools` at each of their
-//! places, a second tab typed into, scrolled and split beside the first, and the Browser
-//! settings, in the light theme and the dark. A page shows in a native layer of its own, which
-//! the window's picture lacks, so each picture has the pages' frames laid in where they show,
-//! under what the window draws over them.
+//! places, a second tab typed into, scrolled and split beside the first, a page an agent opens
+//! at the size the person set for those (`opened`), and the Browser and MCP server settings,
+//! in the light theme and the dark. A page shows in a native layer of its own, which the
+//! window's picture lacks, so each picture has the pages' frames laid in where they show, at
+//! the scale they show at, under what the window draws over them.
 //!
 //! ```sh
 //! KOYO_CONFIG_DIR=$PWD/.superpowers/qa/browser/config \
@@ -30,6 +31,7 @@ use crate::theme::{UseDarkTheme, UseLightTheme};
 use crate::visual::{Drawn, Result};
 
 mod agent;
+mod opened;
 mod play;
 mod serve;
 
@@ -68,6 +70,7 @@ fn draw() -> Result<Vec<String>> {
     check.devtools(&page)?;
     check.play(&page, port)?;
     check.agent(port)?;
+    check.opened(port)?;
     check.settings()?;
     let browsers = check.drawn.cx.update(Browsers::global);
     let stopped = (check.drawn.cx).update(|cx| browsers.update(cx, |browsers, _| browsers.stop()));
@@ -332,7 +335,8 @@ impl Check {
         self.drawn
             .cx
             .update(|cx| cx.dispatch_action(&UseLightTheme));
-        self.save("settings.png", &[])
+        self.save("settings.png", &[])?;
+        self.mcp_settings()
     }
 }
 
@@ -382,22 +386,29 @@ fn picture_on(
     for page in pages {
         let shown = drawn.cx.read(|cx| {
             let view = page.read(cx);
-            view.frame.clone().map(|frame| (frame, view.origin))
+            // A frame's pixels per pixel of the picture: the page's fit, and its own scale
+            // against the window's, as a preset's 3x page in a 2x window.
+            let own = view.viewport.map_or(scale, |viewport| viewport.scale);
+            let fit = view.fit() * scale / own;
+            (view.frame.clone()).map(|frame| (frame, view.origin, fit))
         });
-        if let Some((frame, origin)) = shown {
-            lay(&mut image, &frame, origin, scale, backdrop);
+        if let Some((frame, origin, fit)) = shown {
+            lay(&mut image, &frame, origin, fit, scale, backdrop);
         }
     }
     Ok(image)
 }
 
-/// Copies `frame`'s page into `image` at `origin`, in the image's pixels, wherever the
-/// window shows the page's backdrop, `backdrop` or the colour at its bottom left corner:
-/// what the window draws over the page, among its overlays, stays over it, as on screen.
+/// Copies `frame`'s page into `image` at `origin`, in the image's pixels, one of the image's
+/// pixels for every `1 / fit` of the frame's, as responsive mode shows a page smaller than
+/// its true size, wherever the window shows the page's backdrop, `backdrop` or the colour at
+/// its bottom left corner: what the window draws over the page, among its overlays, stays
+/// over it, as on screen.
 fn lay(
     image: &mut RgbaImage,
     frame: &Frame,
     origin: Point<Pixels>,
+    fit: f32,
     scale: f32,
     backdrop: Option<[u8; 4]>,
 ) {
@@ -410,7 +421,10 @@ fn lay(
         (origin.x.as_f32() * scale).round().max(0.) as u32,
         (origin.y.as_f32() * scale).round().max(0.) as u32,
     );
-    let (wide, tall) = (frame.size.width, frame.size.height);
+    let (wide, tall) = (
+        (frame.size.width as f32 * fit).round() as u32,
+        (frame.size.height as f32 * fit).round() as u32,
+    );
     let (Some(last_x), Some(last_y)) = (
         (left + wide.min(image.width().saturating_sub(left))).checked_sub(1),
         (top + tall.min(image.height().saturating_sub(top))).checked_sub(1),
@@ -426,9 +440,16 @@ fn lay(
     unsafe {
         surface.lock(IOSurfaceLockOptions::ReadOnly, std::ptr::null_mut());
         let base = surface.base_address().as_ptr().cast::<u8>().cast_const();
-        for y in 0..frame.size.height.min(image.height().saturating_sub(top)) {
-            for x in 0..frame.size.width.min(image.width().saturating_sub(left)) {
-                let at = base.add(y as usize * row + x as usize * 4);
+        // Each pixel shown is the frame's nearest one; a column's place in a row is the same
+        // in every row.
+        let from = |at: u32, side: u32| ((at as f32 / fit) as u32).min(side - 1) as usize;
+        let columns: Vec<usize> = (0..wide.min(image.width().saturating_sub(left)))
+            .map(|x| from(x, frame.size.width) * 4)
+            .collect();
+        for y in 0..tall.min(image.height().saturating_sub(top)) {
+            let line = base.add(from(y, frame.size.height) * row);
+            for (x, &column) in (0_u32..).zip(&columns) {
+                let at = line.add(column);
                 let [b, g, r, a] = [*at, *at.add(1), *at.add(2), *at.add(3)];
                 let shown = image.get_pixel_mut(left + x, top + y);
                 if shown

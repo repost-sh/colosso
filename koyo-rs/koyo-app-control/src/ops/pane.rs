@@ -3,6 +3,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use super::browser::OpenViewport;
 use super::shared::{Closed, Edge, PaneId, PaneKind, PanePlace, PaneSpec};
 use super::tab::CloseInput;
 use crate::{ControlError, Hints, Operation, Scope};
@@ -25,6 +26,11 @@ pub struct PaneSplitInput {
     /// A new browser pane's address.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
+    /// A new browser page's viewport as it opens, as in `tab_open`: `{ width, height }`,
+    /// `{ device }` or `{ fill: true }`. Left out, the person's default: responsive mode at
+    /// 1440 × 900 unless they changed it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub viewport: Option<OpenViewport>,
     /// A new editor pane's file, absolute or relative to the worktree.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub file: Option<String>,
@@ -67,6 +73,7 @@ impl PaneSplitInput {
     /// fields only with `kind`.
     pub fn source(&self) -> Result<SplitSource, ControlError> {
         let extras = self.url.is_some()
+            || self.viewport.is_some()
             || self.file.is_some()
             || self.line.is_some()
             || self.column.is_some()
@@ -84,6 +91,7 @@ impl PaneSplitInput {
                 terminal: self.terminal.clone(),
                 name: self.name.clone(),
                 command: self.command.clone(),
+                viewport: self.viewport.clone(),
             })),
             _ => Err(ControlError::invalid_input(
                 "Give either `move` (an existing pane) or `kind` with the new pane's fields.",
@@ -101,7 +109,7 @@ impl Operation for PaneSplit {
     const TITLE: &'static str = "Split pane";
     const SUBJECT: &'static [&'static str] = &["pane"];
     const SCOPE: Scope = Scope::Navigate;
-    const DESCRIPTION: &'static str = "Splits `pane` and puts another pane on its `edge`: an existing one taken from its tab (`move`), or a new one of a `kind` with tab_open's fields. The window switches to the split's tab only with `select: true`, or with `select` left out when the person chose in Settings to see what agents open. Answers the placed pane's id and tab.";
+    const DESCRIPTION: &'static str = "Splits `pane` and puts another pane on its `edge`: an existing one taken from its tab (`move`), or a new one of a `kind` with tab_open's fields; a new browser page opens at 1440 × 900 in responsive mode unless its `viewport` says otherwise, as in tab_open. The window switches to the split's tab only with `select: true`, or with `select` left out when the person chose in Settings to see what agents open. Answers the placed pane's id and tab.";
     const HINTS: Hints = Hints::CHANGE;
     type Input = PaneSplitInput;
     type Output = PanePlace;

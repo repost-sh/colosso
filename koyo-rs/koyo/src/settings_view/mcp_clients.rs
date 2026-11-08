@@ -1,16 +1,13 @@
 //! The MCP server page's clients: those the person allowed, each with when it was last used,
-//! what it may do and Revoke; those denied lately, with Allow; and the latest activity:
-//! every changing call, and every approval and confirmation.
+//! what it may do and Revoke; and those denied lately, with Allow. What clients did is for
+//! agents to read, with `activity_list` (`docs/app-control.md` 9).
 
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::{Action, App, SharedString};
 use koyo_app_control::Scope;
 
 use super::components::{MenuButton, PillButton, SettingRow, SettingsSection};
-use crate::control::{self, ActivityEntry, ActivityKind, Decision};
-
-/// How many of the latest activity entries the page lists.
-const SHOWN_ACTIVITY: usize = 30;
+use crate::control;
 
 /// Turns one of a client's scopes on or off, from its menu.
 #[derive(Clone, Debug, PartialEq, Action)]
@@ -46,7 +43,6 @@ pub fn sections(cx: &App) -> Vec<SettingsSection> {
     if !denied.is_empty() {
         sections.push(denied_clients(denied));
     }
-    sections.push(activity(cx));
     sections
 }
 
@@ -127,51 +123,6 @@ fn denied_clients(denied: Vec<String>) -> SettingsSection {
                     .on_click(move |_, _, cx| control::allow_denied(&allowed, cx)),
             )
     }))
-}
-
-fn activity(cx: &App) -> SettingsSection {
-    let entries = control::activity(SHOWN_ACTIVITY, cx);
-    let section = SettingsSection::new("Recent activity");
-    if entries.is_empty() {
-        return section.row(SettingRow::new("Nothing yet").description(
-            "Calls that change something, and your answers to clients, are listed here.",
-        ));
-    }
-    section.rows(entries.iter().map(activity_row))
-}
-
-fn activity_row(entry: &ActivityEntry) -> SettingRow {
-    let (what, detail) = match &entry.kind {
-        ActivityKind::Call { operation, outcome } => match outcome {
-            Ok(summary) => (operation.clone(), summary.clone()),
-            Err(error) => (
-                operation.clone(),
-                format!("{}: {}", error.code.id(), error.message),
-            ),
-        },
-        ActivityKind::Approval(decision) => (
-            "Asked to control Koyo".to_owned(),
-            decision_label(*decision).to_owned(),
-        ),
-        ActivityKind::Confirmation {
-            operation,
-            question,
-            decision,
-        } => (
-            operation.clone(),
-            format!("{question} {}", decision_label(*decision)),
-        ),
-    };
-    SettingRow::new(format!("{} · {what}", entry.client))
-        .description(SharedString::from(format!("{} · {detail}", ago(entry.at))))
-}
-
-fn decision_label(decision: Decision) -> &'static str {
-    match decision {
-        Decision::Allowed => "Allowed.",
-        Decision::Denied => "Denied.",
-        Decision::TimedOut => "No answer.",
-    }
 }
 
 /// How long ago `at`, in milliseconds since the Unix epoch, was.

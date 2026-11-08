@@ -12,6 +12,7 @@ mod fonts;
 mod general;
 mod keyboard_shortcuts;
 mod languages;
+mod mcp_agents;
 mod mcp_clients;
 mod mcp_server;
 mod native_slider;
@@ -28,6 +29,7 @@ use gpui_kit::{App, IntoElement, ParentElement as _};
 
 pub use chat::{ClearClaudePath, EditClaudePath, edit_claude_path};
 pub use general::{EditBranchPrefix, edit_branch_prefix};
+pub use mcp_agents::{EditPagesOpenAt, edit_pages_open_at};
 pub use settings_sidebar::SettingsSidebar;
 
 use components::{SettingsPageColumn, SettingsSection};
@@ -120,6 +122,7 @@ impl SettingsPage {
 
 /// Sets up what the pages answer outside their own views: the MCP server page's menus.
 pub fn init(cx: &mut App) {
+    mcp_agents::init(cx);
     mcp_clients::init(cx);
 }
 

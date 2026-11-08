@@ -19,7 +19,7 @@ use crate::responsive::bar::Fields;
 /// window's.
 const SCALE_UNDRAWN: f32 = 2.;
 /// The size a pane assumes for "the pane's" before it's drawn.
-const PANE_UNDRAWN: (u32, u32) = (1280, 800);
+pub(super) const PANE_UNDRAWN: (u32, u32) = (1280, 800);
 
 /// A view's responsive mode, on or off, and how its page shows.
 pub struct State {

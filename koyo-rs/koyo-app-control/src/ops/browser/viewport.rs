@@ -191,6 +191,33 @@ pub struct BrowserViewportInput {
     pub screenshot: Option<bool>,
 }
 
+/// The viewport a browser page opens at (`tab_open`, `pane_split`), as `browser_viewport`
+/// sets one: a free size, a preset, or filling the pane. Left out, the person's default for
+/// pages agents open applies (Settings → MCP server: responsive mode at 1440 × 900 unless
+/// they changed it).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct OpenViewport {
+    /// A preset (`iphone-se`, `iphone-15`, `iphone-15-pro-max`, `pixel-8`, `galaxy-s24`,
+    /// `ipad-mini`, `ipad-pro-11`), which sets its size, scale, user agent, touch and mobile
+    /// layout; or `responsive` for a free size.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device: Option<DeviceName>,
+    /// A free width in CSS pixels, from 50; a side left out is the person's default's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub width: Option<u32>,
+    /// A free height in CSS pixels, from 50; a side left out is the person's default's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub height: Option<u32>,
+    /// `portrait` or `landscape`: turns the preset or the size that way.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub orientation: Option<Orientation>,
+    /// `true` opens the page filling its pane, as the person's own pages do; nothing else
+    /// with it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fill: Option<bool>,
+}
+
 /// The page's viewport after the change, and whether the page has laid out at it.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -256,6 +283,38 @@ mod tests {
             ViewportZoom::Percent(75)
         );
         assert!(serde_json::from_value::<ViewportZoom>(json!("half")).is_err());
+    }
+
+    #[test]
+    fn a_page_opens_at_a_size_a_preset_or_filling_its_pane() {
+        let read = |input| serde_json::from_value::<OpenViewport>(input);
+        assert_eq!(
+            read(json!({ "width": 1280, "height": 720 })).unwrap(),
+            OpenViewport {
+                width: Some(1280),
+                height: Some(720),
+                ..OpenViewport::default()
+            }
+        );
+        assert_eq!(
+            read(json!({ "device": "pixel-8", "orientation": "landscape" })).unwrap(),
+            OpenViewport {
+                device: Some(DeviceName::Pixel8),
+                orientation: Some(Orientation::Landscape),
+                ..OpenViewport::default()
+            }
+        );
+        assert_eq!(read(json!({ "fill": true })).unwrap().fill, Some(true));
+        // Only what opening takes: a zoom, a scale or a screenshot is browser_viewport's.
+        for wrong in [
+            json!({ "zoom": "fit" }),
+            json!({ "scale": 2 }),
+            json!({ "screenshot": true }),
+            json!({ "device": "nokia-3310" }),
+            json!({ "width": -1 }),
+        ] {
+            assert!(read(wrong.clone()).is_err(), "{wrong}");
+        }
     }
 
     #[test]

@@ -18,7 +18,9 @@ use super::host::Browsers;
 pub use super::host::CdpResult;
 use super::responsive;
 pub use super::responsive::devices::find as find_device;
-pub use super::responsive::{Change as ViewportChange, Choice, ViewportRefused, Zoom};
+pub use super::responsive::{
+    Change as ViewportChange, Choice, SetBy, ViewportRefused, Zoom, opening,
+};
 use super::view::BrowserView;
 
 /// Why a protocol command didn't run for an agent.
