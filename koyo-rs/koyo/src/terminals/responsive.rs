@@ -223,10 +223,6 @@ impl ResponsiveTerminal {
         }
         self.show_size(false, window, cx);
         let terminal = self.id;
-        let pinned = self.view.read(cx).pinned().cloned();
-        let agent = pinned
-            .filter(|pinned| pinned.by.kind == ActorKind::Agent)
-            .map(|pinned| pinned.by.id);
         let me = cx.entity().downgrade();
         let restore = Rc::new(move |window: &mut Window, cx: &mut App| {
             let _ = me.update(cx, |this, cx| {
@@ -238,7 +234,6 @@ impl ResponsiveTerminal {
         let close = cx.listener(|this, _: &ClickEvent, _, cx| this.close(cx));
         let bar = Bar {
             ids: "terminal",
-            agent,
             presets: preset_names(),
             preset: self.shown_preset(cx).map(|(at, _)| at),
             pick_preset: Rc::new(move |preset| Box::new(PickSize { terminal, preset })),
