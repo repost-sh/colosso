@@ -200,6 +200,9 @@ pub struct Settings {
     pub devtools: crate::browser::DevtoolsPlace,
     /// Whether the new-tab launcher asks the search engine what it suggests for what's typed.
     pub search_suggestions: bool,
+    /// Whether a page that goes full screen, as a video does, takes the whole screen; off, it
+    /// fills its pane (`browser/fullscreen.rs`).
+    pub fullscreen_fills_screen: bool,
     /// What quitting does with the terminals still running.
     pub on_quit: crate::quitting::OnQuit,
     /// Whether clients outside Koyo's terminals may control the app, on which port the
@@ -284,6 +287,7 @@ impl Default for Settings {
             key_repeat: KeyRepeat::default(),
             devtools: crate::browser::DevtoolsPlace::default(),
             search_suggestions: true,
+            fullscreen_fills_screen: true,
             on_quit: crate::quitting::OnQuit::default(),
             external_control: crate::control::Policy::default(),
         }

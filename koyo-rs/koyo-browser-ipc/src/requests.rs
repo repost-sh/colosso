@@ -70,6 +70,12 @@ pub enum AppRequest {
         /// Whether it's on screen.
         visible: bool,
     },
+    /// The page is to leave full screen: the person pressed Escape, or took the window out
+    /// of it.
+    ExitFullscreen {
+        /// The pane.
+        pane: PaneId,
+    },
     /// The pane gained or lost keyboard focus.
     Focus {
         /// The pane.
@@ -229,6 +235,7 @@ impl AppRequest {
             | Self::Close { pane }
             | Self::Focus { pane, .. }
             | Self::Visible { pane, .. }
+            | Self::ExitFullscreen { pane }
             | Self::View { pane, .. }
             | Self::Mouse { pane, .. }
             | Self::Wheel { pane, .. }

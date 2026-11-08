@@ -33,6 +33,16 @@ cp koyo-rs/koyo/icons/Koyo.icns "$app/Contents/Resources/Koyo.icns"
 cp koyo-rs/koyo/fonts/OFL.txt "$app/Contents/Resources/JetBrainsMono-OFL.txt"
 # -R keeps the framework's symlinks, which its signature covers; -c clones rather than copies.
 cp -cR "$engine"/*/"Koyo Browser Host.app" "$app/Contents/Frameworks/"
+# What pages in its browser may reach, said why: macOS holds the app that launched the browser
+# engine responsible for it, so ends Koyo's engine for using Bluetooth (Google's sign-in looks
+# for a phone's passkey), the camera or the microphone unless Koyo's own Info.plist says why.
+# The reasons are the engine's own (script/browser-engine), read back so the two can't drift.
+host_plist="$app/Contents/Frameworks/Koyo Browser Host.app/Contents/Info.plist"
+reason() { plutil -extract "$1" raw -o - "$host_plist"; }
+location=$(reason NSLocationUsageDescription)
+bluetooth=$(reason NSBluetoothAlwaysUsageDescription)
+camera=$(reason NSCameraUsageDescription)
+microphone=$(reason NSMicrophoneUsageDescription)
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -66,6 +76,16 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <true/>
   <key>NSSupportsAutomaticGraphicsSwitching</key>
   <true/>
+  <key>NSLocationUsageDescription</key>
+  <string>$location</string>
+  <key>NSLocationWhenInUseUsageDescription</key>
+  <string>$location</string>
+  <key>NSBluetoothAlwaysUsageDescription</key>
+  <string>$bluetooth</string>
+  <key>NSCameraUsageDescription</key>
+  <string>$camera</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>$microphone</string>
 </dict>
 </plist>
 PLIST

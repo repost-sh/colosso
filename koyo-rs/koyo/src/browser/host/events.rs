@@ -73,6 +73,9 @@ impl Browsers {
             HostEvent::Favicon { pane, url, png } => {
                 self.update_view(pane, cx, |view, cx| view.favicon_fetched(&url, png, cx));
             }
+            HostEvent::Fullscreen { pane, on } => {
+                self.update_view(pane, cx, |view, cx| view.fullscreen_changed(on, cx));
+            }
             HostEvent::Cursor { pane, cursor } => {
                 self.update_view(pane, cx, |view, cx| view.cursor_changed(cursor, cx));
             }
@@ -179,19 +182,22 @@ impl Browsers {
         size: PixelSize,
         cx: &mut Context<Self>,
     ) {
-        let Some(surface) = self
+        let Some(frame) = self
             .rings
             .get(&pane)
             .and_then(|ring| ring.surfaces.get(usize::from(slot)))
-            .cloned()
+            .map(|surface| Frame::new((generation, slot), size, surface))
         else {
             return;
         };
-        let frame = Frame::new((generation, slot), size, surface);
-        let previous = self
-            .update_view(pane, cx, |view, cx| view.show_frame(frame, cx))
-            .flatten();
-        if let Some((generation, slot)) = previous {
+        // The slot shown before goes back; or this one, when it can't be drawn.
+        let back = match frame {
+            Some(frame) => self
+                .update_view(pane, cx, |view, cx| view.show_frame(frame, cx))
+                .flatten(),
+            None => Some((generation, slot)),
+        };
+        if let Some((generation, slot)) = back {
             self.send(AppRequest::Release {
                 pane,
                 generation,

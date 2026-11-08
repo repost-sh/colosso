@@ -365,6 +365,10 @@ impl Render for BrowserView {
         self.make_devtools(window, cx);
         let page = self.page_element(window, cx);
         let column = input::steer(div().size_full().flex().flex_col(), cx);
+        // Full screen on the whole screen, the page is all there is.
+        if self.fills_screen() {
+            return column.child(div().flex_1().min_h_0().w_full().child(page));
+        }
         if let Some(inspected) = self.inspected().cloned() {
             // Detached, they carry their bar themselves.
             let of = inspected.read(cx);

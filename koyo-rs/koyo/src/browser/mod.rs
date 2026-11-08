@@ -41,6 +41,7 @@ mod view;
 #[cfg(feature = "visual-check")]
 pub mod visual;
 
+pub mod fullscreen;
 pub use dock::DOCK_MIN;
 pub use dock::{DevtoolsPlace, Dock, SetDevtoolsDock};
 pub use menu::handle_actions;

@@ -1,8 +1,81 @@
 //! A pane's frames: the ring of shared surfaces it paints into, each GPU paint composed
-//! into a free slot and announced, and the slots the app hands back.
+//! into a free slot and announced, and the slots the app hands back. The app hands a slot
+//! back as soon as a newer frame replaces it; a slot it still uses (its GPU still reading it)
+//! is marked in use, and isn't painted into until it isn't, looked at again after [`RETRY`].
+use std::time::Duration;
+
 use super::{send, with, with_pane};
-use cef::{AcceleratedPaintInfo, Rect};
+use cef::{AcceleratedPaintInfo, ImplTask, Rect, Task, ThreadId, WrapTask, rc::Rc, wrap_task};
 use koyo_browser_ipc::{self as ipc, HostEvent, PaneId};
+
+/// How soon a frame that found every free slot still in use by the app looks again: a
+/// fraction of a 120 Hz display's frame. Each look that finds them in use still doubles it,
+/// at most [`BACKOFF`] times, so a window that stops drawing isn't asked hundreds of times a
+/// second.
+const RETRY: Duration = Duration::from_millis(2);
+
+/// How many times [`RETRY`] doubles at most: to 128 ms.
+const BACKOFF: u32 = 6;
+
+/// A free slot of `ring` the app is done with, taken from `free`: the one handed back first,
+/// the likeliest to be done with.
+#[cfg(target_os = "macos")]
+fn take_free(free: &mut Vec<u8>, ring: &crate::surfaces::Ring) -> Option<u8> {
+    let at = free.iter().position(|slot| !ring.in_use(*slot))?;
+    Some(free.remove(at))
+}
+
+/// A pane's latest frame that found no slot free and done with.
+#[derive(Default)]
+pub(super) struct Behind {
+    /// A frame waits for a slot: shown once one is free and done with.
+    waiting: bool,
+    /// A look at the free slots is due ([`PresentDue`]).
+    due: bool,
+    /// Looks in a row that found the free slots still in use.
+    looks: u32,
+}
+
+impl Behind {
+    /// A frame was shown: nothing waits any more.
+    fn caught_up(&mut self) {
+        self.waiting = false;
+        self.looks = 0;
+    }
+}
+
+/// A frame of `pane` missed every slot: kept, and shown once a slot is free and done with.
+/// When the app handed slots back it still uses, they're looked at again shortly.
+#[cfg(target_os = "macos")]
+fn missed(p: &mut super::Pane, pane: PaneId) {
+    p.behind.waiting = true;
+    if p.free.is_empty() || p.behind.due {
+        return;
+    }
+    p.behind.due = true;
+    let wait = RETRY * 2u32.pow(p.behind.looks.min(BACKOFF));
+    p.behind.looks += 1;
+    let mut due = PresentDue::new(pane);
+    cef::post_delayed_task(ThreadId::UI, Some(&mut due), super::panes::delay_ms(wait));
+}
+
+wrap_task! {
+    struct PresentDue {
+        pane: PaneId,
+    }
+
+    impl Task {
+        fn execute(&self) {
+            let waiting = with_pane(self.pane, |p| {
+                p.behind.due = false;
+                std::mem::take(&mut p.behind.waiting)
+            });
+            if waiting == Some(true) {
+                present(self.pane);
+            }
+        }
+    }
+}
 
 /// A fresh ring at the pane's current pixel size, announced to the app.
 pub(super) fn new_ring(pane: PaneId) {
@@ -14,7 +87,7 @@ pub(super) fn new_ring(pane: PaneId) {
             let p = host.panes.get_mut(&pane)?;
             p.generation += 1;
             p.free = (0..ipc::RING).collect();
-            p.missed = false;
+            p.behind.caught_up();
             let generation = p.generation;
             let sent = host
                 .surfaces
@@ -47,7 +120,8 @@ pub(super) fn release(pane: PaneId, generation: u32, slot: u8) {
         if slot < ipc::RING && !p.free.contains(&slot) {
             p.free.push(slot);
         }
-        std::mem::take(&mut p.missed)
+        p.behind.looks = 0;
+        std::mem::take(&mut p.behind.waiting)
     });
     if repaint == Some(true) {
         present(pane);
@@ -97,22 +171,25 @@ pub(crate) fn accelerated_frame(
                 }
             }
             let ring = p.ring.as_ref()?;
-            let slot = p.free.pop();
+            let slot = take_free(&mut p.free, ring);
             let target = slot.map(|slot| (ring, slot));
             let painted = gpu.paint(info.shared_texture_io_surface, layer, &mut p.layers, target);
             match slot {
-                Some(slot) if painted => Some((
-                    p.generation,
-                    slot,
-                    super::live::drive::filled(p, p.layers.page_size()?),
-                )),
+                Some(slot) if painted => {
+                    p.behind.caught_up();
+                    Some((
+                        p.generation,
+                        slot,
+                        super::live::drive::filled(p, p.layers.page_size()?),
+                    ))
+                }
                 Some(slot) => {
                     p.free.push(slot);
                     None
                 }
-                // Kept; shown once the app hands a slot back.
+                // Kept; shown once a slot is free and done with.
                 None => {
-                    p.missed = true;
+                    missed(p, pane);
                     None
                 }
             }
@@ -141,11 +218,12 @@ fn present(pane: PaneId) {
             if !p.layers.has_page() {
                 return None;
             }
-            let Some(slot) = p.free.pop() else {
-                p.missed = true;
+            let Some(slot) = take_free(&mut p.free, ring) else {
+                missed(p, pane);
                 return None;
             };
             if gpu.recompose(&p.layers, ring, slot) {
+                p.behind.caught_up();
                 Some((
                     p.generation,
                     slot,
