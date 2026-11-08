@@ -257,11 +257,9 @@ impl BrowserView {
         }
         let at = self.window_point(request.page_at);
         self.open_menu = Some((request.id, request.page_at));
-        // The menu's tracking takes the release of a press still held on the page, and
-        // until that press is let go the window gives every press to the page, the app's
-        // own buttons left dead (`input::release`). So the press ends here, for the page
-        // and for the window, before it shows.
-        self.let_go(window.mouse_position(), window, cx);
+        // The menu's tracking takes the release of a press still held on the page, which
+        // ends here, before it shows.
+        self.let_go(window, cx);
         // The visual check runs unattended, where the menu's tracking would wait for a pick.
         if cfg!(feature = "visual-check") {
             return;

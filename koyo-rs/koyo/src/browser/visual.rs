@@ -1,11 +1,11 @@
 //! A browser tab driven as a person drives it, on the real engine, drawn as the app draws it
 //! and saved as PNGs in `.superpowers/qa/browser/`: the start page, an address typed and a page
 //! loading, a link clicked and history walked back, find, zoom, `DevTools` at each of their
-//! places, a second tab typed into, scrolled and split beside the first, a page an agent opens
-//! at the size the person set for those (`opened`), and the Browser and MCP server settings,
-//! in the light theme and the dark. A page shows in a native layer of its own, which the
-//! window's picture lacks, so each picture has the pages' frames laid in where they show, at
-//! the scale they show at, under what the window draws over them.
+//! places, a second tab typed into, scrolled and split beside the first, an agent at work, the
+//! sidebar folded over a dark page and back (no strip of anything else beside the page as it
+//! moves), a page an agent opens at the size the person set for those (`opened`), and the
+//! Browser and MCP server settings, in the light theme and the dark. A page's frame is drawn
+//! in the window's own frame, so each picture is the window as it is on screen.
 //!
 //! ```sh
 //! KOYO_CONFIG_DIR=$PWD/.superpowers/qa/browser/config \
@@ -17,11 +17,9 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
-use gpui_kit::{App, Entity, Modifiers, Pixels, Point, point, px};
+use gpui_kit::{App, Entity, Modifiers, point, px};
 use image::RgbaImage;
-use objc2_io_surface::IOSurfaceLockOptions;
 
-use super::frames::Frame;
 use super::host::Browsers;
 use super::{BrowserView, Dock};
 use crate::navigation::Route;
@@ -31,6 +29,7 @@ use crate::theme::{UseDarkTheme, UseLightTheme};
 use crate::visual::{Drawn, Result};
 
 mod agent;
+mod fold;
 mod opened;
 mod play;
 mod serve;
@@ -70,6 +69,7 @@ fn draw() -> Result<Vec<String>> {
     check.devtools(&page)?;
     check.play(&page, port)?;
     check.agent(port)?;
+    check.fold(port)?;
     check.opened(port)?;
     check.settings()?;
     let browsers = check.drawn.cx.update(Browsers::global);
@@ -88,12 +88,12 @@ struct Check {
 }
 
 impl Check {
-    /// Saves the window as `name`, with `pages`' frames laid in.
-    fn save(&mut self, name: &str, pages: &[&Entity<BrowserView>]) -> Result<()> {
+    /// Saves the window as `name`.
+    fn save(&mut self, name: &str) -> Result<()> {
         // What arrives just after the step, a late image or the paint for it, shows too.
         let settled = Instant::now() + SETTLE;
         (self.drawn).until(PATIENCE, move |_| Ok(Instant::now() >= settled))?;
-        let picture = picture(&mut self.drawn, pages)?;
+        let picture = picture(&mut self.drawn)?;
         self.keep(name, &picture)
     }
 
@@ -144,6 +144,29 @@ impl Check {
         self.drawn.cx.simulate_input(window, text);
     }
 
+    /// A new tab on the served page at `path`, once `ready` holds for it, as the page it
+    /// waits for says `what` is.
+    fn open_served(
+        &mut self,
+        port: u16,
+        path: &str,
+        what: &str,
+        ready: fn(&BrowserView) -> bool,
+    ) -> Result<Entity<BrowserView>> {
+        let (shell, window) = (self.drawn.shell.clone(), self.drawn.window);
+        (self.drawn.cx)
+            .update_window(window, |_, window, cx| {
+                shell.update(cx, |shell, cx| shell.open_browser(None, window, cx));
+            })
+            .map_err(|error| error.to_string())?;
+        let page = (self.drawn.cx.read(|cx| shown_page(&shell, cx)))
+            .ok_or_else(|| format!("no tab for {what}"))?;
+        self.type_text(&format!("127.0.0.1:{port}{path}"));
+        self.keys("enter");
+        self.until(&page, what, ready)?;
+        Ok(page)
+    }
+
     /// A new browser tab, in the light theme, on its start page.
     fn open_tab(&mut self) -> Result<Entity<BrowserView>> {
         let (shell, window) = (self.drawn.shell.clone(), self.drawn.window);
@@ -157,7 +180,7 @@ impl Check {
             .map_err(|error| error.to_string())?;
         let page =
             (self.drawn.cx.read(|cx| shown_page(&shell, cx))).ok_or("no browser tab opened")?;
-        self.save("start-page.png", &[&page])?;
+        self.save("start-page.png")?;
         Ok(page)
     }
 
@@ -169,9 +192,9 @@ impl Check {
         self.until(page, "the page loading", |view| {
             view.page.loading && view.page.progress > 0
         })?;
-        self.save("loading.png", &[page])?;
+        self.save("loading.png")?;
         self.until(page, "the first page", |view| loaded(view, "First page"))?;
-        self.save("loaded.png", &[page])?;
+        self.save("loaded.png")?;
 
         let window = self.drawn.window;
         let origin = self.drawn.cx.read(|cx| page.read(cx).origin);
@@ -181,7 +204,7 @@ impl Check {
         self.until(page, "the link followed", |view| {
             loaded(view, "Second page")
         })?;
-        self.save("link-followed.png", &[page])?;
+        self.save("link-followed.png")?;
         self.keys("cmd-[");
         self.until(page, "back to the first page", |view| {
             loaded(view, "First page")
@@ -200,12 +223,12 @@ impl Check {
             view.find_tally().is_some_and(|(_, at)| at == 2)
         })?;
         self.press_find_field(page)?;
-        self.save("find.png", &[page])?;
+        self.save("find.png")?;
         self.keys("escape cmd-=");
         self.until(page, "zoomed in", |view| {
             view.zoom != super::find::ACTUAL_SIZE
         })?;
-        self.save("zoom.png", &[page])?;
+        self.save("zoom.png")?;
         self.keys("cmd-0");
         self.until(page, "actual size", |view| {
             view.zoom == super::find::ACTUAL_SIZE
@@ -247,7 +270,7 @@ impl Check {
             } else {
                 format!("devtools-{dock:?}.png").to_lowercase()
             };
-            self.save(&name, &[page, &tools])?;
+            self.save(&name)?;
             if at == 0 {
                 self.drag_divider_over(page)?;
             }
@@ -256,7 +279,7 @@ impl Check {
     }
 
     /// A press on the page, then on the find bar's field over it: the field takes the keys,
-    /// though the page's native layer lies under the bar.
+    /// though the page lies under the bar.
     #[expect(
         clippy::cast_precision_loss,
         reason = "a page's size in pixels is far below 2^24"
@@ -331,11 +354,11 @@ impl Check {
                 shell.navigate(Route::Settings(SettingsPage::Browser), cx);
             });
         });
-        self.save("settings-dark.png", &[])?;
+        self.save("settings-dark.png")?;
         self.drawn
             .cx
             .update(|cx| cx.dispatch_action(&UseLightTheme));
-        self.save("settings.png", &[])?;
+        self.save("settings.png")?;
         self.mcp_settings()
     }
 }
@@ -360,108 +383,9 @@ fn fits(view: &BrowserView) -> bool {
     frame.size == room.pixels()
 }
 
-/// The window drawn, with each of `pages`' last frames laid where the page shows.
-fn picture(drawn: &mut Drawn, pages: &[&Entity<BrowserView>]) -> Result<RgbaImage> {
-    picture_on(drawn, pages, None)
-}
-
-/// [`picture`], the pages laid where the window shows `backdrop`, or else the colour at
-/// their bottom left corner.
-fn picture_on(
-    drawn: &mut Drawn,
-    pages: &[&Entity<BrowserView>],
-    backdrop: Option<[u8; 4]>,
-) -> Result<RgbaImage> {
+/// The window as it's drawn now.
+fn picture(drawn: &mut Drawn) -> Result<RgbaImage> {
     drawn.draw()?;
     let window = drawn.window;
-    let mut image = (drawn.cx.capture_screenshot(window)).map_err(|error| error.to_string())?;
-    let wide = (drawn.cx)
-        .update_window(window, |_, window, _| window.viewport_size().width)
-        .map_err(|error| error.to_string())?;
-    #[expect(
-        clippy::cast_precision_loss,
-        reason = "a picture's width is far below 2^24"
-    )]
-    let scale = image.width() as f32 / wide.as_f32();
-    for page in pages {
-        let shown = drawn.cx.read(|cx| {
-            let view = page.read(cx);
-            // A frame's pixels per pixel of the picture: the page's fit, and its own scale
-            // against the window's, as a preset's 3x page in a 2x window.
-            let own = view.viewport.map_or(scale, |viewport| viewport.scale);
-            let fit = view.fit() * scale / own;
-            (view.frame.clone()).map(|frame| (frame, view.origin, fit))
-        });
-        if let Some((frame, origin, fit)) = shown {
-            lay(&mut image, &frame, origin, fit, scale, backdrop);
-        }
-    }
-    Ok(image)
-}
-
-/// Copies `frame`'s page into `image` at `origin`, in the image's pixels, one of the image's
-/// pixels for every `1 / fit` of the frame's, as responsive mode shows a page smaller than
-/// its true size, wherever the window shows the page's backdrop, `backdrop` or the colour at
-/// its bottom left corner: what the window draws over the page, among its overlays, stays
-/// over it, as on screen.
-fn lay(
-    image: &mut RgbaImage,
-    frame: &Frame,
-    origin: Point<Pixels>,
-    fit: f32,
-    scale: f32,
-    backdrop: Option<[u8; 4]>,
-) {
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        reason = "a page's place in the window, which is never left of or above it"
-    )]
-    let (left, top) = (
-        (origin.x.as_f32() * scale).round().max(0.) as u32,
-        (origin.y.as_f32() * scale).round().max(0.) as u32,
-    );
-    let (wide, tall) = (
-        (frame.size.width as f32 * fit).round() as u32,
-        (frame.size.height as f32 * fit).round() as u32,
-    );
-    let (Some(last_x), Some(last_y)) = (
-        (left + wide.min(image.width().saturating_sub(left))).checked_sub(1),
-        (top + tall.min(image.height().saturating_sub(top))).checked_sub(1),
-    ) else {
-        return;
-    };
-    // The page's bottom left corner, where nothing's drawn over it.
-    let backdrop = backdrop.unwrap_or(image.get_pixel(left.min(last_x), last_y).0);
-    let surface = &frame.surface;
-    let row = surface.bytes_per_row();
-    // SAFETY: the surface is locked read-only while its rows are read, within the page's
-    // part of it.
-    unsafe {
-        surface.lock(IOSurfaceLockOptions::ReadOnly, std::ptr::null_mut());
-        let base = surface.base_address().as_ptr().cast::<u8>().cast_const();
-        // Each pixel shown is the frame's nearest one; a column's place in a row is the same
-        // in every row.
-        let from = |at: u32, side: u32| ((at as f32 / fit) as u32).min(side - 1) as usize;
-        let columns: Vec<usize> = (0..wide.min(image.width().saturating_sub(left)))
-            .map(|x| from(x, frame.size.width) * 4)
-            .collect();
-        for y in 0..tall.min(image.height().saturating_sub(top)) {
-            let line = base.add(from(y, frame.size.height) * row);
-            for (x, &column) in (0_u32..).zip(&columns) {
-                let at = line.add(column);
-                let [b, g, r, a] = [*at, *at.add(1), *at.add(2), *at.add(3)];
-                let shown = image.get_pixel_mut(left + x, top + y);
-                if shown
-                    .0
-                    .iter()
-                    .zip(backdrop)
-                    .all(|(&was, of)| was.abs_diff(of) <= 2)
-                {
-                    shown.0 = [r, g, b, a];
-                }
-            }
-        }
-        surface.unlock(IOSurfaceLockOptions::ReadOnly, std::ptr::null_mut());
-    }
+    (drawn.cx.capture_screenshot(window)).map_err(|error| error.to_string())
 }

@@ -16,7 +16,6 @@ use gpui_kit::{Point, Size, point};
 use crate::fade::{progress, smooth};
 
 mod glow;
-mod native;
 mod overlay;
 
 pub use glow::{Glow, glow};
@@ -346,13 +345,11 @@ impl Pointer {
         self.rests = Some(self.rests.map_or(now, |rests| rests.max(now)));
     }
 
-    /// The person took the page: it fades at once. Answers whether it starts to fade now.
-    pub fn dismiss(&mut self, now: Instant) -> bool {
-        let fades = self.opacity(now) > 0. && self.dismissed.is_none();
-        if fades {
+    /// The person took the page: it fades at once.
+    pub fn dismiss(&mut self, now: Instant) {
+        if self.opacity(now) > 0. && self.dismissed.is_none() {
             self.dismissed = Some(now);
         }
-        fades
     }
 
     /// How busy it is at `now`, from 0 to 1: moving, or just stopped.

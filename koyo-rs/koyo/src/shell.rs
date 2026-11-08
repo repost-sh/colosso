@@ -396,8 +396,6 @@ impl Render for Shell {
         // A space settling after a swipe moves a frame on first, so all that's drawn agrees.
         self.step_swipe(window, cx);
         let p = theme::palette(cx);
-        // The islands note where they are anew as they're laid out.
-        theme::card::forget(window, cx);
         let route = self.route(cx);
         let layout = Self::layout(cx);
         let width = settings::get(cx).sidebar_width();

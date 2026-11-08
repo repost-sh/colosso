@@ -3,8 +3,8 @@
 //! window, and a free size on a denser screen.
 
 use gpui_kit::{
-    Bounds, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PlatformInput,
-    TestAppContext, VisualTestContext, point, px, size,
+    Bounds, Modifiers, MouseButton, MouseDownEvent, TestAppContext, VisualTestContext, point, px,
+    size,
 };
 use koyo_browser_ipc::{PixelSize, Viewport};
 
@@ -167,19 +167,6 @@ fn a_grip_let_go_outside_the_window_sizes_nothing_more(cx: &mut TestAppContext) 
     pointer.simulate_mouse_move(grip - point(px(150.), px(0.)), None, none);
     assert_eq!(width_now(cx), dragged, "the grip is let go");
     assert!(view.read_with(cx, |view, _| view.responsive.drag.is_none()));
-    // Over the page its native view hands the pointer on, the same way.
-    view.update(cx, |view, cx| view.take_grip(Grip::Right, &press, cx));
-    let moved = |to, pressed_button| {
-        PlatformInput::MouseMove(MouseMoveEvent {
-            position: to,
-            pressed_button,
-            modifiers: Modifiers::default(),
-        })
-    };
-    let released = moved(grip - point(px(150.), px(0.)), None);
-    view.update(cx, |view, cx| assert!(view.grip_pointer(&released, cx)));
-    assert_eq!(width_now(cx), dragged, "let go there too");
-    assert!(view.read_with(cx, |view, _| view.responsive.drag.is_none()));
 }
 
 #[gpui_kit::test]
@@ -202,12 +189,9 @@ fn a_grip_held_is_told_as_a_drag_and_its_let_go_too(cx: &mut TestAppContext) {
         first_mouse: false,
     };
     view.update(cx, |view, cx| view.take_grip(Grip::Right, &press, cx));
-    let moved = PlatformInput::MouseMove(MouseMoveEvent {
-        position: grip - point(px(50.), px(0.)),
-        pressed_button: Some(MouseButton::Left),
-        modifiers: Modifiers::default(),
-    });
-    view.update(cx, |view, cx| assert!(view.grip_pointer(&moved, cx)));
+    let (none, held) = (Modifiers::default(), Some(MouseButton::Left));
+    let mut pointer = VisualTestContext::from_window(window, cx);
+    pointer.simulate_mouse_move(grip - point(px(50.), px(0.)), held, none);
     let dragged = view.read_with(cx, |view, _| view.responsive.mode.as_ref().unwrap().width);
     assert_ne!(dragged, before.width, "the grip sized the mode");
     // The page is told as the pane is drawn (a test's window draws once the update is over).
@@ -216,13 +200,9 @@ fn a_grip_held_is_told_as_a_drag_and_its_let_go_too(cx: &mut TestAppContext) {
         assert_eq!(view.viewport.map(|viewport| viewport.width), Some(dragged));
         assert!(view.drag_sent, "told as a drag");
     });
-    let released = PlatformInput::MouseUp(MouseUpEvent {
-        button: MouseButton::Left,
-        position: grip - point(px(50.), px(0.)),
-        modifiers: Modifiers::default(),
-        click_count: 1,
-    });
-    view.update(cx, |view, cx| assert!(view.grip_pointer(&released, cx)));
+    // Let go where the window doesn't see it: the next move has no button held.
+    let mut pointer = VisualTestContext::from_window(window, cx);
+    pointer.simulate_mouse_move(grip - point(px(50.), px(0.)), None, none);
     draw(window, cx);
     view.read_with(cx, |view, _| {
         assert_eq!(view.viewport.map(|viewport| viewport.width), Some(dragged));

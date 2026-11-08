@@ -171,6 +171,6 @@ Arc's favourites grid, holding the projects of the space shown.
   - A settings page, and what's said where there's no tab.
 - Only in the Arc layout. Orca keeps its one card, holding the sidebar, the tab strip, the panes
   and the panel beside them, hairlines between them.
-- A page, drawn in a native view the island's corners don't clip, rounds the corners it shares
-  with the island it's on.
+- A page is drawn in the window's own frame, so the island's rounded corners clip it as they
+  clip the rest of what's on it.
 

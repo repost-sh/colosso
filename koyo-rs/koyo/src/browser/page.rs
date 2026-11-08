@@ -1,14 +1,15 @@
-//! The page itself, as an element: its latest frame in a native view over the pane, at the
+//! The page itself, as an element: its latest frame drawn in the window's own frame, at the
 //! pane's size (or, in responsive mode, at the size chosen, scaled to fit and centred), and
-//! every pointer event over it. The native view lives in the element's state, so a pane that
-//! isn't drawn takes its page out of the window.
+//! every pointer event over it. The page counts as on screen while the element is drawn
+//! (`Shown`, in its state): a pane that isn't drawn takes its page out of sight.
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, Bounds, Context, DispatchPhase, Div, Element, ElementId, ElementInputHandler, Entity,
     GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, InteractiveElement as _,
     IntoElement, LayoutId, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _,
-    Pixels, ScrollEvent, Stateful, Style, Styled as _, Window, div, fill, relative, white,
+    PinchEvent, Pixels, ScrollEvent, Stateful, Style, Styled as _, Window, div, fill, relative,
+    white,
 };
 
 use super::frames::Shown;
@@ -17,15 +18,15 @@ use super::pointer;
 use super::responsive::Grip;
 use super::toolbar;
 use super::view::BrowserView;
-use super::view::sized::Dragging;
+use super::view::lifecycle::{Dragging, MOVING};
 use crate::responsive::{self, grips};
 use crate::theme::{self, Palette};
 
 pub struct PageSurface {
     pub view: Entity<BrowserView>,
     pub focused: bool,
-    /// Whether a notice covers the page, which then isn't shown: drawn over the page's
-    /// native layer, the notice would be under it.
+    /// Whether a notice covers the page, which then isn't drawn, and so counts as out of
+    /// sight: the host stops painting it.
     pub covered: bool,
     /// What a page in responsive mode shows on before its frame is in, and its outline.
     pub blank: bool,
@@ -85,23 +86,23 @@ impl Element for PageSurface {
         window: &mut Window,
         cx: &mut App,
     ) -> Placed {
-        let (scale, window_size) = (window.scale_factor(), window.viewport_size());
+        let scale = window.scale_factor();
         let (laid, responsive, free, dragging, placed) = {
             let view = self.view.read(cx);
             let mode = view.responsive.mode.as_ref();
             let laid = view.lay_out(bounds, scale);
-            // What drags the pane's edge (`Dragging`): a drag in hand or a grip held, else the
-            // window's edge if its size changed since the page was last placed.
+            // What moves the pane's edge (`Dragging`): a drag in hand or a grip held, else
+            // layout, live while its sizes keep coming (the window's edge, the sidebar folding).
+            let moving = (view.resized_at).is_some_and(|at| at.elapsed() < MOVING);
             let dragging = if cx.has_active_drag() || view.responsive.drag.is_some() {
                 Dragging::Held
-            } else if view.window_size.is_some_and(|size| size != window_size) {
-                Dragging::Window
+            } else if moving {
+                Dragging::Layout
             } else {
                 Dragging::No
             };
             // A held drag let go is told even at the size it ended at.
             let placed = view.is_placed(&laid, bounds.size, scale)
-                && view.window_size == Some(window_size)
                 && (dragging == Dragging::Held || !view.drag_sent);
             let free = mode.is_some_and(|mode| mode.device.is_none());
             (laid, mode.is_some(), free, dragging, placed)
@@ -112,11 +113,6 @@ impl Element for PageSurface {
             self.view.update(cx, |view, cx| {
                 view.place_page(laid, bounds.size, window, dragging, cx);
             });
-        }
-        // A new size, sent from here or since the last frame, shows with the page laid out
-        // to it.
-        if self.view.read(cx).frame_due {
-            super::view::sized::await_frame(&self.view, window, cx);
         }
         let hitbox = window.insert_hitbox(shown, HitboxBehavior::Normal);
         let grips = if free {
@@ -152,53 +148,28 @@ impl Element for PageSurface {
             let held = (self.view.read(cx).responsive.drag.as_ref()).map(|drag| drag.grip);
             grips::paint(&placed.grips, held, &self.view, p, window);
         }
-        let (pane, frame, cursor, open, hovered) = {
+        let (pane, frame, cursor, open) = {
             let view = self.view.read(cx);
             let frame = (view.frame.clone()).filter(|_| view.shows_frames() && !self.covered);
-            (
-                view.pane,
-                frame,
-                view.cursor,
-                view.is_open(cx),
-                view.hovered,
-            )
+            (view.pane, frame, view.cursor, view.is_open(cx))
         };
-        // A page in a native view gets the pointer from it, GPUI's hit testing stopping there.
-        let mut native = false;
         if let Some(frame) = frame {
             let key = ElementId::NamedInteger("browser-page-view".into(), pane);
             let owner = self.view.downgrade();
-            let shown = window.use_keyed_state(key, cx, |window, cx| Shown::new(owner, window, cx));
-            let card = theme::card::shared_corners(bounds, window, cx);
-            native = shown.update(cx, |shown, _| {
-                shown.show(&frame);
-                shown.place(
-                    bounds,
-                    hitbox.content_mask.bounds,
-                    (placed.fit, card),
-                    window,
-                );
-                shown.takes_pointer()
-            });
-            // The marks in the page's view are laid for the size it was just placed at.
-            self.view.read(cx).marks_fit_page();
-            let layer = shown.downgrade();
-            let known = {
-                let view = self.view.read(cx);
-                view.shown.as_ref() == Some(&layer) && view.visible == Some(true)
-            };
-            if !known {
+            let shown = window.use_keyed_state(key, cx, |_, cx| Shown::new(owner, cx));
+            frame.paint(bounds, placed.fit, window);
+            let shown = shown.downgrade();
+            let view = self.view.read(cx);
+            view.frame_drawn((frame.generation, frame.slot), cx);
+            // An update counts as a change to the view, so it's made only when one happened.
+            if view.shown.as_ref() != Some(&shown) || view.visible != Some(true) {
                 self.view.update(cx, |view, cx| {
-                    view.shown = Some(layer);
+                    view.shown = Some(shown);
                     view.set_visible(true, cx);
                 });
             }
         }
-        if open && native {
-            if hovered {
-                window.set_window_cursor_style(cursor_style(cursor));
-            }
-        } else if open {
+        if open {
             window.set_cursor_style(cursor_style(cursor), hitbox);
         }
         if self.focused {
@@ -209,15 +180,14 @@ impl Element for PageSurface {
                 cx,
             );
         }
-        if !native {
-            self.listen(hitbox, window);
-        }
+        self.listen(hitbox, window);
     }
 }
 
 impl PageSurface {
     /// The pointer over the page: presses focus it, a drag that started in it keeps
-    /// reaching it, and what's scrolled over it scrolls it rather than the pane.
+    /// reaching it, and what's scrolled or pinched over it scrolls or zooms it rather than
+    /// the pane.
     fn listen(&self, hitbox: &Hitbox, window: &mut Window) {
         let (down, hitbox_down) = (self.view.downgrade(), hitbox.clone());
         window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
@@ -254,6 +224,14 @@ impl PageSurface {
                 return;
             }
             let _ = scrolled.update(cx, |view, cx| view.wheel(event, cx));
+            cx.stop_propagation();
+        });
+        let (pinched, hitbox_pinch) = (self.view.downgrade(), hitbox.clone());
+        window.on_mouse_event(move |event: &PinchEvent, phase, window, cx| {
+            if phase != DispatchPhase::Bubble || !hitbox_pinch.is_hovered(window) {
+                return;
+            }
+            let _ = pinched.update(cx, |view, cx| view.pinch(event, cx));
             cx.stop_propagation();
         });
     }

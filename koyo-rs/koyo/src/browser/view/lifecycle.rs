@@ -1,12 +1,35 @@
 //! A page's life in the host: opened once the host runs and the pane has a size, opened
 //! again after the host restarts, and the requests that go to it meanwhile.
 
-use gpui_kit::{App, Context};
-use koyo_browser_ipc::{AppRequest, Viewport};
+use std::time::{Duration, Instant};
 
-use super::sized::Dragging;
+use gpui_kit::{App, Context};
+use koyo_browser_ipc::{AppRequest, PixelSize, Viewport};
+
 use super::{BrowserView, Kind};
 use crate::browser::host::{Browsers, HostStatus};
+
+/// Where a new size of the page's comes from, which says how the host lays the page out to
+/// it. Sizes that keep coming are laid out live, a frame behind each (the host's `live.rs`),
+/// and settled once they stop; a lone size is laid out as it is. The window never waits for
+/// the page to catch up, but draws it as it is, its edges reaching out where it's smaller
+/// than its pane (`frames.rs`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::browser) enum Dragging {
+    /// A size on its own (an agent's, a preset, the mode turned on, a panel opened, the
+    /// sidebar folded with Reduce Motion on): laid out as it is.
+    No,
+    /// A drag whose end the app sees: a drag in hand in GPUI (a split's divider, a panel's
+    /// edge, docked `DevTools`' divider) or a responsive grip held.
+    Held,
+    /// Sizes layout keeps giving the page ([`MOVING`]): the window's edge dragged, the
+    /// sidebar folding. Nothing tells of their end, so the host finds it by time.
+    Layout,
+}
+
+/// How soon after the page's last new size another one is part of a run of them: a few of
+/// the display's frames.
+pub(in crate::browser) const MOVING: Duration = Duration::from_millis(50);
 
 impl BrowserView {
     pub(in crate::browser) fn status(&self, cx: &App) -> HostStatus {
@@ -146,7 +169,8 @@ impl BrowserView {
             self.menu_request = None;
             self.open_menu = None;
             self.frame = None;
-            self.behind = None;
+            self.drawn.set(None);
+            self.retiring.set(None);
         }
         if !self.page.url.is_empty() {
             self.target.clone_from(&self.page.url);
@@ -171,7 +195,9 @@ impl BrowserView {
         }
         self.viewport = Some(viewport);
         self.drag_sent = dragging == Dragging::Held;
-        self.frame_due |= resized;
+        if resized {
+            self.resized_at = Some(Instant::now());
+        }
         self.send_or_open(
             AppRequest::Resize {
                 pane: self.pane,
@@ -180,5 +206,12 @@ impl BrowserView {
             },
             cx,
         );
+    }
+
+    /// Whether the frame shown is `size`, give or take a device pixel of rounding.
+    pub(in crate::browser) fn shows_frame_of(&self, size: PixelSize) -> bool {
+        self.frame
+            .as_ref()
+            .is_some_and(|frame| frame.size.near(size))
     }
 }

@@ -199,7 +199,7 @@ pub(super) fn control_bar(
         .text_xs()
         .text_color(p.text);
     let pill = liquid::floating(pill, glass, p);
-    // Among the window's overlays, as the page's native layer hides what's drawn under it.
+    // Among the window's overlays, over its Liquid Glass, a native view of the window's.
     let bar = div()
         .absolute()
         .bottom(px(14.))

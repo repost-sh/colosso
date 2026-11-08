@@ -20,8 +20,8 @@ impl Check {
         self.drawn
             .cx
             .update(|cx| cx.dispatch_action(&UseLightTheme));
-        let page = self.open_as_agent(port)?;
-        self.save("agent-opened.png", &[&page])
+        self.open_as_agent(port)?;
+        self.save("agent-opened.png")
     }
 
     /// Settings → MCP server with the server on, as the person finds it after agents worked:
@@ -35,9 +35,9 @@ impl Check {
                 shell.navigate(Route::Settings(SettingsPage::McpServer), cx);
             });
         });
-        self.save("settings-mcp.png", &[])?;
+        self.save("settings-mcp.png")?;
         (self.drawn.cx).update(|cx| control::set_pages_open_at(PageSize::Fill, cx));
-        self.save("settings-mcp-fill.png", &[])?;
+        self.save("settings-mcp-fill.png")?;
         // The page's end, the clients the person allowed, where Recent activity used to be.
         let wheel = ScrollEvent {
             position: point(px(900.), px(600.)),
@@ -45,7 +45,7 @@ impl Check {
             ..ScrollEvent::default()
         };
         (self.drawn.cx).simulate_event(self.drawn.window, wheel);
-        self.save("settings-mcp-end.png", &[])?;
+        self.save("settings-mcp-end.png")?;
         self.drawn.cx.update(|cx| {
             settings::update(cx, |settings| {
                 settings.external_control = control::Policy::default();

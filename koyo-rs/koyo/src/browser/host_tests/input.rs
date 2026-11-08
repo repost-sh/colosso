@@ -4,8 +4,8 @@
 use std::time::Duration;
 
 use gpui_kit::{
-    KeyUpEvent, Keystroke, Modifiers, PinchEvent, PlatformInput, ScrollDelta, ScrollEvent,
-    ScrollSource, TestAppContext, TouchPhase, VisualTestContext, point, px,
+    KeyUpEvent, Keystroke, Modifiers, PinchEvent, ScrollDelta, ScrollEvent, ScrollSource,
+    TestAppContext, TouchPhase, VisualTestContext, point, px,
 };
 
 use super::{click, finish, open, page_origin, pause, pixel, serve, wait_for, wait_for_title};
@@ -101,16 +101,13 @@ fn a_trackpad_pinch_zooms_the_page(cx: &mut TestAppContext) {
         .chain(std::iter::repeat_n((TouchPhase::Moved, 0.1), 10))
         .chain([(TouchPhase::Ended, 0.)]);
     for (phase, delta) in phases {
-        // As the page's native view hands it on, a test's window having none.
-        let pinch = PlatformInput::Pinch(PinchEvent {
+        let pinch = PinchEvent {
             position: at,
             delta,
             modifiers: Modifiers::default(),
             phase,
-        });
-        view.update_in(cx, |view, window, cx| {
-            view.native_pointer(&pinch, window, cx);
-        });
+        };
+        view.update(cx, |view, cx| view.pinch(&pinch, cx));
         pause(Duration::from_millis(16));
     }
     wait_for(cx, &view, "the page zoomed in", |view| {

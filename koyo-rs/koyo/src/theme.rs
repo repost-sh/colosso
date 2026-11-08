@@ -102,8 +102,8 @@ pub struct Palette {
 }
 
 impl Palette {
-    /// The fill of what floats over a page in a native layer: the card's colour, solid, as
-    /// the page under it is no blurred glass that `card`'s tint would read on.
+    /// The fill of what floats over a page with no glass under it: the card's colour, solid,
+    /// as the page under it is no blurred glass that `card`'s tint would read on.
     pub fn floating(self) -> Hsla {
         Hsla { a: 1., ..self.card }
     }

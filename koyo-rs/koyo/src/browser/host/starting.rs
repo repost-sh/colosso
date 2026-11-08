@@ -12,7 +12,6 @@ use koyo_browser_ipc::{self as ipc, AppRequest};
 
 #[cfg(test)]
 use super::TestLaunch;
-use super::inbox::Inbox;
 use super::{Browsers, Host, STARTING_QUIETLY};
 
 /// How many times a host that failed to start is started again before the person is told.
@@ -43,19 +42,12 @@ impl Browsers {
         self.host = Host::Starting;
         self.starting_since = Some(Instant::now());
         self.notify_views(cx);
-        // Each message goes in the inbox; the first since a drain rings the loop below's bell.
-        let inbox = Inbox::new();
-        self.inbox = Some(inbox.clone());
-        let (bell, mut rung) = mpsc::unbounded::<()>();
+        let (tell, mut told) = mpsc::unbounded::<Incoming>();
         let started = cx.background_executor().spawn(async move {
             Connection::start(&launch, move |message: Incoming| {
-                if bell.is_closed() {
-                    return Some(message);
-                }
-                if inbox.put(message) {
-                    let _ = bell.unbounded_send(());
-                }
-                None
+                tell.unbounded_send(message)
+                    .err()
+                    .map(mpsc::TrySendError::into_inner)
             })
         });
         let quietly = cx.background_executor().timer(STARTING_QUIETLY);
@@ -76,8 +68,20 @@ impl Browsers {
             if running.is_none() {
                 return;
             }
-            while rung.next().await.is_some() {
-                if this.update(cx, Self::drain).is_err() {
+            // What came while the main thread was busy is handled in one update: a page's
+            // frame and its state together.
+            while let Some(first) = told.next().await {
+                let handled = this.update(cx, |this, cx| {
+                    let mut next = Some(first);
+                    while let Some(message) = next.take() {
+                        let closed = matches!(message, Incoming::Closed);
+                        this.receive(message, cx);
+                        if !closed {
+                            next = told.try_recv().ok();
+                        }
+                    }
+                });
+                if handled.is_err() {
                     return;
                 }
             }

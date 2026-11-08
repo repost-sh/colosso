@@ -121,7 +121,8 @@ fn finish(cx: &mut VisualTestContext, scratch: PathBuf) {
 
 /// BGRA at a device pixel of a frame.
 fn pixel(frame: &Frame, x: usize, y: usize) -> [u8; 4] {
-    let surface = &frame.surface;
+    let surface = objc2_core_video::CVPixelBufferGetIOSurface(Some(&frame.pixels))
+        .expect("a page's frame is a shared surface");
     // SAFETY: the surface is locked read-only while its bytes are read, within its rows.
     unsafe {
         surface.lock(IOSurfaceLockOptions::ReadOnly, std::ptr::null_mut());

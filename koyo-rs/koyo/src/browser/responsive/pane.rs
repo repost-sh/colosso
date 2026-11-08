@@ -11,7 +11,7 @@ use super::devices::{self, Device};
 use super::{Emulation, Responsive, SetBy, Zoom, commands, place, to_page, to_window};
 use crate::browser::control::{Actor, Refused};
 use crate::browser::view::BrowserView;
-use crate::browser::view::sized::Dragging;
+use crate::browser::view::lifecycle::Dragging;
 use crate::responsive::Drag;
 use crate::responsive::bar::Fields;
 
@@ -253,7 +253,6 @@ impl BrowserView {
         self.origin = shown.origin;
         (self.responsive.fit, self.responsive.room) = (fit, room);
         self.responsive.window_scale = scale;
-        self.window_size = Some(window.viewport_size());
         // The bar is there exactly while the mode is on.
         self.responsive.barred = self.responsive.mode.is_some();
         // The size laid out at a new scale is the mode's from now on, and the bar's.
@@ -353,7 +352,7 @@ impl BrowserView {
 
     /// The person sizes a free page to `width` × `height`, within the limits. The page is told
     /// as the pane is next drawn, so a grip dragged faster than the window draws sends one
-    /// size a frame, and the window waits for the page's frame at it (`view/sized.rs`).
+    /// size a frame, which the host lays the page out to live (its `live.rs`).
     pub(in crate::browser) fn person_sizes(
         &mut self,
         width: u32,

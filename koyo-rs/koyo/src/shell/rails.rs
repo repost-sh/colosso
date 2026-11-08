@@ -3,8 +3,9 @@
 //! only the gutter, as on the right: settings are in the app's menu, ⌘, opens them. ⌘B folds
 //! them away with the sidebar into compact mode, as Arc's: every edge then as thin as the gutter
 //! right of the card, and the traffic lights gone. They move on springs, all at once, and turn
-//! round mid-way, keeping their speed, when ⌘B is pressed again. The status bar is only tall
-//! while the sidebar is out and it has language servers to show.
+//! round mid-way, keeping their speed, when ⌘B is pressed again; with Reduce Motion on in
+//! System Settings they fold and come back at once (gpui-base follows it). The status bar is only tall while the
+//! sidebar is out and it has language servers to show.
 
 use std::time::Duration;
 
@@ -23,8 +24,8 @@ use crate::settings::{self, Layout};
 use crate::theme;
 
 /// How the rails move: without overshooting, as a rail can be neither thinner than the gutter
-/// nor wider than itself, and felt over about 0.3 s.
-const MOTION: Spring = Spring::new(Duration::from_millis(300));
+/// nor wider than itself, and quickly, felt over about 0.12 s.
+const MOTION: Spring = Spring::new(Duration::from_millis(120));
 
 /// How far out the top rail is once it's too thin to hold the traffic lights: where they're
 /// gone.
