@@ -42,7 +42,7 @@ pub fn device_bar(
     cx: &mut Context<BrowserView>,
 ) -> Option<Div> {
     let mode = view.responsive.mode.as_ref()?;
-    let (agent, zoom) = (mode.set_by.agent().map(str::to_owned), mode.zoom);
+    let zoom = mode.zoom;
     let preset =
         (mode.device).and_then(|device| DEVICES.iter().position(|row| row.id == device.id));
     if view.responsive.fields.is_none() {
@@ -71,7 +71,6 @@ pub fn device_bar(
         .then(|| reload_hint(theme::palette(cx), cx).into_any_element());
     let bar = Bar {
         ids: "browser",
-        agent,
         // The shared bar owns its names; each is the device's static name, not a copy of it.
         presets: DEVICES.iter().map(|device| device.name.into()).collect(),
         preset,

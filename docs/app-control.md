@@ -161,8 +161,8 @@ pane's size. The pages the person opens fill their pane, as before.
   default's, or the pane's when the default fills it), `{ device, orientation? }`, or
   `{ fill: true }`. A viewport no page takes is `invalid_input`, refused before anything
   opens.
-- For every caller, as 5's switch. The device bar says "Set by" the agent, as for
-  `browser_viewport`. Nothing is remembered: a page brought back at launch fills its pane
+- For every caller, as 5's switch. `browser_list`'s `setBy` names the agent; the device bar
+  doesn't. Nothing is remembered: a page brought back at launch fills its pane
   (`docs/browser.md` 7).
 - `browser_navigate` never opens a page: with none open it fails `not_found`, pointing at
   `tab_open`. `tab_reopen` (⇧⌘T's) opens the closed tab's pages again at their addresses,

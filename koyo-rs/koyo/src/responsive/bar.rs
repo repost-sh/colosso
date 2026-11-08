@@ -1,5 +1,5 @@
-//! The device bar over content in responsive mode, in the browser toolbar's look: who set the
-//! size when an agent did, the preset menu (`Responsive ▾` for a free size), the width and
+//! The device bar over content in responsive mode, in the browser toolbar's look: the preset
+//! menu (`Responsive ▾` for a free size), the width and
 //! height (editable for a free size: Enter applies, Escape restores), the zoom menu, rotate
 //! for a preset, whatever the pane adds (a page's reload offer), and ✕. A pane gives it its
 //! presets' names, the actions their rows and the zoom's rows dispatch, and what its buttons
@@ -25,6 +25,8 @@ use crate::theme::{self, Palette};
 
 /// The bar's height.
 pub const HEIGHT: f32 = 32.;
+/// A size field's width: 16384, the most a side can be, shows whole.
+const FIELD_WIDTH: f32 = 68.;
 
 /// What a press of one of the bar's buttons does.
 pub type Click = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
@@ -119,8 +121,6 @@ fn shown_from_start(field: &Entity<InputState>, window: &mut Window, cx: &mut Ap
 pub struct Bar<'a> {
     /// What its elements' ids start with: `browser`, `terminal`.
     pub ids: &'static str,
-    /// The agent that set the size, when one did.
-    pub agent: Option<String>,
     /// The presets' names, the one shown (`None` for a free size), and the action a row
     /// dispatches: a preset by its place, or `None` for a free size.
     pub presets: Vec<SharedString>,
@@ -176,14 +176,6 @@ impl Bar<'_> {
             .border_b_1()
             .border_color(p.hairline)
             .text_xs()
-            .when_some(self.agent, |bar, agent| {
-                bar.child(
-                    div()
-                        .flex_shrink_0()
-                        .text_color(p.muted)
-                        .child(format!("Set by {agent}")),
-                )
-            })
             .child(menu_chip(id("device-menu"), device, p, device_menu))
             .child(field(&self.fields.width, free, p, &self.restore))
             .child(div().text_color(p.muted).child("×"))
@@ -246,11 +238,13 @@ fn menu_chip(
         )
 }
 
-/// A number field of the size; Escape puts the content's number back.
+/// A number field of the size, wide enough for five digits and never narrower; Escape puts
+/// the content's number back.
 fn field(state: &Entity<InputState>, enabled: bool, p: Palette, restore: &Restore) -> Div {
     let restore = Rc::clone(restore);
     div()
-        .w(px(56.))
+        .w(px(FIELD_WIDTH))
+        .flex_shrink_0()
         .h(px(22.))
         .px_1()
         .flex()

@@ -118,8 +118,8 @@ at the limit.
   the height; the corner both. The size shows live in the bar's fields and in a small
   `393 × 852` label under the pointer while dragging. Double-clicking a grip fits that side
   to the pane.
-- **Agent's mark**: when an agent set the viewport, the device bar starts with
-  "Set by claude-code" (muted) until the person changes it.
+- **Agent's mark**: none since 2026-11-08 (section 9): the bar doesn't say who set the size.
+  `browser_list`'s `setBy` still does, for agents.
 
 ## 3. Terminals
 
@@ -206,8 +206,8 @@ pane gives it: units (pixels, cells), presets, limits, and how content is fitted
   again when it's asked for again, and the size shown goes back to the daemon's. Under Fit, a
   grip in hand holds the font, so the edge stays under the pointer; it fits again on
   release. Double-clicking a grip fits that side to the room at the person's font.
-- **Pinned by an agent**: the bar starts with "Set by claude-code:7f3a" (muted), its size is
-  a free one (Responsive), and the ✕ unpins (taking nothing from the agent). Every app view
+- **Pinned by an agent**: its size is a free one (Responsive), and the ✕ unpins (taking
+  nothing from the agent); the bar doesn't say who pinned it (2026-11-08, section 9). Every app view
   of the terminal shows the same pin.
 
 ## 4. MCP [decided]
@@ -259,8 +259,8 @@ OpenViewport = { device?: "responsive"|"iphone-se"|…, width?, height?,
   `scale`, `mobile`, `touch`, `userAgent`, `zoom` and `screenshot` are `browser_viewport`'s
   only: set them on the open page. An empty `viewport`, or one no page takes, is
   `invalid_input`, and nothing opens.
-- No lease is taken by opening; the first act claims the page as before. The device bar
-  says "Set by" the agent that opened it, `browser_list` shows the viewport, and
+- No lease is taken by opening; the first act claims the page as before. `browser_list`
+  shows the viewport, with the agent that opened it as `setBy`, and
   `fill: true` through `browser_viewport` ends the mode as on any page.
 - `browser_navigate` only moves a page that's open (with none, `not_found`), so it opens
   nothing to size. The person's own pages, the pages `tab_reopen` opens again (⇧⌘T's) and
@@ -382,8 +382,8 @@ Where the build differs from the sections above, or settles what they left open:
   size typed or picked shows at once and the daemon's pin replaces it when it comes. A
   preset's size is checked against the pin, so a size from elsewhere (an agent, a drag)
   shows as Responsive. ⌥⌘R needs the terminal focused. A size field shows its number from
-  its start again after Enter, Escape or leaving it (a 56 px field scrolls while a number
-  is typed into it).
+  its start again after Enter, Escape or leaving it (a 68 px field, wide enough for 16384
+  whole, scrolls while a longer number is typed into it).
 - `terminal_guide` gains a "Sizes" section; it says to read the screen, as
   `terminal_screenshot` isn't built.
 
@@ -468,6 +468,10 @@ The owner's decisions of 2026-11-08, built the same day:
 - **1440 × 900, not 1920 × 1080.** The owner first asked for 1920 × 1080, the most common
   desktop resolution, and changed the default to 1440 × 900 the same day; 1920 × 1080 stays
   a size an agent or the person can ask for.
+- **The bar says the size, not who set it.** The person didn't want "Set by claude-code (in
+  chat …)", which named the chat by an id and squeezed the width and height fields until they
+  showed nothing. The device bar no longer names who set a page's size or pinned a
+  terminal; the size fields keep their width, wide enough for 16384 whole.
 - **Still not remembered.** The default applies as a page opens; a page's mode isn't kept
   across restarts (section 1), so a page an agent opened comes back filling its pane
   (`docs/browser.md` 7). Changing the default changes what the next page an agent opens
