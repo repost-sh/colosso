@@ -187,14 +187,7 @@ impl Browsers {
         else {
             return;
         };
-        let frame = Frame {
-            generation,
-            slot,
-            size,
-            scale: 1.,
-            surface,
-            serial: 0,
-        };
+        let frame = Frame::new((generation, slot), size, surface);
         let previous = self
             .update_view(pane, cx, |view, cx| view.show_frame(frame, cx))
             .flatten();

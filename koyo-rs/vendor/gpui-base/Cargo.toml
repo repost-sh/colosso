@@ -231,6 +231,9 @@ features = [
 ]
 default-features = false
 
+[target.'cfg(target_os = "macos")'.dependencies.block2]
+version = "0.6"
+
 [target.'cfg(target_os = "macos")'.dependencies.objc2]
 version = "0.6"
 
@@ -246,7 +249,10 @@ features = [
 [target.'cfg(target_os = "macos")'.dependencies.objc2-foundation]
 version = "0.3"
 features = [
+    "block2",
     "NSGeometry",
+    "NSNotification",
+    "NSOperation",
     "NSString",
 ]
 

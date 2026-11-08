@@ -1,10 +1,9 @@
 //! A free page's grips (`crate::responsive::grips`): they size the page in logical pixels,
-//! within the limits at its scale, and a double click fits a side to the pane. The pointer
-//! over the page's native view goes to a grip in hand rather than the page.
+//! within the limits at its scale, and a double click fits a side to the pane.
 
 use std::ops::RangeInclusive;
 
-use gpui_kit::{App, Context, PlatformInput};
+use gpui_kit::{App, Context};
 
 use super::devices;
 use crate::browser::view::BrowserView;
@@ -33,25 +32,5 @@ impl Resizable for BrowserView {
 
     fn grip_sized(&mut self, width: u32, height: u32, cx: &mut Context<Self>) {
         self.person_sizes(width, height, cx);
-    }
-}
-
-impl BrowserView {
-    /// What the pointer does over the page's native view while a grip is in hand, which
-    /// goes to the grip rather than the page: whether it did.
-    pub(in crate::browser) fn grip_pointer(
-        &mut self,
-        event: &PlatformInput,
-        cx: &mut Context<Self>,
-    ) -> bool {
-        if self.responsive.drag.is_none() {
-            return false;
-        }
-        match event {
-            PlatformInput::MouseMove(event) => self.drag_grip(event, cx),
-            PlatformInput::MouseUp(_) => self.let_go_of_grip(cx),
-            _ => {}
-        }
-        true
     }
 }

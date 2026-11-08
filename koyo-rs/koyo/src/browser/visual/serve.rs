@@ -55,6 +55,7 @@ fn answer(mut stream: TcpStream) {
         "/second" => ("text/html", SECOND),
         "/play" => ("text/html", super::play::PLAY),
         "/agent" => ("text/html", super::agent::AGENT),
+        "/fold" => ("text/html", super::fold::FOLD),
         "/late.svg" => {
             late(Duration::from_millis(2500));
             ("image/svg+xml", LATE)

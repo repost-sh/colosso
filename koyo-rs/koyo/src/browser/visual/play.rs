@@ -7,7 +7,7 @@ use gpui_kit::{
     Entity, Focusable as _, Modifiers, MouseButton, ScrollDelta, ScrollEvent, point, px,
 };
 
-use super::{Check, PATIENCE, fits, loaded, shown_page};
+use super::{Check, PATIENCE, fits, loaded};
 use crate::browser::BrowserView;
 use crate::theme::UseLightTheme;
 use crate::visual::Result;
@@ -23,20 +23,12 @@ pub(super) const PLAY: &str = "<!doctype html><title>Play</title>\
 impl Check {
     /// The second tab, after `first`'s `DevTools` are put away in the light theme.
     pub(super) fn play(&mut self, first: &Entity<BrowserView>, port: u16) -> Result<()> {
-        let (shell, window) = (self.drawn.shell.clone(), self.drawn.window);
+        let window = self.drawn.window;
         self.drawn.cx.update(|cx| {
             first.update(cx, BrowserView::close_devtools);
             cx.dispatch_action(&UseLightTheme);
         });
-        (self.drawn.cx)
-            .update_window(window, |_, window, cx| {
-                shell.update(cx, |shell, cx| shell.open_browser(None, window, cx));
-            })
-            .map_err(|error| error.to_string())?;
-        let play = (self.drawn.cx.read(|cx| shown_page(&shell, cx))).ok_or("no second tab")?;
-        self.type_text(&format!("127.0.0.1:{port}/play"));
-        self.keys("enter");
-        self.until(&play, "the play page", |view| loaded(view, "Play"))?;
+        let play = self.open_served(port, "/play", "the play page", |view| loaded(view, "Play"))?;
 
         let none = Modifiers::default();
         let origin = self.drawn.cx.read(|cx| play.read(cx).origin);
@@ -54,7 +46,7 @@ impl Check {
         self.until(&play, "the page scrolled", |view| {
             view.page.title.starts_with("scrolled ") && view.page.title != "scrolled 0"
         })?;
-        self.save("typed-and-scrolled.png", &[&play])?;
+        self.save("typed-and-scrolled.png")?;
         self.press_after_menu(&play)?;
         self.split(first, &play)
     }
@@ -87,7 +79,7 @@ impl Check {
     }
 
     /// `first`'s tab, picked up from the strip's start over the page's toolbar and dropped on
-    /// the right of `play`'s page, where the page's native layer lies under the drop target.
+    /// the right of `play`'s page, where the page lies under the drop target.
     #[expect(
         clippy::cast_precision_loss,
         reason = "a page's size in pixels is far below 2^24"
@@ -120,6 +112,6 @@ impl Check {
                 }))
             })
             .map_err(|why| format!("the first tab dropped on the right of the page: {why}"))?;
-        self.save("split.png", &[play, first])
+        self.save("split.png")
     }
 }

@@ -226,7 +226,7 @@ impl Shell {
                     .child(self.pane_content(pane, p, cx)),
             )
             .when(in_hand, |part| {
-                // Among the window's overlays, as a page's native layer hides what's under it.
+                // Among the window's overlays, over the pane and whatever's drawn after it.
                 part.children(drop_zones(pane.id, p, cx).into_iter().map(deferred))
             })
             .into_any_element()

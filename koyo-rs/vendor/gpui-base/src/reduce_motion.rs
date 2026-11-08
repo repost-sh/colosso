@@ -11,7 +11,9 @@
 //! left alone.
 //!
 //! - macOS: `NSWorkspace.accessibilityDisplayShouldReduceMotion`, the
-//!   "Reduce motion" switch under Accessibility → Display.
+//!   "Reduce motion" switch under Accessibility → Display, followed for the
+//!   life of the application as the workspace says its display options
+//!   changed.
 //! - Windows: `SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION)`, the
 //!   "Animation effects" switch under Accessibility → Visual effects, whose
 //!   off state asks for reduced motion.
@@ -53,9 +55,9 @@ pub(crate) fn init(cx: &mut App) {
 /// [`App::set_reduce_motion`].
 ///
 /// `gpui_base::init` calls this once. Call it again to re-read the preference
-/// on a platform Base does not follow live — macOS and Windows post no
-/// notification Base can subscribe to without a window, so a change made
-/// while the application runs reaches it only through this call.
+/// on a platform Base does not follow live — Windows posts no notification
+/// Base can subscribe to without a window, so a change made while the
+/// application runs reaches it only through this call.
 ///
 /// The application wins over the system: when the flag no longer holds what
 /// Base last wrote, the application set it, and this call leaves it alone.
@@ -102,14 +104,48 @@ fn apply_preference(preference: Option<bool>, cx: &mut App) {
 
 #[cfg(target_os = "macos")]
 mod platform {
+    use std::ptr::NonNull;
+
+    use block2::RcBlock;
+    use futures::StreamExt as _;
+    use futures::channel::mpsc;
     use gpui::App;
-    use objc2_app_kit::NSWorkspace;
+    use objc2_app_kit::{NSWorkspace, NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification};
+    use objc2_foundation::{NSNotification, NSOperationQueue};
 
     pub(super) fn read() -> Option<bool> {
         Some(NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceMotion())
     }
 
-    pub(super) fn follow(_cx: &mut App) {}
+    /// Koyo: reads the switch again each time the workspace's own notification
+    /// centre says the display options changed, which needs no window.
+    pub(super) fn follow(cx: &mut App) {
+        let (tell, mut told) = mpsc::unbounded();
+        let changed = RcBlock::new(move |_: NonNull<NSNotification>| {
+            // Unheard only once the application has stopped listening.
+            tell.unbounded_send(()).ok();
+        });
+        // SAFETY: the name is AppKit's own constant, and the block only sends
+        // on a channel; the main queue runs it on the main thread.
+        let observer = unsafe {
+            NSWorkspace::sharedWorkspace()
+                .notificationCenter()
+                .addObserverForName_object_queue_usingBlock(
+                    Some(NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification),
+                    None,
+                    Some(&NSOperationQueue::mainQueue()),
+                    &changed,
+                )
+        };
+        cx.spawn(async move |cx| {
+            // Kept for as long as the application listens.
+            let _observer = observer;
+            while told.next().await.is_some() {
+                cx.update(|cx| super::apply_preference(read(), cx));
+            }
+        })
+        .detach();
+    }
 }
 
 #[cfg(target_os = "windows")]

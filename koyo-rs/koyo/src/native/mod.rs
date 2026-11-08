@@ -12,7 +12,6 @@ mod host;
 mod icon;
 pub mod liquid;
 pub mod notifications;
-mod pinch;
 pub mod slider;
 mod surface;
 pub mod switch;
@@ -21,7 +20,6 @@ pub mod traffic_lights;
 pub mod window;
 
 pub use host::{Control, host};
-pub use surface::Surface;
 
 pub fn init(cx: &mut gpui_kit::App) {
     icon::set_dock_icon();

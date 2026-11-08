@@ -9,7 +9,7 @@ use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 
 use futures::channel::oneshot;
-use gpui_kit::{AnyWindowHandle, App, AppContext as _, Context, Entity, Global, Task, WeakEntity};
+use gpui_kit::{App, AppContext as _, Context, Entity, Global, Task, WeakEntity};
 use koyo_browser_ipc::client::Connection;
 use koyo_browser_ipc::{AppRequest, PaneId, PixelSize};
 
@@ -17,9 +17,7 @@ use super::frames::Ring;
 use super::view::BrowserView;
 
 mod events;
-mod inbox;
 mod starting;
-use inbox::Inbox;
 
 /// How long a quitting host may take to close its pages.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
@@ -72,10 +70,6 @@ pub struct Browsers {
     /// Protocol commands under way, the app's and agents', by the app's number for each.
     calls: HashMap<u64, oneshot::Sender<CdpResult>>,
     next_call: u64,
-    /// What the host now starting or running says, until it's handled.
-    inbox: Option<std::sync::Arc<Inbox>>,
-    /// Until when the frame a window is drawing waits for its pages' frames (`view/sized.rs`).
-    frame_deadline: Option<(AnyWindowHandle, Instant)>,
     /// Every protocol command asked for, for a test to read: the page, method and params.
     #[cfg(test)]
     pub(super) asked: Vec<(PaneId, String, serde_json::Value)>,
@@ -121,8 +115,6 @@ impl Browsers {
             queued: Vec::new(),
             calls: HashMap::new(),
             next_call: 0,
-            inbox: None,
-            frame_deadline: None,
             #[cfg(test)]
             asked: Vec::new(),
             _events: None,

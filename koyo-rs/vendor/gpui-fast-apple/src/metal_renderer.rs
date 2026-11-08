@@ -21,8 +21,10 @@ use objc2_core_foundation::CFRetained;
 use objc2_core_video::{
     CVMetalTexture, CVMetalTextureCache, CVMetalTextureGetTexture, CVPixelBufferGetHeight,
     CVPixelBufferGetHeightOfPlane, CVPixelBufferGetPixelFormatType, CVPixelBufferGetWidth,
-    CVPixelBufferGetWidthOfPlane, kCVPixelFormatType_420YpCbCr8BiPlanarFullRange, kCVReturnSuccess,
+    CVAttachmentMode, CVPixelBuffer, CVPixelBufferGetWidthOfPlane, kCVPixelFormatType_32BGRA,
+    kCVPixelFormatType_420YpCbCr8BiPlanarFullRange, kCVReturnSuccess,
 };
+use objc2_core_foundation::{CFData, CFString};
 use parking_lot::Mutex;
 
 use std::{
@@ -32,23 +34,8 @@ use std::{
     mem::MaybeUninit,
     ops::Range,
     ptr, slice,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::Arc,
 };
-
-/// Koyo: whether every renderer presents its frames in the Core Animation transaction of
-/// the main thread, as it does while AppKit waits for a window to draw, rather than when the
-/// GPU is done. Native views changed while a frame is drawn (a browser page's layer) then
-/// reach the screen in the same frame as what GPUI drew around them.
-static PRESENT_IN_TRANSACTION: AtomicBool = AtomicBool::new(false);
-
-/// Koyo: has every renderer present its frames in the main thread's Core Animation
-/// transaction (`on`), or when the GPU is done, as upstream does.
-pub fn present_in_transaction(on: bool) {
-    PRESENT_IN_TRANSACTION.store(on, Ordering::Relaxed);
-}
 
 // Exported to metal
 pub(crate) type PointF = gpui::Point<f32>;
@@ -154,6 +141,8 @@ pub struct MetalRenderer {
     monochrome_sprites_pipeline_state: metal::RenderPipelineState,
     pub(crate) polychrome_sprites_pipeline_state: metal::RenderPipelineState,
     surfaces_pipeline_state: metal::RenderPipelineState,
+    /// Koyo: BGRA surfaces with a picture (`set_surface_picture`).
+    page_surfaces_pipeline_state: metal::RenderPipelineState,
     pub(crate) unit_vertices: metal::Buffer,
     #[allow(clippy::arc_with_non_send_sync)]
     pub(crate) instance_buffer_pool: Arc<Mutex<InstanceBufferPool>>,
@@ -416,6 +405,14 @@ impl MetalRenderer {
             "surface_fragment",
             MTLPixelFormat::BGRA8Unorm,
         );
+        let page_surfaces_pipeline_state = build_pipeline_state(
+            &device,
+            &library,
+            "page_surfaces",
+            "page_surface_vertex",
+            "page_surface_fragment",
+            MTLPixelFormat::BGRA8Unorm,
+        );
 
         let command_queue = device.new_command_queue();
         let supports_shared_storage = cfg!(target_os = "ios") || is_apple_gpu;
@@ -456,6 +453,7 @@ impl MetalRenderer {
             monochrome_sprites_pipeline_state,
             polychrome_sprites_pipeline_state,
             surfaces_pipeline_state,
+            page_surfaces_pipeline_state,
             unit_vertices,
             instance_buffer_pool,
             sprite_atlas,
@@ -581,12 +579,7 @@ impl MetalRenderer {
             }
         };
 
-        let in_transaction =
-            self.presents_with_transaction || PRESENT_IN_TRANSACTION.load(Ordering::Relaxed);
-        if layer.presents_with_transaction() != in_transaction {
-            layer.set_presents_with_transaction(in_transaction);
-        }
-        if in_transaction {
+        if self.presents_with_transaction {
             command_buffer.commit();
             command_buffer.wait_until_scheduled();
             drawable.present();
@@ -1301,6 +1294,13 @@ impl MetalRenderer {
                 DevicePixels::from(CVPixelBufferGetHeight(image_buffer) as i32),
             );
 
+            // Koyo: a BGRA surface, as a browser page's frame is, has a pipeline of its own.
+            if CVPixelBufferGetPixelFormatType(image_buffer) == kCVPixelFormatType_32BGRA {
+                self.draw_page_surface(surface, texture_size, command_encoder);
+                command_encoder.set_render_pipeline_state(&self.surfaces_pipeline_state);
+                continue;
+            }
+
             assert_eq!(
                 CVPixelBufferGetPixelFormatType(image_buffer),
                 kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
@@ -1359,6 +1359,124 @@ impl MetalRenderer {
             );
         }
     }
+}
+
+impl MetalRenderer {
+    /// Koyo: draws a BGRA surface. With a picture (`set_surface_picture`), that top-left part
+    /// of its texture goes over the surface's bounds and the quad fills the surface's content
+    /// mask, the picture's edges reaching out to it; without one, the whole texture goes over
+    /// the bounds, as far as the content mask shows them.
+    fn draw_page_surface(
+        &self,
+        surface: &PaintSurface,
+        texture_size: Size<DevicePixels>,
+        command_encoder: &metal::RenderCommandEncoderRef,
+    ) {
+        let image_buffer = &surface.image_buffer;
+        let picture = surface_picture(image_buffer);
+        let mask = surface.content_mask.bounds;
+        let quad = if picture.is_some() {
+            mask
+        } else {
+            surface.bounds.intersect(&mask)
+        };
+        if quad.size.width.0 <= 0. || quad.size.height.0 <= 0. {
+            return;
+        }
+        let texture_extent = [texture_size.width.0 as f32, texture_size.height.0 as f32];
+        let texture = unsafe {
+            let mut texture = ptr::null_mut();
+            let status = CVMetalTextureCache::create_texture_from_image(
+                None,
+                &self.core_video_texture_cache,
+                image_buffer,
+                None,
+                objc2_metal::MTLPixelFormat::BGRA8Unorm,
+                texture_size.width.0 as usize,
+                texture_size.height.0 as usize,
+                0,
+                ptr::NonNull::from(&mut texture),
+            );
+            if status != kCVReturnSuccess {
+                log::error!("a BGRA surface has no Metal texture: {status}");
+                return;
+            }
+            let Some(texture) = ptr::NonNull::new(texture) else {
+                return;
+            };
+            CFRetained::<CVMetalTexture>::from_raw(texture)
+        };
+        let Some(metal_texture) = CVMetalTextureGetTexture(&texture) else {
+            return;
+        };
+        let page = PageSurface {
+            quad,
+            mapping: surface.bounds,
+            picture: picture.unwrap_or(texture_extent),
+            texture_size: texture_extent,
+        };
+        command_encoder.set_render_pipeline_state(&self.page_surfaces_pipeline_state);
+        for set_bytes in [
+            metal::RenderCommandEncoderRef::set_vertex_bytes,
+            metal::RenderCommandEncoderRef::set_fragment_bytes,
+        ] {
+            set_bytes(
+                command_encoder,
+                SurfaceInputIndex::Page as u64,
+                mem::size_of_val(&page) as u64,
+                &page as *const PageSurface as *const _,
+            );
+        }
+        command_encoder.set_fragment_texture(SurfaceInputIndex::YTexture as u64, unsafe {
+            Some(metal::TextureRef::from_ptr(
+                objc2::rc::Retained::as_ptr(&metal_texture) as *mut _,
+            ))
+        });
+        command_encoder.draw_primitives(metal::MTLPrimitiveType::Triangle, 0, 6);
+    }
+}
+
+/// Koyo: what `page_surface_vertex` and `page_surface_fragment` take of a BGRA surface.
+#[repr(C)]
+struct PageSurface {
+    quad: Bounds<ScaledPixels>,
+    mapping: Bounds<ScaledPixels>,
+    /// The size of the picture at the texture's top left, in texels.
+    picture: [f32; 2],
+    texture_size: [f32; 2],
+}
+
+thread_local! {
+    /// Koyo: the attachment a BGRA surface's picture is in (`set_surface_picture`).
+    static SURFACE_PICTURE: CFRetained<CFString> = CFString::from_static_str("KoyoSurfacePicture");
+}
+
+/// Koyo: says that `size` of `buffer`, a BGRA surface, at its top left, is its picture.
+/// Painted, the picture goes over the surface's bounds, and the rest of its content mask is
+/// filled by the picture's edges reaching out, as a browser fills a window grown faster than
+/// its page is laid out. The buffer keeps it for every scene that draws it after.
+pub fn set_surface_picture(buffer: &CVPixelBuffer, size: Size<DevicePixels>) {
+    let bytes: Vec<u8> = [size.width.0, size.height.0]
+        .iter()
+        .flat_map(|value| value.to_ne_bytes())
+        .collect();
+    let data = CFData::from_bytes(&bytes);
+    // SAFETY: the attachment is a `CFData`, which is how `surface_picture` reads it.
+    SURFACE_PICTURE.with(|key| unsafe {
+        buffer.set_attachment(key, &data, CVAttachmentMode::ShouldNotPropagate)
+    });
+}
+
+/// The picture size `set_surface_picture` gave `buffer`, if any, in texels.
+fn surface_picture(buffer: &CVPixelBuffer) -> Option<[f32; 2]> {
+    // SAFETY: a null mode pointer is allowed.
+    let value = SURFACE_PICTURE.with(|key| unsafe { buffer.attachment(key, ptr::null_mut()) })?;
+    let bytes = value.downcast::<CFData>().ok()?.to_vec();
+    let value = |index: usize| -> Option<f32> {
+        let chunk = bytes.get(index * 4..index * 4 + 4)?;
+        Some(i32::from_ne_bytes(chunk.try_into().ok()?) as f32)
+    };
+    Some([value(0)?, value(1)?])
 }
 
 pub(crate) fn new_command_encoder_for_texture<'a>(
@@ -1729,6 +1847,8 @@ enum SurfaceInputIndex {
     TextureSize = 3,
     YTexture = 4,
     CbCrTexture = 5,
+    /// Koyo: a BGRA surface's `PageSurface`.
+    Page = 6,
 }
 
 #[repr(C)]

@@ -1,6 +1,7 @@
 //! A browser pane: the page the host renders, what the person does with it, and the
 //! toolbar over it.
 
+use std::cell::Cell;
 use std::collections::VecDeque;
 use std::path::Path;
 use std::sync::Arc;
@@ -9,8 +10,8 @@ use std::time::Instant;
 
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::{
-    App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Focusable, Image,
-    MouseButton, Pixels, Point, Size, Subscription, Task, WeakEntity, Window,
+    App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Focusable, Image, Pixels,
+    Point, Subscription, Task, WeakEntity, Window,
 };
 use koyo_browser_ipc::{self as ipc, AppRequest, Cursor, PageState, PaneId, Viewport};
 
@@ -22,12 +23,11 @@ use super::frames::{Frame, Shown};
 use super::host::Browsers;
 use crate::history::How;
 
-mod lifecycle;
+pub(super) mod lifecycle;
 mod navigation;
-pub use navigation::{Controls, Visit};
-pub(super) mod sized;
 use super::menu::MenuRequest;
 use super::toolbar;
+pub use navigation::{Controls, Visit};
 
 pub enum BrowserEvent {
     /// The address or title changed.
@@ -96,23 +96,20 @@ pub struct BrowserView {
     /// The host epoch the page was opened in.
     opened: Option<u64>,
     pub(super) frame: Option<Frame>,
-    /// The slot shown before the frame, kept from the host until the next one shows.
-    pub(super) behind: Option<(u32, u8)>,
-    /// How many frames the page has shown, for measuring its rate.
+    /// The slot the window last drew, and the one it drew before, which the GPU may still be
+    /// reading from: each goes back to the host one draw after the window stops drawing it.
+    pub(super) drawn: Cell<Option<(u32, u8)>>,
+    pub(super) retiring: Cell<Option<(u32, u8)>>,
+    /// How many frames the page has shown, which tests count.
     pub(super) frames_shown: u64,
-    /// The layer the page shows in while it's drawn, which new frames go straight to.
+    /// The page element's state while the page is drawn: let go, the page is out of sight.
     pub(super) shown: Option<WeakEntity<Shown>>,
     /// Whether the host was last told the page is on screen.
     pub(super) visible: Option<bool>,
-    /// How many waits in a row for the page's frame at a new size it missed (`sized.rs`).
-    pub(super) frames_missed: u8,
-    /// A new size went to the host and the window hasn't waited for its frame yet: sent from
-    /// layout (a divider, the window, a grip, the size fields) or from a handler (an agent).
-    pub(super) frame_due: bool,
-    /// Whether the host was last told a held drag of the pane's edge is under way, and the
-    /// window's size the page was last placed in, which changes as the window's edge is.
+    /// Whether the host was last told a held drag of the pane's edge is under way, and when
+    /// the page's size last changed: sizes that keep coming are laid out live (`Dragging`).
     pub(super) drag_sent: bool,
-    pub(super) window_size: Option<Size<Pixels>>,
+    pub(super) resized_at: Option<Instant>,
     pub(super) cursor: Cursor,
     pub(super) focus: FocusHandle,
     pub(super) address: Entity<InputState>,
@@ -122,9 +119,6 @@ pub struct BrowserView {
     /// The modifier keys held, as the page was last told.
     pub(super) held: gpui_kit::Modifiers,
     pub(super) pressed: Option<ipc::MouseButton>,
-    /// The buttons the window holds pressed on the page, from the presses it hands on until
-    /// their releases; while any, it keeps the pointer on the page (`input::release`).
-    pub(super) window_presses: Vec<MouseButton>,
     pub(super) hovered: bool,
     /// What the next render, which has the window, settles.
     settle: Settle,
@@ -250,12 +244,11 @@ impl BrowserView {
             viewport: None,
             opened: None,
             frame: None,
-            behind: None,
+            drawn: Cell::new(None),
+            retiring: Cell::new(None),
             frames_shown: 0,
-            frames_missed: 0,
-            frame_due: false,
             drag_sent: false,
-            window_size: None,
+            resized_at: None,
             shown: None,
             visible: None,
             cursor: Cursor::Arrow,
@@ -265,7 +258,6 @@ impl BrowserView {
             marked: None,
             held: gpui_kit::Modifiers::default(),
             pressed: None,
-            window_presses: Vec::new(),
             hovered: false,
             settle: Settle::default(),
             origin: Point::default(),
@@ -334,7 +326,8 @@ impl BrowserView {
     pub(super) fn closed(&mut self, cx: &mut Context<Self>) {
         self.opened = None;
         self.frame = None;
-        self.behind = None;
+        self.drawn.set(None);
+        self.retiring.set(None);
         cx.emit(BrowserEvent::Closed);
         cx.notify();
     }
@@ -402,30 +395,44 @@ impl BrowserView {
         cx.notify();
     }
 
-    /// Shows a new frame; returns the slot it replaces, for the host.
+    /// A new frame, drawn with the window's next frame; returns the slot it replaces when the
+    /// window never drew it, which goes straight back to the host.
     pub(super) fn show_frame(
         &mut self,
         mut frame: Frame,
         cx: &mut Context<Self>,
     ) -> Option<(u32, u8)> {
-        let shown = (frame.generation, frame.slot);
         self.frames_shown += 1;
-        frame.serial = self.frames_shown;
-        self.frame_came(&frame);
         let before = self.frame.as_ref().map(|before| before.scale);
         frame.scale = super::responsive::frame_scale(frame.size, self.viewport, before);
-        // A frame needs no layout: once the page's layer is up, it goes straight to it, and
-        // the window isn't drawn again for it.
-        match self.shown.as_ref().and_then(WeakEntity::upgrade) {
-            Some(layer) if self.frame.is_some() => layer.update(cx, |layer, _| layer.show(&frame)),
-            _ => cx.notify(),
-        }
-        let previous = (self.frame.replace(frame))
+        let slot = (frame.generation, frame.slot);
+        cx.notify();
+        (self.frame.replace(frame))
             .map(|previous| (previous.generation, previous.slot))
-            .filter(|previous| *previous != shown);
-        // The slot shown until now stays on screen until Core Animation draws this one, so
-        // the host paints into it again only once the next frame comes.
-        std::mem::replace(&mut self.behind, previous).filter(|behind| *behind != shown)
+            .filter(|previous| {
+                *previous != slot
+                    && Some(*previous) != self.drawn.get()
+                    && Some(*previous) != self.retiring.get()
+            })
+    }
+
+    /// The window drew the page's frame, the slot `drawn`: the slot it drew before goes back
+    /// to the host once the window drew once more without it, as the GPU may read it until
+    /// then. Kept in cells, as it's said while the window draws, which changes nothing of the
+    /// view's.
+    pub(super) fn frame_drawn(&self, drawn: (u32, u8), cx: &App) {
+        if let Some((generation, slot)) = self.retiring.take() {
+            let release = AppRequest::Release {
+                pane: self.pane,
+                generation,
+                slot,
+            };
+            // A host that isn't running has no slots to take back.
+            let _ = self.browsers.read(cx).send_now(release);
+        }
+        if self.drawn.get() != Some(drawn) {
+            self.retiring.set(self.drawn.replace(Some(drawn)));
+        }
     }
 
     /// Tells the host whether the page is on screen, when that changed; out of sight it

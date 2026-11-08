@@ -47,8 +47,8 @@ a `Responsive` state and the page element:
    needs nothing more of the host or `browser-ipc`.
 3. Lays the page out centred horizontally and at the top of the area under the device
    bar, with a 16 px gutter, at `fit = min(1, room_w / width, room_h / height)` (or the
-   person's chosen zoom). The native layer is placed at the scaled bounds; Core Animation
-   scales the surface into it (contents gravity resize).
+   person's chosen zoom). The page's frame is drawn at the scaled bounds, in the window's
+   own frame (`browser/frames.rs`); GPUI's renderer scales it.
 4. Maps every pointer position (mouse, wheel, pinch, context menu, `DevTools` inspect
    point, the input method's caret rectangle) as `(window − page origin) / fit`, in one
    function on `BrowserView`, so nothing reads `origin` raw.
@@ -339,9 +339,10 @@ Where the build differs from the sections above, or settles what they left open:
   `koyo-term/src/view/responsive.rs`, `koyo/src/terminals/responsive.rs` (a view round each
   terminal view that draws the shared chrome while it's pinned, `responsive/frame.rs` the
   outline and grips over the grid as last laid out).
-- Browser layer: the native layer keeps top-left gravity with its contents scale set to the
-  shown frame's scale ÷ fit, rather than resize gravity, so a frame of the old size isn't
-  stretched while the new one comes.
+- Browser frame: drawn at the frame's own scale ÷ fit with its top left at the page's,
+  rather than stretched to the page's bounds, so a frame of the old size isn't stretched
+  while the new one comes; where it's smaller than the page's area, its edges reach out to
+  fill it.
 - The Android user agent's Chromium major comes from the host's hello, not
   `Browser.getVersion`. iOS presets send platform `iPhone`/`iPad` and `userAgentMetadata`
   with platform iOS and no brands; Android sends `Linux armv81`.
@@ -365,7 +366,7 @@ Where the build differs from the sections above, or settles what they left open:
   sites switch only once the page loads again. Reload". Grip drags end when the button is
   found up, as a selection drag does. A size dragged or typed changes the mode only; the
   page is told it as the pane is next drawn, so a grip sends one size a frame however fast
-  the pointer moves, and the window waits for the page's frame at it (section 8).
+  the pointer moves, which the host lays the page out to live (section 8).
 - Terminal limits answer `invalid_argument` (the terminal catalog's code), not
   `invalid_input`. A pin carries cells only; the cell's pixel size comes from the
   clients' smallest size, or the record's. An agent's unpin is logged "let it fill the views
@@ -405,18 +406,18 @@ one size per frame, and says whether a drag is under way (`AppRequest::Resize { 
   pins the layout at what the view holds, then grows the view under it. When the app says
   the drag is over, the view is given its last size for real (once grown, if it's growing)
   and, once the page has painted at it (or 500 ms passed), the override goes.
-- Which drags the app tells of (`browser/page.rs`, prepaint; `view/sized.rs` `Dragging`):
-  a drag in hand in GPUI (a split's divider, the sidebar's and right panel's edges, docked
-  DevTools' divider) and a responsive grip held, which the app sees end: as one is let go
-  the app sends its size once more with `dragging: false`, even when it didn't change. And
-  the window's edge, seen as the window's size changing since the page was last placed:
-  GPUI has no live-resize state to say when that ends, so the host ends it 150 ms after its
-  last size (`SETTLE`), as it ended every drag before. That timer stays on every drag, as a
-  fallback.
-- A size of its own (`dragging: false` with no drag under way: an agent's
-  `browser_viewport`, a preset, the mode turned on, the sidebar shown) is laid out as on a
-  page not loaded yet, below: one resize of the view, no override and no 150 ms settle. A
-  size Chromium already has is not told again.
+- Which drags the app tells of (`browser/page.rs`, prepaint; `view/lifecycle.rs`
+  `Dragging`): a drag in hand in GPUI (a split's divider, the sidebar's and right panel's
+  edges, docked DevTools' divider) and a responsive grip held, which the app sees end: as
+  one is let go the app sends its size once more with `dragging: false`, even when it
+  didn't change. And sizes layout keeps giving the page, each within 50 ms of the last
+  (`MOVING`): the window's edge dragged, the sidebar folding. GPUI doesn't say when those
+  end, so the host ends them 150 ms after the last size (`SETTLE`). That timer stays on
+  every drag, as a fallback.
+- A size on its own (`dragging: false` with no drag under way: an agent's
+  `browser_viewport`, a preset, the mode turned on, a panel opened, the first size of a
+  run) is laid out as on a page not loaded yet, below: one resize of the view, no override
+  and no 150 ms settle. A size Chromium already has is not told again.
 - The app's own device metrics (responsive mode) are kept: the host rewrites the app's
   `set`/`clearDeviceMetricsOverride` to the drag's size while one is under way, merges
   them into its own overrides, and puts them back when the drag ends.
@@ -427,19 +428,20 @@ one size per frame, and says whether a drag is under way (`AppRequest::Resize { 
   size asked for meanwhile replaces it and an older one is never laid out after it.
 - The view grows once per drag, at its start and whichever way it goes, to the largest
   display (`largest_screen`), so a fast drag never has it grow again partway.
-- The pane's edge and the page reach the screen together, as in a Chrome window
-  (`koyo-rs/koyo/src/browser/view/sized.rs`): when a page's pane changes size, the page
-  element sends the size and waits for the page's frame at it before the window is drawn,
-  handling what the host says meanwhile (`browser/host/inbox.rs`). The pages resized in one
-  frame wait until the same deadline, 250 ms after the first began (`frame_deadline`), so a
-  frame waits 250 ms at most however many pages changed size. A heavy
-  page dragged fast then goes at its own pace (openai.com: mostly under 50 ms, at most about
-  120 ms). A page that misses five waits in a row isn't waited for until a frame catches up.
-- And GPUI presents its frames in Core Animation's transaction while any page has a native
-  view (`koyo-rs/vendor/gpui-fast-apple`, `browser/frames.rs`), so what it draws around the page
-  reaches the screen in the same frame as the page's layer, not one after.
-- Measured on screen (QA app, a split dragged 600 pt in 0.1 s each way, the area under the
-  page painted magenta for the test): 0 frames of ~720 showed any of it on openai.com.
+- The window never waits for the page. Its latest frame is drawn in the window's own frame
+  (`browser/frames.rs`, `browser/page.rs`), with everything round it, so the pane's edge
+  and the page can't reach the screen a frame apart, and the card's rounded corners clip
+  the page as they clip the rest of what's in it. A page laid out a frame behind a pane
+  that grew has its edge pixels reach out to the pane's edge (`gpui-fast-apple`'s
+  `set_surface_picture`); one behind a pane that shrank is clipped by it. A slot of the
+  page's ring goes back to the host one window frame after the window last drew it, as
+  the GPU may still be reading it until then (`BrowserView::frame_drawn`).
+- Checked by the browser visual check (`browser/visual/fold.rs`): the sidebar folded and
+  unfolded over a dark page, ten pictures taken as it moves, each with the page dark from
+  its left edge to its right. Measured in the app (a debug build, ⌘B over openai.com, a
+  terminal and a local page of 2500 blurred, animated cards): a fold runs at the window's
+  rate over a page as over a terminal; a page that keeps the GPU busy (the cards) slows the
+  window's frames, as it slows Arc's.
 - Measured by the engine smoke test `live_resize::a_page_dragged_wider_lays_out_again_every_frame`
   (120 sizes at 60 Hz): 118 frames and 118 distinct layouts in a 2 s drag, mostly 0 to
   4 px behind the drag, and the page edge to edge at the last size once it stops.

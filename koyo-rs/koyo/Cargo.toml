@@ -106,9 +106,8 @@ gpui-pre = { version = "=0.3.10", default-features = false, optional = true }
 gpui-kit = { workspace = true, features = ["test-support"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-# GPUI's Metal renderer, for presenting frames in Core Animation's transaction, so a browser
-# page's native layer and what GPUI draws around it reach the screen together
-# (`vendor/README.md`).
+# GPUI's Metal renderer, which draws a browser page's frame in the window's own frame, the
+# part of the shared surface the page fills said by `set_surface_picture` (`vendor/README.md`).
 gpui-fast-apple = "0.1.12"
 # Haptic ticks on the theme picker's detents; the version GPUI already pulls in.
 objc = "0.2"
@@ -137,14 +136,11 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
   "NSSliderCell",
   "NSSwitch",
   "NSCell",
-  # A browser page's trackpad pinches, which AppKit hands out apart from the pointer
-  # (native/pinch.rs).
-  "NSEvent",
   "NSView",
   "NSWindow",
   # The traffic lights, faded in compact mode (native/traffic_lights.rs).
   "NSButton",
-  # The display link an agent's pointer over a page moves by (browser/pointer/native.rs).
+  # A native view's layer (native/liquid.rs).
   "objc2-quartz-core",
   # The Liquid Glass behind the app's bars over a page (native/liquid.rs).
   "NSGlassEffectView",
@@ -160,9 +156,6 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
   "NSNotification",
   "NSOperation",
   "NSString",
-  # The display link an agent's pointer moves by (browser/pointer/native.rs).
-  "NSObjCRuntime",
-  "NSRunLoop",
 ] }
 block2 = "0.6"
 # The window's view, to reach its traffic lights (native/traffic_lights.rs), and the `NSWindow`
@@ -180,7 +173,7 @@ objc2-user-notifications = { version = "0.3", default-features = false, features
   "UNUserNotificationCenter",
 ] }
 # The browser panes' frames: the host's `IOSurface`s, found from the mach ports it sends,
-# shown as the contents of a layer. All versions GPUI already pulls in.
+# drawn by GPUI as pixel buffers. All versions GPUI already pulls in.
 objc2-core-foundation = { version = "0.3", default-features = false, features = [
   "std",
   "CFBase",
@@ -193,26 +186,24 @@ objc2-core-foundation = { version = "0.3", default-features = false, features = 
   "CFURL",
 ] }
 objc2-io-surface = { version = "0.3", default-features = false, features = ["std", "IOSurfaceRef", "IOSurfaceTypes", "libc", "objc2", "objc2-core-foundation"] }
+objc2-core-video = { version = "=0.3.2", default-features = false, features = [
+  "std",
+  "CVBuffer",
+  "CVImageBuffer",
+  "CVPixelBuffer",
+  "CVPixelBufferIOSurface",
+  "CVReturn",
+  "objc2-io-surface",
+] }
 objc2-quartz-core = { version = "0.3", default-features = false, features = [
   "std",
   "CALayer",
   "objc2-core-foundation",
-  # An agent's pointer over a page: its arrow and ring, and the display link that moves
-  # them (browser/pointer/native.rs).
-  "CABase",
-  "CADisplayLink",
-  "CAFrameRateRange",
-  "CAShapeLayer",
-  "CATransaction",
-  "objc2-core-graphics",
 ] }
-# An agent's pointer over a page: its shapes (browser/pointer/native.rs). Pictures and PDFs
-# shown in a file's tab (viewer/): drawn into bitmaps of their own, a PDF's pages by Quartz,
-# the renderer Preview uses.
+# Pictures and PDFs shown in a file's tab (viewer/): drawn into bitmaps of their own, a PDF's
+# pages by Quartz, the renderer Preview uses.
 objc2-core-graphics = { version = "0.3", default-features = false, features = [
   "std",
-  "CGPath",
-  "CGColor",
   "CGAffineTransform",
   "CGBitmapContext",
   "CGColorSpace",

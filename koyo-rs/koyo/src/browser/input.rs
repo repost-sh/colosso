@@ -1,15 +1,14 @@
 //! The person's input to a page: the pointer and wheel over it, the keys it owns while it
 //! has focus, text from the input method, and the edit commands the app binds. The first
-//! of it takes the page for the person (`control`). A press the window would hold on the
-//! page past its end is let go (`release`).
+//! of it takes the page for the person (`control`).
 
 use std::ops::Range;
 
 use gpui_kit::{
     Bounds, Context, CursorStyle, Div, EntityInputHandler, InteractiveElement as _, KeyDownEvent,
     KeyUpEvent, Keystroke, Modifiers, ModifiersChangedEvent, MouseButton, MouseDownEvent,
-    MouseMoveEvent, MouseUpEvent, NavigationDirection, Pixels, PlatformInput, Point, Stateful,
-    UTF16Selection, Window, point, px, size,
+    MouseMoveEvent, MouseUpEvent, NavigationDirection, Pixels, Point, Stateful, UTF16Selection,
+    Window, point, px, size,
 };
 use koyo_browser_ipc::{self as ipc, AppRequest, Cursor, Go, Ime, KeyKind, MouseKind};
 
@@ -20,8 +19,6 @@ use super::{
     Back, Copy, Cut, FocusAddress, Forward, Paste, Redo, Reload, SelectAll, SendBackTab,
     SendEscape, SendTab, ToggleDevTools, ToggleResponsive, Undo,
 };
-
-mod release;
 
 impl BrowserView {
     /// A press on the page: it takes the keyboard, and the button stays the page's until
@@ -77,52 +74,12 @@ impl BrowserView {
         }
     }
 
-    /// The pointer over the page's native view, which takes it in GPUI's stead.
-    pub(super) fn native_pointer(
-        &mut self,
-        event: &PlatformInput,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        // The window holds a press on the page from each press it hands on until a release
-        // ends it; a single press ends on any release, as the window has it (`release`).
-        match event {
-            PlatformInput::MouseDown(event) if !self.window_presses.contains(&event.button) => {
-                self.window_presses.push(event.button);
-            }
-            PlatformInput::MouseUp(event) => match self.window_presses.as_slice() {
-                [_] => self.window_presses.clear(),
-                _ => self.window_presses.retain(|held| *held != event.button),
-            },
-            _ => {}
-        }
-        // A responsive page's grip in hand takes the pointer, wherever it goes.
-        if self.grip_pointer(event, cx) {
-            return;
-        }
-        match event {
-            PlatformInput::MouseDown(event) => self.pressed_at(event, window, cx),
-            PlatformInput::MouseUp(event) => self.released_at(event, cx),
-            PlatformInput::MouseMove(event) => {
-                // With no button held, the move belies the presses the window holds on the
-                // page (`release`): they're let go, and the page left, not followed.
-                let belied = event.pressed_button.is_none() && !self.window_presses.is_empty();
-                if belied {
-                    self.let_go(event.position, window, cx);
-                }
-                self.moved_to(event, !belied, cx);
-            }
-            PlatformInput::MouseExited(event) => {
-                let moved = MouseMoveEvent {
-                    position: event.position,
-                    pressed_button: event.pressed_button,
-                    modifiers: event.modifiers,
-                };
-                self.moved_to(&moved, false, cx);
-            }
-            PlatformInput::Scroll(event) => self.wheel(event, cx),
-            PlatformInput::Pinch(event) => self.pinch(event, cx),
-            _ => {}
+    /// Ends the press the page has, if any, where the pointer is: a menu's tracking takes the
+    /// release that would.
+    pub(in crate::browser) fn let_go(&mut self, window: &Window, cx: &mut Context<Self>) {
+        if let Some(button) = self.pressed.take() {
+            let (at, modifiers) = (window.mouse_position(), window.modifiers());
+            self.mouse(MouseKind::Up, at, Some(button), 1, modifiers, cx);
         }
     }
 

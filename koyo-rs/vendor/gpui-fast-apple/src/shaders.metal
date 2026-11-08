@@ -900,6 +900,54 @@ fragment float4 surface_fragment(SurfaceFragmentInput input [[stage_in]],
   return ycbcrToRGBTransform * ycbcr;
 }
 
+// Koyo: a BGRA surface whose picture is the top-left part of its texture, as a browser
+// page's frame is of the surface it's shared in. The picture goes over `mapping`; the quad
+// drawn, `quad`, can reach past it, and there the picture's edge texels reach out.
+struct PageSurface {
+  Bounds_ScaledPixels quad;
+  Bounds_ScaledPixels mapping;
+  float2 picture;
+  float2 texture_size;
+};
+
+struct PageSurfaceVarying {
+  float4 position [[position]];
+  float2 texel;
+};
+
+vertex PageSurfaceVarying page_surface_vertex(
+    uint unit_vertex_id [[vertex_id]],
+    constant float2 *unit_vertices [[buffer(SurfaceInputIndex_Vertices)]],
+    constant Size_DevicePixels *viewport_size
+    [[buffer(SurfaceInputIndex_ViewportSize)]],
+    constant PageSurface *surface [[buffer(SurfaceInputIndex_Page)]]) {
+  float2 unit_vertex = unit_vertices[unit_vertex_id];
+  float4 device_position =
+      to_device_position(unit_vertex, surface->quad, viewport_size);
+  float2 position =
+      float2(surface->quad.origin.x, surface->quad.origin.y) +
+      unit_vertex * float2(surface->quad.size.width, surface->quad.size.height);
+  float2 mapping_origin =
+      float2(surface->mapping.origin.x, surface->mapping.origin.y);
+  float2 mapping_size = max(
+      float2(surface->mapping.size.width, surface->mapping.size.height), 1.);
+  float2 texel = (position - mapping_origin) * surface->picture / mapping_size;
+  return PageSurfaceVarying{device_position, texel};
+}
+
+fragment float4 page_surface_fragment(PageSurfaceVarying input [[stage_in]],
+                                      constant PageSurface *surface
+                                      [[buffer(SurfaceInputIndex_Page)]],
+                                      texture2d<float> picture_texture
+                                      [[texture(SurfaceInputIndex_YTexture)]]) {
+  constexpr sampler texture_sampler(mag_filter::linear, min_filter::linear);
+  float2 texel = clamp(input.texel, 0.5, max(0.5, surface->picture - 0.5));
+  float4 color = picture_texture.sample(texture_sampler, texel / surface->texture_size);
+  // The texture's colours are premultiplied; GPUI blends straight ones.
+  color.rgb = color.a > 0. ? color.rgb / color.a : color.rgb;
+  return color;
+}
+
 float4 hsla_to_rgba(Hsla hsla) {
   float h = hsla.h * 6.0; // Now, it's an angle but scaled in [0, 6) range
   float s = hsla.s;

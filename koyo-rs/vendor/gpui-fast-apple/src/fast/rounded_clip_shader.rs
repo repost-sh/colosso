@@ -14,6 +14,8 @@ pub fn source(source: &str) -> String {
         "polychrome_sprite_fragment",
         "path_sprite_fragment",
         "surface_fragment",
+        // Koyo: a browser page's frame (`metal_renderer::set_surface_picture`).
+        "page_surface_fragment",
     ] {
         let start = source
             .find(&format!("fragment float4 {name}("))

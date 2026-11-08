@@ -198,7 +198,7 @@ impl BrowserView {
             .flex_col()
             .children(device)
             .child(div().flex_1().min_h_0().w_full().child(page))
-            // Among the window's overlays: the page's native layer hides what's under it.
+            // Over the page, among the window's overlays.
             .children(self.find_bar(cx).map(deferred));
         let docked = self
             .devtools

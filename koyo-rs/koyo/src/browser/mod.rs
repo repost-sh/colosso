@@ -5,8 +5,8 @@
 //! packaged by `script/browser-engine` and carried with the app. One host serves every pane
 //! of the app: `host` starts it as the app launches, so no page waits for it, starts it
 //! again when it stops, and routes what it says to the pane views. A page is a
-//! [`BrowserView`] in a tab: its frames are shared surfaces the host paints into, shown in
-//! a native view over the pane (`frames`, `page`); the person's
+//! [`BrowserView`] in a tab: its frames are shared surfaces the host paints into, drawn in
+//! the window's own frame where the pane lays the page out (`frames`, `page`); the person's
 //! pointer and keys go to it (`input`); it can be shown at a chosen size or as a device
 //! (`responsive`); its questions are asked in the app's dialogs
 //! (`dialog`) and its context menu shown as the app's (`menu`); and who drives it, the
