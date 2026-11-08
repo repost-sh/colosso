@@ -1,5 +1,6 @@
-//! The Browser settings page: where a page's `DevTools` open, whether the new-tab launcher asks
-//! for search suggestions, the data every project's pages keep, and the engine they run in.
+//! The Browser settings page: where a page's `DevTools` open, where a page goes full screen,
+//! whether the new-tab launcher asks for search suggestions, the data every project's pages
+//! keep, and the engine they run in.
 
 use gpui_kit::{App, AsyncApp, PromptLevel};
 
@@ -8,7 +9,7 @@ use super::native_switch::NativeSwitch;
 use crate::{browser, settings};
 
 pub fn sections(cx: &App) -> Vec<SettingsSection> {
-    vec![devtools(cx), address(), data(), engine(cx)]
+    vec![devtools(cx), fullscreen(), address(), data(), engine(cx)]
 }
 
 fn devtools(cx: &App) -> SettingsSection {
@@ -22,6 +23,22 @@ fn devtools(cx: &App) -> SettingsSection {
             .control(MenuButton::new("devtools-dock", dock.label(), |cx| {
                 settings::get(cx).devtools.dock.menu()
             })),
+    )
+}
+
+fn fullscreen() -> SettingsSection {
+    SettingsSection::new("Full screen").row(
+        SettingRow::new("Full screen fills the screen")
+            .description(
+                "A page that goes full screen, as a video does, takes the whole screen, the \
+                 window full screen with that page alone. Off, it fills its pane and the window \
+                 stays as it is. Escape leaves full screen.",
+            )
+            .control(NativeSwitch::new(
+                "fullscreen-fills-screen",
+                |settings| settings.fullscreen_fills_screen,
+                |settings, on| settings.fullscreen_fills_screen = on,
+            )),
     )
 }
 

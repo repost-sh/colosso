@@ -433,9 +433,26 @@ one size per frame, and says whether a drag is under way (`AppRequest::Resize { 
   and the page can't reach the screen a frame apart, and the card's rounded corners clip
   the page as they clip the rest of what's in it. A page laid out a frame behind a pane
   that grew has its edge pixels reach out to the pane's edge (`gpui-fast-apple`'s
-  `set_surface_picture`); one behind a pane that shrank is clipped by it. A slot of the
-  page's ring goes back to the host one window frame after the window last drew it, as
-  the GPU may still be reading it until then (`BrowserView::frame_drawn`).
+  `set_surface_picture`); one behind a pane that shrank is clipped by it.
+- Every frame Chromium paints reaches the window. A slot of the page's ring goes back to the
+  host as soon as a newer frame replaces it (`BrowserView::show_frame`). Each frame gets a
+  pixel buffer of its own, and while it lives, macOS marks the slot's surface in use, which
+  the host can see. The window's scene and the frames on its GPU keep their buffers until
+  the GPU is done, the renderer drawing each straight from its surface, not through Core
+  Video's texture cache, which kept them until it was next flushed (`gpui-fast-apple`'s
+  `metal_renderer.rs`). The host paints only into free slots that aren't in use, and looks
+  again 2 ms later when none is, waiting twice as long each time it finds them in use still,
+  up to 128 ms (`host/frames.rs`).
+  Before this, the app held two of the three slots until its next draw, and a page painting
+  at 120 Hz reached the window at 60.
+- The host begins each frame of a page on screen as the display refreshes: a display link
+  in the host (`host/clock.rs`) and CEF's external begin frames. Chromium's own clock for an
+  off-screen page fell from 120 Hz to 60 the first time the pointer moved over the page,
+  and stayed there with the pointer's moves no longer forwarded and after the page was
+  hidden and shown again. CEF sets the rate once and never changes it on input, so the
+  fall is in Chromium's compositor. Measured with TestUFO and the pointer moving over it:
+  120 frames a second painted and received throughout. The link stops while no page is
+  shown, so the host sleeps.
 - Checked by the browser visual check (`browser/visual/fold.rs`): the sidebar folded and
   unfolded over a dark page, ten pictures taken as it moves, each with the page dark from
   its left edge to its right. Measured in the app (a debug build, ⌘B over openai.com, a

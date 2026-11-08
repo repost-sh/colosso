@@ -228,3 +228,31 @@ fn each_key_reaches_the_page_once_pressed_and_once_let_go(cx: &mut TestAppContex
     );
     finish(cx, scratch);
 }
+
+/// A page's full screen: a click on its button asks for it, the app gives the page the whole
+/// screen, and Escape takes it out again, the page hearing it leave.
+#[gpui_kit::test]
+#[ignore = "needs the engine script/browser-engine packages"]
+fn a_page_full_screen_takes_the_screen_until_escape(cx: &mut TestAppContext) {
+    let page = "data:text/html,<title>small</title><body style='margin:0'>\
+        <button style='width:300px;height:100px' onclick='document.body.requestFullscreen()'>\
+        go</button><script>document.onfullscreenchange=()=>\
+        document.title=document.fullscreenElement?'full':'small'</script>";
+    let (view, cx, scratch) = open("fullscreen", page, cx);
+    wait_for(cx, &view, "the small page", |view| {
+        view.page.title == "small" && view.frame.is_some()
+    });
+    let (x, y) = page_origin(cx, &view);
+    click(cx, x + 50., y + 50.);
+    wait_for_title(cx, &view, "full");
+    view.read_with(cx, |view, _| {
+        assert!(
+            view.fills_screen(),
+            "on the whole screen, as the setting has it"
+        );
+    });
+    cx.simulate_keystrokes("escape");
+    wait_for_title(cx, &view, "small");
+    view.read_with(cx, |view, _| assert!(!view.is_fullscreen()));
+    finish(cx, scratch);
+}

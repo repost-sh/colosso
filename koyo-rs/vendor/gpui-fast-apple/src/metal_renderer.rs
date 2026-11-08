@@ -143,6 +143,14 @@ pub struct MetalRenderer {
     surfaces_pipeline_state: metal::RenderPipelineState,
     /// Koyo: BGRA surfaces with a picture (`set_surface_picture`).
     page_surfaces_pipeline_state: metal::RenderPipelineState,
+    /// Koyo: the BGRA surfaces the frame being encoded samples, and their textures, held until
+    /// the GPU is done with the frame. A pixel buffer made over an `IOSurface` marks the surface
+    /// in use while it lives, which every process sees: so the process that shares the surface
+    /// (a browser page's host) doesn't paint into it while the GPU still reads it.
+    page_surfaces_in_flight: Vec<(
+        CFRetained<CVPixelBuffer>,
+        objc2::rc::Retained<objc2::runtime::ProtocolObject<dyn objc2_metal::MTLTexture>>,
+    )>,
     pub(crate) unit_vertices: metal::Buffer,
     #[allow(clippy::arc_with_non_send_sync)]
     pub(crate) instance_buffer_pool: Arc<Mutex<InstanceBufferPool>>,
@@ -454,6 +462,7 @@ impl MetalRenderer {
             polychrome_sprites_pipeline_state,
             surfaces_pipeline_state,
             page_surfaces_pipeline_state,
+            page_surfaces_in_flight: Vec::new(),
             unit_vertices,
             instance_buffer_pool,
             sprite_atlas,
@@ -623,10 +632,13 @@ impl MetalRenderer {
 
         let instance_buffer_pool = self.instance_buffer_pool.clone();
         let instance_buffer = Cell::new(Some(writer.finish()));
+        // Koyo: the page surfaces this frame samples are free once it's done.
+        let page_surfaces = Cell::new(Some(mem::take(&mut self.page_surfaces_in_flight)));
         let block = RcBlock::new(move |_: ptr::NonNull<AnyObject>| {
             if let Some(instance_buffer) = instance_buffer.take() {
                 instance_buffer_pool.lock().release(instance_buffer);
             }
+            drop(page_surfaces.take());
         });
         // SAFETY: Both pointee types are opaque views of the same Objective-C block pointer ABI.
         unsafe {
@@ -1367,7 +1379,7 @@ impl MetalRenderer {
     /// mask, the picture's edges reaching out to it; without one, the whole texture goes over
     /// the bounds, as far as the content mask shows them.
     fn draw_page_surface(
-        &self,
+        &mut self,
         surface: &PaintSurface,
         texture_size: Size<DevicePixels>,
         command_encoder: &metal::RenderCommandEncoderRef,
@@ -1384,29 +1396,11 @@ impl MetalRenderer {
             return;
         }
         let texture_extent = [texture_size.width.0 as f32, texture_size.height.0 as f32];
-        let texture = unsafe {
-            let mut texture = ptr::null_mut();
-            let status = CVMetalTextureCache::create_texture_from_image(
-                None,
-                &self.core_video_texture_cache,
-                image_buffer,
-                None,
-                objc2_metal::MTLPixelFormat::BGRA8Unorm,
-                texture_size.width.0 as usize,
-                texture_size.height.0 as usize,
-                0,
-                ptr::NonNull::from(&mut texture),
-            );
-            if status != kCVReturnSuccess {
-                log::error!("a BGRA surface has no Metal texture: {status}");
-                return;
-            }
-            let Some(texture) = ptr::NonNull::new(texture) else {
-                return;
-            };
-            CFRetained::<CVMetalTexture>::from_raw(texture)
-        };
-        let Some(metal_texture) = CVMetalTextureGetTexture(&texture) else {
+        // Made over the surface itself, not through Core Video's texture cache, which would
+        // keep the pixel buffer, so its surface in use, until the cache is next flushed.
+        let Some(metal_texture) = page_surface_texture(&self.device, image_buffer, texture_size)
+        else {
+            log::error!("a BGRA surface has no Metal texture");
             return;
         };
         let page = PageSurface {
@@ -1433,7 +1427,37 @@ impl MetalRenderer {
             ))
         });
         command_encoder.draw_primitives(metal::MTLPrimitiveType::Triangle, 0, 6);
+        self.page_surfaces_in_flight
+            .push((image_buffer.clone(), metal_texture));
     }
+}
+
+/// Koyo: a Metal texture over the `IOSurface` a BGRA pixel buffer is made over, `size` of it.
+fn page_surface_texture(
+    device: &metal::Device,
+    image_buffer: &CVPixelBuffer,
+    size: Size<DevicePixels>,
+) -> Option<objc2::rc::Retained<objc2::runtime::ProtocolObject<dyn objc2_metal::MTLTexture>>> {
+    use objc2_metal::{MTLDevice as _, MTLTextureDescriptor, MTLTextureUsage};
+    let surface = objc2_core_video::CVPixelBufferGetIOSurface(Some(image_buffer))?;
+    // SAFETY: a 2D texture the size of the surface.
+    let descriptor = unsafe {
+        MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
+            objc2_metal::MTLPixelFormat::BGRA8Unorm,
+            size.width.0 as usize,
+            size.height.0 as usize,
+            false,
+        )
+    };
+    descriptor.setUsage(MTLTextureUsage::ShaderRead);
+    // SAFETY: metal and objc2-metal expose the same Objective-C device; the borrowed protocol
+    // object remains valid while `device` owns it.
+    let device = unsafe {
+        &*device
+            .as_ptr()
+            .cast::<objc2::runtime::ProtocolObject<dyn objc2_metal::MTLDevice>>()
+    };
+    device.newTextureWithDescriptor_iosurface_plane(&descriptor, &surface, 0)
 }
 
 /// Koyo: what `page_surface_vertex` and `page_surface_fragment` take of a BGRA surface.

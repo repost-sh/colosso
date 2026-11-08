@@ -39,6 +39,15 @@ pub(crate) struct Ring {
     slots: Vec<Slot>,
 }
 
+impl Ring {
+    /// Whether the app still uses `slot`: a pixel buffer over a surface marks it in use while it
+    /// lives, which every process sees, and the app keeps one while it shows the frame in the
+    /// slot or a frame on its GPU still reads it.
+    pub(crate) fn in_use(&self, slot: u8) -> bool {
+        (self.slots.get(usize::from(slot))).is_some_and(|slot| slot.surface.is_in_use())
+    }
+}
+
 type Texture = Retained<ProtocolObject<dyn MTLTexture>>;
 
 /// What a pane's frames are composed from.

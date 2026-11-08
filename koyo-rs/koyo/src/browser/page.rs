@@ -160,7 +160,6 @@ impl Element for PageSurface {
             frame.paint(bounds, placed.fit, window);
             let shown = shown.downgrade();
             let view = self.view.read(cx);
-            view.frame_drawn((frame.generation, frame.slot), cx);
             // An update counts as a change to the view, so it's made only when one happened.
             if view.shown.as_ref() != Some(&shown) || view.visible != Some(true) {
                 self.view.update(cx, |view, cx| {

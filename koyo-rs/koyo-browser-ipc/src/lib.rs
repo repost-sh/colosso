@@ -42,7 +42,8 @@ pub use requests::{AppRequest, Edit, Go, Ime, ViewAction};
 /// ([`AppRequest::Cdp`], [`HostEvent::CdpReply`], [`HostEvent::CdpEvent`]).
 /// 6: page icons ([`PageState::favicon`], [`HostEvent::Favicon`]).
 /// 7: trackpad pinches ([`AppRequest::Pinch`]).
-pub const PROTOCOL: u32 = 7;
+/// 8: a page's full screen ([`HostEvent::Fullscreen`], [`AppRequest::ExitFullscreen`]).
+pub const PROTOCOL: u32 = 8;
 
 /// Frames larger than this are refused, so a confused peer cannot make the
 /// other side allocate without bound.

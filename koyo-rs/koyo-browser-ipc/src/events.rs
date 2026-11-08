@@ -113,6 +113,13 @@ pub enum HostEvent {
         /// The icon as a PNG, at most 64 pixels a side; empty when it couldn't be fetched.
         png: Vec<u8>,
     },
+    /// The page went full screen, as a video's button does (`requestFullscreen`), or left it.
+    Fullscreen {
+        /// The pane.
+        pane: PaneId,
+        /// Whether it's full screen now.
+        on: bool,
+    },
     /// The page asks for another pointer.
     Cursor {
         /// The pane.

@@ -245,6 +245,10 @@ wrap_display_handler! {
             }
         }
 
+        fn on_fullscreen_mode_change(&self, _browser: Option<&mut Browser>, fullscreen: c_int) {
+            host::fullscreen_changed(self.pane, fullscreen != 0);
+        }
+
         fn on_cursor_change(
             &self,
             _browser: Option<&mut Browser>,

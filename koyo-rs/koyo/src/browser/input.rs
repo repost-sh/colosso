@@ -251,7 +251,12 @@ pub(super) fn listen(page: Stateful<Div>, cx: &mut Context<BrowserView>) -> Stat
         .on_action(cx.listener(|this, _: &SendBackTab, _, cx| {
             this.press("tab", true, Some("\t"), cx);
         }))
-        .on_action(cx.listener(|this, _: &SendEscape, _, cx| this.press("escape", false, None, cx)))
+        // Escape takes a page out of full screen, as in any browser, before the page hears it.
+        .on_action(cx.listener(|this, _: &SendEscape, _, cx| {
+            if !this.exit_fullscreen(cx) {
+                this.press("escape", false, None, cx);
+            }
+        }))
 }
 
 /// `view` hearing the keys that steer the page from anywhere in its pane: the page, the

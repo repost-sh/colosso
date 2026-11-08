@@ -68,9 +68,15 @@ pub(super) fn create(
     devtools: bool,
 ) {
     new_ring(pane);
+    // Frames begin as the display refreshes, by the host's clock, when it runs (`clock.rs`).
+    #[cfg(target_os = "macos")]
+    let clocked = super::clock::start();
+    #[cfg(not(target_os = "macos"))]
+    let clocked = false;
     let window = WindowInfo {
         windowless_rendering_enabled: 1,
         shared_texture_enabled: 1,
+        external_begin_frame_enabled: i32::from(clocked),
         ..WindowInfo::default()
     };
     let settings = BrowserSettings {
@@ -213,6 +219,11 @@ pub(crate) fn found(pane: PaneId, count: i32, active: i32) {
 
 /// A page out of sight stops painting; back in sight it paints afresh.
 pub(super) fn visible(pane: PaneId, visible: bool) {
+    with_pane(pane, |p| p.shown = visible);
+    #[cfg(target_os = "macos")]
+    if visible {
+        super::clock::start();
+    }
     if let Some(host) = host_of(pane) {
         host.was_hidden(i32::from(!visible));
         if visible {
@@ -377,6 +388,18 @@ pub(crate) fn cursor_changed(pane: PaneId, cursor: Cursor) {
     let changed = with_pane(pane, |p| std::mem::replace(&mut p.cursor, cursor) != cursor);
     if changed == Some(true) {
         send(&HostEvent::Cursor { pane, cursor });
+    }
+}
+
+/// The page went full screen or left it: the app gives it the screen, or its pane back.
+pub(crate) fn fullscreen_changed(pane: PaneId, on: bool) {
+    send(&HostEvent::Fullscreen { pane, on });
+}
+
+/// The app has the page leave full screen.
+pub(super) fn exit_fullscreen(pane: PaneId) {
+    if let Some(host) = host_of(pane) {
+        host.exit_fullscreen(1);
     }
 }
 

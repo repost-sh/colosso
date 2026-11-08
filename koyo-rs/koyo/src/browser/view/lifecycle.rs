@@ -169,8 +169,10 @@ impl BrowserView {
             self.menu_request = None;
             self.open_menu = None;
             self.frame = None;
-            self.drawn.set(None);
-            self.retiring.set(None);
+            // A page full screen in it isn't, in the one now.
+            if self.is_fullscreen() {
+                self.fullscreen_changed(false, cx);
+            }
         }
         if !self.page.url.is_empty() {
             self.target.clone_from(&self.page.url);

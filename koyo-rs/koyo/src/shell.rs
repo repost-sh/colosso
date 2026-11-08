@@ -90,7 +90,7 @@ pub struct Shell {
     pub tab_hand: Rc<TabHand>,
     /// The places a symbol led to, listed under the tabs, while they are.
     pub locations: Option<Entity<Locations>>,
-    _subscriptions: [Subscription; 9],
+    _subscriptions: [Subscription; 10],
 }
 
 impl Shell {
@@ -109,6 +109,10 @@ impl Shell {
         let status_bar = StatusBar::new(cx);
         let _subscriptions = [
             settings::observe(cx),
+            // The person taking the window out of full screen takes a page out with it.
+            cx.observe_window_bounds(window, |_, window, cx| {
+                crate::browser::fullscreen::window_resized(window, cx);
+            }),
             cx.observe(&history, |_, _, cx| cx.notify()),
             // Worktrees may have come or gone in a terminal while the window was away.
             cx.observe_window_activation(window, |this, window, cx| {
@@ -393,6 +397,14 @@ impl Shell {
 
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let root = crate::key_repeat::track(div(), window, cx)
+            .track_focus(&self.focus)
+            .map(|root| Self::handle_actions(root, cx))
+            .size_full();
+        // A page full screen on the whole screen is all the window shows (`browser/fullscreen.rs`).
+        if let Some(page) = crate::browser::fullscreen::settle(window, cx) {
+            return root.bg(gpui_kit::black()).child(page).into_any_element();
+        }
         // A space settling after a swipe moves a frame on first, so all that's drawn agrees.
         self.step_swipe(window, cx);
         let p = theme::palette(cx);
@@ -430,35 +442,32 @@ impl Render for Shell {
                 cx.stop_propagation();
             });
 
-        crate::key_repeat::track(div(), window, cx)
-            .track_focus(&self.focus)
-            .when(matches!(route, Route::Settings(_)), |root| {
-                root.key_context("Settings")
-            })
-            .map(|root| Self::handle_actions(root, cx))
-            .font_family(theme::fonts::interface(cx))
-            .size_full()
-            .relative()
-            .flex()
-            .flex_col()
-            // A gradient theme paints the glass instead of the plain tint.
-            .when(gradient::current(cx).dots.is_empty(), |root| {
-                root.bg(p.rail_tint)
-            })
-            .text_color(p.text)
-            .child(backdrop::backdrop(cx))
-            .child(self.top_rail(shown, window, cx))
-            .child(
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .flex()
-                    // The window's left edge, as thin as its right.
-                    .child(div().w(px(theme::GUTTER)).flex_shrink_0())
-                    .children(glass_sidebar)
-                    .child(card),
-            )
-            .child(self.status_rail(shown, cx))
+        root.when(matches!(route, Route::Settings(_)), |root| {
+            root.key_context("Settings")
+        })
+        .font_family(theme::fonts::interface(cx))
+        .relative()
+        .flex()
+        .flex_col()
+        // A gradient theme paints the glass instead of the plain tint.
+        .when(gradient::current(cx).dots.is_empty(), |root| {
+            root.bg(p.rail_tint)
+        })
+        .text_color(p.text)
+        .child(backdrop::backdrop(cx))
+        .child(self.top_rail(shown, window, cx))
+        .child(
+            div()
+                .flex_1()
+                .min_h_0()
+                .flex()
+                // The window's left edge, as thin as its right.
+                .child(div().w(px(theme::GUTTER)).flex_shrink_0())
+                .children(glass_sidebar)
+                .child(card),
+        )
+        .child(self.status_rail(shown, cx))
+        .into_any_element()
     }
 }
 

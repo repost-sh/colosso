@@ -1,7 +1,6 @@
 //! A browser pane: the page the host renders, what the person does with it, and the
 //! toolbar over it.
 
-use std::cell::Cell;
 use std::collections::VecDeque;
 use std::path::Path;
 use std::sync::Arc;
@@ -96,10 +95,8 @@ pub struct BrowserView {
     /// The host epoch the page was opened in.
     opened: Option<u64>,
     pub(super) frame: Option<Frame>,
-    /// The slot the window last drew, and the one it drew before, which the GPU may still be
-    /// reading from: each goes back to the host one draw after the window stops drawing it.
-    pub(super) drawn: Cell<Option<(u32, u8)>>,
-    pub(super) retiring: Cell<Option<(u32, u8)>>,
+    /// Whether the page is full screen, and where (`fullscreen.rs`).
+    pub(super) fullscreen: super::fullscreen::Fullscreen,
     /// How many frames the page has shown, which tests count.
     pub(super) frames_shown: u64,
     /// The page element's state while the page is drawn: let go, the page is out of sight.
@@ -244,8 +241,7 @@ impl BrowserView {
             viewport: None,
             opened: None,
             frame: None,
-            drawn: Cell::new(None),
-            retiring: Cell::new(None),
+            fullscreen: super::fullscreen::Fullscreen::default(),
             frames_shown: 0,
             drag_sent: false,
             resized_at: None,
@@ -326,8 +322,10 @@ impl BrowserView {
     pub(super) fn closed(&mut self, cx: &mut Context<Self>) {
         self.opened = None;
         self.frame = None;
-        self.drawn.set(None);
-        self.retiring.set(None);
+        // A page closed full screen leaves it: the window comes out of full screen with it.
+        if self.is_fullscreen() {
+            self.fullscreen_changed(false, cx);
+        }
         cx.emit(BrowserEvent::Closed);
         cx.notify();
     }
@@ -395,8 +393,10 @@ impl BrowserView {
         cx.notify();
     }
 
-    /// A new frame, drawn with the window's next frame; returns the slot it replaces when the
-    /// window never drew it, which goes straight back to the host.
+    /// A new frame, drawn with the window's next frame; returns the slot it replaces, which
+    /// goes straight back to the host. The renderer marks a slot in use while the GPU reads
+    /// it, and the host paints only into slots that aren't, so nothing waits for the window
+    /// to draw again first.
     pub(super) fn show_frame(
         &mut self,
         mut frame: Frame,
@@ -409,30 +409,7 @@ impl BrowserView {
         cx.notify();
         (self.frame.replace(frame))
             .map(|previous| (previous.generation, previous.slot))
-            .filter(|previous| {
-                *previous != slot
-                    && Some(*previous) != self.drawn.get()
-                    && Some(*previous) != self.retiring.get()
-            })
-    }
-
-    /// The window drew the page's frame, the slot `drawn`: the slot it drew before goes back
-    /// to the host once the window drew once more without it, as the GPU may read it until
-    /// then. Kept in cells, as it's said while the window draws, which changes nothing of the
-    /// view's.
-    pub(super) fn frame_drawn(&self, drawn: (u32, u8), cx: &App) {
-        if let Some((generation, slot)) = self.retiring.take() {
-            let release = AppRequest::Release {
-                pane: self.pane,
-                generation,
-                slot,
-            };
-            // A host that isn't running has no slots to take back.
-            let _ = self.browsers.read(cx).send_now(release);
-        }
-        if self.drawn.get() != Some(drawn) {
-            self.retiring.set(self.drawn.replace(Some(drawn)));
-        }
+            .filter(|previous| *previous != slot)
     }
 
     /// Tells the host whether the page is on screen, when that changed; out of sight it

@@ -23,6 +23,13 @@ FRAMEWORK="Chromium Embedded Framework.framework"
 ICON=koyo-rs/koyo/icons/Koyo.icns
 # Why the host would know where the computer is, which macOS shows when it asks the person.
 LOCATION_REASON="Pages open in Koyo can then ask to know where you are. Each one asks you first."
+# Why it would use Bluetooth, the camera and the microphone. macOS ends an app that reaches one
+# without saying why in its Info.plist: Google's sign-in page alone looks for a phone's passkey
+# over Bluetooth. macOS holds the app that launched the host responsible, so Koyo.app says the
+# same (script/bundle); these count when the host is its own.
+BLUETOOTH_REASON="Pages open in Koyo can then sign you in with a passkey on your phone or a security key, or reach a Bluetooth device. Each one asks you first."
+CAMERA_REASON="Pages open in Koyo can then use your camera, as a video call does. Each one asks you first."
+MICROPHONE_REASON="Pages open in Koyo can then use your microphone, as a video call does. Each one asks you first."
 # The protocol the host speaks, read from where it's defined so the two can't drift.
 IPC_PROTOCOL=$(sed -n 's/^pub const PROTOCOL: u32 = \([0-9][0-9]*\);$/\1/p' \
   koyo-rs/koyo-browser-ipc/src/lib.rs)
@@ -132,6 +139,12 @@ PLIST
   <string>$LOCATION_REASON</string>
   <key>NSLocationWhenInUseUsageDescription</key>
   <string>$LOCATION_REASON</string>
+  <key>NSBluetoothAlwaysUsageDescription</key>
+  <string>$BLUETOOTH_REASON</string>
+  <key>NSCameraUsageDescription</key>
+  <string>$CAMERA_REASON</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>$MICROPHONE_REASON</string>
 PLIST
     if [ -z "$sign" ]; then
       cat <<PLIST
