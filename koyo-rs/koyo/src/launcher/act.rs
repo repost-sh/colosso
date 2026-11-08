@@ -1,6 +1,7 @@
 //! What a row picked in the launcher does, in the window behind it, on the checkout it opened
 //! on: a tab opened empty, at a page or a search, a chat asked or a command run in a new one,
-//! or a tab shown. What was typed for it the history keeps.
+//! or a tab shown; or the New Worktree dialog opened on its project with the name typed. What was
+//! typed for it the history keeps.
 
 use gpui_kit::{AnyWindowHandle, App, Context, WeakEntity, Window};
 
@@ -8,6 +9,7 @@ use super::Kind;
 use super::rows::Act;
 use crate::browser::search_url;
 use crate::history::{self, Place};
+use crate::new_worktree;
 use crate::shell::Shell;
 
 /// Does `act` in `behind`, the window `shell` shows, for what was typed at `place`.
@@ -35,7 +37,14 @@ fn act_on(
 ) {
     match act {
         Act::Empty(Kind::Browser) => shell.open_browser(None, window, cx),
-        Act::Empty(kind) => shell.new_tab(kind.pane(), cx),
+        Act::Empty(kind) => {
+            if let Some(pane) = kind.pane() {
+                shell.new_tab(pane, cx);
+            }
+        }
+        Act::StartWorktree(name) => {
+            new_worktree::open_named(cx.weak_entity(), place.project.clone(), &name, window, cx);
+        }
         Act::Visit(url) => {
             if let Some(pane) = shell.open_browser_tab(Some(url), false, None, window, cx) {
                 shell.mark_typed(pane, cx);

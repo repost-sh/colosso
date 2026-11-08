@@ -47,6 +47,8 @@ pub enum Act {
     Ask(String),
     /// Runs this in a new terminal.
     Run(String),
+    /// Opens the New Worktree dialog with this name.
+    StartWorktree(String),
 }
 
 /// What marks a row: an icon, or a page's own.
@@ -94,7 +96,7 @@ impl Row {
     pub fn text(&self) -> Option<&str> {
         match &self.act {
             Act::Visit(text) | Act::Search(text) | Act::Ask(text) | Act::Run(text) => Some(text),
-            Act::Empty(_) | Act::Switch(_) | Act::Resume(_) => None,
+            Act::Empty(_) | Act::Switch(_) | Act::Resume(_) | Act::StartWorktree(_) => None,
         }
     }
 }
@@ -121,6 +123,8 @@ pub fn rows(query: &Query, cx: &mut App) -> Vec<Row> {
         (Kind::Chat, false) => chat(query.here, typed, cx),
         (Kind::Terminal, true) => words(history::Kind::Command, "", query.here, MOST_EMPTY, cx),
         (Kind::Terminal, false) => terminal(query.here, typed, cx),
+        // A worktree's name lists nothing: Enter takes it to the New Worktree dialog.
+        (Kind::Worktree, _) => Vec::new(),
     };
     rows.truncate(MOST);
     rows

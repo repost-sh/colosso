@@ -31,12 +31,24 @@ fn at_along(axis: Axis, along: Pixels) -> Point<Pixels> {
     Point::default().apply_along(axis, |_| along)
 }
 
+/// How far `at` is past `bounds` along `axis`, before its start or after its end: none
+/// while it's within them.
+fn past(axis: Axis, bounds: Bounds<Pixels>, at: Point<Pixels>) -> Pixels {
+    let (at, from) = (at.along(axis), bounds.origin.along(axis));
+    let to = from + bounds.size.along(axis);
+    (from - at).max(at - to).max(px(0.))
+}
+
 /// How far `at` is outside `bounds` across a list along `axis`: none while it's level.
 fn outside(axis: Axis, bounds: Bounds<Pixels>, at: Point<Pixels>) -> Pixels {
-    let across = axis.invert();
-    let (at, from) = (at.along(across), bounds.origin.along(across));
-    let to = from + bounds.size.along(across);
-    (from - at).max(at - to).max(px(0.))
+    past(axis.invert(), bounds, at)
+}
+
+/// Whether `at` is past either end of a list down the sidebar, where the next checkout's list
+/// is, which a tab can be taken to (`docs/arc-sidebar.md` 5): the list lets it go at once, so
+/// it doesn't keep a tab another list takes. Along the strip a tab stops at its ends.
+fn beyond_ends(axis: Axis, bounds: Bounds<Pixels>, at: Point<Pixels>) -> bool {
+    axis == Axis::Vertical && past(axis, bounds, at) > px(0.)
 }
 
 /// What's done with a tab let go over its list.

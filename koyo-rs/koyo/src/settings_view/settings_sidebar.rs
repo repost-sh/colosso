@@ -2,6 +2,7 @@
 //! page navigates to it, so Back returns to the page before.
 
 use gpui_kit::assets::IconName;
+use gpui_kit::component::Sizable as _;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -11,8 +12,8 @@ use gpui_kit::{
 };
 
 use super::{SIDEBAR_GROUPS, SettingsPage};
-use crate::navigation::{Navigate, NavigationHistory, Route};
-use crate::shell::{icon, row, section_label};
+use crate::navigation::{CloseSettings, Navigate, NavigationHistory, Route};
+use crate::shell::{action_button, icon, row, section_label};
 use crate::theme;
 
 pub struct SettingsSidebar {
@@ -103,11 +104,24 @@ impl Render for SettingsSidebar {
             .child(
                 div()
                     .h(px(28.))
-                    .px_2()
+                    .pl_0p5()
+                    .pr_2()
                     .flex()
                     .items_center()
+                    .gap_1()
                     .text_base()
                     .font_weight(FontWeight::SEMIBOLD)
+                    // Back to the workspace, as Escape and ⌘W go.
+                    .child(
+                        action_button(
+                            "settings-back",
+                            IconName::ArrowLeft,
+                            "Back",
+                            CloseSettings,
+                            cx,
+                        )
+                        .small(),
+                    )
                     .child("Settings"),
             )
             .child(

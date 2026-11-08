@@ -46,7 +46,7 @@ pub use dock::{DevtoolsPlace, Dock, SetDevtoolsDock};
 pub use menu::handle_actions;
 pub use responsive::{Responsive, devices};
 pub use tabs::KeptTabs;
-pub use view::{BrowserEvent, BrowserView, Visit};
+pub use view::{BrowserEvent, BrowserView, Controls, Visit};
 
 /// Starts the engine, so the first page opens as quickly as the next.
 pub fn warm_up(cx: &mut App) {

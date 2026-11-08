@@ -2,9 +2,7 @@
 //! start from, and the buttons.
 
 use gpui_kit::assets::IconName;
-use gpui_kit::component::Disableable as _;
 use gpui_kit::component::input::Input;
-use gpui_kit::component::switch::Switch;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, Context, InteractiveElement as _, IntoElement, ParentElement as _, Render,
@@ -17,6 +15,7 @@ use crate::modal::{self, Button, Tone};
 use crate::projects::display_path;
 use crate::shell::{self, ellipsized, icon};
 use crate::theme;
+use crate::toggle::Toggle;
 
 impl NewWorktreeDialog {
     /// The branch and folder creating would make, under the name.
@@ -207,14 +206,16 @@ impl Render for NewWorktreeDialog {
                         ),
                     )
                     .child(
-                        Switch::new("new-worktree-existing")
-                            .checked(self.existing)
-                            .color(p.accent)
-                            .disabled(self.creating)
-                            .on_click(cx.listener(|this, checked: &bool, _, cx| {
-                                this.existing = *checked;
-                                cx.notify();
-                            })),
+                        // The settings' switch, macOS's own.
+                        Toggle::for_view(
+                            "new-worktree-existing",
+                            self.existing,
+                            cx,
+                            |dialog, on| {
+                                dialog.existing = on;
+                            },
+                        )
+                        .enabled(!self.creating),
                     ),
             )
             .child(

@@ -6,7 +6,7 @@ use std::cell::{Cell, RefCell};
 
 use gpui_kit::{Along as _, Axis, Bounds, Pixels, Point, px};
 
-use super::outside;
+use super::{beyond_ends, outside};
 
 /// The middle share of a tab that joins what's held over it; the rest either side reorders.
 const JOIN_ZONE: f32 = 0.6;
@@ -158,11 +158,12 @@ impl TabHand {
         };
         let (axis, bounds) = (list.axis, list.bounds);
         let outside = outside(axis, bounds, at);
-        drag.off = if drag.off {
-            outside > px(0.)
-        } else {
-            outside > px(PULL)
-        };
+        drag.off = beyond_ends(axis, bounds, at)
+            || if drag.off {
+                outside > px(0.)
+            } else {
+                outside > px(PULL)
+            };
         drag.from = index;
         let start = bounds.origin.along(axis);
         let len = slots[index].size.along(axis);

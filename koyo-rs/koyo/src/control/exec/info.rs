@@ -16,7 +16,7 @@ use crate::shell::Shell;
 pub(crate) fn project(shell: &Shell, at: usize) -> Option<ProjectInfo> {
     let workspace = &shell.workspace;
     let project = workspace.projects.get(at)?;
-    let selected = at == workspace.active_project;
+    let selected = Some(at) == workspace.active_project();
     Some(ProjectInfo {
         path: project.path.display().to_string(),
         name: project.name.to_string(),
@@ -54,8 +54,8 @@ pub(crate) fn worktree_at(
 ) -> Option<WorktreeInfo> {
     let workspace = &shell.workspace;
     let unit = workspace.projects.get(project)?.branches.get(branch)?;
-    let selected =
-        workspace.active_project == project && workspace.projects[project].active_branch == branch;
+    let selected = workspace.active_project() == Some(project)
+        && workspace.projects[project].active_branch == branch;
     Some(worktree(shell, unit, selected))
 }
 

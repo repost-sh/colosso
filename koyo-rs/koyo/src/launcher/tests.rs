@@ -12,6 +12,7 @@ use super::{Kind, Launcher};
 use crate::files::tests::{dialog, press, tabs};
 use crate::history::{self, Place};
 use crate::model::PaneKind;
+use crate::new_worktree::NewWorktreeDialog;
 use crate::shell::Shell;
 use crate::test_support::{draw, repo, select, shell_with};
 
@@ -63,7 +64,7 @@ fn place(root: &Path) -> Place {
 }
 
 #[gpui_kit::test]
-fn cmd_t_opens_the_launcher_and_tab_goes_browser_chat_terminal(cx: &mut TestAppContext) {
+fn cmd_t_opens_the_launcher_and_tab_goes_browser_chat_terminal_worktree(cx: &mut TestAppContext) {
     let (window, _, _) = shell("launcher-kinds", cx);
     let (launcher_window, launcher) = launch(window, cx);
     assert_eq!(kind(&launcher, cx), Kind::Browser, "a browser tab first");
@@ -72,13 +73,32 @@ fn cmd_t_opens_the_launcher_and_tab_goes_browser_chat_terminal(cx: &mut TestAppC
     press(launcher_window, "tab", cx);
     assert_eq!(kind(&launcher, cx), Kind::Terminal);
     press(launcher_window, "tab", cx);
+    assert_eq!(kind(&launcher, cx), Kind::Worktree);
+    press(launcher_window, "tab", cx);
     assert_eq!(kind(&launcher, cx), Kind::Browser, "round again");
     press(launcher_window, "shift-tab", cx);
-    assert_eq!(kind(&launcher, cx), Kind::Terminal, "and back");
+    assert_eq!(kind(&launcher, cx), Kind::Worktree, "and back");
     // ⌘T again closes it.
     press(launcher_window, "cmd-t", cx);
     cx.run_until_parked();
     assert!(dialog::<Launcher>(cx).is_none());
+}
+
+#[gpui_kit::test]
+fn a_worktree_named_in_the_launcher_opens_the_new_worktree_dialog_with_that_name(
+    cx: &mut TestAppContext,
+) {
+    let (window, _, _) = shell("launcher-worktree", cx);
+    let (launcher_window, launcher) = launch(window, cx);
+    press(launcher_window, "shift-tab", cx);
+    assert_eq!(kind(&launcher, cx), Kind::Worktree);
+    cx.simulate_input(launcher_window, "fix login");
+    assert!(rows_of(&launcher, cx).is_empty(), "a name lists nothing");
+    press(launcher_window, "enter", cx);
+    cx.run_until_parked();
+    assert!(dialog::<Launcher>(cx).is_none(), "the launcher closes");
+    let (_, named) = dialog::<NewWorktreeDialog>(cx).expect("the New Worktree dialog");
+    assert_eq!(cx.read(|cx| named.read(cx).typed_name(cx)), "fix login");
 }
 
 #[gpui_kit::test]
@@ -108,7 +128,7 @@ fn commands_run_before_are_offered_latest_first_and_filtered_as_typed(cx: &mut T
         history::used(history::Kind::Command, "npm run dev", &place(&root), cx);
     });
     let (launcher_window, launcher) = launch(window, cx);
-    press(launcher_window, "shift-tab", cx);
+    press(launcher_window, "shift-tab shift-tab", cx);
     assert_eq!(kind(&launcher, cx), Kind::Terminal);
     assert_eq!(
         rows_of(&launcher, cx),

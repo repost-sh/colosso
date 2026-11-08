@@ -26,6 +26,7 @@ use crate::settings::{self, Layout};
 use crate::settings_view::{self, SettingsSidebar};
 use crate::sidebar::{SidebarFrame, SidebarResize, slide_out};
 use crate::theme::Palette;
+use crate::theme::card::{island, part};
 use crate::{arc, backdrop, bottom, gradient, orca, picker, theme};
 
 mod actions;
@@ -53,7 +54,7 @@ pub use elements::{
     no_matches, project_error, row, search_field, section_label, solid, tab_close_button,
 };
 pub use reorder::TabHand;
-pub use splits::divider;
+pub use splits::{Dragged, DraggedPane};
 pub use tab_list::{tab_list, tab_row};
 
 pub struct Shell {
@@ -73,13 +74,18 @@ pub struct Shell {
     pub chat_tabs: ChatTabs,
     /// The browser tabs kept for the next launch.
     pub kept_tabs: KeptTabs,
-    /// Horizontal travel of a two-finger swipe in progress over the Arc sidebar.
-    pub swipe: Option<f32>,
+    /// Where the Arc sidebar's space is as two fingers move it between spaces, or the spring
+    /// settles it.
+    pub swipe: arc::Swipe,
     pub focus: FocusHandle,
     /// What the sidebar's search field narrows its worktrees to.
     pub search: Entity<InputState>,
-    /// Where the rails were last right-clicked, for the theme picker their menu opens.
-    rails_menu_at: Point<Pixels>,
+    /// Where the rails or the Arc sidebar were last right-clicked, for the theme picker their
+    /// menu opens.
+    pub(crate) rails_menu_at: Point<Pixels>,
+    /// The project selected when the Arc sidebar last followed it into its space.
+    /// The tile or space dot in the Arc sidebar under the pointer, and its card.
+    pub(crate) arc_hover: arc::Hover,
     /// The tab being dragged along its list, shared by every list of tabs.
     pub tab_hand: Rc<TabHand>,
     /// The places a symbol led to, listed under the tabs, while they are.
@@ -119,6 +125,7 @@ impl Shell {
             // selected: after each change rather than mid-frame.
             cx.observe_in(&cx.entity(), window, |this, _, window, cx| {
                 this.workspace.stamp_shown();
+                this.follow_space(cx);
                 this.follow_selection(window, cx);
                 // Closed terminal tabs let their views go, which detaches them.
                 this.terminals.retain(&this.workspace);
@@ -129,8 +136,13 @@ impl Shell {
             // at the window's root, above the shell's, and the top bar's buttons and keys
             // would do nothing until something else took the keyboard.
             cx.on_focus_lost(window, |this, window, cx| window.focus(&this.focus, cx)),
-            // Every terminal's program follows the app's theme, its tab shown or not.
-            settings::on_change(cx, |this, cx| this.terminals.tell_theme(cx)),
+            // Every terminal's program follows the app's theme, its tab shown or not; each
+            // project goes by the name the person gave it in Koyo, or its folder's.
+            settings::on_change(cx, |this, cx| {
+                this.terminals.tell_theme(cx);
+                this.workspace
+                    .name_projects(&settings::get(cx).project_looks);
+            }),
             cx.observe_global::<Theme>(|this, cx| this.terminals.tell_theme(cx)),
             // The status bar is tall only with servers to show.
             cx.subscribe(status_bar.servers(), |this, _, ServersListed(any), cx| {
@@ -139,8 +151,10 @@ impl Shell {
             }),
         ];
         Self::guard_closing(window, cx);
+        let mut workspace = Workspace::new(&settings::get(cx).projects);
+        workspace.name_projects(&settings::get(cx).project_looks);
         let mut shell = Shell {
-            workspace: Workspace::new(&settings::get(cx).projects),
+            workspace,
             history,
             settings_sidebar,
             sidebar_open: settings::get(cx).sidebar_open_on_launch,
@@ -151,14 +165,17 @@ impl Shell {
             terminals: crate::terminals::Terminals::default(),
             chat_tabs,
             kept_tabs,
-            swipe: None,
+            swipe: arc::Swipe::default(),
             focus,
             search,
             rails_menu_at: Point::default(),
+            arc_hover: arc::Hover::default(),
             tab_hand: Rc::default(),
             locations: None,
             _subscriptions,
         };
+        // On the space shown, its project selected, as a switch to it leaves them.
+        shell.show_space(settings::get(cx).space, cx);
         shell.reload_projects(cx);
         shell.terminals.tell_theme(cx);
         shell
@@ -234,8 +251,8 @@ impl Shell {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // Both layouts start the sidebar right after the icon rail.
-        let width = (event.event.position.x.as_f32() - theme::ICON_RAIL_WIDTH)
+        // Both layouts start the sidebar right after the left gutter.
+        let width = (event.event.position.x.as_f32() - theme::GUTTER)
             .clamp(theme::SIDEBAR_MIN_WIDTH, theme::SIDEBAR_MAX_WIDTH);
         settings::update(cx, |settings| settings.sidebar_width = width);
     }
@@ -261,12 +278,18 @@ impl Shell {
     }
 
     /// What the sidebar slot holds on the current route.
-    fn sidebar(&self, route: Route, layout: Layout, cx: &mut Context<Self>) -> AnyElement {
+    fn sidebar(
+        &self,
+        route: Route,
+        layout: Layout,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let frame = SidebarFrame::new(layout, settings::get(cx).sidebar_width());
         match (route, layout) {
             (Route::Settings(_), _) => frame.child(self.settings_sidebar.clone()),
             (Route::Workspace, Layout::Orca) => frame.child(orca::sidebar(self, cx)),
-            (Route::Workspace, Layout::Arc) => frame.child(arc::sidebar(self, cx)),
+            (Route::Workspace, Layout::Arc) => frame.child(arc::sidebar(self, window, cx)),
         }
         .into_any_element()
     }
@@ -280,10 +303,22 @@ impl Shell {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let p = theme::palette(cx);
-        let column = div().flex_1().min_w_0().flex().flex_col();
+        // In Arc each part an island of its own, the glass between them; in Orca on the one card.
+        let islands = theme::card::islands(cx);
+        let column = div()
+            .flex_1()
+            .min_w_0()
+            .min_h_0()
+            .flex()
+            .flex_col()
+            .when(islands, |column| column.gap(px(theme::GUTTER)));
         match route {
             Route::Settings(page) => column
-                .child(settings_view::page(page, cx))
+                .child(
+                    part(p, islands)
+                        .flex_1()
+                        .child(settings_view::page(page, cx)),
+                )
                 .into_any_element(),
             Route::Workspace => {
                 let content = self.workspace_content(p, window, cx);
@@ -292,8 +327,13 @@ impl Shell {
                         main.child(orca::tab_strip(self, cx))
                     })
                     .child(content)
-                    .children(self.locations.clone())
-                    .when(self.bottom_panel_open, |main| main.child(bottom::panel(p)))
+                    .children(
+                        (self.locations.clone())
+                            .map(|locations| part(p, islands).flex_shrink_0().child(locations)),
+                    )
+                    .when(self.bottom_panel_open, |main| {
+                        main.child(part(p, islands).flex_shrink_0().child(bottom::panel(p)))
+                    })
                     .into_any_element()
             }
         }
@@ -320,8 +360,9 @@ impl Shell {
             }
         }
         let workspace = &self.workspace;
+        let islands = theme::card::islands(cx);
         let note = |text: &'static str| {
-            div()
+            part(p, islands)
                 .size_full()
                 .flex()
                 .items_center()
@@ -332,7 +373,14 @@ impl Shell {
                 .into_any_element()
         };
         let content = match (workspace.project(), workspace.branch()) {
-            (None, _) => note("Add a project to see its worktrees here."),
+            (None, _) if workspace.projects.is_empty() => {
+                note("Add a project to see its worktrees here.")
+            }
+            // No project shown: an empty space, which in Arc the + below fills.
+            (None, _) if Self::layout(cx) == Layout::Arc => {
+                note("This space has no projects. Add one with the + below.")
+            }
+            (None, _) => note("No project selected."),
             (Some(_), None) => note("No checkout selected."),
             (Some(_), Some(branch)) => match branch.tabs.get(branch.active_tab) {
                 Some(tab) => self.tab_content(tab, cx),
@@ -345,33 +393,36 @@ impl Shell {
 
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // A space settling after a swipe moves a frame on first, so all that's drawn agrees.
+        self.step_swipe(window, cx);
         let p = theme::palette(cx);
+        // The islands note where they are anew as they're laid out.
+        theme::card::forget(window, cx);
         let route = self.route(cx);
         let layout = Self::layout(cx);
         let width = settings::get(cx).sidebar_width();
         let shown = self.move_rails(window, cx);
         let sidebar = (shown.open.0 > 0.)
-            .then(|| slide_out(self.sidebar(route, layout, cx), width, shown.open.0));
-        // Orca keeps the sidebar inside the card, Arc on the glass beside it.
+            .then(|| slide_out(self.sidebar(route, layout, window, cx), width, shown.open.0));
+        // Orca keeps the sidebar on its card, Arc on the glass beside its islands.
         let (card_sidebar, glass_sidebar) = match layout {
             Layout::Orca => (sidebar, None),
             Layout::Arc => (None, sidebar),
         };
+        let islands = theme::card::islands(cx);
         let on_workspace = route == Route::Workspace;
         let beside = rails::left_of_chat(self.sidebar_open, cx);
         let right_panel = (self.right_panel).render(on_workspace, beside, window, cx);
         let main = self.main(route, layout, window, cx);
-        let card = div()
+        // What the rails hold: in Arc the islands side by side, the glass between them; in Orca
+        // one card holding them all.
+        let card = if islands { div() } else { island(p) }
             .debug_selector(|| "shell-card".to_owned())
             .flex_1()
             .min_w_0()
             .mr(px(theme::GUTTER))
-            .rounded(px(theme::CARD_RADIUS))
-            .bg(p.card)
-            .overflow_hidden()
             .relative()
             .flex()
-            .child(theme::card::noted())
             .children(card_sidebar)
             .child(main)
             .children(right_panel)
@@ -398,13 +449,14 @@ impl Render for Shell {
             })
             .text_color(p.text)
             .child(backdrop::backdrop(cx))
-            .child(self.top_rail(shown, cx))
+            .child(self.top_rail(shown, window, cx))
             .child(
                 div()
                     .flex_1()
                     .min_h_0()
                     .flex()
-                    .child(self.icon_rail(route, shown, cx))
+                    // The window's left edge, as thin as its right.
+                    .child(div().w(px(theme::GUTTER)).flex_shrink_0())
                     .children(glass_sidebar)
                     .child(card),
             )

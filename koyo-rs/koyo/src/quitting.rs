@@ -23,6 +23,7 @@ use serde::{Deserialize, Serialize};
 use crate::files::{self, Then};
 use crate::modal::{self, Button, FOOTER, HEADING_LINE, LINE, PADDING, SMALL_LINE, Tone};
 use crate::model::PaneKind;
+use crate::navigation::OpenSettings;
 use crate::settings::{self, checked_menu};
 use crate::terminals::{close_all, daemon_client};
 use crate::theme;
@@ -74,9 +75,12 @@ pub fn init(cx: &mut App) {
 /// The menu bar: macOS gives the first menu the app's name, and with no window open, no view
 /// is left to hear ⌘Q but the menu.
 pub fn set_menu(cx: &App) {
-    cx.set_menus(vec![
-        Menu::new("Koyo").items([MenuItem::action("Quit Koyo", Quit)]),
-    ]);
+    cx.set_menus(vec![Menu::new("Koyo").items([
+        // ⌘, beside it, as the key opens them anywhere.
+        MenuItem::action("Settings…", OpenSettings),
+        MenuItem::separator(),
+        MenuItem::action("Quit Koyo", Quit),
+    ])]);
 }
 
 /// What runs on without the app: the daemon's terminals, to end, with the names of those

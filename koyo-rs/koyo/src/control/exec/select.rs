@@ -182,7 +182,7 @@ fn containing(workspace: &Workspace, path: &Path) -> Option<(usize, usize)> {
 
 /// The selected worktree, of project `within` when that's given.
 fn selected(workspace: &Workspace, within: Option<usize>) -> Option<(usize, usize)> {
-    let at = within.unwrap_or(workspace.active_project);
+    let at = within.or(workspace.active_project())?;
     let project = workspace.projects.get(at)?;
     project.branches.get(project.active_branch)?;
     Some((at, project.active_branch))

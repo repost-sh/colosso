@@ -3,6 +3,8 @@
 //! split into its tab, closing with it. And closing tabs and panes of any kind, asking
 //! first about a file's unsaved edits.
 
+use std::path::Path;
+
 use gpui_kit::{App, AppContext as _, Context, Entity, Window};
 
 use super::Shell;
@@ -65,7 +67,7 @@ impl Shell {
     pub(crate) fn browser_view(
         &mut self,
         url: String,
-        project: &std::path::Path,
+        project: &Path,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Entity<BrowserView> {
@@ -255,6 +257,40 @@ impl Shell {
             shell.ask_about_files_then(editors, close, window, cx);
         };
         self.ask_to_end_terminals(&asked, then, window, cx);
+    }
+
+    /// Closes every tab of the checkout at `worktree` (`docs/arc-sidebar.md` 5), its chats
+    /// asked to stop and its terminals ended, asking first about unsaved edits.
+    pub fn clear_worktree(&mut self, worktree: &Path, window: &mut Window, cx: &mut Context<Self>) {
+        let Some((project, branch)) = self.workspace.unit_at(worktree) else {
+            return;
+        };
+        let unit = &self.workspace.projects[project].branches[branch];
+        let editors = (unit.tabs.iter()).flat_map(|tab| tab.unsaved(cx)).collect();
+        let terminals: Vec<u64> = (unit.tabs.iter())
+            .flat_map(Tab::panes)
+            .filter_map(|pane| pane.terminal)
+            .collect();
+        let worktree = worktree.to_owned();
+        let close = move |shell: &mut Self, cx: &mut Context<Self>| {
+            shell.end_terminals(&terminals, cx);
+            shell.close_tabs_of(&worktree, cx);
+        };
+        self.ask_about_files_then(editors, close, window, cx);
+    }
+
+    /// Closes every tab of the checkout at `worktree` now, last first, asking its chats to stop.
+    fn close_tabs_of(&mut self, worktree: &Path, cx: &mut Context<Self>) {
+        let Some((project, branch)) = self.workspace.unit_at(worktree) else {
+            return;
+        };
+        let count = self.workspace.projects[project].branches[branch].tabs.len();
+        for at in (0..count).rev() {
+            if let Some(tab) = self.workspace.tab((project, branch, at)) {
+                self.stop_chats_in(tab, cx);
+            }
+            self.close_tab_now((project, branch, at), cx);
+        }
     }
 
     /// Does `close` now when `editors` have no unsaved edits, and otherwise asks about them

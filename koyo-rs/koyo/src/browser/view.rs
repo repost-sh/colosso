@@ -24,7 +24,7 @@ use crate::history::How;
 
 mod lifecycle;
 mod navigation;
-pub use navigation::Visit;
+pub use navigation::{Controls, Visit};
 pub(super) mod sized;
 use super::menu::MenuRequest;
 use super::toolbar;
@@ -435,6 +435,11 @@ impl BrowserView {
             let pane = self.pane;
             self.send_to_page(AppRequest::Visible { pane, visible }, cx);
         }
+    }
+
+    /// The address field, which the page's toolbar shows, or the Arc sidebar in its place.
+    pub fn address_field(&self) -> &Entity<InputState> {
+        &self.address
     }
 
     /// Puts the keyboard in the address, all of it selected.

@@ -113,15 +113,21 @@ pub struct Project {
     pub read: u64,
 }
 
-impl Project {
-    fn new(path: PathBuf) -> Self {
-        let name = path.file_name().map_or_else(
+/// What a project is called until it's given a name: its folder's.
+fn folder_name(path: &Path) -> SharedString {
+    path.file_name()
+        .map_or_else(
             || path.display().to_string(),
             |name| name.to_string_lossy().into_owned(),
-        );
+        )
+        .into()
+}
+
+impl Project {
+    fn new(path: PathBuf) -> Self {
         Project {
+            name: folder_name(&path),
             path,
-            name: name.into(),
             branches: Vec::new(),
             active_branch: 0,
             error: None,
@@ -157,7 +163,10 @@ impl Project {
 #[derive(Clone, Debug, Default)]
 pub struct Workspace {
     pub projects: Vec<Project>,
-    pub active_project: usize,
+    /// The project selected, by its place; none while the window shows no project, as an empty
+    /// space shows none (`docs/arc-sidebar.md` 9): then `project()`, `branch()` and `shown_tab()`
+    /// answer `None` everywhere, until a project is selected.
+    active_project: Option<usize>,
     /// Tabs closed lately, the newest last.
     closed: Vec<ClosedTab>,
     /// The turn the tab shown last was stamped with: each tab shown after another takes the
@@ -170,14 +179,30 @@ impl Workspace {
     pub fn new(paths: &[PathBuf]) -> Self {
         Workspace {
             projects: paths.iter().cloned().map(Project::new).collect(),
-            active_project: 0,
+            active_project: (!paths.is_empty()).then_some(0),
             closed: Vec::new(),
             turn: 0,
         }
     }
 
     pub fn project(&self) -> Option<&Project> {
-        self.projects.get(self.active_project)
+        self.projects.get(self.active_project?)
+    }
+
+    /// The selected project's place, if one is shown.
+    pub fn active_project(&self) -> Option<usize> {
+        self.active_project
+    }
+
+    /// Selects the project at `index`; with `None`, or a place past the list, shows none.
+    pub fn select_project(&mut self, index: Option<usize>) {
+        self.active_project = index.filter(|&index| index < self.projects.len());
+    }
+
+    /// The tab shown: the selected worktree's, if a project is shown and it has one.
+    pub fn tab_shown(&self) -> Option<&Tab> {
+        let unit = self.branch()?;
+        unit.tabs.get(unit.active_tab)
     }
 
     pub fn branch(&self) -> Option<&BranchUnit> {
@@ -185,18 +210,26 @@ impl Workspace {
     }
 
     pub fn branch_mut(&mut self) -> Option<&mut BranchUnit> {
-        let project = self.projects.get_mut(self.active_project)?;
+        let project = self.projects.get_mut(self.active_project?)?;
         project.branches.get_mut(project.active_branch)
     }
 
     /// The project the checkout at `worktree` belongs to.
     pub fn project_of(&self, worktree: &Path) -> Option<&Project> {
-        self.projects.iter().find(|project| {
-            project
-                .branches
-                .iter()
-                .any(|unit| unit.worktree.path == worktree)
-        })
+        let (project, _) = self.unit_at(worktree)?;
+        Some(&self.projects[project])
+    }
+
+    /// Where the checkout at `worktree` is, as `(project, branch)`.
+    pub fn unit_at(&self, worktree: &Path) -> Option<(usize, usize)> {
+        self.projects
+            .iter()
+            .enumerate()
+            .find_map(|(project, held)| {
+                let branch =
+                    (held.branches.iter()).position(|unit| unit.worktree.path == worktree)?;
+                Some((project, branch))
+            })
     }
 
     pub fn project_index(&self, path: &Path) -> Option<usize> {
@@ -213,13 +246,29 @@ impl Workspace {
             .collect()
     }
 
+    /// Names each project as Koyo calls it: the name the person gave it in `looks`, or its
+    /// folder's.
+    pub fn name_projects(&mut self, looks: &crate::spaces::ProjectLooks) {
+        for project in &mut self.projects {
+            let given = looks
+                .get(&project.path)
+                .and_then(|look| look.name.as_deref());
+            let folder = project.path.file_name().and_then(|name| name.to_str());
+            // Named so already, nothing's made anew.
+            if given.or(folder) == Some(project.name.as_ref()) {
+                continue;
+            }
+            project.name = given.map_or_else(|| folder_name(&project.path), SharedString::from);
+        }
+    }
+
     /// Adds the project at `path` unless it is already there, and selects it.
     pub fn add_project(&mut self, path: PathBuf) -> usize {
         let index = self.project_index(&path).unwrap_or_else(|| {
             self.projects.push(Project::new(path));
             self.projects.len() - 1
         });
-        self.active_project = index;
+        self.active_project = Some(index);
         index
     }
 
@@ -228,9 +277,15 @@ impl Workspace {
             return;
         }
         self.projects.remove(index);
-        if self.active_project > index || self.active_project >= self.projects.len() {
-            self.active_project = self.active_project.saturating_sub(1);
-        }
+        self.active_project = self.active_project.and_then(|active| {
+            if self.projects.is_empty() {
+                None
+            } else if active > index || active >= self.projects.len() {
+                Some(active.saturating_sub(1))
+            } else {
+                Some(active)
+            }
+        });
     }
 
     /// Takes what git now reports for `project`. Checkouts it still has keep their tabs, and
@@ -289,7 +344,7 @@ impl Workspace {
     }
 
     pub fn select_branch(&mut self, project: usize, branch: usize) {
-        self.active_project = project;
+        self.active_project = Some(project);
         self.projects[project].active_branch = branch;
     }
 
@@ -298,12 +353,6 @@ impl Workspace {
         if let Some(unit) = self.branch_mut() {
             unit.active_tab = tab;
         }
-    }
-
-    /// Steps through projects without wrapping, so a swipe past either end does nothing.
-    pub fn step_project(&mut self, delta: isize) {
-        let last = self.projects.len().saturating_sub(1);
-        self.active_project = self.active_project.saturating_add_signed(delta).min(last);
     }
 
     /// Closes the tab at `tab` on `branch` of `project`, handing it back.
@@ -382,7 +431,7 @@ impl Workspace {
     pub fn shown_tab(&self) -> Option<(usize, usize, usize)> {
         let project = self.project()?;
         let unit = project.branch()?;
-        Some((self.active_project, project.active_branch, unit.active_tab))
+        Some((self.active_project?, project.active_branch, unit.active_tab))
     }
 
     pub fn unit_mut(&mut self, project: usize, branch: usize) -> Option<&mut BranchUnit> {

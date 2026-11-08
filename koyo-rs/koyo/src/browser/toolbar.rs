@@ -1,22 +1,21 @@
-//! The toolbar over a page: history, reload, the address, who drives the page, responsive
-//! mode and the inspector. And what's shown over the page itself: the start page, a notice when the
-//! engine or the page failed, and the bar that says who has the page when it's contested.
+//! The toolbar over a page: history, reload, the address, responsive mode and the inspector;
+//! none in the Arc layout, whose sidebar has them. And what's shown over the page itself: the
+//! start page, a notice when the engine or the page failed, and the bar that says who has the
+//! page when it's contested.
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::input::Input;
-use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::component::{Disableable as _, Selectable as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, ClickEvent, Context, Div, ElementId, Focusable as _, FontWeight,
-    InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, ParentElement as _,
+    InteractiveElement as _, IntoElement, MouseButton, ParentElement as _,
     StatefulInteractiveElement as _, Styled as _, Window, deferred, div, px, relative,
 };
 use koyo_browser_ipc::{Go, PageState};
 
-use super::control::{Holder, Mode};
+use super::control::Mode;
 use super::host::HostStatus;
-use super::menu::Lease;
 use super::view::{BrowserView, Notice};
 use crate::native::liquid;
 use crate::responsive::bar::toggle_button;
@@ -47,15 +46,14 @@ fn history_button(back: bool, enabled: bool, cx: &mut Context<BrowserView>) -> D
     super::history::button(button, back, enabled, cx)
 }
 
-/// The toolbar: history, reload, the address, the controller chip and the inspector, lit
-/// while the shell shows the `DevTools`.
+/// The toolbar: history, reload, the address and the inspector, lit while the shell shows the
+/// `DevTools`.
 pub(super) fn toolbar(view: &BrowserView, window: &Window, cx: &mut Context<BrowserView>) -> Div {
     let p = theme::palette(cx);
     let page = &view.page;
-    let open = view.is_open(cx);
+    let (open, controls) = (view.is_open(cx), view.controls(cx));
     let editing = view.address.read(cx).focus_handle(cx).is_focused(window);
-    let (loading, inspecting) = (page.loading, view.devtools.is_some());
-    let crashed = matches!(view.notice, Some(Notice::Gone(_)));
+    let (loading, inspecting) = (controls.loading, view.devtools.is_some());
     div()
         .relative()
         .h(px(40.))
@@ -67,8 +65,8 @@ pub(super) fn toolbar(view: &BrowserView, window: &Window, cx: &mut Context<Brow
         .border_b_1()
         .border_color(p.hairline)
         .children(progress(page, p))
-        .child(history_button(true, open && page.can_go_back, cx))
-        .child(history_button(false, open && page.can_go_forward, cx))
+        .child(history_button(true, controls.back, cx))
+        .child(history_button(false, controls.forward, cx))
         .child(
             icon_button(
                 "browser-reload",
@@ -81,19 +79,11 @@ pub(super) fn toolbar(view: &BrowserView, window: &Window, cx: &mut Context<Brow
                 cx,
             )
             .small()
-            .disabled(!(open || crashed))
-            .on_click(cx.listener(|this, _, _, cx| {
-                let to = if this.page.loading {
-                    Go::Stop
-                } else {
-                    Go::Reload
-                };
-                this.go(to, cx);
-            })),
+            .disabled(!controls.reload)
+            .on_click(cx.listener(|this, _, _, cx| this.reload_or_stop(cx))),
         )
         .child(address(view, editing, p))
         .children(view.zoom_chip(cx))
-        .child(chip(view, p))
         .child(
             toggle_button(
                 "browser-responsive",
@@ -164,46 +154,6 @@ fn address(view: &BrowserView, editing: bool, p: Palette) -> Div {
                 .min_w_0()
                 .flex_1()
                 .child(Input::new(&view.address).appearance(false).small()),
-        )
-}
-
-/// Who drives the page, as a chip whose menu takes it or gives it back.
-fn chip(view: &BrowserView, p: Palette) -> impl IntoElement {
-    let (label, yours) = match &view.control.holder {
-        Some(Holder::Human { .. }) => ("Yours".to_owned(), true),
-        Some(Holder::Agent { actor, .. }) => (actor.label.clone(), false),
-        None => ("Nobody".to_owned(), false),
-    };
-    let agent = view.control.agent().is_some();
-    let pane = view.pane;
-    div()
-        .id("browser-control-chip")
-        .ml_1()
-        .h(px(22.))
-        .px_2()
-        .flex_shrink_0()
-        .flex()
-        .items_center()
-        .gap_1()
-        .rounded_full()
-        .text_xs()
-        .cursor_pointer()
-        .bg(if yours { p.selected } else { p.raised })
-        .text_color(if yours { p.text } else { p.muted })
-        .hover(|chip| chip.bg(p.hover))
-        .when(agent, |chip| {
-            chip.child(div().size(px(6.)).rounded_full().bg(p.accent))
-        })
-        .child(label)
-        .on_mouse_down(
-            MouseButton::Left,
-            move |event: &MouseDownEvent, window, cx| {
-                cx.stop_propagation();
-                NativeMenu::new()
-                    .menu_with_disabled("Take Control", yours, Box::new(Lease { pane, take: true }))
-                    .menu_with_disabled("Give Back", !yours, Box::new(Lease { pane, take: false }))
-                    .show(event.position, window, cx);
-            },
         )
 }
 

@@ -119,6 +119,8 @@ pub fn shell_with(roots: &[&Path], cx: &mut TestAppContext) -> (AnyWindowHandle,
             shell.workspace.add_project(root.to_path_buf());
             shell.show_worktrees(root, read_worktrees(root), cx);
         }
+        // As the app does when a project is added: the settings list it, in a space.
+        shell.save_projects(cx);
     });
     (window, shell)
 }

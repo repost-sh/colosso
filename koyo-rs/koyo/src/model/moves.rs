@@ -1,8 +1,35 @@
 //! Moving tabs and panes on a checkout: a tab dropped on a side of a pane splits with it,
 //! a pane dragged out of its split goes to another pane or a tab of its own, a tab dropped
-//! on another joins it side by side, and tabs reorder in the strip.
+//! on another joins it side by side, and tabs reorder in the strip. And a tab dragged from
+//! one checkout's list in the Arc sidebar to another's (`docs/arc-sidebar.md` 5).
 
-use super::{BranchUnit, Edge, Pane, Tab};
+use super::{BranchUnit, Edge, Pane, Tab, Workspace};
+
+impl Workspace {
+    /// Moves the tab at `from`, as `(project, branch, tab)`, to the checkout `to`, as
+    /// `(project, branch)`, at `at` among its tabs, and shows it there. False when it's on that
+    /// checkout already, or either isn't there.
+    pub fn move_tab_to_checkout(
+        &mut self,
+        (project, branch, tab): (usize, usize, usize),
+        to: (usize, usize),
+        at: usize,
+    ) -> bool {
+        if (project, branch) == to || self.unit_mut(to.0, to.1).is_none() {
+            return false;
+        }
+        let Some(moved) = (self.unit_mut(project, branch)).and_then(|unit| unit.close(tab)) else {
+            return false;
+        };
+        let Some(unit) = self.unit_mut(to.0, to.1) else {
+            return false;
+        };
+        let at = at.min(unit.tabs.len());
+        unit.tabs.insert(at, moved);
+        self.select_tab(to.0, to.1, at);
+        true
+    }
+}
 
 impl BranchUnit {
     /// The tab holding pane `id`.

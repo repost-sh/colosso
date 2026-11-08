@@ -141,6 +141,7 @@ impl Drawn {
                     shell.workspace.add_project(root.clone());
                     shell.show_worktrees(&root, worktrees, cx);
                 }
+                shell.save_projects(cx);
                 shell.workspace.select_worktree(project, &root)
             })
         });

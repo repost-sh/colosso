@@ -64,7 +64,13 @@ pub fn with_menu<E: InteractiveElement>(
 
 /// The menu a project's row opens, for its main checkout at `path`.
 pub fn project_menu(path: &Path) -> NativeMenu {
-    let menu = NativeMenu::new()
+    project_items(NativeMenu::new(), path)
+}
+
+/// What any project's menu offers, after `menu`'s own items: a new worktree, the folder's
+/// items, and removing it.
+pub fn project_items(menu: NativeMenu, path: &Path) -> NativeMenu {
+    let menu = menu
         .menu("New Worktree…", Box::new(NewWorktreeIn(path.to_owned())))
         .separator();
     path_items(menu, path)
@@ -101,9 +107,18 @@ pub fn pick_folder(
     prompt: &'static str,
     cx: &mut App,
 ) -> impl Future<Output = Option<PathBuf>> + use<> {
+    pick_path(prompt, true, cx)
+}
+
+/// Asks the user for a file, or a folder if `folder`, `prompt` naming the button that picks it.
+pub fn pick_path(
+    prompt: &'static str,
+    folder: bool,
+    cx: &mut App,
+) -> impl Future<Output = Option<PathBuf>> + use<> {
     let picked = cx.prompt_for_paths(PathPromptOptions {
-        files: false,
-        directories: true,
+        files: !folder,
+        directories: folder,
         multiple: false,
         prompt: Some(prompt.into()),
     });
@@ -271,10 +286,10 @@ impl Shell {
                 .await
                 .map_err(|error| error.message)?;
             this.update(cx, |this, cx| {
-                let selected = this.workspace.active_project;
+                let selected = this.workspace.active_project();
                 let project = this.workspace.add_project(path.clone());
                 if !select {
-                    this.workspace.active_project = selected;
+                    this.workspace.select_project(selected);
                 }
                 this.workspace.set_worktrees(project, worktrees);
                 this.save_projects(cx);
@@ -312,8 +327,12 @@ impl Shell {
         }
     }
 
-    pub(crate) fn save_projects(&self, cx: &mut Context<Self>) {
+    /// Saves the projects, a new one joining the space shown and one gone leaving its space.
+    pub(crate) fn save_projects(&mut self, cx: &mut Context<Self>) {
         let paths = self.workspace.paths();
-        settings::update(cx, |settings| settings.projects = paths);
+        settings::update(cx, |settings| {
+            settings.projects = paths;
+            settings.reconcile_spaces();
+        });
     }
 }

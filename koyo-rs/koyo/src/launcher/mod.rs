@@ -1,6 +1,7 @@
 //! The new-tab launcher (`docs/new-tab.md`): ⌘T, or a tab strip's +, opens a floating bar over the
 //! window instead of a tab. A pill in it says what kind of tab Enter opens, a browser tab, a chat
-//! or a terminal, and Tab goes through them in that order. What's typed is an address or a search,
+//! or a terminal, or a new worktree (`docs/arc-sidebar.md` 8), and Tab goes through them in that
+//! order. What's typed is an address or a search,
 //! a message for a new chat, or a command for a new terminal; with nothing typed, Enter opens an
 //! empty tab of the kind. Under the field, what the history holds for it, filtered as it's typed,
 //! and the tabs open already, as Zen's floating address bar lists them.
@@ -58,10 +59,13 @@ pub enum Kind {
     Browser,
     Chat,
     Terminal,
+    /// Not a tab: a worktree, named here and started from the branch the New Worktree dialog
+    /// picks.
+    Worktree,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 3] = [Kind::Browser, Kind::Chat, Kind::Terminal];
+    pub const ALL: [Kind; 4] = [Kind::Browser, Kind::Chat, Kind::Terminal, Kind::Worktree];
 
     /// The kind after this one, or before it, round the ends.
     pub fn step(self, by: isize) -> Kind {
@@ -75,11 +79,12 @@ impl Kind {
             Kind::Browser => "Browser",
             Kind::Chat => "Chat",
             Kind::Terminal => "Terminal",
+            Kind::Worktree => "Worktree",
         }
     }
 
     pub fn icon(self) -> IconName {
-        self.pane().icon()
+        self.pane().map_or(IconName::GitBranchPlus, PaneKind::icon)
     }
 
     /// The pill's colour, each kind's own so a glance tells them apart, and dark enough for its
@@ -89,6 +94,7 @@ impl Kind {
             Kind::Browser => (212., 0.85, 0.46),
             Kind::Chat => (265., 0.65, 0.55),
             Kind::Terminal => (152., 0.62, 0.31),
+            Kind::Worktree => (28., 0.8, 0.4),
         };
         hsla(hue / 360., saturation, lightness, 1.)
     }
@@ -99,15 +105,17 @@ impl Kind {
             Kind::Browser => "Search or enter address…",
             Kind::Chat => "Ask a new chat…",
             Kind::Terminal => "Run a command in a new terminal…",
+            Kind::Worktree => "Name a new worktree…",
         }
     }
 
-    /// The kind of pane it opens.
-    pub fn pane(self) -> PaneKind {
+    /// The kind of pane it opens; a worktree opens none.
+    pub fn pane(self) -> Option<PaneKind> {
         match self {
-            Kind::Browser => PaneKind::Browser,
-            Kind::Chat => PaneKind::Chat,
-            Kind::Terminal => PaneKind::Terminal,
+            Kind::Browser => Some(PaneKind::Browser),
+            Kind::Chat => Some(PaneKind::Chat),
+            Kind::Terminal => Some(PaneKind::Terminal),
+            Kind::Worktree => None,
         }
     }
 }

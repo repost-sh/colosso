@@ -15,8 +15,7 @@ use gpui_kit::component::kbd::Kbd;
 use gpui_kit::{
     Action, AnyWindowHandle, App, AppContext as _, Bounds, Context, ElementId, Entity, FocusHandle,
     Global, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, ParentElement as _,
-    Pixels, Rems, Render, SharedString, Size, Styled as _, Window, WindowBackgroundAppearance,
-    WindowBounds, WindowKind, WindowOptions, div, point, px, size,
+    Pixels, Rems, Render, SharedString, Size, Styled as _, Window, div, point, px, size,
 };
 
 use self::view::{Menu, Rows};
@@ -317,18 +316,7 @@ fn open_surface<B: MenuBody>(
         anchor.bottom() + px(GAP)
     };
     let origin = window.bounds().origin + point(left, top);
-    let options = WindowOptions {
-        window_bounds: Some(WindowBounds::Windowed(Bounds::new(origin, extent))),
-        titlebar: None,
-        focus: false,
-        kind: WindowKind::PopUp,
-        is_movable: false,
-        is_resizable: false,
-        is_minimizable: false,
-        window_background: WindowBackgroundAppearance::Blurred,
-        display_id: window.display(cx).map(|display| display.id()),
-        ..Default::default()
-    };
+    let options = crate::modal::popup_options(Bounds::new(origin, extent), false, window, cx);
     let menu = cx.new(|cx: &mut Context<Menu>| {
         let hearing = body.downgrade();
         Menu {

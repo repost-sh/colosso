@@ -32,11 +32,7 @@ impl Shell {
     /// chat's mark only when it has something to say, which goes first unless a terminal waits
     /// for the person.
     pub fn tab_dots(&self, tab: &Tab, p: Palette, cx: &mut App) -> (Option<Div>, Option<Div>) {
-        let statuses = (tab.panes().into_iter())
-            .filter_map(|pane| pane.terminal)
-            .filter_map(|id| self.terminal_state(id))
-            .map(|state| state.status);
-        let status = most_urgent(statuses);
+        let status = most_urgent(self.tab_terminal_statuses(tab));
         let mark = (status != Some(Status::NeedsInput))
             .then(|| self.chat_tab_mark(tab, p, cx))
             .flatten();
@@ -47,6 +43,25 @@ impl Shell {
         }
     }
 
+    /// Whether a terminal of `tab` waits for the person.
+    pub fn tab_terminal_waits(&self, tab: &Tab) -> bool {
+        self.tab_terminal_statuses(tab)
+            .any(|status| status == Status::NeedsInput)
+    }
+
+    /// What `tab`'s terminals are doing, those the daemon has told of.
+    fn tab_terminal_statuses(&self, tab: &Tab) -> impl Iterator<Item = Status> {
+        (tab.panes().into_iter())
+            .filter_map(|pane| pane.terminal)
+            .filter_map(|id| self.terminal_state(id))
+            .map(|state| state.status)
+    }
+
+    /// How many terminals the daemon keeps for the checkout at `worktree`.
+    pub fn terminal_count(&self, worktree: &std::path::Path) -> usize {
+        self.terminals.states.count_in(worktree)
+    }
+
     /// How many terminals of the checkout at `worktree` wait for the person.
     pub fn terminals_needing_input(&self, worktree: &std::path::Path) -> usize {
         self.terminals.states.needing_input(worktree)
@@ -54,7 +69,7 @@ impl Shell {
 
     /// Whether the daemon keeps terminals for the checkout at `worktree`.
     pub fn has_terminals(&self, worktree: &std::path::Path) -> bool {
-        !self.terminals.states.of_worktree(worktree).is_empty()
+        self.terminal_count(worktree) > 0
     }
 
     fn terminal_state(&self, id: u64) -> Option<&State> {

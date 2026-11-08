@@ -322,6 +322,7 @@ impl Launcher {
         let row = at.and_then(|at| self.rows.get(at));
         let act = match row {
             Some(row) => row.act.clone(),
+            None if self.kind == Kind::Worktree => Act::StartWorktree(typed.clone()),
             None if typed.is_empty() => Act::Empty(self.kind),
             None => return,
         };

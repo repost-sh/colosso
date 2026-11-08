@@ -164,7 +164,7 @@ fn devtools_dock_at_every_side_detach_into_a_split_and_close_with_their_page(
     assert_eq!(shown(&shell, cx).0.len(), 2, "they open detached");
     (cx.update_window(window, |_, window, cx| {
         shell.update(cx, |shell, cx| {
-            let at = (shell.workspace.active_project, 0, 0);
+            let at = (shell.workspace.active_project().unwrap(), 0, 0);
             shell.close_tab_at(at, window, cx);
         });
     }))

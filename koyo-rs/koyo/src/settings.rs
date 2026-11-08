@@ -155,6 +155,12 @@ pub struct Settings {
     pub sidebar_open_on_launch: bool,
     /// The main checkouts of the projects in the sidebar, in order.
     pub projects: Vec<PathBuf>,
+    /// The spaces the Arc sidebar shows the projects in (`docs/arc-sidebar.md` 9), and the
+    /// one it shows, by its place among them.
+    pub spaces: Vec<crate::spaces::Space>,
+    pub space: usize,
+    /// What projects are called and show as in Koyo, by their main checkout.
+    pub project_looks: crate::spaces::ProjectLooks,
     /// Where new worktrees go, in a folder per project. Unset, they go in
     /// `~/koyo/workspaces`.
     pub worktrees_dir: Option<PathBuf>,
@@ -258,6 +264,9 @@ impl Default for Settings {
             semantic_colouring: true,
             sidebar_open_on_launch: true,
             projects: Vec::new(),
+            spaces: Vec::new(),
+            space: 0,
+            project_looks: crate::spaces::ProjectLooks::new(),
             worktrees_dir: None,
             branch_prefix: BranchPrefix::default(),
             most_language_servers: None,
@@ -317,7 +326,9 @@ pub fn init(cx: &mut App) {
         .or_else(|| dirs::data_dir().map(|dir| dir.join(APP_ID)))
         .map(|dir| dir.join(FILE))
         .filter(|_| !cfg!(test));
-    let settings = path.as_deref().map(file::load).unwrap_or_default();
+    let mut settings: Settings = path.as_deref().map(file::load).unwrap_or_default();
+    // Projects from before spaces, or edited into the file, find their space.
+    settings.reconcile_spaces();
     let seen = path.as_deref().and_then(file::modified);
     cx.set_global(Store {
         settings,

@@ -1,0 +1,167 @@
+//! The Arc sidebar (`docs/arc-sidebar.md`) as the app draws it, saved as PNGs in
+//! `.superpowers/qa/arc/`: this checkout's project with a few tabs in a space, a second project in
+//! a space of its own with its own colours, and an empty space, light and dark:
+//!
+//! ```sh
+//! KOYO_CONFIG_DIR=$PWD/.superpowers/qa/arc/config \
+//!   script/cargo run -p koyo --features visual-check -- --visual-check-arc
+//! ```
+
+use std::path::{Path, PathBuf};
+use std::process::ExitCode;
+use std::time::Duration;
+
+use gpui_kit::{Action, point};
+
+use crate::gradient::GradientTheme;
+use crate::model::{Pane, PaneKind, Tab, Unloaded};
+use crate::settings::{self, Layout};
+use crate::shell::Shell;
+use crate::shell::ToggleRightPanel;
+use crate::test_support::try_git;
+use crate::theme::{UseDarkTheme, UseLightTheme};
+use crate::visual::{Drawn, Result, checkout};
+
+/// Where the pictures go, relative to the checkout.
+const OUT: &str = ".superpowers/qa/arc";
+
+pub fn run() -> ExitCode {
+    crate::visual::run(draw)
+}
+
+/// A second repository, beside the pictures, for the second space.
+fn second_project() -> Result<PathBuf> {
+    let site = checkout()?.join(OUT).join("site");
+    if !site.join(".git").exists() {
+        std::fs::create_dir_all(&site).map_err(|error| error.to_string())?;
+        try_git(&site, &["init", "-q", "-b", "main"])?;
+        try_git(&site, &["commit", "-q", "--allow-empty", "-m", "start"])?;
+    }
+    site.canonicalize().map_err(|error| error.to_string())
+}
+
+/// The tabs the checkout shows: pages, a chat and a terminal, a split listed and one shown, the
+/// last of them.
+fn open_tabs(shell: &mut Shell) {
+    let web_page = |address: &str, title: &str| {
+        let unloaded = Unloaded {
+            address: address.into(),
+            favicon: None,
+        };
+        Tab::Single(Pane::unloaded(unloaded, title.to_owned().into()))
+    };
+    let titled = |kind: PaneKind, title: &str| {
+        let mut pane = Pane::new(kind);
+        pane.title = title.to_owned().into();
+        Tab::Single(pane)
+    };
+    shell
+        .workspace
+        .push_tab(web_page("https://www.example.com/docs", "Example Domain"));
+    shell
+        .workspace
+        .push_tab(titled(PaneKind::Chat, "Sidebar like Arc's"));
+    shell
+        .workspace
+        .push_tab(titled(PaneKind::Terminal, "cargo test"));
+    // A split listed, as Arc lists one: its halves side by side.
+    shell.workspace.push_tab(Tab::beside(
+        web_page("https://x.com/history", "History / X"),
+        web_page("https://normas.example/", "Normas"),
+    ));
+    // And one shown, each pane an island, the glass between them.
+    shell.workspace.push_tab(Tab::beside(
+        web_page("https://github.com/", "GitHub"),
+        web_page("https://www.example.com/", "Example Domain"),
+    ));
+    if let Some(unit) = shell.workspace.branch_mut() {
+        unit.active_tab = unit.tabs.len() - 1;
+    }
+}
+
+fn draw() -> Result<Vec<String>> {
+    let site = second_project()?;
+    let mut drawn = Drawn::open_on_checkout(OUT, &[&site])?;
+    let shell = drawn.shell.clone();
+    let mut said = Vec::new();
+    drawn.cx.update(|cx| {
+        settings::update(cx, |settings| {
+            settings.layout = Layout::Arc;
+            settings.spaces.clear();
+            settings.space = 0;
+            settings.project_looks.clear();
+        });
+        shell.update(cx, Shell::save_projects);
+        settings::update(cx, |settings| {
+            settings.spaces[0].name = "Work".into();
+            let second_space = settings.add_space();
+            settings.spaces[second_space].name = "Side projects".into();
+            settings.move_project(&site, second_space);
+            let mut colours = GradientTheme::default();
+            colours.move_primary(point(300., 120.));
+            settings.spaces[second_space].dark_theme = Some(colours.clone());
+            settings.spaces[second_space].light_theme = Some(colours);
+            settings.add_space();
+            settings.space = 0;
+        });
+        shell.update(cx, |shell, cx| {
+            open_tabs(shell);
+            cx.notify();
+        });
+    });
+    // The tile shows the git host's avatar once it's fetched; offline, the initials stay.
+    let root = checkout()?;
+    let fetched = drawn.until(Duration::from_secs(20), |drawn| {
+        Ok(drawn
+            .cx
+            .update(|cx| super::avatar::picture(&root, cx))
+            .is_some())
+    });
+    said.push(match fetched {
+        Ok(()) => "the project's avatar came from its git host".into(),
+        Err(why) => format!("no avatar ({why}): the tile shows initials"),
+    });
+    // The panel beside the panes, an island of its own.
+    (drawn.cx)
+        .update_window(drawn.window, |_, window, cx| {
+            window.dispatch_action(Box::new(ToggleRightPanel), cx);
+        })
+        .map_err(|error| error.to_string())?;
+    let themes: [(&dyn Action, &str); 2] = [(&UseLightTheme, "light"), (&UseDarkTheme, "dark")];
+    for (theme, name) in themes {
+        drawn.cx.update(|cx| cx.dispatch_action(theme));
+        drawn.draw()?;
+        let path = drawn.save(&format!("arc-work-{name}.png"))?;
+        said.push(format!("saved {}", path.display()));
+    }
+    for (space, name) in [(1, "side"), (2, "empty")] {
+        drawn
+            .cx
+            .update(|cx| shell.update(cx, |shell, cx| shell.show_space(space, cx)));
+        // The switch moves in time: the space fades in and its mark stretches; let it settle.
+        for _ in 0..8 {
+            drawn.cx.advance_clock(Duration::from_millis(100));
+            drawn.draw()?;
+        }
+        let path = drawn.save(&format!("arc-{name}-dark.png"))?;
+        said.push(format!("saved {}", path.display()));
+    }
+    // The Orca layout keeps one card, hairlines between its parts: no islands there.
+    drawn.cx.update(|cx| {
+        settings::update(cx, |settings| settings.layout = Layout::Orca);
+        shell.update(cx, |shell, cx| shell.show_space(0, cx));
+    });
+    let path = drawn.save("orca-dark.png")?;
+    said.push(format!("saved {}", path.display()));
+    let shown = drawn.cx.read(|cx| {
+        let settings = settings::get(cx);
+        (settings.spaces.iter())
+            .map(|space| format!("{} ({} projects)", space.name, space.projects.len()))
+            .collect::<Vec<_>>()
+            .join(", ")
+    });
+    said.push(format!("spaces: {shown}"));
+    let held = |path: &Path| path.display().to_string();
+    said.push(format!("second project: {}", held(&site)));
+    Ok(said)
+}

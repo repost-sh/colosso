@@ -5,7 +5,7 @@
 //! already, reloaded. What the person typed in the address that isn't one is a search, which
 //! the history keeps too.
 
-use gpui_kit::Context;
+use gpui_kit::{App, Context};
 use koyo_browser_ipc::{AppRequest, Go};
 
 use super::{BrowserEvent, BrowserView, Notice};
@@ -23,7 +23,44 @@ pub struct Visit {
     pub how: Option<How>,
 }
 
+/// What the back, forward and reload buttons can do for the page: the toolbar's, and the Arc
+/// sidebar's (`docs/arc-sidebar.md` 1).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "a button each, enabled or not, and whether the page loads"
+)]
+pub struct Controls {
+    pub back: bool,
+    pub forward: bool,
+    pub reload: bool,
+    /// Reload stops the page instead while it loads.
+    pub loading: bool,
+}
+
 impl BrowserView {
+    /// What the buttons can do for the page now.
+    pub fn controls(&self, cx: &App) -> Controls {
+        let open = self.is_open(cx);
+        let crashed = matches!(self.notice, Some(Notice::Gone(_)));
+        Controls {
+            back: open && self.page.can_go_back,
+            forward: open && self.page.can_go_forward,
+            reload: open || crashed,
+            loading: self.page.loading,
+        }
+    }
+
+    /// What the reload button does: stops the page while it loads, reloads it otherwise.
+    pub fn reload_or_stop(&mut self, cx: &mut Context<Self>) {
+        let to = if self.page.loading {
+            Go::Stop
+        } else {
+            Go::Reload
+        };
+        self.go(to, cx);
+    }
+
     /// Opens the page at `url`, as a link or an agent asks.
     pub fn navigate(&mut self, url: String, cx: &mut Context<Self>) {
         self.load(url, How::Followed, cx);
@@ -86,8 +123,9 @@ impl BrowserView {
         cx.notify();
     }
 
-    /// The person moves through the page's history, reloads or stops it.
-    pub(in crate::browser) fn go(&mut self, to: Go, cx: &mut Context<Self>) {
+    /// The person moves through the page's history, reloads or stops it: from the page's toolbar,
+    /// or the Arc sidebar's buttons.
+    pub(crate) fn go(&mut self, to: Go, cx: &mut Context<Self>) {
         self.person_acts(Mode::Implicit, cx);
         if to == Go::Reload && matches!(self.notice, Some(Notice::Gone(_))) {
             // A crashed page needs a new browser, not a reload.

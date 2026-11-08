@@ -15,8 +15,9 @@ in `koyo-rs/koyo/src/launcher/` and `koyo-rs/koyo/src/history/`.
   window, for a tab on the selected checkout. ⌘T again, Escape, or a click outside it
   closes it.
 - A pill on the left of the field names the **kind** of tab Enter opens: **Browser**, **Chat**
-  or **Terminal**, in that order on purpose. Each kind has its own colour (blue, violet,
-  green), so a glance tells them apart. **Tab** goes to the next kind and **⇧Tab** to
+  or **Terminal**, in that order on purpose, and last **Worktree**, which opens no tab
+  (`docs/arc-sidebar.md` 8). Each kind has its own colour (blue, violet, green, orange), so a
+  glance tells them apart. **Tab** goes to the next kind and **⇧Tab** to
   the one before. Clicking the pill, or the hint on the right, also moves to the next kind.
   There is no editor tab any more: ⌘P opens files.
 - **Nothing typed, Enter** opens an empty tab of the kind: the browser's start page with the
@@ -28,6 +29,9 @@ in `koyo-rs/koyo/src/launcher/` and `koyo-rs/koyo/src/history/`.
     been typed there and sent.
   - Terminal: opens a new login shell named after the command, then types the command into
     it with Enter (section 2).
+  - Worktree: what's typed is the new worktree's name. Enter opens the New Worktree dialog
+    on the selected project with that name filled in, and the branch is picked there.
+    Nothing is listed under the field, and Enter with nothing typed opens the dialog empty.
 - **↑/↓** (and ⌃P/⌃N) move the selection. **→** at the end of the field takes the host
   completion, or the selected row's text, into the field. **⇧⌫** (or ⇧⌦) forgets the
   selected row if it comes from history; so does the × on that row.

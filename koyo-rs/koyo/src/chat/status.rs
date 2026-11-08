@@ -1,16 +1,17 @@
 //! What a tab and a checkout's row say of a chat (`docs/chat.md` 5.3): a spinner while it works, a
 //! dot in the text's colour when it needs you, red if it failed and a muted dot if it finished,
-//! until a person has seen it. The spinner moves only while the app's in front, in steps, and as a
-//! view of its own: a turn can take a long time, and each step draws only it, not the shell.
+//! until a person has seen it. The spinner is a terminal's: braille dots going round, a step every
+//! 80 ms, drawn as dots rather than a glyph so it looks the same in any font. It moves only while
+//! the app's in front, and as a view of its own: a turn can take a long time, and each step draws
+//! only it, not the shell.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use gpui_kit::assets::IconName;
 use gpui_kit::{
     Animation, AnimationExt as _, App, AppContext as _, Context, Div, Entity, Global, IntoElement,
-    ParentElement as _, Render, Styled as _, Transformation, Window, div, percentage, px,
+    ParentElement as _, Render, Styled as _, Window, div, px,
 };
 use koyo_agent::protocol::ids::ThreadId;
 use koyo_agent::protocol::methods::{ThreadParams, ThreadsRead};
@@ -19,13 +20,21 @@ use koyo_agent::protocol::model::{Status, ThreadSummary};
 use super::{Chats, ChatsEvent, logged};
 use crate::model::Tab;
 use crate::pane::dot;
-use crate::shell::{Shell, icon};
+use crate::shell::Shell;
 use crate::theme::{self, Palette};
 
-const SPINNER: f32 = 12.;
-const TURN: Duration = Duration::from_secs(1);
-/// How often the spinner moves: every 30 degrees.
-const SPINNER_FPS: f32 = 12.;
+/// The spinner's square, the same as a dot's room.
+const SPINNER: f32 = 10.;
+/// The spinner's steps, as the braille cells terminal spinners use (`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`): each a
+/// cell's dots, 1 to 3 down the left and 4 to 6 down the right, as Unicode numbers them.
+const STEPS: [u8; 10] = [0x0B, 0x19, 0x39, 0x38, 0x3C, 0x34, 0x26, 0x27, 0x07, 0x0F];
+/// How long each step shows, as terminal spinners take.
+const STEP: Duration = Duration::from_millis(80);
+/// How often the spinner's drawn: often enough that no step is missed or late.
+const SPINNER_FPS: f32 = 25.;
+/// A dot of the cell, and the room between them.
+const DOT: f32 = 2.5;
+const DOT_GAP: f32 = 1.5;
 
 /// Whether the person is at the app, as far as a chat cares.
 pub(super) fn is_frontmost(cx: &App) -> bool {
@@ -69,19 +78,48 @@ struct Spin;
 
 impl Render for Spin {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let spinner = icon(IconName::LoaderCircle, SPINNER).text_color(theme::palette(cx).muted);
-        let holder = div().size(px(SPINNER));
+        let p = theme::palette(cx);
+        let holder = div().size(px(SPINNER)).flex_shrink_0();
         if is_frontmost(cx) {
-            let turning = Animation::new(TURN).repeat().with_max_fps(SPINNER_FPS);
-            holder.child(
-                spinner.with_animation("chat-working", turning, |spinner, delta| {
-                    spinner.transform(Transformation::rotate(percentage(delta)))
-                }),
-            )
+            let round = STEP * STEPS.len() as u32;
+            let going = Animation::new(round).repeat().with_max_fps(SPINNER_FPS);
+            holder
+                .with_animation("chat-working", going, move |holder, delta| {
+                    let step = ((delta * STEPS.len() as f32) as usize).min(STEPS.len() - 1);
+                    holder.child(cell(STEPS[step], p))
+                })
+                .into_any_element()
         } else {
-            holder.child(spinner)
+            holder.child(cell(STEPS[0], p)).into_any_element()
         }
     }
+}
+
+/// A braille cell of the spinner, the dots of `lit` bright and the rest faint.
+fn cell(lit: u8, p: Palette) -> Div {
+    let dot = |bit: u8| {
+        let on = lit & bit != 0;
+        div().size(px(DOT)).rounded_full().bg(if on {
+            p.text.opacity(0.85)
+        } else {
+            p.muted.opacity(0.18)
+        })
+    };
+    let column = |bits: [u8; 3]| {
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(DOT_GAP))
+            .children(bits.map(dot))
+    };
+    div()
+        .size_full()
+        .flex()
+        .items_center()
+        .justify_center()
+        .gap(px(DOT_GAP))
+        .child(column([0x01, 0x02, 0x04]))
+        .child(column([0x08, 0x10, 0x20]))
 }
 
 /// The spinners by place, each of which is a view drawn in one spot, for as long as a chat works.
@@ -90,7 +128,9 @@ struct Spinners(HashMap<String, Entity<Spin>>);
 
 impl Global for Spinners {}
 
-fn spinner(place: String, cx: &mut App) -> Div {
+/// The spinner `place` shows while a chat works there: a tab, a checkout's row, a project's
+/// tile.
+pub fn spinner(place: String, cx: &mut App) -> Div {
     let held = cx.default_global::<Spinners>().0.get(&place).cloned();
     let spin = held.unwrap_or_else(|| {
         let spin = cx.new(|_| Spin);
@@ -165,11 +205,15 @@ fn checkout_marks<'a>(
 impl Shell {
     /// The mark on a tab with chats, the most urgent of theirs.
     pub fn chat_tab_mark(&self, tab: &Tab, p: Palette, cx: &mut App) -> Option<Div> {
-        let chats = self.chat_tabs.chats.read(cx);
-        let mark = (tab.panes().into_iter())
-            .filter_map(|pane| chats.summary(pane.chat.as_ref()?).and_then(ChatMark::of))
-            .max()?;
+        let mark = self.tab_chat_marks(tab, cx).max()?;
         Some(mark.shown(format!("tab-{}", tab.first().id), p, cx))
+    }
+
+    /// The marks of `tab`'s chats, those with something to show.
+    fn tab_chat_marks(&self, tab: &Tab, cx: &App) -> impl Iterator<Item = ChatMark> {
+        let chats = self.chat_tabs.chats.read(cx);
+        (tab.panes().into_iter())
+            .filter_map(move |pane| chats.summary(pane.chat.as_ref()?).and_then(ChatMark::of))
     }
 
     /// The mark on the row of the checkout at `worktree`.
@@ -177,6 +221,66 @@ impl Shell {
         let mark = *self.chat_tabs.chats.read(cx).checkout_marks.get(worktree)?;
         Some(mark.shown(format!("row-{}", worktree.display()), p, cx))
     }
+
+    /// Whether a tab has something for the person (`docs/arc-sidebar.md` 5): a terminal waiting
+    /// for them, or a chat that's unread, failed or needs them.
+    pub fn tab_wants_attention(&self, tab: &Tab, cx: &App) -> bool {
+        self.tab_chat_marks(tab, cx)
+            .any(|mark| mark != ChatMark::Working)
+            || self.tab_terminal_waits(tab)
+    }
+
+    /// How the checkout at `worktree` is doing, as a project's tile sums it up.
+    pub fn checkout_activity(&self, worktree: &Path, cx: &App) -> Activity {
+        if self.terminals_needing_input(worktree) > 0 {
+            return Activity::Attention;
+        }
+        match self.chat_tabs.chats.read(cx).checkout_marks.get(worktree) {
+            None => Activity::Quiet,
+            Some(ChatMark::Working) => Activity::Working,
+            Some(_) => Activity::Attention,
+        }
+    }
+
+    /// How many chats are at work in the checkout at `worktree`.
+    pub fn chats_working(&self, worktree: &Path, cx: &App) -> usize {
+        (self
+            .chat_tabs
+            .chats
+            .read(cx)
+            .latest_first(Some(worktree))
+            .into_iter())
+        .filter(|summary| summary.status == Status::Working)
+        .count()
+    }
+
+    /// Asks the chats `tab` shows to stop whatever they're running.
+    pub fn stop_chats_in(&self, tab: &Tab, cx: &mut App) {
+        let threads: Vec<ThreadId> = (tab.panes().into_iter())
+            .filter_map(|pane| pane.chat.clone())
+            .collect();
+        if threads.is_empty() {
+            return;
+        }
+        self.chat_tabs.chats.update(cx, |chats, cx| {
+            for thread in &threads {
+                let working = chats.summary(thread).map(|summary| summary.status);
+                if working == Some(Status::Working) {
+                    chats.stop(thread, cx);
+                }
+            }
+        });
+    }
+}
+
+/// What's going on in a project or a checkout, the most urgent of it: what a tile's corner shows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Activity {
+    Quiet,
+    /// A chat is at work: a spinner.
+    Working,
+    /// Something waits for the person: a dot.
+    Attention,
 }
 
 #[cfg(test)]

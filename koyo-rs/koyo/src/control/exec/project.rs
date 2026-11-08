@@ -58,7 +58,7 @@ pub(crate) fn add(
 pub(crate) fn select(selector: &str, cx: &mut App) -> Result<Value, ControlError> {
     let path = try_update_shell(cx, |shell, window, cx| {
         let at = select::project(&shell.workspace, selector)?;
-        shell.workspace.active_project = at;
+        shell.workspace.select_project(Some(at));
         shell.follow_selection(window, cx);
         cx.notify();
         Ok(shell.workspace.projects[at].path.clone())
@@ -91,9 +91,8 @@ pub(crate) fn move_to(input: &ProjectMoveInput, cx: &mut App) -> Result<Value, C
             .min(workspace.projects.len() - 1);
         let project = workspace.projects.remove(from);
         workspace.projects.insert(to, project);
-        workspace.active_project = (selected.as_deref())
-            .and_then(|path| workspace.project_index(path))
-            .unwrap_or(0);
+        let reselected = (selected.as_deref()).and_then(|path| workspace.project_index(path));
+        workspace.select_project(reselected);
         shell.save_projects(cx);
         cx.notify();
         Ok(shell.workspace.paths())

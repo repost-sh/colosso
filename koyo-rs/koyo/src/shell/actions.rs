@@ -119,6 +119,7 @@ impl Shell {
             }))
             .map(|root| Self::handle_launcher(root, cx))
             .map(|root| projects::handle_actions(root, cx))
+            .map(|root| crate::arc::handle_actions(root, cx))
             .map(browser::handle_actions)
             .map(|root| terminals::handle_actions(root, cx))
             .on_action(|_: &EditBranchPrefix, window, cx| {

@@ -128,7 +128,6 @@ impl States {
             .filter(|shown| shown.handle == *handle && shown.at.elapsed().as_secs() < NOTICE_SECS)
     }
 
-    /// How many terminals of the checkout at `worktree` wait for the person.
     /// The terminals of the checkout at `worktree`, by name.
     pub fn of_worktree(&self, worktree: &Path) -> Vec<(Handle, &State)> {
         let mut terminals: Vec<(Handle, &State)> = (self.by_handle.iter())
@@ -139,6 +138,14 @@ impl States {
         terminals
     }
 
+    /// How many terminals the checkout at `worktree` has.
+    pub fn count_in(&self, worktree: &Path) -> usize {
+        (self.by_handle.values())
+            .filter(|state| state.worktree.as_deref() == Some(worktree))
+            .count()
+    }
+
+    /// How many terminals of the checkout at `worktree` wait for the person.
     pub fn needing_input(&self, worktree: &Path) -> usize {
         (self.by_handle.values())
             .filter(|state| {
