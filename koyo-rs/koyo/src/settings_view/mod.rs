@@ -2,6 +2,8 @@
 //! selects in the card. Each page lives in a module of its own.
 
 mod about;
+mod agent_desktop;
+mod agent_desktop_remove;
 mod appearance;
 mod browser;
 mod chat;
@@ -45,6 +47,7 @@ pub enum SettingsPage {
     Browser,
     KeyboardShortcuts,
     McpServer,
+    AgentDesktop,
     About,
 }
 
@@ -61,6 +64,7 @@ const SIDEBAR_GROUPS: [(&str, &[SettingsPage]); 2] = [
             SettingsPage::Browser,
             SettingsPage::KeyboardShortcuts,
             SettingsPage::McpServer,
+            SettingsPage::AgentDesktop,
         ],
     ),
     ("Koyo", &[SettingsPage::About]),
@@ -77,6 +81,7 @@ impl SettingsPage {
             SettingsPage::Browser => "Browser",
             SettingsPage::KeyboardShortcuts => "Keyboard shortcuts",
             SettingsPage::McpServer => "MCP server",
+            SettingsPage::AgentDesktop => "Agent desktop",
             SettingsPage::About => "About",
         }
     }
@@ -91,6 +96,7 @@ impl SettingsPage {
             SettingsPage::Browser => IconName::Globe,
             SettingsPage::KeyboardShortcuts => IconName::Keyboard,
             SettingsPage::McpServer => IconName::Plug,
+            SettingsPage::AgentDesktop => IconName::Bot,
             SettingsPage::About => IconName::Info,
         }
     }
@@ -105,6 +111,7 @@ impl SettingsPage {
             SettingsPage::Browser => browser::sections(cx),
             SettingsPage::KeyboardShortcuts => keyboard_shortcuts::sections(cx),
             SettingsPage::McpServer => mcp_server::sections(cx),
+            SettingsPage::AgentDesktop => agent_desktop::sections(cx),
             SettingsPage::About => about::sections(cx),
         }
     }
@@ -221,6 +228,7 @@ mod tests {
             SettingsPage::Appearance,
             SettingsPage::KeyboardShortcuts,
             SettingsPage::McpServer,
+            SettingsPage::AgentDesktop,
             SettingsPage::About,
         ] {
             assert_eq!(listed.iter().filter(|&&&listed| listed == page).count(), 1);

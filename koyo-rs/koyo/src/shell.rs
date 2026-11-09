@@ -94,7 +94,7 @@ pub struct Shell {
     pub tile_hand: Rc<arc::TileHand>,
     /// The places a symbol led to, listed under the tabs, while they are.
     pub locations: Option<Entity<Locations>>,
-    _subscriptions: [Subscription; 10],
+    _subscriptions: [Subscription; 11],
 }
 
 impl Shell {
@@ -153,6 +153,8 @@ impl Shell {
                     .name_projects(&settings::get(cx).project_looks);
             }),
             cx.observe_global::<Theme>(|this, cx| this.terminals.tell_theme(cx)),
+            // Settings → Agent desktop shows how the Mac stands as it changes.
+            cx.observe_global::<crate::agent_desktop::Desk>(|_, cx| cx.notify()),
             // The status bar is tall only with servers to show.
             cx.subscribe(status_bar.servers(), |this, _, ServersListed(any), cx| {
                 this.rails.servers = *any;
@@ -205,11 +207,17 @@ impl Shell {
         step: impl FnOnce(&mut NavigationHistory) -> bool,
         cx: &mut Context<Self>,
     ) {
-        self.history.update(cx, |history, cx| {
-            if step(history) {
+        let moved = self.history.update(cx, |history, cx| {
+            let moved = step(history);
+            if moved {
                 cx.notify();
             }
+            moved
         });
+        // Settings → Agent desktop says how the Mac stands as it's opened.
+        if moved && self.route(cx) == Route::Settings(settings_view::SettingsPage::AgentDesktop) {
+            crate::agent_desktop::refresh(cx);
+        }
     }
 
     pub fn navigate(&mut self, route: Route, cx: &mut Context<Self>) {

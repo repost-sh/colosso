@@ -21,6 +21,10 @@ koyo-term-control = { path = "../koyo-term-control" }
 koyo-term-engine = { path = "../koyo-term-engine" }
 koyo-termd = { path = "../koyo-termd" }
 koyo-term-mcp = { path = "../koyo-term-mcp" }
+# Agent desktops (`docs/agent-desktop.md`): what the app, the host and the helper agree on,
+# and the session holder, which the app runs from its own executable as `koyo desk-holder`.
+koyo-desk-wire = { path = "../koyo-desk-wire" }
+koyo-desk-holder = { path = "../koyo-desk-holder" }
 # Each checkout's files, scanned and watched once for every panel that shows it.
 koyo-project = { path = "../koyo-project" }
 # The language servers behind the file tabs: rust-analyzer, found or fetched, and talked to.
@@ -89,6 +93,8 @@ merman = { version = "=0.10.0-alpha.1", default-features = false, features = ["s
 merman-export = { version = "=0.10.0-alpha.1", default-features = false, features = ["native-fonts"] }
 # Settings on disk; all versions GPUI already pulls in.
 dirs = "6"
+# The person's user id, which the agent desktop's helper answers alone.
+libc = "0.2"
 # The log: the facade GPUI and gix already log through, and the clock its lines are stamped
 # with, both already built for GPUI.
 log = { version = "0.4", features = ["std"] }

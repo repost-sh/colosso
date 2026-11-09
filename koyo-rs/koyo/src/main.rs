@@ -1,3 +1,4 @@
+mod agent_desktop;
 mod arc;
 mod atomic_file;
 mod backdrop;
@@ -69,6 +70,7 @@ fn init(cx: &mut App) {
     history::init(cx);
     launcher::init(cx);
     quitting::init(cx);
+    agent_desktop::init(cx);
     browser::init(cx);
     right_panel::init(cx);
     files::init(cx);
@@ -127,6 +129,9 @@ fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
     match args.next().as_deref() {
         Some("termd") => return koyo_termd::main(args),
+        // `koyo desk-holder`: the agent desktop's session holder (docs/agent-desktop.md 6),
+        // a daemon of its own that outlives a crash of the app, as the terminal daemon does.
+        Some("desk-holder") => return koyo_desk_holder::main(args),
         // `koyo app`: the app's operations from a shell, called on the running app's
         // control socket (docs/app-control.md).
         Some("app") => return koyo_app_control::cli_main(args),
