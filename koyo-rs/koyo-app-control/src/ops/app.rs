@@ -46,6 +46,7 @@ pub enum SettingsPage {
     Browser,
     Keyboard,
     Mcp,
+    AgentDesktop,
     About,
 }
 

@@ -5304,6 +5304,8 @@ dependencies = [
  "koyo-app-control",
  "koyo-browser-ipc",
  "koyo-daemon",
+ "koyo-desk-holder",
+ "koyo-desk-wire",
  "koyo-git",
  "koyo-lsp",
  "koyo-project",
@@ -5312,6 +5314,7 @@ dependencies = [
  "koyo-term-engine",
  "koyo-term-mcp",
  "koyo-termd",
+ "libc",
  "log",
  "merman",
  "merman-export",
@@ -5425,6 +5428,36 @@ version = "0.1.0"
 dependencies = [
  "libc",
  "log",
+]
+
+[[package]]
+name = "koyo-desk-helper"
+version = "0.1.0"
+dependencies = [
+ "koyo-desk-wire",
+ "libc",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "koyo-desk-holder"
+version = "0.1.0"
+dependencies = [
+ "koyo-daemon",
+ "koyo-desk-wire",
+ "libc",
+ "serde_json",
+]
+
+[[package]]
+name = "koyo-desk-wire"
+version = "0.1.0"
+dependencies = [
+ "ciborium",
+ "serde",
+ "serde_bytes",
+ "serde_json",
 ]
 
 [[package]]
