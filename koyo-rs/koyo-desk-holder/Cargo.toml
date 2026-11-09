@@ -1,0 +1,18 @@
+[package]
+name = "koyo-desk-holder"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "The agent desktop's session holder: logs the agent account in through Apple's Screen Sharing on loopback, keeps that connection open, resizes the agent screen, and ends the session before it could stand in the person's way (docs/agent-desktop.md 6)."
+
+[dependencies]
+koyo-desk-wire = { path = "../koyo-desk-wire" }
+# Its folder, socket, lock and log, as the app's other daemons have them.
+koyo-daemon = { path = "../koyo-daemon" }
+# Sockets, signals, `dlsym` for Security's Diffie-Hellman, and random bytes.
+libc = "0.2"
+serde_json = "1"
+
+[lints]
+workspace = true
