@@ -337,14 +337,18 @@ Places are desktop points from the agent desktop's top left. An act lands on an 
 the last snapshot by `ref` (a plain click presses it through accessibility, no event) or at
 a point (`x`, `y`, both); `window` names the window meant, raised first when another covers
 the point. Acts and `desktop_close` fail `person_has_control` (retryable) while the person
-acts in the desktop's tab and for 5 s after; `desktop_open` fails it for an app the person
-runs as its only instance. `desktop_unavailable` (retryable): the agent desktop is off,
+acts in the desktop's tab and for 5 s after. `desktop_open` fails it for the person's own
+running app (one that takes no second instance, or any app asked for with `personsOwn`),
+with a message that tells the agent to stop, say what it wants and ask them: called again
+with `consent`, the exact text of the message in which they agreed, the app is lent to the
+agent desktop, and given back, never quit (`docs/agent-desktop.md` 5). `desktop_unavailable` (retryable): the agent desktop is off,
 still starting, or its host lacks a grant. The reads are `read`, as the browser's.
 
 ```
-desktop_open       [desktop] C { app: name|bundle id|path, file?: path|URL, args?: [string] }
-                     → { app, pid, windows: [DesktopWindow] }; the desktop's tab opens
-                     out of sight
+desktop_open       [desktop] C { app: name|bundle id|path, file?: path|URL, args?: [string],
+                     personsOwn?: bool, consent?: the person's words }
+                     → { app, pid, windows: [DesktopWindow], lent? }; the desktop's tab
+                     opens out of sight
 desktop_windows    [read] R {} → { windows: [{ window, pid, app, title, x, y, width,
                      height }] }, front to back
 desktop_screenshot [read] R { window?, scale?: 1|2 (default 1: a pixel a point) } → image
@@ -368,10 +372,15 @@ desktop_key        [desktop] C { keys: "cmd+s"|"return"|"shift+cmd+["…, window
                      document, panel or sheet its app opened since), or to `window`, which
                      has them from then on
 desktop_focus      [desktop] I { window } → { done }; raised, and the keys' from now on
+desktop_take_focus [desktop] C { window?, consent?: the person's words } → { done }; the
+                     agent desktop on the person's screen, that window in front; refused
+                     (person_has_control, with what to ask them) until `consent` is theirs
+desktop_return_focus [desktop] I {} → { done }; the person's own desktop on their screen
+                     again; nothing when the focus isn't held
 desktop_wait       [read] R { quietMs? (default 500, at most 10000), timeoutMs? (default
                      10000, at most 60000) } → { still, millis }
 desktop_close      [desktop] D { window? | pid? (one) } → { done }; a window, or quits an app
-                     the agent opened
+                     the agent opened (a lent one is given back as it is)
 ```
 
 ### Activity
@@ -479,7 +488,7 @@ owner found the list of no use, and agents read the log with `activity_list` (5)
 
 ## 11. As implemented (2026-11-02)
 
-- Crates: `koyo-rs/koyo-app-control` (65 operations, frames, socket, client, `koyo app`),
+- Crates: `koyo-rs/koyo-app-control` (67 operations, frames, socket, client, `koyo app`),
   `koyo-rs/koyo/src/control/` (listener, gate, approval, confirmations, receipts, activity,
   topics, in-process client, HTTP server in `control/http.rs`, executors in `control/exec/`,
   browser executors in `control/exec/browser/`, the agent desktop's in
@@ -487,7 +496,7 @@ owner found the list of no use, and agents read the log with `activity_list` (5)
   `backend.rs`, `socket.rs`, `app.rs`, `tools.rs`, `launch.rs`, `subscriptions.rs`,
   `http.rs`), the Settings page in `settings_view/mcp_server.rs`, `mcp_agents.rs` (the
   Agents section) and `mcp_clients.rs`.
-- `koyo mcp` lists 80 tools (14 terminal, 65 app, `app_launch`); HTTP lists 79 (no
+- `koyo mcp` lists 82 tools (14 terminal, 67 app, `app_launch`); HTTP lists 81 (no
   `app_launch`). The server is named `koyo`. A chat's session registers it under that name,
   with `KOYO_CHAT` (`docs/chat.md` O1).
 - Browser tools run over CDP through `browser/agent.rs`, its refusals typed (`AgentError`). A

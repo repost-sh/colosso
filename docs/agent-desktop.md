@@ -48,8 +48,10 @@ Each line is a rule the host keeps, checked on macOS 27.2 (13 has the numbers).
 | Pointer, keyboard focus, front app | Unchanged by every act, but for the keyboard while a menu is up (next line) | Events are posted to one process (`CGEventPostToPid`) with the target window stamped in; never at the HID or session tap. The app is told it's active by an AppKit event of its own, and that the window is its key window by the pair of records the window server itself sends (`SLPSPostEventRecordTo`); neither changes what the window server has in front. |
 | Keyboard, while a menu is up in an agent's app | Goes to that menu: a right-click's, a pop-up button's. The host closes the menu at the person's first key press, which is lost to it; what they type next is theirs. One left up for a minute is closed too | macOS sends every key to a menu that is open, whichever app is in front (its "key thief"), and a menu that loses the keyboard closes: none can be kept up without it. The host watches for a menu of the agent's apps and, on a key of the keyboard's own since it opened, hands the keyboard to the person's front app (`keyboard.rs`). A menu the person opened in the tab is left alone. `[open]` no menu up at all: read, closed at once and shown by Koyo, an item pressed through accessibility (15). |
 | Desktop they're on | No agent window is drawn there | An agent's app is started hidden, assigned to the agent desktop, then shown; a window made later is made there. Sampled every 0.2-0.5 ms while six apps opened: never seen. |
-| Front app, when an agent's app activates itself | Back within ~15 ms | The host watches activations and gives the front back to the app the person had: the first in Launch Services' front-to-back order that isn't the agent's, asked at that moment (`order.rs`). The app the workspace's notices named last is only fallen back on: macOS tells of one activation when two follow within milliseconds, and the front once went to the app before the one the person had just picked. The notices come on a queue of the guard's own, not on the host's loop: macOS follows an app that makes itself the front one to the desktop its windows are on, and a front given back 140 ms late, with the loop held up in an act, left the person on the agent desktop. Should macOS go there all the same, the agent's app coming to the front again as it arrives (within a second of the front being given back) is answered once more, which brings the person back to the desktop their app is on. Otherwise not while the person is on the agent desktop itself. |
+| Front app, when an agent's app comes to the front (by itself, or brought forward by macOS) | Back within ~20 ms, and they stay on the desktop they're on | A thread of the host's own asks the window server every 8 ms which app is in front, and sets the front there itself (`_SLPSSetFrontProcessWithOptions`, no window raised) to an app with a window on the desktop the person is looking at: the one they had, when it has one there, else the one whose window is frontmost there, else the Finder, as on an empty desktop (`front.rs`). Measured with the person's Arc lent: 21 ms from Arc in front to the person's app in front again, no desktop switched. Slower loses: macOS follows an app in front to the desktop its windows are on (140 ms late, and a second late, the person was on the agent's desktop). The second was Launch Services' (`activateWithOptions:` took 1.04-1.10 s whenever the app in front was busy coming forward; so did the workspace's notices), which is why neither is used. Should macOS go to the agent's desktop all the same, the front goes to the app the person had, which brings them back to its desktop. Not on the agent desktop itself: there, an agent's app in front is the person's doing. |
 | An app they open while the agent runs its only instance | Nothing shows on their desktop; the Agent desktop tab says the one running is the agent's and offers Open Yours | Launch Services activates the agent's hidden instance: the host gives the front back, and tells Koyo of an activation no act of the agent's explains (1.5 s). An instance for the person is started only when they press the button, never on a guess. |
+| An app of their own that they run, when an agent asks for it | Stays theirs, and where it is, until they tell the agent yes in so many words. Then every window of it is on the agent desktop until it's given back: by the agent, or by Take It Back in the tab, which brings it back to the desktop it came from. Its coming to the front (its Dock icon, ⌘-Tab, a link, the app itself) doesn't bring it back: the front returns to their own app. It's never quit for them | The host refuses first and tells the agent to stop, say what it wants and ask (5, lending). Their yes counts once. A lent app is on record, so a host that crashed is followed by one that gives it back. |
+| The desktop a lent app left | Theirs to go to as before: with nothing else on it, it shows the Finder in front, as an empty desktop does | The Dock keeps each desktop's front app and brings it forward as the person arrives; brought forward, the lent app shows its window, and the Dock follows the window to the desktop it's on. That took the person to the agent desktop each time they went to the desktop their Arc had left (2026-11-10). Telling the window server another front app for that desktop (`SLSSpaceSetFrontPSN`, which the Dock itself calls) changed nothing. What holds is the line above: the front taken from the app again within ~20 ms, here given to the Finder (four arrivals of four stayed; the one answered a second late didn't). |
 | Dock and ⌘-Tab | Agents' apps aren't listed | Launched as UI elements (Launch Services' own option). |
 | Clipboard | Theirs, but for the moment between an agent's ⌘C or ⌘X and the host putting theirs back | `desktop_key` keeps every item, presses, reads what was copied for the agent's answer, and writes theirs back (a file promise among them isn't called for, and so isn't put back). `[open]` a menu's Copy pressed by an agent isn't guarded; nor is a copy that takes an app longer than half a second; and a copy of the person's own made in that same moment is lost to the put-back. |
 | Displays, Arrange Displays | Unchanged | No virtual display is made. |
@@ -141,9 +143,67 @@ Koyo started again at once waits for the last one's host to finish.
 - An app assigns whole, and some hand a second launch to the instance that runs. Chromium and
   Electron apps (told by their frameworks) get a data folder of their own under the host's state
   folder, so the agent's instance is apart from the person's and never hands over (a
-  `--user-data-dir` an agent passes is dropped). Finder, System Settings, Arc and Firefox are
-  refused while the person runs them (`person_has_control`). An instance Launch Services answers
-  with that isn't one the host started is left untouched.
+  `--user-data-dir` an agent passes is dropped). Finder, System Settings, Arc and Firefox take
+  no second instance: while the person runs one, theirs is all there is, and it's lent or
+  refused (next). So is an instance Launch Services answers with that isn't one the host
+  started.
+- Lending: the person's own running instance comes to the agent desktop only on their word
+  (`consent.rs`, shared with taking the focus below), the way Prisma's CLI guards a database
+  reset from an agent. Asked for one (an app of the line above, or any app with
+  `personsOwn`), the host refuses (`person_has_control`) with a
+  message that tells the agent to stop; to tell the person what it wants to bring over, why,
+  and what it will do there, and that the app's windows leave their desktop meanwhile; to
+  ask; that an unclear answer isn't consent and nothing said before the refusal counts; and
+  to call again with `consent` set to the exact text of the message in which they agreed.
+  Words count once and only after a refusal: asked for again after it went back, the app is
+  refused again, and the refusal says the earlier words are used up.
+  With those words the app is lent (`lending.rs`): assigned to the agent desktop as it runs,
+  every window of it, listed among the agent's apps so that acts and the guard of the front
+  treat it alike, and the words go to the host's log. The desktop that held most of its
+  windows is kept as its home. Should its windows still be on a
+  desktop of the person's (an assignment made in the first tenths of a second of an app's
+  life answers yes and doesn't hold), it's assigned again, and after 3 s given back and the
+  agent told. What an agent opens in it goes to the instance as it runs, with nothing
+  hidden and no arguments: those are for an instance that starts. The host can't tell the person's words
+  from an agent's: what guards is the instruction, the log and the tab's notice (9).
+- A lent app is given back, never quit: by `desktop_close` with its pid, by Take It Back in
+  the tab (in front of the person), at the host's end, and by the next host after one that
+  crashed (the record of apps marks it `lent`, with its home). Not by its coming to the
+  front: macOS and the app bring it forward for reasons of their own (the desktop it left,
+  a page it was asked for, a click in Mission Control), and a lent app that went back each
+  time was of no use; the front is given to the person's app instead (2). Giving back
+  assigns it to its home (the desktop the person is on, if that one is gone) and then to
+  none, as the Dock's Assign To: None does (the Dock's own code calls
+  `CGSProcessAssignToSpace` with 0 for an app without a binding): its windows all land on
+  that one desktop, wherever they were, and what it opens later opens where the person is.
+  With it goes what an agent held of it: the last snapshot's elements, text on its way to
+  it, a window held by its bar.
+- A browser's pages on a desktop that isn't showing. Arc (Chromium), lent, drew no page
+  and gave none to accessibility while the agent desktop wasn't on the person's screen: its
+  own chrome was drawn, the page's place stayed one flat colour for as long as it was
+  looked at (40 s, 76 s), and the tree held the tab's name and nothing of the page. The
+  window server calls such a window hidden, whatever captures it, and Chromium draws
+  nothing in a hidden window. The page was drawn, and read, from the moment the person
+  looked at the agent desktop itself. Nothing outside the app changes that; a Chromium app
+  the host starts itself could be told at launch to keep drawing (not built: no such
+  browser on this Mac but Arc, which takes no second instance). VS Code (Electron) and
+  AppKit's own apps draw all along.
+- Taking the focus (`showing.rs`): for an app that won't work unseen, an agent may put the
+  agent desktop on the person's screen, its window in front, in place of what they are
+  doing. It's the one thing here that changes what the person looks at, so it's theirs to
+  allow each time, asked as lending is: `desktop_take_focus` refuses (`person_has_control`)
+  with what to tell them (that their screen goes to the agent desktop, why nothing less
+  will do, for how long, and that their desktop comes back) and takes only the exact text
+  in which they agreed, once. The desktops are switched by Mission Control's own buttons,
+  pressed through accessibility (`mission::go_to`): no key or pointer event, and the
+  desktop meant, whatever macOS is set to do when an app comes forward. The guard of the
+  front stands down for the switch, and on the agent desktop an agent's app in front is
+  left there (2). The focus goes back with `desktop_return_focus`, when a lent app it was
+  taken for is closed, and at the host's end: to the desktop the person was on. Going to a
+  desktop of their own takes it back at once. Never lent: the Finder, which holds the
+  person's desktop itself; Koyo; and an app with a window in full screen, which is a space
+  of its own that an assignment doesn't move (the agent is told to ask the person to take it
+  out of full screen).
 - Asked again for an app it runs, the answer is that instance (shown, and asked for a window, if
   it had none); a file goes to it when the person doesn't run the app too. An instance that was
   just asked to quit isn't opened in: a new one starts.
@@ -152,8 +212,6 @@ Koyo started again at once waits for the last one's host to finish.
 - When an agent closes one, and at quit, the app is asked to quit, then stopped after 3 s: only
   processes the host launched. macOS ends an idle app with no window by itself; it's then gone
   from the list.
-- `[open]` sharing an app the person runs for the length of a task (assign, then `assign 0` to
-  release).
 
 ## 6. The picture [built]
 
@@ -254,12 +312,14 @@ quiet time: a cursor never rests.
 - `Hello` both ways with the protocol's number; the app's hello names the mach service for frames.
 - App → host: `Visible`, `Input` (the person's, in desktop points: pointer, scroll, keys, typed
   text), `Request { request, ask }`, `Cancel`, `OpenForPerson` (the person pressed Open Yours),
-  `Quit`. Host → app: `Hello` (with the grants it holds), `Grants`, `Desktop`,
+  `TakeBack` (they pressed Take It Back on an app of theirs that is lent), `Quit`. Host → app: `Hello` (with the grants it holds), `Grants`, `Desktop`,
   `Windows` (the agent's windows, and the desktop's own picture apart from them), `Wanted`
-  (an agent's app came to the front unasked), `Pointer`,
+  (an agent's app came to the front unasked), `Lent` (the person's apps that are lent, on
+  every change of the apps), `Pointer`,
   `Answer { request, result }`, `Log`.
-- Asks: `Open`, `Windows`, `Screenshot`, `Snapshot`, `Act` (click, move, drag, scroll, raise,
-  type, set a value, key), `Wait`, `Close` (a window, or an app the host started). Refusals carry a code: no desktop, not permitted, not
+- Asks: `Open` (with whether the person's own is asked for, and their words of consent),
+  `TakeFocus` (with their words) and `ReturnFocus`, `Windows`, `Screenshot`, `Snapshot`, `Act` (click, move, drag, scroll, raise,
+  type, set a value, key), `Wait`, `Close` (a window, or an app the host started; a lent one is given back). Refusals carry a code: no desktop, not permitted, not
   found, the person's app, invalid, failed, timed out, the person acting. An answer too large for
   a frame is refused as failed; the link stays up.
 - `[open]` The host's end is told by its program's path, not by its audit token.
@@ -294,6 +354,8 @@ quiet time: a cursor never rests.
 - When an agent's app comes to the front with no act of an agent's behind it, the tab says for a
   minute "Calculator came to the front: if you opened it, the one running is the agent's." with
   Open Yours, which starts an instance for the person on their desktop (2).
+- While an app of the person's is lent, the tab says "Arc is yours, lent to agents: its
+  windows are here until it's given back." with Take It Back (`notices.rs`).
 
 ## 10. Agent tools [built]
 
@@ -307,19 +369,21 @@ agents have open on the desktop, and can open nothing there itself. Inputs and o
 
 | Tool | Scope | Does |
 | --- | --- | --- |
-| `desktop_open` | `desktop` | Starts an app (name, bundle id or path), optionally with a file or URL, on the agent desktop; opens the tab out of sight |
+| `desktop_open` | `desktop` | Starts an app (name, bundle id or path), optionally with a file or URL, on the agent desktop; opens the tab out of sight. With `personsOwn`, or for an app that takes no second instance, the person's own running one, once `consent` carries their words (5); the answer then says `lent` |
 | `desktop_windows` | `read` | The windows there, front to back: id, process, app, title, frame |
 | `desktop_screenshot` | `read` | A window, or the whole desktop, as PNG with its place on the desktop; points equal pixels at scale 1 |
 | `desktop_snapshot` | `read` | The accessibility tree with refs and each one's middle, optionally the menu bars |
 | `desktop_click`, `desktop_move`, `desktop_drag`, `desktop_scroll` | `desktop` | By point (desktop points) or by ref; `window` raises the window meant first |
 | `desktop_type`, `desktop_key` | `desktop` | Text as keys (at most 4000), or a field's whole value by ref; a combo such as `cmd+s`, in the window that has the keys or in `window`, which has them from then on (7). A copy or cut answers with what it copied (2) |
 | `desktop_focus` | `desktop` | Brings a window in front on the agent desktop; keys go to it from then on |
+| `desktop_take_focus`, `desktop_return_focus` | `desktop` | Puts the agent desktop on the person's screen with a window in front, once `consent` carries their words (5); and gives their own desktop back |
 | `desktop_wait` | `read` | Until the picture is still for `quietMs`, at most `timeoutMs` (60 s) |
-| `desktop_close` | `desktop` | A window, or quits an app the agent opened |
+| `desktop_close` | `desktop` | A window, or quits an app the agent opened; a lent one is given back as it is |
 
 Acts and `desktop_close` fail `person_has_control` while the person acts in the tab and for
 5 s after (9), and so does text being typed when the person acts; the host's refusals map to `desktop_unavailable` (no desktop, a grant
-missing), `not_found`, `person_has_control` (the person's app), `invalid_input`, `timeout`
+missing), `not_found`, `person_has_control` (the person's app, or theirs to allow first),
+`invalid_input`, `timeout`
 and `internal`, their message as the host wrote it.
 
 ## 11. Settings → Agent desktop, and the setup [built]
@@ -447,7 +511,19 @@ the host's own; `KOYO_DESK_STATS` has the host log the frames it sends.
 - A window that an app moves by a drag of its own making (a bar the host doesn't take for one:
   lower than 56 points, or under a control) still goes by the real pointer (7).
 - The screen locked, or the display asleep: untested; grant prompts wait for the unlock.
-- Sharing an app the person runs; a per-app allow list (2, 5).
+- Lending (5): the person's words of consent are taken from the agent as given; Koyo could
+  check them against the chat for its own agents. A lent app's windows come back to one
+  desktop (its home), not to each one they were on: only the Dock moves a single window.
+  A browser's pages aren't drawn or read on a desktop that isn't showing (5): lending the
+  person's Arc gives an agent a window it can't see into, until the person looks at the
+  agent desktop. The person asking for a lent app at its Dock icon gets nothing but the
+  tab's notice. A window of the person's own that they drag onto the agent desktop in
+  Mission Control is theirs still, unseen in the tab, and takes them there whenever its
+  app comes forward: nothing is done about it. The Dock passing over the apps' bindings
+  (it sets every app without one to none), as when it restarts, would undo the host's
+  assignments: not seen, not tested. Whether the
+  Dock's own pass over the apps' bindings (it sets every app without one to none) undoes the
+  host's assignments, as when the Dock restarts, isn't tested. A per-app allow list.
 - Audio and notifications of the agent's apps reach the person.
 - System prompts an agent's app raises show on the person's screen.
 - Several displays; a full-screen app on the agent desktop (4).
