@@ -178,16 +178,34 @@ Koyo started again at once waits for the last one's host to finish.
   that one desktop, wherever they were, and what it opens later opens where the person is.
   With it goes what an agent held of it: the last snapshot's elements, text on its way to
   it, a window held by its bar.
-- A browser's pages on a desktop that isn't showing. Arc (Chromium), lent, drew no page
-  and gave none to accessibility while the agent desktop wasn't on the person's screen: its
-  own chrome was drawn, the page's place stayed one flat colour for as long as it was
-  looked at (40 s, 76 s), and the tree held the tab's name and nothing of the page. The
-  window server calls such a window hidden, whatever captures it, and Chromium draws
-  nothing in a hidden window. The page was drawn, and read, from the moment the person
-  looked at the agent desktop itself. Nothing outside the app changes that; a Chromium app
-  the host starts itself could be told at launch to keep drawing (not built: no such
-  browser on this Mac but Arc, which takes no second instance). VS Code (Electron) and
-  AppKit's own apps draw all along.
+- An app's pages on a desktop that isn't showing. AppKit calls every window on the agent
+  desktop not visible while that desktop isn't on screen, and a window that starts there
+  is never told of a change (a window of our own logged it: not visible from its first
+  moment, no notice after, its display link at 120 a second all the same). What the host
+  starts draws regardless: AppKit's own apps; an Electron app as Electron makes one by
+  default (its page called itself visible, ran at 126 frames a second, was read and
+  clicked) as well as VS Code, which turns throttling off; and a Chromium browser of the
+  agent's own (Chrome for Testing 152: visible, 60 frames a second, drawn). The person's
+  own Arc, lent, did not: its own chrome was drawn, the page's place stayed one flat
+  colour for as long as it was looked at (40 s, 76 s), the tree held the tab's name and
+  nothing of the page, and nothing asked of it through accessibility changed that
+  (`AXManualAccessibility`, `AXEnhancedUserInterface`, an observer). The page was drawn,
+  and read, from the moment the person looked at the agent desktop itself. `[open]` Why
+  Arc and not Chrome: most likely Chromium stops a page when its window is told it is no
+  longer visible, which Arc's was on the person's desktop before it was lent and a window
+  that starts on the agent desktop never is. Not verified, and with it whether an agent's
+  own browser stops once the agent desktop has been on screen and left again.
+- An app's pages in its tree. Chromium builds a page's accessibility tree only when
+  asked. An Electron app is asked by an attribute of its own (`AXManualAccessibility`); a
+  Chromium browser hasn't that one and builds them for a screen reader, so the host sets
+  what a screen reader sets (`AXEnhancedUserInterface`) on a Chromium app that refuses
+  the first (`app.rs`). Chrome for Testing had its toolbar in the tree and nothing of the
+  page before; with it, the page was in `desktop_snapshot` 3 s after the open was asked,
+  and its button took a click, all unseen. Chrome answers that it took neither. No other
+  app is set it: it changes how an app behaves. A lent app has it turned off again when
+  it goes back, unless it was on when it came, as for a person who uses a screen reader
+  (not seen run here: this Mac's only browser, Arc, takes the first attribute). `[open]` A
+  host that crashed leaves it on in a lent app until that app quits.
 - Taking the focus (`showing.rs`): for an app that won't work unseen, an agent may put the
   agent desktop on the person's screen, its window in front, in place of what they are
   doing. It's the one thing here that changes what the person looks at, so it's theirs to
