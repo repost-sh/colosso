@@ -16,6 +16,8 @@ use crate::new_worktree::NewWorktreeDialog;
 use crate::shell::Shell;
 use crate::test_support::{draw, repo, select, shell_with};
 
+mod on_page;
+
 /// A shell over a checkout of its own, selected.
 fn shell(
     name: &str,
@@ -30,7 +32,16 @@ fn shell(
 
 /// Presses ⌘T in `window`: the launcher's window and the launcher.
 fn launch(window: AnyWindowHandle, cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<Launcher>) {
-    press(window, "cmd-t", cx);
+    launch_with(window, "cmd-t", cx)
+}
+
+/// Presses `keys` in `window`, which open the launcher: its window and the launcher.
+fn launch_with(
+    window: AnyWindowHandle,
+    keys: &str,
+    cx: &mut TestAppContext,
+) -> (AnyWindowHandle, Entity<Launcher>) {
+    press(window, keys, cx);
     cx.run_until_parked();
     dialog::<Launcher>(cx).expect("the launcher")
 }

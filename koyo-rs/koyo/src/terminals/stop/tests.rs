@@ -1,44 +1,11 @@
-use std::collections::{BTreeMap, BTreeSet};
-
 use gpui_kit::{AnyWindowHandle, Entity, TestAppContext};
 use koyo_term::Source;
-use koyo_term_control::{Actor, Control, Handle, Size, Status, TerminalRecord, WorktreeRef};
+use koyo_term_control::{Control, Handle, Status, TerminalRecord};
 
 use super::busy;
 use crate::shell::Shell;
 use crate::terminals::states::State;
-use crate::test_support::{repo, select, shell_with};
-
-fn record(handle: &str, worktree: &str, status: Status, reason: &str) -> TerminalRecord {
-    TerminalRecord {
-        handle: Handle(handle.into()),
-        worktree: Some(WorktreeRef {
-            path: worktree.into(),
-            repo_main: worktree.into(),
-            branch: None,
-        }),
-        name: handle.into(),
-        title: None,
-        cwd: worktree.into(),
-        command: vec![],
-        env: BTreeMap::new(),
-        size: Size::default(),
-        labels: BTreeSet::new(),
-        created_ms: 1,
-        created_by: Actor::system(),
-        incarnation: 1,
-        pid: Some(42),
-        exit: None,
-        status,
-        status_reason: reason.into(),
-        last_exit: None,
-        progress: None,
-        control: Control::default(),
-        attached_clients: 1,
-        last_output_ms: 1,
-        pinned: None,
-    }
-}
+use crate::test_support::{repo, select, shell_with, terminal_record as record};
 
 /// A terminal tab showing `record`, the daemon having said so; its id.
 fn tab(shell: &Entity<Shell>, record: &TerminalRecord, cx: &mut TestAppContext) -> u64 {

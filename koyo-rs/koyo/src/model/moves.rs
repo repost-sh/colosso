@@ -31,6 +31,40 @@ impl Workspace {
     }
 }
 
+impl Workspace {
+    /// Moves a project among those of `group`, a space's, given by their places in the order
+    /// its tiles show them: the one in slot `from` goes to slot `to`, the others of the group
+    /// closing up, and every project outside it keeps its place. The project selected stays
+    /// selected. False, and nothing changes, when there's no such slot or it's the same one.
+    pub fn move_project_among(&mut self, group: &[usize], from: usize, to: usize) -> bool {
+        let known = group.iter().all(|place| *place < self.projects.len());
+        if from == to || from >= group.len() || to >= group.len() || !known {
+            return false;
+        }
+        let selected = self.project().map(|project| project.path.clone());
+        let mut order = group.to_vec();
+        let moved = order.remove(from);
+        order.insert(to, moved);
+        // The group's places in the list, which its projects fill again in their new order.
+        let mut places = group.to_vec();
+        places.sort_unstable();
+        let mut projects: Vec<_> = std::mem::take(&mut self.projects)
+            .into_iter()
+            .map(Some)
+            .collect();
+        let moving: Vec<_> = (order.iter())
+            .map(|place| projects[*place].take())
+            .collect();
+        for (place, project) in places.into_iter().zip(moving) {
+            projects[place] = project;
+        }
+        self.projects = projects.into_iter().flatten().collect();
+        let reselected = selected.and_then(|path| self.project_index(&path));
+        self.select_project(reselected);
+        true
+    }
+}
+
 impl BranchUnit {
     /// The tab holding pane `id`.
     pub fn tab_with(&self, id: u64) -> Option<usize> {
@@ -154,7 +188,33 @@ impl BranchUnit {
 
 #[cfg(test)]
 mod tests {
-    use crate::model::{BranchUnit, Edge, Pane, PaneKind, Tab};
+    use crate::model::{BranchUnit, Edge, Pane, PaneKind, Tab, Workspace};
+
+    #[test]
+    fn a_project_moves_among_its_spaces_and_the_others_keep_their_places() {
+        let paths: Vec<std::path::PathBuf> = (["a", "x", "b", "c", "y"].iter())
+            .map(|name| format!("/src/{name}").into())
+            .collect();
+        let mut workspace = Workspace::new(&paths);
+        workspace.select_project(Some(2));
+        let names = |workspace: &Workspace| -> Vec<String> {
+            (workspace.projects.iter())
+                .map(|project| project.name.to_string())
+                .collect()
+        };
+        // A space holds a, b and c; x and y are another's.
+        let space = [0, 2, 3];
+        assert!(workspace.move_project_among(&space, 0, 2));
+        assert_eq!(names(&workspace), ["b", "x", "c", "a", "y"]);
+        let selected = workspace.project().map(|project| project.name.to_string());
+        assert_eq!(selected.as_deref(), Some("b"), "the same project, moved");
+        assert!(workspace.move_project_among(&space, 2, 0));
+        assert_eq!(names(&workspace), ["a", "x", "b", "c", "y"]);
+        assert!(!workspace.move_project_among(&space, 1, 1), "where it is");
+        assert!(!workspace.move_project_among(&space, 1, 3), "no such slot");
+        assert!(!workspace.move_project_among(&[0, 9], 0, 1), "no such project");
+        assert_eq!(names(&workspace), ["a", "x", "b", "c", "y"]);
+    }
 
     /// A checkout with `count` chat tabs, the last one shown, and their panes' ids.
     fn unit(count: usize) -> (BranchUnit, Vec<u64>) {

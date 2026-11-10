@@ -59,7 +59,7 @@ pub struct Selected {
     /// The selected worktree's checkout.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worktree: Option<String>,
-    /// The focused pane.
+    /// The pane the person is in: the one with the keyboard, or that had it last.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pane: Option<PaneId>,
 }

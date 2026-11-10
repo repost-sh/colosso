@@ -1,9 +1,14 @@
 //! The Arc sidebar (`docs/arc-sidebar.md`) as the app draws it, saved as PNGs in
 //! `.superpowers/qa/arc/`: this checkout's project with a few tabs in a space, a second project in
-//! a space of its own with its own colours, and an empty space, light and dark:
+//! a space of its own with its own colours, and an empty space, light and dark; then what a
+//! person does there (`acts`): a space's mark saying a chat in it works and then waits, a tile
+//! dragged to another row and back, the address bar following the pane pressed in, and ⌘L's
+//! launcher on a page. It shows a chat, so it runs on a data folder and an agent host of its own:
 //!
 //! ```sh
-//! KOYO_CONFIG_DIR=$PWD/.superpowers/qa/arc/config \
+//! Q=$PWD/.superpowers/qa/arc && mkdir -p $Q/tmp &&
+//!   KOYO_AGENT_PROVIDER=fake KOYO_DATA_DIR=$Q/data TMPDIR=$Q/tmp \
+//!   KOYO_CONFIG_DIR=$Q/config KOYO_LOG_DIR=$Q/logs \
 //!   script/cargo run -p koyo --features visual-check -- --visual-check-arc
 //! ```
 
@@ -22,6 +27,8 @@ use crate::test_support::try_git;
 use crate::theme::{UseDarkTheme, UseLightTheme};
 use crate::visual::{Drawn, Result, checkout};
 
+mod acts;
+
 /// Where the pictures go, relative to the checkout.
 const OUT: &str = ".superpowers/qa/arc";
 
@@ -29,32 +36,36 @@ pub fn run() -> ExitCode {
     crate::visual::run(draw)
 }
 
-/// A second repository, beside the pictures, for the second space.
-fn second_project() -> Result<PathBuf> {
-    let site = checkout()?.join(OUT).join("site");
-    if !site.join(".git").exists() {
-        std::fs::create_dir_all(&site).map_err(|error| error.to_string())?;
-        try_git(&site, &["init", "-q", "-b", "main"])?;
-        try_git(&site, &["commit", "-q", "--allow-empty", "-m", "start"])?;
+/// A repository of its own called `name`, beside the pictures: another project for the check.
+fn project_beside(name: &str) -> Result<PathBuf> {
+    let folder = checkout()?.join(OUT).join(name);
+    if !folder.join(".git").exists() {
+        std::fs::create_dir_all(&folder).map_err(|error| error.to_string())?;
+        try_git(&folder, &["init", "-q", "-b", "main"])?;
+        try_git(&folder, &["commit", "-q", "--allow-empty", "-m", "start"])?;
     }
-    site.canonicalize().map_err(|error| error.to_string())
+    folder.canonicalize().map_err(|error| error.to_string())
+}
+
+/// A tab of a page at `address`, titled `title`, with no page until it's shown.
+fn web_page(address: &str, title: &str) -> Tab {
+    let unloaded = Unloaded {
+        address: address.into(),
+        favicon: None,
+    };
+    Tab::Single(Pane::unloaded(unloaded, title.to_owned().into()))
+}
+
+/// A tab of `kind`, titled `title`.
+fn titled(kind: PaneKind, title: &str) -> Tab {
+    let mut pane = Pane::new(kind);
+    pane.title = title.to_owned().into();
+    Tab::Single(pane)
 }
 
 /// The tabs the checkout shows: pages, a chat and a terminal, a split listed and one shown, the
 /// last of them.
 fn open_tabs(shell: &mut Shell) {
-    let web_page = |address: &str, title: &str| {
-        let unloaded = Unloaded {
-            address: address.into(),
-            favicon: None,
-        };
-        Tab::Single(Pane::unloaded(unloaded, title.to_owned().into()))
-    };
-    let titled = |kind: PaneKind, title: &str| {
-        let mut pane = Pane::new(kind);
-        pane.title = title.to_owned().into();
-        Tab::Single(pane)
-    };
     shell
         .workspace
         .push_tab(web_page("https://www.example.com/docs", "Example Domain"));
@@ -80,7 +91,9 @@ fn open_tabs(shell: &mut Shell) {
 }
 
 fn draw() -> Result<Vec<String>> {
-    let site = second_project()?;
+    acts::needs_its_own_host()?;
+    // A second project, for the second space.
+    let site = project_beside("site")?;
     let mut drawn = Drawn::open_on_checkout(OUT, &[&site])?;
     let shell = drawn.shell.clone();
     let mut said = Vec::new();
@@ -138,14 +151,17 @@ fn draw() -> Result<Vec<String>> {
         drawn
             .cx
             .update(|cx| shell.update(cx, |shell, cx| shell.show_space(space, cx)));
-        // The switch moves in time: the space fades in and its mark stretches; let it settle.
-        for _ in 0..8 {
-            drawn.cx.advance_clock(Duration::from_millis(100));
-            drawn.draw()?;
-        }
+        // The switch moves in time: the space fades in and its mark stretches.
+        acts::settle(&mut drawn)?;
         let path = drawn.save(&format!("arc-{name}-dark.png"))?;
         said.push(format!("saved {}", path.display()));
     }
+    // What a person does there: a space's mark saying a chat in it waits, a tile dragged, the
+    // address bar following the pane and ⌘L's launcher on a page.
+    acts::pills(&mut drawn, &site, &mut said)?;
+    acts::drag_tile(&mut drawn, &mut said)?;
+    acts::address(&mut drawn, &mut said)?;
+    acts::stop_host(&mut said);
     // The Orca layout keeps one card, hairlines between its parts: no islands there.
     drawn.cx.update(|cx| {
         settings::update(cx, |settings| settings.layout = Layout::Orca);

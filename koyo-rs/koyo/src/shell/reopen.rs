@@ -1,13 +1,15 @@
 //! ⌘⇧T: the tab closed last comes back where it was, its pages opening again at the
 //! addresses they showed, its files on the files they showed, as they are on disk, and the
-//! diffs' pane on the checkout's diffs.
+//! diffs' pane on the checkout's diffs. And the editor panes the window brought back, which
+//! open what they showed the same way once their tab is shown.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use gpui_kit::{Context, Window};
+use gpui_kit::{Context, Entity, Window};
 
 use super::Shell;
-use crate::model::PaneKind;
+use crate::files::FilePane;
+use crate::model::{Pane, PaneKind, Tab, Unopened};
 use crate::navigation::Route;
 
 impl Shell {
@@ -40,6 +42,45 @@ impl Shell {
         Some(at)
     }
 
+    /// Opens what the shown tab's editor panes brought back with the window showed
+    /// (`model/unopened.rs`): each its file, kept, as it is on disk, or the checkout's diffs.
+    /// After each change of the shell, as a file and the diffs are made over the panels of
+    /// their checkout, which is the selected one once the tab is shown.
+    pub(crate) fn make_shown_editors(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(at) = self.workspace.shown_tab() else {
+            return;
+        };
+        let panes = self.workspace.tab(at).map(Tab::panes).unwrap_or_default();
+        let files: Vec<(u64, PathBuf)> = (panes.iter())
+            .filter_map(|pane| Some((pane.id, pane.unopened_file()?.to_owned())))
+            .collect();
+        let changes: Vec<u64> = (panes.iter())
+            .filter(|pane| pane.unopened.as_deref() == Some(&Unopened::Changes))
+            .map(|pane| pane.id)
+            .collect();
+        self.reopen_files(at, &files, window, cx);
+        self.reopen_changes(at, &changes, window, cx);
+    }
+
+    /// Shows the selected checkout's tab brought back with the window for the file at `path`,
+    /// if one still waits to be shown, and opens the file in it: where it is, as `(project,
+    /// branch, tab)`, and the file, so opening it again finds that tab rather than making
+    /// another.
+    pub(crate) fn open_brought_back(
+        &mut self,
+        path: &Path,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<((usize, usize, usize), Entity<FilePane>)> {
+        let (project, branch, _) = self.workspace.shown_tab()?;
+        let waits = |pane: &&Pane| pane.unopened_file() == Some(path);
+        let at = (self.workspace.branch()?.tabs.iter())
+            .position(|tab| tab.panes().iter().any(waits))?;
+        self.workspace.select_tab(project, branch, at);
+        self.make_shown_editors(window, cx);
+        self.open_already(path, cx)
+    }
+
     /// The file panes of the tab back at `at`, as `(project, branch, tab)`, which is shown,
     /// open the `files` they showed, by their panes' ids, kept.
     fn reopen_files(
@@ -70,7 +111,7 @@ impl Shell {
         };
         for pane in tab.panes_mut() {
             if let Some((_, file)) = opened.iter().find(|(id, _)| *id == pane.id) {
-                pane.file = Some(file.clone());
+                pane.set_file(file.clone());
             }
         }
     }

@@ -9,13 +9,12 @@ use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, DragMoveEvent, Entity, FocusHandle, Focusable as _,
+    AnyElement, App, AppContext as _, Context, DragMoveEvent, Entity, FocusHandle,
     InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, ParentElement as _, Pixels,
     Point, Render, SharedString, Styled, Subscription, Window, div, px,
 };
 
 use crate::bottom::StatusBar;
-use crate::browser::KeptTabs;
 use crate::chat::ChatTabs;
 use crate::files::Locations;
 use crate::language::ServersListed;
@@ -32,9 +31,11 @@ use crate::{arc, backdrop, bottom, gradient, orca, picker, theme};
 mod actions;
 mod browser_tabs;
 mod elements;
+mod kept;
 mod rails;
 mod reopen;
 mod reorder;
+mod shown_page;
 mod splits;
 mod state;
 mod switcher;
@@ -53,6 +54,7 @@ pub use elements::{
     action_button, add_project_row, ellipsized, glass, icon, icon_button, new_tab_button,
     no_matches, project_error, row, search_field, section_label, solid, tab_close_button,
 };
+pub use kept::KeptWindow;
 pub use reorder::TabHand;
 pub use splits::{Dragged, DraggedPane};
 pub use tab_list::{tab_list, tab_row};
@@ -72,8 +74,8 @@ pub struct Shell {
     pub terminals: crate::terminals::Terminals,
     /// The chats the tabs show.
     pub chat_tabs: ChatTabs,
-    /// The browser tabs kept for the next launch.
-    pub kept_tabs: KeptTabs,
+    /// The window as it is, kept for the next one.
+    pub kept: KeptWindow,
     /// Where the Arc sidebar's space is as two fingers move it between spaces, or the spring
     /// settles it.
     pub swipe: arc::Swipe,
@@ -88,6 +90,8 @@ pub struct Shell {
     pub(crate) arc_hover: arc::Hover,
     /// The tab being dragged along its list, shared by every list of tabs.
     pub tab_hand: Rc<TabHand>,
+    /// The project tile being dragged about the Arc sidebar's grid.
+    pub tile_hand: Rc<arc::TileHand>,
     /// The places a symbol led to, listed under the tabs, while they are.
     pub locations: Option<Entity<Locations>>,
     _subscriptions: [Subscription; 10],
@@ -105,7 +109,7 @@ impl Shell {
                 .clean_on_escape()
         });
         let chat_tabs = ChatTabs::new(cx);
-        let kept_tabs = KeptTabs::new(cx);
+        let kept = KeptWindow::new(cx);
         let status_bar = StatusBar::new(cx);
         let _subscriptions = [
             settings::observe(cx),
@@ -131,10 +135,11 @@ impl Shell {
                 this.workspace.stamp_shown();
                 this.follow_space(cx);
                 this.follow_selection(window, cx);
+                this.make_shown_editors(window, cx);
                 // Closed terminal tabs let their views go, which detaches them.
                 this.terminals.retain(&this.workspace);
                 this.chat_tabs.retain(&this.workspace, cx);
-                this.keep_browser_tabs(cx);
+                this.keep_window(cx);
             }),
             // What had the keyboard is gone, as a closed panel's list is: actions then start
             // at the window's root, above the shell's, and the top bar's buttons and keys
@@ -168,13 +173,14 @@ impl Shell {
             status_bar,
             terminals: crate::terminals::Terminals::default(),
             chat_tabs,
-            kept_tabs,
+            kept,
             swipe: arc::Swipe::default(),
             focus,
             search,
             rails_menu_at: Point::default(),
             arc_hover: arc::Hover::default(),
             tab_hand: Rc::default(),
+            tile_hand: Rc::default(),
             locations: None,
             _subscriptions,
         };
@@ -351,18 +357,10 @@ impl Shell {
     ) -> impl IntoElement + use<> {
         // The shown tab's terminal, chat and browser panes have their views before the panes
         // draw them.
-        let terminal = self.make_shown_terminals(window, cx);
-        let chat = self.make_shown_chats(window, cx);
+        self.make_shown_terminals(window, cx);
+        self.make_shown_chats(window, cx);
         self.make_shown_browsers(window, cx);
-        // Shown with nothing else holding the keyboard, one of them takes it. Only then, as
-        // reading a view here makes this draw again whenever that view changes.
-        if self.focus.is_focused(window) {
-            let takes_keys = (terminal.map(|view| view.focus_handle(cx)))
-                .or_else(|| chat.map(|view| view.focus_handle(cx)));
-            if let Some(focus) = takes_keys {
-                cx.defer_in(window, move |_, window, cx| window.focus(&focus, cx));
-            }
-        }
+        self.give_shown_tab_the_keyboard(window, cx);
         let workspace = &self.workspace;
         let islands = theme::card::islands(cx);
         let note = |text: &'static str| {

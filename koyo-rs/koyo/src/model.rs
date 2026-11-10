@@ -8,14 +8,16 @@ use gpui_kit::SharedString;
 use gpui_kit::assets::IconName;
 use koyo_git::{Head, Worktree};
 
-mod browsers;
 mod chats;
 mod closed;
+mod entered;
 mod moves;
 mod tab;
 mod terminals;
+mod unopened;
 pub use closed::ClosedTab;
 pub use tab::{Edge, Pane, SPLIT_MIN, Split, SplitAxis, Tab, Unloaded};
+pub use unopened::Unopened;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PaneKind {
@@ -172,6 +174,8 @@ pub struct Workspace {
     /// The turn the tab shown last was stamped with: each tab shown after another takes the
     /// next.
     turn: u64,
+    /// What the pane the person entered last was stamped with (`enter_pane`).
+    entered: u64,
 }
 
 impl Workspace {
@@ -182,6 +186,7 @@ impl Workspace {
             active_project: (!paths.is_empty()).then_some(0),
             closed: Vec::new(),
             turn: 0,
+            entered: 0,
         }
     }
 

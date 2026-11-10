@@ -42,11 +42,13 @@ impl Face {
         let file = pane.file.as_ref().map(|file| file.read(cx));
         Face {
             id: pane.id,
-            // A file's pane is titled with its name.
-            icon: match (file, &pane.changes) {
-                (Some(_), _) => file_icon(&pane.title),
-                (None, Some(_)) => IconName::FileDiff,
-                (None, None) => pane.kind.icon(),
+            // A file's pane is titled with its name; one brought back shows as what it opens.
+            icon: if file.is_some() || pane.unopened_file().is_some() {
+                file_icon(&pane.title)
+            } else if pane.shows_changes() {
+                IconName::FileDiff
+            } else {
+                pane.kind.icon()
             },
             favicon: pane.favicon(cx),
             title: pane.title.clone(),

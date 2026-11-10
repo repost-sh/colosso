@@ -14,6 +14,21 @@ in `koyo-rs/koyo/src/launcher/` and `koyo-rs/koyo/src/history/`.
 - **⌘T**, or the **+** in a tab strip (Orca and Arc layouts), opens the launcher over the
   window, for a tab on the selected checkout. ⌘T again, Escape, or a click outside it
   closes it.
+- **⌘L**, from anywhere in the window, or a click on the Arc sidebar's address bar, opens it
+  **on the page shown** (`launcher::OpenAddress`, `Shell::open_address`), as Arc's ⌘L does:
+  - The page is the one of the pane the person is in, or the shown tab's first page when
+    they're in a pane of another kind (`docs/arc-sidebar.md` 2).
+  - It opens on Browser, the page's whole address in the field, all of it selected, the rows
+    for that address under it.
+  - Enter on a Visit or a Search row loads in that page, as an address typed in its own field
+    would: a typed visit, a search the history keeps, and the page takes the keyboard after.
+    No tab opens. With the field emptied, Enter does nothing, as in any address bar.
+  - Every other row does what it does after ⌘T: a Switch to Tab row switches, and Tab goes on
+    to a chat, a terminal or a worktree, which open as usual.
+  - ⌘L in the open launcher selects the field's text again.
+  - With no page in the tab shown, ⌘L opens the launcher as ⌘T does.
+  - In the Orca layout a page has its own toolbar, so ⌘L puts the keyboard in that page's
+    address field instead, from anywhere in the tab.
 - A pill on the left of the field names the **kind** of tab Enter opens: **Browser**, **Chat**
   or **Terminal**, in that order on purpose, and last **Worktree**, which opens no tab
   (`docs/arc-sidebar.md` 8). Each kind has its own colour (blue, violet, green, orange), so a
@@ -37,6 +52,9 @@ in `koyo-rs/koyo/src/launcher/` and `koyo-rs/koyo/src/history/`.
   selected row if it comes from history; so does the × on that row.
 - Text typed and then dismissed is offered again if the launcher reopens within 45 seconds,
   with its kind. This matches Zen's `zen.urlbar.wait-to-clear`. Picking a row clears it.
+  Opened on a page, the field holds the page's address whatever was dismissed, and that text
+  goes on waiting for the next ⌘T. A page's address dismissed as it was isn't text anyone
+  typed, and isn't offered; one typed over is.
 - The window grows and shrinks with its rows, keeping its top edge where it is
   (`native/window.rs`: AppKit's `setContentSize` would keep the bottom edge instead).
 
@@ -226,7 +244,8 @@ sends. No host or IPC change was needed.
 | `koyo/src/launcher/render.rs` | How it looks |
 | `koyo/src/launcher/rows.rs` | What it lists for what's typed (section 3) |
 | `koyo/src/launcher/here.rs` | The checkout it opened on, its open tabs, and its chats with no tab |
-| `koyo/src/launcher/act.rs` | What a pick does in the window behind |
+| `koyo/src/launcher/act.rs` | What a pick does in the window behind, or in the page it opened on |
+| `koyo/src/shell/shown_page.rs` | The page ⌘L and the sidebar's controls act on |
 | `koyo/src/launcher/suggest.rs` | Google's suggestions |
 | `koyo/src/history/` | The store, ranking (`rank.rs`) and site icons (`icons.rs`) |
 | `koyo/src/browser/view/navigation.rs` | How a page came to load, for its visit |

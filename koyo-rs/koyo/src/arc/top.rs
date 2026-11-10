@@ -1,6 +1,7 @@
 //! The top of the Arc sidebar (`docs/arc-sidebar.md` 1, 2): back, forward and reload for the
 //! page shown, at the sidebar's edge of the top rail, and under them the address bar, which says
-//! what's shown: a page's address, a terminal's program, a chat's name, "File" or "Settings".
+//! what the pane the person is in shows: a page's address, a terminal's program, a chat's name,
+//! "File" or "Settings". Clicked, it opens the launcher on the page, as ⌘L does.
 
 use gpui_kit::Focusable as _;
 use gpui_kit::assets::IconName;
@@ -14,6 +15,7 @@ use gpui_kit::{
 
 use super::Look;
 use super::actions::{PageBack, PageForward, PageReload};
+use crate::launcher::OpenAddress;
 use crate::model::PaneKind;
 use crate::navigation::Route;
 use crate::shell::{Shell, action_button};
@@ -55,10 +57,13 @@ pub(super) fn said(shell: &Shell, cx: &App) -> (SharedString, bool) {
     let Some(tab) = shell.workspace.tab_shown() else {
         return ("No tab open".into(), true);
     };
-    let pane = tab.first();
+    // The pane the person is in, of a split's: the bar follows them from one to the other.
+    let pane = tab.current();
     match pane.kind {
         PaneKind::Browser => {
-            let address = pane.address(cx).unwrap_or_default();
+            // A page's `DevTools` say their page's address, which is what the bar changes.
+            let shown = shell.shown_page(cx).map(|shown| shown.read(cx).address());
+            let address = shown.or_else(|| pane.address(cx)).unwrap_or_default();
             if address.is_empty() {
                 ("Search or enter address".into(), true)
             } else {
@@ -75,9 +80,10 @@ fn host_of(address: &str) -> String {
     crate::history::host(address).unwrap_or_else(|| address.to_owned())
 }
 
-/// The address bar. With a page shown it's the page's own address field, the page having no
-/// toolbar in this layout: its host until it's clicked, or ⌘L or a new tab puts the keyboard
-/// in it, and then the whole address, to edit and enter.
+/// The address bar. It says what's shown, and a click on it is ⌘L: the launcher opens on the
+/// page, its address in the field to change (`Shell::open_address`). While a page's own address
+/// field has the keyboard, as a new tab's start page gives it, the bar is that field, the page
+/// having no toolbar in this layout.
 pub fn address_bar(
     shell: &Shell,
     look: Look,
@@ -86,10 +92,13 @@ pub fn address_bar(
 ) -> impl IntoElement {
     let p = look.p;
     let (text, placeholder) = said(shell, cx);
-    let page = shell.shown_page(cx);
-    let editing = (page.as_ref())
-        .map(|page| page.read(cx).address_field().clone())
-        .filter(|field| field.read(cx).focus_handle(cx).is_focused(window));
+    let editing = (shell.workspace.tab_shown())
+        .filter(|_| shell.route(cx) == Route::Workspace)
+        .and_then(|tab| {
+            (tab.panes().into_iter())
+                .filter_map(|pane| Some(pane.view()?.read(cx).address_field().clone()))
+                .find(|field| field.read(cx).focus_handle(cx).is_focused(window))
+        });
     div()
         .id("arc-address")
         .debug_selector(|| "arc-address".to_owned())
@@ -101,6 +110,7 @@ pub fn address_bar(
         .rounded(px(10.))
         .bg(look.field)
         .text_sm()
+        .cursor_text()
         .text_color(if placeholder {
             p.muted
         } else {
@@ -114,12 +124,9 @@ pub fn address_bar(
                     .flex_1()
                     .child(Input::new(&field).appearance(false).small()),
             ),
-            None => bar.child(div().min_w_0().truncate().child(text)),
-        })
-        .when_some(page, |bar, page| {
-            bar.cursor_text().on_click(move |_, window, cx| {
-                page.update(cx, |page, cx| page.focus_address(window, cx));
-            })
+            None => bar
+                .child(div().min_w_0().truncate().child(text))
+                .on_click(|_, window, cx| window.dispatch_action(Box::new(OpenAddress), cx)),
         })
 }
 

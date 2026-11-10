@@ -12,13 +12,19 @@ use super::actions::{ClearWorktree, MoveProjectToNewSpace, NewSpace};
 use super::clear::Clear;
 use super::delete_space::DeleteSpace;
 use crate::files::tests::{dialog, tabs};
-use crate::model::{Pane, PaneKind, Tab, Unloaded};
+use crate::model::{Edge, Pane, PaneKind, Tab, Unloaded};
 use crate::navigation::Route;
 use crate::projects::read_worktrees;
 use crate::settings::{self, Layout};
 use crate::settings_view::SettingsPage;
 use crate::shell::{CloseTab, Shell};
-use crate::test_support::{draw, git, repo, select, shell_with};
+use koyo_agent::protocol::model::{Status, ThreadSummary};
+use koyo_agent::protocol::requests::RequestKind;
+
+use crate::test_support::{click_pane, draw, git, open_page, repo, select, shell_with};
+
+mod spaces;
+mod tiles;
 
 /// The shell in the Arc layout with a project for each of `names`, saved, the first selected.
 fn arc_shell(
@@ -212,10 +218,79 @@ fn the_address_bar_says_what_is_shown(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn the_address_bar_and_the_page_controls_follow_the_pane_the_person_is_in(
+    cx: &mut TestAppContext,
+) {
+    let (window, shell, _) = arc_shell(&["arc-address-split"], cx);
+    let said = |cx: &TestAppContext| {
+        cx.read(|cx| super::top::said(shell.read(cx), cx).0.to_string())
+    };
+    // A chat on the left, two pages right of it.
+    shell.update(cx, |shell, cx| {
+        shell.workspace.push_tab(chat("Plan the release"));
+        cx.notify();
+    });
+    let chat = cx.read(|cx| shell.read(cx).workspace.tab_shown().map(|tab| tab.first().id));
+    let chat = chat.expect("the chat's pane");
+    let docs = open_page(window, &shell, Some("https://www.example.com/docs"), cx);
+    let app = open_page(window, &shell, Some("http://localhost:3000/"), cx);
+    shell.update(cx, |shell, cx| {
+        let unit = shell.workspace.branch_mut().unwrap();
+        assert!(unit.drop_tab(1, chat, Edge::Right));
+        assert!(unit.drop_tab(1, docs, Edge::Right));
+        cx.notify();
+    });
+    draw(window, cx);
+    let page = |cx: &TestAppContext| {
+        cx.read(|cx| (shell.read(cx).shown_page(cx)).map(|page| page.read(cx).address()))
+    };
+    let click = |pane: u64, cx: &mut TestAppContext| click_pane(window, pane, cx);
+    click(app, cx);
+    assert_eq!(said(cx), "localhost:3000");
+    assert_eq!(page(cx).as_deref(), Some("http://localhost:3000/"));
+    click(docs, cx);
+    assert_eq!(said(cx), "example.com");
+    assert_eq!(page(cx).as_deref(), Some("https://www.example.com/docs"));
+    // In the chat, the bar says the chat; back, forward and reload stay the tab's first page's.
+    click(chat, cx);
+    assert_eq!(said(cx), "Plan the release");
+    assert_eq!(page(cx).as_deref(), Some("https://www.example.com/docs"));
+    // It's remembered while something outside the panes has the keyboard.
+    click(app, cx);
+    cx.update_window(window, |_, window, cx| {
+        let root = shell.read(cx).focus.clone();
+        window.focus(&root, cx);
+    })
+    .unwrap();
+    assert_eq!(said(cx), "localhost:3000");
+    let focused = cx.update_window(window, |_, window, cx| {
+        shell.read(cx).focused_pane(window, cx)
+    });
+    assert_eq!(focused.unwrap(), Some(app), "as app control reports it");
+}
+
+/// The chats' host says of chat `id`, of the checkout at `cwd`, that it's at `status`, waiting
+/// on the person for `needs` or not, with something they haven't read or not.
+fn hear(
+    shell: &Entity<Shell>,
+    (id, cwd): (&str, &Path),
+    (status, needs, unread): (Status, Option<RequestKind>, bool),
+    cx: &mut TestAppContext,
+) {
+    let summary = ThreadSummary {
+        status,
+        needs,
+        unread,
+        ..crate::chat::tests::summary(id, cwd, "A chat", true)
+    };
+    let chats = shell.read_with(cx, |shell, _| shell.chats().clone());
+    chats.update(cx, |chats, cx| chats.hear_summaries(vec![summary], cx));
+    cx.run_until_parked();
+}
+
+#[gpui_kit::test]
 fn a_tab_and_its_projects_tile_say_when_a_chat_wants_the_person(cx: &mut TestAppContext) {
-    use koyo_agent::protocol::ids::{ThreadId, Time};
-    use koyo_agent::protocol::model::{Status, ThreadSummary};
-    use koyo_agent::protocol::requests::RequestKind;
+    use koyo_agent::protocol::ids::ThreadId;
 
     use crate::chat::Activity;
 
@@ -232,26 +307,9 @@ fn a_tab_and_its_projects_tile_say_when_a_chat_wants_the_person(cx: &mut TestApp
     });
     draw(window, cx);
     let worktree = roots[0].clone();
-    let hear =
-        |status: Status, needs: Option<RequestKind>, unread: bool, cx: &mut TestAppContext| {
-            let summary = ThreadSummary {
-                id: thread.clone(),
-                cwd: worktree.to_string_lossy().into_owned(),
-                title: "A chat".into(),
-                provider: "claude".into(),
-                model: None,
-                status,
-                needs,
-                background: false,
-                queued: 0,
-                unread,
-                tab_open: true,
-                updated_at: Time("2026-11-08T10:00:00Z".into()),
-            };
-            let chats = shell.read_with(cx, |shell, _| shell.chats().clone());
-            chats.update(cx, |chats, cx| chats.hear_summaries(vec![summary], cx));
-            cx.run_until_parked();
-        };
+    let hear = |status, needs, unread, cx: &mut TestAppContext| {
+        hear(&shell, ("0001", &worktree), (status, needs, unread), cx);
+    };
     let told = |cx: &TestAppContext| {
         cx.read(|cx| {
             let shell = shell.read(cx);

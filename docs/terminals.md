@@ -923,6 +923,11 @@ sees the shell back from its screen, idle at its prompt.
 - The branch unit's tab strip lists the daemon's terminals for that worktree; opening the
   tab attaches. Closing the tab **stops** the terminal (sends `Close`), asking first when
   something runs in it (owner, 2026-11-04); quitting the app can keep terminals running (5.1).
+- A window opened again brings its terminal panes back where they were, in their tabs and
+  splits, each by its terminal's handle (`window.json`, `docs/browser.md` 4). The daemon's
+  list then says which still run: a pane whose terminal ended or was closed meanwhile goes,
+  and a terminal no pane shows, opened while the window was closed, gets a tab after the
+  others.
 - The sidebar branch row shows a status roll-up: a dot per `needs_input` terminal and a count
   ("2 waiting"). Project rows roll up their branches.
 - The window's "New Terminal" action opens a shell in the selected branch unit's worktree

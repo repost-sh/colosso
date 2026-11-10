@@ -84,9 +84,15 @@ impl BrowserView {
 
     /// Goes where the person typed `text` in the address: to the page, or a search for it.
     pub(in crate::browser) fn go_to_typed(&mut self, text: &str, cx: &mut Context<Self>) {
-        let Some(address) = read_address(text) else {
-            return;
-        };
+        if let Some(address) = read_address(text) {
+            self.go_to(address, cx);
+        }
+    }
+
+    /// Goes to `address`, the person having asked for it by name, in the page's address or in
+    /// the launcher opened on the page (⌘L): to the page, or a search for the words, which
+    /// the history keeps. The page takes the keyboard after.
+    pub(crate) fn go_to(&mut self, address: Address, cx: &mut Context<Self>) {
         self.person_acts(Mode::Implicit, cx);
         match address {
             Address::Page(url) => self.navigate_typed(url, cx),

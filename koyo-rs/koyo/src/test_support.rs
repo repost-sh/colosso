@@ -8,9 +8,11 @@ use std::path::PathBuf;
 
 #[cfg(test)]
 use gpui_kit::{
-    AnyWindowHandle, App, AppContext as _, Bounds, Entity, Point, Render, Size, TestAppContext,
-    Window, WindowBounds, WindowOptions, px, size,
+    AnyWindowHandle, App, AppContext as _, Bounds, Entity, Modifiers, Point, Render, Size,
+    TestAppContext, VisualTestContext, Window, WindowBounds, WindowOptions, px, size,
 };
+#[cfg(test)]
+use koyo_term_control::{Actor, Control, Handle, Status, TerminalRecord, WorktreeRef};
 
 #[cfg(test)]
 use crate::projects::read_worktrees;
@@ -134,4 +136,72 @@ pub fn select(shell: &Entity<Shell>, root: &Path, cx: &mut TestAppContext) {
         cx.notify();
     });
     cx.run_until_parked();
+}
+
+/// Opens a browser tab at `url` on the selected checkout, or on the start page with none: its
+/// pane.
+#[cfg(test)]
+pub fn open_page(
+    window: AnyWindowHandle,
+    shell: &Entity<Shell>,
+    url: Option<&str>,
+    cx: &mut TestAppContext,
+) -> u64 {
+    let url = url.map(str::to_owned);
+    let opened = cx.update_window(window, |_, window, cx| {
+        shell.update(cx, |shell, cx| {
+            shell.open_browser_tab(url, false, None, window, cx)
+        })
+    });
+    opened.unwrap().expect("a checkout is selected")
+}
+
+/// Clicks in the middle of pane `pane` of the tab shown, as a person does to be in it.
+#[cfg(test)]
+pub fn click_pane(window: AnyWindowHandle, pane: u64, cx: &mut TestAppContext) {
+    draw(window, cx);
+    let selector: &'static str = Box::leak(format!("pane-{pane}").into_boxed_str());
+    let mut vcx = VisualTestContext::from_window(window, cx);
+    let at = vcx.debug_bounds(selector).expect("the pane").center();
+    vcx.simulate_click(at, Modifiers::default());
+    draw(window, cx);
+}
+
+/// A terminal as the daemon tells of it: `handle`, named after it, in the checkout at
+/// `worktree`, at `status` for `reason`.
+#[cfg(test)]
+pub fn terminal_record(
+    handle: &str,
+    worktree: &str,
+    status: Status,
+    reason: &str,
+) -> TerminalRecord {
+    TerminalRecord {
+        handle: Handle(handle.into()),
+        worktree: Some(WorktreeRef {
+            path: worktree.into(),
+            repo_main: worktree.into(),
+            branch: None,
+        }),
+        name: handle.into(),
+        title: None,
+        cwd: worktree.into(),
+        command: vec![],
+        env: std::collections::BTreeMap::new(),
+        size: koyo_term_control::Size::default(),
+        labels: std::collections::BTreeSet::new(),
+        created_ms: 1,
+        created_by: Actor::system(),
+        incarnation: 1,
+        pid: Some(42),
+        exit: None,
+        status,
+        status_reason: reason.into(),
+        last_exit: None,
+        progress: None,
+        control: Control::default(),
+        attached_clients: 1,
+        last_output_ms: 1,
+        pinned: None,
+    }
 }

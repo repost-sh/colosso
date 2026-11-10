@@ -1,14 +1,18 @@
-# Koyo browser tabs across a restart
+# Koyo's window and its browser tabs across a restart
 
-Written 2026-11-06 on branch `schulzfel/browser-tab-restore`. Drafted with Claude. Source of
-truth for which browser tabs come back after Koyo quits and how; update it when a decision
-changes, and keep it in step with `koyo-rs/koyo/src/browser/tabs.rs`.
+Written 2026-11-06 on branch `schulzfel/browser-tab-restore`, and rewritten 2026-11-10 on
+`schulzfel/url-bar-panes-and-spaces`, when the owner asked for the window back as it was:
+splits, tab order, the tab shown and the worktree selected, not only the pages. Drafted with
+Claude. Source of truth for what comes back after the window closes or Koyo quits, and how;
+update it when a decision changes, and keep it in step with `koyo-rs/koyo/src/shell/kept.rs`.
 
-Browser tabs come back after quitting and relaunching Koyo, on the checkouts they were on,
-and none of their pages loads until its tab is shown. Chats come back by the agent host's
-`tabOpen` (`docs/chat.md` C13), terminals by the daemon that keeps them
-(`docs/terminals.md` 5.1). No browser process outlives the app, so the app keeps the list
-of browser tabs itself.
+The window comes back as it was after it's closed and opened again from the Dock, and after
+quitting and relaunching Koyo: each checkout's tabs in their order, split as they were, the
+tab shown shown, each project on the worktree that was selected. None of a tab's content is
+made until the tab is shown. What a pane showed outlives the window somewhere else: a
+terminal in the daemon (`docs/terminals.md` 5.1), a chat in the agent host (`docs/chat.md`
+C13), a file on disk. No browser process outlives the app, so a page is kept as its address.
+The app keeps the shape, and a reference to each pane's content, in one file.
 
 Status marks: `[decided]`, `[not built]`.
 
@@ -16,82 +20,153 @@ Status marks: `[decided]`, `[not built]`.
 
 ## 1. What comes back [decided]
 
-- Each checkout's page tabs, in the order they had, each at the address it showed, titled
-  as it was until its page says otherwise, with its site's icon when one is kept
-  (`history-icons/`, `docs/new-tab.md` 4.7).
-- They come after the tabs already on the checkout, without taking the focus: the tab shown
-  stays shown and the checkout selected stays selected.
-- No page loads until its tab is shown. A restored tab is a pane with an address and no page;
-  showing it makes the page, which opens that address.
+- Each checkout's tabs, in the order they had, whatever their kinds, and the tab that was
+  shown on each.
+- Each tab's panes, split as they were: side by side or one over the other, each split's
+  share of the room as it was dragged.
+- Each project on the checkout that was selected in it. Which project and space are shown is
+  in `settings.json` already (`docs/arc-sidebar.md` 9).
+- A pane's content, by kind:
+  - **Page:** at the address it showed, titled as it was until its page says otherwise, with
+    its site's icon when one is kept (`history-icons/`, `docs/new-tab.md` 4.7). A new tab
+    still on its start page comes back as one.
+  - **Terminal:** the terminal it showed, by its handle in the daemon, where its tab was,
+    even on another worktree's list than its own (`docs/arc-sidebar.md` 5).
+  - **Chat:** the thread it showed. A chat with nothing sent yet comes back as its tab, with
+    the draft its folder keeps (`chat/drafts.rs`), so text typed and not sent is where it
+    was typed.
+  - **File:** the file it showed, as it is on disk, kept rather than a preview. Unsaved
+    edits are asked about before the window closes, so there are none to bring back.
+  - **Changes:** the checkout's diffs.
+- A pane whose content is gone isn't brought back, and its split keeps the other side: a
+  terminal that ended or was closed, a chat that was deleted, a file that's no longer there.
+- Terminals and chats made while the window was closed, which no pane of the file shows,
+  get a tab of their own after the others, as they did before the window kept its shape.
 - The browser host never outlives the app, as before: the app stops it on quit
   (`browser/host.rs`, `koyo-browser-ipc/src/client.rs`), and the host stops itself when the
   app's socket closes (`koyo-browser-host/src/host.rs`). The host starts at launch with no
   page (`browser::warm_up`).
 
-## 2. Where the list lives [decided]
+## 2. Where it's kept [decided]
 
-`browser-tabs.json` in the app's data folder (`settings::data_dir()`; `KOYO_DATA_DIR` moves
-it), beside `history.json`:
+`window.json` in the app's data folder (`settings::data_dir()`; `KOYO_DATA_DIR` moves it),
+beside `history.json`:
 
 ```json
 {
+  "projects": [
+    { "project": "/Users/me/src/app", "checkout": "/Users/me/koyo/workspaces/app/feature" }
+  ],
   "checkouts": [
     {
       "project": "/Users/me/src/app",
       "checkout": "/Users/me/koyo/workspaces/app/feature",
+      "shown": 1,
       "tabs": [
-        { "url": "http://localhost:3000/", "title": "App" },
-        { "url": "https://docs.rs/serde", "title": "serde - Rust" }
+        { "kind": "page", "url": "https://docs.rs/serde", "title": "serde - Rust" },
+        {
+          "axis": "row",
+          "ratio": 0.4,
+          "first": { "kind": "chat", "thread": "01JC…", "title": "Plan the release" },
+          "second": { "kind": "page", "url": "http://localhost:3000/", "title": "App" }
+        },
+        { "kind": "terminal", "handle": "term_01JC…", "name": "zsh" },
+        { "kind": "newChat" },
+        { "kind": "file", "path": "/Users/me/koyo/workspaces/app/feature/README.md" },
+        { "kind": "changes" }
       ]
     }
   ]
 }
 ```
 
-- One entry per checkout with page tabs: its folder, its project's main checkout, and its
-  tabs left to right. A page in a split counts by its place in the tab, left to right and top
-  to bottom.
-- Kept: page panes with an address. Not `DevTools`, and not a tab with no address yet (a new
-  tab's start page): an empty browser tab leaves nothing behind, as an empty chat tab doesn't.
+- `projects`: the checkout selected in each project, by the project's main checkout.
+- `checkouts`: one entry per checkout with tabs: its folder, its project's main checkout,
+  its tabs left to right, and `shown`, the place of the tab shown.
+- A tab is a pane, or a split: `axis` (`row` side by side, `column` one over the other),
+  `ratio` (the first side's share of the room), `first` and `second`, each a tab again. The
+  axis is the model's own `SplitAxis`, kept by these names.
+- A pane is what it showed, by `kind`: `page` (`url`, empty for a start page, and `title`),
+  `terminal` (`handle`, `name`), `chat` (`thread`, `title`), `newChat`, `file` (`path`),
+  `changes`. A kind this build doesn't know is read and brings nothing back, so a file a
+  later build wrote still opens.
+- Not kept: a page's `DevTools`, which belong to a page that isn't made yet when the window
+  comes back; a terminal the daemon hasn't opened yet, which has no handle to find it by
+  (a tab opened out of sight and never looked at).
 - Written 500 ms after a change, with whatever else changed meanwhile; and on quit and when
   the window closes, if a write is due. A file that can't be read is no tabs. `kept_file`
   does the reading and writing, as it does for the chat drafts and the history.
+- **`browser-tabs.json`**, which the builds before this kept the page tabs in on their own,
+  is read the first time there's no `window.json`: each checkout's pages come back, a tab
+  each, as they did then. From the first change on, `window.json` has them. The old file is
+  never written again and is left where it is, for a build that still reads it.
 
 ## 3. One rule for what's kept [decided]
 
 After each change of the shell, as `Terminals::retain` and `ChatTabs::retain` run,
-`Shell::keep_browser_tabs` builds the list from the panes. When it differs from what's kept, a
-write is due. There's no hook at each of the ways a tab comes or goes (opened, navigated,
-retitled, moved, closed by its ×, a split's ×, ⌘W or app control, ⌘⇧T, a worktree gone, a
-project removed): every one of them changes the shell.
+`Shell::keep_window` has a write due. When it's made, 500 ms on or on the way out,
+`Shell::window_due` builds what's kept from the panes as they are then, and writes it if it
+differs from what the file holds: a run of changes, a divider dragged or a row fading, is
+looked at once, and a window that didn't change isn't written. There's no hook at each of the
+ways a tab comes, moves or goes (opened, navigated, retitled, reordered, split, a split
+resized, moved to another worktree, closed by its ×, a split's ×, ⌘W or app control, ⌘⇧T, a
+worktree gone, a project removed): every one of them changes the shell.
 
 - A checkout's tabs read from the file wait until git lists the checkout, and every write
-  carries them meanwhile, so the first write after launch doesn't drop them.
+  carries them meanwhile, so the first write after launch doesn't drop them. So does a
+  project's selected checkout, until git lists the project's worktrees.
 - They go once their project is removed, or once their project's worktrees are listed without
   the checkout.
 
 ## 4. Restoring [decided]
 
-- `Shell::restore_browser_tabs` runs in `show_worktrees` beside `restore_terminals` and
-  `follow_chats`, each time git lists a project's worktrees. A checkout's waiting tabs come
-  back the first time it's listed, once a window: a window closed and opened again from the
-  Dock reads the file again, as its chats and terminals come back too.
-- A checkout with no tabs before has the first one brought back as its shown tab. It loads
-  when that checkout is selected and the window draws it, as any shown tab does.
+- `Shell::restore_window` runs in `show_worktrees`, each time git lists a project's
+  worktrees, **before** `restore_terminals` and `follow_chats`. A checkout's waiting tabs
+  come back the first time it's listed, once a window: a window closed and opened again
+  from the Dock reads the file again, as a launch does.
+- The shape first: the tabs are built from the file as it is, each pane holding the
+  reference to its content, and the tab that was shown is shown. Nothing else is done for a
+  pane then. Tabs opened on the checkout before it was listed, if any, come after them and
+  stay shown.
+- Then the daemon's and the host's own lists, which arrive a moment later, settle what's
+  still there:
+  - **Terminals** (`terminals/restore.rs`): a pane brought back for a terminal the daemon
+    lists as running keeps it; for a person's shell a daemon restart ended, it runs the
+    shell again under its name, as that restore always did; for one the list doesn't have,
+    or has as ended, the pane goes. With no daemon running and none remembered, no terminal
+    outlived the window, and they all go. If the list can't be had, the panes stay as they
+    were brought back. A terminal the list has that no pane shows gets a tab at the end.
+  - **Chats** (`chat/tabs.rs`): a pane brought back for a thread the host's list doesn't
+    have goes; the others take their titles from it. A thread the host says has a tab
+    (`tabOpen`) that no pane shows gets a tab at the end.
+- A file that isn't on disk any more isn't brought back at all.
 
-## 5. Pages made when shown [decided]
+## 5. Content made when shown [decided]
 
-- A restored pane holds its address and the site's icon (`Unloaded`) and no `BrowserView`;
-  the model keeps a pane from holding both (`Pane::set_view` lets the address go).
-  `Shell::make_shown_browsers` makes the shown tab's missing views with
+- A restored page pane holds its address and the site's icon (`Unloaded`) and no
+  `BrowserView`; the model keeps a pane from holding both (`Pane::set_view` lets the address
+  go). `Shell::make_shown_browsers` makes the shown tab's missing views with
   `BrowserView::new(address, …)`, from `Shell::workspace_content` beside
   `make_shown_terminals` and `make_shown_chats`, and from `focus_pane`, so a page focused
   through the launcher or app control takes the keyboard. The page opens once it's laid out
   (`browser/view/lifecycle.rs`, `ensure_open`). Restoring makes no view and opens no page.
-- What reads a browser pane copes with one that has no view: the tab's icon
-  (`Pane::favicon`), the address (`Pane::address`) that the launcher's Switch to Tab rows and
-  `tab_list` show, and ⌘⇧T, which keeps a closed unshown tab's address and opens it again at
-  that address.
+- A restored file or Changes pane holds what it opens (`Pane::unopened`,
+  `model/unopened.rs`) and no file or diffs: those are made over their checkout's panels,
+  which only the selected checkout has. `Shell::make_shown_editors` opens them once their
+  tab is the one shown, after each change of the shell, the way ⌘⇧T reopens a file or the
+  diffs (`shell/reopen.rs`).
+- A terminal's view and a chat's are made when first drawn, as they always were, so a
+  restored tab attaches to nothing and opens no thread until it's looked at.
+- What reads a pane copes with one whose content isn't made: the tab's icon and title
+  (`Pane::favicon`, `Face::of`), the address (`Pane::address`) that the launcher's Switch to
+  Tab rows and `tab_list` show, the file and the `changes` kind `tab_list` gives an editor
+  pane (`Pane::unopened_file`, `Pane::shows_changes`), and ⌘⇧T, which keeps a closed unshown
+  tab's address, file or diffs and opens it again.
+- What looks for the tab that already shows something finds one brought back for it, rather
+  than opening a second: a file opened again from the tree, ⌘P, a link or `tab_open` shows
+  its tab and opens it there (`Shell::open_brought_back`), and the diffs asked for again show
+  the Changes tab that came back. A pane stops waiting the moment it's given its file or the
+  diffs (`Pane::set_file`, `Pane::set_changes`), as a page's does with `set_view`.
 - A restored page's first load is no new visit in `history.json`, as Firefox counts none for
   a restored session; it updates the entry's title (`docs/new-tab.md` 4.1).
 
@@ -112,9 +187,14 @@ the tab is what makes the page, so the tools don't make one of their own.
 
 - A page's back and forward history, its scroll position and what was typed in its forms:
   CEF offers no way to restore them.
-- Splits and docked or detached `DevTools`: each page comes back as a tab of its own.
-- Which tab was selected, responsive mode (`docs/responsive.md` 1; a page an agent opened at
-  1440 × 900 comes back filling its pane), zoom, and who held a page's lease.
+- Docked or detached `DevTools`: the page comes back without them.
+- Responsive mode (`docs/responsive.md` 1; a page an agent opened at 1440 × 900 comes back
+  filling its pane), zoom, and who held a page's lease.
+- Which pane of a split the person was in (`docs/arc-sidebar.md` 2): the first, until
+  they're in one again.
+- A file's unsaved edits, its scroll position and whether it was a preview; the Changes
+  pane's place in the diffs.
+- The tabs closed lately, which ⌘⇧T brings back while the window lives.
 - [not built] Unloading tabs in the background during a session: a page made stays until its
   tab closes.
 
@@ -123,11 +203,17 @@ the tab is what makes the page, so the tools don't make one of their own.
 | Path | What |
 | --- | --- |
 | `koyo/src/kept_file.rs` | Reading the file, the write a moment after a change, and the write on quit |
-| `koyo/src/browser/tabs.rs` | The file, the rule (`keep_browser_tabs`), restoring and `make_shown_browsers` |
-| `koyo/src/browser/tabs/tests.rs` | The file, the rule, restore order and focus, pages made when shown, ⌘⇧T, quit |
+| `koyo/src/shell/kept.rs` | The file, the rule (`keep_window`, `window_due`) and restoring (`restore_window`) |
+| `koyo/src/shell/kept/shape.rs` | A tab as it's kept, and both ways between that and the tab |
+| `koyo/src/shell/kept/before.rs` | Reading `browser-tabs.json`, the file the builds before kept |
+| `koyo/src/shell/kept/tests.rs`, `tests/back.rs` | The file, the rule, what waits for a checkout, the old file; the window coming back, content made when shown, terminals and chats gone meanwhile |
+| `koyo/src/browser/tabs.rs` | A page as it's brought back, and `make_shown_browsers` |
+| `koyo/src/terminals/restore.rs` | The daemon's list settling the terminal panes brought back, and tabs for the rest |
+| `koyo/src/chat/tabs.rs` | The host's list settling the chat panes brought back, and tabs for the rest |
 | `koyo/src/model/tab.rs` | A pane's page or its kept address, never both (`Page`, `view`, `set_view`, `unloaded_address`), `Pane::address`, `Pane::favicon` |
-| `koyo/src/model/browsers.rs` | `Workspace::add_unloaded_tab` |
-| `koyo/src/projects.rs` | `show_worktrees`, where restoring runs |
+| `koyo/src/model/unopened.rs` | An editor pane that opens its file or the diffs once shown, and what reads one (`file_path`, `shows_changes`) |
+| `koyo/src/shell/reopen.rs` | `make_shown_editors`, beside ⌘⇧T |
+| `koyo/src/projects.rs` | `show_worktrees`, where restoring runs, in order |
 | `koyo/src/shell.rs` | The shell's observer, where the rule runs, and `workspace_content` |
 | `koyo/src/shell/browser_tabs.rs` | Closing a tab, its unshown pages' addresses kept for ⌘⇧T |
 | `koyo/src/control/exec/browser/page.rs` | Unshown pages in `browser_list` and the tools' refusal |

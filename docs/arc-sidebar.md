@@ -6,10 +6,16 @@ The Arc layout's sidebar is rebuilt to look and work like Arc's own: browser con
 address bar at the top, the projects of a **space** as tiles, the space's name, and each
 worktree of the selected project as a divider with its tabs under it. Spaces are switched
 along the sidebar's foot. This note is the spec the work followed; keep it in step with the
-code in `koyo-rs/koyo/src/arc/` and `koyo-rs/koyo/src/spaces.rs`. The visual check draws it:
+code in `koyo-rs/koyo/src/arc/` and `koyo-rs/koyo/src/spaces.rs`. The visual check draws it,
+and then does what a person does in it (a space's mark saying a chat in it works and waits, a
+tile dragged to another row and back, the address bar following the pane pressed in, ⌘L on a
+page), saving a picture of each. It shows a chat, so it wants a data folder and an agent host
+of its own, and says so if it isn't given them:
 
 ```sh
-KOYO_CONFIG_DIR=$PWD/.superpowers/qa/arc/config \
+Q=$PWD/.superpowers/qa/arc && mkdir -p $Q/tmp &&
+  KOYO_AGENT_PROVIDER=fake KOYO_DATA_DIR=$Q/data TMPDIR=$Q/tmp \
+  KOYO_CONFIG_DIR=$Q/config KOYO_LOG_DIR=$Q/logs \
   script/cargo run -p koyo --features visual-check -- --visual-check-arc
 ```
 
@@ -24,7 +30,9 @@ is ⌘⇧M or the rails' right-click menu, and the appearance is in that menu an
 
 - The traffic lights, then the sidebar toggle, on the left of the sidebar's top row.
 - Back, forward and reload on the right of the same row, in Arc's style. They act on the
-  browser tab shown, and are greyed out on any other tab and on a settings page.
+  page of the pane the person is in (section 2), and in a pane of another kind on the tab's
+  first page, so a page beside a chat can be reloaded from the chat. They're greyed out on a
+  tab with no page and on a settings page.
 - A page has no toolbar of its own in this layout: the sidebar has its controls and its
   address. Responsive mode and the `DevTools` are in the page's right-click menu (Responsive
   mode, Inspect, Show or Hide DevTools), in either layout. The chip that said who drives a page
@@ -39,8 +47,24 @@ is ⌘⇧M or the rails' right-click menu, and the appearance is in that menu an
   - **Chat:** the chat's name.
   - **File tab:** "File".
   - **Settings page:** "Settings".
-- With a page shown it's the page's own address field: the host until it's clicked, or ⌘L or a
-  new tab puts the keyboard in it, then the whole address to edit, Enter loading it.
+- In a split it says the pane the person is in: the one they last pressed in or gave the
+  keyboard. Pressing the page of a chat and a page shows the page's host, pressing the chat
+  the chat's name, and with two pages each has its turn. The pane is remembered while the
+  sidebar, a dialog or another window has the keyboard (`Pane::entered_at`, `Tab::current`).
+  A page's `DevTools` stand for their page.
+- **Clicking the bar, or ⌘L from anywhere in the window, opens the launcher on the page**
+  (`docs/new-tab.md` 1), as Arc's ⌘L does: the page's whole address in the field, all of it
+  selected, what the history has for it underneath. An address or a search picked there loads
+  in that page. The page is the one the controls act on (section 1); with no page in the tab,
+  it's ⌘T's launcher, on a browser tab. There's one way to change an address, so the bar is
+  never a field for it.
+- The exception is a new browser tab opened empty: its start page has no address to show, so
+  the bar is the page's own address field, the keyboard in it, until an address is entered.
+- A page takes the keyboard when its tab is picked in the sidebar, as a terminal and a chat
+  do, so its own keys (⌘R, ⌘F, ⌘G, ⌘[, ⌘], zoom, ⌘⌥I) work at once. In a split, the pane
+  the person was in takes it, a file's editor too; a file they've only looked at, as the
+  tree previews one, leaves the keyboard to the tab's first terminal, chat or page
+  (`Shell::give_shown_tab_the_keyboard`).
 
 ## 3. Project tiles
 
@@ -53,6 +77,13 @@ Arc's favourites grid, holding the projects of the space shown.
   is fetched once and kept in the app's data folder. With no remote, or no avatar to fetch,
   the project's initials stand in.
 - The selected project's tile is highlighted. Clicking a tile selects that project.
+- Dragging a tile moves its project among the space's (`arc/tile_grid.rs`): the tile follows
+  the pointer, the tiles it passes step into the slot it left, along their row and round onto
+  the next, and let go it slides into the slot it's over. The room a short last row leaves
+  counts as the last slot. Taken well away from the grid it goes back, and letting go there
+  changes nothing. The order is the sidebar's (`settings.projects`), saved at once: the
+  projects of other spaces keep their places in it, the Orca list shows the same order, and
+  the project selected stays selected.
 - A small red dot in the tile's top-right corner while any tab of the project needs
   attention (section 5).
 - While something in the project works (a chat running), terminal-style dots in the same
@@ -103,8 +134,8 @@ Arc's favourites grid, holding the projects of the space shown.
 - Unsaved edits' and splits' dots, middle-click to close, and dragging to reorder stay.
 - A tab dragged past its list's end, onto another worktree's tabs, divider or New Tab row,
   moves to that worktree and shows there: where the tab it's dropped on is, or first. Its
-  content doesn't move: a terminal stays in its folder, a chat with its thread, and on the
-  next launch each comes back with its own worktree.
+  content doesn't move: a terminal stays in its folder, a chat with its thread. The window
+  comes back with the tab where it was put (`docs/browser.md` 1).
 - The sidebar's search field and its "New worktree" row are gone.
 
 ## 6. Space menu
@@ -131,6 +162,16 @@ Arc's favourites grid, holding the projects of the space shown.
   goes on to the next space, a slow short pull settles back. Going on, the space carries on out
   and the next comes in from the other side in the same motion, slowing to rest. A click on a
   mark, and a new space, move the same way; with reduced motion the switch is at once.
+- A space that isn't shown says on its mark what its tiles would (section 3), so a chat that
+  finished there is noticed: a small red dot up and right of the mark while something in it
+  waits for the person (a chat unread, failed or asking, a terminal waiting), the tiles'
+  spinner, fainter, while something works. It's the most urgent of the space's projects
+  (`Shell::space_activity`, from `project_activity`, which the tiles' corners use too), so it
+  goes when the tiles' would. It's laid over the mark and takes no room: no mark moves as it
+  comes or goes. It shows only by a dot, so on a space just left it comes once the capsule
+  has shrunk back, out of the spring's way. The dot fades in; the spinner doesn't, as it's a
+  view drawn again only as it steps, and a fade round it would stay where its first frame had
+  it. The space shown has none: its tiles say it.
 - A **+** on the right opens a menu:
   - **New Worktree…**: in the selected project, through the New Worktree dialog.
   - **New Project…**: added to the space shown.

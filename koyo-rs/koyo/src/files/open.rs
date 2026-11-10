@@ -82,7 +82,10 @@ impl Shell {
         };
         let kept = kept || !settings::get(cx).preview_files;
         let path = checkout.read(cx).root().join(&place.path);
-        let file = if let Some((at, file)) = self.open_already(&path, cx) {
+        // A tab brought back with the window for it, and not shown yet, is one that has it.
+        let open = (self.open_already(&path, cx))
+            .or_else(|| self.open_brought_back(&path, window, cx));
+        let file = if let Some((at, file)) = open {
             if kept {
                 file.update(cx, FilePane::keep);
             }
@@ -126,7 +129,7 @@ impl Shell {
 
     /// The tab on the selected checkout showing the file at `path`, as `(project, branch,
     /// tab)`, and the pane showing it.
-    fn open_already(
+    pub(crate) fn open_already(
         &self,
         path: &Path,
         cx: &App,
@@ -161,7 +164,7 @@ impl Shell {
         let Some(pane) = unit.pane_mut(id) else {
             return;
         };
-        pane.file = Some(file.clone());
+        pane.set_file(file.clone());
         pane.title = title.into();
         unit.active_tab = unit.tab_with(id).unwrap_or(unit.active_tab);
     }

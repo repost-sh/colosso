@@ -225,6 +225,13 @@ tab_list   [read] R { worktree?, all?: bool } → { worktrees: [{ path, tabs: [{
              layout: PaneTree, panes: [PaneInfo] }] }] }
              PaneInfo = { pane, kind: "terminal"|"browser"|"editor"|"changes"|"chat", title,
              url?, file?, unsaved?, terminal?: handle, focused }
+             `focused` is the pane the person is in, of the shown tab's: the one with the
+             keyboard, or, while the sidebar, a dialog or another window has it, the one
+             they pressed in or gave the keyboard last; the tab's first until they've been
+             in any. `app_status`'s `selected.pane` is the same pane.
+             A tab the window brought back and hasn't shown yet is listed as what it will
+             show: a page with its `url`, an editor pane with its `file`, the diffs as
+             `changes` (`docs/browser.md` 5).
              PaneTree = { pane } | { axis: "row"|"column", ratio, first, second }
 tab_open   [navigate] C { worktree?, kind, url?, viewport?: OpenViewport (a page's, default:
              the person's setting, 1440 × 900), file?, line?, column?, terminal?: handle,

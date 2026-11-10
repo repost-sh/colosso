@@ -8,8 +8,8 @@ use gpui_kit::{Action, Context, Div, InteractiveElement as _, MouseDownEvent, Wi
 use koyo_browser_ipc::Go;
 
 use super::{clear, delete_space, rename};
-use crate::browser::{BrowserView, Controls};
-use crate::model::PaneKind;
+use crate::browser::BrowserView;
+use crate::chat::Activity;
 use crate::navigation::Route;
 use crate::settings;
 use crate::shell::Shell;
@@ -138,28 +138,6 @@ pub fn handle_actions(root: Div, cx: &mut Context<Shell>) -> Div {
 }
 
 impl Shell {
-    /// The page the shown tab shows, which the sidebar's back, forward and reload drive: none on a
-    /// settings page, or with no page shown.
-    pub fn shown_page(&self, cx: &gpui_kit::App) -> Option<gpui_kit::Entity<BrowserView>> {
-        if self.route(cx) != Route::Workspace {
-            return None;
-        }
-        (self.workspace.tab_shown()?.panes().into_iter())
-            .filter(|pane| pane.kind == PaneKind::Browser)
-            .find_map(|pane| pane.view().cloned())
-    }
-
-    /// What the sidebar's back, forward and reload can do for the page shown, if one is.
-    pub fn page_controls(&self, cx: &gpui_kit::App) -> Option<Controls> {
-        Some(self.shown_page(cx)?.read(cx).controls(cx))
-    }
-
-    fn steer_page(&mut self, to: Go, cx: &mut Context<Self>) {
-        if let Some(page) = self.shown_page(cx) {
-            page.update(cx, |page, cx| page.go(to, cx));
-        }
-    }
-
     /// The projects of the space the Arc sidebar shows, by their place in the workspace, in the
     /// order its tiles show them. Every project is in a space (`Settings::reconcile_spaces`).
     pub fn space_projects(&self, cx: &gpui_kit::App) -> Vec<usize> {
@@ -169,6 +147,20 @@ impl Shell {
         (space.projects.iter())
             .filter_map(|path| self.workspace.project_index(path))
             .collect()
+    }
+
+    /// How the space at `index` is doing, the most urgent of its projects: what its mark at the
+    /// sidebar's foot says while another space is shown (`docs/arc-sidebar.md` 7), from what
+    /// the tiles of its projects would say were it shown.
+    pub fn space_activity(&self, index: usize, cx: &gpui_kit::App) -> Activity {
+        let Some(space) = settings::get(cx).spaces.get(index) else {
+            return Activity::Quiet;
+        };
+        (space.projects.iter())
+            .filter_map(|path| self.workspace.project_index(path))
+            .map(|project| self.project_activity(&self.workspace.projects[project], cx))
+            .max()
+            .unwrap_or(Activity::Quiet)
     }
 
     /// Shows space `index`, and the project it showed last, its first otherwise. An empty space
