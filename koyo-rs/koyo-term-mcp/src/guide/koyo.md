@@ -213,10 +213,12 @@ themselves at any moment, in the tab: its windows are then gone from the agent d
 your refs into it are dropped, and you ask again before bringing it back. Tell them when
 that cut short something you were doing.
 
-Taking the focus. Some apps won't work unseen: a Chromium browser (Arc, Chrome) draws no
-page, and gives none to read, while the agent desktop isn't on the person's screen. For a
-web page, Koyo's own browser tools are the first choice. When it has to be that app, and
-only then, `desktop_take_focus` puts the agent desktop on the person's screen with your
+Taking the focus. What you open on the agent desktop yourself works unseen, a browser or
+an Electron app included: its pages are drawn, and are in `desktop_snapshot`. The person's
+own browser, lent, is the exception: a Chromium browser (Arc, Chrome) that came from their
+desktop draws no page, and gives none to read, while the agent desktop isn't on their
+screen. For a web page, Koyo's own browser tools are the first choice. When it has to be
+their app, and only then, `desktop_take_focus` puts the agent desktop on the person's screen with your
 window in front, in place of what they are doing. It is theirs to allow, each time: the
 first call is refused with `person_has_control` and says what to tell them and ask; only
 if they clearly agree, call again with `consent` set to the exact text of their message.

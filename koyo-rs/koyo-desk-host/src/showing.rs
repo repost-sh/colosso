@@ -1,8 +1,8 @@
 //! Taking the focus (`docs/agent-desktop.md` 5): the agent desktop put on the person's
-//! screen, with an agent's app in front, for work an app won't do unseen (a Chromium
-//! browser draws no page, and gives none to read, on a desktop that isn't showing). It is
-//! the one thing here that changes what the person is looking at, so it is done only on
-//! their word (`consent`).
+//! screen, with an agent's app in front, for work an app won't do unseen (the person's
+//! own Chromium browser, lent, draws no page, and gives none to read, on a desktop that
+//! isn't showing; one the host started does both). It is the one thing here that changes
+//! what the person is looking at, so it is done only on their word (`consent`).
 //!
 //! The desktops are switched by Mission Control's own buttons, pressed through
 //! accessibility, as the agent desktop is made: no key or pointer event, and the desktop
@@ -43,8 +43,8 @@ fn refusal(app: &str, again: bool) -> Refusal {
          {app} in front: their screen and keyboard are with it until you give the focus back \
          (desktop_return_focus) or they go to a desktop of their own. As an agent you must not \
          do this without the person's explicit consent, and only when nothing less will do: \
-         when an app can't do unseen what you need of it (a browser draws no page on a desktop \
-         that isn't showing)."
+         when an app can't do unseen what you need of it (the person's own browser, lent, draws \
+         no page on a desktop that isn't showing; a browser you opened there yourself does)."
     );
     let tell = "that you want to bring the agent desktop onto their screen, and why it's \
                 necessary; what you will do while it is there, and about how long; and that \

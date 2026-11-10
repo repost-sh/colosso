@@ -30,6 +30,12 @@ pub fn yes() -> Obj {
     unsafe { msg_send![class!(NSNumber), numberWithBool: true] }
 }
 
+/// The number that says no.
+pub fn no() -> Obj {
+    // SAFETY: `NSNumber`'s own constructor.
+    unsafe { msg_send![class!(NSNumber), numberWithBool: false] }
+}
+
 /// Takes over a reference a `Create` or `Copy` call handed out.
 pub fn owned(object: Ref) -> Option<Obj> {
     // SAFETY: the caller got `object` from a call that hands out one reference, which this

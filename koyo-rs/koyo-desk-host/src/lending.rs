@@ -79,8 +79,9 @@ fn refusal(asked: &str, wished: bool, again: bool) -> Refusal {
     let mut asks = consent::ask(&means, &tell, "desktop_open");
     let _ = write!(
         asks.message,
-        " If {asked} is a web browser, tell them this too: a Chromium browser (Arc, Chrome) \
-         draws no page and gives none to read while the agent desktop isn't on their screen, \
+        " If {asked} is a web browser, tell them this too: their own Chromium browser (Arc, \
+         Chrome), once lent, draws no page and gives none to read while the agent desktop \
+         isn't on their screen, \
          so you would also have to ask for the focus (desktop_take_focus), which puts the \
          agent desktop on their screen while you work in it; for a web page Koyo's own \
          browser tools serve better."
@@ -144,10 +145,11 @@ impl Host {
         if self.taken.as_ref().is_some_and(|taken| taken.pid == pid) {
             let _ = self.return_focus();
         }
-        let app = self.apps.remove(at);
+        let mut app = self.apps.remove(at);
         // Theirs again before it's touched: the guard of the front takes it for the
         // agent's until it's told otherwise.
         self.apps_changed();
+        app.leave_as_found();
         // Nothing an agent held of it reaches it from now on: an element of its windows,
         // text on its way to it, a window held by its bar.
         self.refs.clear();
