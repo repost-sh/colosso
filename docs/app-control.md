@@ -67,8 +67,9 @@ As monocode and `docs/terminals.md` 8.2:
 - Errors: an `isError` result with `{ code, message, retryable, details? }`. Codes:
   `invalid_input`, `not_found`, `ambiguous`, `scope_denied`, `user_declined`,
   `request_conflict`, `control_disabled`, `app_not_running`, `unsaved_changes`,
-  `person_has_control`, `control_required`, `timeout`, `browser_unavailable`, `git_failed`,
-  `internal`, plus the terminal codes of `docs/terminals.md` 8.2.
+  `person_has_control`, `control_required`, `timeout`, `browser_unavailable`,
+  `desktop_unavailable`, `git_failed`, `internal`, plus the terminal codes of
+  `docs/terminals.md` 8.2.
 - Selectors. `project`: main checkout path, or project name when unique. `worktree`:
   checkout path, branch name (unique across projects, or within `project`), or `"current"`
   (the caller's worktree: `KOYO_WORKTREE`, else its cwd's checkout); when no branch has the
@@ -83,9 +84,9 @@ As monocode and `docs/terminals.md` 8.2:
 
 | Caller | How it says hello | Approval | Grant |
 | --- | --- | --- | --- |
-| An agent in a Koyo terminal | relay with `KOYO_TERMINAL` set (`terminal: term_…`, `worktree`) and the terminal exists in the daemon | none | `read navigate manage browser settings` |
+| An agent in a Koyo terminal | relay with `KOYO_TERMINAL` set (`terminal: term_…`, `worktree`) and the terminal exists in the daemon | none | `read navigate manage browser desktop settings` |
 | An agent in a Koyo chat | the relay a chat's session starts (`docs/chat.md` O1), with `KOYO_CHAT` set (`chat: <thread id>`); the window knows the chat and Settings → Chat → Koyo tools is on | none; Settings → MCP server needn't be on | as a terminal agent; with Koyo tools off, `control_disabled` for its hello and its calls |
-| An external MCP client (stdio relay without a terminal, or HTTP) | `clientInfo.name` (HTTP: `initialize`, else `User-Agent` product, else `MCP client`) | first time per name: “Allow “Claude Code” to control Koyo?” Allow / Deny, 2 min timeout, Deny remembered 10 min | `read navigate manage browser`; `settings` and `destructive` off until switched on in Settings |
+| An external MCP client (stdio relay without a terminal, or HTTP) | `clientInfo.name` (HTTP: `initialize`, else `User-Agent` product, else `MCP client`) | first time per name: “Allow “Claude Code” to control Koyo?” Allow / Deny, 2 min timeout, Deny remembered 10 min | `read navigate manage browser`; `desktop`, `settings` and `destructive` off until switched on in Settings |
 | `koyo app` CLI | as an external client named `koyo app` unless `KOYO_TERMINAL` or `KOYO_CHAT` is set | as above | as above |
 
 The socket's trust boundary is the user id (any process of the user can reach it), so
@@ -101,6 +102,7 @@ Scopes:
 | `navigate` | select projects and worktrees, open/select/move/close tabs, split/focus/resize panes, panels, layout, open settings pages, open files |
 | `manage` | add/remove/reorder projects, create worktrees, save files |
 | `browser` | drive pages: navigate, eval, click, type, keys, scroll, claim/release |
+| `desktop` | drive apps on the agent desktop: open, click, move, drag, scroll, type, keys, focus, close |
 | `settings` | `settings_set` (the allowlisted fields) |
 | `destructive` | delete worktrees, close tabs discarding unsaved edits; each call also confirmed |
 
@@ -223,7 +225,8 @@ worktree_delete [destructive] D, confirmed { worktree, force?: bool } → refuse
 ```
 tab_list   [read] R { worktree?, all?: bool } → { worktrees: [{ path, tabs: [{ index, selected,
              layout: PaneTree, panes: [PaneInfo] }] }] }
-             PaneInfo = { pane, kind: "terminal"|"browser"|"editor"|"changes"|"chat", title,
+             PaneInfo = { pane, kind: "terminal"|"browser"|"editor"|"changes"|"chat"|
+             "desktop", title,
              url?, file?, unsaved?, terminal?: handle, focused }
              `focused` is the pane the person is in, of the shown tab's: the one with the
              keyboard, or, while the sidebar, a dialog or another window has it, the one
@@ -238,7 +241,8 @@ tab_open   [navigate] C { worktree?, kind, url?, viewport?: OpenViewport (a page
              name?: string (new terminal's), command?: string (new terminal's), place?:
              "end"|"beside" (default end), select?: bool (default: the person's setting) }
              → { pane, tab }
-             Opens the kind as the menu would; `terminal` reveals an existing daemon terminal.
+             Opens the kind as the menu would; `terminal` reveals an existing daemon terminal;
+             `desktop` is the agent desktop's one pane, the one there is or a new one.
              OpenViewport = { device?, width?, height?, orientation?, fill?: true }
              (`browser_viewport`'s fields, Pages agents open above)
 tab_select [navigate] I { pane } | { worktree?, index }
@@ -325,6 +329,49 @@ browser_viewport [browser] I { pane?, device?, width?, height?, scale?, mobile?,
                    userAgent?, orientation?, zoom?, fill?: true, screenshot?: bool }
                    → { viewport, settled } (+ image block with `screenshot`); responsive mode,
                    `docs/responsive.md` 4.1
+```
+
+### Agent desktop (`docs/agent-desktop.md`, through its host)
+
+Places are desktop points from the agent desktop's top left. An act lands on an element of
+the last snapshot by `ref` (a plain click presses it through accessibility, no event) or at
+a point (`x`, `y`, both); `window` names the window meant, raised first when another covers
+the point. Acts and `desktop_close` fail `person_has_control` (retryable) while the person
+acts in the desktop's tab and for 5 s after; `desktop_open` fails it for an app the person
+runs as its only instance. `desktop_unavailable` (retryable): the agent desktop is off,
+still starting, or its host lacks a grant. The reads are `read`, as the browser's.
+
+```
+desktop_open       [desktop] C { app: name|bundle id|path, file?: path|URL, args?: [string] }
+                     → { app, pid, windows: [DesktopWindow] }; the desktop's tab opens
+                     out of sight
+desktop_windows    [read] R {} → { windows: [{ window, pid, app, title, x, y, width,
+                     height }] }, front to back
+desktop_screenshot [read] R { window?, scale?: 1|2 (default 1: a pixel a point) } → image
+                     block + { x, y, width, height, scale }: the picture's place on the desktop
+desktop_snapshot   [read] R { window?, interactive?: bool, menus?: bool } → { tree: text
+                     with `[ref=eN] @x,y` markers, elements, truncated }; refs hold until
+                     the next snapshot
+desktop_click      [desktop] C { ref? | x?, y?, window?, button?: "left"|"right"|"middle",
+                     count?: 1..3, modifiers?: ["cmd"|"shift"|"alt"|"ctrl"] } → { done }
+desktop_move       [desktop] I { ref? | x?, y?, window? } → { done }
+desktop_drag       [desktop] C { from: { ref? | x?, y? }, to: { ref? | x?, y? }, window? }
+                     → { done }
+desktop_scroll     [desktop] C { ref? | x?, y?, window?, dx?, dy? (points, about: up to a
+                     quarter further; +dy shows what's further down; one non-zero) }
+                     → { done }
+desktop_type       [desktop] C { text (\n Return, \t Tab; at most 4000 as keys), ref?,
+                     replace?: bool (with ref: set the whole value) } → { done }
+desktop_key        [desktop] C { keys: "cmd+s"|"return"|"shift+cmd+["…, window? }
+                     → { done, copied? }: a copy's text; the clipboard stays the person's.
+                     Keys go to the window that has them (last clicked or focused, or the
+                     document, panel or sheet its app opened since), or to `window`, which
+                     has them from then on
+desktop_focus      [desktop] I { window } → { done }; raised, and the keys' from now on
+desktop_wait       [read] R { quietMs? (default 500, at most 10000), timeoutMs? (default
+                     10000, at most 60000) } → { still, millis }
+desktop_close      [desktop] D { window? | pid? (one) } → { done }; a window, or quits an app
+                     the agent opened
 ```
 
 ### Activity
@@ -432,14 +479,15 @@ owner found the list of no use, and agents read the log with `activity_list` (5)
 
 ## 11. As implemented (2026-11-02)
 
-- Crates: `koyo-rs/koyo-app-control` (52 operations, frames, socket, client, `koyo app`),
+- Crates: `koyo-rs/koyo-app-control` (65 operations, frames, socket, client, `koyo app`),
   `koyo-rs/koyo/src/control/` (listener, gate, approval, confirmations, receipts, activity,
   topics, in-process client, HTTP server in `control/http.rs`, executors in `control/exec/`,
-  browser executors in `control/exec/browser/`), `koyo-rs/koyo-term-mcp` (the unified server:
+  browser executors in `control/exec/browser/`, the agent desktop's in
+  `control/exec/desktop.rs`), `koyo-rs/koyo-term-mcp` (the unified server:
   `backend.rs`, `socket.rs`, `app.rs`, `tools.rs`, `launch.rs`, `subscriptions.rs`,
   `http.rs`), the Settings page in `settings_view/mcp_server.rs`, `mcp_agents.rs` (the
   Agents section) and `mcp_clients.rs`.
-- `koyo mcp` lists 67 tools (14 terminal, 52 app, `app_launch`); HTTP lists 66 (no
+- `koyo mcp` lists 80 tools (14 terminal, 65 app, `app_launch`); HTTP lists 79 (no
   `app_launch`). The server is named `koyo`. A chat's session registers it under that name,
   with `KOYO_CHAT` (`docs/chat.md` O1).
 - Browser tools run over CDP through `browser/agent.rs`, its refusals typed (`AgentError`). A
@@ -462,7 +510,7 @@ owner found the list of no use, and agents read the log with `activity_list` (5)
   else `settled: false`). With `screenshot: true` its output carries
   `mimeType` and `data` at the top, which the relay turns into an image block as
   `browser_screenshot`'s.
-- Agents in terminals and chats get `read navigate manage browser settings`
+- Agents in terminals and chats get `read navigate manage browser desktop settings`
   (`Scope::AGENT`), never `destructive`; every destructive call is confirmed in the window.
   A chat's agent is welcomed once the window knows the chat; before the window has heard its
   chats from the host, the refusal is `not_found` with `retryable: true`.
@@ -548,7 +596,7 @@ where it lives:
 
 ### 12.3 What agents in Koyo's terminals may do
 
-- Today: `read navigate manage browser settings`, without asking and not changeable
+- Today: `read navigate manage browser desktop settings`, without asking and not changeable
   (`Scope::TERMINAL_AGENT`, `control/gate.rs`); `settings` lets them change appearance,
   layout and the rest of `settings_set`'s allowlist.
 - Proposed: `externalControl.terminalAgents: [scope]`, default today's, with the same

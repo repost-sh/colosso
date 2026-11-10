@@ -33,9 +33,10 @@ in `koyo-rs/koyo/src/launcher/` and `koyo-rs/koyo/src/history/`.
   - In the Orca layout a page has its own toolbar, so ⌘L puts the keyboard in that page's
     address field instead, from anywhere in the tab.
 - A pill on the left of the field names the **kind** of tab Enter opens: **Browser**, **Chat**
-  or **Terminal**, in that order on purpose, and last **Worktree**, which opens no tab
-  (`docs/arc-sidebar.md` 8). Each kind has its own colour (blue, violet, green, orange), so a
-  glance tells them apart. **Tab** goes to the next kind and **⇧Tab** to
+  or **Terminal**, in that order on purpose, then **Desktop**, the agent desktop's one tab
+  (`docs/agent-desktop.md` 9), and last **Worktree**, which opens no tab
+  (`docs/arc-sidebar.md` 8). Each kind has its own colour (blue, violet, green, teal, orange),
+  so a glance tells them apart. **Tab** goes to the next kind and **⇧Tab** to
   the one before. Clicking the pill, or the hint on the right, also moves to the next kind.
   There is no editor tab any more: ⌘P opens files.
 - **Nothing typed, Enter** opens an empty tab of the kind: the browser's start page with the
@@ -47,6 +48,8 @@ in `koyo-rs/koyo/src/launcher/` and `koyo-rs/koyo/src/history/`.
     been typed there and sent.
   - Terminal: opens a new login shell named after the command, then types the command into
     it with Enter (section 2).
+  - Desktop: Enter shows the agent desktop's tab, the one there is or a new one, whatever
+    is typed. Nothing is listed under the field.
   - Worktree: what's typed is the new worktree's name. Enter opens the New Worktree dialog
     on the selected project with that name filled in, and the branch is picked there.
     Nothing is listed under the field, and Enter with nothing typed opens the dialog empty.
