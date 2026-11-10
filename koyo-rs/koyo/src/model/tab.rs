@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use gpui_kit::{App, Entity, Image, SharedString};
 use koyo_agent::protocol::ids::ThreadId;
+use serde::{Deserialize, Serialize};
 
 use super::PaneKind;
 use crate::browser::BrowserView;
@@ -28,9 +29,15 @@ pub struct Pane {
     pub file: Option<Entity<FilePane>>,
     /// The checkout's diffs, when it's an editor pane showing them rather than a file.
     pub changes: Option<Entity<ChangesTab>>,
+    /// What an editor pane brought back with the window shows once its tab is (`unopened.rs`).
+    /// Boxed, as few panes have one.
+    pub unopened: Option<Box<super::Unopened>>,
     /// The workspace's turn when its tab was last shown, later turns higher: ⌃⇥ lists the
     /// latest first.
     pub shown_at: u64,
+    /// When the person was last in it, later higher, and 0 until they have been
+    /// (`Workspace::enter_pane`): of a tab's panes, the one they're in (`Tab::current`).
+    pub entered_at: u64,
     /// A terminal pane's terminal, by the number `crate::terminals` knows it by.
     pub terminal: Option<u64>,
     /// The thread a chat pane shows: a new chat has none until its first send.
@@ -47,7 +54,9 @@ impl Pane {
             page: None,
             file: None,
             changes: None,
+            unopened: None,
             shown_at: 0,
+            entered_at: 0,
             terminal: None,
             chat: None,
         }
@@ -154,8 +163,10 @@ pub struct Unloaded {
     pub favicon: Option<Arc<Image>>,
 }
 
-/// How a split lays its two sides out.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// How a split lays its two sides out. The window's file keeps it by these names
+/// (`shell/kept/shape.rs`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum SplitAxis {
     /// Side by side, the first on the left.
     Row,
@@ -253,6 +264,15 @@ impl Tab {
             Tab::Single(pane) => pane,
             Tab::Split(split) => split.first.first(),
         }
+    }
+
+    /// The pane the person is in: the one they were in last, wherever the keyboard is now, and
+    /// the first until they've been in any. The address bar, the page's keys and the keyboard
+    /// coming back to the tab go by it.
+    pub fn current(&self) -> &Pane {
+        // The first of those entered as late: `max_by_key` alone would answer the last.
+        let panes = self.panes().into_iter().rev();
+        (panes.max_by_key(|pane| pane.entered_at)).unwrap_or_else(|| self.first())
     }
 
     /// The panes, left to right and top to bottom.

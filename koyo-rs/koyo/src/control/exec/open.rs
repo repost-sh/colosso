@@ -397,7 +397,7 @@ pub(crate) fn open_changes(
         .branch()
         .ok_or_else(|| ControlError::not_found("No checkout is selected."))?;
     (unit.tabs.iter().flat_map(Tab::panes))
-        .find(|pane| pane.changes.is_some())
+        .find(|pane| pane.shows_changes())
         .map(|pane| pane.id)
         .ok_or_else(|| ControlError::internal("The Changes tab didn't open."))
 }

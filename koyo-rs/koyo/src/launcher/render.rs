@@ -16,7 +16,7 @@ use gpui_kit::{
 
 use super::rows::{Act, Glyph, Row};
 use super::view::{FIELD, LIST_PADDING, Launcher, ROW, height};
-use super::{AcceptSuggestion, NewTab, NextKind, PreviousKind, RemoveFromHistory};
+use super::{AcceptSuggestion, NewTab, NextKind, OpenAddress, PreviousKind, RemoveFromHistory};
 use crate::list::{SelectNext, SelectPrevious, styled};
 use crate::modal;
 use crate::pane::close_button;
@@ -53,6 +53,7 @@ impl Render for Launcher {
             .on_action(cx.listener(|this, _: &RemoveFromHistory, _, cx| this.remove_selected(cx)))
             // ⌘T again closes it, as Zen's does.
             .on_action(|_: &NewTab, window, cx| modal::dismiss(window, cx))
+            .on_action(cx.listener(|this, _: &OpenAddress, window, cx| this.select_all(window, cx)))
             .child(self.field(p, cx))
             .when(!rows.is_empty(), |launcher| {
                 launcher

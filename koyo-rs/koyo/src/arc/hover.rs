@@ -39,6 +39,12 @@ pub struct Hover {
 }
 
 impl Hover {
+    /// Where `what` was last drawn, for the visual check to press it there.
+    #[cfg(feature = "visual-check")]
+    pub fn drawn_at(&self, what: Hovered) -> Option<Bounds<Pixels>> {
+        self.drawn.borrow().get(&what).copied()
+    }
+
     /// Notes where `what` is drawn, given the bounds of what shows it (`ElementExt::on_prepaint`).
     pub fn noting(
         &self,

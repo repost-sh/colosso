@@ -23,6 +23,7 @@ mod rename;
 mod swipe;
 #[cfg(test)]
 mod tests;
+mod tile_grid;
 mod tiles;
 mod top;
 #[cfg(feature = "visual-check")]
@@ -32,6 +33,7 @@ mod worktrees;
 pub use actions::handle_actions;
 pub use hover::Hover;
 pub use swipe::Swipe;
+pub use tile_grid::TileHand;
 pub use top::controls;
 
 /// Between the sidebar's parts: the address bar, the tiles, the space, the foot.

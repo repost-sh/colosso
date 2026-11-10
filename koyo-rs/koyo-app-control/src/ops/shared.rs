@@ -95,7 +95,7 @@ pub struct PaneInfo {
     /// A terminal pane's handle (`term_…`), for the `terminal_*` tools.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub terminal: Option<String>,
-    /// Whether it has the keyboard.
+    /// Whether it's the pane the person is in: it has the keyboard, or had it last.
     pub focused: bool,
 }
 

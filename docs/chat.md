@@ -249,9 +249,14 @@ checkout path, which is also the agent's `cwd`. The tab face shows the chat's ti
 status; the sidebar's worktree row shows what its chats need. Closing the tab doesn't delete
 the chat: the new-tab launcher (`docs/new-tab.md`), in its Chat kind, lists the chats no tab
 shows. Which
-chats have a tab is the thread's own `tabOpen`, kept by the host with the rest of it, so the
-tabs come back with the app as terminals' do (5.2); the app keeps no list of its own. A new
-tab is not a chat until its first send, so empty tabs leave nothing behind.
+chats have a tab is the thread's own `tabOpen`, kept by the host with the rest of it, so a
+chat made while the window was closed gets its tab when it opens (5.2). Where each chat's
+pane is, in which tab and on which side of a split, the window keeps with the rest of its
+shape (`window.json`, `docs/browser.md`), and brings back before it asks the host. A new
+tab is not a chat until its first send, but it's a tab: the window brings it back too, with
+the draft its folder keeps, so what was typed and not sent is where it was typed (owner,
+2026-11-10; before, an empty tab left nothing behind, and its text turned up in the next
+new chat).
 Rejected: T3's thread inbox in the sidebar (Koyo's sidebar lists worktrees; a chat is a tab
 in one, as a terminal is).
 
@@ -960,12 +965,18 @@ No GPUI here: what doesn't draw is tested without compiling the app.
   chats) gets `tabOpen: true`, whatever its summary says: a false may still be in the queue. An
   update that changes nothing commits nothing, and a tab's coming and going leaves `updatedAt`
   alone, as it's nothing done in the chat.
-- **Restoring**: the threads with `tabOpen` in the host's *first* list of this run of the app, in
-  the order they were made, get tabs that don't take the focus, each as soon as its `cwd` is a
-  listed checkout (that list, and every read of a project's worktrees, looks again). Nothing later
+- **Restoring**: the window brings its chat panes back first, where they were, each showing
+  its thread or, for a chat with nothing sent yet, none (`Shell::restore_window`,
+  `docs/browser.md` 4). Then the threads with `tabOpen` in the host's *first* list of this run
+  of the app, in the order they were made, that no pane shows get tabs that don't take the
+  focus, each as soon as its `cwd` is a listed checkout (that list, and every read of a
+  project's worktrees, looks again): the chats made while the window was closed. Nothing later
   brings a tab back: a chat just made has a summary that may arrive before the answer that names
   it, and the summary of a tab closed a moment ago still says it's open. A thread some pane
-  already shows, made while the first list was on its way, is counted as brought back.
+  already shows, brought back with the window or made while the first list was on its way, is
+  counted as brought back. A pane the window brought back for a thread the host's list
+  doesn't have, deleted meanwhile, goes, its split keeping the other side (`Chats::knows`,
+  which says nothing until the host has listed its threads).
 - The tab's title is the summary's, a thread removed closes its tabs, and a chat that isn't
   shown keeps its summary for the tab face and the sidebar (M6).
 - Sending: the composer clears at once and the item appears when the host says so, a round

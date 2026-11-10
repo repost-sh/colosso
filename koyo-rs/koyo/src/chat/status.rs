@@ -18,7 +18,7 @@ use koyo_agent::protocol::methods::{ThreadParams, ThreadsRead};
 use koyo_agent::protocol::model::{Status, ThreadSummary};
 
 use super::{Chats, ChatsEvent, logged};
-use crate::model::Tab;
+use crate::model::{Project, Tab};
 use crate::pane::dot;
 use crate::shell::Shell;
 use crate::theme::{self, Palette};
@@ -242,6 +242,15 @@ impl Shell {
         }
     }
 
+    /// How `project` is doing, the most urgent of its checkouts: what its tile's corner says,
+    /// and, with its space's other projects, its space's mark while the space isn't shown.
+    pub fn project_activity(&self, project: &Project, cx: &App) -> Activity {
+        (project.branches.iter())
+            .map(|unit| self.checkout_activity(&unit.worktree.path, cx))
+            .max()
+            .unwrap_or(Activity::Quiet)
+    }
+
     /// How many chats are at work in the checkout at `worktree`.
     pub fn chats_working(&self, worktree: &Path, cx: &App) -> usize {
         (self
@@ -283,7 +292,7 @@ pub enum Activity {
     Attention,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "visual-check"))]
 impl Chats {
     /// Takes `summaries` in as the host would say them.
     pub(crate) fn hear_summaries(&mut self, summaries: Vec<ThreadSummary>, cx: &mut Context<Self>) {
@@ -296,6 +305,7 @@ impl Chats {
     }
 
     /// Takes `summaries` in as the host's list of its chats, which a connection starts with.
+    #[cfg(test)]
     pub(crate) fn hear_list(&mut self, summaries: Vec<ThreadSummary>, cx: &mut Context<Self>) {
         self.listed(Ok(summaries), cx);
     }

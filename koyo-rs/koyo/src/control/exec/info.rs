@@ -65,7 +65,7 @@ pub(crate) fn pane(shell: &Shell, pane: &Pane, focused: bool, cx: &App) -> PaneI
         model::PaneKind::Chat => PaneKind::Chat,
         model::PaneKind::Terminal => PaneKind::Terminal,
         model::PaneKind::Browser => PaneKind::Browser,
-        model::PaneKind::Editor if pane.changes.is_some() => PaneKind::Changes,
+        model::PaneKind::Editor if pane.shows_changes() => PaneKind::Changes,
         model::PaneKind::Editor => PaneKind::Editor,
     };
     let file = pane.file.as_ref().map(|file| file.read(cx));
@@ -81,7 +81,8 @@ pub(crate) fn pane(shell: &Shell, pane: &Pane, focused: bool, cx: &App) -> PaneI
         kind,
         title: pane.title.to_string(),
         url: pane.address(cx),
-        file: file.map(|file| file.path.display().to_string()),
+        // A file brought back with the window and not shown yet is the one it opens then.
+        file: (pane.file_path(cx)).map(|path| path.display().to_string()),
         unsaved: file.map(FilePane::is_dirty),
         terminal: terminal.map(|handle| handle.to_string()),
         focused,

@@ -16,8 +16,8 @@ use super::control::Mode;
 use super::keys::{characters, key_codes};
 use super::view::BrowserView;
 use super::{
-    Back, Copy, Cut, FocusAddress, Forward, Paste, Redo, Reload, SelectAll, SendBackTab,
-    SendEscape, SendTab, ToggleDevTools, ToggleResponsive, Undo,
+    Back, Copy, Cut, Forward, Paste, Redo, Reload, SelectAll, SendBackTab, SendEscape, SendTab,
+    ToggleDevTools, ToggleResponsive, Undo,
 };
 
 impl BrowserView {
@@ -265,9 +265,6 @@ pub(super) fn steer(view: Div, cx: &mut Context<BrowserView>) -> Div {
     view.on_action(cx.listener(|this, _: &Back, _, cx| this.go(Go::Back, cx)))
         .on_action(cx.listener(|this, _: &Forward, _, cx| this.go(Go::Forward, cx)))
         .on_action(cx.listener(|this, _: &Reload, _, cx| this.go(Go::Reload, cx)))
-        .on_action(cx.listener(|this, _: &FocusAddress, window, cx| {
-            this.focus_address(window, cx);
-        }))
         .on_action(cx.listener(|this, _: &ToggleDevTools, _, cx| this.inspect(None, cx)))
         .on_action(cx.listener(|this, _: &ToggleResponsive, _, cx| this.toggle_responsive(cx)))
 }

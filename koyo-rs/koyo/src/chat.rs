@@ -413,4 +413,4 @@ fn logged<T: Send + 'static>(
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

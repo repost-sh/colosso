@@ -2,19 +2,24 @@
 //! its picture centred, sharing the sidebar's width a row at a time. The selected project's is
 //! lit. A red dot in its corner says something in the project waits for the person, a spinner
 //! that something works. Hovered, it names the project and sums up what's in it; right-clicked,
-//! it can move to another space, be renamed, take another picture, or go.
+//! it can move to another space, be renamed, take another picture, or go; dragged, it moves
+//! among its space's tiles (`tile_grid`).
 
+use std::hash::{DefaultHasher, Hash as _, Hasher as _};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use gpui_kit::base::ElementExt as _;
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, Context, Div, FontWeight, InteractiveElement as _, IntoElement, MouseButton,
-    ParentElement as _, StatefulInteractiveElement as _, Styled as _, div, img, px,
+    AnyElement, App, AppContext as _, Context, Div, FontWeight, InteractiveElement as _,
+    IntoElement, MouseButton, ParentElement as _, Render, StatefulInteractiveElement as _,
+    Styled as _, Window, div, img, px,
 };
 
 use super::Look;
+use super::tile_grid::TileGrid;
 use super::actions::{
     ChangeProjectIcon, MoveProject, MoveProjectToNewSpace, RenameProject, ResetProjectIcon,
 };
@@ -41,41 +46,65 @@ fn per_row(count: usize) -> usize {
     }
 }
 
-/// The tiles of the space shown, for its `projects`; none while it has no projects. The
-/// selected project's is lit: a project the space doesn't hold isn't among them.
-pub fn grid(shell: &Shell, projects: &[usize], look: Look, cx: &mut Context<Shell>) -> Option<Div> {
+/// The tiles of the space shown, for its `projects`, in a grid they're dragged about in; none
+/// while it has no projects. The selected project's is lit: a project the space doesn't hold
+/// isn't among them.
+pub fn grid(
+    shell: &Shell,
+    projects: &[usize],
+    look: Look,
+    cx: &mut Context<Shell>,
+) -> Option<TileGrid> {
     if projects.is_empty() {
         return None;
     }
-    let per_row = per_row(projects.len());
     let selected = shell.workspace.active_project();
-    let mut rows = Vec::new();
-    for row in projects.chunks(per_row) {
-        let mut tiles: Vec<AnyElement> = Vec::new();
-        for &index in row {
-            tiles.push(tile(shell, index, selected == Some(index), look, cx).into_any_element());
-        }
-        // A short last row keeps the tiles as wide as the others'.
-        tiles.extend((row.len()..per_row).map(|_| div().flex_1().into_any_element()));
-        rows.push(div().flex().gap(px(GAP)).children(tiles));
+    let tiles = (projects.iter())
+        .map(|&index| {
+            let key = key_of(&shell.workspace.projects[index].path);
+            let tile = tile(shell, (index, key), selected == Some(index), look, cx);
+            (key, tile.into_any_element())
+        })
+        .collect();
+    let on_drop = cx.listener(|this, &(from, to): &(usize, usize), _, cx| {
+        this.move_tile(from, to, cx);
+    });
+    let rows = (per_row(projects.len()), px(GAP));
+    Some(TileGrid::new(tiles, rows, shell.tile_hand.clone(), Rc::new(on_drop)))
+}
+
+/// What a project's tile is known by as it moves, whatever its place: its folder's.
+fn key_of(path: &Path) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    path.hash(&mut hasher);
+    hasher.finish()
+}
+
+/// A tile in hand. Nothing's drawn for it under the pointer: its grid draws the tile there.
+struct DraggedTile;
+
+impl Render for DraggedTile {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        gpui_kit::Empty
     }
-    Some(
-        div()
-            .flex_shrink_0()
-            .flex()
-            .flex_col()
-            .gap(px(GAP))
-            .children(rows),
-    )
+}
+
+impl Shell {
+    /// A tile of the space shown let go over another slot: its project moves there among the
+    /// space's, in the sidebar's order, which is saved and which the Orca list shows too.
+    fn move_tile(&mut self, from: usize, to: usize, cx: &mut Context<Self>) {
+        let tiles = self.space_projects(cx);
+        if self.workspace.move_project_among(&tiles, from, to) {
+            self.save_projects(cx);
+            cx.notify();
+        }
+    }
 }
 
 /// What's in the project's corner: a dot while something waits for the person, a spinner
 /// while something works.
 fn corner(shell: &Shell, project: &Project, p: Palette, cx: &mut App) -> Option<Div> {
-    let activity = (project.branches.iter())
-        .map(|unit| shell.checkout_activity(&unit.worktree.path, cx))
-        .max()?;
-    match activity {
+    match shell.project_activity(project, cx) {
         Activity::Quiet => None,
         Activity::Working => {
             let place = format!("tile-{}", project.path.display());
@@ -101,9 +130,10 @@ fn picture(project: &Project, p: Palette, cx: &mut App) -> AnyElement {
     }
 }
 
+/// The tile of the project at `index` in the workspace, known in its space's grid by `key`.
 fn tile(
     shell: &Shell,
-    index: usize,
+    (index, key): (usize, u64),
     selected: bool,
     look: Look,
     cx: &mut Context<Shell>,
@@ -113,10 +143,11 @@ fn tile(
     let path = project.path.clone();
     let corner = corner(shell, project, p, cx);
     let face = picture(project, p, cx);
+    let hand = shell.tile_hand.clone();
+    let lifted = hand.holding() == Some(key);
     let tile = div()
         .id(("arc-tile", index))
         .debug_selector(move || format!("arc-tile-{index}"))
-        .flex_1()
         .min_w_0()
         .h(px(TILE))
         .relative()
@@ -128,6 +159,12 @@ fn tile(
         .when(selected, |tile| tile.bg(look.tile_selected))
         .when(!selected, |tile| {
             tile.bg(look.tile).hover(|style| style.bg(look.tile_hover))
+        })
+        // In hand, it's lifted off the grid, over the tiles it passes.
+        .when(lifted, |tile| tile.bg(look.tile_selected).shadow_md())
+        .on_drag(DraggedTile, move |_, grab, _, cx| {
+            hand.take(key, grab);
+            cx.new(|_| DraggedTile)
         })
         .child(face)
         .children(corner.map(|corner| div().absolute().top(px(6.)).right(px(6.)).child(corner)))

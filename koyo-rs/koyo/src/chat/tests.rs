@@ -52,7 +52,7 @@ pub(in crate::chat) fn question(text: &str, multi_select: bool, labels: &[&str])
     }
 }
 
-pub(in crate::chat) fn summary(id: &str, cwd: &Path, title: &str, tab_open: bool) -> ThreadSummary {
+pub(crate) fn summary(id: &str, cwd: &Path, title: &str, tab_open: bool) -> ThreadSummary {
     ThreadSummary {
         id: ThreadId(id.into()),
         cwd: cwd.to_string_lossy().into_owned(),

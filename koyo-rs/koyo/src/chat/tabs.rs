@@ -44,6 +44,9 @@ pub struct ChatTabs {
     views: HashMap<u64, Made>,
     /// The threads the panes show.
     shown: HashSet<ThreadId>,
+    /// The threads of panes the window brought back that the host hasn't yet said it still
+    /// has (`restore_chats`).
+    unconfirmed: HashSet<ThreadId>,
     /// The pane whose view takes the keyboard once it's made: the chat just opened.
     focus_next: Option<u64>,
     /// What a pane's chat is told as soon as its view is made: the launcher's message.
@@ -71,6 +74,7 @@ impl ChatTabs {
             chats,
             views: HashMap::new(),
             shown: HashSet::new(),
+            unconfirmed: HashSet::new(),
             focus_next: None,
             say_next: None,
             _followed,
@@ -81,6 +85,12 @@ impl ChatTabs {
     /// The view of chat pane `pane`, once it's made.
     pub fn view(&self, pane: u64) -> Option<&Entity<ChatView>> {
         self.views.get(&pane).map(|made| &made.view)
+    }
+
+    /// A pane the window brought back shows thread `id` (`shell/kept.rs`): it keeps it if the
+    /// host still has the chat, which its list says.
+    pub(crate) fn bring_back(&mut self, id: &ThreadId) {
+        self.unconfirmed.insert(id.clone());
     }
 
     /// Follows what the panes show, after any change to them: the views of panes gone are let
@@ -108,20 +118,17 @@ impl ChatTabs {
 }
 
 impl Shell {
-    /// Makes the views the shown tab's chat panes don't have yet, so the panes draw them; the
-    /// first pane's.
-    pub fn make_shown_chats(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Option<Entity<ChatView>> {
-        let unit = self.workspace.branch()?;
-        let panes = unit.tabs.get(unit.active_tab)?.panes();
-        let mut chats = panes
-            .iter()
+    /// Makes the views the shown tab's chat panes don't have yet, so the panes draw them.
+    pub fn make_shown_chats(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some((unit, tab)) = (self.workspace.branch()).zip(self.workspace.tab_shown()) else {
+            return;
+        };
+        let mut chats = (tab.panes().into_iter())
             .filter(|pane| pane.kind == PaneKind::Chat)
             .peekable();
-        let first = chats.peek()?.id;
+        if chats.peek().is_none() {
+            return;
+        }
         let missing: Vec<(u64, Option<ThreadId>)> = chats
             .filter(|pane| !self.chat_tabs.views.contains_key(&pane.id))
             .map(|pane| (pane.id, pane.chat.clone()))
@@ -138,7 +145,6 @@ impl Shell {
             }
         }
         self.tell_chats_where_they_work(cx);
-        self.chat_tabs.view(first).cloned()
     }
 
     /// Tells the shown tab's chats where they work, once the right panel holds its checkout.
@@ -311,9 +317,23 @@ impl Shell {
     }
 
     /// Brings back the chats that had tabs, each once its checkout is listed. One a pane shows
-    /// already, made while the first list was on its way, has what it came for.
+    /// already, brought back with the window where it was or made while the first list was on
+    /// its way, has what it came for; and a pane the window brought back for a chat the host
+    /// no longer has, deleted while the window was closed, goes.
     fn restore_chats(&mut self, cx: &mut Context<Self>) {
         let chats = self.chat_tabs.chats.clone();
+        let told: Vec<(ThreadId, bool)> = {
+            let chats = chats.read(cx);
+            (self.chat_tabs.unconfirmed.iter())
+                .filter_map(|id| Some((id.clone(), chats.knows(id)?)))
+                .collect()
+        };
+        for (id, kept) in told {
+            self.chat_tabs.unconfirmed.remove(&id);
+            if !kept {
+                self.workspace.close_chat_panes(&id);
+            }
+        }
         let waiting: Vec<(ThreadId, PathBuf)> = {
             let chats = chats.read(cx);
             (chats.to_restore().iter())

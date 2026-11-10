@@ -36,6 +36,12 @@ const FRAME: Duration = Duration::from_millis(100);
 /// How long the host gets to start a chat, or to take what's said in it.
 const HOST_PATIENCE: Duration = Duration::from_secs(20);
 
+/// Whether the app was started as one of the visual checks, each a `--visual-check…` mode of
+/// it, rather than as the app a person uses.
+pub fn checking() -> bool {
+    std::env::args().any(|arg| arg.starts_with("--visual-check"))
+}
+
 /// Runs a check: says each line `draw` returns, the pictures it saved and what it measured,
 /// or why it couldn't.
 pub fn run(draw: impl FnOnce() -> Result<Vec<String>>) -> ExitCode {

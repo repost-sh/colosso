@@ -47,7 +47,7 @@ pub use dock::DOCK_MIN;
 pub use dock::{DevtoolsPlace, Dock, SetDevtoolsDock};
 pub use menu::handle_actions;
 pub use responsive::{Responsive, devices};
-pub use tabs::KeptTabs;
+pub(crate) use tabs::page_brought_back;
 pub use view::{BrowserEvent, BrowserView, Controls, Visit};
 
 /// Starts the engine, so the first page opens as quickly as the next.
@@ -76,7 +76,6 @@ actions!(
         Back,
         Forward,
         Reload,
-        FocusAddress,
         Copy,
         Cut,
         Paste,
@@ -100,7 +99,8 @@ actions!(
 );
 
 /// The keys a page owns while it has focus, and those the address bar shares with it; and
-/// where `DevTools` open, picked in settings.
+/// where `DevTools` open, picked in settings. ⌘L isn't among them: it's the window's, heard
+/// wherever the keyboard is (`launcher::OpenAddress`).
 pub fn init(cx: &mut App) {
     cx.on_action(|SetDevtoolsDock(dock): &SetDevtoolsDock, cx| {
         crate::settings::update(cx, |settings| settings.devtools.dock = *dock);
@@ -121,7 +121,6 @@ pub fn init(cx: &mut App) {
         let context = Some(context);
         cx.bind_keys([
             KeyBinding::new("cmd-r", Reload, context),
-            KeyBinding::new("cmd-l", FocusAddress, context),
             KeyBinding::new("cmd-[", Back, context),
             KeyBinding::new("cmd-]", Forward, context),
             KeyBinding::new("cmd-alt-i", ToggleDevTools, context),

@@ -9,7 +9,7 @@ fn worktree(path: &str, branch: &str) -> Worktree {
 }
 
 /// One project, `/src/app`, with its main checkout and the worktrees named.
-fn workspace(worktrees: &[&str]) -> Workspace {
+pub(super) fn workspace(worktrees: &[&str]) -> Workspace {
     let mut workspace = Workspace::new(&["/src/app".into()]);
     let listed = std::iter::once(worktree("/src/app", "main"))
         .chain(

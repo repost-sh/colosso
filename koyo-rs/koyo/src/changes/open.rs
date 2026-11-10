@@ -30,8 +30,9 @@ impl Shell {
             return;
         };
         let unit = &self.workspace.projects[project].branches[branch];
+        // One brought back with the window has its diffs as soon as it's shown.
         let open = (unit.tabs.iter())
-            .position(|tab| tab.panes().iter().any(|pane| pane.changes.is_some()));
+            .position(|tab| tab.panes().iter().any(|pane| pane.shows_changes()));
         if let Some(at) = open {
             self.workspace.select_tab(project, branch, at);
         } else {
@@ -69,7 +70,7 @@ impl Shell {
             .into_iter()
             .filter(|pane| ids.contains(&pane.id))
         {
-            pane.changes = Some(cx.new(|cx| ChangesTab::new(panel.clone(), cx)));
+            pane.set_changes(cx.new(|cx| ChangesTab::new(panel.clone(), cx)));
         }
     }
 }

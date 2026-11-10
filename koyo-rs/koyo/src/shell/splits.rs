@@ -10,9 +10,10 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, AppContext as _, Context, DragMoveEvent, InteractiveElement as _, IntoElement,
-    MouseButton, ParentElement as _, Pixels, Point, Render, SharedString,
-    StatefulInteractiveElement as _, Styled, Window, deferred, div, point, px, relative,
+    AnyElement, App, AppContext as _, Bounds, Context, DispatchPhase, DragMoveEvent,
+    InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, ParentElement as _, Pixels,
+    Point, Render, SharedString, StatefulInteractiveElement as _, Styled, Window, canvas, deferred,
+    div, point, px, relative,
 };
 
 use super::elements::pane_close_button;
@@ -212,11 +213,14 @@ impl Shell {
         in_hand: bool,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let id = pane.id;
         // In Arc an island of its own, a split's sides the glass apart.
         part(p, theme::card::islands(cx))
+            .debug_selector(move || format!("pane-{id}"))
             .size_full()
             .flex()
             .flex_col()
+            .child(hears_presses(id, cx))
             .when(in_split, |part| part.child(self.pane_header(pane, p, cx)))
             .child(
                 div()
@@ -243,7 +247,7 @@ impl Shell {
             grab: Point::default(),
         };
         let button_press =
-            |_: &gpui_kit::MouseDownEvent, _: &mut Window, cx: &mut gpui_kit::App| {
+            |_: &MouseDownEvent, _: &mut Window, cx: &mut App| {
                 cx.stop_propagation();
             };
         div()
@@ -360,6 +364,21 @@ impl Shell {
         let project = self.workspace.project()?;
         Some((self.workspace.active_project()?, project.active_branch))
     }
+}
+
+/// Hears a press anywhere over pane `id`, which puts the person in that pane: on its way down,
+/// and by where the pane is rather than by what's under the pointer, as much of what a pane
+/// shows keeps presses from what's behind it (a chat's composer, a page's notice).
+fn hears_presses(id: u64, cx: &mut Context<Shell>) -> impl IntoElement {
+    let shell = cx.weak_entity();
+    let hear = move |bounds: Bounds<Pixels>, (): (), window: &mut Window, _: &mut App| {
+        window.on_mouse_event(move |event: &MouseDownEvent, phase, _, cx| {
+            if phase == DispatchPhase::Capture && bounds.contains(&event.position) {
+                (shell.update(cx, |shell, cx| shell.enter_pane(id, cx))).ok();
+            }
+        });
+    };
+    canvas(|_, _, _| (), hear).absolute().top_0().left_0().size_full()
 }
 
 /// Over a pane while something's in hand: a strip along each side to drop it on, and under

@@ -237,9 +237,11 @@ impl Shell {
                     })
                     .collect();
                 crate::history::know_checkouts(checkouts, cx);
+                // The window's tabs first, where they were; then what the daemon and the
+                // host keep that no pane of them shows.
+                self.restore_window(cx);
                 self.restore_terminals(cx);
                 self.follow_chats(cx);
-                self.restore_browser_tabs(cx);
             }
             Err(error) => self.workspace.set_error(project, error.message),
         }

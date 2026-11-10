@@ -102,7 +102,10 @@ impl Shell {
     }
 
     /// The pane showing `view`: where its tab is, as `(project, branch, tab)`, and its id.
-    fn pane_of(&self, view: &Entity<BrowserView>) -> Option<((usize, usize, usize), u64)> {
+    pub(crate) fn pane_of(
+        &self,
+        view: &Entity<BrowserView>,
+    ) -> Option<((usize, usize, usize), u64)> {
         self.workspace.find_pane(|pane| pane.view() == Some(view))
     }
 

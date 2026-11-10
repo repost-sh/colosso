@@ -48,6 +48,9 @@ pub struct Terminals {
     views: HashMap<u64, Made>,
     /// Checkouts whose running terminals were looked for, so they're restored once.
     restored: HashSet<PathBuf>,
+    /// The tabs the window brought back that the daemon hasn't yet said still run
+    /// (`restore.rs`).
+    unconfirmed: HashSet<u64>,
     /// The tab whose view takes the keyboard once it's made: the terminal just opened.
     focus_next: Option<u64>,
     /// What the daemon says of every terminal, and the task that keeps it current.
@@ -138,10 +141,7 @@ impl Terminals {
 
     /// The terminal tab `id` shows, once it's known.
     fn handle_of(&self, id: u64) -> Option<&Handle> {
-        match self.sources.get(&id)? {
-            Source::Existing { handle, .. } => Some(handle),
-            Source::Open(_) => None,
-        }
+        self.kept(id).map(|(handle, _)| handle)
     }
 
     /// The tab that shows terminal `handle`, if one does.
@@ -166,6 +166,7 @@ impl Terminals {
             .chain(workspace.closed_terminals())
             .collect();
         self.views.retain(|id, _| shown.contains(id));
+        self.unconfirmed.retain(|id| shown.contains(id));
         self.panels.retain(|id, _| shown.contains(id));
         self.typing.retain(|id, _| shown.contains(id));
         self.sources.retain(|id, _| known.contains(id));
@@ -288,14 +289,9 @@ impl Shell {
         Some(view)
     }
 
-    /// Makes the views of the shown tab's terminal panes, so the panes draw them; the first.
-    pub fn make_shown_terminals(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Option<Entity<TerminalView>> {
-        let ids: Vec<u64> = (self.workspace.branch())
-            .and_then(|branch| branch.tabs.get(branch.active_tab))
+    /// Makes the views of the shown tab's terminal panes, so the panes draw them.
+    pub fn make_shown_terminals(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let ids: Vec<u64> = (self.workspace.tab_shown())
             .map(|tab| {
                 tab.panes()
                     .iter()
@@ -303,14 +299,9 @@ impl Shell {
                     .collect()
             })
             .unwrap_or_default();
-        let mut first = None;
         for id in ids {
-            let view = self.terminal_view(id, window, cx);
-            if first.is_none() {
-                first = view;
-            }
+            self.terminal_view(id, window, cx);
         }
-        first
     }
 
     /// What `pane` shows: its chat or its terminal when its view is made, else what

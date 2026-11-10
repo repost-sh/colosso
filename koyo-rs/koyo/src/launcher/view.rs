@@ -1,6 +1,7 @@
 //! The launcher's state: the kind picked, what's typed and the host completing it in the field,
 //! the rows for them and the row picked, and the search engine's suggestions as they come. Text
-//! dismissed is offered again for a while, as Zen keeps it.
+//! dismissed is offered again for a while, as Zen keeps it. Opened on a page (⌘L), the field
+//! starts with the page's address, and a page or a search picked loads in that page.
 
 use std::time::{Duration, Instant};
 
@@ -36,10 +37,17 @@ struct Dismissed {
 
 impl Global for Dismissed {}
 
-/// Opens the launcher over `window`, which `shell` shows, for a tab on the checkout `here` says.
-pub fn open(shell: WeakEntity<Shell>, here: Here, window: &mut Window, cx: &mut App) {
-    let behind = window.window_handle();
-    let (text, kind) = match cx.try_global::<Dismissed>() {
+/// The page the launcher opened on (⌘L): what's typed loads in it rather than in a new tab.
+pub struct Page {
+    /// Its pane.
+    pub pane: u64,
+    /// Its address as the launcher opened, which the field starts with.
+    pub address: String,
+}
+
+/// The text dismissed lately and its kind, taken; nothing, for a browser tab, otherwise.
+fn take_dismissed(cx: &mut App) -> (String, Kind) {
+    let kept = match cx.try_global::<Dismissed>() {
         Some(dismissed) if dismissed.at.elapsed() < REMEMBERED => {
             (dismissed.text.clone(), dismissed.kind)
         }
@@ -48,6 +56,24 @@ pub fn open(shell: WeakEntity<Shell>, here: Here, window: &mut Window, cx: &mut 
     if cx.has_global::<Dismissed>() {
         cx.remove_global::<Dismissed>();
     }
+    kept
+}
+
+/// Opens the launcher over `window`, which `shell` shows, for a tab on the checkout `here` says,
+/// or on `page`, whose address it starts with.
+pub fn open(
+    shell: WeakEntity<Shell>,
+    here: Here,
+    page: Option<Page>,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let behind = window.window_handle();
+    let (text, kind) = match &page {
+        // Its address whatever was dismissed lately, which is left for the next ⌘T.
+        Some(page) => (page.address.clone(), Kind::Browser),
+        None => take_dismissed(cx),
+    };
     let query = Query {
         kind,
         typed: &text,
@@ -57,7 +83,7 @@ pub fn open(shell: WeakEntity<Shell>, here: Here, window: &mut Window, cx: &mut 
     };
     let rows = rows::rows(&query, cx);
     modal::open_floating(WIDTH, height(rows.len()), window, cx, |window, cx| {
-        Launcher::new(shell, here, behind, (text, kind), rows, window, cx)
+        Launcher::new((shell, behind), here, page, (text, kind), rows, window, cx)
     });
 }
 
@@ -83,6 +109,8 @@ pub struct Launcher {
     autofilled: Option<String>,
     origins: Option<history::Origins>,
     here: Here,
+    /// The page it opened on, if it did.
+    page: Option<Page>,
     /// The search engine's suggestions for what's typed, and the fetch on its way.
     suggested: Vec<String>,
     suggesting: Option<Task<()>>,
@@ -97,10 +125,12 @@ pub struct Launcher {
 }
 
 impl Launcher {
+    /// The launcher over the window `behind`, which `shell` shows, on the checkout `here`
+    /// says and on `page` if it opened on one, starting with `text` for a tab of `kind`.
     fn new(
-        shell: WeakEntity<Shell>,
+        (shell, behind): (WeakEntity<Shell>, AnyWindowHandle),
         here: Here,
-        behind: AnyWindowHandle,
+        page: Option<Page>,
         (text, kind): (String, Kind),
         rows: Vec<Row>,
         window: &mut Window,
@@ -120,9 +150,11 @@ impl Launcher {
                 InputEvent::PressEnter { .. } => this.pick(this.selected, window, cx),
                 _ => {}
             }),
-            // Gone without a pick, what's typed is offered again when it next opens.
+            // Gone without a pick, what's typed is offered again when it next opens; not a
+            // page's address left as it was, which nobody typed.
             cx.on_release(|this, cx| {
-                if !this.picked && !this.typed.trim().is_empty() {
+                let untouched = (this.page.as_ref()).is_some_and(|page| page.address == this.typed);
+                if !this.picked && !untouched && !this.typed.trim().is_empty() {
                     let (text, kind) = (this.typed.clone(), this.kind);
                     cx.set_global(Dismissed {
                         text,
@@ -143,6 +175,7 @@ impl Launcher {
             autofilled: None,
             origins: None,
             here,
+            page,
             suggested: Vec::new(),
             suggesting: None,
             shell,
@@ -315,6 +348,12 @@ impl Launcher {
         self.selected = selected.and_then(|at| stepped(Some(at), 0, self.rows.len()));
     }
 
+    /// ⌘L again: the field's text all selected, as an address bar's is.
+    pub(super) fn select_all(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.input
+            .update(cx, |input, cx| input.select_all(window, cx));
+    }
+
     /// Picks row `at`, or with none picked opens an empty tab of the kind: the launcher closes and
     /// the window behind does it.
     pub(super) fn pick(&mut self, at: Option<usize>, window: &mut Window, cx: &mut Context<Self>) {
@@ -323,6 +362,8 @@ impl Launcher {
         let act = match row {
             Some(row) => row.act.clone(),
             None if self.kind == Kind::Worktree => Act::StartWorktree(typed.clone()),
+            // On a page, no address is nowhere to go, as in any address bar.
+            None if self.kind == Kind::Browser && self.page.is_some() => return,
             None if typed.is_empty() => Act::Empty(self.kind),
             None => return,
         };
@@ -340,7 +381,8 @@ impl Launcher {
         }
         self.picked = true;
         let (shell, behind, place) = (self.shell.clone(), self.behind, self.here.place.clone());
+        let page = self.page.as_ref().map(|page| page.pane);
         modal::dismiss(window, cx);
-        super::act::launch(&shell, behind, act, &place, cx);
+        super::act::launch(&shell, behind, act, (&place, page), cx);
     }
 }

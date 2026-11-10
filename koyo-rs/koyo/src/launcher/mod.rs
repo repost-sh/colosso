@@ -5,6 +5,9 @@
 //! a message for a new chat, or a command for a new terminal; with nothing typed, Enter opens an
 //! empty tab of the kind. Under the field, what the history holds for it, filtered as it's typed,
 //! and the tabs open already, as Zen's floating address bar lists them.
+//!
+//! ⌘L opens it on the page the person is in, as Arc's does: the page's address in the field, all
+//! of it selected, and what's typed over it loads in that page rather than a new tab.
 
 mod act;
 mod here;
@@ -30,6 +33,9 @@ actions!(
     [
         /// Opens the launcher over the window, or closes it when it's open.
         NewTab,
+        /// The address of the page the person is in, to change: in the launcher opened on the
+        /// page, or, in the Orca layout, in the page's own field.
+        OpenAddress,
         NextKind,
         PreviousKind,
         RemoveFromHistory,
@@ -37,13 +43,14 @@ actions!(
     ]
 );
 
-/// ⌘T anywhere; and in the launcher's field, Tab and ⇧Tab through the kinds, ⇧⌫ to forget the row
+/// ⌘T and ⌘L anywhere; and in the launcher's field, Tab and ⇧Tab through the kinds, ⇧⌫ to forget the row
 /// picked, → at the end to take its text, and the keys that move through the rows, which the field
 /// would otherwise take.
 pub fn init(cx: &mut App) {
     let field = Some("Launcher > Input");
     cx.bind_keys([
         KeyBinding::new("cmd-t", NewTab, None),
+        KeyBinding::new("cmd-l", OpenAddress, None),
         KeyBinding::new("tab", NextKind, field),
         KeyBinding::new("shift-tab", PreviousKind, field),
         KeyBinding::new("shift-delete", RemoveFromHistory, field),
@@ -121,19 +128,49 @@ impl Kind {
 }
 
 impl Shell {
-    /// What the window does with the launcher's action: opens it over the window on the selected
-    /// checkout.
+    /// What the window does with the launcher's actions, wherever the keyboard is: opens it over
+    /// the window on the selected checkout, for a new tab or on the page shown.
     pub fn handle_launcher(root: Div, cx: &mut Context<Self>) -> Div {
         root.on_action(cx.listener(|this, _: &NewTab, window, cx| this.open_launcher(window, cx)))
+            .on_action(
+                cx.listener(|this, _: &OpenAddress, window, cx| this.open_address(window, cx)),
+            )
     }
 
     /// Opens the launcher over the window, on the selected checkout; with none, there's nowhere
     /// for a tab to open, and it doesn't.
     pub fn open_launcher(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_launcher_on(None, window, cx);
+    }
+
+    /// ⌘L, or a click on the Arc sidebar's address: the address of the page shown, to change
+    /// (`Shell::shown_page`). In Arc, where a page has no toolbar, the launcher opens on the
+    /// page; in Orca the keyboard goes to the page's own field, all of it selected. With no
+    /// page in the tab shown, the launcher opens as ⌘T opens it, on a browser tab.
+    pub fn open_address(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let shown = (self.shown_page(cx)).and_then(|view| Some((self.pane_of(&view)?.1, view)));
+        let Some((pane, view)) = shown else {
+            return self.open_launcher(window, cx);
+        };
+        if crate::settings::get(cx).layout == crate::settings::Layout::Orca {
+            self.enter_pane(pane, cx);
+            view.update(cx, |view, cx| view.focus_address(window, cx));
+            return;
+        }
+        let address = view.read(cx).address();
+        self.open_launcher_on(Some(view::Page { pane, address }), window, cx);
+    }
+
+    fn open_launcher_on(
+        &mut self,
+        page: Option<view::Page>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some(here) = here::Here::of(self, cx) else {
             log::warn!("no checkout is selected to open a tab on");
             return;
         };
-        view::open(cx.entity().downgrade(), here, window, cx);
+        view::open(cx.entity().downgrade(), here, page, window, cx);
     }
 }

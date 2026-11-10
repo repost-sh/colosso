@@ -227,11 +227,13 @@ fn a_page_brought_back_waits_to_be_shown_for_the_browser_tools(cx: &mut TestAppC
     };
     let pane = rig.shell.update(cx, |shell, cx| {
         shell.workspace.new_tab(crate::model::PaneKind::Editor);
-        let pane = shell
-            .workspace
-            .add_unloaded_tab(&root, unloaded, "Example".into());
+        // After the tab shown, which stays shown, as the window brings its tabs back.
+        let pane = crate::model::Pane::unloaded(unloaded, "Example".into());
+        let id = pane.id;
+        let unit = shell.workspace.branch_mut().unwrap();
+        unit.tabs.push(crate::model::Tab::Single(pane));
         cx.notify();
-        pane.unwrap()
+        id
     });
     draw(rig.window, cx);
     let agent = terminal("term_1");
