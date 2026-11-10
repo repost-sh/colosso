@@ -20,6 +20,39 @@ pub struct Launched {
     pub app: Obj,
 }
 
+/// The Finder: the app a desktop with nothing on it has in front, and one never lent.
+pub const FINDER: &str = "com.apple.finder";
+
+/// The running app with this pid, if there is one. Any thread may ask.
+pub fn by_pid(pid: i32) -> Option<Obj> {
+    // SAFETY: a class method answering the running app of a pid, nil when there's none.
+    unsafe {
+        msg_send![
+            class!(NSRunningApplication),
+            runningApplicationWithProcessIdentifier: pid
+        ]
+    }
+}
+
+/// A running app as a launch hands it: with its pid and name.
+fn launched(app: Obj) -> Launched {
+    // SAFETY: a running app answers its pid and its name.
+    unsafe {
+        let name: Option<Obj> = msg_send![&*app, localizedName];
+        Launched {
+            pid: msg_send![&*app, processIdentifier],
+            name: name.and_then(|name| ns::text(&name)).unwrap_or_default(),
+            app,
+        }
+    }
+}
+
+/// The app that runs as `pid`, as a launch would have handed it: for one the host didn't
+/// start.
+pub fn running_app(pid: i32) -> Option<Launched> {
+    by_pid(pid).map(launched)
+}
+
 /// A launch under way: Launch Services answers on a queue of its own.
 #[derive(Clone)]
 pub struct Launch(Arc<Mutex<Option<Result<Launched, String>>>>);
@@ -29,6 +62,12 @@ pub struct Launch(Arc<Mutex<Option<Result<Launched, String>>>>);
 unsafe impl Send for Launched {}
 
 impl Launch {
+    /// A launch with no end yet; it stays so for an app that runs already and is only
+    /// taken in.
+    pub fn none() -> Launch {
+        Launch(Arc::default())
+    }
+
     /// The launch's end, once: the app, or why not.
     pub fn take(&self) -> Option<Result<Launched, String>> {
         self.0.lock().unwrap_or_else(PoisonError::into_inner).take()
@@ -107,21 +146,64 @@ pub fn running(bundle: &str) -> Vec<i32> {
     }
 }
 
+/// The first running app with this bundle identifier, by its pid.
+pub fn first_running(bundle: &str) -> Option<i32> {
+    running(bundle).first().copied()
+}
+
+/// Brings the app forward, as Launch Services does it: its windows come with it, and
+/// macOS goes to the desktop they're on.
+pub fn activate(app: &Obj) -> bool {
+    // SAFETY: a running app answers `activateWithOptions:`.
+    unsafe { msg_send![&**app, activateWithOptions: 0usize] }
+}
+
 /// Starts the app at `url` with `document` (a path or a URL) and `arguments`: an instance of
 /// its own when `fresh`, else the one that runs if one does.
 pub fn start(url: &Obj, document: Option<&str>, arguments: &[String], fresh: bool) -> Launch {
-    let launch = Launch(Arc::new(Mutex::new(None)));
+    // SAFETY: a configuration built here, with values of the kinds its setters take.
+    let configuration = unsafe {
+        let configuration = quiet();
+        let _: () = msg_send![&*configuration, setCreatesNewApplicationInstance: fresh];
+        let _: () = msg_send![&*configuration, setHides: true];
+        if !arguments.is_empty() {
+            let arguments: Vec<Obj> = arguments.iter().map(|text| ns::string(text)).collect();
+            let _: () = msg_send![&*configuration, setArguments: &*ns::array(&arguments)];
+        }
+        launch_options(&configuration);
+        configuration
+    };
+    open(url, document, &configuration)
+}
+
+/// Asks the instance of the app that runs, the person's own that is lent, to open
+/// `document`, or to open again as a click on its Dock icon asks. Nothing is started, and
+/// nothing about the app is changed: it isn't hidden, as a start of the agent's own is.
+pub fn ask_running(url: &Obj, document: Option<&str>) {
+    drop(open(url, document, &quiet()));
+}
+
+/// A launch that takes nothing from the person: the app isn't made the front one, and
+/// isn't put among their recent items.
+fn quiet() -> Obj {
+    // SAFETY: the configuration's own constructor and setters.
+    unsafe {
+        let configuration: Obj = msg_send![class!(NSWorkspaceOpenConfiguration), configuration];
+        let _: () = msg_send![&*configuration, setActivates: false];
+        let _: () = msg_send![&*configuration, setAddsToRecentItems: false];
+        configuration
+    }
+}
+
+/// Asks the workspace for the app at `url`, with `document` when there's one.
+fn open(url: &Obj, document: Option<&str>, configuration: &Obj) -> Launch {
+    let launch = Launch::none();
     let told = launch.clone();
     let done = RcBlock::new(move |app: *mut AnyObject, error: *mut AnyObject| {
         // SAFETY: Launch Services hands a running app or an error, either may be nil.
         let result = unsafe {
             if let Some(app) = Retained::retain(app) {
-                let name: Option<Obj> = msg_send![&*app, localizedName];
-                Ok(Launched {
-                    pid: msg_send![&*app, processIdentifier],
-                    name: name.and_then(|name| ns::text(&name)).unwrap_or_default(),
-                    app,
-                })
+                Ok(launched(app))
             } else {
                 let said: Option<Obj> = match error.as_ref() {
                     Some(error) => msg_send![error, localizedDescription],
@@ -135,19 +217,9 @@ pub fn start(url: &Obj, document: Option<&str>, arguments: &[String], fresh: boo
         *told.0.lock().unwrap_or_else(PoisonError::into_inner) = Some(result);
         ns::wake();
     });
-    // SAFETY: the workspace's launch calls, with a configuration built here and a block that
-    // is copied by the callee.
+    // SAFETY: the workspace's launch calls, with a configuration built by the caller and a
+    // block that is copied by the callee.
     unsafe {
-        let configuration: Obj = msg_send![class!(NSWorkspaceOpenConfiguration), configuration];
-        let _: () = msg_send![&*configuration, setActivates: false];
-        let _: () = msg_send![&*configuration, setAddsToRecentItems: false];
-        let _: () = msg_send![&*configuration, setCreatesNewApplicationInstance: fresh];
-        let _: () = msg_send![&*configuration, setHides: true];
-        if !arguments.is_empty() {
-            let arguments: Vec<Obj> = arguments.iter().map(|text| ns::string(text)).collect();
-            let _: () = msg_send![&*configuration, setArguments: &*ns::array(&arguments)];
-        }
-        launch_options(&configuration);
         match document {
             Some(document) => {
                 let document: Option<Obj> = if document.contains("://") {
@@ -160,7 +232,7 @@ pub fn start(url: &Obj, document: Option<&str>, arguments: &[String], fresh: boo
                     &*workspace(),
                     openURLs: &*documents,
                     withApplicationAtURL: &**url,
-                    configuration: &*configuration,
+                    configuration: &**configuration,
                     completionHandler: &*done
                 ];
             }
@@ -168,7 +240,7 @@ pub fn start(url: &Obj, document: Option<&str>, arguments: &[String], fresh: boo
                 let _: () = msg_send![
                     &*workspace(),
                     openApplicationAtURL: &**url,
-                    configuration: &*configuration,
+                    configuration: &**configuration,
                     completionHandler: &*done
                 ];
             }

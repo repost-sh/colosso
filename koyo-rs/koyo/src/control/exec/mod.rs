@@ -116,6 +116,8 @@ pub(crate) fn run(caller: &Caller, command: Command, cx: &mut App) -> Exec {
         C::DesktopType(input) => desktop::type_text(caller, &input, cx).into(),
         C::DesktopKey(input) => desktop::key(caller, input, cx),
         C::DesktopFocus(input) => desktop::focus(caller, &input, cx),
+        C::DesktopTakeFocus(input) => desktop::take_focus(caller, input, cx),
+        C::DesktopReturnFocus(_) => desktop::return_focus(cx),
         C::DesktopWait(input) => desktop::wait(&input, cx),
         C::DesktopClose(input) => desktop::close(caller, &input, cx).into(),
     }

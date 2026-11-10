@@ -170,6 +170,9 @@ The loop:
    URL to open, and answers its `pid` and windows. It opens the tab out of sight. The app
    is the person's own, with their files and sign-ins; a document app also opens with their
    unsaved documents, which are theirs: leave them as they are.
+   An app the person is running that takes no second instance (Arc, Firefox, System
+   Settings), or their own running instance of any app, asked for with `personsOwn: true`,
+   is refused with `person_has_control` first: see "The person's own app" below.
 2. Look: `desktop_snapshot` gives the accessibility tree, elements marked `[ref=eN]` and
    `@x,y`, their middle; `desktop_screenshot` gives an image; `desktop_windows` lists the
    windows, front to back.
@@ -193,6 +196,33 @@ the person's keyboard, so it is closed under you the moment they type, and after
 A scroll goes about as far as asked (up to a quarter
 further): look again after it. Hovering does nothing, and a shift-click doesn't extend a
 selection: drag to select, or use the keys.
+
+The person's own app. Bringing an app the person is running onto the agent desktop takes
+every window of it off their desktops, with what they have open in it, and you then act in
+their app with their data and accounts. It needs their explicit consent, each time. When
+`desktop_open` refuses with `person_has_control` and says so: stop; tell the person which
+app you want to bring over, why, what you will do in it, and that its windows leave their
+desktop until it is given back; ask whether they want that. Only if they clearly agree,
+call `desktop_open` again with `consent` set to the exact text of their message. An unclear
+answer is not consent, nothing they said before the refusal counts, and `consent` is never
+your own words. Their yes counts once: after the app went back, it is refused again, and
+you ask again. The answer then says `lent: true`. Work in it as in any app, and leave what
+they had open as it was unless they asked otherwise. When you are done, `desktop_close`
+with its `pid` gives it back to them as it is (it is not quit). They can take it back
+themselves at any moment, in the tab: its windows are then gone from the agent desktop,
+your refs into it are dropped, and you ask again before bringing it back. Tell them when
+that cut short something you were doing.
+
+Taking the focus. Some apps won't work unseen: a Chromium browser (Arc, Chrome) draws no
+page, and gives none to read, while the agent desktop isn't on the person's screen. For a
+web page, Koyo's own browser tools are the first choice. When it has to be that app, and
+only then, `desktop_take_focus` puts the agent desktop on the person's screen with your
+window in front, in place of what they are doing. It is theirs to allow, each time: the
+first call is refused with `person_has_control` and says what to tell them and ask; only
+if they clearly agree, call again with `consent` set to the exact text of their message.
+Do what needed the screen, and give the focus back with `desktop_return_focus` at once:
+their own desktop comes back. They can take it back themselves by going to any desktop of
+theirs, and you ask again before taking it again.
 
 Typing goes to the window last clicked, focused or named in a `desktop_key`, and from
 there to the one its app moves the keys to by itself: the document it just made, the panel

@@ -21,6 +21,7 @@ use crate::desktop::{self, Desktop, Started};
 use crate::front::FrontGuard;
 use crate::grants::Grants;
 use crate::input::{Poster, Target};
+use crate::lending::Back;
 use crate::link::Link;
 use crate::opening::Opening;
 use crate::shot::Shots;
@@ -88,6 +89,12 @@ pub struct Host {
     /// When the person's button last went down, dragged or came up.
     pub lively: Option<Instant>,
     pub keys: crate::keyboard::Guard,
+    /// What agents were told to ask the person, and what they allowed before.
+    pub consents: crate::consent::Consents,
+    /// The person's apps that are lent, as the app was last told.
+    pub lent_said: Vec<koyo_desk_wire::link::Lent>,
+    /// The focus, while the agent desktop is on the person's screen on their word.
+    pub taken: Option<crate::showing::Taken>,
     /// The window the person holds by its bar.
     pub moving: Option<crate::moving::Moving>,
     /// The last snapshot's elements, and the number the next snapshot's refs start at.
@@ -96,7 +103,6 @@ pub struct Host {
     /// When the windows or their picture last changed.
     pub changed: Instant,
     changes_seen: u64,
-    returned_seen: u64,
     /// Asked for with `--stats`: when the frames were last said, and how many had been sent
     /// and had come by then.
     pub stats: Option<(Instant, u64, u64)>,
@@ -132,12 +138,14 @@ impl Host {
             grab: None,
             lively: None,
             keys: crate::keyboard::Guard::default(),
+            consents: crate::consent::Consents::default(),
+            lent_said: Vec::new(),
+            taken: None,
             moving: None,
             refs: HashMap::new(),
             next_ref: 1,
             changed: now,
             changes_seen: 0,
-            returned_seen: 0,
             stats: None,
             listed: now,
             grants_read: now,
@@ -209,6 +217,11 @@ impl Host {
         self.tell_desktop();
     }
 
+    /// The agent's desktop, when it's made.
+    pub fn space(&self) -> Option<skylight::SpaceId> {
+        self.desktop.as_ref().map(|desktop| desktop.space)
+    }
+
     /// The pids of the agent's apps.
     pub fn pids(&self) -> Vec<i32> {
         self.apps.iter().map(|app| app.pid).collect()
@@ -224,9 +237,12 @@ impl Host {
             .map(|app| Started {
                 pid: app.pid,
                 at: app.started,
+                lent: app.lent,
+                home: app.home,
             })
             .collect();
         desktop::record_apps(&self.state, &started);
+        self.says_lent();
     }
 
     /// Windows as the app is told them: counted from the desktop's top left.
@@ -371,21 +387,8 @@ impl Host {
         self.waits();
         self.quits();
         self.say_frames();
-        for asked in self.front.take_asked() {
-            if let Some((app, bundle)) = apps::named(&asked) {
-                self.tell(&FromHost::Wanted { app, bundle });
-            }
-        }
-        let returned = self.front.returned();
-        if returned != self.returned_seen {
-            self.returned_seen = returned;
-            self.log(
-                LogLevel::Info,
-                format!(
-                    "an agent's app came to the front; gave it back to the person's ({returned})"
-                ),
-            );
-        }
+        self.watch_focus();
+        self.heed_front();
     }
 
     pub fn hear(&mut self, message: ToHost) {
@@ -417,13 +420,16 @@ impl Host {
             ToHost::OpenForPerson { bundle } => {
                 apps::start_for_person(&bundle);
             }
+            ToHost::TakeBack { pid } => self.give_back(pid, Back::Front),
             ToHost::Quit => self.ending = true,
         }
     }
 
-    /// Closes the agent's apps and removes the desktop.
+    /// Gives the person's apps back, closes the agent's and removes the desktop.
     pub fn end(mut self) {
         self.streams = None;
+        let _ = self.return_focus();
+        self.give_all_back();
         for app in &self.apps {
             apps::quit(&app.running, false);
         }

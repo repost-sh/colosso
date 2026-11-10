@@ -9,7 +9,7 @@ use serde_bytes::ByteBuf;
 use crate::geometry::{Point, Rect, Size};
 
 /// The link's version. Both sides refuse another.
-pub const PROTOCOL: u32 = 4;
+pub const PROTOCOL: u32 = 5;
 
 /// A request, the app's number for it; its answer carries the same.
 pub type RequestId = u64;
@@ -46,6 +46,10 @@ pub enum ToHost {
     /// instance of the app is started for them, as their own click would have.
     OpenForPerson {
         bundle: String,
+    },
+    /// The person takes back an app of theirs that was lent to the agent desktop.
+    TakeBack {
+        pid: i32,
     },
     /// Koyo is quitting: the agent's apps are closed, the desktop removed, the host goes.
     Quit,
@@ -114,6 +118,13 @@ pub enum Ask {
         app: String,
         document: Option<String>,
         args: Vec<String>,
+        /// Use the instance the person runs, not one of the agent's own. An app that takes
+        /// no second instance comes to the same when the person runs it.
+        theirs: bool,
+        /// The person's own words agreeing that the instance they run be brought to the
+        /// desktop. Asked of them only after a first refusal said what it means; without
+        /// them their instance is refused.
+        consent: Option<String>,
     },
     /// The windows on the desktop.
     Windows,
@@ -139,6 +150,15 @@ pub enum Ask {
     },
     /// Close a window, or quit an app the host started.
     Close(Close),
+    /// Put the agent desktop on the person's screen with `window` in front (the frontmost,
+    /// when none is named), for work an app won't do unseen. Only on the person's own
+    /// words agreeing to it, asked of them after a first refusal said what it means.
+    TakeFocus {
+        window: Option<WindowId>,
+        consent: Option<String>,
+    },
+    /// Give the focus back: the person's screen shows the desktop they were on again.
+    ReturnFocus,
 }
 
 /// What an [`Ask::Close`] closes.
@@ -239,6 +259,10 @@ pub enum FromHost {
         app: String,
         bundle: String,
     },
+    /// The person's own apps that are lent to the agent desktop now, on every change.
+    Lent {
+        apps: Vec<Lent>,
+    },
     /// Where the agent last acted; `click` once as a press lands.
     Pointer {
         at: Point,
@@ -252,6 +276,15 @@ pub enum FromHost {
         level: LogLevel,
         text: String,
     },
+}
+
+/// An app of the person's own, running before an agent asked for it, that they agreed to have
+/// on the agent desktop: theirs still, and given back, never quit.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Lent {
+    pub pid: i32,
+    pub app: String,
 }
 
 /// How the agent desktop stands.
@@ -294,7 +327,7 @@ pub enum RefusalCode {
     NotPermitted,
     /// No such app, window or element.
     NotFound,
-    /// The person already runs the app as its one instance (5).
+    /// The app is the person's own and not to be had: never lent, or gone back to them (5).
     AppIsThePersons,
     /// What was asked doesn't read (a key name, a point off the desktop).
     Invalid,
@@ -304,6 +337,9 @@ pub enum RefusalCode {
     TimedOut,
     /// The person acted in the tab while it was under way: it stopped where it was.
     PersonActing,
+    /// It is the person's to allow (their own running app, the focus), and they haven't
+    /// agreed to it yet: the message says what to tell them and ask (5).
+    NeedsConsent,
 }
 
 impl Refusal {
@@ -337,6 +373,8 @@ pub enum Answer {
         app: String,
         pid: i32,
         windows: Vec<Window>,
+        /// It's the person's own, lent: closing it gives it back.
+        lent: bool,
     },
     Windows {
         windows: Vec<Window>,

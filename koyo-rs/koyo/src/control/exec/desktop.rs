@@ -12,8 +12,9 @@ use koyo_app_control::ops::desktop::{
     Closing, DesktopClickInput, DesktopCloseInput, DesktopDone, DesktopDragInput,
     DesktopFocusInput, DesktopKeyInput, DesktopKeyOutput, DesktopMoveInput, DesktopOpenInput,
     DesktopOpenOutput, DesktopScreenshotInput, DesktopScreenshotOutput, DesktopScrollInput,
-    DesktopSnapshotInput, DesktopSnapshotOutput, DesktopTypeInput, DesktopWaitInput,
-    DesktopWaitOutput, DesktopWindow, DesktopWindowsOutput, Modifier, Target, Typing,
+    DesktopSnapshotInput, DesktopSnapshotOutput, DesktopTakeFocusInput, DesktopTypeInput,
+    DesktopWaitInput, DesktopWaitOutput, DesktopWindow, DesktopWindowsOutput, Modifier, Target,
+    Typing,
 };
 use koyo_app_control::{ControlError, ErrorCode};
 use koyo_desk_wire::Point;
@@ -101,7 +102,9 @@ pub(super) fn refused(refusal: Refusal) -> ControlError {
             ControlError::desktop_unavailable(message)
         }
         RefusalCode::NotFound => ControlError::not_found(message),
-        RefusalCode::AppIsThePersons => ControlError::new(ErrorCode::PersonHasControl, message),
+        RefusalCode::AppIsThePersons | RefusalCode::NeedsConsent => {
+            ControlError::new(ErrorCode::PersonHasControl, message)
+        }
         // Cut short by the person: theirs for now, as when they act before it starts.
         RefusalCode::PersonActing => {
             ControlError::new(ErrorCode::PersonHasControl, message).retryable(true)
@@ -178,12 +181,20 @@ pub(crate) fn open(caller: &Caller, input: DesktopOpenInput, cx: &mut App) -> Ex
         app: input.app,
         document: input.file,
         args: input.args.unwrap_or_default(),
+        theirs: input.persons_own.unwrap_or(false),
+        consent: input.consent,
     };
     asking(ask, OPEN, cx, |answer| match answer {
-        Answer::Opened { app, pid, windows } => output(&DesktopOpenOutput {
+        Answer::Opened {
+            app,
+            pid,
+            windows,
+            lent,
+        } => output(&DesktopOpenOutput {
             app,
             pid,
             windows: windows.into_iter().map(window).collect(),
+            lent,
         }),
         other => Err(unexpected(&other)),
     })
@@ -341,6 +352,20 @@ pub(crate) fn focus(caller: &Caller, input: &DesktopFocusInput, cx: &mut App) ->
     acting(caller, Ask::Act(act), ACT, cx, done)
 }
 
+/// The agent desktop onto the person's screen, on their word (`docs/agent-desktop.md` 5).
+pub(crate) fn take_focus(caller: &Caller, input: DesktopTakeFocusInput, cx: &mut App) -> Exec {
+    let ask = Ask::TakeFocus {
+        window: input.window,
+        consent: input.consent,
+    };
+    acting(caller, ask, ACT, cx, done)
+}
+
+/// The person's own desktop back on their screen: never held up, whoever drives the tab.
+pub(crate) fn return_focus(cx: &mut App) -> Exec {
+    asking(Ask::ReturnFocus, ACT, cx, done)
+}
+
 pub(crate) fn wait(input: &DesktopWaitInput, cx: &mut App) -> Exec {
     let timeout_ms = input.timeout_ms();
     let ask = Ask::Wait {
@@ -377,6 +402,7 @@ mod tests {
             (RefusalCode::NotPermitted, ErrorCode::DesktopUnavailable),
             (RefusalCode::NotFound, ErrorCode::NotFound),
             (RefusalCode::AppIsThePersons, ErrorCode::PersonHasControl),
+            (RefusalCode::NeedsConsent, ErrorCode::PersonHasControl),
             (RefusalCode::PersonActing, ErrorCode::PersonHasControl),
             (RefusalCode::Invalid, ErrorCode::InvalidInput),
             (RefusalCode::TimedOut, ErrorCode::Timeout),

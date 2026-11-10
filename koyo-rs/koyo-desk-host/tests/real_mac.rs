@@ -15,6 +15,7 @@
     reason = "a test fails loudly at the step that broke"
 )]
 
+mod lending;
 mod steps;
 mod support;
 
@@ -97,6 +98,8 @@ fn opens(driver: &mut Driver, size: Size, scale: f64) -> Scene {
         app: "No Such App 4711".into(),
         document: None,
         args: Vec::new(),
+        theirs: false,
+        consent: None,
     };
     assert_eq!(driver.ask(missing).unwrap_err().code, RefusalCode::NotFound);
     let document = driver.dir.join("probe.txt");
@@ -105,6 +108,8 @@ fn opens(driver: &mut Driver, size: Size, scale: f64) -> Scene {
         app: "TextEdit".into(),
         document: Some(document.to_string_lossy().into_owned()),
         args: Vec::new(),
+        theirs: false,
+        consent: None,
     });
     let Ok(Answer::Opened { pid, windows, .. }) = opened else {
         panic!("{opened:?} {:?}", driver.logs);
@@ -330,7 +335,7 @@ fn the_host_makes_a_desktop_and_drives_an_app_on_it() {
         return;
     };
     assert_eq!(driver.grants, (true, true), "the loader lacks a grant");
-    driver.until(Duration::from_secs(15), |driver| driver.desktop.is_some());
+    driver.ready();
     let Some(DesktopState::Ready { size, scale }) = driver.desktop.clone() else {
         panic!("no desktop: {:?} {:?}", driver.desktop, driver.logs);
     };
@@ -369,6 +374,8 @@ fn a_host_without_its_grants_says_so_and_refuses() {
         app: "TextEdit".into(),
         document: None,
         args: Vec::new(),
+        theirs: false,
+        consent: None,
     };
     assert_eq!(driver.ask(open).unwrap_err().code, RefusalCode::NoDesktop);
     driver.quit();

@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 use crate::apps::Launched;
 use crate::ax::{Element, Observer};
 use crate::ns::{self, Obj};
+use crate::skylight::SpaceId;
 
 /// How long the search by number may take, and how far it counts.
 const SEARCH_WITHIN: Duration = Duration::from_millis(250);
@@ -27,6 +28,11 @@ pub struct App {
     pub told_active: bool,
     /// When it was asked to quit.
     pub quitting: Option<Instant>,
+    /// The person's own, running before an agent asked for it and lent on their word
+    /// (`lending`): given back, never quit.
+    pub lent: bool,
+    /// The desktop a lent app came from, where it goes back to.
+    pub home: Option<SpaceId>,
     observer: Option<Observer>,
     /// Windows it said it made, not yet filed under their numbers.
     created: Rc<RefCell<Vec<Element>>>,
@@ -42,12 +48,23 @@ impl App {
             running: launched.app,
             told_active: false,
             quitting: None,
+            lent: false,
+            home: None,
             observer: None,
             created: Rc::default(),
             elements: HashMap::new(),
         };
         app.watch();
         app
+    }
+
+    /// The person's own app `running`, taken in as lent from its desktop `home`.
+    pub fn lent(running: Launched, home: Option<SpaceId>) -> App {
+        App {
+            lent: true,
+            home,
+            ..App::new(running)
+        }
     }
 
     /// Starts watching for the windows it makes; again later if the app wasn't ready to be

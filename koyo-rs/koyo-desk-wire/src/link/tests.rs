@@ -67,6 +67,8 @@ fn every_message_to_the_host_round_trips() {
                 app: "TextEdit".into(),
                 document: Some("/tmp/a.txt".into()),
                 args: vec!["-x".into()],
+                theirs: true,
+                consent: Some("yes, bring my Arc over".into()),
             },
         },
         ToHost::Request {
@@ -95,6 +97,7 @@ fn every_message_to_the_host_round_trips() {
         ToHost::OpenForPerson {
             bundle: "com.apple.calculator".into(),
         },
+        ToHost::TakeBack { pid: 677 },
         ToHost::Request {
             request: 12,
             ask: Ask::Close(Close::Window(1833)),
@@ -113,6 +116,25 @@ fn every_message_to_the_host_round_trips() {
         ToHost::Cancel { request: 9 },
         ToHost::Quit,
     ] {
+        assert_eq!(through_a_frame(&message), message);
+    }
+}
+
+/// The asks that change what the person is looking at, with their word and without.
+#[test]
+fn the_asks_for_the_focus_round_trip() {
+    for ask in [
+        Ask::TakeFocus {
+            window: Some(1833),
+            consent: Some("yes, show it".into()),
+        },
+        Ask::TakeFocus {
+            window: None,
+            consent: None,
+        },
+        Ask::ReturnFocus,
+    ] {
+        let message = ToHost::Request { request: 14, ask };
         assert_eq!(through_a_frame(&message), message);
     }
 }
@@ -152,6 +174,12 @@ fn every_message_from_the_host_round_trips() {
             windows: Vec::new(),
             backdrop: None,
         },
+        FromHost::Lent {
+            apps: vec![Lent {
+                pid: 677,
+                app: "Arc".into(),
+            }],
+        },
         FromHost::Wanted {
             app: "Calculator".into(),
             bundle: "com.apple.calculator".into(),
@@ -166,6 +194,7 @@ fn every_message_from_the_host_round_trips() {
                 app: "TextEdit".into(),
                 pid: 677,
                 windows: vec![window()],
+                lent: true,
             }),
         },
         FromHost::Answer {

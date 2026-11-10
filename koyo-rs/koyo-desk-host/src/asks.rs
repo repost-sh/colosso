@@ -9,6 +9,7 @@ use koyo_desk_wire::link::{Act, Answer, Ask, Close, Refusal, RefusalCode, Reques
 use crate::apps;
 use crate::ax::Done;
 use crate::host::{Host, Waiting, no_desktop};
+use crate::lending::{Back, Wish};
 use crate::snapshot::Snapshot;
 
 /// A wait's quiet time and limit, as far as they go.
@@ -28,7 +29,12 @@ impl Host {
                 app,
                 document,
                 args,
-            } => self.open(request, &app, document.as_deref(), &args),
+                theirs,
+                consent,
+            } => {
+                let wish = Wish { theirs, consent };
+                self.open(request, &app, document.as_deref(), &args, wish)
+            }
             Ask::Windows => {
                 self.list();
                 let windows = self.local(&self.windows);
@@ -62,6 +68,8 @@ impl Host {
                 None
             }
             Ask::Close(close) => Some(self.close(close).map(|()| Answer::Done)),
+            Ask::TakeFocus { window, consent } => Some(self.take_focus(window, consent.as_deref())),
+            Ask::ReturnFocus => Some(self.return_focus()),
         }
     }
 
@@ -187,8 +195,13 @@ impl Host {
                         let message = format!("no app {pid} that the agent opened");
                         Refusal::new(RefusalCode::NotFound, message)
                     })?;
-                apps::quit(&app.running, false);
-                app.quitting = Some(Instant::now());
+                // The person's own goes back to them as it is; the agent's is quit.
+                if app.lent {
+                    self.give_back(pid, Back::Quiet);
+                } else {
+                    apps::quit(&app.running, false);
+                    app.quitting = Some(Instant::now());
+                }
                 Ok(())
             }
         }
