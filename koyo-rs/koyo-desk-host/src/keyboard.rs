@@ -31,7 +31,6 @@ const KEY_DOWN: u32 = 10;
 
 type ByProcess = unsafe extern "C" fn(*mut Serial) -> i32;
 
-static FRONT: sys::Symbol = sys::Symbol::of(LIBRARY, c"_SLPSGetFrontProcess");
 static STEAL: sys::Symbol = sys::Symbol::of(LIBRARY, c"SLPSStealKeyFocus");
 static RELEASE: sys::Symbol = sys::Symbol::of(LIBRARY, c"SLPSReleaseKeyFocus");
 
@@ -87,7 +86,7 @@ fn typed_ago() -> Duration {
 }
 
 fn call(symbol: &sys::Symbol, serial: &mut Serial) -> bool {
-    // SAFETY: each of the three symbols above is a function of the window server's that
+    // SAFETY: each of the two symbols above is a function of the window server's that
     // takes a process's serial number by pointer and answers an error code; checked on this
     // macOS (a menu up in another app closed 13 ms after the keyboard was handed on).
     unsafe { symbol.function::<ByProcess>() }.is_some_and(|call| unsafe { call(serial) } == 0)
@@ -96,8 +95,8 @@ fn call(symbol: &sys::Symbol, serial: &mut Serial) -> bool {
 /// Hands the keyboard to the app the person has in front, away from whichever menu holds
 /// it. Answers that app, to be let go of once the menu is gone.
 fn hand_back() -> Option<Serial> {
-    let mut front = Serial::default();
-    (call(&FRONT, &mut front) && call(&STEAL, &mut front)).then_some(front)
+    let mut front = crate::skylight::front_serial()?;
+    call(&STEAL, &mut front).then_some(front)
 }
 
 impl Host {

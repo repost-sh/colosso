@@ -205,6 +205,8 @@ registry! {
     DesktopType => ops::desktop::DesktopType,
     DesktopKey => ops::desktop::DesktopKey,
     DesktopFocus => ops::desktop::DesktopFocus,
+    DesktopTakeFocus => ops::desktop::DesktopTakeFocus,
+    DesktopReturnFocus => ops::desktop::DesktopReturnFocus,
     DesktopWait => ops::desktop::DesktopWait,
     DesktopClose => ops::desktop::DesktopClose,
     ChatList => ops::chat::ChatList,

@@ -79,12 +79,16 @@ pub fn display_named(name: &str) -> Option<Display> {
     Some(displays.swap_remove(at))
 }
 
-/// A process the host started, by its number and when it started: together they name one
-/// process for good, where a number alone is used again.
+/// A process the host started or took in, by its number and when it started: together they
+/// name one process for good, where a number alone is used again.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Started {
     pub pid: i32,
     pub at: u64,
+    /// The person's own, lent (`lending`): given back, never ended.
+    pub lent: bool,
+    /// The desktop a lent app came from.
+    pub home: Option<SpaceId>,
 }
 
 /// When the process `pid` started, in seconds since 1970; `None` when there's none.
@@ -106,55 +110,136 @@ fn apps_record(state: &Path) -> PathBuf {
     state.join("apps")
 }
 
-/// Writes down the apps the host has started, for a later run to end if this one can't.
+/// Writes down the apps the host has started, for a later run to end if this one can't, and
+/// the person's that are lent, for it to give back.
 pub fn record_apps(state: &Path, apps: &[Started]) {
+    let _ = std::fs::write(apps_record(state), apps_text(apps));
+}
+
+fn apps_text(apps: &[Started]) -> String {
     let mut text = String::new();
     for app in apps {
-        let _ = writeln!(text, "{} {}", app.pid, app.at);
+        let _ = write!(text, "{} {}", app.pid, app.at);
+        if app.lent {
+            let _ = write!(text, " lent {}", app.home.unwrap_or_default());
+        }
+        text.push('\n');
     }
-    let _ = std::fs::write(apps_record(state), text);
+    text
 }
 
 fn parse_apps(text: &str) -> Vec<Started> {
     text.lines()
         .filter_map(|line| {
-            let (pid, at) = line.split_once(' ')?;
+            let mut parts = line.split(' ');
             Some(Started {
-                pid: pid.parse().ok()?,
-                at: at.parse().ok()?,
+                pid: parts.next()?.parse().ok()?,
+                at: parts.next()?.parse().ok()?,
+                lent: parts.next() == Some("lent"),
+                home: (parts.next().and_then(|home| home.parse().ok())).filter(|home| *home != 0),
             })
         })
         .collect()
 }
 
+/// The person's desktops: every one but the agent's, and no app's full screen.
+fn persons(agents: Option<SpaceId>) -> Vec<SpaceId> {
+    (skylight::spaces().iter())
+        .filter(|space| !space.full_screen && Some(space.id) != agents)
+        .map(|space| space.id)
+        .collect()
+}
+
+/// The desktop of the person's to go back to: `wanted`, when it's still one of theirs, else
+/// the one they're on, else their first.
+pub fn back_to(wanted: Option<SpaceId>, agents: Option<SpaceId>) -> Option<SpaceId> {
+    let theirs = persons(agents);
+    let among = |space: &SpaceId| theirs.contains(space);
+    (wanted.filter(among))
+        .or_else(|| skylight::active().filter(among))
+        .or(theirs.first().copied())
+}
+
+/// Where an app of the person's shows its windows.
+pub struct Shown {
+    /// The desktop of theirs that holds most of them (the first of those, as Mission
+    /// Control orders them): where the app goes back to.
+    pub home: Option<SpaceId>,
+    /// One is in full screen: a space of its own, which an assignment doesn't move.
+    pub full_screen: bool,
+}
+
+/// Where the app `pid` shows its windows, the agent's desktop left out.
+pub fn shown(pid: i32, agents: Option<SpaceId>) -> Shown {
+    let (mut most, mut full_screen) = (None, false);
+    for space in skylight::spaces() {
+        let count = crate::windows::on(space.id, &[pid]).len();
+        if count == 0 || Some(space.id) == agents {
+            continue;
+        }
+        if space.full_screen {
+            full_screen = true;
+        } else if most.is_none_or(|(_, held)| count > held) {
+            most = Some((space.id, count));
+        }
+    }
+    Shown {
+        home: most.map(|(space, _)| space),
+        full_screen,
+    }
+}
+
+/// Gives the app `pid` back to the person: its windows go to the desktop it came from
+/// (`home`), or to the one the person is on when that one is gone; and what it makes from
+/// now on is made where they are, as before it was lent.
+pub fn hand_back(pid: i32, home: Option<SpaceId>, agents: Option<SpaceId>) {
+    if let Some(to) = back_to(home, agents) {
+        skylight::assign(pid, to);
+    }
+    skylight::release(pid);
+}
+
 /// Once, as the host starts and before it makes its desktop (never later: by then the
-/// record is of the host's own running apps). Ends what a run that crashed left behind: the apps it recorded, when they are still the
-/// same processes, and then its desktop, when it's still there under the same name and no
-/// app keeps a window on it.
+/// record is of the host's own running apps). Clears what a run that crashed left behind:
+/// the person's apps it had lent go back to them; the apps it started are ended, when they
+/// are still the same processes; and then its desktop is removed, when it's still there
+/// under the same name and no app keeps a window on it.
 pub fn remove_leftovers(state: &Path) {
+    let record = desktop_record(state);
+    let desktop = std::fs::read_to_string(&record).unwrap_or_default();
+    let mut parts = desktop.split_whitespace();
+    let recorded = (parts.next().and_then(|id| id.parse::<SpaceId>().ok())).zip(parts.next());
+
     let apps = std::fs::read_to_string(apps_record(state)).unwrap_or_default();
-    let left: Vec<Started> = parse_apps(&apps)
+    let (lent, ours): (Vec<Started>, Vec<Started>) = parse_apps(&apps)
         .into_iter()
         .filter(|app| started_at(app.pid) == Some(app.at))
-        .collect();
+        .partition(|app| app.lent);
+    // The person's own go back to them as they are, before anything is ended.
+    let agents = recorded.map(|(space, _)| space);
+    for app in &lent {
+        hand_back(app.pid, app.home, agents);
+    }
+    if let Some(space) = agents
+        && !lent.is_empty()
+    {
+        // Their windows take a moment to leave the desktop, which is removed only empty.
+        ns::pump_until(Duration::from_secs(1), || {
+            !crate::windows::holds_app_windows(space)
+        });
+    }
     for (signal, wait) in [(libc::SIGTERM, 2000), (libc::SIGKILL, 1000)] {
         let alive = |app: &&Started| started_at(app.pid) == Some(app.at);
-        for app in left.iter().filter(alive) {
+        for app in ours.iter().filter(alive) {
             // SAFETY: a signal to one process, checked just above to be the one recorded.
             unsafe { libc::kill(app.pid, signal) };
         }
         ns::pump_until(Duration::from_millis(wait), || {
-            !left.iter().any(|app| alive(&app))
+            !ours.iter().any(|app| alive(&app))
         });
     }
     let _ = std::fs::remove_file(apps_record(state));
 
-    let record = desktop_record(state);
-    let Ok(text) = std::fs::read_to_string(&record) else {
-        return;
-    };
-    let mut parts = text.split_whitespace();
-    let recorded = (parts.next().and_then(|id| id.parse::<SpaceId>().ok())).zip(parts.next());
     if let Some((space, name)) = recorded {
         let still = skylight::spaces()
             .iter()
@@ -242,16 +327,27 @@ mod tests {
             Started {
                 pid: 412,
                 at: 1_794_000_000,
+                lent: false,
+                home: None,
             },
             Started {
                 pid: 9001,
                 at: 1_794_000_321,
+                lent: true,
+                home: Some(4),
+            },
+            Started {
+                pid: 77,
+                at: 1_794_000_400,
+                lent: true,
+                home: None,
             },
         ];
-        let mut text = String::new();
-        for app in &apps {
-            writeln!(text, "{} {}", app.pid, app.at).unwrap();
-        }
+        let text = apps_text(&apps);
+        assert_eq!(
+            text,
+            "412 1794000000\n9001 1794000321 lent 4\n77 1794000400 lent 0\n"
+        );
         assert_eq!(parse_apps(&text), apps);
         assert_eq!(parse_apps("junk\n12 x\n"), []);
     }

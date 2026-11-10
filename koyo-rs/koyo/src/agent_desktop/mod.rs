@@ -11,8 +11,8 @@ use futures::channel::{mpsc, oneshot};
 use gpui_kit::{App, AppContext as _, Context, Entity, EntityId, Global, Task, point, size};
 use koyo_browser_ipc::mach;
 use koyo_desk_wire::link::{
-    Answer, DesktopState, FromHost, Input, LogLevel, PROTOCOL, Refusal, RefusalCode, RequestId,
-    ToHost, Window,
+    Answer, DesktopState, FromHost, Input, Lent, LogLevel, PROTOCOL, Refusal, RefusalCode,
+    RequestId, ToHost, Window,
 };
 
 use crate::browser::control::{Control, Mode};
@@ -25,6 +25,7 @@ mod control;
 mod granting;
 mod host;
 mod marks;
+mod notices;
 mod picture;
 pub mod setup;
 mod typing;
@@ -87,6 +88,8 @@ pub struct Desk {
     starts: u64,
     /// An app the person seems to have asked for while the agent runs its only instance.
     pub wanted: Option<Wanted>,
+    /// The person's own apps that are on the desktop, lent to agents on their word.
+    pub lent: Vec<Lent>,
 }
 
 /// An app of the agent's that came to the front on its own: the person may have opened it.
@@ -149,6 +152,7 @@ impl Desk {
             shown_by: HashSet::new(),
             starts: 0,
             wanted: None,
+            lent: Vec::new(),
         }
     }
 
@@ -290,6 +294,7 @@ impl Desk {
         self.grants = None;
         self.desktop = None;
         self.wanted = None;
+        self.lent.clear();
         self.released();
         self.windows.clear();
         self.backdrop = None;
@@ -366,6 +371,7 @@ impl Desk {
                     at: Instant::now(),
                 });
             }
+            FromHost::Lent { apps } => self.lent = apps,
             FromHost::Answer { request, result } => {
                 if let Some(answer) = self.pending.remove(&request) {
                     let _ = answer.send(result);

@@ -8,14 +8,14 @@ use std::io::BufReader;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, channel};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use koyo_browser_ipc::mach;
 use koyo_desk_wire::link::{
-    Answer, Ask, DesktopState, FromHost, PROTOCOL, Refusal, ToHost, Window,
+    Answer, Ask, DesktopState, FromHost, Lent, PROTOCOL, Refusal, ToHost, Window,
 };
 use koyo_desk_wire::{read_frame, write_frame};
 
@@ -29,6 +29,9 @@ unsafe extern "C" {
 unsafe extern "C" {
     fn CFRelease(object: *const c_void);
 }
+
+/// How many hosts this process has started.
+static STARTS: AtomicU32 = AtomicU32::new(0);
 
 /// The frames that came for one window.
 #[derive(Clone, Copy, Debug, Default)]
@@ -54,6 +57,8 @@ pub struct Driver {
     /// Pointer notices: where, and whether it was a click.
     pub pointers: Vec<(f64, f64, bool)>,
     pub logs: Vec<String>,
+    /// The person's apps that are lent.
+    pub lent: Vec<Lent>,
     answers: HashMap<u64, Result<Answer, Refusal>>,
 }
 
@@ -63,6 +68,12 @@ fn loader() -> Option<(String, Vec<String>)> {
     let app = std::env::var("KOYO_DESK_HOST").ok()?;
     let before = std::env::var("KOYO_DESK_HOST_ARGS").unwrap_or_default();
     Some((app, before.lines().map(str::to_owned).collect()))
+}
+
+/// Whether the process `pid` is there.
+pub fn alive(pid: i32) -> bool {
+    // SAFETY: signal 0 only asks whether the process is there.
+    unsafe { libc::kill(pid, 0) == 0 }
 }
 
 /// Waits out `time` on a channel nobody sends on.
@@ -135,7 +146,9 @@ impl Driver {
         let socket = dir.join("l.sock");
         let _ = std::fs::remove_file(&socket);
         let listener = UnixListener::bind(&socket).unwrap();
-        let service = format!("dev.koyo.desk.test.{}", std::process::id());
+        // A name of its own for every start: a test may start a second host after a first.
+        let start = STARTS.fetch_add(1, Ordering::Relaxed);
+        let service = format!("dev.koyo.desk.test.{}.{start}", std::process::id());
         let receiver = mach::Receiver::check_in(&service).unwrap();
         let status = Command::new("/usr/bin/open")
             .args(["-n", "-g", "-a", &app])
@@ -184,6 +197,7 @@ impl Driver {
             backdrop: None,
             pointers: Vec::new(),
             logs: Vec::new(),
+            lent: Vec::new(),
             answers: HashMap::new(),
         };
         driver.until(Duration::from_secs(10), |driver| driver.host != 0);
@@ -220,6 +234,7 @@ impl Driver {
             FromHost::Pointer { at, click } => self.pointers.push((at.x, at.y, click)),
             FromHost::Log { level, text } => self.logs.push(format!("{level:?}: {text}")),
             FromHost::Wanted { app, .. } => self.logs.push(format!("wanted: {app}")),
+            FromHost::Lent { apps } => self.lent = apps,
             FromHost::Answer { request, result } => {
                 self.answers.insert(request, result);
             }
@@ -277,18 +292,33 @@ impl Driver {
         self.until(time, |_| false);
     }
 
+    /// Waits for the host to have made its desktop.
+    pub fn ready(&mut self) {
+        let made = |driver: &Driver| matches!(driver.desktop, Some(DesktopState::Ready { .. }));
+        assert!(
+            self.until(Duration::from_secs(30), made),
+            "no desktop: {:?} {:?}",
+            self.desktop,
+            self.logs
+        );
+    }
+
+    /// Ends the host as a crash would: with no word, and nothing cleaned up.
+    pub fn kill(self) {
+        // SAFETY: a signal to the host this driver started.
+        unsafe { libc::kill(self.host, libc::SIGKILL) };
+        self.stop.store(true, Ordering::Relaxed);
+        nap(Duration::from_millis(300));
+    }
+
     /// Tells the host to quit and waits for it to go.
     pub fn quit(mut self) {
         self.tell(&ToHost::Quit);
-        let gone = |pid: i32| {
-            // SAFETY: signal 0 only asks whether the process is there.
-            unsafe { libc::kill(pid, 0) != 0 }
-        };
         let started = Instant::now();
-        while !gone(self.host) && started.elapsed() < Duration::from_secs(15) {
+        while alive(self.host) && started.elapsed() < Duration::from_secs(15) {
             self.rest(Duration::from_millis(100));
         }
         self.stop.store(true, Ordering::Relaxed);
-        assert!(gone(self.host), "the host stayed after Quit");
+        assert!(!alive(self.host), "the host stayed after Quit");
     }
 }

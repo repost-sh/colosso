@@ -179,7 +179,7 @@ fn reads_need_read_and_acts_need_desktop() {
     let desktop: Vec<_> = (catalog().into_iter())
         .filter(|descriptor| descriptor.name.starts_with("desktop_"))
         .collect();
-    assert_eq!(desktop.len(), 13);
+    assert_eq!(desktop.len(), 15);
     for descriptor in desktop {
         let reads = [
             "desktop_windows",

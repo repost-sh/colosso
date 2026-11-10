@@ -27,7 +27,7 @@ pub use act::{
     target,
 };
 
-use super::shared::{NoInput, count};
+use super::shared::{NoInput, count, is_false};
 use crate::{ControlError, Hints, Operation, Scope};
 
 /// How long `desktop_wait` waits when `timeoutMs` is left out, in milliseconds.
@@ -77,6 +77,15 @@ pub struct DesktopOpenInput {
     /// Arguments the app starts with.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub args: Option<Vec<String>>,
+    /// Use the person's own running instance of the app, with what they have open in it and
+    /// their accounts, instead of starting one of your own. Refused until the person
+    /// agrees: the refusal says what to tell them and ask.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub persons_own: Option<bool>,
+    /// The exact text of the person's message agreeing to it. Only after a refusal asked
+    /// for it, and only their words: never write it yourself.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub consent: Option<String>,
 }
 
 /// The app started.
@@ -89,9 +98,13 @@ pub struct DesktopOpenOutput {
     pub pid: i32,
     /// Its windows so far, front to back.
     pub windows: Vec<DesktopWindow>,
+    /// The app is the person's own, lent to you on their word: `desktop_close` with its
+    /// `pid` gives it back to them as it is, and they can take it back in Koyo at any time.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub lent: bool,
 }
 
-/// `desktop_open`: an app of the agent's own on the agent desktop.
+/// `desktop_open`: an app of the agent's own on the agent desktop, or the person's, lent.
 #[derive(Debug)]
 pub struct DesktopOpen;
 
@@ -100,14 +113,15 @@ impl Operation for DesktopOpen {
     const TITLE: &'static str = "Open an app on the agent desktop";
     const SUBJECT: &'static [&'static str] = &["app", "file"];
     const SCOPE: Scope = Scope::Desktop;
-    const DESCRIPTION: &'static str = "Starts an instance of an app of your own on the agent desktop, by name, bundle id or path, optionally with a file or URL to open, and answers its process and windows. The person's own windows stay as they are. person_has_control means the person runs the app as its only instance.";
+    const DESCRIPTION: &'static str = "Starts an instance of an app of your own on the agent desktop, by name, bundle id or path, optionally with a file or URL to open, and answers its process and windows. The person's own windows stay as they are. person_has_control means the app is the person's own running one (it takes no second instance, or you asked for theirs with `personsOwn`): bringing it to the agent desktop needs their explicit consent, and the message says what to tell them and ask. Once they agree, call again with `consent` set to their exact words.";
     const HINTS: Hints = Hints::CHANGE.beyond_koyo();
     type Input = DesktopOpenInput;
     type Output = DesktopOpenOutput;
 
     fn summary(output: &DesktopOpenOutput) -> String {
+        let whose = if output.lent { "the person's own " } else { "" };
         format!(
-            "Opened {} (process {}), {}",
+            "Opened {whose}{} (process {}), {}",
             output.app,
             output.pid,
             count(output.windows.len(), "window", "windows")
@@ -357,6 +371,58 @@ impl Operation for DesktopFocus {
     }
 }
 
+/// What to bring onto the person's screen, and their word for it.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DesktopTakeFocusInput {
+    /// The window to have in front, by its id from `desktop_windows`; the frontmost one
+    /// when left out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window: Option<u32>,
+    /// The exact text of the person's message agreeing to it. Only after a refusal asked
+    /// for it, and only their words: never write it yourself.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub consent: Option<String>,
+}
+
+/// `desktop_take_focus`: the agent desktop on the person's screen, on their word.
+#[derive(Debug)]
+pub struct DesktopTakeFocus;
+
+impl Operation for DesktopTakeFocus {
+    const NAME: &'static str = "desktop_take_focus";
+    const TITLE: &'static str = "Take the focus for the agent desktop";
+    const SUBJECT: &'static [&'static str] = &["window"];
+    const SCOPE: Scope = Scope::Desktop;
+    const DESCRIPTION: &'static str = "Puts the agent desktop on the person's screen, with a window of it in front, in place of what they are doing. Only when nothing less will do: when an app can't do unseen what you need of it (a browser draws no page, and gives none to read, on a desktop that isn't showing). It needs the person's explicit consent each time: the first call is refused with person_has_control and says what to tell them and ask; once they agree, call again with `consent` set to their exact words. Give the focus back with desktop_return_focus as soon as you're done; it's theirs again the moment they go to a desktop of their own.";
+    const HINTS: Hints = Hints::CHANGE.beyond_koyo();
+    type Input = DesktopTakeFocusInput;
+    type Output = DesktopDone;
+
+    fn summary(_: &DesktopDone) -> String {
+        "The agent desktop is on the person's screen".to_owned()
+    }
+}
+
+/// `desktop_return_focus`: the person's own desktop on their screen again.
+#[derive(Debug)]
+pub struct DesktopReturnFocus;
+
+impl Operation for DesktopReturnFocus {
+    const NAME: &'static str = "desktop_return_focus";
+    const TITLE: &'static str = "Give the focus back to the person";
+    const SUBJECT: &'static [&'static str] = &[];
+    const SCOPE: Scope = Scope::Desktop;
+    const DESCRIPTION: &'static str = "Gives back the focus taken with desktop_take_focus: the person's screen shows the desktop they were on again. Does nothing when the focus isn't held, or they already left.";
+    const HINTS: Hints = Hints::IDEMPOTENT.beyond_koyo();
+    type Input = NoInput;
+    type Output = DesktopDone;
+
+    fn summary(_: &DesktopDone) -> String {
+        "The person's own desktop is on their screen again".to_owned()
+    }
+}
+
 /// What to close: a window, or an app.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -364,7 +430,7 @@ pub struct DesktopCloseInput {
     /// A window's id from `desktop_windows`, to close.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub window: Option<u32>,
-    /// An app's process from `desktop_open`, to quit.
+    /// An app's process from `desktop_open`, to quit; the person's own, lent, to give back.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pid: Option<i32>,
 }
@@ -402,7 +468,7 @@ impl Operation for DesktopClose {
     const SUBJECT: &'static [&'static str] = &["window", "pid"];
     const SCOPE: Scope = Scope::Desktop;
     const DESCRIPTION: &'static str = held!(
-        "Closes a window on the agent desktop (`window`), or quits an app you opened there (`pid`), which is stopped if it won't quit."
+        "Closes a window on the agent desktop (`window`), or quits an app you opened there (`pid`), which is stopped if it won't quit. An app of the person's own that was lent to you isn't quit: it's given back to them as it is."
     );
     const HINTS: Hints = Hints::DESTRUCTIVE.beyond_koyo();
     type Input = DesktopCloseInput;

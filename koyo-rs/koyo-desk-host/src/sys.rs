@@ -130,7 +130,6 @@ unsafe extern "C" {
         callbacks: *const c_void,
     ) -> Ref;
     pub fn CFArrayGetCount(array: Ref) -> isize;
-    pub fn CFNumberGetValue(number: Ref, kind: isize, value: *mut c_void) -> bool;
     pub fn CFArrayGetValueAtIndex(array: Ref, index: isize) -> *const c_void;
     pub fn CFDataCreate(allocator: Ref, bytes: *const u8, length: isize) -> Ref;
     pub fn CFDataCreateMutable(allocator: Ref, capacity: isize) -> Ref;

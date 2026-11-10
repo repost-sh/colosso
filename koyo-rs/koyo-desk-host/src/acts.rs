@@ -3,6 +3,8 @@
 //! element takes the act, by events to the window's process otherwise; never at the person's
 //! pointer or keyboard.
 
+use std::collections::VecDeque;
+
 use koyo_desk_wire::Point;
 use koyo_desk_wire::keys;
 use koyo_desk_wire::link::{
@@ -65,7 +67,7 @@ impl Host {
 
     /// Brings a window in front of the agent's others, through accessibility: the app is
     /// asked, nothing is activated.
-    fn raise(&mut self, id: u32) -> Result<(), Refusal> {
+    pub fn raise(&mut self, id: u32) -> Result<(), Refusal> {
         let listed = self.listed(id)?.clone();
         self.activate(listed.pid);
         let element = (self.apps.iter_mut())
@@ -329,13 +331,19 @@ impl Host {
 
     /// The person acted: what was being typed stops where it is.
     pub fn stop_typing(&mut self) {
-        for typing in std::mem::take(&mut self.typings) {
-            let message = "the person took over the agent desktop while this was being typed: \
-                           part of the text is in, look before going on";
-            self.answer(
-                typing.request,
-                Err(Refusal::new(RefusalCode::PersonActing, message)),
-            );
+        let message = "the person took over the agent desktop while this was being typed: \
+                       part of the text is in, look before going on";
+        self.stop_typing_where(|_| true, &Refusal::new(RefusalCode::PersonActing, message));
+    }
+
+    /// Stops the texts being typed that `cut` picks, each where it is, and answers them
+    /// with `refusal`.
+    pub fn stop_typing_where(&mut self, cut: impl Fn(&Typing) -> bool, refusal: &Refusal) {
+        let (stopped, kept): (VecDeque<Typing>, VecDeque<Typing>) =
+            (std::mem::take(&mut self.typings).into_iter()).partition(cut);
+        self.typings = kept;
+        for typing in stopped {
+            self.answer(typing.request, Err(refusal.clone()));
         }
     }
 

@@ -60,7 +60,12 @@ pub struct Space {
     /// The display it's on, by the display's own UUID; `Main` when all displays share one
     /// set of desktops.
     pub display: String,
+    /// An app's full screen, not a desktop.
+    pub full_screen: bool,
 }
+
+/// The window server's kind of space that is an app's full screen.
+const FULL_SCREEN: i64 = 4;
 
 /// The person's desktops, in Mission Control's order, across displays.
 pub fn desktops() -> Vec<SpaceId> {
@@ -88,10 +93,12 @@ pub fn spaces() -> Vec<Space> {
         listed.extend(spaces.iter().filter_map(|space| {
             let id = ns::integer(&*ns::entry(space, "ManagedSpaceID")?)?;
             let name = ns::entry(space, "uuid").and_then(|name| ns::text(&name));
+            let kind = ns::entry(space, "type").and_then(|kind| ns::integer(&kind));
             Some(Space {
                 id: SpaceId::try_from(id).ok()?,
                 name: name.unwrap_or_default(),
                 display: identifier.clone(),
+                full_screen: kind == Some(FULL_SCREEN),
             })
         }));
     }
@@ -100,7 +107,7 @@ pub fn spaces() -> Vec<Space> {
 
 /// A process's serial number, as the window server's older calls name a process.
 #[repr(C)]
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub struct Serial {
     high: u32,
     low: u32,
@@ -109,6 +116,39 @@ pub struct Serial {
 #[link(name = "ApplicationServices", kind = "framework")]
 unsafe extern "C" {
     fn GetProcessForPID(pid: i32, serial: *mut Serial) -> i32;
+    fn GetProcessPID(serial: *const Serial, pid: *mut i32) -> i32;
+}
+
+/// The app the window server has in front, by its serial number. Any thread may ask.
+pub fn front_serial() -> Option<Serial> {
+    type Front = unsafe extern "C" fn(*mut Serial) -> i32;
+    static FRONT: sys::Symbol = sys::Symbol::of(LIBRARY, c"_SLPSGetFrontProcess");
+    // SAFETY: the symbol is that function, which fills in the front process's serial
+    // number and answers an error code.
+    unsafe {
+        let front = FRONT.function::<Front>()?;
+        let mut serial = Serial::default();
+        (front(&raw mut serial) == 0).then_some(serial)
+    }
+}
+
+/// The pid of the process with this serial number.
+pub fn pid_of(serial: Serial) -> Option<i32> {
+    let mut pid = 0;
+    // SAFETY: a serial number read, and an out-pointer for the pid, if there's a process.
+    (unsafe { GetProcessPID(&raw const serial, &raw mut pid) } == 0).then_some(pid)
+}
+
+/// The serial number of the process `pid`.
+fn serial_of(pid: i32) -> Option<Serial> {
+    let mut serial = Serial::default();
+    // SAFETY: an out-pointer for the serial number of a process, if there is one.
+    (unsafe { GetProcessForPID(pid, &raw mut serial) } == 0).then_some(serial)
+}
+
+/// The app the window server has in front, by its pid. Any thread may ask.
+pub fn front() -> Option<i32> {
+    front_serial().and_then(pid_of)
 }
 
 /// Tells the app `pid`, and only it, that its window `window` is the key window: the pair
@@ -125,11 +165,9 @@ pub fn make_key(pid: i32, window: u32) {
     let Some(post) = (unsafe { POST.function::<Post>() }) else {
         return;
     };
-    let mut serial = Serial { high: 0, low: 0 };
-    // SAFETY: an out-pointer for the serial number of a process, if there is one.
-    if unsafe { GetProcessForPID(pid, &raw mut serial) } != 0 {
+    let Some(serial) = serial_of(pid) else {
         return;
-    }
+    };
     let mut record = [0u8; SIZE];
     record[0x04] = 0xf8;
     record[0x3a] = 0x10;
@@ -209,6 +247,30 @@ pub fn assign(pid: i32, space: SpaceId) -> bool {
     };
     // SAFETY: a pid and a space number; the window server refuses what it won't do.
     unsafe { (calls.assign)((calls.connection)(), pid, space) == 0 }
+}
+
+/// Lets the app `pid` go from the desktop it was assigned to: its windows stay where they
+/// are, and the ones it makes later open where the person is.
+pub fn release(pid: i32) -> bool {
+    assign(pid, 0)
+}
+
+/// Makes the app `pid` the front one at the window server itself, its windows left as they
+/// lie. Asked of the window server and of nobody else, it's done within the call: Launch
+/// Services' way (`activateWithOptions:`) took a second whenever the app in front was busy
+/// coming forward, and that second is what took the person to the agent's desktop.
+pub fn bring_front(pid: i32) -> bool {
+    type SetFront = unsafe extern "C" fn(*const Serial, u32, u32) -> i32;
+    static SET_FRONT: sys::Symbol = sys::Symbol::of(LIBRARY, c"_SLPSSetFrontProcessWithOptions");
+    /// `kCPSNoWindows`: the process comes to the front, no window of it is raised.
+    const NO_WINDOWS: u32 = 0x400;
+    // SAFETY: the symbol is that function, which takes a process's serial number, a window
+    // number (none) and a mode, as window managers call it.
+    let Some(set) = (unsafe { SET_FRONT.function::<SetFront>() }) else {
+        return false;
+    };
+    // SAFETY: as above, for a process that is there.
+    serial_of(pid).is_some_and(|serial| unsafe { set(&raw const serial, 0, NO_WINDOWS) } == 0)
 }
 
 fn array_of(values: impl IntoIterator<Item = u64>) -> Obj {

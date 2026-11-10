@@ -7,7 +7,7 @@ use std::time::Duration;
 use futures::FutureExt as _;
 use gpui_kit::{AppContext as _, Entity, EntityId, Task, TestAppContext};
 use koyo_desk_wire::link::{
-    Answer, Ask, Button, DesktopState, FromHost, Input, PROTOCOL, RefusalCode, ToHost, Window,
+    Answer, Ask, Button, DesktopState, FromHost, Input, Lent, PROTOCOL, RefusalCode, ToHost, Window,
 };
 use koyo_desk_wire::{Point, Rect, Size};
 
@@ -284,6 +284,23 @@ fn an_app_the_person_asked_for_is_offered_and_started_only_on_their_word(cx: &mu
     let bundle = "com.apple.calculator".to_owned();
     assert_eq!(told.try_recv(), Ok(ToHost::OpenForPerson { bundle }));
     desk.read_with(cx, |desk, _| assert!(desk.wanted.is_none()));
+}
+
+/// An app of the person's own that the host says is lent is kept for the tab to say, and
+/// the host hears of it only when the person takes it back.
+#[gpui_kit::test]
+fn an_app_of_the_persons_that_is_lent_is_taken_back_on_their_word(cx: &mut TestAppContext) {
+    let (desk, told) = running(cx);
+    let lent = vec![Lent {
+        pid: 412,
+        app: "Arc".into(),
+    }];
+    says(&desk, FromHost::Lent { apps: lent.clone() }, cx);
+    desk.read_with(cx, |desk, _| assert_eq!(desk.lent, lent));
+    assert!(told.try_recv().is_err(), "nothing is given back unasked");
+    desk.update(cx, |desk, cx| desk.take_back(412, cx));
+    assert_eq!(told.try_recv(), Ok(ToHost::TakeBack { pid: 412 }));
+    desk.read_with(cx, |desk, _| assert!(desk.lent.is_empty()));
 }
 
 #[gpui_kit::test]

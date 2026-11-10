@@ -21,8 +21,6 @@ use crate::browser::keys::key_codes;
 use crate::modal::{Button as Push, Tone};
 use crate::theme;
 
-/// How long the notice of an app asked for stays up.
-const WANTED_FOR: std::time::Duration = std::time::Duration::from_secs(60);
 /// A wheel's click in points, as apps scroll by it.
 const LINE: f32 = 40.;
 /// The modifier keys: each one's code.
@@ -291,50 +289,6 @@ impl DeskView {
         }
     }
 
-    /// The notice that an app the agent runs was asked for, by the person it seems, with the
-    /// way to their own: nothing is started for them on a guess.
-    fn wanted(&self, cx: &mut Context<Self>) -> Option<gpui_kit::Div> {
-        let desk = self.desk.read(cx);
-        let wanted = (desk.wanted.as_ref()).filter(|wanted| wanted.at.elapsed() < WANTED_FOR)?;
-        let said = format!(
-            "{} came to the front: if you opened it, the one running is the agent's.",
-            wanted.app
-        );
-        let p = theme::palette(cx);
-        let open = cx.listener(|this, _: &ClickEvent, _, cx| {
-            this.desk.update(cx, Desk::open_for_person);
-        });
-        Some(
-            div()
-                .absolute()
-                .top_2()
-                .left_0()
-                .w_full()
-                .flex()
-                .justify_center()
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_3()
-                        .px_3()
-                        .py_2()
-                        .rounded(px(8.))
-                        .bg(p.raised)
-                        .border_1()
-                        .border_color(p.hairline)
-                        .text_sm()
-                        .text_color(p.text)
-                        .occlude()
-                        .child(said)
-                        .child(
-                            Push::new("agent-desktop-yours", "Open Yours", Tone::Primary)
-                                .on_click(open),
-                        ),
-                ),
-        )
-    }
-
     /// What is in the way of showing the desktop, and what to do about it.
     fn notice(&self, cx: &mut Context<Self>) -> Option<(SharedString, Vec<Push>)> {
         let desk = self.desk.read(cx);
@@ -444,7 +398,7 @@ impl Render for DeskView {
                 })
             })
             .children(marks)
-            .children(self.wanted(cx))
+            .children(self.notices(cx))
             .children(self.control_bar(window, cx))
             .when(empty, |view| {
                 view.child(

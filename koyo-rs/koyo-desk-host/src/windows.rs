@@ -35,15 +35,36 @@ pub fn with_backdrop(space: SpaceId, pids: &[i32], display: Rect) -> (Vec<Window
 
 /// Those of `all` that belong to one of `pids` and are large enough to be a window.
 fn ours(mut all: Vec<Window>, pids: &[i32]) -> Vec<Window> {
-    all.retain(|window| pids.contains(&window.pid));
-    all.retain(|window| window.frame.width >= SMALLEST && window.frame.height >= SMALLEST);
+    all.retain(|window| pids.contains(&window.pid) && large(window));
     all
+}
+
+fn large(window: &Window) -> bool {
+    window.frame.width >= SMALLEST && window.frame.height >= SMALLEST
 }
 
 fn backdrop_among(all: &[Window], display: Rect) -> Option<&Window> {
     (all.iter())
         .filter(|window| window.layer < DESKTOP_LAYERS && same(window.frame, display))
         .min_by_key(|window| window.layer)
+}
+
+/// Whether the app `pid` shows a window on a desktop other than `space`.
+pub fn elsewhere(pid: i32, space: SpaceId) -> bool {
+    (skylight::spaces().iter()).any(|other| other.id != space && !on(other.id, &[pid]).is_empty())
+}
+
+/// The app of the person's to have in front on `space`: `had`, when it has a window there,
+/// else the one whose window is frontmost there; the apps `except` left out. Read from one
+/// listing of the desktop: this is asked while the person waits for their front app.
+pub fn persons_front(space: SpaceId, had: Option<i32>, except: &[i32]) -> Option<i32> {
+    let all = all_on(space);
+    let mut theirs = (all.iter())
+        .filter(|window| window.layer == 0 && large(window) && !except.contains(&window.pid))
+        .map(|window| window.pid);
+    let frontmost = theirs.next()?;
+    let has = |had: &i32| *had == frontmost || theirs.any(|pid| pid == *had);
+    Some(had.filter(has).unwrap_or(frontmost))
 }
 
 /// Whether an app keeps a window on `space` alone. Every desktop also holds the system's own
