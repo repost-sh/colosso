@@ -3,7 +3,6 @@
 
 mod about;
 mod agent_desktop;
-mod agent_desktop_remove;
 mod appearance;
 mod browser;
 mod chat;

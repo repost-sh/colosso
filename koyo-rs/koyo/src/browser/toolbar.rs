@@ -8,9 +8,9 @@ use gpui_kit::component::input::Input;
 use gpui_kit::component::{Disableable as _, Selectable as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, Bounds, ClickEvent, Context, Div, ElementId, Focusable as _, FontWeight,
-    InteractiveElement as _, IntoElement, MouseButton, ParentElement as _,
-    StatefulInteractiveElement as _, Styled as _, Window, deferred, div, point, px, relative, size,
+    AnyElement, App, Bounds, ClickEvent, Context, Div, ElementId, Focusable as _,
+    InteractiveElement as _, IntoElement, ParentElement as _, StatefulInteractiveElement as _,
+    Styled as _, Window, div, point, px, relative, size,
 };
 use koyo_browser_ipc::{Go, PageState};
 
@@ -18,7 +18,7 @@ use super::control::Mode;
 use super::host::HostStatus;
 use super::lightness::glass_dark;
 use super::view::{BrowserView, Notice};
-use crate::native::liquid;
+use crate::held::{self, Held};
 use crate::responsive::bar::toggle_button;
 use crate::shell::{icon, icon_button};
 use crate::theme::{self, Palette};
@@ -184,82 +184,31 @@ pub(super) fn control_bar(
         (text, "browser-give-back", "Give back", Box::new(give_back))
     };
     let dark = view.read_bar_dark();
-    let (p, tint) = theme::glass::look(dark, cx);
-    let id_glass = ElementId::NamedInteger("browser-control-glass".into(), view.pane);
-    let glass = liquid::backdrop_toned(id_glass, px(999.), dark.zip(tint), window, cx);
-    let button = bar_button(id, label, glass.is_some(), p).on_click(on_click);
-    let pill = div()
-        .relative()
-        .flex()
-        .items_center()
-        .gap_2()
-        .max_w(px(BAR_WIDTH))
-        .pl_3()
-        .pr(px(5.))
-        .py(px(5.))
-        .rounded_full()
-        .occlude()
-        .text_xs()
-        .text_color(p.text);
-    let pill = liquid::floating(pill, glass, p);
-    // Among the window's overlays, over its Liquid Glass, a native view of the window's.
-    let bar = div()
-        .absolute()
-        .bottom(px(BAR_BOTTOM))
-        .left_0()
-        .right_0()
-        .flex()
-        .justify_center()
-        .child(pill.child(div().truncate().child(text)).child(button));
-    Some(deferred(bar).into_any_element())
+    let glass = ElementId::NamedInteger("browser-control-glass".into(), view.pane);
+    let held = Held {
+        text,
+        id,
+        label,
+        on_click,
+    };
+    Some(held::bar(glass, held, dark, window, cx))
 }
-
-/// How wide the control bar is at most, how far up from the page's foot it sits, and about how
-/// high it is: where the page under it is read.
-const BAR_WIDTH: f32 = 560.;
-const BAR_BOTTOM: f32 = 14.;
-const BAR_HEIGHT: f32 = 34.;
 
 impl BrowserView {
     /// Whether the control bar's glass is dark, the page under it read again (`glass_dark`), as
     /// it is each time the bar is drawn; none while its tone is the theme's.
     pub(super) fn read_bar_dark(&mut self) -> Option<bool> {
         self.bar_dark = self.page_bounds().and_then(|page| {
-            let width = page.size.width.min(px(BAR_WIDTH));
+            let width = page.size.width.min(px(held::WIDTH));
             let origin = point(
                 page.center().x - width / 2.,
-                page.bottom() - px(BAR_BOTTOM + BAR_HEIGHT),
+                page.bottom() - px(held::BOTTOM + held::HEIGHT),
             );
-            let region = Bounds::new(origin, size(width, px(BAR_HEIGHT)));
+            let region = Bounds::new(origin, size(width, px(held::HEIGHT)));
             glass_dark([&*self], region, self.bar_dark)
         });
         self.bar_dark
     }
-}
-
-/// The bar's button: a tint of the text's colour on glass, a raised fill on the bar's own.
-fn bar_button(
-    id: &'static str,
-    label: &'static str,
-    on_glass: bool,
-    p: Palette,
-) -> gpui_kit::Stateful<Div> {
-    let (fill, hovered) = if on_glass {
-        (p.text.opacity(0.08), p.text.opacity(0.14))
-    } else {
-        (p.raised, p.hover)
-    };
-    div()
-        .id(id)
-        .px_2()
-        .py(px(3.))
-        .rounded_full()
-        .cursor_pointer()
-        .font_weight(FontWeight::MEDIUM)
-        .bg(fill)
-        .hover(move |button| button.bg(hovered))
-        .child(label)
-        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
 }
 
 /// What a notice's button does.
@@ -317,7 +266,7 @@ pub(super) fn overlay(
                     .child(message),
             )
             .children(action.map(|(label, on_click)| {
-                bar_button("browser-notice-action", label, false, p)
+                held::button("browser-notice-action", label, false, p)
                     .text_sm()
                     .text_color(p.text)
                     .on_click(on_click)

@@ -170,7 +170,7 @@ fn check(spec: &PaneSpec) -> Result<(), ControlError> {
         .or_else(|| (page || file).then_some("`url`, `viewport`, `file`, `line` or `column`")),
         PaneKind::Browser => (terminal || file).then_some("terminal or file fields"),
         PaneKind::Editor => (terminal || page).then_some("terminal fields, `url` or `viewport`"),
-        PaneKind::Changes | PaneKind::Chat => {
+        PaneKind::Changes | PaneKind::Chat | PaneKind::Desktop => {
             (terminal || file || page).then_some("terminal, file or browser fields")
         }
     };
@@ -285,6 +285,15 @@ fn open(
             ))),
         },
         PaneKind::Changes => Opened::Now(open_changes(shell, window, cx)),
+        // There is one agent desktop: the pane that shows it, or a new one.
+        PaneKind::Desktop => {
+            let pane = shell.desktop_pane(shown, cx).ok_or_else(|| {
+                ControlError::not_found("No checkout is selected to open the agent desktop on.")
+            });
+            shell.navigate(Route::Workspace, cx);
+            cx.notify();
+            Opened::Now(pane)
+        }
         PaneKind::Chat => Opened::Now(Ok(push(
             shell,
             Pane::new(model::PaneKind::Chat),

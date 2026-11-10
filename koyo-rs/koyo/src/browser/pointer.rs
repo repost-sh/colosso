@@ -20,6 +20,7 @@ mod overlay;
 
 pub use glow::{Glow, glow};
 pub(super) use overlay::{Marks, overlay};
+pub(crate) use overlay::{paint_pointer, tint};
 
 /// How long the pointer rests after its last move or click before it fades.
 pub const IDLE: Duration = Duration::from_secs(6);

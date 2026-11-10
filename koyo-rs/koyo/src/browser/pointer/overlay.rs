@@ -163,7 +163,7 @@ fn shown(
 
 /// The colour of the marks: the hue of the theme the person set, its first colour, kept
 /// light and dark enough to show on a page; a neutral grey with no theme set.
-fn tint(cx: &App) -> Hsla {
+pub(crate) fn tint(cx: &App) -> Hsla {
     let Some(color) = gradient::current(cx).primary() else {
         return gpui_kit::hsla(0., 0., 0.45, 1.);
     };
@@ -203,7 +203,7 @@ fn paint_glow(bounds: Bounds<Pixels>, accent: Hsla, level: f32, window: &mut Win
 
 /// The pointer as `shot` shows it, its page points put in the window by `place`. The arrow
 /// and its ring keep their size on screen whatever the page's scale.
-fn paint_pointer(
+pub(crate) fn paint_pointer(
     shot: &Shot,
     place: impl Fn(Point<f32>) -> Point<Pixels>,
     accent: Hsla,

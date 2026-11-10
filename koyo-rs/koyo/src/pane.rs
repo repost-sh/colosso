@@ -51,6 +51,10 @@ pub fn pane(pane: &Pane, p: Palette) -> AnyElement {
             (None, Some(changes)) => changes.clone().into_any_element(),
             (None, None) => editor(pane, p),
         },
+        PaneKind::Desktop => (pane.desktop_view().cloned()).map_or_else(
+            || gpui_kit::Empty.into_any_element(),
+            IntoElement::into_any_element,
+        ),
     }
 }
 

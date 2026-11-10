@@ -10,6 +10,7 @@ pub mod activity;
 pub mod app;
 pub mod browser;
 pub mod chat;
+pub mod desktop;
 pub mod file;
 pub mod pane;
 pub mod project;

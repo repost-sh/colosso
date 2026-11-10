@@ -17,13 +17,13 @@ use std::path::Path;
 use gpui_kit::{App, KeyBinding, actions};
 
 pub mod agent;
-mod control;
+pub(crate) mod control;
 mod dialog;
 mod dock;
 mod engine;
 mod favicon;
 mod find;
-mod frames;
+pub(crate) mod frames;
 mod history;
 mod host;
 #[cfg(test)]
@@ -34,7 +34,7 @@ mod lightness;
 mod menu;
 mod page;
 mod passkeys;
-mod pointer;
+pub(crate) mod pointer;
 mod responsive;
 mod tabs;
 mod toolbar;

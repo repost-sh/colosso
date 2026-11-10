@@ -71,7 +71,7 @@ pub(super) fn said(shell: &Shell, cx: &App) -> (SharedString, bool) {
                 (host_of(&address).into(), false)
             }
         }
-        PaneKind::Terminal | PaneKind::Chat => (pane.title.clone(), false),
+        PaneKind::Terminal | PaneKind::Chat | PaneKind::Desktop => (pane.title.clone(), false),
         PaneKind::Editor => ("File".into(), false),
     }
 }

@@ -1,236 +1,215 @@
+//! The link's messages survive their frames, and read as their names say.
+
 use super::*;
 use crate::frame::{read_frame, write_frame};
 
-fn round_trip<T>(message: &T) -> T
-where
-    T: Serialize + for<'de> Deserialize<'de>,
-{
-    let mut stream = Vec::new();
-    write_frame(&mut stream, message).unwrap();
-    read_frame(&mut stream.as_slice()).unwrap().unwrap()
+fn through_a_frame<T: Serialize + for<'de> Deserialize<'de>>(message: &T) -> T {
+    let mut wire = Vec::new();
+    write_frame(&mut wire, message).unwrap();
+    read_frame(&mut wire.as_slice()).unwrap().unwrap()
+}
+
+fn window() -> Window {
+    Window {
+        id: 1833,
+        pid: 677,
+        app: "TextEdit".into(),
+        title: "Untitled".into(),
+        frame: Rect {
+            x: 100.0,
+            y: 60.0,
+            width: 900.0,
+            height: 600.0,
+        },
+        layer: 0,
+    }
 }
 
 #[test]
 fn every_message_to_the_host_round_trips() {
-    let at = Point { x: 10.5, y: 1049. };
-    let messages = [
+    let at = Point { x: 120.5, y: 300.0 };
+    for message in [
         ToHost::Hello {
             protocol: PROTOCOL,
-            version: "0.1.0".into(),
+            surfaces: "dev.koyo.desk.1a2b".into(),
         },
-        ToHost::AddArea {
-            id: 7,
-            slot: 3,
-            owner: "terminal:abc /w".into(),
-        },
-        ToHost::RemoveArea { id: 7 },
-        ToHost::Visible {
-            id: 7,
-            visible: false,
-        },
-        ToHost::WantKeyFrame { id: 7 },
+        ToHost::Visible { visible: true },
         ToHost::Input {
-            id: 7,
             input: Input::Down {
                 at,
                 button: Button::Right,
                 clicks: 2,
+                flags: crate::keys::flags::SHIFT,
             },
         },
         ToHost::Input {
-            id: 7,
             input: Input::Scroll {
                 at,
-                dx: -1.,
-                dy: 12.5,
+                dx: 0.0,
+                dy: -12.5,
                 phase: 2,
                 momentum: 0,
             },
         },
         ToHost::Input {
-            id: 7,
             input: Input::Key {
                 down: true,
-                code: 0,
-                flags: 0x10_0000,
-                text: Some("a".into()),
+                code: 36,
+                flags: 0,
             },
         },
         ToHost::Input {
-            id: 7,
-            input: Input::Pinch {
-                at,
-                magnification: 0.1,
-                phase: 1,
-            },
-        },
-    ];
-    for message in messages {
-        assert_eq!(round_trip(&message), message);
-    }
-}
-
-#[test]
-fn every_request_to_the_host_round_trips() {
-    let at = Point { x: 10.5, y: 1049. };
-    let messages = [
-        ToHost::Request {
-            request: 1,
-            area: 7,
-            ask: Ask::Act(Act::Drag {
-                from: at,
-                to: Point { x: 0., y: 0. },
-            }),
+            input: Input::Text { text: "ß".into() },
         },
         ToHost::Request {
-            request: 2,
-            area: 7,
+            request: 7,
             ask: Ask::Open {
-                path: "/System/Applications/TextEdit.app".into(),
+                app: "TextEdit".into(),
+                document: Some("/tmp/a.txt".into()),
                 args: vec!["-x".into()],
-                env: [("A".to_owned(), "b".to_owned())].into(),
-                new_instance: true,
             },
         },
         ToHost::Request {
-            request: 3,
-            area: 7,
-            ask: Ask::Run {
-                command: "ls".into(),
-                cwd: None,
-                timeout_ms: 1000,
-            },
-        },
-        ToHost::Request {
-            request: 4,
-            area: 7,
-            ask: Ask::Snapshot {
-                interactive: true,
-                app: Some("TextEdit".into()),
-            },
-        },
-        ToHost::Request {
-            request: 5,
-            area: 7,
-            ask: Ask::Wait {
-                until: WaitFor::Change,
-                region: Some(Rect {
-                    x: 0.,
-                    y: 0.,
-                    width: 100.,
-                    height: 50.,
-                }),
-                quiet_ms: 400,
-                timeout_ms: 10_000,
-            },
-        },
-        ToHost::Request {
-            request: 6,
-            area: 7,
-            ask: Ask::Act(Act::SetValue {
-                element: "e4".into(),
-                text: "hello".into(),
-                append: false,
+            request: 8,
+            ask: Ask::Act(Act::Drag {
+                from: Spot::Point(at),
+                to: Spot::Element("e12".into()),
+                window: Some(1833),
             }),
         },
-        ToHost::Cancel { request: 3 },
-        ToHost::Wallpaper {
-            png: ByteBuf::from(vec![0x89, b'P', b'N', b'G']),
+        ToHost::Request {
+            request: 10,
+            ask: Ask::Act(Act::Type {
+                text: "héllo\n".into(),
+                into: Some("e3".into()),
+            }),
         },
-    ];
-    for message in messages {
-        assert_eq!(round_trip(&message), message);
+        ToHost::Request {
+            request: 11,
+            ask: Ask::Snapshot {
+                window: None,
+                interactive: true,
+                menus: false,
+            },
+        },
+        ToHost::OpenForPerson {
+            bundle: "com.apple.calculator".into(),
+        },
+        ToHost::Request {
+            request: 12,
+            ask: Ask::Close(Close::Window(1833)),
+        },
+        ToHost::Request {
+            request: 13,
+            ask: Ask::Close(Close::App(677)),
+        },
+        ToHost::Request {
+            request: 9,
+            ask: Ask::Screenshot {
+                window: Some(1833),
+                scale: 1,
+            },
+        },
+        ToHost::Cancel { request: 9 },
+        ToHost::Quit,
+    ] {
+        assert_eq!(through_a_frame(&message), message);
     }
 }
 
 #[test]
 fn every_message_from_the_host_round_trips() {
-    let messages = [
+    for message in [
         FromHost::Hello {
             protocol: PROTOCOL,
-            version: "0.1.0".into(),
+            pid: 4242,
             accessibility: true,
             screen_recording: false,
         },
-        FromHost::Screen {
-            size: Size {
-                width: 3360,
-                height: 1050,
+        FromHost::Grants {
+            accessibility: true,
+            screen_recording: true,
+        },
+        FromHost::Desktop {
+            state: DesktopState::Ready {
+                size: Size {
+                    width: 1800.0,
+                    height: 1169.0,
+                },
+                scale: 2.0,
             },
         },
-        FromHost::Areas {
-            areas: vec![KeptArea {
-                id: 1,
-                slot: 0,
-                owner: "chat:x".into(),
-            }],
+        FromHost::Desktop {
+            state: DesktopState::Missing {
+                why: "Accessibility isn't granted".into(),
+            },
         },
-        FromHost::Video {
-            id: 1,
-            key: true,
-            pts: 123_456,
-            parameter_sets: vec![ByteBuf::from(vec![0x67, 1]), ByteBuf::from(vec![0x68, 2])],
-            data: ByteBuf::from(vec![0, 0, 0, 1, 0x65]),
+        FromHost::Windows {
+            windows: vec![window()],
+            backdrop: Some(window()),
+        },
+        FromHost::Windows {
+            windows: Vec::new(),
+            backdrop: None,
+        },
+        FromHost::Wanted {
+            app: "Calculator".into(),
+            bundle: "com.apple.calculator".into(),
         },
         FromHost::Pointer {
-            id: 1,
-            at: Point { x: 1., y: 2. },
-            pressed: true,
-            click: false,
+            at: Point { x: 10.0, y: 20.0 },
+            click: true,
+        },
+        FromHost::Answer {
+            request: 7,
+            result: Ok(Answer::Opened {
+                app: "TextEdit".into(),
+                pid: 677,
+                windows: vec![window()],
+            }),
+        },
+        FromHost::Answer {
+            request: 8,
+            result: Err(Refusal::new(
+                RefusalCode::AppIsThePersons,
+                "Arc is already running as yours",
+            )),
         },
         FromHost::Answer {
             request: 9,
-            result: Ok(Answer::Opened {
-                app: "TextEdit".into(),
-                pid: 42,
-                windows: 1,
+            result: Ok(Answer::Screenshot {
+                png: ByteBuf::from(vec![0x89, b'P', b'N', b'G']),
+                origin: Point { x: 100.0, y: 60.0 },
+                size: Size {
+                    width: 900.0,
+                    height: 600.0,
+                },
+                scale: 1,
             }),
         },
         FromHost::Answer {
-            request: 11,
-            result: Ok(Answer::Waited {
-                met: true,
-                millis: 420,
-                changed: None,
+            request: 12,
+            result: Ok(Answer::Copied {
+                text: "what was selected".into(),
             }),
-        },
-        FromHost::Answer {
-            request: 10,
-            result: Err("keyboard focus is outside".into()),
-        },
-        FromHost::Output {
-            request: 3,
-            data: ByteBuf::from(b"hello\n".to_vec()),
         },
         FromHost::Log {
             level: LogLevel::Warn,
-            text: "a window was put back".into(),
+            text: "a window left the desktop".into(),
         },
-        FromHost::Stats {
-            id: 1,
-            stats: Stats {
-                streaming: true,
-                fps: 59.8,
-                ..Stats::default()
-            },
-        },
-    ];
-    for message in messages {
-        assert_eq!(round_trip(&message), message);
+    ] {
+        assert_eq!(through_a_frame(&message), message);
     }
 }
 
 #[test]
-fn a_key_frame_of_video_costs_its_bytes_and_little_more() {
-    let data = vec![0xAB; 50_000];
-    let message = FromHost::Video {
-        id: 1,
-        key: false,
-        pts: 1,
-        parameter_sets: Vec::new(),
-        data: ByteBuf::from(data),
-    };
-    let mut stream = Vec::new();
-    write_frame(&mut stream, &message).unwrap();
-    assert!(stream.len() < 50_000 + 64, "{}", stream.len());
+fn a_refusal_names_its_code_in_camel_case() {
+    let mut wire = Vec::new();
+    ciborium::into_writer(
+        &Refusal::new(RefusalCode::NoDesktop, "the desktop isn't there"),
+        &mut wire,
+    )
+    .unwrap();
+    let text = String::from_utf8_lossy(&wire);
+    assert!(text.contains("noDesktop"), "{text}");
 }

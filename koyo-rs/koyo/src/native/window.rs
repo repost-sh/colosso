@@ -69,6 +69,14 @@ pub fn refresh_edge(window: AnyWindowHandle, cx: &mut App) {
     .detach();
 }
 
+/// Has `window` go unseen while Koyo isn't the app in front, and come back with it: a dialog
+/// the person leaves for another app would else float over that app.
+pub fn hide_when_away(window: &Window) {
+    if let Some(ns_window) = ns_window(window) {
+        ns_window.setHidesOnDeactivate(true);
+    }
+}
+
 /// The `NSWindow` GPUI draws `window` in; none for a test's window.
 pub(crate) fn ns_window(window: &Window) -> Option<Retained<NSWindow>> {
     gpui_view(window)?.window()

@@ -73,7 +73,7 @@ always do, as does `tab_reopen`, which puts back the tab closed last as ⇧⌘T 
 ## Tabs and panes
 
 - `tab_open` opens a tab as the menu would. `kind` is `terminal`, `browser`, `editor`,
-  `changes` or `chat`; a terminal takes a `name` and a `command`, or reveals an existing
+  `changes`, `chat` or `desktop` (the agent desktop's one tab); a terminal takes a `name` and a `command`, or reveals an existing
   daemon terminal by its `terminal` handle; a browser page takes a `url` and a
   `viewport`; an editor a `file`, `line` and `column`. `place: "beside"` opens it next to the current tab. It
   answers the new pane's id, its tab and its worktree.
@@ -157,6 +157,62 @@ size (`settled: false` after 5 seconds means it hadn't), and `screenshot: true` 
 image of it. To check a layout, set the size, screenshot, then `fill: true`; the person
 sees what you do, and their own change wins. `browser_list` shows each page's `viewport`.
 
+## Agent desktop
+
+The agent desktop is a desktop of your own in the person's session, which Koyo shows in one
+tab, "Agent desktop". An app you open there is an instance of your own, apart from the
+person's; their pointer, keyboard and windows are never touched. The desktop tools need the
+`desktop` scope; their reads need only `read`.
+
+The loop:
+
+1. `desktop_open` starts an app by name (`TextEdit`), bundle id or path, with a `file` or
+   URL to open, and answers its `pid` and windows. It opens the tab out of sight. The app
+   is the person's own, with their files and sign-ins; a document app also opens with their
+   unsaved documents, which are theirs: leave them as they are.
+2. Look: `desktop_snapshot` gives the accessibility tree, elements marked `[ref=eN]` and
+   `@x,y`, their middle; `desktop_screenshot` gives an image; `desktop_windows` lists the
+   windows, front to back.
+3. Act by `ref`, or by point: `desktop_click`, `desktop_move`, `desktop_drag`,
+   `desktop_scroll`, `desktop_type` and `desktop_key` (`cmd+s`, `return`, `shift+cmd+[`).
+4. `desktop_wait` until nothing changes (`still: false` when time ran out is an answer,
+   not an error), then look again. Refs hold until the next snapshot.
+
+After `desktop_open`, and after anything that changes a window's layout, `desktop_wait`
+before reading places: an app still laying itself out gives stale ones. Places are desktop
+points from the desktop's top left. A screenshot at scale 1 has one pixel per point; a
+window's screenshot says its `x` and `y`, which you add to a point in the picture to get
+desktop points. When windows overlap, `window` on an act names the
+window you mean, raised first. Prefer refs: a plain click on one presses it through
+accessibility, with no event at all. Fall back to points where the tree doesn't reach.
+The menu bar isn't in the picture: macOS draws none for a desktop that isn't showing. With
+`menus: true` a snapshot lists the apps' menu bars, and a menu item is pressed by its ref
+without the menu opening (a menu's title itself isn't pressed). Use that, and a pop-up
+button's items by ref, rather than opening a menu where you can: a menu that is up takes
+the person's keyboard, so it is closed under you the moment they type, and after a minute.
+A scroll goes about as far as asked (up to a quarter
+further): look again after it. Hovering does nothing, and a shift-click doesn't extend a
+selection: drag to select, or use the keys.
+
+Typing goes to the window last clicked, focused or named in a `desktop_key`, and from
+there to the one its app moves the keys to by itself: the document it just made, the panel
+it opened, the sheet on the window. `desktop_focus` brings a window in front and sends keys
+to it. `desktop_type` with a `ref` focuses that field first; with
+`replace: true` it sets the field's whole value instead, with no keys. `\n` is Return and
+`\t` Tab; more than 4000 characters as keys is refused. To save a new document where you
+mean to: `cmd+s`, then `shift+cmd+g` in the sheet, the folder's path, Return, the name,
+Return. A copy or a cut (`cmd+c`, `cmd+x`)
+with `desktop_key` gives the text back in its answer, `copied`, and the person's clipboard
+stays theirs: to paste text of your own, use `desktop_type`. Copy with the keys, not with a
+menu's Copy, which would take the person's clipboard. `desktop_close` closes a
+`window`, or quits an app you opened (`pid`).
+
+`person_has_control` means the person is acting in the tab, or the app is theirs: don't
+retry at once. Their use passes a few seconds after they stop (`retryable`): wait, then
+look again before acting; an app of theirs stays theirs. `desktop_unavailable` means the
+agent desktop is off, still starting, or lacks a grant: tell the person (Settings → Agent
+desktop) rather than retry in a loop.
+
 ## The window and settings
 
 - `app_focus` brings the window forward, opening it when it's closed.
@@ -176,10 +232,11 @@ returns the first result instead of acting again; the same id with other input f
 `request_conflict`. Give one to anything you might send twice, such as a retry after a
 timeout or a lost connection.
 
-What a client may do comes in scopes: `read`, `navigate`, `manage`, `browser`, `settings`
-and `destructive`. An agent in a Koyo terminal or chat holds all but `destructive`. Any
-other client is first allowed by the person, once, and holds `read`, `navigate`, `manage` and
-`browser`; the person switches on `settings` and `destructive` in Settings → MCP server.
+What a client may do comes in scopes: `read`, `navigate`, `manage`, `browser`, `desktop`,
+`settings` and `destructive`. An agent in a Koyo terminal or chat holds all but
+`destructive`. Any other client is first allowed by the person, once, and holds `read`,
+`navigate`, `manage` and `browser`; the person switches on `desktop`, `settings` and
+`destructive` in Settings → MCP server.
 `scope_denied` names the missing scope in `details.scope`.
 
 Deleting a worktree, or discarding unsaved edits, asks the person in the window, whoever
@@ -201,9 +258,10 @@ A failure has a `code`, a `message` and `retryable`; retry only what is retryabl
 | `control_disabled` | The person has to turn on Settings → MCP server; for a chat, Settings → Chat → Koyo tools. |
 | `app_not_running` | Koyo isn't running: call `app_launch`, then try again. When a connection was lost mid-call, the call may have acted: check, or repeat it with the same `requestId`. |
 | `unsaved_changes` | Save `details.files` first, or discard them with the person's confirmation. |
-| `person_has_control` | The person holds the page or terminal. A page they're only using comes back 5 s after they stop (`retryable`): wait, then retry. Otherwise use another. |
+| `person_has_control` | The person holds the page, terminal or agent desktop. A page or the desktop they're only using comes back 5 s after they stop (`retryable`): wait, then retry. Otherwise use another. |
 | `control_required` | Claim the page first. |
 | `timeout` | Retry, or wait for something narrower. |
 | `browser_unavailable` | The browser engine is restarting: retry shortly. |
+| `desktop_unavailable` | The agent desktop is off, starting or lacks a grant, as the message says: tell the person (Settings → Agent desktop); don't retry in a loop. |
 | `git_failed` | Git refused; the message says why. |
 | `internal` | Something broke in Koyo; the message says what. |

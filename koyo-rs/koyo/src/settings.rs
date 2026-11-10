@@ -205,6 +205,10 @@ pub struct Settings {
     pub fullscreen_fills_screen: bool,
     /// What quitting does with the terminals still running.
     pub on_quit: crate::quitting::OnQuit,
+    /// Whether agents have a desktop of their own to drive apps on (`docs/agent-desktop.md`):
+    /// on, Koyo keeps one more desktop in Mission Control while it runs. Only the person
+    /// changes it, in Settings.
+    pub agent_desktop: bool,
     /// Whether clients outside Koyo's terminals may control the app, on which port the
     /// MCP server listens for them, and the clients the person allowed. Only the person
     /// changes it, in Settings: no app-control operation reads or sets it.
@@ -289,6 +293,7 @@ impl Default for Settings {
             search_suggestions: true,
             fullscreen_fills_screen: true,
             on_quit: crate::quitting::OnQuit::default(),
+            agent_desktop: false,
             external_control: crate::control::Policy::default(),
         }
     }

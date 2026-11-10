@@ -1,0 +1,103 @@
+#!/bin/sh
+# Packages the agent desktop's host (docs/agent-desktop.md 3): the loader app, Koyo Agent
+# Desktop.app, and the host library beside it, under koyo-rs/target/desk-host/:
+#
+#   script/desk-host [--release] [--out <dir>] [--sign <identity>]
+#
+# A debug app finds the host there; a bundled app carries both in its Contents/Frameworks
+# (koyo-rs/koyo/src/agent_desktop/host.rs). The person grants Accessibility and Screen
+# Recording to the loader, and an ad-hoc signature ties a grant to the binary's hash: so the
+# loader is built once and then left alone, and only the library, which lies outside the
+# loader's bundle and so outside its signature, is replaced by later builds. script/dev runs
+# this before the app.
+set -eu
+cd "$(dirname "$0")/.."
+
+NAME="Koyo Agent Desktop"
+BUNDLE_ID="dev.koyo.agent-desktop.host"
+LIBRARY=libkoyo_desk_host.dylib
+SOURCE=koyo-rs/koyo-desk-host/loader/main.c
+ICON=koyo-rs/koyo/icons/Koyo.icns
+
+profile=debug
+cargo_profile=dev
+# The workspace's KOYO_TARGET_DIR (koyo-rs/.cargo/config.toml), where a debug app looks.
+out="koyo-rs/target/desk-host"
+sign=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --release) profile=release; cargo_profile=release ;;
+    --out) out="$2"; shift ;;
+    --sign) sign="$2"; shift ;;
+    *) echo "unknown option $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+script/cargo build -p koyo-desk-host --profile "$cargo_profile"
+built="koyo-rs/target/$profile/$LIBRARY"
+
+app="$out/$NAME.app"
+loader="$app/Contents/MacOS/$NAME"
+# The loader's own version, not Koyo's: its Info.plist is part of what an ad-hoc signature
+# hashes, so a number that moved with every release would lose the grants with it.
+version=1
+
+sign_code() { # path
+  if [ -n "$sign" ]; then
+    codesign --force --timestamp --options runtime --sign "$sign" "$1"
+  else
+    codesign --force --timestamp=none --sign - "$1"
+  fi
+}
+
+# The loader: built when there's none, or its source is newer. Rebuilding it gives the same
+# binary from the same source and compiler, so the grants hold; a new compiler may not.
+if [ ! -x "$loader" ] || [ "$SOURCE" -nt "$loader" ]; then
+  rm -rf "$app"
+  mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+  cat > "$app/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleDisplayName</key>
+  <string>$NAME</string>
+  <key>CFBundleExecutable</key>
+  <string>$NAME</string>
+  <key>CFBundleIconFile</key>
+  <string>Koyo</string>
+  <key>CFBundleIdentifier</key>
+  <string>$BUNDLE_ID</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>$NAME</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>$version</string>
+  <key>CFBundleVersion</key>
+  <string>$version</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>14.0</string>
+  <key>LSUIElement</key>
+  <true/>
+</dict>
+</plist>
+PLIST
+  cp "$ICON" "$app/Contents/Resources/Koyo.icns"
+  clang -O2 -Wall -Wextra -mmacosx-version-min=14.0 -o "$loader" "$SOURCE"
+  sign_code "$app"
+  echo "Built the loader, $app"
+fi
+
+# Put in place whole, under a new file: a host that runs keeps the library it loaded.
+if [ ! -f "$out/$LIBRARY" ] || [ "$built" -nt "$out/$LIBRARY" ]; then
+  cp "$built" "$out/$LIBRARY.new"
+  sign_code "$out/$LIBRARY.new"
+  mv -f "$out/$LIBRARY.new" "$out/$LIBRARY"
+fi
+echo "The agent desktop's host is packaged in $out"

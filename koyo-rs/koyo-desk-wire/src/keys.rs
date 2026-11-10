@@ -1,5 +1,5 @@
 //! Key names as agents write them (`cmd+s`, `return`, `shift+cmd+[`) and the macOS virtual
-//! key codes and modifier flags the host posts (`docs/agent-desktop.md` 7.7). US layout codes,
+//! key codes and modifier flags the host posts (`docs/agent-desktop.md` 7). US layout codes,
 //! which is what `CGEventCreateKeyboardEvent` takes; typed text goes as characters instead.
 
 /// Modifier flags as `CGEventFlags` has them.
@@ -12,11 +12,25 @@ pub mod flags {
     pub const FUNCTION: u64 = 0x0080_0000;
 }
 
+/// The modifier keys: each one's code and the flag it sets, in the order they go down.
+pub const MODIFIERS: [(u16, u64); 4] = [
+    (59, flags::CONTROL),
+    (58, flags::OPTION),
+    (56, flags::SHIFT),
+    (55, flags::COMMAND),
+];
+/// Every modifier's flag.
+pub const MODIFIER_FLAGS: u64 = flags::CONTROL | flags::OPTION | flags::SHIFT | flags::COMMAND;
+
 /// A key press: the key's code and the modifiers held.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Combo {
+    /// The key's code on a US keyboard.
     pub code: u16,
     pub flags: u64,
+    /// The character the key types, when it was named by one (`s`, `[`, `7`): on another
+    /// keyboard layout that character sits on another key, which the host looks up.
+    pub character: Option<char>,
 }
 
 const CODES: &[(&str, u16)] = &[
@@ -113,6 +127,17 @@ pub fn code(name: &str) -> Option<u16> {
         .map(|(_, code)| *code)
 }
 
+/// The character the key `code` types on a US keyboard, for a key that types one; none for a
+/// key named otherwise (`return`, `left`, `f5`) or for a modifier.
+pub fn character(code: u16) -> Option<char> {
+    (CODES.iter())
+        .filter(|(_, at)| *at == code)
+        .find_map(|(name, _)| {
+            let mut letters = name.chars();
+            letters.next().filter(|_| letters.next().is_none())
+        })
+}
+
 /// Reads `cmd+shift+s`: modifiers (`cmd`/`command`, `shift`, `alt`/`option`/`opt`,
 /// `ctrl`/`control`) and one key, joined by `+`. A `+` key is written `plus`.
 ///
@@ -121,6 +146,7 @@ pub fn code(name: &str) -> Option<u16> {
 pub fn combo(text: &str) -> Result<Combo, String> {
     let mut flags = 0;
     let mut key = None;
+    let mut character = None;
     for part in text.split('+').map(str::trim) {
         match part.to_ascii_lowercase().as_str() {
             "cmd" | "command" | "meta" => flags |= flags::COMMAND,
@@ -130,7 +156,11 @@ pub fn combo(text: &str) -> Result<Combo, String> {
             "plus" => key = Some(24),
             "" => return Err(format!("“{text}” has an empty part")),
             other => match code(other) {
-                Some(code) if key.is_none() => key = Some(code),
+                Some(code) if key.is_none() => {
+                    key = Some(code);
+                    let mut named = other.chars();
+                    character = named.next().filter(|_| named.next().is_none());
+                }
                 Some(_) => return Err(format!("“{text}” names more than one key")),
                 None => return Err(format!("“{other}” isn't a key name")),
             },
@@ -140,12 +170,33 @@ pub fn combo(text: &str) -> Result<Combo, String> {
     if FUNCTION_KEYS.contains(&code) {
         flags |= flags::FUNCTION;
     }
-    Ok(Combo { code, flags })
+    Ok(Combo {
+        code,
+        flags,
+        character,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A key that types a character says which, and it's the one a shortcut names it by;
+    /// a key with a name of its own, and a modifier, say none.
+    #[test]
+    fn a_keys_code_says_the_character_it_types() {
+        for character in "azqw09[];',./-=`\\".chars() {
+            let named = combo(&character.to_string()).unwrap();
+            assert_eq!(named.character, Some(character));
+            assert_eq!(super::character(named.code), Some(character));
+        }
+        for named in ["return", "tab", "space", "delete", "escape", "left", "f5"] {
+            assert_eq!(character(code(named).unwrap()), None, "{named}");
+        }
+        for (modifier, _) in MODIFIERS {
+            assert_eq!(character(modifier), None);
+        }
+    }
 
     #[test]
     fn shortcuts_read_as_code_and_flags() {
@@ -153,22 +204,30 @@ mod tests {
             combo("cmd+s"),
             Ok(Combo {
                 code: 1,
-                flags: flags::COMMAND
+                flags: flags::COMMAND,
+                character: Some('s'),
             })
         );
         assert_eq!(
             combo("shift+cmd+["),
             Ok(Combo {
                 code: 33,
-                flags: flags::COMMAND | flags::SHIFT
+                flags: flags::COMMAND | flags::SHIFT,
+                character: Some('['),
             })
         );
-        assert_eq!(combo("Return"), Ok(Combo { code: 36, flags: 0 }));
+        let enter = Combo {
+            code: 36,
+            flags: 0,
+            character: None,
+        };
+        assert_eq!(combo("Return"), Ok(enter));
         assert_eq!(
             combo("ctrl+cmd+f"),
             Ok(Combo {
                 code: 3,
-                flags: flags::COMMAND | flags::CONTROL
+                flags: flags::COMMAND | flags::CONTROL,
+                character: Some('f'),
             })
         );
     }

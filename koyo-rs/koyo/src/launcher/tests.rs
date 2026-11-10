@@ -75,7 +75,7 @@ fn place(root: &Path) -> Place {
 }
 
 #[gpui_kit::test]
-fn cmd_t_opens_the_launcher_and_tab_goes_browser_chat_terminal_worktree(cx: &mut TestAppContext) {
+fn cmd_t_opens_the_launcher_and_tab_goes_through_its_kinds(cx: &mut TestAppContext) {
     let (window, _, _) = shell("launcher-kinds", cx);
     let (launcher_window, launcher) = launch(window, cx);
     assert_eq!(kind(&launcher, cx), Kind::Browser, "a browser tab first");
@@ -83,6 +83,8 @@ fn cmd_t_opens_the_launcher_and_tab_goes_browser_chat_terminal_worktree(cx: &mut
     assert_eq!(kind(&launcher, cx), Kind::Chat);
     press(launcher_window, "tab", cx);
     assert_eq!(kind(&launcher, cx), Kind::Terminal);
+    press(launcher_window, "tab", cx);
+    assert_eq!(kind(&launcher, cx), Kind::Desktop);
     press(launcher_window, "tab", cx);
     assert_eq!(kind(&launcher, cx), Kind::Worktree);
     press(launcher_window, "tab", cx);
@@ -132,6 +134,51 @@ fn enter_with_nothing_typed_opens_an_empty_tab_of_the_kind(cx: &mut TestAppConte
 }
 
 #[gpui_kit::test]
+fn the_desktop_kind_opens_the_agent_desktops_one_tab(cx: &mut TestAppContext) {
+    let (window, shell, _) = shell("launcher-desktop", cx);
+    let (launcher_window, launcher) = launch(window, cx);
+    press(launcher_window, "tab tab tab", cx);
+    assert_eq!(kind(&launcher, cx), Kind::Desktop);
+    press(launcher_window, "enter", cx);
+    cx.run_until_parked();
+    assert_eq!(tabs(&shell, cx), ["[Agent desktop]"]);
+
+    // There is one agent desktop: asked for again, its tab is shown, not a second made.
+    let (launcher_window, _) = launch(window, cx);
+    press(launcher_window, "enter", cx);
+    cx.run_until_parked();
+    assert_eq!(tabs(&shell, cx), ["Agent desktop", "[New tab]"]);
+    let (launcher_window, _) = launch(window, cx);
+    press(launcher_window, "tab tab tab enter", cx);
+    cx.run_until_parked();
+    assert_eq!(tabs(&shell, cx), ["[Agent desktop]", "New tab"]);
+}
+
+/// An agent's `desktop_open` brings the tab out of sight: after the tab that shows, the
+/// person kept where they are; on a checkout with no tab there's nothing to keep them on.
+#[gpui_kit::test]
+fn the_desktops_tab_opened_out_of_sight_keeps_the_tab_that_shows(cx: &mut TestAppContext) {
+    let (window, shell, _) = shell("launcher-desktop-unseen", cx);
+    let open = |cx: &mut TestAppContext| {
+        shell.update(cx, |shell, cx| shell.desktop_pane(false, cx));
+        cx.run_until_parked();
+    };
+    open(cx);
+    assert_eq!(tabs(&shell, cx), ["[Agent desktop]"], "the only tab shows");
+
+    shell.update(cx, |shell, cx| {
+        let pane = shell.desktop_pane(false, cx).expect("the desktop's pane");
+        shell.close_pane_now(pane, cx);
+    });
+    let (launcher_window, _) = launch(window, cx);
+    press(launcher_window, "enter", cx);
+    cx.run_until_parked();
+    assert_eq!(tabs(&shell, cx), ["[New tab]"]);
+    open(cx);
+    assert_eq!(tabs(&shell, cx), ["[New tab]", "Agent desktop"]);
+}
+
+#[gpui_kit::test]
 fn commands_run_before_are_offered_latest_first_and_filtered_as_typed(cx: &mut TestAppContext) {
     let (window, _, root) = shell("launcher-commands", cx);
     cx.update(|cx| {
@@ -139,7 +186,7 @@ fn commands_run_before_are_offered_latest_first_and_filtered_as_typed(cx: &mut T
         history::used(history::Kind::Command, "npm run dev", &place(&root), cx);
     });
     let (launcher_window, launcher) = launch(window, cx);
-    press(launcher_window, "shift-tab shift-tab", cx);
+    press(launcher_window, "tab tab", cx);
     assert_eq!(kind(&launcher, cx), Kind::Terminal);
     assert_eq!(
         rows_of(&launcher, cx),

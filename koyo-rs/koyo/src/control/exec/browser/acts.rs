@@ -198,7 +198,7 @@ pub(crate) fn click(
             // The person sees the agent's pointer travel to the point, and the click lands as
             // it gets there.
             if let Some(caller) = actor {
-                let actor = pages::actor(caller);
+                let actor = caller.actor();
                 let travel = cx.update(|cx| {
                     (page.view).update(cx, |view, cx| view.agent_points(&actor, (x, y), cx))
                 });

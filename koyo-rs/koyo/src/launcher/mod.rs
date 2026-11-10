@@ -68,13 +68,21 @@ pub enum Kind {
     Browser,
     Chat,
     Terminal,
+    /// The agent desktop's tab: the one there is, shown, or a new one.
+    Desktop,
     /// Not a tab: a worktree, named here and started from the branch the New Worktree dialog
     /// picks.
     Worktree,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 4] = [Kind::Browser, Kind::Chat, Kind::Terminal, Kind::Worktree];
+    pub const ALL: [Kind; 5] = [
+        Kind::Browser,
+        Kind::Chat,
+        Kind::Terminal,
+        Kind::Desktop,
+        Kind::Worktree,
+    ];
 
     /// The kind after this one, or before it, round the ends.
     pub fn step(self, by: isize) -> Kind {
@@ -88,6 +96,7 @@ impl Kind {
             Kind::Browser => "Browser",
             Kind::Chat => "Chat",
             Kind::Terminal => "Terminal",
+            Kind::Desktop => "Desktop",
             Kind::Worktree => "Worktree",
         }
     }
@@ -103,6 +112,7 @@ impl Kind {
             Kind::Browser => (212., 0.85, 0.46),
             Kind::Chat => (265., 0.65, 0.55),
             Kind::Terminal => (152., 0.62, 0.31),
+            Kind::Desktop => (190., 0.75, 0.3),
             Kind::Worktree => (28., 0.8, 0.4),
         };
         hsla(hue / 360., saturation, lightness, 1.)
@@ -114,6 +124,7 @@ impl Kind {
             Kind::Browser => "Search or enter address…",
             Kind::Chat => "Ask a new chat…",
             Kind::Terminal => "Run a command in a new terminal…",
+            Kind::Desktop => "Open the agent desktop",
             Kind::Worktree => "Name a new worktree…",
         }
     }
@@ -124,6 +135,7 @@ impl Kind {
             Kind::Browser => Some(PaneKind::Browser),
             Kind::Chat => Some(PaneKind::Chat),
             Kind::Terminal => Some(PaneKind::Terminal),
+            Kind::Desktop => Some(PaneKind::Desktop),
             Kind::Worktree => None,
         }
     }

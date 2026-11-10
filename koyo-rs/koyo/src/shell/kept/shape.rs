@@ -111,6 +111,8 @@ impl Shell {
             }),
             PaneKind::Editor if pane.shows_changes() => Some(KeptPane::Changes),
             PaneKind::Editor => (pane.file_path(cx)).map(|path| KeptPane::File { path }),
+            // The agent desktop's tab isn't kept: it's opened anew when it's asked for.
+            PaneKind::Desktop => None,
         }
     }
 

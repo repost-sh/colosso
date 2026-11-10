@@ -135,7 +135,20 @@ fn open_padded<V: Render>(
     cx: &mut App,
     build: impl FnOnce(&mut Window, &mut Context<V>) -> V,
 ) {
-    open_at(TOP, width, height, padding, parent, cx, build);
+    open_at(TOP, width, height, padding, false, parent, cx, build);
+}
+
+/// [`open`], for a dialog the person leaves Koyo for and comes back to, as one that sends them
+/// to System Settings does: focus leaving doesn't close it, and while Koyo isn't the app in
+/// front it's out of the way, unseen.
+pub fn open_kept<V: Render>(
+    width: f32,
+    height: f32,
+    parent: &mut Window,
+    cx: &mut App,
+    build: impl FnOnce(&mut Window, &mut Context<V>) -> V,
+) {
+    open_at(TOP, width, height, PADDING, true, parent, cx, build);
 }
 
 /// Opens the view `build` makes as a floating bar over `parent`, high in it and edge to edge
@@ -149,7 +162,7 @@ pub fn open_floating<V: Render>(
     build: impl FnOnce(&mut Window, &mut Context<V>) -> V,
 ) {
     let top = (parent.bounds().size.height.as_f32() * FLOATING_TOP).max(TOP);
-    open_at(top, width, height, 0., parent, cx, build);
+    open_at(top, width, height, 0., false, parent, cx, build);
 }
 
 /// Makes the dialog in `window` `height` high, its top staying where it is, as a list under a
@@ -167,12 +180,18 @@ pub fn fit_height(height: f32, window: &mut Window, cx: &mut App) {
     window.resize(size(width, px(height)));
 }
 
-/// [`open_padded`], `top` below the top of `parent`.
+/// [`open_padded`], `top` below the top of `parent`; `kept` while the person is away from
+/// Koyo ([`open_kept`]).
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the dialog's place, size and kind, and what opens it"
+)]
 fn open_at<V: Render>(
     top: f32,
     width: f32,
     height: f32,
     padding: f32,
+    kept: bool,
     parent: &mut Window,
     cx: &mut App,
     build: impl FnOnce(&mut Window, &mut Context<V>) -> V,
@@ -189,29 +208,37 @@ fn open_at<V: Render>(
     let parent_handle = parent.window_handle();
     let opened = cx.open_window(options, |window, cx| {
         let content = cx.new(|cx| build(window, cx));
-        cx.new(|cx| Surface {
-            content: content.into(),
-            padding,
-            _subscriptions: [
-                cx.observe_window_activation(parent, move |_, _, cx| {
+        #[cfg(target_os = "macos")]
+        if kept {
+            crate::native::window::hide_when_away(window);
+        }
+        cx.new(|cx| {
+            // The dialog holds focus, so Escape usually arrives in its own window.
+            let escape = cx.intercept_keystrokes(|event, window, cx| {
+                if event.keystroke.key != "escape" {
+                    return;
+                }
+                let open = cx.default_global::<OpenModal>().0;
+                if open == Some(window.window_handle()) {
+                    dismiss(window, cx);
+                } else {
+                    close(cx);
+                }
+            });
+            let mut subscriptions = vec![escape];
+            if !kept {
+                subscriptions.push(cx.observe_window_activation(parent, move |_, _, cx| {
                     close_once_left(parent_handle, cx);
-                }),
-                cx.observe_window_activation(window, move |_, _, cx| {
+                }));
+                subscriptions.push(cx.observe_window_activation(window, move |_, _, cx| {
                     close_once_left(parent_handle, cx);
-                }),
-                // The dialog holds focus, so Escape usually arrives in its own window.
-                cx.intercept_keystrokes(|event, window, cx| {
-                    if event.keystroke.key != "escape" {
-                        return;
-                    }
-                    let open = cx.default_global::<OpenModal>().0;
-                    if open == Some(window.window_handle()) {
-                        dismiss(window, cx);
-                    } else {
-                        close(cx);
-                    }
-                }),
-            ],
+                }));
+            }
+            Surface {
+                content: content.into(),
+                padding,
+                _subscriptions: subscriptions,
+            }
         })
     });
     if let Ok(handle) = opened {
@@ -309,7 +336,7 @@ struct Surface {
     content: AnyView,
     /// The room round the view.
     padding: f32,
-    _subscriptions: [Subscription; 3],
+    _subscriptions: Vec<Subscription>,
 }
 
 impl Render for Surface {

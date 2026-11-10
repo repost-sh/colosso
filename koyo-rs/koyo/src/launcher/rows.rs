@@ -123,8 +123,9 @@ pub fn rows(query: &Query, cx: &mut App) -> Vec<Row> {
         (Kind::Chat, false) => chat(query.here, typed, cx),
         (Kind::Terminal, true) => words(history::Kind::Command, "", query.here, MOST_EMPTY, cx),
         (Kind::Terminal, false) => terminal(query.here, typed, cx),
-        // A worktree's name lists nothing: Enter takes it to the New Worktree dialog.
-        (Kind::Worktree, _) => Vec::new(),
+        // A worktree's name lists nothing: Enter takes it to the New Worktree dialog. Nor
+        // does the agent desktop, of which there is one.
+        (Kind::Worktree | Kind::Desktop, _) => Vec::new(),
     };
     rows.truncate(MOST);
     rows

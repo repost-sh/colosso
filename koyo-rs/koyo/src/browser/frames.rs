@@ -41,14 +41,14 @@ pub fn import(ring: mach::Ring) -> Option<Ring> {
 
 /// `surface` as a pixel buffer, which marks it in use for as long as the buffer lives: the
 /// host paints only into slots that aren't (`host/frames.rs`).
-fn pixel_buffer(surface: &IOSurfaceRef) -> Option<CFRetained<CVPixelBuffer>> {
+pub(crate) fn pixel_buffer(surface: &IOSurfaceRef) -> Option<CFRetained<CVPixelBuffer>> {
     let mut buffer = std::ptr::null_mut();
     // SAFETY: `buffer` is a valid out-pointer; no attributes.
     let status = unsafe {
         CVPixelBufferCreateWithIOSurface(None, surface, None, std::ptr::NonNull::from(&mut buffer))
     };
     if status != kCVReturnSuccess {
-        log::warn!("a page's shared surface can't be drawn: CoreVideo said {status}");
+        log::warn!("a shared surface can't be drawn: CoreVideo said {status}");
         return None;
     }
     // SAFETY: a buffer created for the caller, who owns it.

@@ -29,6 +29,8 @@ fi
 script/browser-engine
 # The agent host the chat tabs talk to, built where a debug app finds it (see script/agent-host).
 script/agent-host
+# The agent desktop's host, packaged where a debug app finds it (see script/desk-host).
+script/desk-host
 
 # dx works on the Cargo workspace, which is koyo-rs/.
 cd koyo-rs

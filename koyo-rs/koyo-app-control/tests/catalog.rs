@@ -30,7 +30,7 @@ fn names_are_valid_unique_and_clear_of_the_terminals() {
         );
         assert_ne!(terminal.name, APP_LAUNCH);
     }
-    assert_eq!(names.len(), 52);
+    assert_eq!(names.len(), 65);
 }
 
 #[test]
@@ -95,6 +95,20 @@ fn every_input_field_is_described() {
                 descriptor.name
             );
         }
+    }
+}
+
+/// The agent desktop's tools see and drive other apps of the person's Mac, and say so; every
+/// other tool acts on Koyo alone.
+#[test]
+fn only_the_agent_desktops_tools_reach_beyond_koyo() {
+    for descriptor in catalog() {
+        assert_eq!(
+            descriptor.hints.open_world,
+            descriptor.name.starts_with("desktop_"),
+            "{}",
+            descriptor.name
+        );
     }
 }
 
@@ -299,6 +313,7 @@ fn ids_are_the_wire_names() {
             Scope::Navigate,
             Scope::Manage,
             Scope::Browser,
+            Scope::Desktop,
             Scope::Settings
         ]
     );

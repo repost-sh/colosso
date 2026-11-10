@@ -5,9 +5,10 @@
 #   ditto koyo-rs/target/bundle/Koyo.app /Applications/Koyo.app
 #
 # The app's executable, the agent host beside it, where a packaged app looks for it
-# (koyo-rs/koyo/src/chat/host.rs), its icon, and the browser engine in its Contents/Frameworks,
-# likewise (koyo-rs/koyo/src/browser/engine.rs), signed ad hoc: enough to run on this Mac, not
-# to hand out, which needs a release identity and notarization.
+# (koyo-rs/koyo/src/chat/host.rs), its icon, and in its Contents/Frameworks the browser engine
+# (koyo-rs/koyo/src/browser/engine.rs) and the agent desktop's host
+# (koyo-rs/koyo/src/agent_desktop/host.rs), signed ad hoc: enough to run on this Mac, not to
+# hand out, which needs a release identity and notarization.
 #
 #   script/bundle --sign "Developer ID Application: <Org> (<TEAMID>)" [--profile <file>]
 #
@@ -111,6 +112,14 @@ cp koyo-rs/koyo/icons/Koyo.icns "$app/Contents/Resources/Koyo.icns"
 cp koyo-rs/koyo/fonts/OFL.txt "$app/Contents/Resources/JetBrainsMono-OFL.txt"
 # -R keeps the framework's symlinks, which its signature covers; -c clones rather than copies.
 cp -cR "$engine"/*/"Koyo Browser Host.app" "$app/Contents/Frameworks/"
+# The agent desktop's host: its loader app and, beside it, the library the loader loads, each
+# signed by script/desk-host. The loader comes out the same binary from every build, so the
+# privacy grants the person gave it hold across builds signed ad hoc (docs/agent-desktop.md 3).
+if [ -n "$identity" ]; then
+  script/desk-host --release --out "$PWD/$app/Contents/Frameworks" --sign "$identity"
+else
+  script/desk-host --release --out "$PWD/$app/Contents/Frameworks"
+fi
 # What pages in its browser may reach, said why: macOS holds the app that launched the browser
 # engine responsible for it, so ends Koyo's engine for using Bluetooth (Google's sign-in looks
 # for a phone's passkey), the camera or the microphone unless Koyo's own Info.plist says why.
