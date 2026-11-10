@@ -1,6 +1,6 @@
 //! The projects of the space shown, as Arc's favourites (`docs/arc-sidebar.md` 3): a tile each,
 //! its picture centred, sharing the sidebar's width a row at a time. The selected project's is
-//! lit. A red dot in its corner says something in the project waits for the person, a spinner
+//! lit. An indigo dot in its corner says something in the project waits for the person, a spinner
 //! that something works. Hovered, it names the project and sums up what's in it; right-clicked,
 //! it can move to another space, be renamed, take another picture, or go; dragged, it moves
 //! among its space's tiles (`tile_grid`).
@@ -19,12 +19,12 @@ use gpui_kit::{
 };
 
 use super::Look;
-use super::tile_grid::TileGrid;
 use super::actions::{
     ChangeProjectIcon, MoveProject, MoveProjectToNewSpace, RenameProject, ResetProjectIcon,
 };
 use super::avatar;
 use super::hover::Hovered;
+use super::tile_grid::TileGrid;
 use crate::chat::{Activity, spinner};
 use crate::model::Project;
 use crate::pane::dot;
@@ -70,7 +70,12 @@ pub fn grid(
         this.move_tile(from, to, cx);
     });
     let rows = (per_row(projects.len()), px(GAP));
-    Some(TileGrid::new(tiles, rows, shell.tile_hand.clone(), Rc::new(on_drop)))
+    Some(TileGrid::new(
+        tiles,
+        rows,
+        shell.tile_hand.clone(),
+        Rc::new(on_drop),
+    ))
 }
 
 /// What a project's tile is known by as it moves, whatever its place: its folder's.
@@ -110,7 +115,7 @@ fn corner(shell: &Shell, project: &Project, p: Palette, cx: &mut App) -> Option<
             let place = format!("tile-{}", project.path.display());
             Some(spinner(place, cx))
         }
-        Activity::Attention => Some(dot(p.danger)),
+        Activity::Attention => Some(dot(p.waiting)),
     }
 }
 

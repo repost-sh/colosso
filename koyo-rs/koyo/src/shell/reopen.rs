@@ -74,8 +74,8 @@ impl Shell {
     ) -> Option<((usize, usize, usize), Entity<FilePane>)> {
         let (project, branch, _) = self.workspace.shown_tab()?;
         let waits = |pane: &&Pane| pane.unopened_file() == Some(path);
-        let at = (self.workspace.branch()?.tabs.iter())
-            .position(|tab| tab.panes().iter().any(waits))?;
+        let at =
+            (self.workspace.branch()?.tabs.iter()).position(|tab| tab.panes().iter().any(waits))?;
         self.workspace.select_tab(project, branch, at);
         self.make_shown_editors(window, cx);
         self.open_already(path, cx)

@@ -212,7 +212,10 @@ mod tests {
         assert_eq!(names(&workspace), ["a", "x", "b", "c", "y"]);
         assert!(!workspace.move_project_among(&space, 1, 1), "where it is");
         assert!(!workspace.move_project_among(&space, 1, 3), "no such slot");
-        assert!(!workspace.move_project_among(&[0, 9], 0, 1), "no such project");
+        assert!(
+            !workspace.move_project_among(&[0, 9], 0, 1),
+            "no such project"
+        );
         assert_eq!(names(&workspace), ["a", "x", "b", "c", "y"]);
     }
 

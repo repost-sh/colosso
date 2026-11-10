@@ -162,7 +162,8 @@ fn the_file_reads_back_what_was_written_and_a_bad_one_is_nothing() {
     assert_eq!(json["checkouts"][1]["tabs"][0]["kind"], "newChat");
 
     // A kind a later build keeps is read as one this build brings nothing back for.
-    let later = r#"{"checkouts":[{"project":"/a","checkout":"/a","tabs":[{"kind":"canvas","board":7}]}]}"#;
+    let later =
+        r#"{"checkouts":[{"project":"/a","checkout":"/a","tabs":[{"kind":"canvas","board":7}]}]}"#;
     std::fs::write(&path, later).unwrap();
     let read = read_file(&path);
     assert_eq!(read.checkouts[0].tabs, [KeptTree::Pane(KeptPane::Unknown)]);
@@ -170,7 +171,10 @@ fn the_file_reads_back_what_was_written_and_a_bad_one_is_nothing() {
 
     std::fs::write(&path, "{ not json").unwrap();
     assert_eq!(read_file(&path), Kept::default());
-    assert_eq!(read_file(&path.with_file_name("none.json")), Kept::default());
+    assert_eq!(
+        read_file(&path.with_file_name("none.json")),
+        Kept::default()
+    );
 }
 
 #[gpui_kit::test]
@@ -334,5 +338,9 @@ fn the_browser_tabs_an_earlier_build_kept_come_back_the_first_time(cx: &mut Test
         shell.keep_window_at(&path);
         shell.show_worktrees(&root, read_worktrees(&root), cx);
     });
-    assert_eq!(read_file(&path), now, "read from its own file, not the old one");
+    assert_eq!(
+        read_file(&path),
+        now,
+        "read from its own file, not the old one"
+    );
 }

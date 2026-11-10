@@ -12,6 +12,7 @@ use super::actions::{ClearWorktree, MoveProjectToNewSpace, NewSpace};
 use super::clear::Clear;
 use super::delete_space::DeleteSpace;
 use crate::files::tests::{dialog, tabs};
+use crate::launcher::Launcher;
 use crate::model::{Edge, Pane, PaneKind, Tab, Unloaded};
 use crate::navigation::Route;
 use crate::projects::read_worktrees;
@@ -24,6 +25,7 @@ use koyo_agent::protocol::requests::RequestKind;
 use crate::test_support::{click_pane, draw, git, open_page, repo, select, shell_with};
 
 mod spaces;
+mod tabs;
 mod tiles;
 
 /// The shell in the Arc layout with a project for each of `names`, saved, the first selected.
@@ -217,20 +219,52 @@ fn the_address_bar_says_what_is_shown(cx: &mut TestAppContext) {
     assert_eq!(said(&shell, cx), "Settings");
 }
 
-#[gpui_kit::test]
-fn the_address_bar_and_the_page_controls_follow_the_pane_the_person_is_in(
-    cx: &mut TestAppContext,
-) {
-    let (window, shell, _) = arc_shell(&["arc-address-split"], cx);
-    let said = |cx: &TestAppContext| {
-        cx.read(|cx| super::top::said(shell.read(cx), cx).0.to_string())
+/// Clicks the address bar: the launcher it opened, if it opened one, dismissed again.
+fn click_address(window: AnyWindowHandle, cx: &mut TestAppContext) -> bool {
+    draw(window, cx);
+    let mut vcx = VisualTestContext::from_window(window, cx);
+    let at = vcx.debug_bounds("arc-address").expect("the bar").center();
+    vcx.simulate_click(at, Modifiers::default());
+    cx.run_until_parked();
+    let Some((launcher, _)) = dialog::<Launcher>(cx) else {
+        return false;
     };
+    crate::files::tests::press(launcher, "escape", cx);
+    cx.run_until_parked();
+    true
+}
+
+#[gpui_kit::test]
+fn a_click_on_the_address_bar_opens_the_launcher_only_on_a_page(cx: &mut TestAppContext) {
+    let (window, shell, _) = arc_shell(&["arc-address-click"], cx);
+    assert!(!click_address(window, cx), "no tab, no address");
+    shell.update(cx, |shell, cx| {
+        shell.workspace.push_tab(chat("Plan the release"));
+        cx.notify();
+    });
+    assert!(!click_address(window, cx), "a chat has no address");
+    assert_eq!(tabs(&shell, cx).len(), 1);
+    open_page(window, &shell, Some("https://example.com/"), cx);
+    assert!(click_address(window, cx), "a page's address, to change");
+}
+
+#[gpui_kit::test]
+fn the_address_bar_and_the_page_controls_follow_the_pane_the_person_is_in(cx: &mut TestAppContext) {
+    let (window, shell, _) = arc_shell(&["arc-address-split"], cx);
+    let said =
+        |cx: &TestAppContext| cx.read(|cx| super::top::said(shell.read(cx), cx).0.to_string());
     // A chat on the left, two pages right of it.
     shell.update(cx, |shell, cx| {
         shell.workspace.push_tab(chat("Plan the release"));
         cx.notify();
     });
-    let chat = cx.read(|cx| shell.read(cx).workspace.tab_shown().map(|tab| tab.first().id));
+    let chat = cx.read(|cx| {
+        shell
+            .read(cx)
+            .workspace
+            .tab_shown()
+            .map(|tab| tab.first().id)
+    });
     let chat = chat.expect("the chat's pane");
     let docs = open_page(window, &shell, Some("https://www.example.com/docs"), cx);
     let app = open_page(window, &shell, Some("http://localhost:3000/"), cx);
@@ -322,7 +356,7 @@ fn a_tab_and_its_projects_tile_say_when_a_chat_wants_the_person(cx: &mut TestApp
     assert_eq!(
         told(cx),
         (false, Activity::Working),
-        "working: a spinner on the tile only"
+        "working: a spinner, and nothing for the person"
     );
     hear(Status::Idle, None, true, cx);
     assert_eq!(

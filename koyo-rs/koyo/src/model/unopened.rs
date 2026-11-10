@@ -76,7 +76,10 @@ mod tests {
     #[test]
     fn an_unopened_pane_is_titled_as_what_it_opens() {
         let file = Pane::unopened(Unopened::File("/src/app/src/main.rs".into()));
-        assert_eq!((file.kind, file.title.as_ref()), (PaneKind::Editor, "main.rs"));
+        assert_eq!(
+            (file.kind, file.title.as_ref()),
+            (PaneKind::Editor, "main.rs")
+        );
         assert!(file.file.is_none() && file.changes.is_none());
         assert_eq!(
             file.unopened_file(),

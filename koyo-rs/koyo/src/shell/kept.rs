@@ -236,8 +236,8 @@ impl Shell {
                 self.kept.selecting.push(kept);
                 continue;
             }
-            let selected = (project.branches.iter())
-                .position(|unit| unit.worktree.path == kept.checkout);
+            let selected =
+                (project.branches.iter()).position(|unit| unit.worktree.path == kept.checkout);
             if let Some(branch) = selected {
                 project.active_branch = branch;
             }

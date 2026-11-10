@@ -43,8 +43,10 @@ pub fn launch(
 /// it's another kind of pick, or the page closed meanwhile, to do as ⌘T's launcher would.
 fn load_in_page(shell: &mut Shell, pane: u64, act: Act, cx: &mut Context<Shell>) -> Option<Act> {
     let workspace = &shell.workspace;
-    let open = (workspace.find_pane(|open| open.id == pane))
-        .and_then(|((project, branch, _), _)| workspace.projects[project].branches[branch].pane(pane));
+    let open =
+        (workspace.find_pane(|open| open.id == pane)).and_then(|((project, branch, _), _)| {
+            workspace.projects[project].branches[branch].pane(pane)
+        });
     let Some(view) = open.and_then(|open| open.view().cloned()) else {
         return Some(act);
     };

@@ -1,7 +1,8 @@
 //! The space under its tiles (`docs/arc-sidebar.md` 4, 5): the selected project's name, then each
 //! of its worktrees as Arc's divider, the worktree's name on the left and, while the pointer's on
 //! it, Clear or Delete on the right; a New Tab row, and its tabs as Arc's rows, the one shown a
-//! pill. A tab with something for the person has a dot on its icon.
+//! pill. A tab says at its end how it's doing, as its project's tile does: the spinner while a
+//! chat in it is at work, an indigo dot once something in it waits for the person.
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -16,6 +17,7 @@ use gpui_kit::{
 
 use super::actions::ClearWorktree;
 use super::{Look, space_colour, space_dot};
+use crate::chat::{Activity, spinner};
 use crate::launcher::NewTab;
 use crate::model::{BranchUnit, Tab};
 use crate::pane::dot;
@@ -25,7 +27,7 @@ use crate::shell::{
     Dragged, DraggedPane, Shell, add_project_row, ellipsized, icon, project_error,
     tab_close_button, tab_list, tab_row,
 };
-use crate::theme::{self, Palette};
+use crate::theme;
 
 /// A tab's row, and New Tab's.
 const ROW: f32 = 36.;
@@ -322,7 +324,8 @@ fn takes_tabs(
 }
 
 /// The tab `tab` at `at` as Arc's row: the one shown a pill, the others tinted while hovered,
-/// a dot on the icon while it has something for the person, and its × while hovered or shown.
+/// and at its end how it's doing (`sign`), or its × while it's hovered, or shown with nothing to
+/// say.
 fn tab_row_of(
     shell: &Shell,
     at: (usize, usize, usize),
@@ -333,7 +336,7 @@ fn tab_row_of(
 ) -> (u64, AnyElement) {
     let p = look.p;
     let (project_index, branch_index, tab_index) = at;
-    let attention = shell.tab_wants_attention(tab, cx);
+    let (activity, first) = (shell.tab_activity(tab, cx), tab.first().id);
     let row = div()
         .id(("arc-tab", branch_index * 100 + tab_index))
         .h(px(ROW))
@@ -361,39 +364,61 @@ fn tab_row_of(
             MouseButton::Middle,
             cx.listener(move |this, _, window, cx| this.close_tab_at(at, window, cx)),
         )
-        // A split's chips have no icon of their own to carry the dot.
-        .when(matches!(tab, Tab::Split(_)) && attention, |row| {
-            row.child(dot(p.danger))
+        // A split's row is its panes, each with a × of its own, and no end to say it at: what
+        // the tab says goes before them.
+        .when(matches!(tab, Tab::Split(_)), |row| {
+            row.children(sign(activity, first, look, cx))
         });
     let list = (Axis::Vertical, &shell.tab_hand);
     tab_row(row, (at, tab), list, p, cx, |row, face, cx| {
         let close = ("arc-tab-close", branch_index * 100 + tab_index);
+        let mark = sign(activity, first, look, cx).map(at_end);
+        // Shown on the tab shown, and on the others while hovered; a dot for unsaved edits
+        // always. What the row says of its tab has the ×'s place until the pointer's on it.
+        let hidden = !face.dirty && (!active || mark.is_some());
+        let close = tab_close_button(close, at, face.dirty, p, cx).when(hidden, |close| {
+            close
+                .opacity(0.)
+                .group_hover("arc-tab", |style| style.opacity(1.))
+        });
+        let icon = div()
+            .flex_shrink_0()
+            .text_color(p.text.opacity(0.75))
+            .child(face.icon(TAB_ICON));
+        let end = div().relative().flex_shrink_0().children(mark).child(close);
         row.pr(px(6.))
-            .child(badged(face.icon(TAB_ICON), attention, p))
+            .child(icon)
             .child(face.label().flex_1())
-            // Shown on the tab shown, and on the others while hovered; a dot for unsaved
-            // edits always.
-            .child(tab_close_button(close, at, face.dirty, p, cx).when(
-                !active && !face.dirty,
-                |close| {
-                    close
-                        .opacity(0.)
-                        .group_hover("arc-tab", |style| style.opacity(1.))
-                },
-            ))
+            .child(end)
     })
 }
 
-/// A tab's icon, with the dot on its corner while the tab has something for the person.
-fn badged(glyph: AnyElement, attention: bool, p: Palette) -> Div {
+/// What a tab's row says of how the tab's doing (`docs/arc-sidebar.md` 5), as its project's
+/// tile does in its corner: the spinner while a chat in it is at work, an indigo dot once something
+/// in it waits for the person. The tab is known by its first pane, `pane`.
+fn sign(activity: Activity, pane: u64, look: Look, cx: &mut Context<Shell>) -> Option<Div> {
+    let (sign, name) = match activity {
+        Activity::Quiet => return None,
+        Activity::Working => (spinner(format!("arc-tab-{pane}"), cx), "working"),
+        Activity::Attention => (dot(look.p.waiting), "waiting"),
+    };
+    Some(sign.debug_selector(move || format!("arc-tab-{name}-{pane}")))
+}
+
+/// `sign` at the end of a single pane's row: in the ×'s place, which it leaves to the × while
+/// the pointer's on the row. A file's dot for unsaved edits never meets it there: only a chat
+/// or a terminal has something to say.
+fn at_end(sign: Div) -> Div {
     div()
-        .relative()
-        .flex_shrink_0()
-        .text_color(p.text.opacity(0.75))
-        .child(glyph)
-        .when(attention, |badge| {
-            badge.child(dot(p.danger).absolute().top(px(-3.)).right(px(-3.)))
-        })
+        .absolute()
+        .inset_0()
+        .flex()
+        .items_center()
+        .justify_center()
+        // Not drawn at all while the row's hovered, rather than faded: the spinner is a view,
+        // which a fade round it wouldn't reach.
+        .group_hover("arc-tab", gpui_kit::Styled::invisible)
+        .child(sign)
 }
 
 #[cfg(test)]

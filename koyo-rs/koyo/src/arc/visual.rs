@@ -1,9 +1,9 @@
 //! The Arc sidebar (`docs/arc-sidebar.md`) as the app draws it, saved as PNGs in
 //! `.superpowers/qa/arc/`: this checkout's project with a few tabs in a space, a second project in
 //! a space of its own with its own colours, and an empty space, light and dark; then what a
-//! person does there (`acts`): a space's mark saying a chat in it works and then waits, a tile
-//! dragged to another row and back, the address bar following the pane pressed in, and ⌘L's
-//! launcher on a page. It shows a chat, so it runs on a data folder and an agent host of its own:
+//! person does there (`acts`): a space's mark saying a chat in it works and then waits, a tab's
+//! row and its tile saying the same, a tile dragged to another row and back, the address bar
+//! following the pane pressed in, and ⌘L's launcher on a page. It shows a chat, so it runs on a data folder and an agent host of its own:
 //!
 //! ```sh
 //! Q=$PWD/.superpowers/qa/arc && mkdir -p $Q/tmp &&
@@ -156,9 +156,10 @@ fn draw() -> Result<Vec<String>> {
         let path = drawn.save(&format!("arc-{name}-dark.png"))?;
         said.push(format!("saved {}", path.display()));
     }
-    // What a person does there: a space's mark saying a chat in it waits, a tile dragged, the
-    // address bar following the pane and ⌘L's launcher on a page.
+    // What a person does there: a space's mark saying a chat in it waits, a tab's row saying
+    // it, a tile dragged, the address bar following the pane and ⌘L's launcher on a page.
     acts::pills(&mut drawn, &site, &mut said)?;
+    acts::tab_marks(&mut drawn, &mut said)?;
     acts::drag_tile(&mut drawn, &mut said)?;
     acts::address(&mut drawn, &mut said)?;
     acts::stop_host(&mut said);

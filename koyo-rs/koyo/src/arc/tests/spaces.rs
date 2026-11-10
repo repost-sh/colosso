@@ -42,20 +42,7 @@ fn a_space_not_shown_says_what_its_tiles_would(cx: &mut TestAppContext) {
         );
         (says, pills)
     };
-    let quiet = Activity::Quiet;
-    assert_eq!(told(cx), ((quiet, quiet), (false, false)));
-    hear(Status::Working, None, false, cx);
-    assert_eq!(told(cx), ((quiet, Activity::Working), (false, true)));
-    hear(Status::Idle, None, true, cx);
-    assert_eq!(
-        told(cx),
-        ((quiet, Activity::Attention), (false, true)),
-        "finished and not seen"
-    );
-    hear(Status::Working, Some(RequestKind::Approval), false, cx);
-    assert_eq!(told(cx), ((quiet, Activity::Attention), (false, true)));
-
-    // Its mark never shifts the others: the pill is laid over it.
+    // Where the two spaces' marks are drawn.
     let marks = |cx: &mut TestAppContext| {
         let mut vcx = VisualTestContext::from_window(window, cx);
         (
@@ -63,9 +50,41 @@ fn a_space_not_shown_says_what_its_tiles_would(cx: &mut TestAppContext) {
             vcx.debug_bounds("arc-space-1").expect("the second mark"),
         )
     };
+    let quiet = Activity::Quiet;
+    assert_eq!(told(cx), ((quiet, quiet), (false, false)));
+    hear(Status::Working, None, false, cx);
+    assert_eq!(told(cx), ((quiet, Activity::Working), (false, true)));
+    let pill = |cx: &mut TestAppContext| {
+        let mut vcx = VisualTestContext::from_window(window, cx);
+        vcx.debug_bounds("arc-space-pill-1")
+            .expect("what the mark says")
+    };
+    let spinner = pill(cx);
+    hear(Status::Idle, None, true, cx);
+    assert_eq!(
+        told(cx),
+        ((quiet, Activity::Attention), (false, true)),
+        "finished and not seen"
+    );
+    // The dot is where the spinner was, up and right of the mark's middle, and the spinner
+    // half as wide again.
+    let (dot, mark) = (pill(cx), marks(cx).1);
+    // To the half point the window lays things out on.
+    let apart = spinner.center() - dot.center();
+    assert!(apart.x.abs() < gpui_kit::px(0.5) && apart.y.abs() < gpui_kit::px(0.5));
+    assert_eq!(spinner.size.width, dot.size.width * 1.5);
+    assert!(dot.center().x > mark.center().x && dot.center().y < mark.center().y);
+    hear(Status::Working, Some(RequestKind::Approval), false, cx);
+    assert_eq!(told(cx), ((quiet, Activity::Attention), (false, true)));
+
+    // Its mark never shifts the others: the pill is laid over it.
     let with_pill = marks(cx);
     hear(Status::Idle, None, false, cx);
-    assert_eq!(told(cx), ((quiet, quiet), (false, false)), "seen: it clears");
+    assert_eq!(
+        told(cx),
+        ((quiet, quiet), (false, false)),
+        "seen: it clears"
+    );
     assert_eq!(marks(cx), with_pill);
 
     // Shown, the space says it on its tiles, and the one left says its own.

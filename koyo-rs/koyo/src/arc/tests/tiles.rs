@@ -88,5 +88,9 @@ fn a_tile_dragged_to_another_slot_moves_its_project_there(cx: &mut TestAppContex
     vcx.simulate_click(at, Modifiers::default());
     draw(window, cx);
     assert_eq!(selected(cx), "a");
-    assert_eq!(tiles(&shell, cx), ["b", "e", "c", "d", "a"], "nothing moved");
+    assert_eq!(
+        tiles(&shell, cx),
+        ["b", "e", "c", "d", "a"],
+        "nothing moved"
+    );
 }

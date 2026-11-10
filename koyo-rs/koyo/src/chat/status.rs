@@ -1,40 +1,21 @@
-//! What a tab and a checkout's row say of a chat (`docs/chat.md` 5.3): a spinner while it works, a
-//! dot in the text's colour when it needs you, red if it failed and a muted dot if it finished,
-//! until a person has seen it. The spinner is a terminal's: braille dots going round, a step every
-//! 80 ms, drawn as dots rather than a glyph so it looks the same in any font. It moves only while
-//! the app's in front, and as a view of its own: a turn can take a long time, and each step draws
-//! only it, not the shell.
+//! What a tab and a checkout's row say of a chat (`docs/chat.md` 5.3): a spinner while it works
+//! (`spinner.rs`), a dot in the text's colour when it needs you, red if it failed and a muted dot
+//! if it finished, until a person has seen it.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
-use gpui_kit::{
-    Animation, AnimationExt as _, App, AppContext as _, Context, Div, Entity, Global, IntoElement,
-    ParentElement as _, Render, Styled as _, Window, div, px,
-};
+use gpui_kit::{App, Context, Div};
 use koyo_agent::protocol::ids::ThreadId;
 use koyo_agent::protocol::methods::{ThreadParams, ThreadsRead};
 use koyo_agent::protocol::model::{Status, ThreadSummary};
 
+use super::spinner::{self, spinner};
 use super::{Chats, ChatsEvent, logged};
 use crate::model::{Project, Tab};
 use crate::pane::dot;
 use crate::shell::Shell;
-use crate::theme::{self, Palette};
-
-/// The spinner's square, the same as a dot's room.
-const SPINNER: f32 = 10.;
-/// The spinner's steps, as the braille cells terminal spinners use (`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`): each a
-/// cell's dots, 1 to 3 down the left and 4 to 6 down the right, as Unicode numbers them.
-const STEPS: [u8; 10] = [0x0B, 0x19, 0x39, 0x38, 0x3C, 0x34, 0x26, 0x27, 0x07, 0x0F];
-/// How long each step shows, as terminal spinners take.
-const STEP: Duration = Duration::from_millis(80);
-/// How often the spinner's drawn: often enough that no step is missed or late.
-const SPINNER_FPS: f32 = 25.;
-/// A dot of the cell, and the room between them.
-const DOT: f32 = 2.5;
-const DOT_GAP: f32 = 1.5;
+use crate::theme::Palette;
 
 /// Whether the person is at the app, as far as a chat cares.
 pub(super) fn is_frontmost(cx: &App) -> bool {
@@ -73,75 +54,6 @@ impl ChatMark {
     }
 }
 
-/// A spinner where a person sees it, whose steps draw it alone.
-struct Spin;
-
-impl Render for Spin {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let p = theme::palette(cx);
-        let holder = div().size(px(SPINNER)).flex_shrink_0();
-        if is_frontmost(cx) {
-            let round = STEP * STEPS.len() as u32;
-            let going = Animation::new(round).repeat().with_max_fps(SPINNER_FPS);
-            holder
-                .with_animation("chat-working", going, move |holder, delta| {
-                    let step = ((delta * STEPS.len() as f32) as usize).min(STEPS.len() - 1);
-                    holder.child(cell(STEPS[step], p))
-                })
-                .into_any_element()
-        } else {
-            holder.child(cell(STEPS[0], p)).into_any_element()
-        }
-    }
-}
-
-/// A braille cell of the spinner, the dots of `lit` bright and the rest faint.
-fn cell(lit: u8, p: Palette) -> Div {
-    let dot = |bit: u8| {
-        let on = lit & bit != 0;
-        div().size(px(DOT)).rounded_full().bg(if on {
-            p.text.opacity(0.85)
-        } else {
-            p.muted.opacity(0.18)
-        })
-    };
-    let column = |bits: [u8; 3]| {
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(DOT_GAP))
-            .children(bits.map(dot))
-    };
-    div()
-        .size_full()
-        .flex()
-        .items_center()
-        .justify_center()
-        .gap(px(DOT_GAP))
-        .child(column([0x01, 0x02, 0x04]))
-        .child(column([0x08, 0x10, 0x20]))
-}
-
-/// The spinners by place, each of which is a view drawn in one spot, for as long as a chat works.
-#[derive(Default)]
-struct Spinners(HashMap<String, Entity<Spin>>);
-
-impl Global for Spinners {}
-
-/// The spinner `place` shows while a chat works there: a tab, a checkout's row, a project's
-/// tile.
-pub fn spinner(place: String, cx: &mut App) -> Div {
-    let held = cx.default_global::<Spinners>().0.get(&place).cloned();
-    let spin = held.unwrap_or_else(|| {
-        let spin = cx.new(|_| Spin);
-        cx.default_global::<Spinners>()
-            .0
-            .insert(place, spin.clone());
-        spin
-    });
-    div().flex_shrink_0().child(spin)
-}
-
 impl Chats {
     /// A person's chats, a subagent's not among them, in the checkout at `worktree` if it's given,
     /// latest first.
@@ -161,8 +73,8 @@ impl Chats {
             .summaries
             .values()
             .any(|summary| summary.status == Status::Working);
-        if !working && cx.has_global::<Spinners>() {
-            cx.remove_global::<Spinners>();
+        if !working {
+            spinner::forget(cx);
         }
         cx.emit(ChatsEvent::Summaries);
     }
@@ -228,6 +140,19 @@ impl Shell {
         self.tab_chat_marks(tab, cx)
             .any(|mark| mark != ChatMark::Working)
             || self.tab_terminal_waits(tab)
+    }
+
+    /// How `tab` is doing, as its row says at its end (`docs/arc-sidebar.md` 5): something in it
+    /// waits for the person, or else a chat in it is at work.
+    pub fn tab_activity(&self, tab: &Tab, cx: &App) -> Activity {
+        if self.tab_wants_attention(tab, cx) {
+            Activity::Attention
+        } else if self.tab_chat_marks(tab, cx).next().is_some() {
+            // Every mark that isn't a chat at work is one that wants the person.
+            Activity::Working
+        } else {
+            Activity::Quiet
+        }
     }
 
     /// How the checkout at `worktree` is doing, as a project's tile sums it up.

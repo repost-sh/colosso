@@ -8,8 +8,8 @@ worktree of the selected project as a divider with its tabs under it. Spaces are
 along the sidebar's foot. This note is the spec the work followed; keep it in step with the
 code in `koyo-rs/koyo/src/arc/` and `koyo-rs/koyo/src/spaces.rs`. The visual check draws it,
 and then does what a person does in it (a space's mark saying a chat in it works and waits, a
-tile dragged to another row and back, the address bar following the pane pressed in, ⌘L on a
-page), saving a picture of each. It shows a chat, so it wants a data folder and an agent host
+tab's row and its tile saying the same, a tile dragged to another row and back, the address
+bar following the pane pressed in, ⌘L on a page), saving a picture of each. It shows a chat, so it wants a data folder and an agent host
 of its own, and says so if it isn't given them:
 
 ```sh
@@ -55,9 +55,10 @@ is ⌘⇧M or the rails' right-click menu, and the appearance is in that menu an
 - **Clicking the bar, or ⌘L from anywhere in the window, opens the launcher on the page**
   (`docs/new-tab.md` 1), as Arc's ⌘L does: the page's whole address in the field, all of it
   selected, what the history has for it underneath. An address or a search picked there loads
-  in that page. The page is the one the controls act on (section 1); with no page in the tab,
-  it's ⌘T's launcher, on a browser tab. There's one way to change an address, so the bar is
-  never a field for it.
+  in that page. The page is the one the controls act on (section 1). There's one way to
+  change an address, so the bar is never a field for it.
+- With no page in the tab shown there's no address to change: a click on the bar does
+  nothing, and ⌘L opens nothing. A new tab is ⌘T's.
 - The exception is a new browser tab opened empty: its start page has no address to show, so
   the bar is the page's own address field, the keyboard in it, until an address is entered.
 - A page takes the keyboard when its tab is picked in the sidebar, as a terminal and a chat
@@ -84,11 +85,14 @@ Arc's favourites grid, holding the projects of the space shown.
   changes nothing. The order is the sidebar's (`settings.projects`), saved at once: the
   projects of other spaces keep their places in it, the Orca list shows the same order, and
   the project selected stays selected.
-- A small red dot in the tile's top-right corner while any tab of the project needs
-  attention (section 5).
-- While something in the project works (a chat running), terminal-style dots in the same
-  corner: a braille cell's dots going round, a step every 80 ms. Tabs elsewhere that show a chat
-  working use the same dots.
+- A small indigo dot in the tile's top-right corner while any tab of the project needs
+  attention (section 5). Indigo is what waits for the person (`Palette::waiting`), on a tile,
+  a tab's row and a space's mark; amber is what's at work, and red is kept for what went wrong.
+- While something in the project works (a chat running), the spinner in the same corner
+  (`chat/spinner.rs`): a small ring in amber with a gap in it, its line bold for its size,
+  going round. It's drawn at every frame the display shows, so it turns evenly rather than in
+  steps, and all of them turn together. Wherever a chat is said to be working, a tab's row,
+  a space's mark, the Orca layout's tabs and rows, it's this spinner.
 - Hovering a tile shows a card with the project's name and stats: its worktrees, and its
   activity (chats running, terminals, tabs open).
 - Right-clicking a tile opens its menu:
@@ -124,13 +128,20 @@ Arc's favourites grid, holding the projects of the space shown.
   the ⌘T launcher.
 - Tab rows as Arc's, 36 pt high with 10 pt corners: a 16 pt icon, the title cut short, the
   selected tab a pill of white laid thin over the colours, so it takes their hue, with no
-  shadow; a hover tint, and a close button on hover.
+  shadow; a hover tint, and a close button at its end on hover, and on the tab shown.
 - A split tab's row shows its panes side by side as Arc does: each pane's icon and title,
   sharing the row, a hairline between them and no fill of their own, the row's tint or pill
   being theirs. Each pane shows its × while the pointer's on it, making room for it then; one
   with unsaved edits shows its dot always.
-- A tab that needs attention shows a dot, as the tiles do: a terminal waiting for input, a
-  chat that's unread, failed or needs the person. It replaces the chat marks tabs had.
+- A tab's row says at its end how the tab's doing, as its project's tile does in its corner
+  (`Shell::tab_activity`), so it's plain which tab the tile and the space's mark speak of:
+  - the spinner while a chat in it is at work;
+  - an indigo dot once something in it waits for the person: a chat that finished and hasn't
+    been seen, failed or asks, a terminal waiting for input. It's where the spinner was, and
+    it wins over the spinner, as on the tile.
+  - It has the ×'s place, and leaves it to the × while the pointer's on the row, the tab
+    shown included.
+  - A split's row is its panes, each with its own ×: there it goes before them.
 - Unsaved edits' and splits' dots, middle-click to close, and dragging to reorder stay.
 - A tab dragged past its list's end, onto another worktree's tabs, divider or New Tab row,
   moves to that worktree and shows there: where the tab it's dropped on is, or first. Its
@@ -163,14 +174,15 @@ Arc's favourites grid, holding the projects of the space shown.
   and the next comes in from the other side in the same motion, slowing to rest. A click on a
   mark, and a new space, move the same way; with reduced motion the switch is at once.
 - A space that isn't shown says on its mark what its tiles would (section 3), so a chat that
-  finished there is noticed: a small red dot up and right of the mark while something in it
+  finished there is noticed: a small indigo dot up and right of the mark while something in it
   waits for the person (a chat unread, failed or asking, a terminal waiting), the tiles'
-  spinner, fainter, while something works. It's the most urgent of the space's projects
+  spinner in that same place while something works, as strong as theirs but smaller, half as
+  wide again as the dot. It's the most urgent of the space's projects
   (`Shell::space_activity`, from `project_activity`, which the tiles' corners use too), so it
   goes when the tiles' would. It's laid over the mark and takes no room: no mark moves as it
   comes or goes. It shows only by a dot, so on a space just left it comes once the capsule
   has shrunk back, out of the spring's way. The dot fades in; the spinner doesn't, as it's a
-  view drawn again only as it steps, and a fade round it would stay where its first frame had
+  view drawn again only as it turns, and a fade round it would stay where its first frame had
   it. The space shown has none: its tiles say it.
 - A **+** on the right opens a menu:
   - **New Worktree…**: in the selected project, through the New Worktree dialog.
