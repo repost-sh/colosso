@@ -5,6 +5,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
@@ -33,6 +34,9 @@ pub struct App {
     pub lent: bool,
     /// The desktop a lent app came from, where it goes back to.
     pub home: Option<SpaceId>,
+    /// The host turned on what a screen reader sets on the app ([`ask_for_pages`]): put
+    /// back when a lent app goes home.
+    asked_pages: bool,
     observer: Option<Observer>,
     /// Windows it said it made, not yet filed under their numbers.
     created: Rc<RefCell<Vec<Element>>>,
@@ -50,6 +54,7 @@ impl App {
             quitting: None,
             lent: false,
             home: None,
+            asked_pages: false,
             observer: None,
             created: Rc::default(),
             elements: HashMap::new(),
@@ -68,8 +73,7 @@ impl App {
     }
 
     /// Starts watching for the windows it makes; again later if the app wasn't ready to be
-    /// watched. Also asks a Chromium or Electron app for its page's tree, which those build
-    /// only when asked.
+    /// watched. Also asks an app that draws its own pages for their tree ([`ask_for_pages`]).
     pub fn watch(&mut self) {
         if self.observer.is_some() {
             return;
@@ -81,7 +85,18 @@ impl App {
         if self.observer.is_some()
             && let Some(app) = Element::app(self.pid)
         {
-            app.set("AXManualAccessibility", &ns::yes());
+            let chromium = bundle_path(&self.running).is_some_and(|path| chromium(&path));
+            self.asked_pages = ask_for_pages(&app, chromium);
+        }
+    }
+
+    /// Leaves a lent app as it was found: what a screen reader sets on it goes off again,
+    /// when it was the host that turned it on.
+    pub fn leave_as_found(&mut self) {
+        if std::mem::take(&mut self.asked_pages)
+            && let Some(app) = Element::app(self.pid)
+        {
+            app.set(ENHANCED, &ns::no());
         }
     }
 
@@ -175,14 +190,46 @@ impl App {
     }
 }
 
-/// An app's own data folder for an app that shares none with a second instance (a Chromium
-/// browser, an Electron app): `None` for every other app.
-pub fn own_profile(app: &Obj, bundle: Option<&str>, state: &std::path::Path) -> Option<String> {
-    // SAFETY: a file URL answers `path`.
-    let path: Option<Obj> = unsafe { objc2::msg_send![&**app, path] };
-    let path = std::path::PathBuf::from(ns::text(&*path?)?);
-    let frameworks = std::fs::read_dir(path.join("Contents/Frameworks")).ok()?;
-    let chromium = frameworks.flatten().any(|entry| {
+/// The attribute a screen reader sets on an app.
+const ENHANCED: &str = "AXEnhancedUserInterface";
+
+/// Asks an app that draws its own pages for their tree, which it builds only when asked.
+/// An Electron app is asked by an attribute of its own. A Chromium browser hasn't that one
+/// and builds its pages' trees for a screen reader, so it gets what a screen reader sets:
+/// Chrome says it took neither, and the pages are in its tree from then on (Chrome for
+/// Testing 152: toolbar only before, the page after). No other app is set that: it changes
+/// how an app behaves for everyone. Whether it was turned on here: not when it was on
+/// already, as for a person who uses a screen reader.
+fn ask_for_pages(app: &Element, chromium: bool) -> bool {
+    if app.set("AXManualAccessibility", &ns::yes()) || !chromium {
+        return false;
+    }
+    let on = (app.get(ENHANCED)).is_some_and(|value| ns::integer(&value) == Some(1));
+    if on {
+        return false;
+    }
+    app.set(ENHANCED, &ns::yes());
+    true
+}
+
+/// Where a running app's bundle is.
+fn bundle_path(running: &Obj) -> Option<PathBuf> {
+    // SAFETY: a running app answers `bundleURL`, nil for a process with no bundle; a file
+    // URL answers `path`.
+    let path: Option<Obj> = unsafe {
+        let url: Option<Obj> = objc2::msg_send![&**running, bundleURL];
+        objc2::msg_send![&*url?, path]
+    };
+    Some(PathBuf::from(ns::text(&*path?)?))
+}
+
+/// Whether the app at `path` is built on Chromium: an Electron app, one on the Chromium
+/// Embedded Framework, or a Chromium browser, by the framework and helper they ship.
+fn chromium(path: &Path) -> bool {
+    let Ok(frameworks) = std::fs::read_dir(path.join("Contents/Frameworks")) else {
+        return false;
+    };
+    frameworks.flatten().any(|entry| {
         let name = entry.file_name().to_string_lossy().into_owned();
         name == "Electron Framework.framework"
             || name == "Chromium Embedded Framework.framework"
@@ -192,8 +239,15 @@ pub fn own_profile(app: &Obj, bundle: Option<&str>, state: &std::path::Path) -> 
                     .join("Helpers")
                     .join("chrome_crashpad_handler")
                     .exists()
-    });
-    if !chromium {
+    })
+}
+
+/// An app's own data folder for an app that shares none with a second instance (a Chromium
+/// browser, an Electron app): `None` for every other app.
+pub fn own_profile(app: &Obj, bundle: Option<&str>, state: &Path) -> Option<String> {
+    // SAFETY: a file URL answers `path`.
+    let path: Option<Obj> = unsafe { objc2::msg_send![&**app, path] };
+    if !chromium(&PathBuf::from(ns::text(&*path?)?)) {
         return None;
     }
     // Short: the app keeps a socket under it, whose path has a limit of 103 bytes.
@@ -204,4 +258,35 @@ pub fn own_profile(app: &Obj, bundle: Option<&str>, state: &std::path::Path) -> 
     let folder = state.join("p").join(format!("{:08x}", hash & 0xffff_ffff));
     std::fs::create_dir_all(&folder).ok()?;
     Some(folder.to_string_lossy().into_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::chromium;
+
+    /// An app is taken for one built on Chromium by what it ships: Electron's framework,
+    /// the embedded framework, or a browser's own framework with Chromium's crash helper.
+    /// A framework that only ends like a browser's isn't enough.
+    #[test]
+    fn an_app_is_known_as_chromium_by_the_framework_it_ships() {
+        let root = std::env::temp_dir().join(format!("koyo-chromium-{}", std::process::id()));
+        let app = |name: &str, inside: &[&str]| {
+            let app = root.join(name);
+            for folder in inside {
+                std::fs::create_dir_all(app.join("Contents/Frameworks").join(folder)).unwrap();
+            }
+            app
+        };
+        let helper = "Google Chrome Framework.framework/Helpers/chrome_crashpad_handler";
+        assert!(chromium(&app("Code.app", &["Electron Framework.framework"])));
+        assert!(chromium(&app(
+            "Embeds.app",
+            &["Chromium Embedded Framework.framework"]
+        )));
+        assert!(chromium(&app("Chrome.app", &[helper])));
+        assert!(!chromium(&app("Other.app", &["Some Framework.framework"])));
+        assert!(!chromium(&app("Plain.app", &[])));
+        assert!(!chromium(&root.join("Missing.app")));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 }

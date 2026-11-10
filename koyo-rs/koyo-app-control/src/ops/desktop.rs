@@ -394,7 +394,7 @@ impl Operation for DesktopTakeFocus {
     const TITLE: &'static str = "Take the focus for the agent desktop";
     const SUBJECT: &'static [&'static str] = &["window"];
     const SCOPE: Scope = Scope::Desktop;
-    const DESCRIPTION: &'static str = "Puts the agent desktop on the person's screen, with a window of it in front, in place of what they are doing. Only when nothing less will do: when an app can't do unseen what you need of it (a browser draws no page, and gives none to read, on a desktop that isn't showing). It needs the person's explicit consent each time: the first call is refused with person_has_control and says what to tell them and ask; once they agree, call again with `consent` set to their exact words. Give the focus back with desktop_return_focus as soon as you're done; it's theirs again the moment they go to a desktop of their own.";
+    const DESCRIPTION: &'static str = "Puts the agent desktop on the person's screen, with a window of it in front, in place of what they are doing. Only when nothing less will do: when an app can't do unseen what you need of it (the person's own browser, lent, draws no page and gives none to read on a desktop that isn't showing; a browser you opened there yourself does both). It needs the person's explicit consent each time: the first call is refused with person_has_control and says what to tell them and ask; once they agree, call again with `consent` set to their exact words. Give the focus back with desktop_return_focus as soon as you're done; it's theirs again the moment they go to a desktop of their own.";
     const HINTS: Hints = Hints::CHANGE.beyond_koyo();
     type Input = DesktopTakeFocusInput;
     type Output = DesktopDone;
