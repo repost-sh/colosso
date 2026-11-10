@@ -8,14 +8,15 @@ use gpui_kit::component::input::Input;
 use gpui_kit::component::{Disableable as _, Selectable as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, ClickEvent, Context, Div, ElementId, Focusable as _, FontWeight,
+    AnyElement, App, Bounds, ClickEvent, Context, Div, ElementId, Focusable as _, FontWeight,
     InteractiveElement as _, IntoElement, MouseButton, ParentElement as _,
-    StatefulInteractiveElement as _, Styled as _, Window, deferred, div, px, relative,
+    StatefulInteractiveElement as _, Styled as _, Window, deferred, div, point, px, relative, size,
 };
 use koyo_browser_ipc::{Go, PageState};
 
 use super::control::Mode;
 use super::host::HostStatus;
+use super::lightness::glass_dark;
 use super::view::{BrowserView, Notice};
 use crate::native::liquid;
 use crate::responsive::bar::toggle_button;
@@ -159,13 +160,13 @@ fn address(view: &BrowserView, editing: bool, p: Palette) -> Div {
 
 /// The bar at the bottom of the page while it's contested: an agent using it, with the
 /// person's way to take it; or the person having taken it from an agent, with the way to
-/// give it back. Liquid Glass where the system has it.
+/// give it back. Liquid Glass where the system has it, dark over a light page and light over a
+/// dark one (`theme::glass`).
 pub(super) fn control_bar(
-    view: &BrowserView,
+    view: &mut BrowserView,
     window: &mut Window,
     cx: &mut Context<BrowserView>,
 ) -> Option<AnyElement> {
-    let p = theme::palette(cx);
     let (text, id, label, on_click): (_, _, _, OnClick) = if let Some(agent) = view.control.agent()
     {
         let take = cx.listener(|this, _: &ClickEvent, _, cx| this.person_acts(Mode::Explicit, cx));
@@ -182,15 +183,17 @@ pub(super) fn control_bar(
         };
         (text, "browser-give-back", "Give back", Box::new(give_back))
     };
+    let dark = view.read_bar_dark();
+    let (p, tint) = theme::glass::look(dark, cx);
     let id_glass = ElementId::NamedInteger("browser-control-glass".into(), view.pane);
-    let glass = liquid::backdrop(id_glass, px(999.), window, cx);
+    let glass = liquid::backdrop_toned(id_glass, px(999.), dark.zip(tint), window, cx);
     let button = bar_button(id, label, glass.is_some(), p).on_click(on_click);
     let pill = div()
         .relative()
         .flex()
         .items_center()
         .gap_2()
-        .max_w(px(560.))
+        .max_w(px(BAR_WIDTH))
         .pl_3()
         .pr(px(5.))
         .py(px(5.))
@@ -202,13 +205,36 @@ pub(super) fn control_bar(
     // Among the window's overlays, over its Liquid Glass, a native view of the window's.
     let bar = div()
         .absolute()
-        .bottom(px(14.))
+        .bottom(px(BAR_BOTTOM))
         .left_0()
         .right_0()
         .flex()
         .justify_center()
         .child(pill.child(div().truncate().child(text)).child(button));
     Some(deferred(bar).into_any_element())
+}
+
+/// How wide the control bar is at most, how far up from the page's foot it sits, and about how
+/// high it is: where the page under it is read.
+const BAR_WIDTH: f32 = 560.;
+const BAR_BOTTOM: f32 = 14.;
+const BAR_HEIGHT: f32 = 34.;
+
+impl BrowserView {
+    /// Whether the control bar's glass is dark, the page under it read again (`glass_dark`), as
+    /// it is each time the bar is drawn; none while its tone is the theme's.
+    pub(super) fn read_bar_dark(&mut self) -> Option<bool> {
+        self.bar_dark = self.page_bounds().and_then(|page| {
+            let width = page.size.width.min(px(BAR_WIDTH));
+            let origin = point(
+                page.center().x - width / 2.,
+                page.bottom() - px(BAR_BOTTOM + BAR_HEIGHT),
+            );
+            let region = Bounds::new(origin, size(width, px(BAR_HEIGHT)));
+            glass_dark([&*self], region, self.bar_dark)
+        });
+        self.bar_dark
+    }
 }
 
 /// The bar's button: a tint of the text's colour on glass, a raised fill on the bar's own.

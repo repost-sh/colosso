@@ -21,7 +21,7 @@ use crate::list::{SelectNext, SelectPrevious, styled};
 use crate::modal;
 use crate::pane::close_button;
 use crate::shell::{self, ellipsized, icon};
-use crate::theme::{self, Palette};
+use crate::theme::{Palette, glass};
 
 /// The size of the field's text, and of a row's icon.
 const TEXT: f32 = 18.;
@@ -34,13 +34,16 @@ impl Render for Launcher {
             self.fitted = fits;
             modal::fit_height(fits, window, cx);
         }
-        let p = theme::palette(cx);
+        // Over a page, the glass stands off it, and what's on it is drawn in the glass's tone.
+        let (p, tint) = glass::look(self.tone.dark(), cx);
         let rows: Vec<AnyElement> = (0..self.rows.len()).map(|at| self.row(at, p, cx)).collect();
         div()
             .key_context("Launcher")
             .size_full()
             .flex()
             .flex_col()
+            .when_some(tint, gpui_kit::Styled::bg)
+            .text_color(p.text)
             .on_action(cx.listener(|this, _: &NextKind, window, cx| this.step_kind(1, window, cx)))
             .on_action(
                 cx.listener(|this, _: &PreviousKind, window, cx| this.step_kind(-1, window, cx)),
@@ -69,6 +72,7 @@ impl Launcher {
         let next = self.kind.step(1);
         let input = Input::new(&self.input)
             .appearance(false)
+            .ink(p.text, p.muted)
             .text_size(px(TEXT))
             .line_height(px(TEXT + 6.))
             .h(px(FIELD - 16.))

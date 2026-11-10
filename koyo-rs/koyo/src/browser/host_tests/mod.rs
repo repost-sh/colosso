@@ -14,13 +14,13 @@ use std::time::{Duration, Instant};
 use gpui_kit::{Entity, Modifiers, MouseButton, TestAppContext, VisualTestContext, point, px};
 use koyo_browser_ipc::Go;
 use koyo_browser_ipc::client::Launch;
-use objc2_io_surface::IOSurfaceLockOptions;
 
 use super::frames::Frame;
 use super::host::{Browsers, HostStatus, TestLaunch};
 use super::view::BrowserView;
 
 mod dialogs;
+mod glass;
 mod input;
 mod keeping;
 mod loading;
@@ -135,17 +135,9 @@ fn finish(cx: &mut VisualTestContext, scratch: PathBuf) {
 
 /// BGRA at a device pixel of a frame.
 fn pixel(frame: &Frame, x: usize, y: usize) -> [u8; 4] {
-    let surface = objc2_core_video::CVPixelBufferGetIOSurface(Some(&frame.pixels))
-        .expect("a page's frame is a shared surface");
-    // SAFETY: the surface is locked read-only while its bytes are read, within its rows.
-    unsafe {
-        surface.lock(IOSurfaceLockOptions::ReadOnly, std::ptr::null_mut());
-        let base = surface.base_address().as_ptr().cast::<u8>();
-        let at = base.add(y * surface.bytes_per_row() + x * 4);
-        let pixel = [*at, *at.add(1), *at.add(2), *at.add(3)];
-        surface.unlock(IOSurfaceLockOptions::ReadOnly, std::ptr::null_mut());
-        pixel
-    }
+    frame
+        .with_pixels(|pixel| pixel(x, y))
+        .expect("a page's frame is a shared surface")
 }
 
 /// BGRA at the middle of a frame's page.

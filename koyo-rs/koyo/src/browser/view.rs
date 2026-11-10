@@ -95,6 +95,9 @@ pub struct BrowserView {
     /// The host epoch the page was opened in.
     opened: Option<u64>,
     pub(super) frame: Option<Frame>,
+    /// Whether the glass of the bar over the page is dark, as the page under it last said; none
+    /// while it's the theme's.
+    pub(super) bar_dark: Option<bool>,
     /// Whether the page is full screen, and where (`fullscreen.rs`).
     pub(super) fullscreen: super::fullscreen::Fullscreen,
     /// How many frames the page has shown, which tests count.
@@ -243,6 +246,7 @@ impl BrowserView {
             viewport: None,
             opened: None,
             frame: None,
+            bar_dark: None,
             fullscreen: super::fullscreen::Fullscreen::default(),
             frames_shown: 0,
             drag_sent: false,

@@ -13,6 +13,7 @@ mod accent;
 pub use accent::hex;
 pub mod card;
 pub mod fonts;
+pub mod glass;
 pub mod hover;
 #[cfg(target_os = "macos")]
 mod system_accent;
@@ -305,7 +306,13 @@ pub fn follow_window_appearance(window: &Window) {
 
 /// The palette of the appearance on screen, in the accent in use.
 pub fn palette(cx: &App) -> Palette {
-    let dark = cx.theme().mode.is_dark();
+    palette_for(cx.theme().mode.is_dark(), cx)
+}
+
+/// The dark palette if `dark`, else the light one, whatever the appearance on screen, in the
+/// accent in use: for what's drawn on glass whose tone the page under it sets rather than the
+/// theme (`glass`).
+pub fn palette_for(dark: bool, cx: &App) -> Palette {
     let palette = if dark { DARK } else { LIGHT };
     let primary = gradient::current(cx).primary();
     Palette {

@@ -130,6 +130,8 @@ pub struct Input {
     role: RoleOverride,
     accessibility_id: Option<SharedString>,
     aria_label: Option<SharedString>,
+    /// Koyo: the colours of the text, its caret and the placeholder, in place of the theme's.
+    ink: Option<(Hsla, Hsla)>,
 
     /// An optional context menu builder to allow a custom context menu on the input.
     ///
@@ -242,6 +244,7 @@ impl Input {
             role: RoleOverride::default(),
             accessibility_id: None,
             aria_label: None,
+            ink: None,
             context_menu_builder: None,
             paste_handler: None,
             token_renderer: None,
@@ -296,6 +299,14 @@ impl Input {
     /// Set the appearance of the input field, if false the input field will no border, background.
     pub fn appearance(mut self, appearance: bool) -> Self {
         self.appearance = appearance;
+        self
+    }
+
+    /// Koyo: draws the caret and the text's own colour in `text`, and the placeholder in
+    /// `placeholder`, rather than the theme's: for an input on a surface of another tone than the
+    /// theme. The text itself is drawn in the colour it inherits, which `text` should be.
+    pub fn ink(mut self, text: Hsla, placeholder: Hsla) -> Self {
+        self.ink = Some((text, placeholder));
         self
     }
 
@@ -535,14 +546,22 @@ impl RenderOnce for Input {
         sync_focused_input_registry(&state, window, cx);
 
         state.ensure_highlighter_factory(crate::highlighter::input_highlighter_factory(), cx);
+        let (foreground, muted_foreground, caret) = match self.ink {
+            Some((text, placeholder)) => (text, placeholder, text),
+            None => (
+                cx.theme().foreground,
+                cx.theme().muted_foreground,
+                cx.theme().caret,
+            ),
+        };
         state.set_editor_style(
             gpui_base::input::InputEditorStyle {
-                foreground: cx.theme().foreground,
-                muted_foreground: cx.theme().muted_foreground,
+                foreground,
+                muted_foreground,
                 background: cx.theme().editor_background(),
                 border: cx.theme().border,
                 selection: cx.theme().selection,
-                caret: cx.theme().caret,
+                caret,
                 diagnostics: gpui_base::input::DiagnosticColors {
                     error: cx.theme().highlight_theme.style.status.error(cx),
                     warning: cx.theme().highlight_theme.style.status.warning(cx),

@@ -57,6 +57,12 @@ in `koyo-rs/koyo/src/launcher/` and `koyo-rs/koyo/src/history/`.
   typed, and isn't offered; one typed over is.
 - The window grows and shrinks with its rows, keeping its top edge where it is
   (`native/window.rs`: AppKit's `setContentSize` would keep the bottom edge instead).
+- Over a web page, its glass takes the opposite tone to the page: dark over a light page,
+  light over a dark one, with its text, rows and field in that tone's palette. It reads the
+  page's own frame under it, from the surface the browser host shares with the app, as it
+  opens and every 400 ms while it's open. A page near mid-grey doesn't make it flicker
+  (`theme/glass.rs`). Over anything else, or over less than half a page, it keeps the theme's
+  tone, as dialogs do. The bar over a page an agent is using does the same.
 
 ## 2. Terminal commands are typed into a shell
 
@@ -242,6 +248,7 @@ sends. No host or IPC change was needed.
 | `koyo/src/launcher/mod.rs` | The actions and keys, the kinds, opening it from the shell |
 | `koyo/src/launcher/view.rs` | Its state: what's typed, autofill, rows, picking |
 | `koyo/src/launcher/render.rs` | How it looks |
+| `koyo/src/launcher/tone.rs`, `koyo/src/theme/glass.rs`, `koyo/src/browser/lightness.rs` | Its glass's tone over a page, and how light the page under it is |
 | `koyo/src/launcher/rows.rs` | What it lists for what's typed (section 3) |
 | `koyo/src/launcher/here.rs` | The checkout it opened on, its open tabs, and its chats with no tab |
 | `koyo/src/launcher/act.rs` | What a pick does in the window behind, or in the page it opened on |

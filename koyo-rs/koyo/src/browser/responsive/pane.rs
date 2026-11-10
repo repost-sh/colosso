@@ -196,6 +196,13 @@ impl BrowserView {
         to_page(position, self.origin, self.responsive.fit)
     }
 
+    /// Where the page is in the window, at the size it shows at: none until it's laid out.
+    pub(in crate::browser) fn page_bounds(&self) -> Option<Bounds<Pixels>> {
+        let (viewport, fit) = (self.viewport?, self.fit());
+        let (width, height) = (viewport.width as f32 * fit, viewport.height as f32 * fit);
+        Some(Bounds::new(self.origin, size(px(width), px(height))))
+    }
+
     /// A point of the page, as the host names one, as a point of the window.
     pub(in crate::browser) fn window_point(&self, at: ipc::Point) -> Point<Pixels> {
         to_window(point(px(at.x), px(at.y)), self.origin, self.responsive.fit)
