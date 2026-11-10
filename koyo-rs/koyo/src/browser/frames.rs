@@ -7,8 +7,10 @@
 use gpui_kit::{Bounds, ContentMask, Context, DevicePixels, Pixels, WeakEntity, Window};
 use koyo_browser_ipc::{PixelSize, mach};
 use objc2_core_foundation::CFRetained;
-use objc2_core_video::{CVPixelBuffer, CVPixelBufferCreateWithIOSurface, kCVReturnSuccess};
-use objc2_io_surface::IOSurfaceRef;
+use objc2_core_video::{
+    CVPixelBuffer, CVPixelBufferCreateWithIOSurface, CVPixelBufferGetIOSurface, kCVReturnSuccess,
+};
+use objc2_io_surface::{IOSurfaceLockOptions, IOSurfaceRef};
 
 use super::view::BrowserView;
 
@@ -87,6 +89,38 @@ impl Frame {
             scale: 1.,
             pixels,
         })
+    }
+
+    /// What `read` makes of the frame's pixels, each read as BGRA at a device pixel of the page,
+    /// one past its edge read at the edge; none where the surface can't be read.
+    pub fn with_pixels<R>(
+        &self,
+        read: impl FnOnce(&dyn Fn(usize, usize) -> [u8; 4]) -> R,
+    ) -> Option<R> {
+        let surface = CVPixelBufferGetIOSurface(Some(&self.pixels))?;
+        // The page, which may be less than the surface, and no more of it than the surface holds.
+        let width = (self.size.width as usize).min(surface.width());
+        let height = (self.size.height as usize).min(surface.height());
+        if width == 0 || height == 0 {
+            return None;
+        }
+        let row = surface.bytes_per_row();
+        // SAFETY: the surface is locked read-only while its bytes are read, and only within its
+        // rows and columns, each pixel 4 bytes of BGRA; the host paints only into surfaces no
+        // pixel buffer holds, and this frame's holds this one.
+        unsafe {
+            if surface.lock(IOSurfaceLockOptions::ReadOnly, std::ptr::null_mut()) != 0 {
+                return None;
+            }
+            let base = surface.base_address().as_ptr().cast::<u8>();
+            let pixel = |x: usize, y: usize| {
+                let at = base.add(y.min(height - 1) * row + x.min(width - 1) * 4);
+                [*at, *at.add(1), *at.add(2), *at.add(3)]
+            };
+            let read = read(&pixel);
+            surface.unlock(IOSurfaceLockOptions::ReadOnly, std::ptr::null_mut());
+            Some(read)
+        }
     }
 
     /// Draws the frame with its top left at `bounds`', at `fit` of its true size: in

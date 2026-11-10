@@ -16,6 +16,7 @@ mod rows;
 mod suggest;
 #[cfg(test)]
 mod tests;
+mod tone;
 mod view;
 
 use gpui_kit::assets::IconName;
@@ -171,6 +172,7 @@ impl Shell {
             log::warn!("no checkout is selected to open a tab on");
             return;
         };
-        view::open(cx.entity().downgrade(), here, page, window, cx);
+        let pages = self.pages_shown(cx);
+        view::open(cx.entity().downgrade(), here, page, &pages, window, cx);
     }
 }

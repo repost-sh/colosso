@@ -12,6 +12,17 @@ use crate::model::Pane;
 use crate::navigation::Route;
 
 impl Shell {
+    /// Every page in the tab shown, each pane's own, `DevTools` too: what the launcher may float
+    /// over, and takes its tone from (`theme::glass`).
+    pub fn pages_shown(&self, cx: &App) -> Vec<Entity<BrowserView>> {
+        let shown = self.workspace.tab_shown();
+        let Some(tab) = shown.filter(|_| self.route(cx) == Route::Workspace) else {
+            return Vec::new();
+        };
+        let panes = tab.panes().into_iter();
+        panes.filter_map(|pane| pane.view().cloned()).collect()
+    }
+
     /// The page the sidebar's address, back, forward and reload, and ⌘L act on: none on a
     /// settings page, or with no page in the tab shown.
     pub fn shown_page(&self, cx: &App) -> Option<Entity<BrowserView>> {

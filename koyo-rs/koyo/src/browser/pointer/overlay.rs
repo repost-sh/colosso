@@ -155,16 +155,9 @@ fn shown(
 ) -> (Bounds<Pixels>, Point<Pixels>, f32) {
     let view = page.read(cx);
     let fit = view.fit();
-    let Some(viewport) = view.viewport else {
+    let Some(laid) = view.page_bounds() else {
         return (area, area.origin, fit);
     };
-    let laid = Bounds::new(
-        view.origin,
-        size(
-            px(viewport.width as f32 * fit),
-            px(viewport.height as f32 * fit),
-        ),
-    );
     (laid.intersect(&area), view.origin, fit)
 }
 

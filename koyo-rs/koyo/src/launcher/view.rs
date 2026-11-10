@@ -14,6 +14,8 @@ use gpui_kit::{
 use super::Kind;
 use super::here::Here;
 use super::rows::{self, Act, Query, Row};
+use super::tone::Tone;
+use crate::browser::BrowserView;
 use crate::history;
 use crate::list::stepped;
 use crate::modal;
@@ -60,15 +62,18 @@ fn take_dismissed(cx: &mut App) -> (String, Kind) {
 }
 
 /// Opens the launcher over `window`, which `shell` shows, for a tab on the checkout `here` says,
-/// or on `page`, whose address it starts with.
+/// or on `page`, whose address it starts with; its glass takes its tone from `pages`, those of the
+/// tab shown, where it's over them.
 pub fn open(
     shell: WeakEntity<Shell>,
     here: Here,
     page: Option<Page>,
+    pages: &[Entity<BrowserView>],
     window: &mut Window,
     cx: &mut App,
 ) {
     let behind = window.window_handle();
+    let tone = Tone::new(pages, window.bounds().origin);
     let (text, kind) = match &page {
         // Its address whatever was dismissed lately, which is left for the next ⌘T.
         Some(page) => (page.address.clone(), Kind::Browser),
@@ -83,7 +88,15 @@ pub fn open(
     };
     let rows = rows::rows(&query, cx);
     modal::open_floating(WIDTH, height(rows.len()), window, cx, |window, cx| {
-        Launcher::new((shell, behind), here, page, (text, kind), rows, window, cx)
+        Launcher::new(
+            (shell, behind, tone),
+            here,
+            page,
+            (text, kind),
+            rows,
+            window,
+            cx,
+        )
     });
 }
 
@@ -121,6 +134,8 @@ pub struct Launcher {
     picked: bool,
     /// The height the window was last made, so it's only asked to change when the rows do.
     pub(super) fitted: f32,
+    /// Whether its glass is dark or light over the page under it, if it's over one.
+    pub(super) tone: Tone,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -128,7 +143,7 @@ impl Launcher {
     /// The launcher over the window `behind`, which `shell` shows, on the checkout `here`
     /// says and on `page` if it opened on one, starting with `text` for a tab of `kind`.
     fn new(
-        (shell, behind): (WeakEntity<Shell>, AnyWindowHandle),
+        (shell, behind, mut tone): (WeakEntity<Shell>, AnyWindowHandle, Tone),
         here: Here,
         page: Option<Page>,
         (text, kind): (String, Kind),
@@ -144,6 +159,8 @@ impl Launcher {
             });
         }
         input.focus_handle(cx).focus(window, cx);
+        tone.read(window.bounds(), cx);
+        tone.follow(window, cx);
         let _subscriptions = vec![
             cx.subscribe_in(&input, window, |this, _, event, window, cx| match event {
                 InputEvent::Change => this.typed_changed(window, cx),
@@ -181,6 +198,7 @@ impl Launcher {
             shell,
             behind,
             picked: false,
+            tone,
             _subscriptions,
         };
         launcher.suggest(cx);

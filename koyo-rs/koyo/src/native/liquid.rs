@@ -1,11 +1,13 @@
 //! Liquid Glass behind an element GPUI draws: an `NSGlassEffectView` in a native surface of
 //! the window's composition, which stacks it over the page and under the window's overlays,
 //! so the element's content, drawn among them, shows over the glass. It's rounded as the element is, and light or dark as
-//! the app's theme is, whatever's behind it, so the theme's text reads on it over a page of
-//! any colour: left to itself, the glass would go light over a light page and dark over a
-//! dark one. Dark, it's shaded in the card's colour, so it's of the theme as the card is. In a
-//! window that can't host a native view, as a test's can't, or before macOS 26, there's none,
-//! and the element keeps a fill of its own.
+//! the app's theme is, whatever's behind it, so the theme's text reads on it: left to itself, the
+//! glass would go light over a light page and dark over a dark one. Dark, it's shaded in the
+//! card's colour, so it's of the theme as the card is. Over a web page, which the theme doesn't
+//! colour, it can take the other tone than the page's instead ([`backdrop_toned`],
+//! `theme::glass`), shaded deeper so the tone holds, and what's on it is drawn in that tone's
+//! palette. In a window that can't host a native view, as a test's can't, or before macOS 26,
+//! there's none, and the element keeps a fill of its own.
 //!
 //! It moves only when the element does: a frame that moves nothing tells `AppKit` nothing.
 //!
@@ -79,11 +81,41 @@ pub fn backdrop(
     window: &mut Window,
     cx: &mut App,
 ) -> Option<AnyElement> {
-    let look = if cx.theme().mode.is_dark() {
-        Look::Dark(theme::palette(cx).card.alpha(DARK_SHADE))
-    } else {
-        Look::Light
-    };
+    let dark = cx.theme().mode.is_dark();
+    let shade = dark.then(|| theme::palette(cx).card.alpha(DARK_SHADE));
+    glass(id, radius, Look { dark, shade }, window, cx)
+}
+
+/// [`backdrop`], of a tone of its own where `tone` gives one, whatever the theme: dark or not, and
+/// shaded in its tint (`theme::glass::look`), for glass over a page, which takes the other tone
+/// than the page's. What's on it should be drawn in the palette of that tone.
+pub fn backdrop_toned(
+    id: impl Into<ElementId>,
+    radius: Pixels,
+    tone: Option<(bool, Hsla)>,
+    window: &mut Window,
+    cx: &mut App,
+) -> Option<AnyElement> {
+    match tone {
+        Some((dark, tint)) => {
+            let look = Look {
+                dark,
+                shade: Some(tint),
+            };
+            glass(id, radius, look, window, cx)
+        }
+        None => backdrop(id, radius, window, cx),
+    }
+}
+
+/// Glass keyed by `id`, its corners `radius` round, looking as `look` says.
+fn glass(
+    id: impl Into<ElementId>,
+    radius: Pixels,
+    look: Look,
+    window: &mut Window,
+    cx: &mut App,
+) -> Option<AnyElement> {
     let pane = surface::keep(id, window, cx, |window| {
         Native::new(window)
             .inspect_err(|why| {
@@ -128,11 +160,12 @@ struct Native {
     look: Cell<Option<Look>>,
 }
 
-/// How glass looks: as `AppKit` makes it on a light theme, clear and shaded on a dark one.
+/// How glass looks: as `AppKit` makes it if light, clear if dark, and shaded in `shade` if it has
+/// one, as dark glass always does.
 #[derive(Clone, Copy, PartialEq)]
-enum Look {
-    Light,
-    Dark(Hsla),
+struct Look {
+    dark: bool,
+    shade: Option<Hsla>,
 }
 
 /// `colour` as `AppKit` takes it, in sRGB as GPUI draws.
@@ -195,8 +228,7 @@ impl Native {
         window: &Window,
     ) {
         let was = self.look.replace(Some(look));
-        let dark = |look: Look| matches!(look, Look::Dark(_));
-        let (was_dark, dark) = (was.map(dark), dark(look));
+        let (was_dark, dark) = (was.map(|was| was.dark), look.dark);
         if was_dark != Some(dark) {
             if was_dark == Some(true) {
                 self.view
@@ -219,10 +251,8 @@ impl Native {
             }
         }
         // Again as the theme's colour changes, which leaves the appearance as it was.
-        if let Look::Dark(shade) = look
-            && was != Some(look)
-        {
-            self.view.borrow().setTintColor(Some(&ns_colour(shade)));
+        if was != Some(look) {
+            (self.view.borrow()).setTintColor(look.shade.map(ns_colour).as_deref());
         }
         let corners = f64::from(f32::from(radius.min(bounds.size.height / 2.)));
         if self.corners.replace(Some(corners)) != Some(corners) {
