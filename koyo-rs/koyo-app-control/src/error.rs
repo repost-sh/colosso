@@ -40,6 +40,9 @@ pub enum ErrorCode {
     Timeout,
     /// The browser engine isn't running yet, or stopped.
     BrowserUnavailable,
+    /// The agent desktop is off, still starting, or its host lacks a grant; the message says
+    /// which.
+    DesktopUnavailable,
     /// A git command failed; the message carries what git said.
     GitFailed,
     /// Anything else; the message says what broke.
@@ -74,7 +77,7 @@ pub enum ErrorCode {
 
 impl ErrorCode {
     /// Every code, in declaration order.
-    pub const ALL: [ErrorCode; 28] = [
+    pub const ALL: [ErrorCode; 29] = [
         ErrorCode::InvalidInput,
         ErrorCode::NotFound,
         ErrorCode::Ambiguous,
@@ -88,6 +91,7 @@ impl ErrorCode {
         ErrorCode::ControlRequired,
         ErrorCode::Timeout,
         ErrorCode::BrowserUnavailable,
+        ErrorCode::DesktopUnavailable,
         ErrorCode::GitFailed,
         ErrorCode::Internal,
         ErrorCode::WorktreeRequired,
@@ -121,6 +125,7 @@ impl ErrorCode {
             ErrorCode::ControlRequired => "control_required",
             ErrorCode::Timeout => "timeout",
             ErrorCode::BrowserUnavailable => "browser_unavailable",
+            ErrorCode::DesktopUnavailable => "desktop_unavailable",
             ErrorCode::GitFailed => "git_failed",
             ErrorCode::Internal => "internal",
             ErrorCode::WorktreeRequired => "worktree_required",
@@ -140,12 +145,15 @@ impl ErrorCode {
     }
 
     /// Whether the same call may succeed later without a change by the caller: the app may
-    /// start, answer, or bring its browser engine back. A constructor overrides it where a
-    /// code means both, as `request_conflict` does.
+    /// start, answer, or bring its browser engine or its agent desktop back. A constructor
+    /// overrides it where a code means both, as `request_conflict` does.
     pub fn retryable(self) -> bool {
         matches!(
             self,
-            ErrorCode::AppNotRunning | ErrorCode::Timeout | ErrorCode::BrowserUnavailable
+            ErrorCode::AppNotRunning
+                | ErrorCode::Timeout
+                | ErrorCode::BrowserUnavailable
+                | ErrorCode::DesktopUnavailable
         )
     }
 }
@@ -297,6 +305,10 @@ impl ControlError {
 
     pub fn browser_unavailable(message: impl Into<String>) -> ControlError {
         ControlError::new(ErrorCode::BrowserUnavailable, message)
+    }
+
+    pub fn desktop_unavailable(message: impl Into<String>) -> ControlError {
+        ControlError::new(ErrorCode::DesktopUnavailable, message)
     }
 
     pub fn git_failed(message: impl Into<String>) -> ControlError {

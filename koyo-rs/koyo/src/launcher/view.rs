@@ -382,7 +382,7 @@ impl Launcher {
             None if self.kind == Kind::Worktree => Act::StartWorktree(typed.clone()),
             // On a page, no address is nowhere to go, as in any address bar.
             None if self.kind == Kind::Browser && self.page.is_some() => return,
-            None if typed.is_empty() => Act::Empty(self.kind),
+            None if typed.is_empty() || self.kind == Kind::Desktop => Act::Empty(self.kind),
             None => return,
         };
         // What was typed led to an entry the history has, or a page a tab shows: typing it again

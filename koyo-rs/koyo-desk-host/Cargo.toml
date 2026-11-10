@@ -1,0 +1,33 @@
+[package]
+name = "koyo-desk-host"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "The agent desktop's host: makes the desktop, starts apps on it, captures and drives their windows (docs/agent-desktop.md). A library its loader app loads, so the privacy grants given to the loader survive every build."
+
+[lib]
+# The loader app loads the dynamic library; the tests link the Rust one.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# The link's messages and frames, shared with the app.
+koyo-desk-wire = { path = "../koyo-desk-wire" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# Each frame's surface goes to the app as a mach port, on the channel the browser's pages use.
+koyo-browser-ipc = { path = "../koyo-browser-ipc" }
+libc = "0.2"
+# AppKit, ScreenCaptureKit and the workspace are reached by message, with blocks for their
+# completion handlers; exceptions are caught where a private key may be missing.
+objc2 = { version = "0.6", features = ["exception"] }
+block2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString"] }
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "objc2", "CFBase", "CFCGTypes"] }
+
+[dev-dependencies]
+# The run on a real Mac (tests/real_mac.rs) reads the screenshots it's given.
+png = "0.18"
+
+[lints]
+workspace = true

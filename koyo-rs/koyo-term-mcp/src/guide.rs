@@ -10,7 +10,8 @@ pub const INSTRUCTIONS: &str = "\
 You are connected to Koyo, the app the person works in. These tools see and drive its \
 window as the person would: projects, worktrees, tabs, split panes, files, browser pages, \
 panels, layout and settings, and the terminals of the worktree you run in. Changes appear \
-in the window as if the person made them. Drive Koyo only through these tools: never \
+in the window as if the person made them. The desktop_* tools open and drive apps on the \
+agent desktop, a desktop of your own on the person's Mac that one Koyo tab shows. Drive Koyo only through these tools: never \
 edit its settings, data or other files.
 
 Start with app_status (what the window shows and what is selected) or project_list (the \
@@ -26,7 +27,9 @@ than once a second. A call that names no terminal means the one you last acted o
 command's output from a cursor on; terminal_log reads what happened.
 
 The person comes first. `person_has_control` means the person took that terminal or \
-browser page: do not wait for it, do not retry, do not take it over. Read it if you need \
+browser page, is using the agent desktop, or runs the app you asked for as theirs: do not \
+take it over, and do not retry at once (the agent desktop comes back a few seconds after \
+they stop; a terminal, a page or an app of theirs stays theirs). Read it if you need \
 its content, and open or pick another terminal or page for your own work; return to it \
 only when the person gives it back or tells you to. What you make or open (project_add, \
 worktree_create, tab_open, pane_split, file_open, changes_open, chat_create) works whether \

@@ -7,6 +7,7 @@ mod activity;
 mod app;
 mod browser;
 mod chat;
+mod desktop;
 mod file;
 mod info;
 mod kept;
@@ -104,6 +105,19 @@ pub(crate) fn run(caller: &Caller, command: Command, cx: &mut App) -> Exec {
         C::BrowserPressKey(input) => browser::press_key(caller, &input, cx).into(),
         C::BrowserScroll(input) => browser::scroll(caller, input, cx).into(),
         C::BrowserViewport(input) => browser::viewport(caller, &input, cx).into(),
+        C::DesktopOpen(input) => desktop::open(caller, input, cx),
+        C::DesktopWindows(_) => desktop::windows(cx),
+        C::DesktopScreenshot(input) => desktop::screenshot(&input, cx).into(),
+        C::DesktopSnapshot(input) => desktop::snapshot(&input, cx),
+        C::DesktopClick(input) => desktop::click(caller, &input, cx).into(),
+        C::DesktopMove(input) => desktop::move_to(caller, &input, cx).into(),
+        C::DesktopDrag(input) => desktop::drag(caller, &input, cx).into(),
+        C::DesktopScroll(input) => desktop::scroll(caller, &input, cx).into(),
+        C::DesktopType(input) => desktop::type_text(caller, &input, cx).into(),
+        C::DesktopKey(input) => desktop::key(caller, input, cx),
+        C::DesktopFocus(input) => desktop::focus(caller, &input, cx),
+        C::DesktopWait(input) => desktop::wait(&input, cx),
+        C::DesktopClose(input) => desktop::close(caller, &input, cx).into(),
     }
 }
 

@@ -20,6 +20,8 @@ pub enum Scope {
     Manage,
     /// Driving pages: navigating, evaluating, clicking, typing, keys, scrolling, claiming.
     Browser,
+    /// Driving apps on the agent desktop: opening, clicking, typing, keys, scrolling, closing.
+    Desktop,
     /// `settings_set`, on the allowlisted fields.
     Settings,
     /// Deleting worktrees and closing tabs that discard unsaved edits; the person confirms
@@ -29,27 +31,29 @@ pub enum Scope {
 
 impl Scope {
     /// Every scope, in order of increasing reach.
-    pub const ALL: [Scope; 6] = [
+    pub const ALL: [Scope; 7] = [
         Scope::Read,
         Scope::Navigate,
         Scope::Manage,
         Scope::Browser,
+        Scope::Desktop,
         Scope::Settings,
         Scope::Destructive,
     ];
 
-    /// What an external client the person allowed gets: `settings` and `destructive` stay
-    /// off until switched on in Settings.
+    /// What an external client the person allowed gets: `desktop`, `settings` and
+    /// `destructive` stay off until switched on in Settings.
     pub const DEFAULT_GRANT: [Scope; 4] =
         [Scope::Read, Scope::Navigate, Scope::Manage, Scope::Browser];
 
     /// What an agent Koyo runs, in one of its terminals or its chats, gets without asking:
     /// everything but `destructive`, whose calls the window confirms regardless.
-    pub const AGENT: [Scope; 5] = [
+    pub const AGENT: [Scope; 6] = [
         Scope::Read,
         Scope::Navigate,
         Scope::Manage,
         Scope::Browser,
+        Scope::Desktop,
         Scope::Settings,
     ];
 
@@ -60,6 +64,7 @@ impl Scope {
             Scope::Navigate => "navigate",
             Scope::Manage => "manage",
             Scope::Browser => "browser",
+            Scope::Desktop => "desktop",
             Scope::Settings => "settings",
             Scope::Destructive => "destructive",
         }
@@ -77,6 +82,7 @@ impl Scope {
             Scope::Navigate => "Navigate",
             Scope::Manage => "Manage",
             Scope::Browser => "Browser",
+            Scope::Desktop => "Agent desktop",
             Scope::Settings => "Settings",
             Scope::Destructive => "Destructive",
         }

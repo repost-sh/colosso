@@ -67,6 +67,7 @@ pub(crate) fn pane(shell: &Shell, pane: &Pane, focused: bool, cx: &App) -> PaneI
         model::PaneKind::Browser => PaneKind::Browser,
         model::PaneKind::Editor if pane.shows_changes() => PaneKind::Changes,
         model::PaneKind::Editor => PaneKind::Editor,
+        model::PaneKind::Desktop => PaneKind::Desktop,
     };
     let file = pane.file.as_ref().map(|file| file.read(cx));
     let terminal = pane.terminal.and_then(|id| {

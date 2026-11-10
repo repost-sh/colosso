@@ -25,6 +25,8 @@ pub enum PaneKind {
     Terminal,
     Browser,
     Editor,
+    /// The agent desktop (`docs/agent-desktop.md` 9).
+    Desktop,
 }
 
 impl PaneKind {
@@ -34,6 +36,7 @@ impl PaneKind {
             PaneKind::Terminal => "zsh",
             PaneKind::Browser => "New tab",
             PaneKind::Editor => "Untitled",
+            PaneKind::Desktop => "Agent desktop",
         }
     }
 
@@ -43,6 +46,7 @@ impl PaneKind {
             PaneKind::Terminal => IconName::SquareTerminal,
             PaneKind::Browser => IconName::Globe,
             PaneKind::Editor => IconName::FileCode,
+            PaneKind::Desktop => IconName::Bot,
         }
     }
 }

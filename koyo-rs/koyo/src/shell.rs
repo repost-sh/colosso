@@ -153,8 +153,14 @@ impl Shell {
                     .name_projects(&settings::get(cx).project_looks);
             }),
             cx.observe_global::<Theme>(|this, cx| this.terminals.tell_theme(cx)),
-            // Settings → Agent desktop shows how the Mac stands as it changes.
-            cx.observe_global::<crate::agent_desktop::Desk>(|_, cx| cx.notify()),
+            // Settings → Agent desktop shows how the host stands as it changes. Only while
+            // that page shows: the desk changes with all an agent does on its desktop.
+            cx.observe(&crate::agent_desktop::desk(cx), |this, _, cx| {
+                let page = settings_view::SettingsPage::AgentDesktop;
+                if this.route(cx) == Route::Settings(page) {
+                    cx.notify();
+                }
+            }),
             // The status bar is tall only with servers to show.
             cx.subscribe(status_bar.servers(), |this, _, ServersListed(any), cx| {
                 this.rails.servers = *any;
@@ -207,17 +213,11 @@ impl Shell {
         step: impl FnOnce(&mut NavigationHistory) -> bool,
         cx: &mut Context<Self>,
     ) {
-        let moved = self.history.update(cx, |history, cx| {
-            let moved = step(history);
-            if moved {
+        self.history.update(cx, |history, cx| {
+            if step(history) {
                 cx.notify();
             }
-            moved
         });
-        // Settings → Agent desktop says how the Mac stands as it's opened.
-        if moved && self.route(cx) == Route::Settings(settings_view::SettingsPage::AgentDesktop) {
-            crate::agent_desktop::refresh(cx);
-        }
     }
 
     pub fn navigate(&mut self, route: Route, cx: &mut Context<Self>) {
@@ -250,10 +250,12 @@ impl Shell {
     }
 
     pub fn new_tab(&mut self, kind: PaneKind, cx: &mut Context<Self>) {
-        if kind == PaneKind::Terminal {
-            self.new_terminal(cx);
-        } else {
-            self.workspace.new_tab(kind);
+        match kind {
+            PaneKind::Terminal => self.new_terminal(cx),
+            PaneKind::Desktop => {
+                self.desktop_pane(true, cx);
+            }
+            PaneKind::Chat | PaneKind::Browser | PaneKind::Editor => self.workspace.new_tab(kind),
         }
         if kind == PaneKind::Chat {
             self.focus_chat_next();

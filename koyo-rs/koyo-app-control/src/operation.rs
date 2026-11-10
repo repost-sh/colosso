@@ -23,9 +23,12 @@ pub const REQUEST_ID: &str = "requestId";
 pub const REQUEST_ID_PATTERN: &str = "^[A-Za-z0-9_-]{1,128}$";
 
 /// What an operation does to the world, published as the MCP tool's annotations. Clients
-/// decide what to approve on their own by them, so they are honest. `openWorld` is always
-/// false: every operation acts on this app only.
+/// decide what to approve on their own by them, so they are honest.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "MCP's four tool annotations, each a flag of its own"
+)]
 pub struct Hints {
     /// The operation changes nothing.
     pub read_only: bool,
@@ -33,6 +36,9 @@ pub struct Hints {
     pub destructive: bool,
     /// Repeating the call with the same input has no further effect.
     pub idempotent: bool,
+    /// The operation reaches beyond this app (`openWorld`): the agent desktop's do, which see
+    /// and drive other apps of the person's Mac. Every other acts on Koyo only.
+    pub open_world: bool,
 }
 
 impl Hints {
@@ -41,12 +47,14 @@ impl Hints {
         read_only: true,
         destructive: false,
         idempotent: true,
+        open_world: false,
     };
     /// A change that repeating has no further effect on (I).
     pub const IDEMPOTENT: Hints = Hints {
         read_only: false,
         destructive: false,
         idempotent: true,
+        open_world: false,
     };
     /// A change that does more each time, such as opening a tab (C). A `requestId` makes a
     /// retry safe.
@@ -54,13 +62,24 @@ impl Hints {
         read_only: false,
         destructive: false,
         idempotent: false,
+        open_world: false,
     };
     /// A change that deletes or discards something; doing it again has no further effect (D).
     pub const DESTRUCTIVE: Hints = Hints {
         read_only: false,
         destructive: true,
         idempotent: true,
+        open_world: false,
     };
+
+    /// The same, of an operation that reaches beyond this app.
+    #[must_use]
+    pub const fn beyond_koyo(self) -> Hints {
+        Hints {
+            open_world: true,
+            ..self
+        }
+    }
 }
 
 /// One app operation: a typed input and output, the scope it needs and how it behaves.

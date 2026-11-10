@@ -5,7 +5,7 @@
 
 use std::path::{Path, PathBuf};
 
-use gpui_kit::{Context, Entity, Window};
+use gpui_kit::{AppContext as _, Context, Entity, Window};
 
 use super::Shell;
 use crate::files::FilePane;
@@ -24,6 +24,9 @@ impl Shell {
         let project = self.workspace.projects[at.0].path.clone();
         let mut tab = closed.tab;
         for pane in tab.panes_mut() {
+            if pane.kind == PaneKind::Desktop {
+                pane.set_desktop(cx.new(crate::agent_desktop::DeskView::new));
+            }
             if pane.kind != PaneKind::Browser {
                 continue;
             }

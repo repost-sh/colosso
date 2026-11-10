@@ -77,4 +77,12 @@ impl Caller {
             |(kind, id)| format!("{name} (in {kind} {id})"),
         )
     }
+
+    /// The agent it is, as the lease of a page or of the agent desktop knows it.
+    pub fn actor(&self) -> crate::browser::control::Actor {
+        crate::browser::control::Actor {
+            id: self.key(),
+            label: self.label(),
+        }
+    }
 }

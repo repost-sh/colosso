@@ -10,6 +10,7 @@ use koyo_agent::protocol::ids::ThreadId;
 use serde::{Deserialize, Serialize};
 
 use super::PaneKind;
+use crate::agent_desktop::DeskView;
 use crate::browser::BrowserView;
 use crate::changes::ChangesTab;
 use crate::files::{FileEditor, FilePane};
@@ -23,7 +24,8 @@ pub struct Pane {
     pub id: u64,
     pub kind: PaneKind,
     pub title: SharedString,
-    /// A browser pane's page, or what it opens once its tab is shown (`view`, `set_view`).
+    /// A browser pane's page, or what it opens once its tab is shown (`view`, `set_view`);
+    /// the agent desktop's view in a pane of that kind (`desktop`).
     pub(super) page: Option<Page>,
     /// The file an editor pane shows, once the shell has opened one in it.
     pub file: Option<Entity<FilePane>>,
@@ -62,6 +64,27 @@ impl Pane {
         }
     }
 
+    /// A pane showing the agent desktop.
+    pub fn desktop(view: Entity<DeskView>) -> Self {
+        Pane {
+            page: Some(Page::Desktop(view)),
+            ..Pane::new(PaneKind::Desktop)
+        }
+    }
+
+    /// The pane shows the agent desktop through `view` from now on.
+    pub fn set_desktop(&mut self, view: Entity<DeskView>) {
+        self.page = Some(Page::Desktop(view));
+    }
+
+    /// The agent desktop's view, in a pane of that kind.
+    pub fn desktop_view(&self) -> Option<&Entity<DeskView>> {
+        match &self.page {
+            Some(Page::Desktop(view)) => Some(view),
+            Some(Page::Made(_) | Page::Unloaded(_)) | None => None,
+        }
+    }
+
     /// A browser pane showing `view`, titled as the view calls itself.
     pub fn browser(view: Entity<BrowserView>, cx: &App) -> Self {
         Pane {
@@ -85,7 +108,7 @@ impl Pane {
     pub fn view(&self) -> Option<&Entity<BrowserView>> {
         match &self.page {
             Some(Page::Made(view)) => Some(view),
-            Some(Page::Unloaded(_)) | None => None,
+            Some(Page::Unloaded(_) | Page::Desktop(_)) | None => None,
         }
     }
 
@@ -98,7 +121,7 @@ impl Pane {
     pub fn unloaded_address(&self) -> Option<&str> {
         match &self.page {
             Some(Page::Unloaded(unloaded)) => Some(&unloaded.address),
-            Some(Page::Made(_)) | None => None,
+            Some(Page::Made(_) | Page::Desktop(_)) | None => None,
         }
     }
 
@@ -108,7 +131,7 @@ impl Pane {
         match &self.page {
             Some(Page::Made(view)) => Some(view.read(cx).address()),
             Some(Page::Unloaded(unloaded)) => Some(unloaded.address.clone()),
-            None => None,
+            Some(Page::Desktop(_)) | None => None,
         }
     }
 
@@ -123,7 +146,7 @@ impl Pane {
         match &self.page {
             Some(Page::Made(view)) => view.read(cx).favicon(),
             Some(Page::Unloaded(unloaded)) => unloaded.favicon.clone(),
-            None => None,
+            Some(Page::Desktop(_)) | None => None,
         }
     }
 
@@ -146,10 +169,12 @@ impl Pane {
     }
 }
 
-/// A browser pane's page: made, or what it opens once its tab is shown, never both.
+/// A browser pane's page: made, or what it opens once its tab is shown, never both. Or, in
+/// the agent desktop's pane, its view.
 #[derive(Clone, Debug)]
 pub(super) enum Page {
     Made(Entity<BrowserView>),
+    Desktop(Entity<DeskView>),
     /// A tab brought back at launch, its page made when the tab is first shown
     /// (`docs/browser.md` 5). Boxed, as few panes have one.
     Unloaded(Box<Unloaded>),

@@ -147,14 +147,6 @@ pub(super) fn acted(caller: &Caller, page: &Page, cx: &mut App) {
         .insert(caller.key(), page.pane);
 }
 
-/// The agent `caller` is, as the page's lease knows it.
-pub(super) fn actor(caller: &Caller) -> Actor {
-    Actor {
-        id: caller.key(),
-        label: caller.label(),
-    }
-}
-
 /// A refusal of the page's lease, in app control's words.
 pub(super) fn refused(refused: Refused) -> ControlError {
     match refused {
@@ -196,7 +188,7 @@ pub(super) async fn call(
     params: Value,
     cx: &mut AsyncApp,
 ) -> Result<Value, ControlError> {
-    let actor = caller.map(actor);
+    let actor = caller.map(Caller::actor);
     let answered = cx.update(|cx| agent::cdp(&page.view, actor.as_ref(), method, params, cx));
     match answered.map_err(failed)?.await {
         Ok(Ok(value)) => Ok(value),
@@ -246,7 +238,7 @@ pub(crate) fn claim(
 ) -> Result<Value, ControlError> {
     let page = resolve(caller, input.pane, cx)?;
     let (actor, takeover, reason) = (
-        actor(caller),
+        caller.actor(),
         input.takeover.unwrap_or(false),
         input.reason.clone(),
     );
@@ -267,7 +259,7 @@ pub(crate) fn release(
     cx: &mut App,
 ) -> Result<Value, ControlError> {
     let page = resolve(caller, named, cx)?;
-    let actor = actor(caller);
+    let actor = caller.actor();
     page.view
         .update(cx, |view, cx| view.agent_releases(&actor, cx));
     output(&Lease {
@@ -327,7 +319,7 @@ fn steer(
     ) -> Result<(), Refused>,
 ) -> Result<Exec, ControlError> {
     let page = resolve(caller, named, cx)?;
-    let actor = actor(caller);
+    let actor = caller.actor();
     (page.view.update(cx, |view, cx| act(view, &actor, cx))).map_err(refused)?;
     acted(caller, &page, cx);
     Ok(Exec::Later(cx.spawn(async move |cx: &mut AsyncApp| {

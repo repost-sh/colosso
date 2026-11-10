@@ -65,7 +65,7 @@ async fn tools_list_both_catalogs_with_their_annotations() {
             Some(descriptor.hints.read_only),
             Some(descriptor.hints.destructive),
             Some(descriptor.hints.idempotent),
-            Some(false),
+            Some(descriptor.hints.open_world),
         );
         assert_eq!(said, honest, "{}", descriptor.name);
     }

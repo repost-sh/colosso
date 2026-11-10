@@ -13,7 +13,7 @@ use koyo_app_control::ops::browser::{
 
 use super::super::{Caller, Exec, output};
 use super::acts::capture;
-use super::page::{Page, acted, actor, refused, resolve};
+use super::page::{Page, acted, refused, resolve};
 use super::script::evaluate;
 use crate::browser::agent::{self, Choice, Viewport, ViewportChange, ViewportRefused, Zoom};
 
@@ -72,7 +72,7 @@ pub(crate) fn viewport(
 ) -> Result<Exec, ControlError> {
     let change = change(input)?;
     let page = resolve(caller, input.pane, cx)?;
-    let actor = actor(caller);
+    let actor = caller.actor();
     let target = (page
         .view
         .update(cx, |view, cx| view.agent_viewport(&actor, &change, cx)))

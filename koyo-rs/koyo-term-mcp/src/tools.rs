@@ -68,7 +68,7 @@ fn app(descriptor: Descriptor) -> Tool {
         .read_only(info.hints.read_only)
         .destructive(info.hints.destructive)
         .idempotent(info.hints.idempotent)
-        .open_world(false);
+        .open_world(info.hints.open_world);
     Tool::new(info.name, info.description, Arc::new(input_schema))
         .with_title(info.title)
         .with_raw_output_schema(Arc::new(output_schema))
@@ -90,11 +90,14 @@ pub fn app_success(name: &str, mut output: Value) -> CallToolResult {
     let mime = (output["mimeType"].as_str())
         .filter(|mime| mime.starts_with("image/") && output["data"].is_string())
         .map(str::to_owned);
-    if let Some(mime) = mime
-        && let Value::String(data) =
-            std::mem::replace(&mut output["data"], Value::String(String::new()))
-    {
+    if let Some(mime) = mime {
+        // Summed up while it still holds the image, whose size the summary says.
         let summary = summarize(name, &output).unwrap_or_else(|| format!("{name} done"));
+        let Value::String(data) =
+            std::mem::replace(&mut output["data"], Value::String(String::new()))
+        else {
+            return success(summary, output);
+        };
         let content = vec![ContentBlock::text(summary), ContentBlock::image(data, mime)];
         let mut result = CallToolResult::success(content);
         result.structured_content = Some(output);

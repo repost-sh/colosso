@@ -1,70 +1,284 @@
-//! Setting up (`docs/agent-desktop.md` 5.1): the helper's `setup`, run as root through the
-//! system's administrator dialog. `osascript … with administrator privileges` is the one way
-//! that works for an ad-hoc build; a signed Koyo registers an `SMAppService` daemon instead
-//! (5.6, not built).
+//! Setting the agent desktop up (`docs/agent-desktop.md` 11): a dialog that takes the person
+//! through the two grants its host needs, one at a time. Continue has the host ask macOS for
+//! the next one and opens its pane of System Settings; the dialog is out of the way while
+//! they're there, sees each grant the moment it's given, leads on to the next by itself, and
+//! brings Koyo back once the desktop is made.
 
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use gpui_kit::assets::IconName;
+use gpui_kit::{
+    App, Context, Div, Entity, FontWeight, InteractiveElement as _, IntoElement,
+    ParentElement as _, Render, StatefulInteractiveElement as _, Styled as _, Subscription, Window,
+    div, px,
+};
 
-use koyo_desk_wire::helper::HelperAnswer;
+use super::granting::{Grant, Step};
+use super::{Desk, State, desk};
+use crate::modal::{self, Button, Tone};
+use crate::shell::icon;
+use crate::theme::{self, Palette};
 
-use super::Outcome;
+const WIDTH: f32 = 480.;
+/// The lines of what the dialog says first, and of what it says about the step at hand.
+const INTRO: f32 = 3.;
+const HINT: f32 = 3.;
+const ROW: f32 = 44.;
+const GAP: f32 = 12.;
+const HEIGHT: f32 = 2. * modal::PADDING
+    + modal::HEADING_LINE
+    + INTRO * modal::LINE
+    + 2. * ROW
+    + HINT * modal::SMALL_LINE
+    + modal::SMALL_LINE
+    + modal::FOOTER
+    + 5. * GAP;
 
-/// The helper's executable: where `KOYO_DESK_HELPER` says, or beside the app's own, where
-/// `script/bundle` puts it and `cargo build` builds it.
-pub fn helper_program() -> Option<PathBuf> {
-    if let Some(program) = std::env::var_os("KOYO_DESK_HELPER") {
-        return Some(program.into());
-    }
-    let beside = std::env::current_exe()
-        .ok()?
-        .parent()?
-        .join("koyo-desk-helper");
-    beside.is_file().then_some(beside)
+pub struct Setup {
+    desk: Entity<Desk>,
+    /// The step the dialog last saw, so it moves on by itself as one is given.
+    seen: Step,
+    /// Whether the person set out with Continue: what's given from then on leads to the
+    /// next thing without their asking.
+    going: bool,
+    _watching: [Subscription; 2],
 }
 
-/// The script that asks for the administrator: the helper and the person's uid come in as
-/// arguments, quoted by `AppleScript` itself, so nothing is spliced into a command line. The
-/// helper's answer line is what it hands back, whatever the helper's exit code (`|| true`):
-/// `do shell script` would otherwise hand back only its stderr.
-const SCRIPT: [&str; 3] = [
-    "on run argv",
-    "do shell script (quoted form of item 1 of argv) & \" setup --person-uid \" & (item 2 of argv) & \" || true\" with prompt \"Koyo sets up its agent desktop: a hidden account for agents, Screen Sharing for that account on this Mac alone, and a helper.\" with administrator privileges",
-    "end run",
-];
-
-pub fn run() -> Outcome {
-    let Some(helper) = helper_program() else {
-        return Outcome::failed("the helper isn't built: script/cargo build -p koyo-desk-helper");
-    };
-    // SAFETY: always safe; the app runs as the person.
-    let uid = unsafe { libc::getuid() };
-    run_with(&helper, uid)
+/// Opens the setup over `parent`.
+pub fn open(parent: &mut Window, cx: &mut App) {
+    modal::open_kept(WIDTH, HEIGHT, parent, cx, |_, cx| {
+        let desk = desk(cx);
+        // The desk looks for the grants for as long as the dialog is up (`setup_shows`).
+        desk.update(cx, |desk, cx| desk.setup_shows(true, cx));
+        Setup {
+            seen: desk.read(cx).step(),
+            going: false,
+            _watching: [
+                cx.observe(&desk, |this: &mut Setup, _, cx| this.moved(cx)),
+                cx.on_release(|this: &mut Setup, cx| {
+                    (this.desk).update(cx, |desk, cx| desk.setup_shows(false, cx));
+                }),
+            ],
+            desk,
+        }
+    });
 }
 
-fn run_with(helper: &Path, uid: u32) -> Outcome {
-    let mut command = Command::new("/usr/bin/osascript");
-    for line in SCRIPT {
-        command.arg("-e").arg(line);
+/// Opens the setup if it's due: a grant is missing, and it wasn't offered yet since Koyo
+/// started.
+pub fn offer(window: &mut Window, cx: &mut App) {
+    if desk(cx).update(cx, |desk, _| desk.offers_setup()) {
+        open(window, cx);
     }
-    let output = match command.arg(helper).arg(uid.to_string()).output() {
-        Ok(output) => output,
-        Err(error) => return Outcome::failed(format!("osascript didn't start: {error}")),
-    };
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    // The person's Cancel is AppleScript's error -128.
-    if stderr.contains("-128") {
-        return Outcome::failed("Setting up was cancelled.");
+}
+
+impl Setup {
+    /// The desk changed: with the person on their way, a grant given leads on to the next,
+    /// and the desktop made brings Koyo back in front.
+    fn moved(&mut self, cx: &mut Context<Self>) {
+        let step = self.desk.read(cx).step();
+        if step != self.seen && self.going {
+            match step {
+                Step::Needs(Grant::ScreenRecording) if self.seen != Step::Starting => {
+                    self.ask(Grant::ScreenRecording, cx);
+                }
+                Step::Ready => cx.activate(true),
+                _ => {}
+            }
+        }
+        self.seen = step;
+        cx.notify();
     }
-    let answer = stdout
-        .lines()
-        .find_map(|line| serde_json::from_str::<HelperAnswer>(line.trim()).ok());
-    match answer {
-        Some(answer) => Outcome::from_helper(Ok(answer), "Set up."),
-        None => Outcome::failed(format!(
-            "the helper said nothing readable: {}",
-            stderr.trim()
-        )),
+
+    fn ask(&mut self, grant: Grant, cx: &mut Context<Self>) {
+        self.going = true;
+        self.desk.update(cx, |desk, cx| desk.ask_grant(grant, cx));
+    }
+
+    /// A grant's row: its number, a wheel while it's waited for, a tick once it's given.
+    fn row(&self, number: &'static str, grant: Grant, cx: &App, p: Palette) -> Div {
+        let (name, why) = match grant {
+            Grant::Accessibility => (
+                "Accessibility",
+                "To make that desktop, and to click and type in the apps on it.",
+            ),
+            Grant::ScreenRecording => (
+                "Screen Recording",
+                "To show you the desktop, and to take screenshots for agents.",
+            ),
+        };
+        let desk = self.desk.read(cx);
+        let given = desk.grants.is_some_and(|grants| match grant {
+            Grant::Accessibility => grants.accessibility,
+            Grant::ScreenRecording => grants.screen_recording,
+        });
+        let waited = self.going && self.seen == Step::Needs(grant);
+        let mark = div()
+            .relative()
+            .flex_none()
+            .size(px(22.))
+            .flex()
+            .items_center()
+            .justify_center();
+        let mark = if given {
+            mark.text_color(p.accent)
+                .child(icon(IconName::CircleCheck, 18.))
+        } else if waited {
+            mark.child(modal::spinner(p.muted))
+        } else {
+            (mark.rounded_full().border_1().border_color(p.hairline))
+                .text_xs()
+                .text_color(p.muted)
+                .child(number)
+        };
+        let stands = if given {
+            "Allowed"
+        } else if waited {
+            "Waiting for you…"
+        } else {
+            ""
+        };
+        div()
+            .h(px(ROW))
+            .flex()
+            .items_center()
+            .gap_3()
+            .child(mark)
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .child(div().font_weight(FontWeight::MEDIUM).child(name))
+                    .child(div().text_xs().text_color(p.muted).truncate().child(why)),
+            )
+            .child(
+                div()
+                    .flex_none()
+                    .text_xs()
+                    .text_color(p.muted)
+                    .child(stands),
+            )
+    }
+
+    /// The way on when macOS hasn't put the host in a list: its app shown in Finder, to be
+    /// dragged in. Offered while a grant is waited for.
+    fn way_out(&self, cx: &mut Context<Self>, p: Palette) -> Div {
+        let line = div()
+            .h(px(modal::SMALL_LINE))
+            .flex()
+            .items_center()
+            .text_xs();
+        if !(self.going && matches!(self.seen, Step::Needs(_))) {
+            return line;
+        }
+        line.child(
+            div()
+                .id("agent-desktop-setup-reveal")
+                .cursor_pointer()
+                .text_color(p.muted)
+                .hover(gpui_kit::Styled::underline)
+                .child("Not in the list? Show Koyo Agent Desktop in Finder, and drag it in.")
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.desk.update(cx, |desk, cx| desk.reveal_host(cx));
+                })),
+        )
+    }
+
+    /// What to do now, in a line or two.
+    fn hint(&self, cx: &App) -> String {
+        let settings = "switch on Koyo Agent Desktop";
+        match (self.seen, self.going) {
+            (Step::Needs(grant), false) => {
+                let lists = match grant {
+                    Grant::Accessibility => "in two lists",
+                    Grant::ScreenRecording => "in one more list",
+                };
+                format!(
+                    "Continue takes you to System Settings, where you {settings} {lists}. \
+                     This dialog waits for you here."
+                )
+            }
+            (Step::Needs(Grant::Accessibility), true) => format!(
+                "In System Settings → Privacy & Security → Accessibility, {settings}. macOS \
+                 may ask for your password. The next list opens by itself."
+            ),
+            (Step::Needs(Grant::ScreenRecording), true) => format!(
+                "macOS asks whether it may record the screen: choose Open System Settings. \
+                 Then, in Screen & System Audio Recording, {settings}. If macOS offers to \
+                 quit and reopen it, either answer is fine."
+            ),
+            (Step::Starting, _) => "Starting the agent desktop…".to_owned(),
+            (Step::Ready, _) => "The agent desktop is ready. Agents can use it from now on, \
+                                 and you can watch them, and take over, in its tab."
+                .to_owned(),
+            (Step::Unavailable, _) => match &self.desk.read(cx).state {
+                State::Failed(why) => why.clone(),
+                _ => "The agent desktop is off.".to_owned(),
+            },
+        }
+    }
+}
+
+impl Render for Setup {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let p = theme::palette(cx);
+        let step = self.seen;
+        let leave = if step == Step::Ready {
+            "Done"
+        } else {
+            "Not Now"
+        };
+        let leave = Button::new("agent-desktop-setup-leave", leave, Tone::Plain)
+            .on_click(|_, window, cx| modal::dismiss(window, cx));
+        let next = match step {
+            Step::Needs(grant) => {
+                let label = if self.going {
+                    "Open System Settings"
+                } else {
+                    "Continue"
+                };
+                Some(
+                    Button::new("agent-desktop-setup-next", label, Tone::Primary)
+                        .on_click(cx.listener(move |this, _, _, cx| this.ask(grant, cx))),
+                )
+            }
+            Step::Starting => {
+                Some(Button::new("agent-desktop-setup-next", "Continue", Tone::Primary).busy(true))
+            }
+            Step::Ready => Some(
+                Button::new(
+                    "agent-desktop-setup-next",
+                    "Show the Desktop",
+                    Tone::Primary,
+                )
+                .on_click(|_, window, cx| {
+                    if let Some((_, shell)) = crate::control::main_shell(cx) {
+                        shell.update(cx, |shell, cx| shell.desktop_pane(true, cx));
+                    }
+                    modal::dismiss(window, cx);
+                }),
+            ),
+            Step::Unavailable => None,
+        };
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .gap(px(GAP))
+            .child(modal::heading("Set up the agent desktop"))
+            .child(div().h(px(INTRO * modal::LINE)).text_color(p.muted).child(
+                "Agents open and drive apps on a desktop of their own, shown in a Koyo \
+                         tab, while you keep working on yours. macOS asks you to allow two \
+                         things for it, once.",
+            ))
+            .child(self.row("1", Grant::Accessibility, cx, p))
+            .child(self.row("2", Grant::ScreenRecording, cx, p))
+            .child(
+                div()
+                    .h(px(HINT * modal::SMALL_LINE))
+                    .text_xs()
+                    .text_color(p.text)
+                    .child(self.hint(cx)),
+            )
+            .child(self.way_out(cx, p))
+            .child(modal::footer(None, p).child(leave).children(next))
     }
 }

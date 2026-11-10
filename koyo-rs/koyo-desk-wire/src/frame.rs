@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
-/// The largest frame either side sends or takes. Bigger things go in pieces.
+/// The largest frame either side sends or takes: an answer that would be larger is refused.
 pub const MAX_FRAME: usize = 16 * 1024 * 1024;
 
 /// Writes `message` as one frame, in one write.

@@ -1,21 +1,20 @@
-//! The link between the app and the host in the agent session (`docs/agent-desktop.md` 8).
-//! The app listens on [`crate::paths::LINK_SOCKET`]; the host connects and both say
-//! [`ToHost::Hello`] / [`FromHost::Hello`] first. Requests carry an id answered with the same
-//! id, so one agent has several in flight.
+//! The link between the app and the agent desktop's host (`docs/agent-desktop.md` 8). The app
+//! listens on a socket of its own; the host connects and both say hello first. Requests carry
+//! an id answered with the same id, so several are in flight at once. Frames of the desktop's
+//! windows don't travel here: each is an `IOSurface` sent as a mach port (6).
 
 use serde::{Deserialize, Serialize};
 use serde_bytes::ByteBuf;
-use std::collections::BTreeMap;
 
-use crate::layout::{Point, Size};
+use crate::geometry::{Point, Rect, Size};
 
-/// The link's version. Both sides refuse another; the app then offers its own host.
-pub const PROTOCOL: u32 = 1;
+/// The link's version. Both sides refuse another.
+pub const PROTOCOL: u32 = 4;
 
-/// An area, the app's number for it, kept by the host across the app's restarts.
-pub type AreaId = u32;
 /// A request, the app's number for it; its answer carries the same.
 pub type RequestId = u64;
+/// A window, as the window server numbers it.
+pub type WindowId = u32;
 
 /// What the app tells the host.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -23,48 +22,36 @@ pub type RequestId = u64;
 pub enum ToHost {
     Hello {
         protocol: u32,
-        version: String,
+        /// The mach service the app receives frames on.
+        surfaces: String,
     },
-    /// A new area at `slot` for `owner`, the app's opaque name for the agent and its worktree,
-    /// given back in [`FromHost::Areas`] after a restart of the app.
-    AddArea {
-        id: AreaId,
-        slot: u8,
-        owner: String,
-    },
-    RemoveArea {
-        id: AreaId,
-    },
-    /// Whether the area's pane can be seen; a hidden one isn't captured.
+    /// Whether the desktop's tab can be seen; unseen, no frame is sent (the windows are still
+    /// captured, slowly: an app's window that nothing captures is hidden to the app).
     Visible {
-        id: AreaId,
         visible: bool,
     },
-    /// The decoder needs a key frame to start from.
-    WantKeyFrame {
-        id: AreaId,
-    },
-    /// The person's input in the area's pane, in area points, already clamped to the area.
+    /// The person's input in the tab, in desktop points: taking over (9).
     Input {
-        id: AreaId,
         input: Input,
     },
     Request {
         request: RequestId,
-        area: AreaId,
         ask: Ask,
     },
-    /// The caller went away or gave up: a running command's process group is killed.
+    /// The caller went away or gave up.
     Cancel {
         request: RequestId,
     },
-    /// The tile repeated over the agent screen: 1680 × 1050, PNG.
-    Wallpaper {
-        png: ByteBuf,
+    /// The person pressed "Open yours" on the notice [`FromHost::Wanted`] put up: an
+    /// instance of the app is started for them, as their own click would have.
+    OpenForPerson {
+        bundle: String,
     },
+    /// Koyo is quitting: the agent's apps are closed, the desktop removed, the host goes.
+    Quit,
 }
 
-/// The person's input, as real events in the agent session (`docs/agent-desktop.md` 7.6).
+/// The person's input, posted on to the window under it.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum Input {
@@ -75,17 +62,20 @@ pub enum Input {
         at: Point,
         button: Button,
         clicks: u8,
+        flags: u64,
     },
     Up {
         at: Point,
         button: Button,
         clicks: u8,
+        flags: u64,
     },
     Drag {
         at: Point,
         button: Button,
     },
-    /// Pixel deltas, `AppKit`'s sign; `phase` and `momentum` as `CGScrollPhase`'s bits.
+    /// Pixel deltas, `AppKit`'s sign; `phase` and `momentum` as `CGScrollPhase`'s bits, both
+    /// zero for a wheel's click, which has no phases.
     Scroll {
         at: Point,
         dx: f64,
@@ -93,22 +83,15 @@ pub enum Input {
         phase: u8,
         momentum: u8,
     },
-    /// A key with its code, the flags held and the characters it types.
+    /// A key by its code with the flags held: a shortcut, an arrow, a modifier itself.
     Key {
         down: bool,
         code: u16,
         flags: u64,
-        text: Option<String>,
     },
-    /// Modifiers changed alone.
-    Flags {
-        flags: u64,
-    },
-    /// A pinch's change in magnification; `phase` 1 began, 2 changed, 4 ended.
-    Pinch {
-        at: Point,
-        magnification: f64,
-        phase: u8,
+    /// What a key typed, as the person's keyboard layout and input method made it.
+    Text {
+        text: String,
     },
 }
 
@@ -121,121 +104,104 @@ pub enum Button {
     Middle,
 }
 
-/// What an agent asks of its area.
+/// What an agent asks of the desktop.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum Ask {
-    Act(Act),
-    /// The accessibility trees of the area's windows, a ref per interactive element
-    /// (`docs/agent-desktop.md` 7.7). Refs hold until the area's next snapshot.
-    Snapshot {
-        /// Only interactive elements.
-        interactive: bool,
-        /// Only this app's windows (its name or bundle id).
-        app: Option<String>,
+    /// Start an instance of `app` (a name, a bundle id or a path) on the desktop, with a file
+    /// or a URL to open and arguments.
+    Open {
+        app: String,
+        document: Option<String>,
+        args: Vec<String>,
     },
-    /// Until the area settles or `region` changes (7.11).
+    /// The windows on the desktop.
+    Windows,
+    /// A window, or the whole desktop, as PNG at `scale` pixels a point.
+    Screenshot {
+        window: Option<WindowId>,
+        scale: u8,
+    },
+    /// The accessibility tree of a window, or of every window, a ref per element (7). Refs
+    /// hold until the next snapshot.
+    Snapshot {
+        window: Option<WindowId>,
+        /// Only elements that can be acted on.
+        interactive: bool,
+        /// The apps' menu bars too, every item of them.
+        menus: bool,
+    },
+    Act(Act),
+    /// Until nothing on the desktop has changed for `quiet_ms`, at most `timeout_ms`.
     Wait {
-        until: WaitFor,
-        region: Option<Rect>,
         quiet_ms: u64,
         timeout_ms: u64,
     },
-    /// An app or a file, absolute or in the work folder; its windows placed in the area.
-    Open {
-        path: String,
-        args: Vec<String>,
-        env: BTreeMap<String, String>,
-        new_instance: bool,
-    },
-    /// The area as its view shows it, with the agent's pointer drawn in.
-    Screenshot {
-        jpeg: bool,
-    },
-    /// Clone `staging` (a path in [`crate::paths::STAGING`]) into the work folder at `to`.
-    CloneIn {
-        staging: String,
-        to: String,
-    },
-    /// Clone `path` of the work folder into `staging`, readable to the person.
-    CloneOut {
-        path: String,
-        staging: String,
-    },
-    /// The app has what was staged for it: the host removes its staging copy.
-    StagingDone {
-        staging: String,
-    },
-    /// `zsh -lc command` in the work folder (`cwd` inside it), output streamed back.
-    Run {
-        command: String,
-        cwd: Option<String>,
-        timeout_ms: u64,
-    },
+    /// Close a window, or quit an app the host started.
+    Close(Close),
 }
 
-/// An agent's act on the session's one pointer and keyboard, in area points.
+/// What an [`Ask::Close`] closes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Close {
+    Window(WindowId),
+    /// An app the host started, by its process.
+    App(i32),
+}
+
+/// Where an act lands: a point on the desktop, or an element of the last snapshot by its ref.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Spot {
+    Point(Point),
+    Element(String),
+}
+
+/// An agent's act.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum Act {
-    /// Press an element through accessibility: no pointer, no focus.
-    Press {
-        element: String,
-    },
-    /// Set an element's value through accessibility; `append` keeps what's there.
-    SetValue {
-        element: String,
-        text: String,
-        append: bool,
-    },
-    /// Scroll an element into view through accessibility.
-    ScrollTo {
-        element: String,
-    },
+    /// A plain click on an element that can be pressed is pressed through accessibility, with
+    /// no event at all; every other click is events at the point, or at the element's middle.
+    /// An act at a point lands in the frontmost window there; with `window`, in that window,
+    /// which is raised first when another covers the point.
     Click {
-        at: Point,
+        spot: Spot,
+        window: Option<WindowId>,
         button: Button,
         count: u8,
+        /// Modifiers held, as `CGEventFlags`.
+        flags: u64,
     },
     Move {
-        at: Point,
+        spot: Spot,
+        window: Option<WindowId>,
     },
     Drag {
-        from: Point,
-        to: Point,
+        from: Spot,
+        to: Spot,
+        window: Option<WindowId>,
     },
+    /// By `dx`, `dy` points: a positive `dy` brings what is further down into view.
     Scroll {
-        at: Point,
+        spot: Spot,
+        window: Option<WindowId>,
         dx: f64,
         dy: f64,
     },
-    Type {
-        text: String,
-    },
-    /// A combo as [`crate::keys::combo`] reads it.
+    /// Brings a window in front of the others on the agent desktop and sends keys to it from
+    /// now on. The person's own front app and focus stay theirs.
+    Raise { window: WindowId },
+    /// Text as keys, to the window last clicked or, with `into`, to that element, focused first.
+    Type { text: String, into: Option<String> },
+    /// An element's whole value, set through accessibility.
+    SetValue { element: String, text: String },
+    /// A combo as [`crate::keys::combo`] reads it, to the window last clicked or to `window`.
     Key {
         combo: String,
+        window: Option<WindowId>,
     },
-}
-
-/// What a wait waits for.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum WaitFor {
-    /// No damage for the quiet time.
-    #[default]
-    Settled,
-    /// Any damage in the region.
-    Change,
-}
-
-/// A rectangle in area points.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct Rect {
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
 }
 
 /// What the host tells the app.
@@ -244,63 +210,109 @@ pub struct Rect {
 pub enum FromHost {
     Hello {
         protocol: u32,
-        version: String,
-        /// The privacy grants the host holds in the session.
+        /// The host's process, which the app accepts frames from.
+        pid: i32,
+        /// The privacy grants the host holds.
         accessibility: bool,
         screen_recording: bool,
     },
-    /// The agent screen's size, at hello and on every change.
-    Screen {
-        size: Size,
+    /// The grants again, when one changed.
+    Grants {
+        accessibility: bool,
+        screen_recording: bool,
     },
-    /// The areas the host keeps, after a hello: the app gives each its tab back.
-    Areas {
-        areas: Vec<KeptArea>,
+    /// How the agent desktop stands, at hello and on every change.
+    Desktop {
+        state: DesktopState,
     },
-    /// One encoded H.264 access unit (AVCC: 4-byte lengths). A key frame carries its SPS and
-    /// PPS in `parameter_sets`.
-    Video {
-        id: AreaId,
-        key: bool,
-        /// Presentation time, microseconds.
-        pts: u64,
-        parameter_sets: Vec<ByteBuf>,
-        data: ByteBuf,
+    /// The agent's windows on the desktop, front to back, and the desktop's own picture (its
+    /// wallpaper), which is drawn behind them and is no window of an app's; on every change.
+    Windows {
+        windows: Vec<Window>,
+        backdrop: Option<Window>,
     },
-    /// Where an agent's pointer is, in area points; `pressed` while a button is down, `click`
-    /// once as a click lands.
+    /// An app the agent runs came to the front with no act of the agent's to explain it,
+    /// which is what happens when the person opens the app themselves (its Dock icon,
+    /// Spotlight) and the agent's is the only instance. The front was given back; the app
+    /// tells the person and offers them their own.
+    Wanted {
+        app: String,
+        bundle: String,
+    },
+    /// Where the agent last acted; `click` once as a press lands.
     Pointer {
-        id: AreaId,
         at: Point,
-        pressed: bool,
         click: bool,
     },
     Answer {
         request: RequestId,
-        result: Result<Answer, String>,
-    },
-    /// A running command's output, as it comes.
-    Output {
-        request: RequestId,
-        data: ByteBuf,
+        result: Result<Answer, Refusal>,
     },
     Log {
         level: LogLevel,
         text: String,
     },
-    /// Each area's view, every five seconds.
-    Stats {
-        id: AreaId,
-        stats: Stats,
-    },
 }
 
+/// How the agent desktop stands.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum DesktopState {
+    /// Made: its size in points and the display's pixels a point.
+    Ready { size: Size, scale: f64 },
+    /// Not there, and why (a grant missing, Mission Control's button not found).
+    Missing { why: String },
+}
+
+/// A window on the agent desktop.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Window {
+    pub id: WindowId,
+    pub pid: i32,
+    pub app: String,
+    pub title: String,
+    pub frame: Rect,
+    /// The window server's level: 0 for a normal window, above it for menus and the like.
+    pub layer: i32,
+}
+
+/// Why a request wasn't done: `code` for the caller's program, `message` for its reader.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct KeptArea {
-    pub id: AreaId,
-    pub slot: u8,
-    pub owner: String,
+pub struct Refusal {
+    pub code: RefusalCode,
+    pub message: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RefusalCode {
+    /// The desktop isn't there.
+    NoDesktop,
+    /// A grant the act needs is missing.
+    NotPermitted,
+    /// No such app, window or element.
+    NotFound,
+    /// The person already runs the app as its one instance (5).
+    AppIsThePersons,
+    /// What was asked doesn't read (a key name, a point off the desktop).
+    Invalid,
+    /// It was tried and didn't happen.
+    Failed,
+    /// No answer came in the time it had.
+    TimedOut,
+    /// The person acted in the tab while it was under way: it stopped where it was.
+    PersonActing,
+}
+
+impl Refusal {
+    pub fn new(code: RefusalCode, message: impl Into<String>) -> Refusal {
+        Refusal {
+            code,
+            message: message.into(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -311,57 +323,40 @@ pub enum LogLevel {
     Error,
 }
 
-/// An area's view over the last five seconds.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Stats {
-    pub streaming: bool,
-    pub fps: f64,
-    pub bytes_per_second: f64,
-    pub windows: u32,
-    /// Captures dropped before the encoder, three being in flight.
-    pub dropped: u64,
-    pub paint_overs: u64,
-    /// The host's own CPU, percent of a core.
-    pub host_cpu: f64,
-}
-
 /// A request's answer.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum Answer {
     Done,
-    /// A snapshot: the tree as text with `[ref=eN]` markers, and whether it was cut short.
+    /// A copy or cut was pressed: what it put on the clipboard, which holds the person's
+    /// own again.
+    Copied {
+        text: String,
+    },
+    Opened {
+        app: String,
+        pid: i32,
+        windows: Vec<Window>,
+    },
+    Windows {
+        windows: Vec<Window>,
+    },
+    /// A PNG of `size` points at `scale` pixels a point; `origin` is its top left on the desktop.
+    Screenshot {
+        png: ByteBuf,
+        origin: Point,
+        size: Size,
+        scale: u8,
+    },
+    /// The tree as text with `[ref=eN]` markers, and whether it was cut short.
     Snapshot {
         tree: String,
         elements: u32,
         truncated: bool,
     },
     Waited {
-        met: bool,
-        millis: u64,
-        changed: Option<Rect>,
-    },
-    Opened {
-        app: String,
-        pid: i32,
-        windows: u32,
-    },
-    Screenshot {
-        image: ByteBuf,
-        size: Size,
-        pointer: Option<Point>,
-    },
-    /// `cloned` false when the volume has no clones and it was copied.
-    Staged {
-        path: String,
-        files: u64,
-        bytes: u64,
-        cloned: bool,
-        millis: u64,
-    },
-    Ran {
-        exit_code: i32,
+        /// Whether it went still before the time ran out.
+        still: bool,
         millis: u64,
     },
 }

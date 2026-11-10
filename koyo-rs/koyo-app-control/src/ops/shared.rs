@@ -28,6 +28,8 @@ pub enum PaneKind {
     Changes,
     /// A chat.
     Chat,
+    /// The agent desktop: one, shown live. Opening it again gives the pane there is.
+    Desktop,
 }
 
 impl PaneKind {
@@ -39,6 +41,7 @@ impl PaneKind {
             PaneKind::Editor => "editor",
             PaneKind::Changes => "changes",
             PaneKind::Chat => "chat",
+            PaneKind::Desktop => "desktop",
         }
     }
 }

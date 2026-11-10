@@ -2,11 +2,11 @@
 //! and sets them: the sidebar, the bottom panel, the settings pages, and the pane the person
 //! is in, which has the keyboard or had it last.
 
-use gpui_kit::{App, Context, Entity, FocusHandle, Focusable as _, Window};
+use gpui_kit::{App, AppContext as _, Context, Entity, FocusHandle, Focusable as _, Window};
 
 use super::Shell;
 use crate::files::FilePane;
-use crate::model::{Pane, PaneKind, Workspace};
+use crate::model::{Pane, PaneKind, Tab, Workspace};
 use crate::navigation::Route;
 use crate::settings_view::SettingsPage;
 
@@ -112,12 +112,13 @@ impl Shell {
     }
 
     /// What takes the keyboard for `pane`: its chat's, its terminal's or its page's view, once
-    /// that's made, or its file.
+    /// that's made, the agent desktop's, or its file.
     fn keys_of(&self, pane: &Pane, cx: &App) -> Option<Keys> {
         let chat = (self.chat_tabs.view(pane.id)).map(|view| view.focus_handle(cx));
         let terminal = || Some(self.terminals.view(pane.terminal?)?.focus_handle(cx));
         let browser = || pane.view().map(|view| view.focus_handle(cx));
-        let view = chat.or_else(terminal).or_else(browser);
+        let desktop = || Some(pane.desktop_view()?.read(cx).focus_handle().clone());
+        let view = chat.or_else(terminal).or_else(browser).or_else(desktop);
         (view.map(Keys::View)).or_else(|| pane.file.clone().map(Keys::File))
     }
 
@@ -177,6 +178,31 @@ impl Shell {
         if self.workspace.enter_pane(id) {
             cx.notify();
         }
+    }
+
+    /// The agent desktop's pane: the one that's open, wherever it is, or a new one in a
+    /// tab of its own on the selected checkout. Its tab is shown when `shown`; else a new
+    /// one comes after the tab that is, out of sight, as a tab an agent opens does. `None`
+    /// with no checkout to open it on.
+    pub fn desktop_pane(&mut self, shown: bool, cx: &mut Context<Self>) -> Option<u64> {
+        let open = (self.workspace).find_pane(|pane| pane.kind == PaneKind::Desktop);
+        if let Some(((project, branch, tab), pane)) = open {
+            if shown {
+                self.workspace.select_tab(project, branch, tab);
+            }
+            return Some(pane);
+        }
+        let pane = Pane::desktop(cx.new(crate::agent_desktop::DeskView::new));
+        let id = pane.id;
+        // Out of sight it comes after the tab that shows; with no tab showing there's
+        // nothing to keep the person on, and it's the one shown.
+        let beside = (self.workspace.shown_tab()).filter(|at| self.workspace.tab(*at).is_some());
+        match beside {
+            Some(beside) if !shown => (self.workspace).insert_tab_after(beside, Tab::Single(pane)),
+            _ => self.workspace.push_tab(Tab::Single(pane)),
+        }
+        cx.notify();
+        (self.workspace.find_pane(|pane| pane.id == id)).map(|_| id)
     }
 }
 

@@ -4,16 +4,14 @@ version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "What Koyo's agent desktops agree on: the link between the app and the host in the agent session, the area layout, key names, the holder's and the helper's requests (docs/agent-desktop.md)."
+description = "What Koyo's agent desktop agrees on between the app and its host: the link's messages and frames, shapes, key names (docs/agent-desktop.md)."
 
 [dependencies]
 # The link's frames are CBOR, as the terminal daemon's are: self-describing, and byte strings
-# (video, screenshots, command output) travel as they are.
+# (screenshots) travel as they are.
 ciborium = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_bytes = "0.11"
-# The holder's and the helper's requests are JSON lines, short and readable in their logs.
-serde_json = "1"
 
 [lints]
 workspace = true
