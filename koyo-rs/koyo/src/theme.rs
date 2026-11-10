@@ -98,6 +98,12 @@ pub struct Palette {
     pub removed: Hsla,
     /// Files changed in place.
     pub modified: Hsla,
+    /// What's at work: the spinner on a chat's tab, its project's tile and its space's mark. An
+    /// amber, to be told at a glance from what waits for the person.
+    pub working: Hsla,
+    /// What waits for the person: the dot on a tab's row, its project's tile and its space's
+    /// mark. An indigo, apart from the amber of what's at work and the red of what went wrong.
+    pub waiting: Hsla,
     /// The colours of code by kind of token.
     pub code: Code,
 }
@@ -182,6 +188,8 @@ const DARK: Palette = Palette {
     added: hsl(0.38, 0.55, 0.58),
     removed: hsl(0.0, 0.7, 0.64),
     modified: hsl(0.11, 0.75, 0.6),
+    working: hsl(0.105, 0.98, 0.56),
+    waiting: hsl(0.655, 0.92, 0.72),
     code: DARK_CODE,
 };
 
@@ -207,6 +215,8 @@ const LIGHT: Palette = Palette {
     added: hsl(0.38, 0.6, 0.36),
     removed: hsl(0.0, 0.65, 0.48),
     modified: hsl(0.1, 0.8, 0.4),
+    working: hsl(0.095, 0.96, 0.46),
+    waiting: hsl(0.672, 0.78, 0.58),
     code: LIGHT_CODE,
 };
 

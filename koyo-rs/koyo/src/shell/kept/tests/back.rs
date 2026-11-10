@@ -96,7 +96,11 @@ fn the_window_comes_back_split_ordered_and_selected_as_it_was(cx: &mut TestAppCo
         cx.read(|cx| {
             let unit = shell.read(cx).workspace.branch().expect("a checkout");
             let pane = unit.tabs[tab].first();
-            (pane.file.is_some(), pane.changes.is_some(), pane.unopened.is_some())
+            (
+                pane.file.is_some(),
+                pane.changes.is_some(),
+                pane.unopened.is_some(),
+            )
         })
     };
     assert_eq!(opened(1, cx), (true, false, false), "the file it showed");
@@ -118,7 +122,10 @@ fn the_window_comes_back_split_ordered_and_selected_as_it_was(cx: &mut TestAppCo
 
 #[gpui_kit::test]
 fn a_file_or_the_diffs_brought_back_is_found_rather_than_opened_again(cx: &mut TestAppContext) {
-    let root = repo("kept-window-again", &[("README.md", "hi\n"), ("notes.md", "notes\n")]);
+    let root = repo(
+        "kept-window-again",
+        &[("README.md", "hi\n"), ("notes.md", "notes\n")],
+    );
     let file = |name: &str| {
         KeptTree::Pane(KeptPane::File {
             path: root.join(name),
@@ -170,20 +177,31 @@ fn a_file_or_the_diffs_brought_back_is_found_rather_than_opened_again(cx: &mut T
         let pane = shell.read(cx).workspace.tab_shown().map(Tab::first);
         pane.is_some_and(|pane| pane.changes.is_some())
     });
-    assert!(diffs, "the checkout's diffs, in the tab brought back for them");
+    assert!(
+        diffs,
+        "the checkout's diffs, in the tab brought back for them"
+    );
 }
 
 #[gpui_kit::test]
 fn a_page_brought_back_opens_only_once_shown_and_reopens_at_its_address(cx: &mut TestAppContext) {
     let root = repo("kept-window-lazy", &[("README.md", "hi\n")]);
     let chat = KeptTree::Pane(KeptPane::NewChat);
-    let kept = main_with(&root, 0, &[chat.clone(), page("https://example.com/", "Example")]);
+    let kept = main_with(
+        &root,
+        0,
+        &[chat.clone(), page("https://example.com/", "Example")],
+    );
     let path = file("kept-window-lazy-file", &kept);
     let (window, shell) = shell_with(&[&root], cx);
     launch(&shell, &path, &[&root], cx);
     select(&shell, &root, cx);
     draw(window, cx);
-    let page_pane = cx.read(|cx| shell.read(cx).workspace.branch().unwrap().tabs[1].first().id);
+    let page_pane = cx.read(|cx| {
+        shell.read(cx).workspace.branch().unwrap().tabs[1]
+            .first()
+            .id
+    });
     let view = |cx: &TestAppContext| {
         cx.read(|cx| {
             let unit = shell.read(cx).workspace.branch().unwrap();
@@ -206,7 +224,11 @@ fn a_page_brought_back_opens_only_once_shown_and_reopens_at_its_address(cx: &mut
         assert_eq!(page.read(cx).address(), "https://example.com/");
         assert!(!page.read(cx).is_start_page());
     });
-    assert_eq!(read_file(&path).checkouts[0].tabs.len(), 1, "not written yet");
+    assert_eq!(
+        read_file(&path).checkouts[0].tabs.len(),
+        1,
+        "not written yet"
+    );
     let back = main_with(&root, 1, &kept.checkouts[0].tabs);
     assert_eq!(written(&path, cx), back, "kept again, and shown");
 }
@@ -248,7 +270,11 @@ fn a_window_closed_and_opened_again_comes_back_as_it_was(cx: &mut TestAppContext
     cx.update_window(window, |_, window, _| window.remove_window())
         .unwrap();
     cx.run_until_parked();
-    assert_eq!(read_file(&path).checkouts.len(), 1, "written on the way out");
+    assert_eq!(
+        read_file(&path).checkouts.len(),
+        1,
+        "written on the way out"
+    );
 
     let (_, shell) = crate::test_support::in_window(
         gpui_kit::size(gpui_kit::px(1400.), gpui_kit::px(900.)),
@@ -267,7 +293,10 @@ fn a_window_closed_and_opened_again_comes_back_as_it_was(cx: &mut TestAppContext
         };
         assert_eq!(split.axis, SplitAxis::Row);
         assert!((split.ratio - 0.25).abs() < f32::EPSILON);
-        assert!(split.second.first().chat.is_none(), "the unsent chat, its tab kept");
+        assert!(
+            split.second.first().chat.is_none(),
+            "the unsent chat, its tab kept"
+        );
     });
 }
 
@@ -300,8 +329,18 @@ fn a_terminal_that_ended_leaves_its_pane_and_one_opened_meanwhile_gets_a_tab(
         &root,
         0,
         &[
-            split(SplitAxis::Row, 0.5, kept_terminal("term_a", "zsh"), example.clone()),
-            split(SplitAxis::Row, 0.5, example.clone(), kept_terminal("term_gone", "dev")),
+            split(
+                SplitAxis::Row,
+                0.5,
+                kept_terminal("term_a", "zsh"),
+                example.clone(),
+            ),
+            split(
+                SplitAxis::Row,
+                0.5,
+                example.clone(),
+                kept_terminal("term_gone", "dev"),
+            ),
             kept_terminal("term_gone_too", "tests"),
         ],
     );
@@ -316,7 +355,10 @@ fn a_terminal_that_ended_leaves_its_pane_and_one_opened_meanwhile_gets_a_tab(
 
     // The daemon runs one of them still, and one the window didn't know of.
     shell.update(cx, |shell, cx| {
-        let listed = vec![terminal("term_a", "zsh", &root), terminal("term_new", "build", &root)];
+        let listed = vec![
+            terminal("term_a", "zsh", &root),
+            terminal("term_new", "build", &root),
+        ];
         shell.take_terminals(std::slice::from_ref(&root), listed, cx);
     });
     cx.run_until_parked();
@@ -336,7 +378,12 @@ fn a_terminal_that_ended_leaves_its_pane_and_one_opened_meanwhile_gets_a_tab(
     assert_eq!(
         now.checkouts[0].tabs,
         [
-            split(SplitAxis::Row, 0.5, kept_terminal("term_a", "zsh"), example.clone()),
+            split(
+                SplitAxis::Row,
+                0.5,
+                kept_terminal("term_a", "zsh"),
+                example.clone()
+            ),
             example,
             kept_terminal("term_new", "build"),
         ]
@@ -347,7 +394,12 @@ fn a_terminal_that_ended_leaves_its_pane_and_one_opened_meanwhile_gets_a_tab(
 fn a_shell_a_daemon_restart_ended_runs_again_in_the_pane_it_had(cx: &mut TestAppContext) {
     let root = repo("kept-window-restart", &[("README.md", "hi\n")]);
     let example = page("https://example.com/", "Example");
-    let beside = split(SplitAxis::Row, 0.5, kept_terminal("term_shell", "zsh"), example);
+    let beside = split(
+        SplitAxis::Row,
+        0.5,
+        kept_terminal("term_shell", "zsh"),
+        example,
+    );
     let path = file("kept-window-restart-file", &main_with(&root, 0, &[beside]));
     let (_, shell) = shell_with(&[&root], cx);
     launch(&shell, &path, &[&root], cx);
@@ -412,7 +464,10 @@ fn a_chat_deleted_leaves_its_pane_and_one_made_meanwhile_gets_a_tab(cx: &mut Tes
     // The host has the one still, renamed, and one made while the window was closed.
     let chats = shell.read_with(cx, |shell, _| shell.chats().clone());
     chats.update(cx, |chats, cx| {
-        chats.hear_list(vec![summary("0001", "The plan"), summary("0003", "Made since")], cx);
+        chats.hear_list(
+            vec![summary("0001", "The plan"), summary("0003", "Made since")],
+            cx,
+        );
     });
     cx.run_until_parked();
     assert_eq!(

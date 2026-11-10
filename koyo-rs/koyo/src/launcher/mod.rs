@@ -7,7 +7,8 @@
 //! and the tabs open already, as Zen's floating address bar lists them.
 //!
 //! ⌘L opens it on the page the person is in, as Arc's does: the page's address in the field, all
-//! of it selected, and what's typed over it loads in that page rather than a new tab.
+//! of it selected, and what's typed over it loads in that page rather than a new tab. It needs
+//! a page: with none in the tab shown it opens nothing.
 
 mod act;
 mod here;
@@ -130,7 +131,7 @@ impl Kind {
 
 impl Shell {
     /// What the window does with the launcher's actions, wherever the keyboard is: opens it over
-    /// the window on the selected checkout, for a new tab or on the page shown.
+    /// the window on the selected checkout, for a new tab or, with a page shown, on that page.
     pub fn handle_launcher(root: Div, cx: &mut Context<Self>) -> Div {
         root.on_action(cx.listener(|this, _: &NewTab, window, cx| this.open_launcher(window, cx)))
             .on_action(
@@ -147,11 +148,12 @@ impl Shell {
     /// ⌘L, or a click on the Arc sidebar's address: the address of the page shown, to change
     /// (`Shell::shown_page`). In Arc, where a page has no toolbar, the launcher opens on the
     /// page; in Orca the keyboard goes to the page's own field, all of it selected. With no
-    /// page in the tab shown, the launcher opens as ⌘T opens it, on a browser tab.
+    /// page in the tab shown there's no address to change, and nothing opens: the key goes on
+    /// to whatever has the keyboard, as one the window doesn't take.
     pub fn open_address(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let shown = (self.shown_page(cx)).and_then(|view| Some((self.pane_of(&view)?.1, view)));
         let Some((pane, view)) = shown else {
-            return self.open_launcher(window, cx);
+            return cx.propagate();
         };
         if crate::settings::get(cx).layout == crate::settings::Layout::Orca {
             self.enter_pane(pane, cx);

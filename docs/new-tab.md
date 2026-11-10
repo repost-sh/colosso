@@ -15,7 +15,8 @@ in `koyo-rs/koyo/src/launcher/` and `koyo-rs/koyo/src/history/`.
   window, for a tab on the selected checkout. ⌘T again, Escape, or a click outside it
   closes it.
 - **⌘L**, from anywhere in the window, or a click on the Arc sidebar's address bar, opens it
-  **on the page shown** (`launcher::OpenAddress`, `Shell::open_address`), as Arc's ⌘L does:
+  **on the page shown** (`launcher::OpenAddress`, `Shell::open_address`), as Arc's ⌘L does.
+  It changes a page's address, so it needs a page:
   - The page is the one of the pane the person is in, or the shown tab's first page when
     they're in a pane of another kind (`docs/arc-sidebar.md` 2).
   - It opens on Browser, the page's whole address in the field, all of it selected, the rows
@@ -26,7 +27,9 @@ in `koyo-rs/koyo/src/launcher/` and `koyo-rs/koyo/src/history/`.
   - Every other row does what it does after ⌘T: a Switch to Tab row switches, and Tab goes on
     to a chat, a terminal or a worktree, which open as usual.
   - ⌘L in the open launcher selects the field's text again.
-  - With no page in the tab shown, ⌘L opens the launcher as ⌘T does.
+  - With no page in the tab shown, a chat's, a terminal's, a file's, or no tab at all, ⌘L
+    opens nothing and no tab: the key goes on to whatever has the keyboard, as one the
+    window doesn't take, and a click on the bar does nothing. A new tab is ⌘T's.
   - In the Orca layout a page has its own toolbar, so ⌘L puts the keyboard in that page's
     address field instead, from anywhere in the tab.
 - A pill on the left of the field names the **kind** of tab Enter opens: **Browser**, **Chat**

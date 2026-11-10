@@ -7,7 +7,7 @@
 //! dot as the next one grows, its width going a little past and settling, the strength easing, so
 //! the eye follows the switch rather than seeing it jump.
 //!
-//! A space that isn't shown says what its tiles would: a red dot by its mark while something in
+//! A space that isn't shown says what its tiles would: an indigo dot by its mark while something in
 //! it waits for the person, the tiles' spinner while something works.
 
 use std::time::Duration;
@@ -26,7 +26,7 @@ use gpui_kit::{
 use super::actions::NewSpace;
 use super::hover::Hovered;
 use super::space_colour;
-use crate::chat::{Activity, spinner};
+use crate::chat::{Activity, spinner_of};
 use crate::pane::dot;
 use crate::projects::{AddProject, NewWorktree};
 use crate::settings;
@@ -53,8 +53,11 @@ const FADE: Duration = Duration::from_millis(220);
 /// The dot by a mark whose space has something waiting for the person: smaller than a tile's,
 /// as the mark is.
 const PILL: f32 = 5.;
-/// How strong the spinner by a mark is, quieter than a tile's.
-const WORKING: f32 = 0.7;
+/// Where that dot is: from the mark's middle across, and from the top of its room down.
+const PILL_AT: (f32, f32) = (2.5, 3.5);
+/// The spinner by a mark whose space has something at work: where the dot would be, their
+/// middles one, and half as wide again, so its ring reads at that size.
+const RING: f32 = PILL * 1.5;
 
 pub fn bar(shell: &Shell, window: &mut Window, cx: &mut Context<Shell>) -> impl IntoElement {
     let settings = settings::get(cx);
@@ -114,9 +117,10 @@ pub fn bar(shell: &Shell, window: &mut Window, cx: &mut Context<Shell>) -> impl 
 }
 
 /// What a mark says of its space's `activity` (`docs/arc-sidebar.md` 7): the dot or the spinner,
-/// up and right of the mark's middle, where the dot is and the capsule's middle would be. It's
-/// laid over the mark, taking no room, so nothing moves as it comes and goes. It shows only by a
-/// mark that's `a_dot`: on a space just left, once the capsule has shrunk back.
+/// in one place, up and right of the mark's middle, where the mark's dot is and the capsule's
+/// middle would be. It's laid over the mark, taking no room, so nothing moves as it comes and
+/// goes. It shows only by a mark that's `a_dot`: on a space just left, once the capsule has
+/// shrunk back.
 fn pill(
     index: usize,
     activity: Activity,
@@ -135,23 +139,25 @@ fn pill(
     if !a_dot {
         return None;
     }
-    let (sign, left, top) = match activity {
+    let (sign, wide) = match activity {
         Activity::Quiet => return None,
-        // At a strength of its own that never changes: the spinner is a view, drawn again only
-        // as it steps, so a fade round it would stay where its first frame had it.
-        Activity::Working => (spinner(format!("space-{index}"), cx).opacity(WORKING), 3., 0.),
+        // As strong as a tile's, and never fading: the spinner is a view, drawn again only as
+        // it turns, so a fade round it would stay where its first frame had it.
+        Activity::Working => (spinner_of(format!("space-{index}"), RING, cx), RING),
         Activity::Attention => {
-            let danger = theme::palette(cx).danger;
-            let dot = dot(danger).size(px(PILL)).opacity(fade.clamp(0., 1.));
-            (dot, 2.5, 3.5)
+            let waiting = theme::palette(cx).waiting;
+            let dot = dot(waiting).size(px(PILL)).opacity(fade.clamp(0., 1.));
+            (dot, PILL)
         }
     };
+    // Whichever it is, its middle is where the dot's is.
+    let out = (wide - PILL) / 2.;
     let pill = div()
         .debug_selector(move || format!("arc-space-pill-{index}"))
         .absolute()
-        .top(px(top))
+        .top(px(PILL_AT.1 - out))
         .left(relative(0.5))
-        .ml(px(left))
+        .ml(px(PILL_AT.0 - out))
         .child(sign);
     Some(pill.into_any_element())
 }

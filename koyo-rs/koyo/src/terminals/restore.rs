@@ -187,8 +187,15 @@ impl Shell {
                 continue;
             };
             let request = Source::Open(Box::new(open_request(&worktree, name.to_owned())));
-            let handle = record["handle"].as_str().map(|handle| Handle(handle.to_owned()));
-            self.place_terminal(fresh, &worktree, handle.as_ref(), (request, name.to_owned()));
+            let handle = record["handle"]
+                .as_str()
+                .map(|handle| Handle(handle.to_owned()));
+            self.place_terminal(
+                fresh,
+                &worktree,
+                handle.as_ref(),
+                (request, name.to_owned()),
+            );
         }
         // The rest stay as they were brought back: the other build's daemon may run them yet.
         self.terminals.unconfirmed.clear();

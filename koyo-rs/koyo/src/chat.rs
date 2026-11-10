@@ -16,6 +16,7 @@ mod output;
 mod queued;
 mod rewind;
 mod rows;
+mod spinner;
 mod status;
 mod subagent_bar;
 mod subagents;
@@ -56,7 +57,8 @@ pub use asks::{AllowRequest, AllowRequestForChat, DenyRequest};
 pub use composer::{
     ImplementPlan, OpenModelMenu, RecallPrompt, SkipQuestion, StopTurn, TogglePlan,
 };
-pub use status::{Activity, spinner};
+pub use spinner::{spinner, spinner_of};
+pub use status::Activity;
 pub use subagent_bar::OpenParent;
 pub use tabs::ChatTabs;
 pub use view::details::ToggleDetails;

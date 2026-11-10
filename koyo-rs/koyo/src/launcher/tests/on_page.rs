@@ -1,8 +1,10 @@
 //! ⌘L opens the launcher on the page the person is in: its address in the field, all of it
-//! selected, and a page or a search picked loads in that page. With no page in the tab it's
-//! ⌘T's launcher, and in the Orca layout the keyboard goes to the page's own field.
+//! selected, and a page or a search picked loads in that page. With no page in the tab it
+//! opens nothing, and in the Orca layout the keyboard goes to the page's own field.
 
-use gpui_kit::{AnyWindowHandle, App, AppContext as _, Entity, Focusable as _, TestAppContext, Window};
+use gpui_kit::{
+    AnyWindowHandle, App, AppContext as _, Entity, Focusable as _, TestAppContext, Window,
+};
 
 use super::{Kind, Launcher, kind, launch, launch_with, shell};
 use crate::browser::BrowserView;
@@ -173,23 +175,32 @@ fn the_address_is_not_text_dismissed_nor_replaced_by_it(cx: &mut TestAppContext)
     cx.simulate_input(launcher_window, "example.org");
     press(launcher_window, "escape", cx);
     cx.run_until_parked();
-    assert_eq!(offered(window, cx), ("example.org".to_owned(), Kind::Browser));
+    assert_eq!(
+        offered(window, cx),
+        ("example.org".to_owned(), Kind::Browser)
+    );
 }
 
 #[gpui_kit::test]
-fn with_no_page_in_the_tab_cmd_l_opens_the_launcher_as_cmd_t_does(cx: &mut TestAppContext) {
-    let (window, shell, _) = shell("launcher-address-none", cx);
-    cx.update(|cx| settings::update(cx, |settings| settings.layout = Layout::Arc));
+fn with_no_page_in_the_tab_cmd_l_opens_nothing(cx: &mut TestAppContext) {
+    // A page in a tab that isn't shown, and a chat in the one that is.
+    let (window, shell, _, view) = on_page("launcher-address-none", Layout::Arc, cx);
     shell.update(cx, |shell, cx| shell.new_tab(PaneKind::Chat, cx));
-    draw(window, cx);
-    draw(window, cx);
-    // From the chat's composer, which has the keyboard.
-    let (launcher_window, launcher) = open_address(window, cx);
-    assert_eq!(kind(&launcher, cx), Kind::Browser);
-    assert_eq!(field(&launcher, cx).0, "");
-    press(launcher_window, "enter", cx);
-    cx.run_until_parked();
-    assert_eq!(tabs(&shell, cx), ["New chat", "[New tab]"]);
+    for layout in [Layout::Arc, Layout::Orca] {
+        cx.update(|cx| settings::update(cx, |settings| settings.layout = layout));
+        draw(window, cx);
+        draw(window, cx);
+        // From the chat's composer, which has the keyboard.
+        press(window, "cmd-l", cx);
+        cx.run_until_parked();
+        assert!(dialog::<Launcher>(cx).is_none(), "no address to change");
+        assert_eq!(tabs(&shell, cx).len(), 2, "and no tab opened for one");
+        let editing = in_window(window, cx, |window, cx| {
+            let field = view.read(cx).address_field().read(cx);
+            field.focus_handle(cx).is_focused(window)
+        });
+        assert!(!editing, "the other tab's page is left alone");
+    }
 }
 
 #[gpui_kit::test]
@@ -198,7 +209,10 @@ fn in_a_split_cmd_l_opens_on_the_page_the_person_is_in(cx: &mut TestAppContext) 
     let (second, _) = open(window, &shell, "https://second.example/", cx);
     shell.update(cx, |shell, cx| {
         let unit = shell.workspace.branch_mut().expect("a checkout");
-        assert!(unit.drop_tab(1, first, Edge::Right), "two pages side by side");
+        assert!(
+            unit.drop_tab(1, first, Edge::Right),
+            "two pages side by side"
+        );
         cx.notify();
     });
     let opens_on = |cx: &mut TestAppContext| {
@@ -224,7 +238,10 @@ fn in_a_split_cmd_l_opens_on_the_page_the_person_is_in(cx: &mut TestAppContext) 
             .filter_map(|pane| pane.address(cx))
             .collect()
     });
-    assert_eq!(addresses, ["https://example.org", "https://second.example/"]);
+    assert_eq!(
+        addresses,
+        ["https://example.org", "https://second.example/"]
+    );
 }
 
 #[gpui_kit::test]
@@ -233,7 +250,13 @@ fn in_the_orca_layout_cmd_l_puts_the_keyboard_in_the_pages_own_field(cx: &mut Te
     // From a chat beside the page, which the person is in.
     shell.update(cx, |shell, cx| shell.new_tab(PaneKind::Chat, cx));
     draw(window, cx);
-    let chat = cx.read(|cx| shell.read(cx).workspace.tab_shown().map(|tab| tab.first().id));
+    let chat = cx.read(|cx| {
+        shell
+            .read(cx)
+            .workspace
+            .tab_shown()
+            .map(|tab| tab.first().id)
+    });
     shell.update(cx, |shell, cx| {
         let unit = shell.workspace.branch_mut().expect("a checkout");
         let beside = unit.tabs[0].first().id;
@@ -243,10 +266,16 @@ fn in_the_orca_layout_cmd_l_puts_the_keyboard_in_the_pages_own_field(cx: &mut Te
     click_pane(window, chat.expect("the chat's pane"), cx);
     press(window, "cmd-l", cx);
     cx.run_until_parked();
-    assert!(dialog::<Launcher>(cx).is_none(), "no launcher: the page has a field");
+    assert!(
+        dialog::<Launcher>(cx).is_none(),
+        "no launcher: the page has a field"
+    );
     let (editing, value) = in_window(window, cx, |window, cx| {
         let field = view.read(cx).address_field().read(cx);
-        (field.focus_handle(cx).is_focused(window), field.value().to_string())
+        (
+            field.focus_handle(cx).is_focused(window),
+            field.value().to_string(),
+        )
     });
     assert!(editing, "the keyboard is in the page's address");
     assert_eq!(value, DOCS);

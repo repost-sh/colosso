@@ -246,10 +246,9 @@ impl Shell {
             hand: None,
             grab: Point::default(),
         };
-        let button_press =
-            |_: &MouseDownEvent, _: &mut Window, cx: &mut App| {
-                cx.stop_propagation();
-            };
+        let button_press = |_: &MouseDownEvent, _: &mut Window, cx: &mut App| {
+            cx.stop_propagation();
+        };
         div()
             .id(("pane-header", id))
             .h(px(HEADER))
@@ -378,7 +377,11 @@ fn hears_presses(id: u64, cx: &mut Context<Shell>) -> impl IntoElement {
             }
         });
     };
-    canvas(|_, _, _| (), hear).absolute().top_0().left_0().size_full()
+    canvas(|_, _, _| (), hear)
+        .absolute()
+        .top_0()
+        .left_0()
+        .size_full()
 }
 
 /// Over a pane while something's in hand: a strip along each side to drop it on, and under

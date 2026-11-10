@@ -83,8 +83,8 @@ impl Shell {
         let kept = kept || !settings::get(cx).preview_files;
         let path = checkout.read(cx).root().join(&place.path);
         // A tab brought back with the window for it, and not shown yet, is one that has it.
-        let open = (self.open_already(&path, cx))
-            .or_else(|| self.open_brought_back(&path, window, cx));
+        let open =
+            (self.open_already(&path, cx)).or_else(|| self.open_brought_back(&path, window, cx));
         let file = if let Some((at, file)) = open {
             if kept {
                 file.update(cx, FilePane::keep);

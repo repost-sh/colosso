@@ -1,7 +1,8 @@
-//! What a person does in the Arc sidebar, drawn as they do it (`docs/arc-sidebar.md` 2, 3, 7): a
-//! space that isn't shown saying on its mark that a chat in it works, then waits; a project's
-//! tile dragged from one row of the grid to the other; and a chat beside a page, the address
-//! bar following the pane pressed in, ⌘L opening the launcher on the page.
+//! What a person does in the Arc sidebar, drawn as they do it (`docs/arc-sidebar.md` 2, 3, 5,
+//! 7): a space that isn't shown saying on its mark that a chat in it works, then waits; a tab's
+//! row and its project's tile saying the same of a chat in the space shown; a project's tile
+//! dragged from one row of the grid to the other; and a chat beside a page, the address bar
+//! following the pane pressed in, ⌘L opening the launcher on the page.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -60,29 +61,43 @@ pub fn settle(drawn: &mut Drawn) -> Result<()> {
     Ok(())
 }
 
-/// Saves the window as `name`, and the sidebar's lower left, four times its size, as
-/// `name`-foot: the marks are a few points across.
-fn save_with_foot(drawn: &mut Drawn, name: &str) -> Result<String> {
+/// A part of the sidebar a picture shows again, larger: what's said there is a few points
+/// across.
+#[derive(Clone, Copy)]
+enum Part {
+    /// The tiles and the worktrees' rows under them.
+    Rows,
+    /// The spaces' marks.
+    Foot,
+}
+
+/// Saves the window as `name`, and `part` of the sidebar, three or four times its size, as
+/// `name`-rows or `name`-foot.
+fn save_with(drawn: &mut Drawn, name: &str, part: Part) -> Result<String> {
     let path = drawn.save(&format!("{name}.png"))?;
     let picture = image::open(&path).map_err(|error| error.to_string())?;
     let (width, height) = (picture.width(), picture.height());
     let scale = width / 1600;
     let sidebar = drawn.cx.read(|cx| settings::get(cx).sidebar_width());
     let across = ((sidebar + 2. * theme::GUTTER) as u32 * scale).min(width);
-    let down = (110 * scale).min(height);
-    let foot = imageops::crop_imm(&picture.to_rgba8(), 0, height - down, across, down).to_image();
-    let foot = imageops::resize(&foot, across * 4, down * 4, FilterType::Nearest);
-    let beside = path.with_file_name(format!("{name}-foot.png"));
-    foot.save(&beside).map_err(|error| error.to_string())?;
+    let (label, top, down, times) = match part {
+        Part::Rows => ("rows", (80 * scale).min(height), 600 * scale, 3),
+        Part::Foot => ("foot", height.saturating_sub(110 * scale), 110 * scale, 4),
+    };
+    let down = down.min(height - top);
+    let part = imageops::crop_imm(&picture.to_rgba8(), 0, top, across, down).to_image();
+    let part = imageops::resize(&part, across * times, down * times, FilterType::Nearest);
+    let beside = path.with_file_name(format!("{name}-{label}.png"));
+    part.save(&beside).map_err(|error| error.to_string())?;
     Ok(format!("saved {} and {}", path.display(), beside.display()))
 }
 
-/// The chats' host says of the one chat in `folder` that it's at `status`, read or not.
-fn hear(drawn: &mut Drawn, folder: &Path, status: Status, unread: bool) {
+/// The chats' host says of chat `id`, in `folder`, that it's at `status`, read or not.
+fn hear(drawn: &mut Drawn, (id, folder): (&str, &Path), status: Status, unread: bool) {
     let summary = ThreadSummary {
-        id: ThreadId("0001".into()),
+        id: ThreadId(id.into()),
         cwd: folder.to_string_lossy().into_owned(),
-        title: "A chat in the other space".into(),
+        title: "A chat at work".into(),
         provider: "claude".into(),
         model: None,
         status,
@@ -109,12 +124,52 @@ pub fn pills(drawn: &mut Drawn, site: &Path, said: &mut Vec<String>) -> Result<(
         (Status::Idle, false, "arc-pill-seen"),
     ];
     for (status, unread, name) in steps {
-        hear(drawn, site, status, unread);
+        hear(drawn, ("0001", site), status, unread);
         settle(drawn)?;
         let says = (drawn.cx).read(|cx| shell.read(cx).space_activity(1, cx));
         said.push(format!(
             "the second space says {says:?}: {}",
-            save_with_foot(drawn, name)?
+            save_with(drawn, name, Part::Foot)?
+        ));
+    }
+    Ok(())
+}
+
+/// A chat in a tab of the space shown works, then is done and not seen, then seen: what its
+/// row says at its end each time, and its project's tile in its corner.
+pub fn tab_marks(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
+    let shell = drawn.shell.clone();
+    let root = checkout()?;
+    // The chat among the tabs, which isn't the one shown, so nothing marks it seen.
+    let found = (drawn.cx).update(|cx| {
+        shell.update(cx, |shell, cx| {
+            let tabs = &mut shell.workspace.branch_mut()?.tabs;
+            let chat = (tabs.iter_mut()).find(|tab| tab.first().kind == PaneKind::Chat)?;
+            if let Tab::Single(pane) = chat {
+                pane.chat = Some(ThreadId("0002".into()));
+            }
+            cx.notify();
+            Some(())
+        })
+    });
+    found.ok_or("no chat among the tabs shown")?;
+    let steps = [
+        (Status::Working, false, "arc-tab-working"),
+        (Status::Idle, true, "arc-tab-waiting"),
+        (Status::Idle, false, "arc-tab-seen"),
+    ];
+    for (status, unread, name) in steps {
+        hear(drawn, ("0002", &root), status, unread);
+        settle(drawn)?;
+        let says = (drawn.cx).read(|cx| {
+            let shell = shell.read(cx);
+            let chat = |tab: &&Tab| tab.first().kind == PaneKind::Chat;
+            let tab = shell.workspace.branch()?.tabs.iter().find(chat)?;
+            Some(shell.tab_activity(tab, cx))
+        });
+        said.push(format!(
+            "the chat's tab says {says:?}: {}",
+            save_with(drawn, name, Part::Rows)?
         ));
     }
     Ok(())
@@ -261,7 +316,10 @@ pub fn address(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     let share = |share: f32| point(px(left + (1600. - left) * share), px(500.));
     let (in_chat, in_page) = (share(0.25), share(0.75));
     let none = Modifiers::default();
-    for (at, name) in [(in_page, "arc-bar-in-the-page"), (in_chat, "arc-bar-in-the-chat")] {
+    for (at, name) in [
+        (in_page, "arc-bar-in-the-page"),
+        (in_chat, "arc-bar-in-the-chat"),
+    ] {
         drawn.cx.simulate_click(window, at, none);
         settle(drawn)?;
         let (bar, page) = bar(drawn);
@@ -295,7 +353,9 @@ pub fn address(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     let keyboard = (drawn.cx)
         .update_window(window, |_, window, _| {
             let context = window.context_stack();
-            context.iter().any(|context| context.contains("BrowserPage"))
+            context
+                .iter()
+                .any(|context| context.contains("BrowserPage"))
         })
         .map_err(|error| error.to_string())?;
     let path = drawn.save("arc-after-cmd-l.png")?;

@@ -130,7 +130,8 @@ fn cells(slots: &[Bounds<Pixels>], per_row: usize) -> Vec<(usize, Point<Pixels>)
     let (count, per_row) = (slots.len(), per_row.max(1));
     // Only a grid of more than one row has a short row, and so a tile under another to tell
     // how far apart the rows are.
-    if let (Some(first), Some(beside), Some(under)) = (slots.first(), slots.get(1), slots.get(per_row))
+    if let (Some(first), Some(beside), Some(under)) =
+        (slots.first(), slots.get(1), slots.get(per_row))
     {
         let across = beside.center().x - first.center().x;
         let down = under.center().y - first.center().y;
@@ -382,7 +383,11 @@ mod tests {
             held.expect("a tile in hand")
         };
         let held = place(30., 22.);
-        assert_eq!((held.to, held.origin), (0, Point::default()), "where it was");
+        assert_eq!(
+            (held.to, held.origin),
+            (0, Point::default()),
+            "where it was"
+        );
         assert_eq!(place(60., 22.).to, 0, "not half way to the next yet");
         assert_eq!(place(70., 22.).to, 1);
         assert_eq!(place(166., 30.).to, 2, "the end of its row");
@@ -413,7 +418,10 @@ mod tests {
         // A little outside, it's drawn as far as the grid goes.
         let held = hand.place(&keys, (&slots, 3), bounds, middle_at(-20., -10.), true);
         let held = held.expect("a tile in hand");
-        assert_eq!((held.to, held.origin, held.away), (0, Point::default(), false));
+        assert_eq!(
+            (held.to, held.origin, held.away),
+            (0, Point::default(), false)
+        );
     }
 
     #[test]
@@ -430,10 +438,16 @@ mod tests {
         // gpui's drag over, or the tile gone, the grid has none in hand and settles.
         hand.take(101, point(px(30.), px(22.)));
         let grid = (slots.as_slice(), 3);
-        assert!(hand.place(&keys, grid, bounds, middle_at(98., 22.), false).is_none());
+        assert!(
+            hand.place(&keys, grid, bounds, middle_at(98., 22.), false)
+                .is_none()
+        );
         assert!(hand.holding().is_none());
         hand.take(999, Point::default());
-        assert!(hand.place(&keys, grid, bounds, middle_at(98., 22.), true).is_none());
+        assert!(
+            hand.place(&keys, grid, bounds, middle_at(98., 22.), true)
+                .is_none()
+        );
         assert!(hand.holding().is_none());
     }
 }

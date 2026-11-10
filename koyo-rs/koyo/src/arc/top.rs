@@ -1,7 +1,8 @@
 //! The top of the Arc sidebar (`docs/arc-sidebar.md` 1, 2): back, forward and reload for the
 //! page shown, at the sidebar's edge of the top rail, and under them the address bar, which says
 //! what the pane the person is in shows: a page's address, a terminal's program, a chat's name,
-//! "File" or "Settings". Clicked, it opens the launcher on the page, as ⌘L does.
+//! "File" or "Settings". Clicked with a page shown, it opens the launcher on the page, as ⌘L
+//! does.
 
 use gpui_kit::Focusable as _;
 use gpui_kit::assets::IconName;
@@ -80,10 +81,11 @@ fn host_of(address: &str) -> String {
     crate::history::host(address).unwrap_or_else(|| address.to_owned())
 }
 
-/// The address bar. It says what's shown, and a click on it is ⌘L: the launcher opens on the
-/// page, its address in the field to change (`Shell::open_address`). While a page's own address
-/// field has the keyboard, as a new tab's start page gives it, the bar is that field, the page
-/// having no toolbar in this layout.
+/// The address bar. It says what's shown, and with a page shown a click on it is ⌘L: the
+/// launcher opens on the page, its address in the field to change (`Shell::open_address`). With
+/// no page there's no address, and a click does nothing. While a page's own address field has
+/// the keyboard, as a new tab's start page gives it, the bar is that field, the page having no
+/// toolbar in this layout.
 pub fn address_bar(
     shell: &Shell,
     look: Look,
@@ -92,6 +94,7 @@ pub fn address_bar(
 ) -> impl IntoElement {
     let p = look.p;
     let (text, placeholder) = said(shell, cx);
+    let has_page = shell.shown_page(cx).is_some();
     let editing = (shell.workspace.tab_shown())
         .filter(|_| shell.route(cx) == Route::Workspace)
         .and_then(|tab| {
@@ -110,7 +113,6 @@ pub fn address_bar(
         .rounded(px(10.))
         .bg(look.field)
         .text_sm()
-        .cursor_text()
         .text_color(if placeholder {
             p.muted
         } else {
@@ -118,7 +120,7 @@ pub fn address_bar(
         })
         .map(|bar| match editing {
             // The page's keys for its address, ⌘R and the rest, go with it.
-            Some(field) => bar.key_context("BrowserAddress").child(
+            Some(field) => bar.cursor_text().key_context("BrowserAddress").child(
                 div()
                     .min_w_0()
                     .flex_1()
@@ -126,7 +128,11 @@ pub fn address_bar(
             ),
             None => bar
                 .child(div().min_w_0().truncate().child(text))
-                .on_click(|_, window, cx| window.dispatch_action(Box::new(OpenAddress), cx)),
+                .when(has_page, |bar| {
+                    bar.cursor_text().on_click(|_, window, cx| {
+                        window.dispatch_action(Box::new(OpenAddress), cx);
+                    })
+                }),
         })
 }
 

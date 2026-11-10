@@ -132,7 +132,8 @@ impl Shell {
     /// The pane of the shown tab that has the keyboard now, if one does.
     fn pane_with_keyboard(&self, window: &Window, cx: &App) -> Option<u64> {
         let panes = self.workspace.tab_shown()?.panes();
-        let held = |pane: &&Pane| (self.keys_of(pane, cx)).is_some_and(|keys| keys.held(window, cx));
+        let held =
+            |pane: &&Pane| (self.keys_of(pane, cx)).is_some_and(|keys| keys.held(window, cx));
         panes.into_iter().find(held).map(|pane| pane.id)
     }
 
@@ -202,7 +203,9 @@ mod tests {
                 let shell = shell.read(cx);
                 let view = shell.workspace.branch()?.pane(pane)?.view()?.clone();
                 let context = window.context_stack();
-                let bound = context.iter().any(|context| context.contains("BrowserPage"));
+                let bound = context
+                    .iter()
+                    .any(|context| context.contains("BrowserPage"));
                 Some(view.focus_handle(cx).is_focused(window) && bound)
             })
             .unwrap()
@@ -235,7 +238,13 @@ mod tests {
         cx.update_window(window, |_, window, cx| {
             shell.update(cx, |shell, cx| {
                 shell.new_tab(PaneKind::Chat, cx);
-                shell.open_file(crate::files::Place::file("README.md"), true, false, window, cx);
+                shell.open_file(
+                    crate::files::Place::file("README.md"),
+                    true,
+                    false,
+                    window,
+                    cx,
+                );
                 let unit = shell.workspace.branch_mut().expect("a checkout");
                 let chat = unit.tabs[0].first().id;
                 assert!(unit.drop_tab(1, chat, crate::model::Edge::Right));

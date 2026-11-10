@@ -27,7 +27,10 @@ pub enum KeptPane {
         title: String,
     },
     /// A terminal the daemon runs, by its handle and its name.
-    Terminal { handle: Handle, name: String },
+    Terminal {
+        handle: Handle,
+        name: String,
+    },
     /// A chat, by its thread, titled as it was until the host says.
     Chat {
         thread: ThreadId,
@@ -36,7 +39,9 @@ pub enum KeptPane {
     },
     /// A chat with nothing sent yet: its draft is its folder's (`chat/drafts.rs`).
     NewChat,
-    File { path: PathBuf },
+    File {
+        path: PathBuf,
+    },
     /// The checkout's diffs.
     Changes,
     /// A kind another build keeps, which this one brings nothing back for.

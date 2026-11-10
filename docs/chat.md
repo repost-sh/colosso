@@ -1190,8 +1190,10 @@ Layout, top to bottom inside the pane's card:
   re-arms, and so does sending. The pill "⌄ Scroll to end" (with "· 2 queued") shows 150 ms
   after leaving the end. Position per thread is kept while its tab is open; scrolling to the
   top loads older runs (`threads.history`).
-- **Status in the shell.** The tab face shows a spinner while working, a dot in the text's colour
-  when it needs you, a dot when unread, red when failed. The sidebar's worktree row shows the
+- **Status in the shell.** The tab face shows a spinner while working (`chat/spinner.rs`: a small
+  bold ring in amber, going round, drawn at every frame), a dot in the text's colour
+  when it needs you, a dot when unread, red when failed. In the Arc layout a tab's row says it
+  at its end instead: the spinner, then an indigo dot (`docs/arc-sidebar.md` 5). The sidebar's worktree row shows the
   most urgent of its chats, and a chat with no tab counts only while it's working or needs you.
   A chat on show with the window in front has been seen, and says so to the host (`threads.read`),
   so a mark for what's new or failed goes once it's looked at. A macOS notification when a chat
