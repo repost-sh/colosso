@@ -10,7 +10,8 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-use crate::link::Missing;
+use crate::ask::{Act, Ask, Press};
+use crate::link::{Missing, Refusal, RefusalCode};
 
 /// The first iOS or iPadOS a real device is driven on.
 pub const SYSTEM: u32 = 27;
@@ -36,6 +37,24 @@ pub fn devicectl(args: &[&str], folder: &Path) -> Result<Value, String> {
     ran?;
     let read = read.map_err(|error| format!("devicectl's answer wasn't there: {error}"))?;
     serde_json::from_slice(&read).map_err(|error| format!("devicectl's answer wasn't read: {error}"))
+}
+
+/// What a real device refuses of `ask` before anything is tried, in words that say what to do:
+/// its host says so, and the app before the person is asked to lend it for nothing.
+pub fn refuses(ask: &Ask) -> Option<Refusal> {
+    let why = match ask {
+        Ask::Act(Act::Button { button: Press::Lock }) => {
+            "a real device isn't locked by an agent: it would lock itself out, and only the person unlocks it"
+        }
+        Ask::Act(Act::Turn { .. }) => {
+            "a real device isn't turned by Koyo (the only way leaves it turned for good): the person turns it in their hands"
+        }
+        Ask::Apps | Ask::Install { .. } | Ask::Launch { .. } | Ask::Terminate { .. } | Ask::OpenUrl { .. } => {
+            "on a real device Koyo's app tools aren't built yet: run `xcrun devicectl device process launch` (or `info apps`) yourself"
+        }
+        _ => return None,
+    };
+    Some(Refusal::new(RefusalCode::Unsupported, why))
 }
 
 /// The devices of `devicectl list devices`' answer.

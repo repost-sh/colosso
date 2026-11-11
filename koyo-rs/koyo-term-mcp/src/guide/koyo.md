@@ -282,13 +282,23 @@ desktop) rather than retry in a loop.
 
 ## Devices
 
-Koyo shows iPhone and iPad simulators of its own, each live in a tab. You drive them as a
-finger and the device's keys and buttons would, nothing more. The device tools need the
-`devices` scope; their reads need only `read`.
+Koyo shows iPhone and iPad simulators of its own, each live in a tab, and the person's own
+iPhone or iPad plugged in by cable. You drive them as a finger and the device's keys and
+buttons would, nothing more. The device tools need the `devices` scope; their reads need only
+`read`.
+
+The person's own device is theirs, with everything they are signed in to. Tell them first what
+you want it for. Your first call on it, a read included, asks them in Koyo's window and returns
+at once with `device_needs_person`: tell them the question is waiting, and call again once
+they've answered. Allow lends it to you until they take it back (or unplug it, or close its
+tab); Don't Allow answers `user_declined`, and asking again is refused for ten minutes. On it,
+the app tools (`device_apps`, `device_launch`, …) and turning it aren't built: you open apps
+with a tap on their icon. A call that names no device never picks one of the person's.
 
 The loop:
 
-1. `device_list` lists the simulators with their state, tab and screen size; `device_open`
+1. `device_list` lists the simulators (and the person's devices plugged in, `kind: device`)
+   with their state, tab and screen size; `device_open`
    starts one (or makes one from a `model`, such as `iPad Pro 13-inch (M5)`) and opens its
    tab out of sight. It answers within a minute: `ready: true` with the screen, or
    `ready: false` with the `step` it is at (a first boot takes about a minute): call it
@@ -330,7 +340,8 @@ count against the person's limit of simulators running at once (two unless they 
 few seconds, then look again before acting) or took it (not: do something else).
 `device_unavailable` means it is starting or its host is restarting: wait and look again.
 `device_needs_person` means only the person can go on (Xcode or a simulator system missing,
-a locked device): stop and tell them what the message says.
+a locked device, a device not set up, or their answer on lending you their device): stop and
+tell them what the message says.
 
 ## The window and settings
 
@@ -383,6 +394,6 @@ A failure has a `code`, a `message` and `retryable`; retry only what is retryabl
 | `browser_unavailable` | The page can't take the command now, as the message says. Retryable: the engine is starting, or the page is between documents; try again shortly. Not retryable: the page waits on a dialog (answer it with `browser_dialog`), a tab brought back at launch or never shown (ask the person to show it, or open your own page), a start page (`browser_navigate` loads one), a failed engine (the person restarts it), or a closed page. |
 | `desktop_unavailable` | The agent desktop is off, starting or lacks a grant, as the message says: tell the person (Settings → Agent desktop); don't retry in a loop. |
 | `device_unavailable` | The device is starting, or its host restarting: wait a few seconds and look again. Not retryable when it isn't open: `device_open` it. |
-| `device_needs_person` | Only the person can go on (Xcode or a simulator system missing, a locked device): tell them what the message says. |
+| `device_needs_person` | Only the person can go on (Xcode or a simulator system missing, a locked device, their answer on lending you their own device): tell them what the message says. |
 | `git_failed` | Git refused; the message says why. |
 | `internal` | Something broke in Koyo; the message says what. |

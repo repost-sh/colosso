@@ -28,6 +28,13 @@ pub struct Chosen {
     pub phone: bool,
 }
 
+impl Chosen {
+    /// "iPhone" or "iPad", for the words that name it.
+    pub fn kind(&self) -> &'static str {
+        if self.ipad { "iPad" } else { "iPhone" }
+    }
+}
+
 impl From<&super::connected::Connected> for Chosen {
     fn from(device: &super::connected::Connected) -> Chosen {
         Chosen {
@@ -216,11 +223,7 @@ impl DeviceView {
 
     /// "iPhone" or "iPad", for the words that name the device.
     pub(super) fn kind(&self) -> &'static str {
-        if self.device.as_ref().is_some_and(|device| device.ipad) {
-            "iPad"
-        } else {
-            "iPhone"
-        }
+        self.device.as_ref().map_or("iPhone", Chosen::kind)
     }
 }
 
@@ -258,6 +261,7 @@ impl Render for DeviceView {
                 this.send(koyo_device_wire::Input::Key { usage, down: false }, cx);
             }))
             .children(self.toolbar(cx))
+            .children(self.lend_bar(cx))
             .child(
                 div()
                     .relative()

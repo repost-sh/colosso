@@ -214,10 +214,15 @@ pub(crate) fn type_text(caller: &Caller, input: &DeviceTypeInput, cx: &mut App) 
         hold_ms: 0,
         fingers: 1,
     };
-    let Target { link, name, .. } = target;
+    let Target { link, name, udid } = target;
     let tapped = link.update(cx, |link, cx| link.ask(Ask::Act(tap), ACT, cx));
+    let agent = caller.actor();
     Ok(Exec::Later(cx.spawn(async move |cx: &mut AsyncApp| {
         tapped.await.map_err(refused)?;
+        // Still the caller's to use: the person may have taken their device back meanwhile.
+        if !cx.update(|cx| super::lend::usable_unasked(&agent, &udid, cx)) {
+            return Err(ControlError::user_declined(format!("The person took {name} back.")));
+        }
         let typed = cx.update(|cx| link.update(cx, |link, cx| link.ask(Ask::Act(Act::Type { text }), limit, cx)));
         typed.await.map_err(refused).and_then(acted(name, did))
     })))

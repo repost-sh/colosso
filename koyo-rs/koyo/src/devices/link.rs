@@ -18,6 +18,9 @@ use super::host::{self, Incoming};
 use super::picture::Picture;
 use crate::browser::control::{Control, Mode};
 
+#[cfg(any(test, feature = "visual-check"))]
+mod testing;
+
 /// How many times a host that failed to start is started again before the person is told, and
 /// how often one that stops on its own is started again before it's taken to keep stopping.
 const START_RETRIES: u32 = 1;
@@ -39,6 +42,12 @@ pub enum State {
     /// It couldn't start, or kept stopping: the message is for the person.
     Failed(String),
 }
+
+/// Said when the link is stopped (its tab closed, `device_close`, Settings' Stop, Koyo quitting,
+/// a host that gave up): a real device's lend ends with it. A host started again by itself isn't.
+pub struct Stopped;
+
+impl gpui_kit::EventEmitter<Stopped> for Link {}
 
 /// Where an agent last touched, for its mark.
 #[derive(Clone, Debug)]
@@ -269,6 +278,18 @@ impl Link {
         }
         self.started_at = None;
         self.forget("The device was stopped.", cx);
+        cx.emit(Stopped);
+        cx.notify();
+    }
+
+    /// The person took the device back from the agents it was lent to: none holds it, and what
+    /// they asked that's still under way is called off.
+    pub fn revoke(&mut self, why: &str, cx: &mut Context<Self>) {
+        self.released();
+        for (request, answer) in std::mem::take(&mut self.pending) {
+            self.tell(ToHost::Cancel { request });
+            let _ = answer.send(Err(Refusal::new(RefusalCode::PersonActing, why)));
+        }
         cx.notify();
     }
 
@@ -454,39 +475,5 @@ impl Link {
                 }
             }
         })
-    }
-
-    /// For the stand-in tests and the off-screen pictures: what the host would have said.
-    #[cfg(any(test, feature = "visual-check"))]
-    pub fn hear(&mut self, said: FromHost, cx: &mut Context<Self>) {
-        self.receive(Incoming::Said(said), cx);
-    }
-
-    /// The host's process, while one runs: the live pictures kill it to see the restart.
-    #[cfg(feature = "visual-check")]
-    pub fn pid(&self) -> Option<u32> {
-        self.running.as_ref().map(|running| running.pid)
-    }
-
-    /// For tests elsewhere in the app: a stand-in host, ready with `screen`; what the app tells it
-    /// comes out of the receiver.
-    #[cfg(test)]
-    pub fn stand_in(&mut self, screen: Screen, cx: &mut Context<Self>) -> std::sync::mpsc::Receiver<ToHost> {
-        let (tell, told) = std::sync::mpsc::channel();
-        self.use_host(host::Running::stand_in(tell), cx);
-        self.hear(FromHost::State { state: Said::Ready { screen } }, cx);
-        told
-    }
-
-    /// For the off-screen pictures: the state a host that kept stopping leaves.
-    #[cfg(feature = "visual-check")]
-    pub fn failed(&mut self, why: &str, cx: &mut Context<Self>) {
-        self.fail(why.to_owned(), cx);
-    }
-
-    /// For the stand-in tests: the host went.
-    #[cfg(test)]
-    pub fn host_closed(&mut self, cx: &mut Context<Self>) {
-        self.receive(Incoming::Closed, cx);
     }
 }

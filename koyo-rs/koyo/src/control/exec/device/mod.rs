@@ -4,6 +4,7 @@
 
 mod acts;
 mod apps;
+mod lend;
 mod looks;
 mod opening;
 
@@ -84,78 +85,70 @@ pub(super) fn panes_of(udid: &str, cx: &App) -> Vec<u64> {
 }
 
 /// The device `device` or `pane` names; with neither, the one `caller` acted on last, else the
-/// shown tab's, else the only one running.
-pub(super) fn which(caller: &Caller, device: Option<&str>, pane: Option<PaneId>, cx: &App) -> Result<Target, ControlError> {
-    let registry = devices::devices(cx);
-    let registry = registry.read(cx);
-    let target = |link: Entity<Link>| {
-        let (udid, name) = {
-            let read = link.read(cx);
-            (read.udid.clone(), read.name.clone())
-        };
-        Target { link, udid, name }
-    };
-    let (tabs, shown) = device_tabs(cx);
-    let udid = match (device, pane) {
-        (Some(_), Some(_)) => return Err(ControlError::invalid_input("Give `device` or `pane`, not both.")),
-        (Some(udid), None) => udid.to_owned(),
-        (None, Some(pane)) => (tabs.iter())
-            .find_map(|(id, udid)| (*id == pane).then(|| udid.clone()))
-            .ok_or_else(|| ControlError::not_found(format!("Pane {pane} shows no device; device_list lists them.")))?,
-        (None, None) => {
-            // The one acted on last, while a tab still shows it; only what the caller may use.
-            let allowed = |udid: &String| usable(caller, udid, cx).is_ok();
-            let last = last_device(caller, cx).filter(|udid| tabs.iter().any(|(_, shown)| shown == udid) && allowed(udid));
-            let running: Vec<Entity<Link>> = (registry.links())
-                .filter(|link| link.read(cx).running_or_starting() && allowed(&link.read(cx).udid))
-                .cloned()
-                .collect();
-            match (last.or(shown.filter(allowed)), running.as_slice()) {
-                (Some(udid), _) => udid,
-                (None, [only]) => return Ok(target(only.clone())),
-                (None, []) => {
-                    return Err(ControlError::not_found(
-                        "No device is open: device_open opens one, device_list lists them.",
-                    ));
-                }
-                (None, many) => {
-                    let named: Vec<String> = (many.iter())
-                        .map(|link| format!("{} ({})", link.read(cx).name, link.read(cx).udid))
-                        .collect();
-                    return Err(ControlError::ambiguous("Several devices are open; name one with `device`.", &named));
-                }
-            }
-        }
-    };
-    usable(caller, &udid, cx)?;
+/// shown tab's, else the only one running. A real device not lent to the caller is asked for
+/// ([`lend::usable`]).
+pub(super) fn which(caller: &Caller, device: Option<&str>, pane: Option<PaneId>, cx: &mut App) -> Result<Target, ControlError> {
+    which_for(caller, (device, pane), None, cx)
+}
+
+/// [`which`], for `ask`: what a real device refuses anyway is refused before the person is
+/// asked to lend it.
+fn which_for(caller: &Caller, (device, pane): Named<'_>, ask: Option<&Ask>, cx: &mut App) -> Result<Target, ControlError> {
+    let udid = named(caller, device, pane, cx)?;
+    let refusal = ask.and_then(koyo_device_wire::real::refuses).filter(|_| lend::real(&udid, cx).is_some());
+    if let Some(refusal) = refusal {
+        return Err(refused(refusal));
+    }
+    lend::usable(caller, &udid, cx)?;
+    let registry = devices::devices(cx).read(cx);
     match registry.existing(&udid) {
-        Some(link) => Ok(target(link)),
-        None if registry.simulator(&udid).is_some() => Err(ControlError::device_unavailable(format!(
-            "{udid} isn't open: device_open opens it."
-        ))
-        .retryable(false)),
+        Some(link) => {
+            let name = link.read(cx).name.clone();
+            Ok(Target { link, udid, name })
+        }
+        None if registry.simulator(&udid).is_some() || registry.plugged_device(&udid).is_some() => Err(
+            ControlError::device_unavailable(format!("{udid} isn't open: device_open opens it.")).retryable(false),
+        ),
         None => Err(ControlError::not_found(format!(
             "No device {udid} among Koyo's: device_list lists them."
         ))),
     }
 }
 
-/// Whether `caller` may use the device `udid`: a simulator of Koyo's, yes; a real iPhone or
-/// iPad, plugged in or open in a tab, is the person's own, and not yet.
-pub(super) fn usable(_caller: &Caller, udid: &str, cx: &App) -> Result<(), ControlError> {
-    let registry = devices::devices(cx).read(cx);
-    let name = match registry.existing(udid) {
-        Some(link) if link.read(cx).phone => link.read(cx).name.clone(),
-        Some(_) => return Ok(()),
-        None => match registry.plugged_device(udid) {
-            Some(device) => device.name.clone(),
-            None => return Ok(()),
-        },
-    };
-    Err(ControlError::new(
-        ErrorCode::Unsupported,
-        format!("{name} is the person's own device: agents can't use a real iPhone or iPad yet. Use one of Koyo's simulators."),
-    ))
+/// The id of the device `device` or `pane` names; with neither, of the one `caller` acted on
+/// last while a tab still shows it, else the shown tab's, else the only one running: of those,
+/// only what the caller may use unasked.
+fn named(caller: &Caller, device: Option<&str>, pane: Option<PaneId>, cx: &App) -> Result<String, ControlError> {
+    match (device, pane) {
+        (Some(_), Some(_)) => Err(ControlError::invalid_input("Give `device` or `pane`, not both.")),
+        (Some(udid), None) => Ok(udid.to_owned()),
+        (None, Some(pane)) => (device_tabs(cx).0.into_iter())
+            .find_map(|(id, udid)| (id == pane).then_some(udid))
+            .ok_or_else(|| ControlError::not_found(format!("Pane {pane} shows no device; device_list lists them."))),
+        (None, None) => {
+            let (tabs, shown) = device_tabs(cx);
+            let agent = caller.actor();
+            let allowed = |udid: &String| lend::usable_unasked(&agent, udid, cx);
+            let last = last_device(caller, cx).filter(|udid| tabs.iter().any(|(_, shown)| shown == udid) && allowed(udid));
+            let registry = devices::devices(cx).read(cx);
+            let running: Vec<&Entity<Link>> = (registry.links())
+                .filter(|link| link.read(cx).running_or_starting() && allowed(&link.read(cx).udid))
+                .collect();
+            match (last.or(shown.filter(allowed)), running.as_slice()) {
+                (Some(udid), _) => Ok(udid),
+                (None, [only]) => Ok(only.read(cx).udid.clone()),
+                (None, []) => Err(ControlError::not_found(
+                    "No device is open: device_open opens one, device_list lists them.",
+                )),
+                (None, many) => {
+                    let named: Vec<String> = (many.iter())
+                        .map(|link| format!("{} ({})", link.read(cx).name, link.read(cx).udid))
+                        .collect();
+                    Err(ControlError::ambiguous("Several devices are open; name one with `device`.", &named))
+                }
+            }
+        }
+    }
 }
 
 /// Notes the device `udid` as the one `caller` acted on last.
@@ -250,8 +243,8 @@ fn act_on<F>(
 where
     F: FnOnce(Answer) -> Result<Value, ControlError> + 'static,
 {
-    let target = which(caller, device, pane, cx)?;
     let ask = ask?;
+    let target = which_for(caller, (device, pane), Some(&ask), cx)?;
     claim(caller, &target, cx)?;
     let answered = answered(&target);
     Ok(asking(&target, ask, limit, cx, answered))

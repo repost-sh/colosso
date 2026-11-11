@@ -2,7 +2,7 @@
 //! or iPad by cable. What both do (touches, keys, buttons, the picture) goes through here, and
 //! what a real device refuses is said here once.
 
-use koyo_device_wire::{Act, Ask, Edge, Orientation, PixelSize, Point, Press, Refusal, RefusalCode, Screen, Size};
+use koyo_device_wire::{Ask, Edge, Orientation, PixelSize, Point, Refusal, Screen, Size};
 
 use crate::phone::Phone;
 use crate::sim::Simulator;
@@ -66,24 +66,10 @@ impl Device {
         }
     }
 
-    /// What the device refuses of `ask` before anything is tried, in words that say what to do.
+    /// What the device refuses of `ask` before anything is tried, in words that say what to do
+    /// (`koyo_device_wire::real::refuses`, which the app asks first too).
     pub fn refuses(&self, ask: &Ask) -> Option<Refusal> {
-        if self.simulator().is_some() {
-            return None;
-        }
-        let why = match ask {
-            Ask::Act(Act::Button { button: Press::Lock }) => {
-                "a real device isn't locked by an agent: it would lock itself out, and only the person unlocks it"
-            }
-            Ask::Act(Act::Turn { .. }) => {
-                "a real device isn't turned by Koyo (the only way leaves it turned for good): the person turns it in their hands"
-            }
-            Ask::Apps | Ask::Install { .. } | Ask::Launch { .. } | Ask::Terminate { .. } | Ask::OpenUrl { .. } => {
-                "on a real device Koyo's app tools aren't built yet: run `xcrun devicectl device process launch` (or `info apps`) yourself"
-            }
-            _ => return None,
-        };
-        Some(Refusal::new(RefusalCode::Unsupported, why))
+        self.simulator().map_or_else(|| koyo_device_wire::real::refuses(ask), |_| None)
     }
 
     /// The picture as shown: upright, in points of the device's scale.

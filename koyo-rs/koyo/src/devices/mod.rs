@@ -14,6 +14,7 @@ pub(crate) mod connected;
 mod control;
 mod host;
 mod keeping;
+pub(crate) mod lend;
 mod link;
 pub(crate) mod needs;
 mod picker;
@@ -56,6 +57,8 @@ pub struct Devices {
     watcher: Option<connected::Watcher>,
     /// When the watcher last went: it's started again at a look a while after.
     watcher_went: Option<std::time::Instant>,
+    /// The person's own devices lent to agents, refused, and being asked about.
+    pub lends: lend::Lends,
 }
 
 /// What runs now, by udid and name: what Koyo's set has booted (an agent's own `simctl boot`,
@@ -148,6 +151,7 @@ pub fn init(cx: &mut App) {
         listing_connected: false,
         watcher: None,
         watcher_went: None,
+        lends: lend::Lends::default(),
     });
     cx.set_global(TheDevices(devices.clone()));
     if !cfg!(test)
@@ -188,6 +192,9 @@ impl Devices {
                 cx.notify();
             }
         }));
+        // A real device's lend ends when it's stopped; unplugged, when the list says so.
+        let stopped = udid.to_owned();
+        self._watching.push(cx.subscribe(&link, move |this, _, _: &link::Stopped, cx| this.lend_ends(&stopped, cx)));
         self.links.insert(udid.to_owned(), link.clone());
         link
     }

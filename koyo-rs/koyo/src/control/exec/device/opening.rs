@@ -1,6 +1,6 @@
 //! Opening and closing devices: a simulator of Koyo's set started (or made) in a tab of its
-//! own, out of the person's sight unless they chose to see what agents open; and shut down
-//! with its tab closed.
+//! own, or a real device plugged in and lent to the agent, out of the person's sight unless they
+//! chose to see what agents open; and shut down or let go with its tab closed.
 
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -75,23 +75,37 @@ fn choose(set: &Path, input: &DeviceOpenInput, last: Option<&str>, room: &Room) 
     Ok(found)
 }
 
-/// Opens the tab of `simulator`, started, for `caller`, whose device it is; its pane.
-fn opened(caller: &Caller, simulator: &Simulator, cx: &mut App) -> Result<u64, ControlError> {
+/// Opens the tab of `chosen`, started, for `caller`, whose device it is (a real one lent to
+/// it); its pane.
+fn opened(caller: &Caller, chosen: Chosen, cx: &mut App) -> Result<u64, ControlError> {
     let shows = crate::control::policy::shows(None, cx);
-    let chosen = Chosen::from(simulator);
+    let udid = chosen.udid.clone();
+    let simulator = !chosen.phone;
     let pane = update_shell(cx, |shell, _, cx| shell.device_pane(Some(chosen), shows, cx))?
         .ok_or_else(|| ControlError::internal("The device's tab couldn't be opened."))?;
     let devices = devices::devices(cx);
     // A simulator just made isn't in the list the launcher and the picker read yet.
-    if devices.read(cx).simulator(&simulator.udid).is_none() {
+    if simulator && devices.read(cx).simulator(&udid).is_none() {
         devices.update(cx, devices::Devices::refresh);
     }
-    if let Some(link) = devices.read(cx).existing(&simulator.udid) {
+    if let Some(link) = devices.read(cx).existing(&udid) {
         link.update(cx, devices::Link::start);
         let _ = link.update(cx, |link, cx| link.agent_acts(caller.actor(), cx));
     }
-    remember(caller, &simulator.udid, cx);
+    remember(caller, &udid, cx);
     Ok(pane)
+}
+
+/// Waits for the device opened in `pane` to stand ready, inside the minute the tool promises
+/// from `started`; says how it stands then.
+async fn until_ready(udid: String, name: String, pane: u64, started: Instant, cx: &mut AsyncApp) -> Result<serde_json::Value, ControlError> {
+    loop {
+        let now = cx.update(|cx| standing(&udid, &name, pane, cx))?;
+        if now.ready || started.elapsed() >= OPEN_WAIT {
+            return output(&now);
+        }
+        cx.background_executor().timer(LOOK_EVERY).await;
+    }
 }
 
 /// How the device stands once opened: ready, or still starting at its step; or why it won't be.
@@ -121,7 +135,17 @@ pub(crate) fn open(caller: &Caller, input: DeviceOpenInput, cx: &mut App) -> Res
     // From the call's start: making a simulator is part of the minute the tool promises.
     let started = Instant::now();
     if let Some(udid) = input.device.as_deref() {
-        super::usable(caller, udid, cx)?;
+        let unplugged = devices::devices(cx).read(cx).plugged_device(udid).is_none();
+        if let Some((name, _)) = super::lend::real(udid, cx).filter(|_| unplugged) {
+            return Err(ControlError::device_unavailable(format!("{name} isn't plugged in: plug it in with a cable.")).retryable(false));
+        }
+        super::lend::usable(caller, udid, cx)?;
+        // A real device plugged in, lent to the caller: no simulator to choose or make.
+        if let Some(plugged) = devices::devices(cx).read(cx).plugged_device(udid).map(Chosen::from) {
+            let (udid, name) = (plugged.udid.clone(), plugged.name.clone());
+            let pane = opened(caller, plugged, cx)?;
+            return Ok(Exec::Later(cx.spawn(async move |cx: &mut AsyncApp| until_ready(udid, name, pane, started, cx).await)));
+        }
     }
     let set = devices::set_dir().ok_or_else(|| ControlError::internal("Koyo has no folder to keep its devices in."))?;
     let room = Room {
@@ -136,14 +160,8 @@ pub(crate) fn open(caller: &Caller, input: DeviceOpenInput, cx: &mut App) -> Res
     let caller = caller.clone();
     Ok(Exec::Later(cx.spawn(async move |cx: &mut AsyncApp| {
         let simulator = chosen.await?;
-        let pane = cx.update(|cx| opened(&caller, &simulator, cx))?;
-        loop {
-            let now = cx.update(|cx| standing(&simulator.udid, &simulator.name, pane, cx))?;
-            if now.ready || started.elapsed() >= OPEN_WAIT {
-                return output(&now);
-            }
-            cx.background_executor().timer(LOOK_EVERY).await;
-        }
+        let pane = cx.update(|cx| opened(&caller, Chosen::from(&simulator), cx))?;
+        until_ready(simulator.udid, simulator.name, pane, started, cx).await
     })))
 }
 

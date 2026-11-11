@@ -159,6 +159,14 @@ impl DeviceView {
             .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.turn(false, cx)));
         let lock = button("device-lock", IconName::Lock, "Lock", cx)
             .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.press_button(Button::Lock, cx)));
+        // A real device not lent yet: the person may lend it ahead of an agent's asking.
+        let lendable = chosen.phone && !super::devices(cx).read(cx).lends.is_lent(&chosen.udid);
+        let lend = lendable.then(|| {
+            let named = format!("Let Agents Use This {}", chosen.kind());
+            crate::shell::icon_button("device-lend", IconName::Bot, named, cx)
+                .small()
+                .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.lend_ahead(cx)))
+        });
         let named = div()
             .flex()
             .items_center()
@@ -195,6 +203,7 @@ impl DeviceView {
                 .child(home)
                 .child(switcher)
                 .when(simulator, |bar| bar.child(rule()).child(left).child(right).child(lock))
+                .when_some(lend, |bar, lend| bar.child(rule()).child(lend))
                 .into_any_element(),
         )
     }

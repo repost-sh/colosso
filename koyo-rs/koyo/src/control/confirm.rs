@@ -81,8 +81,17 @@ pub(crate) async fn answered(
 ) -> Decision {
     let timer = Box::pin(cx.background_executor().timer(timeout));
     match select(answer, timer).await {
-        Either::Left((Ok(0), _)) => Decision::Allowed,
-        Either::Left((Ok(_), _)) => Decision::Denied,
-        Either::Left((Err(_), _)) | Either::Right(_) => Decision::TimedOut,
+        Either::Left((answer, _)) => decision(answer),
+        Either::Right(_) => Decision::TimedOut,
+    }
+}
+
+/// The person's answer to a prompt whose first button allows: denied by any other button, and
+/// as timed out when the prompt went without one.
+pub(crate) fn decision(answer: Result<usize, oneshot::Canceled>) -> Decision {
+    match answer {
+        Ok(0) => Decision::Allowed,
+        Ok(_) => Decision::Denied,
+        Err(_) => Decision::TimedOut,
     }
 }
