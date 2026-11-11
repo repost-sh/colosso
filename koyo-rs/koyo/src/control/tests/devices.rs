@@ -32,12 +32,18 @@ fn screen() -> Screen {
     }
 }
 
-/// A device tab of `udid`, shown, its host a stand-in standing ready.
+/// A device tab of the simulator `udid`, shown, its host a stand-in standing ready.
 fn device(udid: &str, rig: &super::Rig, cx: &mut TestAppContext) -> (Entity<Link>, Receiver<ToHost>) {
+    opened(udid, false, rig, cx)
+}
+
+/// A device tab of `udid`, a real device if `phone`, shown, its host a stand-in standing ready.
+fn opened(udid: &str, phone: bool, rig: &super::Rig, cx: &mut TestAppContext) -> (Entity<Link>, Receiver<ToHost>) {
     let chosen = Chosen {
         udid: udid.into(),
         name: format!("iPhone {udid}"),
         ipad: false,
+        phone,
     };
     rig.shell.update(cx, |shell, cx| shell.device_pane(Some(chosen), true, cx));
     let link = cx.update(|cx| crate::devices::devices(cx).read(cx).existing(udid)).expect("its link");
@@ -215,4 +221,26 @@ fn a_device_not_running_says_why_and_isnt_to_be_retried(cx: &mut TestAppContext)
     assert_eq!(off.code, ErrorCode::DeviceUnavailable, "{}", off.message);
     assert!(!off.retryable, "{}", off.message);
     assert!(told.try_iter().all(|told| !matches!(told, ToHost::Request { .. })), "nothing was asked");
+}
+
+#[gpui_kit::test]
+fn a_real_device_is_kept_from_agents_and_an_unnamed_call_never_finds_it(cx: &mut TestAppContext) {
+    let rig = rig("device-tools-real", cx);
+    let (_sim, told_sim) = device("U-SIM", &rig, cx);
+    let (_ipad, told_ipad) = opened("U-REAL", true, &rig, cx);
+    let agent = terminal("t1");
+    // Its tab shown, a call naming no device goes to the simulator.
+    let _pending = send(&agent, None, op("device_snapshot", json!({})), cx);
+    cx.run_until_parked();
+    assert_eq!(asked(&told_sim).1, Ask::Snapshot { text: false });
+    for (tool, input) in [
+        ("device_snapshot", json!({ "device": "U-REAL" })),
+        ("device_tap", json!({ "device": "U-REAL", "x": 1, "y": 2 })),
+        ("device_open", json!({ "device": "U-REAL" })),
+    ] {
+        let refused = call(&agent, tool, input, cx).unwrap_err();
+        assert_eq!(refused.code, ErrorCode::Unsupported, "{tool}: {}", refused.message);
+        assert!(refused.message.contains("the person's own device"), "{}", refused.message);
+    }
+    assert!(told_ipad.try_iter().all(|told| !matches!(told, ToHost::Request { .. })), "nothing was asked of it");
 }

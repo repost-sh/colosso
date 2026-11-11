@@ -27,6 +27,18 @@ pub use run::{ENV_SOCKET_FD, ENV_TOKEN, NEEDS_XCODE};
 /// The host's entry: `args` without the program's name. Exits 0 when the app said quit or went
 /// away, 1 when it couldn't run, 64 when started wrong.
 pub fn main(args: &[String]) -> std::process::ExitCode {
+    // The watcher is a program of its own: `--watch` alone.
+    if let [only] = args
+        && only == "--watch"
+    {
+        return match phone::watch::watch() {
+            Ok(()) => std::process::ExitCode::SUCCESS,
+            Err(why) => {
+                log(&why);
+                std::process::ExitCode::FAILURE
+            }
+        };
+    }
     let args = match run::Args::parse(args) {
         Ok(args) => args,
         Err(why) => {

@@ -4,13 +4,12 @@
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, ClickEvent, Context, Entity, InteractiveElement as _, IntoElement, ParentElement as _,
-    SharedString, StatefulInteractiveElement as _, Styled as _, Window, div, px,
+    AnyElement, ClickEvent, Context, Entity, IntoElement, ParentElement as _, Styled as _, Window, div, px,
 };
 use koyo_device_wire::{Mark, Missing, Step};
 
 use super::link::Link;
-use super::view::{Chosen, DeviceView};
+use super::view::DeviceView;
 use crate::browser::control::Holder;
 use crate::held::Held;
 use crate::modal::{Button as Push, Tone};
@@ -25,7 +24,7 @@ pub struct Notice {
 }
 
 impl Notice {
-    fn new(message: String, buttons: Vec<Push>) -> Notice {
+    pub(super) fn new(message: String, buttons: Vec<Push>) -> Notice {
         Notice {
             message,
             buttons,
@@ -34,18 +33,20 @@ impl Notice {
     }
 
     pub fn element(self, p: Palette) -> AnyElement {
-        let block = div()
-            .flex()
-            .flex_col()
-            .items_center()
-            .gap_3()
-            .child(div().max_w(px(460.)).text_center().text_sm().text_color(p.muted).child(self.message))
-            .child(div().flex().gap_2().children(self.buttons));
-        if self.over {
+        let over = self.over;
+        let block = self.block(p);
+        if over {
             div().absolute().bottom(px(64.)).left_0().right_0().flex().justify_center().child(block).into_any_element()
         } else {
             div().absolute().inset_0().flex().items_center().justify_center().child(block).into_any_element()
         }
+    }
+
+    /// What it says and its buttons, in a column, wherever it's put.
+    pub(super) fn block(self, p: Palette) -> gpui_kit::Div {
+        (div().flex().flex_col().items_center().gap_3())
+            .child(div().max_w(px(460.)).text_center().text_sm().text_color(p.muted).child(self.message))
+            .child(div().flex().gap_2().children(self.buttons))
     }
 }
 
@@ -73,15 +74,22 @@ impl DeviceView {
         };
         let name = &chosen.name;
         let listed = super::devices(cx).read(cx).simulators.as_ref().and_then(|listed| listed.as_ref().ok());
-        if standing == Owned::Off && listed.is_some_and(|listed| listed.iter().all(|simulator| simulator.udid != chosen.udid)) {
+        let gone = listed.is_some_and(|listed| listed.iter().all(|simulator| simulator.udid != chosen.udid));
+        if !chosen.phone && standing == Owned::Off && gone {
             return Some(self.not_there(name, cx));
         }
         match standing {
+            // Unplugged, in its host's words: back on its cable it starts again by itself; Start
+            // Again is there should the plug go unheard.
+            Owned::Ended(None, why) if chosen.phone => {
+                let again = cx.listener(|this, _: &ClickEvent, window, cx| this.start_asking(window, cx));
+                Some(Notice::new(why, vec![Push::new("device-start", "Start Again", Tone::Plain).on_click(again)]))
+            }
             Owned::Ended(None, why) => Some(Notice::new(
                 format!("{name} isn't there: {why}."),
                 vec![self.start_button("Start Again", cx)],
             )),
-            Owned::Ended(Some(code), why) => Some(self.unavailable(code, &why, cx)),
+            Owned::Ended(Some(code), why) => Some(self.unavailable(code, why, cx)),
             Owned::Off => Some(Notice::new(format!("{name} isn't running."), vec![self.start_button("Start", cx)])),
             Owned::Failed(why) => Some(Notice::new(why, vec![self.start_button("Start Again", cx)])),
             Owned::Starting(None) => Some(Notice::new(format!("Starting {name}…"), Vec::new())),
@@ -95,7 +103,11 @@ impl DeviceView {
         }
     }
 
-    fn unavailable(&self, code: Missing, why: &str, cx: &mut Context<Self>) -> Notice {
+    /// What's missing, in its host's words, with the way on: the setup for Xcode, or for a step
+    /// the person takes on a real device (it starts again by itself once that's done); nothing
+    /// for an update, which is theirs on the device; Start Again for the rest.
+    fn unavailable(&self, code: Missing, why: String, cx: &mut Context<Self>) -> Notice {
+        let udid = self.device.as_ref().map(|device| device.udid.clone());
         match code {
             Missing::Simulator => self.not_there(&self.title(), cx),
             // The one thing missing, with the setup; once it's there, Start Again.
@@ -103,15 +115,9 @@ impl DeviceView {
                 Some(said) => Notice::new(said, vec![set_up()]),
                 None => Notice::new(format!("{why}."), vec![self.start_button("Start Again", cx)]),
             },
-            Missing::System => Notice::new(
-                format!(
-                    "This {kind} runs an older system. Koyo drives devices on iOS 27 or later: \
-                     update it in Settings → General → Software Update.",
-                    kind = self.kind()
-                ),
-                Vec::new(),
-            ),
-            _ => Notice::new(why.to_owned(), vec![self.start_button("Start Again", cx)]),
+            Missing::System => Notice::new(why, Vec::new()),
+            Missing::Cable | Missing::Trust | Missing::DeveloperMode => Notice::new(why, vec![set_up_device(udid)]),
+            _ => Notice::new(why, vec![self.start_button("Start Again", cx)]),
         }
     }
 
@@ -125,11 +131,19 @@ impl DeviceView {
 
         let p = crate::theme::palette(cx);
         let chosen = self.device.as_ref()?;
-        let (ready, (words, dot)) = {
+        let (ready, held, (words, dot)) = {
             let link = self.link.as_ref()?.read(cx);
-            (link.ready(), standing(link, p))
+            let held = matches!(link.standing(), super::Standing::Ready(_) | super::Standing::Locked(_));
+            (link.ready(), held, standing(link, p))
         };
-        let simulator = self.simulator(cx);
+        let simulator = self.simulator();
+        // What holding the stream costs, the person's to know while it's held (`docs/devices.md` 5).
+        let awake = (chosen.phone && held).then(|| {
+            format!(
+                "While this tab is open, your {} stays awake and its camera and microphone are off.",
+                self.kind()
+            )
+        });
         let glyph = if chosen.ipad { IconName::Tablet } else { IconName::Smartphone };
         let button = |id: &'static str, glyph: IconName, name: &'static str, cx: &mut Context<Self>| {
             crate::shell::icon_button(id, glyph, name, cx).small().disabled(!ready)
@@ -174,7 +188,10 @@ impl DeviceView {
                 .border_b_1()
                 .border_color(p.hairline)
                 .child(named)
-                .child(div().flex_1())
+                .child(match awake {
+                    Some(said) => div().flex_1().min_w_0().ml_3().text_xs().text_color(p.muted).truncate().child(said),
+                    None => div().flex_1(),
+                })
                 .child(home)
                 .child(switcher)
                 .when(simulator, |bar| bar.child(rule()).child(left).child(right).child(lock))
@@ -192,45 +209,6 @@ impl DeviceView {
         let link = link.read(cx);
         matches!(link.standing(), super::Standing::Ended { missing: Some(Missing::Xcode), .. })
             && !matches!(link.control.holder, Some(Holder::Agent { .. }))
-    }
-
-    /// The picker: Koyo's simulators, each opened in this tab on a click; or what they miss,
-    /// with the setup.
-    pub(super) fn picker_list(&self, cx: &mut Context<Self>) -> AnyElement {
-        let p = crate::theme::palette(cx);
-        let listed = super::devices(cx).read(cx).simulators.clone();
-        let said = |text: String, buttons| Notice::new(text, buttons).element(p);
-        if let Some(missing) = missing(cx) {
-            return said(missing, vec![set_up()]);
-        }
-        let all = match listed {
-            None => return said("Looking for Koyo's simulators…".into(), Vec::new()),
-            Some(Err(why)) => return said(why, Vec::new()),
-            Some(Ok(all)) => all,
-        };
-        let mut list = (div().absolute().inset_0().flex().flex_col().items_center().justify_center().gap_2())
-            .child(div().text_sm().text_color(p.muted).child("Choose a device"));
-        for (index, simulator) in all.into_iter().enumerate() {
-            let chosen = Chosen::from(&simulator);
-            let row = div()
-                .id(SharedString::from(format!("device-pick-{index}")))
-                .w(px(320.))
-                .px_3()
-                .py_2()
-                .rounded_md()
-                .cursor_pointer()
-                .hover(|row| row.bg(p.hover))
-                .flex()
-                .justify_between()
-                .child(div().text_sm().text_color(p.text).child(simulator.name))
-                .child(div().text_xs().text_color(p.muted).child(simulator.system))
-                .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
-                    this.choose(chosen.clone(), cx);
-                    this.start_asking(window, cx);
-                }));
-            list = list.child(row);
-        }
-        list.into_any_element()
     }
 
     /// The app switcher, as a person brings it up: a slow swipe from the bottom edge, held a
@@ -325,15 +303,21 @@ impl DeviceView {
 }
 
 /// What Koyo's simulators miss, in a sentence, once it's known.
-fn missing(cx: &gpui_kit::App) -> Option<String> {
+pub(super) fn missing(cx: &gpui_kit::App) -> Option<String> {
     let devices = super::devices(cx);
     let devices = devices.read(cx);
     Some(devices.found.as_ref()?.sentence(devices.need()?))
 }
 
 /// The button that opens the setup.
-fn set_up() -> Push {
+pub(super) fn set_up() -> Push {
     Push::new("device-set-up", "Set Up…", Tone::Primary).on_click(|_, window, cx| super::setup::open(window, cx))
+}
+
+/// The button that opens a real device's setup, at `udid`'s steps.
+fn set_up_device(udid: Option<String>) -> Push {
+    Push::new("device-set-up", "Set Up…", Tone::Primary)
+        .on_click(move |_, window, cx| super::setup::device::open(udid.clone(), window, cx))
 }
 
 /// A device's standing, owned, for a notice built while the view is borrowed.
@@ -365,6 +349,7 @@ impl From<super::Standing<'_>> for Owned {
 /// on its way, red what needs doing, grey not running.
 fn standing(link: &Link, p: Palette) -> (&'static str, gpui_kit::Hsla) {
     match link.standing() {
+        super::Standing::Ended { missing: None, .. } if link.phone => ("Unplugged", p.danger),
         super::Standing::Ended { missing: None, .. } => ("Gone", p.danger),
         super::Standing::Ended { .. } => ("Needs setup", p.danger),
         super::Standing::Off => ("Not running", p.muted),

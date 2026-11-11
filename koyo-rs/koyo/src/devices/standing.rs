@@ -1,7 +1,11 @@
 //! How a device stands, read in one place (`docs/devices.md` 8): the host's last word first,
 //! when it said it can't go on, whatever the link's own state; then the link's state; then what
-//! the host said. The tab, its toolbar, `device_list` and the tools all read it from here.
+//! the host said. The tab, its toolbar, `device_list` and the tools all read it from here; and a
+//! real device that ended is started again by itself from here, bounded.
 
+use std::time::Instant;
+
+use gpui_kit::Context;
 use koyo_device_wire::{Missing, Screen, State as Said, Step};
 
 use super::link::{Link, State};
@@ -58,5 +62,26 @@ impl Link {
             Standing::Off => Some((format!("{} isn't running.", self.name), false)),
             Standing::Starting(_) | Standing::Ready(_) | Standing::Locked(_) => None,
         }
+    }
+
+    /// Started again by itself, a real device whose host gave up: back on its cable, or the step
+    /// it missed done. Three times at most until it stands ready or the person starts it, so a
+    /// device its host and `devicectl` disagree on is never started in a loop.
+    pub fn start_again(&mut self, cx: &mut Context<Self>) {
+        const TRIES: u32 = 3;
+        if self.tries >= TRIES || !self.gave_up() {
+            return;
+        }
+        self.tries += 1;
+        log::info!("{} is back: starting it again", self.name);
+        if self.running_or_starting() {
+            self.stop(cx);
+        }
+        self.launch_host(cx);
+    }
+
+    /// When its host said it can't go on, while that stands.
+    pub fn ended_at(&self) -> Option<Instant> {
+        self.ended_at.filter(|_| self.gave_up())
     }
 }

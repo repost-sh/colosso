@@ -356,6 +356,7 @@ fn a_device_s_tab_is_kept_by_its_device_and_the_picker_s_isnt(cx: &mut TestAppCo
         udid: "UDID-K".into(),
         name: "iPhone 17 Pro".into(),
         ipad: false,
+        phone: false,
     };
     shell.update(cx, |shell, cx| {
         shell.device_pane(Some(chosen), true, cx);
@@ -365,6 +366,7 @@ fn a_device_s_tab_is_kept_by_its_device_and_the_picker_s_isnt(cx: &mut TestAppCo
         udid: "UDID-K".into(),
         name: "iPhone 17 Pro".into(),
         ipad: false,
+        phone: false,
     });
     assert_eq!(written(&path, cx), main_with(&root, 0, &[device]));
     draw(window, cx);
@@ -379,6 +381,7 @@ fn a_device_s_tab_brought_back_starts_nothing_until_asked(cx: &mut TestAppContex
         udid: "UDID-BACK".into(),
         name: "iPhone 17 Pro".into(),
         ipad: false,
+        phone: false,
     });
     let path = file("kept-window-device-back-file", &main_with(&root, 0, &[device]));
     let (window, shell) = shell_with(&[&root], cx);

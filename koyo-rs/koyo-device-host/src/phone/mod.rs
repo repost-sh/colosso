@@ -14,6 +14,7 @@ mod info;
 mod session;
 mod stream;
 mod turns;
+pub mod watch;
 
 use std::sync::mpsc;
 

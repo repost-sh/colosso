@@ -52,12 +52,17 @@ impl Running {
     }
 }
 
-/// What a host is started for: one simulator of Koyo's set.
+/// What a host is started for: one simulator of Koyo's set, or a real device by its name.
 pub struct Launch {
     pub program: PathBuf,
     pub udid: String,
-    pub set: PathBuf,
+    pub kind: Kind,
     pub state: PathBuf,
+}
+
+pub enum Kind {
+    Simulator { set: PathBuf },
+    Phone { name: String },
 }
 
 /// The host's program: beside the app's own in a bundle, in the build's folder for a debug
@@ -105,10 +110,11 @@ pub fn start(launch: &Launch, sink: impl Fn(Incoming) + Clone + Send + 'static) 
         .append(true)
         .open(launch.state.join(format!("{}.log", launch.udid)))?;
     let mut command = Command::new(&launch.program);
+    match &launch.kind {
+        Kind::Simulator { set } => command.args(["--simulator", &launch.udid]).arg("--set").arg(set),
+        Kind::Phone { name } => command.args(["--phone", &launch.udid, "--name", name]),
+    };
     command
-        .args(["--simulator", &launch.udid])
-        .arg("--set")
-        .arg(&launch.set)
         .arg("--state")
         .arg(&launch.state)
         .env(ENV_SOCKET_FD, inherit::HOST_FD.to_string())

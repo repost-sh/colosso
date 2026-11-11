@@ -2,8 +2,9 @@
 //! `.superpowers/devices/qa/visual/` (`docs/devices.md` 8): every state a tab stands in, played
 //! by a stand-in host, the picker in its three states, and the bar while an agent drives; then,
 //! with `KOYO_VISUAL_DEVICE` naming a simulator of the set, the real one live (`live.rs`): its
-//! picture drawn off screen, its host killed and started again, two at once, and quit. Nothing
-//! shows on the screen.
+//! picture drawn off screen, its host killed and started again, two at once, and quit; with
+//! `KOYO_VISUAL_PHONE` set, a real iPad plugged in, through the app (`plugged.rs`). Nothing shows
+//! on the screen.
 //!
 //! ```sh
 //! KOYO_CONFIG_DIR=$PWD/.superpowers/devices/qa/visual/config \
@@ -13,6 +14,8 @@
 //! ```
 
 mod live;
+mod phone;
+mod plugged;
 pub mod serve;
 mod setup;
 mod walk;
@@ -43,14 +46,20 @@ fn draw() -> Result<Vec<String>> {
     // A tab opens on a checkout: this one's, as the other checks open.
     let mut drawn = Drawn::open_on_checkout(OUT, &[])?;
     let mut lines = Vec::new();
+    // Nothing plugged in, and `devicectl` never asked: no real device is in the pictures.
+    phone::plugged(&mut drawn, Vec::new());
     picker(&mut drawn, &mut lines)?;
     states(&mut drawn, &mut lines)?;
+    phone::run(&mut drawn, &mut lines)?;
     setup::run(&mut drawn, &mut lines)?;
     if std::env::var_os("KOYO_VISUAL_SETUP").is_some() {
         walk::run(&mut drawn, &mut lines)?;
     }
     if let Ok(udid) = std::env::var("KOYO_VISUAL_DEVICE") {
         live::run(&mut drawn, &udid, &mut lines)?;
+    }
+    if std::env::var_os("KOYO_VISUAL_PHONE").is_some() {
+        plugged::run(&mut drawn, &mut lines)?;
     }
     Ok(lines)
 }
@@ -156,6 +165,7 @@ fn states(drawn: &mut Drawn, lines: &mut Vec<String>) -> Result<()> {
         udid: "V-IPHONE".into(),
         name: "iPhone 17 Pro".into(),
         ipad: false,
+        phone: false,
     };
     let devices = drawn.cx.update(|cx| super::devices(cx));
     let iphone = Simulator {
@@ -189,13 +199,6 @@ fn states(drawn: &mut Drawn, lines: &mut Vec<String>) -> Result<()> {
             Said::Unavailable {
                 code: Missing::Xcode,
                 why: "Koyo's devices need Xcode 27 or later.".into(),
-            },
-        ),
-        (
-            "system.png",
-            Said::Unavailable {
-                code: Missing::System,
-                why: "iOS 26.6".into(),
             },
         ),
     ];

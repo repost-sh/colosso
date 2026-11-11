@@ -1,6 +1,8 @@
 //! Looking at devices: the list, a screenshot, a snapshot and a wait. None takes the device
 //! from anyone.
 
+use std::time::Instant;
+
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use gpui_kit::{App, AsyncApp};
@@ -15,7 +17,8 @@ use super::{SCREENSHOT, SNAPSHOT, WAIT_SLACK, asking, pane_of, unexpected, which
 use crate::browser::control::Holder;
 use crate::control::Caller;
 use crate::control::exec::{Exec, output};
-use crate::devices::{self, Link, Simulator, Standing};
+use crate::devices::connected::Connected;
+use crate::devices::{self, Link, Standing};
 
 /// How a picture faces, as the tools name it.
 pub(super) fn facing(orientation: Orientation) -> &'static str {
@@ -71,25 +74,39 @@ fn controller(link: &Link) -> Option<String> {
     }
 }
 
-fn info(simulator: &Simulator, set: &str, cx: &App) -> DeviceInfo {
-    let link = devices::devices(cx).read(cx).existing(&simulator.udid);
+/// A device as it's listed, as it stands: a simulator, unless the caller says otherwise.
+fn info(udid: &str, name: &str, system: &str, cx: &App) -> DeviceInfo {
+    let link = devices::devices(cx).read(cx).existing(udid);
     let link = link.as_ref().map(|link| link.read(cx));
     let (state, missing) = link.map_or(("off", None), standing);
     DeviceInfo {
-        device: simulator.udid.clone(),
-        name: simulator.name.clone(),
+        device: udid.to_owned(),
+        name: name.to_owned(),
         kind: "simulator".into(),
-        system: simulator.system.clone(),
+        system: system.to_owned(),
         state: state.into(),
         missing,
-        pane: pane_of(&simulator.udid, cx),
+        pane: pane_of(udid, cx),
         controller: link.and_then(controller),
         screen: link.and_then(Link::screen).map(screen),
-        set: Some(set.to_owned()),
+        set: None,
     }
 }
 
-/// `device_list`: Koyo's simulators, read from its set afresh, each as it stands.
+/// A real device plugged in: not started, it says the step it misses.
+fn plugged_info(device: &Connected, cx: &App) -> DeviceInfo {
+    let mut info = DeviceInfo {
+        kind: "device".into(),
+        ..info(&device.udid, &device.name, &device.system, cx)
+    };
+    if let (true, Some((_, said))) = (info.state == "off", &device.missing) {
+        (info.state, info.missing) = ("needsPerson".into(), Some(said.clone()));
+    }
+    info
+}
+
+/// `device_list`: Koyo's simulators, read from its set afresh, and the iPhones and iPads plugged
+/// in (as the watcher keeps them, else listed now), each as it stands.
 pub(crate) fn list(cx: &mut App) -> Result<Exec, ControlError> {
     let set = devices::set_dir().ok_or_else(|| ControlError::internal("Koyo has no folder to keep its devices in."))?;
     let (path, asked) = (set.clone(), super::simctl_asked(cx));
@@ -97,13 +114,29 @@ pub(crate) fn list(cx: &mut App) -> Result<Exec, ControlError> {
         asked()?;
         devices::simulators::list(&path).map_err(ControlError::internal)
     });
+    let registry = devices::devices(cx);
+    let kept = registry.read(cx).watching() && matches!(registry.read(cx).connected, Some(Ok(_)));
+    let since = Instant::now();
+    let plugged = (!kept).then(|| cx.background_executor().spawn(async move { devices::connected::list() }));
     Ok(Exec::Later(cx.spawn(async move |cx: &mut AsyncApp| {
-        let simulators = listed.await?;
+        let (simulators, plugged) = (listed.await?, match plugged {
+            Some(listing) => Some(listing.await),
+            None => None,
+        });
         cx.update(|cx| {
+            if let Some(plugged) = plugged {
+                registry.update(cx, |registry, cx| registry.connected_afresh(plugged, since, cx));
+            }
             let set = set.display().to_string();
-            let devices = simulators.iter().map(|simulator| info(simulator, &set, cx)).collect();
+            let mut devices: Vec<DeviceInfo> = (simulators.iter())
+                .map(|simulator| DeviceInfo {
+                    set: Some(set.clone()),
+                    ..info(&simulator.udid, &simulator.name, &simulator.system, cx)
+                })
+                .collect();
+            devices.extend(registry.read(cx).plugged().iter().map(|device| plugged_info(device, cx)));
             // The launcher and the picker read the same list.
-            devices::devices(cx).update(cx, |devices, cx| devices.listed_afresh(simulators, cx));
+            registry.update(cx, |registry, cx| registry.listed_afresh(simulators, cx));
             output(&DeviceListOutput { devices })
         })
     })))

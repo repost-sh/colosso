@@ -14,14 +14,14 @@ use crate::visual::{Drawn, Result};
 /// A first boot is a minute; an iPad's took 98 s in the proof of concept.
 const READY_WITHIN: Duration = Duration::from_secs(150);
 
-fn link_of(drawn: &mut Drawn, view: &Entity<super::DeviceView>) -> Result<Entity<Link>> {
+pub(super) fn link_of(drawn: &mut Drawn, view: &Entity<super::DeviceView>) -> Result<Entity<Link>> {
     drawn
         .cx
         .read(|cx| view.read(cx).link().cloned())
         .ok_or_else(|| "the tab has no link".to_owned())
 }
 
-fn ready(drawn: &mut Drawn, link: &Entity<Link>, what: &str) -> Result<Duration> {
+pub(super) fn ready(drawn: &mut Drawn, link: &Entity<Link>, what: &str) -> Result<Duration> {
     let started = Instant::now();
     drawn
         .until(READY_WITHIN, |drawn| {
@@ -35,7 +35,7 @@ fn ready(drawn: &mut Drawn, link: &Entity<Link>, what: &str) -> Result<Duration>
 }
 
 /// Frames shown and paints over `time`, drawing as the window would.
-fn counted(drawn: &mut Drawn, link: &Entity<Link>, time: Duration) -> (u64, u64) {
+pub(super) fn counted(drawn: &mut Drawn, link: &Entity<Link>, time: Duration) -> (u64, u64) {
     let picture = drawn.cx.read(|cx| link.read(cx).picture.clone());
     let before = drawn.cx.read(|cx| {
         let picture = picture.read(cx);
@@ -66,6 +66,7 @@ pub fn run(drawn: &mut Drawn, udid: &str, lines: &mut Vec<String>) -> Result<()>
         udid: udid.to_owned(),
         name: "iPhone 17 Pro".into(),
         ipad: false,
+        phone: false,
     };
     let view = open(drawn, Some(chosen), true)?;
     let link = link_of(drawn, &view)?;
@@ -119,6 +120,7 @@ fn two(drawn: &mut Drawn, first: &Entity<Link>, second: &str, lines: &mut Vec<St
         udid: second.to_owned(),
         name: "iPad Pro 13-inch".into(),
         ipad: true,
+        phone: false,
     };
     let shown_before = drawn.cx.read(|cx| first.read(cx).picture.read(cx).frames);
     let view = open(drawn, Some(chosen), true)?;
