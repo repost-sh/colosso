@@ -21,7 +21,8 @@ mod support;
 use std::time::Duration;
 
 use koyo_device_wire::ToHost;
-use support::{Driver, Pages, row, target};
+use support::pages::Pages;
+use support::{Driver, row, target};
 
 #[test]
 #[ignore = "needs a simulator: KOYO_REAL_SIM_SET and KOYO_REAL_SIM_UDID"]

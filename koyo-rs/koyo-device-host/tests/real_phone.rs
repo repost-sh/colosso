@@ -18,43 +18,9 @@ mod support;
 
 use std::time::{Duration, Instant};
 
-use koyo_device_wire::{Act, Answer, Ask, Change, Finger, Input, Point, Press, Refusal, Screen, Source, Spot, ToHost};
+use koyo_device_wire::{Act, Answer, Ask, Change, Finger, FromHost, Input, Point, Press, Refusal, Screen, Spot, State, ToHost};
+use support::acts::{act, place_of, press, said, tap};
 use support::{Driver, change, phone, row};
-
-/// Notes an act done on the device, as the final report lists every one.
-fn act(what: &str) {
-    support::append("KOYO_REAL_PHONE_ACTS", &format!("- {} real_phone: {what}", support::now()));
-}
-
-/// What an act answered, in a few words.
-fn said(answer: &Result<Answer, Refusal>) -> String {
-    match answer {
-        Ok(Answer::Acted { change, millis, .. }) => format!("{change:?} in {millis} ms"),
-        other => format!("{other:?}"),
-    }
-}
-
-/// Where a text snapshot reads `word`, in points: its place only, nothing else of the text.
-fn place_of(host: &mut Driver, word: &str) -> Option<Point> {
-    let Ok(Answer::Snapshot { tree, source, .. }) = host.snapshot() else {
-        return None;
-    };
-    assert_eq!(source, Source::Text, "a real device has no tree");
-    support::place(&tree, word)
-}
-
-fn tap(host: &mut Driver, at: Point) -> Result<Answer, Refusal> {
-    host.act(Act::Tap {
-        spot: Spot::Point(at),
-        count: 1,
-        hold_ms: 0,
-        fingers: 1,
-    })
-}
-
-fn press(host: &mut Driver, button: Press) -> Result<Answer, Refusal> {
-    host.act(Act::Button { button })
-}
 
 #[test]
 #[ignore = "needs a real device by cable: KOYO_REAL_PHONE_UDID"]
@@ -178,7 +144,7 @@ fn pinch_rotation_and_typing_take_on_a_real_device() {
         eprintln!("skipped: no KOYO_REAL_PHONE_UDID and KOYO_REAL_PHONE_LAB");
         return;
     };
-    let pages = support::Pages::serve_lan();
+    let pages = support::pages::Pages::serve_lan();
     let mut host = Driver::start(&target, true);
     let screen = host.ready(Duration::from_secs(60));
     host.tell(&ToHost::Visible { visible: true });
@@ -230,9 +196,9 @@ fn a_locked_device_says_so_and_comes_back_when_unlocked() {
     let mut host = Driver::start(&target, true);
     host.tell(&ToHost::Visible { visible: true });
     let said = host.until(Duration::from_secs(60), |message| {
-        matches!(message, koyo_device_wire::FromHost::State { state: koyo_device_wire::State::Locked { .. } | koyo_device_wire::State::Ready { .. } | koyo_device_wire::State::Unavailable { .. } })
+        matches!(message, FromHost::State { state: State::Locked { .. } | State::Ready { .. } | State::Unavailable { .. } })
     });
-    let locked = matches!(said, Some(koyo_device_wire::FromHost::State { state: koyo_device_wire::State::Locked { .. } }));
+    let locked = matches!(said, Some(FromHost::State { state: State::Locked { .. } }));
     row("QR7", "a locked device shows as locked", &format!("{} after {} ms", if locked { "Locked" } else { "not locked" }, started.elapsed().as_millis()), locked);
     if !locked {
         let _ = host.quit(Duration::from_secs(10));
@@ -245,7 +211,7 @@ fn a_locked_device_says_so_and_comes_back_when_unlocked() {
     eprintln!("waiting up to ten minutes for the person to unlock it");
     let waited = Instant::now();
     let back = host.until(Duration::from_secs(600), |message| {
-        matches!(message, koyo_device_wire::FromHost::State { state: koyo_device_wire::State::Ready { .. } })
+        matches!(message, FromHost::State { state: State::Ready { .. } })
     });
     row("QR7", "unlocked by hand, it's ready again by itself", &format!("{} after {} s", back.is_some(), waited.elapsed().as_secs()), back.is_some());
     let _ = host.quit(Duration::from_secs(10));

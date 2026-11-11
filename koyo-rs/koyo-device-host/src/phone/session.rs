@@ -33,6 +33,8 @@ use crate::ring::Ring;
 
 /// How often the device's turn is read while its picture is wanted.
 const LOOK_EVERY: Duration = Duration::from_secs(2);
+/// How long the reads of the device's turn rest after one failed.
+const READS_REST: Duration = Duration::from_secs(30);
 /// The lock notifications the device posts as it locks and unlocks.
 const LOCK_NOTICES: [&str; 2] = ["com.apple.springboard.lockstate", "com.apple.springboard.hasBlankedScreen"];
 /// Notices that come this close together are one change, looked at once.
@@ -115,13 +117,43 @@ async fn tunnel(provider: &UsbmuxdProvider) -> Result<Tunnel, String> {
 type Pump = Option<JoinHandle<(String, Counts)>>;
 
 impl Session<'_> {
+    /// Reads how the device is held and its display turned, and says a change. A read that fails,
+    /// or doesn't answer, is said once (a turn would go unseen) and the service asked anew; the
+    /// reads rest a while before the next, so a device that won't answer isn't asked every tick.
+    async fn turn_read(&self, live: &mut Live, info: &mut DeviceInfo, display: &mut Display, resting: &mut Option<Instant>) {
+        if resting.is_some_and(|until| Instant::now() < until) {
+            return;
+        }
+        let why = match tokio::time::timeout(LOOK_EVERY, info.display()).await {
+            Ok(Ok(now)) => {
+                *resting = None;
+                if now != *display {
+                    *display = now;
+                    (self.tell)(Event::Display(now));
+                }
+                return;
+            }
+            Ok(Err(why)) => why,
+            Err(_) => format!("no answer in {} s", LOOK_EVERY.as_secs()),
+        };
+        if resting.is_none() {
+            self.teller.log(LogLevel::Warn, format!("the device's display info: {why}: asking its information service anew"));
+        }
+        match tokio::time::timeout(LOOK_EVERY, DeviceInfo::connect(&mut live.adapter, &mut live.handshake)).await {
+            Ok(Ok(again)) => *info = again,
+            Ok(Err(why)) => self.teller.log(LogLevel::Warn, why),
+            Err(_) => self.teller.log(LogLevel::Warn, "the device's information service didn't answer again"),
+        }
+        *resting = Some(Instant::now() + READS_REST);
+    }
+
     /// The first step the device is missing, in its words; else what failed, as it is.
     fn missing(&self, why: String) -> Ending {
         self.teller.log(LogLevel::Warn, &why);
         checks::missing(self.udid, self.name).unwrap_or((Missing::Other, why))
     }
 
-    async fn run(&self, mut commands: UnboundedReceiver<Command>, ring: &Ring, stats: bool) -> Result<(), Ending> {
+    async fn run(&self, commands: UnboundedReceiver<Command>, ring: &Ring, stats: bool) -> Result<(), Ending> {
         // Asked while the tunnel is made: `devicectl` takes a second or so.
         let udid = self.udid.to_owned();
         let locked = tokio::task::spawn_blocking(move || checks::locked(&udid));
@@ -131,9 +163,9 @@ impl Session<'_> {
         let provider = device.to_provider(address, LABEL);
         let Tunnel { mut adapter, mut handshake } = tunnel(&provider).await.map_err(|why| self.missing(why))?;
         let mut info = DeviceInfo::connect(&mut adapter, &mut handshake).await.map_err(|why| self.missing(why))?;
-        let mut display = info.display().await.map_err(|why| self.missing(why))?;
+        let display = info.display().await.map_err(|why| self.missing(why))?;
         let keyframe = Arc::new(Notify::new());
-        let (stalls, mut stalled) = tokio::sync::mpsc::unbounded_channel();
+        let (stalls, stalled) = tokio::sync::mpsc::unbounded_channel();
         let (pictures, decoding) = mpsc::channel();
         let (log, ends) = (self.teller.clone(), Ends { ring: ring.clone(), keyframe: Arc::clone(&keyframe), stalled: stalls });
         std::thread::Builder::new()
@@ -141,39 +173,57 @@ impl Session<'_> {
             .spawn(move || decode::run(ends, &decoding, &log, stats))
             .map_err(|error| (Missing::Other, format!("no thread for the decoder: {error}")))?;
         let started = stream::start(&mut adapter, &mut handshake).await.map_err(|why| in_use_or(self.missing(why)))?;
-        let mut pump: Pump = Some(tokio::spawn(stream::pump(started, pictures.clone(), Arc::clone(&keyframe))));
-        let mut input = Input::connect(&mut adapter, &mut handshake).await.map_err(|why| self.missing(why))?;
-        let mut lock = watch_lock(&provider, self.udid).await;
-        let mut locked = locked.await.ok().flatten().unwrap_or(false);
+        let pump = Some(tokio::spawn(stream::pump(started.media, pictures.clone(), Arc::clone(&keyframe))));
+        let mut live = Live { adapter, handshake, streaming: Some(started.service), pump, pictures, keyframe };
+        let locked = locked.await.ok().flatten().unwrap_or(false);
+        let outcome = self.serve(&mut live, Serving { commands, ring, provider: &provider, info, display, stalled, locked }).await;
+        // However it ended, the device's stream is told to stop with this end: else the device
+        // keeps its session, and itself awake, long after (QR6). Unplugged, there's none to stop.
+        if let Some(running) = live.pump.take() {
+            running.abort();
+        }
+        if let Some(mut service) = live.streaming.take()
+            && let Err(why) = stream::stop(&mut service).await
+        {
+            self.teller.log(LogLevel::Warn, why);
+        }
+        outcome
+    }
+
+    /// The session from its first picture: input, the lock, turns, and the stream's restarts.
+    async fn serve(&self, live: &mut Live, serving: Serving<'_>) -> Result<(), Ending> {
+        let Serving { mut commands, ring, provider, mut info, mut display, mut stalled, mut locked } = serving;
+        let mut input = Input::connect(&mut live.adapter, &mut live.handshake).await.map_err(|why| self.missing(why))?;
+        let mut lock = watch_lock(provider, self.udid).await;
         (self.tell)(Event::Ready { display, locked });
         let mut turned = tokio::time::interval(LOOK_EVERY);
         turned.set_missed_tick_behavior(MissedTickBehavior::Skip);
-        let (mut restarts, mut restart_at) = (Restarts::default(), None);
+        let (mut restarts, mut restart_at, mut resting) = (Restarts::default(), None, None);
         loop {
             tokio::select! {
                 command = commands.recv() => match command {
-                    None | Some(Command::Quit) => break,
-                    Some(command) => input.send(command, &mut adapter, &mut handshake, self.teller).await,
+                    None | Some(Command::Quit) => return Ok(()),
+                    Some(command) => input.send(command, &mut live.adapter, &mut live.handshake, self.teller).await,
                 },
-                ended = join(&mut pump) => {
-                    pump = None;
+                ended = join(&mut live.pump) => {
+                    live.pump = None;
                     let (why, counts) = ended;
                     self.teller.log(LogLevel::Info, format!("the stream ended ({why}): {} pictures, {} out of turn, {} keyframes asked for", counts.pictures, counts.gaps, counts.keyframes));
                     if lost(self.udid).await {
-                        (self.tell)(Event::Unplugged(format!("{} was unplugged. Plug it back in to continue.", self.name)));
-                        break;
+                        self.unplugged(live);
+                        return Ok(());
                     }
                     restart_at = Some(restarts.next(self.name, &why)?);
                 }
                 Some(()) = stalled.recv() => {
-                    if let Some(running) = pump.take() {
+                    if let Some(running) = live.pump.take() {
                         running.abort();
                     }
                     self.teller.log(LogLevel::Warn, "the stream stalled: no picture decodable for two seconds of asking");
                     // A stall can be the cable pulled: then it's gone, not started again.
                     if lost(self.udid).await {
-                        (self.tell)(Event::Unplugged(format!("{} was unplugged. Plug it back in to continue.", self.name)));
-                        break;
+                        self.unplugged(live);
+                        return Ok(());
                     }
                     if restart_at.is_none() {
                         restart_at = Some(restarts.next(self.name, "it stalled")?);
@@ -181,11 +231,11 @@ impl Session<'_> {
                 }
                 () = until(restart_at) => {
                     restart_at = None;
-                    match stream::start(&mut adapter, &mut handshake).await {
-                        Ok(started) => pump = Some(tokio::spawn(stream::pump(started, pictures.clone(), Arc::clone(&keyframe)))),
+                    match live.restart().await {
+                        Ok(()) => {}
                         Err(_) if lost(self.udid).await => {
-                            (self.tell)(Event::Unplugged(format!("{} was unplugged. Plug it back in to continue.", self.name)));
-                            break;
+                            self.unplugged(live);
+                            return Ok(());
                         }
                         Err(why) => restart_at = Some(restarts.next(self.name, &why)?),
                     }
@@ -196,19 +246,58 @@ impl Session<'_> {
                         (self.tell)(Event::Locked(now));
                     }
                 }
-                _ = turned.tick(), if ring.wanted() => {
-                    if let Ok(now) = info.display().await && now != display {
-                        display = now;
-                        (self.tell)(Event::Display(now));
+                // Whether the picture is wanted is asked at each tick: as the branch's condition
+                // it would be read only when the loop last woke, and a turn would go unseen until
+                // something else woke it.
+                _ = turned.tick() => {
+                    if ring.wanted() {
+                        self.turn_read(live, &mut info, &mut display, &mut resting).await;
                     }
                 }
             }
         }
-        if let Some(running) = pump {
-            running.abort();
+    }
+
+    /// Unplugged: said, and with it no stream left to stop.
+    fn unplugged(&self, live: &mut Live) {
+        live.streaming = None;
+        (self.tell)(Event::Unplugged(format!("{} was unplugged. Plug it back in to continue.", self.name)));
+    }
+}
+
+/// What a session holds while the device's stream runs: what its end has to stop.
+struct Live {
+    adapter: AdapterHandle,
+    handshake: RsdHandshake,
+    streaming: Option<stream::Service>,
+    pump: Pump,
+    pictures: mpsc::Sender<Vec<u8>>,
+    keyframe: Arc<Notify>,
+}
+
+impl Live {
+    /// Starts the stream again, the one before stopped first: the device keeps one it isn't
+    /// told to stop.
+    async fn restart(&mut self) -> Result<(), String> {
+        if let Some(mut before) = self.streaming.take() {
+            stream::stop(&mut before).await?;
         }
+        let started = stream::start(&mut self.adapter, &mut self.handshake).await?;
+        self.streaming = Some(started.service);
+        self.pump = Some(tokio::spawn(stream::pump(started.media, self.pictures.clone(), Arc::clone(&self.keyframe))));
         Ok(())
     }
+}
+
+/// What [`Session::serve`] is given.
+struct Serving<'a> {
+    commands: UnboundedReceiver<Command>,
+    ring: &'a Ring,
+    provider: &'a UsbmuxdProvider,
+    info: DeviceInfo,
+    display: Display,
+    stalled: UnboundedReceiver<()>,
+    locked: bool,
 }
 
 /// The stream reader's end; never, while none runs.

@@ -31,6 +31,9 @@ use crate::ring::Ring;
 /// The most fingers a real device's touch report carries.
 const MOST_FINGERS: usize = 5;
 
+/// How long the session is given to stop the device's stream when the device is let go.
+const DETACHES_WITHIN: std::time::Duration = std::time::Duration::from_secs(4);
+
 pub struct Phone {
     commands: UnboundedSender<Command>,
     events: mpsc::Receiver<Event>,
@@ -121,9 +124,21 @@ impl Phone {
         });
     }
 
+    /// Lets the device go: its session told to end, and waited for a moment while it stops the
+    /// device's stream; else the device keeps the stream's session, and itself awake, after the
+    /// host is gone (QR6).
     pub fn detach(&mut self) {
         self.lift();
-        let _ = self.send(Command::Quit);
+        if self.send(Command::Quit).is_err() {
+            return;
+        }
+        let until = std::time::Instant::now() + DETACHES_WITHIN;
+        // The session's end drops its side of the events: then this says so at once.
+        while let Some(left) = until.checked_duration_since(std::time::Instant::now()) {
+            if self.events.recv_timeout(left).is_err() {
+                break;
+            }
+        }
     }
 
     fn send(&self, command: Command) -> Result<(), String> {

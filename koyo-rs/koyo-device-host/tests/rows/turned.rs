@@ -8,7 +8,8 @@ use serde_json::Value;
 
 use crate::rows::mixed;
 use crate::support::pages::open;
-use crate::support::{Driver, Pages, Target, row};
+use crate::support::pages::Pages;
+use crate::support::{Driver, Target, row};
 
 fn spot(screen: &Screen, x: f64, y: f64) -> Spot {
     Spot::Point(Point {
