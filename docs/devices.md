@@ -161,12 +161,21 @@ reached only from `phone/`: its API is unstable below 0.2.
 - How it's turned and held, from the device's own `deviceinfo` service (`getdisplayinfo`): the
   LCD's `currentOrientation` turns the picture; how it's held turns places, and lying flat
   (`faceUp`) the last way it was held (`currentDeviceNonFlatOrientation`) holds. Read at connect
-  and every two seconds while the picture is wanted. Its point scale is the device's own
-  (`pointScale`: 2 on an iPad).
+  and every two seconds while the picture is wanted (asked at each tick: as the loop's condition
+  it was read only when something else woke the loop, and turns went unseen); a failed read is
+  logged and the service asked anew. Its point scale is the device's own (`pointScale`: 2 on an
+  iPad). Measured on the iPad, turned four ways by `devicectl device orientation set` (the
+  owner's word, for want of his hands): followed upright 0.15-2.0 s after each, and Control
+  Centre opened from the top right corner in each.
 - **It doesn't lock while its stream is held open** (PoC: unlocked through 8 and 12 minutes;
   locked in 5-6 with only a power assertion; M6: unlocked at 6 and 11.7 minutes held). That is the
   whole mechanism: nothing is set on the device. The tab says "While this tab is open, your iPad
-  stays awake and its camera and microphone are off."
+  stays awake and its camera and microphone are off." **The stream is stopped when it's let go**
+  (`stopmediastream`, and the host waits up to 4 s for its session to do it before it exits): left
+  to the tunnel's end, the device kept the stream's session, and itself awake, long after the
+  host was gone (M6: still lit 20 minutes after the tab closed, two sessions found standing).
+  Stopped, the iPad's screen went dark by its own Auto-Lock (QR6). Its camera, meanwhile, showed a
+  still and dark preview (U14, by numbers).
 - Input through its universal HID service (up to five fingers) and Indigo (buttons, keys);
   places turned to the device's own upright axes by how it is held. A connection the device
   closed is made again and the act sent once more. **Never turned by Koyo** [decided]: the only
@@ -188,7 +197,10 @@ reached only from `phone/`: its API is unstable below 0.2.
   than a minute after the last, three times in all; then the tab says so with Start Again.
   Never a loop: sessions restarted often are reported to wedge the device's daemon.
 - Unplugged mid-session: the host says it's gone ("{name} was unplugged. Plug it back in to
-  continue."); not connected at the start, it's the setup's cable step.
+  continue.") and that stays its last word (it had told its standing over it, and the app took
+  the quit for a crash); a stream that stalls, or won't start again, asks first whether the cable
+  went. Not connected at the start, it's the setup's cable step. Plugged back in, it came back by
+  itself 20 s after (M6).
 - One remote view of a device at a time: Xcode or Device Hub taking it pauses Koyo's.
 - **In the app** (`devices/connected.rs`): what's plugged in is listed by `devicectl list devices`
   off the main thread when a Devices surface first shows, iPhones and iPads by cable only, each
