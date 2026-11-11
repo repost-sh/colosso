@@ -199,6 +199,23 @@ fn random_suffix() -> String {
         .collect()
 }
 
+/// cswap's `settings.atomic_write_json`: `data` as two-space JSON at `path`, its folder made if
+/// need be and narrowed to 0700. The folder is `path`'s own, not a symlink target's: narrowing a
+/// folder that belongs to something else would be wrong, and the file is 0600 either way.
+///
+/// # Errors
+/// As [`atomic_write`], or the folder that couldn't be made.
+pub fn atomic_write_json(env: &Env, path: &Path, data: &serde_json::Value) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        create_dir_all(env, parent)?;
+        set_mode(env, parent, 0o700)
+            .map_err(|error| AccountsError::io(format!("narrowing {}", parent.display()), error))?;
+    }
+    let text = serde_json::to_string_pretty(data)
+        .map_err(|error| AccountsError::Config(format!("{}: {error}", path.display())))?;
+    atomic_write(env, path, text.as_bytes())
+}
+
 /// `fs::create_dir_all`, asked of the guard.
 ///
 /// # Errors

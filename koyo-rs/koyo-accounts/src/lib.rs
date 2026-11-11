@@ -18,10 +18,16 @@ pub mod fsutil;
 pub mod guard;
 pub mod http;
 pub mod keychain;
+pub mod lines;
 pub mod locking;
+pub mod oauth;
+pub mod pace;
 pub mod paths;
+pub mod poll_policy;
+pub mod subscription;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
+pub mod usage_store;
 
 pub use env::{Clock, Env, Vars};
 pub use error::{AccountsError, Result};

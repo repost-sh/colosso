@@ -76,7 +76,7 @@ impl Response {
 pub enum HttpError {
     /// Past the request's time.
     Timeout,
-    /// The certificate or the TLS handshake was refused: a TLS-inspecting proxy, often.
+    /// The server's certificate was refused: a TLS-inspecting proxy, often.
     Tls(String),
     /// No route, no name, no connection.
     Network(String),
@@ -144,10 +144,10 @@ impl Http for Curl {
 fn failure(code: i32, said: &str) -> HttpError {
     match code {
         28 => HttpError::Timeout,
-        // SSL connect, peer certificate, its pinned key, the CA file, CRL, issuer, and so on.
-        35 | 51 | 53 | 54 | 58 | 59 | 60 | 64 | 66 | 77 | 80 | 82 | 83 | 90 | 91 => {
-            HttpError::Tls(said.to_owned())
-        }
+        // A certificate refused: the peer's, the CA store, its issuer, a pinned key, its status.
+        // Other TLS failures (a handshake with a plaintext port) are the network's, as cswap
+        // tells only a certificate verification apart.
+        60 | 77 | 83 | 90 | 91 => HttpError::Tls(said.to_owned()),
         _ => HttpError::Network(if said.is_empty() {
             format!("curl exited {code}")
         } else {
