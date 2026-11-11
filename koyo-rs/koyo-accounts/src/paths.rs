@@ -1,6 +1,7 @@
 //! Port of claude-swap's `paths.py` (0fe22a8), with the Keychain service names Claude Code
-//! derives (`session.py`'s `keychain_service_name`): Koyo reads and writes the files Claude
-//! Code does, found as Claude Code finds them.
+//! derives (`session.py`'s `keychain_service_name` and `_keychain_services`, with the
+//! `posixpath` helpers the latter needs): Koyo reads and writes the files Claude Code does,
+//! found as Claude Code finds them.
 //!
 //! - Config home: `CLAUDE_CONFIG_DIR` if set, else `~/.claude`.
 //! - Global config: `<config home>/.config.json` if it's a regular file that is non-empty, or
@@ -13,7 +14,7 @@
 //! the legacy-root migration isn't ported (`docs/claude-accounts.md` 3).
 
 use std::fmt::Write as _;
-use std::os::unix::fs::PermissionsExt as _;
+use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
 use std::path::{Path, PathBuf};
 
 use sha2::{Digest as _, Sha256};
@@ -91,6 +92,93 @@ pub fn keychain_service_name(config_dir: &str) -> String {
         hex
     });
     format!("{CLAUDE_CODE_KEYCHAIN_SERVICE}-{hex}")
+}
+
+/// Python's `posixpath.dirname`.
+fn dirname(path: &str) -> &str {
+    let head = path.rfind('/').map_or("", |at| &path[..=at]);
+    if !head.is_empty() && head.chars().any(|c| c != '/') {
+        head.trim_end_matches('/')
+    } else {
+        head
+    }
+}
+
+/// Python's `posixpath.join` of two parts.
+fn join(head: &str, tail: &str) -> String {
+    if tail.starts_with('/') || head.is_empty() {
+        tail.to_owned()
+    } else if head.ends_with('/') {
+        format!("{head}{tail}")
+    } else {
+        format!("{head}/{tail}")
+    }
+}
+
+/// Python's `posixpath.normpath`: `.`, `..` and repeated slashes collapsed, lexically.
+pub(crate) fn normpath(path: &str) -> String {
+    if path.is_empty() {
+        return ".".into();
+    }
+    let initial = if path.starts_with("//") && !path.starts_with("///") {
+        2
+    } else {
+        usize::from(path.starts_with('/'))
+    };
+    let mut comps: Vec<&str> = Vec::new();
+    for comp in path.split('/') {
+        if comp.is_empty() || comp == "." {
+            continue;
+        }
+        if comp != ".." || (initial == 0 && comps.is_empty()) || comps.last() == Some(&"..") {
+            comps.push(comp);
+        } else if !comps.is_empty() {
+            comps.pop();
+        }
+    }
+    let joined = format!("{}{}", "/".repeat(initial), comps.join("/"));
+    if joined.is_empty() {
+        ".".into()
+    } else {
+        joined
+    }
+}
+
+/// `os.path.samefile`: both exist and are one file.
+fn samefile(left: &str, right: &str) -> bool {
+    match (std::fs::metadata(left), std::fs::metadata(right)) {
+        (Ok(left), Ok(right)) => left.dev() == right.dev() && left.ino() == right.ino(),
+        _ => false,
+    }
+}
+
+/// `_keychain_services`: the Keychain services that may hold a profile's credential, in lookup
+/// order. Claude Code hashes the exported folder verbatim, so a profile that is a symlink was
+/// launched under its own path or its target's; both are tried, the link's first. A relative
+/// target is joined onto the link's folder and tried as the lexical form (`..` collapsed, only
+/// when it names the same folder: under a parent that is itself a symlink it can name an
+/// unrelated one) and then as the raw join. `service` names the unsuffixed default item and
+/// stands alone.
+pub(crate) fn keychain_services(config_dir: &str, service: Option<&str>) -> Vec<String> {
+    if let Some(service) = service {
+        return vec![service.to_owned()];
+    }
+    let mut services = vec![keychain_service_name(config_dir)];
+    let Ok(target) = std::fs::read_link(config_dir) else {
+        return services;
+    };
+    let target = target.to_string_lossy().into_owned();
+    if target.starts_with('/') {
+        services.push(keychain_service_name(&target));
+        return services;
+    }
+    let raw = join(dirname(config_dir), &target);
+    let lexical = normpath(&raw);
+    if lexical != raw && samefile(&lexical, &raw) {
+        services.push(keychain_service_name(&lexical));
+    }
+    services.push(keychain_service_name(&raw));
+    services
 }
 
 /// Whether two paths name the same folder, symlinks and `..` included, as written when either

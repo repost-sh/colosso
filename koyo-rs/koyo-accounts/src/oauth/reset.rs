@@ -146,6 +146,12 @@ pub(crate) fn utc_at(seconds: f64) -> Option<DateTime<Utc>> {
     DateTime::from_timestamp_micros(micros as i64)
 }
 
+/// An epoch as ISO-8601 UTC to the second, `2024-01-01T00:00:00Z` (the fraction dropped, as
+/// `strftime`'s `%S` does); `None` out of range.
+pub(crate) fn iso_utc(seconds: f64) -> Option<String> {
+    utc_at(seconds.floor()).map(|at| at.format("%Y-%m-%dT%H:%M:%SZ").to_string())
+}
+
 /// `(countdown, clock)` for a reset time in local time.
 ///
 /// # Errors

@@ -18,7 +18,7 @@ use super::backoff::{TRUST_MAX_AGE_S, earliest_reset, rejection_deadline};
 use super::rows::{Row, apply_outcome, entry_of, opt, row_eligible};
 use super::{CLAIM_TTL_S, FetchRecord, Identities, Identity, PollPlan, SCHEMA_VERSION, UsageEntry};
 use crate::locking::{DEFAULT_TIMEOUT, FileLock};
-use crate::oauth::value::num_or_none;
+use crate::oauth::value::{num_or_none, py_number};
 use crate::poll_policy::random_u64;
 use crate::{Env, Result, fsutil, paths};
 
@@ -356,6 +356,37 @@ impl UsageStore {
             row.insert("nextPollAt".to_owned(), opt(next_poll_at));
             row.insert("pollIntervalS".to_owned(), opt(interval));
         })
+    }
+
+    /// Pulls one slot's poll plan earlier, never later: to `max(now, fetchedAt + floor)` with
+    /// the interval `floor`, unless its plan already comes due by then. A slot never measured
+    /// (no `fetchedAt`) or whose row is another account's is left as it is, so nothing blocks
+    /// its first fetch. Read and written under the store's lock.
+    ///
+    /// # Errors
+    /// The lock's, or the write's.
+    pub fn pull_plan_earlier(&self, num: &str, identity: &Identity, floor: f64) -> Result<()> {
+        let _lock = self.lock()?;
+        let mut rows = self.read_rows();
+        let Some(row) = rows
+            .get(num)
+            .and_then(Value::as_object)
+            .filter(|row| matches_row(row, identity))
+        else {
+            return Ok(());
+        };
+        let Some(fetched_at) = row.get("fetchedAt").and_then(py_number) else {
+            return Ok(());
+        };
+        let next_poll = self.env.now().max(fetched_at + floor);
+        if num_or_none(row.get("nextPollAt")).is_some_and(|next| next <= next_poll) {
+            return Ok(());
+        }
+        let mut row = take_row(&mut rows, num, identity);
+        row.insert("nextPollAt".to_owned(), Value::from(next_poll));
+        row.insert("pollIntervalS".to_owned(), Value::from(floor));
+        rows.insert(num.to_owned(), Value::Object(row));
+        self.write_rows(&rows)
     }
 
     /// Lifts the dead-token quarantine of slots whose credential a re-login or add rewrote: the

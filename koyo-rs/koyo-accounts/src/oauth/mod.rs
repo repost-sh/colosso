@@ -39,7 +39,7 @@ pub use reset::{
     Iso, ResetError, format_countdown, format_reset, fresh_reset_strings, parse_iso,
     reset_clock_string,
 };
-pub(crate) use reset::{iso_timestamp, utc_at};
+pub(crate) use reset::{iso_timestamp, iso_utc, utc_at};
 pub use sentinels::*;
 pub use usage::{
     BAD_RESPONSE_ERROR, FetchError, InvalidUsageResponse, NETWORK_ERROR, ORG_POLICY_ERROR,
@@ -219,6 +219,12 @@ pub fn is_setup_token(oauth: Option<&Map<String, Value>>) -> bool {
         }
         _ => false,
     }
+}
+
+/// Whether an OAuth payload holds a login: a non-empty access or refresh token. Claude Code
+/// empties both in place after a rejected refresh, keeping the wrapper.
+pub fn has_login_token(oauth: &Map<String, Value>) -> bool {
+    truthy_at(oauth.get("accessToken")) || truthy_at(oauth.get("refreshToken"))
 }
 
 /// A short summary of a stored OAuth token's state, for logs: never the token.
