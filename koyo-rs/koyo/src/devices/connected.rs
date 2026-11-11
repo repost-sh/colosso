@@ -140,6 +140,16 @@ impl Devices {
     /// `device_list`).
     pub fn connected_afresh(&mut self, listed: Result<Vec<Connected>, String>, since: Instant, cx: &mut Context<Self>) {
         let changed = self.connected.as_ref() != Some(&listed);
+        // Unplugged, a device's lend ends, whether or not a tab showed it.
+        if let Ok(now) = &listed {
+            let gone: Vec<String> = (self.plugged().iter())
+                .filter(|before| now.iter().all(|device| device.udid != before.udid))
+                .map(|before| before.udid.clone())
+                .collect();
+            for udid in gone {
+                self.lend_ends(&udid, cx);
+            }
+        }
         self.connected = Some(listed);
         self.back(since, cx);
         if changed {

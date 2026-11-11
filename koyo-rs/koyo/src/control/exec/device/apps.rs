@@ -12,7 +12,7 @@ use koyo_app_control::ops::device::{
 use koyo_device_wire::{Answer, Ask};
 use serde_json::Value;
 
-use super::{APPS, INSTALL, OPENING, Target, act_on, asking, unexpected, which};
+use super::{APPS, INSTALL, OPENING, Target, act_on, asking, unexpected};
 use crate::control::Caller;
 use crate::control::exec::{Exec, output};
 
@@ -26,7 +26,7 @@ fn done(target: &Target) -> impl FnOnce(Answer) -> Result<Value, ControlError> +
 }
 
 pub(crate) fn apps(caller: &Caller, input: &Which, cx: &mut App) -> Result<Exec, ControlError> {
-    let target = which(caller, input.device.as_deref(), input.pane, cx)?;
+    let target = super::which_for(caller, (input.device.as_deref(), input.pane), Some(&Ask::Apps), cx)?;
     let name = target.name.clone();
     Ok(asking(&target, Ask::Apps, APPS, cx, move |answer| match answer {
         Answer::Apps { apps } => {

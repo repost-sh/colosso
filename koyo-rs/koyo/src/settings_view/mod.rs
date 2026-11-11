@@ -31,7 +31,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::{App, Context, Entity, IntoElement, ParentElement as _, Subscription};
 
 pub use chat::{ClearClaudePath, EditClaudePath, edit_claude_path};
-pub use components::MenuButton;
+pub use components::{MenuButton, PillButton};
 pub use general::{EditBranchPrefix, edit_branch_prefix};
 pub use mcp_agents::{EditPagesOpenAt, edit_pages_open_at};
 pub use settings_sidebar::SettingsSidebar;

@@ -69,6 +69,22 @@ pub(super) fn run(drawn: &mut Drawn, lines: &mut Vec<String>) -> Result<()> {
         drawn.cx.update(|cx| link.update(cx, |link, cx| link.hear(FromHost::State { state }, cx)));
         lines.push(format!("{}", drawn.save(picture)?.display()));
     }
+    // Lent to an agent: the strip says so, with Take It Back.
+    drawn.cx.update(|cx| link.update(cx, |link, cx| link.hear(FromHost::State { state: Said::Ready { screen: screen() } }, cx)));
+    let claude = crate::browser::control::Actor {
+        id: "chat:1".into(),
+        label: "Claude".into(),
+    };
+    drawn.cx.update(|cx| {
+        devices.update(cx, |devices, cx| {
+            devices.lends.lend("V-PAD", Some(claude));
+            cx.notify();
+        });
+    });
+    lines.push(format!("{}", drawn.save("phone-lent.png")?.display()));
+    drawn.cx.update(|cx| {
+        devices.update(cx, |devices, cx| devices.take_back("V-PAD", cx));
+    });
     drawn.cx.update(|cx| link.update(cx, crate::devices::Link::stop));
 
     // Its setup, a step at a time, as the list moves on.

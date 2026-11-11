@@ -106,7 +106,7 @@ impl Operation for DeviceList {
     const NAME: &'static str = "device_list";
     const TITLE: &'static str = "List devices";
     const SCOPE: Scope = Scope::Read;
-    const DESCRIPTION: &'static str = "Koyo's own iPhone and iPad simulators, each with its id, name, system, state and, while it runs, the picture's size in points. A simulator's `set` is its device set: your own `xcrun simctl --set <set>` reaches it by its id (`xcodebuild` may not; build for a generic simulator and install with device_install). The person's own Xcode simulators aren't Koyo's and aren't listed.";
+    const DESCRIPTION: &'static str = "Koyo's own iPhone and iPad simulators, each with its id, name, system, state and, while it runs, the picture's size in points. A simulator's `set` is its device set: your own `xcrun simctl --set <set>` reaches it by its id (`xcodebuild` may not; build for a generic simulator and install with device_install). The person's own Xcode simulators aren't Koyo's and aren't listed. The person's own iPhones and iPads plugged in are listed as `kind: device`, with the step one misses: before you use one, tell them what for; your first call on it asks them in Koyo's window.";
     const HINTS: Hints = Hints::READ.beyond_koyo();
     type Input = super::shared::NoInput;
     type Output = DeviceListOutput;
@@ -159,7 +159,7 @@ impl Operation for DeviceOpen {
     const TITLE: &'static str = "Open a device";
     const SUBJECT: &'static [&'static str] = &["device", "model"];
     const SCOPE: Scope = Scope::Devices;
-    const DESCRIPTION: &'static str = "Starts one of Koyo's simulators (or makes a new one from `model` on the newest system installed) and opens its tab, out of the person's sight unless their setting shows what agents open. Answers within a minute: `ready: true` with the picture's size, or `ready: false` with the `step` it is at (a first boot takes about a minute): call again until it's ready. Refused when the person's limit of simulators running at once is reached, naming what runs: ask the person, or close one with device_close.";
+    const DESCRIPTION: &'static str = "Starts one of Koyo's simulators (or makes a new one from `model` on the newest system installed) and opens its tab, out of the person's sight unless their setting shows what agents open. Answers within a minute: `ready: true` with the picture's size, or `ready: false` with the `step` it is at (a first boot takes about a minute): call again until it's ready. Refused when the person's limit of simulators running at once is reached, naming what runs: ask the person, or close one with device_close. With `device` naming the person's own iPhone or iPad plugged in, opens that once they've lent it to you: the first call asks them in Koyo's window and returns device_needs_person at once.";
     const HINTS: Hints = Hints::CHANGE.beyond_koyo();
     type Input = DeviceOpenInput;
     type Output = DeviceOpenOutput;
