@@ -1,6 +1,6 @@
-//! Claude accounts (`docs/claude-accounts.md` 6, `docs/app-control.md` 5): the Mac's Claude
-//! Code login as Koyo shows it, and how much of its week is used. Listing it is a read;
-//! switching stays with the person.
+//! Claude accounts (`docs/claude-accounts.md` 6, `docs/app-control.md` 5): the Claude Code
+//! accounts Koyo keeps as it shows them, the Mac's login among them, and how much of each one's
+//! week is used. Listing them is a read; switching stays with the person.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -39,6 +39,9 @@ pub enum ProblemKind {
     TokenExpired,
     /// The Keychain was locked or busy; still signed in.
     KeychainUnavailable,
+    /// The Mac's login belongs to another account than the one marked active; switching to
+    /// that account again puts it back.
+    ForeignLogin,
     Offline,
     Other,
 }
@@ -99,7 +102,7 @@ impl Operation for ClaudeAccountsList {
     const NAME: &'static str = "claude_accounts_list";
     const TITLE: &'static str = "List Claude accounts";
     const SCOPE: Scope = Scope::Read;
-    const DESCRIPTION: &'static str = "The Claude Code accounts Koyo shows in the sidebar (Settings → Accounts): each one's email and organisation, whether it's the Mac's login now (`active`), and its usage as last read: the 7-day window and each model's own weekly window, in percent, with when each resets and when it was read, or what keeps it from being read (`problem.kind` with its remedy in `message`). `unreadable` says why the login couldn't be read at all; `overriddenBy` names a shell variable that makes Claude Code ignore the login. No tool changes the accounts: switching, adding, removing and auto-switch are the person's.";
+    const DESCRIPTION: &'static str = "The Claude Code accounts Koyo shows in the sidebar (Settings → Accounts): each one's email and organisation, whether it's the Mac's login now (`active`), and its usage as last read: the 7-day window and each model's own weekly window, in percent, with when each resets and when it was read, or what keeps it from being read (`problem.kind` with its remedy in `message`). `unreadable` says why the accounts couldn't be read at all; `overriddenBy` names a shell variable that makes Claude Code ignore the login. No tool changes the accounts: switching, adding, removing and auto-switch are the person's.";
     const HINTS: Hints = Hints::READ;
     type Input = NoInput;
     type Output = ClaudeAccountsListOutput;

@@ -94,7 +94,7 @@ pub struct Shell {
     pub tile_hand: Rc<arc::TileHand>,
     /// The places a symbol led to, listed under the tabs, while they are.
     pub locations: Option<Entity<Locations>>,
-    _subscriptions: [Subscription; 11],
+    _subscriptions: [Subscription; 12],
 }
 
 impl Shell {
@@ -159,6 +159,13 @@ impl Shell {
             // that page shows: the desk changes with all an agent does on its desktop.
             cx.observe(&crate::agent_desktop::desk(cx), |this, _, cx| {
                 let page = settings_view::SettingsPage::AgentDesktop;
+                if this.route(cx) == Route::Settings(page) {
+                    cx.notify();
+                }
+            }),
+            // Settings → Accounts lists the accounts as they change, only while it shows.
+            cx.observe(&crate::accounts::accounts(cx), |this, _, cx| {
+                let page = settings_view::SettingsPage::Accounts;
                 if this.route(cx) == Route::Settings(page) {
                     cx.notify();
                 }

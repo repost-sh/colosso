@@ -1,23 +1,20 @@
-//! An account's usage as the accounts crate reads it (claude-swap's `build_usage_result` shape:
-//! `seven_day` and `scoped` windows, each `{pct, resets_at}`) made into the panel's bars, with
-//! claude-swap's pace marker on the week; what kept it from being read, an error kind or a
-//! sentinel of the crate's, made into a problem the panel names with its remedy; and a chat's
-//! rate-limit headers taken as the week's and the model's live numbers.
+//! An account of the accounts crate's snapshot made into the panel's row: its usage (claude-swap's
+//! `build_usage_result` shape, `seven_day` and `scoped` windows, each `{pct, resets_at}`) as
+//! bars with claude-swap's pace marker on the week, and what kept it from being read, an error
+//! kind or a sentinel of the crate's, as a problem the panel names with its remedy; and a chat's
+//! rate-limit headers as the crate's live limits.
 
 use koyo_accounts::oauth::{
     self, NETWORK_ERROR, ORG_POLICY_ERROR, RATE_LIMITED_ERROR, TIMEOUT_ERROR, TLS_CERT_ERROR,
     TOKEN_EXPIRED_ERROR,
 };
-use koyo_accounts::usage_store::PERMANENT_AUTH_ERRORS;
+use koyo_accounts::switcher::{AccountSnapshot, LiveLimits, LiveWindow};
+use koyo_accounts::usage_store::{PERMANENT_AUTH_ERRORS, UsageEntry};
 use koyo_accounts::{pace, poll_policy};
 use koyo_agent::protocol::limits::{AccountLimits, LimitWindow};
 use serde_json::Value;
 
 use super::model::{Bar, Problem, Row, WEEKLY};
-
-/// The per-model bucket the rate-limit headers carry, as claude-swap names it
-/// (`oauth._UNIFIED_SCOPED_WINDOWS`: `7d_oi` is Fable's).
-const HEADERS_MODEL: &str = "Fable";
 
 fn bar(label: &str, window: &Value, measured_at: f64) -> Bar {
     Bar {
@@ -55,49 +52,72 @@ pub fn problem(kind: &str, until: f64) -> Problem {
         NETWORK_ERROR | TIMEOUT_ERROR => Problem::Offline,
         oauth::USAGE_RELOGIN_REQUIRED | oauth::USAGE_NO_CREDENTIALS => Problem::SignInAgain,
         oauth::USAGE_KEYCHAIN_UNAVAILABLE => Problem::KeychainUnavailable,
+        oauth::USAGE_FOREIGN_CREDENTIAL => Problem::ForeignLogin,
         kind if PERMANENT_AUTH_ERRORS.contains(&kind) => Problem::SignInAgain,
         other => Problem::Other(other.to_owned()),
     }
 }
 
-/// `window`, a fraction of 0–1 in the headers, as a bar's percent, to two places as claude-swap
-/// rounds a header's.
-fn live(label: &str, window: &LimitWindow, kept: Option<&Bar>) -> Bar {
-    Bar {
-        label: label.to_owned().into(),
-        percent: Some((window.utilization * 10_000.).round() / 100.),
+/// What `usage` keeps from a reading at `now`: its sentinel, or its last error while that keeps
+/// it from being asked again or there's no reading at all.
+fn entry_problem(usage: &UsageEntry, now: f64) -> Option<Problem> {
+    if let Some(sentinel) = &usage.sentinel {
+        return Some(problem(sentinel, 0.));
+    }
+    let kind = usage.last_error.as_deref()?;
+    (usage.in_backoff(now) || usage.last_good.is_none())
+        .then(|| problem(kind, usage.backoff_until.unwrap_or(0.)))
+}
+
+/// Takes `usage`, an account's entry, into `row` at `now`: its bars, when they were measured,
+/// and what keeps them from being read.
+pub fn take_entry(row: &mut Row, usage: &UsageEntry, now: f64) {
+    let measured = usage.fetched_at.unwrap_or(now);
+    row.bars = (usage.last_good.as_ref())
+        .map(|reading| bars(reading, measured))
+        .unwrap_or_default();
+    row.measured_at = usage.fetched_at;
+    row.problem = entry_problem(usage, now);
+}
+
+/// `account`, a snapshot's, as the panel's row at `now`.
+pub fn row(account: &AccountSnapshot, now: f64) -> Row {
+    let slot = &account.slot;
+    let mut row = Row {
+        number: slot.number.clone(),
+        email: slot.identity.email.clone().into(),
+        organisation: Some(slot.organization_name.clone())
+            .filter(|name| !name.is_empty())
+            .map(Into::into),
+        plan: (account.plan.as_ref())
+            .and_then(|plan| plan.label.clone())
+            .map(Into::into),
+        active: account.is_active,
+        disabled: slot.disabled,
+        switchable: slot.has_backup,
+        bars: Vec::new(),
+        measured_at: None,
+        problem: None,
+    };
+    take_entry(&mut row, &account.usage, now);
+    row
+}
+
+fn live_window(window: &LimitWindow) -> LiveWindow {
+    LiveWindow {
+        utilization_fraction: window.utilization,
         resets_at: poll_policy::parse_reset_ts(Some(&window.resets_at.0)),
-        ahead_of_pace: kept.is_some_and(|bar| bar.ahead_of_pace),
     }
 }
 
-/// Takes `limits` into `row` at `now`: its week and its model's window, those the headers
-/// carried. Whether a bar changed.
-pub fn take_limits(row: &mut Row, limits: &AccountLimits, now: f64) -> bool {
-    let windows = [
-        (WEEKLY, limits.seven_day.as_ref()),
-        (HEADERS_MODEL, limits.seven_day_overage_included.as_ref()),
-    ];
-    let mut changed = false;
-    for (label, window) in windows {
-        let Some(window) = window else {
-            continue;
-        };
-        if let Some(kept) = row.bars.iter_mut().find(|bar| bar.label == label) {
-            let bar = live(label, window, Some(kept));
-            changed |= *kept != bar;
-            *kept = bar;
-        } else {
-            let at = if label == WEEKLY { 0 } else { row.bars.len() };
-            row.bars.insert(at, live(label, window, None));
-            changed = true;
-        }
+/// A chat's response's limits as the accounts crate takes them: the five hours, the week and
+/// the per-model bucket (Fable's `7d_oi`), each a fraction with its reset.
+pub fn live_limits(limits: &AccountLimits) -> LiveLimits {
+    LiveLimits {
+        five_hour: limits.five_hour.as_ref().map(live_window),
+        seven_day: limits.seven_day.as_ref().map(live_window),
+        seven_day_overage_included: limits.seven_day_overage_included.as_ref().map(live_window),
     }
-    if limits.seven_day.is_some() || limits.seven_day_overage_included.is_some() {
-        row.measured_at = Some(now);
-        changed |= row.problem.take().is_some();
-    }
-    changed
 }
 
 #[cfg(test)]

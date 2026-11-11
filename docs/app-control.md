@@ -446,14 +446,15 @@ claude_accounts_list [read] R {} → { managed, accounts: [{ email, organisation
                        problem?: { kind, message, until? } }], unreadable?, overriddenBy? }
 ```
 
-The Claude Code accounts the sidebar's accounts panel shows (`docs/claude-accounts.md`): for now
-the Mac's login, `active`. `windows` are its 7 days and each model's own weekly window as last
-read, a weekly window past its reset empty again; `problem` says what keeps it from being read:
-`kind` is `rate_limited` (with `until`), `plan_lapsed`, `certificate_refused`, `sign_in_again`,
-`token_expired`, `keychain_unavailable` (still signed in), `offline` or `other`, and `message`
-the panel's sentence with its remedy. `unreadable` says why the login couldn't be read at all,
-and `overriddenBy` names a shell variable (`ANTHROPIC_API_KEY`, …) that makes Claude Code ignore
-it. Times are milliseconds since the epoch. With Manage Claude accounts off, `managed` is false
+The Claude Code accounts the sidebar's accounts panel shows (`docs/claude-accounts.md`): every
+account Koyo keeps, in its order, the Mac's login `active`. `windows` are each one's 7 days and
+each model's own weekly window as last read, a weekly window past its reset empty again;
+`problem` says what keeps it from being read: `kind` is `rate_limited` (with `until`),
+`plan_lapsed`, `certificate_refused`, `sign_in_again`, `token_expired`, `keychain_unavailable`
+(still signed in), `foreign_login` (the Mac's login is another account's), `offline` or `other`,
+and `message` the panel's sentence with its remedy. `unreadable` says why the accounts couldn't
+be read at all, and `overriddenBy` names a shell variable (`ANTHROPIC_API_KEY`, …) that makes
+Claude Code ignore the login. Times are milliseconds since the epoch. With Manage Claude accounts off, `managed` is false
 and nothing is listed. No operation changes the accounts: switching, adding, removing, holding
 one out, auto-switch and Manage Claude accounts are the person's, in the panel and Settings →
 Accounts, and `settings_set` doesn't reach them (a test holds the catalog to it).

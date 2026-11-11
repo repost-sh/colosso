@@ -1,19 +1,22 @@
 //! The accounts' panel (`docs/claude-accounts.md` 6): on a menu's glass, anchored to the button
-//! and opening upward from the sidebar's foot, as `chat/composer/context.rs`'s does. A row for
-//! the account: its email and organisation, the active mark, the 7 days' bar and each model's,
+//! and opening upward from the sidebar's foot, as `chat/composer/context.rs`'s does. A row per
+//! account: its email, organisation and plan, the active mark, the 7 days' bar and each model's,
 //! with the percent, the countdown to the reset and its date, "ahead of pace", and "(!)" at the
-//! limit; then how old the reading is or what keeps it from being read. It keeps a copy of what
-//! it shows, taken again as the accounts change, so it's drawn without reading them.
+//! limit; then how old the reading is or what keeps it from being read. A click on another
+//! account Koyo keeps the login of switches to it. Under the rows: what's being done, the Mac's
+//! login when Koyo doesn't keep it with Add current login, and what went wrong. It keeps a copy
+//! of what it shows, taken again as the accounts change, so it's drawn without reading them.
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, Context, Div, Entity, InteractiveElement as _, IntoElement, ParentElement as _,
-    Pixels, Render, SharedString, Size, Styled as _, Subscription, Window, div, px, relative, size,
+    Context, Div, Entity, InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Render,
+    SharedString, Size, StatefulInteractiveElement as _, Styled as _, Subscription, Window, div,
+    px, relative, size,
 };
 
 use super::model::{Bar, Row, View};
-use super::{Accounts, words};
-use crate::menu::{MenuBody, PADDING, ROW_PADDING};
+use super::{Accounts, Job, words};
+use crate::menu::{self, MenuBody, PADDING, ROW_PADDING};
 use crate::theme::{self, Palette};
 
 const WIDTH: f32 = 340.;
@@ -35,19 +38,36 @@ fn row_height(row: &Row) -> f32 {
     ROW_INSET * 2. + TITLE + LINE + row.bars.len() as f32 * (BAR + LINE) + LINE
 }
 
-/// How big the panel opens for `view`: its rows, or the line said for none, and its notes.
+/// The notes under the rows, top to bottom, as they're shown for `view`.
+fn notes(view: &View) -> Vec<(SharedString, bool)> {
+    let unmanaged = view.unmanaged.as_deref().map(words::unmanaged);
+    let empty = (view.rows.is_empty() && view.unmanaged.is_none())
+        .then(|| "The Mac isn't signed in to Claude Code.".to_owned());
+    let overridden = view.overridden_by.map(|name| {
+        format!("{name} is set in your shell, so Claude Code there uses it, not this login.")
+    });
+    let plain = [view.doing.clone(), unmanaged, empty, overridden];
+    let failed = [view.said.clone(), view.unreadable.clone()];
+    let plain = plain.into_iter().flatten().map(|note| (note.into(), false));
+    plain
+        .chain(failed.into_iter().flatten().map(|note| (note.into(), true)))
+        .collect()
+}
+
+/// How big the panel opens for `view`: its rows, Add current login, and its notes.
 pub fn extent(view: &View) -> Size<Pixels> {
     let rows: f32 = view.rows.iter().map(row_height).sum();
-    let notes = [
-        view.rows.is_empty(),
-        view.said.is_some(),
-        view.overridden_by.is_some(),
-    ];
-    let notes = notes.iter().filter(|shown| **shown).count() as f32;
-    size(px(WIDTH), px(rows + notes * LINE + PADDING * 2.))
+    let add = if view.unmanaged.is_some() {
+        theme::ROW_HEIGHT
+    } else {
+        0.
+    };
+    let notes = notes(view).len() as f32 * LINE;
+    size(px(WIDTH), px(rows + add + notes + PADDING * 2.))
 }
 
 pub struct AccountsPanel {
+    accounts: Entity<Accounts>,
     view: View,
     _observing: Subscription,
 }
@@ -59,6 +79,7 @@ impl AccountsPanel {
             cx.notify();
         });
         AccountsPanel {
+            accounts: accounts.clone(),
             view,
             _observing: observing,
         }
@@ -76,31 +97,42 @@ impl Render for AccountsPanel {
         let p = theme::palette(cx);
         let now = super::now();
         let view = &self.view;
-        let empty = view
-            .rows
-            .is_empty()
-            .then(|| note("The Mac isn't signed in to Claude Code.", p));
-        let overridden = view.overridden_by.map(|name| {
-            note(
-                format!(
-                    "{name} is set in your shell, so Claude Code there uses it, not this login."
-                ),
-                p,
-            )
+        // One thing at a time: while something's being done, nothing more is offered.
+        let idle = view.doing.is_none();
+        let rows = view.rows.iter().map(|row| {
+            let switchable = idle && row.switchable && !row.active;
+            row_shown(row, now, p).when(switchable, |shown| {
+                let (accounts, slot) = (self.accounts.clone(), row.slot());
+                shown
+                    .cursor_pointer()
+                    .hover(move |row| row.bg(p.hover))
+                    .on_click(move |_, _, cx| {
+                        let job = Job::Switch(slot.clone());
+                        accounts.update(cx, |accounts, cx| accounts.ask(job, cx));
+                    })
+            })
         });
+        let add = (idle && view.unmanaged.is_some()).then(|| {
+            let accounts = self.accounts.clone();
+            menu::row("accounts-add")
+                .text_color(p.accent)
+                .hover(|row| row.bg(p.selected))
+                .child("Add current login")
+                .on_click(move |_, _, cx| {
+                    accounts.update(cx, |accounts, cx| accounts.ask(Job::Add, cx));
+                })
+        });
+        let notes = notes(view)
+            .into_iter()
+            .map(|(text, failed)| note(text, p).when(failed, |note| note.text_color(p.danger)));
         div()
             .size_full()
             .p(px(PADDING))
             .flex()
             .flex_col()
-            .children(view.rows.iter().map(|row| row_shown(row, now, p)))
-            .children(empty)
-            .children(
-                view.said
-                    .clone()
-                    .map(|said| note(said, p).text_color(p.danger)),
-            )
-            .children(overridden)
+            .children(rows)
+            .children(add)
+            .children(notes)
     }
 }
 
@@ -115,7 +147,7 @@ fn note(text: impl Into<SharedString>, p: Palette) -> Div {
 }
 
 /// An account's row: its name and where it stands, its bars, and how old its reading is.
-fn row_shown(row: &Row, now: f64, p: Palette) -> AnyElement {
+fn row_shown(row: &Row, now: f64, p: Palette) -> gpui_kit::Stateful<Div> {
     let mark = div()
         .size(px(MARK))
         .rounded_full()
@@ -127,11 +159,6 @@ fn row_shown(row: &Row, now: f64, p: Palette) -> AnyElement {
         .gap(px(MARK_GAP))
         .child(mark)
         .child(div().flex_1().min_w_0().truncate().child(row.email.clone()));
-    let under = [
-        row.organisation.as_deref(),
-        row.active.then_some("the Mac's login"),
-    ];
-    let under: Vec<&str> = under.into_iter().flatten().collect();
     let status = match (&row.problem, row.measured_at) {
         (Some(problem), _) => problem.sentence(now),
         (None, Some(at)) => format!("Read {}", words::age(at, now)),
@@ -139,19 +166,19 @@ fn row_shown(row: &Row, now: f64, p: Palette) -> AnyElement {
     };
     let email = row.email.clone();
     div()
+        .id(SharedString::from(format!("accounts-row-{}", row.number)))
         .debug_selector(move || format!("accounts-row-{email}"))
         .px(px(ROW_PADDING))
         .py(px(ROW_INSET))
         .rounded(px(6.))
         .child(title)
-        .child(small(under.join(" · "), p))
+        .child(small(row.under(), p))
         .children(
             row.bars
                 .iter()
                 .map(|bar| bar_lines(&bar.as_of(now), now, p)),
         )
         .child(small(status, p).when(row.problem.is_some(), |line| line.text_color(p.danger)))
-        .into_any_element()
 }
 
 /// A line under a row's title.

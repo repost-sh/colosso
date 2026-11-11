@@ -23,7 +23,7 @@ pub(crate) fn list(cx: &App) -> Result<Value, ControlError> {
     output(&ClaudeAccountsListOutput {
         managed: settings::get(cx).accounts.manage,
         accounts: view.rows.iter().map(|row| account(row, now)).collect(),
-        unreadable: view.said.clone(),
+        unreadable: view.unreadable.clone(),
         overridden_by: view.overridden_by.map(str::to_owned),
     })
 }
@@ -65,6 +65,7 @@ fn kind(problem: &Problem) -> ProblemKind {
         Problem::SignInAgain => ProblemKind::SignInAgain,
         Problem::TokenExpired => ProblemKind::TokenExpired,
         Problem::KeychainUnavailable => ProblemKind::KeychainUnavailable,
+        Problem::ForeignLogin => ProblemKind::ForeignLogin,
         Problem::Offline => ProblemKind::Offline,
         Problem::Other(_) => ProblemKind::Other,
     }

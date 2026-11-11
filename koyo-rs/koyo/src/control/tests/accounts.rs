@@ -1,4 +1,4 @@
-//! `claude_accounts_list` as agents read it, through the control pipeline: the Mac's login on a
+//! `claude_accounts_list` as agents read it, through the control pipeline: an account kept on a
 //! sandbox (the fake security, a sandboxed `~/.claude.json`, a queued usage answer), its week,
 //! and what keeps a reading from being taken as a stable kind with its remedy.
 
@@ -7,7 +7,7 @@ use koyo_accounts::http::Response;
 use serde_json::{Value, json};
 
 use super::{call, controlled, terminal};
-use crate::accounts::tests::{USAGE, signed_in};
+use crate::accounts::tests::{USAGE, kept};
 use crate::accounts::{self, TestEnv};
 use crate::test_support::repo;
 
@@ -24,7 +24,7 @@ fn timeless(mut answer: Value) -> Value {
 
 #[gpui_kit::test]
 fn agents_list_the_macs_login_with_its_week(cx: &mut TestAppContext) {
-    let sandbox = signed_in();
+    let sandbox = kept();
     sandbox.http.queue_json(
         USAGE,
         200,
@@ -51,7 +51,7 @@ fn agents_list_the_macs_login_with_its_week(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 fn a_rate_limit_is_listed_as_its_kind_with_when_it_ends(cx: &mut TestAppContext) {
-    let sandbox = signed_in();
+    let sandbox = kept();
     let limited = Response {
         status: 429,
         headers: vec![("retry-after".into(), "120".into())],
