@@ -176,7 +176,9 @@ Crates:
   can be had (`source: accessibility`), else text read off the picture with macOS's Vision
   framework (`source: text`) [built], which is all a real device has. The first read of a new
   build of the host makes macOS compile its text model, 30-40 s: the host does it as it starts,
-  while the simulator boots, and a snapshot asked before then is told to ask again.
+  while the simulator boots, and a snapshot asked before then is told to ask again. A `text`
+  ref is where its words are: on the home screen that is an app's name, under its icon, where a
+  tap doesn't open the app [measured, M5]; the guide sends agents to `device_launch` for apps.
 - An act's answer waits until the picture has changed and then stood still for 300 ms, 2 s at
   most [built]: a press whose effect is a moment coming isn't taken for one that did nothing.
 
@@ -255,12 +257,40 @@ answer), `Request { request, ask }`, `Cancel`, `Quit`. Host to app: `Hello { pro
 
 ## 10. Setup and Settings → Devices [decided]
 
-One guided dialog, a step at a time, moving on by itself as a state changes, offered once per run
-when a device tab or the picker first shows with something missing, never because an agent's tool
-failed, and only while Koyo's window is active. For simulators: Xcode 27; Xcode's components; a
-simulator system (downloaded with its progress, on the person's click); a device; the first start.
+**The setup for simulators** is one dialog (`devices/setup.rs`, its words in `setup/words.rs`),
+built as the agent desktop's: numbered rows, each ticked the moment its state is there, and what
+to do at the step in hand under them. What the Mac has is read off the main thread
+(`devices/needs.rs`), with Koyo's set, whenever a Devices surface first shows.
+
+| Step | How Koyo knows | What it says and does |
+| --- | --- | --- |
+| Xcode 27 or later, the one in use | `DEVELOPER_DIR`, else `xcode-select -p`; each Xcode in `/Applications` by its `Contents/version.plist` | Missing: install it, with `Open the App Store`. Older: "You have Xcode {version}", the same. Another in use (or the Command Line Tools): Xcode → Settings → Locations → Command Line Tools in the newest. `Check Again` |
+| Xcode's components | `xcodebuild -checkFirstLaunchStatus` exits 0 (R6) [measured: 0 here, with them installed; the other answer read, not seen] | Continue makes the first `simctl` call, which installs them; if they're still missing, its last line and "Open Xcode once" |
+| An iOS system | `simctl runtime list -j`: the ordinary iOS systems ready, newest first, with sizes | Xcode → Settings → Components, and `Check Again`. No download from Koyo: approval C wasn't given, so nothing of it is built |
+| A device | Koyo's set | The newest iPhone on the newest system (iPhone 18 Pro on iOS 27.2), or a model chosen from that system's list; Continue makes it, then opens and starts it in a tab |
+| First start | the device's link | "Starting {name} for the first time … about a minute", with the time so far; then ready, and Koyo comes forward |
+
+- Nothing runs before Continue. `simctl` isn't asked for the list until Xcode and its components
+  are there: its first call would install them, and may ask for the person's password. Nor is
+  an agent's `device_list` or `device_open` that first call: while Koyo doesn't know Xcode and
+  its components are there it looks first, and with either missing the tool is refused with
+  `device_needs_person` and the same sentence.
+- What the Mac has is read again only while it isn't known or something was missing; a list
+  after that is `simctl`'s alone. While the setup waits for a system, only the systems are read.
+- While the dialog is open with Koyo in front, it looks again every two seconds and the moment
+  Koyo comes forward; never behind it.
+- It comes up by itself once per run, from the picker or from a tab the person opened that can't
+  start for want of Xcode; never from a tab an agent opened, never because a tool failed, and only
+  while Koyo's window is active. `Not Now` doesn't bring it back. The picker and such a tab say the
+  one thing missing in a sentence, with `Set Up…`.
+- Walked for real off screen from a set that held nothing (`--visual-check-devices` with
+  `KOYO_VISUAL_SETUP`): the Mac read in 0.6-1.1 s, only a device missing; Continue made the iPhone
+  18 Pro in 0.6 s (one listing of the newest system and its models, then `simctl create`); it
+  stood ready 49-60 s later; the person's first tap, on Settings where the
+  accessibility tree placed it, opened it.
+
 For a real device: connect, trust, unlock, Developer Mode, the system version, each with the exact
-path on the device.
+path on the device (M6).
 
 Settings → Devices: Xcode's state; the systems installed (no `Delete`: they're Xcode's too); Koyo's
 simulators with `New…` and `Delete`; what is running, with `Stop`; the limit of simulators running
@@ -273,9 +303,9 @@ at once (2); connected devices with `Set Up…`; and in words what Koyo doesn't 
 | M0 | Premises re-measured with the PoC's hosts alone; the QA harness; this document | done |
 | M1 | The simulator's host, headless, and its real-simulator suite | done: every row in debug and release |
 | M2 | The tab | done: the hand's and the states' tests, the off-screen pictures with two real simulators, QH1-QH4; the window at 60 and 120 Hz waits on the owner (QP8) |
-| M3 | Agents on a simulator | |
-| M4 | The simulator half reviewed and hardened | |
-| M5 | Setup and Settings | |
+| M3 | Agents on a simulator | done: QT1-QT8 and QL1-QL3 through the real MCP client |
+| M4 | The simulator half reviewed and hardened | done: the review's findings fixed, the rows re-run |
+| M5 | Setup and Settings | the setup for simulators, the picker's and the tab's missing states; Settings → Devices to come |
 | M6 | The real device | |
 | M7 | Finish | |
 
