@@ -37,6 +37,7 @@ mod projects;
 mod quitting;
 mod responsive;
 mod right_panel;
+mod ring;
 mod settings;
 mod settings_view;
 mod shell;
