@@ -171,7 +171,8 @@ reached only from `phone/`: its API is unstable below 0.2.
   locked in 5-6 with only a power assertion; M6: unlocked at 6 and 11.7 minutes held). That is the
   whole mechanism: nothing is set on the device. The tab says "While this tab is open, your iPad
   stays awake and its camera and microphone are off." **The stream is stopped when it's let go**
-  (`stopmediastream`, and the host waits up to 4 s for its session to do it before it exits): left
+  (`stopmediastream`, and the host waits up to 7 s for its session to do it before it exits; a
+  picture that won't start after the sound did is stopped too): left
   to the tunnel's end, the device kept the stream's session, and itself awake, long after the
   host was gone (M6: still lit 20 minutes after the tab closed, two sessions found standing).
   Stopped, the iPad's screen went dark by its own Auto-Lock (QR6). Its camera, meanwhile, showed a
@@ -186,7 +187,10 @@ reached only from `phone/`: its API is unstable below 0.2.
   together are one change, and `devicectl device info lockState` (bounded, off the stream) says
   which way: the device's `getlockstate` answers "not implemented" on iPadOS 27.0.1, with or
   without its action. The tab says "Unlock
-  your iPad to continue." and agents' acts are refused at once. Koyo never types, asks for or
+  your iPad to continue." and agents' acts are refused at once: one under way when it locks is
+  cut short and those queued refused, and at a lock notice acts wait (3 s at most) until it's
+  known which way it went, since a key sent to a locked device goes to its passcode field. The
+  notices are watched again a moment after they stop. Koyo never types, asks for or
   stores a passcode.
 - Looking: a real device has no accessibility tree, so a snapshot is the text read off its picture.
   Its stream is encoded afresh, so a still screen's pictures differ a little: a point counts as
@@ -274,7 +278,9 @@ answer), `Request { request, ask }`, `Cancel`, `Quit`. Host to app: `Hello { pro
   moving on by itself; unplugged ("{name} was unplugged. Plug it back in to continue."; the
   toolbar says Unplugged), moving on by itself, with Start Again should the plug go unheard; the
   cable, trust and Developer Mode, each in a sentence with
-  `Set Up…`, moving on by themselves once done; below 27 ("{name} runs iOS 26.6.1. Koyo drives
+  `Set Up…`: the cable moves on by itself at the plug; trust and Developer Mode once a listing
+  sees them done (the setup's, which looks every two seconds while open, or the next plug's);
+  below 27 ("{name} runs iOS 26.6.1. Koyo drives
   devices on iOS and iPadOS 27 or later: update it in Settings → General → Software Update."),
   nothing to press; another app holding it, or its developer services not up, with Start Again.
 - The control bar is the browser's own pill (`held::bar`). An agent's touches show as marks.
@@ -283,7 +289,8 @@ answer), `Request { request, ask }`, `Cancel`, `Quit`. Host to app: `Hello { pro
   `Choose Another…`, which turns the tab into the picker. Closing the last tab of a device shuts
   its simulator down or lets the device go; two tabs of one device share its host.
 - The launcher's **Device** kind lists the device tabs open, then Koyo's simulators no tab shows,
-  filtered by what's typed; Enter with nothing picked opens a tab on the picker
+  then the iPhones and iPads plugged in no tab shows ("Needs setup" beside one that misses a
+  step), filtered by what's typed; Enter with nothing picked opens a tab on the picker
   (`docs/new-tab.md`).
 - The device counts as drawn while its picture is painted in a window (a keyed state of the
   picture's element): only then, or while an agent works on it, does the host copy frames. A
@@ -336,7 +343,8 @@ answer), `Request { request, ask }`, `Cancel`, `Quit`. Host to app: `Hello { pro
   being asked for someone else. What a real device refuses anyway (its app tools, turning,
   locking) is refused before the person is asked. The decision goes to the activity log
   (`device_lend`). The lend is kept in the app by device and agent, an agent being its caller's
-  key and the name it goes by together (`devices/lend.rs`), so a host started again keeps it; it
+  key and the name it goes by together (`devices/lend.rs`), so a host that stopped and was started
+  again by itself keeps it (one stopped, or one that gave up and was started afresh, doesn't); it
   ends when the device is stopped (its tab closed, `device_close`, Koyo quitting) or leaves the
   list of what's plugged in, and at the tab's `Take It Back`, which also calls off what the
   agent had under way; its next call asks the person again. The tab shows "{name} is
