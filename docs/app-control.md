@@ -103,7 +103,7 @@ Scopes:
 | `manage` | add/remove/reorder projects, create worktrees, save files |
 | `browser` | drive pages: navigate, eval, click, type, keys, scroll, claim/release |
 | `desktop` | drive apps on the agent desktop: open, click, move, drag, scroll, type, keys, focus, close |
-| `devices` | drive iPhone and iPad simulators: open, tap, swipe, scroll, pinch, type, keys, buttons, rotate, install, launch, terminate, open links, close |
+| `devices` | drive iPhone and iPad simulators, and the person's own iPhone or iPad once they've lent it: open, tap, swipe, scroll, pinch, type, keys, buttons, rotate, install, launch, terminate, open links, close |
 | `settings` | `settings_set` (the allowlisted fields) |
 | `destructive` | delete worktrees, close tabs discarding unsaved edits; each call also confirmed |
 
@@ -437,23 +437,37 @@ desktop_close      [desktop] D { window? | pid? (one) } → { done }; a window, 
 
 Every tool but `device_list` takes `device` (its id) or `pane`; with neither, the device the
 caller acted on last, else the shown tab's, else the only one running, else `ambiguous` with
-them listed. Places are points of the picture as it shows, upright, from its top left. An act
+them listed; a call naming no device finds only what the caller may use unasked (Koyo's
+simulators, and a real device lent to it). Places are points of the picture as it shows, upright, from its top left. An act
 lands on an element of the last snapshot by `ref` (a touch at its middle) or at a point; it
 answers what it did to the screen, looked at, not assumed. Acts and `device_close` fail
 `person_has_control` (retryable) while the person acts in the device's tab and for 5 s after,
 and (not retryable) while they hold it with Take Control. `device_unavailable` (retryable):
 starting, or its host restarting; not retryable for a device that isn't open.
-`device_needs_person`: Xcode or a simulator system missing, or a locked device. The reads are
-`read`; the rest `devices`, which an outside client is given in Settings → MCP server. All
-reach beyond Koyo (`openWorld`).
+`device_needs_person`: Xcode or a simulator system missing, a locked device, a real device's
+setup step missing, or the person being asked to lend their device. The reads are `read`; the
+rest `devices`, which an outside client is given in Settings → MCP server. All reach beyond
+Koyo (`openWorld`).
+
+The person's own iPhone or iPad (`kind: device`) is lent by their click (`docs/devices.md` 9):
+an agent's first call on one not lent to it, a read included, puts a sheet in Koyo's window
+("Let “{agent}” use your iPad “{name}”?") and answers at once `device_needs_person`; a call
+meanwhile is told so, another agent's that it's for someone else. Allow lends it to that agent
+(its caller's key and name together) until the person takes it back, stops it, closes its tab
+or unplugs it; Don't Allow answers `user_declined` for the refusal memory, with no new sheet.
+The decision is in the activity log as `device_lend`. What a real device refuses anyway
+(`device_apps`, `device_install`, `device_launch`, `device_terminate`, `device_open_url`,
+`device_rotate`, the `lock` button) answers `unsupported` before the person is asked.
 
 ```
-device_list        [read] R {} → { devices: [{ device, name, kind: "simulator", system,
+device_list        [read] R {} → { devices: [{ device, name, kind: simulator|device, system,
                      state: off|starting|ready|locked|gone|needsPerson|failed, missing?, pane?,
-                     controller?, screen?: DeviceScreen, set? }] }; read from Koyo's set afresh
+                     controller?, screen?: DeviceScreen, set? }] }; Koyo's set read afresh, then
+                     the iPhones and iPads plugged in by cable (no `set`)
 device_open        [devices] C { device? | model? } → { device, name, pane, ready, step?:
                      booting|firstBoot|picture|input, screen? }; its tab out of sight; answers
-                     within 60 s, called again until ready; refused past two running at once
+                     within 60 s, called again until ready; a simulator refused past the
+                     person's limit of simulators at once; a real device opened once lent
 device_close       [devices] C { device? | pane? } → { device, name }; shut down, tab closed
 device_screenshot  [read] R { device? | pane?, scale?: 1..3 } → image block + { name, width,
                      height, scale }
