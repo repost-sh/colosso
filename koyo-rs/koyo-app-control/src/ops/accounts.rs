@@ -99,7 +99,7 @@ impl Operation for ClaudeAccountsList {
     const NAME: &'static str = "claude_accounts_list";
     const TITLE: &'static str = "List Claude accounts";
     const SCOPE: Scope = Scope::Read;
-    const DESCRIPTION: &'static str = "The Claude Code accounts Koyo shows in the sidebar (Settings → Accounts): each one's email and organisation, whether it's the Mac's login now (`active`), and its usage as last read: the 7-day window and each model's own weekly window, in percent, with when each resets and when it was read, or what keeps it from being read (`problem.kind` with its remedy in `message`). `unreadable` says why the login couldn't be read at all; `overriddenBy` names a shell variable that makes Claude Code ignore the login. Switching accounts stays with the person.";
+    const DESCRIPTION: &'static str = "The Claude Code accounts Koyo shows in the sidebar (Settings → Accounts): each one's email and organisation, whether it's the Mac's login now (`active`), and its usage as last read: the 7-day window and each model's own weekly window, in percent, with when each resets and when it was read, or what keeps it from being read (`problem.kind` with its remedy in `message`). `unreadable` says why the login couldn't be read at all; `overriddenBy` names a shell variable that makes Claude Code ignore the login. No tool changes the accounts: switching, adding, removing and auto-switch are the person's.";
     const HINTS: Hints = Hints::READ;
     type Input = NoInput;
     type Output = ClaudeAccountsListOutput;
