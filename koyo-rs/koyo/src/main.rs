@@ -1,4 +1,6 @@
+mod accounts;
 mod agent_desktop;
+mod ago;
 mod arc;
 mod atomic_file;
 mod backdrop;
@@ -73,6 +75,7 @@ fn init(cx: &mut App) {
     launcher::init(cx);
     quitting::init(cx);
     agent_desktop::init(cx);
+    accounts::init(cx);
     agent_desktop::bind_keys(cx);
     browser::init(cx);
     right_panel::init(cx);

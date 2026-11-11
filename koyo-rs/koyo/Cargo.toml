@@ -8,6 +8,8 @@ publish.workspace = true
 [dependencies]
 # The chats: the agent host's protocol and client (`docs/chat.md` 5.1).
 koyo-agent = { path = "../koyo-agent" }
+# Claude accounts (`docs/claude-accounts.md`): the login switched, usage read, auto-switch.
+koyo-accounts = { path = "../koyo-accounts" }
 # A daemon's socket, reached however deep its folder is, as the visual checks stand in for one.
 koyo-daemon = { path = "../koyo-daemon" }
 # App control: the operations agents and scripts drive the window with, the control socket and
@@ -111,6 +113,8 @@ gpui-pre = { version = "=0.3.10", default-features = false, optional = true }
 [dev-dependencies]
 # Headless windows for measuring and testing views.
 gpui-kit = { workspace = true, features = ["test-support"] }
+# The accounts on a sandbox: a fake `security`, a fake HTTP, never the real login.
+koyo-accounts = { path = "../koyo-accounts", features = ["testing"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # GPUI's Metal renderer, which draws a browser page's frame in the window's own frame, the
@@ -276,7 +280,7 @@ objc2-image-io = { version = "0.3", default-features = false, features = [
 hot-reload = ["dep:gpui-pre", "gpui-pre/hot-reload"]
 inspector = ["gpui-kit/inspector"]
 # `--visual-check`: draws the Files panel in the real shell off screen and saves PNGs.
-visual-check = ["gpui-kit/test-support"]
+visual-check = ["gpui-kit/test-support", "koyo-accounts/testing"]
 
 [lints]
 workspace = true

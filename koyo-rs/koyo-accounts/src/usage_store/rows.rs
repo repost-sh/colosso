@@ -36,11 +36,12 @@ pub(super) fn entry_of(row: &Row, now: f64, models: &[&str]) -> UsageEntry {
     // to its earliest reset; any other failure is no evidence it holds, and takes the general
     // ceiling. Strict `<` on `nextPollAt` as `due_candidate`: at it the entry is due. A live
     // claim keeps the bridge up while another collector's result is in flight; a live hold too.
-    let within_ceiling = if row.get("lastError").and_then(Value::as_str) == Some("http-429") {
-        rate_limited_trust_ok(last_good.as_ref(), age_s, now, models)
-    } else {
-        age_s.is_some_and(|age| age <= TRUST_MAX_AGE_S)
-    };
+    let within_ceiling =
+        if row.get("lastError").and_then(Value::as_str) == Some(crate::oauth::RATE_LIMITED_ERROR) {
+            rate_limited_trust_ok(last_good.as_ref(), age_s, now, models)
+        } else {
+            age_s.is_some_and(|age| age <= TRUST_MAX_AGE_S)
+        };
     let trust_extended = within_ceiling
         && (consecutive_failures > 0
             || next_poll_at.is_some_and(|at| now < at)
@@ -108,7 +109,7 @@ pub(super) fn apply_outcome(
     let failures = py_int(row.get("consecutiveFailures")).saturating_add(1);
     row.insert("consecutiveFailures".to_owned(), Value::from(failures));
     row.insert("lastError".to_owned(), Value::from(error.clone()));
-    let rate_limited = error == "http-429";
+    let rate_limited = error == crate::oauth::RATE_LIMITED_ERROR;
     if rate_limited {
         // Kept across later successes: the planner floors the cadence while it is recent.
         row.insert("last429At".to_owned(), Value::from(now));

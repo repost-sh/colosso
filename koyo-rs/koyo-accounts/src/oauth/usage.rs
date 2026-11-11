@@ -33,6 +33,13 @@ pub const TOKEN_EXPIRED_ERROR: &str = "token-expired";
 
 /// The org-policy 403 (a lapsed plan), the one status whose body names its cause.
 pub const ORG_POLICY_ERROR: &str = "oauth_not_allowed_for_organization";
+/// The other kinds a failed reading is named by, as `_classify_usage_error` names them; a status
+/// that isn't one of these is `http-<status>`.
+pub const RATE_LIMITED_ERROR: &str = "http-429";
+pub const TIMEOUT_ERROR: &str = "timeout";
+pub const TLS_CERT_ERROR: &str = "tls-cert";
+pub const NETWORK_ERROR: &str = "network";
+pub const BAD_RESPONSE_ERROR: &str = "bad-response";
 
 /// The most a `Retry-After` is read as: a day, longer than any wait anything here honours (the
 /// store parks a row at most 4,500 s, a plan read waits at most 24 h).
@@ -333,10 +340,10 @@ pub fn classify_usage_error(error: &FetchError) -> (String, Option<f64>) {
             }
             (format!("http-{}", response.status), retry_after)
         }
-        FetchError::Transport(HttpError::Timeout) => ("timeout".to_owned(), None),
-        FetchError::Transport(HttpError::Tls(_)) => ("tls-cert".to_owned(), None),
-        FetchError::Transport(HttpError::Network(_)) => ("network".to_owned(), None),
-        FetchError::BadResponse(_) => ("bad-response".to_owned(), None),
+        FetchError::Transport(HttpError::Timeout) => (TIMEOUT_ERROR.to_owned(), None),
+        FetchError::Transport(HttpError::Tls(_)) => (TLS_CERT_ERROR.to_owned(), None),
+        FetchError::Transport(HttpError::Network(_)) => (NETWORK_ERROR.to_owned(), None),
+        FetchError::BadResponse(_) => (BAD_RESPONSE_ERROR.to_owned(), None),
         FetchError::Other(name) => ((*name).to_owned(), None),
     }
 }
@@ -368,7 +375,7 @@ pub fn usage_failure_line(context: &str, kind: &str, retry_after_s: Option<f64>)
         Some(seconds) => format!("{kind}, retry-after {seconds:.0}s"),
         None => kind.to_owned(),
     };
-    if kind == "http-429" {
+    if kind == RATE_LIMITED_ERROR {
         // Per token or per account depends on the org's 429 regime (both measured, see
         // `poll_policy`), so the line stays scope-neutral.
         cause.push_str(" (usage-endpoint budget reached; backing off)");

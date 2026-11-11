@@ -2,6 +2,7 @@
 //! selects in the card. Each page lives in a module of its own.
 
 mod about;
+mod accounts;
 mod agent_desktop;
 mod appearance;
 mod browser;
@@ -40,6 +41,7 @@ use components::{SettingsPageColumn, SettingsSection};
 pub enum SettingsPage {
     General,
     Chat,
+    Accounts,
     Editor,
     Languages,
     Appearance,
@@ -57,6 +59,7 @@ const SIDEBAR_GROUPS: [(&str, &[SettingsPage]); 2] = [
         &[
             SettingsPage::General,
             SettingsPage::Chat,
+            SettingsPage::Accounts,
             SettingsPage::Editor,
             SettingsPage::Languages,
             SettingsPage::Appearance,
@@ -74,6 +77,7 @@ impl SettingsPage {
         match self {
             SettingsPage::General => "General",
             SettingsPage::Chat => "Chat",
+            SettingsPage::Accounts => "Accounts",
             SettingsPage::Editor => "Editor",
             SettingsPage::Languages => "Languages",
             SettingsPage::Appearance => "Appearance",
@@ -89,6 +93,7 @@ impl SettingsPage {
         match self {
             SettingsPage::General => IconName::Settings,
             SettingsPage::Chat => IconName::MessageSquare,
+            SettingsPage::Accounts => IconName::Users,
             SettingsPage::Editor => IconName::SquarePen,
             SettingsPage::Languages => IconName::Languages,
             SettingsPage::Appearance => IconName::SunMoon,
@@ -104,6 +109,7 @@ impl SettingsPage {
         match self {
             SettingsPage::General => general::sections(cx),
             SettingsPage::Chat => chat::sections(cx),
+            SettingsPage::Accounts => accounts::sections(cx),
             SettingsPage::Editor => editor::sections(cx),
             SettingsPage::Languages => languages::sections(cx),
             SettingsPage::Appearance => appearance::sections(cx),
@@ -222,6 +228,7 @@ mod tests {
         for page in [
             SettingsPage::General,
             SettingsPage::Chat,
+            SettingsPage::Accounts,
             SettingsPage::Editor,
             SettingsPage::Languages,
             SettingsPage::Appearance,

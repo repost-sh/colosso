@@ -118,10 +118,12 @@ impl Shell {
                 crate::browser::fullscreen::window_resized(window, cx);
             }),
             cx.observe(&history, |_, _, cx| cx.notify()),
-            // Worktrees may have come or gone in a terminal while the window was away.
+            // Worktrees may have come or gone in a terminal while the window was away, and the
+            // Claude login's usage may be due a reading.
             cx.observe_window_activation(window, |this, window, cx| {
                 if window.is_window_active() {
                     this.reload_projects(cx);
+                    crate::accounts::window_activated(cx);
                 }
             }),
             cx.subscribe(&search, |_, _, event, cx| {
