@@ -34,8 +34,8 @@ in `koyo-rs/koyo/src/launcher/` and `koyo-rs/koyo/src/history/`.
     address field instead, from anywhere in the tab.
 - A pill on the left of the field names the **kind** of tab Enter opens: **Browser**, **Chat**
   or **Terminal**, in that order on purpose, then **Desktop**, the agent desktop's one tab
-  (`docs/agent-desktop.md` 9), **Device**, an iPhone or iPad simulator's tab
-  (`docs/devices.md` 8), and last **Worktree**, which opens no tab
+  (`docs/agent-desktop.md` 9), **Device**, the tab of an iPhone or iPad simulator, or of the
+  person's own iPhone or iPad plugged in (`docs/devices.md` 8), and last **Worktree**, which opens no tab
   (`docs/arc-sidebar.md` 8). Each kind has its own colour (blue, violet, green, teal, pink,
   orange),
   so a glance tells them apart. **Tab** goes to the next kind and **⇧Tab** to
@@ -52,9 +52,11 @@ in `koyo-rs/koyo/src/launcher/` and `koyo-rs/koyo/src/history/`.
     it with Enter (section 2).
   - Desktop: Enter shows the agent desktop's tab, the one there is or a new one, whatever
     is typed. Nothing is listed under the field.
-  - Device: the rows are the device tabs open, then Koyo's own simulators no tab shows,
-    those whose names hold every word typed (the list is read again each time the kind is
-    picked). A simulator picked opens in its own tab and starts; an open one is switched to.
+  - Device: the rows are the device tabs open, then Koyo's own simulators no tab shows, then
+    the iPhones and iPads plugged in no tab shows ("Needs setup" beside one that misses a
+    step), those whose names hold every word typed (the simulators are read again each time
+    the kind is picked; the devices as the plug watcher keeps them). A device picked opens in
+    its own tab and starts; an open one is switched to.
     Enter with no row picked opens a device tab on its picker.
   - Worktree: what's typed is the new worktree's name. Enter opens the New Worktree dialog
     on the selected project with that name filled in, and the branch is picked there.
