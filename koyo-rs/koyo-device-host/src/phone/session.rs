@@ -170,6 +170,11 @@ impl Session<'_> {
                         running.abort();
                     }
                     self.teller.log(LogLevel::Warn, "the stream stalled: no picture decodable for two seconds of asking");
+                    // A stall can be the cable pulled: then it's gone, not started again.
+                    if lost(self.udid).await {
+                        (self.tell)(Event::Unplugged(format!("{} was unplugged. Plug it back in to continue.", self.name)));
+                        break;
+                    }
                     if restart_at.is_none() {
                         restart_at = Some(restarts.next(self.name, "it stalled")?);
                     }
@@ -178,6 +183,10 @@ impl Session<'_> {
                     restart_at = None;
                     match stream::start(&mut adapter, &mut handshake).await {
                         Ok(started) => pump = Some(tokio::spawn(stream::pump(started, pictures.clone(), Arc::clone(&keyframe)))),
+                        Err(_) if lost(self.udid).await => {
+                            (self.tell)(Event::Unplugged(format!("{} was unplugged. Plug it back in to continue.", self.name)));
+                            break;
+                        }
                         Err(why) => restart_at = Some(restarts.next(self.name, &why)?),
                     }
                 }
@@ -347,3 +356,27 @@ impl Input {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_stream_is_started_again_at_once_then_a_minute_apart_three_times_in_all() {
+        let mut restarts = Restarts::default();
+        let now = Instant::now();
+        let first = restarts.next("iPad", "it stalled").map_err(|ended| ended.1);
+        assert!(first.as_ref().is_ok_and(|at| at.saturating_duration_since(now) < Duration::from_secs(1)), "at once: {first:?}");
+        let second = restarts.next("iPad", "it stalled").map_err(|ended| ended.1);
+        let third = restarts.next("iPad", "it stalled").map_err(|ended| ended.1);
+        match (first, second, third) {
+            (Ok(first), Ok(second), Ok(third)) => {
+                assert!(second.duration_since(first) >= RESTARTS_APART && third.duration_since(second) >= RESTARTS_APART);
+            }
+            other => panic!("three restarts: {other:?}"),
+        }
+        let ended = restarts.next("iPad", "it stalled");
+        assert!(ended.as_ref().is_err_and(|(code, why)| *code == Missing::Other && why.contains("start it again")), "{ended:?}");
+    }
+}
+

@@ -7,6 +7,10 @@
 //! KOYO_REAL_PHONE_UDID=<udid> KOYO_REAL_PHONE_ACTS=$PWD/.superpowers/devices/qa/m6/acts.md \
 //!   script/cargo test -p koyo-device-host --test real_phone -- --ignored --nocapture --test-threads 1
 //! ```
+//!
+//! QR12 alone, with `KOYO_DEVICE_HOST_DROP=4000:500` set for it only: every host the suite starts
+//! would drop its packets too. The rows that need the owner's hands are the app's
+//! (`koyo/src/devices/visual/hands.rs`).
 
 #![expect(clippy::print_stderr, reason = "a real-device suite: its rows are printed")]
 
@@ -244,5 +248,43 @@ fn a_locked_device_says_so_and_comes_back_when_unlocked() {
         matches!(message, koyo_device_wire::FromHost::State { state: koyo_device_wire::State::Ready { .. } })
     });
     row("QR7", "unlocked by hand, it's ready again by itself", &format!("{} after {} s", back.is_some(), waited.elapsed().as_secs()), back.is_some());
+    let _ = host.quit(Duration::from_secs(10));
+}
+
+/// QR12: a picture that fails to decode, made so in a debug build by the host dropping the
+/// stream's video packets for a moment (`KOYO_DEVICE_HOST_DROP=<after ms>:<for ms>`): the
+/// pictures come back by a keyframe within two seconds of the packets.
+#[test]
+#[ignore = "needs a real device by cable and KOYO_DEVICE_HOST_DROP: KOYO_REAL_PHONE_UDID"]
+fn a_picture_that_fails_to_decode_comes_back_by_a_keyframe() {
+    let window = std::env::var("KOYO_DEVICE_HOST_DROP").ok();
+    let lasting = window.as_deref().and_then(|window| window.split_once(':')).and_then(|(_, ms)| ms.parse::<u64>().ok());
+    let (Some(target), Some(lasting)) = (phone(), lasting.map(Duration::from_millis)) else {
+        eprintln!("skipped: no KOYO_REAL_PHONE_UDID and KOYO_DEVICE_HOST_DROP");
+        return;
+    };
+    let mut host = Driver::start(&target, true);
+    let _ = host.ready(Duration::from_secs(60));
+    host.tell(&ToHost::Visible { visible: true });
+    // The longest time without a picture while the packets are dropped and after.
+    let began = Instant::now();
+    let (mut seen, mut at, mut longest) = (host.frames, Instant::now(), Duration::ZERO);
+    while began.elapsed() < Duration::from_secs(15) {
+        let _ = host.until(Duration::from_millis(20), |_| false);
+        if host.frames != seen {
+            longest = longest.max(at.elapsed());
+            (seen, at) = (host.frames, Instant::now());
+        }
+    }
+    let recovered = longest.saturating_sub(lasting);
+    row(
+        "QR12",
+        "pictures back after the packets are",
+        &format!("longest gap {} ms with {} ms of packets dropped: back {} ms after", longest.as_millis(), lasting.as_millis(), recovered.as_millis()),
+        longest > lasting && recovered <= Duration::from_secs(2),
+    );
+    for line in host.logs.iter().filter(|line| line.contains("keyframe") || line.contains("decode")) {
+        eprintln!("host: {line}");
+    }
     let _ = host.quit(Duration::from_secs(10));
 }
