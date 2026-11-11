@@ -4,7 +4,8 @@
 //! listed, booted or touched: they live in Xcode's set, not this one.
 
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Command;
+use std::time::Duration;
 
 use serde_json::Value;
 
@@ -23,26 +24,25 @@ pub struct Simulator {
     pub ipad: bool,
 }
 
-/// `xcrun simctl` with `args`: what it printed, or else what it said went wrong.
-pub(super) fn xcrun_simctl(args: &[&std::ffi::OsStr]) -> Result<String, String> {
-    let out = Command::new("/usr/bin/xcrun")
-        .arg("simctl")
-        .args(args)
-        .stdin(Stdio::null())
-        .output()
-        .map_err(|error| format!("simctl didn't run: {error}"))?;
-    if out.status.success() {
-        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
-    } else {
-        Err(String::from_utf8_lossy(&out.stderr).trim().to_owned())
-    }
+/// How long a `simctl` call may take before it's ended: a wedged `CoreSimulator` would otherwise
+/// keep every Devices surface waiting for good.
+const SIMCTL_WITHIN: Duration = Duration::from_secs(120);
+/// How long the first `simctl` call may take: it installs Xcode's components.
+const INSTALLS_WITHIN: Duration = Duration::from_mins(30);
+
+/// `xcrun simctl` with `args`, for `limit` at most: what it printed, or else what it said went
+/// wrong.
+pub(super) fn xcrun_simctl(args: &[&std::ffi::OsStr], limit: Duration) -> Result<String, String> {
+    let mut command = Command::new("/usr/bin/xcrun");
+    command.arg("simctl").args(args);
+    koyo_device_wire::process::output(command, limit).map_err(|why| if why.is_empty() { "simctl failed".to_owned() } else { why })
 }
 
 /// `simctl --set <set>` with `args`.
 fn simctl(set: &Path, args: &[&str]) -> Result<String, String> {
     let mut all: Vec<&std::ffi::OsStr> = vec!["--set".as_ref(), set.as_os_str()];
     all.extend(args.iter().map(std::ffi::OsStr::new));
-    xcrun_simctl(&all)
+    xcrun_simctl(&all, SIMCTL_WITHIN)
 }
 
 /// `com.apple.CoreSimulator.SimRuntime.iOS-27-2` as `iOS 27.2`.
@@ -84,6 +84,13 @@ pub fn parse(json: &str) -> Vec<Simulator> {
 pub fn list(set: &Path) -> Result<Vec<Simulator>, String> {
     std::fs::create_dir_all(set).map_err(|error| format!("Koyo's device set can't be made: {error}"))?;
     simctl(set, &["list", "devices", "-j"]).map(|json| parse(&json))
+}
+
+/// The first `simctl` call, which installs Xcode's components, given the time that takes.
+pub fn install(set: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(set).map_err(|error| format!("Koyo's device set can't be made: {error}"))?;
+    let all: Vec<&std::ffi::OsStr> = vec!["--set".as_ref(), set.as_os_str(), "list".as_ref(), "devices".as_ref(), "-j".as_ref()];
+    xcrun_simctl(&all, INSTALLS_WITHIN).map(drop)
 }
 
 /// A device a system can be made as: `iPhone 18 Pro`, and its device type's id.

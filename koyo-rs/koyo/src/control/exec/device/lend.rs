@@ -98,6 +98,8 @@ fn ask(agent: &Actor, udid: &str, name: &str, kind: &str, cx: &mut App) -> Resul
             registry.update(cx, |registry, cx| {
                 registry.lends.asked(&udid);
                 match decision {
+                    // Unplugged while the sheet was up, it isn't lent: it comes back unlent.
+                    crate::control::activity::Decision::Allowed if registry.plugged_device(&udid).is_none() && registry.existing(&udid).is_none() => {}
                     crate::control::activity::Decision::Allowed => registry.lends.lend(&udid, Some(agent)),
                     crate::control::activity::Decision::Denied => registry.lends.decline(&udid, &agent, now),
                     crate::control::activity::Decision::TimedOut => {}

@@ -52,7 +52,8 @@ pub struct Devices {
     pub said: Option<String>,
     /// The real devices plugged in, as `devicectl` last listed them; `None` until asked.
     pub connected: Option<Result<Vec<connected::Connected>, String>>,
-    listing_connected: bool,
+    /// Whether `devicectl` lists what's plugged in now, and whether another listing follows.
+    listing_connected: connected::Listing,
     /// Says when a device is plugged in or pulled out, once a Devices surface has shown.
     watcher: Option<connected::Watcher>,
     /// When the watcher last went: it's started again at a look a while after.
@@ -148,7 +149,7 @@ pub fn init(cx: &mut App) {
         _watching: Vec::new(),
         said: None,
         connected: None,
-        listing_connected: false,
+        listing_connected: connected::Listing::Idle,
         watcher: None,
         watcher_went: None,
         lends: lend::Lends::default(),

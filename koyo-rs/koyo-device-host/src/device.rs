@@ -58,6 +58,12 @@ impl Device {
         matches!(self, Device::Phone(phone) if phone.locked())
     }
 
+    /// A real device's lock may have just changed: acts wait until it's known (a key sent to a
+    /// locked device goes to its passcode field).
+    pub fn unsure(&self) -> bool {
+        matches!(self, Device::Phone(phone) if phone.unsure())
+    }
+
     /// A simulator's pixels are exact; see [`PHONE_STILLNESS`].
     pub fn stillness(&self) -> Stillness {
         match self {

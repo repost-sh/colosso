@@ -5,7 +5,7 @@
 //! say. The setup, the picker and Settings → Devices say the first one missing.
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 use koyo_device_wire::XCODE;
 use serde_json::Value;
@@ -179,8 +179,10 @@ fn installed() -> Vec<String> {
 /// `xcode-select -p`), and its developer folder; `None` for the Command Line Tools or nothing.
 fn selected() -> (Option<String>, PathBuf) {
     let developer = std::env::var_os("DEVELOPER_DIR").filter(|dir| !dir.is_empty()).map(PathBuf::from).or_else(|| {
-        let out = Command::new("/usr/bin/xcode-select").arg("-p").stdin(Stdio::null()).output().ok()?;
-        out.status.success().then(|| PathBuf::from(String::from_utf8_lossy(&out.stdout).trim()))
+        let mut command = Command::new("/usr/bin/xcode-select");
+        command.arg("-p");
+        let out = koyo_device_wire::process::output(command, QUICK).ok()?;
+        Some(PathBuf::from(out.trim()))
     });
     let developer = developer.unwrap_or_else(|| PathBuf::from(COMMAND_LINE_TOOLS));
     // `…/Xcode.app/Contents/Developer`
@@ -204,19 +206,17 @@ fn stands(selected: Option<String>, installed: impl FnOnce() -> Vec<String>) -> 
 
 /// Whether the components Xcode's first launch installs are there (R6).
 fn components(developer: &Path) -> bool {
-    Command::new("/usr/bin/xcodebuild")
-        .arg("-checkFirstLaunchStatus")
-        .env("DEVELOPER_DIR", developer)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success())
+    let mut command = Command::new("/usr/bin/xcodebuild");
+    command.arg("-checkFirstLaunchStatus").env("DEVELOPER_DIR", developer);
+    koyo_device_wire::process::output(command, QUICK).is_ok()
 }
+
+/// How long a question to Xcode's tools may take before it's ended.
+const QUICK: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// The iOS systems ready to run, from `simctl runtime list -j`, newest first.
 fn systems() -> Vec<System> {
-    let listed = simulators::xcrun_simctl(&["runtime".as_ref(), "list".as_ref(), "-j".as_ref()]);
+    let listed = simulators::xcrun_simctl(&["runtime".as_ref(), "list".as_ref(), "-j".as_ref()], QUICK);
     (listed.ok().and_then(|listed| serde_json::from_str(&listed).ok())).map_or_else(Vec::new, |listed| parse_systems(&listed))
 }
 
