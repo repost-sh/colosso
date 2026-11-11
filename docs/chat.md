@@ -1039,9 +1039,10 @@ Layout, top to bottom inside the pane's card:
   the same tab, over the one that started it, with a glass bar in the composer's place: its
   status, what it runs with, Stop while it runs, and Open parent (`escape`).
 - **Glass.** The composer and its drawers are one `liquid::backdrop` (radius 18) floating
-  12 px above the card's bottom edge, its content in `deferred`; the scroll-to-end pill,
-  the suggestions and the menus are glass too. On a dark theme it's the clear style with a 45%
-  tint of the card's colour, a deep shade of the theme, so the page shows through; on a light one, glass as `AppKit` makes it. Every glass
+  12 px above the card's bottom edge, its content in `deferred`; the scroll-to-end pill, a
+  floating prompt, the suggestions and the menus are glass too. On a dark theme it's the clear
+  style with a 45% tint of the card's colour, a deep shade of the theme, so the page shows
+  through; on a light one, glass as `AppKit` makes it. Every glass
   element has a faint line just inside its edge, round its own corners, in place of the bright
   one the glass draws, which is cut off: `glass_edge`, 1 pt, the theme's tint (the hue of the
   gradient theme's first colour, as the card's) at 8 % (dark) or 7 % (light), an inset shadow
@@ -1081,9 +1082,13 @@ Layout, top to bottom inside the pane's card:
   with stable row ids; what a person opened and each text's markdown view are kept by id
   across derivations:
   - user message: a bubble on the right, at most 80 % wide, in the palette's `wash`, the theme's
-    hue laid thin over the card (never the system's accent, which isn't the theme);
-    images above the text; long messages collapse past 8 lines with "Show more";
-    hover: copy, time; a steer marked "↷ Steered".
+    hue laid thin over the card (never the system's accent, which isn't the theme); its words
+    are markdown, drawn as an answer's are, by the same `TextView` with the same links to
+    files, kept by the item as an answer's view is, so the two read alike; images above the
+    text, each opening in Koyo's viewer over the chat (Attachments); long messages collapse past
+    8 lines with "Show more", cut at a whole line (`TextView::max_lines`); hover: copy, time; a
+    steer marked "↷ Steered". A prompt's row has 8 px over its bubble, where a floating prompt
+    floats (Floating prompts).
   - assistant text: full-width markdown (`TextView`, streaming), no bubble; on hover a copy button
     under each, and under the final answer model · effort, time: the model the run chose, else
     the one its session said it ran on (`session.ready`'s `model`, kept on the run as its mode
@@ -1156,6 +1161,19 @@ Layout, top to bottom inside the pane's card:
 - **Composer.** `textarea` growing from 1 to 12 lines; Enter sends, ⇧↩ adds a line; while
   running, Enter steers and ⌘↩ queues (the button's icon follows ⌘); ↑ on an empty composer
   recalls the last prompt; ⌘., or Esc on an empty composer, stops.
+- **Markdown as it's typed.** What's typed is formatted where it's typed, as in Typora or
+  Obsidian's live preview, with no preview beside it: a heading's line and `**bold**` bold,
+  `*italic*` in italics, `~~struck~~` struck through, code inline or in a block on the washes
+  the history's code is on, a link in the link colour and underlined, a quote in italics, a
+  table's head bold. The marks that make them stay where they are, dimmed: `#`, `**`, `_`,
+  backticks, a fence and its language, `- `, `1. `, `- [ ] `, `> `, a link's `[`, `](…)` and
+  `<>`, a table's pipes and the line under its head. What's sent is what was typed, marks and
+  all. The styles are laid over the text (`TextDecoration`s, `composer/markdown.rs`), worked out
+  from it with the parser the text views use (`markdown`, GFM) each time it changes, and as the
+  theme does; the text, the caret, selection, undo, paste, IME, `@` and `/`, tiles and drafts
+  stay the textarea's, untouched. The textarea lays every line out at one height and a style
+  can't change the font, so a heading is bold at the text's size and code stays in the text's
+  font.
 - **`@` and `/`.** A word starting `@` completes to the worktree's files (`koyo-project`'s
   index, the finder Go to File uses), and goes in as `@path`, which the CLI reads in; a first
   word starting `/` to the commands and skills from the catalog, which go in as `/name`, and
@@ -1174,8 +1192,11 @@ Layout, top to bottom inside the pane's card:
   wait for them. A message that doesn't go brings them back; a tile taken away takes its file, and
   one left when the tab closes stays with its draft (5.2). What's left in the folder anyway, by an
   app that stopped, the host removes as it starts once no message or draft names it a week on. In the timeline a picture shows at a
-  fixed size above the message's words, drawn from a small copy of it, and opens where the person
-  would.
+  fixed size above the message's words, drawn from a small copy of it. A click opens it in Koyo's
+  own viewer (`viewer/`, as a file tab shows a picture: a pinch, or ⌘ and the wheel, zooms about
+  the pointer; scrolling or dragging moves about; ⌘= ⌘- ⌘0), filling the chat over all that
+  floats there and taking the keys; Esc or its × closes it, and the keys go back to the composer.
+  Any other file opens where the person would.
 - **Footer.** `[+]` attach · model ("Opus 5.5", never "Default": the host labels that row with what
   it runs, by name or else by id; a chat that chose none shows the one the agent's settings run,
   the catalog's `defaultModel`, by its id when it isn't listed; ⚡ when fast) · effort ("Extra high"; none for a model with no efforts) · permission
@@ -1201,6 +1222,33 @@ Layout, top to bottom inside the pane's card:
   re-arms, and so does sending. The pill "⌄ Scroll to end" (with "· 2 queued") shows 150 ms
   after leaving the end. Position per thread is kept while its tab is open; scrolling to the
   top loads older runs (`threads.history`).
+- **Floating prompts.** Each prompt heads a section of the chat: it and all that follows, up to
+  the next. Nothing floats while a person reads down a chat, at its end or after a jump. As they
+  scroll up in a section whose prompt has gone up past the top, that prompt comes down from above
+  the top as far as they scroll, until it's in place, on glass where its bubble would be, 8 px from
+  the top; scrolling down takes it back up as far, out of sight. It's cut to 3 lines if it's
+  longer, as a bubble is to 8, by the same guess; "Show more" opens it in place, scrolling within
+  itself past the room the chat has, the timeline staying where it is, and "Show less" closes it.
+  ↑ on it scrolls the chat to where the prompt is, which puts it in place. It shows once, never
+  twice: while its card shows, it's lifted out of its row, whose place stays, empty, so nothing
+  under it moves; settling, it's the bubble again. Where the card is is a line its prompt sticks
+  to, as a sticky header does: its bubble going up past the line floats, coming down to it settles
+  into its place. Scrolling up, the card's line comes down with the scroll, so a prompt still in
+  view comes down itself and shows no card; further up the section before has its own, all the
+  way back. The next prompt coming up to a floating one pushes it up ahead of itself, a prompt's
+  room between them, so the two never overlap. Above the first prompt, nothing floats. The 8 px
+  over a prompt's bubble in its row are what make the card and the bubble meet: where the card
+  floats is where the bubble is as its row reaches the top, which is also where going to it
+  leaves it. A steer heads no section: it joined the run its prompt started (4.5.2) and says how
+  to go on rather than what to do, often in words that mean nothing alone ("the other one"), and
+  what follows still answers the prompt. What was opened closes when another prompt floats, and
+  stays open while older runs come in above. Settings › Chat › Layout › Floating prompts, on by
+  default, turns it off, in open chats at once. What a person scrolled is told apart from what
+  moved the list otherwise by a count the list's scroller keeps of the scrolls a person's wheel,
+  trackpad or touch made, as the list takes those itself and no scroll reaches the tab; dragging
+  the scrollbar counts as scrolling. Which prompt floats, and how far up it is, is worked out from
+  the list's top row and where it laid the next prompt's row, as a person scrolls and after each
+  draw of the tab.
 - **Status in the shell.** The tab face shows a spinner while working (`chat/spinner.rs`: a small
   bold ring in amber, going round, drawn at every frame), a dot in the text's colour
   when it needs you, a dot when unread, red when failed. In the Arc layout a tab's row says it
@@ -1226,6 +1274,13 @@ Layout, top to bottom inside the pane's card:
 - A thread opens with its latest 30 runs; older ones load as the person scrolls up.
 - A tab's elapsed label ticks once a second, only while a tool is running; the shimmer moves at
   20 fps, whatever the display's rate, so the rows it draws again don't matter.
+- What's typed is parsed for its markdown once for each change of its text, and its styles are
+  set only when they differ, so a key still draws no row. A person's message is parsed once, as
+  its view is made, as an answer's is.
+- Which prompt floats is a search of the prompts' rows by the list's top row, done after each
+  draw of the tab and on each scroll, outside what the list records; the tab is drawn again only
+  when which prompt floats or how far up it is changes, and the timeline only when another
+  prompt floats.
 - The composer's working edge is a view of its own, so its steps draw neither the composer nor
   the timeline (the tab around it is drawn for each, as for anything floating over a chat); at
   most 24 a second while it moves or fades, none while it holds still, and none once nothing
@@ -1250,7 +1305,14 @@ Layout, top to bottom inside the pane's card:
 - **Rust**: `koyo-agent` parses every fixture; `Replica` and the row derivation as pure
   functions; the client against the compiled host on the fake provider, which `script/check`
   builds first with `script/agent-host` (a test that can't find it says so and fails, rather
-  than skip what it was there to prove).
+  than skip what it was there to prove). Which prompt floats is a pure function of the prompts'
+  rows, the list's top row and the card's line, how far up the card is one of how far a person
+  scrolled (`hidden_after`) and of where the next prompt is (`pushed`), and the composer's
+  markdown styles one of its text, each tested on its own and in a window.
+- **Visual checks** (`--visual-check-chat-markdown`, `chat/visual.rs`): a chat on the fake provider
+  drawn light and dark, with markdown in both kinds of message, a long prompt closed and open, the
+  composer while each construct is typed, the floating prompt at each place a scroll stops,
+  opened and gone to, the same with the setting off, and a picture in the viewer and after Esc.
 - **Real app**: driven with `orca computer` on a real Claude session in a test worktree:
   send, stream, approve, deny, ask, plan, stop, queue, restart Koyo mid-turn.
 
