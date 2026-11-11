@@ -5,7 +5,8 @@
 //! one look. Not while the person is on the agent desktop itself: there, an agent's app in
 //! front is their doing.
 //!
-//! The front app is asked of the window server every few milliseconds, on a thread of the
+//! The front app is asked of the window server every few milliseconds, and every
+//! millisecond right after an agent started or acted on an app, on a thread of the
 //! guard's own, not learned from the workspace's notices, which come by the host's loop.
 //! The sooner it is the person's again, the less of their typing goes astray. Launch
 //! Services' way (`activateWithOptions:` and its order of the apps) took a second each
@@ -55,8 +56,9 @@ use crate::skylight::{self, Serial, SpaceId};
 use crate::{apps, desktop, mission, ns, windows};
 
 /// How often the window server is asked which app is in front: with an app of the agent's
-/// to look out for, and with none.
+/// to look out for, with one an agent just started or acted on, and with none.
 const LOOKS_EVERY: Duration = Duration::from_millis(8);
+const LOOKS_SOON: Duration = Duration::from_millis(1);
 const RESTS_FOR: Duration = Duration::from_millis(100);
 /// How long an app of the agent's that keeps the front, or keeps taking it back, is
 /// answered at every look, and how long it's left between two answers after that
@@ -66,8 +68,9 @@ const AGAIN_AFTER: Duration = Duration::from_millis(250);
 /// How long after an agent's act on an app its coming to the front is the act's doing.
 const EXPLAINED_FOR: Duration = Duration::from_millis(1500);
 /// How long after the front was given back macOS may still arrive on the agent's desktop,
-/// following the app that had taken it.
-const FOLLOWS_WITHIN: Duration = Duration::from_secs(1);
+/// following the app that had taken it: it arrived 354-363 ms after, three times of three,
+/// and twice that is left for a Mac that is busy. Later, the person went there themselves.
+const FOLLOWS_WITHIN: Duration = Duration::from_millis(700);
 /// How long the host keeps trying to put the person's desktop back on their screen, and
 /// how long it leaves between two tries.
 const BACK_WITHIN: Duration = Duration::from_secs(3);
@@ -142,6 +145,21 @@ fn left_for(held: Duration) -> Duration {
         Duration::ZERO
     } else {
         AGAIN_AFTER
+    }
+}
+
+/// How long the guard waits between two looks: `agents` when there's an app of the agent's
+/// to look out for, `acted` how long ago an agent last started or acted on one. An app
+/// takes the front as it starts, and the shorter it has it, the less of what the person
+/// types reaches it and the less often it orders a window forward while it has it, which
+/// is what macOS follows.
+fn looks_every(agents: bool, acted: Option<Duration>) -> Duration {
+    if !agents {
+        RESTS_FOR
+    } else if acted.is_some_and(|acted| acted < EXPLAINED_FOR) {
+        LOOKS_SOON
+    } else {
+        LOOKS_EVERY
     }
 }
 
@@ -222,9 +240,12 @@ impl FrontGuard {
             let mut since: Option<Instant> = None;
             let mut finder: Option<i32> = None;
             loop {
-                let idle = held(&watched).ours.is_empty();
                 // Waits out the time between two looks, and ends with the guard.
-                let wait = if idle { RESTS_FOR } else { LOOKS_EVERY };
+                let wait = {
+                    let watch = held(&watched);
+                    let acted = watch.acted.values().map(Instant::elapsed).min();
+                    looks_every(!watch.ours.is_empty(), acted)
+                };
                 if gone.recv_timeout(wait) != Err(RecvTimeoutError::Timeout) {
                     return;
                 }
@@ -406,8 +427,21 @@ impl Host {
 
 #[cfg(test)]
 mod tests {
-    use super::{AGAIN_AFTER, HELD_AGAINST_FOR, followed, left_for};
+    use super::{AGAIN_AFTER, HELD_AGAINST_FOR, followed, left_for, looks_every};
+    use super::{EXPLAINED_FOR, LOOKS_EVERY, LOOKS_SOON, RESTS_FOR};
     use std::time::Duration;
+
+    /// The guard looks every millisecond while an app an agent just started or acted on may
+    /// take the front, every few otherwise, and rests with no app of the agent's.
+    #[test]
+    fn the_guard_looks_soonest_right_after_an_agent_acted() {
+        let ago = |ms: u64| Some(Duration::from_millis(ms));
+        assert_eq!(looks_every(true, ago(0)), LOOKS_SOON);
+        assert_eq!(looks_every(true, ago(1499)), LOOKS_SOON);
+        assert_eq!(looks_every(true, Some(EXPLAINED_FOR)), LOOKS_EVERY);
+        assert_eq!(looks_every(true, None), LOOKS_EVERY);
+        assert_eq!(looks_every(false, ago(0)), RESTS_FOR, "nothing to look out for");
+    }
 
     /// An agent's app in front after an answer took the front back, as Chrome does 17 ms
     /// after losing it: answered at every look, however often it does that, for seconds;

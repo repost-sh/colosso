@@ -61,6 +61,7 @@ unsafe extern "C" {
     pub fn CGEventPostToPid(pid: i32, event: Ref);
     pub fn CGEventKeyboardSetUnicodeString(event: Ref, length: usize, text: *const u16);
     pub fn CGPreflightScreenCaptureAccess() -> bool;
+    pub fn CGSessionCopyCurrentDictionary() -> Ref;
     /// How long ago an event of `kind` last came from `state`'s source, in seconds.
     pub fn CGEventSourceSecondsSinceLastEventType(state: i32, kind: u32) -> f64;
     /// Asks the person for Screen Recording, once, and lists the process in System Settings.
