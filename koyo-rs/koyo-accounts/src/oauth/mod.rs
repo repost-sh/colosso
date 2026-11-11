@@ -57,8 +57,9 @@ pub const OAUTH_TOKEN_URL: &str = "https://platform.claude.com/v1/oauth/token";
 pub const OAUTH_CLIENT_ID: &str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 pub const USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
 pub const PROFILE_URL: &str = "https://api.anthropic.com/api/oauth/profile";
-/// cswap's own: the token endpoint refuses a request without one (403).
-pub const USER_AGENT: &str = "claude-swap/1.0";
+/// Koyo's own, where cswap sends `claude-swap/1.0`: the token endpoint refuses a request without
+/// one (403), and the usage endpoint's budget counts by client, so Koyo doesn't pass for another.
+pub const USER_AGENT: &str = "koyo-accounts/1.0";
 
 /// What `claude setup-token` grants: inference, and not the usage endpoint.
 pub const SETUP_TOKEN_SCOPES: [&str; 1] = ["user:inference"];
