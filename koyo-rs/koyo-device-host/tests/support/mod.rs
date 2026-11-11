@@ -11,14 +11,14 @@
     reason = "a test's driver: a failure is a test's failure, and not every test uses every step"
 )]
 
+pub mod acts;
 pub mod pages;
 
 use std::io::BufReader;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::{Child, Command};
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError, mpsc::{self, Receiver, RecvTimeoutError}};
 use std::time::{Duration, Instant};
 
 use koyo_browser_ipc::{inherit, mach};
@@ -29,7 +29,6 @@ use koyo_device_wire::{
 use objc2_core_foundation::CFRetained;
 use objc2_io_surface::IOSurfaceRef;
 
-pub use pages::Pages;
 
 /// What the real-simulator tests run against, from the environment: without it they say so and
 /// pass, as the agent desktop's do.

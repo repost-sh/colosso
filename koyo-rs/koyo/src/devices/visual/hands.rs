@@ -193,12 +193,17 @@ fn awake(drawn: &mut Drawn, view: Entity<DeviceView>, link: &Entity<Link>, udid:
     Ok(())
 }
 
-/// The owner's rows, on the iPad `udid` shown in `view`, standing ready with `first`.
-pub(super) fn run(drawn: &mut Drawn, view: Entity<DeviceView>, link: &Entity<Link>, udid: &str, first: Screen, lines: &mut Vec<String>) -> Result<()> {
+/// The owner's rows, on the iPad `udid` shown in `view`, standing ready with `first`; `short`,
+/// the turns, the lock and the plug only, and the tab closed after.
+pub(super) fn run(drawn: &mut Drawn, view: Entity<DeviceView>, link: &Entity<Link>, udid: &str, first: Screen, short: bool, lines: &mut Vec<String>) -> Result<()> {
     note(&format!("ready: {:?}; QR4 first", first.orientation));
     turns(drawn, link, first, lines);
     lock(drawn, &view, link, lines);
     plug(drawn, &view, link, lines);
+    if short {
+        note("done");
+        return close(drawn, view);
+    }
     // U14: his look at its camera and sound, with the tab shown.
     note("U14: open the Camera app, look, then go back Home");
     let _ = drawn.until(Duration::from_secs(90), |_| Ok(false));

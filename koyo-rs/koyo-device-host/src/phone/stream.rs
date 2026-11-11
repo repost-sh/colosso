@@ -31,12 +31,34 @@ const ALIVE_EVERY: Duration = Duration::from_secs(1);
 /// The name this side gives in its feedback.
 const NAME: &str = "koyo";
 
-/// A stream under way: its service (it ends when this is dropped), and its sockets.
+/// The device's display service, while a stream of it runs: stopped by [`stop`], as the device
+/// otherwise keeps the stream's session, and itself awake, after this end has gone.
+pub type Service = DisplayServiceClient<Box<dyn ReadWrite>>;
+
+/// How long the device is given to stop its stream.
+const STOPS_WITHIN: Duration = Duration::from_secs(2);
+
+/// A stream under way: its service, and the sockets its sound and picture come on.
 pub struct Stream {
-    _service: DisplayServiceClient<Box<dyn ReadWrite>>,
+    pub service: Service,
+    pub media: Media,
+}
+
+/// The sockets a stream's sound and picture come on, read by [`pump`].
+pub struct Media {
     audio: UdpSocketHandle,
     video: UdpSocketHandle,
     ours: u32,
+}
+
+/// Asks the device to stop the stream, so its session ends with this end's and it may lock by
+/// its own setting again.
+pub async fn stop(service: &mut Service) -> Result<(), String> {
+    match tokio::time::timeout(STOPS_WITHIN, service.stop_media_stream()).await {
+        Ok(Ok(_)) => Ok(()),
+        Ok(Err(error)) => Err(format!("the device didn't stop its stream: {error}")),
+        Err(_) => Err(format!("the device didn't stop its stream in {} s", STOPS_WITHIN.as_secs())),
+    }
 }
 
 /// Starts the device's screen stream on its main display.
@@ -67,10 +89,8 @@ pub async fn start(adapter: &mut AdapterHandle, handshake: &mut RsdHandshake) ->
     let picture = build_start_video_parameters(&receiver, video.local_port(), &sender, 50001, offer, CLIENT_SUPPORTED_FEATURES, 1, session);
     service.start_media_stream(picture).await.map_err(|error| format!("the device didn't start its picture: {error}"))?;
     Ok(Stream {
-        _service: service,
-        audio,
-        video,
-        ours,
+        service,
+        media: Media { audio, video, ours },
     })
 }
 
@@ -100,10 +120,8 @@ fn dropped_window() -> Option<(Duration, Duration)> {
 /// Reads the stream until it ends, as a task of its own (nothing the session waits on holds it
 /// up): each whole picture to `pictures`, the device given its feedback, a whole picture asked
 /// for at each word on `keyframe`. Returns why it ended.
-pub async fn pump(stream: Stream, pictures: mpsc::Sender<Vec<u8>>, keyframe: Arc<Notify>) -> (String, Counts) {
-    let Stream { _service, audio, video, ours } = stream;
-    // The sound is taken and dropped: the session is started with it.
-    tokio::spawn(async move { while audio.recv().await.is_ok() {} });
+pub async fn pump(media: Media, pictures: mpsc::Sender<Vec<u8>>, keyframe: Arc<Notify>) -> (String, Counts) {
+    let Media { audio, video, ours } = media;
     let mut depacketizer = HevcDepacketizer::new();
     let began = Instant::now();
     let mut report = tokio::time::interval(REPORT_EVERY);
@@ -117,6 +135,9 @@ pub async fn pump(stream: Stream, pictures: mpsc::Sender<Vec<u8>>, keyframe: Arc
     let dropping = dropped_window();
     let why = loop {
         tokio::select! {
+            // The sound is taken and dropped: the session is started with it. Read here, its
+            // socket goes with the pump.
+            Ok(_) = audio.recv() => {}
             got = video.recv() => {
                 let Ok(datagram) = got else { break "the device's stream ended".to_owned() };
                 if is_rtcp(&datagram.data) {

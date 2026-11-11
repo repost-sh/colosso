@@ -17,7 +17,8 @@ use koyo_device_wire::{Screen, ToHost};
 use objc2_io_surface::{IOSurfaceLockOptions, IOSurfaceRef};
 
 use crate::support::pages::open;
-use crate::support::{Driver, Pages, Target, row};
+use crate::support::pages::Pages;
+use crate::support::{Driver, Target, row};
 
 /// The pixel at shares `(x, y)` of `surface`, as red, green, blue.
 pub fn pixel(surface: &IOSurfaceRef, x: f64, y: f64) -> (u8, u8, u8) {

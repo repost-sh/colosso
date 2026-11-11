@@ -111,7 +111,9 @@ impl Host {
 
     /// Ready, or locked (a real device's lock screen), once there's a picture to show.
     pub fn tell_standing(&mut self) {
-        if !matches!(self.phase, Phase::Ready) {
+        // Gone (a device unplugged) is the last word: a standing told after it would take its
+        // place, and the app would start the host again as if it had stopped on its own.
+        if self.gone || !matches!(self.phase, Phase::Ready) {
             return;
         }
         if let Some(screen) = self.screen() {
