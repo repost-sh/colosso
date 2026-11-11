@@ -296,7 +296,10 @@ The loop:
 2. Look: `device_snapshot` gives what's on the screen, elements marked `[ref=eN]` and
    `@x,y`, their middle. Its `source` says how it was read: `accessibility`, the app's own
    elements with their roles and labels, its first line naming the app; or `text`, words
-   read off the picture, where the tree had nothing. `device_screenshot` gives an image.
+   read off the picture, where the tree had nothing (just after a first boot, often). A
+   `text` ref is where its words are: on the home screen an app's name is under its icon,
+   where a tap doesn't open it, so open apps with `device_launch`. `device_screenshot`
+   gives an image.
 3. Act by `ref`, or by point: `device_tap` (`count`, `holdMs` for a long press,
    `fingers`), `device_swipe`, `device_scroll` (moves the content by `dx`, `dy` without a
    glide), `device_pinch`, `device_type` (`into` a ref taps it first), `device_key`
