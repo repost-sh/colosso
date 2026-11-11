@@ -116,6 +116,10 @@ fn glass(
     window: &mut Window,
     cx: &mut App,
 ) -> Option<AnyElement> {
+    #[cfg(feature = "visual-check")]
+    if crate::visual::glass_as_fill() {
+        return None;
+    }
     let pane = surface::keep(id, window, cx, |window| {
         Native::new(window)
             .inspect_err(|why| {

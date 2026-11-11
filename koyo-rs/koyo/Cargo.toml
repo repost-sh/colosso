@@ -89,6 +89,9 @@ resvg = { version = "0.46", default-features = false, features = ["text", "syste
 # widths cut them short. ELK's layout, under the EPL, is left out.
 merman = { version = "=0.10.0-alpha.1", default-features = false, features = ["svg", "all-diagrams", "layout-cytoscape", "native-fonts"] }
 merman-export = { version = "=0.10.0-alpha.1", default-features = false, features = ["native-fonts"] }
+# The markdown a chat's composer formats as it's typed, read as its text views read it: their
+# parser, so already in the lockfile.
+markdown = "1"
 # Settings on disk; all versions GPUI already pulls in.
 dirs = "6"
 # The process on the other end of the agent desktop's socket, whose frames alone are taken.

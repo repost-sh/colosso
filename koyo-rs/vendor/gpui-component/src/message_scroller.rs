@@ -1,8 +1,8 @@
 use std::{ops::Range, time::Duration};
 
 use gpui::{
-    AnyElement, App, Context, ElementId, Entity, FollowMode, Hsla, InteractiveElement as _,
-    IntoElement, ListAlignment, ListOffset, ListState, ParentElement as _, RenderOnce, Role,
+    AnyElement, App, Bounds, Context, ElementId, Entity, FollowMode, Hsla, InteractiveElement as _,
+    IntoElement, ListAlignment, ListOffset, ListState, ParentElement as _, Pixels, RenderOnce, Role,
     SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
     linear_color_stop, linear_gradient, list, prelude::FluentBuilder as _, px, rems,
 };
@@ -22,6 +22,8 @@ const BOTTOM_FADE_TRANSITION: Duration = Duration::from_millis(200);
 /// [`MessageScroller::new`].
 pub struct MessageScrollerState {
     list_state: ListState,
+    /// Koyo: how many times a person's wheel, trackpad or touch moved the list.
+    hand_scrolls: u64,
 }
 
 impl MessageScrollerState {
@@ -43,7 +45,10 @@ impl MessageScrollerState {
             });
         });
 
-        Self { list_state }
+        Self {
+            list_state,
+            hand_scrolls: 0,
+        }
     }
 
     /// Return the current number of rows known by the virtual list.
@@ -72,6 +77,34 @@ impl MessageScrollerState {
     /// [`Self::item_count`] until then.
     pub fn logical_scroll_top(&self) -> ListOffset {
         self.list_state.logical_scroll_top()
+    }
+
+    /// Koyo: where the row at `index` was last laid out, in window coordinates, if it was and
+    /// isn't above the top.
+    pub fn bounds_for_item(&self, index: usize) -> Option<Bounds<Pixels>> {
+        self.list_state.bounds_for_item(index)
+    }
+
+    /// Koyo: how many times a person's wheel, trackpad or touch moved the list; a jump, following
+    /// the end or a scrollbar's drag doesn't count.
+    pub fn hand_scrolls(&self) -> u64 {
+        self.hand_scrolls
+    }
+
+    /// Koyo: whether a person is dragging the list's scrollbar.
+    pub fn is_scrollbar_dragging(&self) -> bool {
+        self.list_state.is_scrollbar_dragging()
+    }
+
+    /// Koyo: how far down the list is scrolled, in pixels from its top, as its rows were last
+    /// measured.
+    pub fn scroll_offset(&self) -> Pixels {
+        -self.list_state.scroll_px_offset_for_scrollbar().y
+    }
+
+    /// Koyo: where the list was last laid out, in window coordinates.
+    pub fn viewport_bounds(&self) -> Bounds<Pixels> {
+        self.list_state.viewport_bounds()
     }
 
     /// Reset the list to `item_count` rows.
@@ -384,7 +417,10 @@ impl RenderOnce for MessageScroller {
                     .on_scroll({
                         let state = self.state.downgrade();
                         move |_, cx| {
-                            let _ = state.update(cx, |_, cx| cx.notify());
+                            let _ = state.update(cx, |state, cx| {
+                                state.hand_scrolls += 1;
+                                cx.notify();
+                            });
                         }
                     }),
             )

@@ -5315,6 +5315,7 @@ dependencies = [
  "koyo-termd",
  "libc",
  "log",
+ "markdown",
  "merman",
  "merman-export",
  "nucleo-matcher",

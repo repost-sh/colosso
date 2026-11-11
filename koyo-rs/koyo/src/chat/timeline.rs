@@ -4,6 +4,7 @@
 //! none of this, only its own text (`docs/chat.md` 5.4).
 
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
@@ -14,13 +15,13 @@ use gpui_kit::{
 };
 use koyo_agent::protocol::ids::{ItemId, RunId, ThreadId};
 use koyo_agent::protocol::methods::Catalog;
-use koyo_agent::protocol::model::{Hunk, ItemBody, ItemStatus};
+use koyo_agent::protocol::model::{Delivered, Hunk, ItemBody, ItemStatus};
 use koyo_agent::replica::Replica;
 use koyo_agent::timeline::{Row, RowId, RowKind, WorkFold, changed, rows};
 
 use super::output::{PatchColours, patch_colours};
 use super::queued::QueuedEdit;
-use super::rows::Drawing;
+use super::rows::{Drawing, message_of};
 use super::thread::ChatThread;
 use super::view::ChatViewEvent;
 use super::work::{patch_of, stands_alone};
@@ -40,6 +41,10 @@ pub(super) struct Timeline {
     /// Who an answer to what's asked is said to.
     pub(super) composer: FocusHandle,
     pub(super) rows: Rc<Vec<Row>>,
+    /// The rows of the prompts that head the chat's sections, in order (`docs/chat.md` 5.3).
+    pub(super) prompts: Rc<Vec<usize>>,
+    /// The row of the prompt floating over the list, which isn't drawn in its place meanwhile.
+    pub(super) floating: Option<usize>,
     /// How much of the work shows, as a person chose.
     verbosity: Verbosity,
     /// How big the text is, in the bits a float compares by, and how wide the column, as a person
@@ -73,12 +78,16 @@ pub(super) struct Timeline {
 impl EventEmitter<ChatViewEvent> for Timeline {}
 impl EventEmitter<OpenSubagent> for Timeline {}
 impl EventEmitter<GoBackTo> for Timeline {}
+impl EventEmitter<OpenPicture> for Timeline {}
 
 /// A person went for the thread of a subagent in the timeline.
 pub(super) struct OpenSubagent(pub(super) ThreadId);
 
 /// A person went for the message that started a run in the timeline, to say it again.
 pub(super) struct GoBackTo(pub(super) RunId);
+
+/// A person clicked the picture at this path, which a message attached.
+pub(super) struct OpenPicture(pub(super) PathBuf);
 
 /// A second's tick for as long as something's `running`, for its elapsed time.
 pub(super) fn keep_ticking<T: 'static>(
@@ -125,6 +134,8 @@ impl Timeline {
             verbosity: settings::get(cx).chat_verbosity,
             layout: layout(cx),
             rows: Rc::default(),
+            prompts: Rc::default(),
+            floating: None,
             open: Rc::default(),
             colours: Rc::default(),
             colouring: HashSet::new(),
@@ -162,6 +173,7 @@ impl Timeline {
         let alone = |item: &_| stands_alone(item, verbosity);
         let new = replica.map_or_else(Vec::new, |replica| rows(replica, fold, alone));
         let uncoloured = replica.map_or_else(Vec::new, |replica| self.uncoloured(replica));
+        let prompts = replica.map_or_else(Vec::new, |replica| prompts(replica, &new));
         let running = replica.and_then(|replica| running_item(replica, &new));
         let subagent_running = replica.is_some_and(|replica| {
             (replica.items.iter()).any(|item| {
@@ -180,6 +192,7 @@ impl Timeline {
             });
         }
         self.rows = Rc::new(new);
+        self.prompts = Rc::new(prompts);
         self.colour(uncoloured, cx);
         keep_ticking(
             &mut self.ticking,
@@ -313,6 +326,21 @@ impl Timeline {
         cx.notify();
     }
 
+    /// The prompt of row `at` floats now, lifted out of its place, and none other does: the
+    /// rows it leaves and goes to are drawn again, the same height as they were.
+    pub(super) fn set_floating(&mut self, at: Option<usize>, cx: &mut Context<Self>) {
+        let was = std::mem::replace(&mut self.floating, at);
+        if was == at {
+            return;
+        }
+        self.scroller.update(cx, |scroller, cx| {
+            for row in [was, at].into_iter().flatten() {
+                scroller.remeasure_items(row..row + 1, cx);
+            }
+        });
+        cx.notify();
+    }
+
     /// The room under the last row is now `inset`.
     pub(super) fn set_inset(&mut self, inset: Pixels, cx: &mut Context<Self>) {
         self.inset = inset;
@@ -358,6 +386,8 @@ impl Timeline {
             catalog: self.catalog.clone(),
             timeline: cx.weak_entity(),
             rows: Rc::clone(&self.rows),
+            prompts: Rc::clone(&self.prompts),
+            floating: self.floating,
             open: Rc::clone(&self.open),
             verbosity: self.verbosity,
             width: self.layout.1,
@@ -385,6 +415,18 @@ fn layout(cx: &App) -> (u32, ChatWidth) {
 /// Whether the host would let a chat go back: not a subagent's, nothing at work or waiting.
 pub(super) fn can_go_back(replica: &Replica) -> bool {
     replica.thread.parent.is_none() && replica.live().is_none() && replica.queued().next().is_none()
+}
+
+/// The rows of `rows` that head a section: the person's messages, but those that joined a run
+/// someone else's prompt started, which is still what's answered.
+fn prompts(replica: &Replica, rows: &[Row]) -> Vec<usize> {
+    let heads = |row: &Row| {
+        message_of(&row.kind, replica).is_some_and(|(_, said)| said.delivered != Delivered::Steer)
+    };
+    (rows.iter().enumerate())
+        .filter(|(_, row)| heads(row))
+        .map(|(at, _)| at)
+        .collect()
 }
 
 /// The item the live row in `rows` shows.

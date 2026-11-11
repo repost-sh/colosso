@@ -27,9 +27,11 @@ mod config;
 mod details;
 mod drawers;
 mod drawing;
+mod floating;
 mod pointer;
 mod recent;
 mod rewind;
+mod said;
 mod seen;
 mod turn;
 

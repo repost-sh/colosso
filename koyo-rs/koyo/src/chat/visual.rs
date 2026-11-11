@@ -14,6 +14,9 @@
 //! theme's colour and lets the card show through. The fake provider says back what it's told, so
 //! the person's message is the markdown and the answer draws it.
 //!
+//! `--visual-check-chat-markdown`: markdown in a chat's messages and composer, its floating
+//! prompts and a picture in the viewer, in `.superpowers/qa/chat-markdown/` (`visual/markdown.rs`).
+//!
 //! Each check keeps its settings in its own folder, as the theme check changes the gradient theme:
 //! the theme check's is `.superpowers/qa/chat-theme/config`.
 //!
@@ -23,6 +26,8 @@
 //!   KOYO_CONFIG_DIR=$PWD/.superpowers/qa/chat/config KOYO_LOG_DIR=$PWD/.superpowers/c/logs \
 //!   script/cargo run -p koyo --features visual-check -- --visual-check-chat
 //! ```
+
+mod markdown;
 
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
@@ -79,6 +84,11 @@ SELECT count(*) FROM forwarder WHERE id !~ '^c[a-z0-9]{24}$';
 /// Draws the pictures and says where they are, or why it couldn't.
 pub fn run() -> ExitCode {
     crate::visual::run(draw)
+}
+
+/// Draws the markdown check's pictures and says where they are, or why it couldn't.
+pub fn run_markdown() -> ExitCode {
+    crate::visual::run(markdown::draw)
 }
 
 /// Draws the theme check's pictures and says where they are, or why it couldn't.
