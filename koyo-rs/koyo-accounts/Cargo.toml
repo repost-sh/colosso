@@ -1,0 +1,28 @@
+[package]
+name = "koyo-accounts"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Claude Code accounts with no UI: a port of claude-swap at 0fe22a8 (docs/claude-accounts.md)."
+
+[dependencies]
+# Reset times: ISO-8601 parsed, and drawn in the person's time zone; the version and the
+# features the app already builds.
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+# The lock's flock and the atomic writer's fsync; the version the app already uses.
+libc = "0.2"
+log = { version = "0.4", features = ["std"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# The hashed Keychain service of a profile other than the default: sha256 of the folder's
+# NFC-normalised name, as Claude Code derives it. Both already in the lockfile.
+sha2 = "0.10"
+unicode-normalization = "0.1"
+
+[features]
+# The fake `security`, the fake HTTP and the sandbox, for the app's tests too.
+testing = []
+
+[lints]
+workspace = true
