@@ -159,6 +159,7 @@ fn a_device_in_two_tabs_stops_when_the_last_closes(cx: &mut TestAppContext) {
 }
 
 mod hand;
+mod setup;
 
 #[gpui_kit::test]
 fn a_host_that_gave_up_isnt_started_again_and_its_word_stays(cx: &mut TestAppContext) {

@@ -159,6 +159,21 @@ pub(super) fn not_running(link: &Link) -> Option<ControlError> {
     })
 }
 
+/// Whether `simctl` may be asked, to be called off the main thread: at once when Koyo knows
+/// Xcode and its components are there, else after looking. An agent's tool is never the first
+/// `simctl` call, which would install Xcode's components and may ask the person's password.
+fn simctl_asked(cx: &App) -> impl FnOnce() -> Result<(), ControlError> + Send + 'static {
+    use devices::Need;
+    let known = (devices::devices(cx).read(cx).found.as_ref())
+        .is_some_and(|found| !matches!(found.need(), Some(Need::Xcode | Need::Components)));
+    move || {
+        if known {
+            return Ok(());
+        }
+        devices::needs::before_simctl().map_err(|why| needs_person(&why))
+    }
+}
+
 /// What only the person can put right, as the message tells the agent.
 pub(super) fn needs_person(why: &str) -> ControlError {
     ControlError::device_needs_person(format!("{why} Tell the person: Settings → Devices walks them through it."))

@@ -12,6 +12,11 @@ pub mod link;
 pub const ENV_SOCKET_FD: &str = "KOYO_DEVICE_SOCKET_FD";
 pub const ENV_TOKEN: &str = "KOYO_DEVICE_TOKEN";
 
+/// The first Xcode Koyo's devices run with.
+pub const XCODE: u32 = 27;
+/// What every surface of the feature says when Xcode is missing or too old.
+pub const NEEDS_XCODE: &str = "Koyo's devices need Xcode 27 or later.";
+
 /// The file in the hosts' state folder whose lock a device's host holds for as long as it runs:
 /// one host to a device, and the app's sweep of leftovers keeps off a device that has one.
 pub fn lock_name(udid: &str) -> String {

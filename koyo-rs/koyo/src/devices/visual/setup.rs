@@ -1,0 +1,76 @@
+//! The setup for simulators drawn off screen, a picture for each step (QU1-QU5): the Xcode
+//! step's three messages, the components, the system, the device with its menu, nothing
+//! missing, the first start and ready; and the picker's missing states beside it.
+
+use koyo_device_wire::{FromHost, State as Said, Step};
+
+use super::{open, screen};
+use crate::devices::host::Running;
+use crate::devices::needs::fixtures::{found, ready, simulator};
+use crate::devices::needs::{Found, Xcode};
+use crate::devices::setup::{self, Setup};
+use crate::devices::{Devices, Simulator};
+use crate::modal;
+use crate::visual::{Drawn, Result};
+
+/// An Xcode too old: what a tab that can't start says, with the setup.
+pub(super) fn older() -> Found {
+    found(Xcode::Older("26.4".into()), false, false)
+}
+
+fn shows(drawn: &mut Drawn, found: Found, simulators: Vec<Simulator>) {
+    let devices = drawn.cx.update(|cx| crate::devices::devices(cx));
+    drawn.cx.update(|cx| devices.update(cx, |devices, cx| devices.listed(Ok(simulators), Some(found), cx)));
+}
+
+pub(super) fn run(drawn: &mut Drawn, lines: &mut Vec<String>) -> Result<()> {
+    let other = Xcode::Other {
+        newest: "27.2".into(),
+        selected: Some("26.4".into()),
+    };
+    // The picker first, as the person meets it.
+    for (picture, missing) in [
+        ("picker-xcode.png", older()),
+        ("picker-system.png", found(ready(), true, false)),
+        ("picker-empty.png", found(ready(), true, true)),
+    ] {
+        shows(drawn, missing, Vec::new());
+        let _ = open(drawn, None, false)?;
+        lines.push(format!("{}", drawn.save(picture)?.display()));
+    }
+    shows(drawn, found(Xcode::Missing, false, false), Vec::new());
+    let window = drawn.window;
+    drawn.cx.update_window(window, |_, window, cx| setup::open(window, cx)).map_err(|error| error.to_string())?;
+    let steps = [
+        ("setup-xcode-missing.png", found(Xcode::Missing, false, false), false),
+        ("setup-xcode-older.png", older(), false),
+        ("setup-xcode-other.png", found(other, false, false), false),
+        ("setup-components.png", found(ready(), false, false), false),
+        ("setup-system.png", found(ready(), true, false), false),
+        ("setup-device.png", found(ready(), true, true), false),
+        ("setup-done.png", found(ready(), true, true), true),
+    ];
+    for (picture, missing, made) in steps {
+        shows(drawn, missing, if made { vec![simulator("V-SETUP")] } else { Vec::new() });
+        lines.push(format!("{}", drawn.save_dialog(picture)?.display()));
+    }
+    // The device made: its first start, then ready.
+    let link = drawn.cx.update(|cx| crate::devices::devices(cx).update(cx, |devices: &mut Devices, cx| devices.link("V-SETUP", "iPhone 18 Pro", cx)));
+    let (tell, _told) = std::sync::mpsc::channel();
+    drawn.cx.update(|cx| link.update(cx, |link, cx| link.use_host(Running::stand_in(tell), cx)));
+    let dialog = (drawn.cx.read(modal::current::<Setup>)).ok_or("the setup closed")?;
+    drawn.cx.update(|cx| dialog.update(cx, |dialog, cx| dialog.starts(link.clone(), cx)));
+    let said = [
+        ("setup-starting.png", Said::Starting { step: Step::Booting { first: true } }),
+        ("setup-ready.png", Said::Ready { screen: screen() }),
+    ];
+    for (picture, state) in said {
+        drawn.cx.update(|cx| link.update(cx, |link, cx| link.hear(FromHost::State { state }, cx)));
+        lines.push(format!("{}", drawn.save_dialog(picture)?.display()));
+    }
+    drawn.cx.update(|cx| link.update(cx, crate::devices::Link::stop));
+    if let Some(window) = drawn.cx.read(modal::window) {
+        let _ = drawn.cx.update_window(window, |_, window, cx| modal::dismiss(window, cx));
+    }
+    drawn.draw()
+}

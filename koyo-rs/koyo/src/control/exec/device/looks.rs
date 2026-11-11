@@ -92,10 +92,13 @@ fn info(simulator: &Simulator, set: &str, cx: &App) -> DeviceInfo {
 /// `device_list`: Koyo's simulators, read from its set afresh, each as it stands.
 pub(crate) fn list(cx: &mut App) -> Result<Exec, ControlError> {
     let set = devices::set_dir().ok_or_else(|| ControlError::internal("Koyo has no folder to keep its devices in."))?;
-    let path = set.clone();
-    let listed = cx.background_executor().spawn(async move { devices::simulators::list(&path) });
+    let (path, asked) = (set.clone(), super::simctl_asked(cx));
+    let listed = cx.background_executor().spawn(async move {
+        asked()?;
+        devices::simulators::list(&path).map_err(ControlError::internal)
+    });
     Ok(Exec::Later(cx.spawn(async move |cx: &mut AsyncApp| {
-        let simulators = listed.await.map_err(ControlError::internal)?;
+        let simulators = listed.await?;
         cx.update(|cx| {
             let set = set.display().to_string();
             let devices = simulators.iter().map(|simulator| info(simulator, &set, cx)).collect();

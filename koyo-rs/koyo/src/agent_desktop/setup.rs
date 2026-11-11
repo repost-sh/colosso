@@ -4,29 +4,26 @@
 //! they're there, sees each grant the moment it's given, leads on to the next by itself, and
 //! brings Koyo back once the desktop is made.
 
-use gpui_kit::assets::IconName;
 use gpui_kit::{
-    App, Context, Div, Entity, FontWeight, InteractiveElement as _, IntoElement,
+    App, Context, Div, Entity, InteractiveElement as _, IntoElement,
     ParentElement as _, Render, StatefulInteractiveElement as _, Styled as _, Subscription, Window,
     div, px,
 };
 
 use super::granting::{Grant, Step};
 use super::{Desk, State, desk};
-use crate::modal::{self, Button, Tone};
-use crate::shell::icon;
+use crate::modal::{self, Button, Mark, Tone};
 use crate::theme::{self, Palette};
 
 const WIDTH: f32 = 480.;
 /// The lines of what the dialog says first, and of what it says about the step at hand.
 const INTRO: f32 = 3.;
 const HINT: f32 = 3.;
-const ROW: f32 = 44.;
 const GAP: f32 = 12.;
 const HEIGHT: f32 = 2. * modal::PADDING
     + modal::HEADING_LINE
     + INTRO * modal::LINE
-    + 2. * ROW
+    + 2. * modal::STEP
     + HINT * modal::SMALL_LINE
     + modal::SMALL_LINE
     + modal::FOOTER
@@ -94,7 +91,7 @@ impl Setup {
     }
 
     /// A grant's row: its number, a wheel while it's waited for, a tick once it's given.
-    fn row(&self, number: &'static str, grant: Grant, cx: &App, p: Palette) -> Div {
+    fn row(&self, number: usize, grant: Grant, cx: &App, p: Palette) -> Div {
         let (name, why) = match grant {
             Grant::Accessibility => (
                 "Accessibility",
@@ -111,51 +108,14 @@ impl Setup {
             Grant::ScreenRecording => grants.screen_recording,
         });
         let waited = self.going && self.seen == Step::Needs(grant);
-        let mark = div()
-            .relative()
-            .flex_none()
-            .size(px(22.))
-            .flex()
-            .items_center()
-            .justify_center();
-        let mark = if given {
-            mark.text_color(p.accent)
-                .child(icon(IconName::CircleCheck, 18.))
+        let (mark, stands) = if given {
+            (Mark::Done, "Allowed")
         } else if waited {
-            mark.child(modal::spinner(p.muted))
+            (Mark::Busy, "Waiting for you…")
         } else {
-            (mark.rounded_full().border_1().border_color(p.hairline))
-                .text_xs()
-                .text_color(p.muted)
-                .child(number)
+            (Mark::Next { dim: false }, "")
         };
-        let stands = if given {
-            "Allowed"
-        } else if waited {
-            "Waiting for you…"
-        } else {
-            ""
-        };
-        div()
-            .h(px(ROW))
-            .flex()
-            .items_center()
-            .gap_3()
-            .child(mark)
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .child(div().font_weight(FontWeight::MEDIUM).child(name))
-                    .child(div().text_xs().text_color(p.muted).truncate().child(why)),
-            )
-            .child(
-                div()
-                    .flex_none()
-                    .text_xs()
-                    .text_color(p.muted)
-                    .child(stands),
-            )
+        modal::step(number, mark, name, why, stands, p)
     }
 
     /// The way on when macOS hasn't put the host in a list: its app shown in Finder, to be
@@ -269,8 +229,8 @@ impl Render for Setup {
                          tab, while you keep working on yours. macOS asks you to allow two \
                          things for it, once.",
             ))
-            .child(self.row("1", Grant::Accessibility, cx, p))
-            .child(self.row("2", Grant::ScreenRecording, cx, p))
+            .child(self.row(1, Grant::Accessibility, cx, p))
+            .child(self.row(2, Grant::ScreenRecording, cx, p))
             .child(
                 div()
                     .h(px(HINT * modal::SMALL_LINE))

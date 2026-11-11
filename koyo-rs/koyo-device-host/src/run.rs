@@ -27,7 +27,7 @@ const ALONE_WITHIN: Duration = Duration::from_secs(420);
 const SHUTS_DOWN_WITHIN: Duration = Duration::from_secs(60);
 const STATS_EVERY: Duration = Duration::from_secs(5);
 /// The words every surface of the feature has for an Xcode that's too old.
-pub const NEEDS_XCODE: &str = "Koyo's devices need Xcode 27 or later.";
+pub use koyo_device_wire::NEEDS_XCODE;
 
 static ENDING: AtomicBool = AtomicBool::new(false);
 

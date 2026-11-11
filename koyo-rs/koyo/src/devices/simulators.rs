@@ -23,11 +23,10 @@ pub struct Simulator {
     pub ipad: bool,
 }
 
-fn simctl(set: &Path, args: &[&str]) -> Result<String, String> {
+/// `xcrun simctl` with `args`: what it printed, or else what it said went wrong.
+pub(super) fn xcrun_simctl(args: &[&std::ffi::OsStr]) -> Result<String, String> {
     let out = Command::new("/usr/bin/xcrun")
         .arg("simctl")
-        .arg("--set")
-        .arg(set)
         .args(args)
         .stdin(Stdio::null())
         .output()
@@ -37,6 +36,13 @@ fn simctl(set: &Path, args: &[&str]) -> Result<String, String> {
     } else {
         Err(String::from_utf8_lossy(&out.stderr).trim().to_owned())
     }
+}
+
+/// `simctl --set <set>` with `args`.
+fn simctl(set: &Path, args: &[&str]) -> Result<String, String> {
+    let mut all: Vec<&std::ffi::OsStr> = vec!["--set".as_ref(), set.as_os_str()];
+    all.extend(args.iter().map(std::ffi::OsStr::new));
+    xcrun_simctl(&all)
 }
 
 /// `com.apple.CoreSimulator.SimRuntime.iOS-27-2` as `iOS 27.2`.
@@ -80,65 +86,90 @@ pub fn list(set: &Path) -> Result<Vec<Simulator>, String> {
     simctl(set, &["list", "devices", "-j"]).map(|json| parse(&json))
 }
 
-/// The newest iOS system installed and its id, from `simctl list runtimes -j`.
-fn newest_ios(json: &str) -> Option<(String, String)> {
-    let listed: Value = serde_json::from_str(json).ok()?;
-    listed["runtimes"]
-        .as_array()?
-        .iter()
-        .filter(|runtime| runtime["platform"] == "iOS" && runtime["isAvailable"] == true)
-        // An ordinary one, `…SimRuntime.iOS-27-2`: not a device's own (`…iOS-27-2-iPhone19-4`).
-        .filter(|runtime| {
-            runtime["identifier"].as_str().is_some_and(|id| {
-                id.rsplit('.')
-                    .next()
-                    .and_then(|name| name.strip_prefix("iOS-"))
-                    .is_some_and(|version| version.chars().all(|c| c.is_ascii_digit() || c == '-'))
-            })
-        })
-        .max_by(|a, b| {
-            let version = |r: &Value| -> Vec<u32> {
-                r["version"].as_str().unwrap_or("0").split('.').filter_map(|n| n.parse().ok()).collect()
-            };
-            version(a).cmp(&version(b))
-        })
-        .and_then(|runtime| Some((runtime["identifier"].as_str()?.to_owned(), runtime["version"].as_str()?.to_owned())))
+/// A device a system can be made as: `iPhone 18 Pro`, and its device type's id.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Model {
+    pub name: String,
+    pub ipad: bool,
+    kind: String,
 }
 
-/// A new iPhone 17 Pro in Koyo's set, on the newest iOS installed.
-pub fn make_default(set: &Path) -> Result<Simulator, String> {
-    make(set, "iPhone 17 Pro").map_err(|unmade| unmade.to_string())
+impl Model {
+    #[cfg(any(test, feature = "visual-check"))]
+    pub fn new(name: &str, ipad: bool) -> Model {
+        Model {
+            name: name.into(),
+            ipad,
+            kind: String::new(),
+        }
+    }
+}
+
+/// The newest iOS system ready to run, as `simctl list runtimes -j` lists it.
+struct Runtime {
+    id: String,
+    version: String,
+    /// Newest first, iPhones before iPads.
+    models: Vec<Model>,
+}
+
+/// A version's numbers, to compare: `27.2` as `[27, 2]`.
+pub(super) fn numbers(version: &str) -> Vec<u32> {
+    version.split('.').filter_map(|n| n.parse().ok()).collect()
+}
+
+/// An ordinary iOS system's id, `…SimRuntime.iOS-27-2`: not a device's own
+/// (`…iOS-27-2-iPhone19-4`).
+pub(super) fn ordinary(runtime: &str) -> bool {
+    (runtime.rsplit('.').next())
+        .and_then(|name| name.strip_prefix("iOS-"))
+        .is_some_and(|version| version.chars().all(|c| c.is_ascii_digit() || c == '-'))
+}
+
+fn newest(listed: &Value) -> Option<Runtime> {
+    let runtime = (listed["runtimes"].as_array()?.iter())
+        .filter(|runtime| {
+            runtime["platform"] == "iOS"
+                && runtime["isAvailable"] == true
+                && runtime["identifier"].as_str().is_some_and(ordinary)
+        })
+        .max_by_key(|runtime| numbers(runtime["version"].as_str().unwrap_or("0")))?;
+    let mut models: Vec<Model> = (runtime["supportedDeviceTypes"].as_array().into_iter().flatten())
+        .filter_map(|kind| {
+            let family = kind["productFamily"].as_str()?;
+            (family == "iPhone" || family == "iPad").then_some(Model {
+                name: kind["name"].as_str()?.to_owned(),
+                ipad: family == "iPad",
+                kind: kind["identifier"].as_str()?.to_owned(),
+            })
+        })
+        .collect();
+    // Stable: each family keeps simctl's order, newest first.
+    models.sort_by_key(|model| model.ipad);
+    Some(Runtime {
+        id: runtime["identifier"].as_str()?.to_owned(),
+        version: runtime["version"].as_str()?.to_owned(),
+        models,
+    })
+}
+
+fn runtimes(set: &Path) -> Result<Option<Runtime>, String> {
+    let listed = simctl(set, &["list", "runtimes", "-j"])?;
+    Ok(serde_json::from_str(&listed).ok().as_ref().and_then(newest))
+}
+
+/// What the newest system installed can be made as.
+pub fn models(set: &Path) -> Vec<Model> {
+    runtimes(set).ok().flatten().map(|runtime| runtime.models).unwrap_or_default()
 }
 
 /// Why a simulator wasn't made.
 #[derive(Debug)]
 pub enum Unmade {
-    /// Xcode has no simulator by the name asked for.
+    /// The newest system has no simulator by the name asked for.
     Model(String),
     /// What it takes is missing, the person's to put right: Xcode, a simulator system, the set.
     Missing(String),
-}
-
-/// A new simulator of `model` (a device type's name, as `iPad Pro 13-inch (M5)`) in Koyo's
-/// set, on the newest iOS installed.
-pub fn make(set: &Path, model: &str) -> Result<Simulator, Unmade> {
-    std::fs::create_dir_all(set).map_err(|error| Unmade::Missing(format!("Koyo's device set can't be made: {error}")))?;
-    let types = simctl(set, &["list", "devicetypes", "-j"]).map_err(Unmade::Missing)?;
-    let kind = device_type(&types, model).ok_or_else(|| {
-        Unmade::Model(format!("Xcode has no simulator called {model:?}: name one as `xcrun simctl list devicetypes` does."))
-    })?;
-    let runtimes = simctl(set, &["list", "runtimes", "-j"]).map_err(Unmade::Missing)?;
-    let (runtime, version) =
-        newest_ios(&runtimes).ok_or_else(|| Unmade::Missing("No iOS simulator system is installed.".into()))?;
-    let udid = simctl(set, &["create", model, &kind, &runtime]).map_err(Unmade::Missing)?.trim().to_owned();
-    Ok(Simulator {
-        udid,
-        name: model.to_owned(),
-        system: format!("iOS {version}"),
-        booted: false,
-        booted_before: false,
-        ipad: model.starts_with("iPad"),
-    })
 }
 
 impl std::fmt::Display for Unmade {
@@ -149,13 +180,35 @@ impl std::fmt::Display for Unmade {
     }
 }
 
-/// The identifier of the device type named `model`, any case, from `simctl list devicetypes -j`.
-fn device_type(json: &str, model: &str) -> Option<String> {
-    let listed: Value = serde_json::from_str(json).ok()?;
-    (listed.get("devicetypes")?.as_array()?.iter()).find_map(|kind| {
-        let name = kind.get("name")?.as_str()?;
-        name.eq_ignore_ascii_case(model.trim())
-            .then(|| kind.get("identifier")?.as_str().map(str::to_owned))?
+/// The model of `runtime` named `name` in any case; with no name, its newest iPhone.
+fn model_in<'a>(runtime: &'a Runtime, name: Option<&str>) -> Result<&'a Model, Unmade> {
+    let Some(name) = name else {
+        return (runtime.models.iter().find(|model| !model.ipad))
+            .ok_or_else(|| Unmade::Missing(format!("iOS {} has no iPhone to make.", runtime.version)));
+    };
+    (runtime.models.iter()).find(|model| model.name.eq_ignore_ascii_case(name.trim())).ok_or_else(|| {
+        Unmade::Model(format!(
+            "iOS {} has no simulator called {name:?}: name one of the models `xcrun simctl list runtimes -j` gives it.",
+            runtime.version
+        ))
+    })
+}
+
+/// A new simulator in Koyo's set on the newest iOS installed: of the model `name` names (a
+/// device type's name, as `iPad Pro 13-inch (M5)`), else the newest iPhone.
+pub fn make(set: &Path, name: Option<&str>) -> Result<Simulator, Unmade> {
+    std::fs::create_dir_all(set).map_err(|error| Unmade::Missing(format!("Koyo's device set can't be made: {error}")))?;
+    let runtime = (runtimes(set).map_err(Unmade::Missing)?)
+        .ok_or_else(|| Unmade::Missing("No iOS simulator system is installed.".into()))?;
+    let model = model_in(&runtime, name)?;
+    let udid = simctl(set, &["create", &model.name, &model.kind, &runtime.id]).map_err(Unmade::Missing)?.trim().to_owned();
+    Ok(Simulator {
+        udid,
+        name: model.name.clone(),
+        system: format!("iOS {}", runtime.version),
+        booted: false,
+        booted_before: false,
+        ipad: model.ipad,
     })
 }
 
@@ -205,28 +258,25 @@ mod tests {
     }
 
     #[test]
-    fn the_newest_ios_is_chosen_and_the_duo_s_own_runtime_left_out() {
-        let json = r#"{"runtimes":[
-            {"identifier":"com.apple.CoreSimulator.SimRuntime.iOS-26-5","platform":"iOS","version":"26.5","isAvailable":true},
-            {"identifier":"com.apple.CoreSimulator.SimRuntime.iOS-27-2-iPhone19-4","platform":"iOS","version":"27.2","isAvailable":true},
-            {"identifier":"com.apple.CoreSimulator.SimRuntime.iOS-27-2","platform":"iOS","version":"27.2","isAvailable":true}]}"#;
-        assert_eq!(
-            newest_ios(json),
-            Some(("com.apple.CoreSimulator.SimRuntime.iOS-27-2".into(), "27.2".into()))
-        );
-    }
-
-    #[test]
-    fn a_model_is_found_by_its_name_in_any_case() {
-        let json = r#"{"devicetypes":[
-            {"name":"iPhone 17 Pro","identifier":"com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro"},
-            {"name":"iPad Pro 13-inch (M5)","identifier":"com.apple.CoreSimulator.SimDeviceType.iPad-Pro-13-inch-M5-12GB"}
-        ]}"#;
-        assert_eq!(
-            device_type(json, "ipad pro 13-inch (m5)").as_deref(),
-            Some("com.apple.CoreSimulator.SimDeviceType.iPad-Pro-13-inch-M5-12GB")
-        );
-        assert_eq!(device_type(json, "iPhone 99"), None);
+    fn the_newest_ios_and_its_models_are_read_and_the_duos_own_left_out() {
+        let listed: Value = serde_json::from_str(r#"{"runtimes":[
+            {"identifier":"com.apple.CoreSimulator.SimRuntime.iOS-26-5","platform":"iOS","version":"26.5","isAvailable":true,
+             "supportedDeviceTypes":[{"name":"iPhone 17 Pro","identifier":"T-17","productFamily":"iPhone"}]},
+            {"identifier":"com.apple.CoreSimulator.SimRuntime.iOS-27-2-iPhone19-4","platform":"iOS","version":"27.2","isAvailable":true,
+             "supportedDeviceTypes":[{"name":"iPhone Duo","identifier":"T-DUO","productFamily":"iPhone"}]},
+            {"identifier":"com.apple.CoreSimulator.SimRuntime.iOS-27-2","platform":"iOS","version":"27.2","isAvailable":true,
+             "supportedDeviceTypes":[
+                {"name":"iPad Pro 13-inch (M5)","identifier":"T-IPAD","productFamily":"iPad"},
+                {"name":"iPhone 18 Pro","identifier":"T-18","productFamily":"iPhone"},
+                {"name":"Apple Watch","identifier":"T-W","productFamily":"Apple Watch"}]}]}"#).unwrap();
+        let runtime = newest(&listed).unwrap();
+        assert_eq!((runtime.id.as_str(), runtime.version.as_str()), ("com.apple.CoreSimulator.SimRuntime.iOS-27-2", "27.2"));
+        let names: Vec<&str> = runtime.models.iter().map(|model| model.name.as_str()).collect();
+        assert_eq!(names, ["iPhone 18 Pro", "iPad Pro 13-inch (M5)"]);
+        // With no name, the newest iPhone; a name in any case; one the system hasn't, refused.
+        assert_eq!(model_in(&runtime, None).unwrap().kind, "T-18");
+        assert_eq!(model_in(&runtime, Some("ipad pro 13-inch (m5)")).unwrap().kind, "T-IPAD");
+        assert!(matches!(model_in(&runtime, Some("iPhone 99")), Err(Unmade::Model(_))));
     }
 
     #[test]

@@ -18,6 +18,7 @@ mod pdf;
 mod picture;
 mod plan;
 mod render;
+pub(crate) use render::size_on_disk;
 mod svg;
 mod tiles;
 mod view;
