@@ -455,6 +455,9 @@ thread.changed   {threadId, seq, thread, runs, items, requests}: the rows one ac
                  changed, whole
 item.appended    {threadId, itemId, text}: what a streaming item grew by, in order
 host.notice      {level, message}, e.g. the CLI went missing
+account.limits   {status, window, utilization, resetsAt, fiveHour, sevenDay,
+                 sevenDayOverageIncluded}: what a response's rate-limit headers said of the
+                 account's limits, to the threads' watchers (docs/claude-accounts.md 4)
 ```
 
 Ordering: one actor step publishes one `thread.changed`; appends follow the step that made
