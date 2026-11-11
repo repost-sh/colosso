@@ -35,14 +35,16 @@ pub(super) struct Room {
 
 /// Refused when `udid` (`None` for one to be made) would be one simulator too many.
 pub(super) fn room_in(listed: &[Simulator], room: &Room, udid: Option<&str>) -> Result<(), ControlError> {
-    let Some(names) = devices::past_limit(&devices::running(listed, &room.starting), udid, room.at_once) else {
-        return Ok(());
-    };
-    Err(ControlError::device_unavailable(format!(
+    devices::past_limit(&devices::running(listed, &room.starting), udid, room.at_once).map_or(Ok(()), |names| Err(too_many(&names)))
+}
+
+/// One simulator too many, `names` running.
+fn too_many(names: &[String]) -> ControlError {
+    ControlError::device_unavailable(format!(
         "{}, the most the person allows at once (Settings → Devices): close one with device_close, or ask the person.",
-        devices::running_already(&names)
+        devices::running_already(names)
     ))
-    .retryable(false))
+    .retryable(false)
 }
 
 /// The simulator `input` asks for: by its id, made from a model, or else the one this caller
@@ -81,6 +83,13 @@ fn opened(caller: &Caller, chosen: Chosen, cx: &mut App) -> Result<u64, ControlE
     let shows = crate::control::policy::shows(None, cx);
     let udid = chosen.udid.clone();
     let simulator = !chosen.phone;
+    // Asked again as it starts: another call may have started one since this one looked.
+    if simulator {
+        let running = devices::devices(cx).read(cx).running_now(cx);
+        if let Some(names) = devices::past_limit(&running, Some(&udid), devices::at_once(cx)) {
+            return Err(too_many(&names));
+        }
+    }
     let pane = update_shell(cx, |shell, _, cx| shell.device_pane(Some(chosen), shows, cx))?
         .ok_or_else(|| ControlError::internal("The device's tab couldn't be opened."))?;
     let devices = devices::devices(cx);

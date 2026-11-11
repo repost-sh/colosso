@@ -85,9 +85,16 @@ pub async fn start(adapter: &mut AdapterHandle, handshake: &mut RsdHandshake) ->
     let sound = build_start_audio_parameters(&receiver, audio.local_port(), &sender, 50000, offer, CLIENT_SUPPORTED_FEATURES, session);
     service.start_media_stream(sound).await.map_err(|error| format!("the device didn't start its sound: {error}"))?;
     let ours = u32::try_from(uuid::Uuid::new_v4().as_u128() & u128::from(u32::MAX)).unwrap_or(1);
-    let offer = build_screen_video_offer(&call_id(), &call, ours).map_err(|error| format!("the picture's offer: {error}"))?;
-    let picture = build_start_video_parameters(&receiver, video.local_port(), &sender, 50001, offer, CLIENT_SUPPORTED_FEATURES, 1, session);
-    service.start_media_stream(picture).await.map_err(|error| format!("the device didn't start its picture: {error}"))?;
+    // The sound started, a picture that won't start leaves a session the device keeps: stopped.
+    let pictured = async {
+        let offer = build_screen_video_offer(&call_id(), &call, ours).map_err(|error| format!("the picture's offer: {error}"))?;
+        let picture = build_start_video_parameters(&receiver, video.local_port(), &sender, 50001, offer, CLIENT_SUPPORTED_FEATURES, 1, session);
+        service.start_media_stream(picture).await.map_err(|error| format!("the device didn't start its picture: {error}"))
+    };
+    if let Err(why) = pictured.await {
+        let _ = stop(&mut service).await;
+        return Err(why);
+    }
     Ok(Stream {
         service,
         media: Media { audio, video, ours },

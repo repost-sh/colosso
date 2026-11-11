@@ -22,6 +22,15 @@ const AGAIN_AFTER: Duration = Duration::from_secs(3);
 /// How long after the watcher went it may be started again.
 const WATCH_AGAIN_AFTER: Duration = Duration::from_secs(60);
 
+/// Whether `devicectl` lists what's plugged in now.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Listing {
+    Idle,
+    Running,
+    /// Asked again meanwhile, as at a plug: another listing follows this one.
+    RunningThenAgain,
+}
+
 /// A real device plugged in.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Connected {
@@ -70,9 +79,18 @@ pub fn parse(listed: &Value) -> Vec<Connected> {
 }
 
 /// The watcher, a child of Koyo's: it ends when its standard input closes, as it does when this
-/// is dropped or Koyo goes.
+/// is dropped or Koyo goes, and is waited for then, so it doesn't linger as a zombie.
 pub struct Watcher {
-    _child: Child,
+    child: Option<Child>,
+}
+
+impl Drop for Watcher {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.child.take() {
+            drop(child.stdin.take());
+            let _ = std::thread::Builder::new().name("device-watcher-wait".into()).spawn(move || child.wait());
+        }
+    }
 }
 
 /// Starts the watcher; `heard` is called on a thread of its own each time a device is plugged
@@ -96,7 +114,7 @@ pub fn watch(program: &Path, heard: impl Fn() + Send + 'static) -> Result<Watche
             }
         })
         .map_err(|error| format!("no thread for the device watcher: {error}"))?;
-    Ok(Watcher { _child: child })
+    Ok(Watcher { child: Some(child) })
 }
 
 impl Devices {
@@ -116,21 +134,29 @@ impl Devices {
     /// Lists what's plugged in again, unless that is under way; and watches for plugs, unless
     /// the watcher runs or went a moment ago.
     pub fn look_connected(&mut self, cx: &mut Context<Self>) {
-        if self.listing_connected || cfg!(test) {
+        if cfg!(test) {
+            return;
+        }
+        // Asked while a listing runs (a plug in the meantime): listed again once it's done.
+        if self.listing_connected != Listing::Idle {
+            self.listing_connected = Listing::RunningThenAgain;
             return;
         }
         let watch_again = self.watcher_went.is_none_or(|went| went.elapsed() >= WATCH_AGAIN_AFTER);
         if self.watcher.is_none() && watch_again {
             self.watch_plugs(cx);
         }
-        self.listing_connected = true;
+        self.listing_connected = Listing::Running;
         let since = Instant::now();
         let listed = cx.background_executor().spawn(async move { list() });
         cx.spawn(async move |this, cx| {
             let listed = listed.await;
             let _ = this.update(cx, |this, cx| {
-                this.listing_connected = false;
+                let again = std::mem::replace(&mut this.listing_connected, Listing::Idle) == Listing::RunningThenAgain;
                 this.connected_afresh(listed, since, cx);
+                if again {
+                    this.look_connected(cx);
+                }
             });
         })
         .detach();
@@ -160,7 +186,7 @@ impl Devices {
     /// For the off-screen pictures: what's plugged in, as given; `devicectl` is never asked.
     #[cfg(feature = "visual-check")]
     pub fn plugged_in(&mut self, listed: Vec<Connected>, cx: &mut Context<Self>) {
-        self.listing_connected = true;
+        self.listing_connected = Listing::Running;
         self.connected_afresh(Ok(listed), Instant::now(), cx);
     }
 
@@ -168,7 +194,7 @@ impl Devices {
     /// plugged in is listed and watched as the app does.
     #[cfg(feature = "visual-check")]
     pub fn unpinned(&mut self, cx: &mut Context<Self>) {
-        (self.connected, self.listing_connected) = (None, false);
+        (self.connected, self.listing_connected) = (None, Listing::Idle);
         self.look_connected(cx);
     }
 

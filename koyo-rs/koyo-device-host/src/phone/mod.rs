@@ -11,6 +11,7 @@
 mod checks;
 mod decode;
 mod info;
+mod lock;
 mod session;
 mod stream;
 mod turns;
@@ -32,7 +33,7 @@ use crate::ring::Ring;
 const MOST_FINGERS: usize = 5;
 
 /// How long the session is given to stop the device's stream when the device is let go.
-const DETACHES_WITHIN: std::time::Duration = std::time::Duration::from_secs(4);
+const DETACHES_WITHIN: std::time::Duration = std::time::Duration::from_secs(7);
 
 pub struct Phone {
     commands: UnboundedSender<Command>,
@@ -41,9 +42,14 @@ pub struct Phone {
     held: Orientation,
     pub scale: f64,
     locked: bool,
+    /// When a lock notice came that isn't yet known to have locked it or not.
+    noticed: Option<std::time::Instant>,
     /// The fingers down now, by their identity, for a lift that isn't given them.
     down: Vec<(u16, u16)>,
 }
+
+/// How long acts wait on a lock notice for word of which way it went.
+const UNSURE_FOR: std::time::Duration = std::time::Duration::from_secs(3);
 
 impl Phone {
     /// Starts the session with the device `udid`, named `name`; its counts logged with `stats`.
@@ -55,6 +61,7 @@ impl Phone {
             held: Orientation::Portrait,
             scale: 2.,
             locked: false,
+            noticed: None,
             down: Vec::new(),
         }
     }
@@ -68,7 +75,8 @@ impl Phone {
                     (self.held, self.scale, self.locked) = (display.held, display.scale, *locked);
                 }
                 Event::Display(display) => (self.held, self.scale) = (display.held, display.scale),
-                Event::Locked(locked) => self.locked = *locked,
+                Event::Locked(locked) => (self.locked, self.noticed) = (*locked, None),
+                Event::Noticed => self.noticed = Some(std::time::Instant::now()),
                 Event::Unplugged(_) | Event::Ended(..) => {}
             }
         }
@@ -77,6 +85,11 @@ impl Phone {
 
     pub fn held(&self) -> Orientation {
         self.held
+    }
+
+    /// A lock notice came a moment ago, and which way it went isn't known yet.
+    pub fn unsure(&self) -> bool {
+        self.noticed.is_some_and(|at| at.elapsed() < UNSURE_FOR)
     }
 
     pub fn locked(&self) -> bool {

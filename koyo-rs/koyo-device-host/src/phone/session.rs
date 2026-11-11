@@ -12,7 +12,6 @@ use std::time::Duration;
 
 use idevice::core_device::hid::{ButtonState, IndigoHidClient, TouchscreenContact, UniversalHidServiceClient};
 use idevice::core_device_proxy::CoreDeviceProxy;
-use idevice::notification_proxy::NotificationProxyClient;
 use idevice::provider::UsbmuxdProvider;
 use idevice::rsd::RsdHandshake;
 use idevice::tcp::handle::AdapterHandle;
@@ -25,6 +24,7 @@ use tokio::task::JoinHandle;
 use tokio::time::{Instant, MissedTickBehavior};
 
 use super::checks;
+use super::lock;
 use super::decode::{self, Ends};
 use super::info::{DeviceInfo, Display};
 use super::stream::{self, Counts};
@@ -33,12 +33,11 @@ use crate::ring::Ring;
 
 /// How often the device's turn is read while its picture is wanted.
 const LOOK_EVERY: Duration = Duration::from_secs(2);
+/// How long connecting to the device and starting its stream may take: then it's said, as the
+/// setup's step missing or what failed, not left starting for good.
+const CONNECTS_WITHIN: Duration = Duration::from_secs(30);
 /// How long the reads of the device's turn rest after one failed.
 const READS_REST: Duration = Duration::from_secs(30);
-/// The lock notifications the device posts as it locks and unlocks.
-const LOCK_NOTICES: [&str; 2] = ["com.apple.springboard.lockstate", "com.apple.springboard.hasBlankedScreen"];
-/// Notices that come this close together are one change, looked at once.
-const NOTICES_SETTLE: Duration = Duration::from_millis(250);
 const RESTARTS: u8 = 3;
 const RESTARTS_APART: Duration = Duration::from_secs(60);
 /// After the input couldn't be connected again, acts are dropped this long before it's tried.
@@ -58,6 +57,8 @@ pub enum Event {
     Ready { display: Display, locked: bool },
     Display(Display),
     Locked(bool),
+    /// A lock notice came: whether it locked isn't known yet. Acts wait until it is.
+    Noticed,
     /// Pulled out mid-session.
     Unplugged(String),
     /// The session ended for want of something: what, in the words the tab says.
@@ -71,6 +72,8 @@ pub fn spawn(udid: String, name: String, ring: Ring, teller: Teller, stats: bool
     let (commands, taken) = tokio::sync::mpsc::unbounded_channel();
     let (told, events) = mpsc::channel();
     let said = teller.clone();
+    // Should the thread not start, the host hears so, rather than wait on it for good.
+    let fallback = told.clone();
     let thread = std::thread::Builder::new().name("device-session".into()).spawn(move || {
         let tell = |event| {
             let _ = told.send(event);
@@ -87,6 +90,8 @@ pub fn spawn(udid: String, name: String, ring: Ring, teller: Teller, stats: bool
     });
     if thread.is_err() {
         said.log(LogLevel::Error, "no thread for the device's session");
+        let _ = fallback.send(Event::Ended(Missing::Other, "no thread for the device's session: start it again".into()));
+        link::wake();
     }
     (commands, events)
 }
@@ -157,6 +162,29 @@ impl Session<'_> {
         // Asked while the tunnel is made: `devicectl` takes a second or so.
         let udid = self.udid.to_owned();
         let locked = tokio::task::spawn_blocking(move || checks::locked(&udid));
+        let connected = match tokio::time::timeout(CONNECTS_WITHIN, self.connect(ring, stats)).await {
+            Ok(connected) => connected?,
+            Err(_) => return Err(self.missing(format!("{} didn't answer in {} s", self.name, CONNECTS_WITHIN.as_secs()))),
+        };
+        let Connected { provider, mut live, info, display, stalled } = connected;
+        let locked = locked.await.ok().flatten().unwrap_or(false);
+        let outcome = self.serve(&mut live, Serving { commands, ring, provider: &provider, info, display, stalled, locked }).await;
+        // However it ended, the device's stream is told to stop with this end: else the device
+        // keeps its session, and itself awake, long after (QR6). Unplugged, there's none to stop.
+        if let Some(running) = live.pump.take() {
+            running.abort();
+        }
+        if let Some(mut service) = live.streaming.take()
+            && let Err(why) = stream::stop(&mut service).await
+        {
+            self.teller.log(LogLevel::Warn, why);
+        }
+        outcome
+    }
+
+    /// Connects to the device and starts its stream: the tunnel, what it says of itself, the
+    /// decoder, the stream.
+    async fn connect(&self, ring: &Ring, stats: bool) -> Result<Connected, Ending> {
         let mut usbmuxd = UsbmuxdConnection::default().await.map_err(|error| (Missing::Other, format!("usbmuxd isn't there: {error}")))?;
         let device = usbmuxd.get_device(self.udid).await.map_err(|error| self.missing(format!("{} isn't connected: {error}", self.name)))?;
         let address = UsbmuxdAddr::from_env_var().map_err(|error| (Missing::Other, format!("usbmuxd's address: {error}")))?;
@@ -174,27 +202,15 @@ impl Session<'_> {
             .map_err(|error| (Missing::Other, format!("no thread for the decoder: {error}")))?;
         let started = stream::start(&mut adapter, &mut handshake).await.map_err(|why| in_use_or(self.missing(why)))?;
         let pump = Some(tokio::spawn(stream::pump(started.media, pictures.clone(), Arc::clone(&keyframe))));
-        let mut live = Live { adapter, handshake, streaming: Some(started.service), pump, pictures, keyframe };
-        let locked = locked.await.ok().flatten().unwrap_or(false);
-        let outcome = self.serve(&mut live, Serving { commands, ring, provider: &provider, info, display, stalled, locked }).await;
-        // However it ended, the device's stream is told to stop with this end: else the device
-        // keeps its session, and itself awake, long after (QR6). Unplugged, there's none to stop.
-        if let Some(running) = live.pump.take() {
-            running.abort();
-        }
-        if let Some(mut service) = live.streaming.take()
-            && let Err(why) = stream::stop(&mut service).await
-        {
-            self.teller.log(LogLevel::Warn, why);
-        }
-        outcome
+        let live = Live { adapter, handshake, streaming: Some(started.service), pump, pictures, keyframe };
+        Ok(Connected { provider, live, info, display, stalled })
     }
 
     /// The session from its first picture: input, the lock, turns, and the stream's restarts.
     async fn serve(&self, live: &mut Live, serving: Serving<'_>) -> Result<(), Ending> {
-        let Serving { mut commands, ring, provider, mut info, mut display, mut stalled, mut locked } = serving;
+        let Serving { mut commands, ring, provider, mut info, mut display, mut stalled, locked } = serving;
         let mut input = Input::connect(&mut live.adapter, &mut live.handshake).await.map_err(|why| self.missing(why))?;
-        let mut lock = watch_lock(provider, self.udid).await;
+        let mut lock = lock::watch(provider, self.udid);
         (self.tell)(Event::Ready { display, locked });
         let mut turned = tokio::time::interval(LOOK_EVERY);
         turned.set_missed_tick_behavior(MissedTickBehavior::Skip);
@@ -240,12 +256,10 @@ impl Session<'_> {
                         Err(why) => restart_at = Some(restarts.next(self.name, &why)?),
                     }
                 }
-                Some(now) = next_lock(&mut lock) => {
-                    if now != locked {
-                        locked = now;
-                        (self.tell)(Event::Locked(now));
-                    }
-                }
+                Some(word) = lock.recv() => match word {
+                    None => (self.tell)(Event::Noticed),
+                    Some(now) => (self.tell)(Event::Locked(now)),
+                },
                 // Whether the picture is wanted is asked at each tick: as the branch's condition
                 // it would be read only when the loop last woke, and a turn would go unseen until
                 // something else woke it.
@@ -287,6 +301,15 @@ impl Live {
         self.pump = Some(tokio::spawn(stream::pump(started.media, self.pictures.clone(), Arc::clone(&self.keyframe))));
         Ok(())
     }
+}
+
+/// What connecting to the device gave.
+struct Connected {
+    provider: UsbmuxdProvider,
+    live: Live,
+    info: DeviceInfo,
+    display: Display,
+    stalled: UnboundedReceiver<()>,
 }
 
 /// What [`Session::serve`] is given.
@@ -353,39 +376,6 @@ async fn lost(udid: &str) -> bool {
     match UsbmuxdConnection::default().await {
         Ok(mut usbmuxd) => usbmuxd.get_device(udid).await.is_err(),
         Err(_) => false,
-    }
-}
-
-/// Watches the device's lock notifications on a task of its own, when it lets them be observed:
-/// notices that come together are one change, after which `devicectl` is asked which way it
-/// went (`checks::locked`), off this thread.
-async fn watch_lock(provider: &UsbmuxdProvider, udid: &str) -> Option<UnboundedReceiver<bool>> {
-    let mut proxy = NotificationProxyClient::connect(provider).await.ok()?;
-    for name in LOCK_NOTICES {
-        proxy.observe_notification(name).await.ok()?;
-    }
-    let (told, heard) = tokio::sync::mpsc::unbounded_channel();
-    let udid = udid.to_owned();
-    tokio::spawn(async move {
-        while proxy.receive_notification().await.is_ok() {
-            while tokio::time::timeout(NOTICES_SETTLE, proxy.receive_notification()).await.is_ok_and(|notice| notice.is_ok()) {}
-            let asked = udid.clone();
-            let locked = tokio::task::spawn_blocking(move || checks::locked(&asked)).await.ok().flatten();
-            if let Some(locked) = locked
-                && told.send(locked).is_err()
-            {
-                return;
-            }
-        }
-    });
-    Some(heard)
-}
-
-/// The device's lock as it changes; never, when its notices can't be watched.
-async fn next_lock(lock: &mut Option<UnboundedReceiver<bool>>) -> Option<bool> {
-    match lock {
-        Some(heard) => heard.recv().await,
-        None => std::future::pending().await,
     }
 }
 

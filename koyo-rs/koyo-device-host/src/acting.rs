@@ -133,6 +133,19 @@ impl Host {
     /// steps are sent, its look goes on, waits are checked. Whether the loop should come back
     /// soon.
     pub fn act_on(&mut self) -> bool {
+        // Locked under an act (the person's side button): nothing more goes to the device, whose
+        // keys would go to its passcode field; at a lock notice, nothing until it's known.
+        if self.device.locked() && (self.running.is_some() || !self.acts.is_empty()) {
+            let why = "the device was locked: only the person can unlock it, in their hands";
+            self.interrupt(RefusalCode::Locked, why);
+            for (request, _) in std::mem::take(&mut self.acts) {
+                self.answer(request, refused(RefusalCode::Locked, why));
+            }
+        }
+        if self.device.unsure() {
+            self.wait_on();
+            return true;
+        }
         if self.running.is_none()
             && matches!(self.phase, Phase::Ready)
             && let Some((request, act)) = self.acts.pop_front()

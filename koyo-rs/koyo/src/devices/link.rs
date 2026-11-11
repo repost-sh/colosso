@@ -344,7 +344,11 @@ impl Link {
             return;
         }
         self.restarts.retain(|at| at.elapsed() < RESTARTS_WITHIN);
-        if self.restarts.len() < RESTARTS {
+        // A real device's host started again by itself counts as its other starts do: three at
+        // most until it stands ready, never a loop of new tunnels to the device.
+        let again = !self.phone || self.tries < 3;
+        if again && self.restarts.len() < RESTARTS {
+            self.tries += u32::from(self.phone);
             self.restarts.push(Instant::now());
             log::warn!("{}'s host stopped: starting it again", self.name);
             self.forget("The device's host stopped; it is starting again.", cx);

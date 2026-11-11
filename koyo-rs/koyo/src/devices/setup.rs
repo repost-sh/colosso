@@ -238,7 +238,7 @@ impl Setup {
         };
         self.install = Install::Running;
         let ran = cx.background_executor().spawn(async move {
-            super::simulators::list(&set).err().map(|why| last_line(&why)).unwrap_or_default()
+            super::simulators::install(&set).err().map(|why| last_line(&why)).unwrap_or_default()
         });
         cx.spawn(async move |this, cx| {
             let said = ran.await;

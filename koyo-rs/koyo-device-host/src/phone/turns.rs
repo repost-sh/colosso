@@ -23,7 +23,7 @@ impl Host {
                     self.phase = Phase::Ready;
                 }
                 Event::Display(display) => self.turned(display.quarters),
-                Event::Locked(_) => {}
+                Event::Locked(_) | Event::Noticed => {}
                 Event::Unplugged(why) => {
                     self.gone = true;
                     self.tell_state(State::Gone { why });

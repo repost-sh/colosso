@@ -128,6 +128,13 @@ pub fn start(launch: &Launch, sink: impl Fn(Incoming) + Clone + Send + 'static) 
     inherit::pass(&mut command, &theirs);
     let mut child = command.spawn()?;
     drop(theirs);
+    // The child is waited for on a thread of its own, so it never lingers as a zombie: one whose
+    // hello fails too, which goes once its end of the link is dropped.
+    std::thread::Builder::new()
+        .name("device-host-wait".into())
+        .spawn(move || {
+            let _ = child.wait();
+        })?;
     write_frame(
         &mut ours,
         &ToHost::Hello {
@@ -137,12 +144,6 @@ pub fn start(launch: &Launch, sink: impl Fn(Incoming) + Clone + Send + 'static) 
         },
     )?;
     let pid = hello(&mut ours)?;
-    // The child is waited for on a thread of its own, so it never lingers as a zombie.
-    std::thread::Builder::new()
-        .name("device-host-wait".into())
-        .spawn(move || {
-            let _ = child.wait();
-        })?;
     let stop = Arc::new(AtomicBool::new(false));
     let tell = writer(ours.try_clone()?)?;
     reader(ours, sink.clone())?;
