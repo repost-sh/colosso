@@ -51,11 +51,7 @@ impl Notice {
 
 impl DeviceView {
     fn start_button(&self, label: &'static str, cx: &mut Context<Self>) -> Push {
-        let start = cx.listener(|this, _: &ClickEvent, _, cx| {
-            if let Some(link) = &this.link {
-                link.update(cx, Link::start);
-            }
-        });
+        let start = cx.listener(|this, _: &ClickEvent, window, cx| this.start_asking(window, cx));
         Push::new("device-start", label, Tone::Primary).on_click(start)
     }
 
@@ -228,7 +224,10 @@ impl DeviceView {
                 .justify_between()
                 .child(div().text_sm().text_color(p.text).child(simulator.name))
                 .child(div().text_xs().text_color(p.muted).child(simulator.system))
-                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.choose(chosen.clone(), true, cx)));
+                .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
+                    this.choose(chosen.clone(), cx);
+                    this.start_asking(window, cx);
+                }));
             list = list.child(row);
         }
         list.into_any_element()

@@ -81,11 +81,11 @@ impl DeviceView {
         Self::with(watching, cx)
     }
 
-    /// A tab of `chosen`; started at once when `start`, else showing that it isn't running, as
-    /// a tab brought back after a restart does: a simulator is gigabytes.
-    pub fn of(chosen: Chosen, start: bool, cx: &mut Context<Self>) -> Self {
+    /// A tab of `chosen`, showing that it isn't running until it's started, as a tab brought
+    /// back after a restart does: a simulator is gigabytes.
+    pub fn of(chosen: Chosen, cx: &mut Context<Self>) -> Self {
         let mut view = Self::with(Vec::new(), cx);
-        view.choose(chosen, start, cx);
+        view.choose(chosen, cx);
         // Whether the device is still there, for a tab brought back.
         super::devices(cx).update(cx, super::Devices::refresh);
         view
@@ -116,8 +116,8 @@ impl DeviceView {
         }
     }
 
-    /// Shows `chosen` in this tab, and starts it when `start`.
-    pub fn choose(&mut self, chosen: Chosen, start: bool, cx: &mut Context<Self>) {
+    /// Shows `chosen` in this tab.
+    pub fn choose(&mut self, chosen: Chosen, cx: &mut Context<Self>) {
         let link = super::devices(cx).update(cx, |devices, cx| devices.link(&chosen.udid, &chosen.name, cx));
         let picture = link.read(cx).picture.clone();
         link.update(cx, |link, _| link.shown_in_tab());
@@ -130,9 +130,6 @@ impl DeviceView {
             // The list says whether the device is still there.
             cx.observe(&super::devices(cx), |_, _, cx| cx.notify()),
         ];
-        if start {
-            link.update(cx, Link::start);
-        }
         cx.emit(DeviceEvent::Titled(chosen.name.clone()));
         self.device = Some(chosen);
         self.link = Some(link);
@@ -151,11 +148,28 @@ impl DeviceView {
         cx.notify();
     }
 
-    /// Starts the device shown, unless it runs.
-    pub fn start(&mut self, cx: &mut Context<Self>) {
-        if let Some(link) = &self.link {
+    /// Starts the device shown at the person's click: one more than their limit of simulators
+    /// running at once, they're asked first.
+    pub fn start_asking(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let (Some(link), Some(chosen)) = (self.link.clone(), self.device.as_ref()) else {
+            return;
+        };
+        let running = super::devices(cx).read(cx).running_now(cx);
+        let Some(others) = super::past_limit(&running, Some(&chosen.udid), super::at_once(cx)) else {
             link.update(cx, Link::start);
-        }
+            return;
+        };
+        let question = crate::modal::Confirm {
+            title: format!("Start {} too?", chosen.name),
+            text: format!(
+                "{}, the most you set in Settings → Devices. Each simulator running takes a share \
+                 of this Mac's memory.",
+                super::running_already(&others)
+            ),
+            yes: "Start Anyway",
+            tone: crate::modal::Tone::Primary,
+        };
+        crate::modal::confirm(question, move |cx| link.update(cx, Link::start), window, cx);
     }
 
     pub fn focus_handle(&self) -> &FocusHandle {

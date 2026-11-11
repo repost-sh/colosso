@@ -19,6 +19,8 @@ use crate::theme;
 
 mod words;
 
+pub use words::models_menu;
+
 const WIDTH: f32 = 500.;
 const INTRO: f32 = 2.;
 const HINT: f32 = 3.;
@@ -243,8 +245,10 @@ impl Setup {
                 let opened = made.and_then(|made| {
                     let chosen = super::Chosen::from(&made);
                     let (_, shell) = crate::control::main_shell(cx).ok_or("Koyo's window is closed.")?;
-                    shell.update(cx, |shell, cx| shell.device_pane(Some(chosen), true, true, cx));
-                    devices(cx).read(cx).existing(&made.udid).ok_or_else(|| "Its tab didn't open.".to_owned())
+                    shell.update(cx, |shell, cx| shell.device_pane(Some(chosen), true, cx));
+                    let link = devices(cx).read(cx).existing(&made.udid).ok_or_else(|| "Its tab didn't open.".to_owned())?;
+                    link.update(cx, Link::start);
+                    Ok(link)
                 });
                 let _ = this.update(cx, |this, cx| match opened {
                     Ok(link) => this.starts(link, cx),

@@ -96,7 +96,7 @@ pub struct Shell {
     pub tile_hand: Rc<arc::TileHand>,
     /// The places a symbol led to, listed under the tabs, while they are.
     pub locations: Option<Entity<Locations>>,
-    _subscriptions: [Subscription; 12],
+    _subscriptions: [Subscription; 13],
 }
 
 impl Shell {
@@ -119,7 +119,7 @@ impl Shell {
             cx.observe_window_bounds(window, |_, window, cx| {
                 crate::browser::fullscreen::window_resized(window, cx);
             }),
-            cx.observe(&history, |_, _, cx| cx.notify()),
+            cx.observe(&history, |this, _, cx| this.went(cx)),
             // Worktrees may have come or gone in a terminal while the window was away, and the
             // Claude login's usage may be due a reading.
             cx.observe_window_activation(window, |this, window, cx| {
@@ -162,11 +162,12 @@ impl Shell {
                     .name_projects(&settings::get(cx).project_looks);
             }),
             cx.observe_global::<Theme>(|this, cx| this.terminals.tell_theme(cx)),
-            // Settings → Agent desktop shows how the host stands as it changes, and Settings →
-            // Accounts the accounts. Only while the page shows: the desk changes with all an
-            // agent does on its desktop.
+            // Settings → Agent desktop shows how the host stands as it changes, Settings →
+            // Accounts the accounts, and Settings → Devices what runs. Only while the page
+            // shows: the desk changes with all an agent does on its desktop.
             settings_view::redraws_while_shown(AgentDesktop, &crate::agent_desktop::desk(cx), cx),
             settings_view::redraws_while_shown(Accounts, &crate::accounts::accounts(cx), cx),
+            settings_view::redraws_while_shown(settings_view::SettingsPage::Devices, &crate::devices::devices(cx), cx),
             // The status bar is tall only with servers to show.
             cx.subscribe(status_bar.servers(), |this, _, ServersListed(any), cx| {
                 this.rails.servers = *any;
@@ -262,7 +263,7 @@ impl Shell {
                 self.desktop_pane(true, cx);
             }
             PaneKind::Device => {
-                self.device_pane(None, false, true, cx);
+                self.device_pane(None, true, cx);
             }
             PaneKind::Chat | PaneKind::Browser | PaneKind::Editor => self.workspace.new_tab(kind),
         }

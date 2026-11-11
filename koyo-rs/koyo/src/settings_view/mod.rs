@@ -8,6 +8,7 @@ mod appearance;
 mod browser;
 mod chat;
 mod components;
+mod devices;
 mod editor;
 mod field_dialog;
 mod fonts;
@@ -52,6 +53,7 @@ pub enum SettingsPage {
     KeyboardShortcuts,
     McpServer,
     AgentDesktop,
+    Devices,
     About,
 }
 
@@ -70,6 +72,7 @@ const SIDEBAR_GROUPS: [(&str, &[SettingsPage]); 2] = [
             SettingsPage::KeyboardShortcuts,
             SettingsPage::McpServer,
             SettingsPage::AgentDesktop,
+            SettingsPage::Devices,
         ],
     ),
     ("Koyo", &[SettingsPage::About]),
@@ -88,6 +91,7 @@ impl SettingsPage {
             SettingsPage::KeyboardShortcuts => "Keyboard shortcuts",
             SettingsPage::McpServer => "MCP server",
             SettingsPage::AgentDesktop => "Agent desktop",
+            SettingsPage::Devices => "Devices",
             SettingsPage::About => "About",
         }
     }
@@ -104,6 +108,7 @@ impl SettingsPage {
             SettingsPage::KeyboardShortcuts => IconName::Keyboard,
             SettingsPage::McpServer => IconName::Plug,
             SettingsPage::AgentDesktop => IconName::Bot,
+            SettingsPage::Devices => IconName::Smartphone,
             SettingsPage::About => IconName::Info,
         }
     }
@@ -120,6 +125,7 @@ impl SettingsPage {
             SettingsPage::KeyboardShortcuts => keyboard_shortcuts::sections(cx),
             SettingsPage::McpServer => mcp_server::sections(cx),
             SettingsPage::AgentDesktop => agent_desktop::sections(cx),
+            SettingsPage::Devices => devices::sections(cx),
             SettingsPage::About => about::sections(cx),
         }
     }
@@ -136,10 +142,12 @@ impl SettingsPage {
     }
 }
 
-/// Sets up what the pages answer outside their own views: the MCP server page's menus.
+/// Sets up what the pages answer outside their own views: the MCP server's and the Devices
+/// page's menus.
 pub fn init(cx: &mut App) {
     mcp_agents::init(cx);
     mcp_clients::init(cx);
+    devices::init(cx);
 }
 
 /// Redraws the shell as `entity` changes, while Settings shows `page`, which draws from it.
@@ -251,6 +259,7 @@ mod tests {
             SettingsPage::KeyboardShortcuts,
             SettingsPage::McpServer,
             SettingsPage::AgentDesktop,
+            SettingsPage::Devices,
             SettingsPage::About,
         ] {
             assert_eq!(listed.iter().filter(|&&&listed| listed == page).count(), 1);

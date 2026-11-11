@@ -67,6 +67,20 @@ impl Shell {
         }
     }
 
+    /// The window shows something else: Settings → Devices lists Koyo's simulators afresh each
+    /// time it shows, and the window is drawn again.
+    pub(super) fn went(&mut self, cx: &mut Context<Self>) {
+        if self.shows(SettingsPage::Devices, cx) {
+            crate::devices::devices(cx).update(cx, crate::devices::Devices::refresh);
+        }
+        cx.notify();
+    }
+
+    /// Whether Settings shows `page`.
+    pub(super) fn shows(&self, page: SettingsPage, cx: &App) -> bool {
+        self.route(cx) == Route::Settings(page)
+    }
+
     /// Shows Settings on `page`, or on the page shown last when `None`, as ⌘, does.
     pub(crate) fn open_settings_page(
         &mut self,

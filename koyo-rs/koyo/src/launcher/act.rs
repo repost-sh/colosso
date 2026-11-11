@@ -94,7 +94,10 @@ fn act_on(
         }
         Act::Ask(text) => shell.ask_new_chat(text, cx),
         Act::Device(chosen) => {
-            if let Some(pane) = shell.device_pane(Some(chosen), true, true, cx) {
+            if let Some(pane) = shell.device_pane(Some(chosen), true, cx) {
+                if let Some(view) = shell.device_view_of(pane) {
+                    view.update(cx, |view, cx| view.start_asking(window, cx));
+                }
                 shell.focus_pane(pane, window, cx);
             }
         }

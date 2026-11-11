@@ -4,7 +4,7 @@
 use gpui_kit::{AppContext as _, Entity, TestAppContext};
 use koyo_device_wire::{FromHost, Missing, State as Said, Step as Starting};
 
-use super::super::needs::fixtures::{found, ready, simulator};
+use super::super::needs::fixtures::{booted, found, ready, simulator};
 use super::super::needs::{Found, Need, Xcode};
 use super::super::setup::{self, Setup, Step};
 use super::super::view::{Chosen, DeviceView};
@@ -42,7 +42,7 @@ fn the_picker_and_the_persons_own_tab_offer_the_setup_and_an_agents_doesnt(cx: &
     let root = repo("device-setup-offer", &[("README.md", "hi\n")]);
     let (window, shell) = shell_with(&[&root], cx);
     select(&shell, &root, cx);
-    shell.update(cx, |shell, cx| shell.device_pane(None, false, true, cx));
+    shell.update(cx, |shell, cx| shell.device_pane(None, true, cx));
     let picker: Entity<DeviceView> = cx.read(|cx| shell.read(cx).shown_device_view(cx)).expect("the picker");
     assert!(picker.update(cx, |view, cx| view.may_offer_setup(cx)));
     let chosen = Chosen {
@@ -50,7 +50,7 @@ fn the_picker_and_the_persons_own_tab_offer_the_setup_and_an_agents_doesnt(cx: &
         name: "iPhone 18 Pro".into(),
         ipad: false,
     };
-    picker.update(cx, |view, cx| view.choose(chosen, false, cx));
+    picker.update(cx, |view, cx| view.choose(chosen, cx));
     let link = cx.read(|cx| picker.read(cx).link().cloned()).expect("its link");
     let _told = link.update(cx, |link, cx| link.stand_in(screen(), cx));
     let xcode = Said::Unavailable {
@@ -95,4 +95,38 @@ fn the_setups_steps_follow_what_the_mac_has_and_the_device_it_made(cx: &mut Test
     assert_eq!(step(cx), Step::Starting);
     link.update(cx, |link, cx| link.hear(FromHost::State { state: Said::Ready { screen: screen() } }, cx));
     assert_eq!(step(cx), Step::Ready);
+}
+
+/// Two simulators booted, and a third the person starts from its tab.
+fn third(cx: &mut TestAppContext) -> (gpui_kit::AnyWindowHandle, Entity<DeviceView>) {
+    let root = repo("device-limit", &[("README.md", "hi\n")]);
+    let (window, shell) = shell_with(&[&root], cx);
+    select(&shell, &root, cx);
+    shows(found(ready(), true, true), vec![booted("U-1"), booted("U-2"), simulator("U-3")], cx);
+    let chosen = Chosen {
+        udid: "U-3".into(),
+        name: "iPad Pro".into(),
+        ipad: true,
+    };
+    shell.update(cx, |shell, cx| shell.device_pane(Some(chosen), true, cx));
+    let view = cx.read(|cx| shell.read(cx).shown_device_view(cx)).expect("its tab");
+    (window, view)
+}
+
+#[gpui_kit::test]
+fn the_persons_start_past_the_limit_asks_first_and_under_it_doesnt(cx: &mut TestAppContext) {
+    let (window, view) = third(cx);
+    let link = cx.read(|cx| view.read(cx).link().cloned()).expect("its link");
+    let starts = |cx: &mut TestAppContext| {
+        cx.update_window(window, |_, window, cx| view.update(cx, |view, cx| view.start_asking(window, cx))).expect("the window");
+        cx.run_until_parked();
+    };
+    starts(cx);
+    assert!(cx.read(modal::window).is_some(), "asked first");
+    assert!(!cx.read(|cx| link.read(cx).running_or_starting()), "nothing started meanwhile");
+    // Three allowed: it starts at once (under test its host can't be found, so it fails to).
+    cx.update(|cx| crate::settings::update(cx, |settings| settings.simulators_at_once = 3));
+    starts(cx);
+    let state = cx.read(|cx| link.read(cx).state.clone());
+    assert!(matches!(state, super::super::State::Failed(_)), "{state:?}");
 }

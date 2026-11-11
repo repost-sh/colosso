@@ -31,7 +31,7 @@ fn tab(name: &str, cx: &mut TestAppContext) -> Tab {
         name: "iPhone 17 Pro".into(),
         ipad: false,
     };
-    shell.update(cx, |shell, cx| shell.device_pane(Some(chosen), false, true, cx));
+    shell.update(cx, |shell, cx| shell.device_pane(Some(chosen), true, cx));
     let view = cx.read(|cx| shell.read(cx).shown_device_view(cx)).expect("the device's tab");
     let link: Entity<Link> = cx.read(|cx| view.read(cx).link().cloned()).expect("its link");
     let told = link.update(cx, |link, cx| link.stand_in(screen(), cx));

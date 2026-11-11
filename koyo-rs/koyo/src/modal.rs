@@ -19,9 +19,11 @@ use crate::theme::{self, Palette};
 use crate::wrapped::wrapped_lines;
 
 mod button;
+mod confirm;
 mod step;
 
 pub use button::{Button, Tone, spinner};
+pub use confirm::{Confirm, confirm};
 pub use step::{Mark, STEP, step};
 
 /// How far below the top of the window behind it a dialog sits.

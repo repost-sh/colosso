@@ -7,11 +7,12 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use gpui_kit::{App, AppContext as _, Context, Entity, Global};
+use gpui_kit::{App, AppContext as _, Context, Entity, Global, Subscription};
 
 mod canvas;
 mod control;
 mod host;
+mod keeping;
 mod link;
 pub(crate) mod needs;
 mod picture;
@@ -42,6 +43,43 @@ pub struct Devices {
     /// Whether the setup came up by itself since Koyo started: it does once.
     offered: bool,
     links: HashMap<String, Entity<Link>>,
+    /// Each link, for when it takes or lets go of its simulator: Settings → Devices shows it.
+    _watching: Vec<Subscription>,
+    /// What Settings → Devices did last, in a sentence: a device made, or why one wasn't.
+    pub said: Option<String>,
+}
+
+/// What runs now, by udid and name: what Koyo's set has booted (an agent's own `simctl boot`,
+/// a host still shutting one down) and what Koyo starts that hasn't booted yet.
+pub fn running(listed: &[Simulator], starting: &[(String, String)]) -> Vec<(String, String)> {
+    let mut running: Vec<(String, String)> = (listed.iter())
+        .filter(|simulator| simulator.booted)
+        .map(|simulator| (simulator.udid.clone(), simulator.name.clone()))
+        .collect();
+    for link in starting {
+        if !running.iter().any(|(udid, _)| *udid == link.0) {
+            running.push(link.clone());
+        }
+    }
+    running
+}
+
+/// How many simulators may run at once: the person's setting.
+pub fn at_once(cx: &App) -> usize {
+    usize::from(settings::get(cx).simulators_at_once())
+}
+
+/// The names of the others running when one more, `udid` (`None` for one to be made), would be
+/// past `at_once`; nothing while there's room or it runs already.
+pub fn past_limit(running: &[(String, String)], udid: Option<&str>, at_once: usize) -> Option<Vec<String>> {
+    let counted = udid.is_some_and(|udid| running.iter().any(|(running, _)| running == udid));
+    (!counted && running.len() >= at_once).then(|| running.iter().map(|(_, name)| name.clone()).collect())
+}
+
+/// "2 simulators run already (iPhone 18 Pro, iPad Pro)".
+pub fn running_already(names: &[String]) -> String {
+    let runs = if names.len() == 1 { "simulator runs" } else { "simulators run" };
+    format!("{} {runs} already ({})", names.len(), names.join(", "))
 }
 
 
@@ -90,6 +128,8 @@ pub fn init(cx: &mut App) {
         listing: false,
         offered: false,
         links: HashMap::new(),
+        _watching: Vec::new(),
+        said: None,
     });
     cx.set_global(TheDevices(devices.clone()));
     if !cfg!(test)
@@ -113,10 +153,43 @@ pub fn devices(cx: &App) -> Entity<Devices> {
 impl Devices {
     /// The link of `udid`, made the first time it's asked for.
     pub fn link(&mut self, udid: &str, name: &str, cx: &mut Context<Self>) -> Entity<Link> {
-        self.links
-            .entry(udid.to_owned())
-            .or_insert_with(|| cx.new(|cx| Link::new(udid.to_owned(), name.to_owned(), cx)))
-            .clone()
+        if let Some(link) = self.links.get(udid) {
+            return link.clone();
+        }
+        let link = cx.new(|cx| Link::new(udid.to_owned(), name.to_owned(), cx));
+        // Said when it takes or lets go of its simulator, not at every change of the link; let
+        // go, the set is listed again: the simulator is down.
+        let mut held = false;
+        self._watching.push(cx.observe(&link, move |this, link, cx| {
+            let holds = link.read(cx).holds_simulator();
+            if holds != held {
+                held = holds;
+                if !holds {
+                    this.refresh(cx);
+                }
+                cx.notify();
+            }
+        }));
+        self.links.insert(udid.to_owned(), link.clone());
+        link
+    }
+
+    /// The devices Koyo holds, starting, running or shutting down, by udid and name.
+    pub fn starting(&self, cx: &App) -> Vec<(String, String)> {
+        (self.links.values())
+            .map(|link| link.read(cx))
+            .filter(|link| link.holds_simulator())
+            .map(|link| (link.udid.clone(), link.name.clone()))
+            .collect()
+    }
+
+    /// What runs now, as the set was last listed and Koyo starts.
+    pub fn running_now(&self, cx: &App) -> Vec<(String, String)> {
+        let listed = match &self.simulators {
+            Some(Ok(all)) => all.as_slice(),
+            _ => &[],
+        };
+        running(listed, &self.starting(cx))
     }
 
     pub fn existing(&self, udid: &str) -> Option<Entity<Link>> {

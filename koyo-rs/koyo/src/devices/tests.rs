@@ -153,9 +153,15 @@ fn a_device_in_two_tabs_stops_when_the_last_closes(cx: &mut TestAppContext) {
     assert!(told.try_recv().is_err(), "the host was told something when one of two tabs closed");
     link.update(cx, |link, cx| {
         link.tab_gone(cx);
-        assert_eq!(link.state, State::Off);
+        assert_eq!(link.state, State::Stopping, "until its host has shut the simulator down");
+        assert!(link.holds_simulator());
     });
     assert_eq!(told.try_recv().ok(), Some(ToHost::Quit));
+    link.update(cx, |link, cx| {
+        link.host_closed(cx);
+        assert_eq!(link.state, State::Off);
+        assert!(!link.holds_simulator());
+    });
 }
 
 mod hand;
