@@ -237,6 +237,25 @@ pub fn remove_file(env: &Env, path: &Path) -> io::Result<()> {
     fs::remove_file(path)
 }
 
+/// `rename`, asked of the guard for both paths: a corrupt file set aside.
+///
+/// # Errors
+/// As [`mkdir`].
+pub fn rename(env: &Env, from: &Path, to: &Path) -> io::Result<()> {
+    guarded(env, from)?;
+    guarded(env, to)?;
+    fs::rename(from, to)
+}
+
+/// `chmod`, asked of the guard: cswap's 0700 on a folder of its store.
+///
+/// # Errors
+/// As [`mkdir`].
+pub fn set_mode(env: &Env, path: &Path, mode: u32) -> io::Result<()> {
+    guarded(env, path)?;
+    fs::set_permissions(path, fs::Permissions::from_mode(mode))
+}
+
 /// Sets `path`'s modification time to now, as `os.utime(path)`, asked of the guard.
 ///
 /// # Errors

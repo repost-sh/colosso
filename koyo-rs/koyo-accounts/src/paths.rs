@@ -116,6 +116,11 @@ pub mod store {
         env.store.join("configs")
     }
 
+    /// cswap's `credentials/`: the unclaimed-credential stash (backups are in the Keychain).
+    pub fn credentials_dir(env: &Env) -> PathBuf {
+        env.store.join("credentials")
+    }
+
     /// Koyo's own lock, taken before Claude Code's.
     pub fn lock_file(env: &Env) -> PathBuf {
         env.store.join(".lock")

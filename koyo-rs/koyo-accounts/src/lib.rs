@@ -11,6 +11,7 @@
 //! (`testing::Sandbox`), whose writes the guard holds inside its folder and off the real login.
 
 pub mod claude_locks;
+pub mod credentials;
 pub mod env;
 pub mod error;
 pub mod fsutil;
