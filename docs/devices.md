@@ -197,8 +197,11 @@ answer), `Request { request, ask }`, `Cancel`, `Quit`. Host to app: `Hello { pro
   device's name.
 - The picture fitted to the pane and centred, never larger than one device pixel to one screen
   pixel, on the tab's own card (no root background of its own).
-- A slim toolbar: the name and state; Home; App Switcher; Rotate and Lock for simulators; for a
-  real device the sentence of 5.
+- A toolbar as the browser's over a page (40 points, a hairline under it): the device's glyph,
+  its name and a dot and a word for how it stands (green Ready, amber Starting, red what needs
+  doing, grey Not running); then icon buttons, each named by its tooltip with its key: Home
+  (⇧⌘H) and App Switcher, then Rotate Left (⌘←), Rotate Right (⌘→) and Lock for simulators;
+  for a real device the sentence of 5. Dimmed until the device stands ready.
 - The control bar is the browser's own pill (`held::bar`). An agent's touches show as marks.
 - After a restart a tab comes back as "{name} isn't running." with `Start`: nothing starts by
   itself. A device no longer in Koyo's set says "{name} is no longer among Koyo's devices." with
@@ -213,6 +216,11 @@ answer), `Request { request, ask }`, `Cancel`, `Quit`. Host to app: `Hello { pro
 - Every state has one way out or moves on by itself: no device chosen (the picker), not running,
   starting (for the first time: "about a minute"), ready, locked, unplugged, needs setup, below
   iOS 27, failed.
+- How it stands is read in one place (`devices/standing.rs`): the host's last word first. A host
+  that says it can't go on (what it needs is missing, its input never answered, the simulator
+  went) is told to go and isn't started again by itself; its word stays on the tab, and Start
+  Again, or an agent's `device_open`, starts afresh. A simulator shut down from outside stays
+  down.
 
 ## 9. Agent tools [decided]
 
@@ -228,8 +236,12 @@ answer), `Request { request, ask }`, `Cancel`, `Quit`. Host to app: `Hello { pro
   its CoreSimulatorBridge as idb asks it: roles, labels, values, ids, a ref touching the
   element's activation point (a switch's row on its switch). A system alert is an app of its
   own. An element another process draws is marked `remote`: `source: "text"` reads the
-  picture's words instead, as a real device always does. Right after an app launches the tree
-  names the app before it until the new one has drawn; the host asks again for up to 3 s.
+  picture's words instead, as a real device always does. `device_launch` answers once the
+  launched app is in front by the tree (its bundle id, 10 s at most) and the screen changed and
+  went still; `device_open_url` once the screen changed and went still. A read right after a
+  boot asks again for up to 5 s while nothing but the status bar is there.
+- At most two simulators run at once, counted from what Koyo's set has booted (an agent's own
+  `simctl boot` included) and what Koyo is starting.
 - Errors say what to do. New codes: `device_unavailable` (retryable: starting, reconnecting) and
   `device_needs_person` (not: locked, not trusted, Developer Mode off, below iOS 27, Xcode missing,
   or the person is being asked whether to lend their device).
