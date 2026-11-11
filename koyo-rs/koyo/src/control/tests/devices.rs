@@ -197,3 +197,22 @@ fn an_outside_client_needs_the_devices_scope_to_act_but_not_to_look(cx: &mut Tes
     cx.run_until_parked();
     assert_eq!(asked(&told).1, Ask::Screenshot { scale: 2 });
 }
+
+#[gpui_kit::test]
+fn a_device_not_running_says_why_and_isnt_to_be_retried(cx: &mut TestAppContext) {
+    let rig = rig("device-tools-not-running", cx);
+    let (link, told) = device("U-5", &rig, cx);
+    let xcode = koyo_device_wire::State::Unavailable {
+        code: koyo_device_wire::Missing::Xcode,
+        why: "Koyo's devices need Xcode 27 or later".into(),
+    };
+    link.update(cx, |link, cx| link.hear(FromHost::State { state: xcode }, cx));
+    let needs = call(&terminal("t1"), "device_snapshot", json!({}), cx).unwrap_err();
+    assert_eq!(needs.code, ErrorCode::DeviceNeedsPerson, "{}", needs.message);
+    assert!(!needs.retryable);
+    link.update(cx, Link::stop);
+    let off = call(&terminal("t1"), "device_snapshot", json!({ "device": "U-5" }), cx).unwrap_err();
+    assert_eq!(off.code, ErrorCode::DeviceUnavailable, "{}", off.message);
+    assert!(!off.retryable, "{}", off.message);
+    assert!(told.try_iter().all(|told| !matches!(told, ToHost::Request { .. })), "nothing was asked");
+}

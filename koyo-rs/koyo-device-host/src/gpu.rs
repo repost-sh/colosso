@@ -100,7 +100,7 @@ impl Gpu {
         source: &Texture,
         slot: &Texture,
         quarters: u8,
-        done: impl Fn() + 'static,
+        done: impl Fn() + Send + 'static,
     ) -> Result<(), String> {
         let buffer = self.queue.commandBuffer().ok_or("no command buffer")?;
         if quarters == 0 {

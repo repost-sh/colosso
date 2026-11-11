@@ -265,8 +265,8 @@ impl Display {
     pub fn watch(
         &self,
         queue: sys::DispatchQueue,
-        frame: impl Fn() + 'static,
-        surface: impl Fn(CFRetained<IOSurfaceRef>) + 'static,
+        frame: impl Fn() + Send + 'static,
+        surface: impl Fn(CFRetained<IOSurfaceRef>) + Send + 'static,
     ) -> Result<(), String> {
         // The screen forwards its callbacks to the simulator's service, which needs each block's
         // type: "Block is missing signature field" otherwise.

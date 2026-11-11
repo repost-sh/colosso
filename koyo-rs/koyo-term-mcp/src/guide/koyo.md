@@ -319,8 +319,9 @@ Apps: `device_apps` lists what's installed; `device_install` installs an `.app` 
 the simulator (`xcodebuild -sdk iphonesimulator`); `device_launch` and `device_terminate`
 take its bundle id (`com.apple.Preferences` is Settings); `device_open_url` opens a link in
 what opens it. `device_list` gives a simulator's `set`, so your own
-`xcrun simctl --set <set> … <id>` reaches it too. `device_close` shuts it down and closes
-its tab; at most two simulators run at once.
+`xcrun simctl --set <set> … <id>` reaches it too, to build and install with; start and stop
+simulators with `device_open` and `device_close`, not `simctl boot`, or they outlast Koyo and
+count against the two that may run at once.
 
 `person_has_control` means the person is using the device in its tab (`retryable`: wait a
 few seconds, then look again before acting) or took it (not: do something else).

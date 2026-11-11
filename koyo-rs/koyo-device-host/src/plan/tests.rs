@@ -166,6 +166,27 @@ fn a_pinch_spreads_two_fingers_to_its_scale() {
 }
 
 #[test]
+fn a_pinch_at_the_edge_keeps_its_fingers_on_the_screen() {
+    let timed = plan(
+        &Act::Pinch {
+            spot: Spot::Point(at(5., 400.)),
+            scale: 2.,
+            degrees: 0.,
+            ms: 320,
+        },
+        at(5., 400.),
+        at(5., 400.),
+        PHONE,
+    )
+    .unwrap();
+    for step in &timed {
+        if let Touch::Fingers { at, .. } = &step.touch {
+            assert!(at.iter().all(|p| (1. ..=401.).contains(&p.x)), "{at:?}");
+        }
+    }
+}
+
+#[test]
 fn text_is_typed_as_characters_with_shift_round_those_that_need_it() {
     let timed = typed("aB!").unwrap();
     let keys: Vec<(u16, bool)> = timed

@@ -7,9 +7,9 @@ use gpui_kit::{
     AnyElement, ClickEvent, Context, Entity, InteractiveElement as _, IntoElement, ParentElement as _,
     SharedString, StatefulInteractiveElement as _, Styled as _, Window, div, px,
 };
-use koyo_device_wire::{Mark, Missing, State as Said, Step};
+use koyo_device_wire::{Mark, Missing, Step};
 
-use super::link::{Link, State};
+use super::link::Link;
 use super::view::{Chosen, DeviceView};
 use crate::browser::control::Holder;
 use crate::held::Held;
@@ -71,31 +71,31 @@ impl DeviceView {
     /// What is in the way of showing the device, and what to do about it.
     pub(super) fn notice(&self, cx: &mut Context<Self>) -> Option<Notice> {
         let (chosen, link) = (self.device.as_ref()?, self.link.as_ref()?);
-        let (state, said, since) = {
+        let (standing, since) = {
             let link = link.read(cx);
-            (link.state.clone(), link.said.clone(), link.started_at)
+            (Owned::from(link.standing()), link.started_at)
         };
         let name = &chosen.name;
         let listed = super::devices(cx).read(cx).simulators.as_ref().and_then(|listed| listed.as_ref().ok());
-        if state == State::Off && listed.is_some_and(|listed| listed.iter().all(|simulator| simulator.udid != chosen.udid)) {
+        if standing == Owned::Off && listed.is_some_and(|listed| listed.iter().all(|simulator| simulator.udid != chosen.udid)) {
             return Some(self.not_there(name, cx));
         }
-        match (&state, &said) {
-            (State::Off, _) => Some(Notice::new(format!("{name} isn't running."), vec![self.start_button("Start", cx)])),
-            (State::Failed(why), _) => Some(Notice::new(why.clone(), vec![self.start_button("Start Again", cx)])),
-            (State::Starting | State::Running, None) => Some(Notice::new(format!("Starting {name}…"), Vec::new())),
-            (_, Some(Said::Starting { step })) => Some(Notice::new(starting(name, *step, since), Vec::new())),
-            (_, Some(Said::Ready { .. })) => None,
-            (_, Some(Said::Locked { .. })) => Some(Notice {
+        match standing {
+            Owned::Ended(None, why) => Some(Notice::new(
+                format!("{name} isn't there: {why}."),
+                vec![self.start_button("Start Again", cx)],
+            )),
+            Owned::Ended(Some(code), why) => Some(self.unavailable(code, &why, cx)),
+            Owned::Off => Some(Notice::new(format!("{name} isn't running."), vec![self.start_button("Start", cx)])),
+            Owned::Failed(why) => Some(Notice::new(why, vec![self.start_button("Start Again", cx)])),
+            Owned::Starting(None) => Some(Notice::new(format!("Starting {name}…"), Vec::new())),
+            Owned::Starting(Some(step)) => Some(Notice::new(starting(name, step, since), Vec::new())),
+            Owned::Ready => None,
+            Owned::Locked => Some(Notice {
                 message: format!("Unlock your {} to continue.", self.kind()),
                 buttons: Vec::new(),
                 over: true,
             }),
-            (_, Some(Said::Gone { why })) => Some(Notice::new(
-                format!("{name} isn't there: {why}."),
-                vec![self.start_button("Start Again", cx)],
-            )),
-            (_, Some(Said::Unavailable { code, why })) => Some(self.unavailable(*code, why, cx)),
         }
     }
 
@@ -120,43 +120,69 @@ impl DeviceView {
         }
     }
 
-    /// The slim bar over the picture: the device and how it stands, and its buttons.
+    /// The bar over the picture, as the browser's over a page: the device, a dot and a word for
+    /// how it stands; then its buttons, the system's (Home, the app switcher) and the device's
+    /// own (turning, the lock), each an icon named by its tooltip with its key.
     pub(super) fn toolbar(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        use gpui_kit::assets::IconName;
+        use gpui_kit::component::{Disableable as _, Sizable as _};
+        use koyo_device_wire::Button;
+
         let p = crate::theme::palette(cx);
         let chosen = self.device.as_ref()?;
-        let ready = self.link.as_ref().is_some_and(|link| link.read(cx).ready());
-        let button = |id: &'static str, label: &'static str| {
-            div()
-                .id(id)
-                .px_2()
-                .py_1()
-                .rounded_md()
-                .text_xs()
-                .text_color(if ready { p.text } else { p.muted })
-                .when(ready, |b| b.hover(|b| b.bg(p.hover)).cursor_pointer())
-                .child(label)
+        let (ready, (words, dot)) = {
+            let link = self.link.as_ref()?.read(cx);
+            (link.ready(), standing(link, p))
         };
-        let home = button("device-home", "Home")
-            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.press_button(koyo_device_wire::Button::Home, cx)));
-        let switcher = button("device-switcher", "App Switcher")
+        let simulator = self.simulator(cx);
+        let glyph = if chosen.ipad { IconName::Tablet } else { IconName::Smartphone };
+        let button = |id: &'static str, glyph: IconName, name: &'static str, cx: &mut Context<Self>| {
+            crate::shell::icon_button(id, glyph, name, cx).small().disabled(!ready)
+        };
+        let rule = || div().w(px(1.)).h(px(16.)).mx_1().bg(p.hairline);
+        let home = button("device-home", IconName::House, "Home (⇧⌘H)", cx)
+            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.press_button(Button::Home, cx)));
+        let switcher = button("device-switcher", IconName::SquareStack, "App Switcher", cx)
             .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.app_switcher(cx)));
-        let left = button("device-rotate-left", "Rotate Left").on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.turn(true, cx)));
-        let right = button("device-rotate-right", "Rotate Right").on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.turn(false, cx)));
-        let lock = button("device-lock", "Lock")
-            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.press_button(koyo_device_wire::Button::Lock, cx)));
-        let state = self.link.as_ref().map(|link| state_words(link.read(cx))).unwrap_or_default();
+        let left = button("device-rotate-left", IconName::RotateCcwSquare, "Rotate Left (⌘←)", cx)
+            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.turn(true, cx)));
+        let right = button("device-rotate-right", IconName::RotateCwSquare, "Rotate Right (⌘→)", cx)
+            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.turn(false, cx)));
+        let lock = button("device-lock", IconName::Lock, "Lock", cx)
+            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.press_button(Button::Lock, cx)));
+        let named = div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .pl_1()
+            .min_w_0()
+            .child(crate::shell::icon(glyph, 14.).text_color(p.muted))
+            .child(div().text_sm().text_color(p.text).truncate().child(chosen.name.clone()))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(5.))
+                    .text_xs()
+                    .text_color(p.muted)
+                    .child(div().size(px(6.)).rounded_full().bg(dot))
+                    .child(words),
+            );
         Some(
             div()
+                .h(px(40.))
+                .px_2()
+                .flex_shrink_0()
                 .flex()
                 .items_center()
-                .gap_1()
-                .px_3()
-                .py_1()
-                .text_xs()
-                .child(div().text_color(p.text).child(chosen.name.clone()))
-                .child(div().text_color(p.muted).child(state))
+                .gap(px(2.))
+                .border_b_1()
+                .border_color(p.hairline)
+                .child(named)
                 .child(div().flex_1())
-                .children([home, switcher, left, right, lock].map(IntoElement::into_any_element))
+                .child(home)
+                .child(switcher)
+                .when(simulator, |bar| bar.child(rule()).child(left).child(right).child(lock))
                 .into_any_element(),
         )
     }
@@ -302,16 +328,42 @@ impl DeviceView {
     }
 }
 
-/// How the device stands, in a few words for the toolbar.
-fn state_words(link: &Link) -> String {
-    match (&link.state, &link.said) {
-        (State::Off, _) => "not running".into(),
-        (State::Failed(_), _) => "stopped".into(),
-        (_, Some(Said::Ready { screen })) => format!("{:?}", screen.orientation).to_lowercase(),
-        (_, Some(Said::Locked { .. })) => "locked".into(),
-        (_, Some(Said::Starting { .. }) | None) => "starting".into(),
-        (_, Some(Said::Gone { .. })) => "gone".into(),
-        (_, Some(Said::Unavailable { .. })) => "needs setup".into(),
+/// A device's standing, owned, for a notice built while the view is borrowed.
+#[derive(Clone, Debug, PartialEq)]
+enum Owned {
+    Ended(Option<Missing>, String),
+    Off,
+    Failed(String),
+    Starting(Option<Step>),
+    Ready,
+    Locked,
+}
+
+impl From<super::Standing<'_>> for Owned {
+    fn from(standing: super::Standing<'_>) -> Owned {
+        use super::Standing;
+        match standing {
+            Standing::Ended { missing, why } => Owned::Ended(missing, why.to_owned()),
+            Standing::Off => Owned::Off,
+            Standing::Failed(why) => Owned::Failed(why.to_owned()),
+            Standing::Starting(step) => Owned::Starting(step),
+            Standing::Ready(_) => Owned::Ready,
+            Standing::Locked(_) => Owned::Locked,
+        }
+    }
+}
+
+/// How the device stands, in a word for the toolbar, and its dot's colour: green ready, amber
+/// on its way, red what needs doing, grey not running.
+fn standing(link: &Link, p: Palette) -> (&'static str, gpui_kit::Hsla) {
+    match link.standing() {
+        super::Standing::Ended { missing: None, .. } => ("Gone", p.danger),
+        super::Standing::Ended { .. } => ("Needs setup", p.danger),
+        super::Standing::Off => ("Not running", p.muted),
+        super::Standing::Failed(_) => ("Stopped", p.danger),
+        super::Standing::Ready(_) => ("Ready", p.added),
+        super::Standing::Locked(_) => ("Locked", p.modified),
+        super::Standing::Starting(_) => ("Starting", p.modified),
     }
 }
 

@@ -16,12 +16,16 @@ mod link;
 mod picture;
 mod screens;
 pub(crate) mod simulators;
+mod standing;
 mod touch;
 mod typing;
 mod view;
 
-pub use link::{Link, State};
+pub use link::Link;
+#[cfg(test)]
+pub use link::State;
 pub use simulators::Simulator;
+pub use standing::Standing;
 pub use view::{Chosen, DeviceEvent, DeviceView, bind_keys};
 
 use crate::settings;

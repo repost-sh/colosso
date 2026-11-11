@@ -12,6 +12,12 @@ pub mod link;
 pub const ENV_SOCKET_FD: &str = "KOYO_DEVICE_SOCKET_FD";
 pub const ENV_TOKEN: &str = "KOYO_DEVICE_TOKEN";
 
+/// The file in the hosts' state folder whose lock a device's host holds for as long as it runs:
+/// one host to a device, and the app's sweep of leftovers keeps off a device that has one.
+pub fn lock_name(udid: &str) -> String {
+    format!("{udid}.lock")
+}
+
 pub use ask::{Act, Ask, Press, Spot};
 pub use input::{Button, Edge, Finger, Input, Orientation};
 pub use koyo_desk_wire::{MAX_FRAME, Point, Rect, Size, read_frame, write_frame};

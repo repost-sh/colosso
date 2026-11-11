@@ -31,6 +31,9 @@ const SCREENSHOT: Duration = Duration::from_secs(15);
 const SNAPSHOT: Duration = Duration::from_secs(20);
 const ACT: Duration = Duration::from_secs(30);
 const APPS: Duration = Duration::from_secs(30);
+/// A launch or a link: `simctl`'s (28 s at most), then until the launched app is in front (10 s)
+/// and what it opened has drawn (10 s).
+const OPENING: Duration = Duration::from_secs(55);
 const INSTALL: Duration = Duration::from_secs(90);
 /// A wait's ask has this beyond the wait itself.
 const WAIT_SLACK: Duration = Duration::from_secs(5);
@@ -145,6 +148,22 @@ fn last_device(caller: &Caller, cx: &App) -> Option<String> {
     cx.try_global::<LastDevices>()?.0.get(&caller.key()).cloned()
 }
 
+/// Why `link` can't be asked anything now, in app control's words: the person's to put right
+/// when what it needs is missing; else not to be retried, but opened again.
+pub(super) fn not_running(link: &Link) -> Option<ControlError> {
+    let (why, person) = link.not_running()?;
+    Some(if person {
+        needs_person(&why)
+    } else {
+        ControlError::device_unavailable(format!("{why} device_open starts it again.")).retryable(false)
+    })
+}
+
+/// What only the person can put right, as the message tells the agent.
+pub(super) fn needs_person(why: &str) -> ControlError {
+    ControlError::device_needs_person(format!("{why} Tell the person: Settings → Devices walks them through it."))
+}
+
 /// Asks `target`'s host, and answers what `answered` makes of its answer.
 fn asking(
     target: &Target,
@@ -153,6 +172,9 @@ fn asking(
     cx: &mut App,
     answered: impl FnOnce(Answer) -> Result<Value, ControlError> + 'static,
 ) -> Exec {
+    if let Some(error) = not_running(target.link.read(cx)) {
+        return Exec::Ready(Err(error));
+    }
     let asked = target.link.update(cx, |link, cx| link.ask(ask, limit, cx));
     Exec::Later(cx.spawn(async move |_: &mut AsyncApp| asked.await.map_err(refused).and_then(answered)))
 }

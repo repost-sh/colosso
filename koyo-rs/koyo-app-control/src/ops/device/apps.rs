@@ -129,7 +129,7 @@ impl Operation for DeviceLaunch {
     const TITLE: &'static str = "Launch an app on a device";
     const SUBJECT: &'static [&'static str] = &["bundle"];
     const SCOPE: Scope = Scope::Devices;
-    const DESCRIPTION: &'static str = "Launches an app by its bundle id, ending the one that runs first so it starts afresh. It comes to the front; device_wait, then look.";
+    const DESCRIPTION: &'static str = "Launches an app by its bundle id, ending the one that runs first so it starts afresh. It answers once the app has drawn (10 s at most); then look.";
     const HINTS: Hints = Hints::CHANGE.beyond_koyo();
     type Input = DeviceLaunchInput;
     type Output = DeviceDone;

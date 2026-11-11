@@ -3,24 +3,33 @@
 //! its own and is answered when it's done, so the person's input is never kept waiting.
 
 use std::sync::mpsc::{self, TryRecvError};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use koyo_device_wire::{Answer, App, Ask, Point, Refusal, RefusalCode, RequestId, Source};
 
 use crate::host::{Host, refused};
-use crate::look;
+use crate::look::{self, Sample};
 use crate::ring::Held;
 use crate::sim::{ax, simctl};
 use crate::text;
 
 /// A snapshot holds this many pieces at most.
 const PIECES: usize = 300;
+/// The refs a snapshot may number, set aside as it starts: two at once never share a number.
+/// At least as many as a read takes elements or pieces.
+pub const NUMBERED: u32 = 600;
+/// How long a launch waits for its app to be in front.
+const IN_FRONT_WITHIN: Duration = Duration::from_secs(10);
+
+/// The accessibility connection the jobs share, locked only to take or replace it.
+pub type Shared = Arc<Mutex<Option<Arc<ax::Tree>>>>;
 /// The most elements a snapshot of the accessibility tree reads, and how long it may take.
 const TREE: ax::Limits = ax::Limits {
     elements: 600,
     depth: 40,
-    each: Duration::from_secs(1),
-    whole: Duration::from_secs(6),
+    each: Duration::from_secs(2),
+    whole: Duration::from_secs(8),
 };
 
 pub enum Done {
@@ -31,7 +40,12 @@ pub enum Done {
         refs: Vec<(String, Point)>,
         truncated: bool,
         source: Source,
+        /// Its refs' first number.
+        first: u32,
     },
+    /// Done, answered once the screen has changed from `before` and gone still: an app
+    /// launched, or a link opened, draws a moment after `simctl` returns.
+    Settle { before: Option<Sample> },
 }
 
 pub struct Job {
@@ -73,17 +87,20 @@ impl Host {
             Ask::Snapshot { text } => {
                 // The simulator's own tree first, unless the text is asked for; the text on the
                 // picture when the tree has none.
+                let tree = Arc::clone(&self.tree);
                 let port = if text {
                     Err("the picture's text was asked for".to_owned())
                 } else {
-                    self.sim.lookup(ax::SERVICE)
+                    Ok(self.ax_port())
                 };
                 // The picture is taken only for the text: held meanwhile, its slot couldn't be
                 // copied into.
-                let (ring, scale, first) = (self.ring.clone(), self.sim.scale, self.next_ref);
+                let first = self.next_ref;
+                self.next_ref += NUMBERED;
+                let (ring, scale) = (self.ring.clone(), self.sim.scale);
                 simctl::later(move || {
-                    let tree = port.and_then(|port| accessibility(port, first));
-                    tree.or_else(|why| {
+                    let read = port.and_then(|port| accessibility(&tree, port, first));
+                    read.or_else(|why| {
                         log_fallback(&why);
                         let held = ring.latest().map(Moved).ok_or_else(|| {
                             Refusal::new(RefusalCode::NotReady, "there is no picture yet")
@@ -99,6 +116,14 @@ impl Host {
 
     fn app_job(&self, ask: Ask) -> mpsc::Receiver<Result<Done, Refusal>> {
         let (set, udid) = (self.sim.set.clone(), self.sim.udid.clone());
+        // The screen before a launch or a link, to tell when what they open has drawn.
+        let settles = matches!(ask, Ask::Launch { .. } | Ask::OpenUrl { .. });
+        let before = settles
+            .then(|| self.ring.latest().and_then(|held| look::sample(&held.surface, self.sim.scale)))
+            .flatten();
+        // A launch waits for its app to be in front, as the accessibility tree tells.
+        let tree = Arc::clone(&self.tree);
+        let port = matches!(ask, Ask::Launch { .. }).then(|| self.ax_port()).flatten();
         simctl::later(move || {
             let run = |args: &[&str], limit: u64| {
                 simctl::run(&set, args, Duration::from_secs(limit))
@@ -124,7 +149,16 @@ impl Host {
                 Ask::OpenUrl { url } => run(&["openurl", &udid, url], 20),
                 _ => Err(Refusal::new(RefusalCode::Invalid, "not an ask for apps")),
             };
-            done.map(|_| Done::Answer(Ok(Answer::Done)))
+            if let (Ask::Launch { bundle, .. }, Ok(_)) = (&ask, &done) {
+                in_front(&tree, port, bundle);
+            }
+            done.map(|_| {
+                if settles {
+                    Done::Settle { before }
+                } else {
+                    Done::Answer(Ok(Answer::Done))
+                }
+            })
         })
     }
 
@@ -152,15 +186,27 @@ impl Host {
     fn finish(&mut self, request: RequestId, done: Result<Done, Refusal>) {
         match done {
             Ok(Done::Answer(result)) => self.answer(request, result),
+            Ok(Done::Settle { before }) => {
+                let settling = crate::acting::Waiting::settling(request, before, self);
+                self.waits.push(settling);
+            }
             Ok(Done::Snapshot {
                 tree,
                 refs,
                 truncated,
                 source,
+                first,
             }) => {
-                self.next_ref += u32::try_from(refs.len()).unwrap_or(0);
                 let elements = u32::try_from(refs.len()).unwrap_or(u32::MAX);
-                self.refs = refs.into_iter().collect();
+                // The numbers it didn't use, given back unless another snapshot started after it.
+                if self.next_ref == first + NUMBERED {
+                    self.next_ref = first + elements;
+                }
+                // A snapshot that started before the refs held now doesn't replace them.
+                if first >= self.refs_first {
+                    self.refs = refs.into_iter().collect();
+                    self.refs_first = first;
+                }
                 self.answer(
                     request,
                     Ok(Answer::Snapshot {
@@ -233,20 +279,64 @@ fn with_input(mut command: std::process::Command, input: &str) -> Result<String,
 }
 
 
+impl Host {
+    /// The accessibility service's port, when no connection is kept: looked up only to make one.
+    /// The lock is only tried, never waited on, so the host's loop goes on whatever a job holds.
+    fn ax_port(&self) -> Option<u32> {
+        let connected = self.tree.try_lock().map_or(true, |held| held.is_some());
+        (!connected).then(|| self.sim.lookup(ax::SERVICE).ok()).flatten()
+    }
+}
+
+/// Runs `read` over the kept connection, made from `port` when there is none, and let go when
+/// it broke (interrupted, or the service gone), to be made again.
+fn with_tree<T>(shared: &Shared, port: Option<u32>, read: impl FnOnce(&ax::Tree) -> Result<T, String>) -> Result<T, String> {
+    let tree = {
+        let mut held = shared.lock().map_err(|error| error.to_string())?;
+        if held.as_ref().is_none_or(|tree| tree.broken()) {
+            let port = port.ok_or("the simulator's accessibility isn't connected yet")?;
+            *held = Some(Arc::new(ax::Tree::connect(port)?));
+        }
+        held.clone().ok_or("no accessibility connection")?
+    };
+    let read = read(&tree);
+    if tree.broken()
+        && let Ok(mut held) = shared.lock()
+    {
+        *held = None;
+    }
+    read
+}
+
 /// A snapshot of the simulator's accessibility tree, refs from `first`; why not, when the
 /// service isn't there, doesn't answer, or has nothing to say.
-fn accessibility(port: u32, first: u32) -> Result<Done, String> {
-    let read = ax::Tree::connect(port)?.read_settled(TREE)?;
+fn accessibility(shared: &Shared, port: Option<u32>, first: u32) -> Result<Done, String> {
+    let read = with_tree(shared, port, |tree| tree.read_settled(TREE))?;
     if read.root.children.is_empty() {
         return Err("the simulator's accessibility tree was empty".into());
     }
-    let (tree, refs, truncated) = ax::lines(&read.root, first, TREE.elements);
+    let (lines, refs, truncated) = ax::lines(&read.root, first, TREE.elements);
     Ok(Done::Snapshot {
-        tree,
+        tree: lines,
         refs,
         truncated: truncated || read.cut,
         source: Source::Accessibility,
+        first,
     })
+}
+
+/// Waits, up to [`IN_FRONT_WITHIN`], until the app `bundle` is in front by the accessibility
+/// tree: a launched app isn't for a moment, and its launch screen is still, so the picture alone
+/// can't tell. Gives up at once when the tree can't be read.
+fn in_front(shared: &Shared, port: Option<u32>, bundle: &str) {
+    let started = std::time::Instant::now();
+    while started.elapsed() < IN_FRONT_WITHIN {
+        match with_tree(shared, port, |tree| tree.in_front(Duration::from_secs(2))) {
+            Ok(Some(front)) if front == bundle => return,
+            Ok(_) => std::thread::park_timeout(Duration::from_millis(300)),
+            Err(_) => return,
+        }
+    }
 }
 
 fn log_fallback(why: &str) {
@@ -269,6 +359,7 @@ fn on_the_picture(held: &Moved, scale: f64, first: u32) -> Result<Done, Refusal>
         refs,
         truncated,
         source: Source::Text,
+        first,
     })
 }
 

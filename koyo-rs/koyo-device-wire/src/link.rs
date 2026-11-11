@@ -149,6 +149,15 @@ pub enum Missing {
     Other,
 }
 
+impl Missing {
+    /// Whether only the person can put it right (install, plug in, trust, unlock, free the
+    /// screen); else it is the device's or its host's own failing, which opening it again may
+    /// mend.
+    pub fn needs_person(self) -> bool {
+        !matches!(self, Missing::Input | Missing::Other)
+    }
+}
+
 /// The picture as shown: upright, in points and pixels.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

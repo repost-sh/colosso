@@ -9,13 +9,13 @@ use koyo_app_control::ops::device::{
     DeviceInfo, DeviceListOutput, DeviceScreen, DeviceScreenshotInput, DeviceScreenshotOutput,
     DeviceSnapshotInput, DeviceSnapshotOutput, DeviceWaitInput, DeviceWaitOutput, SnapshotSource,
 };
-use koyo_device_wire::{Answer, Ask, Orientation, Screen, Source, State as Said, Step};
+use koyo_device_wire::{Answer, Ask, Orientation, Screen, Source, Step};
 
 use super::{SCREENSHOT, SNAPSHOT, WAIT_SLACK, asking, pane_of, unexpected, which};
 use crate::browser::control::Holder;
 use crate::control::Caller;
 use crate::control::exec::{Exec, output};
-use crate::devices::{self, Link, Simulator, State};
+use crate::devices::{self, Link, Simulator, Standing};
 
 /// How a picture faces, as the tools name it.
 pub(super) fn facing(orientation: Orientation) -> &'static str {
@@ -48,14 +48,17 @@ pub(super) fn step(step: Step) -> &'static str {
 
 /// How a device stands, as `device_list` says it, and what the person must put right.
 pub(super) fn standing(link: &Link) -> (&'static str, Option<String>) {
-    match (&link.state, &link.said) {
-        (State::Off, _) => ("off", None),
-        (State::Failed(why), _) => ("failed", Some(why.clone())),
-        (_, Some(Said::Ready { .. })) => ("ready", None),
-        (_, Some(Said::Locked { .. })) => ("locked", None),
-        (_, Some(Said::Gone { why })) => ("gone", Some(why.clone())),
-        (_, Some(Said::Unavailable { why, .. })) => ("needsPerson", Some(why.clone())),
-        (_, Some(Said::Starting { .. }) | None) => ("starting", None),
+    match link.standing() {
+        Standing::Ended { missing: None, why } => ("gone", Some(why.to_owned())),
+        Standing::Ended {
+            missing: Some(missing),
+            why,
+        } => (if missing.needs_person() { "needsPerson" } else { "failed" }, Some(why.to_owned())),
+        Standing::Off => ("off", None),
+        Standing::Failed(why) => ("failed", Some(why.to_owned())),
+        Standing::Ready(_) => ("ready", None),
+        Standing::Locked(_) => ("locked", None),
+        Standing::Starting(_) => ("starting", None),
     }
 }
 

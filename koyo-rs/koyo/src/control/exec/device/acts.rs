@@ -100,20 +100,20 @@ fn named(spot: &Spot) -> String {
 }
 
 pub(crate) fn tap(caller: &Caller, input: &DeviceTapInput, cx: &mut App) -> Result<Exec, ControlError> {
-    let checked = (|| {
-        let spot = spot(input.r#ref.as_deref(), input.x, input.y)?;
-        let count = within(input.count, 1, 1..=3, "count")?;
-        let hold_ms = within(input.hold_ms, 0, 0..=10_000, "holdMs")?;
-        let fingers = within(input.fingers, 1, 1..=5, "fingers")?;
-        let did = match (count, hold_ms) {
-            (_, 500..) => format!("Long-pressed {}", named(&spot)),
-            (2, _) => format!("Double-tapped {}", named(&spot)),
-            (3, _) => format!("Triple-tapped {}", named(&spot)),
-            _ => format!("Tapped {}", named(&spot)),
-        };
-        Ok((Act::Tap { spot, count, hold_ms, fingers }, did))
-    })();
-    act(caller, (input.device.as_deref(), input.pane), checked, ACT, cx)
+    let spot = spot(input.r#ref.as_deref(), input.x, input.y)?;
+    let count = within(input.count, 1, 1..=3, "count")?;
+    let hold_ms = within(input.hold_ms, 0, 0..=10_000, "holdMs")?;
+    let fingers = within(input.fingers, 1, 1..=5, "fingers")?;
+    let did = match (count, hold_ms) {
+        (_, 500..) => format!("Long-pressed {}", named(&spot)),
+        (2, _) => format!("Double-tapped {}", named(&spot)),
+        (3, _) => format!("Triple-tapped {}", named(&spot)),
+        _ => format!("Tapped {}", named(&spot)),
+    };
+    // Each touch held as long as asked comes on top of the act's own time.
+    let limit = ACT + Duration::from_millis(u64::from(hold_ms) * u64::from(count));
+    let act_ = Act::Tap { spot, count, hold_ms, fingers };
+    act(caller, (input.device.as_deref(), input.pane), Ok((act_, did)), limit, cx)
 }
 
 pub(crate) fn swipe(caller: &Caller, input: &DeviceSwipeInput, cx: &mut App) -> Result<Exec, ControlError> {
@@ -204,6 +204,9 @@ pub(crate) fn type_text(caller: &Caller, input: &DeviceTypeInput, cx: &mut App) 
     };
     // Into a field: tapped first, then typed, both as this caller's.
     let target = which(caller, at.0, at.1, cx)?;
+    if let Some(error) = super::not_running(target.link.read(cx)) {
+        return Err(error);
+    }
     claim(caller, &target, cx)?;
     let tap = Act::Tap {
         spot: Spot::Ref(into),

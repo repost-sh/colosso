@@ -112,11 +112,22 @@ impl Link {
         self.state == State::Running && matches!(self.said, Some(Said::Ready { .. }))
     }
 
-    /// Starts the host, unless it's starting or running.
+    /// Starts the host, unless it's starting or running; one that gave up is ended first, so
+    /// the person's Start Again, or an agent's open, starts afresh.
     pub fn start(&mut self, cx: &mut Context<Self>) {
-        if self.running_or_starting() {
+        if self.running_or_starting() && !self.gave_up() {
             return;
         }
+        if self.running_or_starting() {
+            self.stop(cx);
+        }
+        // Asked for: the restarts it made by itself don't count against this one.
+        self.restarts.clear();
+        self.launch_host(cx);
+    }
+
+    /// Starts a host: for a start asked for, or by itself after one went.
+    fn launch_host(&mut self, cx: &mut Context<Self>) {
         let launch = match super::launch(&self.udid) {
             Ok(launch) => launch,
             Err(why) => return self.fail(why, cx),
@@ -176,7 +187,7 @@ impl Link {
                 self.failed_starts += 1;
                 log::warn!("{}'s host didn't start ({error}): starting it again", self.name);
                 self.state = State::Off;
-                self.start(cx);
+                self.launch_host(cx);
                 false
             }
             Err(error) => {
@@ -255,19 +266,26 @@ impl Link {
         }
     }
 
-    /// The host went on its own: started again for the tab, unless it keeps going.
+    /// The host went on its own: started again for the tab, unless it keeps going, or said it
+    /// can't go on, which then stays said.
     fn closed(&mut self, cx: &mut Context<Self>) {
         if !self.running_or_starting() {
             return;
         }
         self.running = None;
+        if self.gave_up() {
+            let last = self.said.take();
+            self.stop(cx);
+            self.said = last;
+            return;
+        }
         self.restarts.retain(|at| at.elapsed() < RESTARTS_WITHIN);
         if self.restarts.len() < RESTARTS {
             self.restarts.push(Instant::now());
             log::warn!("{}'s host stopped: starting it again", self.name);
             self.forget("The device's host stopped; it is starting again.", cx);
             self.state = State::Off;
-            self.start(cx);
+            self.launch_host(cx);
         } else {
             self.fail(format!("{}'s host stopped three times in a minute.", self.name), cx);
         }
@@ -280,6 +298,13 @@ impl Link {
                 if matches!(state, Said::Ready { .. }) {
                     self.failed_starts = 0;
                     self.started_at = None;
+                }
+                // A host that can't go on but still runs (its input never answered) is told to
+                // go: it shuts its simulator down rather than hold gigabytes until Start Again.
+                if matches!(state, Said::Unavailable { .. })
+                    && let Some(running) = &self.running
+                {
+                    let _ = running.tell.send(ToHost::Quit);
                 }
                 self.said = Some(state);
                 cx.notify();
@@ -357,12 +382,8 @@ impl Link {
     /// Asks the host and waits up to `limit` for the answer; a host that isn't running refuses
     /// at once, and one that runs out of time is told to drop the ask.
     pub fn ask(&mut self, ask: Ask, limit: Duration, cx: &mut Context<Self>) -> Task<Result<Answer, Refusal>> {
-        if !self.running_or_starting() {
-            let why = match &self.state {
-                State::Failed(why) => why.clone(),
-                _ => format!("{} isn't running: open it with device_open first", self.name),
-            };
-            return Task::ready(Err(Refusal::new(RefusalCode::NotReady, why)));
+        if let Some((why, _)) = self.not_running() {
+            return Task::ready(Err(Refusal::new(RefusalCode::Gone, why)));
         }
         let request = self.next;
         self.next += 1;

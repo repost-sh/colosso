@@ -15,6 +15,8 @@ pub struct Simulator {
     pub name: String,
     /// Its system, as the person reads it: `iOS 27.2`.
     pub system: String,
+    /// Whether it runs now: it counts against the simulators running at once.
+    pub booted: bool,
     /// Whether it has ever booted: a first boot takes about a minute.
     pub booted_before: bool,
     /// Whether it's an iPad, for the words that name it.
@@ -62,6 +64,7 @@ pub fn parse(json: &str) -> Vec<Simulator> {
                     udid: device["udid"].as_str()?.to_owned(),
                     name: device["name"].as_str()?.to_owned(),
                     system: system(runtime),
+                    booted: device["state"] == "Booted",
                     booted_before: device.get("lastBootedAt").is_some(),
                     ipad: device["deviceTypeIdentifier"].as_str().is_some_and(|kind| kind.contains("iPad")),
                 })
@@ -104,27 +107,46 @@ fn newest_ios(json: &str) -> Option<(String, String)> {
 
 /// A new iPhone 17 Pro in Koyo's set, on the newest iOS installed.
 pub fn make_default(set: &Path) -> Result<Simulator, String> {
-    make(set, "iPhone 17 Pro")
+    make(set, "iPhone 17 Pro").map_err(|unmade| unmade.to_string())
+}
+
+/// Why a simulator wasn't made.
+#[derive(Debug)]
+pub enum Unmade {
+    /// Xcode has no simulator by the name asked for.
+    Model(String),
+    /// What it takes is missing, the person's to put right: Xcode, a simulator system, the set.
+    Missing(String),
 }
 
 /// A new simulator of `model` (a device type's name, as `iPad Pro 13-inch (M5)`) in Koyo's
 /// set, on the newest iOS installed.
-pub fn make(set: &Path, model: &str) -> Result<Simulator, String> {
-    std::fs::create_dir_all(set).map_err(|error| format!("Koyo's device set can't be made: {error}"))?;
-    let types = simctl(set, &["list", "devicetypes", "-j"])?;
+pub fn make(set: &Path, model: &str) -> Result<Simulator, Unmade> {
+    std::fs::create_dir_all(set).map_err(|error| Unmade::Missing(format!("Koyo's device set can't be made: {error}")))?;
+    let types = simctl(set, &["list", "devicetypes", "-j"]).map_err(Unmade::Missing)?;
     let kind = device_type(&types, model).ok_or_else(|| {
-        format!("Xcode has no simulator called {model:?}: name one as `xcrun simctl list devicetypes` does.")
+        Unmade::Model(format!("Xcode has no simulator called {model:?}: name one as `xcrun simctl list devicetypes` does."))
     })?;
-    let runtimes = simctl(set, &["list", "runtimes", "-j"])?;
-    let (runtime, version) = newest_ios(&runtimes).ok_or("No iOS simulator system is installed.")?;
-    let udid = simctl(set, &["create", model, &kind, &runtime])?.trim().to_owned();
+    let runtimes = simctl(set, &["list", "runtimes", "-j"]).map_err(Unmade::Missing)?;
+    let (runtime, version) =
+        newest_ios(&runtimes).ok_or_else(|| Unmade::Missing("No iOS simulator system is installed.".into()))?;
+    let udid = simctl(set, &["create", model, &kind, &runtime]).map_err(Unmade::Missing)?.trim().to_owned();
     Ok(Simulator {
         udid,
         name: model.to_owned(),
         system: format!("iOS {version}"),
+        booted: false,
         booted_before: false,
         ipad: model.starts_with("iPad"),
     })
+}
+
+impl std::fmt::Display for Unmade {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Unmade::Model(why) | Unmade::Missing(why) => f.write_str(why),
+        }
+    }
 }
 
 /// The identifier of the device type named `model`, any case, from `simctl list devicetypes -j`.
@@ -137,9 +159,23 @@ fn device_type(json: &str, model: &str) -> Option<String> {
     })
 }
 
-/// Shuts down what hosts killed last time left booted, by their records, and drops the records.
+/// The lock a device's host holds for as long as it runs (`koyo-device-host` `run.rs`), taken
+/// here when free: held, a host started meanwhile waits for it.
+fn lock(state: &Path, udid: &str) -> Option<std::fs::File> {
+    let file = (std::fs::OpenOptions::new().create(true).truncate(false).write(true))
+        .open(state.join(koyo_device_wire::lock_name(udid)))
+        .ok()?;
+    file.try_lock().is_ok().then_some(file)
+}
+
+/// Shuts down what hosts killed last time left booted, by their records, and drops the records;
+/// not a simulator a host has taken meanwhile, which holds its lock.
 pub fn shut_down_leftovers(set: &Path, state: &Path) {
     for (record, udid) in super::host::leftovers(state) {
+        let Some(_held) = lock(state, &udid) else {
+            log::info!("simulator {udid} has a host again: left to it");
+            continue;
+        };
         log::info!("shutting down simulator {udid}, which a stopped host left running");
         if let Err(why) = simctl(set, &["shutdown", &udid])
             && !why.contains("current state: Shutdown")
@@ -163,7 +199,7 @@ mod tests {
         let all = parse(json);
         assert_eq!(all.len(), 2);
         assert_eq!(all[0].name, "iPad Pro 13");
-        assert!(all[0].ipad && !all[0].booted_before);
+        assert!(all[0].booted && all[0].ipad && !all[0].booted_before);
         assert_eq!(all[1].system, "iOS 27.2");
         assert!(all[1].booted_before);
     }
@@ -191,5 +227,16 @@ mod tests {
             Some("com.apple.CoreSimulator.SimDeviceType.iPad-Pro-13-inch-M5-12GB")
         );
         assert_eq!(device_type(json, "iPhone 99"), None);
+    }
+
+    #[test]
+    fn a_simulator_whose_host_holds_its_lock_isnt_swept() {
+        let state = crate::test_support::scratch("device-lock");
+        let held = std::fs::File::create(state.join(koyo_device_wire::lock_name("HELD"))).unwrap();
+        held.try_lock().unwrap();
+        assert!(lock(&state, "HELD").is_none(), "a host holds it");
+        assert!(lock(&state, "FREE").is_some(), "nobody does");
+        drop(held);
+        assert!(lock(&state, "HELD").is_some(), "let go");
     }
 }

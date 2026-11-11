@@ -99,7 +99,11 @@ fn a_link_that_isnt_running_refuses_at_once(cx: &mut TestAppContext) {
     let link = cx.new(|cx| Link::new("UDID-2".into(), "iPad".into(), cx));
     let task = link.update(cx, |link, cx| link.ask(Ask::Snapshot { text: false }, Duration::from_secs(5), cx));
     let answer = futures::FutureExt::now_or_never(task);
-    assert!(matches!(answer, Some(Err(Refusal { code: RefusalCode::NotReady, .. }))), "{answer:?}");
+    let Some(Err(Refusal { code, message })) = answer else {
+        panic!("{answer:?}");
+    };
+    assert_eq!(code, RefusalCode::Gone);
+    assert_eq!(message, "iPad isn't running.");
 }
 
 #[gpui_kit::test]
@@ -155,3 +159,39 @@ fn a_device_in_two_tabs_stops_when_the_last_closes(cx: &mut TestAppContext) {
 }
 
 mod hand;
+
+#[gpui_kit::test]
+fn a_host_that_gave_up_isnt_started_again_and_its_word_stays(cx: &mut TestAppContext) {
+    let (link, told) = running(cx);
+    let _ = told.try_iter().count();
+    let xcode = Said::Unavailable {
+        code: koyo_device_wire::Missing::Xcode,
+        why: "Koyo's devices need Xcode 27 or later.".into(),
+    };
+    link.update(cx, |link, cx| {
+        link.hear(FromHost::State { state: xcode.clone() }, cx);
+        link.host_closed(cx);
+        assert_eq!(link.state, State::Off, "not started again");
+        assert_eq!(link.said, Some(xcode.clone()), "what it said stays for the tab");
+        assert!(link.not_running().is_some_and(|(why, person)| why.contains("Xcode 27") && person));
+    });
+}
+
+#[gpui_kit::test]
+fn start_again_ends_a_host_that_gave_up_and_starts_afresh(cx: &mut TestAppContext) {
+    let (link, told) = running(cx);
+    let _ = told.try_iter().count();
+    let input = Said::Unavailable {
+        code: koyo_device_wire::Missing::Input,
+        why: "the simulator's input never answered".into(),
+    };
+    link.update(cx, |link, cx| {
+        link.hear(FromHost::State { state: input }, cx);
+        assert!(link.gave_up());
+        link.start(cx);
+    });
+    assert_eq!(told.try_recv().ok(), Some(ToHost::Quit), "the host that gave up was ended");
+    // Under test no host is started: the try shows as a failed start, not as the old state.
+    let state = cx.read(|cx| link.read(cx).state.clone());
+    assert!(matches!(state, State::Failed(_)), "{state:?}");
+}

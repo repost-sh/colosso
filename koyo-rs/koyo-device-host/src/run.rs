@@ -21,7 +21,9 @@ pub use koyo_device_wire::{ENV_SOCKET_FD, ENV_TOKEN};
 const TICK: Duration = Duration::from_millis(50);
 const BUSY_TICK: Duration = Duration::from_millis(4);
 const HELLO_WITHIN: Duration = Duration::from_secs(10);
-const ALONE_WITHIN: Duration = Duration::from_secs(15);
+/// The host before may let a first boot finish (up to 400 s) before it shuts the simulator down
+/// and goes: this one waits that out, saying it is starting meanwhile.
+const ALONE_WITHIN: Duration = Duration::from_secs(420);
 const SHUTS_DOWN_WITHIN: Duration = Duration::from_secs(60);
 const STATS_EVERY: Duration = Duration::from_secs(5);
 /// The words every surface of the feature has for an Xcode that's too old.
@@ -63,19 +65,18 @@ impl Args {
 
 /// Waits to be the one host of this device: the one before, of a Koyo started again a moment
 /// ago, may still be shutting it down. Held for as long as the file is.
-fn alone(state: &Path, udid: &str) -> Option<std::fs::File> {
-    use std::os::fd::AsRawFd as _;
+/// Gives up when the app's end of the link closes, or the host is told to end.
+fn alone(state: &Path, udid: &str, link: &Link) -> Option<std::fs::File> {
     std::fs::create_dir_all(state).ok()?;
     let file = std::fs::OpenOptions::new()
         .create(true)
         .truncate(false)
         .write(true)
-        .open(state.join(format!("{udid}.lock")))
+        .open(state.join(koyo_device_wire::lock_name(udid)))
         .ok()?;
     let started = Instant::now();
-    while started.elapsed() < ALONE_WITHIN {
-        // SAFETY: a lock asked of a file this process has open; refused at once when held.
-        if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+    while started.elapsed() < ALONE_WITHIN && !link.closed() && !ENDING.load(Ordering::Relaxed) {
+        if file.try_lock().is_ok() {
             return Some(file);
         }
         link::pump(Duration::from_millis(100));
@@ -186,7 +187,12 @@ pub fn run(args: &Args) -> Result<(), String> {
             format!("no way to send the picture: {error}"),
         )
     })?;
-    let _alone = alone(&args.state, &args.udid).ok_or_else(|| {
+    teller.tell(&FromHost::State {
+        state: State::Starting {
+            step: Step::Booting { first: false },
+        },
+    });
+    let _alone = alone(&args.state, &args.udid, &link).ok_or_else(|| {
         unavailable(
             Missing::Other,
             "another host is still at work on this simulator".into(),
