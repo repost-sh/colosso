@@ -9,19 +9,20 @@
 //! read.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use gpui_kit::{Context, Task};
+use koyo_accounts::autoswitch::{AutoSwitchEngine, AutoSwitchSettings, TickOutcome, TickReport};
 use koyo_accounts::switcher::{AccountsSnapshot, Fetch, LiveLimits, Switcher};
 use koyo_accounts::usage_store::UsageEntry;
 use koyo_accounts::{AccountsError, Env};
 
+use super::auto::Auto;
 use super::model::{Slot, View};
 use super::{Accounts, environment, reading};
 
 /// What the switcher is asked to do.
-#[derive(Debug)]
 pub enum Job {
     /// Read the active account's usage, whichever it is now, and/or another's, as the store
     /// allows, and take the accounts again; with neither, only take them.
@@ -37,13 +38,18 @@ pub enum Job {
     Hold(Slot, bool),
     /// A chat's limits, for the active account.
     Live(LiveLimits),
+    /// One tick of auto-switch's engine, at this threshold (`auto.rs`).
+    Tick {
+        engine: Arc<Mutex<AutoSwitchEngine>>,
+        threshold: f64,
+    },
 }
 
 impl Job {
     /// What the panel says while the person's job waits or runs; `None` for the app's own.
     pub(super) fn doing(&self) -> Option<String> {
         match self {
-            Job::Read { .. } | Job::Live(_) => None,
+            Job::Read { .. } | Job::Live(_) | Job::Tick { .. } => None,
             Job::Switch(slot) => Some(format!("Switching to {}…", slot.email)),
             Job::Add => Some("Adding the Mac's login…".to_owned()),
             Job::Remove(slot) => Some(format!("Removing {}…", slot.email)),
@@ -54,6 +60,7 @@ impl Job {
 }
 
 /// What a job found.
+#[derive(Default)]
 struct Done {
     /// The accounts after it, or why they couldn't be read; `None` when it didn't take them.
     accounts: Option<Result<AccountsSnapshot, String>>,
@@ -61,6 +68,8 @@ struct Done {
     active: Option<UsageEntry>,
     /// Why it failed, or what it warns of.
     said: Option<String>,
+    /// What auto-switch's tick did.
+    ticked: Option<TickReport>,
 }
 
 /// What an action said, and the accounts to read after it.
@@ -88,11 +97,12 @@ fn run(switcher: &Switcher, job: Job) -> Done {
                 Err(why) => (None, Some(why.to_string())),
             };
             return Done {
-                accounts: None,
                 active,
                 said,
+                ..Done::default()
             };
         }
+        Job::Tick { engine, threshold } => return tick(switcher, &engine, threshold),
         Job::Switch(Slot { number, email }) => acted(
             &format!("switch to {email}"),
             (switcher.switch_to(&number))
@@ -112,18 +122,35 @@ fn run(switcher: &Switcher, job: Job) -> Done {
             (switcher.set_account_disabled(&number, disabled)).map(|_| (None, BTreeSet::new())),
         ),
     };
+    Done {
+        accounts: Some(snapshot(switcher, &read)),
+        said,
+        ..Done::default()
+    }
+}
+
+/// The accounts, after reading `read`'s usage as the store allows.
+fn snapshot(switcher: &Switcher, read: &BTreeSet<String>) -> Result<AccountsSnapshot, String> {
     let fetch = Fetch::Only {
-        only: &read,
+        only: read,
         scheduled: false,
     };
+    (switcher.accounts_snapshot(fetch)).map_err(|why| why.to_string())
+}
+
+/// One tick of `engine` at `threshold`: blocking. Ticks run one at a time on the switcher's
+/// line, so the lock is never contended; one poisoned by a tick that panicked stays unticked.
+fn tick(switcher: &Switcher, engine: &Mutex<AutoSwitchEngine>, threshold: f64) -> Done {
+    let report = engine.lock().ok().map(|mut engine| {
+        engine.set_threshold(threshold);
+        engine.tick()
+    });
+    // A switch changed which account is the Mac's login: the accounts are taken again.
+    let moved = report.as_ref().map(|report| report.outcome) == Some(TickOutcome::Switched);
     Done {
-        accounts: Some(
-            switcher
-                .accounts_snapshot(fetch)
-                .map_err(|why| why.to_string()),
-        ),
-        active: None,
-        said,
+        accounts: moved.then(|| snapshot(switcher, &BTreeSet::new())),
+        ticked: report,
+        ..Done::default()
     }
 }
 
@@ -135,6 +162,8 @@ fn joined(lines: &[String]) -> Option<String> {
 pub struct Service {
     /// Once the login shell has said where Claude Code keeps its login.
     switcher: Option<Arc<Switcher>>,
+    /// Auto-switch, while it's on.
+    pub auto: Option<Auto>,
     /// Each account's usage as the last snapshot had it, for the cadence's pick of another.
     pub entries: BTreeMap<String, UsageEntry>,
     waiting: VecDeque<Job>,
@@ -223,6 +252,22 @@ impl Service {
         self.switcher = Some(Arc::new(Switcher::new(env)));
     }
 
+    /// Auto-switch's engine on the switcher at `threshold`, once it's on hand.
+    pub fn engine(&self, threshold: f64) -> Option<AutoSwitchEngine> {
+        let switcher = self.switcher.clone()?;
+        let env = switcher.env().clone();
+        Some(AutoSwitchEngine::new(
+            &env,
+            switcher,
+            AutoSwitchSettings::new(threshold),
+        ))
+    }
+
+    /// Drops the ticks waiting, with auto-switch off: one running finishes.
+    pub fn drop_ticks(&mut self) {
+        self.waiting.retain(|job| !matches!(job, Job::Tick { .. }));
+    }
+
     /// Whether the switcher can be asked anything.
     pub fn on_hand(&self) -> bool {
         self.switcher.is_some()
@@ -242,6 +287,8 @@ impl Service {
                 *other = another.or(other.take());
             }
             (Some(Job::Live(waiting)), Job::Live(limits)) => *waiting = limits,
+            // The person's job goes ahead of the app's waiting ones; it's never more than one.
+            (_, job) if job.doing().is_some() => self.waiting.push_front(job),
             (_, job) => self.waiting.push_back(job),
         }
     }
@@ -264,13 +311,17 @@ impl Accounts {
         };
         let persons = job.doing().is_some();
         service.working = Some(cx.spawn(async move |this, cx| {
-            let done = cx
+            let mut done = cx
                 .background_executor()
                 .spawn(async move { run(&switcher, job) })
                 .await;
             this.update(cx, |accounts, cx| {
                 let before = accounts.view.clone();
+                let ticked = done.ticked.take();
                 accounts.take(done, persons);
+                if let Some(report) = ticked {
+                    accounts.ticked(&report, cx);
+                }
                 if accounts.view != before {
                     cx.notify();
                 }

@@ -54,13 +54,16 @@ use crate::Env;
 use crate::oauth::OAUTH_EXPIRY_BUFFER_MS;
 use crate::poll_policy::{self, EXHAUSTED_INTERVAL_S};
 
+pub use events::pct_label;
 pub use events::{
     AllExhaustedEvent, AutoSwitchEvent, ErrorEvent, NoSwitchEvent, NoSwitchReason, PollEvent,
     QuarantineEvent, QuarantineReason, ReleaseReason, SwitchEvent, TickOutcome, TickReport,
     Trigger, UnquarantineEvent,
 };
 pub use host::EngineHost;
-pub use settings::AutoSwitchSettings;
+pub use settings::{
+    AutoSwitchSettings, DEFAULT_THRESHOLD, THRESHOLD_MAX, THRESHOLD_MIN, clamp_threshold,
+};
 
 /// The models whose per-model window binds: none (Koyo has no `model` setting).
 const MODELS: &[&str] = &[];
@@ -175,7 +178,7 @@ impl AutoSwitchEngine {
     /// A threshold set mid-run, clamped as [`AutoSwitchSettings::new`] does: retargets the
     /// trigger from the next tick and the collector's cadence at once.
     pub fn set_threshold(&mut self, threshold: f64) {
-        self.settings.threshold = settings::clamp_threshold(threshold);
+        self.settings.threshold = clamp_threshold(threshold);
         self.pin_poll_policy_inputs();
     }
 
@@ -191,5 +194,13 @@ impl AutoSwitchEngine {
 
     fn emit(&mut self, event: AutoSwitchEvent) {
         self.events.push(event);
+    }
+}
+
+/// The engine going (auto-switch turned off) takes its pin with it, after its last tick: the
+/// collector plans on the switcher's defaults again.
+impl Drop for AutoSwitchEngine {
+    fn drop(&mut self) {
+        self.host.clear_poll_threshold();
     }
 }

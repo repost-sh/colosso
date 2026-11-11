@@ -3,9 +3,10 @@
 //! claude-swap's grammar (the accounts crate's `oauth` formats both), a reading's age, and each
 //! problem with its remedy.
 
+use koyo_accounts::autoswitch::{AutoSwitchEvent, QuarantineReason, Trigger, pct_label};
 use koyo_accounts::oauth::{format_countdown, login_expiry_clock};
 
-use super::model::{Bar, Problem};
+use super::model::{AutoSwitch, Bar, Problem};
 
 /// "72%", "?" for an unknown, with "(!)" once it's at the limit.
 pub fn percent(bar: &Bar) -> String {
@@ -24,6 +25,54 @@ pub fn resets(bar: &Bar, now: f64) -> Option<String> {
         format_countdown(at - now),
         login_expiry_clock(at, now)
     ))
+}
+
+/// A threshold: "90%", "99.9%", never 99.9 rounded to "100%" (the crate's `pct_label`).
+pub fn threshold(threshold: f64) -> String {
+    format!("{}%", pct_label(threshold))
+}
+
+/// "Auto-switch is on at 90%."
+pub fn auto_switch(auto: &AutoSwitch) -> String {
+    format!("Auto-switch is on at {}.", threshold(auto.threshold))
+}
+
+/// What auto-switch did that the panel says, as of `now`; `None` for what it does every tick.
+pub fn auto_switched(event: &AutoSwitchEvent, now: f64) -> Option<String> {
+    let at = |ts: f64| login_expiry_clock(ts, now);
+    match event {
+        AutoSwitchEvent::Switch(switch) => {
+            let from = (switch.from_ref.as_ref()).map_or("The Mac's login", |from| &from.email);
+            let to = (switch.to_ref.as_ref()).map_or("another account", |to| &to.email);
+            let why = match switch.trigger {
+                Trigger::Proactive => "reached the threshold",
+                Trigger::AtLimit => "hit its limit",
+                Trigger::Failover => "couldn't be read",
+            };
+            Some(format!("{from} {why}: moved to {to} at {}.", at(switch.ts)))
+        }
+        AutoSwitchEvent::AllExhausted(all) => Some(match all.earliest_reset_at {
+            Some(reset) => format!(
+                "Every account is at its limit; the first resets {}.",
+                at(reset)
+            ),
+            None => "Every account is at its limit.".to_owned(),
+        }),
+        AutoSwitchEvent::Quarantine(held) => Some(format!(
+            "{} is left out of auto-switch: {}. Sign in to it with Claude Code, then add the \
+             current login.",
+            held.email,
+            match held.reason {
+                QuarantineReason::InvalidGrant => "its login has ended",
+                QuarantineReason::IdentityConflict => "its login is another account's",
+            }
+        )),
+        AutoSwitchEvent::Error(error) => Some(format!(
+            "Auto-switch couldn't run: {}; it tries again.",
+            error.message
+        )),
+        _ => None,
+    }
 }
 
 /// The Mac's login, `email`'s, when Koyo doesn't keep it.

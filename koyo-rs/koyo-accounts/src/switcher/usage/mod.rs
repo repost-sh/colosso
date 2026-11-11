@@ -12,10 +12,11 @@
 //!
 //! `_poll_policy_inputs` reads cswap's settings file; Koyo has none, so the inputs are cswap's
 //! defaults (threshold 90, no weekly threshold, no models) until the engine pins its own with
-//! [`Switcher::set_poll_policy_inputs`]. Left out: `clear_poll_policy_inputs` (Koyo's engine
-//! lives as long as the app, so nothing unpins), `usage_by_account` and `usage_fetch_stamps`
-//! (no view of Koyo's reads them), and `_header_probe_enabled` (the header probe isn't ported,
-//! and the usage fetch takes no flag for it).
+//! [`Switcher::set_poll_policy_inputs`], and back to them with
+//! [`Switcher::clear_poll_policy_inputs`] when the engine goes (auto-switch turned off). Left
+//! out: `usage_by_account` and `usage_fetch_stamps` (no view of Koyo's reads them), and
+//! `_header_probe_enabled` (the header probe isn't ported, and the usage fetch takes no flag for
+//! it).
 
 use std::collections::BTreeMap;
 
@@ -35,7 +36,7 @@ pub(crate) use idle::RUN_FETCHES;
 /// cswap's `autoswitch.threshold` default, the engine's too. 90 rather than 95 leaves margin
 /// for the macOS ~30 s Keychain pickup tail and for heavy subagent turns burning past the mark
 /// before a swap lands.
-pub(crate) const DEFAULT_THRESHOLD: f64 = 90.;
+pub const DEFAULT_THRESHOLD: f64 = 90.;
 
 /// The switch lines and model names poll planning keys on, cswap's `(threshold,
 /// weekly_threshold, models)`.
@@ -90,6 +91,12 @@ impl Switcher {
             weekly_threshold,
             models: models.to_vec(),
         };
+    }
+
+    /// Unpins the inputs, back to cswap's defaults: what a process without the engine plans
+    /// on, once the engine goes.
+    pub(crate) fn clear_poll_policy_inputs(&self) {
+        *locked(&self.poll_inputs) = PollInputs::default();
     }
 
     /// cswap's `_poll_policy_inputs`: the pinned inputs, else cswap's defaults. Read once per

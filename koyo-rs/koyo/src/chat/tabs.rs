@@ -25,7 +25,10 @@ fn notifications_clicked(cx: &mut Context<Shell>) -> Option<Task<()>> {
     Some(cx.spawn(async move |shell, cx| {
         while let Some(thread) = clicks.next().await {
             let shown = shell.update(cx, |shell, cx| {
-                shell.open_chat(&ThreadId(thread), cx);
+                // Auto-switch's notice only brings Koyo to the front: its panel says the rest.
+                if thread != crate::accounts::NOTICE {
+                    shell.open_chat(&ThreadId(thread), cx);
+                }
                 cx.activate(true);
             });
             if shown.is_err() {

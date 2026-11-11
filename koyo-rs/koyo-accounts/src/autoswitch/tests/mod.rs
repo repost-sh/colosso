@@ -139,7 +139,7 @@ pub(super) fn entry_for(value: &Value, now: f64) -> UsageEntry {
 
 /// cswap's defaults.
 pub(super) fn defaults() -> AutoSwitchSettings {
-    AutoSwitchSettings::new(settings::DEFAULT_THRESHOLD)
+    AutoSwitchSettings::new(DEFAULT_THRESHOLD)
 }
 
 /// Settings with the given threshold, cswap's defaults otherwise.

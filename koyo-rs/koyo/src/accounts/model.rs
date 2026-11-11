@@ -140,6 +140,17 @@ pub struct View {
     pub unreadable: Option<String>,
     /// A variable in the login shell that makes Claude Code ignore the login.
     pub overridden_by: Option<&'static str>,
+    /// Auto-switch, while it's on.
+    pub auto_switch: Option<AutoSwitch>,
+}
+
+/// Auto-switch as the panel says it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AutoSwitch {
+    /// The usage, in percent, at which it moves on.
+    pub threshold: f64,
+    /// What it last did that matters, as said.
+    pub said: Option<String>,
 }
 
 impl View {

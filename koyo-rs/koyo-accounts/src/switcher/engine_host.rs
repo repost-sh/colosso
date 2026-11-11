@@ -53,6 +53,10 @@ impl EngineHost for Switcher {
         self.set_poll_policy_inputs(threshold, None, &[]);
     }
 
+    fn clear_poll_threshold(&self) {
+        self.clear_poll_policy_inputs();
+    }
+
     /// cswap's `read_account_credentials`: the backup, read past the display cache as cswap's
     /// `_read_account_credentials` defaults to; `""` when missing or unreadable.
     fn read_account_credentials(&self, number: &str, email: &str) -> String {

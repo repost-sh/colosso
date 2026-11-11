@@ -20,6 +20,7 @@ use gpui_kit::{
 
 use self::view::{Menu, Rows};
 use crate::theme;
+use crate::wrapped::wrapped_lines;
 
 mod switch;
 mod view;
@@ -401,14 +402,7 @@ fn fitted(items: &[(MenuItem, Option<Kbd>)], window: &Window) -> Size<Pixels> {
     let rows = items.iter().enumerate().map(|(index, row)| {
         let label = &row.0.label;
         let room = width - px(PADDING * 2.) - beside(row);
-        let lines = (window.text_system())
-            .shape_text(label.clone(), font_size, &[run(label)], Some(room), None)
-            .map_or(1, |shaped| {
-                shaped
-                    .iter()
-                    .map(|line| line.wrap_boundaries.len() + 1)
-                    .sum()
-            });
+        let lines = wrapped_lines(label, &style, font_size, room, window);
         let above = if separated(items, index) {
             SEPARATOR
         } else {

@@ -7,6 +7,8 @@
 //! With Settings → Accounts → Manage Claude accounts off, none of it runs: Koyo neither reads
 //! nor writes the login and polls nothing.
 
+mod auto;
+pub use auto::NOTICE;
 mod button;
 mod environment;
 mod model;
@@ -111,8 +113,9 @@ pub fn limits_heard(limits: &AccountLimits, cx: &mut App) {
 }
 
 impl Accounts {
-    /// Starts or stops with Manage Claude accounts.
+    /// Starts or stops with Manage Claude accounts, and auto-switch with its own setting.
     fn follow(&mut self, manage: bool, cx: &mut Context<Self>) {
+        self.follow_auto(cx);
         match (manage, self.running.is_some()) {
             (true, false) => {
                 self.running = Some(Running {
@@ -154,6 +157,7 @@ impl Accounts {
         if let Some(running) = &mut self.running {
             running.service.on(env);
             self.look(cx);
+            self.follow_auto(cx);
         }
     }
 
@@ -211,9 +215,13 @@ impl Accounts {
     /// Opens the panel over the button, or closes it; open, another account is read if one's
     /// due.
     fn toggle_panel(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.trigger.is_open(cx) {
+            self.trigger.close(cx);
+            return;
+        }
         let (me, view) = (cx.entity(), self.view.clone());
         self.trigger.toggle_panel(
-            panel::extent(&view),
+            panel::extent(&view, window),
             |cx| cx.new(|cx| panel::AccountsPanel::new(&me, view, cx)),
             window,
             cx,

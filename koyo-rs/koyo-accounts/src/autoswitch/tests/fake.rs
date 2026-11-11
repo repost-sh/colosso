@@ -69,6 +69,8 @@ pub(crate) struct Fake {
     pub switch_answer: Option<SwitchResult>,
     /// Each threshold the engine pinned.
     pub poll_thresholds: Vec<f64>,
+    /// Whether the engine unpinned it.
+    pub poll_unpinned: bool,
     pub backfills: Vec<(String, String)>,
     pub fail: Fails,
     /// Seconds the clock moves when a credential is read (the freshen loop, after the ranking).
@@ -198,6 +200,10 @@ impl EngineHost for FakeHost {
 
     fn set_poll_threshold(&self, threshold: f64) {
         self.lock().poll_thresholds.push(threshold);
+    }
+
+    fn clear_poll_threshold(&self) {
+        self.lock().poll_unpinned = true;
     }
 
     fn read_account_credentials(&self, number: &str, _email: &str) -> String {
