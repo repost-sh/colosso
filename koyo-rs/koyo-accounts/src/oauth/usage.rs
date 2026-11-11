@@ -30,6 +30,11 @@ pub const USAGE_TIMEOUT: Duration = Duration::from_secs(5);
 /// The kind a fetch returns for an access token already expired, sending nothing; the switcher
 /// shows it as [`super::USAGE_TOKEN_EXPIRED`].
 pub const TOKEN_EXPIRED_ERROR: &str = "token-expired";
+/// The kind a fetch returns for a credential with no access token, sending nothing; the
+/// switcher shows it as [`super::USAGE_NO_CREDENTIALS`].
+pub const NO_ACCESS_TOKEN_ERROR: &str = "no-access-token";
+/// The kind of an answer refusing the access token (a 401).
+pub const UNAUTHORIZED_ERROR: &str = "http-401";
 
 /// The org-policy 403 (a lapsed plan), the one status whose body names its cause.
 pub const ORG_POLICY_ERROR: &str = "oauth_not_allowed_for_organization";
@@ -427,7 +432,7 @@ pub fn try_fetch_usage_for_account(
         .and_then(|oauth| oauth.get("accessToken"))
         .filter(|token| truthy(token))
     else {
-        return UsageOutcome::failed("no-access-token", None);
+        return UsageOutcome::failed(NO_ACCESS_TOKEN_ERROR, None);
     };
     if is_setup_token(oauth.as_ref()) {
         return UsageOutcome::failed("setup-token", None);

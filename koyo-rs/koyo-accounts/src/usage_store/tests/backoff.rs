@@ -284,15 +284,15 @@ fn blind_window(age_at_fail: f64, ask: f64, error: &str) -> f64 {
     let h = Harness::new();
     let ident = identity("1", "a@example.com", "");
     let reading = FetchRecord::success(Some(json!({"five_hour": {"pct": 1.0}})));
-    h.record_as("1", reading, &ident);
+    record_as(&h.store, "1", reading, &ident);
     h.advance(age_at_fail);
-    h.record_as("1", err_after(error, ask), &ident);
-    let park_end = h.entry_as("1", &ident).backoff_until.unwrap();
+    record_as(&h.store, "1", err_after(error, ask), &ident);
+    let park_end = entry_as(&h.store, "1", &ident).backoff_until.unwrap();
     let mut at = h.now();
     let mut blind_start = None;
     while at < park_end {
         h.set(at);
-        let entry = h.entry_as("1", &ident);
+        let entry = entry_as(&h.store, "1", &ident);
         if entry.in_backoff(at) && entry.decision_value().is_none() {
             blind_start = Some(at);
             break;

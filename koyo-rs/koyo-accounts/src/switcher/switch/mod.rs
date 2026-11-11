@@ -19,9 +19,9 @@
 use crate::oauth::{self, AccountIdentity, extract_access_token};
 use crate::poll_policy::MIN_INTERVAL_S;
 use crate::switcher::Switcher;
+use crate::switcher::identity::same_lineage;
 use crate::switcher::identity::{is_digits, validate_email};
 use crate::switcher::store::{record, slot_int, text};
-use crate::switcher::switch::classify::same_lineage;
 use crate::{AccountsError, Result};
 
 mod classify;

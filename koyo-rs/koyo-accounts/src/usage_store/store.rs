@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use serde_json::{Map, Value, json};
 
 use super::backoff::{TRUST_MAX_AGE_S, earliest_reset, rejection_deadline};
-use super::rows::{Row, apply_outcome, entry_of, opt, row_eligible};
+use super::rows::{Row, apply_outcome, entry_of, lay_over, opt, row_eligible};
 use super::{CLAIM_TTL_S, FetchRecord, Identities, Identity, PollPlan, SCHEMA_VERSION, UsageEntry};
 use crate::locking::{DEFAULT_TIMEOUT, FileLock};
 use crate::oauth::value::{num_or_none, py_number};
@@ -55,6 +55,25 @@ fn take_row(rows: &mut Row, num: &str, identity: &Identity) -> Row {
         Some(Value::Object(row)) if matches_row(&row, identity) => row,
         _ => fresh_row(identity),
     }
+}
+
+/// One reading measured at `fetched_at` adopted into its row when newer than the stored one,
+/// a confirmed refusal's deadline extending `backoffUntil` (never shortening it): whether it
+/// replaced `lastGood`.
+fn adopt_row(row: &mut Row, usage: Value, fetched_at: f64, now: f64) -> bool {
+    if !num_or_none(row.get("fetchedAt")).is_none_or(|stored| fetched_at > stored) {
+        return false;
+    }
+    let deadline = rejection_deadline(Some(&usage), now);
+    row.insert("lastGood".to_owned(), usage);
+    row.insert("fetchedAt".to_owned(), Value::from(fetched_at));
+    let current = num_or_none(row.get("backoffUntil"));
+    if let Some(deadline) = deadline
+        && current.is_none_or(|current| deadline > current)
+    {
+        row.insert("backoffUntil".to_owned(), Value::from(deadline));
+    }
+    true
 }
 
 fn fresh_row(identity: &Identity) -> Row {
@@ -309,23 +328,13 @@ impl UsageStore {
         let nums: Vec<&str> = readings.keys().map(String::as_str).collect();
         self.mutate(identities, &nums, |num, row| {
             let (usage, age_s) = &readings[num];
-            let fetched_at = now - age_s.max(0.);
-            let mut stored = num_or_none(row.get("fetchedAt"));
-            if stored.is_none_or(|stored| fetched_at > stored) {
-                row.insert("lastGood".to_owned(), usage.clone());
-                row.insert("fetchedAt".to_owned(), Value::from(fetched_at));
-                stored = Some(fetched_at);
+            if adopt_row(row, usage.clone(), now - age_s.max(0.), now) {
                 adopted.insert(num.to_owned());
-                let current = num_or_none(row.get("backoffUntil"));
-                if let Some(deadline) = rejection_deadline(Some(usage), now)
-                    && current.is_none_or(|current| deadline > current)
-                {
-                    row.insert("backoffUntil".to_owned(), Value::from(deadline));
-                }
             }
             let Some(hold_s) = hold_s else {
                 return;
             };
+            let stored = num_or_none(row.get("fetchedAt"));
             let mut held_until = (now + hold_s).min(stored.unwrap_or(now) + TRUST_MAX_AGE_S);
             // Every scoped window, not only the models this machine watches: the store doesn't
             // know them, and a hold lifted early costs one fetch at most.
@@ -339,6 +348,35 @@ impl UsageStore {
             }
         })?;
         Ok(adopted)
+    }
+
+    /// Koyo's own: adopts one reading of now for slot `num`, laid over its stored `lastGood`
+    /// (`rows::lay_over`) in one locked read-modify-write, so the window it didn't carry and
+    /// the reading it is laid over come from the row it replaces. As [`Self::adopt`] with an
+    /// age of 0 and no hold: it never replaces a reading at least as new, and leaves the fetch
+    /// state alone. The entry as adopted, `models` for its trust; `None` when nothing changed.
+    ///
+    /// # Errors
+    /// The lock's, or the write's.
+    pub fn adopt_over(
+        &self,
+        num: &str,
+        identity: &Identity,
+        reading: &Map<String, Value>,
+        models: &[&str],
+    ) -> Result<Option<UsageEntry>> {
+        let _lock = self.lock()?;
+        let now = self.env.now();
+        let mut rows = self.read_rows();
+        let mut row = take_row(&mut rows, num, identity);
+        let usage = lay_over(row.get("lastGood"), reading);
+        if !adopt_row(&mut row, usage, now, now) {
+            return Ok(None);
+        }
+        let entry = entry_of(&row, now, models);
+        rows.insert(num.to_owned(), Value::Object(row));
+        self.write_rows(&rows)?;
+        Ok(Some(entry))
     }
 
     /// Stores the scheduler's per-slot `(nextPollAt, pollIntervalS)`.

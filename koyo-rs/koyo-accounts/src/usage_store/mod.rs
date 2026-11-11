@@ -31,6 +31,7 @@ use std::collections::BTreeMap;
 
 use serde_json::Value;
 
+use crate::oauth::UsageOutcome;
 use crate::poll_policy::{EXHAUSTED_INTERVAL_S, JITTER_FRAC, RECENT_429_WINDOW_S, RESET_SLACK_S};
 
 pub use crate::poll_policy::SERVE_TTL_S;
@@ -114,6 +115,26 @@ impl FetchRecord {
     pub fn sentinel(sentinel: &str) -> FetchRecord {
         FetchRecord {
             sentinel: Some(sentinel.to_owned()),
+            ..FetchRecord::default()
+        }
+    }
+}
+
+/// A fetch's outcome as recorded: a success, or a failure with its `Retry-After` and the
+/// generation a strike binds to.
+impl From<UsageOutcome> for FetchRecord {
+    fn from(outcome: UsageOutcome) -> FetchRecord {
+        let UsageOutcome {
+            usage,
+            error,
+            retry_after_s,
+            struck_fp,
+        } = outcome;
+        FetchRecord {
+            usage,
+            error,
+            retry_after_s,
+            struck_fp,
             ..FetchRecord::default()
         }
     }
@@ -209,6 +230,30 @@ impl UsageEntry {
     /// Whether another collector's fetch lease is live.
     pub fn claimed(&self, now: f64) -> bool {
         live_claim(self.claim_until, self.last_attempt_at, now)
+    }
+
+    /// `_row_eligible` on the entry: whether the row it was read from may be fetched now, in
+    /// [`UsageStore::reserve`]'s modes. The same rule as the locked re-check, so a collector
+    /// can rule a row out on its lock-free read before taking the lock.
+    pub fn eligible(&self, now: f64, respect_plans: bool, repair_overslept: bool) -> bool {
+        if self.auth_dead_strikes >= AUTH_DEAD_STRIKES
+            || self.in_backoff(now)
+            || self.held(now)
+            || self.claimed(now)
+        {
+            return false;
+        }
+        let stale = !self.fresh(now);
+        let poll_due = self.next_poll_at.is_some_and(|at| now >= at);
+        let overslept =
+            repair_overslept && plan_oversleeps(self.next_poll_at, self.poll_interval_s, now);
+        if respect_plans {
+            return stale && (poll_due || self.next_poll_at.is_none() || overslept);
+        }
+        if repair_overslept {
+            return poll_due || (stale && (self.next_poll_at.is_none() || overslept));
+        }
+        poll_due || stale
     }
 
     /// Whether the stored credential's refresh-token lineage is provably dead: struck

@@ -277,7 +277,7 @@ fn a_claimed_fetch_still_records() {
 #[test]
 fn row_of_another_account_is_replaced() {
     let h = Harness::new();
-    h.record_as("2", ok(), &identity("2", "old@x.com", ""));
+    record_as(&h.store, "2", ok(), &identity("2", "old@x.com", ""));
     adopt(&h, vec![("2", usage(), 0.)], None);
     let raw = h.raw();
     let row = &raw["accounts"]["2"];

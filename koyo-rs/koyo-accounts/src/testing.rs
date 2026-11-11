@@ -13,6 +13,8 @@ use crate::Env;
 use crate::env::{Clock, Vars};
 use crate::http::{Http, HttpError, Request, Response};
 use crate::keychain::{KeychainError, NOT_FOUND_RC, Output, Security};
+#[cfg(test)]
+use crate::usage_store::{FetchRecord, Identities, UsageEntry, UsageStore};
 
 /// A folder of a test's own under the build's target folder, removed when it's dropped.
 pub struct Sandbox {
@@ -378,6 +380,31 @@ pub fn json_response(status: u16, body: &serde_json::Value) -> Response {
         headers: vec![("content-type".into(), "application/json".into())],
         body: body.to_string().into_bytes(),
     }
+}
+
+/// `store.record({num: record}, identities)`, unfenced: one usage row as this crate's tests of
+/// the store and of the switcher seed it.
+#[cfg(test)]
+pub(crate) fn record_as(
+    store: &UsageStore,
+    num: &str,
+    record: FetchRecord,
+    identities: &Identities,
+) -> std::collections::BTreeSet<String> {
+    store
+        .record(
+            &BTreeMap::from([(num.to_owned(), record)]),
+            identities,
+            None,
+            None,
+        )
+        .unwrap()
+}
+
+/// `store.entries(identities)[num]`, with no models.
+#[cfg(test)]
+pub(crate) fn entry_as(store: &UsageStore, num: &str, identities: &Identities) -> UsageEntry {
+    store.entries(identities, &[]).remove(num).unwrap()
 }
 
 #[cfg(test)]

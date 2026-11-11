@@ -19,8 +19,11 @@
 
 use serde_json::{Value, json};
 
-use crate::oauth::value::{number, truthy, truthy_at};
-use crate::oauth::{AccountIdentity, credential_fingerprint, extract_oauth_data, has_login_token};
+use crate::oauth::value::{number, truthy};
+use crate::oauth::{
+    AccountIdentity, credential_fingerprint, extract_oauth_data, has_full_token_pair,
+    has_login_token,
+};
 use crate::switcher::Switcher;
 use crate::switcher::store::{Data, record, text};
 use crate::switcher::switch::ForeignSlot;
@@ -92,7 +95,7 @@ impl Switcher {
         original_creds: &str,
     ) -> Result<bool> {
         let live = extract_oauth_data(original_creds).unwrap_or_default();
-        if !(truthy_at(live.get("accessToken")) && truthy_at(live.get("refreshToken"))) {
+        if !has_full_token_pair(&live) {
             return Ok(false);
         }
         if foreign.unreadable {

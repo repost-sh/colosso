@@ -379,7 +379,7 @@ fn struck(fp: Option<&str>) -> UsageEntry {
     h.store
         .record(&outcomes, &ident, Some(&claims), None)
         .unwrap();
-    h.entry_as("1", &ident)
+    entry_as(&h.store, "1", &ident)
 }
 
 #[test]
@@ -406,7 +406,7 @@ fn strike(h: &Harness, fp: Option<&str>) {
         struck_fp: fp.map(str::to_owned),
         ..err("invalid_grant")
     };
-    h.record_as("1", record, &identity("1", "a@b.c", ""));
+    record_as(&h.store, "1", record, &identity("1", "a@b.c", ""));
 }
 
 #[test]
@@ -416,7 +416,7 @@ fn legacy_strike_overwrites_stale_fingerprint() {
     strike(&h, Some("sha256:old"));
     h.store.clear_dead_token(&["1"], &ident).unwrap();
     strike(&h, None);
-    let entry = h.entry_as("1", &ident);
+    let entry = entry_as(&h.store, "1", &ident);
     assert_eq!(entry.struck_fingerprint, None);
     assert!(entry.token_dead(Some("sha256:new")));
 }
@@ -427,11 +427,13 @@ fn a_legacy_restrike_overwrites_a_live_stale_fingerprint() {
     let ident = identity("1", "a@b.c", "");
     strike(&h, Some("sha256:old"));
     assert_eq!(
-        h.entry_as("1", &ident).struck_fingerprint.as_deref(),
+        entry_as(&h.store, "1", &ident)
+            .struck_fingerprint
+            .as_deref(),
         Some("sha256:old")
     );
     strike(&h, None);
-    let entry = h.entry_as("1", &ident);
+    let entry = entry_as(&h.store, "1", &ident);
     assert_eq!(entry.struck_fingerprint, None);
     assert!(entry.token_dead(Some("sha256:new")));
 }
@@ -442,5 +444,5 @@ fn clear_dead_token_drops_fingerprint() {
     let ident = identity("1", "a@b.c", "");
     strike(&h, Some("sha256:old"));
     h.store.clear_dead_token(&["1"], &ident).unwrap();
-    assert_eq!(h.entry_as("1", &ident).struck_fingerprint, None);
+    assert_eq!(entry_as(&h.store, "1", &ident).struck_fingerprint, None);
 }

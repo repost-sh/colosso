@@ -11,7 +11,8 @@
 
 use serde_json::Value;
 
-use crate::locking::{DEFAULT_TIMEOUT, FileLock};
+use crate::locking::FileLock;
+use crate::oauth::credential_fingerprint;
 use crate::switcher::store::{Data, accounts, record, record_mut, text};
 use crate::switcher::{LineageKey, Switcher};
 use crate::{AccountsError, Result};
@@ -89,6 +90,13 @@ impl Switcher {
         })
     }
 
+    /// The slot of loaded `data` holding the live login `live`, cswap's `_find_account_slot`
+    /// of `_get_current_account()`: `None` without a login or for one no slot holds.
+    pub(crate) fn live_slot(data: &Data, live: Option<&SlotIdentity>) -> Option<String> {
+        let live = live?;
+        Switcher::find_account_slot(data, &live.email, &live.organization_uuid)
+    }
+
     /// `_find_account_slot`: the slot holding `(email, organization_uuid)`, in the roster's
     /// order.
     pub(crate) fn find_account_slot(
@@ -145,11 +153,11 @@ impl Switcher {
     /// # Errors
     /// As [`Switcher::get_sequence_data`].
     pub fn current_account_number(&self) -> Result<Option<String>> {
-        let Some((email, org_uuid)) = self.get_current_account() else {
+        let Some(live) = self.get_current_identity_triple() else {
             return Ok(None);
         };
         let data = self.sequence_data_or_empty()?;
-        Ok(Switcher::find_account_slot(&data, &email, &org_uuid))
+        Ok(Switcher::live_slot(&data, Some(&live)))
     }
 
     /// `has_live_login`: the global config carries a live identity.
@@ -174,7 +182,7 @@ impl Switcher {
         if uuid.is_empty() {
             return Ok(());
         }
-        let _lock = FileLock::hold(&self.env, &self.lock_file, DEFAULT_TIMEOUT)?;
+        let _lock = FileLock::hold(&self.env, &self.lock_file, self.lock_timeout)?;
         let mut data = self.sequence_data_or_empty()?;
         let Some(account) = record_mut(&mut data, account_num) else {
             return Ok(());
@@ -208,6 +216,39 @@ impl Switcher {
             identity: self.account_identity(account_num)?,
             fingerprint: fingerprint.to_owned(),
         })
+    }
+
+    /// The cached verdict on `creds`' lineage for slot `account_num` and caller `email`
+    /// ([`Switcher::lineage_key`], rebuilt at every consult, so a slot re-created for another
+    /// account misses its predecessor's).
+    ///
+    /// # Errors
+    /// As [`Switcher::account_identity`].
+    pub(crate) fn lineage_verdict(
+        &self,
+        account_num: &str,
+        email: &str,
+        creds: &str,
+    ) -> Result<Option<bool>> {
+        let fingerprint = credential_fingerprint(creds).unwrap_or_default();
+        Ok(self.probe_verdict(&self.lineage_key(account_num, email, &fingerprint)?))
+    }
+
+    /// Records a definitive verdict on `creds`' lineage, keyed as [`Switcher::lineage_verdict`]
+    /// reads it.
+    ///
+    /// # Errors
+    /// As [`Switcher::account_identity`].
+    pub(crate) fn record_lineage_verdict(
+        &self,
+        account_num: &str,
+        email: &str,
+        creds: &str,
+        verdict: bool,
+    ) -> Result<()> {
+        let fingerprint = credential_fingerprint(creds).unwrap_or_default();
+        self.set_probe_verdict(self.lineage_key(account_num, email, &fingerprint)?, verdict);
+        Ok(())
     }
 
     /// `_resolve_account_identifier`: a slot number as it is, an email to its one slot, `None`
@@ -271,6 +312,11 @@ impl Switcher {
         let email = text(Some(account), "email").to_owned();
         Ok((account_num, email))
     }
+}
+
+/// Two credentials of one lineage: the same bytes or the same refresh-token fingerprint.
+pub(crate) fn same_lineage(left: &str, right: &str) -> bool {
+    left == right || credential_fingerprint(left) == credential_fingerprint(right)
 }
 
 /// Python's `str.isdigit()` for an identifier: non-empty, digits only.

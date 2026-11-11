@@ -377,11 +377,12 @@ impl Switcher {
     }
 
     /// `_account_is_switchable`: the slot of loaded `data` has a stored credential and a config
-    /// backup. An eligibility read, served from the display cache; every activation re-reads
-    /// fresh.
+    /// backup. An eligibility read, the credential served from the display cache; every
+    /// activation re-reads both fresh. cswap reads the config backup's text to ask whether it
+    /// is empty; its length says the same without reading the file on every pass.
     ///
     /// # Errors
-    /// As [`Switcher::read_account_config`].
+    /// [`AccountsError::Io`] for a config backup whose length can't be read.
     pub(crate) fn account_is_switchable(&self, data: &Data, account_num: &str) -> Result<bool> {
         let Some(record) = record(data, account_num).filter(|record| !record.is_empty()) else {
             return Ok(false);
@@ -394,7 +395,15 @@ impl Switcher {
         {
             return Ok(false);
         }
-        Ok(!self.read_account_config(account_num, email)?.is_empty())
+        let path = self.config_backup_path(account_num, email);
+        match std::fs::metadata(&path) {
+            Ok(meta) => Ok(meta.is_file() && meta.len() > 0),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(AccountsError::io(
+                format!("reading {}", path.display()),
+                error,
+            )),
+        }
     }
 }
 

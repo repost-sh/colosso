@@ -16,6 +16,7 @@ use crate::Result;
 use crate::oauth::value::truthy_at;
 use crate::oauth::{AccountIdentity, credential_fingerprint, extract_oauth_data, has_login_token};
 use crate::switcher::Switcher;
+use crate::switcher::identity::same_lineage;
 use crate::switcher::store::{Data, accounts, record, text};
 use crate::switcher::switch::Outgoing;
 
@@ -90,18 +91,13 @@ impl OutgoingKind {
     }
 }
 
-/// Two credentials of one lineage: the same bytes or the same refresh-token fingerprint.
-pub(crate) fn same_lineage(left: &str, right: &str) -> bool {
-    left == right || credential_fingerprint(left) == credential_fingerprint(right)
-}
-
 impl Switcher {
     /// `_classify_outgoing_credential` (`_attribute_live_credential`): the verdict for
     /// `original_creds`, read live while `outgoing` is active, with its pre-lock provenance and
     /// the roster `data` read under the lock.
     ///
     /// # Errors
-    /// As [`Switcher::lineage_key`].
+    /// As [`Switcher::lineage_verdict`].
     pub(crate) fn classify_outgoing_credential(
         &self,
         outgoing: &Outgoing<'_>,
@@ -138,12 +134,9 @@ impl Switcher {
         let resolved = match &provenance.resolved {
             Some(resolved) if provenance.live.as_deref() == Some(original_creds) => resolved,
             _ => {
-                let key = self.lineage_key(
-                    outgoing.account,
-                    outgoing.email,
-                    &credential_fingerprint(original_creds).unwrap_or_default(),
-                )?;
-                if self.probe_verdict(&key) == Some(false) {
+                let verdict =
+                    self.lineage_verdict(outgoing.account, outgoing.email, original_creds)?;
+                if verdict == Some(false) {
                     return Ok(OutgoingKind::KnownForeign);
                 }
                 return Ok(OutgoingKind::Unresolved);
