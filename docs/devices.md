@@ -318,9 +318,20 @@ answer), `Request { request, ask }`, `Cancel`, `Quit`. Host to app: `Hello { pro
   that isn't lent to it, reads included, puts a sheet in Koyo's window ("Let “{agent}” use your
   {iPad} “{name}”?", `Allow` / `Don't Allow`) and returns at once with `device_needs_person`. After
   `Allow` the device is that agent's until the person takes it back. `Don't Allow` answers
-  `user_declined` and raises no new sheet for that agent and device for ten minutes. Until that
-  sheet is built, every tool naming a real device, `device_open` included, is refused with
-  `unsupported` ("the person's own device").
+  `user_declined` and raises no new sheet for that agent and device for ten minutes (the control
+  socket's memory of a refusal). One sheet a device at a time; it stays until answered (a sheet
+  can't be taken down), and a call meanwhile is told so, another agent's that the person is
+  being asked for someone else. What a real device refuses anyway (its app tools, turning,
+  locking) is refused before the person is asked. The decision goes to the activity log
+  (`device_lend`). The lend is kept in the app by device and agent, an agent being its caller's
+  key and the name it goes by together (`devices/lend.rs`), so a host started again keeps it; it
+  ends when the device is stopped (its tab closed, `device_close`, Koyo quitting) or leaves the
+  list of what's plugged in, and at the tab's `Take It Back`, which also calls off what the
+  agent had under way and keeps it from asking again for a while. The tab shows "{name} is
+  yours, lent to {agent} until you take it back." with `Take It Back`; the person can lend it
+  ahead from the toolbar ("Let Agents Use This iPad"), to every agent. Lent, `device_open` opens
+  and starts it as a simulator (no limit). The app tools (`device_apps`, `device_launch`, …) are
+  refused on it, pointing at `devicectl`; the gate is `control/exec/device/lend.rs`.
 - Nothing unverified is shipped as working: a tool path that couldn't be shown to work on the real
   thing refuses with what to use instead.
 
@@ -407,7 +418,7 @@ took it out of the set in 0.3 s.
 | M3 | Agents on a simulator | done: QT1-QT8 and QL1-QL3 through the real MCP client |
 | M4 | The simulator half reviewed and hardened | done: the review's findings fixed, the rows re-run |
 | M5 | Setup and Settings | the setup for simulators, the picker's and the tab's missing states, Settings → Devices and the limit: off screen; the walk through the release bundle in a window waits on the owner |
-| M6 | The real device | the host on the iPad (QR1-QR3, QR5, QR8, QR13); in the app: listed, its states, its setup, Settings' list, agents kept off it (off screen, and the iPad opened and closed through the app). The lend, and the rows that need the owner's hands, to come |
+| M6 | The real device | the host on the iPad (QR1-QR3, QR5, QR8, QR13); in the app: listed, its states, its setup, Settings' list, the lend by the person's sheet (off screen and through the pipeline's tests, and the iPad opened and closed through the app). The rows that need the owner's hands to come |
 | M7 | Finish | |
 
 ## 12. Measurements
