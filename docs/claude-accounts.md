@@ -121,8 +121,9 @@ cswap's engine with its `weekly-first` strategy:
   Under the rows: Add current login, and auto-switch's state.
 - **Settings → Accounts:** a new page (`settings_view/accounts.rs`): Manage Claude accounts, the
   account list with remove and disable, Auto-switch and its threshold.
-- **App control:** `claude_accounts_list` (read) through `koyo-app-control`, for agents. Switching
-  stays with the person.
+- **App control:** `claude_accounts_list` (read) through `koyo-app-control`, for agents. No agent
+  tool changes the accounts: switching, adding, removing, holding one out, auto-switch and
+  Manage Claude accounts stay with the person.
 
 ## 7. Proof
 
