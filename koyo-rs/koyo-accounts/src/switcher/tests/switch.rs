@@ -209,10 +209,8 @@ fn direct_activation_rollback_failure_leaves_config_intact() {
     let (h, _, _) = direct_activation_failing(|_| {
         crate::fsutil::FAULT.set(Some((crate::fsutil::Step::Rename, libc::ENOSPC)));
     });
-    let written: Value =
-        serde_json::from_str(&std::fs::read_to_string(h.config_path()).unwrap()).unwrap();
     assert_eq!(
-        written["oauthAccount"]["emailAddress"],
+        h.config()["oauthAccount"]["emailAddress"],
         "target@example.com"
     );
     assert!(!tmp_files_in(&h.home()));

@@ -42,7 +42,7 @@ pub use reset::{
     Iso, ResetError, format_countdown, format_reset, fresh_reset_strings, parse_iso,
     reset_clock_string,
 };
-pub(crate) use reset::{iso_timestamp, iso_utc, utc_at};
+pub(crate) use reset::{iso_timestamp, iso_utc, iso_z, utc_at};
 pub use sentinels::*;
 pub use usage::{
     BAD_RESPONSE_ERROR, FetchError, InvalidUsageResponse, NETWORK_ERROR, NO_ACCESS_TOKEN_ERROR,
@@ -51,6 +51,7 @@ pub use usage::{
     classify_usage_error, fetch_usage, log_usage_failure, parse_retry_after, reported_window,
     request_usage_data, try_fetch_usage_for_account, usage_failure_line, window_entry,
 };
+pub(crate) use windows::headroom_of;
 pub use windows::{FIVE_HOUR_LABEL, REJECTED_LABEL, Window, account_headroom, relevant_windows};
 
 use value::{py_number, truthy_at};
@@ -196,12 +197,20 @@ pub fn login_expiry_clock(expires_at: f64, now: f64) -> String {
 }
 
 /// Whether an OAuth token is expired or about to expire (within [`OAUTH_EXPIRY_BUFFER_MS`]).
-/// A missing or non-numeric `expiresAt` is not expired.
+/// A missing or non-numeric `expiresAt` is not expired. Both sides are whole milliseconds, as
+/// cswap's `int()`s make them.
 pub fn is_oauth_token_expired(expires_at: Option<&Value>, now: f64) -> bool {
-    let Some(expires_at) = expires_at.and_then(py_number) else {
-        return false;
-    };
-    (now * 1000.).trunc() + OAUTH_EXPIRY_BUFFER_MS >= expires_at.trunc()
+    expires_within(
+        expires_at.and_then(py_number).map(f64::trunc),
+        (now * 1000.).trunc(),
+        OAUTH_EXPIRY_BUFFER_MS,
+    )
+}
+
+/// Whether a token expiring at `expires_at` (epoch ms) is expired or expires within
+/// `buffer_ms` of `now_ms`; an unknown expiry isn't.
+pub(crate) fn expires_within(expires_at: Option<f64>, now_ms: f64, buffer_ms: f64) -> bool {
+    expires_at.is_some_and(|expires_at| now_ms + buffer_ms >= expires_at)
 }
 
 /// Whether an OAuth payload is an inference-only setup token: no refresh token and only the

@@ -101,7 +101,12 @@ pub fn relevant_windows(usage: Option<&Value>, models: &[&str]) -> Vec<Window> {
 /// model's work even with 5h/7d headroom, so for someone pinned to it it binds as hard.
 /// `None` when there is no reading or no window: unknown, never skipped for it.
 pub fn account_headroom(usage: Option<&Value>, models: &[&str]) -> Option<f64> {
-    relevant_windows(usage, models)
+    headroom_of(&relevant_windows(usage, models))
+}
+
+/// [`account_headroom`] over windows already read: `100 - max(pct)`, `None` without a window.
+pub(crate) fn headroom_of(windows: &[Window]) -> Option<f64> {
+    windows
         .iter()
         .map(|window| window.pct)
         .reduce(f64::max)

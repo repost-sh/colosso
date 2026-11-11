@@ -85,6 +85,13 @@ pub const POST_429_MAX_INTERVAL_S: f64 = 1800.;
 /// line; urgent mode keys on the same band.
 pub const ESCALATION_MARGIN_PCT: f64 = 15.;
 
+/// Whether a window is within [`ESCALATION_MARGIN_PCT`] of its own line: a switch could be near,
+/// so the engine refreshes every candidate, and a window rising into the band puts the active
+/// account's poll in urgent mode.
+pub fn near_line(window: &oauth::Window, threshold: f64, weekly_threshold: Option<f64>) -> bool {
+    window.pct >= window_line(&window.label, threshold, weekly_threshold) - ESCALATION_MARGIN_PCT
+}
+
 /// Never schedule a poll later than a known window reset (plus this): the reading is obsolete
 /// the moment the window rolls over.
 pub const RESET_SLACK_S: f64 = 60.;
@@ -183,9 +190,7 @@ pub fn plan_after_fetch(input: &PlanInput<'_>) -> (f64, f64) {
                 .rfind(|prev| prev.label == window.label)
                 .is_some_and(|prev| {
                     window.pct - prev.pct >= MOVEMENT_DELTA_PCT
-                        && window.pct
-                            >= window_line(&window.label, input.threshold, input.weekly_threshold)
-                                - ESCALATION_MARGIN_PCT
+                        && near_line(window, input.threshold, input.weekly_threshold)
                 })
         });
     if input.is_active && rising_in_band && !input.recent_429 {

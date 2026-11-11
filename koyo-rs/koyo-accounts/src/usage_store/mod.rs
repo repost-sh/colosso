@@ -320,12 +320,12 @@ pub fn plan_oversleeps_interval(entry: &UsageEntry, now: f64) -> bool {
 /// measurement, so a fetch-path sentinel, which records no measurement, rotates to the back
 /// instead of taking every tick; a row never touched keys 0.
 pub fn due_candidate(
-    candidates: &[&str],
+    candidates: &[impl AsRef<str>],
     entries: &BTreeMap<String, UsageEntry>,
     now: f64,
 ) -> Option<String> {
     let mut due: Vec<(f64, &str)> = Vec::new();
-    for &num in candidates {
+    for num in candidates.iter().map(AsRef::as_ref) {
         let Some(entry) = entries.get(num) else {
             due.push((0., num));
             continue;

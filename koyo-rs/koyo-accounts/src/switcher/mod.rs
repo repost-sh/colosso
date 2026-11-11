@@ -63,6 +63,7 @@ use crate::{Env, paths};
 
 mod add;
 mod capture;
+mod engine_host;
 mod grant;
 mod identity;
 mod info;
@@ -86,6 +87,7 @@ pub use remove::RemovedAccount;
 pub use roster::{Roster, RosterSlot};
 pub use snapshot::{AccountSnapshot, AccountsSnapshot, Plan};
 pub use switch::{AccountRef, SwitchReason, SwitchResult};
+pub(crate) use usage::DEFAULT_THRESHOLD;
 pub use usage::Fetch;
 
 /// A `_probe_verdicts` key (`Switcher::lineage_key`): the slot, the caller's email, the slot's

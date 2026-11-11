@@ -191,7 +191,8 @@ fn adopted_reading_counts_as_a_touch() {
 
 #[test]
 fn none_when_no_candidates() {
-    assert_eq!(due_candidate(&[], &BTreeMap::new(), NOW), None);
+    let none: [&str; 0] = [];
+    assert_eq!(due_candidate(&none, &BTreeMap::new(), NOW), None);
 }
 
 // TestDeadTokenQuarantine

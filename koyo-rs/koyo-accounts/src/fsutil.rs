@@ -15,6 +15,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
+use serde::Serialize;
+
 use crate::{AccountsError, Env, Result, guard};
 
 /// What of the target's name the temp's carries: `NAME_MAX` is 255 bytes and the temp adds its
@@ -205,7 +207,7 @@ fn random_suffix() -> String {
 ///
 /// # Errors
 /// As [`atomic_write`], or the folder that couldn't be made.
-pub fn atomic_write_json(env: &Env, path: &Path, data: &serde_json::Value) -> Result<()> {
+pub fn atomic_write_json(env: &Env, path: &Path, data: &(impl Serialize + ?Sized)) -> Result<()> {
     if let Some(parent) = path.parent() {
         create_dir_all(env, parent)?;
         set_mode(env, parent, 0o700)
