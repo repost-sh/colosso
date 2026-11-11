@@ -19,6 +19,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 
+use crate::oauth::value::{py_str, str_at};
 use crate::switcher::Switcher;
 use crate::{AccountsError, Env, Result, fsutil};
 
@@ -54,8 +55,7 @@ pub(crate) fn record_mut<'a>(
 /// A string field of a record, `""` when missing or not a string, as `record.get(key, "") or ""`.
 pub(crate) fn text<'a>(record: Option<&'a Map<String, Value>>, key: &str) -> &'a str {
     record
-        .and_then(|record| record.get(key))
-        .and_then(Value::as_str)
+        .and_then(|record| str_at(record, key))
         .unwrap_or_default()
 }
 
@@ -63,14 +63,7 @@ pub(crate) fn text<'a>(record: Option<&'a Map<String, Value>>, key: &str) -> &'a
 pub(crate) fn sequence(data: &Data) -> Vec<String> {
     data.get("sequence")
         .and_then(Value::as_array)
-        .map(|nums| {
-            nums.iter()
-                .map(|num| match num {
-                    Value::String(num) => num.clone(),
-                    other => other.to_string(),
-                })
-                .collect()
-        })
+        .map(|nums| nums.iter().map(py_str).collect())
         .unwrap_or_default()
 }
 

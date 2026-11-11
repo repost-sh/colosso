@@ -27,7 +27,7 @@
 //! store lists the stash itself).
 
 use crate::locking::FileLock;
-use crate::oauth::RefreshOutcome;
+use crate::oauth::{CONSUME_BUSY_ERROR, RefreshOutcome, STORE_UNMIRRORED_ERROR, TRANSIENT_ERROR};
 use crate::switcher::Switcher;
 
 mod locked;
@@ -62,7 +62,7 @@ impl Switcher {
                  credential but not when consuming one, so refusing to consume account \
                  {account_num}'s refresh token (unset the variable or run from a normal shell)."
             );
-            return RefreshOutcome::failed("store-unmirrored");
+            return RefreshOutcome::failed(STORE_UNMIRRORED_ERROR);
         }
         // One in-flight consume per slot, held across re-read, POST and CAS: the slot lock
         // can't cover the POST (network never runs under a lock others contend on), which
@@ -80,11 +80,11 @@ impl Switcher {
                     "Another consume is in flight for account {account_num}; deferring to the \
                      next pass."
                 );
-                return RefreshOutcome::failed("consume-busy");
+                return RefreshOutcome::failed(CONSUME_BUSY_ERROR);
             }
             Err(error) => {
                 log::warn!("Could not take account {account_num}'s consume lock: {error}");
-                return RefreshOutcome::failed("transient");
+                return RefreshOutcome::failed(TRANSIENT_ERROR);
             }
         };
         self.consume_backup_grant_locked(account_num, email, snapshot)

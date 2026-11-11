@@ -1,13 +1,12 @@
 //! The usage sentinels of claude-swap's `json_output.py` (0fe22a8): the strings a collector
 //! yields in place of a usage reading, kept in one place so every view and the store agree.
-//! Sentinels are derived fresh on every pass and never written to the usage store.
+//! Sentinels are derived fresh on every pass and never written to the usage store. `api key`
+//! is left out: API-key accounts aren't ported.
 
 /// The slot holds no credential.
 pub const USAGE_NO_CREDENTIALS: &str = "no credentials";
 /// The access token is past its expiry; Claude Code (or the refresh gate) may renew it.
 pub const USAGE_TOKEN_EXPIRED: &str = "token expired";
-/// An API-key account: no subscription quota, nothing to fetch.
-pub const USAGE_API_KEY: &str = "api key";
 /// The active account's Keychain was unreadable (locked, denied, timed out): distinct from an
 /// empty slot, so nobody is sent to log in again for nothing.
 pub const USAGE_KEYCHAIN_UNAVAILABLE: &str = "keychain unavailable";

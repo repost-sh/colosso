@@ -15,6 +15,7 @@ use std::collections::BTreeMap;
 use serde_json::Value;
 
 use crate::lines::{BindingWindow, binding_window};
+use crate::oauth::value::str_at;
 use crate::oauth::{Window, headroom_of, relevant_windows};
 use crate::poll_policy::{limiting_reset_ts, parse_reset_ts};
 use crate::usage_store::{Decision, UsageEntry};
@@ -110,7 +111,7 @@ pub(crate) fn readings(entries: &BTreeMap<String, UsageEntry>, threshold: f64) -
 /// `RESET_SLACK_S` is poll-scheduling lag, not ranking input.
 pub(crate) fn seven_day_reset_ts(usage: Option<&Value>, now: f64) -> Option<f64> {
     let window = usage?.get("seven_day")?.as_object()?;
-    parse_reset_ts(window.get("resets_at").and_then(Value::as_str)).filter(|ts| *ts > now)
+    parse_reset_ts(str_at(window, "resets_at")).filter(|ts| *ts > now)
 }
 
 /// The earliest moment any account is usable again, `None` when that can't be proven.

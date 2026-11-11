@@ -361,7 +361,7 @@ fn unknown_row_and_identity_mismatch_win() {
     let h = Harness::new();
     assert_eq!(won(&h.reserve(&["1"], true)), ["1"]);
     h.record("2", ok());
-    let other = identity("2", "new@x.com", "org-9");
+    let other = one_identity("2", "new@x.com", "org-9");
     let claims = h.store.reserve(&["2"], &other, true, false).unwrap();
     assert_eq!(won(&claims), ["2"]);
 }
@@ -370,7 +370,7 @@ fn unknown_row_and_identity_mismatch_win() {
 
 fn struck(fp: Option<&str>) -> UsageEntry {
     let h = Harness::new();
-    let ident = identity("1", "a@example.com", "");
+    let ident = one_identity("1", "a@example.com", "");
     let claims = h.store.reserve(&["1"], &ident, false, false).unwrap();
     let record = FetchRecord {
         struck_fp: fp.map(str::to_owned),
@@ -407,13 +407,13 @@ fn strike(h: &Harness, fp: Option<&str>) {
         struck_fp: fp.map(str::to_owned),
         ..err("invalid_grant")
     };
-    record_as(&h.store, "1", record, &identity("1", "a@b.c", ""));
+    record_as(&h.store, "1", record, &one_identity("1", "a@b.c", ""));
 }
 
 #[test]
 fn legacy_strike_overwrites_stale_fingerprint() {
     let h = Harness::new();
-    let ident = identity("1", "a@b.c", "");
+    let ident = one_identity("1", "a@b.c", "");
     strike(&h, Some("sha256:old"));
     h.store.clear_dead_token(&["1"], &ident).unwrap();
     strike(&h, None);
@@ -425,7 +425,7 @@ fn legacy_strike_overwrites_stale_fingerprint() {
 #[test]
 fn a_legacy_restrike_overwrites_a_live_stale_fingerprint() {
     let h = Harness::new();
-    let ident = identity("1", "a@b.c", "");
+    let ident = one_identity("1", "a@b.c", "");
     strike(&h, Some("sha256:old"));
     assert_eq!(
         entry_as(&h.store, "1", &ident)
@@ -442,7 +442,7 @@ fn a_legacy_restrike_overwrites_a_live_stale_fingerprint() {
 #[test]
 fn clear_dead_token_drops_fingerprint() {
     let h = Harness::new();
-    let ident = identity("1", "a@b.c", "");
+    let ident = one_identity("1", "a@b.c", "");
     strike(&h, Some("sha256:old"));
     h.store.clear_dead_token(&["1"], &ident).unwrap();
     assert_eq!(entry_as(&h.store, "1", &ident).struck_fingerprint, None);

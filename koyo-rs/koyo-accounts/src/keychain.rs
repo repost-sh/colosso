@@ -15,12 +15,15 @@
 //! Koyo puts no token in a process's arguments (`docs/claude-accounts.md` 3).
 //!
 //! `security` itself is behind [`Security`], so tests run on a fake (`testing::FakeSecurity`).
+//! Left out: `item_exists`, which nothing calls.
 
 use std::io::{Read as _, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::time::Duration;
+
+use crate::oauth::hex;
 
 /// `security -i` reads stdin with a 4096-byte `fgets` buffer; a longer line is cut mid-argument
 /// and fails to write (Claude Code #30337). 64 bytes of headroom for line-ending accounting.
@@ -203,19 +206,6 @@ pub fn get_password(
     }
 }
 
-/// Whether the item exists, by its attributes alone: nothing is decrypted, so this can't
-/// prompt. A failure of any kind is `false`: it's for checking a cleanup, never for deciding
-/// access, so a timeout here means "couldn't tell", not "the Keychain works".
-pub fn item_exists(security: &dyn Security, service: &str, account: &str) -> bool {
-    let args = with_keychain(
-        security,
-        vec!["find-generic-password", "-a", account, "-s", service],
-    );
-    security
-        .run(&args, None)
-        .is_ok_and(|output| output.status == 0)
-}
-
 /// Creates or updates the item (`-U`), through `security -i` so the secret stays out of the
 /// arguments.
 ///
@@ -227,14 +217,7 @@ pub fn set_password(
     account: &str,
     password: &str,
 ) -> Result<(), KeychainError> {
-    use std::fmt::Write as _;
-    let hex = password.bytes().fold(
-        String::with_capacity(password.len() * 2),
-        |mut hex, byte| {
-            write!(hex, "{byte:02x}").ok();
-            hex
-        },
-    );
+    let hex = hex(password.as_bytes());
     let keychain = security
         .keychain()
         .and_then(Path::to_str)

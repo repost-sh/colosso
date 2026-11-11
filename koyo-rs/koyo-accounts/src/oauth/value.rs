@@ -65,6 +65,14 @@ pub(crate) fn py_float(value: &Value) -> Option<f64> {
     }
 }
 
+/// `str(v)` as cswap formats a value into text (`Bearer {token}`, a slot number): a string as
+/// itself, another value as its JSON text.
+pub(crate) fn py_str(value: &Value) -> String {
+    value
+        .as_str()
+        .map_or_else(|| value.to_string(), str::to_owned)
+}
+
 /// The string at `key`, when it is one.
 pub(crate) fn str_at<'a>(map: &'a serde_json::Map<String, Value>, key: &str) -> Option<&'a str> {
     map.get(key).and_then(Value::as_str)

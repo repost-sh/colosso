@@ -11,21 +11,22 @@
 //! (`testing::Sandbox`), whose writes the guard holds inside its folder and off the real login.
 
 pub mod autoswitch;
-pub mod claude_locks;
-pub mod credentials;
+pub(crate) mod claude_locks;
+pub(crate) mod credentials;
 pub mod env;
 pub mod error;
-pub mod fsutil;
-pub mod guard;
+pub(crate) mod fsutil;
+pub(crate) mod guard;
 pub mod http;
 pub mod keychain;
 pub mod lines;
-pub mod locking;
+pub(crate) mod locking;
 pub mod oauth;
 pub mod pace;
 pub mod paths;
 pub mod poll_policy;
-pub mod subscription;
+mod random;
+pub(crate) mod subscription;
 pub mod switcher;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
@@ -33,3 +34,11 @@ pub mod usage_store;
 
 pub use env::{Clock, Env, Vars};
 pub use error::{AccountsError, Result};
+
+/// A mutex's guard, a poisoned one's too: a thread that panicked holding it doesn't fail every
+/// caller after it.
+pub(crate) fn locked<T>(mutex: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}

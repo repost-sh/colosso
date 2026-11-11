@@ -17,7 +17,7 @@ impl DaysOut {
     pub fn at(&mut self, h: &Harness, hours: f64) -> String {
         self.0
             .entry(hours.to_bits())
-            .or_insert_with(|| iso_at(h.now() + hours * 3600.))
+            .or_insert_with(|| iso(h.now() + hours * 3600.))
             .clone()
     }
 }

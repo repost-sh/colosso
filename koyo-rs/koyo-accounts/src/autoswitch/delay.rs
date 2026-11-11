@@ -8,7 +8,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::poll_policy::{JITTER_FRAC, URGENT_INTERVAL_S};
+use crate::poll_policy::{URGENT_INTERVAL_S, jittered};
 
 use super::{ActivePlan, AutoSwitchEngine, MAX_SLEEP_S, NO_RESET_FALLBACK_S, Wait};
 
@@ -28,9 +28,7 @@ impl AutoSwitchEngine {
             // Blocked on what can resolve any tick (hysteresis, unreadable usage), or not
             // blocked: the normal cadence, so the at-limit escape isn't missed, with ±10%
             // jitter, so several machines don't synchronize their requests.
-            Wait::Interval => {
-                self.respect_poll_plan(interval * (1. + JITTER_FRAC * (2. * (self.rng)() - 1.)))
-            }
+            Wait::Interval => self.respect_poll_plan(jittered(interval, (self.rng)())),
         }
     }
 

@@ -33,7 +33,7 @@ use crate::switcher::info::AccountInfo;
 /// cswap's `_oauth_creds`: a token expiring `expires_in_s` from now.
 fn expiring_in(h: &Harness, token: &str, expires_in_s: f64) -> String {
     let expires_ms = ((h.sandbox.clock.now() + expires_in_s) * 1000.).trunc();
-    creds(token, &format!("rt-{token}"), json!(expires_ms))
+    creds(token, &format!("rt-{token}"), Some(json!(expires_ms)))
 }
 
 /// cswap's `_info`: idle slot 2.

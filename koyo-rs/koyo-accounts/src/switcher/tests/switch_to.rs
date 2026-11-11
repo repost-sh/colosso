@@ -13,11 +13,11 @@ use std::time::Duration;
 use serde_json::json;
 
 use super::switch::two_accounts;
-use super::{Harness, make_live, oauth_creds, profile, sample_sequence_data, seed, seed_with};
+use super::{Harness, make_live, profile, sample_sequence_data, seed, seed_with};
 use crate::claude_locks::{config_lock_dir, credentials_lock_dir, oauth_refresh_lock_dir};
 use crate::keychain::{KeychainError, Output, Security};
 use crate::switcher::AccountRef;
-use crate::testing::{Answer, FakeSecurity};
+use crate::testing::{Answer, FakeSecurity, creds};
 use crate::usage_store::{FetchRecord, Identities, one_identity};
 use crate::{AccountsError, Clock as _, poll_policy};
 
@@ -25,10 +25,10 @@ use crate::{AccountsError, Clock as _, poll_policy};
 fn switch_to_current_slot_is_noop_preserving_backup() {
     // A self-switch neither poisons a freshly imported backup nor rewrites the live login.
     let h = two_accounts(&mut sample_sequence_data());
-    let imported = oauth_creds("sk-imported-1", "rt-imported-1");
-    let live = oauth_creds("sk-live-1", "rt-live-1");
+    let imported = creds("sk-imported-1", "rt-imported-1", None);
+    let live = creds("sk-live-1", "rt-live-1", None);
     h.set_backup("1", "test@example.com", &imported);
-    h.set_backup("2", "account2@example.com", &oauth_creds("sk-2", "rt-2"));
+    h.set_backup("2", "account2@example.com", &creds("sk-2", "rt-2", None));
     h.set_live(&live);
     let result = h.switcher.switch_to("1").unwrap();
     assert!(!result.switched);
@@ -41,7 +41,7 @@ fn switch_to_current_slot_is_noop_preserving_backup() {
 #[test]
 fn matching_self_switch_is_noop() {
     let h = two_accounts(&mut sample_sequence_data());
-    let backup = oauth_creds("sk-1", "rt-1");
+    let backup = creds("sk-1", "rt-1", None);
     h.set_backup("1", "test@example.com", &backup);
     h.set_live(&backup);
     let result = h.switcher.switch_to("1").unwrap();
@@ -55,8 +55,8 @@ fn matching_self_switch_is_noop() {
 fn diverged_unresolvable_self_switch_noops_silently() {
     // Endpoint trouble is invisible on the self-switch path, and nothing moves.
     let h = two_accounts(&mut sample_sequence_data());
-    let backup = oauth_creds("sk-1", "rt-1");
-    let diverged = oauth_creds("sk-1-new", "rt-1-rotated");
+    let backup = creds("sk-1", "rt-1", None);
+    let diverged = creds("sk-1-new", "rt-1-rotated", None);
     h.set_backup("1", "test@example.com", &backup);
     h.set_live(&diverged);
     let result = h.switcher.switch_to("1").unwrap();
@@ -71,8 +71,8 @@ fn diverged_unresolvable_self_switch_noops_silently() {
 fn diverged_resolved_self_switch_reconciles() {
     // A rotation proven to be the slot's own is re-synced into its backup.
     let h = two_accounts(&mut sample_sequence_data());
-    let rotated = oauth_creds("sk-1-new", "rt-1-rotated");
-    h.set_backup("1", "test@example.com", &oauth_creds("sk-1", "rt-1"));
+    let rotated = creds("sk-1-new", "rt-1-rotated", None);
+    h.set_backup("1", "test@example.com", &creds("sk-1", "rt-1", None));
     h.set_config_backup(
         "1",
         "test@example.com",

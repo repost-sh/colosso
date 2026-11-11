@@ -16,7 +16,9 @@
 //! a chat reply's limits is in `headers.rs`), API-key paths, and the refresh inside a usage fetch
 //! (`refresh_via`, `persist_credentials`, `_persist`, `fetch_usage_for_account`): Koyo never
 //! refreshes a token to read usage (`docs/claude-accounts.md` 4), see
-//! [`try_fetch_usage_for_account`].
+//! [`try_fetch_usage_for_account`]. Also left out, as nothing reads them: `build_token_status`
+//! and the stored login's expiry (`login_expires_at_iso`, `login_expires_at_epoch`,
+//! `login_time_left`, `format_login_expiry`); [`login_expiry_clock`] draws a stamp the app has.
 
 mod headers;
 mod refresh;
@@ -34,9 +36,10 @@ use sha2::{Digest as _, Sha256};
 
 pub use headers::{LiveLimits, LiveWindow, SEVEN_DAY_OI_MODEL};
 pub use refresh::{
-    AccountIdentity, DETERMINISTIC_REFRESH_ERRORS, PROFILE_401_WARNING, REFRESH_TIMEOUT,
-    RefreshOutcome, fetch_oauth_profile, parse_token_account, refresh_oauth_credentials,
-    try_refresh_oauth_credentials,
+    AccountIdentity, CONSUME_BUSY_ERROR, DETERMINISTIC_REFRESH_ERRORS, INVALID_CLIENT_ERROR,
+    INVALID_GRANT_ERROR, NO_REFRESH_TOKEN_ERROR, PROFILE_401_WARNING, REFRESH_TIMEOUT,
+    RefreshOutcome, STASH_UNREADABLE_ERROR, STORE_UNMIRRORED_ERROR, TRANSIENT_ERROR,
+    fetch_oauth_profile, parse_token_account, try_refresh_oauth_credentials,
 };
 pub use reset::{
     Iso, ResetError, format_countdown, format_reset, fresh_reset_strings, parse_iso,
@@ -48,7 +51,7 @@ pub use usage::{
     BAD_RESPONSE_ERROR, FetchError, InvalidUsageResponse, NETWORK_ERROR, NO_ACCESS_TOKEN_ERROR,
     ORG_POLICY_ERROR, RATE_LIMITED_ERROR, RETRY_AFTER_BOUND_S, TIMEOUT_ERROR, TLS_CERT_ERROR,
     TOKEN_EXPIRED_ERROR, UNAUTHORIZED_ERROR, UsageOutcome, build_usage_result,
-    classify_usage_error, fetch_usage, log_usage_failure, parse_retry_after, reported_window,
+    classify_usage_error, log_usage_failure, parse_retry_after, reported_window,
     request_usage_data, try_fetch_usage_for_account, usage_failure_line, window_entry,
 };
 pub(crate) use windows::headroom_of;
@@ -68,10 +71,6 @@ pub const USER_AGENT: &str = "koyo-accounts/1.0";
 
 /// What `claude setup-token` grants: inference, and not the usage endpoint.
 pub const SETUP_TOKEN_SCOPES: [&str; 1] = ["user:inference"];
-
-/// How far ahead a stored login's expiry is worth showing. Claude Code's own notice fires in
-/// the last three days; a week leaves time to plan several re-logins without nagging for a month.
-pub const LOGIN_DUE_WITHIN_S: f64 = 7. * 86_400.;
 
 /// The OAuth access token of a credentials JSON string.
 pub fn extract_access_token(credentials: &str) -> Option<String> {
@@ -93,14 +92,20 @@ pub fn extract_oauth_data(credentials: &str) -> Option<Map<String, Value>> {
     }
 }
 
-fn sha256_hex(text: &str) -> String {
+/// `bytes` as lower-case hex, two digits each.
+pub(crate) fn hex(bytes: &[u8]) -> String {
     use std::fmt::Write as _;
-    Sha256::digest(text.as_bytes())
+    bytes
         .iter()
-        .fold(String::with_capacity(64), |mut hex, byte| {
+        .fold(String::with_capacity(bytes.len() * 2), |mut hex, byte| {
             write!(hex, "{byte:02x}").ok();
             hex
         })
+}
+
+/// The sha256 of `text` as 64 hex digits.
+pub(crate) fn sha256_hex(text: &str) -> String {
+    hex(&Sha256::digest(text.as_bytes()))
 }
 
 /// A stable identity fingerprint for a stored credential.
@@ -129,63 +134,6 @@ pub fn access_token_fingerprint(credentials: &str) -> Option<String> {
     let oauth = extract_oauth_data(credentials)?;
     let token = value::str_at(&oauth, "accessToken").filter(|token| !token.is_empty())?;
     Some(format!("sha256-at:{}", sha256_hex(token)))
-}
-
-/// The raw `refreshTokenExpiresAt` (epoch milliseconds), or `None` when absent or unusable:
-/// the one reader of the field behind [`login_expires_at_iso`] and [`login_expires_at_epoch`].
-fn refresh_token_expires_at_ms(credentials: &str) -> Option<f64> {
-    let oauth = extract_oauth_data(credentials)?;
-    let at = value::number(oauth.get("refreshTokenExpiresAt")?)?;
-    (at.is_finite() && at > 0.).then_some(at)
-}
-
-/// When the stored login itself lapses, as ISO-8601 UTC, or `None`.
-///
-/// Claude Code stores `refreshTokenExpiresAt` (epoch milliseconds) beside the access token's
-/// `expiresAt`. The access token is renewed from the refresh token on its own; the refresh
-/// token only by a fresh `/login`, after which nothing but logging in again helps, so this is
-/// the date worth showing before it comes. Logins older than the field carry nothing: unknown,
-/// never "now".
-pub fn login_expires_at_iso(credentials: &str) -> Option<String> {
-    let at = utc_at(refresh_token_expires_at_ms(credentials)? / 1000.)?;
-    Some(at.format("%Y-%m-%dT%H:%M:%SZ").to_string())
-}
-
-/// [`login_expires_at_iso`] in epoch seconds.
-pub fn login_expires_at_epoch(credentials: &str) -> Option<f64> {
-    refresh_token_expires_at_ms(credentials).map(|at| at / 1000.)
-}
-
-/// Seconds until a stored login must be redone, when that is worth saying: `None` when the
-/// stamp is unknown, further out than [`LOGIN_DUE_WITHIN_S`], or the slot is quarantined (its
-/// sentinel already reads "re-login needed"); else the seconds left, `0` once past.
-pub fn login_time_left(expires_at: Option<f64>, quarantined: bool, now: f64) -> Option<f64> {
-    if quarantined {
-        return None;
-    }
-    let remaining = expires_at? - now;
-    (remaining <= LOGIN_DUE_WITHIN_S).then_some(remaining.max(0.))
-}
-
-/// `"re-login in 5d 12h"` while a stored login is due, `"re-login needed"` once past, `None`
-/// with nothing to say. `short` keeps the countdown's first unit (`"re-login in 5d"`).
-pub fn format_login_expiry(
-    expires_at: Option<f64>,
-    quarantined: bool,
-    now: f64,
-    short: bool,
-) -> Option<String> {
-    let left = login_time_left(expires_at, quarantined, now)?;
-    if left <= 0. {
-        return Some("re-login needed".to_owned());
-    }
-    let countdown = format_countdown(left);
-    let shown = if short {
-        countdown.split(' ').next().unwrap_or_default()
-    } else {
-        &countdown
-    };
-    Some(format!("re-login in {shown}"))
 }
 
 /// The stamp as the local clock string the reset columns use.
@@ -244,37 +192,4 @@ pub fn has_login_token(oauth: &Map<String, Value>) -> bool {
 /// replace the slot's only refresh token.
 pub fn has_full_token_pair(oauth: &Map<String, Value>) -> bool {
     truthy_at(oauth.get("accessToken")) && truthy_at(oauth.get("refreshToken"))
-}
-
-/// A short summary of a stored OAuth token's state, for logs: never the token.
-pub fn build_token_status(credentials: &str, now: f64) -> Option<String> {
-    let oauth = extract_oauth_data(credentials).filter(|data| !data.is_empty())?;
-    let refresh = if truthy_at(oauth.get("refreshToken")) {
-        "yes"
-    } else {
-        "no"
-    };
-    let unknown = || format!("oauth: unknown expiry, refresh token {refresh}");
-    let Some(expires_at) = oauth.get("expiresAt").and_then(py_number) else {
-        return Some(unknown());
-    };
-    let Some(expires) = utc_at(expires_at / 1000.) else {
-        return Some(unknown());
-    };
-    let state = if is_oauth_token_expired(oauth.get("expiresAt"), now) {
-        "expired"
-    } else {
-        "fresh"
-    };
-    let (countdown, clock) = format_reset(&expires.to_rfc3339(), now).ok()?;
-    Some(format!(
-        "oauth: {state}, refresh token {refresh}, expires {clock} in {countdown}"
-    ))
-}
-
-/// A token as cswap puts it in `Bearer {token}`: a string as itself, another value as its text.
-pub(crate) fn token_text(token: &Value) -> String {
-    token
-        .as_str()
-        .map_or_else(|| token.to_string(), str::to_owned)
 }

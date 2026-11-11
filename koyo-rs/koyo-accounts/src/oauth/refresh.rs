@@ -1,27 +1,39 @@
 //! Part of the port of claude-swap's `oauth.py` (0fe22a8): the refresh-token grant
 //! (`RefreshOutcome`, `try_refresh_oauth_credentials`, `_parse_token_account`) and the profile
 //! that names whose token is in hand (`fetch_oauth_profile`). cswap's `refresh_oauth_credentials`
-//! wrapper comes along. Neither is called to read usage (see `usage.rs`); the switcher's refresh
-//! gate calls the refresh, and nothing here holds a lock while it waits on the network.
+//! wrapper is left out: nothing calls it. Neither is called to read usage (see `usage.rs`); the
+//! switcher's refresh gate calls the refresh, and nothing here holds a lock while it waits on
+//! the network.
 
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use super::value::{py_number, truthy_at};
+use super::value::{py_number, str_at, truthy_at};
 use super::{OAUTH_CLIENT_ID, OAUTH_TOKEN_URL, PROFILE_URL, USER_AGENT};
 use crate::Env;
 use crate::http::Request;
+
+/// A refresh's error kinds, as [`RefreshOutcome::error`] carries them: cswap's strings, which
+/// the stored usage rows and quarantine reasons keep.
+pub const TRANSIENT_ERROR: &str = "transient";
+pub const NO_REFRESH_TOKEN_ERROR: &str = "no_refresh_token";
+pub const INVALID_GRANT_ERROR: &str = "invalid_grant";
+pub const INVALID_CLIENT_ERROR: &str = "invalid_client";
+/// The consume gate's own kinds.
+pub const STORE_UNMIRRORED_ERROR: &str = "store-unmirrored";
+pub const CONSUME_BUSY_ERROR: &str = "consume-busy";
+pub const STASH_UNREADABLE_ERROR: &str = "stash-unreadable";
 
 /// Refresh failures that won't resolve by retrying this pass, so a caller must not fall through
 /// to the usage endpoint with the known-expired token. `consume-busy` is among them: the retry
 /// re-enters the same gate, finds it held, and spends a guaranteed 401 to learn nothing.
 pub const DETERMINISTIC_REFRESH_ERRORS: [&str; 4] = [
-    "store-unmirrored",
-    "invalid_client",
-    "consume-busy",
-    "stash-unreadable",
+    STORE_UNMIRRORED_ERROR,
+    INVALID_CLIENT_ERROR,
+    CONSUME_BUSY_ERROR,
+    STASH_UNREADABLE_ERROR,
 ];
 
 /// cswap's refresh budget (`timeout_s=10.0`).
@@ -91,11 +103,11 @@ pub fn try_refresh_oauth_credentials(
     timeout: Duration,
 ) -> RefreshOutcome {
     let Ok(Value::Object(mut data)) = serde_json::from_str::<Value>(credentials) else {
-        return RefreshOutcome::failed("transient");
+        return RefreshOutcome::failed(TRANSIENT_ERROR);
     };
     let mut oauth = match data.get("claudeAiOauth") {
         Some(Value::Object(oauth)) if truthy_at(oauth.get("refreshToken")) => oauth.clone(),
-        _ => return RefreshOutcome::failed("no_refresh_token"),
+        _ => return RefreshOutcome::failed(NO_REFRESH_TOKEN_ERROR),
     };
     let body = serde_json::json!({
         "grant_type": "refresh_token",
@@ -109,7 +121,7 @@ pub fn try_refresh_oauth_credentials(
         Ok(response) => response,
         Err(error) => {
             log::debug!("OAuth refresh failed: {error}");
-            return RefreshOutcome::failed("transient");
+            return RefreshOutcome::failed(TRANSIENT_ERROR);
         }
     };
     if !(200..300).contains(&response.status) {
@@ -123,15 +135,17 @@ pub fn try_refresh_oauth_credentials(
             let error = serde_json::from_str::<Value>(&text)
                 .ok()
                 .and_then(|body| body.get("error").and_then(Value::as_str).map(str::to_owned));
-            if let Some(error) = error.filter(|e| e == "invalid_grant" || e == "invalid_client") {
+            if let Some(error) =
+                error.filter(|e| e == INVALID_GRANT_ERROR || e == INVALID_CLIENT_ERROR)
+            {
                 return RefreshOutcome::failed(&error);
             }
         }
-        return RefreshOutcome::failed("transient");
+        return RefreshOutcome::failed(TRANSIENT_ERROR);
     }
     let Some(granted) = rotate(&mut oauth, &response.body, env.now()) else {
         log::debug!("OAuth refresh failed: unreadable grant");
-        return RefreshOutcome::failed("transient");
+        return RefreshOutcome::failed(TRANSIENT_ERROR);
     };
     data.insert("claudeAiOauth".to_owned(), Value::Object(oauth));
     RefreshOutcome {
@@ -190,29 +204,20 @@ pub fn parse_token_account(granted: &Map<String, Value>) -> Option<AccountIdenti
 /// email from `account[email_key]`.
 fn identity(data: &Map<String, Value>, email_key: &str) -> Option<AccountIdentity> {
     let account = data.get("account")?.as_object()?;
-    let uuid = account.get("uuid")?.as_str()?.trim();
+    let uuid = str_at(account, "uuid")?.trim();
     if uuid.is_empty() {
         return None;
     }
     let organization_uuid = data
         .get("organization")
         .and_then(Value::as_object)
-        .and_then(|organization| organization.get("uuid"))
-        .and_then(Value::as_str)
+        .and_then(|organization| str_at(organization, "uuid"))
         .map(str::to_owned);
     Some(AccountIdentity {
         uuid: uuid.to_owned(),
-        email: account
-            .get(email_key)
-            .and_then(Value::as_str)
-            .map(str::to_owned),
+        email: str_at(account, email_key).map(str::to_owned),
         organization_uuid,
     })
-}
-
-/// Refreshes an OAuth access token; `None` on any failure (see [`RefreshOutcome`]).
-pub fn refresh_oauth_credentials(env: &Env, credentials: &str) -> Option<String> {
-    try_refresh_oauth_credentials(env, credentials, REFRESH_TIMEOUT).credentials
 }
 
 /// Resolves an access token to its account identity with `GET /api/oauth/profile`, or `None`.

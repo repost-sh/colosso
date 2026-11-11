@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 use super::{answer, header};
 use crate::http::HttpError;
 use crate::oauth::*;
-use crate::testing::{Sandbox, json_response};
+use crate::testing::Sandbox;
 
 fn make_credentials() -> String {
     json!({"claudeAiOauth": {
@@ -43,8 +43,9 @@ fn refused(code: u16, body: &str) -> RefreshOutcome {
 fn refresh_sends_correct_body() {
     let sandbox = Sandbox::new();
     sandbox.http.queue_json(OAUTH_TOKEN_URL, 200, &grant());
-    let refreshed = refresh_oauth_credentials(&sandbox.env(), &make_credentials());
-    assert!(refreshed.is_some());
+    let refreshed =
+        try_refresh_oauth_credentials(&sandbox.env(), &make_credentials(), REFRESH_TIMEOUT);
+    assert!(refreshed.credentials.is_some());
     let [request] = sandbox
         .http
         .requests_to(OAUTH_TOKEN_URL)
@@ -121,19 +122,6 @@ fn invalid_json_is_transient() {
     // An unparseable blob is likelier a torn read than a credential shape: no permanent verdict.
     let outcome = refresh(&Sandbox::new(), "not json");
     assert_eq!(outcome.error.as_deref(), Some("transient"));
-}
-
-#[test]
-fn wrapper_returns_none_on_failure() {
-    let sandbox = Sandbox::new();
-    sandbox.http.queue(
-        OAUTH_TOKEN_URL,
-        Ok(json_response(400, &json!({"error": "invalid_grant"}))),
-    );
-    assert_eq!(
-        refresh_oauth_credentials(&sandbox.env(), &make_credentials()),
-        None
-    );
 }
 
 // TestTokenAccountParsing

@@ -6,13 +6,13 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use serde_json::json;
+use serde_json::Value;
 
 use super::super::EngineHost;
 use crate::env::Clock as _;
 use crate::oauth::RefreshOutcome;
 use crate::switcher::{AccountRef, Roster, RosterSlot, SlotIdentity, SwitchReason, SwitchResult};
-use crate::testing::{ManualClock, locked};
+use crate::testing::{ManualClock, creds, locked};
 use crate::usage_store::UsageEntry;
 use crate::{AccountsError, Result};
 
@@ -135,12 +135,11 @@ impl FakeHost {
 }
 
 pub(crate) fn credentials(num: &str, expires_at: Option<f64>) -> String {
-    let mut oauth =
-        json!({"accessToken": format!("sk-{num}"), "refreshToken": format!("rt-{num}")});
-    if let Some(expires_at) = expires_at {
-        oauth["expiresAt"] = json!(expires_at);
-    }
-    json!({"claudeAiOauth": oauth}).to_string()
+    creds(
+        &format!("sk-{num}"),
+        &format!("rt-{num}"),
+        expires_at.map(Value::from),
+    )
 }
 
 impl EngineHost for FakeHost {

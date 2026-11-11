@@ -13,6 +13,7 @@ use serde_json::Value;
 
 use crate::locking::FileLock;
 use crate::oauth::credential_fingerprint;
+use crate::oauth::value::str_at;
 use crate::switcher::store::{Data, accounts, record, record_mut, text};
 use crate::switcher::{LineageKey, Switcher};
 use crate::{AccountsError, Result};
@@ -106,9 +107,8 @@ impl Switcher {
     ) -> Option<String> {
         accounts(data)?.iter().find_map(|(num, account)| {
             let account = account.as_object()?;
-            (account.get("email").and_then(Value::as_str) == Some(email)
-                && org_equals(account, organization_uuid))
-            .then(|| num.clone())
+            (str_at(account, "email") == Some(email) && org_equals(account, organization_uuid))
+                .then(|| num.clone())
         })
     }
 
@@ -120,15 +120,6 @@ impl Switcher {
         Ok(self.get_sequence_data()?.is_some_and(|data| {
             Switcher::find_account_slot(&data, email, organization_uuid).is_some()
         }))
-    }
-
-    /// `account_email`: the slot's stored email, `""` when unknown.
-    ///
-    /// # Errors
-    /// As [`Switcher::get_sequence_data`].
-    pub fn account_email(&self, account_num: &str) -> Result<String> {
-        let data = self.sequence_data_or_empty()?;
-        Ok(text(record(&data, account_num), "email").to_owned())
     }
 
     /// `account_identity`: the slot's stored email, organisation and uuid (trimmed).
@@ -160,11 +151,6 @@ impl Switcher {
         Ok(Switcher::live_slot(&data, Some(&live)))
     }
 
-    /// `has_live_login`: the global config carries a live identity.
-    pub fn has_live_login(&self) -> bool {
-        self.get_current_account().is_some()
-    }
-
     /// `backfill_account_uuid`: records a resolved uuid on a slot that has none, never over an
     /// existing one. With `expected_email` / `expected_org`, only while the slot still holds that
     /// identity under the lock: a remove and re-add in the gap must not get its predecessor's
@@ -188,8 +174,7 @@ impl Switcher {
             return Ok(());
         };
         let fills = text(Some(account), "uuid").trim().is_empty()
-            && expected_email
-                .is_none_or(|email| account.get("email").and_then(Value::as_str) == Some(email))
+            && expected_email.is_none_or(|email| str_at(account, "email") == Some(email))
             && expected_org.is_none_or(|org| text(Some(account), "organizationUuid") == org);
         if fills {
             account.insert("uuid".into(), uuid.into());

@@ -197,8 +197,8 @@ fn each_arm_is_bounded_by_the_ceiling_its_own_trust_uses() {
 fn a_soon_resetting_window_can_end_trust_before_the_429_wait_releases() {
     let h = Harness::new();
     let reading = json!({
-        "five_hour": {"pct": 25.0, "resets_at": iso_in(h.now(), 1800.)},
-        "seven_day": {"pct": 10.0, "resets_at": iso_in(h.now(), 100. * 3600.)},
+        "five_hour": {"pct": 25.0, "resets_at": iso(h.now() + 1800.)},
+        "seven_day": {"pct": 10.0, "resets_at": iso(h.now() + 100. * 3600.)},
     });
     assert!(!crate::oauth::relevant_windows(Some(&reading), &[]).is_empty());
     h.record("1", FetchRecord::success(Some(reading.clone())));
@@ -225,7 +225,7 @@ fn a_soon_resetting_window_can_end_trust_before_the_429_wait_releases() {
 #[test]
 fn consecutive_blocks_go_blind_because_fetched_at_only_moves_on_success() {
     let h = Harness::new();
-    let far = iso_in(0., 1e9);
+    let far = iso(1e9);
     let last_good = json!({
         "five_hour": {"pct": 25.0, "resets_at": far},
         "seven_day": {"pct": 10.0, "resets_at": far},
@@ -282,7 +282,7 @@ fn measured_burst_block_honored_exactly() {
 /// The time a row is both in backoff and untrusted after one failure at `age_at_fail`.
 fn blind_window(age_at_fail: f64, ask: f64, error: &str) -> f64 {
     let h = Harness::new();
-    let ident = identity("1", "a@example.com", "");
+    let ident = one_identity("1", "a@example.com", "");
     let reading = FetchRecord::success(Some(json!({"five_hour": {"pct": 1.0}})));
     record_as(&h.store, "1", reading, &ident);
     h.advance(age_at_fail);

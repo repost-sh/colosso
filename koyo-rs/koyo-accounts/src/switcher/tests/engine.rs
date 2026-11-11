@@ -6,22 +6,16 @@
 
 use std::sync::Arc;
 
-use serde_json::{Value, json};
-
 use super::support::{fresh, recorded, usage_requests};
 use super::{Harness, make_live, seed};
 use crate::autoswitch::{AutoSwitchEngine, AutoSwitchEvent, AutoSwitchSettings, TickOutcome};
 use crate::oauth::OAUTH_TOKEN_URL;
 use crate::switcher::{AccountRef, Switcher};
+use crate::testing::usage;
 use crate::usage_store::one_identity;
 
 const A: &str = "a@example.com";
 const B: &str = "b@example.com";
-
-/// A stored reading with the 5h window at `pct` and the weekly one empty.
-fn usage(pct: f64) -> Value {
-    json!({"five_hour": {"pct": pct}, "seven_day": {"pct": 0.0}})
-}
 
 /// Slots 1 (live) and 2, slot 2's backup good for years so a freshen posts nothing, and each
 /// one's usage recorded a minute ago.

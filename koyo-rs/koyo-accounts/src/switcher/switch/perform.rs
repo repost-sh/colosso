@@ -26,7 +26,7 @@ use serde_json::Value;
 use crate::claude_locks::{claude_config_lock, claude_credentials_lock};
 use crate::credentials::{merge_shared_credential_fields, shared_credential_fields};
 use crate::locking::FileLock;
-use crate::oauth::value::truthy_at;
+use crate::oauth::value::{py_str, truthy_at};
 use crate::switcher::Switcher;
 use crate::switcher::store::{
     Data, parse_object, read_config_text, record, record_mut, set_active, slot_int, text,
@@ -94,11 +94,10 @@ impl Switcher {
         // The slot the live identity names; with no live identity, the recorded active slot.
         let current_account = match &current_identity {
             Some((email, org)) => Switcher::find_account_slot(&data, email, org),
-            None => match data.get("activeAccountNumber") {
-                None | Some(Value::Null) => None,
-                Some(Value::String(active)) => Some(active.clone()),
-                Some(active) => Some(active.to_string()),
-            },
+            None => data
+                .get("activeAccountNumber")
+                .filter(|active| !active.is_null())
+                .map(py_str),
         };
         let (from, warnings) = match (current_identity, current_account) {
             (Some((current_email, _)), Some(current_account)) => {

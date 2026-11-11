@@ -1,5 +1,6 @@
 //! cswap's `tests/test_macos_keychain.py`, on the fake `security`, and its real-Keychain
 //! round trip (`test_macos_keychain_contract.py`) on a temporary keychain, run on its own.
+//! The `item_exists` cases are left out with it.
 
 use super::*;
 use crate::testing::{Answer, FakeSecurity};
@@ -32,24 +33,6 @@ fn get_password_raises_on_other_nonzero() {
     security.set("svc", "acct", "the-secret");
     security.answer_next(Answer::Exit(51));
     assert!(get_password(&security, "svc", "acct").is_err());
-}
-
-#[test]
-fn item_exists_true_on_rc0_and_never_requests_secret() {
-    let security = FakeSecurity::default();
-    security.set("svc", "acct", "x");
-    assert!(item_exists(&security, "svc", "acct"));
-    // Attribute-only: `-w` would decrypt, which can prompt.
-    assert!(!security.calls()[0].args.iter().any(|arg| arg == "-w"));
-}
-
-#[test]
-fn item_exists_false_on_rc44_and_errors() {
-    let security = FakeSecurity::default();
-    assert!(!item_exists(&security, "svc", "acct"));
-    security.set("svc", "acct", "x");
-    security.answer_next(Answer::Exit(51));
-    assert!(!item_exists(&security, "svc", "acct"));
 }
 
 #[test]
@@ -127,8 +110,6 @@ fn timeout_becomes_keychain_error() {
     assert!(get_password(&security, "svc", "acct").is_err());
     assert!(set_password(&security, "svc", "acct", "secret").is_err());
     assert!(delete_password(&security, "svc", "acct").is_err());
-    // item_exists never raises: it feeds cleanup, not decisions.
-    assert!(!item_exists(&security, "svc", "acct"));
 }
 
 #[test]
@@ -142,7 +123,6 @@ fn a_missing_binary_is_a_keychain_error_and_no_item() {
         }
     }
     assert!(get_password(&Missing, "svc", "acct").is_err());
-    assert!(!item_exists(&Missing, "svc", "acct"));
 }
 
 #[test]
@@ -203,7 +183,6 @@ fn real_keychain_round_trip_on_a_temporary_keychain() {
                 .as_deref(),
             Some("round-trip-token")
         );
-        assert!(item_exists(&security, "Koyo accounts test", "acct-1"));
         delete_password(&security, "Koyo accounts test", "acct-1").unwrap();
         assert_eq!(
             get_password(&security, "Koyo accounts test", "acct-1").unwrap(),

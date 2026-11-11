@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::lines::BindingWindow;
-use crate::oauth::iso_z;
+use crate::oauth::{INVALID_GRANT_ERROR, iso_z};
 use crate::switcher::AccountRef;
 
 /// One tick: what it did, how long to wait before the next, and what it reported.
@@ -106,7 +106,7 @@ impl QuarantineReason {
     /// cswap's string.
     pub fn as_str(self) -> &'static str {
         match self {
-            QuarantineReason::InvalidGrant => "invalid_grant",
+            QuarantineReason::InvalidGrant => INVALID_GRANT_ERROR,
             QuarantineReason::IdentityConflict => "identity-conflict",
         }
     }

@@ -24,7 +24,7 @@ use crate::keychain::{Security, keychain_account_name};
 use crate::oauth::PROFILE_URL;
 use crate::paths::{BACKUP_KEYCHAIN_SERVICE, CLAUDE_CODE_KEYCHAIN_SERVICE};
 use crate::switcher::Switcher;
-use crate::testing::Sandbox;
+use crate::testing::{Sandbox, creds};
 
 mod add;
 mod add_identity;
@@ -252,11 +252,6 @@ pub(super) fn profile(uuid: &str, email: Option<&str>, org: Option<&str>) -> Val
     body
 }
 
-/// An OAuth credential with these tokens.
-pub(super) fn oauth_creds(access: &str, refresh: &str) -> String {
-    json!({"claudeAiOauth": {"accessToken": access, "refreshToken": refresh}}).to_string()
-}
-
 /// An OAuth credential with an access token only.
 pub(super) fn access_creds(access: &str) -> String {
     json!({"claudeAiOauth": {"accessToken": access}}).to_string()
@@ -301,13 +296,13 @@ pub(super) fn seed(h: &Harness, num: u64, email: &str) {
     seed_with(h, num, email, true, true);
 }
 
-pub(super) fn seed_with(h: &Harness, num: u64, email: &str, creds: bool, config: bool) {
+pub(super) fn seed_with(h: &Harness, num: u64, email: &str, credential: bool, config: bool) {
     let n = num.to_string();
-    if creds {
+    if credential {
         h.set_backup(
             &n,
             email,
-            &oauth_creds(&format!("sk-{num}"), &format!("rt-{num}")),
+            &creds(&format!("sk-{num}"), &format!("rt-{num}"), None),
         );
     }
     if config {
@@ -340,9 +335,10 @@ pub(super) fn seed_with(h: &Harness, num: u64, email: &str, creds: bool, config:
 
 /// cswap's `_make_live`: the live login pointed at a seeded slot.
 pub(super) fn make_live(h: &Harness, email: &str, num: u64) {
-    h.set_live(&oauth_creds(
+    h.set_live(&creds(
         &format!("sk-live-{num}"),
         &format!("rt-live-{num}"),
+        None,
     ));
     h.write_config(
         &json!({"oauthAccount": {"emailAddress": email, "accountUuid": format!("uuid-{num}")}}),

@@ -12,7 +12,7 @@ use super::*;
 fn slot_reuse_hides_old_usage() {
     let h = Harness::new();
     h.record("1", ok());
-    let rebound = identity("1", "new@x.com", "");
+    let rebound = one_identity("1", "new@x.com", "");
     assert_eq!(entry_as(&h.store, "1", &rebound), UsageEntry::default());
 }
 
@@ -20,7 +20,7 @@ fn slot_reuse_hides_old_usage() {
 fn same_email_different_org_is_a_different_account() {
     let h = Harness::new();
     h.record("1", ok());
-    let rebound = identity("1", "a@x.com", "org-9");
+    let rebound = one_identity("1", "a@x.com", "org-9");
     assert_eq!(entry_as(&h.store, "1", &rebound), UsageEntry::default());
 }
 
@@ -28,7 +28,7 @@ fn same_email_different_org_is_a_different_account() {
 fn write_replaces_mismatched_row() {
     let h = Harness::new();
     h.record("1", ok());
-    let rebound = identity("1", "new@x.com", "");
+    let rebound = one_identity("1", "new@x.com", "");
     record_as(&h.store, "1", err("timeout"), &rebound);
     let entry = entry_as(&h.store, "1", &rebound);
     assert_eq!(entry.last_good, None);
@@ -40,7 +40,12 @@ fn untouched_slots_survive_subset_writes() {
     let h = Harness::new();
     let both = BTreeMap::from([("1".to_owned(), ok()), ("2".to_owned(), ok())]);
     h.store.record(&both, &ident(), None, None).unwrap();
-    record_as(&h.store, "1", err("timeout"), &identity("1", "a@x.com", ""));
+    record_as(
+        &h.store,
+        "1",
+        err("timeout"),
+        &one_identity("1", "a@x.com", ""),
+    );
     assert_eq!(h.entry("2").last_good, Some(usage()));
 }
 
@@ -147,7 +152,7 @@ fn expired_writer_cannot_clear_or_overwrite_new_lease() {
 fn stale_writer_cannot_replace_a_rebound_identity() {
     let h = Harness::new();
     let stale_claim = h.reserve(&["1"], true);
-    let rebound = identity("1", "new@x.com", "org-new");
+    let rebound = one_identity("1", "new@x.com", "org-new");
     let rewon = h.store.reserve(&["1"], &rebound, true, false).unwrap();
     assert_eq!(won(&rewon), ["1"]);
 

@@ -12,11 +12,11 @@ use std::fs::{self, OpenOptions};
 use std::io::{self, Write as _};
 use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 
+use crate::random::random_u64;
 use crate::{AccountsError, Env, Result, guard};
 
 /// What of the target's name the temp's carries: `NAME_MAX` is 255 bytes and the temp adds its
@@ -181,18 +181,10 @@ fn fault(_: Step) -> io::Result<()> {
 /// fails it.
 const FSYNC_UNSUPPORTED: [i32; 4] = [libc::EINVAL, libc::ENOTSUP, libc::EOPNOTSUPP, libc::ENOSYS];
 
-/// Eight characters no other temp beside the target has, as `mkstemp`'s.
+/// Eight random characters, as `mkstemp`'s; a name already taken is drawn again.
 fn random_suffix() -> String {
     const ALPHABET: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789_";
-    static COUNT: AtomicU64 = AtomicU64::new(0);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |since| since.subsec_nanos());
-    let mut seed = u64::from(nanos)
-        ^ (u64::from(std::process::id()) << 32)
-        ^ COUNT
-            .fetch_add(1, Ordering::Relaxed)
-            .wrapping_mul(0x9E37_79B9_7F4A_7C15);
+    let mut seed = random_u64();
     (0..8)
         .map(|_| {
             seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
@@ -332,6 +324,15 @@ fn guarded(env: &Env, path: &Path) -> io::Result<()> {
 )]
 pub fn nap(duration: Duration) {
     std::thread::sleep(duration);
+}
+
+/// [`nap`]s `want`, or what's left of `timeout` since `start` when that's less: a wait within
+/// a budget sleeps at most what's left of it, never a whole step past it.
+pub fn nap_within(want: Duration, start: Instant, timeout: Duration) {
+    let left = timeout.saturating_sub(start.elapsed());
+    if !left.is_zero() {
+        nap(want.min(left));
+    }
 }
 
 #[cfg(test)]

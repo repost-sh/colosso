@@ -15,8 +15,8 @@
 use crate::credentials::{StashMeta, StashReason};
 use crate::locking::FileLock;
 use crate::oauth::{
-    REFRESH_TIMEOUT, RefreshOutcome, credential_fingerprint, extract_access_token,
-    try_refresh_oauth_credentials,
+    REFRESH_TIMEOUT, RefreshOutcome, STASH_UNREADABLE_ERROR, TRANSIENT_ERROR,
+    credential_fingerprint, extract_access_token, try_refresh_oauth_credentials,
 };
 use crate::subscription::usable_access_token;
 use crate::switcher::Switcher;
@@ -95,7 +95,7 @@ impl Switcher {
         };
         RefreshOutcome {
             credentials: Some(credentials),
-            error: demoted.then(|| "transient".to_owned()),
+            error: demoted.then(|| TRANSIENT_ERROR.to_owned()),
             token_account,
             consumed_fp,
             stashed,
@@ -113,7 +113,7 @@ impl Switcher {
                     "Slot lock held elsewhere; deferring account {account_num}'s backup refresh \
                      to the next pass."
                 );
-                return Err("transient");
+                return Err(TRANSIENT_ERROR);
             }
             Err(error) => return Err(pre_consume_failed(account_num, &error)),
         };
@@ -126,7 +126,7 @@ impl Switcher {
             log::info!(
                 "Backup for account {account_num} unreadable (keychain); deferring the refresh."
             );
-            return Err("transient");
+            return Err(TRANSIENT_ERROR);
         }
         match self.adopt_stashed_successor(account_num, email, &current) {
             Ok(Some(adopted)) => current = adopted,
@@ -140,7 +140,7 @@ impl Switcher {
                     "Account {account_num}'s stashed successor is unreadable; deferring the \
                      refresh: {why}"
                 );
-                return Err("stash-unreadable");
+                return Err(STASH_UNREADABLE_ERROR);
             }
             Err(error) => return Err(pre_consume_failed(account_num, &error)),
         }
@@ -152,7 +152,7 @@ impl Switcher {
                 "Account {account_num}'s stored credential is gone; deferring the refresh rather \
                  than consuming a grant for a slot that no longer exists."
             );
-            return Err("transient");
+            return Err(TRANSIENT_ERROR);
         }
         Ok(current)
     }
@@ -263,5 +263,5 @@ impl Switcher {
 /// point (an adoption) may already have advanced the slot; the next pass re-reads it fresh.
 fn pre_consume_failed(account_num: &str, error: &AccountsError) -> Deferred {
     log::warn!("Pre-consume window failed for account {account_num}; deferring: {error}");
-    "transient"
+    TRANSIENT_ERROR
 }

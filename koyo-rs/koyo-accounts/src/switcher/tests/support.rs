@@ -8,7 +8,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 
 use super::{Harness, sample_sequence_data};
 use crate::Clock as _;
@@ -19,30 +19,22 @@ use crate::oauth::{OAUTH_TOKEN_URL, USAGE_URL};
 use crate::paths::BACKUP_KEYCHAIN_SERVICE;
 use crate::switcher::info::AccountInfo;
 use crate::switcher::{RosterSlot, SlotIdentity};
+pub(super) use crate::testing::creds;
 use crate::testing::{FakeSecurity, json_response, record_as};
 use crate::usage_store::{FetchRecord, Identities};
 
 /// The email of slot 1 in the gate's tests (`sample_sequence_data` with it set).
 pub(super) const EMAIL: &str = "test@example.com";
 
-/// A credential with these tokens and `expiresAt`.
-pub(super) fn creds(access: &str, refresh: &str, expires_at: Value) -> String {
-    let mut oauth = Map::new();
-    oauth.insert("accessToken".into(), access.into());
-    oauth.insert("refreshToken".into(), refresh.into());
-    oauth.insert("expiresAt".into(), expires_at);
-    json!({"claudeAiOauth": oauth}).to_string()
-}
-
 /// A credential with these tokens whose access token expires in the far future (cswap's
 /// `9_999_999_999_000`).
 pub(super) fn fresh(access: &str, refresh: &str) -> String {
-    creds(access, refresh, json!(9_999_999_999_000_u64))
+    creds(access, refresh, Some(json!(9_999_999_999_000_u64)))
 }
 
 /// cswap's `_OLD`: an expired generation.
 pub(super) fn old() -> String {
-    creds("sk-old", "rt-old", json!(1000))
+    creds("sk-old", "rt-old", Some(json!(1000)))
 }
 
 /// cswap's `_NEW`: a fresh one.

@@ -1,9 +1,9 @@
 //! Auto-switch as the app runs it (`docs/claude-accounts.md` 5). While it's on, the accounts
 //! crate's engine ticks on the switcher's job line, so its readings and switches never interleave
 //! with the person's, each tick after the wait the last one asked for (claude-swap's cadence: a
-//! minute, longer while blocked). What it does that matters is said in the panel, and a switch
-//! also as a notice. Turned off, the engine goes, with the ticks still waiting; its going
-//! unpins the switcher's poll planning, after any tick still running.
+//! minute, longer while blocked). What it does goes to the log; what matters of it is said in
+//! the panel, and a switch also as a notice. Turned off, the engine goes, with the ticks still
+//! waiting; its going unpins the switcher's poll planning, after any tick still running.
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -78,6 +78,13 @@ impl Accounts {
     /// next tick after the wait it asked for.
     pub(super) fn ticked(&mut self, report: &TickReport, cx: &mut Context<Self>) {
         let now = super::now();
+        // As cswap logs it, the poll each tick makes at debug: emails and numbers, never a token.
+        for event in &report.events {
+            match event {
+                AutoSwitchEvent::Poll(_) => log::debug!("auto-switch: {}", event.human()),
+                _ => log::info!("auto-switch: {}", event.human()),
+            }
+        }
         if let Some(shown) = &mut self.view.auto_switch {
             for event in &report.events {
                 let Some(said) = words::auto_switched(event, now) else {

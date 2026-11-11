@@ -7,7 +7,8 @@
 use serde_json::Value;
 
 use crate::oauth;
-use crate::oauth::value::py_number;
+use crate::oauth::value::{py_number, str_at};
+use crate::oauth::{INVALID_GRANT_ERROR, NO_REFRESH_TOKEN_ERROR};
 use crate::poll_policy::{EDGE_BACKOFF_S, parse_reset_ts};
 
 /// Deliberate staleness (backoff, the scheduler's cadence) extends decision trust past
@@ -50,7 +51,7 @@ pub const RETRY_AFTER_FLOOR_CAP_S: f64 = 4500.;
 pub const AUTH_DEAD_STRIKES: i64 = 1;
 
 /// Errors that prove the stored credential permanently unusable; only these strike.
-pub const PERMANENT_AUTH_ERRORS: [&str; 2] = ["invalid_grant", "no_refresh_token"];
+pub const PERMANENT_AUTH_ERRORS: [&str; 2] = [INVALID_GRANT_ERROR, NO_REFRESH_TOKEN_ERROR];
 
 /// The soonest relevant window's reset, or `None`: once the soonest rolls over the whole
 /// reading is obsolete, so a later window can't rescue it. A window without `resets_at` adds
@@ -102,7 +103,7 @@ pub fn rejection_backoff_until(usage: Option<&Value>, now: f64) -> Option<f64> {
 /// quota reset, not a deadline, and installs no backoff here either.
 pub fn rejection_deadline(usage: Option<&Value>, now: f64) -> Option<f64> {
     let (rejected, _) = rejection_retry_after(usage)?;
-    let at = parse_reset_ts(rejected.get("resets_at").and_then(Value::as_str))?;
+    let at = parse_reset_ts(str_at(rejected, "resets_at"))?;
     (at > now).then(|| at.min(now + RETRY_AFTER_FLOOR_CAP_S))
 }
 

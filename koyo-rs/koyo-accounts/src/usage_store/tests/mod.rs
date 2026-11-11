@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 
 use super::*;
 use crate::testing::Sandbox;
-pub(super) use crate::testing::{entry_as, record_as};
+pub(super) use crate::testing::{approx, entry_as, iso, record_as};
 
 /// cswap's `FakeClock` start.
 pub(super) const START: f64 = 1_000_000.;
@@ -26,10 +26,6 @@ pub(super) fn ident() -> Identities {
         ("1".to_owned(), ("a@x.com".to_owned(), String::new())),
         ("2".to_owned(), ("b@x.com".to_owned(), "org-2".to_owned())),
     ])
-}
-
-pub(super) fn identity(num: &str, email: &str, org: &str) -> Identities {
-    BTreeMap::from([(num.to_owned(), (email.to_owned(), org.to_owned()))])
 }
 
 /// cswap's `USAGE`.
@@ -47,18 +43,6 @@ pub(super) fn err(kind: &str) -> FetchRecord {
 
 pub(super) fn err_after(kind: &str, retry_after_s: f64) -> FetchRecord {
     FetchRecord::failure(kind, Some(retry_after_s))
-}
-
-/// The ISO stamp `ahead` seconds from `now`, as cswap's tests write them (`Z`).
-pub(super) fn iso_in(now: f64, ahead: f64) -> String {
-    crate::oauth::utc_at(now + ahead)
-        .unwrap()
-        .to_rfc3339()
-        .replace("+00:00", "Z")
-}
-
-pub(super) fn approx(left: f64, right: f64) -> bool {
-    (left - right).abs() <= 1e-6 * right.abs().max(1.)
 }
 
 /// A sandbox and its usage table.

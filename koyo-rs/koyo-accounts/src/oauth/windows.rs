@@ -10,7 +10,7 @@
 
 use serde_json::Value;
 
-use super::value::py_number;
+use super::value::{py_number, str_at};
 
 /// The 5-hour window's label, the only window that isn't weekly: everything that treats it
 /// apart (`lines::window_line`) keys on this.
@@ -37,13 +37,6 @@ impl Window {
     }
 }
 
-fn resets_at(window: &serde_json::Map<String, Value>) -> Option<String> {
-    window
-        .get("resets_at")
-        .and_then(Value::as_str)
-        .map(str::to_owned)
-}
-
 /// Every window that gates this account: the reported 5-hour ("5h") and 7-day ("7d") ones (an
 /// Ultra account has no 5-hour one; a window without a figure is skipped), then, when `models`
 /// names any, each named per-model `scoped` window (matched without case on the display name;
@@ -61,7 +54,7 @@ pub fn relevant_windows(usage: Option<&Value>, models: &[&str]) -> Vec<Window> {
             windows.push(Window {
                 label: label.to_owned(),
                 pct,
-                resets_at: resets_at(window),
+                resets_at: str_at(window, "resets_at").map(str::to_owned),
             });
         }
     }
@@ -72,7 +65,7 @@ pub fn relevant_windows(usage: Option<&Value>, models: &[&str]) -> Vec<Window> {
             for window in scoped.iter().filter_map(Value::as_object) {
                 let (Some(pct), Some(name)) = (
                     window.get("pct").and_then(py_number),
-                    window.get("name").and_then(Value::as_str),
+                    str_at(window, "name"),
                 ) else {
                     continue;
                 };
@@ -80,7 +73,7 @@ pub fn relevant_windows(usage: Option<&Value>, models: &[&str]) -> Vec<Window> {
                     windows.push(Window {
                         label: name.to_owned(),
                         pct,
-                        resets_at: resets_at(window),
+                        resets_at: str_at(window, "resets_at").map(str::to_owned),
                     });
                 }
             }
@@ -90,7 +83,7 @@ pub fn relevant_windows(usage: Option<&Value>, models: &[&str]) -> Vec<Window> {
         windows.push(Window {
             label: REJECTED_LABEL.to_owned(),
             pct: 100.,
-            resets_at: resets_at(rejected),
+            resets_at: str_at(rejected, "resets_at").map(str::to_owned),
         });
     }
     windows

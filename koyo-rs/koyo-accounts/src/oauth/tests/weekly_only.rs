@@ -295,7 +295,7 @@ fn a_rejected_reading_is_stored_at_its_limit() {
     let now = sandbox.env().now();
     let store = UsageStore::new(&sandbox.env());
     let rejected =
-        json!({"rejected": {"retry_after_s": 600.0, "resets_at": super::iso(now + 600.)}});
+        json!({"rejected": {"retry_after_s": 600.0, "resets_at": crate::testing::iso(now + 600.)}});
     record(&store, &UsageOutcome::read(Some(rejected.clone())));
     let entry = store.entries(&identities(), &[]).remove("2").unwrap();
     assert_eq!(entry.last_error, None);

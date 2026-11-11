@@ -1,6 +1,7 @@
 //! Port of claude-swap's `switcher.py` (0fe22a8), the subscription plans of the managed
-//! accounts (#350): `_subscription_store`, `_stored_subscription_plans`, `_plans_for_pass`,
-//! `refresh_subscription_plans` and `_collect_subscription_plans`.
+//! accounts (#350): `_subscription_store`, `_stored_subscription_plans`, `_plans_for_pass` and
+//! `_collect_subscription_plans`. `refresh_subscription_plans` is left out: a snapshot's pass
+//! refreshes the due plans, and nothing else asks.
 //!
 //! Independent of usage collection by construction: its own file, its own clock, and tried
 //! whether or not the slot's usage call just succeeded (a slot in usage backoff is exactly the
@@ -62,16 +63,6 @@ impl Switcher {
             return Ok(self.stored_subscription_plans(infos));
         }
         self.collect_subscription_plans(infos)
-    }
-
-    /// cswap's `refresh_subscription_plans`: refreshes the due plans, for a view whose
-    /// snapshots read the store only.
-    ///
-    /// # Errors
-    /// As [`Switcher::roster`].
-    pub fn refresh_subscription_plans(&self) -> Result<()> {
-        let infos = self.build_accounts_info()?;
-        self.collect_subscription_plans(&infos).map(drop)
     }
 
     /// `_collect_subscription_plans`: each slot's plan record, refreshed on its own clock;

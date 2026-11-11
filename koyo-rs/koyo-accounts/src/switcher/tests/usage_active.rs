@@ -103,7 +103,7 @@ fn non_expired_fetches_without_refreshing() {
 #[test]
 fn verdict_does_not_survive_a_slot_identity_change() {
     let h = active_harness();
-    let live_b = creds("sk-B", "rt-B", json!(2000));
+    let live_b = creds("sk-B", "rt-B", Some(json!(2000)));
     let key = h
         .switcher
         .lineage_key("1", EMAIL, &credential_fingerprint(&live_b).unwrap())
@@ -112,7 +112,7 @@ fn verdict_does_not_survive_a_slot_identity_change() {
     let mut data = h.sequence();
     data["accounts"]["1"]["uuid"] = "uuid-recreated".into();
     h.write_sequence(&data);
-    h.set_backup("1", EMAIL, &creds("sk-A", "rt-A", json!(1000)));
+    h.set_backup("1", EMAIL, &creds("sk-A", "rt-A", Some(json!(1000))));
     h.set_live(&live_b);
     let result = active_fetch(&h, "1", EMAIL, &live_b, ActiveVerdict::default());
     assert_eq!(result.sentinel.as_deref(), Some(USAGE_TOKEN_EXPIRED));
@@ -133,7 +133,7 @@ fn no_token_returns_no_credentials() {
 fn degraded_active_read_never_consumes() {
     // A degraded read may be a superseded generation: it is never spent, and says why.
     let h = active_harness();
-    let stale = creds("sk-stale", "rt-stale", json!(1000));
+    let stale = creds("sk-stale", "rt-stale", Some(json!(1000)));
     h.set_backup("1", EMAIL, &stale);
     let result = active_fetch(&h, "1", EMAIL, &stale, degraded());
     assert!(posted(&h).is_empty());
@@ -147,7 +147,7 @@ fn status_path_sets_the_degraded_flag_too() {
     // cswap's status path read the active credential without recording the verdict; here
     // every path builds the accounts info, whose active row carries it.
     let h = active_harness();
-    let stale = creds("sk-stale", "rt-stale", json!(1000));
+    let stale = creds("sk-stale", "rt-stale", Some(json!(1000)));
     std::fs::write(h.credentials_file(), &stale).unwrap();
     h.sandbox
         .security
@@ -219,7 +219,7 @@ fn active_path_refuses_consume_under_securestorage_env() {
     data["accounts"]["2"]["email"] = "b@example.com".into();
     h.write_sequence(&data);
     h.mock_claude_config();
-    let expired = creds("sk-exp", "rt-exp", json!(1000));
+    let expired = creds("sk-exp", "rt-exp", Some(json!(1000)));
     h.set_backup("2", "b@example.com", &expired);
     let result = active_fetch(&h, "2", "b@example.com", &expired, ActiveVerdict::default());
     assert!(h.sandbox.http.requests_to(OAUTH_TOKEN_URL).is_empty());

@@ -20,13 +20,14 @@
 //! rotation Claude Code made, the backup restore, and the header probe.
 
 use crate::credentials::ActiveVerdict;
+use crate::locked;
 use crate::oauth::{
     NO_ACCESS_TOKEN_ERROR, TOKEN_EXPIRED_ERROR, USAGE_FOREIGN_CREDENTIAL,
     USAGE_KEYCHAIN_UNAVAILABLE, USAGE_NO_CREDENTIALS, USAGE_TOKEN_EXPIRED,
     try_fetch_usage_for_account,
 };
+use crate::switcher::Switcher;
 use crate::switcher::info::AccountInfo;
-use crate::switcher::{Switcher, locked};
 use crate::usage_store::FetchRecord;
 
 impl Switcher {

@@ -1,7 +1,8 @@
 //! Tests translated from claude-swap's `tests/test_subscription.py` (0fe22a8), named after
-//! cswap's: the fetch, label, expiry, records and the plan store. The collector
-//! (`TestCollector`, the switcher's `_collect_subscription_plans`) and the views come with the
-//! switcher and view ports. The plan store's tests are in `store.rs`.
+//! cswap's: the fetch, label, records and the plan store (`TestIsExpired` is left out with
+//! `is_expired`). The collector (`TestCollector`, the switcher's `_collect_subscription_plans`)
+//! and the views come with the switcher and view ports. The plan store's tests are in
+//! `store.rs`.
 
 mod store;
 
@@ -257,15 +258,6 @@ fn pro_organization_wins_over_the_default_tier() {
 }
 
 #[test]
-fn pro_organization_does_not_mask_a_lapse() {
-    let plan = obj(json!({
-        "tier": "default_claude_ai", "organizationType": "claude_pro",
-        "subscriptionStatus": "canceled",
-    }));
-    assert!(is_expired(Some(&plan)));
-}
-
-#[test]
 fn observed_tiers() {
     for (tier, label) in [
         ("default_claude_ai", "Free"),
@@ -297,41 +289,6 @@ fn unknown_organization_type_falls_through_to_the_tier() {
 #[test]
 fn no_plan_no_label() {
     assert_eq!(plan_label(None), None);
-}
-
-// TestIsExpired
-
-#[test]
-fn active_max_is_not_expired() {
-    assert!(!is_expired(Some(&active_max())));
-}
-
-#[test]
-fn cancelled_still_in_period_is_not_expired() {
-    // Indistinguishable from an active Max: the reason renewal isn't shown.
-    assert!(!is_expired(Some(&active_max())));
-}
-
-#[test]
-fn lapsed_is_expired() {
-    assert!(is_expired(Some(&lapsed())));
-}
-
-#[test]
-fn canceled_on_a_paid_tier_is_not_enough() {
-    let plan = obj(json!({"tier": "default_claude_max_20x", "subscriptionStatus": "canceled"}));
-    assert!(!is_expired(Some(&plan)));
-}
-
-#[test]
-fn free_tier_while_active_is_not_enough() {
-    let plan = obj(json!({"tier": "default_claude_ai", "subscriptionStatus": "active"}));
-    assert!(!is_expired(Some(&plan)));
-}
-
-#[test]
-fn no_plan_is_not_expired() {
-    assert!(!is_expired(None));
 }
 
 // TestRecords

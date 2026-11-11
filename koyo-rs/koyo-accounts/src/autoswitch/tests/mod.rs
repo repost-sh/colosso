@@ -39,9 +39,9 @@ use serde_json::{Value, json};
 use super::state::{AutoSwitchState, Quarantined};
 use super::*;
 use crate::env::Clock as _;
-use crate::oauth::{USAGE_TOKEN_EXPIRED, credential_fingerprint, iso_z};
+use crate::oauth::{USAGE_TOKEN_EXPIRED, credential_fingerprint};
 use crate::switcher::{AccountRef, SlotIdentity};
-use crate::testing::Sandbox;
+use crate::testing::{Sandbox, iso, usage};
 use crate::usage_store::UsageEntry;
 
 use direct::Direct;
@@ -56,11 +56,6 @@ pub(super) const R_LATER: &str = "2024-01-08T00:00:00Z";
 pub(super) const R_LATEST: &str = "2024-01-10T00:00:00Z";
 
 // -- usage -----------------------------------------------------------------------------------
-
-/// cswap's `_usage`: a 5h window at `pct` and an empty 7d.
-pub(super) fn usage(pct: f64) -> Value {
-    json!({"five_hour": {"pct": pct}, "seven_day": {"pct": 0.0}})
-}
 
 /// `_usage` with the 5h window resetting at `resets_at`.
 pub(super) fn usage_r(pct: f64, resets_at: &str) -> Value {
@@ -107,14 +102,9 @@ pub(super) fn held() -> [(&'static str, Value); 3] {
     ]
 }
 
-/// cswap's `_iso_at`.
-pub(super) fn iso_at(epoch: f64) -> String {
-    iso_z(epoch).expect("in range")
-}
-
 /// cswap's `_at`: `seconds` from now.
 pub(super) fn at(h: &Harness, seconds: f64) -> String {
-    iso_at(h.now() + seconds)
+    iso(h.now() + seconds)
 }
 
 /// cswap's `_entry_for`: the store entry a live fetch would have produced. A JSON object is a

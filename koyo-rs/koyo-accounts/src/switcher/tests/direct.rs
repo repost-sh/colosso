@@ -9,10 +9,11 @@ use std::os::unix::fs::PermissionsExt as _;
 use serde_json::{Value, json};
 
 use super::switch::two_accounts;
-use super::{Harness, oauth_creds, sample_sequence_data};
+use super::{Harness, sample_sequence_data};
 use crate::AccountsError;
 use crate::switcher::Switcher;
 use crate::switcher::store::WRITE_FAULT;
+use crate::testing::creds;
 
 /// cswap's `_setup`: slot 1 (one@) with its backups, an unmanaged live login in the file, and
 /// a config naming `live_identity_email` (none at all for `None`).
@@ -33,14 +34,14 @@ fn setup(live_identity_email: Option<&str>) -> (Harness, String) {
     }));
     h.switcher
         .store
-        .write_account_credentials("1", "one@example.com", &oauth_creds("sk-one", "rt-one"))
+        .write_account_credentials("1", "one@example.com", &creds("sk-one", "rt-one", None))
         .unwrap();
     h.set_config_backup(
         "1",
         "one@example.com",
         &json!({"oauthAccount": {"emailAddress": "one@example.com", "accountUuid": "uuid-one"}}),
     );
-    let unmanaged = oauth_creds("sk-unmanaged", "rt-unmanaged");
+    let unmanaged = creds("sk-unmanaged", "rt-unmanaged", None);
     std::fs::write(h.credentials_file(), &unmanaged).unwrap();
     (h, unmanaged)
 }

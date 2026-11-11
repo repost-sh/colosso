@@ -63,7 +63,7 @@ pub(super) fn racing(
 fn gate_rereads_under_lock_and_posts_rereread_bytes() {
     // The POST spends the bytes re-read under the lock, not the caller's stale snapshot.
     let h = gate_harness();
-    let fresher = creds("sk-fresher", "rt-fresher", json!(2000));
+    let fresher = creds("sk-fresher", "rt-fresher", Some(json!(2000)));
     h.set_backup("1", EMAIL, &fresher);
     queue_grant(&h, "sk-new", "rt-new");
     let result = h.switcher.consume_backup_grant("1", EMAIL, &old());
@@ -78,7 +78,7 @@ fn gate_cas_persist_detects_racing_writer() {
     // A writer replaced the lineage mid-POST: our successor is stashed, theirs adopted.
     let mut h = gate_harness();
     h.set_backup("1", EMAIL, &old());
-    let racer = creds("sk-racer", "rt-racer", json!(8_888_888_888_000_u64));
+    let racer = creds("sk-racer", "rt-racer", Some(json!(8_888_888_888_000_u64)));
     let security = h.sandbox.security.clone();
     let written = racer.clone();
     racing(&mut h, "sk-new", "rt-new", move || {
@@ -101,7 +101,7 @@ fn gate_cas_persist_detects_racing_writer() {
 fn a_cas_conflict_is_not_reported_as_a_failed_freshen() {
     let mut h = gate_harness();
     h.set_backup("1", EMAIL, &old());
-    let racer = creds("sk-rac", "rt-rac", json!(8_888_888_888_000_u64));
+    let racer = creds("sk-rac", "rt-rac", Some(json!(8_888_888_888_000_u64)));
     let security = h.sandbox.security.clone();
     let written = racer.clone();
     racing(&mut h, "sk-new", "rt-new", move || {
@@ -281,7 +281,7 @@ fn the_kind_carries_its_remedy_and_skips_the_doomed_fetch() {
 #[test]
 fn failure_outcome_carries_consumed_fp_of_posted_bytes() {
     let h = gate_harness();
-    let fresher = creds("sk-fresher", "rt-fresher", json!(2000));
+    let fresher = creds("sk-fresher", "rt-fresher", Some(json!(2000)));
     h.set_backup("1", EMAIL, &fresher);
     queue_invalid_grant(&h);
     let out = h.switcher.consume_backup_grant("1", EMAIL, &old());
@@ -343,7 +343,7 @@ fn fresh_rotated_reread_adopted_without_second_consume() {
 #[test]
 fn gate_success_never_touches_live_store() {
     let h = gate_harness();
-    let stored = creds("a", "rt", json!(1000));
+    let stored = creds("a", "rt", Some(json!(1000)));
     h.set_backup("1", EMAIL, &stored);
     queue_grant(&h, "b", "rt2");
     let out = h.switcher.consume_backup_grant("1", EMAIL, &stored);
@@ -359,7 +359,7 @@ fn securestorage_env_refuses_consume() {
     h.sandbox.vars.securestorage_config_dir = Some("/elsewhere/other".into());
     h.rebuild();
     h.write_sequence(&sample_sequence_data());
-    let stored = creds("a", "rt", json!(1000));
+    let stored = creds("a", "rt", Some(json!(1000)));
     h.set_backup("1", EMAIL, &stored);
     queue_grant(&h, "b", "rt2");
     let result = h.switcher.consume_backup_grant("1", EMAIL, &stored);
@@ -371,7 +371,7 @@ fn securestorage_env_refuses_consume() {
 fn normal_env_unaffected() {
     let h = Harness::new();
     h.write_sequence(&sample_sequence_data());
-    let stored = creds("a", "rt", json!(1000));
+    let stored = creds("a", "rt", Some(json!(1000)));
     h.set_backup("1", EMAIL, &stored);
     queue_grant(&h, "b", "rt2");
     let result = h.switcher.consume_backup_grant("1", EMAIL, &stored);

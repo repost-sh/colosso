@@ -6,8 +6,8 @@
 //! reads the roster again for `switchable` and `disabled` after the pass; here they're the
 //! roster's.
 //!
-//! The subscription plan is shown as [`Plan`], its label and lapse read from the stored record
-//! once here (`subscription::plan_label`, `subscription::is_expired`).
+//! The subscription plan is shown as [`Plan`], its label read from the stored record once here
+//! (`subscription::plan_label`).
 //!
 //! Left out of the row: `alias` (aliases aren't ported), `kind` (Koyo manages OAuth accounts
 //! only, so it would always be `oauth`) and `policy` (it carried per-account thresholds and
@@ -16,9 +16,7 @@
 use serde_json::Value;
 
 use crate::Result;
-use crate::oauth::login_expires_at_epoch;
-use crate::oauth::value::number;
-use crate::subscription::{is_expired, plan_label};
+use crate::subscription::plan_label;
 use crate::switcher::{Fetch, Roster, RosterSlot, SlotIdentity, Switcher};
 use crate::usage_store::UsageEntry;
 
@@ -28,21 +26,14 @@ pub struct Plan {
     /// The label (`subscription::plan_label`): "Max 20x", "Team", …; `None` for a plan with
     /// none to give.
     pub label: Option<String>,
-    /// Lapsed: `canceled` and back on the free tier.
-    pub expired: bool,
-    /// When the plan was read, epoch seconds.
-    pub fetched_at: f64,
 }
 
 impl Plan {
     /// The plan of a stored record (`subscription::valid_record`'s shape).
-    fn of(record: &Value) -> Option<Plan> {
-        let plan = record.get("plan").and_then(Value::as_object);
-        Some(Plan {
-            label: plan_label(plan),
-            expired: is_expired(plan),
-            fetched_at: record.get("fetchedAt").and_then(number)?,
-        })
+    fn of(record: &Value) -> Plan {
+        Plan {
+            label: plan_label(record.get("plan").and_then(Value::as_object)),
+        }
     }
 }
 
@@ -58,9 +49,6 @@ pub struct AccountSnapshot {
     pub usage: UsageEntry,
     /// The subscription plan, `None` for a slot whose plan was never read.
     pub plan: Option<Plan>,
-    /// The stored refresh token's expiry, epoch seconds (`oauth::login_expires_at_epoch`), for
-    /// the "sign in again in …" note.
-    pub login_expires_at: Option<f64>,
 }
 
 /// Every managed account in sequence order, from one pass.
@@ -71,7 +59,6 @@ pub struct AccountsSnapshot {
     /// The Mac's login, managed or not ([`Roster::live`]).
     pub live: Option<SlotIdentity>,
     pub accounts: Vec<AccountSnapshot>,
-    pub taken_at: f64,
 }
 
 impl Switcher {
@@ -94,8 +81,7 @@ impl Switcher {
             .map(|info| AccountSnapshot {
                 is_active: info.is_active(),
                 usage: entries.remove(info.num()).unwrap_or_default(),
-                plan: plans.get(info.num()).and_then(Plan::of),
-                login_expires_at: login_expires_at_epoch(&info.creds),
+                plan: plans.get(info.num()).map(Plan::of),
                 slot: info.slot,
             })
             .collect();
@@ -103,7 +89,6 @@ impl Switcher {
             current,
             live,
             accounts,
-            taken_at: self.env.now(),
         })
     }
 }

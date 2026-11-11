@@ -2,11 +2,39 @@
 //! cases of `tests/test_account_policy_store.py`'s `TestPolicyFromData`, on
 //! `_disabled_from_data` (Koyo's policy is the flag alone). `TestAccountPolicies` is left out
 //! with `account_policies`. What cswap prints is asserted on the returned
-//! [`HoldOutcome`](crate::switcher::HoldOutcome).
+//! [`HoldOutcome`](crate::switcher::HoldOutcome); `is_account_disabled`,
+//! `disabled_account_numbers` and `switchable_account_numbers` are asked of the roster, which
+//! replaced them.
 
 use super::{Harness, make_live, seed};
 use crate::AccountsError;
-use crate::switcher::Switcher;
+use crate::switcher::{RosterSlot, Switcher};
+
+/// The roster's slots that `keep` picks, in sequence order.
+fn slots(h: &Harness, keep: impl Fn(&RosterSlot) -> bool) -> Vec<String> {
+    let roster = h.switcher.roster().unwrap();
+    roster
+        .slots
+        .into_iter()
+        .filter(|slot| keep(slot))
+        .map(|slot| slot.number)
+        .collect()
+}
+
+/// cswap's `disabled_account_numbers`, on the roster.
+fn disabled(h: &Harness) -> Vec<String> {
+    slots(h, |slot| slot.disabled)
+}
+
+/// cswap's `switchable_account_numbers`, on the roster.
+fn switchable(h: &Harness) -> Vec<String> {
+    slots(h, RosterSlot::switchable)
+}
+
+/// cswap's `is_account_disabled`, on the roster.
+fn is_disabled(h: &Harness, num: &str) -> bool {
+    disabled(h).iter().any(|held| held == num)
+}
 
 fn fleet(count: u64) -> Harness {
     let h = Harness::new();
@@ -24,9 +52,9 @@ fn disable_sets_flag_and_excludes_from_rotation() {
     seed(&h, 3, "c@example.com");
     let outcome = h.switcher.set_account_disabled("2", true).unwrap();
     assert!(outcome.changed);
-    assert!(h.switcher.is_account_disabled("2").unwrap());
-    assert_eq!(h.switcher.disabled_account_numbers().unwrap(), ["2"]);
-    assert_eq!(h.switcher.switchable_account_numbers().unwrap(), ["1", "3"]);
+    assert!(is_disabled(&h, "2"));
+    assert_eq!(disabled(&h), ["2"]);
+    assert_eq!(switchable(&h), ["1", "3"]);
     assert_eq!(h.accounts()["2"]["disabled"], true);
 }
 
@@ -39,13 +67,10 @@ fn enable_clears_flag_and_restores_position() {
     h.switcher.set_account_disabled("2", true).unwrap();
     let outcome = h.switcher.set_account_disabled("2", false).unwrap();
     assert!(outcome.changed);
-    assert!(!h.switcher.is_account_disabled("2").unwrap());
-    assert!(h.switcher.disabled_account_numbers().unwrap().is_empty());
+    assert!(!is_disabled(&h, "2"));
+    assert!(disabled(&h).is_empty());
     // In its original place, not appended.
-    assert_eq!(
-        h.switcher.switchable_account_numbers().unwrap(),
-        ["1", "2", "3"]
-    );
+    assert_eq!(switchable(&h), ["1", "2", "3"]);
     assert!(h.accounts()["2"].get("disabled").is_none());
 }
 
@@ -57,7 +82,7 @@ fn disable_by_email() {
     h.switcher
         .set_account_disabled("b@example.com", true)
         .unwrap();
-    assert!(h.switcher.is_account_disabled("2").unwrap());
+    assert!(is_disabled(&h, "2"));
 }
 
 #[test]
@@ -68,7 +93,7 @@ fn repeated_disable_is_noop() {
     h.switcher.set_account_disabled("2", true).unwrap();
     // cswap prints "already disabled".
     assert!(!h.switcher.set_account_disabled("2", true).unwrap().changed);
-    assert!(h.switcher.is_account_disabled("2").unwrap());
+    assert!(is_disabled(&h, "2"));
 }
 
 #[test]
@@ -119,7 +144,7 @@ fn remove_then_readd_clears_disabled() {
     data["sequence"] = serde_json::json!([1]);
     h.write_sequence(&data);
     seed(&h, 2, "b@example.com");
-    assert!(!h.switcher.is_account_disabled("2").unwrap());
+    assert!(!is_disabled(&h, "2"));
 }
 
 #[test]
@@ -134,8 +159,8 @@ fn bare_add_keeps_account_parked() {
     let added = h.switcher.add_account().unwrap();
     assert!(added.updated);
     assert_eq!(added.account_num, "2");
-    assert!(h.switcher.is_account_disabled("2").unwrap());
-    assert_eq!(h.switcher.switchable_account_numbers().unwrap(), ["1"]);
+    assert!(is_disabled(&h, "2"));
+    assert_eq!(switchable(&h), ["1"]);
 }
 
 #[test]
@@ -145,7 +170,7 @@ fn disable_active_account_warns_but_sets_flag() {
     seed(&h, 2, "b@example.com");
     let outcome = h.switcher.set_account_disabled("1", true).unwrap();
     assert!(outcome.was_active);
-    assert!(h.switcher.is_account_disabled("1").unwrap());
+    assert!(is_disabled(&h, "1"));
 }
 
 #[test]

@@ -70,20 +70,6 @@ fn keychain_stays_file_mode_during_cooldown() {
 }
 
 #[test]
-fn item_exists_is_capability_neutral() {
-    let world = World::new();
-    world.store.set_keychain_usable_cache(Some(false));
-    world.security.fake.set("svc", "acct", "x");
-    // Not a `kc_call`: its `true` can't send operations back to the Keychain.
-    assert!(keychain::item_exists(
-        &*world.store.env().security,
-        "svc",
-        "acct"
-    ));
-    assert!(!world.store.use_keychain());
-}
-
-#[test]
 fn capability_cache_is_process_local() {
     let first = World::new();
     first.store.set_keychain_usable_cache(Some(false));

@@ -28,7 +28,7 @@ use crate::oauth::{USAGE_KEYCHAIN_UNAVAILABLE, USAGE_NO_CREDENTIALS, USAGE_TOKEN
 use crate::paths::CLAUDE_CODE_KEYCHAIN_SERVICE;
 use crate::switcher::Fetch;
 use crate::switcher::info::AccountInfo;
-use crate::testing::{Answer, entry_as};
+use crate::testing::{Answer, creds, entry_as};
 use crate::usage_store::{Identities, UsageEntry};
 
 /// cswap's list setup: `sample_sequence_data` with slot 1 the live `test@example.com`, the
@@ -95,7 +95,7 @@ fn list_never_writes_live_while_claude_code_running() {
     h.set_backup(
         "2",
         "account2@example.com",
-        &super::oauth_creds("sk-backup", "rt-orig"),
+        &creds("sk-backup", "rt-orig", None),
     );
     queue_usage(&h, &json!({}));
     queue_usage(&h, &json!({}));
@@ -306,7 +306,7 @@ fn list_active_shows_keychain_unavailable() {
 fn expired_active_is_no_longer_statically_gated() {
     let h = super::support::gate_harness();
     h.mock_claude_config();
-    let expired = super::support::creds("sk-active", "rt-orig", json!(1000));
+    let expired = creds("sk-active", "rt-orig", Some(json!(1000)));
     let row = info("1", EMAIL, "", true, &expired);
     assert_eq!(
         h.switcher.static_usage_sentinel(&row),

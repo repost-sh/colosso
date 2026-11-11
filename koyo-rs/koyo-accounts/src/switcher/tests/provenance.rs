@@ -7,11 +7,12 @@
 use serde_json::{Value, json};
 
 use super::switch::two_accounts;
-use super::{Harness, oauth_creds, profile, sample_sequence_data};
+use super::{Harness, profile, sample_sequence_data};
 use crate::switcher::switch::SwitchOp;
+use crate::testing::creds;
 
 pub(super) fn a1_backup() -> String {
-    oauth_creds("sk-stored-1", "rt-1")
+    creds("sk-stored-1", "rt-1", None)
 }
 
 /// Two accounts, slot 1's backup [`a1_backup`], the live credential `live`.
@@ -79,7 +80,7 @@ fn access_token_rotation_same_lineage_backs_up() {
 
 #[test]
 fn full_rotation_resolved_to_outgoing_slot_backs_up() {
-    let rotated = oauth_creds("sk-fresh-1", "rt-1-rotated");
+    let rotated = creds("sk-fresh-1", "rt-1-rotated", None);
     let h = guarded(&rotated);
     let op = run_switch(
         &h,
@@ -94,7 +95,7 @@ fn full_rotation_resolved_to_outgoing_slot_backs_up() {
 fn resolution_backfills_empty_slot_uuid() {
     let mut data = sample_sequence_data();
     data["accounts"]["1"]["uuid"] = "".into();
-    let h = guarded_with(&mut data, &oauth_creds("sk-f", "rt-1-rotated"));
+    let h = guarded_with(&mut data, &creds("sk-f", "rt-1-rotated", None));
     run_switch(
         &h,
         Some(profile("uuid-resolved", Some("test@example.com"), Some(""))),
@@ -106,7 +107,7 @@ fn resolution_backfills_empty_slot_uuid() {
 fn foreign_credential_preserved_never_backed_into_any_slot() {
     // The poisoning precondition: another managed slot's bytes, uuid-positive. Preserved,
     // written into neither slot, and the target's stored backup still activates.
-    let foreign = oauth_creds("sk-2-rotated", "rt-2-rotated");
+    let foreign = creds("sk-2-rotated", "rt-2-rotated", None);
     let h = guarded(&foreign);
     let a2 = h.backup("2", "account2@example.com").unwrap();
     let op = run_switch(&h, Some(slot2()));
@@ -259,7 +260,7 @@ fn backup_holding_no_login_is_still_advanced() {
 
 #[test]
 fn alien_credential_preserved_and_skipped() {
-    let alien = oauth_creds("sk-x", "rt-x");
+    let alien = creds("sk-x", "rt-x", None);
     let h = guarded(&alien);
     let op = run_switch(
         &h,
@@ -279,7 +280,7 @@ fn blank_stored_uuid_email_match_is_alien_not_foreign() {
     // A cross-slot attribution must be uuid-positive.
     let mut data = sample_sequence_data();
     data["accounts"]["2"]["uuid"] = "".into();
-    let h = guarded_with(&mut data, &oauth_creds("sk-d", "rt-d"));
+    let h = guarded_with(&mut data, &creds("sk-d", "rt-d", None));
     let a2 = h.backup("2", "account2@example.com").unwrap();
     let op = run_switch(
         &h,

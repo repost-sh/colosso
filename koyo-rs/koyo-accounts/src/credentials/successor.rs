@@ -20,6 +20,7 @@ use serde_json::{Map, Value};
 
 use crate::credentials::{CredentialStore, ManifestVerdict};
 use crate::oauth::credential_fingerprint;
+use crate::oauth::value::str_at;
 use crate::{AccountsError, Result};
 
 const REASON: &str = "reason";
@@ -161,10 +162,6 @@ pub struct StashedSuccessor {
     pub reason: Option<StashReason>,
 }
 
-fn field<'a>(row: &'a Value, key: &str) -> Option<&'a str> {
-    row.get(key).and_then(Value::as_str)
-}
-
 impl CredentialStore {
     /// cswap's `stash_successor`, its write: parks `successor` with `meta` as its row, the
     /// entry id returned.
@@ -227,11 +224,15 @@ impl CredentialStore {
         // the same generation is tried.
         let mut deferred_entry_id: Option<&str> = None;
         for (entry_id, row) in &manifest {
-            if field(row, CONFIG_SLOT) != Some(account_num) {
+            // A row that isn't an object names no slot.
+            let Some(row) = row.as_object() else {
+                continue;
+            };
+            if str_at(row, CONFIG_SLOT) != Some(account_num) {
                 continue;
             }
-            let reason = field(row, REASON).and_then(StashReason::parse);
-            if field(row, CONSUMED_FP) != Some(consumed_fp) {
+            let reason = str_at(row, REASON).and_then(StashReason::parse);
+            if str_at(row, CONSUMED_FP) != Some(consumed_fp) {
                 if reason == Some(StashReason::CasConflict) {
                     // A conflict's row can never match: the store moved off the generation it
                     // superseded and only moves forward.

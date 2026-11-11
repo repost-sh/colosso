@@ -138,51 +138,6 @@ fn unreadable_current_backup_is_logged_distinguishably_at_info() {
 }
 
 #[test]
-fn strict_clear_final_belt_fails_closed_on_unreadable_enc() {
-    // The deletes return, but the read after them can't tell: the commit aborts. (cswap's
-    // unreadable `.enc` is a Keychain that answers deletes and fails reads here.)
-    let world = World::new();
-    world
-        .store
-        .write_account_credentials("1", "a@b.c", "live-material")
-        .unwrap();
-    world
-        .security
-        .set_rule(|call| (verb(call) == "find-generic-password").then_some(Answer::Exit(51)));
-    let cleared = world.store.delete_account_credentials_strict("1", "a@b.c");
-    assert!(
-        matches!(cleared, Err(AccountsError::Credential(_))),
-        "{cleared:?}"
-    );
-}
-
-#[test]
-fn strict_clear_fails_when_the_delete_fails_and_passes_when_gone() {
-    let world = World::new();
-    world
-        .store
-        .write_account_credentials("1", "a@b.c", "material")
-        .unwrap();
-    world
-        .security
-        .set_rule(|call| (verb(call) == "delete-generic-password").then_some(Answer::Exit(51)));
-    let cleared = world.store.delete_account_credentials_strict("1", "a@b.c");
-    assert!(
-        matches!(cleared, Err(AccountsError::Credential(_))),
-        "{cleared:?}"
-    );
-    assert!(has(&world, "account-1-a@b.c"));
-
-    world.security.clear_rule();
-    world.store.lapse_keychain_cooldown();
-    world
-        .store
-        .delete_account_credentials_strict("1", "a@b.c")
-        .unwrap();
-    assert!(!has(&world, "account-1-a@b.c"));
-}
-
-#[test]
 fn a_backup_write_inside_the_cooldown_fails_without_spawning_a_write() {
     let world = World::new();
     world.security.lock();

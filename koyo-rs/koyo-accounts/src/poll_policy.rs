@@ -28,14 +28,11 @@
 //! cswap draws the jitter from `random.random`; here [`PlanInput::rng`] carries the drawn value
 //! ([`random_unit`] in production), so tests are as deterministic as cswap's fixture makes them.
 
-use std::collections::hash_map::RandomState;
-use std::hash::{BuildHasher as _, Hasher as _};
-use std::sync::atomic::{AtomicU64, Ordering};
-
 use serde_json::Value;
 
 use crate::lines::window_line;
 use crate::oauth::{self, iso_timestamp};
+use crate::random::random_u64;
 
 /// The freshness floor every collector shares: a reading younger than this is served without a
 /// fetch, so one token's sustained rate is at most 1/`SERVE_TTL_S` however many views are open.
@@ -209,7 +206,7 @@ pub fn plan_after_fetch(input: &PlanInput<'_>) -> (f64, f64) {
         // interval stands.
         interval = interval.max(EXHAUSTED_INTERVAL_S);
     }
-    let mut next_poll = input.now + interval * (1. + JITTER_FRAC * (2. * input.rng - 1.));
+    let mut next_poll = input.now + jittered(interval, input.rng);
     let reset = if exhausted {
         limiting_reset_ts(input.new_usage, models).filter(|ts| *ts > input.now)
     } else {
@@ -221,18 +218,14 @@ pub fn plan_after_fetch(input: &PlanInput<'_>) -> (f64, f64) {
     (next_poll, interval)
 }
 
+/// `interval` with ±[`JITTER_FRAC`] noise, from `rng`, a uniform draw in [0, 1).
+pub(crate) fn jittered(interval: f64, rng: f64) -> f64 {
+    interval * (1. + JITTER_FRAC * (2. * rng - 1.))
+}
+
 /// A uniform draw in [0, 1), cswap's `random.random()` for [`PlanInput::rng`].
 pub fn random_unit() -> f64 {
     (random_u64() >> 11) as f64 / (1u64 << 53) as f64
-}
-
-/// 64 random bits: the standard library's per-process random hash keys over a counter.
-pub(crate) fn random_u64() -> u64 {
-    static COUNT: AtomicU64 = AtomicU64::new(0);
-    let mut hasher = RandomState::new().build_hasher();
-    hasher.write_u64(COUNT.fetch_add(1, Ordering::Relaxed));
-    hasher.write_u32(std::process::id());
-    hasher.finish()
 }
 
 #[cfg(test)]

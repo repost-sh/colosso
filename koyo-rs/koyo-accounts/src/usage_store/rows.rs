@@ -11,16 +11,12 @@ use super::backoff::{
     rejection_backoff_until,
 };
 use super::{FetchRecord, PollPlan, UsageEntry, live_claim};
-use crate::oauth::value::{num_or_none, py_int, py_number};
+use crate::oauth::value::{num_or_none, py_int, py_number, str_at};
 
 pub(super) type Row = Map<String, Value>;
 
 pub(super) fn opt(value: Option<f64>) -> Value {
     value.map_or(Value::Null, Value::from)
-}
-
-fn text(row: &Row, key: &str) -> Option<String> {
-    row.get(key).and_then(Value::as_str).map(str::to_owned)
 }
 
 /// One stored row as its entry at `now`.
@@ -37,12 +33,11 @@ pub(super) fn entry_of(row: &Row, now: f64, models: &[&str]) -> UsageEntry {
     // to its earliest reset; any other failure is no evidence it holds, and takes the general
     // ceiling. Strict `<` on `nextPollAt` as `due_candidate`: at it the entry is due. A live
     // claim keeps the bridge up while another collector's result is in flight; a live hold too.
-    let within_ceiling =
-        if row.get("lastError").and_then(Value::as_str) == Some(crate::oauth::RATE_LIMITED_ERROR) {
-            rate_limited_trust_ok(last_good.as_ref(), age_s, now, models)
-        } else {
-            age_s.is_some_and(|age| age <= TRUST_MAX_AGE_S)
-        };
+    let within_ceiling = if str_at(row, "lastError") == Some(crate::oauth::RATE_LIMITED_ERROR) {
+        rate_limited_trust_ok(last_good.as_ref(), age_s, now, models)
+    } else {
+        age_s.is_some_and(|age| age <= TRUST_MAX_AGE_S)
+    };
     let trust_extended = within_ceiling
         && (consecutive_failures > 0
             || next_poll_at.is_some_and(|at| now < at)
@@ -55,14 +50,14 @@ pub(super) fn entry_of(row: &Row, now: f64, models: &[&str]) -> UsageEntry {
         age_s,
         last_attempt_at,
         consecutive_failures,
-        last_error: text(row, "lastError"),
+        last_error: str_at(row, "lastError").map(str::to_owned),
         backoff_until: num_or_none(row.get("backoffUntil")),
         next_poll_at,
         poll_interval_s: num_or_none(row.get("pollIntervalS")),
         last_429_at: num_or_none(row.get("last429At")),
         auth_dead_strikes: py_int(row.get("authDeadStrikes")),
-        struck_fingerprint: text(row, "struckFingerprint"),
-        rejected_fingerprint: text(row, "rejectedFingerprint"),
+        struck_fingerprint: str_at(row, "struckFingerprint").map(str::to_owned),
+        rejected_fingerprint: str_at(row, "rejectedFingerprint").map(str::to_owned),
         trust_extended,
         claim_until,
         held_until,

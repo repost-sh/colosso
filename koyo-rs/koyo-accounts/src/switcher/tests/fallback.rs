@@ -6,16 +6,17 @@ use serde_json::json;
 
 use super::provenance::{a1_backup, guarded, run_switch, warned};
 use super::switch::two_accounts;
-use super::{Harness, oauth_creds, profile, sample_sequence_data};
+use super::{Harness, profile, sample_sequence_data};
+use crate::locked;
 use crate::oauth::credential_fingerprint;
-use crate::switcher::locked;
 use crate::switcher::switch::{Outgoing, OutgoingKind, Provenance};
+use crate::testing::creds;
 use crate::{AccountsError, oauth};
 
 #[test]
 fn partial_identity_uuid_only_matching_outgoing_slot_backs_up() {
     // Partial data never turns a legitimate rotation into preserve-and-skip.
-    let rotated = oauth_creds("sk-f", "rt-1-rotated");
+    let rotated = creds("sk-f", "rt-1-rotated", None);
     let h = guarded(&rotated);
     let op = run_switch(&h, Some(profile("uuid-1", None, None)));
     assert_eq!(h.backup("1", "test@example.com").unwrap(), rotated);
@@ -30,7 +31,7 @@ fn partial_identity_uuid_match_with_slot_org_recorded() {
     let h = two_accounts(&mut data);
     h.set_backup("1", "test@example.com", &a1_backup());
     let roster = h.switcher.get_sequence_data().unwrap().unwrap();
-    let rotated = oauth_creds("sk-f", "rt-1-rotated");
+    let rotated = creds("sk-f", "rt-1-rotated", None);
     let provenance = Provenance {
         live: Some(rotated.clone()),
         resolved: Some(oauth::AccountIdentity {
@@ -54,7 +55,7 @@ fn partial_identity_uuid_match_with_slot_org_recorded() {
 #[test]
 fn partial_identity_matching_nothing_falls_open() {
     // Indistinguishable from schema drift: the pre-fix backup, never preserve-and-skip.
-    let mystery = oauth_creds("sk-x", "rt-x");
+    let mystery = creds("sk-x", "rt-x", None);
     let h = guarded(&mystery);
     let op = run_switch(&h, Some(profile("uuid-nobody", None, None)));
     assert_eq!(h.backup("1", "test@example.com").unwrap(), mystery);
@@ -64,7 +65,7 @@ fn partial_identity_matching_nothing_falls_open() {
 
 #[test]
 fn foreign_attribution_survives_missing_email() {
-    let h = guarded(&oauth_creds("sk-2-rotated", "rt-2-rotated"));
+    let h = guarded(&creds("sk-2-rotated", "rt-2-rotated", None));
     let a2 = h.backup("2", "account2@example.com").unwrap();
     let op = run_switch(&h, Some(profile("uuid-2", None, Some(""))));
     assert_eq!(h.backup("1", "test@example.com").unwrap(), a1_backup());
@@ -76,7 +77,7 @@ fn foreign_attribution_survives_missing_email() {
 #[test]
 fn unresolvable_mismatch_backs_up_pre_fix() {
     // The fail-open core: the oracle silent, the switch behaves exactly pre-fix, quietly.
-    let mystery = oauth_creds("sk-x", "rt-x");
+    let mystery = creds("sk-x", "rt-x", None);
     let h = guarded(&mystery);
     let op = run_switch(&h, None);
     assert_eq!(h.backup("1", "test@example.com").unwrap(), mystery);
@@ -89,7 +90,7 @@ fn unresolvable_mismatch_backs_up_pre_fix() {
 fn cached_foreign_verdict_survives_a_failed_switch_time_probe() {
     // A collect pass already condemned this lineage: a transient probe failure must not let
     // the fail-open backup write it into the slot.
-    let foreign = oauth_creds("sk-foreign", "rt-foreign");
+    let foreign = creds("sk-foreign", "rt-foreign", None);
     let h = guarded(&foreign);
     let key = h
         .switcher
@@ -113,7 +114,7 @@ fn cached_foreign_verdict_survives_a_failed_switch_time_probe() {
 #[test]
 fn profile_exception_falls_back_to_pre_fix_backup() {
     // A failing lookup (here a 500) is indistinguishable from no answer.
-    let mystery = oauth_creds("sk-x", "rt-x");
+    let mystery = creds("sk-x", "rt-x", None);
     let h = guarded(&mystery);
     h.sandbox
         .http
@@ -127,7 +128,7 @@ fn profile_exception_falls_back_to_pre_fix_backup() {
 #[test]
 fn safety_copy_failure_aborts_before_live_overwrite() {
     // No safety copy, no switch.
-    let mystery = oauth_creds("sk-x", "rt-x");
+    let mystery = creds("sk-x", "rt-x", None);
     let h = guarded(&mystery);
     let stash_dir = h.sandbox.store().join("credentials");
     std::fs::set_permissions(
@@ -202,7 +203,7 @@ fn oauth_absent_live_never_overwrites_a_token_bearing_backup() {
 #[test]
 fn oauth_slot_holding_a_key_still_captures_its_own_login() {
     // A slot's kind, not its bytes, decides what it stores.
-    let h = guarded(&oauth_creds("sk-new-1", "rt-new-1"));
+    let h = guarded(&creds("sk-new-1", "rt-new-1", None));
     h.set_backup("1", "test@example.com", "sk-ant-api03-key");
     run_switch(
         &h,
@@ -210,14 +211,14 @@ fn oauth_slot_holding_a_key_still_captures_its_own_login() {
     );
     assert_eq!(
         h.backup("1", "test@example.com").unwrap(),
-        oauth_creds("sk-new-1", "rt-new-1")
+        creds("sk-new-1", "rt-new-1", None)
     );
 }
 
 #[test]
 fn moved_bytes_between_prefetch_and_lock_fall_to_unresolved() {
     // A pre-lock answer binds only to the bytes it resolved.
-    let moved = oauth_creds("sk-m", "rt-m");
+    let moved = creds("sk-m", "rt-m", None);
     let h = guarded(&moved);
     let provenance = Provenance {
         live: Some("something-else-entirely".into()),
@@ -236,8 +237,8 @@ fn moved_bytes_between_prefetch_and_lock_fall_to_unresolved() {
 #[test]
 fn email_match_with_conflicting_uuid_is_not_the_slot() {
     // A recycled email under another uuid is never backed into the slot.
-    let h = guarded(&oauth_creds("sk-x", "rt-x"));
-    h.set_backup("1", "test@example.com", &oauth_creds("sk-1", "rt-1"));
+    let h = guarded(&creds("sk-x", "rt-x", None));
+    h.set_backup("1", "test@example.com", &creds("sk-1", "rt-1", None));
     let op = run_switch(
         &h,
         Some(profile(
@@ -248,7 +249,7 @@ fn email_match_with_conflicting_uuid_is_not_the_slot() {
     );
     assert_eq!(
         h.backup("1", "test@example.com").unwrap(),
-        oauth_creds("sk-1", "rt-1")
+        creds("sk-1", "rt-1", None)
     );
     assert_eq!(h.stash().len(), 1);
     assert!(warned(&op, "does not match a managed account"));

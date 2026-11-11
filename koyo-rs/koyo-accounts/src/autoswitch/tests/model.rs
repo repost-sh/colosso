@@ -73,7 +73,7 @@ fn weekly_only_reading_is_a_target() {
 fn rejected_probe_is_not_a_target() {
     let mut h = Harness::standard();
     let refused = json!({"five_hour": {"pct": 5.0}, "seven_day": {"pct": 5.0},
-                         "rejected": {"retry_after_s": 600.0, "resets_at": iso_at(h.now() + 600.)}});
+                         "rejected": {"retry_after_s": 600.0, "resets_at": iso(h.now() + 600.)}});
     let outcome = h.tick_with_usage(&[("1", usage(95.)), ("2", refused), ("3", usage(40.))]);
     assert_eq!(outcome, TickOutcome::Switched);
     assert_eq!(h.active(), Some(3));
