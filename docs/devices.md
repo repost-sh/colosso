@@ -141,24 +141,61 @@ Crates:
 
 ## 5. A real device [decided]
 
+The host's phone backend (`koyo-device-host/src/phone/`), started as `--phone <udid> --name
+<name>`. idevice (MIT) is a crates.io release pinned exactly (`=0.1.68`, its `ring` backend) and
+reached only from `phone/`: its API is unstable below 0.2.
+
 - Over the cable through the developer tunnel (usbmuxd, `CoreDeviceProxy`, a software tunnel, the
-  RSD handshake), with idevice (MIT). No network interface is made; nothing is installed on it.
-- What must be true first, each told apart so the setup shows the one step missing: connected;
-  trusted; unlocked; Developer Mode on; the developer image mounted; iOS or iPadOS 27 or later.
-- The device's own screen stream, decoded on the Mac, with the feedback the device is owed (every
-  picture acknowledged, a report every 50 ms, a keyframe asked for when a decode fails).
+  RSD handshake), on a thread of the host's own with its own runtime; the stream is read by a
+  task of its own, so nothing the session waits on holds it up. No network interface is made;
+  nothing is installed on the device. Ready in 0.5-1.5 s [measured].
+- What must be true first, each told apart so the setup shows the one step missing: connected by
+  cable; trusted; Developer Mode on; iOS or iPadOS 27 or later; the developer image there. When
+  connecting fails the host asks `devicectl list devices` once for which (`phone/checks.rs`).
+- The device's own screen stream (sound first, then video on the same session), decoded by the
+  Mac's hardware decoder in its own format and made BGRA in one surface of the host's, which the
+  ring turns upright by the LCD's own turn. The feedback the device is owed: every picture
+  acknowledged, a report every 50 ms, a word every second, a keyframe asked for when a decode
+  fails (twice a second at most). Unwanted, pictures are dropped undecoded; wanted again, decoding
+  starts from a keyframe asked for (about a second's pictures skipped).
+- How it's turned and held, from the device's own `deviceinfo` service (`getdisplayinfo`): the
+  LCD's `currentOrientation` turns the picture; how it's held turns places, and lying flat
+  (`faceUp`) the last way it was held (`currentDeviceNonFlatOrientation`) holds. Read at connect
+  and every two seconds while the picture is wanted. Its point scale is the device's own
+  (`pointScale`: 2 on an iPad).
 - **It doesn't lock while its stream is held open** (PoC: unlocked through 8 and 12 minutes;
-  locked in 5-6 with only a power assertion). That is the whole mechanism: nothing is set on the
-  device. The tab says "While this tab is open, your iPad stays awake and its camera and
-  microphone are off."
-- Input through its HID services; places turned to the device's own upright axes by how it is
-  held. **Never turned by Koyo** [decided]: the only way found leaves a simulated orientation on
-  the device. The `lock` button is refused: an agent that locks it has locked itself out.
-- Locked: the tab says "Unlock your iPad to continue." and agents are refused at once. Koyo never
-  types, asks for or stores a passcode.
-- Unplugged: the tab says so and recovers by itself when it's plugged back in. Restarts are
-  bounded: sessions restarted often are reported to wedge the device's daemon.
+  locked in 5-6 with only a power assertion; M6: unlocked at 6 and 11.7 minutes held). That is the
+  whole mechanism: nothing is set on the device. The tab says "While this tab is open, your iPad
+  stays awake and its camera and microphone are off."
+- Input through its universal HID service (up to five fingers) and Indigo (buttons, keys);
+  places turned to the device's own upright axes by how it is held. A connection the device
+  closed is made again and the act sent once more. **Never turned by Koyo** [decided]: the only
+  way found leaves a simulated orientation on the device. The `lock` button is refused: an agent
+  that locks it has locked itself out.
+- Locked: the device's own lock notifications (`com.apple.springboard.lockstate`,
+  `hasBlankedScreen`) say when it changes, watched by a task of their own; notices that come
+  together are one change, and `devicectl device info lockState` (bounded, off the stream) says
+  which way: the device's `getlockstate` answers "not implemented" on iPadOS 27.0.1, with or
+  without its action. The tab says "Unlock
+  your iPad to continue." and agents' acts are refused at once. Koyo never types, asks for or
+  stores a passcode.
+- Looking: a real device has no accessibility tree, so a snapshot is the text read off its picture.
+  Its stream is encoded afresh, so a still screen's pictures differ a little: a point counts as
+  changed past 20 in a colour, and up to 16 sampled points moving on their own (an iPad's Clock
+  icon and clock widget, measured at 1 to 11 of 88,236) don't keep a wait from being still.
+- A stream that stalls (keyframes asked for two seconds bring nothing decodable) or ends while
+  the device is still plugged in is started again on the same tunnel: at once, then no sooner
+  than a minute after the last, three times in all; then the tab says so with Start Again.
+  Never a loop: sessions restarted often are reported to wedge the device's daemon.
+- Unplugged mid-session: the host says it's gone ("{name} was unplugged. Plug it back in to
+  continue."); not connected at the start, it's the setup's cable step.
 - One remote view of a device at a time: Xcode or Device Hub taking it pauses Koyo's.
+- Measured on an iPad Pro 12.9-inch on iPadOS 27.0.1 (`tests/real_phone.rs`): ready in 0.5-1.5 s,
+  2736 x 2064 at 2x, 32.6 pictures a second on a still screen (none lost: the ring copied every
+  one); a tap aimed at an icon opened it; the volume buttons, Home and five fingers; a wait on a
+  still screen still in 0.5 s and an act on one answered in 0.4 s; on the touch-lab page in its
+  Safari, a pinch to 2, 1.5 and 0.5 read 2.00, 1.50 and 0.50, a rotation 90.00, and typed ASCII
+  arrived whole. The apps tools refuse on a real device in this build, pointing at `devicectl`.
 
 ## 6. Acting and looking [decided]
 
