@@ -69,30 +69,30 @@ pub(super) fn room_in(listed: &[Simulator], starting: &Running, udid: Option<&st
 }
 
 /// The simulator `input` asks for: by its id, made from a model, or else the one this caller
-/// used last, else the one booted last, else a new iPhone 17 Pro; refused past the limit before
+/// used last, else the one booted last, else a new iPhone, the newest; refused past the limit before
 /// anything is made.
 fn choose(set: &Path, input: &DeviceOpenInput, last: Option<&str>, starting: &Running) -> Result<Simulator, ControlError> {
     use devices::simulators::{self, Unmade};
     let listed = simulators::list(set).map_err(missing)?;
-    if let Some(model) = &input.model {
+    let make = |model: Option<&str>| {
         room_in(&listed, starting, None)?;
-        return simulators::make(set, model).map_err(|unmade| match unmade {
+        simulators::make(set, model).map_err(|unmade| match unmade {
             Unmade::Model(why) => ControlError::invalid_input(why),
             Unmade::Missing(why) => missing(why),
-        });
+        })
+    };
+    if let Some(model) = &input.model {
+        return make(Some(model));
     }
     let known = |udid: &str| listed.iter().find(|simulator| simulator.udid == udid).cloned();
     let found = match (&input.device, last.and_then(known)) {
         (Some(udid), _) => known(udid)
             .ok_or_else(|| ControlError::not_found(format!("No simulator {udid} among Koyo's: device_list lists them.")))?,
         (None, Some(last)) => last,
-        (None, None) => {
-            let Some(found) = (listed.iter().find(|simulator| simulator.booted_before)).or(listed.first()) else {
-                room_in(&listed, starting, None)?;
-                return simulators::make_default(set).map_err(missing);
-            };
-            found.clone()
-        }
+        (None, None) => match (listed.iter().find(|simulator| simulator.booted_before)).or(listed.first()) {
+            Some(found) => found.clone(),
+            None => return make(None),
+        },
     };
     room_in(&listed, starting, Some(&found.udid))?;
     Ok(found)
@@ -143,8 +143,11 @@ pub(crate) fn open(caller: &Caller, input: DeviceOpenInput, cx: &mut App) -> Res
     // From the call's start: making a simulator is part of the minute the tool promises.
     let started = Instant::now();
     let set = devices::set_dir().ok_or_else(|| ControlError::internal("Koyo has no folder to keep its devices in."))?;
-    let (last, starting) = (last_device(caller, cx), starting(cx));
-    let chosen = cx.background_executor().spawn(async move { choose(&set, &input, last.as_deref(), &starting) });
+    let (last, starting, asked) = (last_device(caller, cx), starting(cx), super::simctl_asked(cx));
+    let chosen = cx.background_executor().spawn(async move {
+        asked()?;
+        choose(&set, &input, last.as_deref(), &starting)
+    });
     let caller = caller.clone();
     Ok(Exec::Later(cx.spawn(async move |cx: &mut AsyncApp| {
         let simulator = chosen.await?;

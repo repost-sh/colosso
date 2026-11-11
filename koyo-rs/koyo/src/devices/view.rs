@@ -200,6 +200,11 @@ impl Render for DeviceView {
         }
         let picture = self.link.as_ref().filter(|link| link.read(cx).screen().is_some()).cloned();
         let notice = self.notice(cx);
+        // Only with the person at this window: a dialog that opens while Koyo is behind another
+        // app takes the keyboard from the app they're typing in.
+        if window.is_window_active() && self.may_offer_setup(cx) && super::devices(cx).read(cx).setup_due() {
+            window.defer(cx, super::setup::offer);
+        }
         let marks = picture.as_ref().and_then(|link| self.marks(link, cx));
         let bar = self.control_bar(window, cx);
         div()

@@ -102,12 +102,11 @@ impl DeviceView {
     fn unavailable(&self, code: Missing, why: &str, cx: &mut Context<Self>) -> Notice {
         match code {
             Missing::Simulator => self.not_there(&self.title(), cx),
-            Missing::Xcode => Notice::new(
-                "Koyo's devices need Xcode 27 or later. Install it from the App Store, open it \
-                 once, then start the device again."
-                    .into(),
-                vec![self.start_button("Start Again", cx)],
-            ),
+            // The one thing missing, with the setup; once it's there, Start Again.
+            Missing::Xcode => match missing(cx) {
+                Some(said) => Notice::new(said, vec![set_up()]),
+                None => Notice::new(format!("{why}."), vec![self.start_button("Start Again", cx)]),
+            },
             Missing::System => Notice::new(
                 format!(
                     "This {kind} runs an older system. Koyo drives devices on iOS 27 or later: \
@@ -187,52 +186,50 @@ impl DeviceView {
         )
     }
 
-    /// The picker: Koyo's simulators, each opened in this tab on a click.
+    /// Whether this tab brings the setup up by itself when something is missing: the picker,
+    /// and a tab the person opened that can't start for want of Xcode. Never a tab an agent
+    /// opened.
+    pub(super) fn may_offer_setup(&self, cx: &Context<Self>) -> bool {
+        let Some(link) = &self.link else {
+            return self.device.is_none();
+        };
+        let link = link.read(cx);
+        matches!(link.standing(), super::Standing::Ended { missing: Some(Missing::Xcode), .. })
+            && !matches!(link.control.holder, Some(Holder::Agent { .. }))
+    }
+
+    /// The picker: Koyo's simulators, each opened in this tab on a click; or what they miss,
+    /// with the setup.
     pub(super) fn picker_list(&self, cx: &mut Context<Self>) -> AnyElement {
         let p = crate::theme::palette(cx);
-        let devices = super::devices(cx);
-        let listed = devices.read(cx).simulators.clone();
-        let mut list = div().absolute().inset_0().flex().flex_col().items_center().justify_center().gap_2();
-        match listed {
-            None => list = list.child(div().text_sm().text_color(p.muted).child("Looking for Koyo's simulators…")),
-            Some(Err(why)) => list = list.child(div().max_w(px(460.)).text_sm().text_color(p.muted).child(why)),
-            Some(Ok(all)) if all.is_empty() => {
-                let make = cx.listener(|_, _: &ClickEvent, _, cx| {
-                    let view = cx.entity().downgrade();
-                    super::devices(cx).update(cx, |devices, cx| {
-                        devices.make_default(cx, move |made, cx| match made {
-                            Ok(made) => {
-                                let chosen = Chosen::from(&made);
-                                let _ = view.update(cx, |view, cx| view.choose(chosen, true, cx));
-                            }
-                            Err(why) => log::warn!("no simulator was made: {why}"),
-                        });
-                    });
-                });
-                list = list
-                    .child(div().text_sm().text_color(p.muted).child("Koyo has no simulator of its own yet."))
-                    .child(Push::new("device-make", "Make an iPhone 17 Pro", Tone::Primary).on_click(make));
-            }
-            Some(Ok(all)) => {
-                list = list.child(div().text_sm().text_color(p.muted).child("Choose a device"));
-                for (index, simulator) in all.into_iter().enumerate() {
-                    let chosen = Chosen::from(&simulator);
-                    let row = div()
-                        .id(SharedString::from(format!("device-pick-{index}")))
-                        .w(px(320.))
-                        .px_3()
-                        .py_2()
-                        .rounded_md()
-                        .cursor_pointer()
-                        .hover(|row| row.bg(p.hover))
-                        .flex()
-                        .justify_between()
-                        .child(div().text_sm().text_color(p.text).child(simulator.name))
-                        .child(div().text_xs().text_color(p.muted).child(simulator.system))
-                        .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.choose(chosen.clone(), true, cx)));
-                    list = list.child(row);
-                }
-            }
+        let listed = super::devices(cx).read(cx).simulators.clone();
+        let said = |text: String, buttons| Notice::new(text, buttons).element(p);
+        if let Some(missing) = missing(cx) {
+            return said(missing, vec![set_up()]);
+        }
+        let all = match listed {
+            None => return said("Looking for Koyo's simulators…".into(), Vec::new()),
+            Some(Err(why)) => return said(why, Vec::new()),
+            Some(Ok(all)) => all,
+        };
+        let mut list = (div().absolute().inset_0().flex().flex_col().items_center().justify_center().gap_2())
+            .child(div().text_sm().text_color(p.muted).child("Choose a device"));
+        for (index, simulator) in all.into_iter().enumerate() {
+            let chosen = Chosen::from(&simulator);
+            let row = div()
+                .id(SharedString::from(format!("device-pick-{index}")))
+                .w(px(320.))
+                .px_3()
+                .py_2()
+                .rounded_md()
+                .cursor_pointer()
+                .hover(|row| row.bg(p.hover))
+                .flex()
+                .justify_between()
+                .child(div().text_sm().text_color(p.text).child(simulator.name))
+                .child(div().text_xs().text_color(p.muted).child(simulator.system))
+                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.choose(chosen.clone(), true, cx)));
+            list = list.child(row);
         }
         list.into_any_element()
     }
@@ -328,6 +325,18 @@ impl DeviceView {
     }
 }
 
+/// What Koyo's simulators miss, in a sentence, once it's known.
+fn missing(cx: &gpui_kit::App) -> Option<String> {
+    let devices = super::devices(cx);
+    let devices = devices.read(cx);
+    Some(devices.found.as_ref()?.sentence(devices.need()?))
+}
+
+/// The button that opens the setup.
+fn set_up() -> Push {
+    Push::new("device-set-up", "Set Up…", Tone::Primary).on_click(|_, window, cx| super::setup::open(window, cx))
+}
+
 /// A device's standing, owned, for a notice built while the view is borrowed.
 #[derive(Clone, Debug, PartialEq)]
 enum Owned {
@@ -368,7 +377,7 @@ fn standing(link: &Link, p: Palette) -> (&'static str, gpui_kit::Hsla) {
 }
 
 /// The words for a start under way.
-fn starting(name: &str, step: Step, since: Option<std::time::Instant>) -> String {
+pub(super) fn starting(name: &str, step: Step, since: Option<std::time::Instant>) -> String {
     let so_far = since.map_or(0, |at| at.elapsed().as_secs());
     match step {
         Step::Booting { first: true } => format!(

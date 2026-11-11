@@ -121,7 +121,7 @@ impl Operation for DeviceList {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DeviceOpenInput {
     /// The device's id from `device_list`. Left out with `model` left out too, the simulator
-    /// opened last, else a new iPhone 17 Pro on the newest system installed.
+    /// opened last, else a new iPhone, the newest on the newest system installed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub device: Option<String>,
     /// To make a new simulator: `iPhone 17 Pro`, `iPad Pro 13-inch (M5)` and the like.

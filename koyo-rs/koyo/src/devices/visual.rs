@@ -14,6 +14,8 @@
 
 mod live;
 pub mod serve;
+mod setup;
+mod walk;
 
 use std::process::ExitCode;
 use std::time::Duration;
@@ -43,6 +45,10 @@ fn draw() -> Result<Vec<String>> {
     let mut lines = Vec::new();
     picker(&mut drawn, &mut lines)?;
     states(&mut drawn, &mut lines)?;
+    setup::run(&mut drawn, &mut lines)?;
+    if std::env::var_os("KOYO_VISUAL_SETUP").is_some() {
+        walk::run(&mut drawn, &mut lines)?;
+    }
     if let Ok(udid) = std::env::var("KOYO_VISUAL_DEVICE") {
         live::run(&mut drawn, &udid, &mut lines)?;
     }
@@ -116,7 +122,6 @@ fn picker(drawn: &mut Drawn, lines: &mut Vec<String>) -> Result<()> {
         ipad,
     };
     let lists = [
-        ("picker-empty.png", Ok(Vec::new())),
         (
             "picker.png",
             Ok(vec![
@@ -130,7 +135,7 @@ fn picker(drawn: &mut Drawn, lines: &mut Vec<String>) -> Result<()> {
         ),
     ];
     for (picture, listed) in lists {
-        drawn.cx.update(|cx| devices.update(cx, |devices, cx| devices.listed(listed, cx)));
+        drawn.cx.update(|cx| devices.update(cx, |devices, cx| devices.listed(listed, None, cx)));
         let _ = open(drawn, None, false)?;
         lines.push(format!("{}", drawn.save(picture)?.display()));
     }
@@ -153,10 +158,10 @@ fn states(drawn: &mut Drawn, lines: &mut Vec<String>) -> Result<()> {
         booted_before: true,
         ipad: false,
     };
-    drawn.cx.update(|cx| devices.update(cx, |devices, cx| devices.listed(Ok(Vec::new()), cx)));
+    drawn.cx.update(|cx| devices.update(cx, |devices, cx| devices.listed(Ok(Vec::new()), None, cx)));
     let view = open(drawn, Some(chosen), false)?;
     lines.push(format!("{}", drawn.save("not-there.png")?.display()));
-    drawn.cx.update(|cx| devices.update(cx, |devices, cx| devices.listed(Ok(vec![iphone]), cx)));
+    drawn.cx.update(|cx| devices.update(cx, |devices, cx| devices.listed(Ok(vec![iphone]), Some(setup::older()), cx)));
     lines.push(format!("{}", drawn.save("off.png")?.display()));
     let link = drawn
         .cx

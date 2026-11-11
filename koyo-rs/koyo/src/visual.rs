@@ -199,6 +199,19 @@ impl Drawn {
         Ok(path)
     }
 
+    /// Draws the dialog open over the window and saves it as `name`, saying where.
+    pub fn save_dialog(&mut self, name: &str) -> Result<PathBuf> {
+        self.draw()?;
+        let window = (self.cx.read(crate::modal::window)).ok_or("no dialog is open")?;
+        (self.cx)
+            .update_window(window, |_, window, cx| window.draw(cx).clear(cx))
+            .map_err(|error| error.to_string())?;
+        let image = (self.cx.capture_screenshot(window)).map_err(|error| error.to_string())?;
+        let path = self.out.join(name);
+        image.save(&path).map_err(|error| error.to_string())?;
+        Ok(path)
+    }
+
     /// Draws until `done`, for up to `patience`, waiting between looks for what the selected
     /// checkout's project publishes.
     pub fn settle(

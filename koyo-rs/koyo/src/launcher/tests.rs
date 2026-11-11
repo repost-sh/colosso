@@ -185,7 +185,7 @@ fn the_device_kind_lists_the_simulators_and_opens_the_one_picked(cx: &mut TestAp
     let (window, shell, _) = shell("launcher-device-rows", cx);
     cx.update(|cx| {
         let listed = Ok(vec![simulator("U-1", "iPhone 17 Pro", false), simulator("U-2", "iPad Pro 13-inch (M5)", true)]);
-        crate::devices::devices(cx).update(cx, |devices, cx| devices.listed(listed, cx));
+        crate::devices::devices(cx).update(cx, |devices, cx| devices.listed(listed, None, cx));
     });
     let (launcher_window, launcher) = launch(window, cx);
     press(launcher_window, "tab tab tab tab", cx);

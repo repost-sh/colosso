@@ -13,8 +13,10 @@ mod canvas;
 mod control;
 mod host;
 mod link;
+pub(crate) mod needs;
 mod picture;
 mod screens;
+pub mod setup;
 pub(crate) mod simulators;
 mod standing;
 mod touch;
@@ -22,6 +24,7 @@ mod typing;
 mod view;
 
 pub use link::Link;
+pub use needs::{Found, Need};
 #[cfg(test)]
 pub use link::State;
 pub use simulators::Simulator;
@@ -33,9 +36,14 @@ use crate::settings;
 pub struct Devices {
     /// Koyo's own simulators, as its set last listed them; `None` until asked.
     pub simulators: Option<Result<Vec<Simulator>, String>>,
+    /// What the Mac has for them, read with the list; `None` until then.
+    pub found: Option<Found>,
     listing: bool,
+    /// Whether the setup came up by itself since Koyo started: it does once.
+    offered: bool,
     links: HashMap<String, Entity<Link>>,
 }
+
 
 struct TheDevices(Entity<Devices>);
 
@@ -78,7 +86,9 @@ fn launch(udid: &str) -> Result<host::Launch, String> {
 pub fn init(cx: &mut App) {
     let devices = cx.new(|_| Devices {
         simulators: None,
+        found: None,
         listing: false,
+        offered: false,
         links: HashMap::new(),
     });
     cx.set_global(TheDevices(devices.clone()));
@@ -119,8 +129,24 @@ impl Devices {
     }
 
     /// Lists Koyo's simulators again, unless that is under way: on a Devices surface's first
-    /// showing, and after Koyo made or deleted one. Never on a timer.
+    /// showing, and after Koyo made or deleted one. Never on a timer. What the Mac has is read
+    /// with it while that isn't known, or something was missing.
     pub fn refresh(&mut self, cx: &mut Context<Self>) {
+        let whole = self.found.as_ref().is_none_or(|found| found.need().is_some());
+        self.look(whole, false, cx);
+    }
+
+    /// Reads what the Mac has afresh, with the list: the setup opening, and `Check Again`.
+    pub fn look_again(&mut self, cx: &mut Context<Self>) {
+        self.look(true, false, cx);
+    }
+
+    /// The setup's look while it waits on the person: the checks found passing are spared.
+    pub fn look_along(&mut self, cx: &mut Context<Self>) {
+        self.look(true, true, cx);
+    }
+
+    fn look(&mut self, whole: bool, spare: bool, cx: &mut Context<Self>) {
         if self.listing || cfg!(test) {
             return;
         }
@@ -130,29 +156,60 @@ impl Devices {
             return;
         };
         self.listing = true;
-        let listed = cx
-            .background_executor()
-            .spawn(async move { simulators::list(&set) });
+        let known = self.found.clone().filter(|_| spare);
+        let looked = cx.background_executor().spawn(async move {
+            if whole {
+                let (found, listed) = needs::find(&set, known.as_ref());
+                (Some(found), listed)
+            } else {
+                (None, Some(simulators::list(&set)))
+            }
+        });
         cx.spawn(async move |this, cx| {
-            let listed = listed.await;
+            let (found, listed) = looked.await;
             let _ = this.update(cx, |this, cx| {
                 this.listing = false;
-                this.simulators = Some(listed);
+                if found.is_some() {
+                    this.found = found;
+                }
+                if listed.is_some() {
+                    this.simulators = listed;
+                }
                 cx.notify();
             });
         })
         .detach();
     }
 
-    /// Makes a simulator of Koyo's own, the newest iPhone on the newest system installed, and
-    /// lists again; `done` gets its UDID.
-    pub fn make_default(&mut self, cx: &mut Context<Self>, done: impl FnOnce(Result<Simulator, String>, &mut App) + 'static) {
+    /// The first thing Koyo's simulators miss, once it's known.
+    pub fn need(&self) -> Option<Need> {
+        let found = self.found.as_ref()?;
+        found.need().or_else(|| matches!(&self.simulators, Some(Ok(all)) if all.is_empty()).then_some(Need::Device))
+    }
+
+    /// Whether the setup should come up by itself: something is missing, and it wasn't
+    /// offered yet since Koyo started.
+    pub fn setup_due(&self) -> bool {
+        !self.offered && self.need().is_some()
+    }
+
+    /// [`Devices::setup_due`], which from now on it isn't: it's offered once.
+    pub fn offers_setup(&mut self) -> bool {
+        let due = self.setup_due();
+        self.offered |= due;
+        due
+    }
+
+    /// Makes a simulator of Koyo's own, of `model` (else the newest iPhone) on the newest
+    /// system installed, and lists again; `done` gets it.
+    pub fn make(&mut self, model: Option<String>, cx: &mut Context<Self>, done: impl FnOnce(Result<Simulator, String>, &mut App) + 'static) {
         let Some(set) = set_dir() else {
+            cx.defer(|cx| done(Err("Koyo has no folder to keep its devices in.".into()), cx));
             return;
         };
         let made = cx
             .background_executor()
-            .spawn(async move { simulators::make_default(&set) });
+            .spawn(async move { simulators::make(&set, model.as_deref()).map_err(|unmade| unmade.to_string()) });
         cx.spawn(async move |this, cx| {
             let made = made.await;
             let _ = this.update(cx, Devices::refresh);
@@ -174,11 +231,19 @@ impl Devices {
         cx.notify();
     }
 
-    /// For the off-screen pictures: what the set would have listed.
+    /// For the off-screen pictures: what the set would have listed, and the Mac had.
     #[cfg(any(test, feature = "visual-check"))]
-    pub fn listed(&mut self, simulators: Result<Vec<Simulator>, String>, cx: &mut Context<Self>) {
+    pub fn listed(&mut self, simulators: Result<Vec<Simulator>, String>, found: Option<Found>, cx: &mut Context<Self>) {
         self.simulators = Some(simulators);
+        self.found = found;
         self.listing = true;
+        cx.notify();
+    }
+
+    /// For the off-screen walk: what the pictures set is let go, so the next look is the Mac's.
+    #[cfg(feature = "visual-check")]
+    pub fn unlisted(&mut self, cx: &mut Context<Self>) {
+        (self.simulators, self.found, self.listing) = (None, None, false);
         cx.notify();
     }
 

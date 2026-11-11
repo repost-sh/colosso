@@ -19,8 +19,10 @@ use crate::theme::{self, Palette};
 use crate::wrapped::wrapped_lines;
 
 mod button;
+mod step;
 
 pub use button::{Button, Tone, spinner};
+pub use step::{Mark, STEP, step};
 
 /// How far below the top of the window behind it a dialog sits.
 const TOP: f32 = 72.;
