@@ -58,6 +58,11 @@ pub const LEGACY_CLAIM_TTL_S: f64 = 10.;
 pub type Identity = (String, String);
 /// Slot number → identity, the map every store call takes.
 pub type Identities = BTreeMap<String, Identity>;
+
+/// The [`Identities`] of one slot, as a caller touching one account passes them.
+pub fn one_identity(num: &str, email: &str, org_uuid: &str) -> Identities {
+    BTreeMap::from([(num.to_owned(), (email.to_owned(), org_uuid.to_owned()))])
+}
 /// A slot's poll plan: `(nextPollAt, pollIntervalS)`.
 pub type PollPlan = (Option<f64>, Option<f64>);
 

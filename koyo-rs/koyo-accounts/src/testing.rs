@@ -314,14 +314,7 @@ impl FakeHttp {
 
     /// A JSON answer with `status`.
     pub fn queue_json(&self, prefix: &str, status: u16, body: &serde_json::Value) {
-        self.queue(
-            prefix,
-            Ok(Response {
-                status,
-                headers: vec![("content-type".into(), "application/json".into())],
-                body: body.to_string().into_bytes(),
-            }),
-        );
+        self.queue(prefix, Ok(json_response(status, body)));
     }
 
     pub fn requests(&self) -> Vec<Request> {
@@ -375,6 +368,15 @@ impl ManualClock {
 impl Clock for ManualClock {
     fn now(&self) -> f64 {
         f64::from_bits(self.0.load(Ordering::SeqCst))
+    }
+}
+
+/// A JSON answer with `status`, as an endpoint sends one.
+pub fn json_response(status: u16, body: &serde_json::Value) -> Response {
+    Response {
+        status,
+        headers: vec![("content-type".into(), "application/json".into())],
+        body: body.to_string().into_bytes(),
     }
 }
 

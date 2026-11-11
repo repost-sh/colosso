@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 use super::{answer, header};
 use crate::http::HttpError;
 use crate::oauth::*;
-use crate::testing::Sandbox;
+use crate::testing::{Sandbox, json_response};
 
 fn make_credentials() -> String {
     json!({"claudeAiOauth": {
@@ -128,7 +128,7 @@ fn wrapper_returns_none_on_failure() {
     let sandbox = Sandbox::new();
     sandbox.http.queue(
         OAUTH_TOKEN_URL,
-        Ok(answer(400, &[], r#"{"error": "invalid_grant"}"#)),
+        Ok(json_response(400, &json!({"error": "invalid_grant"}))),
     );
     assert_eq!(
         refresh_oauth_credentials(&sandbox.env(), &make_credentials()),

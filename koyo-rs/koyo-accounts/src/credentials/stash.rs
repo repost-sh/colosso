@@ -25,6 +25,7 @@ use sha2::{Digest as _, Sha256};
 
 use crate::credentials::CredentialStore;
 use crate::locking::{self, FileLock};
+use crate::oauth::iso_utc;
 use crate::{AccountsError, Result, fsutil, paths};
 
 const MANIFEST: &str = ".unclaimed-manifest.json";
@@ -285,7 +286,7 @@ impl CredentialStore {
             BASE64.encode(credentials).as_bytes(),
         )?;
         let mut row = Map::new();
-        row.insert("createdAt".into(), utc(now, "%Y-%m-%dT%H:%M:%SZ").into());
+        row.insert("createdAt".into(), iso_utc(now).unwrap_or_default().into());
         row.extend(context);
         self.mutate_stash_manifest(|entries| {
             entries.insert(entry_id.clone(), Value::Object(row));

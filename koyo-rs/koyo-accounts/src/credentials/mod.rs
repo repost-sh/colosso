@@ -203,8 +203,9 @@ impl CredentialStore {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// The account of the active credential's item.
-    fn account_name(&self) -> String {
+    /// The account of Claude Code's Keychain items: the active credential's, and every
+    /// profile's the capture reads.
+    pub(crate) fn account_name(&self) -> String {
         keychain::keychain_account_name(self.env.vars.user.as_deref())
     }
 

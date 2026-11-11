@@ -25,6 +25,7 @@ pub mod pace;
 pub mod paths;
 pub mod poll_policy;
 pub mod subscription;
+pub mod switcher;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 pub mod usage_store;
