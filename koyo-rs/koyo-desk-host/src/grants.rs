@@ -7,6 +7,7 @@ use std::time::Instant;
 
 use koyo_desk_wire::link::FromHost;
 
+use crate::desktop;
 use crate::host::Host;
 use crate::sys;
 
@@ -42,6 +43,12 @@ impl Grants {
 impl Host {
     pub fn read_grants(&mut self) {
         self.grants_read = Instant::now();
+        // The screen was locked when the desktop was to be made: it's unlocked now. What an
+        // earlier host couldn't remove under it goes first.
+        if self.desktop.is_none() && self.missing == desktop::LOCKED && !desktop::screen_locked() {
+            desktop::remove_leftover_desktops(&self.state);
+            self.make_desktop();
+        }
         let grants = Grants::read();
         if grants == self.grants {
             return;

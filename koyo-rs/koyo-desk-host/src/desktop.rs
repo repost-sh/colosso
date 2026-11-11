@@ -199,16 +199,81 @@ pub fn hand_back(pid: i32, home: Option<SpaceId>, agents: Option<SpaceId>) {
     skylight::release(pid);
 }
 
+/// What says the screen is locked, as the reason there's no agent desktop: it's made once
+/// the screen is unlocked ([`crate::host::Host::read_grants`]).
+pub const LOCKED: &str = "the screen is locked: the agent desktop is made once it's unlocked";
+
+/// Whether the screen is locked. Mission Control takes nothing then: a desktop is neither
+/// made nor removed, and isn't tried.
+pub fn screen_locked() -> bool {
+    // SAFETY: a copy of the login session's dictionary, ours to release; nil outside one.
+    let session = ns::owned(unsafe { sys::CGSessionCopyCurrentDictionary() });
+    session
+        .and_then(|session| ns::entry(&session, "CGSSessionScreenIsLocked"))
+        .is_some_and(|locked| ns::integer(&locked) == Some(1))
+}
+
+/// The desktops on record, a line each: the id, and the name it keeps across restarts.
+fn parse_desktops(text: &str) -> Vec<(SpaceId, String)> {
+    let line = |line: &str| {
+        let mut parts = line.split_whitespace();
+        let id = parts.next()?.parse::<SpaceId>().ok()?;
+        Some((id, parts.next()?.to_owned()))
+    };
+    text.lines().filter_map(line).collect()
+}
+
+/// Those of `recorded` that are among `listed` still, under the name they had.
+fn still_there(
+    recorded: &[(SpaceId, String)],
+    listed: &[(SpaceId, String)],
+) -> Vec<(SpaceId, String)> {
+    let there = |desktop: &&(SpaceId, String)| listed.contains(desktop);
+    recorded.iter().filter(there).cloned().collect()
+}
+
+fn recorded_desktops(state: &Path) -> Vec<(SpaceId, String)> {
+    parse_desktops(&std::fs::read_to_string(desktop_record(state)).unwrap_or_default())
+}
+
+fn record_desktops(state: &Path, desktops: &[(SpaceId, String)]) {
+    let record = desktop_record(state);
+    if desktops.is_empty() {
+        let _ = std::fs::remove_file(record);
+        return;
+    }
+    let lines = desktops.iter().map(|(id, name)| format!("{id} {name}\n"));
+    let _ = std::fs::write(record, lines.collect::<String>());
+}
+
+/// Removes the desktops on record that are still there, under the same name and with no
+/// app's window on them, and keeps on record the ones that stayed: a host that ended under
+/// a locked screen couldn't remove its own, and neither can this one until it's unlocked.
+/// Forgotten, such a desktop stayed among the person's for good. Only while this host has
+/// no desktop of its own on record.
+pub fn remove_leftover_desktops(state: &Path) {
+    let recorded = recorded_desktops(state);
+    let listed = || -> Vec<(SpaceId, String)> {
+        let spaces = skylight::spaces().into_iter();
+        spaces.map(|space| (space.id, space.name)).collect()
+    };
+    if !screen_locked() {
+        for (space, _) in still_there(&recorded, &listed()) {
+            if !crate::windows::holds_app_windows(space) {
+                let _ = mission::remove_desktop(space);
+            }
+        }
+    }
+    record_desktops(state, &still_there(&recorded, &listed()));
+}
+
 /// Once, as the host starts and before it makes its desktop (never later: by then the
 /// record is of the host's own running apps). Clears what a run that crashed left behind:
 /// the person's apps it had lent go back to them; the apps it started are ended, when they
-/// are still the same processes; and then its desktop is removed, when it's still there
-/// under the same name and no app keeps a window on it.
+/// are still the same processes; and then its desktops are removed
+/// ([`remove_leftover_desktops`]).
 pub fn remove_leftovers(state: &Path) {
-    let record = desktop_record(state);
-    let desktop = std::fs::read_to_string(&record).unwrap_or_default();
-    let mut parts = desktop.split_whitespace();
-    let recorded = (parts.next().and_then(|id| id.parse::<SpaceId>().ok())).zip(parts.next());
+    let recorded = recorded_desktops(state).pop();
 
     let apps = std::fs::read_to_string(apps_record(state)).unwrap_or_default();
     let (lent, ours): (Vec<Started>, Vec<Started>) = parse_apps(&apps)
@@ -239,16 +304,7 @@ pub fn remove_leftovers(state: &Path) {
         });
     }
     let _ = std::fs::remove_file(apps_record(state));
-
-    if let Some((space, name)) = recorded {
-        let still = skylight::spaces()
-            .iter()
-            .any(|listed| listed.id == space && listed.name == name);
-        if still && !crate::windows::holds_app_windows(space) {
-            let _ = mission::remove_desktop(space);
-        }
-    }
-    let _ = std::fs::remove_file(record);
+    remove_leftover_desktops(state);
 }
 
 impl Desktop {
@@ -266,6 +322,9 @@ impl Desktop {
         if unsafe { sys::AXIsProcessTrusted() } == 0 {
             return Err("Accessibility isn't granted to the agent desktop's host".into());
         }
+        if screen_locked() {
+            return Err(LOCKED.into());
+        }
         let _ = std::fs::create_dir_all(state);
         let space = mission::add_desktop()?;
         let listed = skylight::spaces()
@@ -274,7 +333,10 @@ impl Desktop {
         let (name, on) = listed
             .map(|listed| (listed.name, listed.display))
             .unwrap_or_default();
-        let _ = std::fs::write(desktop_record(state), format!("{space} {name}\n"));
+        // After the ones that couldn't be removed yet, which stay on record.
+        let mut recorded = recorded_desktops(state);
+        recorded.push((space, name));
+        record_desktops(state, &recorded);
         let display = display_named(&on).ok_or("no display is on")?;
         Ok(Desktop {
             space,
@@ -309,9 +371,13 @@ impl Desktop {
 
     /// Removes the desktop, and the records of it in `state`. The agent's apps are closed
     /// first by the caller: windows left on a desktop that goes move to the one beside it.
+    /// Removes the desktop. Under a locked screen it stays, and on record, for the next
+    /// host to remove.
     pub fn remove(self, state: &Path) {
-        if mission::remove_desktop(self.space).is_ok() {
-            let _ = std::fs::remove_file(desktop_record(state));
+        if !screen_locked() && mission::remove_desktop(self.space).is_ok() {
+            let mut recorded = recorded_desktops(state);
+            recorded.retain(|(space, _)| *space != self.space);
+            record_desktops(state, &recorded);
             let _ = std::fs::remove_file(apps_record(state));
         }
     }
@@ -320,6 +386,27 @@ impl Desktop {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A desktop that couldn't be removed stays on record beside the one made after it, and
+    /// is dropped from it once it's gone or goes by another name; a line that isn't a
+    /// desktop's is passed over.
+    #[test]
+    fn desktops_stay_on_record_until_they_are_gone() {
+        let named = |id: SpaceId, name: &str| (id, name.to_owned());
+        let recorded = parse_desktops("392 OLD-NAME\n\nnot a desktop\n402 NEW-NAME\n");
+        assert_eq!(recorded, [named(392, "OLD-NAME"), named(402, "NEW-NAME")]);
+        let listed = [named(5, "FIRST"), named(392, "OLD-NAME"), named(402, "OTHER")];
+        assert_eq!(still_there(&recorded, &listed), [named(392, "OLD-NAME")]);
+        assert_eq!(still_there(&recorded, &[]), []);
+
+        let state = std::env::temp_dir().join(format!("koyo-desktops-{}", std::process::id()));
+        std::fs::create_dir_all(&state).unwrap();
+        record_desktops(&state, &recorded);
+        assert_eq!(recorded_desktops(&state), recorded);
+        record_desktops(&state, &[]);
+        assert!(!desktop_record(&state).exists(), "nothing on record");
+        std::fs::remove_dir_all(&state).unwrap();
+    }
 
     #[test]
     fn the_apps_record_reads_back() {
