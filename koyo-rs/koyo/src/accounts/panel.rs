@@ -18,11 +18,14 @@ use super::model::{Bar, Row, View};
 use super::{Accounts, Job, words};
 use crate::menu::{self, MenuBody, PADDING, ROW_PADDING};
 use crate::theme::{self, Palette};
+use crate::wrapped::wrapped_lines;
 
 const WIDTH: f32 = 340.;
 /// The parts of a row, top to bottom, and the room round it.
 const TITLE: f32 = 20.;
 const LINE: f32 = 16.;
+/// The notes' text: small print.
+const NOTE_SIZE: Pixels = px(12.);
 const BAR: f32 = 18.;
 const ROW_INSET: f32 = 6.;
 /// The active mark, and the gap after it: what the lines under the title are indented by.
@@ -46,7 +49,15 @@ fn notes(view: &View) -> Vec<(SharedString, bool)> {
     let overridden = view.overridden_by.map(|name| {
         format!("{name} is set in your shell, so Claude Code there uses it, not this login.")
     });
-    let plain = [view.doing.clone(), unmanaged, empty, overridden];
+    let auto = view.auto_switch.as_ref();
+    let plain = [
+        view.doing.clone(),
+        unmanaged,
+        empty,
+        auto.map(words::auto_switch),
+        auto.and_then(|auto| auto.said.clone()),
+        overridden,
+    ];
     let failed = [view.said.clone(), view.unreadable.clone()];
     let plain = plain.into_iter().flatten().map(|note| (note.into(), false));
     plain
@@ -54,15 +65,22 @@ fn notes(view: &View) -> Vec<(SharedString, bool)> {
         .collect()
 }
 
-/// How big the panel opens for `view`: its rows, Add current login, and its notes.
-pub fn extent(view: &View) -> Size<Pixels> {
+/// How big the panel opens for `view` in `window`: its rows, Add current login, and its notes.
+pub fn extent(view: &View, window: &Window) -> Size<Pixels> {
     let rows: f32 = view.rows.iter().map(row_height).sum();
     let add = if view.unmanaged.is_some() {
         theme::ROW_HEIGHT
     } else {
         0.
     };
-    let notes = notes(view).len() as f32 * LINE;
+    let (style, width) = (
+        window.text_style(),
+        px(WIDTH - 2. * (PADDING + ROW_PADDING)),
+    );
+    let lines: usize = (notes(view).iter())
+        .map(|(text, _)| wrapped_lines(text, &style, NOTE_SIZE, width, window))
+        .sum();
+    let notes = lines as f32 * LINE;
     size(px(WIDTH), px(rows + add + notes + PADDING * 2.))
 }
 
@@ -139,9 +157,9 @@ impl Render for AccountsPanel {
 /// A line of small print.
 fn note(text: impl Into<SharedString>, p: Palette) -> Div {
     div()
-        .h(px(LINE))
         .px(px(ROW_PADDING))
-        .text_xs()
+        .text_size(NOTE_SIZE)
+        .line_height(px(LINE))
         .text_color(p.muted)
         .child(text.into())
 }

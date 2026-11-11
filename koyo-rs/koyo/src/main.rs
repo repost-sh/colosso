@@ -54,6 +54,7 @@ mod toggle;
 mod viewer;
 #[cfg(feature = "visual-check")]
 mod visual;
+mod wrapped;
 
 use std::process::ExitCode;
 

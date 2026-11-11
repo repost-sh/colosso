@@ -1,19 +1,36 @@
-//! Settings → Accounts (`docs/claude-accounts.md` 1, 6): whether Koyo manages the Mac's Claude
-//! Code login, and the accounts it keeps, each with the way to hold it out of auto-switch or
-//! remove it. Nothing here is reachable by `settings_set` or any agent's tool: only the person
-//! changes how their login is managed.
+//! Settings → Accounts (`docs/claude-accounts.md` 1, 5, 6): whether Koyo manages the Mac's
+//! Claude Code login, the accounts it keeps, each with the way to hold it out of auto-switch or
+//! remove it, and auto-switch with its threshold. Nothing here is reachable by `settings_set` or
+//! any agent's tool: only the person changes how their login is managed.
 
 use gpui_kit::{App, SharedString};
+use koyo_accounts::autoswitch::{THRESHOLD_MAX, THRESHOLD_MIN};
 
-use super::components::{PillButton, SettingRow, SettingsSection};
+use super::components::{MenuButton, PillButton, SettingRow, SettingsSection};
 use super::native_switch::NativeSwitch;
 use crate::accounts::{self, Job, Row, words};
-use crate::settings;
+use crate::settings::{self, SetAccountsThreshold, checked_menu};
+
+/// The thresholds the menu offers, the range's ends among them.
+const THRESHOLDS: [f64; 11] = [
+    THRESHOLD_MIN,
+    60.,
+    70.,
+    75.,
+    80.,
+    85.,
+    90.,
+    95.,
+    97.,
+    99.,
+    THRESHOLD_MAX,
+];
 
 pub fn sections(cx: &App) -> Vec<SettingsSection> {
     let mut sections = vec![managing()];
     if settings::get(cx).accounts.manage {
         sections.push(kept(cx));
+        sections.push(auto_switch(cx));
     }
     sections
 }
@@ -87,5 +104,40 @@ fn kept(cx: &App) -> SettingsSection {
                             accounts.update(cx, |accounts, cx| accounts.ask(Job::Add, cx));
                         }),
                 ),
+        )
+}
+
+/// Auto-switch and its threshold; claude-swap's other numbers keep its defaults, unshown.
+fn auto_switch(cx: &App) -> SettingsSection {
+    let wanted = &settings::get(cx).accounts;
+    let threshold = wanted.threshold();
+    SettingsSection::new("Auto-switch")
+        .row(
+            SettingRow::new("Auto-switch")
+                .description(
+                    "When the Mac's login reaches the threshold on any window, or its limit, \
+                     Koyo moves it to the account whose weekly limit resets soonest, as \
+                     claude-swap's weekly-first: it waits 5 minutes between switches, lands only \
+                     with room to spare, and skips accounts held out.",
+                )
+                .control(NativeSwitch::new(
+                    "accounts-auto-switch",
+                    |settings| settings.accounts.auto_switch,
+                    |settings, on| settings.accounts.auto_switch = on,
+                )),
+        )
+        .row(
+            SettingRow::new("Threshold")
+                .description("The usage at which auto-switch moves on.")
+                .disabled(!wanted.auto_switch)
+                .control(MenuButton::new(
+                    "accounts-threshold",
+                    words::threshold(threshold),
+                    move |_| {
+                        checked_menu(THRESHOLDS, threshold, words::threshold, |choice| {
+                            Box::new(SetAccountsThreshold(choice))
+                        })
+                    },
+                )),
         )
 }

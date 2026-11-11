@@ -87,7 +87,7 @@ pub use remove::RemovedAccount;
 pub use roster::{Roster, RosterSlot};
 pub use snapshot::{AccountSnapshot, AccountsSnapshot, Plan};
 pub use switch::{AccountRef, SwitchReason, SwitchResult};
-pub(crate) use usage::DEFAULT_THRESHOLD;
+pub use usage::DEFAULT_THRESHOLD;
 pub use usage::Fetch;
 
 /// A `_probe_verdicts` key (`Switcher::lineage_key`): the slot, the caller's email, the slot's
@@ -161,6 +161,12 @@ impl Switcher {
             lock_timeout: DEFAULT_TIMEOUT,
             env,
         }
+    }
+
+    /// What the switcher is on: for the auto-switch engine, which keeps its state in the same
+    /// store.
+    pub fn env(&self) -> &Env {
+        &self.env
     }
 
     /// A cached ownership verdict for a lineage key, if one was recorded.

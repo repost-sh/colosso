@@ -22,7 +22,7 @@ mod migration;
 mod project_scripts;
 mod save_scope;
 
-pub use accounts::AccountSettings;
+pub use accounts::{AccountSettings, SetAccountsThreshold};
 pub use chat_activity::{ChatActivity, SetChatActivity};
 pub use chat_details::{ChatDetails, DetailsItem, FlipDetailsItem};
 pub use chat_mode::{SetChatMode, chat_mode_label, chat_mode_menu};
@@ -373,6 +373,11 @@ pub fn init(cx: &mut App) {
     cx.on_action(|SetPreviewFiles(on): &SetPreviewFiles, cx| {
         update(cx, |settings| settings.preview_files = *on);
     });
+    cx.on_action(
+        |SetAccountsThreshold(threshold): &SetAccountsThreshold, cx| {
+            update(cx, |settings| settings.accounts.threshold = *threshold);
+        },
+    );
     cx.on_action(|SetSaveScope(scope): &SetSaveScope, cx| {
         update(cx, |settings| settings.save_scope = *scope);
     });

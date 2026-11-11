@@ -18,6 +18,7 @@ use gpui_kit::{
 
 use crate::shell::icon;
 use crate::theme::{self, Palette};
+use crate::wrapped::wrapped_lines;
 
 mod button;
 
@@ -418,14 +419,8 @@ pub fn heading_height(text: &SharedString, width: f32, window: &Window) -> f32 {
         font_weight: FontWeight::SEMIBOLD,
         ..TextStyle::default()
     };
-    let (run, wrap) = (style.to_run(text.len()), Some(px(width - 2. * PADDING)));
-    let shaped =
-        (window.text_system()).shape_text(text.clone(), px(HEADING_SIZE), &[run], wrap, None);
-    let lines: usize = shaped.map_or(1, |lines| {
-        (lines.iter())
-            .map(|line| 1 + line.wrap_boundaries().len())
-            .sum()
-    });
+    let width = px(width - 2. * PADDING);
+    let lines = wrapped_lines(text, &style, px(HEADING_SIZE), width, window);
     lines.min(MOST_HEADING_LINES) as f32 * HEADING_LINE
 }
 

@@ -397,3 +397,63 @@ fn off_nothing_runs_and_the_button_is_empty(cx: &mut TestAppContext) {
     cx.run_until_parked();
     assert_eq!(sandbox.http.requests().len(), asked);
 }
+
+#[gpui_kit::test]
+fn auto_switch_over_the_line_moves_the_macs_login_and_says_so(cx: &mut TestAppContext) {
+    let sandbox = two_kept();
+    // The first look reads ana over the line; the tick reads bob, well under it.
+    sandbox.http.queue_json(USAGE, 200, &usage(95.));
+    sandbox.http.queue_json(USAGE, 200, &usage(10.));
+    let accounts = on(&sandbox, cx);
+    cx.update(|cx| settings::update(cx, |settings| settings.accounts.auto_switch = true));
+    cx.run_until_parked();
+    accounts.read_with(cx, |accounts, _| {
+        assert_eq!(
+            accounts.view.active().unwrap().email.as_ref(),
+            "bob@example.com"
+        );
+        let auto = accounts.view.auto_switch.as_ref().unwrap();
+        let said = auto.said.as_deref().unwrap();
+        assert!(
+            said.starts_with("ana@example.com reached the threshold: moved to bob@example.com"),
+            "{said}"
+        );
+    });
+    let live = sandbox.security.get(CLAUDE_CODE_KEYCHAIN_SERVICE, "tester");
+    assert!(live.unwrap().contains("sk-ant-oat01-bob@example.com"));
+    // Its token was good for a day: nothing was refreshed to land.
+    assert!(
+        sandbox
+            .http
+            .requests_to("https://platform.claude.com")
+            .is_empty()
+    );
+}
+
+#[gpui_kit::test]
+fn turning_auto_switch_off_drops_the_tick_waiting(cx: &mut TestAppContext) {
+    let sandbox = two_kept();
+    // Bob is readable and well under the line: a tick that ran would switch to him.
+    sandbox.http.queue_json(USAGE, 200, &usage(95.));
+    sandbox.http.queue_json(USAGE, 200, &usage(10.));
+    let accounts = on(&sandbox, cx);
+    // A reading on the line, so the tick that turning it on asks for waits behind it.
+    accounts.update(cx, |accounts, cx| {
+        let read = Job::Read {
+            active: true,
+            other: None,
+        };
+        accounts.ask(read, cx);
+    });
+    cx.update(|cx| settings::update(cx, |settings| settings.accounts.auto_switch = true));
+    cx.update(|cx| settings::update(cx, |settings| settings.accounts.auto_switch = false));
+    cx.run_until_parked();
+    accounts.read_with(cx, |accounts, _| {
+        assert_eq!(
+            accounts.view.active().unwrap().email.as_ref(),
+            "ana@example.com"
+        );
+        assert_eq!(accounts.view.auto_switch, None);
+    });
+    assert_eq!(sandbox.http.requests_to(USAGE).len(), 1);
+}

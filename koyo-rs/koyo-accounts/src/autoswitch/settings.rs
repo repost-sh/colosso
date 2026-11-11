@@ -9,12 +9,12 @@
 //! `include_api_key_accounts` (Koyo manages no API-key account).
 
 /// The threshold's range (`SETTING_SPECS["autoswitch.threshold"]`).
-const THRESHOLD_MIN: f64 = 50.;
-const THRESHOLD_MAX: f64 = 99.9;
+pub const THRESHOLD_MIN: f64 = 50.;
+pub const THRESHOLD_MAX: f64 = 99.9;
 
 /// cswap's defaults; the threshold's is the switcher's, which poll planning keys on until the
 /// engine pins its own.
-pub(super) use crate::switcher::DEFAULT_THRESHOLD;
+pub use crate::switcher::DEFAULT_THRESHOLD;
 pub(super) const INTERVAL_SECONDS: f64 = 60.;
 pub(super) const COOLDOWN_SECONDS: f64 = 300.;
 pub(super) const HYSTERESIS_PCT: f64 = 10.;
@@ -54,7 +54,7 @@ impl AutoSwitchSettings {
 
 /// cswap's `_clamped` for the threshold: a non-finite value is garbage and reads as the default
 /// (a NaN line would silently never be crossed); anything else is held to 50-99.9.
-pub(super) fn clamp_threshold(value: f64) -> f64 {
+pub fn clamp_threshold(value: f64) -> f64 {
     if value.is_finite() {
         value.clamp(THRESHOLD_MIN, THRESHOLD_MAX)
     } else {

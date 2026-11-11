@@ -157,6 +157,15 @@ fn apply_threshold_retargets_trigger_and_poll_pin() {
 }
 
 #[test]
+fn dropping_the_engine_unpins_the_poll_line() {
+    let h = Harness::standard();
+    let host = h.host.clone();
+    assert!(!host.lock().poll_unpinned);
+    drop(h);
+    assert!(host.lock().poll_unpinned);
+}
+
+#[test]
 fn a_threshold_is_clamped_and_pinned_once() {
     // The pin is set when the engine is made and when the threshold changes, not every tick;
     // the threshold is held to cswap's range, garbage reading as the default.

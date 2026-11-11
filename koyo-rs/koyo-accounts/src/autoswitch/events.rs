@@ -359,7 +359,7 @@ impl PollEvent {
 /// under 1e-4) the digits stay fixed-point where Python's switch to an exponent. A displayed
 /// comparison formats both sides with it: mixing formatters can render an impossible
 /// "85.5556% < 85.555555%".
-pub(crate) fn pct_label(value: f64) -> String {
+pub fn pct_label(value: f64) -> String {
     // The exponent after rounding to ten significant digits, then the decimals that leaves.
     let exponent: i32 = format!("{value:.9e}")
         .split_once('e')

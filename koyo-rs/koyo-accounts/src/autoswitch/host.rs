@@ -51,6 +51,10 @@ pub trait EngineHost: Send + Sync {
     /// weekly line and no models, so its threshold is all it pins.
     fn set_poll_threshold(&self, threshold: f64);
 
+    /// Unpins it, back to the switcher's defaults: when the engine goes. Koyo's own: cswap's
+    /// engine ends with its process, and the pin with it.
+    fn clear_poll_threshold(&self);
+
     /// cswap's `read_account_credentials`: the slot's stored backup credential JSON, empty
     /// when missing or unreadable. Never logged.
     fn read_account_credentials(&self, number: &str, email: &str) -> String;
