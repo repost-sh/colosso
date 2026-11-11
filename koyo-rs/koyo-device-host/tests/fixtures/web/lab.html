@@ -31,7 +31,7 @@ pad.addEventListener('touchmove',e=>{e.preventDefault();if(!g)return;const p=pts
 pad.addEventListener('touchend',e=>{e.preventDefault();if(!g||e.touches.length)return;const now=performance.now();
   const c=e.changedTouches[0];g.end=[Math.round(c.clientX),Math.round(c.clientY)];g.held=Math.round(now-g.t0);
   g.kind=g.fingers>1?'two fingers':g.moved>10?'drag':g.held>500?'long press':(now-lastTap<400?'double tap':'tap');
-  if(g.kind=='tap'||g.kind=='double tap')lastTap=now;delete g.t0;delete g.d0;delete g.a0;delete g.m0;say(g);g=null},{passive:false});
+  if(g.kind=='tap'||g.kind=='double tap')lastTap=now;delete g.t0;delete g.d0;delete g.a0;delete g.m0;g.zoom=+visualViewport.scale.toFixed(2);say(g);g=null},{passive:false});
 pad.addEventListener('touchcancel',e=>{say({n:++n,kind:'cancelled',fingers:g?g.fingers:0});g=null});
 addEventListener('devicemotion',()=>{},false);
 say({n:0,kind:'ready',view:[innerWidth,innerHeight],screen:[screen.width,screen.height]});

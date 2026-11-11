@@ -320,6 +320,16 @@ fn color_space_key() -> &'static CFString {
     unsafe { kIOSurfaceColorSpace }
 }
 
+/// A pixel buffer over `surface`, for the decoder to write or Vision to read.
+pub fn pixel_buffer(surface: &IOSurfaceRef) -> Option<CFRetained<objc2_core_video::CVPixelBuffer>> {
+    let mut buffer: *mut objc2_core_video::CVPixelBuffer = std::ptr::null_mut();
+    // SAFETY: a surface that lives for the call; the buffer comes back retained, or not at all.
+    let made = unsafe { objc2_core_video::CVPixelBufferCreateWithIOSurface(None, surface, None, std::ptr::NonNull::from(&mut buffer)) };
+    let buffer = std::ptr::NonNull::new(buffer).filter(|_| made == 0)?;
+    // SAFETY: created above, so this side owns its one retain.
+    Some(unsafe { CFRetained::from_raw(buffer) })
+}
+
 /// A BGRA surface of `width` by `height` pixels that can be sent to another process.
 pub fn surface(width: usize, height: usize) -> Option<CFRetained<IOSurfaceRef>> {
     let number = |value: usize| CFNumber::new_isize(isize::try_from(value).unwrap_or(0));

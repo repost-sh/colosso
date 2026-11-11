@@ -36,6 +36,20 @@ objc2-metal = { version = "0.3", features = ["objc2-io-surface"] }
 png = "0.18"
 # A simulator's apps, as `plutil` turns `simctl listapps` into JSON.
 serde_json = "1"
+# A real iPhone or iPad by cable (docs/devices.md 5): usbmuxd, the CoreDevice tunnel, its own
+# screen stream, input and information services. Its API is unstable below 0.2: pinned, and
+# reached only through `phone/`. The `ring` backend: `ring` and `rustls` are in the lock already.
+idevice = { version = "=0.1.68", default-features = false, features = ["ring", "usbmuxd", "core_device", "core_device_proxy", "rsd", "tunnel_tcp_stack", "notification_proxy", "display_stream"] }
+tokio = { version = "1", features = ["rt", "time", "sync", "macros"] }
+futures = "0.3"
+# Finding a picture's start codes, a picture of 20-200 KB thirty to sixty times a second.
+memchr = "2"
+plist = "1"
+uuid = { version = "1", features = ["v4"] }
+# The device's HEVC stream decoded by the Mac's hardware, then made BGRA in a surface of the
+# host's own.
+objc2-video-toolbox = "0.3"
+objc2-core-media = "0.3"
 
 [dev-dependencies]
 # The real-simulator suite reads the screenshots it's given.

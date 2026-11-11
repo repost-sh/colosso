@@ -27,25 +27,22 @@ pub fn on_surface(quarters: u8, (u, v): (f64, f64)) -> (f64, f64) {
     }
 }
 
-/// A real device's way of being held (`devicectl device orientation get`), and the turn of its
-/// stream that puts it upright, from the LCD's `currentOrientation`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Held {
-    LandscapeRight,
-    Portrait,
-    LandscapeLeft,
-    PortraitUpsideDown,
-}
-
 /// Where a share `(x, y)` of a real device's upright picture goes in the device's own upright
 /// axes, by how it is held: measured on an iPad on iPadOS 27.0.1 (POC.md, the ninth round).
-pub fn on_device(held: Held, (x, y): (f64, f64)) -> (f64, f64) {
+pub fn on_device(held: Orientation, (x, y): (f64, f64)) -> (f64, f64) {
     match held {
-        Held::LandscapeRight => (y, 1. - x),
-        Held::Portrait => (x, y),
-        Held::LandscapeLeft => (1. - y, x),
-        Held::PortraitUpsideDown => (1. - x, 1. - y),
+        Orientation::LandscapeRight => (y, 1. - x),
+        Orientation::Portrait => (x, y),
+        Orientation::LandscapeLeft => (1. - y, x),
+        Orientation::PortraitUpsideDown => (1. - x, 1. - y),
     }
+}
+
+/// A share of a screen, 0 to 1, as a device's touch reports carry it: 0 to 65535.
+pub fn share(value: f64) -> u16 {
+    #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "clamped to 0..=65535 first")]
+    let share = (value.clamp(0., 1.) * 65535.).round() as u16;
+    share
 }
 
 #[cfg(test)]
@@ -112,12 +109,13 @@ mod tests {
     #[test]
     fn a_held_ipad_takes_places_as_measured() {
         // The ninth round's table: a place (x, y) of the picture, to the device.
-        assert_eq!(on_device(Held::LandscapeRight, (0.25, 0.75)), (0.75, 0.75));
-        assert_eq!(on_device(Held::Portrait, (0.25, 0.75)), (0.25, 0.75));
-        assert_eq!(on_device(Held::LandscapeLeft, (0.25, 0.75)), (0.25, 0.25));
+        assert_eq!(on_device(Orientation::LandscapeRight, (0.25, 0.75)), (0.75, 0.75));
+        assert_eq!(on_device(Orientation::Portrait, (0.25, 0.75)), (0.25, 0.75));
+        assert_eq!(on_device(Orientation::LandscapeLeft, (0.25, 0.75)), (0.25, 0.25));
         assert_eq!(
-            on_device(Held::PortraitUpsideDown, (0.25, 0.75)),
+            on_device(Orientation::PortraitUpsideDown, (0.25, 0.75)),
             (0.75, 0.25)
         );
+        assert_eq!((share(0.), share(1.), share(2.)), (0, 65535, 65535));
     }
 }

@@ -1,7 +1,8 @@
 //! The host's start and its one loop (`docs/devices.md` 3): hello with the app, the device found
 //! and started, then what the app says and what takes time, turn by turn, until the app says quit
-//! or goes away. It ends by shutting the simulator down; a host that was killed instead leaves a
-//! record the app's next start goes by.
+//! or goes away. It ends by shutting a simulator down (a host that was killed instead leaves a
+//! record the app's next start goes by), or by letting a real device go, which then locks by its
+//! own setting.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -10,10 +11,12 @@ use std::time::{Duration, Instant};
 use koyo_browser_ipc::{inherit, mach};
 use koyo_device_wire::{FromHost, LogLevel, Missing, PROTOCOL, State, Step, ToHost};
 
+use crate::device::Device;
 use crate::gpu::Gpu;
 use crate::host::Host;
-use crate::link::{self, Link};
+use crate::link::{self, Link, Teller};
 use crate::ring::Ring;
+use crate::phone::Phone;
 use crate::sim::{Simulator, core, simctl};
 use crate::start::{self, Phase};
 
@@ -39,9 +42,15 @@ extern "C" fn on_signal(_signal: libc::c_int) {
 /// What the host was started for.
 pub struct Args {
     pub udid: String,
-    pub set: String,
+    pub kind: Kind,
     pub state: PathBuf,
     pub stats: bool,
+}
+
+/// A simulator of a device set, or a real device by cable.
+pub enum Kind {
+    Simulator { set: String },
+    Phone { name: String },
 }
 
 impl Args {
@@ -52,9 +61,18 @@ impl Args {
                 .and_then(|at| args.get(at + 1))
                 .cloned()
         };
+        let (udid, kind) = match (value("--simulator"), value("--phone")) {
+            (Some(udid), None) => (udid, Kind::Simulator {
+                set: value("--set").ok_or("--set <device set> is missing")?,
+            }),
+            (None, Some(udid)) => (udid, Kind::Phone {
+                name: value("--name").unwrap_or_else(|| "The device".to_owned()),
+            }),
+            _ => return Err("one of --simulator <udid> and --phone <udid> is needed".into()),
+        };
         Ok(Args {
-            udid: value("--simulator").ok_or("--simulator <udid> is missing")?,
-            set: value("--set").ok_or("--set <device set> is missing")?,
+            udid,
+            kind,
             state: value("--state")
                 .ok_or("--state <folder> is missing")?
                 .into(),
@@ -86,15 +104,17 @@ fn alone(state: &Path, udid: &str, link: &Link) -> Option<std::fs::File> {
 
 /// The record a killed host leaves: `<pid> <start time> <udid>`, which the app's next start
 /// reads to shut down what it left booted.
-fn record(state: &Path, udid: &str) -> PathBuf {
-    let path = state.join(format!("{udid}.host"));
+fn record(state: &Path, udid: &str) {
     let pid = std::process::id();
     let started = i32::try_from(pid)
         .ok()
         .and_then(crate::sys::started_at)
         .unwrap_or(0);
-    let _ = std::fs::write(&path, format!("{pid} {started} {udid}\n"));
-    path
+    let _ = std::fs::write(record_path(state, udid), format!("{pid} {started} {udid}\n"));
+}
+
+fn record_path(state: &Path, udid: &str) -> PathBuf {
+    state.join(format!("{udid}.host"))
 }
 
 fn developer_dir() -> String {
@@ -175,7 +195,7 @@ pub fn run(args: &Args) -> Result<(), String> {
         why
     };
     let version = core::version().unwrap_or_default();
-    if !core::at_least(&version, core::NEEDED) {
+    if matches!(args.kind, Kind::Simulator { .. }) && !core::at_least(&version, core::NEEDED) {
         return Err(unavailable(
             Missing::Xcode,
             format!("{NEEDS_XCODE} (CoreSimulator {version})"),
@@ -195,35 +215,20 @@ pub fn run(args: &Args) -> Result<(), String> {
     let _alone = alone(&args.state, &args.udid, &link).ok_or_else(|| {
         unavailable(
             Missing::Other,
-            "another host is still at work on this simulator".into(),
+            "another host is still at work on this device".into(),
         )
     })?;
     let gpu = Gpu::new().map_err(|why| unavailable(Missing::Other, why))?;
     let ring = Ring::new(gpu, teller.clone(), sender);
-    let sim = Simulator::find(&developer_dir(), &args.set, &args.udid, teller.clone())
-        .map_err(|why| unavailable(Missing::Simulator, why))?;
     crate::text::warm_up();
-    let first = !sim.booted_before();
-    let booted = sim.booted();
-    let record = record(&args.state, &args.udid);
-    let phase = Phase::Booting {
-        done: start::boot(&args.set, &args.udid, booted),
-    };
-    let mut host = Host::new(teller, ring, sim, phase);
-    host.tell_state(State::Starting {
-        step: if booted {
-            Step::Picture
-        } else {
-            Step::Booting { first }
-        },
-    });
+    let mut host = host(args, teller.clone(), ring).map_err(|(code, why)| unavailable(code, why))?;
     for message in early {
         host.hear(message);
     }
     let looped = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         turns(&mut host, &link, args.stats);
     }));
-    end(&mut host, &args.set, &record);
+    end(&mut host, args);
     looped.map_err(|panic| {
         let said = (panic.downcast_ref::<String>().map(String::as_str))
             .or_else(|| panic.downcast_ref::<&str>().copied())
@@ -242,6 +247,7 @@ fn turns(host: &mut Host, link: &Link, stats: bool) {
                 host.hear(message);
             }
             let starting = host.start_on();
+            host.phone_on();
             host.follow_on();
             let acting = host.act_on();
             host.jobs_on();
@@ -272,25 +278,48 @@ fn turns(host: &mut Host, link: &Link, stats: bool) {
     }
 }
 
-/// The host goes: fingers lifted, callbacks let go, the simulator shut down unless it went by
-/// itself, the record removed.
-fn end(host: &mut Host, set: &str, record: &Path) {
-    host.sim.detach();
+/// The host for what `args` name: a simulator found in its set, booting (its record written, for
+/// the app's next start should this host be killed), or a real device's session, connecting.
+fn host(args: &Args, teller: Teller, ring: Ring) -> Result<Host, (Missing, String)> {
+    match &args.kind {
+        Kind::Simulator { set } => {
+            let sim = Simulator::find(&developer_dir(), set, &args.udid, teller.clone()).map_err(|why| (Missing::Simulator, why))?;
+            let (first, booted) = (!sim.booted_before(), sim.booted());
+            let phase = Phase::Booting {
+                done: start::boot(set, &args.udid, booted),
+            };
+            let mut host = Host::new(teller, ring, Device::Simulator(Box::new(sim)), phase);
+            host.tell_state(State::Starting {
+                step: if booted { Step::Picture } else { Step::Booting { first } },
+            });
+            record(&args.state, &args.udid);
+            Ok(host)
+        }
+        Kind::Phone { name } => {
+            let phone = Phone::connect(&args.udid, name, ring.clone(), teller.clone(), args.stats);
+            let mut host = Host::new(teller, ring, Device::Phone(phone), Phase::Connecting);
+            host.tell_state(State::Starting { step: Step::Picture });
+            Ok(host)
+        }
+    }
+}
+
+/// The host goes: fingers lifted, callbacks let go; a simulator shut down unless it went by
+/// itself, and its record removed; a real device let go.
+fn end(host: &mut Host, args: &Args) {
+    host.device.detach();
+    let Kind::Simulator { set } = &args.kind else {
+        return;
+    };
     if let Phase::Booting { done } = &host.phase {
         // A boot under way is let finish, so it can be shut down rather than left booted.
         let _ = done.recv_timeout(Duration::from_secs(400));
     }
-    if !host.gone {
-        let udid = host.sim.udid.clone();
-        if let Err(why) = simctl::run(set, &["shutdown", &udid], SHUTS_DOWN_WITHIN)
-            && !why.contains("current state: Shutdown")
-        {
-            host.log(
-                LogLevel::Warn,
-                format!("the simulator wasn't shut down: {why}"),
-            );
-            return;
-        }
+    if !host.gone
+        && let Err(why) = simctl::run(set, &["shutdown", &args.udid], SHUTS_DOWN_WITHIN)
+        && !why.contains("current state: Shutdown")
+    {
+        return host.log(LogLevel::Warn, format!("the simulator wasn't shut down: {why}"));
     }
-    let _ = std::fs::remove_file(record);
+    let _ = std::fs::remove_file(record_path(&args.state, &args.udid));
 }

@@ -70,7 +70,7 @@ impl Host {
                         refused(RefusalCode::NotReady, "there is no picture yet"),
                     );
                 };
-                let (held, native) = (Moved(held), self.sim.scale);
+                let (held, native) = (Moved(held), self.device.scale());
                 simctl::later(move || {
                     let held = held;
                     look::screenshot(&held.0.surface, native, scale)
@@ -88,8 +88,11 @@ impl Host {
                 // The simulator's own tree first, unless the text is asked for; the text on the
                 // picture when the tree has none.
                 let tree = Arc::clone(&self.tree);
+                // A real device has no tree: its text is all there is, said nowhere.
                 let port = if text {
                     Err("the picture's text was asked for".to_owned())
+                } else if !self.device.has_tree() {
+                    Err("a real device has no accessibility tree".to_owned())
                 } else {
                     Ok(self.ax_port())
                 };
@@ -97,7 +100,7 @@ impl Host {
                 // copied into.
                 let first = self.next_ref;
                 self.next_ref += NUMBERED;
-                let (ring, scale) = (self.ring.clone(), self.sim.scale);
+                let (ring, scale) = (self.ring.clone(), self.device.scale());
                 simctl::later(move || {
                     let read = port.and_then(|port| accessibility(&tree, port, first));
                     read.or_else(|why| {
@@ -115,11 +118,12 @@ impl Host {
     }
 
     fn app_job(&self, ask: Ask) -> mpsc::Receiver<Result<Done, Refusal>> {
-        let (set, udid) = (self.sim.set.clone(), self.sim.udid.clone());
+        // A real device's app asks were refused before ([`crate::device::Device::refuses`]).
+        let (set, udid) = (self.device.simulator()).map_or_else(Default::default, |sim| (sim.set.clone(), sim.udid.clone()));
         // The screen before a launch or a link, to tell when what they open has drawn.
         let settles = matches!(ask, Ask::Launch { .. } | Ask::OpenUrl { .. });
         let before = settles
-            .then(|| self.ring.latest().and_then(|held| look::sample(&held.surface, self.sim.scale)))
+            .then(|| self.ring.latest().and_then(|held| look::sample(&held.surface, self.device.scale())))
             .flatten();
         // A launch waits for its app to be in front, as the accessibility tree tells.
         let tree = Arc::clone(&self.tree);
@@ -284,7 +288,7 @@ impl Host {
     /// The lock is only tried, never waited on, so the host's loop goes on whatever a job holds.
     fn ax_port(&self) -> Option<u32> {
         let connected = self.tree.try_lock().map_or(true, |held| held.is_some());
-        (!connected).then(|| self.sim.lookup(ax::SERVICE).ok()).flatten()
+        (!connected).then(|| self.device.simulator()?.lookup(ax::SERVICE).ok()).flatten()
     }
 }
 

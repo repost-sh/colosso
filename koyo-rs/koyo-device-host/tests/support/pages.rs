@@ -11,6 +11,9 @@ use serde_json::Value;
 
 pub struct Pages {
     pub port: u16,
+    /// Where a device finds the pages: loopback for a simulator, this Mac's address on the
+    /// local network for a real one.
+    host: String,
     reports: Arc<Mutex<Vec<Value>>>,
 }
 
@@ -45,7 +48,21 @@ fn unescape(text: &str) -> String {
 
 impl Pages {
     pub fn serve() -> Pages {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback port");
+        Pages::serve_at("127.0.0.1", "127.0.0.1".into())
+    }
+
+    /// The pages on this Mac's local network address, for a real device's Safari.
+    pub fn serve_lan() -> Pages {
+        let address = ["en0", "en1"].iter().find_map(|interface| {
+            let out = std::process::Command::new("/usr/sbin/ipconfig").args(["getifaddr", interface]).output().ok()?;
+            let address = String::from_utf8_lossy(&out.stdout).trim().to_owned();
+            (!address.is_empty()).then_some(address)
+        });
+        Pages::serve_at("0.0.0.0", address.expect("an address on the local network"))
+    }
+
+    fn serve_at(bind: &str, host: String) -> Pages {
+        let listener = TcpListener::bind(format!("{bind}:0")).expect("a port");
         let port = listener.local_addr().expect("its address").port();
         let reports = Arc::new(Mutex::new(Vec::new()));
         let kept = Arc::clone(&reports);
@@ -88,11 +105,11 @@ impl Pages {
                 });
             }
         });
-        Pages { port, reports }
+        Pages { port, host, reports }
     }
 
     pub fn url(&self, page: &str) -> String {
-        format!("http://127.0.0.1:{}/{page}", self.port)
+        format!("http://{}:{}/{page}", self.host, self.port)
     }
 
     pub fn clear(&self) {
@@ -136,7 +153,16 @@ impl Pages {
 pub fn open(target: &super::Target, pages: &Pages, page: &str, ready: &str) -> Value {
     for _ in 0..3 {
         pages.clear();
-        super::simctl(target, &["openurl", &target.udid, &pages.url(page)]);
+        if matches!(target.kind, super::Kind::Phone) {
+            // Safari opened on the page by `devicectl` (approvals E and K).
+            let _ = std::process::Command::new("/usr/bin/xcrun")
+                .args(["devicectl", "device", "process", "launch", "--quiet", "--device", &target.udid, "--payload-url"])
+                .arg(pages.url(page))
+                .arg("com.apple.mobilesafari")
+                .output();
+        } else {
+            super::simctl(target, &["openurl", &target.udid, &pages.url(page)]);
+        }
         if let Some(report) = pages.wait_for(ready, Duration::from_secs(12)) {
             // Settled: Safari's bars stop moving.
             let started = Instant::now();

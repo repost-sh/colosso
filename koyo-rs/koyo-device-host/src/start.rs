@@ -27,6 +27,8 @@ pub enum Phase {
         asked: Option<(mpsc::Receiver<Event>, Instant)>,
         next: Instant,
     },
+    /// A real device's session connects: acts wait, as for a simulator's input.
+    Connecting,
     Ready,
     Failed {
         why: String,
@@ -63,13 +65,16 @@ impl Host {
                 ),
             },
             Phase::Input { .. } => return self.ask_input(),
-            Phase::Ready | Phase::Failed { .. } => {}
+            Phase::Connecting | Phase::Ready | Phase::Failed { .. } => {}
         }
         false
     }
 
     fn booted(&mut self) {
-        if let Err(why) = self.sim.attach(&self.ring) {
+        let Some(sim) = self.device.simulator_mut() else {
+            return;
+        };
+        if let Err(why) = sim.attach(&self.ring) {
             return self.fail(
                 Missing::Other,
                 format!("the simulator's picture isn't there: {why}"),
@@ -78,7 +83,7 @@ impl Host {
         // A simulator may have been left turned: the picture is put upright from the start.
         // Right after a boot its display's info often isn't served yet; `follow_on` asks
         // again while the picture is wanted, so this is no warning.
-        if let Err(why) = self.sim.follow(&self.ring) {
+        if let Err(why) = sim.follow(&self.ring) {
             self.teller
                 .log(LogLevel::Info, format!("which way it faces, not yet: {why}; asked again"));
         }
@@ -91,7 +96,7 @@ impl Host {
     }
 
     fn ask_input(&mut self) -> bool {
-        let Phase::Input { tried, asked, next } = &mut self.phase else {
+        let (Phase::Input { tried, asked, next }, Some(sim)) = (&mut self.phase, self.device.simulator_mut()) else {
             return false;
         };
         let now = Instant::now();
@@ -100,7 +105,7 @@ impl Host {
                 return true;
             }
             *tried += 1;
-            match self.sim.connect_input() {
+            match sim.connect_input() {
                 Ok(answer) => *asked = Some((answer, now)),
                 Err(why) => {
                     self.teller
@@ -122,15 +127,13 @@ impl Host {
                 self.phase = Phase::Ready;
                 self.teller
                     .log(LogLevel::Info, format!("its input answered at try {tried}"));
-                if let Some(screen) = self.screen() {
-                    self.tell_state(State::Ready { screen });
-                }
+                self.tell_standing();
                 false
             }
             Some(false) => {
                 *asked = None;
                 *next = now + APART;
-                self.sim.drop_input();
+                sim.drop_input();
                 self.gave_up()
             }
         }
@@ -185,12 +188,11 @@ impl Host {
             return;
         }
         self.followed = Instant::now();
-        match self.sim.follow(&self.ring) {
-            Ok(true) => {
-                if let (Phase::Ready, Some(screen)) = (&self.phase, self.screen()) {
-                    self.tell_state(State::Ready { screen });
-                }
-            }
+        let Some(sim) = self.device.simulator_mut() else {
+            return;
+        };
+        match sim.follow(&self.ring) {
+            Ok(true) => self.tell_standing(),
             Ok(false) => {}
             Err(why) => self
                 .teller
@@ -203,17 +205,20 @@ impl Host {
         if matches!(self.phase, Phase::Booting { .. } | Phase::Failed { .. }) {
             return;
         }
-        if !self.sim.booted() {
+        let Some(sim) = self.device.simulator_mut() else {
+            return;
+        };
+        if !sim.booted() {
             self.gone = true;
             self.tell_state(State::Gone {
                 why: "the simulator shut down".into(),
             });
             return;
         }
-        if matches!(self.phase, Phase::Ready) && !self.sim.input_alive() {
+        if matches!(self.phase, Phase::Ready) && !sim.input_alive() {
+            sim.drop_input();
             self.teller
                 .log(LogLevel::Warn, "its input went away: asking again");
-            self.sim.drop_input();
             self.phase = Phase::Input {
                 tried: 0,
                 asked: None,

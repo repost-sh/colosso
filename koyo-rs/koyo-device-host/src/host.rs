@@ -15,7 +15,7 @@ use crate::jobs::Job;
 use crate::link::Teller;
 use crate::plan::{self, CONSUMER};
 use crate::ring::Ring;
-use crate::sim::Simulator;
+use crate::device::Device;
 use crate::start::Phase;
 
 /// How long after an agent's last answer its picture is still kept current.
@@ -24,7 +24,7 @@ const AGENT_RESTS_AFTER: Duration = Duration::from_secs(10);
 pub struct Host {
     pub teller: Teller,
     pub ring: Ring,
-    pub sim: Simulator,
+    pub device: Device,
     pub phase: Phase,
     told: Option<State>,
     visible: bool,
@@ -57,11 +57,11 @@ pub fn refused(code: RefusalCode, message: impl Into<String>) -> Result<Answer, 
 }
 
 impl Host {
-    pub fn new(teller: Teller, ring: Ring, sim: Simulator, phase: Phase) -> Host {
+    pub fn new(teller: Teller, ring: Ring, device: Device, phase: Phase) -> Host {
         Host {
             teller,
             ring,
-            sim,
+            device,
             phase,
             told: None,
             visible: false,
@@ -102,11 +102,21 @@ impl Host {
 
     /// The picture as shown now, once there is one.
     pub fn screen(&self) -> Option<Screen> {
-        self.ring.pixels().map(|pixels| self.sim.screen(pixels))
+        self.ring.pixels().map(|pixels| self.device.screen(pixels))
     }
 
     pub fn size(&self) -> Size {
         self.screen().map_or(Size::default(), |screen| screen.size)
+    }
+
+    /// Ready, or locked (a real device's lock screen), once there's a picture to show.
+    pub fn tell_standing(&mut self) {
+        if !matches!(self.phase, Phase::Ready) {
+            return;
+        }
+        if let Some(screen) = self.screen() {
+            self.tell_state(if self.device.locked() { State::Locked { screen } } else { State::Ready { screen } });
+        }
     }
 
     /// The device was told to turn: its interface follows within the second, if it does.
@@ -186,14 +196,14 @@ impl Host {
                     .filter(|finger| finger.down || !touching)
                     .map(|finger| finger.at)
                     .collect();
-                self.sim.touch(&at, touching, edge, size)
+                self.device.touch(&at, touching, edge, size)
             }
             Input::Button { button, down } => {
-                self.sim.button(CONSUMER, button_usage(button), down);
+                self.device.button(CONSUMER, button_usage(button), down);
                 Ok(())
             }
             Input::Key { usage, down } => {
-                self.sim.key(usage, down);
+                self.device.key(usage, down);
                 Ok(())
             }
             Input::Text { text } => {
@@ -202,7 +212,7 @@ impl Host {
             }
             Input::Turn { to } => {
                 self.follow_soon();
-                self.sim.turn(to)
+                self.device.turn(to)
             }
         };
         if let Err(error) = done {
@@ -221,12 +231,12 @@ impl Host {
                 continue;
             };
             if shift {
-                self.sim.key(0xE1, true);
+                self.device.key(0xE1, true);
             }
-            self.sim.key(usage, true);
-            self.sim.key(usage, false);
+            self.device.key(usage, true);
+            self.device.key(usage, false);
             if shift {
-                self.sim.key(0xE1, false);
+                self.device.key(0xE1, false);
             }
         }
     }
@@ -249,9 +259,16 @@ impl Host {
     fn ask(&mut self, request: RequestId, ask: Ask) {
         let starting = match &self.phase {
             Phase::Ready => None,
-            Phase::Input { .. } => Some(true),
+            Phase::Input { .. } | Phase::Connecting => Some(true),
             Phase::Booting { .. } | Phase::Failed { .. } => Some(false),
         };
+        if let Some(refusal) = self.device.refuses(&ask) {
+            return self.answer(request, Err(refusal));
+        }
+        if self.device.locked() && matches!(ask, Ask::Act(_)) {
+            let why = "the device is locked: only the person can unlock it, in their hands";
+            return self.answer(request, refused(RefusalCode::Locked, why));
+        }
         if starting == Some(false) {
             let why = match &self.phase {
                 Phase::Failed { why } => why.clone(),

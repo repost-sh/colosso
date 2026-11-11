@@ -134,7 +134,7 @@ fn a_tap_right_after_a_first_boot_waits_for_input_and_lands() {
         .output()
         .unwrap();
     let udid = String::from_utf8_lossy(&made.stdout).trim().to_owned();
-    let target = support::Target { set, udid };
+    let target = support::Target { udid, kind: support::Kind::Simulator { set } };
     let mut host = Driver::start(&target, false);
     host.tell(&ToHost::Visible { visible: true });
     let getting_ready = host.until(Duration::from_secs(240), |m| {

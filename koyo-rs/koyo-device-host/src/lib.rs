@@ -5,11 +5,13 @@
 #![cfg(target_os = "macos")]
 
 mod acting;
+mod device;
 mod gpu;
 mod host;
 mod jobs;
 mod link;
 mod look;
+mod phone;
 pub mod places;
 mod plan;
 mod ring;
