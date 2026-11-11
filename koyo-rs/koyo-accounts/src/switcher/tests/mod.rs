@@ -10,7 +10,8 @@
 //! fetches (`usage_active.rs`, `resync.rs`, `idle.rs`), collection passes (`collect*.rs`),
 //! `accounts_snapshot` with `tests/test_backup_read_pacing.py`'s display cases
 //! (`snapshot.rs`), the plans of `tests/test_subscription.py`'s `TestCollector` (`plans.rs`),
-//! and Koyo's live limits (`live.rs`); `support.rs` has what they share.
+//! and Koyo's live limits (`live.rs`); `support.rs` has what they share. `engine.rs` runs the
+//! auto-switch engine's tick on a switcher.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -31,6 +32,7 @@ mod capture;
 mod collect;
 mod collect_passes;
 mod direct;
+mod engine;
 mod fallback;
 mod grant;
 mod grant_faults;
@@ -109,6 +111,11 @@ impl Harness {
 
     pub fn write_config(&self, config: &Value) {
         std::fs::write(self.config_path(), config.to_string()).unwrap();
+    }
+
+    /// `~/.claude.json`, parsed.
+    pub fn config(&self) -> Value {
+        serde_json::from_str(&std::fs::read_to_string(self.config_path()).unwrap()).unwrap()
     }
 
     /// cswap's `mock_claude_config`.

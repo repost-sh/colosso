@@ -53,6 +53,19 @@ impl RosterSlot {
     }
 }
 
+/// The engine's lookups on the roster.
+impl Roster {
+    pub(crate) fn slot(&self, number: &str) -> Option<&RosterSlot> {
+        self.slots.iter().find(|slot| slot.number == number)
+    }
+
+    /// cswap's `account_email`: the slot's stored email, empty when unknown.
+    pub(crate) fn email(&self, number: &str) -> &str {
+        self.slot(number)
+            .map_or("", |slot| slot.identity.email.as_str())
+    }
+}
+
 impl Switcher {
     /// The roster as it is now (the module says what is read).
     ///

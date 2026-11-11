@@ -8,7 +8,7 @@
 
 use chrono::{
     DateTime, Datelike as _, FixedOffset, Local, NaiveDate, NaiveDateTime, NaiveTime,
-    TimeZone as _, Utc,
+    SecondsFormat, TimeZone as _, Utc,
 };
 use serde_json::{Map, Value};
 
@@ -150,6 +150,19 @@ pub(crate) fn utc_at(seconds: f64) -> Option<DateTime<Utc>> {
 /// `strftime`'s `%S` does); `None` out of range.
 pub(crate) fn iso_utc(seconds: f64) -> Option<String> {
     utc_at(seconds.floor()).map(|at| at.format("%Y-%m-%dT%H:%M:%SZ").to_string())
+}
+
+/// An epoch as Python's `datetime.fromtimestamp(ts, timezone.utc).isoformat()` with `Z`: to the
+/// second, or the microsecond when there are any; `None` out of range.
+pub(crate) fn iso_z(seconds: f64) -> Option<String> {
+    utc_at(seconds).map(|at| {
+        let precision = if at.timestamp_subsec_micros() == 0 {
+            SecondsFormat::Secs
+        } else {
+            SecondsFormat::Micros
+        };
+        at.to_rfc3339_opts(precision, true)
+    })
 }
 
 /// `(countdown, clock)` for a reset time in local time.

@@ -32,7 +32,9 @@ pub use collect::Fetch;
 #[cfg(test)]
 pub(crate) use idle::RUN_FETCHES;
 
-/// cswap's `autoswitch.threshold` default.
+/// cswap's `autoswitch.threshold` default, the engine's too. 90 rather than 95 leaves margin
+/// for the macOS ~30 s Keychain pickup tail and for heavy subagent turns burning past the mark
+/// before a swap lands.
 pub(crate) const DEFAULT_THRESHOLD: f64 = 90.;
 
 /// The switch lines and model names poll planning keys on, cswap's `(threshold,

@@ -90,7 +90,8 @@ impl Drop for Sandbox {
     }
 }
 
-fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+/// A mutex's guard, a poisoned one's too: a test that panicked holding it fails on its own.
+pub(crate) fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
@@ -292,11 +293,11 @@ impl Security for FakeSecurity {
     }
 }
 
-/// HTTP that answers what a test queued for a URL, in order, and nothing else: a request
-/// with nothing queued gets [`HttpError::Network`].
 /// The answers queued for the URLs starting with a prefix.
 type Queued = Vec<(String, VecDeque<Result<Response, HttpError>>)>;
 
+/// HTTP that answers what a test queued for a URL, in order, and nothing else: a request
+/// with nothing queued gets [`HttpError::Network`].
 #[derive(Default)]
 pub struct FakeHttp {
     answers: Mutex<Queued>,

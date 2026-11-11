@@ -10,6 +10,7 @@
 //! variables, the store, `security`, HTTP and the clock. Tests run on a sandbox
 //! (`testing::Sandbox`), whose writes the guard holds inside its folder and off the real login.
 
+pub mod autoswitch;
 pub mod claude_locks;
 pub mod credentials;
 pub mod env;
