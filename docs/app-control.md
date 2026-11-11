@@ -103,6 +103,7 @@ Scopes:
 | `manage` | add/remove/reorder projects, create worktrees, save files |
 | `browser` | drive pages: navigate, eval, click, type, keys, scroll, claim/release |
 | `desktop` | drive apps on the agent desktop: open, click, move, drag, scroll, type, keys, focus, close |
+| `devices` | drive iPhone and iPad simulators: open, tap, swipe, scroll, pinch, type, keys, buttons, rotate, install, launch, terminate, open links, close |
 | `settings` | `settings_set` (the allowlisted fields) |
 | `destructive` | delete worktrees, close tabs discarding unsaved edits; each call also confirmed |
 
@@ -231,7 +232,7 @@ worktree_delete [destructive] D, confirmed { worktree, force?: bool } → refuse
 tab_list   [read] R { worktree?, all?: bool } → { worktrees: [{ path, tabs: [{ index, selected,
              layout: PaneTree, panes: [PaneInfo] }] }] }
              PaneInfo = { pane, kind: "terminal"|"browser"|"editor"|"changes"|"chat"|
-             "desktop", title,
+             "desktop"|"device", title,
              url?, file?, unsaved?, terminal?: handle, focused }
              `focused` is the pane the person is in, of the shown tab's: the one with the
              keyboard, or, while the sidebar, a dialog or another window has it, the one
@@ -247,7 +248,8 @@ tab_open   [navigate] C { worktree?, kind, url?, viewport?: OpenViewport (a page
              "end"|"beside" (default end), select?: bool (default: the person's setting) }
              → { pane, tab }
              Opens the kind as the menu would; `terminal` reveals an existing daemon terminal;
-             `desktop` is the agent desktop's one pane, the one there is or a new one.
+             `desktop` is the agent desktop's one pane, the one there is or a new one;
+             `device` a device tab on its picker (`device_open` opens one on a device).
              OpenViewport = { device?, width?, height?, orientation?, fill?: true }
              (`browser_viewport`'s fields, Pages agents open above)
 tab_select [navigate] I { pane } | { worktree?, index }
@@ -430,6 +432,51 @@ desktop_close      [desktop] D { window? | pid? (one) } → { done }; a window, 
                      the agent opened (a lent one is given back as it is)
 ```
 
+### Devices (`docs/devices.md` 9, through each device's host)
+
+Every tool but `device_list` takes `device` (its id) or `pane`; with neither, the device the
+caller acted on last, else the shown tab's, else the only one running, else `ambiguous` with
+them listed. Places are points of the picture as it shows, upright, from its top left. An act
+lands on an element of the last snapshot by `ref` (a touch at its middle) or at a point; it
+answers what it did to the screen, looked at, not assumed. Acts and `device_close` fail
+`person_has_control` (retryable) while the person acts in the device's tab and for 5 s after,
+and (not retryable) while they hold it with Take Control. `device_unavailable` (retryable):
+starting, or its host restarting; not retryable for a device that isn't open.
+`device_needs_person`: Xcode or a simulator system missing, or a locked device. The reads are
+`read`; the rest `devices`, which an outside client is given in Settings → MCP server. All
+reach beyond Koyo (`openWorld`).
+
+```
+device_list        [read] R {} → { devices: [{ device, name, kind: "simulator", system,
+                     state: off|starting|ready|locked|gone|needsPerson|failed, missing?, pane?,
+                     controller?, screen?: DeviceScreen, set? }] }; read from Koyo's set afresh
+device_open        [devices] C { device? | model? } → { device, name, pane, ready, step?:
+                     booting|firstBoot|picture|input, screen? }; its tab out of sight; answers
+                     within 60 s, called again until ready; refused past two running at once
+device_close       [devices] C { device? | pane? } → { device, name }; shut down, tab closed
+device_screenshot  [read] R { device? | pane?, scale?: 1..3 } → image block + { name, width,
+                     height, scale }
+device_snapshot    [read] R { device? | pane? } → { tree: lines with `[ref=eN] @x,y`, source:
+                     accessibility|text, elements, truncated }; refs hold until the next snapshot
+device_wait        [read] R { device? | pane?, quietMs? (500, ≤ 10000), timeoutMs? (10000,
+                     ≤ 60000) } → { still, millis }
+device_tap         [devices] C { ref? | x?, y?, count?: 1..3, holdMs?: 0..10000, fingers?: 1..5 }
+device_swipe       [devices] C { ref? | x?, y?, toX, toY, ms?: 50..5000 (300), fingers?: 1..5 }
+device_scroll      [devices] C { ref? | x?, y?, dx?, dy? (points the content moves; no glide) }
+device_pinch       [devices] C { ref? | x?, y?, scale?, degrees?, ms?: 100..5000 (500) }
+device_type        [devices] C { text (ASCII, ≤ 2000; other characters refused, named), into?: ref }
+device_key         [devices] C { combo: "cmd+space"|"return"|"shift+tab"… }
+device_button      [devices] C { button: home|lock|volume_up|volume_down|app_switcher|
+                     control_center|notification_center }
+device_rotate      [devices] C { to: portrait|portraitUpsideDown|landscapeLeft|landscapeRight }
+                     → each act { name, change: none|small|large, region?, still, millis, did }
+device_apps        [read] R { device? | pane? } → { name, apps: [{ name, bundle }] }
+device_install     [devices] C { path: an `.app` built for the simulator } → { device, name }
+device_launch      [devices] C { bundle, arguments? } → { device, name }; ended first if it runs
+device_terminate   [devices] C { bundle } → { device, name }
+device_open_url    [devices] C { url } → { device, name }
+```
+
 ### Activity
 
 ```
@@ -556,15 +603,15 @@ owner found the list of no use, and agents read the log with `activity_list` (5)
 
 ## 11. As implemented (2026-11-02)
 
-- Crates: `koyo-rs/koyo-app-control` (71 operations, frames, socket, client, `koyo app`),
+- Crates: `koyo-rs/koyo-app-control` (90 operations, frames, socket, client, `koyo app`),
   `koyo-rs/koyo/src/control/` (listener, gate, approval, confirmations, receipts, activity,
   topics, in-process client, HTTP server in `control/http.rs`, executors in `control/exec/`,
   browser executors in `control/exec/browser/`, the agent desktop's in
-  `control/exec/desktop.rs`), `koyo-rs/koyo-term-mcp` (the unified server:
+  `control/exec/desktop.rs`, the devices' in `control/exec/device/`), `koyo-rs/koyo-term-mcp` (the unified server:
   `backend.rs`, `socket.rs`, `app.rs`, `tools.rs`, `launch.rs`, `subscriptions.rs`,
   `http.rs`), the Settings page in `settings_view/mcp_server.rs`, `mcp_agents.rs` (the
   Agents section) and `mcp_clients.rs`.
-- `koyo mcp` lists 86 tools (14 terminal, 71 app, `app_launch`); HTTP lists 85 (no
+- `koyo mcp` lists 105 tools (14 terminal, 90 app, `app_launch`); HTTP lists 104 (no
   `app_launch`). The server is named `koyo`. A chat's session registers it under that name,
   with `KOYO_CHAT` (`docs/chat.md` O1).
 - Browser tools run over CDP through `browser/agent.rs`, its refusals typed (`AgentError`). A
