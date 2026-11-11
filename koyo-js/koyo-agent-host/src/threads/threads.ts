@@ -210,6 +210,9 @@ export class Threads {
       summarized: (shown) => {
         this.#tell(eventLine("thread.summary", shown));
       },
+      limited: (limits) => {
+        this.#tell(eventLine("account.limits", limits));
+      },
       sessionUsed: (actor) => {
         this.#used(actor);
       },

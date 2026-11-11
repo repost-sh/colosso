@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { ItemId, ThreadId } from "./ids";
 import { Rows } from "./methods";
-import { NoticeLevel, Thread, ThreadSummary } from "./model";
+import { AccountLimits, NoticeLevel, Thread, ThreadSummary } from "./model";
 
 export const events = {
   /** A thread as lists show it, to clients that watch threads, when what they show changed. */
@@ -21,6 +21,8 @@ export const events = {
   /** Text a streaming item grew by, in order after the step that made the item. */
   "item.appended": z.object({ threadId: ThreadId, itemId: ItemId, text: z.string() }),
   "host.notice": z.object({ level: NoticeLevel, message: z.string() }),
+  /** What a chat's response said of the account's limits, to clients that watch threads. */
+  "account.limits": AccountLimits,
 } satisfies Record<string, z.ZodType>;
 
 export type EventName = keyof typeof events;

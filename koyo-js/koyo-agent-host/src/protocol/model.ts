@@ -120,6 +120,43 @@ export const Usage = z.object({
 });
 export type Usage = z.infer<typeof Usage>;
 
+/** How a subscription limit stands, as a response's rate-limit headers say. */
+export const LimitStatus = z.enum(["allowed", "allowed_warning", "rejected"]);
+export type LimitStatus = z.infer<typeof LimitStatus>;
+
+/** One window of the account's subscription limits. */
+export const LimitWindow = z.object({
+  /** The fraction of the window used: 0-1, past 1 when usage legitimately ran past its cap. */
+  utilization: z.number().nonnegative(),
+  resetsAt: Time,
+  status: LimitStatus.nullable(),
+});
+export type LimitWindow = z.infer<typeof LimitWindow>;
+
+/**
+ * The account's subscription limits as a chat's last response said them (docs/claude-accounts.md
+ * 4): how it stands, the window it was measured against, and each window the response carried.
+ * The account is the Mac's login, whichever chat it came from.
+ */
+export const AccountLimits = z.object({
+  status: LimitStatus,
+  window: z.enum([
+    "five_hour",
+    "seven_day",
+    "seven_day_opus",
+    "seven_day_sonnet",
+    "seven_day_overage_included",
+    "overage",
+  ]).nullable(),
+  utilization: z.number().nonnegative().nullable(),
+  resetsAt: Time.nullable(),
+  fiveHour: LimitWindow.nullable(),
+  sevenDay: LimitWindow.nullable(),
+  /** The per-model weekly bucket (Fable's), on accounts whose responses carry one. */
+  sevenDayOverageIncluded: LimitWindow.nullable(),
+});
+export type AccountLimits = z.infer<typeof AccountLimits>;
+
 /** Who asked a run to stop, and whether its process was killed rather than asked. */
 export const Stop = z.object({
   requestedAt: Time,

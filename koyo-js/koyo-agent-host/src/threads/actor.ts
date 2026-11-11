@@ -63,7 +63,7 @@ export class ThreadActor {
 
   private constructor(cx: Context, thread: Thread) {
     this.#cx = cx;
-    this.#state = new ThreadState(cx.store, cx.summarized, thread);
+    this.#state = new ThreadState(cx.store, cx.summarized, thread, cx.limited);
     const later = (work: () => void): void => {
       queueMicrotask(() => {
         this.#step(work);
@@ -460,6 +460,7 @@ export class ThreadActor {
       case "session.ready":
       case "turn.started":
       case "usage":
+      case "limits":
       case "item.started":
       case "item.updated":
       case "item.appended":
@@ -481,8 +482,7 @@ export class ThreadActor {
     if (live?.status === "stopping") {
       this.#settle("interrupted");
     } else if (live !== undefined) {
-      const failure = processFailure(error ?? "The agent's process ended.");
-      this.#settle("failed", { failure });
+      this.#settle("failed", { failure: processFailure(error ?? "The agent's process ended.") });
     }
   }
 

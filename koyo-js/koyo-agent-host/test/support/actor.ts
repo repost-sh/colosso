@@ -6,7 +6,7 @@ import { z } from "zod";
 import { events } from "../../src/protocol/events";
 import type { ThreadId } from "../../src/protocol/ids";
 import type { Rows } from "../../src/protocol/methods";
-import type { Item, ThreadSummary } from "../../src/protocol/model";
+import type { AccountLimits, Item, ThreadSummary } from "../../src/protocol/model";
 import { FakeProvider } from "../../src/providers/fake";
 import type { Capabilities, Config } from "../../src/providers/provider";
 import type { Change } from "../../src/store/store";
@@ -21,6 +21,8 @@ export class Harness {
   readonly store = Store.open(":memory:");
   readonly provider: FakeProvider;
   readonly summaries: ThreadSummary[] = [];
+  /** What responses said of the account's limits. */
+  readonly limits: AccountLimits[] = [];
   /** The actors that ran a turn, as the threads' session pool hears of them. */
   readonly used: ThreadActor[] = [];
   /** The actors of the subagents' threads. */
@@ -92,6 +94,9 @@ export class Harness {
       },
       summarized: (summary) => {
         this.summaries.push(summary);
+      },
+      limited: (limits) => {
+        this.limits.push(limits);
       },
       sessionUsed: (actor) => {
         this.used.push(actor);
