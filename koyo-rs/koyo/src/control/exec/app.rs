@@ -121,6 +121,7 @@ pub(crate) fn settings_open(
         None => None,
         Some(SettingsPage::General) => Some(Page::General),
         Some(SettingsPage::Chat) => Some(Page::Chat),
+        Some(SettingsPage::Accounts) => Some(Page::Accounts),
         Some(SettingsPage::Appearance) => Some(Page::Appearance),
         Some(SettingsPage::Editor) => Some(Page::Editor),
         Some(SettingsPage::Languages) => Some(Page::Languages),

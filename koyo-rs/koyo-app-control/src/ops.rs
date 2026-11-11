@@ -6,6 +6,7 @@
 //! or its name when unique; a `worktree` is a checkout path, a branch name, or `current`;
 //! a `pane` is the id `tab_list` lists.
 
+pub mod accounts;
 pub mod activity;
 pub mod app;
 pub mod browser;

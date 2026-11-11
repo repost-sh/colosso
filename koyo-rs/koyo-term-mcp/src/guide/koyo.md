@@ -20,6 +20,9 @@ Koyo only through them: never edit its settings, data or other files.
 - `activity_list` lists what clients did lately, newest first: every changing call with
   its summary or error, and the person's answers to approvals and confirmations. An agent
   in a Koyo terminal or chat reads every client's entries; any other client its own.
+- `claude_accounts_list` lists the Claude Code accounts Koyo shows in the sidebar: which is
+  the Mac's login, each one's 7-day and per-model usage with when it resets, and what keeps
+  a reading from being taken. Switching accounts stays with the person.
 
 The same reads are resources: `koyo://app`, `koyo://projects`, `koyo://tabs` and
 `koyo://settings`. Each can be subscribed to; an update says only that it changed, so
