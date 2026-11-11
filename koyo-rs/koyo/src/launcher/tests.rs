@@ -197,7 +197,7 @@ fn the_device_kind_lists_the_simulators_and_opens_the_one_picked(cx: &mut TestAp
     cx.run_until_parked();
     assert_eq!(tabs(&shell, cx), ["[iPad Pro 13-inch (M5)]"]);
 
-    shell.update(cx, |shell, cx| shell.device_pane(None, false, true, cx));
+    shell.update(cx, |shell, cx| shell.device_pane(None, true, cx));
     cx.run_until_parked();
     assert_eq!(tabs(&shell, cx), ["iPad Pro 13-inch (M5)", "[Devices]"]);
     let (launcher_window, launcher) = launch(window, cx);

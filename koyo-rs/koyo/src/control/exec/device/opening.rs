@@ -15,8 +15,6 @@ use crate::control::Caller;
 use crate::control::exec::{Exec, output, update_shell};
 use crate::devices::{self, Chosen, Simulator, Standing};
 
-/// How many simulators may run at once; Settings → Devices will let the person change it.
-const RUNNING_AT_ONCE: usize = 2;
 /// How long `device_open` waits for the device to stand ready before it answers that it is
 /// still starting: inside the 60 s the tool promises.
 const OPEN_WAIT: Duration = Duration::from_secs(50);
@@ -29,41 +27,20 @@ fn missing(why: impl std::fmt::Display) -> ControlError {
     ))
 }
 
-/// What runs now, by udid and name: the simulators the set has booted (an agent's own `simctl
-/// boot`, a host still shutting one down) and those Koyo starts that haven't booted yet.
-pub(super) type Running = Vec<(String, String)>;
-
-fn starting(cx: &App) -> Running {
-    let devices = devices::devices(cx);
-    (devices.read(cx).links())
-        .map(|link| link.read(cx))
-        .filter(|link| link.running_or_starting())
-        .map(|link| (link.udid.clone(), link.name.clone()))
-        .collect()
+/// What Koyo holds by udid and name, and how many may run at once.
+pub(super) struct Room {
+    pub starting: Vec<(String, String)>,
+    pub at_once: usize,
 }
 
 /// Refused when `udid` (`None` for one to be made) would be one simulator too many.
-pub(super) fn room_in(listed: &[Simulator], starting: &Running, udid: Option<&str>) -> Result<(), ControlError> {
-    let mut running: Running = (listed.iter())
-        .filter(|simulator| simulator.booted)
-        .map(|simulator| (simulator.udid.clone(), simulator.name.clone()))
-        .collect();
-    for link in starting {
-        if !running.iter().any(|(udid, _)| *udid == link.0) {
-            running.push(link.clone());
-        }
-    }
-    if udid.is_some_and(|udid| running.iter().any(|(running, _)| running == udid)) {
+pub(super) fn room_in(listed: &[Simulator], room: &Room, udid: Option<&str>) -> Result<(), ControlError> {
+    let Some(names) = devices::past_limit(&devices::running(listed, &room.starting), udid, room.at_once) else {
         return Ok(());
-    }
-    if running.len() < RUNNING_AT_ONCE {
-        return Ok(());
-    }
-    let names: Vec<&str> = running.iter().map(|(_, name)| name.as_str()).collect();
+    };
     Err(ControlError::device_unavailable(format!(
-        "{} simulators run already ({}), the most at once: close one with device_close, or ask the person.",
-        names.len(),
-        names.join(", ")
+        "{}, the most the person allows at once (Settings → Devices): close one with device_close, or ask the person.",
+        devices::running_already(&names)
     ))
     .retryable(false))
 }
@@ -71,11 +48,11 @@ pub(super) fn room_in(listed: &[Simulator], starting: &Running, udid: Option<&st
 /// The simulator `input` asks for: by its id, made from a model, or else the one this caller
 /// used last, else the one booted last, else a new iPhone, the newest; refused past the limit before
 /// anything is made.
-fn choose(set: &Path, input: &DeviceOpenInput, last: Option<&str>, starting: &Running) -> Result<Simulator, ControlError> {
+fn choose(set: &Path, input: &DeviceOpenInput, last: Option<&str>, room: &Room) -> Result<Simulator, ControlError> {
     use devices::simulators::{self, Unmade};
     let listed = simulators::list(set).map_err(missing)?;
     let make = |model: Option<&str>| {
-        room_in(&listed, starting, None)?;
+        room_in(&listed, room, None)?;
         simulators::make(set, model).map_err(|unmade| match unmade {
             Unmade::Model(why) => ControlError::invalid_input(why),
             Unmade::Missing(why) => missing(why),
@@ -94,7 +71,7 @@ fn choose(set: &Path, input: &DeviceOpenInput, last: Option<&str>, starting: &Ru
             None => return make(None),
         },
     };
-    room_in(&listed, starting, Some(&found.udid))?;
+    room_in(&listed, room, Some(&found.udid))?;
     Ok(found)
 }
 
@@ -102,7 +79,7 @@ fn choose(set: &Path, input: &DeviceOpenInput, last: Option<&str>, starting: &Ru
 fn opened(caller: &Caller, simulator: &Simulator, cx: &mut App) -> Result<u64, ControlError> {
     let shows = crate::control::policy::shows(None, cx);
     let chosen = Chosen::from(simulator);
-    let pane = update_shell(cx, |shell, _, cx| shell.device_pane(Some(chosen), true, shows, cx))?
+    let pane = update_shell(cx, |shell, _, cx| shell.device_pane(Some(chosen), shows, cx))?
         .ok_or_else(|| ControlError::internal("The device's tab couldn't be opened."))?;
     let devices = devices::devices(cx);
     // A simulator just made isn't in the list the launcher and the picker read yet.
@@ -110,6 +87,7 @@ fn opened(caller: &Caller, simulator: &Simulator, cx: &mut App) -> Result<u64, C
         devices.update(cx, devices::Devices::refresh);
     }
     if let Some(link) = devices.read(cx).existing(&simulator.udid) {
+        link.update(cx, devices::Link::start);
         let _ = link.update(cx, |link, cx| link.agent_acts(caller.actor(), cx));
     }
     remember(caller, &simulator.udid, cx);
@@ -143,10 +121,14 @@ pub(crate) fn open(caller: &Caller, input: DeviceOpenInput, cx: &mut App) -> Res
     // From the call's start: making a simulator is part of the minute the tool promises.
     let started = Instant::now();
     let set = devices::set_dir().ok_or_else(|| ControlError::internal("Koyo has no folder to keep its devices in."))?;
-    let (last, starting, asked) = (last_device(caller, cx), starting(cx), super::simctl_asked(cx));
+    let room = Room {
+        starting: devices::devices(cx).read(cx).starting(cx),
+        at_once: devices::at_once(cx),
+    };
+    let (last, asked) = (last_device(caller, cx), super::simctl_asked(cx));
     let chosen = cx.background_executor().spawn(async move {
         asked()?;
-        choose(&set, &input, last.as_deref(), &starting)
+        choose(&set, &input, last.as_deref(), &room)
     });
     let caller = caller.clone();
     Ok(Exec::Later(cx.spawn(async move |cx: &mut AsyncApp| {

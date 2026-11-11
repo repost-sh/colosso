@@ -358,8 +358,8 @@ fn a_device_s_tab_is_kept_by_its_device_and_the_picker_s_isnt(cx: &mut TestAppCo
         ipad: false,
     };
     shell.update(cx, |shell, cx| {
-        shell.device_pane(Some(chosen), false, true, cx);
-        shell.device_pane(None, false, true, cx);
+        shell.device_pane(Some(chosen), true, cx);
+        shell.device_pane(None, true, cx);
     });
     let device = KeptTree::Pane(KeptPane::Device {
         udid: "UDID-K".into(),
@@ -381,14 +381,15 @@ fn a_device_s_tab_brought_back_starts_nothing_until_asked(cx: &mut TestAppContex
         ipad: false,
     });
     let path = file("kept-window-device-back-file", &main_with(&root, 0, &[device]));
-    let (_, shell) = shell_with(&[&root], cx);
+    let (window, shell) = shell_with(&[&root], cx);
     launch(&shell, &path, &[&root], cx);
     select(&shell, &root, cx);
     assert_eq!(tabs_of(&shell, &root, cx), (titles(&[&["iPhone 17 Pro"]]), 0));
     let view = cx.read(|cx| shell.read(cx).shown_device_view(cx)).expect("the device's tab");
     let link = cx.read(|cx| view.read(cx).link().cloned()).expect("its link");
     assert_eq!(cx.read(|cx| link.read(cx).state.clone()), crate::devices::State::Off);
-    view.update(cx, crate::devices::DeviceView::start);
+    // The tab's Start, as the person presses it: nothing else runs, so it starts at once.
+    (gpui_kit::AppContext::update_window(cx, window, |_, window, cx| view.update(cx, |view, cx| view.start_asking(window, cx)))).expect("the window");
     let state = cx.read(|cx| link.read(cx).state.clone());
     assert!(matches!(state, crate::devices::State::Failed(_)), "{state:?}");
 }

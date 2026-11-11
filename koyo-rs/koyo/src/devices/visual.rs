@@ -89,6 +89,13 @@ pub(super) fn close(drawn: &mut Drawn, view: Entity<DeviceView>) -> Result<()> {
     Ok(())
 }
 
+/// Closes the dialog open over the window, if one is.
+pub(super) fn dismiss(drawn: &mut Drawn) {
+    if let Some(window) = drawn.cx.read(crate::modal::window) {
+        let _ = drawn.cx.update_window(window, |_, window, cx| crate::modal::dismiss(window, cx));
+    }
+}
+
 /// Opens a device tab in the shell, shown: the picker when `chosen` is `None`.
 pub(super) fn open(drawn: &mut Drawn, chosen: Option<Chosen>, start: bool) -> Result<Entity<DeviceView>> {
     let (shell, window) = (drawn.shell.clone(), drawn.window);
@@ -96,15 +103,16 @@ pub(super) fn open(drawn: &mut Drawn, chosen: Option<Chosen>, start: bool) -> Re
         .cx
         .update_window(window, |_, _, cx| {
             shell.update(cx, |shell, cx| {
-                shell.device_pane(chosen, start, true, cx);
+                shell.device_pane(chosen, true, cx);
             });
         })
         .map_err(|error| error.to_string())?;
+    let view = (drawn.cx.read(|cx| shown_device(&shell, cx))).ok_or_else(|| "no device tab opened".to_owned())?;
+    if start && let Some(link) = drawn.cx.read(|cx| view.read(cx).link().cloned()) {
+        drawn.cx.update(|cx| link.update(cx, super::Link::start));
+    }
     drawn.draw()?;
-    drawn
-        .cx
-        .read(|cx| shown_device(&shell, cx))
-        .ok_or_else(|| "no device tab opened".to_owned())
+    Ok(view)
 }
 
 fn shown_device(shell: &Entity<Shell>, cx: &gpui_kit::App) -> Option<Entity<DeviceView>> {

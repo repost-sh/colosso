@@ -212,6 +212,19 @@ pub fn make(set: &Path, name: Option<&str>) -> Result<Simulator, Unmade> {
     })
 }
 
+/// Shuts down a simulator of Koyo's set no host of Koyo's runs (an agent's own `simctl boot`).
+pub fn shut_down(set: &Path, udid: &str) -> Result<(), String> {
+    match simctl(set, &["shutdown", udid]) {
+        Err(why) if !why.contains("current state: Shutdown") => Err(why),
+        _ => Ok(()),
+    }
+}
+
+/// Deletes a simulator of Koyo's set, and what it held on disk.
+pub fn delete(set: &Path, udid: &str) -> Result<(), String> {
+    simctl(set, &["delete", udid]).map(drop)
+}
+
 /// The lock a device's host holds for as long as it runs (`koyo-device-host` `run.rs`), taken
 /// here when free: held, a host started meanwhile waits for it.
 fn lock(state: &Path, udid: &str) -> Option<std::fs::File> {
@@ -230,9 +243,7 @@ pub fn shut_down_leftovers(set: &Path, state: &Path) {
             continue;
         };
         log::info!("shutting down simulator {udid}, which a stopped host left running");
-        if let Err(why) = simctl(set, &["shutdown", &udid])
-            && !why.contains("current state: Shutdown")
-        {
+        if let Err(why) = shut_down(set, &udid) {
             log::warn!("simulator {udid} wasn't shut down: {why}");
             continue;
         }

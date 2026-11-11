@@ -192,7 +192,7 @@ impl Shell {
                     name: name.clone(),
                     ipad: *ipad,
                 };
-                let view = self.device_view(Some(chosen), false, cx);
+                let view = self.device_view(Some(chosen), cx);
                 Some(Pane::device(view, cx))
             }
             KeptPane::Unknown => None,

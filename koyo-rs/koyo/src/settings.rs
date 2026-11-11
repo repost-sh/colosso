@@ -15,6 +15,7 @@ mod chat_details;
 mod chat_mode;
 mod chat_verbosity;
 mod chat_width;
+mod devices;
 mod file;
 mod fonts;
 mod language_servers;
@@ -28,6 +29,7 @@ pub use chat_details::{ChatDetails, DetailsItem, FlipDetailsItem};
 pub use chat_mode::{SetChatMode, chat_mode_label, chat_mode_menu};
 pub use chat_verbosity::{Preset, SetChatVerbosity, Shows, Step, Verbosity};
 pub use chat_width::{ChatWidth, SetChatWidth};
+pub use devices::MOST_SIMULATORS_AT_ONCE;
 #[cfg(any(test, feature = "visual-check"))]
 pub use fonts::LARGEST_CHAT_SIZE;
 pub use fonts::{
@@ -214,6 +216,10 @@ pub struct Settings {
     /// on, Koyo keeps one more desktop in Mission Control while it runs. Only the person
     /// changes it, in Settings.
     pub agent_desktop: bool,
+    /// How many of Koyo's simulators may run at once (`docs/devices.md` 10): an agent's
+    /// `device_open` past it is refused, the person's own Start asks first. Only the person
+    /// changes it, in Settings → Devices. Read through [`Settings::simulators_at_once`].
+    pub simulators_at_once: u8,
     /// Whether clients outside Koyo's terminals may control the app, on which port the
     /// MCP server listens for them, and the clients the person allowed. Only the person
     /// changes it, in Settings: no app-control operation reads or sets it.
@@ -302,6 +308,7 @@ impl Default for Settings {
             fullscreen_fills_screen: true,
             on_quit: crate::quitting::OnQuit::default(),
             agent_desktop: false,
+            simulators_at_once: 2,
             external_control: crate::control::Policy::default(),
             accounts: AccountSettings::default(),
         }

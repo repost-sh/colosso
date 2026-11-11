@@ -33,6 +33,9 @@ pub enum State {
     Off,
     Starting,
     Running,
+    /// Told to go: its host shuts the simulator down, then closes. It still holds the
+    /// simulator until then.
+    Stopping,
     /// It couldn't start, or kept stopping: the message is for the person.
     Failed(String),
 }
@@ -103,9 +106,20 @@ impl Link {
         }
     }
 
-    /// Whether its host runs or is starting: it counts against the simulators running at once.
+    /// Whether its host runs or is starting.
     pub fn running_or_starting(&self) -> bool {
         matches!(self.state, State::Starting | State::Running)
+    }
+
+    /// Whether it holds its simulator: running, starting, or still shutting it down. It counts
+    /// against the simulators running at once.
+    pub fn holds_simulator(&self) -> bool {
+        self.running_or_starting() || self.stopping()
+    }
+
+    /// Whether its host was told to go and hasn't closed yet.
+    pub fn stopping(&self) -> bool {
+        self.state == State::Stopping
     }
 
     pub fn ready(&self) -> bool {
@@ -225,13 +239,19 @@ impl Link {
         }
     }
 
-    /// Tells the host to shut the simulator down and go: the tab closed, or Koyo quits.
+    /// Tells the host to shut the simulator down and go: the tab closed, or Koyo quits. It's
+    /// off once the host has closed; a start still under way is dropped at once.
     pub fn stop(&mut self, cx: &mut Context<Self>) {
+        if self.stopping() {
+            return;
+        }
         if let Some(running) = self.running.take() {
             let _ = running.tell.send(ToHost::Quit);
+            self.state = State::Stopping;
+        } else {
+            self.starts += 1;
+            self.state = State::Off;
         }
-        self.starts += 1;
-        self.state = State::Off;
         self.started_at = None;
         self.forget("The device was stopped.", cx);
         cx.notify();
@@ -259,6 +279,14 @@ impl Link {
     }
 
     pub(super) fn receive(&mut self, incoming: Incoming, cx: &mut Context<Self>) {
+        // Told to go, the host has nothing more to say but that it has: the simulator is down.
+        if self.stopping() {
+            if matches!(incoming, Incoming::Closed) {
+                self.state = State::Off;
+                cx.notify();
+            }
+            return;
+        }
         match incoming {
             Incoming::Said(said) => self.said(said, cx),
             Incoming::Ring(ring) => self.picture.update(cx, |picture, cx| picture.ring(ring, cx)),

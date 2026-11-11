@@ -39,7 +39,7 @@ fn device(udid: &str, rig: &super::Rig, cx: &mut TestAppContext) -> (Entity<Link
         name: format!("iPhone {udid}"),
         ipad: false,
     };
-    rig.shell.update(cx, |shell, cx| shell.device_pane(Some(chosen), false, true, cx));
+    rig.shell.update(cx, |shell, cx| shell.device_pane(Some(chosen), true, cx));
     let link = cx.update(|cx| crate::devices::devices(cx).read(cx).existing(udid)).expect("its link");
     let told = link.update(cx, |link, cx| link.stand_in(screen(), cx));
     let _ = told.try_iter().count();

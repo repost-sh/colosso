@@ -48,6 +48,7 @@ pub enum SettingsPage {
     Keyboard,
     Mcp,
     AgentDesktop,
+    Devices,
     About,
 }
 

@@ -317,7 +317,7 @@ fn open(
         ))),
         // A device's tab opens as the picker; device_open opens one device.
         PaneKind::Device => {
-            let pane = shell.device_pane(None, false, shown, cx).ok_or_else(|| {
+            let pane = shell.device_pane(None, shown, cx).ok_or_else(|| {
                 ControlError::not_found("No checkout is selected to open a device's tab on.")
             });
             shell.navigate(Route::Workspace, cx);

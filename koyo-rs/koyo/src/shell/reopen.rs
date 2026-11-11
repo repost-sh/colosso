@@ -32,7 +32,7 @@ impl Shell {
                 let chosen = (closed.devices.iter())
                     .find(|(id, _)| *id == pane.id)
                     .map(|(_, chosen)| chosen.clone());
-                let view = self.device_view(chosen, false, cx);
+                let view = self.device_view(chosen, cx);
                 pane.set_device(view, cx);
                 continue;
             }

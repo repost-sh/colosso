@@ -1,8 +1,8 @@
 //! The setup for simulators walked for real, off screen (QU1-QU5), from a device set that holds
 //! nothing (`KOYO_DEVICE_SET` naming a folder not made yet): the picker says what's missing,
 //! the setup made from it reads the Mac, Continue makes the device and starts it in its tab,
-//! the dialog moves on by itself to ready, and the person's first tap opens Settings. The
-//! device is shut down at the end; deleting it is the caller's.
+//! the dialog moves on by itself to ready, and the person's first tap opens Settings; then
+//! Settings → Devices stops it and deletes it.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -89,12 +89,32 @@ pub(super) fn run(drawn: &mut Drawn, lines: &mut Vec<String>) -> Result<()> {
         return Err("the device made didn't start".into());
     }
     let link = drawn.cx.read(|cx| dialog.read(cx).made().cloned()).ok_or("no device made")?;
-    if let Some(window) = drawn.cx.read(modal::window) {
-        let _ = drawn.cx.update_window(window, |_, window, cx| modal::dismiss(window, cx));
-    }
+    super::dismiss(drawn);
     first_tap(drawn, &link, lines)?;
-    drawn.cx.update(|cx| link.update(cx, Link::stop));
-    let _ = drawn.until(Duration::from_secs(30), |drawn| Ok(drawn.cx.read(|cx| !link.read(cx).running_or_starting())));
+    settings(drawn, &link, lines)
+}
+
+/// QU6 for real: Settings → Devices shows the device running; its Stop shuts it down; Delete,
+/// as the question's yes does, deletes it.
+fn settings(drawn: &mut Drawn, link: &gpui_kit::Entity<Link>, lines: &mut Vec<String>) -> Result<()> {
+    let registry = drawn.cx.update(|cx| devices(cx));
+    let udid = drawn.cx.read(|cx| link.read(cx).udid.clone());
+    let listed = |drawn: &mut Drawn| drawn.cx.read(|cx| registry.read(cx).simulator(&udid).map(|simulator| simulator.booted));
+    let shell = drawn.shell.clone();
+    let page = crate::settings_view::SettingsPage::Devices;
+    drawn.cx.update(|cx| shell.update(cx, |shell, cx| shell.open_settings_page(Some(page), cx)));
+    drawn.until(Duration::from_secs(20), |drawn| Ok(listed(drawn) == Some(true)))?;
+    lines.push(format!("{}", drawn.save("walk-settings-running.png")?.display()));
+    let stopped = Instant::now();
+    drawn.cx.update(|cx| registry.update(cx, |registry, cx| registry.stop(&udid, cx)));
+    drawn.until(Duration::from_secs(60), |drawn| Ok(listed(drawn) == Some(false)))?;
+    say(lines, format!("walk: Settings' Stop: shut down, and the page said so, in {} ms", stopped.elapsed().as_millis()));
+    lines.push(format!("{}", drawn.save("walk-settings-stopped.png")?.display()));
+    let deleted = Instant::now();
+    drawn.cx.update(|cx| registry.update(cx, |registry, cx| registry.delete(&udid, cx)));
+    drawn.until(Duration::from_secs(30), |drawn| Ok(listed(drawn).is_none()))?;
+    say(lines, format!("walk: Settings' Delete: gone from the set in {} ms", deleted.elapsed().as_millis()));
+    lines.push(format!("{}", drawn.save("walk-settings-deleted.png")?.display()));
     Ok(())
 }
 

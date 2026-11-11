@@ -1,7 +1,7 @@
 use koyo_app_control::ErrorCode;
 use koyo_device_wire::{Answer, Refusal, RefusalCode};
 
-use super::opening::room_in;
+use super::opening::{Room, room_in};
 use super::{person_using, refused, unexpected};
 
 #[test]
@@ -37,17 +37,23 @@ fn the_limit_counts_what_the_set_has_booted() {
         booted_before: true,
         ipad: false,
     };
-    let none = Vec::new();
+    let room = |starting: &[(&str, &str)], at_once| Room {
+        starting: starting.iter().map(|&(udid, name)| (udid.to_owned(), name.to_owned())).collect(),
+        at_once,
+    };
+    let none = room(&[], 2);
     let two = [simulator("A", true), simulator("B", true), simulator("C", false)];
     let full = room_in(&two, &none, Some("C")).unwrap_err();
     assert_eq!(full.code, ErrorCode::DeviceUnavailable);
-    assert!(full.message.contains("iPhone A, iPhone B") && !full.retryable, "{}", full.message);
+    assert!(full.message.starts_with("2 simulators run already (iPhone A, iPhone B)") && !full.retryable, "{}", full.message);
     assert!(room_in(&two, &none, Some("A")).is_ok(), "one already running is no more");
     assert!(room_in(&two, &none, None).is_err(), "a new one is one more");
+    // The person's limit raised to three: room for one more.
+    assert!(room_in(&two, &room(&[], 3), None).is_ok());
     let one = [simulator("A", true), simulator("C", false)];
     assert!(room_in(&one, &none, Some("C")).is_ok());
     // One booted and one starting that hasn't booted yet: two, counted together.
-    let starting = vec![("D".to_owned(), "iPhone D".to_owned())];
+    let starting = room(&[("D", "iPhone D")], 2);
     assert!(room_in(&one, &starting, Some("C")).is_err());
     assert!(room_in(&one, &starting, Some("D")).is_ok(), "the one starting is no more");
 }

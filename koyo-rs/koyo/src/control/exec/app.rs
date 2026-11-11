@@ -132,6 +132,7 @@ pub(crate) fn settings_open(
         Some(SettingsPage::About) => Some(Page::About),
         Some(SettingsPage::Mcp) => Some(Page::McpServer),
         Some(SettingsPage::AgentDesktop) => Some(Page::AgentDesktop),
+        Some(SettingsPage::Devices) => Some(Page::Devices),
     };
     try_update_shell(cx, |shell, _, cx| {
         shell.open_settings_page(page, cx);
@@ -169,6 +170,7 @@ fn route(route: Route) -> String {
                 Page::KeyboardShortcuts => "keyboard",
                 Page::McpServer => "mcp",
                 Page::AgentDesktop => "agent_desktop",
+                Page::Devices => "devices",
                 Page::About => "about",
             }
         ),

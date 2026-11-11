@@ -31,7 +31,7 @@ impl Link {
                 why,
             },
             (_, Some(Said::Gone { why })) => Standing::Ended { missing: None, why },
-            (State::Off, _) => Standing::Off,
+            (State::Off | State::Stopping, _) => Standing::Off,
             (State::Failed(why), _) => Standing::Failed(why),
             (_, Some(Said::Ready { screen })) => Standing::Ready(*screen),
             (_, Some(Said::Locked { screen })) => Standing::Locked(*screen),

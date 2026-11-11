@@ -9,10 +9,11 @@ use crate::devices::{Chosen, DeviceEvent, DeviceView};
 use crate::model::{Pane, Tab};
 
 impl Shell {
-    /// A device's view (the picker with none), started when `start`, the shell hearing it.
-    pub(crate) fn device_view(&mut self, chosen: Option<Chosen>, start: bool, cx: &mut Context<Self>) -> Entity<DeviceView> {
+    /// A device's view (the picker with none), the shell hearing it. Opening a tab starts
+    /// nothing: whoever opens it starts the device, the person through their limit's question.
+    pub(crate) fn device_view(&mut self, chosen: Option<Chosen>, cx: &mut Context<Self>) -> Entity<DeviceView> {
         let view = cx.new(|cx| match chosen {
-            Some(chosen) => DeviceView::of(chosen, start, cx),
+            Some(chosen) => DeviceView::of(chosen, cx),
             None => DeviceView::picker(cx),
         });
         cx.subscribe(&view, |this, view, event, cx| this.device_event(&view, event, cx))
@@ -33,10 +34,10 @@ impl Shell {
         }
     }
 
-    /// A device's pane: the one open for `chosen`, wherever it is (started when `start`), or a
-    /// new one, the picker when `chosen` is `None`. Its tab is shown when `shown`; else a new
+    /// A device's pane: the one open for `chosen`, wherever it is, or a new one, the picker
+    /// when `chosen` is `None`. Its tab is shown when `shown`; else a new
     /// one comes after the tab that is, out of sight, as a tab an agent opens does.
-    pub fn device_pane(&mut self, chosen: Option<Chosen>, start: bool, shown: bool, cx: &mut Context<Self>) -> Option<u64> {
+    pub fn device_pane(&mut self, chosen: Option<Chosen>, shown: bool, cx: &mut Context<Self>) -> Option<u64> {
         if let Some(chosen) = &chosen {
             let open = self.workspace.find_pane(|pane| {
                 (pane.device_view())
@@ -47,14 +48,11 @@ impl Shell {
                 if shown {
                     self.workspace.select_tab(project, branch, tab);
                 }
-                if start && let Some(view) = self.device_view_of(pane) {
-                    view.update(cx, DeviceView::start);
-                }
                 cx.notify();
                 return Some(pane);
             }
         }
-        let view = self.device_view(chosen, start, cx);
+        let view = self.device_view(chosen, cx);
         let pane = Pane::device(view, cx);
         let id = pane.id;
         let beside = (self.workspace.shown_tab()).filter(|at| self.workspace.tab(*at).is_some());

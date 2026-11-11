@@ -28,6 +28,15 @@ pub fn found(xcode: Xcode, components: bool, system: bool) -> Found {
     }
 }
 
+/// A simulator of Koyo's set, running.
+pub fn booted(udid: &str) -> Simulator {
+    Simulator {
+        booted: true,
+        booted_before: true,
+        ..simulator(udid)
+    }
+}
+
 /// A simulator of Koyo's set, never booted.
 pub fn simulator(udid: &str) -> Simulator {
     Simulator {

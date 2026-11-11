@@ -2,12 +2,13 @@
 //! models.
 
 use gpui_kit::component::native_menu::NativeMenu;
-use gpui_kit::{AnyElement, App, Context, IntoElement as _, ParentElement as _, Styled as _, div};
+use gpui_kit::{Action, AnyElement, App, Context, IntoElement as _, ParentElement as _, Styled as _, div};
 use koyo_device_wire::XCODE;
 
 use super::{ChooseModel, Install, Setup, Step};
 use crate::devices::Standing;
 use crate::devices::needs::{Need, Xcode};
+use crate::devices::simulators::Model;
 
 /// Each step's name and what it's for.
 pub(super) const ROWS: [(&str, &str); 5] = [
@@ -80,22 +81,26 @@ pub(super) fn hint(setup: &Setup, step: Step, cx: &App) -> String {
     }
 }
 
-/// The device step's menu of models, the newest system's, iPhones then iPads.
+/// A menu of `models`, iPhones then iPads, `ticked` ticked; `pick` makes a model's action.
+pub fn models_menu(models: &[Model], ticked: Option<&str>, pick: impl Fn(String) -> Box<dyn Action>) -> NativeMenu {
+    let mut menu = NativeMenu::new();
+    for (index, model) in models.iter().enumerate() {
+        if model.ipad && index > 0 && !models[index - 1].ipad {
+            menu = menu.separator();
+        }
+        menu = menu.menu_with_check(model.name.clone(), ticked == Some(model.name.as_str()), pick(model.name.clone()));
+    }
+    menu
+}
+
+/// The device step's menu of models, the newest system's.
 pub(super) fn chooser(setup: &Setup, cx: &mut Context<Setup>) -> AnyElement {
     let chosen = setup.model(cx).unwrap_or_default();
-    let models: Vec<(String, bool)> = (setup.devices.read(cx).found.iter())
-        .flat_map(|found| found.models.iter().map(|model| (model.name.clone(), model.ipad)))
-        .collect();
     let label = chosen.clone();
-    let menu = crate::settings_view::MenuButton::new("device-setup-model", label, move |_| {
-        let mut menu = NativeMenu::new();
-        for (index, (name, ipad)) in models.iter().enumerate() {
-            if *ipad && index > 0 && !models[index - 1].1 {
-                menu = menu.separator();
-            }
-            menu = menu.menu_with_check(name.clone(), *name == chosen, Box::new(ChooseModel(name.clone())));
-        }
-        menu
+    let menu = crate::settings_view::MenuButton::new("device-setup-model", label, move |cx| {
+        let devices = crate::devices::devices(cx);
+        let models = devices.read(cx).found.as_ref().map_or(&[][..], |found| found.models.as_slice());
+        models_menu(models, Some(&chosen), |name| Box::new(ChooseModel(name)))
     });
     let p = crate::theme::palette(cx);
     div()
