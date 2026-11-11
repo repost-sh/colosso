@@ -49,8 +49,8 @@ pub(super) fn usable(caller: &Caller, udid: &str, cx: &mut App) -> Result<(), Co
     }
     if lends.declined(udid, &agent, now, memory) {
         return Err(ControlError::user_declined(format!(
-            "The person didn't let you use their {kind} “{name}”, or took it back. Don't ask again for a while: tell them \
-             what you need it for; they can also lend it from its tab."
+            "The person didn't let you use their {kind} “{name}”. Don't ask again for a while: tell them what you need it \
+             for; they can also lend it from its tab."
         )));
     }
     match lends.asking(udid) {

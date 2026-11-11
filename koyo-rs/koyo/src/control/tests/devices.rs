@@ -282,10 +282,12 @@ fn a_real_device_is_used_once_the_person_lends_it_and_a_call_naming_none_never_f
     cx.simulate_prompt_answer("Don't Allow");
     cx.run_until_parked();
 
-    // Taken back: the agent's next call is refused, not asked again at once.
+    // Taken back: the agent's next call asks the person again.
     cx.update(|cx| crate::devices::devices(cx).update(cx, |devices, cx| devices.take_back("U-REAL", cx)));
-    assert_eq!(code(&agent, "device_snapshot", snapshot(), cx), ErrorCode::UserDeclined);
-    assert!(!cx.has_pending_prompt());
+    assert_eq!(code(&agent, "device_snapshot", snapshot(), cx), ErrorCode::DeviceNeedsPerson);
+    assert!(cx.has_pending_prompt());
+    cx.simulate_prompt_answer("Don't Allow");
+    cx.run_until_parked();
 
     // Lent ahead to every agent; closing its tab ends that.
     cx.update(|cx| crate::devices::devices(cx).update(cx, |devices, _| devices.lends.lend("U-REAL", None)));
