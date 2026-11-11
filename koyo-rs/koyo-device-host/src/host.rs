@@ -34,7 +34,15 @@ pub struct Host {
     pub waits: Vec<Waiting>,
     pub jobs: Vec<Job>,
     pub refs: HashMap<String, Point>,
+    /// The first number of the snapshot whose refs those are; the next snapshot's first.
+    pub refs_first: u32,
+    /// The next snapshot's first number: a snapshot sets [`crate::jobs::NUMBERED`] aside as it
+    /// starts and gives back what it didn't use if none started after it.
     pub next_ref: u32,
+    /// The connection to the simulator's accessibility, kept between snapshots and shared by the
+    /// reads under way: made again only once it broke, so its service's port is looked up that
+    /// often and no more.
+    pub tree: crate::jobs::Shared,
     /// Until when, after a turn, the interface's way up is read often; and when it last was.
     pub follow_until: Option<Instant>,
     pub followed: Instant,
@@ -63,7 +71,9 @@ impl Host {
             waits: Vec::new(),
             jobs: Vec::new(),
             refs: HashMap::new(),
+            refs_first: 0,
             next_ref: 1,
+            tree: crate::jobs::Shared::default(),
             follow_until: None,
             followed: Instant::now(),
             quitting: false,

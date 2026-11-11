@@ -27,6 +27,7 @@ const FRONTMOST: u64 = 4;
 const MULTIPLE: u64 = 5;
 /// Attributes (idb's `BridgeAXTranslatorAttribute`).
 const ACTIVATION: i64 = 1;
+const BUNDLE: i64 = 6;
 const CHILDREN: i64 = 8;
 const FRAME: i64 = 21;
 const IDENTIFIER: i64 = 25;
@@ -90,7 +91,7 @@ pub struct Limits {
 
 /// How long a read goes on asking while no app is in front: an app just launched isn't in
 /// the tree for a moment; and how far apart it asks.
-const SETTLING: Duration = Duration::from_secs(3);
+const SETTLING: Duration = Duration::from_secs(5);
 const APART: Duration = Duration::from_millis(300);
 
 /// What a read found: the tree, and whether it was cut short.
@@ -102,15 +103,20 @@ pub struct Read {
 /// A connection to a simulator's accessibility service.
 pub struct Tree {
     connection: Connection,
+    /// Whether the connection was interrupted or let go: the service is to be looked up again.
+    broken: std::sync::Arc<std::sync::atomic::AtomicBool>,
     token: Retained<NSString>,
     request: &'static AnyClass,
     response: &'static AnyClass,
     object: &'static AnyClass,
 }
 
-// SAFETY: the classes are immutable runtime objects and the token an immutable string; the
-// connection is `Send` itself.
+// SAFETY: the classes are immutable runtime objects, the token an immutable string, the flag
+// atomic; the connection is `Send`, and libxpc serializes what is sent on it from any thread.
 unsafe impl Send for Tree {}
+// SAFETY: as above: reads made at once each send their own requests and wait on their own
+// replies.
+unsafe impl Sync for Tree {}
 
 fn class(name: &CStr) -> Result<&'static AnyClass, String> {
     AnyClass::get(name).ok_or_else(|| format!("macOS has no {}", name.to_string_lossy()))
@@ -119,16 +125,30 @@ fn class(name: &CStr) -> Result<&'static AnyClass, String> {
 impl Tree {
     /// A connection to the service whose port `port` is, in the simulator's namespace.
     pub fn connect(port: u32) -> Result<Tree, String> {
+        use std::sync::atomic::{AtomicBool, Ordering};
         if !sys::load(FRAMEWORK) {
             return Err("macOS's accessibility translation isn't there".into());
         }
+        let broken = std::sync::Arc::new(AtomicBool::new(false));
+        let told = std::sync::Arc::clone(&broken);
+        let connection = Connection::to_simulator(port, move |event| {
+            if matches!(event, crate::xpc::Event::Interrupted | crate::xpc::Event::Invalid) {
+                told.store(true, Ordering::Relaxed);
+            }
+        })?;
         Ok(Tree {
-            connection: Connection::to_simulator(port, |_| {})?,
+            connection,
+            broken,
             token: NSUUID::new().UUIDString(),
             request: class(c"AXPTranslatorRequest")?,
             response: class(c"AXPTranslatorResponse")?,
             object: class(c"AXPTranslationObject")?,
         })
+    }
+
+    /// Whether the connection broke: it is made again for the next read.
+    pub fn broken(&self) -> bool {
+        self.broken.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// The frontmost app's tree, as far as `limits` let it go, asked again a few times while no
@@ -140,24 +160,29 @@ impl Tree {
             let late = started.elapsed() >= SETTLING;
             match self.read(limits) {
                 Ok(read) if settled(&read.root) || late => return Ok(read),
-                Err(why) if late => return Err(why),
+                Err(why) if late || self.broken() => return Err(why),
                 _ => std::thread::park_timeout(APART),
             }
         }
+    }
+
+    /// The bundle id of the app in front, as its tree's root says (a system alert's is
+    /// `SpringBoard`'s); `None` when it names none.
+    pub fn in_front(&self, each: Duration) -> Result<Option<String>, String> {
+        autoreleasepool(|_| {
+            let Some(root) = self.frontmost(each)? else {
+                return Ok(None);
+            };
+            let values = self.attributes(&root, &[BUNDLE], each)?;
+            Ok(values.and_then(|values| value_of(&values, BUNDLE)).and_then(|bundle| text(&bundle)))
+        })
     }
 
     /// The frontmost app's tree, as far as `limits` let it go.
     pub fn read(&self, limits: Limits) -> Result<Read, String> {
         autoreleasepool(|_| {
             let started = Instant::now();
-            // SAFETY: a blank translation object, as the translator sends for the frontmost app.
-            let blank: Retained<AnyObject> = guarded("making a translation", || unsafe {
-                msg_send![self.object, new]
-            })?;
-            let display = NSNumber::new_u32(0);
-            let parameters = parameters(&[("displayId", &display)]);
-            let answer = self.send(FRONTMOST, Some(&blank), &parameters, limits.each)?;
-            let root = result(&answer).ok_or("the simulator named no app in front")?;
+            let root = self.frontmost(limits.each)?.ok_or("the simulator named no app in front")?;
             let mut walk = Walk {
                 limits,
                 started,
@@ -169,17 +194,30 @@ impl Tree {
         })
     }
 
-    fn element(&self, translation: &AnyObject, depth: usize, walk: &mut Walk) -> Result<Element, String> {
-        walk.elements += 1;
+    /// The translation of the app in front, or `None` when the simulator names none.
+    fn frontmost(&self, each: Duration) -> Result<Option<Retained<AnyObject>>, String> {
+        // SAFETY: a blank translation object, as the translator sends for the frontmost app.
+        let blank: Retained<AnyObject> = guarded("making a translation", || unsafe { msg_send![self.object, new] })?;
+        let display = NSNumber::new_u32(0);
+        let answer = self.send(FRONTMOST, Some(&blank), &parameters(&[("displayId", &display)]), each)?;
+        Ok(result(&answer))
+    }
+
+    /// The values of `asked` of the element `translation`, by attribute; `None` when it has none.
+    fn attributes(&self, translation: &AnyObject, asked: &[i64], each: Duration) -> Result<Option<Retained<AnyObject>>, String> {
         // SAFETY: a translation object's token, a string it keeps.
         guarded("tagging a translation", || unsafe {
             let _: () = msg_send![translation, setBridgeDelegateToken: &*self.token];
         })?;
-        let asked: Vec<Retained<NSNumber>> = ASKED.iter().map(|attribute| NSNumber::new_i64(*attribute)).collect();
+        let asked: Vec<Retained<NSNumber>> = asked.iter().map(|attribute| NSNumber::new_i64(*attribute)).collect();
         let asked = objc2_foundation::NSArray::from_retained_slice(&asked);
-        let parameters = parameters(&[("attributes", &asked)]);
-        let answer = self.send(MULTIPLE, Some(translation), &parameters, walk.limits.each)?;
-        let values = result(&answer);
+        let answer = self.send(MULTIPLE, Some(translation), &parameters(&[("attributes", &asked)]), each)?;
+        Ok(result(&answer))
+    }
+
+    fn element(&self, translation: &AnyObject, depth: usize, walk: &mut Walk) -> Result<Element, String> {
+        walk.elements += 1;
+        let values = self.attributes(translation, &ASKED, walk.limits.each)?;
         let get = |attribute: i64| values.as_ref().and_then(|values| value_of(values, attribute));
         let mut element = Element {
             role: get(ROLE).and_then(|role| number(&role)).map_or_else(
@@ -429,40 +467,4 @@ fn line(element: &Element, depth: usize, first: u32, cap: usize, out: &mut Lines
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{Element, settled};
-
-    fn element(frame: [f64; 4], children: Vec<Element>) -> Element {
-        Element {
-            frame,
-            children,
-            enabled: true,
-            ..Element::default()
-        }
-    }
-
-    #[test]
-    fn a_status_bar_alone_isnt_an_apps_tree() {
-        let bar = element([0., 0., 402., 54.], vec![element([50., 20., 40., 20.], Vec::new())]);
-        let screen = [0., 0., 402., 874.];
-        assert!(!settled(&element(screen, vec![bar.clone()])));
-        assert!(!settled(&element(screen, Vec::new())));
-        let row = element([0., 300., 402., 44.], Vec::new());
-        assert!(settled(&element(screen, vec![bar, row])));
-    }
-
-    #[test]
-    fn a_ref_touches_where_its_element_activates_inside_it_else_its_middle() {
-        let mut switch = element([0., 300., 402., 52.], Vec::new());
-        switch.role = "CheckBox".into();
-        switch.label = Some("Sound".into());
-        switch.activation = Some([350., 326.]);
-        let mut outside = element([0., 400., 402., 52.], Vec::new());
-        outside.activation = Some([900., 426.]);
-        let root = element([0., 0., 402., 874.], vec![switch, outside]);
-        let (lines, refs, truncated) = super::lines(&root, 1, 10);
-        assert!(lines.contains("CheckBox \"Sound\" [ref=e2] @350,326"), "{lines}");
-        assert_eq!((refs[2].1.x, refs[2].1.y), (201., 426.));
-        assert!(!truncated);
-    }
-}
+mod tests;

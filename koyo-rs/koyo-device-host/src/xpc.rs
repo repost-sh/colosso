@@ -271,7 +271,7 @@ unsafe impl Send for Connection {}
 impl Connection {
     /// A connection to the service whose port `port` is in the simulator's namespace, with
     /// `events` told of what happens to it.
-    pub fn to_simulator(port: u32, events: impl Fn(Event) + 'static) -> Result<Connection, String> {
+    pub fn to_simulator(port: u32, events: impl Fn(Event) + Send + 'static) -> Result<Connection, String> {
         // SAFETY: the two functions' types as libxpc has them (idb's declarations).
         let (endpoint_from_port, enable) = unsafe {
             (
@@ -341,7 +341,7 @@ impl Connection {
         &self,
         message: &Dict,
         limit: Duration,
-        read: impl Fn(Read) -> T + 'static,
+        read: impl Fn(Read) -> T + Send + 'static,
     ) -> Option<T> {
         let (answer, answered) = mpsc::channel();
         let handler = RcBlock::new(move |reply: Object| {

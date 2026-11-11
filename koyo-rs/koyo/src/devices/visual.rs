@@ -111,6 +111,7 @@ fn picker(drawn: &mut Drawn, lines: &mut Vec<String>) -> Result<()> {
         udid: udid.into(),
         name: name.into(),
         system: "iOS 27.2".into(),
+        booted: false,
         booted_before: true,
         ipad,
     };
@@ -148,6 +149,7 @@ fn states(drawn: &mut Drawn, lines: &mut Vec<String>) -> Result<()> {
         udid: "V-IPHONE".into(),
         name: "iPhone 17 Pro".into(),
         system: "iOS 27.2".into(),
+        booted: false,
         booted_before: true,
         ipad: false,
     };

@@ -36,6 +36,9 @@ pub struct Simulator {
     /// display says (`display.rs`), not how the device was told to face.
     quarters: u8,
     core_device: Option<(String, Vec<u64>)>,
+    /// Send rights to the services asked often (which way it faces, every two seconds; a turn),
+    /// each looked up once: a lookup is a send right more, never given back.
+    ports: std::collections::HashMap<&'static str, u32>,
     pub scale: f64,
     teller: Teller,
 }
@@ -63,6 +66,7 @@ impl Simulator {
             universal: None,
             many: None,
             quarters: 0,
+            ports: std::collections::HashMap::new(),
             core_device: display::core_device_version(),
             scale,
             teller,
@@ -196,22 +200,36 @@ impl Simulator {
     /// Turns the device to face `to`. Its interface follows if the app in front turns that way;
     /// the host then reads how it faces ([`Simulator::follow`]) and turns the picture by that.
     pub fn turn(&mut self, to: Orientation) -> Result<(), String> {
-        let port = self.device.lookup("PurpleWorkspacePort")?;
+        const WORKSPACE: &str = "PurpleWorkspacePort";
+        let port = self.port(WORKSPACE)?;
         let sent = turn::send(port, to);
         if sent != 0 {
+            self.ports.remove(WORKSPACE);
             return Err(format!("the turn wasn't sent: {sent:#x}"));
         }
         Ok(())
     }
 
+    /// The send right to `name`, looked up the first time, or again after it failed.
+    fn port(&mut self, name: &'static str) -> Result<u32, String> {
+        if let Some(port) = self.ports.get(name) {
+            return Ok(*port);
+        }
+        let port = self.device.lookup(name)?;
+        self.ports.insert(name, port);
+        Ok(port)
+    }
+
     /// Reads which way its interface faces and turns the picture by it; whether it changed.
     pub fn follow(&mut self, ring: &Ring) -> Result<bool, String> {
+        let port = self.port(display::SERVICE)?;
         let version = self
             .core_device
             .as_ref()
             .ok_or("CoreDevice's version isn't known: is Xcode 27 installed?")?;
-        let port = self.device.lookup(display::SERVICE)?;
-        let quarters = display::ask(port, &self.udid, version)?;
+        let quarters = display::ask(port, &self.udid, version).inspect_err(|_| {
+            self.ports.remove(display::SERVICE);
+        })?;
         if quarters == self.quarters {
             return Ok(false);
         }

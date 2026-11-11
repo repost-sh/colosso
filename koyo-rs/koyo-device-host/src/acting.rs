@@ -87,7 +87,14 @@ pub struct Waiting {
     quiet: Duration,
     until: Instant,
     watch: Watch,
+    /// For a launch or a link: answered `Done` once the screen changed and went still, rather
+    /// than `Waited` once it was still.
+    settling: bool,
 }
+
+/// How still the screen must be after a launch or a link, and how long that may take.
+const SETTLED_QUIET: Duration = Duration::from_millis(500);
+const SETTLES_AFTER_OPENING: Duration = Duration::from_secs(10);
 
 impl Waiting {
     pub fn new(request: RequestId, quiet: Duration, timeout: Duration, host: &Host) -> Waiting {
@@ -100,6 +107,22 @@ impl Waiting {
             quiet,
             until: Instant::now() + timeout,
             watch: Watch::new(host, last),
+            settling: false,
+        }
+    }
+
+    /// The answer to a launch or a link, once what it opened has drawn: the screen changed
+    /// from `before` and went still, or the time ran out.
+    pub fn settling(request: RequestId, before: Option<Sample>, host: &Host) -> Waiting {
+        let mut watch = Watch::new(host, before);
+        // What drew before the watch began is looked at at once: a still screen sends no frame.
+        watch.seen = host.ring.copied_count().wrapping_sub(1);
+        Waiting {
+            request,
+            quiet: SETTLED_QUIET,
+            until: Instant::now() + SETTLES_AFTER_OPENING,
+            watch,
+            settling: true,
         }
     }
 }
@@ -246,10 +269,12 @@ impl Host {
         let mut waits = std::mem::take(&mut self.waits);
         waits.retain_mut(|waiting| {
             let still = waiting.watch.still_for(self, waiting.quiet);
-            if still || Instant::now() >= waiting.until {
+            let done = if waiting.settling { still && waiting.watch.changed } else { still };
+            if done || Instant::now() >= waiting.until {
                 let millis =
                     u32::try_from(waiting.watch.since.elapsed().as_millis()).unwrap_or(u32::MAX);
-                self.answer(waiting.request, Ok(Answer::Waited { still, millis }));
+                let answer = if waiting.settling { Answer::Done } else { Answer::Waited { still, millis } };
+                self.answer(waiting.request, Ok(answer));
                 return false;
             }
             true

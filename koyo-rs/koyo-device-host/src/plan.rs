@@ -85,10 +85,7 @@ fn side_by_side(at: Point, count: u8, screen: Size) -> Vec<Point> {
     (0..count)
         .map(|index| {
             let offset = (f64::from(index) - f64::from(count - 1) / 2.) * 30.;
-            Point {
-                x: (at.x + offset).clamp(1., screen.width - 1.),
-                y: at.y,
-            }
+            on_screen(at.x + offset, at.y, screen)
         })
         .collect()
 }
@@ -147,20 +144,23 @@ fn swipe_shares(
     path(&[from], &[to], ms, hold_ms, Some(edge))
 }
 
-/// Two fingers `spread` points apart about `middle`, on a line `degrees` clockwise from across.
-fn pair(middle: Point, spread: f64, degrees: f64) -> Vec<Point> {
+/// Two fingers `spread` points apart about `middle`, on a line `degrees` clockwise from across,
+/// each kept on the screen: a pinch near an edge spreads no finger off it.
+fn pair(middle: Point, spread: f64, degrees: f64, screen: Size) -> Vec<Point> {
     let (sin, cos) = degrees.to_radians().sin_cos();
     let (dx, dy) = (cos * spread / 2., sin * spread / 2.);
     vec![
-        Point {
-            x: middle.x - dx,
-            y: middle.y - dy,
-        },
-        Point {
-            x: middle.x + dx,
-            y: middle.y + dy,
-        },
+        on_screen(middle.x - dx, middle.y - dy, screen),
+        on_screen(middle.x + dx, middle.y + dy, screen),
     ]
+}
+
+/// The place (`x`, `y`), kept a point inside the screen's edges.
+fn on_screen(x: f64, y: f64, screen: Size) -> Point {
+    Point {
+        x: x.clamp(1., screen.width - 1.),
+        y: y.clamp(1., screen.height - 1.),
+    }
 }
 
 fn button(usage: u32) -> Vec<Timed> {
@@ -236,19 +236,19 @@ pub fn plan(act: &Act, at: Point, to: Point, screen: Size) -> Result<Vec<Timed>,
             let from = (screen.width * 0.35).min(room / scale.max(1.));
             let to = (from * scale).min(room);
             let ms = (*ms).clamp(100, 5_000);
-            let mut timed = vec![fingers(0, pair(at, from, 0.), true, None)];
+            let mut timed = vec![fingers(0, pair(at, from, 0., screen), true, None)];
             let steps = (ms / STEP_MS).max(2);
             for step in 1..=steps {
                 let t = f64::from(step) / f64::from(steps);
                 let spread = from + (to - from) * t;
                 timed.push(fingers(
                     step * STEP_MS,
-                    pair(at, spread, degrees * t),
+                    pair(at, spread, degrees * t, screen),
                     true,
                     None,
                 ));
             }
-            lift(&mut timed, steps * STEP_MS, &pair(at, to, *degrees), None);
+            lift(&mut timed, steps * STEP_MS, &pair(at, to, *degrees, screen), None);
             timed
         }
         Act::Type { text } => typed(text)?,

@@ -172,6 +172,7 @@ fn simulator(udid: &str, name: &str, ipad: bool) -> crate::devices::Simulator {
         udid: udid.into(),
         name: name.into(),
         system: "iOS 27.2".into(),
+        booted: false,
         booted_before: true,
         ipad,
     }

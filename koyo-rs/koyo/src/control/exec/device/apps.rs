@@ -12,7 +12,7 @@ use koyo_app_control::ops::device::{
 use koyo_device_wire::{Answer, Ask};
 use serde_json::Value;
 
-use super::{APPS, INSTALL, Target, act_on, asking, unexpected, which};
+use super::{APPS, INSTALL, OPENING, Target, act_on, asking, unexpected, which};
 use crate::control::Caller;
 use crate::control::exec::{Exec, output};
 
@@ -83,7 +83,7 @@ pub(crate) fn launch(caller: &Caller, input: &DeviceLaunchInput, cx: &mut App) -
         bundle,
         arguments: input.arguments.clone().unwrap_or_default(),
     });
-    act_on(caller, (input.device.as_deref(), input.pane), ask, APPS, cx, done)
+    act_on(caller, (input.device.as_deref(), input.pane), ask, OPENING, cx, done)
 }
 
 pub(crate) fn terminate(caller: &Caller, input: &DeviceTerminateInput, cx: &mut App) -> Result<Exec, ControlError> {
@@ -100,7 +100,7 @@ pub(crate) fn open_url(caller: &Caller, input: &DeviceOpenUrlInput, cx: &mut App
             "{url:?} isn't a link: give its scheme, as `https://example.com` or `myapp://open`."
         )))
     };
-    act_on(caller, (input.device.as_deref(), input.pane), ask, APPS, cx, done)
+    act_on(caller, (input.device.as_deref(), input.pane), ask, OPENING, cx, done)
 }
 
 #[cfg(test)]
