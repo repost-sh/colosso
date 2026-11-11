@@ -260,9 +260,43 @@ pub fn own_profile(app: &Obj, bundle: Option<&str>, state: &Path) -> Option<Stri
     Some(folder.to_string_lossy().into_owned())
 }
 
+/// Forgets the windows the agent's instance of a Chromium browser had open when it last
+/// quit, kept in each of its profiles. Started by the host it brings them all back, on top
+/// of what it is started for: one window more with every start (Chrome for Testing 152
+/// had 28 after as many, each drawing, 5 GB between them). Its other data stays.
+pub fn forget_windows(profile: &Path) {
+    let Ok(folders) = std::fs::read_dir(profile) else {
+        return;
+    };
+    for folder in folders.flatten() {
+        let _ = std::fs::remove_dir_all(folder.path().join("Sessions"));
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::chromium;
+    use super::{chromium, forget_windows};
+
+    /// What a Chromium browser keeps of its last run's windows goes, in every profile; its
+    /// other data, and a folder that isn't one of its own, stay.
+    #[test]
+    fn a_browsers_saved_windows_are_forgotten_and_nothing_else() {
+        let root = std::env::temp_dir().join(format!("koyo-sessions-{}", std::process::id()));
+        for kept in ["Default/Sessions", "Profile 1/Sessions", "Default/Cache"] {
+            std::fs::create_dir_all(root.join(kept)).unwrap();
+        }
+        std::fs::write(root.join("Default/Sessions/Session_1"), "windows").unwrap();
+        std::fs::write(root.join("Default/Cookies"), "cookies").unwrap();
+        std::fs::write(root.join("Local State"), "{}").unwrap();
+        forget_windows(&root);
+        assert!(!root.join("Default/Sessions").exists());
+        assert!(!root.join("Profile 1/Sessions").exists());
+        for stays in ["Default/Cookies", "Default/Cache", "Profile 1", "Local State"] {
+            assert!(root.join(stays).exists(), "{stays}");
+        }
+        forget_windows(&root.join("missing"));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 
     /// An app is taken for one built on Chromium by what it ships: Electron's framework,
     /// the embedded framework, or a browser's own framework with Chromium's crash helper.

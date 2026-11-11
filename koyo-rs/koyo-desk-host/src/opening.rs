@@ -3,6 +3,7 @@
 //! instance the person runs is taken only as lent, on their word ([`crate::lending`]): one
 //! of theirs that the launch came back with is otherwise left untouched.
 
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use koyo_desk_wire::link::{Answer, Refusal, RefusalCode, RequestId, Window};
@@ -225,6 +226,10 @@ impl Host {
             arguments.push(format!("--user-data-dir={profile}"));
             arguments.push("--no-first-run".to_owned());
             arguments.push("--no-default-browser-check".to_owned());
+            // Started anew, it starts with what it's asked to open and nothing else.
+            if mine.is_none() {
+                app::forget_windows(Path::new(&profile));
+            }
         }
         // A document goes to the agent's instance when it's the only one running; with the
         // person's running too, Launch Services could pick theirs, so a new one is started.
