@@ -372,6 +372,11 @@ export const ThreadSummary = z.object({
   title: z.string(),
   provider: ProviderId,
   model: z.string().nullable(),
+  /** What the chat chose of the rest of what it runs with, as `Thread` has it. */
+  effort: Effort.nullable(),
+  fast: z.boolean(),
+  permission: Mode.nullable(),
+  plan: z.boolean(),
   status: Status,
   /** What the oldest pending request asks of the person. */
   needs: RequestKind.nullable(),

@@ -399,7 +399,8 @@ config.set  {claudePath, defaultMode, koyoTools} → {}
 providers.status {refresh: bool} → [ProviderStatus]
             {provider, state: "ready"|"missing"|"signed_out"|"error", executable, version,
              account: {email, plan}, message}
-catalog     {provider: id | null, cwd} → {models: [Model], commands: [Command], defaultMode}
+catalog     {provider: id | null, cwd, commands?: bool} → {models: [Model], commands: [Command],
+              defaultMode, defaultModel}
             Model = {id, name, label, runs, efforts, fast, auto} (4.5.9)
 ```
 
@@ -528,7 +529,7 @@ Request {
   command, a path, or else the input; `change` is an edit's to the file `detail` names, each
   line starting `+` or `-`.
 
-ThreadSummary = id, cwd, title, provider, model, updatedAt,
+ThreadSummary = id, cwd, title, provider, model, effort, fast, permission, plan, updatedAt,
   status: "idle"|"working"|"failed", needs: "approval"|"question"|"plan" | null,
   background: bool, queued: count, unread: bool
 ```
@@ -700,7 +701,15 @@ depend on the folder: each session's `init` refreshes them for its cwd, and a cw
 has run in yet gets an initialization-only probe (a query whose prompt never yields, read
 for `initializationResult()` and closed; no API call). No hand-kept model list (T3 keeps a
 manifest by hand). The default mode the `catalog` method answers is Koyo's default when
-`config.set` names one, else the one in the provider's settings.
+`config.set` names one, else the one in the provider's settings. Its `defaultModel` [built
+2026-11-11] is the model a chat that names none runs on, read as the CLI reads it:
+`ANTHROPIC_MODEL` from the settings' `env`, else the login shell's, else the settings' `model`;
+answered as the id of the listed model that runs it (a model's own row ahead of Default), else
+as named, and `null` when nothing names one and the first row, Claude's recommendation, runs.
+The app shows a chat that chose no model on that model, not on the first row: an account whose
+recommended model is Fable 5.1 and whose settings say `opus` runs Opus 5.5, which Koyo showed as
+Fable 5.1 before. `commands: false` asks for the models and defaults alone, which never probe a
+folder; app control asks so for what a chat runs with (`docs/app-control.md` Chats).
 
 #### 4.5.10 Subagents
 
@@ -762,7 +771,7 @@ interface TurnInput {
   attachments: { path; mime }[];         // files by their path on disk
   compact: boolean;                      // Koyo's `/compact`; a steer never is
 }
-DriverEvent = session.ready {mode} | turn.started {promptId}
+DriverEvent = session.ready {mode, model} | turn.started {promptId}
   | item.started {key, parentKey, item: {kind, payload}} | item.appended {key, text}
   | item.updated {key, item, status} | usage {usage} | request {request}
   | notice {level, text}
@@ -1076,8 +1085,9 @@ Layout, top to bottom inside the pane's card:
     images above the text; long messages collapse past 8 lines with "Show more";
     hover: copy, time; a steer marked "↷ Steered".
   - assistant text: full-width markdown (`TextView`, streaming), no bubble; on hover a copy button
-    under each, and under the final answer model · effort, time, the model being the provider's
-    default, as the footer names it, for a run that chose none. A link to a file that's there
+    under each, and under the final answer model · effort, time: the model the run chose, else
+    the one its session said it ran on (`session.ready`'s `model`, kept on the run as its mode
+    is), else the provider's default as the footer names it. A link to a file that's there
     reads as the file tree names it, its icon and name (`files::file_label`), and opens it on a
     click as any link to a file does; a link to a page stays a link. What markdown sets apart
     is washed, never the kit's solid greys, which sat on a card of any colour as slabs of
@@ -1167,7 +1177,8 @@ Layout, top to bottom inside the pane's card:
   fixed size above the message's words, drawn from a small copy of it, and opens where the person
   would.
 - **Footer.** `[+]` attach · model ("Opus 5.5", never "Default": the host labels that row with what
-  it runs, by name or else by id; ⚡ when fast) · effort ("Extra high"; none for a model with no efforts) · permission
+  it runs, by name or else by id; a chat that chose none shows the one the agent's settings run,
+  the catalog's `defaultModel`, by its id when it isn't listed; ⚡ when fast) · effort ("Extra high"; none for a model with no efforts) · permission
   ("Ask", brighter when not the default; unknown, so not shown, until the catalog says what
   the person's settings choose) · Plan toggle (⇧Tab) · context ring (hover: "42 % · 84k of
   200k"; press: that and "Compact now", on a menu's surface) · send / stop. Labels collapse

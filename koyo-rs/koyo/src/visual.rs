@@ -22,6 +22,7 @@ use koyo_agent::protocol::methods::Delivery;
 use koyo_agent::protocol::model::Prompt;
 use koyo_project::Feed;
 
+use crate::chat::chosen::Settings;
 use crate::navigation::Route;
 use crate::projects::read_worktrees;
 use crate::shell::Shell;
@@ -263,9 +264,11 @@ impl Drawn {
         }
         let shell = self.shell.clone();
         let chats = self.cx.read(|cx| shell.read(cx).chats().clone());
-        let made = self
-            .cx
-            .update(|cx| chats.update(cx, |chats, cx| chats.create(root, cx)));
+        let made = self.cx.update(|cx| {
+            chats.update(cx, |chats, cx| {
+                chats.create(Settings::default().to_create(root), cx)
+            })
+        });
         let mut thread = None;
         self.finish(HOST_PATIENCE, async { thread = Some(made.await) })?;
         let id = thread

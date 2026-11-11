@@ -97,11 +97,23 @@ The terminal tools (`terminal_*`) drive terminals whatever tab shows them; the
 ## Chats
 
 `chat_list` lists a worktree's chats with an agent (`all` for every worktree's), whether a tab
-shows them or not, each with its `id`, `status` and what it `needs` of a person.
+shows them or not, each with its `id`, `status`, what it `needs` of a person, and `runsWith`:
+the model, effort and mode it runs on, as its composer shows them.
 
 - `chat_create` starts a chat in a worktree and says `text` to it, in a tab of its own, shown
-  only as `select` and the person's setting say. `chat_send` says `text` to a chat: it joins the
-  turn running, or with `queue` waits for it.
+  only as `select` and the person's setting say. It takes the `model`, `effort` and `mode` the
+  person asked for, and `fast` and `plan`; what's left out is as a new chat in the window gets
+  it. `chat_choices` lists what a worktree's chats can choose and what a new one gets; what a
+  model can't run with is refused, naming what it can. A `mode` is granted as asked,
+  `full_access` included, without the person confirming it: ask for one only as they did. An
+  agent in a Koyo chat gets none above its own chat's mode, and a new chat it starts with `mode`
+  left out runs no higher than its own either. Tell the person what it started from the
+  answer's `runsWith`, not from what you asked for.
+- `chat_send` says `text` to a chat: it joins the turn running, or with `queue` waits for it.
+- `chat_set` changes another chat's `model`, `effort`, `mode`, `fast` or `plan`, as its
+  composer's chips do; what's left out stays, and another model keeps only what it can do. It's
+  checked and granted as `chat_create`'s are, up to your own chat's mode for an agent in a chat,
+  which may lower its own but never raise it; tell the person what it's set to from `runsWith`.
 - `chat_read` gives what was said in the latest `turns` (5 when left out). Poll `chat_list` for
   when `status` is back to `idle`, then read.
 - `chat_open` shows a chat; `chat_stop` asks what it's running to stop.

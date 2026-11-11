@@ -266,20 +266,59 @@ pane_close [navigate] I { pane } → takes the pane out (same unsaved rule as ta
 ```
 chat_list   [read] R { worktree?, all?: bool } → { chats: [{ id, title, worktree, status:
               "idle"|"working"|"failed", needs?: "approval"|"question"|"plan", queued, unread,
-              open, updatedAt }] }, latest first; a subagent's chat isn't listed
+              open, updatedAt, runsWith }] }, latest first; a subagent's chat isn't listed
+chat_choices [read] R { worktree? } → { models: [{ id, name, row?, efforts: [effort], fast,
+              auto }], modes: [mode], defaults: runsWith }: what the worktree's chats can
+              choose, and what chat_create gives what a call leaves out
 chat_read   [read] R { chat, turns?: n (default 5) } → { status, messages: [{ role:
               "user"|"assistant", text }] }, oldest first, without the work between the words
 chat_open   [navigate] I { chat } → { pane, tab, worktree }: the tab showing it, or a new one
-chat_create [manage] C { worktree?, text, select?: bool (default: the person's setting) } →
-              { chat, place }: a new chat, set as Settings says, told `text`
+chat_create [manage] C { worktree?, text, model?, effort?, mode?, fast?: bool, plan?: bool,
+              select?: bool (default: the person's setting) } → { chat, place, runsWith }:
+              a new chat on what's asked, the rest as a new chat in the window, told `text`
 chat_send   [manage] C { chat, text, queue?: bool } → { turn }: starts a turn, or joins the one
-              running unless `queue`
+              running unless `queue`; the chat takes the effort its composer shows first
+chat_set    [manage] I { chat, model?, effort?, mode?, fast?: bool, plan?: bool } → { chat,
+              runsWith }: another chat (or the caller's own) set as its composer's chips set
+              it; what's left out stays
 chat_stop   [manage] I { chat } → asks what's running to stop
+
+runsWith = { model?, modelName?, effort?, mode?, fast, plan }, as the chat's composer shows them
+effort   = "low"|"medium"|"high"|"xhigh"|"max"
+mode     = "ask"|"accept_edits"|"auto"|"full_access"
 ```
 
 Sending to a chat has the agent work in that checkout, as far as the chat's permissions let it,
 so it's `manage`. What the agent asks of a person (approvals, questions, plans) can't be answered
 from here: `chat_list` says what a chat waits for, and the person answers in the window.
+
+What a chat runs with [built 2026-11-11] is told as its composer shows it, which is what runs
+(`docs/chat.md` 4.5.9), from the host's catalog for its checkout (`catalog` with `commands:
+false`, which starts no agent in a folder none ran in): the model a chat chose, else the one the
+agent's own settings run (`defaultModel`: Claude Code's `ANTHROPIC_MODEL`, else its `model`
+setting), else the first it lists; the effort it chose, else Koyo's `chat_effort`, as near as
+the model runs; the mode it chose, else the person's (`chat_mode`), else Claude Code's. A field
+Koyo can't tell (the agent isn't ready, the model isn't listed) is left out of `runsWith`.
+
+`chat_create` checks what it's asked for against the same catalog
+(`control/exec/chat/choices.rs`): a `model` by its id, what it runs or its name; an `effort` the
+model runs at; `fast` on a model that has it; `auto` on a model that can. A refusal is
+`invalid_input` naming what can be chosen, and starts nothing. A `mode` is granted as asked,
+`full_access` included, whatever the person's new chats get, with no confirmation (12.6), but
+a chat's agent gets none above its own chat's mode (12.6). Left out, the model and the mode stay
+unchosen as before, and follow the settings; the effort is set, as the composer sets it with a
+chat's first message, so the composer and `runsWith` show what runs. A model that can't run in
+the Auto the settings choose gets `ask`, as the composer gives it.
+
+`chat_set` [built 2026-11-11] changes a chat as its composer's chips do, through
+`threads.update`, checked as `chat_create` is: another model keeps only what it can do (the
+effort it was on or the nearest below, fast if it has it, Auto if it can, else Ask), and an
+effort, fast or `auto` it can't is refused. The host hears every field asked about, and what
+another model changes with it, whether or not the app's copy of the chat already has it, as that
+copy lags the host's by a moment; and nothing else. A chat at work takes the change as its
+session can (`docs/chat.md` 4.5.6), by its next turn at the latest. A `mode` is granted as asked,
+as `chat_create`'s, up to the calling chat's own (12.6); a chat's agent may set its own chat
+too, to its own mode or lower.
 
 ### Files
 
@@ -488,7 +527,7 @@ owner found the list of no use, and agents read the log with `activity_list` (5)
 
 ## 11. As implemented (2026-11-02)
 
-- Crates: `koyo-rs/koyo-app-control` (67 operations, frames, socket, client, `koyo app`),
+- Crates: `koyo-rs/koyo-app-control` (69 operations, frames, socket, client, `koyo app`),
   `koyo-rs/koyo/src/control/` (listener, gate, approval, confirmations, receipts, activity,
   topics, in-process client, HTTP server in `control/http.rs`, executors in `control/exec/`,
   browser executors in `control/exec/browser/`, the agent desktop's in
@@ -496,7 +535,7 @@ owner found the list of no use, and agents read the log with `activity_list` (5)
   `backend.rs`, `socket.rs`, `app.rs`, `tools.rs`, `launch.rs`, `subscriptions.rs`,
   `http.rs`), the Settings page in `settings_view/mcp_server.rs`, `mcp_agents.rs` (the
   Agents section) and `mcp_clients.rs`.
-- `koyo mcp` lists 82 tools (14 terminal, 67 app, `app_launch`); HTTP lists 81 (no
+- `koyo mcp` lists 84 tools (14 terminal, 69 app, `app_launch`); HTTP lists 83 (no
   `app_launch`). The server is named `koyo`. A chat's session registers it under that name,
   with `KOYO_CHAT` (`docs/chat.md` O1).
 - Browser tools run over CDP through `browser/agent.rs`, its refusals typed (`AgentError`). A
@@ -637,16 +676,31 @@ where it lives:
 
 ### 12.6 Chats agents start
 
-- Today: `chat_create` starts a chat set as a new chat is in Settings → Chat
-  (`chat_mode`, `chat_effort`; `control/exec/chat.rs`), so a client holding only `manage`
-  gets an agent working in the checkout with whatever the person's new chats may do,
-  `FullAccess` included. Nothing marks the chat as an agent's. It notifies as any chat does
+- Today: `chat_create` starts a chat on the `model`, `effort` and `mode` it's asked for, else
+  set as a new chat is in Settings → Chat (`chat_mode`, `chat_effort`; `control/exec/chat.rs`),
+  so a client holding only `manage` gets an agent working in the checkout with whatever mode it
+  asks for, `FullAccess` included, even above what the person's new chats get, and without
+  their confirmation [decided 2026-11-11]: the owner chose that over a confirmation sheet and
+  over a cap ("if i ask the agent to do it, it should be able to do it"). `chat_set` sets an
+  existing chat's the same way.
+- A chat's agent gives no chat a mode above its own chat's [decided 2026-11-11, built]: "a chat
+  can never dispatch a permission higher than it's own, either in a new chat or in chat_set".
+  Its own is the mode it chose, else what its checkout's chats get by the person's settings
+  (`chat_mode`) and Claude Code's (`caller_mode` in `control/exec/chat.rs`); one Koyo can't tell
+  counts as `ask`. Asked for above it, `chat_create` and `chat_set` refuse with `invalid_input`
+  naming what it may choose, and change nothing; a mode left out that would start a new chat
+  above it starts it in the caller's own (`chosen_for` in `control/exec/chat/choices.rs`), and
+  `runsWith` says so. A chat setting itself is held to the same: it can lower its mode, never
+  raise it. The order is `ask` < `accept_edits` < `auto` < `full_access`; planning first isn't
+  part of it. Agents outside chats (in Koyo's terminals, external clients) aren't held to one:
+  Koyo doesn't know what they may do.
+- Nothing marks the chat as an agent's. It notifies as any chat does
   (`chat/notify.rs`: needs the person, or finished, while Koyo isn't frontmost). Whether
   its tab shows is 5.
 - Proposed: `externalControl.agentChats.mode: Mode | "asNewChats"`, default `"asNewChats"`;
-  set to `ask` or `acceptEdits` it caps what an agent-started chat may do without asking.
-  `agentChats.mark: bool`, default on (not built today): the tab and Recent chats say
-  "Started by Claude Code". `agentChats.notify: "asAnyChat" | "whenItNeedsYou" | "never"`,
+  set to `ask` or `acceptEdits` it caps what an agent-started chat may do without asking (not
+  chosen 2026-11-11: an agent gets the mode it asks for, above). `agentChats.mark: bool`,
+  default on (not built today): the tab and Recent chats say "Started by Claude Code". `agentChats.notify: "asAnyChat" | "whenItNeedsYou" | "never"`,
   default `"asAnyChat"`.
 - Protects: `mode`, the person from a client reaching more through a chat than its scopes
   give it; `mark` and `notify`, the person's attention.

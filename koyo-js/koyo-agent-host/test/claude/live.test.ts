@@ -26,7 +26,7 @@ describe.skipIf(!LIVE)("the real Claude CLI", () => {
     session.start(turnOf("Reply with the single word pong, nothing else.", promptId));
     await sink.finished;
     await session.close();
-    expect(sink.of("session.ready")[0]).toEqual({ type: "session.ready", mode: "ask" });
+    expect(sink.of("session.ready")[0]).toMatchObject({ type: "session.ready", mode: "ask" });
     expect(sink.of("turn.started")).toEqual([{ type: "turn.started", promptId }]);
     const said = sink.of("item.updated").flatMap((event) =>
       event.item.kind === "assistant_text" ? [event.item.payload.text] : []);

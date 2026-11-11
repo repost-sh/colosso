@@ -134,11 +134,7 @@ impl ChatComposer {
     /// The effort that shows on `model`: what the chat is set to, or else what the person's settings
     /// choose, as near as it gets. None if it has no efforts to choose.
     fn effort_on(&self, model: &Model, cx: &App) -> Option<Effort> {
-        model.fitted(
-            self.settings
-                .effort
-                .unwrap_or(settings::get(cx).chat_effort),
-        )
+        (self.settings).effort_on(model, settings::get(cx).chat_effort)
     }
 
     /// Has the chat set to the effort that shows, which goes ahead of the message about to be sent.

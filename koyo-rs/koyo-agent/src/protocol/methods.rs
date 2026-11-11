@@ -143,6 +143,10 @@ pub struct CatalogParams {
     /// `None` is the host's first provider.
     pub provider: Option<String>,
     pub cwd: String,
+    /// `Some(false)` asks for the models and defaults alone, which never start the provider in
+    /// the folder; its commands are then what's known of them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commands: Option<bool>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -175,25 +179,45 @@ pub struct Catalog {
     pub commands: Vec<Command>,
     /// The mode a chat that names none runs in, from the provider's settings.
     pub default_mode: Option<Mode>,
+    /// The model a chat that names none runs on, from the provider's settings: a listed model's
+    /// id, or what the settings name if none runs it. `None` when they name none, and the first
+    /// model runs.
+    #[serde(default)]
+    pub default_model: Option<String>,
 }
 
 impl Catalog {
-    /// The model of a chat that chose `id`: the first, which the provider recommends, if it
-    /// chose none. One no longer listed has nothing to say of it.
+    /// The model of a chat that chose `id`: if it chose none, the one the provider's settings
+    /// run, or else the first, which the provider recommends. One no longer listed has nothing to
+    /// say of it.
     pub fn model(&self, id: Option<&str>) -> Option<&Model> {
-        match id {
+        match id.or(self.default_model.as_deref()) {
             Some(id) => listed(&self.models, id),
             None => self.models.first(),
         }
     }
+
+    /// The id of the model a chat that chose `id` runs on, listed or not: what `model` finds, or
+    /// else what the chat or the provider's settings name.
+    pub fn model_id<'a>(&'a self, id: Option<&'a str>) -> Option<&'a str> {
+        let named = id.or(self.default_model.as_deref());
+        (self.model(id).map(|model| model.id.as_str())).or(named)
+    }
 }
 
-/// The model of `models` that goes by `id`: its own, or that of what it runs.
+/// The model of `models` that goes by `id`: its own, or that of what it runs; and failing both,
+/// that of what it runs with more context, as `claude-opus-5-5[1m]` is the CLI's word for one.
 pub fn listed<'a>(models: &'a [Model], id: &str) -> Option<&'a Model> {
-    (models.iter().find(|model| model.id == id)).or_else(|| {
-        models
-            .iter()
-            .find(|model| model.runs.as_deref() == Some(id))
+    let goes_by = |id: &str| {
+        (models.iter().find(|model| model.id == id)).or_else(|| {
+            models
+                .iter()
+                .find(|model| model.runs.as_deref() == Some(id))
+        })
+    };
+    goes_by(id).or_else(|| {
+        let (shorter, _) = id.split_once('[')?;
+        goes_by(shorter)
     })
 }
 

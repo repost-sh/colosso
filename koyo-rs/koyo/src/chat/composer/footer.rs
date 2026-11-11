@@ -5,8 +5,6 @@
 //! host, and shows when the host says so, which is sooner than a person can tell. A chat with no
 //! thread yet holds what it will start with.
 
-use std::path::Path;
-
 use gpui_kit::assets::IconName;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::Button;
@@ -17,15 +15,15 @@ use gpui_kit::{
     Styled as _, Svg, Window, actions, div, px, svg,
 };
 use koyo_agent::client::ClientError;
-use koyo_agent::protocol::ids::ThreadId;
 use koyo_agent::protocol::methods::{
-    Catalog, CreateParams, Model, ThreadParams, ThreadsUpdate, TurnsCompact, UpdateParams,
+    Catalog, ThreadParams, ThreadsUpdate, TurnsCompact, UpdateParams,
 };
-use koyo_agent::protocol::model::{Effort, Mode, Thread};
+use koyo_agent::protocol::model::Mode;
 use koyo_agent::words::{mode_label, model_name};
 
 use super::ChatComposer;
 use super::model_menu::OpenModelMenu;
+use crate::chat::chosen::Settings;
 use crate::menu::{self, MenuItem};
 use crate::shell::glass;
 use crate::theme::Palette;
@@ -52,58 +50,6 @@ pub(super) fn bind_keys(cx: &mut App) {
         TogglePlan,
         Some(context.as_str()),
     )]);
-}
-
-/// What a chat is set to.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub(super) struct Settings {
-    pub(super) model: Option<String>,
-    pub(super) effort: Option<Effort>,
-    pub(super) fast: bool,
-    pub(super) permission: Option<Mode>,
-    pub(super) plan: bool,
-}
-
-impl Settings {
-    pub(super) fn of(thread: &Thread) -> Settings {
-        Settings {
-            model: thread.model.clone(),
-            effort: thread.effort,
-            fast: thread.fast,
-            permission: thread.permission,
-            plan: thread.plan,
-        }
-    }
-
-    /// The model these are on, if the catalog lists it.
-    pub(super) fn model_in<'a>(&self, catalog: &'a Catalog) -> Option<&'a Model> {
-        catalog.model(self.model.as_deref())
-    }
-
-    /// A chat in the checkout at `cwd` that starts with these, on the host's first provider.
-    pub(super) fn to_create(&self, cwd: &Path) -> CreateParams {
-        CreateParams {
-            cwd: cwd.to_string_lossy().into_owned(),
-            provider: None,
-            model: self.model.clone(),
-            effort: self.effort,
-            fast: self.fast,
-            permission: self.permission,
-            plan: self.plan,
-        }
-    }
-
-    /// What thread `id`, set to these, has to hear to be set to `to`, and nothing else.
-    fn changes(&self, to: &Settings, id: ThreadId) -> UpdateParams {
-        UpdateParams {
-            model: (self.model != to.model).then(|| to.model.clone()),
-            effort: (self.effort != to.effort).then_some(to.effort),
-            fast: (self.fast != to.fast).then_some(to.fast),
-            permission: (self.permission != to.permission).then_some(to.permission),
-            plan: (self.plan != to.plan).then_some(to.plan),
-            ..UpdateParams::of(id)
-        }
-    }
 }
 
 /// How many chips say what they are in a composer `width` wide.
@@ -225,21 +171,13 @@ impl ChatComposer {
         }
     }
 
-    /// The mode the chat runs in: what it chose, or else what the person's settings choose, which
-    /// isn't known until the host says.
-    fn mode(&self, catalog: &Catalog) -> Option<Mode> {
-        match self.settings.permission {
-            Some(mode) => Some(mode),
-            None if catalog.models.is_empty() => None,
-            None => Some(catalog.default_mode.unwrap_or(Mode::Ask)),
-        }
-    }
-
-    /// What the model goes by, or its id if the catalog no longer lists it.
-    fn model_label(&self, catalog: &Catalog) -> SharedString {
-        match (self.settings.model_in(catalog), &self.settings.model) {
+    /// What the model goes by, or its id if the catalog doesn't list it: the chat's own, or else
+    /// the one the agent's settings run.
+    pub(super) fn model_label(&self, catalog: &Catalog) -> SharedString {
+        let model = self.settings.model.as_deref();
+        match (self.settings.model_in(catalog), catalog.model_id(model)) {
             (Some(model), _) => model_name(model).to_owned().into(),
-            (None, Some(id)) => id.clone().into(),
+            (None, Some(id)) => id.to_owned().into(),
             (None, None) => "Model".into(),
         }
     }
@@ -276,17 +214,14 @@ impl ChatComposer {
         p: Palette,
         cx: &App,
     ) -> Option<impl IntoElement + use<>> {
-        let mode = self.mode(catalog)?;
+        let mode = self.settings.mode(catalog)?;
         let color = if mode == catalog.default_mode.unwrap_or(Mode::Ask) {
             p.muted
         } else {
             p.text
         };
         let labelled = self.labels >= 3;
-        let can_auto = self
-            .settings
-            .model_in(catalog)
-            .is_none_or(|model| model.auto);
+        let can_auto = self.settings.can_auto(catalog);
         let trigger = chip(
             "chat-permission",
             mode_mark(mode),

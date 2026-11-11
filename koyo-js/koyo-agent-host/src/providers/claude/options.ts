@@ -127,6 +127,7 @@ const KOYO_READS = [
   "worktree_list",
   "tab_list",
   "chat_list",
+  "chat_choices",
   "chat_read",
   "settings_get",
   "activity_list",

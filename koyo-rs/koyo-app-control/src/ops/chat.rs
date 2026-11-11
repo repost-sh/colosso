@@ -1,10 +1,16 @@
 //! A worktree's chats with an agent: listed, read, shown in a tab, started, told something and
-//! stopped. What the agent asks of a person (an approval, a question, a plan) stays theirs to
-//! answer, in the window.
+//! stopped, and what they can run with. What the agent asks of a person (an approval, a
+//! question, a plan) stays theirs to answer, in the window.
+
+mod choices;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+pub use self::choices::{
+    ChatChanged, ChatChoices, ChatChoicesInput, ChatChoicesRead, ChatEffort, ChatMode,
+    ChatModelChoice, ChatRunsWith, ChatSet, ChatSetInput,
+};
 use super::shared::{PanePlace, count};
 use crate::{Hints, Operation, Scope};
 
@@ -68,6 +74,8 @@ pub struct ChatInfo {
     pub open: bool,
     /// When it last changed.
     pub updated_at: String,
+    /// What it runs with, as its composer shows it.
+    pub runs_with: ChatRunsWith,
 }
 
 /// The chats `chat_list` found.
@@ -89,7 +97,7 @@ impl Operation for ChatList {
     const SCOPE: Scope = Scope::Read;
     const DESCRIPTION: &'static str = "A worktree's chats with an agent (or every worktree's, with \
         `all`), latest first: each one's id, title, how it's doing and what it waits on a person \
-        for, whether a tab shows it or not.";
+        for, whether a tab shows it or not, and the model, effort and mode it runs with.";
     const HINTS: Hints = Hints::READ;
     type Input = ChatListInput;
     type Output = ChatListOutput;
@@ -199,6 +207,26 @@ pub struct ChatCreateInput {
     pub worktree: Option<String>,
     /// What to say to the agent first.
     pub text: String,
+    /// The model to run on, by its id or its name as `chat_choices` lists them. Left out, the
+    /// one the agent's own settings choose, as a new chat in the window.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// How hard the agent works, one of the model's efforts. Left out, Koyo's setting for new
+    /// chats, as near as the model runs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<ChatEffort>,
+    /// How much the agent may do without asking, granted as asked, `full_access` included, but
+    /// for an agent in a Koyo chat no more than its own chat's mode. Ask for one only as the
+    /// person did. Left out, what a new chat gets by the person's settings, held to the same.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<ChatMode>,
+    /// Run the model in its fast mode, if it has one. False when left out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fast: Option<bool>,
+    /// Have the agent plan first, and ask a person to accept the plan before it acts. False
+    /// when left out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan: Option<bool>,
     /// Show the chat's tab, switching the window to its worktree. Left out, the person's
     /// choice in Settings → MCP server decides, and by default it only joins its worktree's
     /// tabs. Pass true only when the person asked to see it.
@@ -214,6 +242,8 @@ pub struct ChatCreated {
     pub chat: String,
     /// The tab that shows it.
     pub place: PanePlace,
+    /// What it runs with, as its composer shows it: what to tell a person it was started on.
+    pub runs_with: ChatRunsWith,
 }
 
 /// `chat_create`: a new chat in a tab, told something.
@@ -225,17 +255,24 @@ impl Operation for ChatCreate {
     const TITLE: &'static str = "Start chat";
     const SUBJECT: &'static [&'static str] = &["worktree"];
     const SCOPE: Scope = Scope::Manage;
-    const DESCRIPTION: &'static str = "Starts a chat with the agent in a worktree, set as a new \
-        chat is in Settings, in a tab of its own, and says `text` to it. The agent then works in \
-        that checkout, as far as its permissions let it. The window shows the tab only with \
-        `select: true`, or with `select` left out when the person chose in Settings to see what \
-        agents open.";
+    const DESCRIPTION: &'static str = "Starts a chat with the agent in a worktree, in a tab of \
+        its own, on the `model`, `effort` and `mode` asked for, and says `text` to it; what's \
+        left out is as a new chat in the window gets it. `chat_choices` lists what the worktree's \
+        chats can choose from; what it can't run with is refused, naming what it can. The answer \
+        says what the chat runs with. The agent then works in that checkout, as far as its mode \
+        lets it. The window shows the tab only with `select: true`, or with `select` left out \
+        when the person chose in Settings to see what agents open.";
     const HINTS: Hints = Hints::CHANGE;
     type Input = ChatCreateInput;
     type Output = ChatCreated;
 
     fn summary(output: &ChatCreated) -> String {
-        format!("Started chat {} in {}", output.chat, output.place.summary())
+        format!(
+            "Started chat {} in {}, on {}",
+            output.chat,
+            output.place.summary(),
+            output.runs_with.summary()
+        )
     }
 }
 

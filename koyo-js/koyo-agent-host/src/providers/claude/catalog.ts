@@ -56,6 +56,22 @@ export function models(list: readonly ModelInfo[]): Model[] {
   }));
 }
 
+/**
+ * The id of the model `named` runs, which a chat that names none runs on: the listed model of
+ * that id, or else one that runs it, the Default row last as it says least; or else `named`
+ * itself. Null when nothing is named, and the first row, Claude's recommendation, runs.
+ */
+export function defaultModel(named: string | undefined, listed: readonly Model[]): string | null {
+  if (named === undefined || named === "") {
+    return null;
+  }
+  const runsIt = listed.filter((model) => model.runs === named);
+  const found = listed.find((model) => model.id === named)
+    ?? runsIt.find((model) => model.id !== "default")
+    ?? runsIt[0];
+  return found?.id ?? named;
+}
+
 export function commands(list: readonly SlashCommand[]): Command[] {
   return list.map((command) => ({
     name: command.name,
