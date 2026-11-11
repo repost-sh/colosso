@@ -55,7 +55,7 @@ pub(super) fn run(drawn: &mut Drawn, lines: &mut Vec<String>) -> Result<()> {
         lines.push(format!("{}", drawn.save_dialog(picture)?.display()));
     }
     // The device made: its first start, then ready.
-    let link = drawn.cx.update(|cx| crate::devices::devices(cx).update(cx, |devices: &mut Devices, cx| devices.link("V-SETUP", "iPhone 18 Pro", cx)));
+    let link = drawn.cx.update(|cx| crate::devices::devices(cx).update(cx, |devices: &mut Devices, cx| devices.link("V-SETUP", "iPhone 18 Pro", false, cx)));
     let (tell, _told) = std::sync::mpsc::channel();
     drawn.cx.update(|cx| link.update(cx, |link, cx| link.use_host(Running::stand_in(tell), cx)));
     let dialog = (drawn.cx.read(modal::current::<Setup>)).ok_or("the setup closed")?;
@@ -91,6 +91,7 @@ fn settings_page(drawn: &mut Drawn, lines: &mut Vec<String>) -> Result<()> {
         udid: "V-THREE".into(),
         name: "iPhone 18 Pro".into(),
         ipad: false,
+        phone: false,
     };
     let view = open(drawn, Some(chosen), false)?;
     let window = drawn.window;

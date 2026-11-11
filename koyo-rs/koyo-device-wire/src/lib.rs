@@ -6,6 +6,8 @@
 pub mod ask;
 pub mod input;
 pub mod link;
+pub mod process;
+pub mod real;
 
 /// The environment a host is started with: the descriptor its end of the link is on, and the
 /// secret its first message must carry back.

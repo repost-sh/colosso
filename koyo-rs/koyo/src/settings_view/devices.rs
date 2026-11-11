@@ -1,6 +1,6 @@
 //! Settings → Devices (`docs/devices.md` 10): what Koyo's simulators need of the Mac and what
-//! it has, Koyo's own simulators with what runs, how many may run at once, and in words what
-//! Koyo doesn't touch. Nothing here is reachable by `settings_set`: only the person changes it.
+//! it has, Koyo's own simulators with what runs, the iPhones and iPads plugged in with the step
+//! each misses, how many simulators may run at once, and in words what Koyo doesn't touch. Nothing here is reachable by `settings_set`: only the person changes it.
 
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::{Action, App, ElementId, SharedString};
@@ -34,7 +34,7 @@ pub fn sections(cx: &App) -> Vec<SettingsSection> {
     let devices = devices::devices(cx);
     let devices = devices.read(cx);
     let running = devices.running_now(cx);
-    vec![needs(devices), simulators(devices, &running, cx), at_once(&running, cx), untouched()]
+    vec![needs(devices), simulators(devices, &running, cx), plugged(devices), at_once(&running, cx), untouched()]
 }
 
 fn id(what: &str, udid: &str) -> ElementId {
@@ -132,6 +132,32 @@ fn simulator_row(simulator: &Simulator, runs: bool, stopping: bool) -> SettingRo
     }))
 }
 
+/// The iPhones and iPads plugged in, each ready or with the step it misses and its setup.
+fn plugged(devices: &Devices) -> SettingsSection {
+    let section = SettingsSection::new("iPhones and iPads");
+    let set_up = |udid: Option<String>| {
+        let id = id("set-up", udid.as_deref().unwrap_or("any"));
+        PillButton::new(id, "Set Up…").on_click(move |_, window, cx| devices::setup::device::open(udid.clone(), window, cx))
+    };
+    let listed = match &devices.connected {
+        Some(Ok(listed)) if !listed.is_empty() => listed,
+        Some(Ok(_)) => {
+            let none = "None plugged in. Plug an iPhone or iPad on iOS or iPadOS 27 into this Mac with a \
+                        cable to use it in a Device tab.";
+            return section.row(SettingRow::new("Plugged in").description(none).control(set_up(None)));
+        }
+        Some(Err(why)) => return section.row(SettingRow::new("Plugged in").description(why.clone())),
+        None => return section.row(SettingRow::new("Plugged in").description("Looking for iPhones and iPads plugged in…")),
+    };
+    section.rows(listed.iter().map(|device| {
+        let row = SettingRow::new(device.name.clone());
+        match &device.missing {
+            Some((_, said)) => row.description(format!("{}. {said}", device.system)).control(set_up(Some(device.udid.clone()))),
+            None => row.description(format!("{}. Ready to use in a Device tab.", device.system)),
+        }
+    }))
+}
+
 /// A new simulator, of a model the newest system has.
 fn new_one(devices: &Devices) -> SettingRow {
     let said = devices.said.clone().unwrap_or_else(|| {
@@ -171,10 +197,15 @@ fn at_once(running: &[(String, String)], cx: &App) -> SettingsSection {
 }
 
 fn untouched() -> SettingsSection {
-    SettingsSection::new("What Koyo doesn't touch").row(SettingRow::new("Xcode's simulators").description(
-        "Koyo keeps its simulators apart from Xcode's and never changes yours. It deletes a \
-         simulator only when you press Delete here, and never an iOS system: those are Xcode's.",
-    ))
+    SettingsSection::new("What Koyo doesn't touch")
+        .row(SettingRow::new("Xcode's simulators").description(
+            "Koyo keeps its simulators apart from Xcode's and never changes yours. It deletes a \
+             simulator only when you press Delete here, and never an iOS system: those are Xcode's.",
+        ))
+        .row(SettingRow::new("Your iPhone or iPad").description(
+            "Koyo changes no setting on it: it keeps it awake only while its tab is open, and its \
+             camera and microphone are off meanwhile.",
+        ))
 }
 
 #[cfg(test)]

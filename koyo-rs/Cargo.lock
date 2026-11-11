@@ -5576,6 +5576,7 @@ dependencies = [
  "koyo-desk-wire",
  "serde",
  "serde_bytes",
+ "serde_json",
 ]
 
 [[package]]

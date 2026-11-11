@@ -50,6 +50,9 @@ pub enum KeptPane {
         name: String,
         #[serde(default)]
         ipad: bool,
+        /// A real device by cable; else a simulator of Koyo's set.
+        #[serde(default)]
+        phone: bool,
     },
     /// A kind another build keeps, which this one brings nothing back for.
     #[serde(other)]
@@ -127,6 +130,7 @@ impl Shell {
                     udid: chosen.udid,
                     name: chosen.name,
                     ipad: chosen.ipad,
+                    phone: chosen.phone,
                 })
             }
         }
@@ -186,11 +190,12 @@ impl Shell {
                 .then(|| Pane::unopened(Unopened::File(path.clone()))),
             KeptPane::Changes => Some(Pane::unopened(Unopened::Changes)),
             // Never started by itself: it says it isn't running, with Start.
-            KeptPane::Device { udid, name, ipad } => {
+            KeptPane::Device { udid, name, ipad, phone } => {
                 let chosen = crate::devices::Chosen {
                     udid: udid.clone(),
                     name: name.clone(),
                     ipad: *ipad,
+                    phone: *phone,
                 };
                 let view = self.device_view(Some(chosen), cx);
                 Some(Pane::device(view, cx))

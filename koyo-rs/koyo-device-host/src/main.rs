@@ -3,6 +3,8 @@
 //!
 //! ```text
 //! koyo-device-host --simulator <udid> --set <device set> --state <folder> [--stats]
+//! koyo-device-host --phone <udid> --name <name> --state <folder> [--stats]
+//! koyo-device-host --watch
 //! ```
 
 fn main() -> std::process::ExitCode {

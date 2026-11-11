@@ -13,6 +13,8 @@ koyo-desk-wire = { path = "../koyo-desk-wire" }
 serde = { version = "1", features = ["derive"] }
 # Screenshots travel as byte strings, not arrays of numbers.
 serde_bytes = "0.11"
+# A real device as `devicectl` lists it, read the same by the host and the app.
+serde_json = "1"
 
 [lints]
 workspace = true

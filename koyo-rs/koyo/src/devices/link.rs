@@ -51,6 +51,8 @@ pub struct Touch {
 pub struct Link {
     pub udid: String,
     pub name: String,
+    /// A real iPhone or iPad by cable, not a simulator of Koyo's set.
+    pub phone: bool,
     pub state: State,
     /// How the device stands, as its host last said.
     pub said: Option<Said>,
@@ -70,14 +72,19 @@ pub struct Link {
     starts: u64,
     failed_starts: u32,
     restarts: Vec<Instant>,
+    /// Times it was started again by itself since it last stood ready or the person started it.
+    pub(super) tries: u32,
+    /// When its host last said it can't go on.
+    pub(super) ended_at: Option<Instant>,
     pub started_at: Option<Instant>,
 }
 
 impl Link {
-    pub fn new(udid: String, name: String, cx: &mut Context<Self>) -> Link {
+    pub fn new(udid: String, name: String, phone: bool, cx: &mut Context<Self>) -> Link {
         Link {
             udid,
             name,
+            phone,
             state: State::Off,
             said: None,
             picture: cx.new(|_| Picture::default()),
@@ -94,6 +101,8 @@ impl Link {
             starts: 0,
             failed_starts: 0,
             restarts: Vec::new(),
+            tries: 0,
+            ended_at: None,
             started_at: None,
         }
     }
@@ -112,9 +121,9 @@ impl Link {
     }
 
     /// Whether it holds its simulator: running, starting, or still shutting it down. It counts
-    /// against the simulators running at once.
+    /// against the simulators running at once; a real device never does.
     pub fn holds_simulator(&self) -> bool {
-        self.running_or_starting() || self.stopping()
+        !self.phone && (self.running_or_starting() || self.stopping())
     }
 
     /// Whether its host was told to go and hasn't closed yet.
@@ -137,12 +146,13 @@ impl Link {
         }
         // Asked for: the restarts it made by itself don't count against this one.
         self.restarts.clear();
+        self.tries = 0;
         self.launch_host(cx);
     }
 
     /// Starts a host: for a start asked for, or by itself after one went.
-    fn launch_host(&mut self, cx: &mut Context<Self>) {
-        let launch = match super::launch(&self.udid) {
+    pub(super) fn launch_host(&mut self, cx: &mut Context<Self>) {
+        let launch = match super::launch(&self.udid, self.phone.then_some(self.name.as_str())) {
             Ok(launch) => launch,
             Err(why) => return self.fail(why, cx),
         };
@@ -224,6 +234,11 @@ impl Link {
         self.running = Some(running);
         self.state = State::Running;
         cx.notify();
+    }
+
+    /// Whether a tab shows it.
+    pub fn shown_somewhere(&self) -> bool {
+        self.tabs > 0
     }
 
     /// A tab shows it.
@@ -325,7 +340,11 @@ impl Link {
             FromHost::State { state } => {
                 if matches!(state, Said::Ready { .. }) {
                     self.failed_starts = 0;
+                    self.tries = 0;
                     self.started_at = None;
+                }
+                if matches!(state, Said::Gone { .. } | Said::Unavailable { .. }) {
+                    self.ended_at = Some(Instant::now());
                 }
                 // A host that can't go on but still runs (its input never answered) is told to
                 // go: it shuts its simulator down rather than hold gigabytes until Start Again.

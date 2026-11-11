@@ -191,7 +191,7 @@ impl DeviceView {
         let keystroke = &event.keystroke;
         let held = keystroke.modifiers;
         if held.platform {
-            let simulator = self.simulator(cx);
+            let simulator = self.simulator();
             match (keystroke.key.as_str(), held.shift) {
                 ("h", true) => self.press_button(Button::Home, cx),
                 ("left", false) if simulator => self.turn(true, cx),

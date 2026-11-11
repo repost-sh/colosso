@@ -17,6 +17,7 @@ use super::{Devices, Link, Standing, devices};
 use crate::modal::{self, Button, Mark, Tone};
 use crate::theme;
 
+pub mod device;
 mod words;
 
 pub use words::models_menu;
@@ -123,7 +124,20 @@ pub fn open(parent: &mut Window, cx: &mut App) {
             device: Device::Choosing,
             install: Install::NotAsked,
             seen: Step::Looking,
-            _looking: cx.spawn(async move |this, cx| look_along(this, cx).await),
+            // The Mac looked at again while the person's to do is outside Koyo; the time so far
+            // of a first start moving on.
+            _looking: cx.spawn(async move |this, cx| {
+                let waiting = |this: &Setup, cx: &App| this.step(cx).outside();
+                look_along(this, cx, waiting, |this, due, cx| {
+                    if due {
+                        this.devices.update(cx, Devices::look_along);
+                    }
+                    if this.step(cx) == Step::Starting {
+                        cx.notify();
+                    }
+                })
+                .await;
+            }),
             _watching: vec![cx.observe(&devices, |this: &mut Setup, _, cx| this.moved(cx))],
             devices,
         }
@@ -138,24 +152,27 @@ pub fn offer(window: &mut Window, cx: &mut App) {
     }
 }
 
-/// Every second the time so far moves on; every two, with Koyo in front and the person's to do
-/// outside Koyo, the Mac is looked at again, and at once when Koyo comes forward.
-async fn look_along(this: WeakEntity<Setup>, cx: &mut AsyncApp) {
+/// A setup dialog's clock: every second `tick`, told whether to look at the Mac again: with
+/// Koyo in front and the person `waiting` on something done outside Koyo, every two seconds,
+/// and at once when Koyo comes forward; never behind it. Ends with the dialog.
+pub(super) async fn look_along<V: 'static>(
+    this: WeakEntity<V>,
+    cx: &mut AsyncApp,
+    waiting: impl Fn(&V, &App) -> bool,
+    tick: impl Fn(&mut V, bool, &mut Context<V>),
+) {
     let mut last = Instant::now();
     let mut in_front = true;
     loop {
         cx.background_executor().timer(Duration::from_secs(1)).await;
         let Ok(()) = this.update(cx, |this, cx| {
             let front = cx.active_window().is_some();
-            let step = this.step(cx);
-            if front && step.outside() && (!in_front || last.elapsed() >= LOOK_EVERY) {
+            let due = front && waiting(this, cx) && (!in_front || last.elapsed() >= LOOK_EVERY);
+            if due {
                 last = Instant::now();
-                this.devices.update(cx, Devices::look_along);
             }
             in_front = front;
-            if step == Step::Starting {
-                cx.notify();
-            }
+            tick(this, due, cx);
         }) else {
             return;
         };

@@ -30,6 +30,7 @@ fn tab(name: &str, cx: &mut TestAppContext) -> Tab {
         udid: "UDID-HAND".into(),
         name: "iPhone 17 Pro".into(),
         ipad: false,
+        phone: false,
     };
     shell.update(cx, |shell, cx| shell.device_pane(Some(chosen), true, cx));
     let view = cx.read(|cx| shell.read(cx).shown_device_view(cx)).expect("the device's tab");

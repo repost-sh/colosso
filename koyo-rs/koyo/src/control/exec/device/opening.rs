@@ -120,6 +120,9 @@ fn standing(udid: &str, name: &str, pane: u64, cx: &App) -> Result<DeviceOpenOut
 pub(crate) fn open(caller: &Caller, input: DeviceOpenInput, cx: &mut App) -> Result<Exec, ControlError> {
     // From the call's start: making a simulator is part of the minute the tool promises.
     let started = Instant::now();
+    if let Some(udid) = input.device.as_deref() {
+        super::usable(caller, udid, cx)?;
+    }
     let set = devices::set_dir().ok_or_else(|| ControlError::internal("Koyo has no folder to keep its devices in."))?;
     let room = Room {
         starting: devices::devices(cx).read(cx).starting(cx),

@@ -10,11 +10,13 @@ use std::path::PathBuf;
 use gpui_kit::{App, AppContext as _, Context, Entity, Global, Subscription};
 
 mod canvas;
+pub(crate) mod connected;
 mod control;
 mod host;
 mod keeping;
 mod link;
 pub(crate) mod needs;
+mod picker;
 mod picture;
 mod screens;
 pub mod setup;
@@ -47,6 +49,13 @@ pub struct Devices {
     _watching: Vec<Subscription>,
     /// What Settings → Devices did last, in a sentence: a device made, or why one wasn't.
     pub said: Option<String>,
+    /// The real devices plugged in, as `devicectl` last listed them; `None` until asked.
+    pub connected: Option<Result<Vec<connected::Connected>, String>>,
+    listing_connected: bool,
+    /// Says when a device is plugged in or pulled out, once a Devices surface has shown.
+    watcher: Option<connected::Watcher>,
+    /// When the watcher last went: it's started again at a look a while after.
+    watcher_went: Option<std::time::Instant>,
 }
 
 /// What runs now, by udid and name: what Koyo's set has booted (an agent's own `simctl boot`,
@@ -107,15 +116,20 @@ fn state_dir() -> Option<PathBuf> {
     folder().map(|folder| folder.join("state"))
 }
 
-/// What a host of `udid` is started with.
-fn launch(udid: &str) -> Result<host::Launch, String> {
+/// What a host of `udid` is started with: a simulator of Koyo's set, or the real device named
+/// `phone`.
+fn launch(udid: &str, phone: Option<&str>) -> Result<host::Launch, String> {
     let (Some(set), Some(state)) = (set_dir(), state_dir()) else {
         return Err("Koyo has no folder to keep its devices in.".into());
+    };
+    let kind = match phone {
+        Some(name) => host::Kind::Phone { name: name.to_owned() },
+        None => host::Kind::Simulator { set },
     };
     Ok(host::Launch {
         program: host::program()?,
         udid: udid.to_owned(),
-        set,
+        kind,
         state,
     })
 }
@@ -130,6 +144,10 @@ pub fn init(cx: &mut App) {
         links: HashMap::new(),
         _watching: Vec::new(),
         said: None,
+        connected: None,
+        listing_connected: false,
+        watcher: None,
+        watcher_went: None,
     });
     cx.set_global(TheDevices(devices.clone()));
     if !cfg!(test)
@@ -151,12 +169,12 @@ pub fn devices(cx: &App) -> Entity<Devices> {
 }
 
 impl Devices {
-    /// The link of `udid`, made the first time it's asked for.
-    pub fn link(&mut self, udid: &str, name: &str, cx: &mut Context<Self>) -> Entity<Link> {
+    /// The link of `udid` (a real device if `phone`), made the first time it's asked for.
+    pub fn link(&mut self, udid: &str, name: &str, phone: bool, cx: &mut Context<Self>) -> Entity<Link> {
         if let Some(link) = self.links.get(udid) {
             return link.clone();
         }
-        let link = cx.new(|cx| Link::new(udid.to_owned(), name.to_owned(), cx));
+        let link = cx.new(|cx| Link::new(udid.to_owned(), name.to_owned(), phone, cx));
         // Said when it takes or lets go of its simulator, not at every change of the link; let
         // go, the set is listed again: the simulator is down.
         let mut held = false;
@@ -222,6 +240,10 @@ impl Devices {
     fn look(&mut self, whole: bool, spare: bool, cx: &mut Context<Self>) {
         if self.listing || cfg!(test) {
             return;
+        }
+        // Listed once; then the watcher has it listed again at each plug.
+        if self.connected.is_none() || self.watcher.is_none() {
+            self.look_connected(cx);
         }
         let Some(set) = set_dir() else {
             self.simulators = Some(Err("Koyo has no folder to keep its devices in.".into()));

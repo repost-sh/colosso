@@ -30,7 +30,7 @@ fn screen() -> Screen {
 /// A link with a stand-in host: what the app tells it comes out of the receiver.
 fn running(cx: &mut TestAppContext) -> (gpui_kit::Entity<Link>, std::sync::mpsc::Receiver<ToHost>) {
     let (tell, told) = std::sync::mpsc::channel();
-    let link = cx.new(|cx| Link::new("UDID-1".into(), "iPhone 17 Pro".into(), cx));
+    let link = cx.new(|cx| Link::new("UDID-1".into(), "iPhone 17 Pro".into(), false, cx));
     link.update(cx, |link, cx| link.use_host(Running::stand_in(tell), cx));
     (link, told)
 }
@@ -96,7 +96,7 @@ fn a_host_that_goes_answers_what_waited_and_is_started_again(cx: &mut TestAppCon
 
 #[gpui_kit::test]
 fn a_link_that_isnt_running_refuses_at_once(cx: &mut TestAppContext) {
-    let link = cx.new(|cx| Link::new("UDID-2".into(), "iPad".into(), cx));
+    let link = cx.new(|cx| Link::new("UDID-2".into(), "iPad".into(), false, cx));
     let task = link.update(cx, |link, cx| link.ask(Ask::Snapshot { text: false }, Duration::from_secs(5), cx));
     let answer = futures::FutureExt::now_or_never(task);
     let Some(Err(Refusal { code, message })) = answer else {
@@ -165,6 +165,7 @@ fn a_device_in_two_tabs_stops_when_the_last_closes(cx: &mut TestAppContext) {
 }
 
 mod hand;
+mod phone;
 mod setup;
 
 #[gpui_kit::test]

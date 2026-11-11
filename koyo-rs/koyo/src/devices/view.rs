@@ -24,6 +24,19 @@ pub struct Chosen {
     pub udid: String,
     pub name: String,
     pub ipad: bool,
+    /// A real device by cable, not a simulator of Koyo's set.
+    pub phone: bool,
+}
+
+impl From<&super::connected::Connected> for Chosen {
+    fn from(device: &super::connected::Connected) -> Chosen {
+        Chosen {
+            udid: device.udid.clone(),
+            name: device.name.clone(),
+            ipad: device.ipad,
+            phone: true,
+        }
+    }
 }
 
 impl From<&super::Simulator> for Chosen {
@@ -32,6 +45,7 @@ impl From<&super::Simulator> for Chosen {
             udid: simulator.udid.clone(),
             name: simulator.name.clone(),
             ipad: simulator.ipad,
+            phone: false,
         }
     }
 }
@@ -118,7 +132,7 @@ impl DeviceView {
 
     /// Shows `chosen` in this tab.
     pub fn choose(&mut self, chosen: Chosen, cx: &mut Context<Self>) {
-        let link = super::devices(cx).update(cx, |devices, cx| devices.link(&chosen.udid, &chosen.name, cx));
+        let link = super::devices(cx).update(cx, |devices, cx| devices.link(&chosen.udid, &chosen.name, chosen.phone, cx));
         let picture = link.read(cx).picture.clone();
         link.update(cx, |link, _| link.shown_in_tab());
         if let Some(before) = self.link.take() {
@@ -149,11 +163,15 @@ impl DeviceView {
     }
 
     /// Starts the device shown at the person's click: one more than their limit of simulators
-    /// running at once, they're asked first.
+    /// running at once, they're asked first. A real device isn't a simulator: no limit.
     pub fn start_asking(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let (Some(link), Some(chosen)) = (self.link.clone(), self.device.as_ref()) else {
             return;
         };
+        if chosen.phone {
+            link.update(cx, Link::start);
+            return;
+        }
         let running = super::devices(cx).read(cx).running_now(cx);
         let Some(others) = super::past_limit(&running, Some(&chosen.udid), super::at_once(cx)) else {
             link.update(cx, Link::start);
@@ -191,9 +209,9 @@ impl DeviceView {
         self.link.as_ref()
     }
 
-    /// Whether it shows a simulator (all devices are, until real ones come).
-    pub(super) fn simulator(&self, _: &Context<Self>) -> bool {
-        self.device.is_some()
+    /// Whether it shows a simulator, which turns and locks at a button; a real device doesn't.
+    pub(super) fn simulator(&self) -> bool {
+        self.device.as_ref().is_some_and(|device| !device.phone)
     }
 
     /// "iPhone" or "iPad", for the words that name the device.

@@ -103,13 +103,14 @@ pub(super) fn which(caller: &Caller, device: Option<&str>, pane: Option<PaneId>,
             .find_map(|(id, udid)| (*id == pane).then(|| udid.clone()))
             .ok_or_else(|| ControlError::not_found(format!("Pane {pane} shows no device; device_list lists them.")))?,
         (None, None) => {
-            // The one acted on last, while a tab still shows it.
-            let last = last_device(caller, cx).filter(|udid| tabs.iter().any(|(_, shown)| shown == udid));
+            // The one acted on last, while a tab still shows it; only what the caller may use.
+            let allowed = |udid: &String| usable(caller, udid, cx).is_ok();
+            let last = last_device(caller, cx).filter(|udid| tabs.iter().any(|(_, shown)| shown == udid) && allowed(udid));
             let running: Vec<Entity<Link>> = (registry.links())
-                .filter(|link| link.read(cx).running_or_starting())
+                .filter(|link| link.read(cx).running_or_starting() && allowed(&link.read(cx).udid))
                 .cloned()
                 .collect();
-            match (last.or(shown), running.as_slice()) {
+            match (last.or(shown.filter(allowed)), running.as_slice()) {
                 (Some(udid), _) => udid,
                 (None, [only]) => return Ok(target(only.clone())),
                 (None, []) => {
@@ -126,6 +127,7 @@ pub(super) fn which(caller: &Caller, device: Option<&str>, pane: Option<PaneId>,
             }
         }
     };
+    usable(caller, &udid, cx)?;
     match registry.existing(&udid) {
         Some(link) => Ok(target(link)),
         None if registry.simulator(&udid).is_some() => Err(ControlError::device_unavailable(format!(
@@ -136,6 +138,24 @@ pub(super) fn which(caller: &Caller, device: Option<&str>, pane: Option<PaneId>,
             "No device {udid} among Koyo's: device_list lists them."
         ))),
     }
+}
+
+/// Whether `caller` may use the device `udid`: a simulator of Koyo's, yes; a real iPhone or
+/// iPad, plugged in or open in a tab, is the person's own, and not yet.
+pub(super) fn usable(_caller: &Caller, udid: &str, cx: &App) -> Result<(), ControlError> {
+    let registry = devices::devices(cx).read(cx);
+    let name = match registry.existing(udid) {
+        Some(link) if link.read(cx).phone => link.read(cx).name.clone(),
+        Some(_) => return Ok(()),
+        None => match registry.plugged_device(udid) {
+            Some(device) => device.name.clone(),
+            None => return Ok(()),
+        },
+    };
+    Err(ControlError::new(
+        ErrorCode::Unsupported,
+        format!("{name} is the person's own device: agents can't use a real iPhone or iPad yet. Use one of Koyo's simulators."),
+    ))
 }
 
 /// Notes the device `udid` as the one `caller` acted on last.

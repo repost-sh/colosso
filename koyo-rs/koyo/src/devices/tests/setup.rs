@@ -49,6 +49,7 @@ fn the_picker_and_the_persons_own_tab_offer_the_setup_and_an_agents_doesnt(cx: &
         udid: "U-OFFER".into(),
         name: "iPhone 18 Pro".into(),
         ipad: false,
+        phone: false,
     };
     picker.update(cx, |view, cx| view.choose(chosen, cx));
     let link = cx.read(|cx| picker.read(cx).link().cloned()).expect("its link");
@@ -85,7 +86,7 @@ fn the_setups_steps_follow_what_the_mac_has_and_the_device_it_made(cx: &mut Test
     shows(found(ready(), true, true), Vec::new(), cx);
     assert_eq!(step(cx), Step::Needs(Need::Device));
     // The device made: its first start, then ready.
-    let link = cx.update(|cx| devices(cx).update(cx, |registry, cx| registry.link("U-SETUP", "iPhone 18 Pro", cx)));
+    let link = cx.update(|cx| devices(cx).update(cx, |registry, cx| registry.link("U-SETUP", "iPhone 18 Pro", false, cx)));
     let _told = link.update(cx, |link, cx| link.stand_in(screen(), cx));
     let starting = Said::Starting {
         step: Starting::Booting { first: true },
@@ -107,6 +108,7 @@ fn third(cx: &mut TestAppContext) -> (gpui_kit::AnyWindowHandle, Entity<DeviceVi
         udid: "U-3".into(),
         name: "iPad Pro".into(),
         ipad: true,
+        phone: false,
     };
     shell.update(cx, |shell, cx| shell.device_pane(Some(chosen), true, cx));
     let view = cx.read(|cx| shell.read(cx).shown_device_view(cx)).expect("its tab");
