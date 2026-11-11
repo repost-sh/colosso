@@ -218,6 +218,9 @@ answer), `Request { request, ask }`, `Cancel`, `Quit`. Host to app: `Hello { pro
 - Every state has one way out or moves on by itself: no device chosen (the picker), not running,
   starting (for the first time: "about a minute"), ready, locked, unplugged, needs setup, below
   iOS 27, failed.
+- Stopped (its tab closed, Settings' Stop, `device_close`, Koyo quitting), a device is
+  stopping until its host has shut the simulator down and closed; it still counts against the
+  limit until then, and the set is listed again once it's down.
 - How it stands is read in one place (`devices/standing.rs`): the host's last word first. A host
   that says it can't go on (what it needs is missing, its input never answered, the simulator
   went) is told to go and isn't started again by itself; its word stays on the tab, and Start
@@ -292,9 +295,28 @@ to do at the step in hand under them. What the Mac has is read off the main thre
 For a real device: connect, trust, unlock, Developer Mode, the system version, each with the exact
 path on the device (M6).
 
-Settings → Devices: Xcode's state; the systems installed (no `Delete`: they're Xcode's too); Koyo's
-simulators with `New…` and `Delete`; what is running, with `Stop`; the limit of simulators running
-at once (2); connected devices with `Set Up…`; and in words what Koyo doesn't touch.
+**Settings → Devices** (`settings_view/devices.rs`; `settings_open` with `devices`):
+
+- What simulators need: Xcode's version and whether it's set up, with `Set Up…` when it isn't;
+  the iOS systems installed with their sizes. No `Delete` for a system: they're Xcode's too, and
+  the page says to add or remove one in Xcode, under Settings → Components.
+- Koyo's simulators, each with its system and whether it runs: `Stop` while it does (through its
+  host, else as `simctl shutdown`), "Stopping…" until it's down, `Delete` while it doesn't,
+  asked first. `New…` lists the newest system's models and makes one.
+- Simulators running at once: 1 to 4, 2 unless the person changes it, with what runs now. An
+  agent's `device_open` past it is refused naming what runs; the person's own Start past it (the
+  tab's Start, a pick in the picker, the launcher) asks "Start {name} too?" with `Start Anyway`.
+  One rule (`devices::past_limit`) over one count: what Koyo's set has booted and what Koyo holds,
+  starting, running or still shutting down. Opening a tab starts nothing: whoever opens it starts
+  it, the person through the question. No figure for memory: none was measured well enough to
+  show.
+- What Koyo doesn't touch, in words: Xcode's simulators, and an iOS system ever; a simulator only
+  at the person's Delete. The real device's sentence comes with M6.
+- Nothing here is reachable by `settings_set`.
+
+Measured off screen at the end of the walk: the page showed the device running; its `Stop` had
+it down and the page saying so in 3.6 s (once its host had shut it down and closed); `Delete`
+took it out of the set in 0.3 s.
 
 ## 11. Milestones
 
@@ -305,7 +327,7 @@ at once (2); connected devices with `Set Up…`; and in words what Koyo doesn't 
 | M2 | The tab | done: the hand's and the states' tests, the off-screen pictures with two real simulators, QH1-QH4; the window at 60 and 120 Hz waits on the owner (QP8) |
 | M3 | Agents on a simulator | done: QT1-QT8 and QL1-QL3 through the real MCP client |
 | M4 | The simulator half reviewed and hardened | done: the review's findings fixed, the rows re-run |
-| M5 | Setup and Settings | the setup for simulators, the picker's and the tab's missing states; Settings → Devices to come |
+| M5 | Setup and Settings | the setup for simulators, the picker's and the tab's missing states, Settings → Devices and the limit: off screen; the walk through the release bundle in a window waits on the owner |
 | M6 | The real device | |
 | M7 | Finish | |
 
