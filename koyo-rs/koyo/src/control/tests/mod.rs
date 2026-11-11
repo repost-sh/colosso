@@ -3,6 +3,7 @@
 //! the window's shell looked at after. Timers are the test clock's, so a two-minute prompt
 //! times out when the test says.
 
+mod accounts;
 mod activity;
 mod approval;
 mod chat_modes;

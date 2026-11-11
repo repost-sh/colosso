@@ -9,10 +9,13 @@
 mod button;
 mod environment;
 mod model;
+pub(crate) use model::{Problem, Row, View};
 mod panel;
 mod poll;
 mod reading;
 mod service;
+#[cfg(test)]
+pub(crate) use service::TestEnv;
 mod words;
 
 use std::time::Duration;
@@ -31,7 +34,7 @@ pub fn now() -> f64 {
 }
 
 pub struct Accounts {
-    view: model::View,
+    view: View,
     /// The button, which the panel opens from.
     trigger: Trigger,
     /// What runs while Koyo manages the login.
@@ -54,7 +57,7 @@ impl Global for TheAccounts {}
 /// Makes the accounts and their button, and follows Manage Claude accounts.
 pub fn init(cx: &mut App) {
     let accounts = cx.new(|_| Accounts {
-        view: model::View::default(),
+        view: View::default(),
         trigger: Trigger::new("accounts-panel"),
         running: None,
     });
@@ -73,6 +76,11 @@ pub fn init(cx: &mut App) {
 
 pub fn accounts(cx: &App) -> Entity<Accounts> {
     cx.global::<TheAccounts>().accounts.clone()
+}
+
+/// What the button and the panel show, for agents (`control/exec/accounts.rs`).
+pub(crate) fn view(cx: &App) -> &View {
+    &cx.global::<TheAccounts>().accounts.read(cx).view
 }
 
 /// The sidebar foot's accounts button.
@@ -129,7 +137,7 @@ impl Accounts {
             }
             (false, true) => {
                 self.running = None;
-                self.view = model::View::default();
+                self.view = View::default();
                 self.trigger.close(cx);
             }
             _ => return,
@@ -169,4 +177,4 @@ impl Accounts {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

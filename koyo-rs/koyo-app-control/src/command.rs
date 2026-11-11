@@ -220,4 +220,5 @@ registry! {
     SettingsGet => ops::settings::SettingsGet,
     SettingsSet => ops::settings::SettingsSet,
     ActivityList => ops::activity::ActivityList,
+    ClaudeAccountsList => ops::accounts::ClaudeAccountsList,
 }

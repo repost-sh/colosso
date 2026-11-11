@@ -133,7 +133,7 @@ fn row_shown(row: &Row, now: f64, p: Palette) -> AnyElement {
     ];
     let under: Vec<&str> = under.into_iter().flatten().collect();
     let status = match (&row.problem, row.measured_at) {
-        (Some(problem), _) => words::problem(problem, now),
+        (Some(problem), _) => problem.sentence(now),
         (None, Some(at)) => format!("Read {}", words::age(at, now)),
         (None, None) => "Not read yet.".to_owned(),
     };
@@ -148,7 +148,7 @@ fn row_shown(row: &Row, now: f64, p: Palette) -> AnyElement {
         .children(
             row.bars
                 .iter()
-                .map(|bar| bar_lines(&words::current(bar, now), now, p)),
+                .map(|bar| bar_lines(&bar.as_of(now), now, p)),
         )
         .child(small(status, p).when(row.problem.is_some(), |line| line.text_color(p.danger)))
         .into_any_element()

@@ -3,6 +3,7 @@
 //! (`words.rs`), never stored.
 
 use gpui_kit::SharedString;
+use koyo_accounts::pace::WEEKLY_PERIOD_S;
 
 /// One window's bar: the 7 days, or a model's own weekly limit.
 #[derive(Clone, Debug, PartialEq)]
@@ -17,7 +18,35 @@ pub struct Bar {
     pub ahead_of_pace: bool,
 }
 
-/// What stands in the way of a reading, named with its remedy (`words::problem`).
+impl Bar {
+    /// The bar as of `now`: a weekly window whose reset has passed has started again, empty,
+    /// and resets a whole number of weeks later (claude-swap 1d38e67).
+    pub fn as_of(&self, now: f64) -> Bar {
+        match self.resets_at {
+            Some(resets) if resets <= now => {
+                let weeks = ((now - resets) / WEEKLY_PERIOD_S).floor() + 1.;
+                Bar {
+                    percent: Some(0.),
+                    resets_at: Some(resets + weeks * WEEKLY_PERIOD_S),
+                    ahead_of_pace: false,
+                    ..self.clone()
+                }
+            }
+            _ => self.clone(),
+        }
+    }
+
+    /// How much of the window is used as of `now`, past its reset none.
+    pub fn used(&self, now: f64) -> Option<f64> {
+        if self.resets_at.is_some_and(|resets| resets <= now) {
+            Some(0.)
+        } else {
+            self.percent
+        }
+    }
+}
+
+/// What stands in the way of a reading, named with its remedy (`Problem::sentence`).
 #[derive(Clone, Debug, PartialEq)]
 pub enum Problem {
     /// The usage endpoint said to wait until then (seconds since the epoch).

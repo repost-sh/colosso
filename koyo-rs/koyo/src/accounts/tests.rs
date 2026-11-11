@@ -13,10 +13,10 @@ use super::service::TestEnv;
 use super::*;
 use crate::test_support::in_window;
 
-const USAGE: &str = "https://api.anthropic.com/api/oauth/usage";
+pub(crate) const USAGE: &str = "https://api.anthropic.com/api/oauth/usage";
 
 /// A sandbox signed in as ana@example.com, its token good for a day.
-fn signed_in() -> Sandbox {
+pub(crate) fn signed_in() -> Sandbox {
     let sandbox = Sandbox::new();
     // The app's clock is the Mac's: the crate's is too, here.
     sandbox.clock.set(now());

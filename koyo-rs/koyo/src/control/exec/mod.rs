@@ -3,6 +3,7 @@
 //! file being written answers from a task, git's work off the UI thread. A destructive call
 //! first has its question for the person made, naming exactly what it would do.
 
+mod accounts;
 mod activity;
 mod app;
 mod browser;
@@ -92,6 +93,7 @@ pub(crate) fn run(caller: &Caller, command: Command, cx: &mut App) -> Exec {
         C::SettingsGet(_) => Exec::Ready(settings::get(cx)),
         C::SettingsSet(input) => Exec::Ready(settings::set(input, cx)),
         C::ActivityList(input) => Exec::Ready(activity::list(caller, &input, cx)),
+        C::ClaudeAccountsList(_) => Exec::Ready(accounts::list(cx)),
         C::BrowserList(_) => Exec::Ready(browser::list(cx)),
         C::BrowserClaim(input) => Exec::Ready(browser::claim(caller, &input, cx)),
         C::BrowserRelease(input) => Exec::Ready(browser::release(caller, input.pane, cx)),

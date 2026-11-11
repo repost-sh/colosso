@@ -188,8 +188,9 @@ app_launch (stdio relay only, answered by the relay) → starts Koyo when it isn
            and waits up to 30 s for its socket
 layout_set [navigate] I { sidebar?: bool, rightPanel?: "changes"|"files"|"none",
                          bottomPanel?: bool, layout?: "orca"|"arc" } → app_status subset
-settings_open [navigate] I { page?: "general"|"chat"|"appearance"|"editor"|"languages"|
-                         "browser"|"keyboard"|"mcp"|"about" } ; settings_close [navigate] I {}
+settings_open [navigate] I { page?: "general"|"chat"|"accounts"|"appearance"|"editor"|
+                         "languages"|"browser"|"keyboard"|"mcp"|"agent_desktop"|"about" } ;
+              settings_close [navigate] I {}
 ```
 
 `sidebar: false` (or ⌘B) is compact mode: the rails fold with the sidebar until every edge is as
@@ -437,6 +438,25 @@ external client lists its own (`onlyYours: true`): its calls, its approval, the
 confirmations of its calls. `client` is the log's key: a client's name, `terminal:<handle>`
 or `chat:<id>`.
 
+### Accounts
+
+```
+claude_accounts_list [read] R {} → { managed, accounts: [{ email, organisation?, active,
+                       windows: [{ name, percent|null, resetsAt?, aheadOfPace }], readAt?,
+                       problem?: { kind, message, until? } }], unreadable?, overriddenBy? }
+```
+
+The Claude Code accounts the sidebar's accounts panel shows (`docs/claude-accounts.md`): for
+now the Mac's login, `active`. `windows` are its 7 days and each model's own weekly window as
+last read, a weekly window past its reset empty again; `problem` says what keeps it from being
+read: `kind` is `rate_limited` (with `until`), `plan_lapsed`, `certificate_refused`,
+`sign_in_again`, `token_expired`, `keychain_unavailable` (still signed in), `offline` or
+`other`, and `message` the panel's sentence with its remedy. `unreadable` says why the login
+couldn't be read at all, and `overriddenBy` names a shell variable (`ANTHROPIC_API_KEY`, …)
+that makes Claude Code ignore it. Times are milliseconds since the epoch. With Manage Claude accounts off,
+`managed` is false and nothing is listed. Switching stays with the person: no operation
+switches.
+
 ### Settings
 
 ```
@@ -527,7 +547,7 @@ owner found the list of no use, and agents read the log with `activity_list` (5)
 
 ## 11. As implemented (2026-11-02)
 
-- Crates: `koyo-rs/koyo-app-control` (69 operations, frames, socket, client, `koyo app`),
+- Crates: `koyo-rs/koyo-app-control` (70 operations, frames, socket, client, `koyo app`),
   `koyo-rs/koyo/src/control/` (listener, gate, approval, confirmations, receipts, activity,
   topics, in-process client, HTTP server in `control/http.rs`, executors in `control/exec/`,
   browser executors in `control/exec/browser/`, the agent desktop's in
@@ -535,7 +555,7 @@ owner found the list of no use, and agents read the log with `activity_list` (5)
   `backend.rs`, `socket.rs`, `app.rs`, `tools.rs`, `launch.rs`, `subscriptions.rs`,
   `http.rs`), the Settings page in `settings_view/mcp_server.rs`, `mcp_agents.rs` (the
   Agents section) and `mcp_clients.rs`.
-- `koyo mcp` lists 84 tools (14 terminal, 69 app, `app_launch`); HTTP lists 83 (no
+- `koyo mcp` lists 85 tools (14 terminal, 70 app, `app_launch`); HTTP lists 84 (no
   `app_launch`). The server is named `koyo`. A chat's session registers it under that name,
   with `KOYO_CHAT` (`docs/chat.md` O1).
 - Browser tools run over CDP through `browser/agent.rs`, its refusals typed (`AgentError`). A
@@ -584,6 +604,9 @@ owner found the list of no use, and agents read the log with `activity_list` (5)
   over `control::policy::activity`, read in place; the log's decisions are the operation's
   `ActivityDecision`; the log's size is `ops::activity::KEPT`, which
   `control/activity.rs` keeps to. Recent activity left Settings → MCP server the same day.
+- `claude_accounts_list` (5, 2026-11-11): `ops/accounts.rs`, executor
+  `control/exec/accounts.rs` over `accounts::view`, the sidebar panel's own; a problem is
+  `ProblemKind` with the panel's sentence as its `message`.
 - Pages agents open (5, 2026-11-08): `control/exec/open.rs` `open_on`, the opening both
   `tab_open` and `pane_split` go through, checks the pane's fields and makes the mode
   (`page_mode`) from the call's `viewport` (`control/exec/browser/viewport.rs`

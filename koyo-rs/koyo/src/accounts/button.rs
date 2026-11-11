@@ -11,7 +11,7 @@ use gpui_kit::{
 };
 use koyo_agent::words::NEARLY_FULL;
 
-use super::{Accounts, words};
+use super::Accounts;
 use crate::ring::ring;
 use crate::shell::glass;
 use crate::theme;
@@ -40,7 +40,7 @@ impl Render for AccountsButton {
         let p = theme::palette(cx);
         let now = super::now();
         let active = accounts.view.active();
-        let used = active.and_then(|row| words::used(row.weekly()?, now));
+        let used = active.and_then(|row| row.weekly()?.used(now));
         let colour = match used {
             Some(used) if used >= f64::from(NEARLY_FULL) => p.danger,
             Some(_) => p.text,
