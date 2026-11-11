@@ -190,6 +190,20 @@ reached only from `phone/`: its API is unstable below 0.2.
 - Unplugged mid-session: the host says it's gone ("{name} was unplugged. Plug it back in to
   continue."); not connected at the start, it's the setup's cable step.
 - One remote view of a device at a time: Xcode or Device Hub taking it pauses Koyo's.
+- **In the app** (`devices/connected.rs`): what's plugged in is listed by `devicectl list devices`
+  off the main thread when a Devices surface first shows, iPhones and iPads by cable only, each
+  with the first step it misses (one reading of that JSON for the host and the app,
+  `koyo_device_wire::real`, whose `devicectl` call is bounded at 15 s and the host's too). From
+  then a watcher, the host's program run as `--watch` (usbmuxd's plug events by cable; it ends
+  when Koyo does), has it listed again at each plug, a burst as one, and once more 3 s later;
+  should the watcher go (usbmuxd gone, as after a sleep), a look a minute on starts it again.
+  `device_list` reads that list while the watcher keeps it. Nothing else polls but a device's
+  setup, and only for the steps no plug says. A real device is no simulator: no limit, no share
+  of the simulators running at once. A tab that ended for a step the list sees (unplugged, the
+  cable, trust, Developer Mode, the system, the developer services) starts again by itself once a
+  listing begun after it ended says the device is ready: three times at most until it stands
+  ready or the person starts it, so a host that disagrees with the list is never started in a
+  loop; what the list can't see (another app holding the device) waits for Start Again.
 - Measured on an iPad Pro 12.9-inch on iPadOS 27.0.1 (`tests/real_phone.rs`): ready in 0.5-1.5 s,
   2736 x 2064 at 2x, 32.6 pictures a second on a still screen (none lost: the ring copied every
   one); a tap aimed at an icon opened it; the volume buttons, Home and five fingers; a wait on a
@@ -240,7 +254,17 @@ answer), `Request { request, ask }`, `Cancel`, `Quit`. Host to app: `Hello { pro
   its name and a dot and a word for how it stands (green Ready, amber Starting, red what needs
   doing, grey Not running); then icon buttons, each named by its tooltip with its key: Home
   (⇧⌘H) and App Switcher, then Rotate Left (⌘←), Rotate Right (⌘→) and Lock for simulators;
-  for a real device the sentence of 5. Dimmed until the device stands ready.
+  for a real device the sentence of 5, while its stream is held (ready or locked). Dimmed until
+  the device stands ready.
+- The picker lists Koyo's simulators (or what they miss, with `Set Up…`), then under "Plugged in"
+  the iPhones and iPads by cable, each with its system and the step it misses.
+- A real device's states: locked ("Unlock your iPad to continue.", the lock screen under it),
+  moving on by itself; unplugged ("{name} was unplugged. Plug it back in to continue."; the
+  toolbar says Unplugged), moving on by itself, with Start Again should the plug go unheard; the
+  cable, trust and Developer Mode, each in a sentence with
+  `Set Up…`, moving on by themselves once done; below 27 ("{name} runs iOS 26.6.1. Koyo drives
+  devices on iOS and iPadOS 27 or later: update it in Settings → General → Software Update."),
+  nothing to press; another app holding it, or its developer services not up, with Start Again.
 - The control bar is the browser's own pill (`held::bar`). An agent's touches show as marks.
 - After a restart a tab comes back as "{name} isn't running." with `Start`: nothing starts by
   itself. A device no longer in Koyo's set says "{name} is no longer among Koyo's devices." with
@@ -274,6 +298,9 @@ answer), `Request { request, ask }`, `Cancel`, `Quit`. Host to app: `Hello { pro
 
 - Which device: `device` or `pane`; with neither, the one this caller acted on last while a tab
   still shows it, else the shown tab's, else the only one open, else an error that lists them.
+  A call naming no device never finds a real one.
+- `device_list` lists Koyo's simulators and the iPhones and iPads plugged in (`kind: device`, no
+  `set`; `needsPerson` with the step a device misses until its tab says more).
 - `device_snapshot` reads a simulator's own accessibility tree (`source: accessibility`), asked of
   its CoreSimulatorBridge as idb asks it: roles, labels, values, ids, a ref touching the
   element's activation point (a switch's row on its switch). A system alert is an app of its
@@ -291,7 +318,9 @@ answer), `Request { request, ask }`, `Cancel`, `Quit`. Host to app: `Hello { pro
   that isn't lent to it, reads included, puts a sheet in Koyo's window ("Let “{agent}” use your
   {iPad} “{name}”?", `Allow` / `Don't Allow`) and returns at once with `device_needs_person`. After
   `Allow` the device is that agent's until the person takes it back. `Don't Allow` answers
-  `user_declined` and raises no new sheet for that agent and device for ten minutes.
+  `user_declined` and raises no new sheet for that agent and device for ten minutes. Until that
+  sheet is built, every tool naming a real device, `device_open` included, is refused with
+  `unsupported` ("the person's own device").
 - Nothing unverified is shipped as working: a tool path that couldn't be shown to work on the real
   thing refuses with what to use instead.
 
@@ -329,11 +358,23 @@ to do at the step in hand under them. What the Mac has is read off the main thre
   stood ready 49-60 s later; the person's first tap, on Settings where the
   accessibility tree placed it, opened it.
 
-For a real device: connect, trust, unlock, Developer Mode, the system version, each with the exact
-path on the device (M6).
+**The setup for a real device** (`devices/setup/device.rs`): its own dialog, opened by `Set Up…` in
+a device's tab or Settings → Devices, for that device or the first plugged in that misses a step.
+Five rows, each ticked the moment `devicectl` lists it so: connected by cable; trusted ("Unlock
+it, tap Trust and enter its passcode"); Developer Mode (Settings → Privacy & Security → Developer
+Mode; what it is, that it lowers the device's guard, the restart and Turn On, and that the switch
+shows only once a Mac with Xcode has seen the device); iOS or iPadOS 27 or later (Settings →
+General → Software Update); its developer services (nothing to do: they start once it's
+unlocked). It lists again at each plug, and at the steps no plug says (trust, Developer Mode, the
+services) every two seconds while open with Koyo in front and at once when Koyo comes forward;
+`Check Again` for the impatient. Koyo changes no setting on the
+device: each step is the person's. A picture of each Settings screen beside its step isn't there:
+it would be a picture of a device.
 
 **Settings → Devices** (`settings_view/devices.rs`; `settings_open` with `devices`):
 
+- iPhones and iPads plugged in, each ready ("Ready to use in a Device tab") or with the step it
+  misses and `Set Up…`; none plugged in, how to plug one in, with `Set Up…`.
 - What simulators need: Xcode's version and whether it's set up, with `Set Up…` when it isn't;
   the iOS systems installed with their sizes. No `Delete` for a system: they're Xcode's too, and
   the page says to add or remove one in Xcode, under Settings → Components.
@@ -348,7 +389,8 @@ path on the device (M6).
   it, the person through the question. No figure for memory: none was measured well enough to
   show.
 - What Koyo doesn't touch, in words: Xcode's simulators, and an iOS system ever; a simulator only
-  at the person's Delete. The real device's sentence comes with M6.
+  at the person's Delete; on an iPhone or iPad, no setting: it's kept awake only while its tab is
+  open, its camera and microphone off meanwhile.
 - Nothing here is reachable by `settings_set`.
 
 Measured off screen at the end of the walk: the page showed the device running; its `Stop` had
@@ -365,7 +407,7 @@ took it out of the set in 0.3 s.
 | M3 | Agents on a simulator | done: QT1-QT8 and QL1-QL3 through the real MCP client |
 | M4 | The simulator half reviewed and hardened | done: the review's findings fixed, the rows re-run |
 | M5 | Setup and Settings | the setup for simulators, the picker's and the tab's missing states, Settings → Devices and the limit: off screen; the walk through the release bundle in a window waits on the owner |
-| M6 | The real device | |
+| M6 | The real device | the host on the iPad (QR1-QR3, QR5, QR8, QR13); in the app: listed, its states, its setup, Settings' list, agents kept off it (off screen, and the iPad opened and closed through the app). The lend, and the rows that need the owner's hands, to come |
 | M7 | Finish | |
 
 ## 12. Measurements
