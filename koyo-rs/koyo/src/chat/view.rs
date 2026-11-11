@@ -6,9 +6,12 @@
 
 mod context_menu;
 pub(super) mod details;
-mod floating;
+pub(super) mod floating;
+pub(super) mod picture;
 
+use std::cell::Cell;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::time::Duration;
 
 use gpui_kit::component::message_scroller::MessageScrollerState;
@@ -16,7 +19,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, AppContext as _, Context, Entity, EventEmitter, ExternalPaths, FocusHandle, Focusable,
     InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Render, SharedString,
-    StyleRefinement, Styled as _, Subscription, Task, Window, div,
+    StyleRefinement, Styled as _, Subscription, Task, Window, div, px,
 };
 use koyo_agent::protocol::ids::ThreadId;
 
@@ -27,9 +30,11 @@ use super::subagent_bar::{KEYS, OpenParent, SubagentBar, WentToParent};
 use super::thread::ChatThread;
 use super::timeline::{GoBackTo, OpenSubagent, Timeline};
 use crate::projects::with_menu;
-use crate::settings::ProjectScript;
+use crate::settings::{self, ProjectScript};
 use crate::theme;
+use crate::viewer::Viewer;
 use details::{Details, OpenIn, ToggleDetails, Workplace};
+use floating::{CARD_GUESS, Floating};
 
 /// How long after leaving the end the pill back to it shows, so a nudge doesn't flash it.
 const PILL_DELAY: Duration = Duration::from_millis(150);
@@ -78,6 +83,17 @@ pub struct ChatView {
     showing_pill: Option<Task<()>>,
     /// The card that says where the chat works.
     details: Details,
+    /// The prompt floating over the timeline, and how tall its card was last laid out.
+    pub(super) floating: Option<Floating>,
+    card_height: Rc<Cell<Pixels>>,
+    /// How far that card is above where it floats: as far as a person scrolled down and not back
+    /// up since, all out of sight at first. How far down the list was when last looked at, and how
+    /// many times a person had scrolled it then: only what they scroll moves the card.
+    hidden: Pixels,
+    scrolled_to: Pixels,
+    hand_scrolls: u64,
+    /// The picture open over the chat.
+    pub(super) picture: Option<Entity<Viewer>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -109,6 +125,8 @@ impl ChatView {
                     details::window_active_again(view, cx);
                 }
             }),
+            // Whether prompts float, in open chats at once.
+            settings::on_change(cx, Self::float),
         ];
         let mut view = ChatView {
             chats,
@@ -119,6 +137,12 @@ impl ChatView {
             pill: false,
             showing_pill: None,
             details: Details::default(),
+            floating: None,
+            card_height: Rc::new(Cell::new(px(CARD_GUESS))),
+            hidden: Pixels::MAX,
+            scrolled_to: Pixels::ZERO,
+            hand_scrolls: 0,
+            picture: None,
             _subscriptions: subscriptions,
         };
         if let Some(thread) = opened {
@@ -172,6 +196,7 @@ impl ChatView {
             }),
             cx.subscribe_in(&timeline, window, Self::went_into),
             cx.subscribe_in(&timeline, window, Self::went_back),
+            cx.subscribe_in(&timeline, window, Self::picture_clicked),
             cx.observe(&scroller, |view, _, cx| view.scrolled(cx)),
         ];
         if let Some(bar) = &bar {
@@ -251,6 +276,14 @@ impl ChatView {
     fn showing_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.pill = false;
         self.showing_pill = None;
+        self.floating = None;
+        self.hidden = Pixels::MAX;
+        // Each chat has its own list: what a person scrolls is counted from where this one is.
+        if let Some(shown) = self.shown.last() {
+            let scroller = shown.scroller.read(cx);
+            (self.scrolled_to, self.hand_scrolls) =
+                (scroller.scroll_offset(), scroller.hand_scrolls());
+        }
         window.focus(&self.focus_handle(cx), cx);
         cx.notify();
     }
@@ -332,6 +365,8 @@ impl ChatView {
         if up && near_top {
             self.fetch_older(cx);
         }
+        self.reveal(cx);
+        self.float(cx);
     }
 
     /// Asks for the runs before the oldest held, once at a time.
@@ -388,6 +423,8 @@ impl Render for ChatView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         details::keep_fresh(self, cx);
         self.note_seen(window, cx);
+        // Once the list is laid out, as following its end moves it without a scroll.
+        cx.defer_in(window, |this, _, cx| this.float(cx));
         let timeline = (self.showing()).map(|shown| {
             shown
                 .timeline
@@ -421,8 +458,10 @@ impl Render for ChatView {
             .map(|chat| with_menu(chat, context_menu::menu))
             .child(details::measure(cx))
             .children(timeline)
+            .children(self.floating_prompt(window, cx))
             .children(self.scroll_pill(window, cx))
             .child(details::floating(self, window, cx))
             .child(self.composer_in_place(cx))
+            .children(self.picture_over(cx))
     }
 }

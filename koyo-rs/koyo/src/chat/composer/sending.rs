@@ -26,6 +26,16 @@ impl Chats {
     }
 }
 
+/// What's sent of what's typed: all of it, as markdown, but the blank lines and spaces round it.
+/// The first line keeps its indent, which can make it code.
+pub(in crate::chat) fn sent(typed: &str) -> &str {
+    let words = typed
+        .find(|c: char| !c.is_whitespace())
+        .unwrap_or(typed.len());
+    let line = typed[..words].rfind('\n').map_or(0, |end| end + 1);
+    typed[line..].trim_end()
+}
+
 impl ChatComposer {
     /// Whether what's typed answers what's asked, which takes only words: what's attached stays for
     /// the message after.
@@ -69,7 +79,7 @@ impl ChatComposer {
     }
 
     fn send_as(&mut self, delivery: Delivery, window: &mut Window, cx: &mut Context<Self>) {
-        let text = self.text.read(cx).value().trim().to_owned();
+        let text = sent(&self.text.read(cx).value()).to_owned();
         if !self.can_send(&text) {
             return;
         }

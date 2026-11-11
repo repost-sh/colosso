@@ -20,6 +20,7 @@ mod drafts;
 
 mod attach;
 mod effort;
+mod markdown;
 mod missing;
 mod suggest;
 

@@ -193,6 +193,23 @@ fn what_the_composer_shows_while_a_chat_works_is_kept() {
 }
 
 #[test]
+fn prompts_float_until_a_person_turns_it_off_which_is_kept() {
+    assert!(Settings::default().floating_prompts, "on by default");
+    let missing: Settings = serde_json::from_str("{}").unwrap();
+    assert!(
+        missing.floating_prompts,
+        "a file from before has them float"
+    );
+    let off = Settings {
+        floating_prompts: false,
+        ..Settings::default()
+    };
+    let json = serde_json::to_value(&off).unwrap();
+    assert_eq!(json["floating_prompts"], false);
+    assert_eq!(serde_json::from_value::<Settings>(json).unwrap(), off);
+}
+
+#[test]
 fn worktrees_go_in_a_folder_per_project() {
     let settings = Settings {
         worktrees_dir: Some("/work".into()),

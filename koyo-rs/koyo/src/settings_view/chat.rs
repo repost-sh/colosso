@@ -1,6 +1,6 @@
 //! The Chat settings page: what chats run on and whether they have Koyo's tools, what an agent
-//! may do and how hard it works in a new chat, how wide a chat is and what its composer shows
-//! while it works, and how much of its work shows, its verbosity.
+//! may do and how hard it works in a new chat, how wide a chat is, whether its prompts float, what
+//! its composer shows while it works, and how much of its work shows, its verbosity.
 
 use std::path::Path;
 
@@ -177,17 +177,31 @@ fn verbosity(cx: &App) -> SettingsSection {
 
 fn layout(cx: &App) -> SettingsSection {
     let width = settings::get(cx).chat_width;
-    SettingsSection::new("Layout").row(
-        SettingRow::new("Width")
-            .description(
-                "How wide a chat's messages and work get: a column that reads easily, a wider \
-                 one for code and diffs, or as wide as the pane. Right-click a chat to change \
-                 this, its text size or its verbosity there.",
-            )
-            .control(MenuButton::new("chat-width", width.label(), |cx| {
-                settings::get(cx).chat_width.menu()
-            })),
-    )
+    SettingsSection::new("Layout")
+        .row(
+            SettingRow::new("Width")
+                .description(
+                    "How wide a chat's messages and work get: a column that reads easily, a wider \
+                     one for code and diffs, or as wide as the pane. Right-click a chat to change \
+                     this, its text size or its verbosity there.",
+                )
+                .control(MenuButton::new("chat-width", width.label(), |cx| {
+                    settings::get(cx).chat_width.menu()
+                })),
+        )
+        .row(
+            SettingRow::new("Floating prompts")
+                .description(
+                    "Scrolling back up through what answers a prompt brings the prompt down at the \
+                     top of the chat, cut to a few lines, as far as you scroll. Open it there to \
+                     read it all, or go to it.",
+                )
+                .control(NativeSwitch::new(
+                    "chat-floating-prompts",
+                    |settings| settings.floating_prompts,
+                    |settings, on| settings.floating_prompts = on,
+                )),
+        )
 }
 
 fn composer(cx: &App) -> SettingsSection {

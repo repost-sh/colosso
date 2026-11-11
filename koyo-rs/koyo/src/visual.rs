@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::pin::{Pin, pin};
 use std::process::ExitCode;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
@@ -36,6 +37,20 @@ const PARK: Duration = Duration::from_secs(5);
 const FRAME: Duration = Duration::from_millis(100);
 /// How long the host gets to start a chat, or to take what's said in it.
 const HOST_PATIENCE: Duration = Duration::from_secs(20);
+
+/// Whether glass is drawn as its fallback, a fill of its own: a picture is of what GPUI draws,
+/// which the native glass isn't, so what's under the glass would show through it.
+static GLASS_AS_FILL: AtomicBool = AtomicBool::new(false);
+
+/// From now on glass is drawn as its fallback fill, for pictures of what's on it.
+pub fn draw_glass_as_fill() {
+    GLASS_AS_FILL.store(true, Ordering::Relaxed);
+}
+
+/// Whether glass is drawn as its fallback fill.
+pub fn glass_as_fill() -> bool {
+    GLASS_AS_FILL.load(Ordering::Relaxed)
+}
 
 /// Whether the app was started as one of the visual checks, each a `--visual-check…` mode of
 /// it, rather than as the app a person uses.
@@ -259,6 +274,11 @@ impl Drawn {
     /// Starts a chat in `root` on the fake provider, says `said` in it and shows its tab: its id,
     /// once the host took what was said. What the provider says back is still to come.
     pub fn chat_saying(&mut self, root: &Path, said: &str) -> Result<ThreadId> {
+        self.chat_sending(root, prompt(said))
+    }
+
+    /// [`Self::chat_saying`], with `prompt` what's sent, attachments and all.
+    pub fn chat_sending(&mut self, root: &Path, prompt: Prompt) -> Result<ThreadId> {
         if std::env::var_os("KOYO_AGENT_PROVIDER").is_none_or(|provider| provider != "fake") {
             return Err("set KOYO_AGENT_PROVIDER=fake, so the chat doesn't go to Claude".into());
         }
@@ -275,19 +295,7 @@ impl Drawn {
             .ok_or("the chat wasn't started")?
             .map_err(|error| format!("the chat wouldn't start: {error}"))?
             .id;
-        let prompt = Prompt {
-            message_id: MessageId::fresh(),
-            text: said.to_owned(),
-            attachments: Vec::new(),
-        };
-        let sent = self
-            .cx
-            .read(|cx| chats.read(cx).send(&id, prompt, Delivery::Auto));
-        let mut taken = None;
-        self.finish(HOST_PATIENCE, async { taken = Some(sent.await) })?;
-        taken
-            .ok_or("nothing was said")?
-            .map_err(|error| format!("the chat wouldn't take it: {error}"))?;
+        self.send(&id, prompt)?;
         self.cx.update(|cx| {
             shell.update(cx, |shell, cx| {
                 shell.navigate(Route::Workspace, cx);
@@ -295,6 +303,20 @@ impl Drawn {
             });
         });
         Ok(id)
+    }
+
+    /// Says `prompt` in chat `id`, once the host took it.
+    pub fn send(&mut self, id: &ThreadId, prompt: Prompt) -> Result<()> {
+        let chats = self.cx.read(|cx| self.shell.read(cx).chats().clone());
+        let sent = self
+            .cx
+            .read(|cx| chats.read(cx).send(id, prompt, Delivery::Auto));
+        let mut taken = None;
+        self.finish(HOST_PATIENCE, async { taken = Some(sent.await) })?;
+        taken
+            .ok_or("nothing was said")?
+            .map_err(|error| format!("the chat wouldn't take it: {error}"))?;
+        Ok(())
     }
 
     /// Holds `key` down for `held` at 120 frames a second, the app's repeater driving it,
@@ -359,6 +381,15 @@ impl Drawn {
     fn park(&self, future: impl Future<Output = ()>) {
         let _: Option<()> =
             (self.cx.foreground_executor()).block_on(koyo_lsp::within(PARK, future));
+    }
+}
+
+/// What a person says, with nothing attached.
+pub fn prompt(said: &str) -> Prompt {
+    Prompt {
+        message_id: MessageId::fresh(),
+        text: said.to_owned(),
+        attachments: Vec::new(),
     }
 }
 

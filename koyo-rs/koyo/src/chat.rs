@@ -132,6 +132,7 @@ pub fn init(cx: &mut App) {
     queued::bind_keys(cx);
     subagent_bar::bind_keys(cx);
     view::details::bind_keys(cx);
+    view::picture::bind_keys(cx);
 }
 
 impl Chats {

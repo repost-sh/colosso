@@ -16,12 +16,15 @@ mod context;
 mod draft;
 mod effort;
 mod footer;
+mod markdown;
 mod missing;
 mod model_menu;
 mod question;
 mod sending;
 mod suggest;
 mod turn;
+
+pub(super) use sending::sent;
 
 pub use asked::ImplementPlan;
 pub use footer::TogglePlan;
@@ -32,7 +35,7 @@ pub use turn::{RecallPrompt, StopTurn};
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use gpui_kit::base::ElementExt as _;
+use gpui_kit::base::{ElementExt as _, TextViewDefaults};
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::input::{InputEvent, Textarea, TextareaState};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -100,6 +103,8 @@ pub(super) struct ChatComposer {
     /// Waiting for a new chat's thread, which a second send would make again.
     creating: bool,
     pub(super) text: Entity<TextareaState>,
+    /// The text's version its markdown was last laid over it for.
+    styled: Option<u64>,
     /// Why the last thing a person asked of it didn't happen.
     pub(super) error: Option<SharedString>,
     /// Why the chat can't be shown.
@@ -207,9 +212,12 @@ impl ChatComposer {
                 cx.notify();
             }),
             cx.observe(&text, |this, _, cx| {
+                this.style_text(cx);
                 this.follow_text(cx);
                 this.keep_draft(cx);
             }),
+            // The text views' colours, which its markdown is drawn in, follow the theme.
+            cx.observe_global::<TextViewDefaults>(Self::restyle),
             // What's attached changes the composer and not what's typed.
             cx.observe_self(|this, cx| this.keep_draft(cx)),
             cx.on_release(|this: &mut Self, cx| this.let_go(cx)),
@@ -225,6 +233,7 @@ impl ChatComposer {
             thread: None,
             creating: false,
             text,
+            styled: None,
             error: None,
             failed: None,
             connection,

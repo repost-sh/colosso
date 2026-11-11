@@ -1,4 +1,4 @@
-use crate::input::EditorMode;
+use crate::input::{EditorMode, TextareaMode};
 use crate::input::edits::translate;
 use std::{collections::BTreeMap, ops::Range};
 
@@ -469,6 +469,24 @@ fn normalize<T: TrackedDecoration>(text: &Rope, decorations: Vec<T>) -> Vec<T> {
             Some(decoration)
         })
         .collect()
+}
+
+impl InputBaseState<TextareaMode> {
+    /// Koyo: lays `decorations` over the text in place of those laid before,
+    /// clipped to it as an editor's are. They aren't moved by edits: the
+    /// owner lays them again for each change of the text.
+    pub fn set_decorations(&mut self, decorations: Vec<TextDecoration>, cx: &mut Context<Self>) {
+        let decorations = normalize(&self.text, decorations);
+        if self.extras.decorations != decorations {
+            self.extras.decorations = decorations;
+            cx.notify();
+        }
+    }
+
+    /// Koyo: the decorations laid over the text.
+    pub fn decorations(&self) -> &[TextDecoration] {
+        &self.extras.decorations
+    }
 }
 
 impl InputBaseState<EditorMode> {

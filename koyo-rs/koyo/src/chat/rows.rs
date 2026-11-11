@@ -2,7 +2,7 @@
 //! thread holds now. What each row can open is kept by the timeline, not here.
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Instant;
 
@@ -19,7 +19,7 @@ use gpui_kit::{
 };
 use koyo_agent::protocol::ids::{ItemId, RunId};
 use koyo_agent::protocol::methods::Catalog;
-use koyo_agent::protocol::model::{Attachment, Item, Run};
+use koyo_agent::protocol::model::{Attachment, Item, ItemBody, Run, UserMessage};
 use koyo_agent::protocol::requests::{Request, RequestPayload};
 use koyo_agent::replica::Replica;
 use koyo_agent::timeline::{Row, RowId, RowKind};
@@ -27,7 +27,7 @@ use koyo_agent::words::{answer_meta, duration, live_line, plan_parts, worked_for
 
 use super::output::PatchColours;
 use super::thread::ChatThread;
-use super::timeline::Timeline;
+use super::timeline::{OpenPicture, Timeline};
 use super::work;
 use super::{asks, attachments, subagents};
 use crate::files::FileLinks;
@@ -38,6 +38,10 @@ use crate::theme::Palette;
 
 /// The room over the first row.
 const TOP: f32 = 16.;
+/// How round a message's corners are.
+pub(super) const BUBBLE_RADIUS: f32 = 16.;
+/// The room over a prompt's bubble in its row: where it floats, so the two meet as it settles.
+pub(super) const PROMPT_ROOM: f32 = 8.;
 /// How big a picture a message attached shows.
 const ATTACHED_PICTURE: f32 = 160.;
 /// How often the live row's highlight moves: slow enough for the rows it redraws not to matter.
@@ -51,6 +55,10 @@ pub(super) struct Drawing {
     pub(super) catalog: Entity<Catalog>,
     pub(super) timeline: WeakEntity<Timeline>,
     pub(super) rows: Rc<Vec<Row>>,
+    /// The rows of the prompts that head the chat's sections, in order.
+    pub(super) prompts: Rc<Vec<usize>>,
+    /// The row of the prompt floating over the list, lifted out of its place.
+    pub(super) floating: Option<usize>,
     pub(super) open: Rc<HashSet<RowId>>,
     /// How much of each kind of step shows until a person opens or closes it.
     pub(super) verbosity: Verbosity,
@@ -86,8 +94,10 @@ impl Drawing {
             .w_full()
             .mx_auto()
             .px_6()
-            .when(index == 0, |row| row.pt(px(TOP)))
+            .pt(px(room_over(index, &self.prompts)))
             .pb(under)
+            // Its place is kept while it floats, so nothing under it moves.
+            .when(self.floating == Some(index), gpui_kit::Styled::invisible)
             .text_color(self.p.text)
             .children(row.and_then(|row| self.content(row, index, cx)))
             .into_any_element()
@@ -101,9 +111,11 @@ impl Drawing {
         let item_at = |at: &usize| replica.items.get(*at);
         let id = &row.id;
         let element = match &row.kind {
-            RowKind::User { item, run } => self
-                .user(item_at(item)?, run_at(run)?, id, index)?
-                .into_any_element(),
+            RowKind::User { item, run } => {
+                let said = item_at(item)?;
+                (self.user(said, thread.drawn_text(&said.id), run_at(run)?, id, index)?)
+                    .into_any_element()
+            }
             RowKind::Answer { item, run, last } => {
                 let answered = &item_at(item)?.id;
                 let meta = (last.then_some(run_at(run)?))
@@ -196,10 +208,37 @@ impl Drawing {
     }
 
     pub(super) fn show_more(&self, id: RowId, index: usize, open: bool) -> impl IntoElement {
-        let says = if open { "Show less" } else { "Show more" };
-        word_button(("chat-show-more", index), says, self.p)
+        show_more(("chat-show-more", index), open, self.p)
             .pt_1()
             .on_click(self.opens(id, index))
+    }
+
+    /// What a message attached, above its words: a picture a fixed size, so the row's height is
+    /// known before it's read, and any other file by its name. A picture opens in Koyo's viewer
+    /// over the chat, anything else where the person would.
+    pub(super) fn attached(&self, key: &str, attachments: &[Attachment]) -> Div {
+        let folder = attachments::folder();
+        let tiles = attachments.iter().enumerate().map(|(at, attachment)| {
+            let id: SharedString = format!("attached-{key}-{at}").into();
+            let path = folder.as_ref().map(|folder| folder.join(&attachment.file));
+            let tile =
+                attachments::tile(id, attachment, folder.as_deref(), ATTACHED_PICTURE, self.p);
+            match path {
+                Some(path) if attachments::shows_picture(attachment) => tile
+                    .on_click(self.on_timeline(move |_, _, cx| cx.emit(OpenPicture(path.clone())))),
+                Some(path) => {
+                    tile.on_click(move |_: &ClickEvent, _, cx| cx.open_with_system(&path))
+                }
+                None => tile,
+            }
+        });
+        div()
+            .flex()
+            .flex_wrap()
+            .justify_end()
+            .gap_2()
+            .pb_1()
+            .children(tiles)
     }
 
     /// A small button that copies what item `id` says, as it says it then.
@@ -243,11 +282,7 @@ impl Drawing {
             .flex()
             .flex_col()
             .gap_1()
-            .child(
-                TextView::new(text)
-                    .plugin(FileLinks::new(PathBuf::from(&*self.cwd)))
-                    .on_link_click(self.opens_links()),
-            )
+            .child(markdown(TextView::new(text), Path::new(&*self.cwd)))
             .child(
                 hover_meta(&group, self.p)
                     .child(self.copy_button(id))
@@ -288,25 +323,22 @@ impl Drawing {
     }
 }
 
-/// What a message attached, above its words: a picture a fixed size, so the row's height is known
-/// before it's read, and any other file by its name. Each opens where the person would.
-pub(super) fn attached(key: &str, attachments: &[Attachment], p: Palette) -> Div {
-    let folder = attachments::folder();
-    let tiles = attachments.iter().enumerate().map(|(at, attachment)| {
-        let id: SharedString = format!("attached-{key}-{at}").into();
-        let path = folder.as_ref().map(|folder| folder.join(&attachment.file));
-        attachments::tile(id, attachment, folder.as_deref(), ATTACHED_PICTURE, p)
-            .when_some(path, |tile, path| {
-                tile.on_click(move |_: &ClickEvent, _, cx| cx.open_with_system(&path))
-            })
-    });
-    div()
-        .flex()
-        .flex_wrap()
-        .justify_end()
-        .gap_2()
-        .pb_1()
-        .children(tiles)
+/// `text` drawn as what a chat says is: its links to files read as the tree names them, and open
+/// in a tab on a click, a link to a page in the browser.
+pub(super) fn markdown(text: TextView, cwd: &Path) -> TextView {
+    text.plugin(FileLinks::new(cwd.to_owned()))
+        .on_link_click(crate::files::opens_links(cwd.to_owned()))
+}
+
+/// The room over the row at `index`: the first's, or a prompt's over its bubble.
+pub(super) fn room_over(index: usize, prompts: &[usize]) -> f32 {
+    if index == 0 {
+        TOP
+    } else if prompts.binary_search(&index).is_ok() {
+        PROMPT_ROOM
+    } else {
+        0.
+    }
 }
 
 /// A message's shape, right or dashed as its row says.
@@ -315,7 +347,7 @@ pub(super) fn bubble() -> Div {
         .max_w(relative(0.8))
         .px(px(14.))
         .py(px(9.))
-        .rounded(px(16.))
+        .rounded(px(BUBBLE_RADIUS))
 }
 
 /// A line that opens something, muted until the pointer's on it.
@@ -339,6 +371,12 @@ pub(super) fn chevron(open: bool) -> impl IntoElement {
         IconName::ChevronRight
     };
     icon(name, 12.)
+}
+
+/// The word that opens what's cut short, or closes it again.
+pub(super) fn show_more(id: impl Into<ElementId>, open: bool, p: Palette) -> Stateful<Div> {
+    let says = if open { "Show less" } else { "Show more" };
+    word_button(id, says, p)
 }
 
 /// A small word that does something once clicked, brighter under the pointer.
@@ -384,10 +422,28 @@ fn gap_after(kind: &RowKind) -> f32 {
     }
 }
 
-/// The text a row of this kind shows in a view of its own: an answer, or what's under a plan's
-/// title. What it's kept by, and what it says.
+/// The message a person said that a row of this kind shows, and its item.
+pub(super) fn message_of<'a>(
+    kind: &RowKind,
+    replica: &'a Replica,
+) -> Option<(&'a Item, &'a UserMessage)> {
+    let RowKind::User { item, .. } = *kind else {
+        return None;
+    };
+    let item = replica.items.get(item)?;
+    let ItemBody::UserMessage(message) = &item.body else {
+        return None;
+    };
+    Some((item, message))
+}
+
+/// The text a row of this kind shows in a view of its own: a person's message, an answer, or what's
+/// under a plan's title. What it's kept by, and what it says.
 fn shown_text<'a>(kind: &RowKind, replica: &'a Replica) -> Option<(&'a ItemId, &'a str)> {
     match *kind {
+        RowKind::User { .. } => {
+            message_of(kind, replica).map(|(item, said)| (&item.id, &*said.text))
+        }
         RowKind::Answer { item, .. } => {
             let item = replica.items.get(item)?;
             Some((&item.id, item.body.text()?))

@@ -181,6 +181,9 @@ pub struct Settings {
     pub chat_details: ChatDetails,
     /// How wide a chat's timeline and composer get.
     pub chat_width: ChatWidth,
+    /// Whether scrolling back up through a chat's section brings the prompt it answers down at the
+    /// chat's top once that prompt's own place has gone by.
+    pub floating_prompts: bool,
     /// What the composer's edge does while the agent or a subagent works.
     pub chat_activity: ChatActivity,
     /// The commands a person keeps for each project.
@@ -282,6 +285,7 @@ impl Default for Settings {
             chat_verbosity: Verbosity::default(),
             chat_details: ChatDetails::default(),
             chat_width: ChatWidth::default(),
+            floating_prompts: true,
             chat_activity: ChatActivity::default(),
             project_scripts: ProjectScripts::default(),
             chat_effort: koyo_agent::protocol::model::Effort::Xhigh,

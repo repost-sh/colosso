@@ -16,7 +16,8 @@ use koyo_agent::protocol::model::{Attachment, Run};
 use koyo_agent::timeline::RowId;
 
 use super::asks::says;
-use super::rows::{Drawing, attached, bubble, word_button};
+use super::composer::sent;
+use super::rows::{Drawing, bubble, word_button};
 use super::timeline::Timeline;
 
 /// The context of a queued message being changed, where Esc leaves it as it was.
@@ -126,7 +127,7 @@ impl Timeline {
         let Some(edit) = &self.queued_edit else {
             return;
         };
-        let text = edit.text.read(cx).value().trim().to_owned();
+        let text = sent(&edit.text.read(cx).value()).to_owned();
         let run = edit.run.clone();
         let replica = self.thread.read(cx).replica();
         let held = replica.and_then(|replica| replica.queued_run(&run));
@@ -158,7 +159,7 @@ impl Timeline {
         if replica.is_some_and(|replica| replica.queued_run(&edit.run).is_some()) {
             return;
         }
-        let text = edit.text.read(cx).value().trim().to_owned();
+        let text = sent(&edit.text.read(cx).value()).to_owned();
         let changed = text != edit.said && !text.is_empty();
         let (window, composer) = (edit.window, self.composer.clone());
         self.queued_edit = None;
@@ -186,7 +187,7 @@ impl Drawing {
             .border_dashed()
             .border_color(p.wash_line)
             .when(!prompt.attachments.is_empty(), |said| {
-                said.child(attached(&run.id.0, &prompt.attachments, p))
+                said.child(self.attached(&run.id.0, &prompt.attachments))
             });
         let row = div().flex().flex_col().items_end().gap_1();
         let editing = self

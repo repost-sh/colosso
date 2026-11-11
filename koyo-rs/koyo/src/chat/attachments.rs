@@ -216,7 +216,7 @@ pub(super) fn tile(
     p: Palette,
 ) -> Tile {
     let tile = bare_tile(id, p);
-    let picture = folder.filter(|_| attachment.mime.starts_with("image/"));
+    let picture = folder.filter(|_| shows_picture(attachment));
     match picture.map(|folder| folder.join(&attachment.file)) {
         Some(path) => tile
             .axis(Axis::Vertical)
@@ -231,6 +231,11 @@ pub(super) fn tile(
             .media(AttachmentMedia::new().child(icon(file_icon(&attachment.name), 14.)))
             .content(AttachmentContent::new().title(AttachmentTitle::new(attachment.name.clone()))),
     }
+}
+
+/// Whether what's kept is a picture, which its tile shows and a click opens in Koyo's viewer.
+pub(super) fn shows_picture(attachment: &Attachment) -> bool {
+    attachment.mime.starts_with("image/")
 }
 
 /// A tile with nothing in it yet, in the theme's colours over the glass or a bubble.
