@@ -178,21 +178,31 @@ fn simulator(udid: &str, name: &str, ipad: bool) -> crate::devices::Simulator {
     }
 }
 
-/// The Device kind lists Koyo's simulators, those named as typed, and picking one opens its tab;
-/// a device a tab shows is a switch to it.
+/// The Device kind lists Koyo's simulators, then the devices plugged in, those named as typed,
+/// and picking one opens its tab; a device a tab shows is a switch to it.
 #[gpui_kit::test]
 fn the_device_kind_lists_the_simulators_and_opens_the_one_picked(cx: &mut TestAppContext) {
     let (window, shell, _) = shell("launcher-device-rows", cx);
     cx.update(|cx| {
         let listed = Ok(vec![simulator("U-1", "iPhone 17 Pro", false), simulator("U-2", "iPad Pro 13-inch (M5)", true)]);
-        crate::devices::devices(cx).update(cx, |devices, cx| devices.listed(listed, None, cx));
+        let plugged = vec![crate::devices::connected::Connected {
+            udid: "REAL".into(),
+            name: "Sam's iPad".into(),
+            ipad: true,
+            system: "iPadOS 27.0.1".into(),
+            missing: None,
+        }];
+        crate::devices::devices(cx).update(cx, |devices, cx| {
+            devices.listed(listed, None, cx);
+            devices.connected_afresh(Ok(plugged), std::time::Instant::now(), cx);
+        });
     });
     let (launcher_window, launcher) = launch(window, cx);
     press(launcher_window, "tab tab tab tab", cx);
-    assert_eq!(rows_of(&launcher, cx), ["iPhone 17 Pro", "iPad Pro 13-inch (M5)"]);
+    assert_eq!(rows_of(&launcher, cx), ["iPhone 17 Pro", "iPad Pro 13-inch (M5)", "Sam's iPad"]);
     cx.simulate_input(launcher_window, "ipad");
     cx.run_until_parked();
-    assert_eq!(rows_of(&launcher, cx), ["[iPad Pro 13-inch (M5)]"]);
+    assert_eq!(rows_of(&launcher, cx), ["[iPad Pro 13-inch (M5)]", "Sam's iPad"]);
     press(launcher_window, "enter", cx);
     cx.run_until_parked();
     assert_eq!(tabs(&shell, cx), ["[iPad Pro 13-inch (M5)]"]);
@@ -202,7 +212,7 @@ fn the_device_kind_lists_the_simulators_and_opens_the_one_picked(cx: &mut TestAp
     assert_eq!(tabs(&shell, cx), ["iPad Pro 13-inch (M5)", "[Devices]"]);
     let (launcher_window, launcher) = launch(window, cx);
     press(launcher_window, "tab tab tab tab", cx);
-    assert_eq!(rows_of(&launcher, cx), ["iPad Pro 13-inch (M5)", "iPhone 17 Pro"], "the open tab first");
+    assert_eq!(rows_of(&launcher, cx), ["iPad Pro 13-inch (M5)", "iPhone 17 Pro", "Sam's iPad"], "the open tab first");
     let first = cx.read(|cx| launcher.read(cx).rows[0].act.clone());
     assert!(matches!(first, Act::Switch(_)), "{first:?}");
 }

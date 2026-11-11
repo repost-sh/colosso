@@ -439,25 +439,31 @@ fn words(kind: history::Kind, typed: &str, here: &Here, most: usize, cx: &App) -
 }
 
 /// A device's rows: its open tabs, then Koyo's simulators no tab shows, as its set last listed
-/// them; those whose names hold every word typed.
+/// them, then the iPhones and iPads plugged in that no tab shows; those whose names hold every
+/// word typed.
 fn devices(here: &Here, typed: &str, cx: &App) -> Vec<Row> {
     let mut rows = tabs_matching(here, PaneKind::Device, typed);
     let devices = crate::devices::devices(cx);
-    let Some(Ok(simulators)) = &devices.read(cx).simulators else {
-        return rows;
-    };
+    let devices = devices.read(cx);
     let open: Vec<&str> = (here.tabs_of(PaneKind::Device))
         .filter_map(|tab| tab.device.as_deref())
         .collect();
-    for simulator in simulators.iter().filter(|simulator| !open.contains(&simulator.udid.as_str())) {
-        let Some(matched) = match_one(&simulator.name, typed) else {
+    let simulators = match &devices.simulators {
+        Some(Ok(simulators)) => simulators.as_slice(),
+        _ => &[],
+    };
+    let simulators = simulators.iter().map(|simulator| (Chosen::from(simulator), simulator.system.clone()));
+    // A device that misses a step says so; picked, its tab says which.
+    let plugged = (devices.plugged().iter())
+        .map(|device| (Chosen::from(device), if device.missing.is_some() { "Needs setup".to_owned() } else { device.system.clone() }));
+    for (chosen, detail) in simulators.chain(plugged).filter(|(chosen, _)| !open.contains(&chosen.udid.as_str())) {
+        let Some(matched) = match_one(&chosen.name, typed) else {
             continue;
         };
-        let icon = if simulator.ipad { IconName::Tablet } else { IconName::Smartphone };
-        let chosen = Chosen::from(simulator);
-        let mut row = Row::new(Glyph::Icon(icon), simulator.name.clone(), Act::Device(chosen));
+        let icon = if chosen.ipad { IconName::Tablet } else { IconName::Smartphone };
+        let mut row = Row::new(Glyph::Icon(icon), chosen.name.clone(), Act::Device(chosen));
         row.title_matched = matched;
-        row.detail = simulator.system.clone().into();
+        row.detail = detail.into();
         rows.push(row);
     }
     rows.truncate(MOST);
