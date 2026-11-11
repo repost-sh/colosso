@@ -5300,6 +5300,7 @@ dependencies = [
  "gpui-kit",
  "gpui-pre",
  "image",
+ "koyo-accounts",
  "koyo-agent",
  "koyo-app-control",
  "koyo-browser-ipc",

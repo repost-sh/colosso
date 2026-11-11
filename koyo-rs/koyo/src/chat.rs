@@ -403,9 +403,7 @@ impl Chats {
                     cx.emit(ChatsEvent::Removed(removed.thread_id));
                 }
                 Event::HostNotice(notice) => log::info!("the agent host: {}", notice.message),
-                Event::AccountLimits(limits) => {
-                    log::debug!("the account's limits: {:?}", limits.status);
-                }
+                Event::AccountLimits(limits) => crate::accounts::limits_heard(&limits, cx),
                 Event::Unknown { event, .. } => log::debug!("an event of a newer host: {event}"),
             }
         }

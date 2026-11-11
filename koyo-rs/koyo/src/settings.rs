@@ -9,6 +9,7 @@ use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::{Action, App, Context, Global, SharedString, Subscription, Task, Window};
 use serde::{Deserialize, Serialize};
 
+mod accounts;
 mod chat_activity;
 mod chat_details;
 mod chat_mode;
@@ -21,6 +22,7 @@ mod migration;
 mod project_scripts;
 mod save_scope;
 
+pub use accounts::AccountSettings;
 pub use chat_activity::{ChatActivity, SetChatActivity};
 pub use chat_details::{ChatDetails, DetailsItem, FlipDetailsItem};
 pub use chat_mode::{SetChatMode, chat_mode_label, chat_mode_menu};
@@ -217,6 +219,8 @@ pub struct Settings {
     /// changes it, in Settings: no app-control operation reads or sets it.
     #[serde(rename = "externalControl")]
     pub external_control: crate::control::Policy,
+    /// Claude accounts: whether Koyo manages the login, and auto-switch (`docs/claude-accounts.md`).
+    pub accounts: AccountSettings,
 }
 
 impl Settings {
@@ -299,6 +303,7 @@ impl Default for Settings {
             on_quit: crate::quitting::OnQuit::default(),
             agent_desktop: false,
             external_control: crate::control::Policy::default(),
+            accounts: AccountSettings::default(),
         }
     }
 }

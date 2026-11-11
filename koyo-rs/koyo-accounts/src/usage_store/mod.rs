@@ -193,7 +193,7 @@ impl UsageEntry {
         let Some(mut anchor) = self.last_429_at else {
             return false;
         };
-        if self.last_error.as_deref() == Some("http-429")
+        if self.last_error.as_deref() == Some(crate::oauth::RATE_LIMITED_ERROR)
             && let Some(until) = self.backoff_until.filter(|until| *until > anchor)
         {
             anchor = until;

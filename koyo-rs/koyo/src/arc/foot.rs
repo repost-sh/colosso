@@ -33,7 +33,8 @@ use crate::settings;
 use crate::shell::{Shell, icon_button};
 use crate::theme;
 
-/// The + button's width, which the left of the foot keeps too, so the spaces sit in the middle.
+/// The + button's width, which the accounts' button at the left of the foot keeps too, so the
+/// spaces sit in the middle.
 const PLUS: f32 = 24.;
 /// A space's mark: as high as a dot is wide; the space shown is a capsule this wide.
 const DOT: f32 = 7.;
@@ -103,7 +104,8 @@ pub fn bar(shell: &Shell, window: &mut Window, cx: &mut Context<Shell>) -> impl 
         .flex_shrink_0()
         .flex()
         .items_center()
-        .child(div().w(px(PLUS)))
+        // The accounts' button, as wide as the +, so the spaces sit in the middle.
+        .child(div().w(px(PLUS)).children(crate::accounts::button(cx)))
         .child(
             div()
                 .flex_1()

@@ -42,7 +42,8 @@ pub use reset::{
 pub(crate) use reset::{iso_timestamp, utc_at};
 pub use sentinels::*;
 pub use usage::{
-    FetchError, InvalidUsageResponse, ORG_POLICY_ERROR, RETRY_AFTER_BOUND_S, TOKEN_EXPIRED_ERROR,
+    BAD_RESPONSE_ERROR, FetchError, InvalidUsageResponse, NETWORK_ERROR, ORG_POLICY_ERROR,
+    RATE_LIMITED_ERROR, RETRY_AFTER_BOUND_S, TIMEOUT_ERROR, TLS_CERT_ERROR, TOKEN_EXPIRED_ERROR,
     UsageOutcome, build_usage_result, classify_usage_error, fetch_usage, log_usage_failure,
     parse_retry_after, reported_window, request_usage_data, try_fetch_usage_for_account,
     usage_failure_line, window_entry,

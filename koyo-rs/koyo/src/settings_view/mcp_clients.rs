@@ -127,13 +127,7 @@ fn denied_clients(denied: Vec<String>) -> SettingsSection {
 
 /// How long ago `at`, in milliseconds since the Unix epoch, was.
 fn ago(at: u64) -> String {
-    let seconds = koyo_term_control::now_ms().saturating_sub(at) / 1000;
-    match seconds {
-        0..60 => "just now".to_owned(),
-        60..3600 => format!("{} min ago", seconds / 60),
-        3600..86_400 => format!("{} h ago", seconds / 3600),
-        _ => format!("{} days ago", seconds / 86_400),
-    }
+    crate::ago::ago(koyo_term_control::now_ms().saturating_sub(at) / 1000)
 }
 
 #[cfg(test)]

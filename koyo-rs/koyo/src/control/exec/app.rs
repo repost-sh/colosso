@@ -158,6 +158,7 @@ fn route(route: Route) -> String {
             match page {
                 Page::General => "general",
                 Page::Chat => "chat",
+                Page::Accounts => "accounts",
                 Page::Editor => "editor",
                 Page::Languages => "languages",
                 Page::Appearance => "appearance",
