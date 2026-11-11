@@ -1,4 +1,6 @@
 //! Tests translated from claude-swap's `tests/test_pace.py` (0fe22a8), named after cswap's.
+//! `TestProjectedExhaustionTs`, `TestWillLastToReset` and `TestAheadVsWillLastRelationship` are
+//! left out with the script-only functions they test.
 
 #![expect(
     clippy::float_cmp,
@@ -8,16 +10,11 @@
 use serde_json::{Value, json};
 
 use super::*;
+use crate::testing::iso;
 
 const NOW: f64 = 1_700_000_000.;
 const DAY: f64 = 86_400.;
 const WEEK: f64 = WEEKLY_PERIOD_S;
-
-fn iso(ts: f64) -> String {
-    chrono::DateTime::from_timestamp(ts as i64, 0)
-        .unwrap()
-        .to_rfc3339()
-}
 
 fn window(pct: f64, resets_at_ts: Option<f64>) -> Value {
     let mut window = json!({"pct": pct});
@@ -102,79 +99,4 @@ fn within_threshold_flags_false_but_still_returns() {
 #[test]
 fn behind_pace_flags_false() {
     assert!(!pace(5., NOW + 6. * DAY).unwrap().ahead);
-}
-
-// TestProjectedExhaustionTs
-
-#[test]
-fn linear_projection() {
-    let result = pace(50., NOW + 6. * DAY).unwrap();
-    assert_eq!(projected_exhaustion_ts(&result, NOW), Some(NOW + DAY));
-}
-
-#[test]
-fn already_at_or_over_100_returns_fetched_at() {
-    let result = pace(120., NOW + 6. * DAY).unwrap();
-    assert_eq!(projected_exhaustion_ts(&result, NOW), Some(NOW));
-}
-
-#[test]
-fn zero_usage_has_no_projection() {
-    let result = pace(0., NOW + 6. * DAY).unwrap();
-    assert_eq!(projected_exhaustion_ts(&result, NOW), None);
-}
-
-// TestWillLastToReset
-
-#[test]
-fn sustainable_rate_will_last() {
-    assert_eq!(
-        will_last_to_reset(&pace(10., NOW + 6. * DAY).unwrap()),
-        Some(true)
-    );
-}
-
-#[test]
-fn unsustainable_rate_will_not_last() {
-    assert_eq!(
-        will_last_to_reset(&pace(50., NOW + 6. * DAY).unwrap()),
-        Some(false)
-    );
-}
-
-#[test]
-fn zero_usage_will_last() {
-    assert_eq!(
-        will_last_to_reset(&pace(0., NOW + 6. * DAY).unwrap()),
-        Some(true)
-    );
-}
-
-#[test]
-fn comfortably_sustainable_rate_will_last() {
-    assert_eq!(
-        will_last_to_reset(&pace(12., NOW + 6. * DAY).unwrap()),
-        Some(true)
-    );
-}
-
-// TestAheadVsWillLastRelationship
-
-#[test]
-fn will_last_flips_exactly_at_expected_pct() {
-    for days in [1., 2.5, 4., 6.] {
-        let resets_at = NOW + (7. - days) * DAY;
-        let expected = days * DAY / WEEK * 100.;
-        let over = pace(expected + 0.5, resets_at).unwrap();
-        let under = pace(expected - 0.5, resets_at).unwrap();
-        assert_eq!(will_last_to_reset(&over), Some(false));
-        assert_eq!(will_last_to_reset(&under), Some(true));
-    }
-}
-
-#[test]
-fn slightly_ahead_reads_wont_last_with_no_marker() {
-    let result = pace(25., NOW + 6. * DAY).unwrap();
-    assert!(!result.ahead);
-    assert_eq!(will_last_to_reset(&result), Some(false));
 }

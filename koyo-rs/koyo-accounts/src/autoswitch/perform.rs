@@ -12,7 +12,10 @@
 
 use crate::Result;
 use crate::oauth::value::py_number;
-use crate::oauth::{AccountIdentity, credential_fingerprint, expires_within, extract_oauth_data};
+use crate::oauth::{
+    AccountIdentity, CONSUME_BUSY_ERROR, INVALID_CLIENT_ERROR, STASH_UNREADABLE_ERROR,
+    STORE_UNMIRRORED_ERROR, credential_fingerprint, expires_within, extract_oauth_data,
+};
 use crate::switcher::{Roster, SlotIdentity, SwitchReason, SwitchResult};
 use crate::usage_store::PERMANENT_AUTH_ERRORS;
 
@@ -37,24 +40,12 @@ pub(crate) enum Systemic {
 }
 
 impl Systemic {
-    /// The gate's error string, [`Systemic::from_kind`] read back: the tests hold the two to
-    /// each other and to the gate's list.
-    #[cfg(test)]
-    pub fn kind(self) -> &'static str {
-        match self {
-            Systemic::StoreUnmirrored => "store-unmirrored",
-            Systemic::InvalidClient => "invalid_client",
-            Systemic::StashUnreadable => "stash-unreadable",
-            Systemic::ConsumeBusy => "consume-busy",
-        }
-    }
-
     pub fn from_kind(kind: &str) -> Option<Systemic> {
         match kind {
-            "store-unmirrored" => Some(Systemic::StoreUnmirrored),
-            "invalid_client" => Some(Systemic::InvalidClient),
-            "stash-unreadable" => Some(Systemic::StashUnreadable),
-            "consume-busy" => Some(Systemic::ConsumeBusy),
+            STORE_UNMIRRORED_ERROR => Some(Systemic::StoreUnmirrored),
+            INVALID_CLIENT_ERROR => Some(Systemic::InvalidClient),
+            STASH_UNREADABLE_ERROR => Some(Systemic::StashUnreadable),
+            CONSUME_BUSY_ERROR => Some(Systemic::ConsumeBusy),
             _ => None,
         }
     }

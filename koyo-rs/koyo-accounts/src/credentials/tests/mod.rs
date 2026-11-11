@@ -8,13 +8,13 @@
 //! rule may answer a call itself (a locked keychain, one failing item), wait, or reach back
 //! into the store mid-call, as cswap's patched functions do.
 
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex};
 use std::thread::ThreadId;
 
-use crate::Env;
 use crate::credentials::CredentialStore;
 use crate::keychain::{KeychainError, NOT_FOUND_RC, Output, Security};
-use crate::testing::{Answer, Call, FakeSecurity, Sandbox};
+use crate::testing::{self, Answer, Call, FakeSecurity, Sandbox};
+use crate::{Env, locked};
 
 mod active;
 mod backup;
@@ -24,10 +24,6 @@ mod global_config;
 mod pacing;
 mod shared;
 mod stash;
-
-fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(PoisonError::into_inner)
-}
 
 type Rule = Arc<dyn Fn(&Call) -> Option<Answer> + Send + Sync>;
 
@@ -112,42 +108,16 @@ pub(super) fn verb(call: &Call) -> String {
 
 /// The value after `flag` in a call.
 pub(super) fn after(call: &Call, flag: &str) -> Option<String> {
-    let words = words(call);
-    let at = words.iter().position(|word| word == flag)?;
-    words.get(at + 1).cloned()
+    testing::after(&words(call), flag).map(str::to_owned)
 }
 
-/// The call's words; a `security -i` line split as `security` splits it (double quotes with
-/// `\` escapes), the way the fake does.
+/// The call's words; a `security -i` line split as the fake splits it.
 fn words(call: &Call) -> Vec<String> {
-    if call.args != ["-i"] {
-        return call.args.clone();
+    if call.args == ["-i"] {
+        testing::words(call.stdin.as_deref().unwrap_or_default())
+    } else {
+        call.args.clone()
     }
-    let mut out = Vec::new();
-    let mut word = String::new();
-    let (mut quoted, mut escaped, mut any) = (false, false, false);
-    for c in call.stdin.as_deref().unwrap_or_default().trim_end().chars() {
-        if escaped {
-            word.push(c);
-            escaped = false;
-        } else if c == '\\' && quoted {
-            escaped = true;
-        } else if c == '"' {
-            quoted = !quoted;
-            any = true;
-        } else if c.is_whitespace() && !quoted {
-            if any || !word.is_empty() {
-                out.push(std::mem::take(&mut word));
-                any = false;
-            }
-        } else {
-            word.push(c);
-        }
-    }
-    if any || !word.is_empty() {
-        out.push(word);
-    }
-    out
 }
 
 /// A sandbox and a store on it whose `security` is [`Scripted`].
@@ -205,14 +175,11 @@ impl World {
 
 /// An OAuth credential, as cswap's tests' `_cred(tag)`.
 pub(super) fn cred(tag: &str) -> String {
-    serde_json::json!({
-        "claudeAiOauth": {
-            "accessToken": format!("sk-{tag}"),
-            "refreshToken": format!("rt-{tag}"),
-            "expiresAt": 9_999_999_999_000_u64,
-        }
-    })
-    .to_string()
+    testing::creds(
+        &format!("sk-{tag}"),
+        &format!("rt-{tag}"),
+        Some(9_999_999_999_000_u64.into()),
+    )
 }
 
 /// The answer a read of a missing item gets, for rules that pass a call on as "absent".

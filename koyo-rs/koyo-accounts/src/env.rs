@@ -27,15 +27,6 @@ pub struct Vars {
 }
 
 impl Vars {
-    /// This process's own.
-    pub fn from_process() -> Vars {
-        Vars {
-            claude_config_dir: std::env::var("CLAUDE_CONFIG_DIR").ok(),
-            securestorage_config_dir: std::env::var("CLAUDE_SECURESTORAGE_CONFIG_DIR").ok(),
-            user: std::env::var("USER").ok(),
-        }
-    }
-
     /// `CLAUDE_CONFIG_DIR` when set and non-empty, as cswap's `os.environ.get(...)` truthiness.
     pub fn config_dir(&self) -> Option<&str> {
         self.claude_config_dir

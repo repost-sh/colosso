@@ -2,7 +2,7 @@
 //! (`request_usage_data`), its answer normalised (`build_usage_result`, `_reported_window`,
 //! `_window_entry`, per-model `limits[]`), the error kinds (`_classify_usage_error`), the failure
 //! log line (`_log_usage_failure`) and one account's fetch (`UsageOutcome`,
-//! `try_fetch_usage_for_account`, `fetch_usage`).
+//! `try_fetch_usage_for_account`). cswap's `fetch_usage` wrapper is left out: nothing calls it.
 //!
 //! Two rules differ from cswap's, as `docs/claude-accounts.md` 4 decides:
 //!
@@ -19,7 +19,7 @@ use std::time::Duration;
 use serde_json::{Map, Value};
 
 use super::reset::format_reset_value;
-use super::value::{py_float, py_number, truthy, truthy_at};
+use super::value::{py_float, py_number, py_str, truthy, truthy_at};
 use super::{OAUTH_BETA_HEADER, USAGE_URL, USER_AGENT, extract_oauth_data, is_setup_token};
 use crate::Env;
 use crate::http::{HttpError, Request, Response};
@@ -401,20 +401,6 @@ pub fn log_usage_failure(
     log::debug!("Usage fetch failure detail{at}{context}: {error}");
 }
 
-/// The 5-hour and 7-day utilization of an access token, or `None` (the failure is logged).
-pub fn fetch_usage(env: &Env, access_token: &str) -> Option<Value> {
-    match request_usage_data(env, access_token)
-        .and_then(|data| build_usage_result(&data, env.now()))
-    {
-        Ok(usage) => usage,
-        Err(error) => {
-            let (kind, _) = classify_usage_error(&error);
-            log_usage_failure("", &error, &kind, None);
-            None
-        }
-    }
-}
-
 /// One account's usage, with no refresh (the module says why): no access token is
 /// `no-access-token`; a setup token is `setup-token`, as the usage endpoint can't answer its
 /// scope; an access token already expired is [`TOKEN_EXPIRED_ERROR`]; each sends no request.
@@ -441,7 +427,7 @@ pub fn try_fetch_usage_for_account(
     if super::is_oauth_token_expired(expires_at, env.now()) {
         return UsageOutcome::failed(TOKEN_EXPIRED_ERROR, None);
     }
-    let token = super::token_text(access_token);
+    let token = py_str(access_token);
     match request_usage_data(env, &token).and_then(|data| build_usage_result(&data, env.now())) {
         Ok(usage) => UsageOutcome::read(usage),
         Err(error) => {

@@ -101,7 +101,7 @@ fn rejected_reading(now: f64, deadline_in: f64, retry_after_s: Option<f64>) -> V
     let mut reading = usage();
     reading["rejected"] = json!({
         "retry_after_s": retry_after_s,
-        "resets_at": crate::oauth::utc_at(now + deadline_in).unwrap().to_rfc3339(),
+        "resets_at": iso(now + deadline_in),
     });
     reading["source"] = json!("headers");
     reading
@@ -180,11 +180,11 @@ fn rejection_deadline_never_shortens_and_is_capped() {
 
 fn usage_resetting_in(now: f64, five_hour_s: f64, scoped_s: Option<f64>) -> Value {
     let mut reading = json!({
-        "five_hour": {"pct": 25.0, "resets_at": iso_in(now, five_hour_s)},
-        "seven_day": {"pct": 10.0, "resets_at": iso_in(now, 86_400.)},
+        "five_hour": {"pct": 25.0, "resets_at": iso(now + five_hour_s)},
+        "seven_day": {"pct": 10.0, "resets_at": iso(now + 86_400.)},
     });
     if let Some(ahead) = scoped_s {
-        reading["scoped"] = json!([{"name": "Fable", "pct": 5.0, "resets_at": iso_in(now, ahead)}]);
+        reading["scoped"] = json!([{"name": "Fable", "pct": 5.0, "resets_at": iso(now + ahead)}]);
     }
     reading
 }
@@ -277,7 +277,7 @@ fn a_claimed_fetch_still_records() {
 #[test]
 fn row_of_another_account_is_replaced() {
     let h = Harness::new();
-    record_as(&h.store, "2", ok(), &identity("2", "old@x.com", ""));
+    record_as(&h.store, "2", ok(), &one_identity("2", "old@x.com", ""));
     adopt(&h, vec![("2", usage(), 0.)], None);
     let raw = h.raw();
     let row = &raw["accounts"]["2"];

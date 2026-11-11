@@ -38,37 +38,6 @@ impl Switcher {
         record(data, account_num).is_some_and(|record| truthy_at(record.get("disabled")))
     }
 
-    /// `is_account_disabled`.
-    ///
-    /// # Errors
-    /// As [`Switcher::get_sequence_data`].
-    pub fn is_account_disabled(&self, account_num: &str) -> Result<bool> {
-        let data = self.sequence_data_or_empty()?;
-        Ok(Switcher::disabled_from_data(&data, account_num))
-    }
-
-    /// `disabled_account_numbers`: the slots held out, in sequence order.
-    ///
-    /// # Errors
-    /// As [`Switcher::get_sequence_data`].
-    pub fn disabled_account_numbers(&self) -> Result<Vec<String>> {
-        let data = self.sequence_data_or_empty()?;
-        Ok(sequence(&data)
-            .into_iter()
-            .filter(|num| Switcher::disabled_from_data(&data, num))
-            .collect())
-    }
-
-    /// `switchable_account_numbers`: the slots auto-switch may pick, in sequence order: a
-    /// stored credential and config backup, and not held out.
-    ///
-    /// # Errors
-    /// As [`Switcher::get_sequence_data`] and [`Switcher::account_is_switchable`].
-    pub fn switchable_account_numbers(&self) -> Result<Vec<String>> {
-        let data = self.sequence_data_or_empty()?;
-        self.switchable_in(&data).collect()
-    }
-
     /// The switchable slots of loaded `data`, lazily: the flag, in memory, is checked before
     /// the Keychain-reading [`Switcher::account_is_switchable`].
     fn switchable_in<'a>(&'a self, data: &'a Data) -> impl Iterator<Item = Result<String>> + 'a {

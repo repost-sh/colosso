@@ -11,10 +11,7 @@ use serde_json::{Value, json};
 
 use super::*;
 use crate::oauth::relevant_windows;
-
-fn usage7(pct5: f64, pct7: f64) -> Value {
-    json!({"five_hour": {"pct": pct5}, "seven_day": {"pct": pct7}})
-}
+use crate::testing::usage7;
 
 fn windows(usage: &Value, models: &[&str]) -> Vec<Window> {
     relevant_windows(Some(usage), models)

@@ -27,6 +27,7 @@ use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant, SystemTime};
 
+use crate::random::random_u64;
 use crate::{AccountsError, Env, Result, fsutil, paths};
 
 /// A credential lock younger than this belongs to a live holder and is never stolen: its
@@ -60,7 +61,8 @@ pub fn config_lock_dir(env: &Env) -> PathBuf {
     sibling_lock(&paths::global_config_path(env))
 }
 
-fn sibling_lock(path: &Path) -> PathBuf {
+/// `path` with `.lock` added to its name, beside it.
+pub(crate) fn sibling_lock(path: &Path) -> PathBuf {
     let mut name = path.file_name().unwrap_or_default().to_owned();
     name.push(".lock");
     path.with_file_name(name)
@@ -79,14 +81,6 @@ fn age(path: &Path, follow: bool) -> Option<Duration> {
             .duration_since(modified)
             .unwrap_or(Duration::ZERO),
     )
-}
-
-/// Sleeps at most what's left of the budget, never a whole draw past it.
-fn nap(want: Duration, start: Instant, timeout: Duration) {
-    let left = timeout.saturating_sub(start.elapsed());
-    if !left.is_zero() {
-        fsutil::nap(want.min(left));
-    }
 }
 
 /// Removes `lock` if it's still stale, under the takeover directory; whether this call did.
@@ -160,17 +154,17 @@ pub fn proper_lockfile(
         let Some(held) = age(dir, true) else {
             // Back off here too: a dangling link at the lock's path answers "exists" to mkdir
             // and "missing" to stat, so this arm can repeat for the whole budget.
-            nap(DECLINE_BACKOFF, start, timeout);
+            fsutil::nap_within(DECLINE_BACKOFF, start, timeout);
             continue;
         };
         if held > staleness {
             // A dead holder: removed and retaken. Declining must neither spin nor oversleep.
             if !remove_if_still_stale(env, dir, staleness) {
-                nap(DECLINE_BACKOFF, start, timeout);
+                fsutil::nap_within(DECLINE_BACKOFF, start, timeout);
             }
             continue;
         }
-        nap(jitter(), start, timeout);
+        fsutil::nap_within(jitter(), start, timeout);
     }
     let (stop, stopped) = mpsc::channel::<()>();
     let toucher = {
@@ -187,10 +181,7 @@ pub fn proper_lockfile(
 
 /// 0.25–0.5 s, as cswap's `0.25 + random() * 0.25`.
 fn jitter() -> Duration {
-    let nanos = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .map_or(0, |since| since.subsec_nanos());
-    Duration::from_millis(250 + u64::from(nanos % 250))
+    Duration::from_millis(250 + random_u64() % 250)
 }
 
 fn touch_while_held(env: &Env, dir: &Path, stopped: &mpsc::Receiver<()>, staleness: Duration) {

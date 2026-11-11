@@ -13,19 +13,17 @@
 //! The reads tell three states apart, since "nothing stashed" and "couldn't tell" have
 //! opposite consequences: a stash row can be the only record of a generation already spent.
 
-use std::fmt::Write as _;
 use std::io::ErrorKind;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::PathBuf;
 
 use base64::Engine as _;
 use base64::engine::{GeneralPurpose, GeneralPurposeConfig};
 use serde_json::{Map, Value, json};
-use sha2::{Digest as _, Sha256};
 
 use crate::credentials::CredentialStore;
 use crate::locking::{self, FileLock};
-use crate::oauth::iso_utc;
+use crate::oauth::{iso_utc, sha256_hex, utc_at};
+use crate::random::random_u64;
 use crate::{AccountsError, Result, fsutil, paths};
 
 const MANIFEST: &str = ".unclaimed-manifest.json";
@@ -86,21 +84,9 @@ fn decode(raw: &[u8]) -> Result<String, String> {
     String::from_utf8(bytes).map_err(|error| error.to_string())
 }
 
-/// `secrets.token_hex(3)`: six hex digits no other id this process made has.
+/// `secrets.token_hex(3)`: six random hex digits.
 fn token_hex3() -> String {
-    use std::hash::{BuildHasher as _, Hasher as _};
-    static COUNT: AtomicU64 = AtomicU64::new(0);
-    // A `RandomState` is keyed from the OS's randomness.
-    let mut hasher = std::collections::hash_map::RandomState::new().build_hasher();
-    hasher.write_u64(COUNT.fetch_add(1, Ordering::Relaxed));
-    format!("{:06x}", hasher.finish() & 0x00ff_ffff)
-}
-
-/// `now`, in UTC, in `format`.
-fn utc(now: f64, format: &str) -> String {
-    let seconds = now.floor();
-    let stamp = chrono::DateTime::from_timestamp(seconds as i64, ((now - seconds) * 1e9) as u32);
-    stamp.unwrap_or_default().format(format).to_string()
+    format!("{:06x}", random_u64() & 0x00ff_ffff)
 }
 
 impl CredentialStore {
@@ -178,8 +164,9 @@ impl CredentialStore {
         false
     }
 
-    /// The manifest's rows, verdict dropped.
-    pub fn read_stash_manifest(&self) -> Map<String, Value> {
+    /// The manifest's rows, verdict dropped: for tests, as every caller here asks the verdict.
+    #[cfg(test)]
+    pub(crate) fn read_stash_manifest(&self) -> Map<String, Value> {
         self.read_stash_manifest_ex().0
     }
 
@@ -210,21 +197,11 @@ impl CredentialStore {
                 }
             }
         }
-        self.atomic_write_json(&path, &json!({"schemaVersion": 1, "entries": entries}))
-    }
-
-    /// cswap's `settings.atomic_write_json`: the folder made and kept 0700, the file written
-    /// atomically 0600, two-space indented.
-    fn atomic_write_json(&self, path: &Path, data: &Value) -> Result<()> {
-        if let Some(parent) = path.parent() {
-            fsutil::create_dir_all(&self.env, parent)?;
-            fsutil::set_mode(&self.env, parent, 0o700).map_err(|error| {
-                AccountsError::io(format!("securing {}", parent.display()), error)
-            })?;
-        }
-        let text = serde_json::to_string_pretty(data)
-            .map_err(|error| AccountsError::Config(error.to_string()))?;
-        fsutil::atomic_write(&self.env, path, text.as_bytes())
+        fsutil::atomic_write_json(
+            &self.env,
+            &path,
+            &json!({"schemaVersion": 1, "entries": entries}),
+        )
     }
 
     /// Applies `mutate` to the manifest as one step, under its own lock: the stash writer runs
@@ -271,14 +248,14 @@ impl CredentialStore {
     ) -> Result<String> {
         let now = self.env.now();
         // The sha256's first 12 hex digits.
-        let digest = Sha256::digest(credentials.as_bytes()).iter().take(6).fold(
-            String::new(),
-            |mut hex, byte| {
-                write!(hex, "{byte:02x}").ok();
-                hex
-            },
+        let digest = &sha256_hex(credentials)[..12];
+        // `strftime`: whole seconds, as the `createdAt` beside it.
+        let stamp = utc_at(now.floor()).unwrap_or_default();
+        let entry_id = format!(
+            "{}-{digest}-{}",
+            stamp.format("%Y%m%dT%H%M%S"),
+            token_hex3()
         );
-        let entry_id = format!("{}-{digest}-{}", utc(now, "%Y%m%dT%H%M%S"), token_hex3());
         fsutil::create_dir_all(&self.env, &self.credentials_dir())?;
         fsutil::atomic_write(
             &self.env,
@@ -295,8 +272,10 @@ impl CredentialStore {
     }
 
     /// The manifest's rows by id, with entry files that have no row listed too
-    /// (`{"createdAt": null}`), so bytes never vanish from view.
-    pub fn list_unclaimed_credentials(&self) -> Map<String, Value> {
+    /// (`{"createdAt": null}`), so bytes never vanish from view. For the tests of the stash's
+    /// writers: nothing else lists it.
+    #[cfg(test)]
+    pub(crate) fn list_unclaimed_credentials(&self) -> Map<String, Value> {
         let mut entries = self.read_stash_manifest();
         if let Ok(dir) = std::fs::read_dir(self.credentials_dir()) {
             for entry in dir.flatten() {

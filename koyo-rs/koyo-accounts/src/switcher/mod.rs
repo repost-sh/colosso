@@ -53,13 +53,13 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::Mutex;
 use std::time::Duration;
 
 use crate::credentials::CredentialStore;
 use crate::locking::DEFAULT_TIMEOUT;
 use crate::usage_store::UsageStore;
-use crate::{Env, paths};
+use crate::{Env, locked, paths};
 
 mod add;
 mod capture;
@@ -136,10 +136,6 @@ pub struct Switcher {
     /// gate's consume lock: cswap's `FileLock` default; tests shorten it as cswap's patch
     /// `FileLock`.
     lock_timeout: Duration,
-}
-
-fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 impl Switcher {

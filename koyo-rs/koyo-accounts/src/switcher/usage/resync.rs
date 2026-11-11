@@ -18,14 +18,15 @@
 //! invalidates session profiles).
 
 use crate::claude_locks::claude_credentials_lock;
+use crate::locked;
 use crate::locking::FileLock;
 use crate::oauth::{
     AccountIdentity, extract_access_token, extract_oauth_data, fetch_oauth_profile,
     has_full_token_pair,
 };
+use crate::switcher::Switcher;
 use crate::switcher::identity::same_lineage;
 use crate::switcher::info::AccountInfo;
-use crate::switcher::{Switcher, locked};
 use crate::{AccountsError, Result};
 
 /// A full token pair in `creds`. A Claude Code wipe empties the fields in place, and an

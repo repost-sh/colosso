@@ -21,7 +21,8 @@
 use std::collections::BTreeMap;
 
 use crate::Result;
-use crate::switcher::{Switcher, locked};
+use crate::locked;
+use crate::switcher::Switcher;
 use crate::usage_store::UsageEntry;
 
 mod active;

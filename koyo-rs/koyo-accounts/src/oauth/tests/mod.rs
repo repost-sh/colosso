@@ -11,7 +11,9 @@ mod windows;
 use chrono::{TimeZone as _, Utc};
 use serde_json::Value;
 
+use crate::Env;
 use crate::http::Response;
+use crate::oauth::{build_usage_result, request_usage_data};
 use crate::testing::Sandbox;
 
 /// Epoch seconds of a UTC time.
@@ -26,9 +28,13 @@ pub(super) fn fixed_now() -> f64 {
     utc(2026, 3, 23, 12, 0, 0)
 }
 
-/// `datetime.isoformat()` of a UTC epoch: `2026-03-23T13:00:00+00:00`.
-pub(super) fn iso(epoch: f64) -> String {
-    crate::oauth::reset::utc_at(epoch).unwrap().to_rfc3339()
+/// cswap's `fetch_usage`, which the crate leaves out: the answer normalised, `None` on any
+/// failure.
+pub(super) fn fetch_usage(env: &Env, access_token: &str) -> Option<Value> {
+    request_usage_data(env, access_token)
+        .and_then(|data| build_usage_result(&data, env.now()))
+        .ok()
+        .flatten()
 }
 
 /// An answer with `status`, `headers` and `body`.

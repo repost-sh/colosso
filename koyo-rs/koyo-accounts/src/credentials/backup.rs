@@ -17,7 +17,8 @@
 //!
 //! Left out: the `.enc` backups, their `.enc`-wins reads and reconcile, `.enc.prev` copies and
 //! the legacy file sweep. A backup write while the Keychain is backed off, or one the Keychain
-//! refuses, fails rather than writing a file.
+//! refuses, fails rather than writing a file. `delete_account_credentials_strict` too: nothing
+//! calls it.
 
 use std::time::Instant;
 
@@ -247,35 +248,6 @@ impl CredentialStore {
         }
     }
 
-    /// Clears a slot's backup and fails unless it's provably gone: for a transaction's clear
-    /// before it commits, where a destination that may still serve a credential is the very
-    /// state the transaction prevents. The delete runs whatever the routing says, its failure
-    /// raised (an absent item is gone); then a read with its verdict, since the plain read
-    /// takes "unreadable" for "absent", and a locked Keychain holding the item would pass and
-    /// resurface on unlock.
-    ///
-    /// # Errors
-    /// [`AccountsError::Credential`] when the delete fails, or a read after it finds a value or
-    /// can't tell.
-    pub fn delete_account_credentials_strict(&self, account_num: &str, email: &str) -> Result<()> {
-        // The best-effort sweep first: the legacy alias, `.prev`.
-        self.delete_account_credentials(account_num, email);
-        self.kc_delete_backup(account_num, email).map_err(|error| {
-            AccountsError::Credential(format!(
-                "Could not clear stored credentials for slot {account_num} ({email}) — \
-                 aborting before commit: {error}"
-            ))
-        })?;
-        let (value, unreadable) = self.read_account_credentials_ex(account_num, email, false);
-        if !value.is_empty() || unreadable {
-            return Err(AccountsError::Credential(format!(
-                "Could not clear stored credentials for slot {account_num} ({email}) — \
-                 aborting before commit"
-            )));
-        }
-        Ok(())
-    }
-
     /// Drops a slot's `.prev`, best-effort: with the backup, and on its own when a key's
     /// history stops belonging to its account, so a recovery never resurrects another
     /// account's generation.
@@ -321,8 +293,10 @@ impl CredentialStore {
         }
     }
 
-    /// Reads the retained previous generation: `""` when it's absent or can't be read.
-    pub fn read_previous_backup(&self, account_num: &str, email: &str) -> String {
+    /// Reads the retained previous generation: `""` when it's absent or can't be read. For the
+    /// tests of [`Self::retain_previous_backup`]: nothing else reads a `.prev`.
+    #[cfg(test)]
+    pub(crate) fn read_previous_backup(&self, account_num: &str, email: &str) -> String {
         let username = prev_backup_username(account_num, email);
         match self.kc_call(|security| {
             keychain::get_password(security, BACKUP_KEYCHAIN_SERVICE, &username)

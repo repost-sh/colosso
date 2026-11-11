@@ -14,7 +14,8 @@
 //! `claude_max` and plan name "Ultra", so the tier alone doesn't name the plan; an Enterprise
 //! seat carries `default_claude_zero` and no name, so its organization type names it.
 //! `subscription_status` moves only at lapse, not at cancellation, so renewal isn't shown.
-//! Expired is `canceled` together with the free tier.
+//! cswap's `is_expired` (`canceled` together with the free tier) is left out: the app shows
+//! the label only.
 //!
 //! Paced on its own clock and stored in its own file (`cache/subscription_plans.json` under
 //! Koyo's store, as cswap's beside its usage cache), never through the usage store: a plan read
@@ -29,6 +30,7 @@ use std::time::Duration;
 
 use serde_json::{Map, Value};
 
+use crate::claude_locks::sibling_lock;
 use crate::http::Request;
 use crate::locking::{DEFAULT_TIMEOUT, FileLock};
 use crate::oauth::value::{number, str_at};
@@ -49,8 +51,6 @@ pub const PLAN_TTL_S: f64 = 6. * 3600.;
 pub const FAILURE_RETRY_S: f64 = 15. * 60.;
 /// The ceiling on any wait, and the bound past which a stored `retryAt` is clock skew.
 pub const MAX_RETRY_S: f64 = 24. * 3600.;
-
-pub const FREE_TIER: &str = "default_claude_ai";
 
 /// The profile read's bound (cswap's `timeout=5.0`).
 pub const PLAN_TIMEOUT: Duration = Duration::from_secs(5);
@@ -209,14 +209,6 @@ pub fn plan_label(plan: Option<&Map<String, Value>>) -> Option<String> {
     label.map(str::to_owned)
 }
 
-/// A lapsed subscription: `canceled` and back on the free tier.
-pub fn is_expired(plan: Option<&Map<String, Value>>) -> bool {
-    plan.filter(|plan| !plan.is_empty()).is_some_and(|plan| {
-        str_at(plan, "subscriptionStatus") == Some("canceled")
-            && str_at(plan, "tier") == Some(FREE_TIER)
-    })
-}
-
 /// The store key: identity, not slot number (slots get renumbered).
 pub fn identity_key(email: &str, org_uuid: Option<&str>) -> String {
     format!("{email}\n{}", org_uuid.unwrap_or_default())
@@ -343,9 +335,7 @@ impl PlanStore {
         if let Some(parent) = self.path.parent() {
             fsutil::create_dir_all(&self.env, parent)?;
         }
-        let mut lock_name = self.path.as_os_str().to_owned();
-        lock_name.push(".lock");
-        let _lock = FileLock::hold(&self.env, &PathBuf::from(lock_name), DEFAULT_TIMEOUT)?;
+        let _lock = FileLock::hold(&self.env, &sibling_lock(&self.path), DEFAULT_TIMEOUT)?;
         // The clock is read under the lock: a record another writer landed while this one
         // waited carries a later stamp than a clock read before the wait, and would be taken
         // for skew and overwritten.

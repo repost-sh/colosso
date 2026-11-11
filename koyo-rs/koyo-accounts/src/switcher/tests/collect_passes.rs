@@ -17,7 +17,6 @@ use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
-use chrono::DateTime;
 use serde_json::{Value, json};
 
 use super::Harness;
@@ -27,7 +26,7 @@ use crate::poll_policy::{MIN_INTERVAL_S, SERVE_TTL_S, URGENT_INTERVAL_S};
 use crate::switcher::Fetch;
 use crate::switcher::info::AccountInfo;
 use crate::switcher::usage::PollInputs;
-use crate::testing::{entry_as, record_as};
+use crate::testing::{entry_as, iso, record_as};
 use crate::usage_store::{FetchRecord, Identities, UsageEntry, one_identity};
 
 /// An `invalid_grant` recorded for `num`'s identity, fenced by the lease it reserved: the
@@ -65,12 +64,6 @@ fn collect(h: &Harness, infos: &[AccountInfo], fetch: Fetch<'_>) -> BTreeMap<Str
     h.switcher.collect_usage_entries(infos, fetch).unwrap()
 }
 
-/// `datetime.fromtimestamp(now + ahead_h * 3600).isoformat()` with `Z`.
-fn iso_ahead(now: f64, ahead_h: f64) -> String {
-    let at = DateTime::from_timestamp_micros(((now + ahead_h * 3600.) * 1e6) as i64).unwrap();
-    at.format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string()
-}
-
 /// Rewrites slot 2's stored row.
 fn edit_row(h: &Harness, edit: impl FnOnce(&mut Value)) {
     let path = &h.switcher.usage_store.path;
@@ -86,13 +79,13 @@ fn the_collector_hands_the_trust_bound_its_configured_models() {
     h.switcher
         .set_poll_policy_inputs(90., None, &["Fable".to_owned()]);
     let now = h.sandbox.clock.now();
-    let live = creds("at", "rt", json!((now + 86_400.) * 1000.));
+    let live = creds("at", "rt", Some(json!((now + 86_400.) * 1000.)));
     let infos = [info("2", EMAIL, "", false, &live)];
     let ident: Identities = one_identity("2", EMAIL, "");
     let reading = json!({
-        "five_hour": {"pct": 25.0, "resets_at": iso_ahead(now, 100.)},
-        "seven_day": {"pct": 10.0, "resets_at": iso_ahead(now, 100.)},
-        "scoped": [{"name": "Fable", "pct": 90.0, "resets_at": iso_ahead(now, 0.5)}],
+        "five_hour": {"pct": 25.0, "resets_at": iso(now + 100. * 3600.)},
+        "seven_day": {"pct": 10.0, "resets_at": iso(now + 100. * 3600.)},
+        "scoped": [{"name": "Fable", "pct": 90.0, "resets_at": iso(now + 0.5 * 3600.)}],
     });
     record_as(
         &h.switcher.usage_store,
@@ -119,7 +112,7 @@ fn the_collector_hands_the_trust_bound_its_configured_models() {
         "premise: a backoff was recorded"
     );
     edit_row(&h, |row| {
-        row["lastGood"]["scoped"][0]["resets_at"] = json!(iso_ahead(now, -60. / 3600.));
+        row["lastGood"]["scoped"][0]["resets_at"] = json!(iso(now - 60.));
         row["fetchedAt"] = json!(row["fetchedAt"].as_f64().unwrap() - 1860.);
         row["backoffUntil"] = Value::Null;
     });

@@ -162,7 +162,7 @@ fn trust_ceiling_wins_over_non_429_failure_state() {
 }
 
 fn usage_resetting_at(now: f64, ahead: f64) -> Value {
-    let at = iso_in(now, ahead);
+    let at = iso(now + ahead);
     json!({
         "five_hour": {"pct": 25.0, "resets_at": at},
         "seven_day": {"pct": 10.0, "resets_at": at},
@@ -216,11 +216,11 @@ fn _429_staleness_without_reset_info_falls_back_to_ceiling() {
 fn bounded_usage(now: f64, five_h_ahead: Option<f64>, seven_d_ahead: Option<f64>) -> Value {
     let mut five = json!({"pct": 25.0});
     if let Some(ahead) = five_h_ahead {
-        five["resets_at"] = json!(iso_in(now, ahead));
+        five["resets_at"] = json!(iso(now + ahead));
     }
     let mut seven = json!({"pct": 10.0});
     if let Some(ahead) = seven_d_ahead {
-        seven["resets_at"] = json!(iso_in(now, ahead));
+        seven["resets_at"] = json!(iso(now + ahead));
     }
     json!({"five_hour": five, "seven_day": seven})
 }

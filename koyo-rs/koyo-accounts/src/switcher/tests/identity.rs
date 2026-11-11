@@ -9,7 +9,8 @@ use serde_json::json;
 
 use super::{Harness, sample_sequence_data};
 use crate::AccountsError;
-use crate::switcher::{LineageKey, SlotIdentity, locked};
+use crate::locked;
+use crate::switcher::{LineageKey, SlotIdentity};
 
 #[test]
 fn no_config_file() {

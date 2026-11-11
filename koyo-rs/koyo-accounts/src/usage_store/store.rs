@@ -15,11 +15,11 @@ use std::path::PathBuf;
 use serde_json::{Map, Value, json};
 
 use super::backoff::{TRUST_MAX_AGE_S, earliest_reset, rejection_deadline};
-use super::rows::{Row, apply_outcome, entry_of, lay_over, opt, row_eligible};
+use super::rows::{Row, apply_outcome, entry_of, lay_over, row_eligible};
 use super::{CLAIM_TTL_S, FetchRecord, Identities, Identity, PollPlan, SCHEMA_VERSION, UsageEntry};
 use crate::locking::{DEFAULT_TIMEOUT, FileLock};
-use crate::oauth::value::{num_or_none, py_number};
-use crate::poll_policy::random_u64;
+use crate::oauth::value::{num_or_none, py_number, str_at};
+use crate::random::random_u64;
 use crate::{Env, Result, fsutil, paths};
 
 /// The `cache/usage.json` table of Koyo's store.
@@ -45,7 +45,7 @@ fn matches_row(row: &Row, identity: &Identity) -> bool {
         None => identity.1.is_empty(),
         Some(org) => org.as_str() == Some(identity.1.as_str()),
     };
-    row.get("email").and_then(Value::as_str) == Some(identity.0.as_str()) && org_matches
+    str_at(row, "email") == Some(identity.0.as_str()) && org_matches
 }
 
 /// The row for `num`, taken out to be changed and put back: a fresh one when missing or
@@ -379,8 +379,10 @@ impl UsageStore {
         Ok(Some(entry))
     }
 
-    /// Stores the scheduler's per-slot `(nextPollAt, pollIntervalS)`.
-    pub fn set_poll_plan(
+    /// Stores the scheduler's per-slot `(nextPollAt, pollIntervalS)`: tests seed plans with it;
+    /// the store's own writes plan as they record.
+    #[cfg(test)]
+    pub(crate) fn set_poll_plan(
         &self,
         plans: &BTreeMap<String, PollPlan>,
         identities: &Identities,
@@ -391,8 +393,8 @@ impl UsageStore {
         let nums: Vec<&str> = plans.keys().map(String::as_str).collect();
         self.mutate(identities, &nums, |num, row| {
             let (next_poll_at, interval) = plans[num];
-            row.insert("nextPollAt".to_owned(), opt(next_poll_at));
-            row.insert("pollIntervalS".to_owned(), opt(interval));
+            row.insert("nextPollAt".to_owned(), super::rows::opt(next_poll_at));
+            row.insert("pollIntervalS".to_owned(), super::rows::opt(interval));
         })
     }
 

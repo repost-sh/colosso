@@ -133,8 +133,8 @@ fn the_all_spent_recovery_leg_carries_its_own_hysteresis() {
     // The peer resets only 60 s before the active: inside RECOVERY_HYSTERESIS_S.
     let state = null_snapshot("failover");
     let usage = [
-        ("1", usage_r(95., &iso_at(START + 3600.))),
-        ("2", usage_r(98., &iso_at(START + 3660.))),
+        ("1", usage_r(95., &iso(START + 3600.))),
+        ("2", usage_r(98., &iso(START + 3660.))),
     ];
     let settings = defaults();
     assert!(!recovered_on(
@@ -236,7 +236,7 @@ fn ordinary_departure_weekly_bound_peer_that_recovered_releases() {
     // The reset moved from an hour out to a minute out: a recovery the headroom leg can't see.
     let state =
         json!({"lastSwitchFrom": "2", "leftHeadroom": 4.0, "leftRecoveryAt": START + 3600.});
-    let usage = [("2", usage_r(96., &iso_at(START + 60.)))];
+    let usage = [("2", usage_r(96., &iso(START + 60.)))];
     assert!(recovered(&state, &usage, &[("2", Some(4.))], Some(8.)));
 }
 

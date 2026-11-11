@@ -3,7 +3,7 @@
 
 use std::fs::File;
 use std::os::fd::AsRawFd as _;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use crate::{AccountsError, Env, Result, fsutil};
@@ -16,7 +16,6 @@ const STEP: Duration = Duration::from_millis(100);
 #[derive(Debug)]
 pub struct FileLock {
     file: File,
-    path: PathBuf,
 }
 
 impl FileLock {
@@ -37,17 +36,13 @@ impl FileLock {
             let taken =
                 unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0;
             if taken {
-                return Ok(Some(FileLock {
-                    file,
-                    path: path.to_owned(),
-                }));
+                return Ok(Some(FileLock { file }));
             }
-            let spent = start.elapsed();
-            if spent > timeout {
+            if start.elapsed() > timeout {
                 return Ok(None);
             }
             // Clamped to what's left, so `timeout` bounds the call.
-            fsutil::nap(STEP.min(timeout.saturating_sub(spent)));
+            fsutil::nap_within(STEP, start, timeout);
         }
     }
 
@@ -60,10 +55,6 @@ impl FileLock {
         FileLock::acquire(env, path, timeout)?.ok_or_else(|| {
             AccountsError::Lock("Failed to acquire lock - another instance may be running".into())
         })
-    }
-
-    pub fn path(&self) -> &Path {
-        &self.path
     }
 }
 
@@ -109,7 +100,6 @@ mod tests {
     fn a_zero_timeout_still_takes_a_free_lock() {
         let sandbox = Sandbox::new();
         let env = sandbox.env();
-        let lock = FileLock::hold(&env, &sandbox.store().join(".lock"), Duration::ZERO).unwrap();
-        assert!(lock.path().ends_with(".lock"));
+        assert!(FileLock::hold(&env, &sandbox.store().join(".lock"), Duration::ZERO).is_ok());
     }
 }

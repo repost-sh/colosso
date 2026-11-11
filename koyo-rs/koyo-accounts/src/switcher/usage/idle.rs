@@ -24,13 +24,14 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use crate::fsutil;
+use crate::locked;
 use crate::oauth::{
     NO_ACCESS_TOKEN_ERROR, TOKEN_EXPIRED_ERROR, UNAUTHORIZED_ERROR, USAGE_KEYCHAIN_UNAVAILABLE,
     USAGE_NO_CREDENTIALS, USAGE_TOKEN_EXPIRED, access_token_fingerprint, extract_access_token,
     try_fetch_usage_for_account,
 };
+use crate::switcher::Switcher;
 use crate::switcher::info::AccountInfo;
-use crate::switcher::{Switcher, locked};
 use crate::usage_store::{FetchRecord, UsageEntry};
 
 /// `_FETCH_STAGGER_S`: the delay between successive request starts of one pass, so N accounts

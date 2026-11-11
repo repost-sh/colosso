@@ -7,7 +7,7 @@
 use std::collections::{BTreeMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex};
 
 use crate::Env;
 use crate::env::{Clock, Vars};
@@ -90,10 +90,9 @@ impl Drop for Sandbox {
     }
 }
 
-/// A mutex's guard, a poisoned one's too: a test that panicked holding it fails on its own.
-pub(crate) fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(PoisonError::into_inner)
-}
+/// The crate's mutex guard, for the fakes' state: a test that panicked holding it fails on its
+/// own.
+pub(crate) use crate::locked;
 
 /// One call made of the fake `security`.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -188,7 +187,7 @@ impl FakeSecurity {
 }
 
 /// `line` split as `security -i` splits it: words, double quotes with `\` escapes.
-fn words(line: &str) -> Vec<String> {
+pub(crate) fn words(line: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut word = String::new();
     let (mut quoted, mut escaped, mut any) = (false, false, false);
@@ -217,7 +216,7 @@ fn words(line: &str) -> Vec<String> {
 }
 
 /// The value after `flag` among `args`.
-fn after<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
+pub(crate) fn after<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
     let at = args.iter().position(|arg| arg == flag)?;
     args.get(at + 1).map(String::as_str)
 }
@@ -406,6 +405,43 @@ pub(crate) fn record_as(
 #[cfg(test)]
 pub(crate) fn entry_as(store: &UsageStore, num: &str, identities: &Identities) -> UsageEntry {
     store.entries(identities, &[]).remove(num).unwrap()
+}
+
+/// An epoch as an ISO stamp in UTC, as cswap's tests write them: `Z`, and microseconds when
+/// there are any (`oauth::iso_z`).
+#[cfg(test)]
+pub(crate) fn iso(epoch: f64) -> String {
+    crate::oauth::iso_z(epoch).unwrap()
+}
+
+/// An OAuth credential with these tokens, and `expiresAt` (epoch ms, as written: an int or a
+/// float) when given.
+#[cfg(test)]
+pub(crate) fn creds(access: &str, refresh: &str, expires_at: Option<serde_json::Value>) -> String {
+    let mut oauth = serde_json::json!({"accessToken": access, "refreshToken": refresh});
+    if let Some(expires_at) = expires_at {
+        oauth["expiresAt"] = expires_at;
+    }
+    serde_json::json!({"claudeAiOauth": oauth}).to_string()
+}
+
+/// A stored reading with the 5h window at `pct` and the weekly one empty: cswap's `_usage`.
+#[cfg(test)]
+pub(crate) fn usage(pct: f64) -> serde_json::Value {
+    usage7(pct, 0.)
+}
+
+/// A stored reading with both windows: cswap's `_usage7`.
+#[cfg(test)]
+pub(crate) fn usage7(pct5: f64, pct7: f64) -> serde_json::Value {
+    serde_json::json!({"five_hour": {"pct": pct5}, "seven_day": {"pct": pct7}})
+}
+
+/// Whether `left` is `right` within a millionth of it (of 1, below 1), for cswap's
+/// `pytest.approx` comparisons.
+#[cfg(test)]
+pub(crate) fn approx(left: f64, right: f64) -> bool {
+    (left - right).abs() <= 1e-6 * right.abs().max(1.)
 }
 
 #[cfg(test)]

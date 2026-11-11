@@ -459,27 +459,3 @@ fn healthy_mac_reads_create_no_files() {
     assert!(!paths::credentials_path(world.store.env()).exists());
     assert!(!world.store.credentials_dir().exists());
 }
-
-#[test]
-fn clear_oauth_credential_removes_the_item_and_the_file() {
-    let world = World::new();
-    let account = world.account();
-    world
-        .security
-        .fake
-        .set(CLAUDE_CODE_KEYCHAIN_SERVICE, &account, "LIVE");
-    let path = write_credentials_file(&world, "LIVE");
-    world.store.clear_oauth_credential();
-    assert_eq!(
-        world
-            .security
-            .fake
-            .get(CLAUDE_CODE_KEYCHAIN_SERVICE, &account),
-        None
-    );
-    assert!(!path.exists());
-    // A down Keychain is fine: best-effort.
-    world.security.lock();
-    assert!(!world.store.delete_active_keychain_entry());
-    world.store.clear_oauth_credential();
-}

@@ -111,8 +111,8 @@ pub fn check(env: &Env, path: &Path) -> Result<()> {
 }
 
 /// Whether `path` is under a real root, for tests of the guard itself.
-#[cfg(any(test, feature = "testing"))]
-pub fn is_real(path: &Path) -> bool {
+#[cfg(test)]
+pub(crate) fn is_real(path: &Path) -> bool {
     spellings(path)
         .iter()
         .any(|target| real_roots().iter().any(|root| target.starts_with(root)))

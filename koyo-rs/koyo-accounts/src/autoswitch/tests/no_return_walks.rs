@@ -350,7 +350,7 @@ fn left_snapshot_uses_the_ranking_now_not_a_fresh_clock_read() {
     let mut h = Harness::fleet(2, defaults());
     let ranking_now = h.now();
     let fleet = [
-        ("1", usage_r(95., &iso_at(ranking_now + 100.))),
+        ("1", usage_r(95., &iso(ranking_now + 100.))),
         ("2", usage(10.)),
     ];
     h.host.lock().advance_on_read = Some(200.);

@@ -13,14 +13,13 @@
 //! The backup root is Koyo's store (`Env::store`) instead of cswap's XDG and legacy roots, and
 //! the legacy-root migration isn't ported (`docs/claude-accounts.md` 3).
 
-use std::fmt::Write as _;
 use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
 use std::path::{Path, PathBuf};
 
-use sha2::{Digest as _, Sha256};
 use unicode_normalization::UnicodeNormalization as _;
 
 use crate::Env;
+use crate::oauth::sha256_hex;
 
 /// Claude Code's active OAuth credential in the Keychain.
 pub const CLAUDE_CODE_KEYCHAIN_SERVICE: &str = "Claude Code-credentials";
@@ -67,15 +66,6 @@ pub fn default_claude_config_home(env: &Env) -> PathBuf {
     env.home.join(".claude")
 }
 
-/// The default profile's global config, with the same legacy rule, whatever
-/// `CLAUDE_CONFIG_DIR` says.
-pub fn default_global_config_path(env: &Env) -> PathBuf {
-    pick_global_config(
-        &default_claude_config_home(env).join(".config.json"),
-        env.home.join(".claude.json"),
-    )
-}
-
 /// The credentials file: `<config home>/.credentials.json`.
 pub fn credentials_path(env: &Env) -> PathBuf {
     claude_config_home(env).join(".credentials.json")
@@ -86,12 +76,10 @@ pub fn credentials_path(env: &Env) -> PathBuf {
 /// spelling is another item.
 pub fn keychain_service_name(config_dir: &str) -> String {
     let normalized: String = config_dir.nfc().collect();
-    let digest = Sha256::digest(normalized.as_bytes());
-    let hex = digest[..4].iter().fold(String::new(), |mut hex, byte| {
-        write!(hex, "{byte:02x}").ok();
-        hex
-    });
-    format!("{CLAUDE_CODE_KEYCHAIN_SERVICE}-{hex}")
+    format!(
+        "{CLAUDE_CODE_KEYCHAIN_SERVICE}-{}",
+        &sha256_hex(&normalized)[..8]
+    )
 }
 
 /// Python's `posixpath.dirname`.
@@ -304,34 +292,30 @@ mod tests {
             ("nonempty", true, true),
             ("directory", false, false),
         ];
-        let resolvers: [fn(&Env) -> PathBuf; 2] = [global_config_path, default_global_config_path];
-        for resolver in resolvers {
-            for (kind, global_present, expect_legacy) in cases {
-                let sandbox = Sandbox::new();
-                let legacy = sandbox.home().join(".claude/.config.json");
-                fs::create_dir_all(legacy.parent().unwrap()).unwrap();
-                match kind {
-                    "directory" => fs::create_dir(&legacy).unwrap(),
-                    "absent" => {}
-                    _ => {
-                        fs::write(&legacy, if kind == "nonempty" { "{}" } else { "" }).unwrap();
-                        if kind == "empty_readonly" {
-                            fs::set_permissions(&legacy, fs::Permissions::from_mode(0o444))
-                                .unwrap();
-                        }
+        for (kind, global_present, expect_legacy) in cases {
+            let sandbox = Sandbox::new();
+            let legacy = sandbox.home().join(".claude/.config.json");
+            fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+            match kind {
+                "directory" => fs::create_dir(&legacy).unwrap(),
+                "absent" => {}
+                _ => {
+                    fs::write(&legacy, if kind == "nonempty" { "{}" } else { "" }).unwrap();
+                    if kind == "empty_readonly" {
+                        fs::set_permissions(&legacy, fs::Permissions::from_mode(0o444)).unwrap();
                     }
                 }
-                let global = sandbox.home().join(".claude.json");
-                if global_present {
-                    fs::write(&global, "{}").unwrap();
-                }
-                let expected = if expect_legacy { legacy } else { global };
-                assert_eq!(
-                    resolver(&sandbox.env()),
-                    expected,
-                    "{kind} {global_present}"
-                );
             }
+            let global = sandbox.home().join(".claude.json");
+            if global_present {
+                fs::write(&global, "{}").unwrap();
+            }
+            let expected = if expect_legacy { legacy } else { global };
+            assert_eq!(
+                global_config_path(&sandbox.env()),
+                expected,
+                "{kind} {global_present}"
+            );
         }
     }
 

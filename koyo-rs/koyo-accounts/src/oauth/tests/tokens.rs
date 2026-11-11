@@ -1,10 +1,9 @@
-//! From claude-swap's `tests/test_oauth.py` (0fe22a8):
-//! `TestExtractAccessToken`, `TestBuildTokenStatus`, `TestIsSetupToken`,
-//! `TestCredentialFingerprint`, `TestLoginExpiresAtIso`.
+//! From claude-swap's `tests/test_oauth.py` (0fe22a8): `TestExtractAccessToken`,
+//! `TestIsSetupToken`, `TestCredentialFingerprint`. `TestBuildTokenStatus` and
+//! `TestLoginExpiresAtIso` are left out with the code they test, which nothing called.
 
 use serde_json::{Map, Value, json};
 
-use super::utc;
 use crate::oauth::*;
 
 fn oauth(value: Value) -> Map<String, Value> {
@@ -39,37 +38,6 @@ fn invalid_json() {
 #[test]
 fn empty_string() {
     assert_eq!(extract_access_token(""), None);
-}
-
-// TestBuildTokenStatus
-
-#[test]
-fn builds_fresh_token_status() {
-    let now = utc(2026, 4, 2, 18, 0, 0);
-    let expires_at = utc(2026, 4, 2, 19, 30, 0) * 1000.;
-    let credentials = json!({"claudeAiOauth": {
-        "accessToken": "old-access", "refreshToken": "old-refresh", "expiresAt": expires_at as i64,
-    }})
-    .to_string();
-    let status = build_token_status(&credentials, now).unwrap();
-    assert!(
-        status.contains("oauth: fresh, refresh token yes"),
-        "{status}"
-    );
-    assert!(status.contains("in 1h 30m"), "{status}");
-    assert!(!status.contains("old-access") && !status.contains("old-refresh"));
-}
-
-#[test]
-fn builds_unknown_expiry_status() {
-    let credentials = json!({"claudeAiOauth": {
-        "accessToken": "old-access", "refreshToken": "old-refresh",
-    }})
-    .to_string();
-    assert_eq!(
-        build_token_status(&credentials, 0.).as_deref(),
-        Some("oauth: unknown expiry, refresh token yes")
-    );
 }
 
 // TestIsSetupToken
@@ -166,66 +134,6 @@ fn access_token_fingerprint_follows_the_access_token() {
     );
     assert_ne!(access_token_fingerprint(&a), access_token_fingerprint(&b));
     assert_eq!(access_token_fingerprint("{}"), None);
-}
-
-// TestLoginExpiresAtIso
-
-#[test]
-fn refresh_token_expiry_is_reported_as_iso_utc() {
-    let creds = json!({"claudeAiOauth": {
-        "accessToken": "sk-x", "refreshTokenExpiresAt": 1_791_421_596_865_i64,
-    }})
-    .to_string();
-    assert_eq!(
-        login_expires_at_iso(&creds).as_deref(),
-        Some("2026-10-08T01:06:36Z")
-    );
-    assert_eq!(login_expires_at_epoch(&creds), Some(1_791_421_596.865));
-}
-
-#[test]
-fn anything_but_a_positive_epoch_is_unknown() {
-    // json.dumps writes NaN and Infinity as these literals, which serde refuses, as the
-    // credential then reads as unparseable.
-    for creds in [
-        String::new(),
-        "not json".to_owned(),
-        json!({"claudeAiOauth": {"accessToken": "sk-x"}}).to_string(),
-        json!({"claudeAiOauth": {"refreshTokenExpiresAt": "soon"}}).to_string(),
-        json!({"claudeAiOauth": {"refreshTokenExpiresAt": true}}).to_string(),
-        json!({"claudeAiOauth": {"refreshTokenExpiresAt": 0}}).to_string(),
-        r#"{"claudeAiOauth": {"refreshTokenExpiresAt": NaN}}"#.to_owned(),
-        r#"{"claudeAiOauth": {"refreshTokenExpiresAt": Infinity}}"#.to_owned(),
-        json!({"other": {}}).to_string(),
-    ] {
-        assert_eq!(login_expires_at_iso(&creds), None, "{creds}");
-    }
-}
-
-#[test]
-fn login_expiry_is_said_within_a_week() {
-    let now = 1_000_000.;
-    assert_eq!(login_time_left(None, false, now), None);
-    assert_eq!(login_time_left(Some(now + 8. * 86_400.), false, now), None);
-    assert_eq!(login_time_left(Some(now + 86_400.), true, now), None);
-    assert_eq!(
-        login_time_left(Some(now + 86_400.), false, now),
-        Some(86_400.)
-    );
-    assert_eq!(login_time_left(Some(now - 5.), false, now), Some(0.));
-    let soon = Some(now + 5. * 86_400. + 12. * 3600.);
-    assert_eq!(
-        format_login_expiry(soon, false, now, false).as_deref(),
-        Some("re-login in 5d 12h")
-    );
-    assert_eq!(
-        format_login_expiry(soon, false, now, true).as_deref(),
-        Some("re-login in 5d")
-    );
-    assert_eq!(
-        format_login_expiry(Some(now), false, now, false).as_deref(),
-        Some("re-login needed")
-    );
 }
 
 #[test]

@@ -1,5 +1,6 @@
 //! Port of claude-swap's `credentials.py` (0fe22a8), its active-credential half: Claude
-//! Code's OAuth login read with its verdicts, written to the Keychain, and cleared.
+//! Code's OAuth login read with its verdicts and written to the Keychain. Clearing it
+//! (`clear_oauth_credential`, `_delete_active_keychain_entry`) is left out: nothing does.
 //!
 //! The read tries the Keychain item(s) Claude Code reads for this environment, twice each with
 //! 0.3 s between, then Claude Code's own `.credentials.json`. Exit 44 is an absent item, a
@@ -111,17 +112,6 @@ impl CredentialStore {
         ActiveCredentials::new(Some(String::new()), keychain_failed, keychain_failed)
     }
 
-    /// Removes the active credential's Keychain item, best-effort: whether no item is left to
-    /// shadow the file (a delete returns only on exit 0 or 44). Not a [`Self::kc_call`].
-    pub fn delete_active_keychain_entry(&self) -> bool {
-        keychain::delete_password(
-            &*self.env.security,
-            CLAUDE_CODE_KEYCHAIN_SERVICE,
-            &self.account_name(),
-        )
-        .is_ok()
-    }
-
     /// Writes Claude Code's active credential. An OAuth credential is written by
     /// [`Self::write_oauth_credentials`]; cswap then clears any managed API key, left out
     /// here with managed keys.
@@ -167,7 +157,10 @@ impl CredentialStore {
             )));
         }
         self.refresh_stale_credentials_file(credentials);
-        self.state().last_active_credentials_backend = Some("keychain");
+        #[cfg(test)]
+        {
+            self.state().last_active_credentials_backend = Some("keychain");
+        }
         Ok(())
     }
 
@@ -196,17 +189,5 @@ impl CredentialStore {
             &dir.join(".credentials.json"),
             credentials.as_bytes(),
         )
-    }
-
-    /// Clears the active OAuth credential, the Keychain item and `.credentials.json`,
-    /// best-effort: a down Keychain or a missing file is fine.
-    pub fn clear_oauth_credential(&self) {
-        self.delete_active_keychain_entry();
-        let path = paths::credentials_path(&self.env);
-        if path.exists()
-            && let Err(error) = fsutil::remove_file(&self.env, &path)
-        {
-            log::warn!("Failed to remove credentials file: {error}");
-        }
     }
 }

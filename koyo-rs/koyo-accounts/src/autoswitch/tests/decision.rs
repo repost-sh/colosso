@@ -176,7 +176,7 @@ fn trusted_stale_exhausted_set_still_fires_all_exhausted() {
             .first()
             .unwrap()
             .earliest_reset_at
-            .map(iso_at)
+            .map(iso)
             .as_deref(),
         Some(reset)
     );
@@ -413,7 +413,7 @@ fn all_exhausted_carries_earliest_reset() {
             .first()
             .unwrap()
             .earliest_reset_at
-            .map(iso_at)
+            .map(iso)
             .as_deref(),
         Some("2026-07-03T10:30:00Z")
     );
@@ -424,7 +424,7 @@ fn all_exhausted_carries_earliest_reset() {
 fn all_exhausted_ignores_non_future_reset() {
     for offset in [-60., 0.] {
         let mut h = Harness::standard();
-        let reset = iso_at(h.now() + offset);
+        let reset = iso(h.now() + offset);
         let outcome = h.tick_with_usage(&[
             ("1", usage_r(100., &reset)),
             ("2", usage_r(100., &reset)),

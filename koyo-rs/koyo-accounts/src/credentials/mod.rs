@@ -33,12 +33,12 @@
 //! and Linux are left out.
 
 use std::collections::HashMap;
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-use crate::Env;
 use crate::keychain::{self, KeychainError, Security};
 use crate::paths::{self, CLAUDE_CODE_KEYCHAIN_SERVICE};
+use crate::{Env, locked};
 
 mod active;
 mod backup;
@@ -47,13 +47,11 @@ mod shared;
 mod stash;
 mod successor;
 
-pub use backup::{backup_username, prev_backup_username};
-pub use shared::{
-    ACCOUNT_CREDENTIAL_KEYS, SHARED_CREDENTIAL_KEYS, credential_object, looks_like_api_key,
-    merge_shared_credential_fields, shared_credential_fields,
-};
+#[cfg(test)]
+pub(crate) use backup::backup_username;
+pub use shared::{looks_like_api_key, merge_shared_credential_fields, shared_credential_fields};
 pub use stash::ManifestVerdict;
-pub use successor::{StashMeta, StashReason, StashedSuccessor};
+pub use successor::{StashMeta, StashReason};
 
 /// The active OAuth read's attempts: a locked or contended login Keychain can fail one
 /// `security` call (just after wake, or under Claude Code's own statusline polling the item)
@@ -185,7 +183,9 @@ struct State {
     /// `_active_read_failed`: the last active read couldn't reach the Keychain. Per item: a
     /// readable backup says nothing about the active item, so it can't clear this.
     active_read_failed: bool,
-    /// Where the last active write landed: `"keychain"` (Koyo has no file mode).
+    /// Where the last active write landed: `"keychain"` (Koyo has no file mode), which cswap's
+    /// tests assert on.
+    #[cfg(test)]
     last_active_credentials_backend: Option<&'static str>,
     /// Display reads of backups: `(number, email)` → (value or `""`, when read).
     backup_read_cache: HashMap<(String, String), (String, Instant)>,
@@ -224,6 +224,7 @@ impl CredentialStore {
                 disabled_until: None,
                 op_failed: false,
                 active_read_failed: false,
+                #[cfg(test)]
                 last_active_credentials_backend: None,
                 backup_read_cache: HashMap::new(),
                 backup_read_cache_epoch: 0,
@@ -236,12 +237,13 @@ impl CredentialStore {
         }
     }
 
-    pub fn env(&self) -> &Env {
+    #[cfg(test)]
+    pub(crate) fn env(&self) -> &Env {
         &self.env
     }
 
     fn state(&self) -> MutexGuard<'_, State> {
-        self.state.lock().unwrap_or_else(PoisonError::into_inner)
+        locked(&self.state)
     }
 
     /// The account of Claude Code's Keychain items: the active credential's, and every
@@ -253,7 +255,6 @@ impl CredentialStore {
     /// Runs a Keychain operation, learning from it. A failure marks the Keychain unusable and
     /// starts the cooldown; a success (a miss included) clears the failure and marks it usable,
     /// but only from unknown: within one cooldown a success never sends operations back to it.
-    /// `item_exists` doesn't come through here: it answers `false` for a failure too.
     ///
     /// # Errors
     /// The operation's own.
@@ -303,32 +304,33 @@ impl CredentialStore {
     }
 
     /// Where the last active write landed: `"keychain"`, or `None` before any.
-    pub fn last_active_credentials_backend(&self) -> Option<&'static str> {
+    #[cfg(test)]
+    pub(crate) fn last_active_credentials_backend(&self) -> Option<&'static str> {
         self.state().last_active_credentials_backend
     }
 }
 
-/// What cswap's tests set by hand, for this crate's tests and the app's.
-#[cfg(any(test, feature = "testing"))]
+/// What cswap's tests set by hand.
+#[cfg(test)]
 impl CredentialStore {
     /// Ends the cooldown now, as cswap's tests set `_keychain_disabled_until` to a second ago.
-    pub fn lapse_keychain_cooldown(&self) {
+    pub(crate) fn lapse_keychain_cooldown(&self) {
         let now = Instant::now();
         self.state().disabled_until = Some(now.checked_sub(Duration::from_secs(1)).unwrap_or(now));
     }
 
     /// cswap's `_keychain_usable_cache`, set.
-    pub fn set_keychain_usable_cache(&self, usable: Option<bool>) {
+    pub(crate) fn set_keychain_usable_cache(&self, usable: Option<bool>) {
         self.state().usable = usable;
     }
 
     /// `KEYCHAIN_RECHECK_COOLDOWN_S`, patched.
-    pub fn set_keychain_cooldown(&self, cooldown: Duration) {
+    pub(crate) fn set_keychain_cooldown(&self, cooldown: Duration) {
         self.state().cooldown = cooldown;
     }
 
     /// `BACKUP_READ_CACHE_TTL_S`, patched.
-    pub fn set_backup_read_cache_ttl(&self, ttl: Duration) {
+    pub(crate) fn set_backup_read_cache_ttl(&self, ttl: Duration) {
         self.state().cache_ttl = ttl;
     }
 }

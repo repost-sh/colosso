@@ -216,7 +216,7 @@ fn engine_repairs_legacy_reset_parked_active_plan() {
     let mut h = Harness::fleet(1, defaults());
     let t0 = h.now();
     let reset_ts = t0 + 86_400.;
-    let exhausted = usage_r(100., &iso_at(reset_ts));
+    let exhausted = usage_r(100., &iso(reset_ts));
     h.advance(400.);
     let now = h.now();
     // A distant reset deadline kept with a much shorter learned interval.

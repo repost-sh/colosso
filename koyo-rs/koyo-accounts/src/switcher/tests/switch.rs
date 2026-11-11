@@ -8,9 +8,10 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::{Value, json};
 
-use super::{Harness, oauth_creds, profile, sample_sequence_data, tmp_files_in};
+use super::{Harness, profile, sample_sequence_data, tmp_files_in};
 use crate::AccountsError;
 use crate::switcher::store::WRITE_FAULT;
+use crate::testing::creds;
 
 /// cswap's `_setup_two_accounts`: slots 1 (test@, active) and 2 (account2@, an expired backup
 /// and its config); the live credential is each test's.
@@ -39,7 +40,7 @@ pub(super) fn expired_2() -> String {
 #[test]
 fn switch_refuses_to_overwrite_backup_with_empty_current_creds() {
     let h = two_accounts(&mut sample_sequence_data());
-    let good = oauth_creds("sk-good-1", "rt-good-1");
+    let good = creds("sk-good-1", "rt-good-1", None);
     h.set_backup("1", "test@example.com", &good);
     // No live item and no file: the read is "", as a `security` timeout's.
     assert!(matches!(
@@ -84,7 +85,7 @@ fn switch_with_unset_active_account_does_not_write_none_backup() {
         "scopes": ["user:inference"], "subscriptionType": null, "rateLimitTier": null,
     }});
     one_target_slot(&h, &target.to_string());
-    h.set_live(&oauth_creds("existing-live-token", "existing-refresh"));
+    h.set_live(&creds("existing-live-token", "existing-refresh", None));
     h.switcher.perform_switch("1", None).unwrap();
     assert!(
         !h.backup_accounts()
@@ -119,11 +120,11 @@ fn switch_uses_live_identity_for_current_backup_slot() {
         "activeAccountNumber": 3, "lastUpdated": "2024-01-01T00:00:00Z", "sequence": [3, 4],
         "accounts": {"3": record("onurcetinkol@gmail.com"), "4": record("realiti44@gmail.com")},
     }));
-    let live = oauth_creds("realiti-live-token", "realiti-live-refresh");
+    let live = creds("realiti-live-token", "realiti-live-refresh", None);
     h.set_backup(
         "3",
         "onurcetinkol@gmail.com",
-        &oauth_creds("target-token", "target-refresh"),
+        &creds("target-token", "target-refresh", None),
     );
     h.set_backup("4", "realiti44@gmail.com", "old-realiti-backup");
     h.set_config_backup(
@@ -154,8 +155,8 @@ fn direct_activation_failing(
     let h = Harness::new();
     let original_config = untracked_config().to_string();
     std::fs::write(h.config_path(), &original_config).unwrap();
-    one_target_slot(&h, &oauth_creds("target-token", "target-refresh"));
-    let live = oauth_creds("live-untracked-token", "live-untracked-refresh");
+    one_target_slot(&h, &creds("target-token", "target-refresh", None));
+    let live = creds("live-untracked-token", "live-untracked-refresh", None);
     h.set_live(&live);
     let sequence = h.switcher.sequence_file.clone();
     let config = h.config_path();
@@ -222,7 +223,7 @@ fn direct_activation_fails_fast_when_live_creds_unreadable() {
     let h = Harness::new();
     let original_config = untracked_config().to_string();
     std::fs::write(h.config_path(), &original_config).unwrap();
-    one_target_slot(&h, &oauth_creds("target-token", "target-refresh"));
+    one_target_slot(&h, &creds("target-token", "target-refresh", None));
     let file = h.credentials_file();
     std::fs::write(&file, "live-creds-that-we-cannot-read").unwrap();
     std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o000)).unwrap();
@@ -241,4 +242,37 @@ fn direct_activation_fails_fast_when_live_creds_unreadable() {
         std::fs::read_to_string(h.config_path()).unwrap(),
         original_config
     );
+}
+
+#[test]
+fn an_unreadable_live_config_is_kept_aside_before_a_switch_writes() {
+    // cswap's `_salvage_unreadable`, whose tests are in `test_api_key_accounts.py` (API-key
+    // accounts aren't ported): the bytes survive in a 0600 copy beside the config, the person
+    // is told, and the target's config takes its place.
+    let h = Harness::new();
+    let torn = r#"{"projects": {"#;
+    std::fs::write(h.config_path(), torn).unwrap();
+    let target = json!({"oauthAccount": {"emailAddress": "target@example.com"}});
+    let mut warnings = Vec::new();
+    let oauth = target["oauthAccount"].clone();
+    (h.switcher)
+        .splice_live_config(&h.config_path(), None, oauth, &target, &mut warnings)
+        .unwrap();
+    assert_eq!(
+        h.config()["oauthAccount"]["emailAddress"],
+        "target@example.com"
+    );
+    let folder = h.config_path().parent().unwrap().to_owned();
+    let kept: Vec<_> = (std::fs::read_dir(folder).unwrap())
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| {
+            let name = path.file_name().unwrap().to_string_lossy();
+            name.starts_with(".claude.json.unreadable-")
+        })
+        .collect();
+    assert_eq!(kept.len(), 1, "{kept:?}");
+    assert_eq!(std::fs::read_to_string(&kept[0]).unwrap(), torn);
+    let mode = std::fs::metadata(&kept[0]).unwrap().permissions().mode();
+    assert_eq!(mode & 0o777, 0o600);
+    assert!(!warnings.is_empty());
 }

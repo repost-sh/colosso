@@ -2,19 +2,21 @@
 //! patches the refresh POST under the real switcher's gate; here the fake gate answers what a
 //! test scripts, and persists a successor as the real gate does.
 
-use serde_json::json;
-
 use super::super::perform::{Freshen, Systemic};
 use super::*;
 use crate::oauth::{AccountIdentity, DETERMINISTIC_REFRESH_ERRORS, RefreshOutcome};
+use crate::testing::creds;
 
-/// cswap's status strings.
+/// cswap's status strings: a systemic refusal as the gate's kind that reads back to it.
 fn kind(status: &Freshen) -> &'static str {
     match status {
         Freshen::Ok => "ok",
         Freshen::Quarantine(reason, _) => reason.as_str(),
         Freshen::Transient => "transient",
-        Freshen::Systemic(systemic) => systemic.kind(),
+        Freshen::Systemic(systemic) => DETERMINISTIC_REFRESH_ERRORS
+            .into_iter()
+            .find(|kind| Systemic::from_kind(kind) == Some(*systemic))
+            .expect("every systemic refusal is one of the gate's kinds"),
     }
 }
 
@@ -27,12 +29,11 @@ fn script(h: &Harness, num: &str, outcomes: Vec<RefreshOutcome>) {
 }
 
 fn rotated(num: &str, expires_at: f64) -> String {
-    json!({"claudeAiOauth": {
-        "accessToken": format!("sk-{num}-new"),
-        "refreshToken": format!("rt-{num}-new"),
-        "expiresAt": expires_at,
-    }})
-    .to_string()
+    creds(
+        &format!("sk-{num}-new"),
+        &format!("rt-{num}-new"),
+        Some(expires_at.into()),
+    )
 }
 
 fn granted(credentials: &str, identity: Option<AccountIdentity>) -> RefreshOutcome {
@@ -373,10 +374,14 @@ fn an_actionable_cause_is_not_hidden_by_a_self_clearing_one() {
 
 #[test]
 fn the_systemic_kinds_are_the_gates_deterministic_errors() {
-    // Every deterministic refusal the gate names has its remedy, the most actionable first.
-    for kind in DETERMINISTIC_REFRESH_ERRORS {
-        assert_eq!(Systemic::from_kind(kind).map(Systemic::kind), Some(kind));
-    }
+    // Every deterministic refusal the gate names has its remedy, each its own, the most
+    // actionable first.
+    let systemic: BTreeSet<Systemic> = DETERMINISTIC_REFRESH_ERRORS
+        .into_iter()
+        .map(|kind| Systemic::from_kind(kind).expect(kind))
+        .collect();
+    assert_eq!(systemic.len(), DETERMINISTIC_REFRESH_ERRORS.len());
+    assert_eq!(Systemic::from_kind("transient"), None);
     assert!(Systemic::StoreUnmirrored < Systemic::ConsumeBusy);
 }
 

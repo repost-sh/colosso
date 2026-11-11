@@ -72,7 +72,7 @@ limit, each opening with the cswap module and commit it ports.
 - **HTTP** goes through the system `curl`, as Koyo's other requests do, with headers passed on
   stdin (`--config -`), never in argv, so a token never shows in `ps`. The system `curl` trusts
   the Keychain's certificates, which covers TLS-inspecting proxies.
-- **Tokens never reach a log**; state is summarised as cswap's `build_token_status` does.
+- **Tokens never reach a log.**
 - **Running Claude Code picks up a switch** within its 30 s Keychain cache, or at once when a
   `.credentials.json` already exists and its mtime is bumped, as cswap does.
 

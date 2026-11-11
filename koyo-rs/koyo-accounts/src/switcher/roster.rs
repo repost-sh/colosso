@@ -13,9 +13,8 @@
 //! Left out: the alias, with aliases, and `_get_sequence_data_migrated` (Koyo's store starts
 //! new, so the roster is read as it is).
 
-use serde_json::Value;
-
 use crate::Result;
+use crate::oauth::value::str_at;
 use crate::switcher::store::{record, sequence, text};
 use crate::switcher::{SlotIdentity, Switcher};
 
@@ -79,8 +78,7 @@ impl Switcher {
         for number in sequence(&data) {
             let account = record(&data, &number);
             let email = account
-                .and_then(|account| account.get("email"))
-                .and_then(Value::as_str)
+                .and_then(|account| str_at(account, "email"))
                 .unwrap_or("unknown");
             slots.push(RosterSlot {
                 identity: SlotIdentity {

@@ -11,13 +11,13 @@ use super::support::{EMAIL, call_text, creds, new, posted, queue_usage};
 use super::usage_active::{active_fetch, active_harness};
 use super::{Harness, profile};
 use crate::credentials::ActiveVerdict;
+use crate::locked;
 use crate::oauth::{PROFILE_URL, USAGE_FOREIGN_CREDENTIAL};
 use crate::paths::CLAUDE_CODE_KEYCHAIN_SERVICE;
-use crate::switcher::locked;
 use crate::usage_store::FetchRecord;
 
 fn expired() -> String {
-    creds("sk-active", "rt-orig", json!(1000))
+    creds("sk-active", "rt-orig", Some(json!(1000)))
 }
 
 /// cswap's `_PROFILE_SELF`.

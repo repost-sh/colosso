@@ -4,10 +4,10 @@ use serde_json::json;
 
 use super::*;
 use crate::switcher::{SwitchReason, SwitchResult};
+use crate::testing::creds;
 
 fn replace_credentials(h: &Harness, num: u32, access: &str, refresh: &str) {
-    h.host.lock().accounts.get_mut(&num).unwrap().credentials =
-        json!({"claudeAiOauth": {"accessToken": access, "refreshToken": refresh}}).to_string();
+    h.host.lock().accounts.get_mut(&num).unwrap().credentials = creds(access, refresh, None);
 }
 
 #[test]

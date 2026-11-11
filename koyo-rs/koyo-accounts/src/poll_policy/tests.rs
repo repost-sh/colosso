@@ -9,6 +9,7 @@
 use serde_json::{Value, json};
 
 use super::*;
+use crate::testing::{approx, iso, usage7};
 
 const NOW: f64 = 1_000_000.;
 
@@ -18,10 +19,6 @@ fn usage(pct: f64, resets_at: Option<&str>) -> Value {
         window["resets_at"] = json!(at);
     }
     json!({"five_hour": window, "seven_day": {"pct": 0.0}})
-}
-
-fn usage7(pct5: f64, pct7: f64) -> Value {
-    json!({"five_hour": {"pct": pct5}, "seven_day": {"pct": pct7}})
 }
 
 /// cswap's `_plan` defaults: a candidate at 10%, threshold 90, no models, no 429.
@@ -42,13 +39,6 @@ fn input(new_usage: Option<&Value>) -> PlanInput<'_> {
 
 fn interval(input: &PlanInput<'_>) -> f64 {
     plan_after_fetch(input).1
-}
-
-fn iso(ts: f64) -> String {
-    chrono::DateTime::from_timestamp(ts as i64, 0)
-        .unwrap()
-        .to_rfc3339()
-        .replace("+00:00", "Z")
 }
 
 // TestIntervalAdaptation
@@ -271,10 +261,6 @@ fn without_recency_the_interval_is_capped_at_the_narrow_ceiling() {
 }
 
 // TestResetCapping
-
-fn approx(left: f64, right: f64) -> bool {
-    (left - right).abs() <= 1e-6 * right.abs().max(1.)
-}
 
 #[test]
 fn poll_never_scheduled_past_a_future_reset() {
