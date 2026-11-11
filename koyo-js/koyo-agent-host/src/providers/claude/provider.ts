@@ -25,11 +25,21 @@ import type {
   SessionSink,
   SessionSpec,
 } from "../provider";
-import { commands, MISSING, models, probe, readyStatus } from "./catalog";
+import { commands, defaultModel, MISSING, models, probe, readyStatus } from "./catalog";
 import { type Env, findClaude, loginEnvironment, Versions } from "./environment";
 import { once } from "./once";
 import { filesOptions, modeOf, titleOptions } from "./options";
 import { ClaudeSession, type Launch, type Start } from "./session";
+
+/** What Claude's own settings choose for a folder, of what a chat may leave to them. */
+export interface ClaudeSettings {
+  /** The default mode they name. */
+  readonly mode?: PermissionMode | undefined;
+  /** The model they name. */
+  readonly model?: string | undefined;
+  /** The `ANTHROPIC_MODEL` their `env` sets, which the CLI takes ahead of `model`. */
+  readonly envModel?: string | undefined;
+}
 
 /** What Claude needs from the machine, which tests give it their own of. */
 export interface ClaudeDeps {
@@ -39,8 +49,8 @@ export interface ClaudeDeps {
   /** Where `claude` is, Koyo's setting first. */
   readonly find: (setting: string | null, env: Env) => string | undefined;
   readonly version: (executable: string, env: Env) => Promise<string | null>;
-  /** The default mode Claude's own settings name for `cwd`. */
-  readonly settingsMode: (cwd: string) => Promise<PermissionMode | undefined>;
+  /** What Claude's own settings choose for `cwd`. */
+  readonly settings: (cwd: string) => Promise<ClaudeSettings>;
   /** Whether a conversation has turns on disk to resume. */
   readonly resumable: (sessionId: string, cwd: string) => Promise<boolean>;
   /** The ids of a conversation's messages on disk, in order; none when it can't be read. */
@@ -65,7 +75,7 @@ const DEFAULTS: ClaudeDeps = {
   start: (params) => query(params),
   find: findClaude,
   version: async (executable, env) => await versions.of(executable, env),
-  settingsMode,
+  settings: settingsOf,
   resumable: hasTurns,
   conversation: messageIds,
   stopMs: 10_000,
@@ -131,17 +141,29 @@ export class ClaudeProvider implements Provider {
     }
   }
 
-  /** What Claude offers in `cwd`, and the default mode Claude's own settings name there. */
-  async catalog(cwd: string): Promise<Catalog> {
-    const [settings, found] = await Promise.all([this.#deps.settingsMode(cwd), this.#found()]);
-    const defaultMode = modeOrNull(settings);
+  /**
+   * What Claude offers in `cwd`, and the mode and the model a chat that names none runs with
+   * there, as Claude's own settings and environment choose them: the CLI takes the model from
+   * `ANTHROPIC_MODEL` ahead of the settings' `model`, and the one their `env` sets ahead of the
+   * login shell's. Without `withCommands`, no probe runs in a folder no session ran in.
+   */
+  async catalog(cwd: string, withCommands = true): Promise<Catalog> {
+    const [settings, found] = await Promise.all([this.#deps.settings(cwd), this.#found()]);
+    const defaultMode = modeOrNull(settings.mode);
     if (found === undefined) {
-      return { models: [], commands: [], defaultMode };
+      return { models: [], commands: [], defaultMode, defaultModel: null };
     }
-    const init = this.#commands.has(cwd)
+    const init = this.#commands.has(cwd) || !withCommands
       ? await this.#init(found, cwd, false)
       : await this.#probe(found, cwd);
-    return { models: models(init.models), commands: this.#commands.get(cwd) ?? [], defaultMode };
+    const listed = models(init.models);
+    const named = settings.envModel ?? found.env["ANTHROPIC_MODEL"] ?? settings.model;
+    return {
+      models: listed,
+      commands: this.#commands.get(cwd) ?? [],
+      defaultMode,
+      defaultModel: defaultModel(named, listed),
+    };
   }
 
   open(spec: SessionSpec, sink: SessionSink): ProviderSession {
@@ -315,13 +337,18 @@ function titlePrompt(prompt: string): string {
   ].join("\n");
 }
 
-/** The default mode Claude's settings name for `cwd`, read as the CLI reads them. */
-async function settingsMode(cwd: string): Promise<PermissionMode | undefined> {
+/** What Claude's settings choose for `cwd`, read as the CLI reads them. */
+async function settingsOf(cwd: string): Promise<ClaudeSettings> {
   try {
-    return (await resolveSettings({ cwd })).effective.permissions?.defaultMode;
+    const { effective } = await resolveSettings({ cwd });
+    return {
+      mode: effective.permissions?.defaultMode,
+      model: effective.model,
+      envModel: effective.env?.["ANTHROPIC_MODEL"],
+    };
   } catch (error) {
     log.debug("Claude's settings couldn't be read", error);
-    return undefined;
+    return {};
   }
 }
 

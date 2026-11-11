@@ -37,6 +37,7 @@ const greeted = handlers({
       argumentHint: null,
     })),
     defaultMode: null,
+    defaultModel: null,
   }),
 });
 

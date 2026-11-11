@@ -6,8 +6,9 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use gpui_kit::{AppContext as _, Context, Entity, WeakEntity};
+use gpui_kit::{AppContext as _, Context, Entity, Task, WeakEntity};
 use koyo_agent::agent_client::AgentClient;
+use koyo_agent::client::ClientError;
 use koyo_agent::protocol::methods::{
     Catalog, CatalogParams, GetCatalog, ProviderState, ProvidersStatus, StatusParams,
 };
@@ -51,6 +52,32 @@ impl Chats {
 }
 
 impl Chats {
+    /// What a chat in the checkout at `cwd` can run with: the catalog a tab showing it holds,
+    /// which its composer goes by, or else the host's models and defaults, asked for now on a
+    /// thread of its own, beside what the chats ask in order, and without the folder's commands,
+    /// which may take starting the agent there.
+    pub(crate) fn ask_catalog(
+        &mut self,
+        cwd: &Path,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<Catalog, ClientError>> {
+        let held = self.catalogs.get(cwd).and_then(WeakEntity::upgrade);
+        let held = held.map(|held| held.read(cx).clone());
+        if let Some(held) = held.filter(|held| !held.models.is_empty()) {
+            return Task::ready(Ok(held));
+        }
+        let Some(client) = self.client.clone() else {
+            return Task::ready(Err(ClientError::Closed));
+        };
+        self.connect(cx);
+        let params = CatalogParams {
+            provider: None,
+            cwd: cwd.to_string_lossy().into_owned(),
+            commands: Some(false),
+        };
+        cx.background_spawn(async move { client.request::<GetCatalog>(&params) })
+    }
+
     /// Asks the host whether Claude Code is there, which it looks for each time. Once it turns up
     /// there's something to choose from.
     pub(super) fn ask_for_provider(&self, refresh: bool, cx: &mut Context<Self>) {
@@ -94,6 +121,7 @@ fn ask_for_catalog(
     let params = CatalogParams {
         provider: None,
         cwd: cwd.to_string_lossy().into_owned(),
+        commands: None,
     };
     let asked = cx.background_spawn(async move { client.request::<GetCatalog>(&params) });
     cx.spawn(async move |_, cx| match asked.await {

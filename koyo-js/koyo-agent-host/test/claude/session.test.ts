@@ -140,15 +140,15 @@ describe("a session gone back in its conversation", () => {
 });
 
 describe("the session's init", () => {
-  test("says the mode in force, none for plan mode, and the folder's slash commands", async () => {
+  test("says the mode and model in force, no mode in plan, and the folder's commands", async () => {
     const made = bench();
     const { promptId, query } = await made.turn();
     query.send(init("default", { echo: [promptId] }));
     query.send(init("plan", { echo: [promptId] }));
     await settle();
     expect(made.sink.of("session.ready")).toEqual([
-      { type: "session.ready", mode: "ask" },
-      { type: "session.ready", mode: null },
+      { type: "session.ready", mode: "ask", model: "claude-haiku-5-5" },
+      { type: "session.ready", mode: null, model: "claude-haiku-5-5" },
     ]);
     expect(made.commands).toEqual([{ cwd: "/work/rec-cwd", names: ["review"] }]);
   });

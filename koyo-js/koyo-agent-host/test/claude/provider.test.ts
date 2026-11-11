@@ -1,8 +1,10 @@
 import type { ModelInfo, RewindFilesResult } from "@anthropic-ai/claude-agent-sdk";
 import { describe, expect, test } from "bun:test";
 
+import type { Catalog, Model } from "../../src/protocol/methods";
 import { HostError } from "../../src/protocol/wire";
-import { models } from "../../src/providers/claude/catalog";
+import { defaultModel, models } from "../../src/providers/claude/catalog";
+import type { Env } from "../../src/providers/claude/environment";
 import { type ClaudeDeps, ClaudeProvider } from "../../src/providers/claude/provider";
 import { failed, success } from "../fixtures/claude/frames";
 import { settle } from "../support/wait";
@@ -31,7 +33,7 @@ function provider(deps: Partial<ClaudeDeps> = {}): {
       return setting ?? "/opt/homebrew/bin/claude";
     },
     version: async () => await Promise.resolve("2.1.317"),
-    settingsMode: async () => await Promise.resolve("acceptEdits"),
+    settings: async () => await Promise.resolve({ mode: "acceptEdits" }),
     resumable: async () => await Promise.resolve(false),
     conversation: async () => await Promise.resolve([]),
     stopMs: 50,
@@ -111,7 +113,42 @@ describe("the catalog", () => {
       }],
       commands: [{ name: "compact", description: "Compact the conversation", argumentHint: null }],
       defaultMode: "accept_edits",
+      defaultModel: null,
     });
+  });
+
+  test("says the model Claude's settings run, the environment's ahead of `model`", async () => {
+    const settings = { mode: "acceptEdits", model: "opus" } as const;
+    const inEnv = async (): Promise<Env> =>
+      await Promise.resolve({ ...ENV, ANTHROPIC_MODEL: "sonnet" });
+    const catalog = async (deps: Partial<ClaudeDeps>): Promise<Catalog> =>
+      await provider(deps).claude.catalog("/w");
+    const named = await catalog({ settings: async () => await Promise.resolve(settings) });
+    expect(named.defaultModel).toBe("opus");
+    const fromLogin = await catalog({
+      environment: inEnv,
+      settings: async () => await Promise.resolve(settings),
+    });
+    expect(fromLogin.defaultModel).toBe("sonnet");
+    const fromSettings = await catalog({
+      environment: inEnv,
+      settings: async () => await Promise.resolve({ ...settings, envModel: "haiku" }),
+    });
+    expect(fromSettings.defaultModel).toBe("haiku");
+  });
+
+  test("names a listed model for the default, else what the settings say", () => {
+    const row = (id: string, runs: string | null): Model =>
+      ({ id, name: id, label: id, runs, efforts: [], fast: false, auto: false });
+    const listed = [row("default", "claude-fable-5-1"), row("opus", "claude-opus-5-5")];
+    expect(defaultModel(undefined, listed)).toBeNull();
+    expect(defaultModel("", listed)).toBeNull();
+    expect(defaultModel("opus", listed)).toBe("opus");
+    expect(defaultModel("claude-opus-5-5", listed)).toBe("opus");
+    expect(defaultModel("claude-fable-5-1", listed)).toBe("default");
+    expect(defaultModel("claude-mystery", listed)).toBe("claude-mystery");
+    const both = [row("default", "claude-opus-5-5"), row("opus", "claude-opus-5-5")];
+    expect(defaultModel("claude-opus-5-5", both)).toBe("opus");
   });
 
   test("has the Default row go by the name of what it runs", () => {
@@ -129,6 +166,13 @@ describe("the catalog", () => {
     const { claude } = provider();
     claude.setConfig({ claudePath: null, defaultMode: "auto", koyoTools: null });
     expect((await claude.catalog("/work/a")).defaultMode).toBe("accept_edits");
+  });
+
+  test("starts no probe in a new folder for its models alone", async () => {
+    const { claude, queries } = provider();
+    await claude.catalog("/work/a");
+    expect(await claude.catalog("/work/b", false)).toMatchObject({ commands: [] });
+    expect(queries).toHaveLength(1);
   });
 
   test("shares a probe already running for the folder", async () => {

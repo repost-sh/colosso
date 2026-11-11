@@ -16,8 +16,8 @@ use koyo_agent::protocol::requests::{
     RequestPayload, RequestStatus, Response,
 };
 use koyo_agent::words::{
-    answer_meta, approval_line, compacted, context_line, duration, live_line, plan_outcome,
-    plan_parts, question_lines, tool_line, work_line, work_summary, worked_for,
+    answer_meta, approval_line, compacted, context_line, duration, live_line, model_name,
+    plan_outcome, plan_parts, question_lines, tool_line, work_line, work_summary, worked_for,
 };
 use records::{done, reasoning, request, run, tool_of};
 use serde_json::json;
@@ -152,6 +152,63 @@ fn times_and_tokens_are_said_as_a_person_would() {
         "Extra high",
         "with none listed there's none to say"
     );
+}
+
+/// What Claude Code lists for an account whose recommended model is Fable 5.1, as its Default row.
+fn claude_rows() -> Vec<Model> {
+    let row = |id: &str, runs: &str, label: &str| Model {
+        id: id.into(),
+        runs: Some(runs.into()),
+        name: label.into(),
+        label: label.into(),
+        efforts: vec![Effort::High, Effort::Xhigh],
+        fast: false,
+        auto: true,
+    };
+    vec![
+        row("default", "claude-fable-5-1", "Fable 5.1"),
+        row("fable", "claude-fable-5-1", "Fable 5.1"),
+        row("opus", "claude-opus-5-5", "Opus 5.5"),
+    ]
+}
+
+#[test]
+fn a_chat_that_chose_no_model_shows_the_one_claudes_settings_run_not_the_first_row() {
+    let settled = Catalog {
+        models: claude_rows(),
+        default_model: Some("opus".into()),
+        ..Catalog::default()
+    };
+    let shown = settled.model(None).map(model_name);
+    assert_eq!(shown, Some("Opus 5.5"), "Claude's settings say `opus`");
+    assert_eq!(settled.model_id(None), Some("opus"));
+    let mut ran = run("r1", RunStatus::Completed, 5);
+    ran.model = None;
+    assert_eq!(answer_meta(&ran, &settled), "Opus 5.5");
+    // What the CLI says it ran on, which a run that chose none keeps.
+    ran.model = Some("claude-opus-5-5[1m]".into());
+    assert_eq!(answer_meta(&ran, &settled), "Opus 5.5");
+
+    let unset = Catalog {
+        models: claude_rows(),
+        ..Catalog::default()
+    };
+    assert_eq!(
+        unset.model(None).map(model_name),
+        Some("Fable 5.1"),
+        "with no setting the recommended row runs"
+    );
+    let elsewhere = Catalog {
+        models: claude_rows(),
+        default_model: Some("claude-mystery-1".into()),
+        ..Catalog::default()
+    };
+    assert_eq!(
+        elsewhere.model(None),
+        None,
+        "not the first row, which doesn't run"
+    );
+    assert_eq!(elsewhere.model_id(None), Some("claude-mystery-1"));
 }
 
 #[test]

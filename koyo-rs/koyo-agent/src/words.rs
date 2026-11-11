@@ -37,6 +37,15 @@ pub fn model_name(model: &Model) -> &str {
     model.label.split(" (").next().unwrap_or(&model.label)
 }
 
+/// What a model's row in a list says: its name, and what it runs if that isn't in its name.
+pub fn row_name(model: &Model) -> String {
+    if model.name.contains(model_name(model)) {
+        model.name.clone()
+    } else {
+        format!("{} · {}", model.name, model_name(model))
+    }
+}
+
 pub fn effort_label(effort: Effort) -> &'static str {
     match effort {
         Effort::Low => "Low",

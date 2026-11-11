@@ -352,7 +352,7 @@ export class ClaudeSession implements ProviderSession {
       this.#settled ??= frame.permissionMode;
     }
     this.#frames.init(frame);
-    this.#sink.event({ type: "session.ready", mode: modeOf(frame.permissionMode) });
+    this.#sink.event({ type: "session.ready", mode: modeOf(this.#mode), model: frame.model });
     const conversation = this.#conversation;
     if (!this.#listed && conversation !== undefined) {
       this.#listed = true;

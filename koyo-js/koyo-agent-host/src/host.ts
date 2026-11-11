@@ -47,8 +47,8 @@ export function handlers(host: Host): Handlers<Client> {
     "providers.status": async ({ refresh }) =>
       await Promise.all(host.providers.map(async (provider) => await provider.status(refresh))),
     // A new chat starts in Koyo's default mode, when it names one, else the provider's (C12).
-    "catalog": async ({ provider, cwd }) => {
-      const catalog = await threads.provider(provider).catalog(cwd);
+    "catalog": async ({ provider, cwd, commands }) => {
+      const catalog = await threads.provider(provider).catalog(cwd, commands);
       return { ...catalog, defaultMode: threads.config.defaultMode ?? catalog.defaultMode };
     },
     "threads.watch": (_params, client) => threads.watch(client),

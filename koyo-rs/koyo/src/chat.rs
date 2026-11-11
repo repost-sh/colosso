@@ -5,6 +5,7 @@
 mod asks;
 mod attachments;
 mod catalog;
+pub(crate) mod chosen;
 mod composer;
 mod connection;
 mod drafts;
@@ -46,7 +47,7 @@ use koyo_agent::protocol::methods::{
     Rows, SendParams, Sent, StopParams, ThreadParams, ThreadsClose, ThreadsHistory, ThreadsOpen,
     ThreadsUpdate, TurnsSend, TurnsStop, UpdateParams,
 };
-use koyo_agent::protocol::model::{Prompt, ThreadSummary};
+use koyo_agent::protocol::model::{Prompt, Thread, ThreadSummary};
 use koyo_agent::protocol::requests::Response;
 
 use crate::settings;
@@ -162,6 +163,16 @@ impl Chats {
             chats.connect(cx);
         }
         chats
+    }
+
+    /// Talks to `client`'s host from now on: tests have a stand-in host answer.
+    #[cfg(test)]
+    pub(crate) fn use_client(&mut self, client: Arc<AgentClient>, cx: &mut Context<Self>) {
+        self._following = Some(follow(&client, cx));
+        self.client = Some(client);
+        self.connection = Connection::Idle;
+        self.told_config = None;
+        self.tell_config(cx);
     }
 
     pub fn connection(&self) -> &Connection {
@@ -282,6 +293,14 @@ impl Chats {
             prompt,
             delivery,
         })
+    }
+
+    /// Asks the host to change thread `id` as `params` say, in its place in the queue.
+    pub fn change(
+        &self,
+        params: UpdateParams,
+    ) -> impl Future<Output = Result<Thread, ClientError>> + use<> {
+        self.ordered::<ThreadsUpdate>(params)
     }
 
     /// Says `response` to request `request` of thread `id`.

@@ -280,9 +280,12 @@ export class ThreadState {
     }
     switch (event.type) {
       case "session.ready": {
+        // A run that chose no mode or no model keeps the ones it ran with, as the session says.
         this.#mode = event.mode;
-        if (live.permission === null && event.mode !== null) {
-          this.commit({ runs: [{ ...live, permission: event.mode }] });
+        const permission = live.permission ?? event.mode;
+        const model = live.model ?? event.model;
+        if (permission !== live.permission || model !== live.model) {
+          this.commit({ runs: [{ ...live, permission, model }] });
         }
         return;
       }

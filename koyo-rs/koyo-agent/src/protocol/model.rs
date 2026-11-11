@@ -11,8 +11,9 @@ use serde_json::Value;
 use super::ids::{ItemId, MessageId, RequestId, RunId, ThreadId, Time};
 use super::requests::RequestKind;
 
-/// How much the agent may do without asking (C12); the plan toggle is separate.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// How much the agent may do without asking (C12), each more than the one before; the plan toggle
+/// is separate.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Mode {
     Ask,
@@ -447,12 +448,25 @@ pub enum Status {
 /// A thread as lists show it, with what it needs derived (`docs/chat.md` 4.4).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "a list's row as the host sends it, and each of these is its own setting or state"
+)]
 pub struct ThreadSummary {
     pub id: ThreadId,
     pub cwd: String,
     pub title: String,
     pub provider: String,
     pub model: Option<String>,
+    /// What the chat chose of the rest of what it runs with, as [`Thread`] has it.
+    #[serde(default)]
+    pub effort: Option<Effort>,
+    #[serde(default)]
+    pub fast: bool,
+    #[serde(default)]
+    pub permission: Option<Mode>,
+    #[serde(default)]
+    pub plan: bool,
     pub status: Status,
     /// What the oldest pending request asks of the person.
     pub needs: Option<RequestKind>,

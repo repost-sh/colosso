@@ -52,6 +52,8 @@ export class FakeProvider implements Provider {
   config: Config | undefined;
   /** The default mode its own settings name. */
   settingsMode: Mode | null = null;
+  /** The model its own settings name. */
+  settingsModel: string | null = null;
   /** What `entryBefore` says, or the error it refuses with. */
   entry: string | null | Error = null;
   /** What `filesAt` says, or the error it fails with. */
@@ -108,7 +110,12 @@ export class FakeProvider implements Provider {
   }
 
   async catalog(_cwd: string): Promise<Catalog> {
-    return await Promise.resolve({ models: [], commands: [], defaultMode: this.settingsMode });
+    return await Promise.resolve({
+      models: [],
+      commands: [],
+      defaultMode: this.settingsMode,
+      defaultModel: this.settingsModel,
+    });
   }
 
   open(spec: SessionSpec, sink: SessionSink): ProviderSession {

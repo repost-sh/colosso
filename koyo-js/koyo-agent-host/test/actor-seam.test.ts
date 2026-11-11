@@ -118,6 +118,26 @@ describe("a session's mode", () => {
     chats.actor.update({ model: "claude-opus-5-5" });
     expect(session.changes.at(-1)).toStrictEqual({ model: "claude-opus-5-5" });
   });
+
+  test("is kept by a run that chose none, with the model, as its session says", async () => {
+    const chats = harness();
+    await running(chats);
+    const ready = { type: "session.ready", mode: "auto", model: "claude-opus-5-5" } as const;
+    chats.provider.session.report(ready);
+    await settle();
+    expect(chats.rows().runs.at(-1))
+      .toMatchObject({ permission: "auto", model: "claude-opus-5-5" });
+  });
+
+  test("and the model are a run's own when it chose them", async () => {
+    const chats = harness();
+    chats.actor.update({ model: "opus", permission: "ask" });
+    await running(chats);
+    const ready = { type: "session.ready", mode: "auto", model: "claude-opus-5-5" } as const;
+    chats.provider.session.report(ready);
+    await settle();
+    expect(chats.rows().runs.at(-1)).toMatchObject({ permission: "ask", model: "opus" });
+  });
 });
 
 describe("a compact turn", () => {

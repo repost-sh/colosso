@@ -5,7 +5,10 @@
 
 mod activity;
 mod approval;
+mod chat_modes;
+mod chat_set;
 mod chats;
+mod host;
 mod panes;
 mod pipeline;
 mod projects;

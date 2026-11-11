@@ -154,7 +154,8 @@ export type SubagentEvent =
 export type DriverEvent =
   | ItemEvent
   | SubagentEvent
-  | { readonly type: "session.ready"; readonly mode: Mode | null }
+  /** The mode and the model the session runs in, as the provider names them. */
+  | { readonly type: "session.ready"; readonly mode: Mode | null; readonly model: string | null }
   | { readonly type: "turn.started"; readonly promptId: string }
   /** The agent started a turn no prompt asked for, as a subagent finished: it runs from now. */
   | { readonly type: "turn.adopted" }
@@ -216,8 +217,11 @@ export interface Provider {
   /** Takes Koyo's settings, each time they change. */
   readonly setConfig: (config: Config) => void;
   readonly status: (refresh: boolean) => Promise<ProviderStatus>;
-  /** What the provider offers in `cwd`; its default mode is the provider's own settings'. */
-  readonly catalog: (cwd: string) => Promise<Catalog>;
+  /**
+   * What the provider offers in `cwd`; its default mode and model are the provider's own
+   * settings'. Without `commands` it doesn't start the provider to learn the folder's.
+   */
+  readonly catalog: (cwd: string, commands?: boolean) => Promise<Catalog>;
   readonly open: (spec: SessionSpec, sink: SessionSink) => ProviderSession;
   /**
    * The entry of conversation `sessionId` right before the prompt `promptId`, or `null` when that

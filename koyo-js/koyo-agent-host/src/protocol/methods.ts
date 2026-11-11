@@ -69,6 +69,12 @@ export const Catalog = z.object({
   commands: z.array(Command),
   /** The mode a chat that names none runs in, from the provider's settings. */
   defaultMode: Mode.nullable(),
+  /**
+   * The model a chat that names none runs on, from the provider's settings: a listed model's
+   * id when one runs it, else what the settings name; null when they name none, and the first
+   * model, which the provider recommends, runs.
+   */
+  defaultModel: z.string().nullable(),
 });
 export type Catalog = z.infer<typeof Catalog>;
 
@@ -121,8 +127,16 @@ export const methods = {
     result: z.array(ProviderStatus),
   },
   "catalog": {
-    /** `provider` null is the host's first, which the app takes until a person can choose. */
-    params: z.object({ provider: ProviderId.nullable(), cwd: z.string().min(1) }),
+    /**
+     * `provider` null is the host's first, which the app takes until a person can choose.
+     * `commands` false asks for the models and defaults alone, which never start the provider
+     * in the folder: its commands are what's known of them, maybe none.
+     */
+    params: z.object({
+      provider: ProviderId.nullable(),
+      cwd: z.string().min(1),
+      commands: z.boolean().optional(),
+    }),
     result: Catalog,
   },
   "threads.watch": { params: Empty, result: z.array(ThreadSummary) },

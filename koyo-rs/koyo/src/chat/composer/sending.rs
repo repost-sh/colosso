@@ -1,41 +1,28 @@
 //! Sending what's typed and what's attached: the composer clears at once, and the message shows when
 //! the host says so. If it doesn't go it all comes back, with why.
 
-use std::path::Path;
-
 use gpui_kit::{Context, Window};
 use koyo_agent::client::ClientError;
 use koyo_agent::protocol::ids::{MessageId, ThreadId};
-use koyo_agent::protocol::methods::{Delivery, ThreadsCreate};
+use koyo_agent::protocol::methods::{CreateParams, Delivery, ThreadsCreate};
 use koyo_agent::protocol::model::{Prompt, Thread};
 use koyo_agent::protocol::requests::{Decision, Response};
 
 use super::asked::Asked;
-use super::footer::Settings;
 use super::{ChatComposer, ComposerEvent};
 use crate::chat::Chats;
 use crate::history;
 
 impl Chats {
-    /// Makes a chat in the checkout at `cwd`, as it starts until a person changes something.
+    /// Makes a chat as `params` say, reaching the host first so it hears Koyo's settings before
+    /// it opens the chat's session.
     pub(crate) fn create(
         &mut self,
-        cwd: &Path,
-        cx: &mut Context<Self>,
-    ) -> impl Future<Output = Result<Thread, ClientError>> + use<> {
-        self.create_as(&Settings::default(), cwd, cx)
-    }
-
-    /// Makes a chat in the checkout at `cwd`, set as `settings` say, reaching the host first so
-    /// it hears Koyo's settings before it opens the chat's session.
-    fn create_as(
-        &mut self,
-        settings: &Settings,
-        cwd: &Path,
+        params: CreateParams,
         cx: &mut Context<Self>,
     ) -> impl Future<Output = Result<Thread, ClientError>> + use<> {
         self.connect(cx);
-        self.ordered::<ThreadsCreate>(settings.to_create(cwd))
+        self.ordered::<ThreadsCreate>(params)
     }
 }
 
@@ -156,7 +143,7 @@ impl ChatComposer {
     fn create_and_send(&mut self, prompt: Prompt, window: &mut Window, cx: &mut Context<Self>) {
         self.creating = true;
         let made = (self.chats).update(cx, |chats, cx| {
-            chats.create_as(&self.settings, &self.cwd, cx)
+            chats.create(self.settings.to_create(&self.cwd), cx)
         });
         cx.spawn_in(window, async move |this, cx| {
             let made = made.await;

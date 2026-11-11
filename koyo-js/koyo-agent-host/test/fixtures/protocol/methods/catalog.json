@@ -48,7 +48,8 @@
           "argumentHint": null
         }
       ],
-      "defaultMode": null
+      "defaultMode": null,
+      "defaultModel": "claude-opus-5-5"
     }
   }
 }

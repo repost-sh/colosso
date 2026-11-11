@@ -9,7 +9,8 @@ use koyo_agent::protocol::methods::{Catalog, Model, UpdateParams};
 use koyo_agent::protocol::model::{Effort, Mode, Thread};
 use koyo_agent::protocol::requests::{Questions, RequestPayload, RequestStatus};
 
-use super::footer::{ROOM_FOR_LABELS, SetPermission, Settings, labels_fitting};
+use super::footer::{ROOM_FOR_LABELS, SetPermission, labels_fitting};
+use crate::chat::chosen::Settings;
 use crate::chat::tests::asks::{Asking, request};
 use crate::chat::tests::{question, snapshot};
 use crate::chat::thread::ThreadEvent;
@@ -44,6 +45,7 @@ fn catalog() -> Catalog {
         ],
         commands: Vec::new(),
         default_mode: Some(Mode::Auto),
+        default_model: None,
     }
 }
 
@@ -146,6 +148,37 @@ fn the_keys_of_the_menu_pick_a_model(cx: &mut TestAppContext) {
     );
     assert!(!picking(&chat, cx), "picking closes it");
     assert_eq!(chat.typed(cx), "", "and none of it went into what's typed");
+}
+
+#[gpui_kit::test]
+fn a_chat_that_chose_no_model_shows_and_opens_on_the_one_the_agent_runs(cx: &mut TestAppContext) {
+    let chat = chat("chat-footer-default-model", cx);
+    let shown = |cx: &TestAppContext| {
+        (chat.composer).read_with(cx, |composer, cx| {
+            composer.model_label(composer.catalog.read(cx))
+        })
+    };
+    assert_eq!(
+        shown(cx),
+        "first",
+        "with no setting the first, recommended, runs"
+    );
+    let settled = Catalog {
+        default_model: Some("second".into()),
+        ..catalog()
+    };
+    catalog_is(&chat, settled, cx);
+    assert_eq!(shown(cx), "second", "the agent's settings say");
+
+    press(&chat, "ctrl-m enter", cx);
+    assert_eq!(
+        updated(&chat, cx),
+        [UpdateParams {
+            model: Some(Some("second".into())),
+            ..nothing()
+        }],
+        "the menu opens on it",
+    );
 }
 
 #[gpui_kit::test]
