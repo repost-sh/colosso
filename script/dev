@@ -31,6 +31,8 @@ script/browser-engine
 script/agent-host
 # The agent desktop's host, packaged where a debug app finds it (see script/desk-host).
 script/desk-host
+# A device's host, built where a debug app finds it (docs/devices.md 3).
+script/cargo build -p koyo-device-host
 
 # dx works on the Cargo workspace, which is koyo-rs/.
 cd koyo-rs

@@ -1,0 +1,14 @@
+<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>body{margin:0;font:17px -apple-system;background:#fff;color:#111}p{margin:16px}#s{position:fixed;left:0;top:0;right:0;
+background:#0a84ff;color:#fff;padding:8px 16px;font-weight:600}</style>
+<div id="s">scale 1</div><div style="height:48px"></div>
+<script>
+// An ordinary page, pinched and scrolled by Safari itself: its own gesture recognizers, not this
+// page's script. Says how far Safari zoomed and scrolled, here and to the server.
+for(let i=1;i<=120;i++){const p=document.createElement('p');p.textContent='Line '+i+' of a long page, to be scrolled and zoomed.';document.body.append(p)}
+const s=document.getElementById('s');let t=0,last='';
+function say(){const v=visualViewport;const now='scale '+v.scale.toFixed(2)+', scrolled '+Math.round(v.pageTop);s.textContent=now;
+  clearTimeout(t);t=setTimeout(()=>{if(now!=last){last=now;new Image().src='/log?'+encodeURIComponent(JSON.stringify({kind:'safari',scale:+v.scale.toFixed(2),scrolled:Math.round(v.pageTop)}))}},400)}
+visualViewport.addEventListener('resize',say);visualViewport.addEventListener('scroll',say);addEventListener('scroll',say);
+new Image().src='/log?'+encodeURIComponent(JSON.stringify({kind:'ready-zoom'}));
+</script>

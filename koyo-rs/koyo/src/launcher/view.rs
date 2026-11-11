@@ -167,6 +167,12 @@ impl Launcher {
                 InputEvent::PressEnter { .. } => this.pick(this.selected, window, cx),
                 _ => {}
             }),
+            // The simulators come a moment after they're asked for, when the kind is Device.
+            cx.observe(&crate::devices::devices(cx), |this: &mut Self, _, cx| {
+                if this.kind == Kind::Device {
+                    this.refresh(cx);
+                }
+            }),
             // Gone without a pick, what's typed is offered again when it next opens; not a
             // page's address left as it was, which nobody typed.
             cx.on_release(|this, cx| {
@@ -202,7 +208,15 @@ impl Launcher {
             _subscriptions,
         };
         launcher.suggest(cx);
+        launcher.list_devices(cx);
         launcher
+    }
+
+    /// Asks for Koyo's simulators again when the kind is Device: they change outside Koyo too.
+    fn list_devices(&self, cx: &mut Context<Self>) {
+        if self.kind == Kind::Device {
+            crate::devices::devices(cx).update(cx, crate::devices::Devices::refresh);
+        }
     }
 
     /// What's typed changed: a host completes it if it grew at its end, as Firefox autofills, and
@@ -309,6 +323,7 @@ impl Launcher {
                 input.set_value(typed, window, cx);
             }
         });
+        self.list_devices(cx);
         self.requery(cx);
     }
 
@@ -382,7 +397,9 @@ impl Launcher {
             None if self.kind == Kind::Worktree => Act::StartWorktree(typed.clone()),
             // On a page, no address is nowhere to go, as in any address bar.
             None if self.kind == Kind::Browser && self.page.is_some() => return,
-            None if typed.is_empty() || self.kind == Kind::Desktop => Act::Empty(self.kind),
+            None if typed.is_empty() || matches!(self.kind, Kind::Desktop | Kind::Device) => {
+                Act::Empty(self.kind)
+            }
             None => return,
         };
         // What was typed led to an entry the history has, or a page a tab shows: typing it again

@@ -5,7 +5,8 @@
 //! same, then the history's best, a page a tab shows already being switched to. A chat lists its
 //! tabs, its chats no tab shows and what was said before; a terminal its tabs and the commands
 //! run before. With nothing typed, a browser lists its tabs and the top sites, a chat its chats
-//! and what was said lately, a terminal the commands run lately.
+//! and what was said lately, a terminal the commands run lately. A device lists its tabs and
+//! Koyo's simulators, typed or not.
 
 use std::ops::Range;
 use std::sync::Arc;
@@ -18,6 +19,7 @@ use super::Kind;
 use super::here::{Here, OpenTab};
 use super::suggest::is_address;
 use crate::browser::{Address, address_to_url, read_address};
+use crate::devices::Chosen;
 use crate::history::{self, Found};
 use crate::model::PaneKind;
 
@@ -49,6 +51,8 @@ pub enum Act {
     Run(String),
     /// Opens the New Worktree dialog with this name.
     StartWorktree(String),
+    /// Shows this device in a tab of its own, started.
+    Device(Chosen),
 }
 
 /// What marks a row: an icon, or a page's own.
@@ -96,7 +100,11 @@ impl Row {
     pub fn text(&self) -> Option<&str> {
         match &self.act {
             Act::Visit(text) | Act::Search(text) | Act::Ask(text) | Act::Run(text) => Some(text),
-            Act::Empty(_) | Act::Switch(_) | Act::Resume(_) | Act::StartWorktree(_) => None,
+            Act::Empty(_)
+            | Act::Switch(_)
+            | Act::Resume(_)
+            | Act::StartWorktree(_)
+            | Act::Device(_) => None,
         }
     }
 }
@@ -125,6 +133,7 @@ pub fn rows(query: &Query, cx: &mut App) -> Vec<Row> {
         (Kind::Terminal, false) => terminal(query.here, typed, cx),
         // A worktree's name lists nothing: Enter takes it to the New Worktree dialog. Nor
         // does the agent desktop, of which there is one.
+        (Kind::Device, _) => devices(query.here, typed, cx),
         (Kind::Worktree | Kind::Desktop, _) => Vec::new(),
     };
     rows.truncate(MOST);
@@ -427,4 +436,30 @@ fn words(kind: history::Kind, typed: &str, here: &Here, most: usize, cx: &App) -
             row
         })
         .collect()
+}
+
+/// A device's rows: its open tabs, then Koyo's simulators no tab shows, as its set last listed
+/// them; those whose names hold every word typed.
+fn devices(here: &Here, typed: &str, cx: &App) -> Vec<Row> {
+    let mut rows = tabs_matching(here, PaneKind::Device, typed);
+    let devices = crate::devices::devices(cx);
+    let Some(Ok(simulators)) = &devices.read(cx).simulators else {
+        return rows;
+    };
+    let open: Vec<&str> = (here.tabs_of(PaneKind::Device))
+        .filter_map(|tab| tab.device.as_deref())
+        .collect();
+    for simulator in simulators.iter().filter(|simulator| !open.contains(&simulator.udid.as_str())) {
+        let Some(matched) = match_one(&simulator.name, typed) else {
+            continue;
+        };
+        let icon = if simulator.ipad { IconName::Tablet } else { IconName::Smartphone };
+        let chosen = Chosen::from(simulator);
+        let mut row = Row::new(Glyph::Icon(icon), simulator.name.clone(), Act::Device(chosen));
+        row.title_matched = matched;
+        row.detail = simulator.system.clone().into();
+        rows.push(row);
+    }
+    rows.truncate(MOST);
+    rows
 }

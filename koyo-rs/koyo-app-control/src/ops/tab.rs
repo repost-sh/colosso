@@ -102,7 +102,8 @@ pub struct TabOpenInput {
     /// selected one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worktree: Option<String>,
-    /// What the tab shows: `terminal`, `browser`, `editor`, `changes` or `chat`.
+    /// What the tab shows: `terminal`, `browser`, `editor`, `changes`, `chat`, `desktop` or
+    /// `device`.
     pub kind: PaneKind,
     /// A browser tab's address; a blank page when left out.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -167,7 +168,7 @@ impl Operation for TabOpen {
     const TITLE: &'static str = "Open tab";
     const SUBJECT: &'static [&'static str] = &["kind", "url", "file", "terminal"];
     const SCOPE: Scope = Scope::Navigate;
-    const DESCRIPTION: &'static str = "Opens a tab of a kind as the menu would: a terminal (new, or an existing one by `terminal` handle), a browser page at `url`, a `file` in an editor at `line`, the changes, a chat, or the agent desktop (`desktop`: its one tab, the one there is or a new one). A browser page opens in responsive mode at 1440 × 900 (the person's default in Settings → MCP server), scaled down to fit its pane; `viewport` asks for another size, a `device`, or `fill: true` to fill the pane. The window shows it only with `select: true`, or with `select` left out when the person chose in Settings to see what agents open; otherwise it joins its worktree's tabs and the window stays where it was. Answers the new pane's id and tab.";
+    const DESCRIPTION: &'static str = "Opens a tab of a kind as the menu would: a terminal (new, or an existing one by `terminal` handle), a browser page at `url`, a `file` in an editor at `line`, the changes, a chat, the agent desktop (`desktop`: its one tab, the one there is or a new one), or a device tab on its picker (`device`; device_open opens one on a device). A browser page opens in responsive mode at 1440 × 900 (the person's default in Settings → MCP server), scaled down to fit its pane; `viewport` asks for another size, a `device`, or `fill: true` to fill the pane. The window shows it only with `select: true`, or with `select` left out when the person chose in Settings to see what agents open; otherwise it joins its worktree's tabs and the window stays where it was. Answers the new pane's id and tab.";
     const HINTS: Hints = Hints::CHANGE;
     type Input = TabOpenInput;
     type Output = PanePlace;

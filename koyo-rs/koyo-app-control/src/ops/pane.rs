@@ -19,8 +19,8 @@ pub struct PaneSplitInput {
     /// An existing pane to move there, taken from its tab. Give this or `kind`.
     #[serde(rename = "move", default, skip_serializing_if = "Option::is_none")]
     pub move_pane: Option<PaneId>,
-    /// What a new pane shows: `terminal`, `browser`, `editor`, `changes` or `chat`. Give this
-    /// or `move`; the fields below go with it, as in `tab_open`.
+    /// What a new pane shows: `terminal`, `browser`, `editor`, `changes`, `chat`, `desktop` or
+    /// `device`. Give this or `move`; the fields below go with it, as in `tab_open`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<PaneKind>,
     /// A new browser pane's address.

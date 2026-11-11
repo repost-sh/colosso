@@ -27,6 +27,15 @@ impl Shell {
             if pane.kind == PaneKind::Desktop {
                 pane.set_desktop(cx.new(crate::agent_desktop::DeskView::new));
             }
+            // A device's pane comes back on its device, not running; the picker's as the picker.
+            if pane.kind == PaneKind::Device {
+                let chosen = (closed.devices.iter())
+                    .find(|(id, _)| *id == pane.id)
+                    .map(|(_, chosen)| chosen.clone());
+                let view = self.device_view(chosen, false, cx);
+                pane.set_device(view, cx);
+                continue;
+            }
             if pane.kind != PaneKind::Browser {
                 continue;
             }

@@ -43,8 +43,10 @@ pub(crate) use exec::main_shell;
 pub use http::state as http_state;
 #[cfg(test)]
 pub(crate) use in_process::InProcess;
+#[cfg(any(test, feature = "visual-check"))]
+pub(crate) use policy::ApprovedClient;
 #[cfg(test)]
-pub(crate) use policy::{ApprovedClient, activity, set_enabled};
+pub(crate) use policy::{activity, set_enabled};
 // What the Settings page reads and changes.
 pub use policy::{
     DEFAULT_PORT, PageSize, Policy, allow_denied, denied, pages_open_at, policy, revoke,

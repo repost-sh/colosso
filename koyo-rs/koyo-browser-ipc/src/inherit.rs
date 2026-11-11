@@ -12,8 +12,9 @@ pub const HOST_FD: RawFd = 3;
 
 /// Hands `stream` to the program `command` starts, as [`HOST_FD`], and to it
 /// alone: the copy in this process stays close-on-exec, so other programs
-/// the app starts never hold the host's end open.
-pub(crate) fn pass(command: &mut Command, stream: &UnixStream) {
+/// the app starts never hold the host's end open. The browser's host and a
+/// device's host are both started this way.
+pub fn pass(command: &mut Command, stream: &UnixStream) {
     let fd = stream.as_raw_fd();
     // SAFETY: the closure only calls `dup2` and `fcntl`, which are
     // async-signal-safe, and touches no memory shared with the parent.

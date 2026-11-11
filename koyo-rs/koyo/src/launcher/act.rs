@@ -93,6 +93,11 @@ fn act_on(
             shell.open_chat(&id, cx);
         }
         Act::Ask(text) => shell.ask_new_chat(text, cx),
+        Act::Device(chosen) => {
+            if let Some(pane) = shell.device_pane(Some(chosen), true, true, cx) {
+                shell.focus_pane(pane, window, cx);
+            }
+        }
         Act::Run(line) => {
             history::used(history::Kind::Command, &line, place, cx);
             shell.run_in_new_terminal(line, cx);

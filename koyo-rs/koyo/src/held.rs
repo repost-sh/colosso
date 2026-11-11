@@ -28,6 +28,9 @@ pub struct Held {
 pub const WIDTH: f32 = 560.;
 pub const BOTTOM: f32 = 14.;
 pub const HEIGHT: f32 = 34.;
+/// The room the bar takes at its pane's foot, a gap above it included: what a pane keeps
+/// clear when the bar must cover nothing of it.
+pub const ROOM: f32 = BOTTOM + HEIGHT + 8.;
 
 /// The bar, over the bottom of the pane it's a child of. `glass` keys its Liquid Glass, which
 /// is `dark` or not where what's under it says so (a page), and of the theme's tone with none.

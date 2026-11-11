@@ -1,0 +1,38 @@
+<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#101014;color:#eee;font:14px ui-monospace,Menlo;
+touch-action:none;-webkit-user-select:none;-webkit-touch-callout:none}
+#pad{position:fixed;inset:0}#out{position:fixed;left:10px;top:10px;right:10px;white-space:pre-wrap;pointer-events:none}
+#dot{position:fixed;left:0;top:0;width:36px;height:36px;margin:-18px;border-radius:18px;background:#0a84ff;pointer-events:none;display:none}
+</style><div id="pad"></div><div id="out"></div><div id="dot"></div>
+<script>
+// Says what touches this page was given: how many fingers, where, and what two fingers did
+// (how far apart they went, how far they turned, how far their middle moved). Each gesture's
+// end goes to the server as a request, so its log is the record.
+const out=document.getElementById('out'),pad=document.getElementById('pad');
+let n=0,g=null,lastTap=0;
+const pts=e=>[...e.touches].map(t=>[Math.round(t.clientX),Math.round(t.clientY)]);
+const span=p=>{const dx=p[1][0]-p[0][0],dy=p[1][1]-p[0][1];return[Math.hypot(dx,dy),Math.atan2(dy,dx)*180/Math.PI]};
+const mid=p=>[(p[0][0]+p[1][0])/2,(p[0][1]+p[1][1])/2];
+function say(o){out.textContent='touch lab '+innerWidth+'x'+innerHeight+'\n'+JSON.stringify(o,null,1);
+  new Image().src='/log?'+encodeURIComponent(JSON.stringify(o))}
+pad.addEventListener('touchstart',e=>{e.preventDefault();const p=pts(e);
+  if(!g)g={n:++n,fingers:0,moves:0,start:p[0],t0:performance.now(),moved:0};
+  g.fingers=Math.max(g.fingers,p.length);
+  if(p.length==2&&!g.d0){[g.d0,g.a0]=span(p);g.m0=mid(p);g.scale=1;g.turn=0;g.pan=[0,0]}},{passive:false});
+// A dot under the first finger: something that changes with every step of it, and nothing else.
+const dot=document.getElementById('dot');
+function follow(e){const t=e.touches[0];if(t){dot.style.display='block';dot.style.transform='translate('+t.clientX+'px,'+t.clientY+'px)'}else dot.style.display='none'}
+for(const kind of['touchstart','touchmove','touchend'])pad.addEventListener(kind,follow,{passive:true});
+pad.addEventListener('touchmove',e=>{e.preventDefault();if(!g)return;const p=pts(e);g.moves++;
+  if(p.length==1)g.moved=Math.max(g.moved,Math.round(Math.hypot(p[0][0]-g.start[0],p[0][1]-g.start[1])));
+  if(p.length==2&&g.d0){const[d,a]=span(p);g.scale=+(d/g.d0).toFixed(3);let r=a-g.a0;if(r>180)r-=360;if(r<-180)r+=360;
+    g.turn=+r.toFixed(1);const m=mid(p);g.pan=[Math.round(m[0]-g.m0[0]),Math.round(m[1]-g.m0[1])]}},{passive:false});
+pad.addEventListener('touchend',e=>{e.preventDefault();if(!g||e.touches.length)return;const now=performance.now();
+  const c=e.changedTouches[0];g.end=[Math.round(c.clientX),Math.round(c.clientY)];g.held=Math.round(now-g.t0);
+  g.kind=g.fingers>1?'two fingers':g.moved>10?'drag':g.held>500?'long press':(now-lastTap<400?'double tap':'tap');
+  if(g.kind=='tap'||g.kind=='double tap')lastTap=now;delete g.t0;delete g.d0;delete g.a0;delete g.m0;say(g);g=null},{passive:false});
+pad.addEventListener('touchcancel',e=>{say({n:++n,kind:'cancelled',fingers:g?g.fingers:0});g=null});
+addEventListener('devicemotion',()=>{},false);
+say({n:0,kind:'ready',view:[innerWidth,innerHeight],screen:[screen.width,screen.height]});
+</script>

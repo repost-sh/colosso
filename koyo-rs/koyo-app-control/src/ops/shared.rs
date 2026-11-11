@@ -30,6 +30,8 @@ pub enum PaneKind {
     Chat,
     /// The agent desktop: one, shown live. Opening it again gives the pane there is.
     Desktop,
+    /// A device: an iPhone or iPad simulator, live; opened as the picker. One tab per device.
+    Device,
 }
 
 impl PaneKind {
@@ -42,6 +44,7 @@ impl PaneKind {
             PaneKind::Changes => "changes",
             PaneKind::Chat => "chat",
             PaneKind::Desktop => "desktop",
+            PaneKind::Device => "device",
         }
     }
 }

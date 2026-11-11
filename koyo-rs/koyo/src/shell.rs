@@ -31,6 +31,7 @@ use crate::{arc, backdrop, bottom, gradient, orca, picker, theme};
 
 mod actions;
 mod browser_tabs;
+mod device_tabs;
 mod elements;
 mod kept;
 mod rails;
@@ -259,6 +260,9 @@ impl Shell {
             PaneKind::Terminal => self.new_terminal(cx),
             PaneKind::Desktop => {
                 self.desktop_pane(true, cx);
+            }
+            PaneKind::Device => {
+                self.device_pane(None, false, true, cx);
             }
             PaneKind::Chat | PaneKind::Browser | PaneKind::Editor => self.workspace.new_tab(kind),
         }

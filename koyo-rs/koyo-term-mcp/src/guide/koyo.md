@@ -2,7 +2,7 @@
 
 Koyo is the app the person works in: projects in a sidebar, each with its git worktrees,
 each worktree with its tabs, each tab split into panes that show a terminal, a browser
-page, an editor, the changes or a chat. These tools see and drive the running window as
+page, an editor, the changes, a chat, the agent desktop or an iPhone or iPad. These tools see and drive the running window as
 the person would, and what you change appears there as if the person had done it. Drive
 Koyo only through them: never edit its settings, data or other files.
 
@@ -77,7 +77,8 @@ always do, as does `tab_reopen`, which puts back the tab closed last as ⇧⌘T 
 ## Tabs and panes
 
 - `tab_open` opens a tab as the menu would. `kind` is `terminal`, `browser`, `editor`,
-  `changes`, `chat` or `desktop` (the agent desktop's one tab); a terminal takes a `name` and a `command`, or reveals an existing
+  `changes`, `chat`, `desktop` (the agent desktop's one tab) or `device` (a device tab on its
+  picker: `device_open` opens one on a device); a terminal takes a `name` and a `command`, or reveals an existing
   daemon terminal by its `terminal` handle; a browser page takes a `url` and a
   `viewport`; an editor a `file`, `line` and `column`. `place: "beside"` opens it next to the current tab. It
   answers the new pane's id, its tab and its worktree.
@@ -279,6 +280,54 @@ look again before acting; an app of theirs stays theirs. `desktop_unavailable` m
 agent desktop is off, still starting, or lacks a grant: tell the person (Settings → Agent
 desktop) rather than retry in a loop.
 
+## Devices
+
+Koyo shows iPhone and iPad simulators of its own, each live in a tab. You drive them as a
+finger and the device's keys and buttons would, nothing more. The device tools need the
+`devices` scope; their reads need only `read`.
+
+The loop:
+
+1. `device_list` lists the simulators with their state, tab and screen size; `device_open`
+   starts one (or makes one from a `model`, such as `iPad Pro 13-inch (M5)`) and opens its
+   tab out of sight. It answers within a minute: `ready: true` with the screen, or
+   `ready: false` with the `step` it is at (a first boot takes about a minute): call it
+   again until it's ready.
+2. Look: `device_snapshot` gives what's on the screen, elements marked `[ref=eN]` and
+   `@x,y`, their middle. Its `source` says how it was read: `accessibility`, the app's own
+   elements with their roles and labels, its first line naming the app; or `text`, words
+   read off the picture, where the tree had nothing. `device_screenshot` gives an image.
+3. Act by `ref`, or by point: `device_tap` (`count`, `holdMs` for a long press,
+   `fingers`), `device_swipe`, `device_scroll` (moves the content by `dx`, `dy` without a
+   glide), `device_pinch`, `device_type` (`into` a ref taps it first), `device_key`
+   (`cmd+a`, `return`) and `device_button` (`home`, `lock`, the volume buttons, and the
+   system's gestures by name: `app_switcher`, `control_center`, `notification_center`).
+4. Read every act's `change`: `none` means nothing on the screen changed, so it most likely
+   didn't take: look again before assuming it worked. `small` is a switch or a cursor;
+   `large` a new screen. Refs hold until the next snapshot.
+
+Places are points of the picture as it shows, upright, from its top left: an iPhone 17 Pro
+is 402 × 874. A screenshot at scale 1 has a pixel a point. After launching or switching
+apps, `device_wait` until the screen is still before you look: an app that hasn't drawn yet
+isn't in the snapshot, and the one before it may stand in for it. A system alert (a
+permission prompt) is SpringBoard's and is in the snapshot as an app of its own; tap its
+buttons by ref. Something below the fold isn't in the snapshot: `device_scroll`, then look
+again. `device_type` types ASCII only: other text is refused, naming the characters, and
+nothing is typed. `device_rotate` turns a simulator.
+
+Apps: `device_apps` lists what's installed; `device_install` installs an `.app` built for
+the simulator (`xcodebuild -sdk iphonesimulator`); `device_launch` and `device_terminate`
+take its bundle id (`com.apple.Preferences` is Settings); `device_open_url` opens a link in
+what opens it. `device_list` gives a simulator's `set`, so your own
+`xcrun simctl --set <set> … <id>` reaches it too. `device_close` shuts it down and closes
+its tab; at most two simulators run at once.
+
+`person_has_control` means the person is using the device in its tab (`retryable`: wait a
+few seconds, then look again before acting) or took it (not: do something else).
+`device_unavailable` means it is starting or its host is restarting: wait and look again.
+`device_needs_person` means only the person can go on (Xcode or a simulator system missing,
+a locked device): stop and tell them what the message says.
+
 ## The window and settings
 
 - `app_focus` brings the window forward, opening it when it's closed.
@@ -299,10 +348,10 @@ returns the first result instead of acting again; the same id with other input f
 timeout or a lost connection.
 
 What a client may do comes in scopes: `read`, `navigate`, `manage`, `browser`, `desktop`,
-`settings` and `destructive`. An agent in a Koyo terminal or chat holds all but
+`devices`, `settings` and `destructive`. An agent in a Koyo terminal or chat holds all but
 `destructive`. Any other client is first allowed by the person, once, and holds `read`,
-`navigate`, `manage` and `browser`; the person switches on `desktop`, `settings` and
-`destructive` in Settings → MCP server.
+`navigate`, `manage` and `browser`; the person switches on `desktop`, `devices`, `settings`
+and `destructive` in Settings → MCP server.
 `scope_denied` names the missing scope in `details.scope`.
 
 Deleting a worktree, or discarding unsaved edits, asks the person in the window, whoever
@@ -324,10 +373,12 @@ A failure has a `code`, a `message` and `retryable`; retry only what is retryabl
 | `control_disabled` | The person has to turn on Settings → MCP server; for a chat, Settings → Chat → Koyo tools. |
 | `app_not_running` | Koyo isn't running: call `app_launch`, then try again. When a connection was lost mid-call, the call may have acted: check, or repeat it with the same `requestId`. |
 | `unsaved_changes` | Save `details.files` first, or discard them with the person's confirmation. |
-| `person_has_control` | The person holds the page, terminal or agent desktop. A page or the desktop they're only using comes back 5 s after they stop (`retryable`): wait, then retry. Otherwise use another. |
+| `person_has_control` | The person holds the page, terminal, agent desktop or device. A page, the desktop or a device they're only using comes back 5 s after they stop (`retryable`): wait, then retry. Otherwise use another. |
 | `control_required` | Claim the page first. |
 | `timeout` | Retry when `retryable`, or wait for something narrower. A browser act that timed out may have acted all the same (`retryable: false`): look at the page before doing it again. |
 | `browser_unavailable` | The page can't take the command now, as the message says. Retryable: the engine is starting, or the page is between documents; try again shortly. Not retryable: the page waits on a dialog (answer it with `browser_dialog`), a tab brought back at launch or never shown (ask the person to show it, or open your own page), a start page (`browser_navigate` loads one), a failed engine (the person restarts it), or a closed page. |
 | `desktop_unavailable` | The agent desktop is off, starting or lacks a grant, as the message says: tell the person (Settings → Agent desktop); don't retry in a loop. |
+| `device_unavailable` | The device is starting, or its host restarting: wait a few seconds and look again. Not retryable when it isn't open: `device_open` it. |
+| `device_needs_person` | Only the person can go on (Xcode or a simulator system missing, a locked device): tell them what the message says. |
 | `git_failed` | Git refused; the message says why. |
 | `internal` | Something broke in Koyo; the message says what. |

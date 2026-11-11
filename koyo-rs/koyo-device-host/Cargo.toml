@@ -1,0 +1,45 @@
+[package]
+name = "koyo-device-host"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "The host of one device in Koyo (docs/devices.md 3): a simulator of Koyo's own, or an iPhone or iPad by cable. A child process of the app: its picture as a ring of IOSurfaces, its input, an agent's acts and looks."
+
+[[bin]]
+name = "koyo-device-host"
+path = "src/main.rs"
+
+[dependencies]
+# The link's messages, shared with the app.
+koyo-device-wire = { path = "../koyo-device-wire" }
+# Where an edge gesture begins, as the person's own presses have it.
+koyo-device-gestures = { path = "../koyo-device-gestures" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# The ring goes to the app by mach port, on the channel the browser's pages use; the socket
+# comes as the browser host's does, inherited.
+koyo-browser-ipc = { path = "../koyo-browser-ipc" }
+libc = "0.2"
+# CoreSimulator, SimulatorKit and Vision are reached by message, with blocks for their
+# callbacks; every private call can raise, and is caught.
+objc2 = { version = "0.6", features = ["exception"] }
+block2 = "0.6"
+objc2-foundation = "0.3"
+objc2-core-foundation = "0.3"
+# A pixel buffer over a picture, for Vision to read its text.
+objc2-core-video = { version = "0.3", features = ["objc2-io-surface"] }
+# The ring's surfaces, and the GPU copy of each frame into them.
+objc2-io-surface = "0.3"
+objc2-metal = { version = "0.3", features = ["objc2-io-surface"] }
+# A screenshot's PNG.
+png = "0.18"
+# A simulator's apps, as `plutil` turns `simctl listapps` into JSON.
+serde_json = "1"
+
+[dev-dependencies]
+# The real-simulator suite reads the screenshots it's given.
+png = "0.18"
+
+[lints]
+workspace = true

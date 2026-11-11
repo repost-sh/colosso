@@ -1,0 +1,10 @@
+<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<style>html,body{margin:0;height:100%;overflow:hidden}div{position:fixed;left:0;right:0}
+#r{top:0;height:25%;background:#ff0000}#g{top:25%;height:25%;background:#00ff00}
+#b{top:50%;height:25%;background:#0000ff}#w{top:75%;height:12.5%;background:#808080}#k{top:87.5%;bottom:0;background:#ffffff}</style>
+<div id="r"></div><div id="g"></div><div id="b"></div><div id="w"></div><div id="k"></div>
+<script>
+// Five bands of known sRGB colours, from the top: red, green, blue, grey 128, white. Their pixels
+// read back from the ring say what colour space the picture is in (U1).
+new Image().src='/log?'+encodeURIComponent(JSON.stringify({kind:'ready-colours',view:[innerWidth,innerHeight]}));
+</script>

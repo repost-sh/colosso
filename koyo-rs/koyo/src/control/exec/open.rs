@@ -185,7 +185,7 @@ fn check(spec: &PaneSpec) -> Result<(), ControlError> {
         .or_else(|| (page || file).then_some("`url`, `viewport`, `file`, `line` or `column`")),
         PaneKind::Browser => (terminal || file).then_some("terminal or file fields"),
         PaneKind::Editor => (terminal || page).then_some("terminal fields, `url` or `viewport`"),
-        PaneKind::Changes | PaneKind::Chat | PaneKind::Desktop => {
+        PaneKind::Changes | PaneKind::Chat | PaneKind::Desktop | PaneKind::Device => {
             (terminal || file || page).then_some("terminal, file or browser fields")
         }
     };
@@ -315,6 +315,15 @@ fn open(
             beside,
             cx,
         ))),
+        // A device's tab opens as the picker; device_open opens one device.
+        PaneKind::Device => {
+            let pane = shell.device_pane(None, false, shown, cx).ok_or_else(|| {
+                ControlError::not_found("No checkout is selected to open a device's tab on.")
+            });
+            shell.navigate(Route::Workspace, cx);
+            cx.notify();
+            Opened::Now(pane)
+        }
     }
 }
 
