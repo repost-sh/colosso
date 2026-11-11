@@ -194,7 +194,8 @@ app_launch (stdio relay only, answered by the relay) → starts Koyo when it isn
 layout_set [navigate] I { sidebar?: bool, rightPanel?: "changes"|"files"|"none",
                          bottomPanel?: bool, layout?: "orca"|"arc" } → app_status subset
 settings_open [navigate] I { page?: "general"|"chat"|"accounts"|"appearance"|"editor"|
-                         "languages"|"browser"|"keyboard"|"mcp"|"agent_desktop"|"about" } ;
+                         "languages"|"browser"|"keyboard"|"mcp"|"agent_desktop"|"devices"|
+                         "about" } ;
               settings_close [navigate] I {}
 ```
 
