@@ -2,6 +2,7 @@
 //! listed by `devicectl` with the watcher started, opened in a tab as the picker opens it, ready
 //! with its picture drawn, and its host gone once the tab closes. Nothing on the device is
 //! touched, and only sizes, counts and times are said: no picture is saved and no name kept.
+//! With `KOYO_VISUAL_PHONE=hands`, the owner's rows follow (`hands.rs`).
 
 use std::time::{Duration, Instant};
 
@@ -43,6 +44,10 @@ pub(super) fn run(drawn: &mut Drawn, lines: &mut Vec<String>) -> Result<()> {
         screen.orientation,
     ));
 
+    // The rows that need the owner's hands, when he's there for them.
+    if std::env::var("KOYO_VISUAL_PHONE").is_ok_and(|said| said == "hands") {
+        return super::hands::run(drawn, view, &link, &ipad.udid, screen, lines);
+    }
     let closed = Instant::now();
     close(drawn, view)?;
     drawn.until(GONE_WITHIN, |drawn| Ok(drawn.cx.read(|cx| link.read(cx).pid().is_none())))?;

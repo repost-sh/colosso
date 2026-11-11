@@ -13,6 +13,7 @@
 //!   script/cargo run -p koyo --features visual-check -- --visual-check-devices
 //! ```
 
+mod hands;
 mod live;
 mod phone;
 mod plugged;
