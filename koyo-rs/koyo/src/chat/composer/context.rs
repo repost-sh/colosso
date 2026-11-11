@@ -10,8 +10,8 @@ use gpui_kit::{
 use koyo_agent::words::{NEARLY_FULL, context_line, context_percent};
 
 use super::ChatComposer;
-use super::footer::ring;
 use crate::menu::{self, MenuBody, PADDING, ROW_PADDING};
+use crate::ring::ring;
 use crate::theme::{self, Palette};
 
 const PANEL_WIDTH: f32 = 220.;

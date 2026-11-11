@@ -12,7 +12,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Action, AnyElement, App, ClickEvent, Context, Div, Focusable as _, Hsla,
     InteractiveElement as _, IntoElement, KeyBinding, ParentElement as _, Pixels, SharedString,
-    Styled as _, Svg, Window, actions, div, px, svg,
+    Styled as _, Window, actions, div, px,
 };
 use koyo_agent::client::ClientError;
 use koyo_agent::protocol::methods::{
@@ -33,8 +33,6 @@ pub(super) const COMPOSER: &str = "ChatComposer";
 /// How wide the composer is before each of the chips says what it is, from the first: they're all
 /// marks alone in a narrow pane, and the last of them goes first as one narrows.
 pub(super) const ROOM_FOR_LABELS: [f32; 4] = [340., 420., 480., 560.];
-/// How long a ring's stroke goes all the way around: its radius in `ring`, by 2π.
-const RING_LENGTH: f32 = 56.55;
 
 actions!(chat, [TogglePlan]);
 
@@ -99,17 +97,6 @@ pub(super) fn chip(
         .tab_stop(false)
         .icon(mark)
         .when_some(label, Button::label)
-}
-
-/// A ring `percent` full, in the color it's given. A sprite, the same one until that changes: the
-/// kit's ring is a path, and a path in view has every frame of a streaming answer draw the window
-/// over to antialias it.
-pub(super) fn ring(percent: u8) -> Svg {
-    let filled = RING_LENGTH * f32::from(percent) / 100.;
-    let drawn = format!(
-        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="3"><circle cx="12" cy="12" r="9" opacity="0.25"/><circle cx="12" cy="12" r="9" stroke-dasharray="{filled} {RING_LENGTH}" transform="rotate(-90 12 12)"/></svg>"#
-    );
-    svg().data(drawn.as_bytes()).size(px(20.)).flex_shrink_0()
 }
 
 impl ChatComposer {
