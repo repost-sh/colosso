@@ -1,6 +1,6 @@
-//! What the button and the panel show of the Mac's login (`docs/claude-accounts.md` 4, 6), read
-//! as it was: countdowns and a weekly window past its reset are worked out when drawn
-//! (`words.rs`), never stored.
+//! What the button and the panel show of the accounts (`docs/claude-accounts.md` 4, 6), from the
+//! accounts crate's snapshot as it was: countdowns and a weekly window past its reset are worked
+//! out when drawn, never stored.
 
 use gpui_kit::SharedString;
 use koyo_accounts::pace::WEEKLY_PERIOD_S;
@@ -61,19 +61,35 @@ pub enum Problem {
     TokenExpired,
     /// The Keychain was locked or busy: not signed out.
     KeychainUnavailable,
+    /// The Mac's login belongs to another account than the one marked active.
+    ForeignLogin,
     /// No network, or no answer in time.
     Offline,
     /// Anything else, as the accounts crate names it ("http-500", "bad-response").
     Other(String),
 }
 
+/// An account the person acts on: its slot, and its email for what's said of it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Slot {
+    pub number: String,
+    pub email: SharedString,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Row {
+    /// The account's slot, as the accounts crate numbers them.
+    pub number: String,
     pub email: SharedString,
-    /// The account's organisation, with its id, which tells two of one email apart.
     pub organisation: Option<SharedString>,
-    pub organisation_uuid: String,
+    /// The plan's label ("Max 20x", "Pro"), when known.
+    pub plan: Option<SharedString>,
+    /// Whether it's the Mac's login now.
     pub active: bool,
+    /// Held out of auto-switch by the person; still one a click switches to.
+    pub disabled: bool,
+    /// Whether Koyo keeps its login, so a click can switch to it.
+    pub switchable: bool,
     /// The 7 days first, then each model's.
     pub bars: Vec<Bar>,
     /// When the bars were measured, in seconds since the epoch; `None` with no reading yet.
@@ -82,14 +98,28 @@ pub struct Row {
 }
 
 impl Row {
+    pub fn slot(&self) -> Slot {
+        Slot {
+            number: self.number.clone(),
+            email: self.email.clone(),
+        }
+    }
+
+    /// The line under its email: organisation, plan, whether it's the Mac's login and whether
+    /// it's held out.
+    pub fn under(&self) -> String {
+        let under = [
+            self.organisation.as_deref(),
+            self.plan.as_deref(),
+            self.active.then_some("the Mac's login"),
+            self.disabled.then_some("held out of auto-switch"),
+        ];
+        under.into_iter().flatten().collect::<Vec<_>>().join(" · ")
+    }
+
     /// The 7-day bar, if the account has one.
     pub fn weekly(&self) -> Option<&Bar> {
         self.bars.first().filter(|bar| bar.label == WEEKLY)
-    }
-
-    /// Whether `other` is the same account.
-    pub fn same_account(&self, other: &Row) -> bool {
-        self.email == other.email && self.organisation_uuid == other.organisation_uuid
     }
 }
 
@@ -98,9 +128,16 @@ pub const WEEKLY: &str = "7 days";
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct View {
+    /// Every account Koyo keeps, in its order.
     pub rows: Vec<Row>,
-    /// Why the login couldn't be read at all.
+    /// The Mac's login when Koyo doesn't keep it yet: Add Current Login keeps it.
+    pub unmanaged: Option<SharedString>,
+    /// What's being done now, as "Switching to …".
+    pub doing: Option<String>,
+    /// What the last thing the person did said: why it failed, or what it warns of.
     pub said: Option<String>,
+    /// Why the accounts couldn't be read.
+    pub unreadable: Option<String>,
     /// A variable in the login shell that makes Claude Code ignore the login.
     pub overridden_by: Option<&'static str>,
 }

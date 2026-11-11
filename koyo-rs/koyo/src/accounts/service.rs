@@ -1,104 +1,211 @@
-//! The accounts crate as the app runs it: everything it does blocks (the Keychain, curl), so it
-//! runs off the main thread, one reading at a time, and what it found goes into the view.
+//! The accounts crate's switcher as the app runs it. All it does blocks (the Keychain, curl,
+//! file locks), so it runs off the main thread, one job at a time and in order, so a switch is
+//! never read halfway; what each job found goes into the view. A reading waiting takes in the
+//! next one asked, and a chat's limits waiting are replaced by newer ones. The person's jobs
+//! (switch, add, remove, hold) go one at a time: while one waits or runs, another is refused.
 //!
-//! Until the crate's switcher keeps several accounts, this reads the Mac's login alone, as
-//! Claude Code reads it: its item in the Keychain, and the `oauthAccount` of its global config.
-//! Its usage comes from Claude's usage endpoint with its access token, never refreshed to read
-//! it (`docs/claude-accounts.md` 4). A failure backs off as the usage store's does, in memory,
-//! keeping the last reading.
+//! Whether a reading sends a request is the usage store's call (`poll.rs`). After the person's
+//! job the accounts are taken again from the store, and on a switch the new active account is
+//! read.
 
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::Arc;
+use std::time::Duration;
 
 use gpui_kit::{Context, Task};
-use koyo_accounts::Env;
-use koyo_accounts::credentials::CredentialStore;
-use koyo_accounts::oauth::{self, RATE_LIMITED_ERROR, UsageOutcome};
-use koyo_accounts::usage_store::failure_backoff_s;
-use serde_json::Value;
+use koyo_accounts::switcher::{AccountsSnapshot, Fetch, LiveLimits, Switcher};
+use koyo_accounts::usage_store::UsageEntry;
+use koyo_accounts::{AccountsError, Env};
 
-use super::model::{Problem, Row, View};
+use super::model::{Slot, View};
 use super::{Accounts, environment, reading};
 
-/// A failed reading's backoff.
-#[derive(Default)]
-struct Backoff {
-    failures: i64,
-    until: f64,
+/// What the switcher is asked to do.
+#[derive(Debug)]
+pub enum Job {
+    /// Read the active account's usage, whichever it is now, and/or another's, as the store
+    /// allows, and take the accounts again; with neither, only take them.
+    Read {
+        active: bool,
+        other: Option<String>,
+    },
+    Switch(Slot),
+    /// Keep the Mac's login as an account.
+    Add,
+    Remove(Slot),
+    /// Hold the account out of auto-switch, or put it back.
+    Hold(Slot, bool),
+    /// A chat's limits, for the active account.
+    Live(LiveLimits),
 }
 
+impl Job {
+    /// What the panel says while the person's job waits or runs; `None` for the app's own.
+    pub(super) fn doing(&self) -> Option<String> {
+        match self {
+            Job::Read { .. } | Job::Live(_) => None,
+            Job::Switch(slot) => Some(format!("Switching to {}…", slot.email)),
+            Job::Add => Some("Adding the Mac's login…".to_owned()),
+            Job::Remove(slot) => Some(format!("Removing {}…", slot.email)),
+            Job::Hold(slot, true) => Some(format!("Holding {} out of auto-switch…", slot.email)),
+            Job::Hold(slot, false) => Some(format!("Putting {} back…", slot.email)),
+        }
+    }
+}
+
+/// What a job found.
+struct Done {
+    /// The accounts after it, or why they couldn't be read; `None` when it didn't take them.
+    accounts: Option<Result<AccountsSnapshot, String>>,
+    /// The active account's usage, after a chat's limits.
+    active: Option<UsageEntry>,
+    /// Why it failed, or what it warns of.
+    said: Option<String>,
+}
+
+/// What an action said, and the accounts to read after it.
+type Acted = (Option<String>, BTreeSet<String>);
+
+/// An action's outcome, its failure said as "Couldn't `what`: why".
+fn acted(what: &str, done: Result<Acted, AccountsError>) -> Acted {
+    done.unwrap_or_else(|why| (Some(format!("Couldn't {what}: {why}")), BTreeSet::new()))
+}
+
+/// Runs `job` on `switcher`: blocking.
+fn run(switcher: &Switcher, job: Job) -> Done {
+    let (said, read) = match job {
+        Job::Read { active, other } => {
+            // The active account as the Mac's login has it now: the global config and the
+            // sequence, no Keychain.
+            let current = active
+                .then(|| switcher.current_account_number().ok().flatten())
+                .flatten();
+            (None, current.into_iter().chain(other).collect())
+        }
+        Job::Live(limits) => {
+            let (active, said) = match switcher.adopt_live_limits(limits) {
+                Ok(entry) => (entry, None),
+                Err(why) => (None, Some(why.to_string())),
+            };
+            return Done {
+                accounts: None,
+                active,
+                said,
+            };
+        }
+        Job::Switch(Slot { number, email }) => acted(
+            &format!("switch to {email}"),
+            (switcher.switch_to(&number))
+                .map(|done| (joined(&done.warnings), BTreeSet::from([number]))),
+        ),
+        Job::Add => acted(
+            "add the Mac's login",
+            (switcher.add_account())
+                .map(|added| (joined(&added.notices), BTreeSet::from([added.account_num]))),
+        ),
+        Job::Remove(Slot { number, email }) => acted(
+            &format!("remove {email}"),
+            (switcher.remove_account(&number)).map(|_| (None, BTreeSet::new())),
+        ),
+        Job::Hold(Slot { number, email }, disabled) => acted(
+            &format!("change {email}"),
+            (switcher.set_account_disabled(&number, disabled)).map(|_| (None, BTreeSet::new())),
+        ),
+    };
+    let fetch = Fetch::Only {
+        only: &read,
+        scheduled: false,
+    };
+    Done {
+        accounts: Some(
+            switcher
+                .accounts_snapshot(fetch)
+                .map_err(|why| why.to_string()),
+        ),
+        active: None,
+        said,
+    }
+}
+
+fn joined(lines: &[String]) -> Option<String> {
+    (!lines.is_empty()).then(|| lines.join(" "))
+}
+
+#[derive(Default)]
 pub struct Service {
-    /// The Mac's, once the login shell has said where Claude Code keeps its login: one for the
-    /// process, as its Keychain state is learned from real calls.
-    store: Option<Arc<CredentialStore>>,
-    reading: bool,
-    backoff: Backoff,
+    /// Once the login shell has said where Claude Code keeps its login.
+    switcher: Option<Arc<Switcher>>,
+    /// Each account's usage as the last snapshot had it, for the cadence's pick of another.
+    pub entries: BTreeMap<String, UsageEntry>,
+    waiting: VecDeque<Job>,
+    /// The job running; dropping it, with Manage Claude accounts off, drops what it found.
+    working: Option<Task<()>>,
+    heard: Heard,
     _making: Option<Task<()>>,
 }
 
-/// The `Env` tests hand the accounts before `crate::init`, in place of the Mac's.
+/// The least time between two chats' limits taken into the store: each is a locked, synced
+/// write, and a busy chat hears them with every response.
+const LIVE_EVERY: f64 = 30.;
+
+/// Chats' limits on their way to the store, one write each [`LIVE_EVERY`] at most.
+#[derive(Default)]
+struct Heard {
+    /// The newest, waiting for the next write.
+    latest: Option<LiveLimits>,
+    sent_at: Option<f64>,
+    /// The wait for the next write.
+    flushing: Option<Task<()>>,
+}
+
+/// The `Env` tests hand the accounts before `crate::init`, in place of the Mac's login shell's.
 #[cfg(test)]
 pub struct TestEnv(pub Env);
 
 #[cfg(test)]
 impl gpui_kit::Global for TestEnv {}
 
-/// The Mac's login as Claude Code has it, and what the usage endpoint said of it: blocking.
-fn current_login(store: &CredentialStore) -> Option<(Row, Option<UsageOutcome>)> {
-    let account = store
-        .read_global_config()
-        .and_then(|mut config| config.remove("oauthAccount"));
-    let text = |key: &str| {
-        (account.as_ref())
-            .and_then(|account| account.get(key))
-            .and_then(Value::as_str)
-            .filter(|text| !text.is_empty())
-            .map(str::to_owned)
-    };
-    let active = store.read_active_credentials();
-    let credential = active.value.filter(|value| !value.is_empty());
-    let email =
-        text("emailAddress").filter(|_| credential.is_some() || active.keychain_unavailable)?;
-    let row = Row {
-        email: email.into(),
-        organisation: text("organizationName").map(Into::into),
-        organisation_uuid: text("organizationUuid").unwrap_or_default(),
-        active: true,
-        bars: Vec::new(),
-        measured_at: None,
-        problem: active
-            .keychain_unavailable
-            .then_some(Problem::KeychainUnavailable),
-    };
-    let outcome = credential
-        .map(|credential| oauth::try_fetch_usage_for_account(store.env(), "active", &credential));
-    Some((row, outcome))
+/// Where the accounts' `Env` comes from.
+enum Source {
+    /// A test's sandbox.
+    #[cfg(test)]
+    Test(Env),
+    /// The Mac's login shell, with Koyo's store under this folder.
+    Mac(std::path::PathBuf),
 }
 
 impl Service {
-    /// Starts once the login shell has been read; the first reading is the cadence's.
+    /// Starts once the login shell has been read (a test's sandbox at once); the first reading
+    /// is the cadence's.
     pub fn start(cx: &mut Context<Accounts>) -> Service {
-        #[cfg(test)]
-        if let Some(TestEnv(env)) = cx.try_global::<TestEnv>() {
-            return Service::on(env.clone());
-        }
         // Tests that hand nothing run on nothing: never the Mac's login.
-        let store = crate::settings::data_dir()
+        let source = crate::settings::data_dir()
             .filter(|_| !cfg!(test))
-            .map(|dir| dir.join("claude-accounts"));
-        let making = store.map(|store| {
+            .map(|dir| Source::Mac(dir.join("claude-accounts")));
+        #[cfg(test)]
+        let source = (cx.try_global::<TestEnv>())
+            .map(|TestEnv(env)| Source::Test(env.clone()))
+            .or(source);
+        let making = source.map(|source| {
             cx.spawn(async move |this, cx| {
                 let (env, overridden_by) = cx
                     .background_executor()
                     .spawn(async move {
-                        let shell = environment::read();
-                        (Env::system(store, shell.vars), shell.overridden_by)
+                        match source {
+                            #[cfg(test)]
+                            Source::Test(env) => (Ok(env), None),
+                            Source::Mac(store) => {
+                                let shell = environment::read();
+                                (Env::system(store, shell.vars), shell.overridden_by)
+                            }
+                        }
                     })
                     .await;
                 this.update(cx, |accounts, cx| {
                     accounts.view.overridden_by = overridden_by;
                     match env {
-                        Ok(env) => accounts.made(env),
-                        Err(why) => accounts.view.said = Some(why.to_string()),
+                        Ok(env) => accounts.made(env, cx),
+                        Err(why) => accounts.view.unreadable = Some(why.to_string()),
                     }
                     cx.notify();
                 })
@@ -107,91 +214,161 @@ impl Service {
         });
         Service {
             _making: making,
-            ..Service::empty()
+            ..Service::default()
         }
     }
 
-    fn empty() -> Service {
-        Service {
-            store: None,
-            reading: false,
-            backoff: Backoff::default(),
-            _making: None,
+    /// The switcher is on `env`.
+    pub fn on(&mut self, env: Env) {
+        self.switcher = Some(Arc::new(Switcher::new(env)));
+    }
+
+    /// Whether the switcher can be asked anything.
+    pub fn on_hand(&self) -> bool {
+        self.switcher.is_some()
+    }
+
+    /// Queues `job`, into a reading or a chat's limits already waiting.
+    pub fn ask(&mut self, job: Job) {
+        match (self.waiting.back_mut(), job) {
+            (
+                Some(Job::Read { active, other }),
+                Job::Read {
+                    active: also,
+                    other: another,
+                },
+            ) => {
+                *active |= also;
+                *other = another.or(other.take());
+            }
+            (Some(Job::Live(waiting)), Job::Live(limits)) => *waiting = limits,
+            (_, job) => self.waiting.push_back(job),
         }
     }
+}
 
-    /// A service on `env`.
-    pub fn on(env: Env) -> Service {
-        Service {
-            store: Some(Arc::new(CredentialStore::new(env))),
-            ..Service::empty()
-        }
-    }
-
-    /// Whether the login can be read yet.
-    pub fn ready(&self) -> bool {
-        self.store.is_some()
-    }
-
-    /// Reads the Mac's login and its usage, unless a reading runs or the last failure's backoff
-    /// lasts.
-    pub fn read(&mut self, cx: &mut Context<Accounts>) {
-        let Some(store) = self.store.clone() else {
+impl Accounts {
+    /// Runs the next job waiting, unless one runs.
+    pub(super) fn work(&mut self, cx: &mut Context<Self>) {
+        let Some(service) = self.running.as_mut().map(|running| &mut running.service) else {
             return;
         };
-        if self.reading || store.env().now() < self.backoff.until {
+        if service.working.is_some() {
             return;
         }
-        self.reading = true;
-        cx.spawn(async move |this, cx| {
-            let reader = store.clone();
-            let found = cx
+        let Some(switcher) = service.switcher.clone() else {
+            return;
+        };
+        let Some(job) = service.waiting.pop_front() else {
+            return;
+        };
+        let persons = job.doing().is_some();
+        service.working = Some(cx.spawn(async move |this, cx| {
+            let done = cx
                 .background_executor()
-                .spawn(async move { current_login(&reader) })
+                .spawn(async move { run(&switcher, job) })
                 .await;
             this.update(cx, |accounts, cx| {
-                if let Some(running) = &mut accounts.running {
-                    running.service.reading = false;
-                    let now = store.env().now();
-                    running.service.take(found, now, &mut accounts.view);
+                let before = accounts.view.clone();
+                accounts.take(done, persons);
+                if accounts.view != before {
+                    cx.notify();
                 }
-                cx.notify();
+                if let Some(running) = &mut accounts.running {
+                    running.service.working = None;
+                }
+                accounts.work(cx);
             })
             .ok();
-        })
-        .detach();
+        }));
     }
 
-    /// Puts what was found at `now` into `view`: a failed reading keeps the last one's bars.
-    fn take(&mut self, found: Option<(Row, Option<UsageOutcome>)>, now: f64, view: &mut View) {
-        let old = std::mem::take(&mut view.rows);
-        let Some((mut row, outcome)) = found else {
+    /// A chat's limits for the active account: into the store at once, or the newest of them
+    /// [`LIVE_EVERY`] after the last write. With no active account Koyo keeps, nothing.
+    pub(super) fn heard(&mut self, limits: LiveLimits, cx: &mut Context<Self>) {
+        if self.view.active().is_none() {
+            return;
+        }
+        let Some(heard) = self
+            .running
+            .as_mut()
+            .map(|running| &mut running.service.heard)
+        else {
             return;
         };
-        if let Some(kept) = old.into_iter().find(|old| old.same_account(&row)) {
-            (row.bars, row.measured_at) = (kept.bars, kept.measured_at);
+        let wait = heard
+            .sent_at
+            .map_or(0., |at| at + LIVE_EVERY - super::now());
+        heard.latest = Some(limits);
+        if wait <= 0. {
+            self.send_heard(cx);
+        } else if heard.flushing.is_none() {
+            heard.flushing = Some(cx.spawn(async move |this, cx| {
+                cx.background_executor()
+                    .timer(Duration::from_secs_f64(wait))
+                    .await;
+                this.update(cx, Accounts::send_heard).ok();
+            }));
         }
-        match outcome {
-            Some(UsageOutcome {
-                usage: Some(usage), ..
-            }) => {
-                self.backoff = Backoff::default();
-                row.bars = reading::bars(&usage, now);
-                row.measured_at = Some(now);
-            }
-            Some(UsageOutcome {
-                error: Some(kind),
-                retry_after_s,
-                ..
-            }) => {
-                self.backoff.failures += 1;
-                let rate_limited = kind == RATE_LIMITED_ERROR;
-                self.backoff.until =
-                    now + failure_backoff_s(self.backoff.failures, retry_after_s, rate_limited);
-                row.problem = Some(reading::problem(&kind, self.backoff.until));
-            }
-            _ => {}
-        }
-        view.rows = vec![row];
     }
+
+    /// Writes the newest of the chats' limits heard.
+    fn send_heard(&mut self, cx: &mut Context<Self>) {
+        let Some(heard) = self
+            .running
+            .as_mut()
+            .map(|running| &mut running.service.heard)
+        else {
+            return;
+        };
+        heard.flushing = None;
+        if let Some(limits) = heard.latest.take() {
+            heard.sent_at = Some(super::now());
+            self.ask(Job::Live(limits), cx);
+        }
+    }
+
+    /// Puts what a job found into the view: what the person's job said replaces what the last
+    /// one said; another job's only when it failed.
+    fn take(&mut self, done: Done, persons: bool) {
+        let now = super::now();
+        let view = &mut self.view;
+        if persons {
+            view.doing = None;
+        }
+        if persons || done.said.is_some() {
+            view.said = done.said;
+        }
+        match done.accounts {
+            Some(Ok(accounts)) => {
+                take_accounts(view, &accounts, now);
+                if let Some(running) = &mut self.running {
+                    running.service.entries = (accounts.accounts.into_iter())
+                        .map(|account| (account.slot.number, account.usage))
+                        .collect();
+                }
+            }
+            Some(Err(why)) => view.unreadable = Some(why),
+            None => {}
+        }
+        if let Some(entry) = done.active
+            && let Some(row) = view.rows.iter_mut().find(|row| row.active)
+        {
+            reading::take_entry(row, &entry, now);
+            if let Some(running) = &mut self.running {
+                running.service.entries.insert(row.number.clone(), entry);
+            }
+        }
+    }
+}
+
+/// `accounts` into `view` at `now`: a row each, and the Mac's login when Koyo doesn't keep it.
+fn take_accounts(view: &mut View, accounts: &AccountsSnapshot, now: f64) {
+    view.rows = (accounts.accounts.iter())
+        .map(|account| reading::row(account, now))
+        .collect();
+    view.unmanaged = (accounts.current.is_none())
+        .then(|| accounts.live.as_ref().map(|live| live.email.clone().into()))
+        .flatten();
+    view.unreadable = None;
 }

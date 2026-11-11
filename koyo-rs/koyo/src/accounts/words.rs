@@ -26,6 +26,11 @@ pub fn resets(bar: &Bar, now: f64) -> Option<String> {
     ))
 }
 
+/// The Mac's login, `email`'s, when Koyo doesn't keep it.
+pub fn unmanaged(email: &str) -> String {
+    format!("The Mac's login, {email}, isn't one of Koyo's accounts yet.")
+}
+
 /// How long ago `at` was.
 pub fn age(at: f64, now: f64) -> String {
     crate::ago::ago((now - at).max(0.) as u64)
@@ -58,6 +63,9 @@ impl Problem {
             Problem::KeychainUnavailable => {
                 "The Keychain is locked or busy: still signed in. Koyo tries again.".into()
             }
+            Problem::ForeignLogin => "The Mac's login belongs to another account: switch to \
+                                      this one again to put it back."
+                .into(),
             Problem::Offline => "Offline: showing the last reading.".into(),
             Problem::Other(kind) => format!("Couldn't read usage ({kind})."),
         }
