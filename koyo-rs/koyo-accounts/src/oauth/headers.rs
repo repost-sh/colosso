@@ -14,9 +14,9 @@
 //! `resets_at`.
 //!
 //! Left out: reading the headers themselves (Claude Code parses them; Koyo gets the windows),
-//! so `_unified_window_present` too, and the `rejected` status entry, which a reply's event
-//! doesn't carry; the header probe that sends a request to read them is left out with it
-//! (`oauth/mod.rs`).
+//! so `_unified_window_present` too, and the `rejected` status entry: the agent host's event
+//! carries the reply's status, but [`LiveLimits`] takes only the windows. The header probe that
+//! sends a request to read them is left out with it (`oauth/mod.rs`).
 
 use serde_json::{Map, Value, json};
 

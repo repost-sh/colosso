@@ -253,7 +253,7 @@ impl Operation for SettingsOpen {
     const TITLE: &'static str = "Open settings";
     const SUBJECT: &'static [&'static str] = &["page"];
     const SCOPE: Scope = Scope::Navigate;
-    const DESCRIPTION: &'static str = "Shows Settings in the window, on a page: general, chat, accounts, appearance, editor, languages, browser, keyboard, mcp or about. Only shows them; settings_set changes them.";
+    const DESCRIPTION: &'static str = "Shows Settings in the window, on a page: general, chat, accounts, appearance, editor, languages, browser, keyboard, mcp, agent_desktop or about. Only shows them; settings_set changes them.";
     const HINTS: Hints = Hints::IDEMPOTENT;
     type Input = SettingsOpenInput;
     type Output = AppStatusOutput;

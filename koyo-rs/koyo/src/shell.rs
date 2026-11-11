@@ -22,6 +22,7 @@ use crate::model::{PaneKind, Workspace};
 use crate::navigation::{NavigationHistory, OpenSettings, Route};
 use crate::right_panel::RightPanel;
 use crate::settings::{self, Layout};
+use crate::settings_view::SettingsPage::{Accounts, AgentDesktop};
 use crate::settings_view::{self, SettingsSidebar};
 use crate::sidebar::{SidebarFrame, SidebarResize, slide_out};
 use crate::theme::Palette;
@@ -155,21 +156,11 @@ impl Shell {
                     .name_projects(&settings::get(cx).project_looks);
             }),
             cx.observe_global::<Theme>(|this, cx| this.terminals.tell_theme(cx)),
-            // Settings → Agent desktop shows how the host stands as it changes. Only while
-            // that page shows: the desk changes with all an agent does on its desktop.
-            cx.observe(&crate::agent_desktop::desk(cx), |this, _, cx| {
-                let page = settings_view::SettingsPage::AgentDesktop;
-                if this.route(cx) == Route::Settings(page) {
-                    cx.notify();
-                }
-            }),
-            // Settings → Accounts lists the accounts as they change, only while it shows.
-            cx.observe(&crate::accounts::accounts(cx), |this, _, cx| {
-                let page = settings_view::SettingsPage::Accounts;
-                if this.route(cx) == Route::Settings(page) {
-                    cx.notify();
-                }
-            }),
+            // Settings → Agent desktop shows how the host stands as it changes, and Settings →
+            // Accounts the accounts. Only while the page shows: the desk changes with all an
+            // agent does on its desktop.
+            settings_view::redraws_while_shown(AgentDesktop, &crate::agent_desktop::desk(cx), cx),
+            settings_view::redraws_while_shown(Accounts, &crate::accounts::accounts(cx), cx),
             // The status bar is tall only with servers to show.
             cx.subscribe(status_bar.servers(), |this, _, ServersListed(any), cx| {
                 this.rails.servers = *any;

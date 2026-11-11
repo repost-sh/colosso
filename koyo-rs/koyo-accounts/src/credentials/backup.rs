@@ -19,10 +19,9 @@
 //! the legacy file sweep. A backup write while the Keychain is backed off, or one the Keychain
 //! refuses, fails rather than writing a file.
 
-use std::os::unix::fs::MetadataExt as _;
 use std::time::Instant;
 
-use crate::credentials::{BackupReadError, CredentialStore, Generation};
+use crate::credentials::{BackupReadError, CredentialStore, Generation, generation};
 use crate::keychain::{self, KeychainError};
 use crate::paths::{self, BACKUP_KEYCHAIN_SERVICE};
 use crate::{AccountsError, Result};
@@ -39,11 +38,9 @@ pub fn prev_backup_username(account_num: &str, email: &str) -> String {
 
 impl CredentialStore {
     /// `sequence.json`'s generation, or `None` when it can't be read: the cheap "did the
-    /// account set change?" signal. The mtime alone can repeat across two writes in one coarse
-    /// tick; the atomic write's new inode and the size tell them apart.
+    /// account set change?" signal.
     fn registry_generation(&self) -> Option<Generation> {
-        let meta = std::fs::metadata(paths::store::sequence_file(&self.env)).ok()?;
-        Some((meta.ino(), meta.mtime(), meta.mtime_nsec(), meta.size()))
+        generation(&paths::store::sequence_file(&self.env))
     }
 
     /// Forgets every cached backup read; the epoch's bump voids a fill that was mid-`security`

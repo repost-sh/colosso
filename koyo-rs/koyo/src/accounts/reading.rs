@@ -110,6 +110,30 @@ fn live_window(window: &LimitWindow) -> LiveWindow {
     }
 }
 
+/// Whether `newer` limits moved from `written`: a window came or went, its use by a point or
+/// more (`poll_policy::MOVEMENT_DELTA_PCT`, the store's own measure of movement), or its reset.
+pub fn moved(written: &LiveLimits, newer: &LiveLimits) -> bool {
+    let window = |a: Option<LiveWindow>, b: Option<LiveWindow>| match (a, b) {
+        (Some(a), Some(b)) => {
+            let used = (a.utilization_fraction - b.utilization_fraction).abs() * 100.;
+            let reset = match (a.resets_at, b.resets_at) {
+                (Some(a), Some(b)) => (a - b).abs() >= 1.,
+                (None, None) => false,
+                _ => true,
+            };
+            used >= poll_policy::MOVEMENT_DELTA_PCT || reset
+        }
+        (None, None) => false,
+        _ => true,
+    };
+    window(written.five_hour, newer.five_hour)
+        || window(written.seven_day, newer.seven_day)
+        || window(
+            written.seven_day_overage_included,
+            newer.seven_day_overage_included,
+        )
+}
+
 /// A chat's response's limits as the accounts crate takes them: the five hours, the week and
 /// the per-model bucket (Fable's `7d_oi`), each a fraction with its reset.
 pub fn live_limits(limits: &AccountLimits) -> LiveLimits {
@@ -146,6 +170,24 @@ mod tests {
         let unknown = bars(&json!({"seven_day": {"pct": null}}), 1_800_000_000.);
         assert_eq!(unknown[0].percent, None);
         assert!(bars(&json!({"five_hour": {"pct": 3.0}}), 1_800_000_000.).is_empty());
+    }
+
+    #[test]
+    fn limits_move_by_a_point_a_reset_or_a_window_coming_or_going() {
+        let week = |used: f64, resets: f64| LiveWindow {
+            utilization_fraction: used,
+            resets_at: Some(resets),
+        };
+        let limits = |seven_day| LiveLimits {
+            five_hour: None,
+            seven_day,
+            seven_day_overage_included: None,
+        };
+        let written = limits(Some(week(0.40, 1_800_000_000.)));
+        assert!(!moved(&written, &limits(Some(week(0.405, 1_800_000_000.)))));
+        assert!(moved(&written, &limits(Some(week(0.415, 1_800_000_000.)))));
+        assert!(moved(&written, &limits(Some(week(0.40, 1_800_604_800.)))));
+        assert!(moved(&written, &limits(None)));
     }
 
     #[test]

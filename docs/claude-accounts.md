@@ -38,9 +38,13 @@ with two of cswap's rules on top (section 4). The study behind this page is in
   included.
 - **Koyo's store**, cswap's layout under `<data dir>/claude-accounts/`: `sequence.json` (slots,
   identity, active slot), `configs/` (each slot's config), `cache/usage.json` (usage per account),
-  `autoswitch_state.json`, the lock files. Backed-up credentials go to the Keychain under service
-  `Koyo Claude accounts`, accounts `account-<n>-<email>` and `account-<n>-<email>.prev`, written
-  and read through `/usr/bin/security` exactly as cswap's `macos_keychain.py` does.
+  `cache/subscription_plans.json` (each account's plan), `autoswitch_state.json`, the lock files,
+  and `credentials/`, cswap's stash of refreshed tokens that couldn't be stored yet
+  (`.unclaimed-<id>.enc`, base64, 0600, with a manifest): files on purpose, outside the
+  Keychain, so a refresh the server accepted is never lost. Backed-up credentials go to the
+  Keychain under service `Koyo Claude accounts`, accounts `account-<n>-<email>` and
+  `account-<n>-<email>.prev`, written and read through `/usr/bin/security` exactly as cswap's
+  `macos_keychain.py` does.
 - **Claude Code's locks**, as cswap's `claude_locks.py`: `<config home>/.oauth_refresh.lock`, then
   `~/.claude.lock`, then `~/.claude.json.lock`; directories, stale after 60 s, 60 s and 10 s.
 
@@ -52,17 +56,18 @@ limit, each opening with the cswap module and commit it ports.
 
 | cswap | Ported | Left out |
 |---|---|---|
-| `paths.py` | config home, global config (2.1.299 rule), credentials path | XDG, legacy-root migration |
+| `paths.py`, `session.py` | config home, global config (2.1.299 rule), credentials path; the Keychain service names (`keychain_service_name`, `_keychain_services`) | XDG, legacy-root migration; the rest of `session.py` |
 | `macos_keychain.py` | all of it | |
-| `credentials.py` | active read with its verdicts (unavailable, degraded), backups, shared MCP fields, display cache, failure cooldown | file backend, `.enc` backups |
+| `credentials.py` | active read with its verdicts (unavailable, degraded), backups, shared MCP fields, display cache, failure cooldown, the unclaimed-token stash (its `.enc` files) | file backend, `.enc` slot backups |
 | `claude_locks.py` | all of it, takeover directory included | |
 | `locking.py`, `fsutil.py` | Koyo's lock and atomic writer, to cswap's rules (0600 from creation, fsync, rename, write through symlinks) | Windows retries, junctions |
 | `switcher.py` | add the current login, remove, switch (`_perform_switch`, `_classify_outgoing_credential` and its verdicts, rollback, foreign-successor rescue), the refresh gate (`consume_backup_grant`), usage collection, `accounts_snapshot` | aliases, swap/move, priority tiers, API-key and setup-token accounts, session-profile checks |
 | `oauth.py` | refresh, profile, usage endpoint, result parsing, error kinds | the header probe |
-| `usage_store.py`, `poll_policy.py` | the store, leases, last-good, backoff and Retry-After rules | the polling cadence (section 4 replaces it) |
-| `autoswitch.py`, `lines.py` | the engine with the `weekly-first` strategy (section 5) | other strategies, `--once`, per-account thresholds |
+| `usage_store.py`, `poll_policy.py` | the store, leases, last-good, backoff and Retry-After rules, the per-account poll plans | nothing; the app's cadence (section 4) runs on top for the active account and the open panel |
+| `autoswitch.py`, `lines.py`, `settings.py` | the engine with the `weekly-first` strategy (section 5), its settings and their range | other strategies, `--once`, per-account thresholds, the weekly line and the per-model windows (`weekly_threshold`, `model`: every window's line is the threshold) |
 | `subscription.py`, `pace.py` | plan label, pace marker | |
-| `session.py`, `transfer.py`, `menubar.py`, `tui/`, `migrations.py`, `update_check.py` | | all |
+| `exceptions.py`, `models.py`, `json_output.py` | the errors, the switch result and snapshot types, the usage sentinels | JSON output |
+| `transfer.py`, `menubar.py`, `tui/`, `migrations.py`, `update_check.py` | | all |
 
 - **HTTP** goes through the system `curl`, as Koyo's other requests do, with headers passed on
   stdin (`--config -`), never in argv, so a token never shows in `ps`. The system `curl` trusts
@@ -118,9 +123,11 @@ cswap's engine with its `weekly-first` strategy:
   (`menu::Trigger::toggle_panel` with a `MenuBody`, as `chat/composer/context.rs`). One row per
   account: email, organisation, plan, the active mark, the 7 d bar and each per-model bar with
   percentage, reset countdown and date, "(ahead of pace)", "(!)" at 100 %. A click switches.
-  Under the rows: Add current login, and auto-switch's state.
+  Under the rows: Add current login when the Mac's login isn't one of Koyo's accounts yet, and
+  auto-switch's state with what it last did.
 - **Settings → Accounts:** a new page (`settings_view/accounts.rs`): Manage Claude accounts, the
-  account list with remove and disable, Auto-switch and its threshold.
+  account list with Hold Out / Put Back (out of auto-switch) and Remove, Add Current Login,
+  Auto-switch and its threshold.
 - **App control:** `claude_accounts_list` (read) through `koyo-app-control`, for agents. No agent
   tool changes the accounts: switching, adding, removing, holding one out, auto-switch and
   Manage Claude accounts stay with the person.

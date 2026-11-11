@@ -177,11 +177,18 @@ pub struct Service {
 /// write, and a busy chat hears them with every response.
 const LIVE_EVERY: f64 = 30.;
 
-/// Chats' limits on their way to the store, one write each [`LIVE_EVERY`] at most.
+/// How long a written reading of a chat's limits stands while they don't move: inside the
+/// usage store's 180 s freshness floor, so the active account isn't fetched for want of one.
+const LIVE_STANDS: f64 = 120.;
+
+/// Chats' limits on their way to the store, one write each [`LIVE_EVERY`] at most, and none
+/// while they haven't moved and the last write stands.
 #[derive(Default)]
 struct Heard {
     /// The newest, waiting for the next write.
     latest: Option<LiveLimits>,
+    /// The last written, and when.
+    written: Option<LiveLimits>,
     sent_at: Option<f64>,
     /// The wait for the next write.
     flushing: Option<Task<()>>,
@@ -373,10 +380,17 @@ impl Accounts {
             return;
         };
         heard.flushing = None;
-        if let Some(limits) = heard.latest.take() {
-            heard.sent_at = Some(super::now());
-            self.ask(Job::Live(limits), cx);
+        let Some(limits) = heard.latest.take() else {
+            return;
+        };
+        let now = super::now();
+        let unmoved =
+            (heard.written.as_ref()).is_some_and(|written| !reading::moved(written, &limits));
+        if unmoved && heard.sent_at.is_some_and(|at| now - at < LIVE_STANDS) {
+            return;
         }
+        (heard.written, heard.sent_at) = (Some(limits), Some(now));
+        self.ask(Job::Live(limits), cx);
     }
 
     /// Puts what a job found into the view: what the person's job said replaces what the last

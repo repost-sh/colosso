@@ -8,7 +8,6 @@
 //! nor writes the login and polls nothing.
 
 mod auto;
-pub use auto::NOTICE;
 mod button;
 mod environment;
 mod model;

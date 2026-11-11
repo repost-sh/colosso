@@ -17,7 +17,7 @@ use serde::de::{Deserialize, Deserializer, IgnoredAny, MapAccess, Visitor};
 use serde_json::{Map, Value};
 
 use crate::claude_locks::LockDir;
-use crate::credentials::CredentialStore;
+use crate::credentials::{CredentialStore, generation};
 use crate::{AccountsError, Result, fsutil, paths};
 
 impl CredentialStore {
@@ -46,25 +46,19 @@ impl CredentialStore {
     /// The global config's `oauthAccount` object alone, or `None` when the config is absent,
     /// unreadable or not an object, or carries no `oauthAccount` object. Only that key is
     /// parsed into values; the rest of the file (the person's whole Claude Code state) is
-    /// skipped, since the identity is read on every check.
+    /// skipped, since the identity is read on every check, and while the file hasn't changed
+    /// (its generation) the last answer is kept, the file read only to see that.
     pub fn read_oauth_account(&self) -> Option<Map<String, Value>> {
         let path = paths::global_config_path(&self.env);
-        if !path.exists() {
-            return None;
+        let changed = generation(&path)?;
+        if let Some((read, oauth)) = &self.state().oauth_account
+            && *read == changed
+        {
+            return oauth.clone();
         }
-        let parsed = std::fs::read_to_string(&path)
-            .map_err(|error| error.to_string())
-            .and_then(|text| {
-                serde_json::from_str::<OauthAccountOnly>(&text).map_err(|error| error.to_string())
-            });
-        match parsed {
-            Ok(OauthAccountOnly(Some(Value::Object(oauth)))) => Some(oauth),
-            Ok(_) => None,
-            Err(error) => {
-                log::warn!("Failed to read global config: {error}");
-                None
-            }
-        }
+        let oauth = parse_oauth_account(&path);
+        self.state().oauth_account = Some((changed, oauth.clone()));
+        oauth
     }
 
     /// Applies `mutate` to the global config and writes it back atomically, 0600: `mutate`
@@ -132,5 +126,22 @@ impl<'de> Deserialize<'de> for OauthAccountOnly {
         }
 
         deserializer.deserialize_map(Fields)
+    }
+}
+
+/// The `oauthAccount` object of the global config at `path`, the rest skipped.
+fn parse_oauth_account(path: &std::path::Path) -> Option<Map<String, Value>> {
+    let parsed = std::fs::read_to_string(path)
+        .map_err(|error| error.to_string())
+        .and_then(|text| {
+            serde_json::from_str::<OauthAccountOnly>(&text).map_err(|error| error.to_string())
+        });
+    match parsed {
+        Ok(OauthAccountOnly(Some(Value::Object(oauth)))) => Some(oauth),
+        Ok(_) => None,
+        Err(error) => {
+            log::warn!("Failed to read global config: {error}");
+            None
+        }
     }
 }

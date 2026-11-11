@@ -160,8 +160,17 @@ impl std::fmt::Display for BackupReadError {
 
 impl std::error::Error for BackupReadError {}
 
-/// `sequence.json`'s inode, modification time (seconds, nanoseconds) and size.
+/// A file's inode, modification time (seconds, nanoseconds) and size: whether it changed. The
+/// mtime alone can repeat across two writes in one coarse tick; an atomic write's new inode and
+/// the size tell them apart.
 type Generation = (u64, i64, i64, u64);
+
+/// `path`'s generation, or `None` when it can't be read.
+fn generation(path: &std::path::Path) -> Option<Generation> {
+    use std::os::unix::fs::MetadataExt as _;
+    let meta = std::fs::metadata(path).ok()?;
+    Some((meta.ino(), meta.mtime(), meta.mtime_nsec(), meta.size()))
+}
 
 /// What the store learns while the process runs; one lock, never held across a `security`
 /// call.
@@ -186,6 +195,13 @@ struct State {
     backup_read_cache_gen: Option<Generation>,
     /// The cooldown already announced in the log: one line per cooldown.
     backoff_announced_until: Option<Instant>,
+    /// The global config's `oauthAccount` as last parsed, and the file's generation then:
+    /// Koyo's own, as the identity is read on every check and the file is Claude Code's whole
+    /// state, often megabytes.
+    oauth_account: Option<(
+        Generation,
+        Option<serde_json::Map<String, serde_json::Value>>,
+    )>,
     /// [`KEYCHAIN_RECHECK_COOLDOWN_S`] and [`BACKUP_READ_CACHE_TTL_S`], as tests patch them.
     cooldown: Duration,
     cache_ttl: Duration,
@@ -213,6 +229,7 @@ impl CredentialStore {
                 backup_read_cache_epoch: 0,
                 backup_read_cache_gen: None,
                 backoff_announced_until: None,
+                oauth_account: None,
                 cooldown: KEYCHAIN_RECHECK_COOLDOWN_S,
                 cache_ttl: BACKUP_READ_CACHE_TTL_S,
             }),
