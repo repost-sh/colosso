@@ -91,7 +91,7 @@ pub fn report(points: &[(f64, f64)], touching: bool, at_ns: u64) -> [u8; 58] {
     report[0] = 0x09;
     report[1] = u8::try_from(count).unwrap_or(5);
     report[2] = 0x05;
-    let share = |value: f64| (value.clamp(0., 1.) * 65535.).round() as u16;
+    let share = crate::places::share;
     for (index, &(x, y)) in points.iter().take(5).enumerate() {
         let (x, y) = (share(x).to_le_bytes(), share(y).to_le_bytes());
         let at = 3 + 5 * index;

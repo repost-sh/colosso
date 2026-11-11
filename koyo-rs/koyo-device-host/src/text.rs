@@ -5,14 +5,13 @@
 //! 74-125 ms.
 
 use std::fmt::Write as _;
-use std::ptr::NonNull;
 
 use objc2::msg_send;
 use objc2::rc::Allocated;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyClass, AnyObject};
-use objc2_core_foundation::{CFRetained, CGRect};
-use objc2_core_video::{CVPixelBuffer, CVPixelBufferCreateWithIOSurface};
+use objc2_core_foundation::CGRect;
+use objc2_core_video::CVPixelBuffer;
 use objc2_foundation::{NSArray, NSDictionary, NSError, NSString};
 use objc2_io_surface::IOSurfaceRef;
 
@@ -61,16 +60,7 @@ pub fn read(surface: &IOSurfaceRef, scale: f64) -> Result<Vec<Piece>, String> {
         surface.width() as f64 / scale,
         surface.height() as f64 / scale,
     );
-    let mut buffer: *mut CVPixelBuffer = std::ptr::null_mut();
-    // SAFETY: a pixel buffer over the surface, ours to release; the surface outlives it.
-    let made = unsafe {
-        CVPixelBufferCreateWithIOSurface(None, surface, None, NonNull::from(&mut buffer))
-    };
-    let buffer = NonNull::new(buffer)
-        .filter(|_| made == 0)
-        .ok_or("no pixel buffer over the picture")?;
-    // SAFETY: made by the call above with a +1 retain count, which this takes.
-    let buffer: CFRetained<CVPixelBuffer> = unsafe { CFRetained::from_raw(buffer) };
+    let buffer = crate::ring::pixel_buffer(surface).ok_or("no pixel buffer over the picture")?;
     let pieces = guarded("reading the picture's text", || recognize(&buffer))??;
     let mut placed: Vec<Piece> = pieces
         .into_iter()

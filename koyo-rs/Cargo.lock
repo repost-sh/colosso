@@ -463,6 +463,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-stream"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b5a71a6f37880a80d1d7f19efd781e4b5de42c88f0722cc13bcb6cc2cfe8476"
+dependencies = [
+ "async-stream-impl",
+ "futures-core",
+ "pin-project-lite",
+]
+
+[[package]]
+name = "async-stream-impl"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c7c24de15d275a1ecfd47a380fb4d5ec9bfe0933f309ed5e705b775596a3574d"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "async-task"
 version = "4.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4890,6 +4912,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "idevice"
+version = "0.1.68"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f5d7799c8497cef60ddfd38f7d92e267b9fa5d0b18e7691d31041453007400ca"
+dependencies = [
+ "async-stream",
+ "base64 0.22.1",
+ "flate2",
+ "futures",
+ "indexmap",
+ "jktcp",
+ "libc",
+ "ns-keyed-archive",
+ "plist",
+ "plist-macro",
+ "rand 0.10.3",
+ "rustls",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-rustls",
+ "tracing",
+ "uuid",
+ "web-time",
+]
+
+[[package]]
 name = "idna"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5195,6 +5245,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "jktcp"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f67259b6408391e66f7d7fd3dbef41ef3bc65e1d67f4c8d5512f2e59835f7844"
+dependencies = [
+ "futures",
+ "getrandom 0.3.4",
+ "rand 0.9.5",
+ "tokio",
+ "tracing",
+ "wasm-bindgen-futures",
+ "wasmtimer",
+]
+
+[[package]]
 name = "jni-sys"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5482,18 +5547,26 @@ name = "koyo-device-host"
 version = "0.1.0"
 dependencies = [
  "block2 0.6.2",
+ "futures",
+ "idevice",
  "koyo-browser-ipc",
  "koyo-device-gestures",
  "koyo-device-wire",
  "libc",
+ "memchr",
  "objc2 0.6.5",
  "objc2-core-foundation",
+ "objc2-core-media",
  "objc2-core-video",
  "objc2-foundation 0.3.2",
  "objc2-io-surface",
  "objc2-metal 0.3.2",
+ "objc2-video-toolbox",
+ "plist",
  "png 0.18.1",
  "serde_json",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -6462,6 +6535,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "ns-keyed-archive"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "815e8c8171d033165fdda6d95630d6f447592ad5e6fbade9db26663970c6fae6"
+dependencies = [
+ "nskeyedarchiver_converter",
+ "plist",
+]
+
+[[package]]
+name = "nskeyedarchiver_converter"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "36c53158d1bf37bbbdd165f5220fda8bb5757c89eb700107992152c64c6cad7e"
+dependencies = [
+ "plist",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "ntapi"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6706,6 +6799,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "objc2-core-audio"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e1eebcea8b0dbff5f7c8504f3107c68fc061a3eb44932051c8cf8a68d969c3b2"
+dependencies = [
+ "dispatch2",
+ "objc2 0.6.5",
+ "objc2-core-audio-types",
+ "objc2-core-foundation",
+]
+
+[[package]]
+name = "objc2-core-audio-types"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a89f2ec274a0cf4a32642b2991e8b351a404d290da87bb6a9a9d8632490bd1c"
+dependencies = [
+ "bitflags 2.13.2",
+ "objc2 0.6.5",
+]
+
+[[package]]
 name = "objc2-core-data"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6784,6 +6899,22 @@ checksum = "ca347214e24bc973fc025fd0d36ebb179ff30536ed1f80252706db19ee452009"
 dependencies = [
  "objc2 0.6.5",
  "objc2-foundation 0.3.2",
+]
+
+[[package]]
+name = "objc2-core-media"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05ec576860167a15dd9fce7fbee7512beb4e31f532159d3482d1f9c6caedf31d"
+dependencies = [
+ "bitflags 2.13.2",
+ "block2 0.6.2",
+ "dispatch2",
+ "objc2 0.6.5",
+ "objc2-core-audio",
+ "objc2-core-audio-types",
+ "objc2-core-foundation",
+ "objc2-core-video",
 ]
 
 [[package]]
@@ -6974,6 +7105,23 @@ dependencies = [
  "block2 0.6.2",
  "objc2 0.6.5",
  "objc2-foundation 0.3.2",
+]
+
+[[package]]
+name = "objc2-video-toolbox"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05bf9a3c14831a7d9641b0d81d87dd913ee238a012b2fde27db5a84b56f5df3e"
+dependencies = [
+ "bitflags 2.13.2",
+ "block2 0.6.2",
+ "objc2 0.6.5",
+ "objc2-core-foundation",
+ "objc2-core-graphics",
+ "objc2-core-media",
+ "objc2-core-video",
+ "objc2-foundation 0.3.2",
+ "objc2-metal 0.3.2",
 ]
 
 [[package]]
@@ -7440,6 +7588,28 @@ name = "pkg-config"
 version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
+
+[[package]]
+name = "plist"
+version = "1.10.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "327a4cb2ad49dc48adfdc9da89e22c64d488b508c67a044d71ba729e4521a285"
+dependencies = [
+ "base64 0.23.1",
+ "indexmap",
+ "quick-xml 0.42.0",
+ "serde",
+ "time",
+]
+
+[[package]]
+name = "plist-macro"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "82c39e020f2d8d361e91a434cfe26bc7c3e21ae54414379816d0110f3f7ca121"
+dependencies = [
+ "plist",
+]
 
 [[package]]
 name = "png"
@@ -10449,6 +10619,7 @@ checksum = "4a0e2d11620c50695fe12bbbfde96b3477fe606e7284c22d505c12ce51214514"
 dependencies = [
  "getrandom 0.4.3",
  "js-sys",
+ "md-5",
  "serde_core",
  "sha1_smol",
  "wasm-bindgen",
@@ -10625,6 +10796,19 @@ dependencies = [
  "js-sys",
  "wasm-bindgen",
  "web-sys",
+]
+
+[[package]]
+name = "wasmtimer"
+version = "0.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c62b7f338e4397a45d054c15a2b36a93d57cccdda7be11a7d7b045d47b5e70ce"
+dependencies = [
+ "futures",
+ "js-sys",
+ "parking_lot",
+ "pin-project-lite",
+ "wasm-bindgen",
 ]
 
 [[package]]

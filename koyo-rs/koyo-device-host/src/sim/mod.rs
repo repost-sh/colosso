@@ -3,7 +3,7 @@
 
 pub mod ax;
 pub mod core;
-mod display;
+pub(crate) mod display;
 pub mod hid;
 mod proxy;
 pub mod simctl;
@@ -12,7 +12,7 @@ pub mod uhid;
 
 use std::sync::mpsc;
 
-use koyo_device_wire::{Edge, LogLevel, Orientation, PixelSize, Point, Screen, Size};
+use koyo_device_wire::{Edge, LogLevel, Orientation, Point, Size};
 
 use self::core::{Device, Display};
 use self::hid::Digitizer;
@@ -120,17 +120,9 @@ impl Simulator {
         self.digitizer.as_ref().is_some_and(Digitizer::alive)
     }
 
-    /// The picture as shown, once there is one.
-    pub fn screen(&self, pixels: PixelSize) -> Screen {
-        Screen {
-            size: Size {
-                width: f64::from(pixels.width) / self.scale,
-                height: f64::from(pixels.height) / self.scale,
-            },
-            scale: self.scale,
-            pixels,
-            orientation: places::facing(self.quarters),
-        }
+    /// Which way its interface faces, as the picture is turned upright.
+    pub fn facing(&self) -> Orientation {
+        places::facing(self.quarters)
     }
 
     /// Fingers at `at`, points of the upright picture of `size`, touching or lifting.

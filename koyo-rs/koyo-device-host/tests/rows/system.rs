@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use koyo_device_wire::{Act, Answer, Ask, Change, Point, Press, Screen, Spot};
 
-use crate::support::{Driver, Target, row, simctl};
+use crate::support::{Driver, Target, change, press, row, simctl};
 
 fn snapshot(host: &mut Driver) -> String {
     let _ = host.ask(
@@ -24,17 +24,6 @@ fn snapshot(host: &mut Driver) -> String {
         }
         other => format!("{other:?}"),
     }
-}
-
-fn change(answer: &Result<Answer, koyo_device_wire::Refusal>) -> Option<Change> {
-    match answer {
-        Ok(Answer::Acted { change, .. }) => Some(*change),
-        _ => None,
-    }
-}
-
-fn press(host: &mut Driver, button: Press) -> Option<Change> {
-    change(&host.act(Act::Button { button }))
 }
 
 fn home_swipe(host: &mut Driver, screen: &Screen) {

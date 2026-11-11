@@ -23,7 +23,7 @@ use std::time::{Duration, Instant};
 
 use koyo_browser_ipc::{inherit, mach};
 use koyo_device_wire::{
-    Act, Answer, Ask, FromHost, Input, PROTOCOL, Refusal, RequestId, Screen, State, ToHost,
+    Act, Answer, Ask, Change, FromHost, Input, PROTOCOL, Point, Press, Refusal, RequestId, Screen, State, ToHost,
     read_frame, write_frame,
 };
 use objc2_core_foundation::CFRetained;
@@ -34,14 +34,26 @@ pub use pages::Pages;
 /// What the real-simulator tests run against, from the environment: without it they say so and
 /// pass, as the agent desktop's do.
 pub struct Target {
-    pub set: String,
     pub udid: String,
+    pub kind: Kind,
+}
+
+/// A simulator of a device set, or a real device by cable.
+pub enum Kind {
+    Simulator { set: String },
+    Phone,
 }
 
 pub fn target() -> Option<Target> {
     let set = std::env::var("KOYO_REAL_SIM_SET").ok()?;
     let udid = std::env::var("KOYO_REAL_SIM_UDID").ok()?;
-    Some(Target { set, udid })
+    Some(Target { udid, kind: Kind::Simulator { set } })
+}
+
+/// A real device by cable, from `KOYO_REAL_PHONE_UDID`.
+pub fn phone() -> Option<Target> {
+    let udid = std::env::var("KOYO_REAL_PHONE_UDID").ok()?;
+    Some(Target { udid, kind: Kind::Phone })
 }
 
 /// A ring the app was handed: its surfaces, by slot.
@@ -106,8 +118,11 @@ impl Driver {
         );
         let receiver = mach::Receiver::check_in(&service).unwrap();
         let mut command = Command::new(env!("CARGO_BIN_EXE_koyo-device-host"));
+        match &target.kind {
+            Kind::Simulator { set } => command.args(["--simulator", &target.udid, "--set", set]),
+            Kind::Phone => command.args(["--phone", &target.udid, "--name", "The device"]),
+        };
         command
-            .args(["--simulator", &target.udid, "--set", &target.set])
             .arg("--state")
             .arg(&folder)
             .env(
@@ -400,6 +415,12 @@ impl Drop for Driver {
     }
 }
 
+/// The time of day, for a log of acts.
+pub fn now() -> String {
+    let out = Command::new("/bin/date").arg("+%Y-%m-%d %H:%M:%S").output();
+    out.map(|out| String::from_utf8_lossy(&out.stdout).trim().to_owned()).unwrap_or_default()
+}
+
 fn rand_suffix() -> usize {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -422,10 +443,13 @@ pub fn shot(host: &mut Driver, name: &str) {
 
 /// `simctl --set <set>` from the test, as an agent's own `simctl` would.
 pub fn simctl(target: &Target, args: &[&str]) -> String {
+    let Kind::Simulator { set } = &target.kind else {
+        return String::new();
+    };
     let out = Command::new("/usr/bin/xcrun")
         .arg("simctl")
         .arg("--set")
-        .arg(&target.set)
+        .arg(set)
         .args(args)
         .output()
         .unwrap();
@@ -439,14 +463,38 @@ pub fn row(id: &str, what: &str, got: &str, pass: bool) {
         if pass { "PASS" } else { "FAIL" }
     );
     eprintln!("{line}");
-    if let Ok(path) = std::env::var("KOYO_REAL_SIM_OUT") {
-        use std::io::Write as _;
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)
-        {
-            let _ = writeln!(file, "{line}");
-        }
+    append("KOYO_REAL_SIM_OUT", &line);
+}
+
+/// Appends `line` to the file the environment's `variable` names, when it's set.
+pub fn append(variable: &str, line: &str) {
+    use std::io::Write as _;
+    if let Ok(path) = std::env::var(variable)
+        && let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path)
+    {
+        let _ = writeln!(file, "{line}");
     }
+}
+
+/// The change an act answered with.
+pub fn change(answer: &Result<Answer, Refusal>) -> Option<Change> {
+    match answer {
+        Ok(Answer::Acted { change, .. }) => Some(*change),
+        _ => None,
+    }
+}
+
+pub fn press(host: &mut Driver, button: Press) -> Option<Change> {
+    change(&host.act(Act::Button { button }))
+}
+
+/// Where a snapshot's first line that reads `text` places its element, in points.
+pub fn place(tree: &str, text: &str) -> Option<Point> {
+    let line = tree.lines().find(|line| line.contains(&format!("{text:?}")))?;
+    let (_, at) = line.rsplit_once('@')?;
+    let (x, y) = at.split_once(',')?;
+    Some(Point {
+        x: x.trim().parse().ok()?,
+        y: y.split_whitespace().next()?.parse().ok()?,
+    })
 }

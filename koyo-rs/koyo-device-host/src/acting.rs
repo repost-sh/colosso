@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 
 use koyo_device_wire::{Act, Answer, Point, RefusalCode, RequestId};
 
+use crate::device::Stillness;
 use crate::host::{Host, refused};
 use crate::look::{self, Sample};
 use crate::plan::{self, Timed, Touch};
@@ -15,8 +16,6 @@ use crate::start::Phase;
 
 const QUIET: Duration = Duration::from_millis(300);
 const SETTLES_WITHIN: Duration = Duration::from_secs(2);
-/// A simulator's pixels are exact: any point that differs is movement.
-const TOLERANCE: u8 = 0;
 
 /// Watching the picture until it stands still.
 pub struct Watch {
@@ -49,12 +48,13 @@ impl Watch {
             && let Some(held) = host.ring.latest()
         {
             self.seen = copied;
-            if let Some(now) = look::sample(&held.surface, host.sim.scale) {
-                if self.last.as_ref().is_none_or(|last| moved(last, &now)) {
+            if let Some(now) = look::sample(&held.surface, host.device.scale()) {
+                let still = host.device.stillness();
+                if self.last.as_ref().is_none_or(|last| moved(last, &now, still)) {
                     self.last_moved = Instant::now();
                 }
-                self.changed =
-                    self.changed || self.before.as_ref().is_none_or(|before| moved(before, &now));
+                self.changed = self.changed
+                    || self.before.as_ref().is_none_or(|before| moved(before, &now, still));
                 self.last = Some(now);
             }
         }
@@ -62,11 +62,12 @@ impl Watch {
     }
 }
 
-/// Whether the screen moved from `before` to `now`: a text cursor blinking doesn't count, or a
-/// wait would never end and an act would answer at the first blink.
-fn moved(before: &Sample, now: &Sample) -> bool {
-    let diff = look::compare(before, now, TOLERANCE);
-    diff.differing > 0 && !diff.region.is_some_and(look::is_caret)
+/// Whether the screen moved from `before` to `now`: a text cursor blinking doesn't count, nor on a
+/// real device what moves on its own in a few points (a live clock's hand), or a wait would
+/// never end and an act would answer at the first blink.
+fn moved(before: &Sample, now: &Sample, still: Stillness) -> bool {
+    let diff = look::compare(before, now, still.tolerance);
+    diff.differing > still.few && !diff.region.is_some_and(look::is_caret)
 }
 
 pub struct Running {
@@ -101,7 +102,7 @@ impl Waiting {
         let last = host
             .ring
             .latest()
-            .and_then(|held| look::sample(&held.surface, host.sim.scale));
+            .and_then(|held| look::sample(&held.surface, host.device.scale()));
         Waiting {
             request,
             quiet,
@@ -158,7 +159,7 @@ impl Host {
             Err(refusal) => return self.answer(request, Err(refusal)),
         };
         if let Act::Turn { to } = act {
-            if let Err(error) = self.sim.turn(*to) {
+            if let Err(error) = self.device.turn(*to) {
                 return self.answer(request, refused(RefusalCode::Failed, error));
             }
             self.follow_soon();
@@ -166,7 +167,7 @@ impl Host {
         let before = self
             .ring
             .latest()
-            .and_then(|held| look::sample(&held.surface, self.sim.scale));
+            .and_then(|held| look::sample(&held.surface, self.device.scale()));
         let typing = match act {
             Act::Type { text } => Some((text.chars().count(), 0)),
             _ => None,
@@ -191,9 +192,9 @@ impl Host {
             && timed.at_ms <= elapsed
         {
             let sent = match &timed.touch {
-                Touch::Fingers { at, touching, edge } => self.sim.touch(at, *touching, *edge, size),
+                Touch::Fingers { at, touching, edge } => self.device.touch(at, *touching, *edge, size),
                 Touch::Key { usage, down } => {
-                    self.sim.key(*usage, *down);
+                    self.device.key(*usage, *down);
                     if *down {
                         running.keys_down.push(*usage);
                         if let Some((_, pressed)) = &mut running.typing {
@@ -205,13 +206,13 @@ impl Host {
                     Ok(())
                 }
                 Touch::Button { page, usage, down } => {
-                    self.sim.button(*page, *usage, *down);
+                    self.device.button(*page, *usage, *down);
                     Ok(())
                 }
             };
             running.next += 1;
             if let Err(error) = sent {
-                self.sim.lift();
+                self.device.lift();
                 self.answer(running.request, refused(RefusalCode::Failed, error));
                 return false;
             }
@@ -229,7 +230,7 @@ impl Host {
             return true;
         }
         let diff = match (&running.before, &watch.last) {
-            (Some(before), Some(after)) => look::compare(before, after, TOLERANCE),
+            (Some(before), Some(after)) => look::compare(before, after, self.device.stillness().tolerance),
             _ => look::Diff {
                 differing: 0,
                 total: 0,
@@ -254,9 +255,9 @@ impl Host {
         let Some(running) = self.running.take() else {
             return;
         };
-        self.sim.lift();
+        self.device.lift();
         for usage in &running.keys_down {
-            self.sim.key(*usage, false);
+            self.device.key(*usage, false);
         }
         let message = match running.typing {
             Some((all, pressed)) => format!("{why}; {pressed} of {all} characters were typed"),
