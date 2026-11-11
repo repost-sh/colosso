@@ -9,6 +9,7 @@ mod app;
 mod browser;
 mod chat;
 mod desktop;
+mod device;
 mod file;
 mod info;
 mod kept;
@@ -125,6 +126,25 @@ pub(crate) fn run(caller: &Caller, command: Command, cx: &mut App) -> Exec {
         C::DesktopReturnFocus(_) => desktop::return_focus(cx),
         C::DesktopWait(input) => desktop::wait(&input, cx),
         C::DesktopClose(input) => desktop::close(caller, &input, cx).into(),
+        C::DeviceList(_) => device::list(cx).into(),
+        C::DeviceOpen(input) => device::open(caller, input, cx).into(),
+        C::DeviceClose(input) => device::close(caller, &input, cx).into(),
+        C::DeviceScreenshot(input) => device::screenshot(caller, &input, cx).into(),
+        C::DeviceSnapshot(input) => device::snapshot(caller, &input, cx).into(),
+        C::DeviceWait(input) => device::wait(caller, &input, cx).into(),
+        C::DeviceTap(input) => device::tap(caller, &input, cx).into(),
+        C::DeviceSwipe(input) => device::swipe(caller, &input, cx).into(),
+        C::DeviceScroll(input) => device::scroll(caller, &input, cx).into(),
+        C::DevicePinch(input) => device::pinch(caller, &input, cx).into(),
+        C::DeviceType(input) => device::type_text(caller, &input, cx).into(),
+        C::DeviceKey(input) => device::key(caller, &input, cx).into(),
+        C::DeviceButton(input) => device::button(caller, &input, cx).into(),
+        C::DeviceRotate(input) => device::rotate(caller, &input, cx).into(),
+        C::DeviceApps(input) => device::apps(caller, &input, cx).into(),
+        C::DeviceInstall(input) => device::install(caller, &input, cx).into(),
+        C::DeviceLaunch(input) => device::launch(caller, &input, cx).into(),
+        C::DeviceTerminate(input) => device::terminate(caller, &input, cx).into(),
+        C::DeviceOpenUrl(input) => device::open_url(caller, &input, cx).into(),
     }
 }
 

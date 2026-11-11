@@ -44,6 +44,13 @@ pub enum KeptPane {
     },
     /// The checkout's diffs.
     Changes,
+    /// A device, by its id: brought back not running, a simulator being gigabytes.
+    Device {
+        udid: String,
+        name: String,
+        #[serde(default)]
+        ipad: bool,
+    },
     /// A kind another build keeps, which this one brings nothing back for.
     #[serde(other)]
     Unknown,
@@ -113,6 +120,15 @@ impl Shell {
             PaneKind::Editor => (pane.file_path(cx)).map(|path| KeptPane::File { path }),
             // The agent desktop's tab isn't kept: it's opened anew when it's asked for.
             PaneKind::Desktop => None,
+            // A device's is, by its device; the picker's isn't.
+            PaneKind::Device => {
+                let chosen = pane.device_view()?.read(cx).chosen()?.clone();
+                Some(KeptPane::Device {
+                    udid: chosen.udid,
+                    name: chosen.name,
+                    ipad: chosen.ipad,
+                })
+            }
         }
     }
 
@@ -169,6 +185,16 @@ impl Shell {
                 .exists()
                 .then(|| Pane::unopened(Unopened::File(path.clone()))),
             KeptPane::Changes => Some(Pane::unopened(Unopened::Changes)),
+            // Never started by itself: it says it isn't running, with Start.
+            KeptPane::Device { udid, name, ipad } => {
+                let chosen = crate::devices::Chosen {
+                    udid: udid.clone(),
+                    name: name.clone(),
+                    ipad: *ipad,
+                };
+                let view = self.device_view(Some(chosen), false, cx);
+                Some(Pane::device(view, cx))
+            }
             KeptPane::Unknown => None,
         }
     }

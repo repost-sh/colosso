@@ -344,3 +344,51 @@ fn the_browser_tabs_an_earlier_build_kept_come_back_the_first_time(cx: &mut Test
         "read from its own file, not the old one"
     );
 }
+
+#[gpui_kit::test]
+fn a_device_s_tab_is_kept_by_its_device_and_the_picker_s_isnt(cx: &mut TestAppContext) {
+    let root = repo("kept-window-device", &[("README.md", "hi\n")]);
+    let path = file("kept-window-device-file", &Kept::default());
+    let (window, shell) = shell_with(&[&root], cx);
+    launch(&shell, &path, &[&root], cx);
+    select(&shell, &root, cx);
+    let chosen = crate::devices::Chosen {
+        udid: "UDID-K".into(),
+        name: "iPhone 17 Pro".into(),
+        ipad: false,
+    };
+    shell.update(cx, |shell, cx| {
+        shell.device_pane(Some(chosen), false, true, cx);
+        shell.device_pane(None, false, true, cx);
+    });
+    let device = KeptTree::Pane(KeptPane::Device {
+        udid: "UDID-K".into(),
+        name: "iPhone 17 Pro".into(),
+        ipad: false,
+    });
+    assert_eq!(written(&path, cx), main_with(&root, 0, &[device]));
+    draw(window, cx);
+}
+
+/// QU7: a device's tab brought back starts nothing, a simulator being gigabytes; its Start
+/// starts it (here, with no host under test, the start is tried and fails).
+#[gpui_kit::test]
+fn a_device_s_tab_brought_back_starts_nothing_until_asked(cx: &mut TestAppContext) {
+    let root = repo("kept-window-device-back", &[("README.md", "hi\n")]);
+    let device = KeptTree::Pane(KeptPane::Device {
+        udid: "UDID-BACK".into(),
+        name: "iPhone 17 Pro".into(),
+        ipad: false,
+    });
+    let path = file("kept-window-device-back-file", &main_with(&root, 0, &[device]));
+    let (_, shell) = shell_with(&[&root], cx);
+    launch(&shell, &path, &[&root], cx);
+    select(&shell, &root, cx);
+    assert_eq!(tabs_of(&shell, &root, cx), (titles(&[&["iPhone 17 Pro"]]), 0));
+    let view = cx.read(|cx| shell.read(cx).shown_device_view(cx)).expect("the device's tab");
+    let link = cx.read(|cx| view.read(cx).link().cloned()).expect("its link");
+    assert_eq!(cx.read(|cx| link.read(cx).state.clone()), crate::devices::State::Off);
+    view.update(cx, crate::devices::DeviceView::start);
+    let state = cx.read(|cx| link.read(cx).state.clone());
+    assert!(matches!(state, crate::devices::State::Failed(_)), "{state:?}");
+}

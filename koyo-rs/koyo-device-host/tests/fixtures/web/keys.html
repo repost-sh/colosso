@@ -1,0 +1,10 @@
+<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<style>html,body{margin:0;height:100%;background:#101014;color:#eee;font:20px -apple-system}
+textarea{position:fixed;left:5%;top:15%;width:90%;height:30%;font:28px ui-monospace,Menlo;background:#1c1c22;color:#fff;border:2px solid #0a84ff;border-radius:12px;box-sizing:border-box;padding:12px}</style>
+<textarea id="t" autocapitalize="off" autocorrect="off" spellcheck="false"></textarea>
+<script>
+// A field to type in: what it holds goes to the server each time it changes.
+const t=document.getElementById('t');
+t.addEventListener('input',()=>{new Image().src='/log?'+encodeURIComponent(JSON.stringify({kind:'typed',text:t.value}))});
+new Image().src='/log?'+encodeURIComponent(JSON.stringify({kind:'ready-keys'}));
+</script>

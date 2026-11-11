@@ -1,0 +1,9 @@
+<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>html,body{margin:0;height:100%;overflow:hidden}#a{position:fixed;inset:0}</style>
+<div id="a"></div>
+<script>
+// One colour all over, another the next frame: a reader that finds two caught a frame half written.
+let n=0;const a=document.getElementById('a');
+function f(){n++;a.style.background=(n&1)?'#ff0000':'#0000ff';requestAnimationFrame(f)}f();
+new Image().src='/log?'+encodeURIComponent(JSON.stringify({kind:'ready-flash'}));
+</script>

@@ -1,0 +1,161 @@
+//! Looking at devices: the list, a screenshot, a snapshot and a wait. None takes the device
+//! from anyone.
+
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD;
+use gpui_kit::{App, AsyncApp};
+use koyo_app_control::ControlError;
+use koyo_app_control::ops::device::{
+    DeviceInfo, DeviceListOutput, DeviceScreen, DeviceScreenshotInput, DeviceScreenshotOutput,
+    DeviceSnapshotInput, DeviceSnapshotOutput, DeviceWaitInput, DeviceWaitOutput, SnapshotSource,
+};
+use koyo_device_wire::{Answer, Ask, Orientation, Screen, Source, State as Said, Step};
+
+use super::{SCREENSHOT, SNAPSHOT, WAIT_SLACK, asking, pane_of, unexpected, which};
+use crate::browser::control::Holder;
+use crate::control::Caller;
+use crate::control::exec::{Exec, output};
+use crate::devices::{self, Link, Simulator, State};
+
+/// How a picture faces, as the tools name it.
+pub(super) fn facing(orientation: Orientation) -> &'static str {
+    match orientation {
+        Orientation::Portrait => "portrait",
+        Orientation::PortraitUpsideDown => "portraitUpsideDown",
+        Orientation::LandscapeLeft => "landscapeLeft",
+        Orientation::LandscapeRight => "landscapeRight",
+    }
+}
+
+pub(super) fn screen(screen: Screen) -> DeviceScreen {
+    DeviceScreen {
+        width: screen.size.width,
+        height: screen.size.height,
+        scale: screen.scale,
+        orientation: facing(screen.orientation).into(),
+    }
+}
+
+/// Where a start is, as the tools name it.
+pub(super) fn step(step: Step) -> &'static str {
+    match step {
+        Step::Booting { first: true } => "firstBoot",
+        Step::Booting { first: false } => "booting",
+        Step::Picture => "picture",
+        Step::Input => "input",
+    }
+}
+
+/// How a device stands, as `device_list` says it, and what the person must put right.
+pub(super) fn standing(link: &Link) -> (&'static str, Option<String>) {
+    match (&link.state, &link.said) {
+        (State::Off, _) => ("off", None),
+        (State::Failed(why), _) => ("failed", Some(why.clone())),
+        (_, Some(Said::Ready { .. })) => ("ready", None),
+        (_, Some(Said::Locked { .. })) => ("locked", None),
+        (_, Some(Said::Gone { why })) => ("gone", Some(why.clone())),
+        (_, Some(Said::Unavailable { why, .. })) => ("needsPerson", Some(why.clone())),
+        (_, Some(Said::Starting { .. }) | None) => ("starting", None),
+    }
+}
+
+/// Who drives a device now: an agent's name, or `person`.
+fn controller(link: &Link) -> Option<String> {
+    match &link.control.holder {
+        Some(Holder::Human { .. }) => Some("person".into()),
+        Some(Holder::Agent { actor, .. }) => Some(actor.label.clone()),
+        None => None,
+    }
+}
+
+fn info(simulator: &Simulator, set: &str, cx: &App) -> DeviceInfo {
+    let link = devices::devices(cx).read(cx).existing(&simulator.udid);
+    let link = link.as_ref().map(|link| link.read(cx));
+    let (state, missing) = link.map_or(("off", None), standing);
+    DeviceInfo {
+        device: simulator.udid.clone(),
+        name: simulator.name.clone(),
+        kind: "simulator".into(),
+        system: simulator.system.clone(),
+        state: state.into(),
+        missing,
+        pane: pane_of(&simulator.udid, cx),
+        controller: link.and_then(controller),
+        screen: link.and_then(Link::screen).map(screen),
+        set: Some(set.to_owned()),
+    }
+}
+
+/// `device_list`: Koyo's simulators, read from its set afresh, each as it stands.
+pub(crate) fn list(cx: &mut App) -> Result<Exec, ControlError> {
+    let set = devices::set_dir().ok_or_else(|| ControlError::internal("Koyo has no folder to keep its devices in."))?;
+    let path = set.clone();
+    let listed = cx.background_executor().spawn(async move { devices::simulators::list(&path) });
+    Ok(Exec::Later(cx.spawn(async move |cx: &mut AsyncApp| {
+        let simulators = listed.await.map_err(ControlError::internal)?;
+        cx.update(|cx| {
+            let set = set.display().to_string();
+            let devices = simulators.iter().map(|simulator| info(simulator, &set, cx)).collect();
+            // The launcher and the picker read the same list.
+            devices::devices(cx).update(cx, |devices, cx| devices.listed_afresh(simulators, cx));
+            output(&DeviceListOutput { devices })
+        })
+    })))
+}
+
+pub(crate) fn screenshot(caller: &Caller, input: &DeviceScreenshotInput, cx: &mut App) -> Result<Exec, ControlError> {
+    let target = which(caller, input.device.as_deref(), input.pane, cx)?;
+    let scale = input.scale()?;
+    let name = target.name.clone();
+    Ok(asking(&target, Ask::Screenshot { scale }, SCREENSHOT, cx, move |answer| match answer {
+        Answer::Screenshot { png, size, scale } => output(&DeviceScreenshotOutput {
+            mime_type: "image/png".into(),
+            data: STANDARD.encode(png.as_ref()),
+            name,
+            width: size.width,
+            height: size.height,
+            scale,
+        }),
+        other => Err(unexpected(&other)),
+    }))
+}
+
+pub(crate) fn snapshot(caller: &Caller, input: &DeviceSnapshotInput, cx: &mut App) -> Result<Exec, ControlError> {
+    let target = which(caller, input.device.as_deref(), input.pane, cx)?;
+    let text = input.source == Some(SnapshotSource::Text);
+    Ok(asking(&target, Ask::Snapshot { text }, SNAPSHOT, cx, |answer| match answer {
+        Answer::Snapshot {
+            tree,
+            source,
+            elements,
+            truncated,
+        } => output(&DeviceSnapshotOutput {
+            tree,
+            source: match source {
+                Source::Accessibility => "accessibility",
+                Source::Text => "text",
+            }
+            .into(),
+            elements,
+            truncated,
+        }),
+        other => Err(unexpected(&other)),
+    }))
+}
+
+pub(crate) fn wait(caller: &Caller, input: &DeviceWaitInput, cx: &mut App) -> Result<Exec, ControlError> {
+    let target = which(caller, input.device.as_deref(), input.pane, cx)?;
+    let (quiet_ms, timeout_ms) = (input.quiet_ms(), input.timeout_ms());
+    let ask = Ask::Wait {
+        quiet_ms: u32::try_from(quiet_ms).unwrap_or(u32::MAX),
+        timeout_ms: u32::try_from(timeout_ms).unwrap_or(u32::MAX),
+    };
+    let limit = std::time::Duration::from_millis(timeout_ms) + WAIT_SLACK;
+    Ok(asking(&target, ask, limit, cx, |answer| match answer {
+        Answer::Waited { still, millis } => output(&DeviceWaitOutput {
+            still,
+            millis: u64::from(millis),
+        }),
+        other => Err(unexpected(&other)),
+    }))
+}

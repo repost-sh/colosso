@@ -9,6 +9,7 @@ mod approval;
 mod chat_modes;
 mod chat_set;
 mod chats;
+mod devices;
 mod host;
 mod pages;
 mod panes;

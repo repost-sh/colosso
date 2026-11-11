@@ -118,7 +118,10 @@ impl Shell {
         let terminal = || Some(self.terminals.view(pane.terminal?)?.focus_handle(cx));
         let browser = || pane.view().map(|view| view.focus_handle(cx));
         let desktop = || Some(pane.desktop_view()?.read(cx).focus_handle().clone());
-        let view = chat.or_else(terminal).or_else(browser).or_else(desktop);
+        let device = || Some(pane.device_view()?.read(cx).focus_handle().clone());
+        let view = (chat.or_else(terminal).or_else(browser))
+            .or_else(desktop)
+            .or_else(device);
         (view.map(Keys::View)).or_else(|| pane.file.clone().map(Keys::File))
     }
 
@@ -162,6 +165,7 @@ impl Shell {
             .chain(of(PaneKind::Terminal))
             .chain(of(PaneKind::Chat))
             .chain(of(PaneKind::Browser))
+            .chain(of(PaneKind::Device))
             .find_map(|pane| Some((pane.id, self.keys_of(pane, cx)?)))
         else {
             return;

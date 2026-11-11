@@ -1,0 +1,18 @@
+[package]
+name = "koyo-device-wire"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "What Koyo and a device's host agree on: the link's messages between the app and the host of one simulator or iPhone or iPad (docs/devices.md 7)."
+
+[dependencies]
+# The link's framing and shapes, the agent desktop's: one length-prefixed CBOR frame per
+# message, points from the top left.
+koyo-desk-wire = { path = "../koyo-desk-wire" }
+serde = { version = "1", features = ["derive"] }
+# Screenshots travel as byte strings, not arrays of numbers.
+serde_bytes = "0.11"
+
+[lints]
+workspace = true

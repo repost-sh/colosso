@@ -94,6 +94,8 @@ if [ -n "$identity" ] && ! security find-identity -v -p codesigning | grep -qF "
 fi
 
 script/cargo build -p koyo --release
+# A device's host: a plain executable beside the app's own, holding no grant (docs/devices.md 3).
+script/cargo build -p koyo-device-host --release
 script/agent-host
 # Packaged afresh, so the one version here is the lockfile's CEF.
 rm -rf "$engine"
@@ -107,6 +109,7 @@ rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$app/Contents/Frameworks"
 cp koyo-rs/target/release/koyo "$app/Contents/MacOS/koyo"
 cp koyo-js/koyo-agent-host/dist/koyo-agent-host "$app/Contents/MacOS/koyo-agent-host"
+cp koyo-rs/target/release/koyo-device-host "$app/Contents/MacOS/koyo-device-host"
 cp koyo-rs/koyo/icons/Koyo.icns "$app/Contents/Resources/Koyo.icns"
 # The code font is embedded in the binary; its licence has to travel with it.
 cp koyo-rs/koyo/fonts/OFL.txt "$app/Contents/Resources/JetBrainsMono-OFL.txt"
@@ -180,6 +183,7 @@ PLIST
 if [ -n "$identity" ]; then
   set -- --force --timestamp --options runtime --sign "$identity"
   codesign "$@" "$app/Contents/MacOS/koyo-agent-host"
+  codesign "$@" "$app/Contents/MacOS/koyo-device-host"
   if [ -n "$entitlements" ]; then
     cp "$profile" "$app/Contents/embedded.provisionprofile"
     codesign "$@" --entitlements "$entitlements" "$app"

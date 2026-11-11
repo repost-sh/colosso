@@ -25,6 +25,8 @@ pub struct OpenTab {
     pub title: SharedString,
     /// A browser pane's address; empty for the rest.
     pub url: String,
+    /// A device pane's device, by its id.
+    pub device: Option<String>,
     pub favicon: Option<Arc<Image>>,
 }
 
@@ -49,11 +51,14 @@ impl Here {
                 // A page brought back at launch and not shown yet has the address it opens at.
                 let (url, favicon) = (pane.address(cx).unwrap_or_default(), pane.favicon(cx));
                 let title = pane.title.clone();
+                let device = (pane.device_view())
+                    .and_then(|view| Some(view.read(cx).chosen()?.udid.clone()));
                 Some(OpenTab {
                     pane: pane.id,
                     kind: pane.kind,
                     title,
                     url,
+                    device,
                     favicon,
                 })
             })

@@ -329,6 +329,9 @@ impl Shell {
             .filter(|pane| pane.changes.is_some())
             .map(|pane| pane.id)
             .collect();
+        let devices = (tab.panes().into_iter())
+            .filter_map(|pane| Some((pane.id, pane.device_view()?.read(cx).chosen()?.clone())))
+            .collect();
         // A page brought back at launch and never shown has the address it would open at.
         let addresses = (tab.panes().into_iter())
             .filter(|pane| !pane.is_inspector(cx))
@@ -355,6 +358,7 @@ impl Shell {
                 addresses,
                 files,
                 changes,
+                devices,
             });
         }
         cx.notify();

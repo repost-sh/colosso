@@ -70,17 +70,20 @@ pub enum Kind {
     Terminal,
     /// The agent desktop's tab: the one there is, shown, or a new one.
     Desktop,
+    /// A device's tab, opened as the picker (`docs/devices.md` 8).
+    Device,
     /// Not a tab: a worktree, named here and started from the branch the New Worktree dialog
     /// picks.
     Worktree,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 5] = [
+    pub const ALL: [Kind; 6] = [
         Kind::Browser,
         Kind::Chat,
         Kind::Terminal,
         Kind::Desktop,
+        Kind::Device,
         Kind::Worktree,
     ];
 
@@ -97,6 +100,7 @@ impl Kind {
             Kind::Chat => "Chat",
             Kind::Terminal => "Terminal",
             Kind::Desktop => "Desktop",
+            Kind::Device => "Device",
             Kind::Worktree => "Worktree",
         }
     }
@@ -113,6 +117,7 @@ impl Kind {
             Kind::Chat => (265., 0.65, 0.55),
             Kind::Terminal => (152., 0.62, 0.31),
             Kind::Desktop => (190., 0.75, 0.3),
+            Kind::Device => (330., 0.6, 0.42),
             Kind::Worktree => (28., 0.8, 0.4),
         };
         hsla(hue / 360., saturation, lightness, 1.)
@@ -125,6 +130,7 @@ impl Kind {
             Kind::Chat => "Ask a new chat…",
             Kind::Terminal => "Run a command in a new terminal…",
             Kind::Desktop => "Open the agent desktop",
+            Kind::Device => "Open an iPhone or iPad simulator",
             Kind::Worktree => "Name a new worktree…",
         }
     }
@@ -136,6 +142,7 @@ impl Kind {
             Kind::Chat => Some(PaneKind::Chat),
             Kind::Terminal => Some(PaneKind::Terminal),
             Kind::Desktop => Some(PaneKind::Desktop),
+            Kind::Device => Some(PaneKind::Device),
             Kind::Worktree => None,
         }
     }

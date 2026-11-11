@@ -25,6 +25,10 @@ koyo-termd = { path = "../koyo-termd" }
 koyo-term-mcp = { path = "../koyo-term-mcp" }
 # The agent desktop (`docs/agent-desktop.md`): what the app and its host agree on.
 koyo-desk-wire = { path = "../koyo-desk-wire" }
+# Devices (`docs/devices.md`): what the app and a device's host agree on, and what the Mac's
+# pointer, trackpad and keys do over a touch screen.
+koyo-device-wire = { path = "../koyo-device-wire" }
+koyo-device-gestures = { path = "../koyo-device-gestures" }
 # Each checkout's files, scanned and watched once for every panel that shows it.
 koyo-project = { path = "../koyo-project" }
 # The language servers behind the file tabs: rust-analyzer, found or fetched, and talked to.

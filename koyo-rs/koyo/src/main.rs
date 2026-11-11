@@ -12,6 +12,7 @@ mod checkout;
 mod checkouts;
 mod control;
 mod delete_worktree;
+mod devices;
 mod fade;
 mod files;
 mod former_name;
@@ -79,6 +80,8 @@ fn init(cx: &mut App) {
     agent_desktop::init(cx);
     accounts::init(cx);
     agent_desktop::bind_keys(cx);
+    devices::init(cx);
+    devices::bind_keys(cx);
     browser::init(cx);
     right_panel::init(cx);
     files::init(cx);
@@ -198,6 +201,14 @@ fn main() -> ExitCode {
     #[cfg(feature = "visual-check")]
     if std::env::args().any(|arg| arg == "--visual-check-arc") {
         return arc::visual::run();
+    }
+    #[cfg(feature = "visual-check")]
+    if std::env::args().any(|arg| arg == "--visual-check-devices-serve") {
+        return devices::visual::serve::run();
+    }
+    #[cfg(feature = "visual-check")]
+    if std::env::args().any(|arg| arg == "--visual-check-devices") {
+        return devices::visual::run();
     }
     #[cfg(feature = "visual-check")]
     if std::env::args().any(|arg| arg == "--visual-check-terminal") {

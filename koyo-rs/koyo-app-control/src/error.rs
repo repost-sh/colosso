@@ -43,6 +43,12 @@ pub enum ErrorCode {
     /// The agent desktop is off, still starting, or its host lacks a grant; the message says
     /// which.
     DesktopUnavailable,
+    /// A device is starting, reconnecting or not running; the message says which and what to
+    /// do. Retry shortly, or open it with `device_open`.
+    DeviceUnavailable,
+    /// Only the person can go on: the device is locked, not trusted, has Developer Mode off,
+    /// runs below iOS 27, needs Xcode, or the person is being asked to lend it.
+    DeviceNeedsPerson,
     /// A git command failed; the message carries what git said.
     GitFailed,
     /// Anything else; the message says what broke.
@@ -77,7 +83,7 @@ pub enum ErrorCode {
 
 impl ErrorCode {
     /// Every code, in declaration order.
-    pub const ALL: [ErrorCode; 29] = [
+    pub const ALL: [ErrorCode; 31] = [
         ErrorCode::InvalidInput,
         ErrorCode::NotFound,
         ErrorCode::Ambiguous,
@@ -92,6 +98,8 @@ impl ErrorCode {
         ErrorCode::Timeout,
         ErrorCode::BrowserUnavailable,
         ErrorCode::DesktopUnavailable,
+        ErrorCode::DeviceUnavailable,
+        ErrorCode::DeviceNeedsPerson,
         ErrorCode::GitFailed,
         ErrorCode::Internal,
         ErrorCode::WorktreeRequired,
@@ -126,6 +134,8 @@ impl ErrorCode {
             ErrorCode::Timeout => "timeout",
             ErrorCode::BrowserUnavailable => "browser_unavailable",
             ErrorCode::DesktopUnavailable => "desktop_unavailable",
+            ErrorCode::DeviceUnavailable => "device_unavailable",
+            ErrorCode::DeviceNeedsPerson => "device_needs_person",
             ErrorCode::GitFailed => "git_failed",
             ErrorCode::Internal => "internal",
             ErrorCode::WorktreeRequired => "worktree_required",
@@ -145,7 +155,7 @@ impl ErrorCode {
     }
 
     /// Whether the same call may succeed later without a change by the caller: the app may
-    /// start, answer, or bring its browser engine or its agent desktop back. A constructor
+    /// start, answer, or bring its browser engine, its agent desktop or a device back. A constructor
     /// overrides it where a code means both, as `request_conflict` does.
     pub fn retryable(self) -> bool {
         matches!(
@@ -154,6 +164,7 @@ impl ErrorCode {
                 | ErrorCode::Timeout
                 | ErrorCode::BrowserUnavailable
                 | ErrorCode::DesktopUnavailable
+                | ErrorCode::DeviceUnavailable
         )
     }
 }
@@ -309,6 +320,14 @@ impl ControlError {
 
     pub fn desktop_unavailable(message: impl Into<String>) -> ControlError {
         ControlError::new(ErrorCode::DesktopUnavailable, message)
+    }
+
+    pub fn device_unavailable(message: impl Into<String>) -> ControlError {
+        ControlError::new(ErrorCode::DeviceUnavailable, message)
+    }
+
+    pub fn device_needs_person(message: impl Into<String>) -> ControlError {
+        ControlError::new(ErrorCode::DeviceNeedsPerson, message)
     }
 
     pub fn git_failed(message: impl Into<String>) -> ControlError {

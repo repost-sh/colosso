@@ -86,6 +86,8 @@ fn cmd_t_opens_the_launcher_and_tab_goes_through_its_kinds(cx: &mut TestAppConte
     press(launcher_window, "tab", cx);
     assert_eq!(kind(&launcher, cx), Kind::Desktop);
     press(launcher_window, "tab", cx);
+    assert_eq!(kind(&launcher, cx), Kind::Device);
+    press(launcher_window, "tab", cx);
     assert_eq!(kind(&launcher, cx), Kind::Worktree);
     press(launcher_window, "tab", cx);
     assert_eq!(kind(&launcher, cx), Kind::Browser, "round again");
@@ -152,6 +154,56 @@ fn the_desktop_kind_opens_the_agent_desktops_one_tab(cx: &mut TestAppContext) {
     press(launcher_window, "tab tab tab enter", cx);
     cx.run_until_parked();
     assert_eq!(tabs(&shell, cx), ["[Agent desktop]", "New tab"]);
+}
+
+#[gpui_kit::test]
+fn the_device_kind_opens_a_device_tab_on_its_picker(cx: &mut TestAppContext) {
+    let (window, shell, _) = shell("launcher-device", cx);
+    let (launcher_window, launcher) = launch(window, cx);
+    press(launcher_window, "tab tab tab tab", cx);
+    assert_eq!(kind(&launcher, cx), Kind::Device);
+    press(launcher_window, "enter", cx);
+    cx.run_until_parked();
+    assert_eq!(tabs(&shell, cx), ["[Devices]"]);
+}
+
+fn simulator(udid: &str, name: &str, ipad: bool) -> crate::devices::Simulator {
+    crate::devices::Simulator {
+        udid: udid.into(),
+        name: name.into(),
+        system: "iOS 27.2".into(),
+        booted_before: true,
+        ipad,
+    }
+}
+
+/// The Device kind lists Koyo's simulators, those named as typed, and picking one opens its tab;
+/// a device a tab shows is a switch to it.
+#[gpui_kit::test]
+fn the_device_kind_lists_the_simulators_and_opens_the_one_picked(cx: &mut TestAppContext) {
+    let (window, shell, _) = shell("launcher-device-rows", cx);
+    cx.update(|cx| {
+        let listed = Ok(vec![simulator("U-1", "iPhone 17 Pro", false), simulator("U-2", "iPad Pro 13-inch (M5)", true)]);
+        crate::devices::devices(cx).update(cx, |devices, cx| devices.listed(listed, cx));
+    });
+    let (launcher_window, launcher) = launch(window, cx);
+    press(launcher_window, "tab tab tab tab", cx);
+    assert_eq!(rows_of(&launcher, cx), ["iPhone 17 Pro", "iPad Pro 13-inch (M5)"]);
+    cx.simulate_input(launcher_window, "ipad");
+    cx.run_until_parked();
+    assert_eq!(rows_of(&launcher, cx), ["[iPad Pro 13-inch (M5)]"]);
+    press(launcher_window, "enter", cx);
+    cx.run_until_parked();
+    assert_eq!(tabs(&shell, cx), ["[iPad Pro 13-inch (M5)]"]);
+
+    shell.update(cx, |shell, cx| shell.device_pane(None, false, true, cx));
+    cx.run_until_parked();
+    assert_eq!(tabs(&shell, cx), ["iPad Pro 13-inch (M5)", "[Devices]"]);
+    let (launcher_window, launcher) = launch(window, cx);
+    press(launcher_window, "tab tab tab tab", cx);
+    assert_eq!(rows_of(&launcher, cx), ["iPad Pro 13-inch (M5)", "iPhone 17 Pro"], "the open tab first");
+    let first = cx.read(|cx| launcher.read(cx).rows[0].act.clone());
+    assert!(matches!(first, Act::Switch(_)), "{first:?}");
 }
 
 /// An agent's `desktop_open` brings the tab out of sight: after the tab that shows, the
@@ -292,6 +344,7 @@ fn tab(pane: u64, title: &str, url: &str) -> OpenTab {
         kind: PaneKind::Browser,
         title: title.to_owned().into(),
         url: url.to_owned(),
+        device: None,
         favicon: None,
     }
 }

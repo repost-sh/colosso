@@ -12,11 +12,13 @@ mod chats;
 mod closed;
 mod entered;
 mod moves;
+mod pane;
 mod tab;
 mod terminals;
 mod unopened;
 pub use closed::ClosedTab;
-pub use tab::{Edge, Pane, SPLIT_MIN, Split, SplitAxis, Tab, Unloaded};
+pub use pane::{Pane, Unloaded};
+pub use tab::{Edge, SPLIT_MIN, Split, SplitAxis, Tab};
 pub use unopened::Unopened;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -27,6 +29,8 @@ pub enum PaneKind {
     Editor,
     /// The agent desktop (`docs/agent-desktop.md` 9).
     Desktop,
+    /// A device, or the picker until one is chosen (`docs/devices.md`): one tab per device.
+    Device,
 }
 
 impl PaneKind {
@@ -37,6 +41,7 @@ impl PaneKind {
             PaneKind::Browser => "New tab",
             PaneKind::Editor => "Untitled",
             PaneKind::Desktop => "Agent desktop",
+            PaneKind::Device => "Devices",
         }
     }
 
@@ -47,6 +52,7 @@ impl PaneKind {
             PaneKind::Browser => IconName::Globe,
             PaneKind::Editor => IconName::FileCode,
             PaneKind::Desktop => IconName::Bot,
+            PaneKind::Device => IconName::Smartphone,
         }
     }
 }

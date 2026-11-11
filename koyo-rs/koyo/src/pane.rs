@@ -55,6 +55,10 @@ pub fn pane(pane: &Pane, p: Palette) -> AnyElement {
             || gpui_kit::Empty.into_any_element(),
             IntoElement::into_any_element,
         ),
+        PaneKind::Device => (pane.device_view().cloned()).map_or_else(
+            || gpui_kit::Empty.into_any_element(),
+            IntoElement::into_any_element,
+        ),
     }
 }
 

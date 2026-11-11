@@ -83,6 +83,7 @@ fn a_closed_tab_comes_back_where_it_was_and_shows() {
         addresses: Vec::new(),
         files: Vec::new(),
         changes: Vec::new(),
+        devices: Vec::new(),
     });
     let (closed, at) = workspace.take_closed().unwrap();
     assert_eq!(at, (0, 0, 1));
@@ -107,6 +108,7 @@ fn closed_tabs_of_a_checkout_gone_since_are_let_go() {
             addresses: Vec::new(),
             files: Vec::new(),
             changes: Vec::new(),
+            devices: Vec::new(),
         });
     }
     // The newest is of a checkout no longer listed, so the one before it comes back.
@@ -127,6 +129,7 @@ fn only_the_newest_closed_tabs_are_kept() {
             addresses: Vec::new(),
             files: Vec::new(),
             changes: Vec::new(),
+            devices: Vec::new(),
         });
     }
     let mut kept = 0;

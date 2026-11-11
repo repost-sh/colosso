@@ -1,0 +1,12 @@
+<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>html,body{margin:0;height:100%;overflow:hidden;background:#111;color:#eee;font:600 28px -apple-system}
+#b{position:fixed;left:0;top:0;width:100%;height:120px;background:linear-gradient(90deg,#0a84ff,#30d158);will-change:transform}
+#c{position:fixed;left:16px;bottom:140px}</style>
+<div id="b"></div><div id="c">0</div>
+<script>
+// A bar that goes down the screen and a counter of frames: something that changes every frame.
+let n=0,t0=performance.now();const b=document.getElementById('b'),c=document.getElementById('c');
+function f(t){n++;const h=innerHeight-120;const y=Math.abs(((t/6)%(2*h))-h);b.style.transform='translateY('+y+'px)';
+if(n%10==0)c.textContent=n+' frames, '+(n*1000/(t-t0)).toFixed(1)+' a second';requestAnimationFrame(f)}requestAnimationFrame(f);
+new Image().src='/log?'+encodeURIComponent(JSON.stringify({kind:'ready-move'}));
+</script>
