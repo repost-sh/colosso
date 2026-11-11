@@ -327,7 +327,7 @@ answer), `Request { request, ask }`, `Cancel`, `Quit`. Host to app: `Hello { pro
   key and the name it goes by together (`devices/lend.rs`), so a host started again keeps it; it
   ends when the device is stopped (its tab closed, `device_close`, Koyo quitting) or leaves the
   list of what's plugged in, and at the tab's `Take It Back`, which also calls off what the
-  agent had under way and keeps it from asking again for a while. The tab shows "{name} is
+  agent had under way; its next call asks the person again. The tab shows "{name} is
   yours, lent to {agent} until you take it back." with `Take It Back`; the person can lend it
   ahead from the toolbar ("Let Agents Use This iPad"), to every agent. Lent, `device_open` opens
   and starts it as a simulator (no limit). The app tools (`device_apps`, `device_launch`, …) are

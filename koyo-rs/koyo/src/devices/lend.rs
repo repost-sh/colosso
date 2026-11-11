@@ -70,9 +70,9 @@ impl Lends {
         }
     }
 
-    /// Ends every lend of `udid`: the agents it was lent to, if it was.
-    fn end(&mut self, udid: &str) -> Option<Vec<Actor>> {
-        self.lent.remove(udid).map(|lent| lent.agents)
+    /// Ends every lend of `udid`; whether there was one.
+    fn end(&mut self, udid: &str) -> bool {
+        self.lent.remove(udid).is_some()
     }
 
     /// Whether the person said no to `agent` having `udid` within `memory` of `now`.
@@ -103,20 +103,16 @@ impl Lends {
 impl Devices {
     /// The lend of `udid` ends with it (stopped, or unplugged): its host's stop let the agent go.
     pub(super) fn lend_ends(&mut self, udid: &str, cx: &mut Context<Self>) {
-        if self.lends.end(udid).is_some() {
+        if self.lends.end(udid) {
             cx.notify();
         }
     }
 
-    /// The person takes `udid` back: no agent may use it, the agents it was lent to aren't asked
-    /// again for a while, and what they had under way is called off.
+    /// The person takes `udid` back: no agent may use it, and what they had under way is called
+    /// off. An agent's next call asks the person again (QR9).
     pub fn take_back(&mut self, udid: &str, cx: &mut Context<Self>) {
-        let Some(agents) = self.lends.end(udid) else {
+        if !self.lends.end(udid) {
             return;
-        };
-        let now = cx.background_executor().now();
-        for agent in &agents {
-            self.lends.decline(udid, agent, now);
         }
         if let Some(link) = self.existing(udid) {
             link.update(cx, |link, cx| link.revoke("The person took their device back.", cx));
@@ -185,7 +181,7 @@ mod tests {
         lends.lend("PAD", None);
         assert!(lends.lent_to("PAD", &agent("chat:9", "Gemini")));
         assert_eq!(lends.to_whom("PAD").as_deref(), Some("agents"));
-        assert_eq!(lends.end("PAD").map(|agents| agents.len()), Some(2));
+        assert!(lends.end("PAD"));
         assert!(!lends.is_lent("PAD"));
         let now = Instant::now();
         lends.decline("PAD", &claude, now);
