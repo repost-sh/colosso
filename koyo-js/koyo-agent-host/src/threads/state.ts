@@ -4,7 +4,16 @@
 
 import type { MessageId, RequestId, RunId } from "../protocol/ids";
 import type { Delivered, Rows, ThreadSnapshot } from "../protocol/methods";
-import type { Item, Mode, Prompt, Request, Run, Thread, ThreadSummary } from "../protocol/model";
+import type {
+  AccountLimits,
+  Item,
+  Mode,
+  Prompt,
+  Request,
+  Run,
+  Thread,
+  ThreadSummary,
+} from "../protocol/model";
 import { eventLine, HostError } from "../protocol/wire";
 import type { DriverEvent, ItemEvent } from "../providers/provider";
 import type { Change, Store } from "../store/store";
@@ -17,8 +26,10 @@ export interface Subscriber {
   readonly send: (line: string) => void;
 }
 
-/** What's said of a turn that only its rows follow. */
-type Heard = ItemEvent | Extract<DriverEvent, { type: "session.ready" | "turn.started" | "usage" }>;
+/** What's said of a turn that only its rows follow, and of the account's limits. */
+type Heard =
+  | ItemEvent
+  | Extract<DriverEvent, { type: "session.ready" | "turn.started" | "usage" | "limits" }>;
 
 /** How many runs a first open sends (4.3.2). */
 const OPEN_RUNS = 30;
@@ -28,6 +39,7 @@ export class ThreadState {
   goingBack = false;
   readonly #store: Store;
   readonly #summarized: (summary: ThreadSummary) => void;
+  readonly #limited: (limits: AccountLimits) => void;
   #thread: Thread;
   /** The runs not yet settled, oldest first: the live one, if any, and the queue. */
   #unsettled: readonly Run[];
@@ -44,9 +56,15 @@ export class ThreadState {
   /** The turn a session works on, whose items are newer here than in the store. */
   #turn: LiveTurn | undefined;
 
-  constructor(store: Store, summarized: (summary: ThreadSummary) => void, thread: Thread) {
+  constructor(
+    store: Store,
+    summarized: (summary: ThreadSummary) => void,
+    thread: Thread,
+    limited: (limits: AccountLimits) => void,
+  ) {
     this.#store = store;
     this.#summarized = summarized;
+    this.#limited = limited;
     this.#thread = thread;
     const state = store.state(thread.id);
     this.#unsettled = state.unsettled;
@@ -273,6 +291,11 @@ export class ThreadState {
 
   /** What's said of the turn, that only its rows follow, while one runs. */
   heard(event: Heard): void {
+    if (event.type === "limits") {
+      // The account's, whatever runs (docs/claude-accounts.md 4).
+      this.#limited(event.limits);
+      return;
+    }
     const live = this.live();
     const turn = this.#turn;
     if (live === undefined || turn === undefined) {

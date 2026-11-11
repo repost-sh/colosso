@@ -45,6 +45,7 @@ describe("a turn", () => {
     expect(made.sink.types()).toEqual([
       "session.ready",
       "turn.started",
+      "limits",
       "item.started",
       "item.appended",
       "item.appended",

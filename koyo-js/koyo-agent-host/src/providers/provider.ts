@@ -7,6 +7,7 @@ import type { UUID } from "node:crypto";
 
 import type { Catalog, FilesBack, Params, ProviderStatus } from "../protocol/methods";
 import type {
+  AccountLimits,
   Effort,
   Failure,
   Item,
@@ -163,6 +164,8 @@ export type DriverEvent =
    * end: shells, Monitors, subagents past their turn. None once its process ends. */
   | { readonly type: "background"; readonly tasks: number }
   | { readonly type: "usage"; readonly usage: Usage }
+  /** What a response said of the account's subscription limits, whatever turn runs. */
+  | { readonly type: "limits"; readonly limits: AccountLimits }
   /** Something the agent stopped at for the person without waiting, as a plan: the next
    * message answers it (C14). What the agent waits on comes through `SessionSink.ask`. */
   | { readonly type: "request"; readonly request: RequestPayload }

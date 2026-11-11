@@ -6,6 +6,7 @@ use serde_json::Value;
 use serde_json::value::RawValue;
 
 use super::ids::{ItemId, ThreadId};
+use super::limits::AccountLimits;
 use super::model::{Item, NoticeLevel, Run, Thread, ThreadSummary};
 use super::requests::Request;
 
@@ -52,6 +53,8 @@ events! {
     /// Text a streaming item grew by, in order after the change that made the item.
     "item.appended" => ItemAppended(Appended);
     "host.notice" => HostNotice(HostNotice);
+    /// What a chat's response said of the account's limits, to a client that watches threads.
+    "account.limits" => AccountLimits(AccountLimits);
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

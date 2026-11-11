@@ -1,3 +1,4 @@
+import type { SDKRateLimitInfo } from "@anthropic-ai/claude-agent-sdk";
 import { describe, expect, test } from "bun:test";
 
 import {
@@ -277,6 +278,55 @@ describe("notices", () => {
       { type: "notice", level: "warning", text: "Claude's usage limit is reached." },
     ]);
     expect(frames.signs(false).limited).toEqual({ retryAt: "2026-11-05T08:00:00.000Z" });
+  });
+
+  test("every rate-limit frame says the account's limits, with each window it carried", () => {
+    const { events, limits, send } = mapped();
+    const info: SDKRateLimitInfo & { unifiedWindows: unknown } = {
+      status: "allowed_warning",
+      resetsAt: 1_793_865_600,
+      rateLimitType: "seven_day",
+      utilization: 0.82,
+      // Claude Code's internal field, outside the SDK's types: a window it can't read is dropped.
+      unifiedWindows: {
+        five_hour: { utilization: 0.31, resetsAt: 1_793_822_400, status: "allowed" },
+        seven_day: { utilization: 0.82, resetsAt: 1_793_865_600, status: "allowed_warning" },
+        seven_day_overage_included: { utilization: "lots", resetsAt: 1_793_865_600 },
+      },
+    };
+    send(rateLimit(info));
+    send(rateLimit({ status: "allowed" }));
+    expect(events).toEqual([]);
+    expect(limits).toEqual([
+      {
+        type: "limits",
+        limits: {
+          status: "allowed_warning",
+          window: "seven_day",
+          utilization: 0.82,
+          resetsAt: "2026-11-05T08:00:00.000Z",
+          fiveHour: { utilization: 0.31, resetsAt: "2026-11-04T20:00:00.000Z", status: "allowed" },
+          sevenDay: {
+            utilization: 0.82,
+            resetsAt: "2026-11-05T08:00:00.000Z",
+            status: "allowed_warning",
+          },
+          sevenDayOverageIncluded: null,
+        },
+      },
+      {
+        type: "limits",
+        limits: {
+          status: "allowed",
+          window: null,
+          utilization: null,
+          resetsAt: null,
+          fiveHour: null,
+          sevenDay: null,
+          sevenDayOverageIncluded: null,
+        },
+      },
+    ]);
   });
 
   test("a usage limit the overage covers isn't one", () => {

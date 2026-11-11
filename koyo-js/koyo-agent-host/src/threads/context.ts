@@ -1,6 +1,6 @@
 // What a thread's actor works with, from the threads it's one of.
 
-import type { Thread, ThreadSummary } from "../protocol/model";
+import type { AccountLimits, Thread, ThreadSummary } from "../protocol/model";
 import type { Config, Provider } from "../providers/provider";
 import type { Store } from "../store/store";
 import type { ThreadActor } from "./actor";
@@ -16,6 +16,8 @@ export interface Context {
   readonly now: () => string;
   /** Tells the threads' watchers that what lists show of the thread changed. */
   readonly summarized: (summary: ThreadSummary) => void;
+  /** Tells the threads' watchers what a response said of the account's limits. */
+  readonly limited: (limits: AccountLimits) => void;
   /** Tells the threads a session ran a turn, so the least recently used one closes first. */
   readonly sessionUsed: (actor: ThreadActor) => void;
   /** The actor of a subagent's new thread, working on `prompt`; `stop` asks it to stop. */

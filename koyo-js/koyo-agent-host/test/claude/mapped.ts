@@ -23,9 +23,10 @@ function isType<T extends DriverEvent["type"]>(
 
 interface Mapped {
   readonly frames: Frames;
-  /** What it reported, but usage. */
+  /** What it reported, but usage and limits. */
   readonly events: DriverEvent[];
   readonly usages: DriverEvent[];
+  readonly limits: DriverEvent[];
   readonly send: (...all: SDKMessage[]) => void;
 }
 
@@ -33,14 +34,22 @@ interface Mapped {
 export function mapped(compact = false): Mapped {
   const events: DriverEvent[] = [];
   const usages: DriverEvent[] = [];
+  const limits: DriverEvent[] = [];
   const frames = new Frames((event) => {
-    (event.type === "usage" ? usages : events).push(event);
+    if (event.type === "usage") {
+      usages.push(event);
+    } else if (event.type === "limits") {
+      limits.push(event);
+    } else {
+      events.push(event);
+    }
   }, 1000);
   frames.begin("turn-1", compact);
   return {
     frames,
     events,
     usages,
+    limits,
     send: (...all) => {
       for (const frame of all) {
         frames.frame(frame);

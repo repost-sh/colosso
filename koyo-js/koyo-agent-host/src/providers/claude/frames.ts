@@ -22,6 +22,7 @@ import { log } from "../../log";
 import type { Item, NoticeLevel, Usage } from "../../protocol/model";
 import type { DriverEvent, ItemBody, Outcome } from "../provider";
 import { Background } from "./background";
+import { accountLimits } from "./limits";
 import { classify, type Ending, LIMITED, resultUsage, type Signs } from "./results";
 import { settleResults, Steps } from "./steps";
 import { Subagents } from "./subagents";
@@ -357,6 +358,8 @@ export class Frames {
 
   #rateLimit(frame: SDKRateLimitEvent): void {
     const info = frame.rate_limit_info;
+    // Every response's, for the account's usage between readings (docs/claude-accounts.md 4).
+    this.#emit({ type: "limits", limits: accountLimits(info) });
     const overage = info.overageStatus === "allowed" || info.overageStatus === "allowed_warning";
     if (info.status !== "rejected" || overage) {
       return;
