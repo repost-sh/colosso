@@ -188,7 +188,8 @@ fn button(strips: &[Strip], space: SpaceId) -> Result<Element, String> {
 }
 
 /// Puts the desktop `space` on the person's screen, as a click on it in Mission Control
-/// does. Only ever on the person's word (`showing`).
+/// does. Only ever on the person's word (`showing`), or to put back a desktop of theirs
+/// that macOS took them from (`front`).
 ///
 /// # Errors
 /// When the desktop isn't one of the person's, or its button isn't found, or the screen
