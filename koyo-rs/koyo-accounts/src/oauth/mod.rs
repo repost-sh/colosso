@@ -1,8 +1,9 @@
 //! Port of claude-swap's `oauth.py` (0fe22a8): OAuth tokens and the usage API of Claude Code
 //! accounts. The token helpers and fingerprints are here; the refresh grant and the profile are
-//! in `refresh.rs`, the usage endpoint, its results and its error kinds in `usage.rs`, the
-//! windows decisions run on in `windows.rs`, reset strings in `reset.rs`, and the usage
-//! sentinels of `json_output.py` in `sentinels.rs`.
+//! in `refresh.rs`, the usage endpoint, its results and its error kinds in `usage.rs`, a
+//! response's unified rate-limit windows made a reading in `headers.rs`, the windows decisions
+//! run on in `windows.rs`, reset strings in `reset.rs`, and the usage sentinels of
+//! `json_output.py` in `sentinels.rs`.
 //!
 //! Requests go through `env.http` (the system `curl`, headers on stdin) with cswap's URLs,
 //! headers, client id and timeouts. cswap's `User-Agent` is kept: the token endpoint answers 403
@@ -11,12 +12,13 @@
 //!
 //! Left out: the header probe that reads a setup-token's usage from a 1-token model request
 //! (`request_usage_via_probe`, `_probe_request`, `_scoped_probe_limits`, `_usage_from_probe`,
-//! `parse_unified_ratelimit_headers`, `_unified_window*`, `_epoch_header_iso`,
-//! `_header_reading_complete`), API-key paths, and the refresh inside a usage fetch
+//! `_unified_window_present`, `_header_reading_complete`; the windows' parsing it shares with
+//! a chat reply's limits is in `headers.rs`), API-key paths, and the refresh inside a usage fetch
 //! (`refresh_via`, `persist_credentials`, `_persist`, `fetch_usage_for_account`): Koyo never
 //! refreshes a token to read usage (`docs/claude-accounts.md` 4), see
 //! [`try_fetch_usage_for_account`].
 
+mod headers;
 mod refresh;
 mod reset;
 pub mod sentinels;
@@ -30,9 +32,10 @@ mod tests;
 use serde_json::{Map, Value};
 use sha2::{Digest as _, Sha256};
 
+pub use headers::{LiveLimits, LiveWindow, SEVEN_DAY_OI_MODEL};
 pub use refresh::{
-    AccountIdentity, DETERMINISTIC_REFRESH_ERRORS, PROFILE_401_WARNING, RefreshOutcome,
-    fetch_oauth_profile, parse_token_account, refresh_oauth_credentials,
+    AccountIdentity, DETERMINISTIC_REFRESH_ERRORS, PROFILE_401_WARNING, REFRESH_TIMEOUT,
+    RefreshOutcome, fetch_oauth_profile, parse_token_account, refresh_oauth_credentials,
     try_refresh_oauth_credentials,
 };
 pub use reset::{
@@ -42,11 +45,11 @@ pub use reset::{
 pub(crate) use reset::{iso_timestamp, iso_utc, utc_at};
 pub use sentinels::*;
 pub use usage::{
-    BAD_RESPONSE_ERROR, FetchError, InvalidUsageResponse, NETWORK_ERROR, ORG_POLICY_ERROR,
-    RATE_LIMITED_ERROR, RETRY_AFTER_BOUND_S, TIMEOUT_ERROR, TLS_CERT_ERROR, TOKEN_EXPIRED_ERROR,
-    UsageOutcome, build_usage_result, classify_usage_error, fetch_usage, log_usage_failure,
-    parse_retry_after, reported_window, request_usage_data, try_fetch_usage_for_account,
-    usage_failure_line, window_entry,
+    BAD_RESPONSE_ERROR, FetchError, InvalidUsageResponse, NETWORK_ERROR, NO_ACCESS_TOKEN_ERROR,
+    ORG_POLICY_ERROR, RATE_LIMITED_ERROR, RETRY_AFTER_BOUND_S, TIMEOUT_ERROR, TLS_CERT_ERROR,
+    TOKEN_EXPIRED_ERROR, UNAUTHORIZED_ERROR, UsageOutcome, build_usage_result,
+    classify_usage_error, fetch_usage, log_usage_failure, parse_retry_after, reported_window,
+    request_usage_data, try_fetch_usage_for_account, usage_failure_line, window_entry,
 };
 pub use windows::{FIVE_HOUR_LABEL, REJECTED_LABEL, Window, account_headroom, relevant_windows};
 
@@ -225,6 +228,13 @@ pub fn is_setup_token(oauth: Option<&Map<String, Value>>) -> bool {
 /// empties both in place after a rejected refresh, keeping the wrapper.
 pub fn has_login_token(oauth: &Map<String, Value>) -> bool {
     truthy_at(oauth.get("accessToken")) || truthy_at(oauth.get("refreshToken"))
+}
+
+/// Whether an OAuth payload holds a full token pair: a non-empty access and refresh token. A
+/// wiped login and an access-only blob are not one, and writing either over a backup would
+/// replace the slot's only refresh token.
+pub fn has_full_token_pair(oauth: &Map<String, Value>) -> bool {
+    truthy_at(oauth.get("accessToken")) && truthy_at(oauth.get("refreshToken"))
 }
 
 /// A short summary of a stored OAuth token's state, for logs: never the token.

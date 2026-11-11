@@ -16,7 +16,8 @@
 //!   spawning `security` (#496: a locked keychain, polled every 3 s, was a stream of unlock
 //!   dialogs). The cooldown is monotonic, so a wall-clock jump can't shorten or stretch it.
 //! - The unclaimed-credential stash: base64 0600 files under `<store>/credentials/`, outside
-//!   the Keychain on purpose (`stash.rs`).
+//!   the Keychain on purpose (`stash.rs`), and the refresh gate's rows in it, the successors
+//!   it parks and adopts (`successor.rs`).
 //! - The machine-shared fields of a credential (`shared.rs`) and the global config's
 //!   read-modify-write (`global_config.rs`).
 //!
@@ -44,6 +45,7 @@ mod backup;
 mod global_config;
 mod shared;
 mod stash;
+mod successor;
 
 pub use backup::{backup_username, prev_backup_username};
 pub use shared::{
@@ -51,6 +53,7 @@ pub use shared::{
     merge_shared_credential_fields, shared_credential_fields,
 };
 pub use stash::ManifestVerdict;
+pub use successor::{StashMeta, StashReason, StashedSuccessor};
 
 /// The active OAuth read's attempts: a locked or contended login Keychain can fail one
 /// `security` call (just after wake, or under Claude Code's own statusline polling the item)
@@ -88,6 +91,27 @@ impl ActiveCredentials {
             degraded,
         }
     }
+
+    /// What a usage pass needs of this read: cswap's `_active_keychain_unavailable` and
+    /// `_active_read_unreadable` as one state, since both mean nothing usable was read and
+    /// both show `keychain unavailable`, and `_active_read_degraded`.
+    pub fn verdict(&self) -> ActiveVerdict {
+        ActiveVerdict {
+            unavailable: self.keychain_unavailable || self.value.is_none(),
+            degraded: self.degraded,
+        }
+    }
+}
+
+/// The active read's verdict as a usage pass carries it ([`ActiveCredentials::verdict`]).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ActiveVerdict {
+    /// Nothing usable was read: the Keychain failed and nothing covered it, or
+    /// `.credentials.json` exists and couldn't be read. The slot is unreadable, not empty.
+    pub unavailable: bool,
+    /// The Keychain read failed even if the file covered it: the bytes may be a superseded
+    /// generation, never to be written into a backup or spent.
+    pub degraded: bool,
 }
 
 /// A clean verdict, as cswap's switcher assumes for a thread that never read:

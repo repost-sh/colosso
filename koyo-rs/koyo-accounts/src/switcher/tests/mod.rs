@@ -5,6 +5,12 @@
 //! in-memory stores; here the live credential is the fake Keychain's `Claude
 //! Code-credentials` item, each backup its `Koyo Claude accounts` item, and the profile oracle
 //! the fake HTTP's answer (nothing queued is "unresolvable").
+//!
+//! The usage half's are beside them: the refresh gate (`grant*.rs`), the active and idle
+//! fetches (`usage_active.rs`, `resync.rs`, `idle.rs`), collection passes (`collect*.rs`),
+//! `accounts_snapshot` with `tests/test_backup_read_pacing.py`'s display cases
+//! (`snapshot.rs`), the plans of `tests/test_subscription.py`'s `TestCollector` (`plans.rs`),
+//! and Koyo's live limits (`live.rs`); `support.rs` has what they share.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -22,14 +28,27 @@ use crate::testing::Sandbox;
 mod add;
 mod add_identity;
 mod capture;
+mod collect;
+mod collect_passes;
 mod direct;
 mod fallback;
+mod grant;
+mod grant_faults;
+mod grant_locks;
+mod grant_stash;
 mod identity;
+mod idle;
+mod live;
+mod plans;
 mod policy;
 mod provenance;
+mod resync;
+mod snapshot;
 mod store;
+mod support;
 mod switch;
 mod switch_to;
+mod usage_active;
 
 /// A switcher on a sandbox with cswap's `temp_home`: a home with `.claude/` in it.
 pub(super) struct Harness {
@@ -56,15 +75,21 @@ impl Harness {
 
     /// A fresh switcher whose HTTP is `http` (an oracle with side effects).
     pub fn rebuild_with_http(&mut self, http: Arc<dyn Http>) {
-        let mut env = self.sandbox.env();
-        env.http = http;
-        self.switcher = Switcher::new(env);
+        let security = self.sandbox.security.clone();
+        self.rebuild_with(security, http);
     }
 
     /// A fresh switcher whose `security` is `security`.
     pub fn rebuild_with_security(&mut self, security: Arc<dyn Security>) {
+        let http = self.sandbox.http.clone();
+        self.rebuild_with(security, http);
+    }
+
+    /// A fresh switcher on the sandbox with this `security` and this HTTP.
+    pub fn rebuild_with(&mut self, security: Arc<dyn Security>, http: Arc<dyn Http>) {
         let mut env = self.sandbox.env();
         env.security = security;
+        env.http = http;
         self.switcher = Switcher::new(env);
     }
 

@@ -159,6 +159,31 @@ pub fn matches_slot(fetched: &PlanFetch, account_uuid: &str, org_uuid: &str) -> 
     !expected.is_empty() && expected.iter().all(|(recorded, seen)| recorded == seen)
 }
 
+impl PlanFetch {
+    /// The update this read saves (see [`merge`]), for the slot recording `account_uuid` and
+    /// `org_uuid`: a success's plan stamped `started_at`, when the request went out, if the
+    /// read [`matches_slot`]; otherwise a failure's `retryAt`, which also stops a response for
+    /// another account from being kept.
+    pub fn update(self, started_at: f64, account_uuid: &str, org_uuid: &str) -> Value {
+        let mine = matches_slot(&self, account_uuid, org_uuid);
+        let mut update = Map::new();
+        match self.plan {
+            Some(plan) if mine => {
+                update.insert("plan".to_owned(), Value::Object(plan));
+                update.insert("fetchedAt".to_owned(), Value::from(started_at));
+            }
+            _ => {
+                update.insert(
+                    "retryAt".to_owned(),
+                    Value::from(next_retry_at(started_at, self.retry_after_s)),
+                );
+                update.insert("attemptedAt".to_owned(), Value::from(started_at));
+            }
+        }
+        Value::Object(update)
+    }
+}
+
 /// When a failed read may be repeated.
 pub fn next_retry_at(now: f64, retry_after_s: Option<f64>) -> f64 {
     let wait = FAILURE_RETRY_S.max(retry_after_s.unwrap_or(0.));

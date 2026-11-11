@@ -15,6 +15,7 @@ use serde_json::{Value, json};
 
 use super::*;
 use crate::testing::Sandbox;
+pub(super) use crate::testing::{entry_as, record_as};
 
 /// cswap's `FakeClock` start.
 pub(super) const START: f64 = 1_000_000.;
@@ -86,26 +87,9 @@ impl Harness {
         self.sandbox.clock.set(now);
     }
 
-    /// `store.record({num: record}, identities)`, unfenced.
-    pub fn record_as(
-        &self,
-        num: &str,
-        record: FetchRecord,
-        identities: &Identities,
-    ) -> BTreeSet<String> {
-        self.store
-            .record(
-                &BTreeMap::from([(num.to_owned(), record)]),
-                identities,
-                None,
-                None,
-            )
-            .unwrap()
-    }
-
     /// `store.record({num: record}, IDENT)`.
     pub fn record(&self, num: &str, record: FetchRecord) -> BTreeSet<String> {
-        self.record_as(num, record, &ident())
+        record_as(&self.store, num, record, &ident())
     }
 
     /// `store.record({num: record}, IDENT, claims)`.
@@ -125,13 +109,9 @@ impl Harness {
             .unwrap()
     }
 
-    pub fn entry_as(&self, num: &str, identities: &Identities) -> UsageEntry {
-        self.store.entries(identities, &[]).remove(num).unwrap()
-    }
-
     /// `store.entries(IDENT)[num]`.
     pub fn entry(&self, num: &str) -> UsageEntry {
-        self.entry_as(num, &ident())
+        entry_as(&self.store, num, &ident())
     }
 
     pub fn reserve(&self, nums: &[&str], respect_plans: bool) -> BTreeMap<String, String> {

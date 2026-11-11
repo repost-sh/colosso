@@ -37,6 +37,15 @@ impl AccountsError {
     pub fn io(doing: impl Into<String>, error: std::io::Error) -> AccountsError {
         AccountsError::Io(doing.into(), error)
     }
+
+    /// Whether this is cswap's `LockError`, of which Claude Code's lock timeout is a subclass
+    /// there: a holder is mid-operation, and the operation is safe to retry.
+    pub fn is_lock(&self) -> bool {
+        matches!(
+            self,
+            AccountsError::Lock(_) | AccountsError::ClaudeCodeLockTimeout(_)
+        )
+    }
 }
 
 impl fmt::Display for AccountsError {

@@ -1,15 +1,16 @@
 //! Part of the port of claude-swap's `usage_store.py` (0fe22a8): the rules over one stored
 //! row, under the store's lock or on its lock-free read: a row read as its entry (`entries`'
-//! body, with the trust rules), an outcome written into it (`record`'s `apply`), and whether it
-//! may be fetched now (`_row_eligible`).
+//! body, with the trust rules), an outcome written into it (`record`'s `apply`), whether it
+//! may be fetched now (`_row_eligible`), and, Koyo's own, a live reading laid over its last
+//! good one (`lay_over`, for `UsageStore::adopt_over`).
 
 use serde_json::{Map, Value};
 
 use super::backoff::{
-    AUTH_DEAD_STRIKES, PERMANENT_AUTH_ERRORS, TRUST_MAX_AGE_S, failure_backoff_s,
-    rate_limited_trust_ok, rejection_backoff_until,
+    PERMANENT_AUTH_ERRORS, TRUST_MAX_AGE_S, failure_backoff_s, rate_limited_trust_ok,
+    rejection_backoff_until,
 };
-use super::{FetchRecord, PollPlan, SERVE_TTL_S, UsageEntry, live_claim, plan_oversleeps};
+use super::{FetchRecord, PollPlan, UsageEntry, live_claim};
 use crate::oauth::value::{num_or_none, py_int, py_number};
 
 pub(super) type Row = Map<String, Value>;
@@ -130,31 +131,51 @@ pub(super) fn apply_outcome(
     }
 }
 
-/// Whether a stored row may be fetched now, under the write lock ([`super::UsageStore::reserve`] says
-/// what the two modes mean).
+/// Whether a stored row may be fetched now, under the write lock ([`super::UsageStore::reserve`]
+/// says what the two modes mean): [`UsageEntry::eligible`] of the fields it reads.
 pub fn row_eligible(row: &Row, now: f64, respect_plans: bool, repair_overslept: bool) -> bool {
-    if py_int(row.get("authDeadStrikes")) >= AUTH_DEAD_STRIKES {
-        return false;
+    UsageEntry {
+        auth_dead_strikes: py_int(row.get("authDeadStrikes")),
+        backoff_until: num_or_none(row.get("backoffUntil")),
+        held_until: num_or_none(row.get("heldUntil")),
+        claim_until: num_or_none(row.get("claimUntil")),
+        last_attempt_at: num_or_none(row.get("lastAttemptAt")),
+        fetched_at: num_or_none(row.get("fetchedAt")),
+        next_poll_at: num_or_none(row.get("nextPollAt")),
+        poll_interval_s: num_or_none(row.get("pollIntervalS")),
+        ..UsageEntry::default()
     }
-    let live = |key: &str| num_or_none(row.get(key)).is_some_and(|until| now < until);
-    if live("backoffUntil") || live("heldUntil") {
-        return false;
+    .eligible(now, respect_plans, repair_overslept)
+}
+
+/// A live reading laid over the stored one: each window `live` carries replaces the stored one
+/// (a scoped entry by its name); everything else stored stays, so a reading that didn't carry a
+/// window doesn't erase it.
+pub(super) fn lay_over(stored: Option<&Value>, live: &Map<String, Value>) -> Value {
+    let mut merged = stored
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    for key in ["five_hour", "seven_day"] {
+        if let Some(window) = live.get(key) {
+            merged.insert(key.to_owned(), window.clone());
+        }
     }
-    let claim_until = num_or_none(row.get("claimUntil"));
-    if live_claim(claim_until, num_or_none(row.get("lastAttemptAt")), now) {
-        return false;
+    if let Some(Value::Array(live_scoped)) = live.get("scoped") {
+        let mut scoped = match merged.remove("scoped") {
+            Some(Value::Array(scoped)) => scoped,
+            _ => Vec::new(),
+        };
+        for entry in live_scoped {
+            match scoped
+                .iter_mut()
+                .find(|stored| stored.get("name") == entry.get("name"))
+            {
+                Some(stored) => stored.clone_from(entry),
+                None => scoped.push(entry.clone()),
+            }
+        }
+        merged.insert("scoped".to_owned(), Value::Array(scoped));
     }
-    let fetched_at = num_or_none(row.get("fetchedAt"));
-    let stale = fetched_at.is_none_or(|at| now - at > SERVE_TTL_S);
-    let next_poll_at = num_or_none(row.get("nextPollAt"));
-    let poll_due = next_poll_at.is_some_and(|at| now >= at);
-    let overslept = repair_overslept
-        && plan_oversleeps(next_poll_at, num_or_none(row.get("pollIntervalS")), now);
-    if respect_plans {
-        return stale && (poll_due || next_poll_at.is_none() || overslept);
-    }
-    if repair_overslept {
-        return poll_due || (stale && (next_poll_at.is_none() || overslept));
-    }
-    poll_due || stale
+    Value::Object(merged)
 }

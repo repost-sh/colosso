@@ -25,7 +25,7 @@ use serde_json::Value;
 
 use crate::claude_locks::{claude_config_lock, claude_credentials_lock};
 use crate::credentials::{merge_shared_credential_fields, shared_credential_fields};
-use crate::locking::{DEFAULT_TIMEOUT, FileLock};
+use crate::locking::FileLock;
 use crate::oauth::value::truthy_at;
 use crate::switcher::Switcher;
 use crate::switcher::store::{
@@ -69,7 +69,7 @@ impl Switcher {
             None => self.prefetch_live_identity()?,
         };
         let (op, org_uuid) = {
-            let _lock = FileLock::hold(&self.env, &self.lock_file, DEFAULT_TIMEOUT)?;
+            let _lock = FileLock::hold(&self.env, &self.lock_file, self.lock_timeout)?;
             let _credentials_lock = claude_credentials_lock(&self.env, self.claude_lock_timeout)?;
             let _config_lock = claude_config_lock(&self.env, self.claude_lock_timeout)?;
             self.switch_locked(target, &provenance)?

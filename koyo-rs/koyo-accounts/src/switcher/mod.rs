@@ -30,39 +30,63 @@
 //! new), printing (`list_accounts`, `status`, `_print_switch_followup`, display helpers),
 //! `purge`, `_first_run_setup` and container detection.
 //!
-//! The usage half (the refresh gate `consume_backup_grant`, usage collection, `accounts_snapshot`
-//! and `_build_accounts_info`) builds on this module and is not ported yet; so neither is what
-//! only it uses: the per-thread active verdict (`_record_active_verdict`, `_active_verdict`,
-//! `_with_active_verdict`, the `_active_*` flags: the usage half carries the verdict as a value
-//! on the active row of the accounts info, as `_build_accounts_info` sets it), the provenance
-//! warnings (`_provenance_warned`), the probe that records ownership verdicts
-//! (`_resolved_matches_slot_identity` and the verdict write) and `_live_identity_matches`. The
-//! verdict cache itself is here, as the switch consults it.
+//! The usage half builds on it:
+//!
+//! - `roster.rs`: the managed slots as the app and the usage half read them, from one read of
+//!   `sequence.json` and one of the live identity.
+//! - `info.rs`: `_build_accounts_info`, each slot's credential for one pass, with the active
+//!   read's verdict on the active row.
+//! - `grant/`: the refresh gate `consume_backup_grant`, the only way Koyo spends a backup's
+//!   refresh token, with the unclaimed stash it parks a successor in and adopts it from.
+//! - `usage/`: usage collection for the active and the idle accounts and the poll plans, with
+//!   no token refresh (`docs/claude-accounts.md` 4).
+//! - `plans.rs`: the subscription plans, on their own clock.
+//! - `snapshot.rs`: `accounts_snapshot`, one coherent pass for the app.
+//! - `live.rs`: Koyo's own addition, a chat reply's rate-limit windows taken as the active
+//!   account's reading.
+//!
+//! cswap keeps the active read's verdict thread-local (`_record_active_verdict`,
+//! `_active_verdict`, `_with_active_verdict`, the `_active_*` flags) because its TUI runs two
+//! lanes on one switcher; here it rides as a value on the active row of the accounts info
+//! (`info::AccountInfo::active`), as `_build_accounts_info` sets it and the fetch pool hands it
+//! on.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use crate::credentials::CredentialStore;
+use crate::locking::DEFAULT_TIMEOUT;
 use crate::usage_store::UsageStore;
 use crate::{Env, paths};
 
 mod add;
 mod capture;
+mod grant;
 mod identity;
+mod info;
+mod live;
+mod plans;
 mod policy;
 mod remove;
+mod roster;
+mod snapshot;
 mod store;
 mod switch;
 #[cfg(test)]
 mod tests;
+mod usage;
 
+pub use crate::oauth::{LiveLimits, LiveWindow};
 pub use add::AddResult;
 pub use identity::SlotIdentity;
 pub use policy::HoldOutcome;
 pub use remove::RemovedAccount;
+pub use roster::{Roster, RosterSlot};
+pub use snapshot::{AccountSnapshot, AccountsSnapshot, Plan};
 pub use switch::{AccountRef, SwitchReason, SwitchResult};
+pub use usage::Fetch;
 
 /// A `_probe_verdicts` key (`Switcher::lineage_key`): the slot, the caller's email, the slot's
 /// full stored identity and the refresh lineage's fingerprint.
@@ -96,9 +120,20 @@ pub struct Switcher {
     /// `false` on partial evidence would block a legitimate resync for the process's life. The
     /// locked paths consult it because network under locks is forbidden.
     probe_verdicts: Mutex<HashMap<LineageKey, bool>>,
+    /// `_provenance_warned`: the `(slot, email)` whose drifted live credential the resync
+    /// found foreign and warned of, so a drift that persists across passes warns once
+    /// (`usage/resync.rs`). cswap keys it by a condition too, always the resync's.
+    provenance_warned: Mutex<HashSet<(String, String)>>,
+    /// The lines and models poll planning keys on, cswap's defaults until the auto-switch
+    /// engine pins its own (`usage::PollInputs`).
+    poll_inputs: Mutex<usage::PollInputs>,
     /// The wait for Claude Code's locks: `None` is their default (`claude_locks`); tests shorten
     /// it as cswap's patch `DEFAULT_TIMEOUT_S`.
     claude_lock_timeout: Option<Duration>,
+    /// The wait for Koyo's own `.lock`, at every site that takes it, and for the refresh
+    /// gate's consume lock: cswap's `FileLock` default; tests shorten it as cswap's patch
+    /// `FileLock`.
+    lock_timeout: Duration,
 }
 
 fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -118,7 +153,10 @@ impl Switcher {
             credentials_dir: paths::store::credentials_dir(&env),
             lock_file: paths::store::lock_file(&env),
             probe_verdicts: Mutex::new(HashMap::new()),
+            provenance_warned: Mutex::new(HashSet::new()),
+            poll_inputs: Mutex::new(usage::PollInputs::default()),
             claude_lock_timeout: None,
+            lock_timeout: DEFAULT_TIMEOUT,
             env,
         }
     }
@@ -126,5 +164,10 @@ impl Switcher {
     /// A cached ownership verdict for a lineage key, if one was recorded.
     pub(crate) fn probe_verdict(&self, key: &LineageKey) -> Option<bool> {
         locked(&self.probe_verdicts).get(key).copied()
+    }
+
+    /// Records a definitive ownership verdict for a lineage key.
+    pub(crate) fn set_probe_verdict(&self, key: LineageKey, verdict: bool) {
+        locked(&self.probe_verdicts).insert(key, verdict);
     }
 }
