@@ -116,7 +116,7 @@ fn write_via_temp(target: &Path, data: &[u8], mode: u32) -> io::Result<()> {
         if !skipped(Step::Mode) {
             file.set_permissions(fs::Permissions::from_mode(mode))?;
         }
-        if let Err(error) = fault(Step::Fsync).and_then(|()| file.sync_all())
+        if let Err(error) = fault(Step::Fsync).and_then(|()| fsync(&file))
             && !error
                 .raw_os_error()
                 .is_some_and(|code| FSYNC_UNSUPPORTED.contains(&code))
@@ -287,6 +287,19 @@ pub fn touch(env: &Env, path: &Path) -> io::Result<()> {
     // SAFETY: `path` is a NUL-terminated string that outlives the call; a null `times` is
     // "now" for both, as `os.utime(path)`.
     if unsafe { libc::utimes(path.as_ptr(), std::ptr::null()) } == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
+
+/// `os.fsync` as cswap calls it: on macOS a plain `fsync(2)`, which hands the data to the drive.
+/// `File::sync_all` is `F_FULLFSYNC` there, which also flushes the drive's own cache and stalls
+/// other I/O, on every write of the usage cache.
+fn fsync(file: &fs::File) -> io::Result<()> {
+    use std::os::fd::AsRawFd as _;
+    // SAFETY: the descriptor is `file`'s, open for as long as it's borrowed.
+    if unsafe { libc::fsync(file.as_raw_fd()) } == 0 {
         Ok(())
     } else {
         Err(io::Error::last_os_error())

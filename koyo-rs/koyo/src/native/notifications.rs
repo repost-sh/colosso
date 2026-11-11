@@ -1,7 +1,8 @@
 //! macOS notifications, through `UNUserNotificationCenter`. Only an app with a bundle may ask for
 //! the center, and it stops any other process that does, so a build run from `target` has none.
 //! Each is named for what it's about, so a newer one takes the place of the last, and a click says
-//! that name. The system may call the delegate off the main thread, which the channel doesn't mind.
+//! that name: a chat's as [`chat`] makes it, so a click opens that chat ([`chat_of`]); any other
+//! only brings Koyo to the front. The system may call the delegate off the main thread, which the channel doesn't mind.
 
 use std::sync::{Mutex, Once};
 
@@ -74,6 +75,16 @@ pub fn clicks() -> Option<UnboundedReceiver<String>> {
     let (told, hears) = unbounded();
     *HEARING.lock().ok()? = Some(told);
     Some(hears)
+}
+
+/// The name of a notification about the chat of thread `thread`.
+pub fn chat(thread: &str) -> String {
+    format!("chat:{thread}")
+}
+
+/// The thread of a notification named `name`, if it's about a chat.
+pub fn chat_of(name: &str) -> Option<&str> {
+    name.strip_prefix("chat:")
 }
 
 /// Posts a notification named `name`, if the app has a bundle and the person lets it: they're

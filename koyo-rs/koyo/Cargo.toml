@@ -280,7 +280,7 @@ objc2-image-io = { version = "0.3", default-features = false, features = [
 hot-reload = ["dep:gpui-pre", "gpui-pre/hot-reload"]
 inspector = ["gpui-kit/inspector"]
 # `--visual-check`: draws the Files panel in the real shell off screen and saves PNGs.
-visual-check = ["gpui-kit/test-support", "koyo-accounts/testing"]
+visual-check = ["gpui-kit/test-support"]
 
 [lints]
 workspace = true

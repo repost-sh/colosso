@@ -19,15 +19,15 @@ use crate::model::{PaneKind, Workspace};
 use crate::native::notifications;
 use crate::shell::Shell;
 
-/// Shows the chat a person clicked a notification of, for as long as the shell's there.
+/// Shows the chat a person clicked a notification of, or only brings Koyo to the front for a
+/// notice about anything else, for as long as the shell's there.
 fn notifications_clicked(cx: &mut Context<Shell>) -> Option<Task<()>> {
     let mut clicks = notifications::clicks()?;
     Some(cx.spawn(async move |shell, cx| {
-        while let Some(thread) = clicks.next().await {
+        while let Some(name) = clicks.next().await {
             let shown = shell.update(cx, |shell, cx| {
-                // Auto-switch's notice only brings Koyo to the front: its panel says the rest.
-                if thread != crate::accounts::NOTICE {
-                    shell.open_chat(&ThreadId(thread), cx);
+                if let Some(thread) = notifications::chat_of(&name) {
+                    shell.open_chat(&ThreadId(thread.to_owned()), cx);
                 }
                 cx.activate(true);
             });
@@ -69,7 +69,9 @@ impl ChatTabs {
         let _followed = cx.subscribe(&chats, |this, _, event, cx| match event {
             ChatsEvent::Summaries => this.follow_chats(cx),
             ChatsEvent::Removed(id) => this.close_chat_tabs(id, cx),
-            ChatsEvent::News { id, title, said } => notifications::post(&id.0, title, said),
+            ChatsEvent::News { id, title, said } => {
+                notifications::post(&notifications::chat(&id.0), title, said);
+            }
         });
         // A click on what a chat told a person shows that chat.
         let _clicked = notifications_clicked(cx);

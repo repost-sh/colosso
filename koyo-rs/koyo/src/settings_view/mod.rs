@@ -27,7 +27,7 @@ pub mod ticked_slider;
 pub mod visual;
 
 use gpui_kit::assets::IconName;
-use gpui_kit::{App, IntoElement, ParentElement as _};
+use gpui_kit::{App, Context, Entity, IntoElement, ParentElement as _, Subscription};
 
 pub use chat::{ClearClaudePath, EditClaudePath, edit_claude_path};
 pub use components::MenuButton;
@@ -36,6 +36,9 @@ pub use mcp_agents::{EditPagesOpenAt, edit_pages_open_at};
 pub use settings_sidebar::SettingsSidebar;
 
 use components::{SettingsPageColumn, SettingsSection};
+
+use crate::navigation::Route;
+use crate::shell::Shell;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SettingsPage {
@@ -137,6 +140,19 @@ impl SettingsPage {
 pub fn init(cx: &mut App) {
     mcp_agents::init(cx);
     mcp_clients::init(cx);
+}
+
+/// Redraws the shell as `entity` changes, while Settings shows `page`, which draws from it.
+pub fn redraws_while_shown<T: 'static>(
+    page: SettingsPage,
+    entity: &Entity<T>,
+    cx: &mut Context<Shell>,
+) -> Subscription {
+    cx.observe(entity, move |shell, _, cx| {
+        if shell.route(cx) == Route::Settings(page) {
+            cx.notify();
+        }
+    })
 }
 
 /// The page's contents for the card.

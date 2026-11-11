@@ -184,6 +184,9 @@ Arc's favourites grid, holding the projects of the space shown.
   has shrunk back, out of the spring's way. The dot fades in; the spinner doesn't, as it's a
   view drawn again only as it turns, and a fade round it would stay where its first frame had
   it. The space shown has none: its tiles say it.
+- On the left, in the +'s width, the Claude accounts button (`docs/claude-accounts.md` 6): the
+  active account's week as a ring, opening the accounts panel; nothing while Koyo doesn't manage
+  the accounts.
 - A **+** on the right opens a menu:
   - **New Worktree…**: in the selected project, through the New Worktree dialog.
   - **New Project…**: added to the space shown.

@@ -16,9 +16,9 @@ use super::{Accounts, Job, words};
 use crate::native::notifications;
 use crate::settings;
 
-/// The name auto-switch's notices are posted under: a click on one brings Koyo to the front,
-/// where the panel says what happened, rather than opening a chat (`chat/tabs.rs`).
-pub const NOTICE: &str = "claude-accounts-auto-switch";
+/// The name auto-switch's notices are posted under: not a chat's, so a click brings Koyo to the
+/// front, where the panel says what happened.
+const NOTICE: &str = "claude-accounts-auto-switch";
 
 pub struct Auto {
     engine: Arc<Mutex<AutoSwitchEngine>>,
