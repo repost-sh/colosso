@@ -14,8 +14,6 @@ use koyo_device_wire::{Button, Input, Orientation};
 
 use super::view::DeviceView;
 
-/// A wheel's notch, as a share of the screen's height.
-const NOTCH: f32 = 0.04;
 /// How often a resting trackpad's fingers are looked at, to be lifted.
 const TICK: Duration = Duration::from_millis(100);
 
@@ -140,26 +138,23 @@ impl DeviceView {
         }
     }
 
-    pub(super) fn wheel(&mut self, event: &ScrollEvent, cx: &mut Context<Self>) {
-        let Some((at, on)) = self.share(event.position, cx) else {
+    /// Two fingers scrolling on the trackpad drag a finger on the device. A mouse's wheel does
+    /// nothing: its notches are lines, no distance, and steps as fine as a trackpad's that never
+    /// say they began are left by the mapping.
+    pub(super) fn scrolled(&mut self, event: &ScrollEvent, cx: &mut Context<Self>) {
+        let ScrollDelta::Pixels(by) = event.delta else {
+            return;
+        };
+        // Where the pointer is, and where the scroll would take it: how far it goes, in the
+        // picture's shares.
+        let (Some((at, on)), Some((to, _))) = (self.share(event.position, cx), self.share(event.position + by, cx)) else {
             return;
         };
         if !on && !self.fingers.down() {
             return;
         }
-        let Some((_, fit)) = self.placed else {
-            return;
-        };
-        let Some(screen) = self.link.as_ref().and_then(|link| link.read(cx).screen()) else {
-            return;
-        };
-        let (wide, high) = (screen.size.width as f32 * fit, screen.size.height as f32 * fit);
-        let (dx, dy, precise) = match event.delta {
-            ScrollDelta::Pixels(by) => (by.x.as_f32() / wide, by.y.as_f32() / high, true),
-            ScrollDelta::Lines(by) => (by.x * NOTCH, by.y * NOTCH, false),
-        };
-        let phase = phase(event.touch_phase);
-        self.mac(Mac::Scroll { at, phase, dx, dy, precise }, cx);
+        let (phase, dx, dy) = (phase(event.touch_phase), to.x - at.x, to.y - at.y);
+        self.mac(Mac::Scroll { at, phase, dx, dy }, cx);
     }
 
     pub(super) fn pinch(&mut self, event: &PinchEvent, cx: &mut Context<Self>) {
@@ -174,7 +169,8 @@ impl DeviceView {
         self.mac(Mac::Pinch { at, phase, delta: event.delta }, cx);
     }
 
-    /// A rotation or a two-finger double tap on the trackpad, heard by the window's monitor.
+    /// A rotation or a two-finger double tap on the trackpad, or its fingers lifting before
+    /// they scrolled, heard by the window's monitor.
     pub(super) fn trackpad(&mut self, gesture: super::view::Trackpad, cx: &mut Context<Self>) {
         let Some(at) = self.pointer else {
             return;
@@ -182,6 +178,10 @@ impl DeviceView {
         match gesture {
             super::view::Trackpad::Rotate { phase, degrees } => self.mac(Mac::Rotate { at, phase, degrees }, cx),
             super::view::Trackpad::SmartZoom => self.mac(Mac::SmartZoom { at }, cx),
+            super::view::Trackpad::Lifted => {
+                let (phase, dx, dy) = (Phase::Ended, 0., 0.);
+                self.mac(Mac::Scroll { at, phase, dx, dy }, cx);
+            }
         }
     }
 

@@ -58,15 +58,14 @@ pub enum Mac {
     Release {
         at: At,
     },
-    /// Two fingers scrolling on the trackpad, or a wheel. `dx` and `dy` are how far the content
-    /// goes, in shares of the screen. `precise`: a trackpad's, which has phases; a wheel's
-    /// notches have none.
+    /// A scroll as the Mac tells it: `dx` and `dy` are how far the content goes, in shares of
+    /// the screen. Only two fingers on the trackpad, which say when they begin and end, move a
+    /// finger on the device.
     Scroll {
         at: At,
         phase: Phase,
         dx: f32,
         dy: f32,
-        precise: bool,
     },
     /// A pinch on the trackpad: the magnification since the last event (0.1 is a tenth larger).
     Pinch {
@@ -116,8 +115,6 @@ pub fn edge(at: At) -> Option<Edge> {
 const SPREAD: f32 = 0.35;
 const NARROWEST: f32 = 0.06;
 const WIDEST: f32 = 1.4;
-/// How long after its last notch a wheel's finger stays down.
-const WHEEL_RESTS_MS: u64 = 120;
 /// How long a trackpad's fingers stay down with nothing heard of them: a gesture the system
 /// took back says so in a way that looks like any other step, so one that just stops is ended
 /// here. The trackpad's own fingers resting mid-gesture lift them too, and the next step puts
@@ -143,7 +140,6 @@ enum State {
     Scrolling {
         from: At,
         at: At,
-        wheel: bool,
         until: u64,
     },
     /// A trackpad's two fingers: their middle, how far apart, the line they're on (degrees
@@ -164,7 +160,7 @@ pub struct Fingers {
     size: Size,
     state: State,
     /// The trackpad's fingers are on it for a scroll: between its beginning and its end. What
-    /// comes outside that is the glide after they lifted.
+    /// comes outside that is the glide after they lifted, or a mouse's wheel.
     scrolling: bool,
 }
 
@@ -208,13 +204,7 @@ impl Fingers {
                 State::Mirrored { .. } => self.lift(&mut steps),
                 _ => {}
             },
-            Mac::Scroll {
-                at,
-                phase,
-                dx,
-                dy,
-                precise,
-            } => self.scroll(at, phase, (dx, dy), precise, now_ms, &mut steps),
+            Mac::Scroll { at, phase, dx, dy } => self.scroll(at, phase, (dx, dy), now_ms, &mut steps),
             Mac::Pinch { at, phase, delta } => {
                 self.two_fingers(at, phase, true, now_ms, &mut steps, |spread, _| {
                     *spread = (*spread * (1. + delta)).clamp(NARROWEST, WIDEST);
@@ -236,8 +226,7 @@ impl Fingers {
         steps
     }
 
-    /// Time passing: a wheel's finger lifts once the wheel has rested, and a trackpad's fingers
-    /// once nothing has been heard of them for a while.
+    /// Time passing: a trackpad's fingers lift once nothing has been heard of them for a while.
     pub fn tick(&mut self, now_ms: u64) -> Vec<Step> {
         let mut steps = Vec::new();
         if let State::Scrolling { until, .. } | State::Two { until, .. } = self.state
@@ -309,33 +298,19 @@ impl Fingers {
         }
     }
 
-    fn scroll(
-        &mut self,
-        at: At,
-        phase: Phase,
-        (dx, dy): (f32, f32),
-        precise: bool,
-        now_ms: u64,
-        steps: &mut Vec<Step>,
-    ) {
-        if precise {
-            match phase {
-                Phase::Started => self.scrolling = true,
-                Phase::Ended => self.scrolling = false,
-                Phase::Moved => {}
-            }
+    fn scroll(&mut self, at: At, phase: Phase, (dx, dy): (f32, f32), now_ms: u64, steps: &mut Vec<Step>) {
+        match phase {
+            Phase::Started => self.scrolling = true,
+            Phase::Ended => self.scrolling = false,
+            Phase::Moved => {}
         }
-        let rests = if precise {
-            TRACKPAD_RESTS_MS
-        } else {
-            WHEEL_RESTS_MS
-        };
         match self.state {
             State::Idle => {
                 // A trackpad's fingers resting on it say a scroll may begin: no finger goes down
-                // until they move. What comes with no beginning is the glide after they lifted,
-                // which the device makes for itself.
-                if (dx == 0. && dy == 0.) || (precise && !self.scrolling) {
+                // until they move. What comes with no beginning touches nothing: the glide after
+                // they lifted, which the device makes for itself, and a mouse's wheel, which a
+                // device has none of.
+                if (dx == 0. && dy == 0.) || !self.scrolling {
                     return;
                 }
                 let from = at.clamped();
@@ -343,21 +318,14 @@ impl Fingers {
                 self.state = State::Scrolling {
                     from,
                     at: from,
-                    wheel: !precise,
-                    until: now_ms + rests,
+                    until: now_ms + TRACKPAD_RESTS_MS,
                 };
             }
             State::Scrolling { .. } => {}
             // The button, or two fingers, have the screen.
             _ => return,
         }
-        let State::Scrolling {
-            from,
-            at: finger,
-            wheel,
-            ..
-        } = self.state
-        else {
+        let State::Scrolling { from, at: finger, .. } = self.state else {
             return;
         };
         let mut next = finger;
@@ -376,10 +344,9 @@ impl Fingers {
         self.state = State::Scrolling {
             from,
             at: next,
-            wheel,
-            until: now_ms + rests,
+            until: now_ms + TRACKPAD_RESTS_MS,
         };
-        if phase == Phase::Ended && !wheel {
+        if phase == Phase::Ended {
             self.lift(steps);
         }
     }
