@@ -3,7 +3,8 @@
 //! out when drawn, never stored.
 
 use gpui_kit::SharedString;
-use koyo_accounts::pace::WEEKLY_PERIOD_S;
+use koyo_accounts::autoswitch::DEFAULT_THRESHOLD;
+use koyo_accounts::pace::{AHEAD_THRESHOLD_PCT, WEEKLY_PERIOD_S};
 
 /// One window's bar: the 7 days, or a model's own weekly limit.
 #[derive(Clone, Debug, PartialEq)]
@@ -14,8 +15,9 @@ pub struct Bar {
     pub percent: Option<f64>,
     /// When the window resets, in seconds since the epoch.
     pub resets_at: Option<f64>,
-    /// Whether the window is used faster than its time passes (claude-swap's pace marker).
-    pub ahead_of_pace: bool,
+    /// Where even use of the window would have it, in percent, as of the reading as its percent
+    /// is (the crate's pace); `None` just after it resets.
+    pub pace: Option<f64>,
 }
 
 impl Bar {
@@ -28,7 +30,7 @@ impl Bar {
                 Bar {
                     percent: Some(0.),
                     resets_at: Some(resets + weeks * WEEKLY_PERIOD_S),
-                    ahead_of_pace: false,
+                    pace: None,
                     ..self.clone()
                 }
             }
@@ -43,6 +45,11 @@ impl Bar {
         } else {
             self.percent
         }
+    }
+
+    /// Whether the window is used well ahead of its time passing (claude-swap's pace marker).
+    pub fn ahead_of_pace(&self) -> bool {
+        (self.percent.zip(self.pace)).is_some_and(|(used, pace)| used - pace >= AHEAD_THRESHOLD_PCT)
     }
 }
 
@@ -156,5 +163,11 @@ pub struct AutoSwitch {
 impl View {
     pub fn active(&self) -> Option<&Row> {
         self.rows.iter().find(|row| row.active)
+    }
+
+    /// The usage auto-switch moves on at, or would if it were on: what a window is coloured
+    /// against.
+    pub fn line(&self) -> f64 {
+        (self.auto_switch.as_ref()).map_or(DEFAULT_THRESHOLD, |auto| auto.threshold)
     }
 }

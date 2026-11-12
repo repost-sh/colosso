@@ -32,7 +32,7 @@ impl Render for Launcher {
         let fits = height(self.rows.len());
         if (fits - self.fitted).abs() >= 0.5 {
             self.fitted = fits;
-            modal::fit_height(fits, window, cx);
+            crate::popup::fit_height(fits, window, cx);
         }
         // Over a page, the glass stands off it, and what's on it is drawn in the glass's tone.
         let (p, tint) = glass::look(self.tone.dark(), cx);

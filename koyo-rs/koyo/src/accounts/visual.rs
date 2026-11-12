@@ -22,9 +22,12 @@ use gpui_kit::{
     VisualTestAppContext, Window, div, hsla, px, size,
 };
 
+use koyo_accounts::pace::WEEKLY_PERIOD_S;
+
 use super::model::{AutoSwitch, Bar, Problem, Row, View, WEEKLY};
-use super::panel::{self, AccountsPanel};
+use super::panel::AccountsPanel;
 use super::{Accounts, button};
+use crate::menu::MenuBody as _;
 use crate::menu::PADDING;
 use crate::theme::{self, UseDarkTheme, UseLightTheme};
 use crate::visual::{Result, out_dir};
@@ -100,7 +103,7 @@ impl Render for Stage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = theme::palette(cx);
         let view = self.accounts.read(cx).view.clone();
-        let extent = panel::extent(&view, window);
+        let extent = self.panel.read(cx).extent(window, cx);
         // Something like what's behind the glass: the app's backdrop, a little lighter.
         let dark = p.text.l > 0.5;
         let backdrop = if dark {
@@ -137,8 +140,8 @@ impl Render for Stage {
             .child(
                 // As the menu's window holds it: padded all round, no edge of its own.
                 div()
-                    .w(extent.width)
-                    .h(extent.height)
+                    .w(extent.width + px(2. * PADDING))
+                    .h(extent.height + px(2. * PADDING))
                     .p(px(PADDING))
                     .rounded(px(12.))
                     .bg(p.menu)
@@ -153,7 +156,7 @@ fn window(label: &str, percent: Option<f64>, resets_in: f64, now: f64) -> Bar {
         label: label.to_owned().into(),
         percent,
         resets_at: Some(now + resets_in),
-        ahead_of_pace: false,
+        pace: Some((1. - resets_in / WEEKLY_PERIOD_S) * 100.),
     }
 }
 

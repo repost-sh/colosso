@@ -9,12 +9,12 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use gpui_kit::{
-    Animation, AnimationExt as _, AnyElement, AnyWindowHandle, App, Bounds, Context, Div,
-    FontWeight, Global, Hsla, IntoElement, ParentElement as _, Pixels, Render, SharedString,
-    Styled, TextStyle, Window, div, ease_out_quint, img, point, px, size,
+    Animation, AnimationExt as _, AnyElement, App, Bounds, Context, Div, FontWeight, Hsla,
+    IntoElement, ParentElement as _, Pixels, Render, SharedString, Styled, TextStyle, Window, div,
+    ease_out_quint, img, point, px, size,
 };
 
-use crate::popup;
+use crate::popup::{self, Kind, Opening};
 use crate::theme::{self, Palette};
 
 /// How long a card takes to fade in.
@@ -68,19 +68,12 @@ pub struct ProjectCard {
     pub terminals: usize,
 }
 
-/// The card on screen, if any: its window and what it shows.
-#[derive(Default)]
-struct OpenCard(Option<(AnyWindowHandle, Card)>);
-
-impl Global for OpenCard {}
-
 /// Shows `card` about what's at `anchor` in `parent`: a project's under it, a space's name over
 /// it, both kept on the window. One that shows the same already stays.
 pub fn show(card: Card, anchor: Bounds<Pixels>, parent: &mut Window, cx: &mut App) {
-    if (cx.default_global::<OpenCard>().0.as_ref()).is_some_and(|(_, shown)| *shown == card) {
+    if popup::root::<Surface>(Kind::Card, cx).is_some_and(|shown| shown.card == card) {
         return;
     }
-    hide(cx);
     let (width, height) = match &card {
         Card::Project(_) => (CARD_WIDTH, CARD_HEIGHT),
         Card::Space { name, .. } => (label_width(name_width(name, parent)), LABEL_HEIGHT),
@@ -98,29 +91,23 @@ pub fn show(card: Card, anchor: Bounds<Pixels>, parent: &mut Window, cx: &mut Ap
         at.y.clamp(px(0.), (within.size.height - px(height)).max(px(0.))),
     );
     let bounds = Bounds::new(within.origin + at, size(px(width), px(height)));
-    let shown = card.clone();
-    let opened = popup::open(bounds, false, Some(hide), parent, cx, |_, _| Surface {
-        card: shown,
-    });
-    if let Some(handle) = opened {
-        cx.default_global::<OpenCard>().0 = Some((handle.into(), card));
-    }
+    let opening = Opening {
+        kind: Kind::Card,
+        bounds,
+        kept: false,
+        source: None,
+    };
+    popup::open(opening, parent, cx, |_, _| Surface { card });
 }
 
 /// Puts the card away, if one's up.
 pub fn hide(cx: &mut App) {
-    let Some((window, _)) = cx.default_global::<OpenCard>().0.take() else {
-        return;
-    };
-    window
-        .update(cx, |_, window, _| window.remove_window())
-        .ok();
+    popup::close(Kind::Card, cx);
 }
 
 /// Whether a card's up, so the next one shows at once rather than after a wait.
 pub fn is_shown(cx: &App) -> bool {
-    cx.try_global::<OpenCard>()
-        .is_some_and(|open| open.0.is_some())
+    popup::window(Kind::Card, cx).is_some()
 }
 
 /// How wide a space's name is drawn on its label, measured as the label is sized, before it's

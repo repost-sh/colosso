@@ -143,6 +143,11 @@ impl Shell {
                 this.terminals.retain(&this.workspace);
                 this.chat_tabs.retain(&this.workspace, cx);
                 this.keep_window(cx);
+                // What floats over the window goes as it comes to show something else.
+                let tab = (this.workspace.shown_tab()).and_then(|at| this.workspace.tab(at));
+                let pane = tab.and_then(|tab| Some(tab.panes().first()?.id));
+                let showing = (this.route(cx), Self::layout(cx), this.sidebar_open, pane);
+                crate::popup::showing(window.window_handle(), &showing, cx);
             }),
             // What had the keyboard is gone, as a closed panel's list is: actions then start
             // at the window's root, above the shell's, and the top bar's buttons and keys

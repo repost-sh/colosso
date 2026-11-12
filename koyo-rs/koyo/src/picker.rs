@@ -9,16 +9,16 @@ use std::time::{Duration, Instant};
 use gpui_kit::component::{ActiveTheme as _, Icon};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, AnyWindowHandle, App, BoxShadow, Context, Corners, DispatchPhase, ElementId,
-    FontWeight, Global, Hsla, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent,
-    MouseMoveEvent, MouseUpEvent, ParentElement as _, PathBuilder, Pixels, Point, Render,
-    SpringConfig, SpringState, StatefulInteractiveElement as _, Styled as _, Subscription, Window,
-    canvas, div, ease_in_out, linear_color_stop, linear_gradient, point, px, size,
+    AnyElement, App, BoxShadow, Context, Corners, DispatchPhase, ElementId, FontWeight, Hsla,
+    InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent,
+    MouseUpEvent, ParentElement as _, PathBuilder, Pixels, Point, Render, SpringConfig,
+    SpringState, StatefulInteractiveElement as _, Styled as _, Subscription, Window, canvas, div,
+    ease_in_out, linear_color_stop, linear_gradient, point, px, size,
 };
 
 use crate::backdrop;
 use crate::gradient::{self, GradientTheme, MAX_OPACITY, MIN_OPACITY, PAD, PAGES, Swatch};
-use crate::popup;
+use crate::popup::{self, Kind, Opening};
 use crate::theme::{self, ThemePreference, gray};
 
 const WIDTH: f32 = 380.;
@@ -83,15 +83,8 @@ const HARMONY: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 
 const CHEVRON_LEFT: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>"#;
 const CHEVRON_RIGHT: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>"#;
 
-/// The picker on screen, if any.
-#[derive(Default)]
-struct OpenPicker(Option<AnyWindowHandle>);
-
-impl Global for OpenPicker {}
-
 /// Opens the picker with its top-left corner at `position` in `window`, kept on screen.
 pub fn open(position: Point<Pixels>, window: &mut Window, cx: &mut App) {
-    close(cx);
     let display = window.display(cx);
     let mut origin = window.bounds().origin + position;
     if let Some(area) = display.as_ref().map(|display| display.bounds()) {
@@ -99,7 +92,13 @@ pub fn open(position: Point<Pixels>, window: &mut Window, cx: &mut App) {
         origin.y = origin.y.min(area.bottom() - px(HEIGHT)).max(area.top());
     }
     let bounds = gpui_kit::Bounds::new(origin, size(px(WIDTH), px(HEIGHT)));
-    let opened = popup::open(bounds, false, Some(close), window, cx, |_, cx| Picker {
+    let opening = Opening {
+        kind: Kind::Picker,
+        bounds,
+        kept: false,
+        source: None,
+    };
+    popup::open(opening, window, cx, |_, cx| Picker {
         _escape: cx.intercept_keystrokes(|event, _, cx| {
             if event.keystroke.key == "escape" {
                 close(cx);
@@ -110,19 +109,11 @@ pub fn open(position: Point<Pixels>, window: &mut Window, cx: &mut App) {
         page: 0,
         page_scroll: None,
     });
-    if let Some(handle) = opened {
-        cx.set_global(OpenPicker(Some(handle.into())));
-    }
 }
 
 /// Closes the picker, if open. It can't reach its own window from inside it.
 pub fn close(cx: &mut App) {
-    let Some(window) = cx.default_global::<OpenPicker>().0.take() else {
-        return;
-    };
-    window
-        .update(cx, |_, window, _| window.remove_window())
-        .ok();
+    popup::close(Kind::Picker, cx);
 }
 
 /// A dot button's icon, whether it can act, and what it does to the theme.

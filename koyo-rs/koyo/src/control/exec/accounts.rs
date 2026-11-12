@@ -41,7 +41,7 @@ fn account(row: &Row, now: f64) -> ClaudeAccount {
                     name: bar.label.to_string(),
                     percent: bar.percent,
                     resets_at: bar.resets_at.map(ms),
-                    ahead_of_pace: bar.ahead_of_pace,
+                    ahead_of_pace: bar.ahead_of_pace(),
                 }
             })
             .collect(),

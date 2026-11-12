@@ -40,7 +40,7 @@ use components::{SettingsPageColumn, SettingsSection};
 use crate::navigation::Route;
 use crate::shell::Shell;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SettingsPage {
     General,
     Chat,

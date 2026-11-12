@@ -2,7 +2,7 @@
 //! hears it here, so the composer's own record of what it said is what's looked at.
 
 use gpui_kit::{
-    AnyWindowHandle, AppContext as _, Bounds, Entity, Focusable as _, Modifiers, TestAppContext,
+    AnyWindowHandle, AppContext as _, Entity, Focusable as _, Modifiers, TestAppContext,
     VisualTestContext,
 };
 use koyo_agent::protocol::events::Changed;
@@ -251,8 +251,7 @@ fn a_row_of_the_menu_says_its_answer_to_the_composer(cx: &mut TestAppContext) {
         let target = chat.composer.read(cx).focus_handle(cx);
         let items = answers_past_allow(Some("Allow Bash(cargo test:*) for this chat".into()));
         menu::open_rows(
-            "test-chat-menu".into(),
-            Bounds::default(),
+            crate::popup::Source::new("test-chat-menu"),
             items,
             None,
             &target,

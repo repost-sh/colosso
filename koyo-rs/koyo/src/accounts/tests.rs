@@ -3,7 +3,7 @@
 //! answer what the test queued. Accounts are kept as the person keeps them: signed in with
 //! Claude Code, then added through the switcher.
 
-use gpui_kit::{Context, IntoElement, Render, TestAppContext, VisualTestContext, div, px, size};
+use gpui_kit::{TestAppContext, VisualTestContext, px, size};
 use koyo_accounts::paths::{self, CLAUDE_CODE_KEYCHAIN_SERVICE};
 use koyo_accounts::switcher::Switcher;
 use koyo_accounts::testing::Sandbox;
@@ -14,7 +14,7 @@ use serde_json::json;
 use super::model::Problem;
 use super::service::TestEnv;
 use super::*;
-use crate::test_support::in_window;
+use crate::test_support::{Blank, in_window};
 
 pub(crate) const USAGE: &str = "https://api.anthropic.com/api/oauth/usage";
 
@@ -347,15 +347,6 @@ fn a_switch_that_fails_says_why(cx: &mut TestAppContext) {
             "ana@example.com"
         );
     });
-}
-
-/// What the window the panel opens from shows: nothing.
-struct Blank;
-
-impl Render for Blank {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div()
-    }
 }
 
 #[gpui_kit::test]

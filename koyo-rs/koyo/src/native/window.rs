@@ -1,38 +1,54 @@
-//! A GPUI window's `NSWindow`, for what GPUI doesn't do with it: growing a window down from its
-//! top, where GPUI's resize keeps the bottom edge, as `AppKit` does; keeping a floating window to
-//! its Space; and its traffic lights (`traffic_lights.rs`).
+//! A GPUI window's `NSWindow`, for what GPUI doesn't do with it: fitting a window to its content
+//! from the corner it keeps, where GPUI's resize keeps the bottom left, as `AppKit` does; keeping
+//! a floating window to its Space; and its traffic lights (`traffic_lights.rs`).
 
-use gpui_kit::{AnyWindowHandle, App, AsyncApp, Window};
+use gpui_kit::{AnyWindowHandle, App, AsyncApp, Pixels, Size, Window};
 use objc2::rc::Retained;
 use objc2_app_kit::{NSView, NSViewLayerContentsPlacement, NSWindow, NSWindowCollectionBehavior};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
-/// Makes `window`'s content `height` high, its top edge staying where it is; false when it has
-/// no `NSWindow`, as a test's window hasn't. The frame changes once the app is free of the update
+use crate::popup::Corner;
+
+/// Makes `window`'s content `extent`, `corner` staying where it is; false when it has no
+/// `NSWindow`, as a test's window hasn't. The frame changes once the app is free of the update
 /// asking for it: `AppKit` tells GPUI of a resize as it happens, which can't be heard mid-update.
 ///
-/// The frame GPUI drew last is the old height. Left to itself, Core Animation stretches it to the
+/// The frame GPUI drew last is the old size. Left to itself, Core Animation stretches it to the
 /// new one until GPUI's next frame, which comes late while the app is busy: a launcher whose rows
-/// come and go showed its field squashed or stretched. So the frame is pinned to the top-left
-/// rather than stretched, which a view laid out from its top shows right, and drawn again at the
-/// new height before the resize reaches the screen, in the same Core Animation transaction.
-pub fn fit_height(window: &Window, height: f32, cx: &mut App) -> bool {
+/// come and go showed its field squashed or stretched. So the frame is pinned to the kept corner
+/// rather than stretched, which a view laid out from that corner shows right, and drawn again at
+/// the new size before the resize reaches the screen, in the same Core Animation transaction.
+pub fn fit(window: &Window, extent: Size<Pixels>, corner: Corner, cx: &mut App) -> bool {
     let Some(view) = gpui_view(window) else {
         return false;
     };
     let Some(ns_window) = view.window() else {
         return false;
     };
-    view.setLayerContentsPlacement(NSViewLayerContentsPlacement::TopLeft);
-    let height = f64::from(height);
+    view.setLayerContentsPlacement(match (corner.top, corner.left) {
+        (true, true) => NSViewLayerContentsPlacement::TopLeft,
+        (true, false) => NSViewLayerContentsPlacement::TopRight,
+        (false, true) => NSViewLayerContentsPlacement::BottomLeft,
+        (false, false) => NSViewLayerContentsPlacement::BottomRight,
+    });
+    let (width, height) = (
+        f64::from(extent.width.as_f32()),
+        f64::from(extent.height.as_f32()),
+    );
     cx.spawn(async move |_: &mut AsyncApp| {
         let frame = ns_window.frame();
         let content = ns_window.contentRectForFrameRect(frame);
-        let chrome = frame.size.height - content.size.height;
         let mut fitted = frame;
-        fitted.size.height = height + chrome;
-        // Screen coordinates rise from the bottom: the top stays where it is as the bottom moves.
-        fitted.origin.y = frame.origin.y + frame.size.height - fitted.size.height;
+        fitted.size.width = width + frame.size.width - content.size.width;
+        fitted.size.height = height + frame.size.height - content.size.height;
+        // Screen coordinates rise from the bottom: a kept top moves the bottom, a kept right
+        // moves the left.
+        if corner.top {
+            fitted.origin.y = frame.origin.y + frame.size.height - fitted.size.height;
+        }
+        if !corner.left {
+            fitted.origin.x = frame.origin.x + frame.size.width - fitted.size.width;
+        }
         ns_window.setFrame_display(fitted, true);
         // GPUI heard the resize as it happened; its view draws its layer when asked to display it,
         // presenting in the transaction the new frame commits in.

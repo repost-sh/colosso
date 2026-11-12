@@ -8,7 +8,7 @@
 use gpui_kit::assets::IconName;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Focusable as _, IntoElement, ParentElement as _,
-    Render, Styled as _, WeakEntity, Window, div, px, size,
+    Pixels, Render, Size, Styled as _, WeakEntity, Window, div, px, size,
 };
 use koyo_agent::protocol::methods::{Catalog, Model, UpdateParams};
 use koyo_agent::protocol::model::Effort;
@@ -26,8 +26,8 @@ use crate::settings;
 use crate::settings_view::ticked_slider::ends_row;
 use crate::theme;
 
-const PANEL_WIDTH: f32 = 264.;
-const PANEL_HEIGHT: f32 = 86.;
+const PANEL_WIDTH: f32 = 254.;
+const PANEL_HEIGHT: f32 = 76.;
 
 /// What the dropdown holds: the slider, over the efforts of the model it opened on. It goes by what
 /// it was last moved to, ahead of what the thread says, which catches up.
@@ -67,6 +67,10 @@ impl Control for EffortSlider {
 }
 
 impl MenuBody for EffortPanel {
+    fn extent(&self, _: &Window, _: &App) -> Size<Pixels> {
+        size(px(PANEL_WIDTH), px(PANEL_HEIGHT))
+    }
+
     fn hears(&mut self, key: &str, cx: &mut Context<Self>) -> bool {
         match key {
             "left" => self.step(-1, cx),
@@ -160,7 +164,6 @@ impl ChatComposer {
         self.suggest = None;
         let composer = cx.weak_entity();
         self.effort_menu.toggle_panel(
-            size(px(PANEL_WIDTH), px(PANEL_HEIGHT)),
             |cx| {
                 cx.new(|_| EffortPanel {
                     composer,

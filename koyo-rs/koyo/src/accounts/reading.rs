@@ -21,8 +21,7 @@ fn bar(label: &str, window: &Value, measured_at: f64) -> Bar {
         label: label.to_owned().into(),
         percent: window.get("pct").and_then(Value::as_f64),
         resets_at: poll_policy::parse_reset_ts(window.get("resets_at").and_then(Value::as_str)),
-        ahead_of_pace: pace::compute_pace(Some(window), Some(measured_at))
-            .is_some_and(|pace| pace.ahead),
+        pace: pace::compute_pace(Some(window), Some(measured_at)).map(|pace| pace.expected_pct),
     }
 }
 
