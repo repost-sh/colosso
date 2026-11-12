@@ -1,10 +1,10 @@
 //! A GPUI window's `NSWindow`, for what GPUI doesn't do with it: growing a window down from its
-//! top, where GPUI's resize keeps the bottom edge, as `AppKit` does; and its traffic lights
-//! (`traffic_lights.rs`).
+//! top, where GPUI's resize keeps the bottom edge, as `AppKit` does; keeping a floating window to
+//! its Space; and its traffic lights (`traffic_lights.rs`).
 
 use gpui_kit::{AnyWindowHandle, App, AsyncApp, Window};
 use objc2::rc::Retained;
-use objc2_app_kit::{NSView, NSViewLayerContentsPlacement, NSWindow};
+use objc2_app_kit::{NSView, NSViewLayerContentsPlacement, NSWindow, NSWindowCollectionBehavior};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
 /// Makes `window`'s content `height` high, its top edge staying where it is; false when it has
@@ -69,10 +69,15 @@ pub fn refresh_edge(window: AnyWindowHandle, cx: &mut App) {
     .detach();
 }
 
-/// Has `window` go unseen while Koyo isn't the app in front, and come back with it: a dialog
-/// the person leaves for another app would else float over that app.
-pub fn hide_when_away(window: &Window) {
+/// Keeps a floating `window` to the Space it opens on, and unseen while Koyo isn't the app in
+/// front, coming back with it. GPUI has a pop-up panel join every Space (and full-screen ones), so
+/// a menu left open went with the person to another desktop, and a dialog floated over the app
+/// they went to. It may still show over a full-screen window of Koyo's.
+pub fn float_on_its_space(window: &Window) {
     if let Some(ns_window) = ns_window(window) {
+        ns_window.setCollectionBehavior(
+            NSWindowCollectionBehavior::Managed | NSWindowCollectionBehavior::FullScreenAuxiliary,
+        );
         ns_window.setHidesOnDeactivate(true);
     }
 }

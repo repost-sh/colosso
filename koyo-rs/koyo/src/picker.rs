@@ -9,15 +9,16 @@ use std::time::{Duration, Instant};
 use gpui_kit::component::{ActiveTheme as _, Icon};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, AnyWindowHandle, App, AppContext as _, BoxShadow, Context, Corners, DispatchPhase,
-    ElementId, FontWeight, Global, Hsla, InteractiveElement as _, IntoElement, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, PathBuilder, Pixels, Point,
-    Render, SpringConfig, SpringState, StatefulInteractiveElement as _, Styled as _, Subscription,
-    Window, canvas, div, ease_in_out, linear_color_stop, linear_gradient, point, px, size,
+    AnyElement, AnyWindowHandle, App, BoxShadow, Context, Corners, DispatchPhase, ElementId,
+    FontWeight, Global, Hsla, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent,
+    MouseMoveEvent, MouseUpEvent, ParentElement as _, PathBuilder, Pixels, Point, Render,
+    SpringConfig, SpringState, StatefulInteractiveElement as _, Styled as _, Subscription, Window,
+    canvas, div, ease_in_out, linear_color_stop, linear_gradient, point, px, size,
 };
 
 use crate::backdrop;
 use crate::gradient::{self, GradientTheme, MAX_OPACITY, MIN_OPACITY, PAD, PAGES, Swatch};
+use crate::popup;
 use crate::theme::{self, ThemePreference, gray};
 
 const WIDTH: f32 = 380.;
@@ -98,55 +99,20 @@ pub fn open(position: Point<Pixels>, window: &mut Window, cx: &mut App) {
         origin.y = origin.y.min(area.bottom() - px(HEIGHT)).max(area.top());
     }
     let bounds = gpui_kit::Bounds::new(origin, size(px(WIDTH), px(HEIGHT)));
-    let options = crate::modal::popup_options(bounds, false, window, cx);
-    let parent = window.window_handle();
-    let opened = cx.open_window(options, |picker_window, cx| {
-        cx.new(|cx| Picker {
-            _subscriptions: [
-                // Pressing the picker takes focus from the window behind, so either one
-                // losing it only closes the picker once focus has left them both.
-                cx.observe_window_activation(window, move |_, _, cx| close_once_left(parent, cx)),
-                cx.observe_window_activation(picker_window, move |_, _, cx| {
-                    close_once_left(parent, cx);
-                }),
-                cx.intercept_keystrokes(|event, _, cx| {
-                    if event.keystroke.key == "escape" {
-                        close(cx);
-                    }
-                }),
-            ],
-            drag: None,
-            shown: Vec::new(),
-            page: 0,
-            page_scroll: None,
-        })
-    });
-    if let Ok(handle) = opened {
-        cx.set_global(OpenPicker(Some(handle.into())));
-    }
-}
-
-/// Closes the picker if, once focus has settled, neither it nor `parent` holds it.
-fn close_once_left(parent: AnyWindowHandle, cx: &mut App) {
-    cx.spawn(async move |cx| {
-        // The window gaining focus only hears so after the one losing it.
-        cx.background_executor()
-            .timer(Duration::from_millis(50))
-            .await;
-        cx.update(|cx| {
-            let picker = cx.try_global::<OpenPicker>().and_then(|open| open.0);
-            // `App::active_window` only knows main windows, and the picker is a panel.
-            let focused = |window: AnyWindowHandle, cx: &mut App| {
-                window
-                    .update(cx, |_, window, _| window.is_window_active())
-                    .unwrap_or(false)
-            };
-            if picker.is_some_and(|picker| !focused(picker, cx) && !focused(parent, cx)) {
+    let opened = popup::open(bounds, false, Some(close), window, cx, |_, cx| Picker {
+        _escape: cx.intercept_keystrokes(|event, _, cx| {
+            if event.keystroke.key == "escape" {
                 close(cx);
             }
-        });
-    })
-    .detach();
+        }),
+        drag: None,
+        shown: Vec::new(),
+        page: 0,
+        page_scroll: None,
+    });
+    if let Some(handle) = opened {
+        cx.set_global(OpenPicker(Some(handle.into())));
+    }
 }
 
 /// Closes the picker, if open. It can't reach its own window from inside it.
@@ -212,7 +178,7 @@ pub struct Picker {
     page: usize,
     /// The page the swatch row scrolled from, and when, while it slides to `page`.
     page_scroll: Option<(f32, Instant)>,
-    _subscriptions: [Subscription; 3],
+    _escape: Subscription,
 }
 
 impl Picker {

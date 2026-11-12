@@ -9,13 +9,12 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use gpui_kit::{
-    Animation, AnimationExt as _, AnyElement, AnyWindowHandle, App, AppContext as _, Bounds,
-    Context, Div, FontWeight, Global, Hsla, IntoElement, ParentElement as _, Pixels, Render,
-    SharedString, Styled, Subscription, TextStyle, Window, div, ease_out_quint, img, point, px,
-    size,
+    Animation, AnimationExt as _, AnyElement, AnyWindowHandle, App, Bounds, Context, Div,
+    FontWeight, Global, Hsla, IntoElement, ParentElement as _, Pixels, Render, SharedString,
+    Styled, TextStyle, Window, div, ease_out_quint, img, point, px, size,
 };
 
-use crate::modal;
+use crate::popup;
 use crate::theme::{self, Palette};
 
 /// How long a card takes to fade in.
@@ -99,22 +98,11 @@ pub fn show(card: Card, anchor: Bounds<Pixels>, parent: &mut Window, cx: &mut Ap
         at.y.clamp(px(0.), (within.size.height - px(height)).max(px(0.))),
     );
     let bounds = Bounds::new(within.origin + at, size(px(width), px(height)));
-    let options = modal::popup_options(bounds, false, parent, cx);
-    let behind = parent.window_handle();
     let shown = card.clone();
-    let opened = cx.open_window(options, |_, cx| {
-        cx.new(|cx| Surface {
-            card: shown,
-            // The card goes once the window behind it isn't in front.
-            _behind: cx.observe_window_activation(parent, move |_, window, cx| {
-                if !window.is_window_active() && window.window_handle() == behind {
-                    hide(cx);
-                }
-            }),
-        })
+    let opened = popup::open(bounds, false, Some(hide), parent, cx, |_, _| Surface {
+        card: shown,
     });
-    if let Ok(handle) = opened {
-        modal::refresh_edge(handle.into(), cx);
+    if let Some(handle) = opened {
         cx.default_global::<OpenCard>().0 = Some((handle.into(), card));
     }
 }
@@ -157,7 +145,6 @@ fn label_width(name: Pixels) -> f32 {
 /// The glass a card sits on, and what it shows.
 struct Surface {
     card: Card,
-    _behind: Subscription,
 }
 
 impl Render for Surface {

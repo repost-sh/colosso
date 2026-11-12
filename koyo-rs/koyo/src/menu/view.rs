@@ -19,7 +19,7 @@ use crate::theme::{self, Palette};
 
 pub(super) struct Menu {
     pub(super) body: AnyView,
-    pub(super) _subscriptions: Vec<Subscription>,
+    pub(super) _keys: Subscription,
 }
 
 impl Render for Menu {
