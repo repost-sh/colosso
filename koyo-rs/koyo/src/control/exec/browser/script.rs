@@ -7,7 +7,7 @@ use koyo_app_control::ControlError;
 use serde_json::{Value, json};
 
 use super::super::Caller;
-use super::page::{Page, call};
+use super::page::{CALL_LIMIT, PROMISE_LIMIT, Page, call_within};
 
 /// The attribute a snapshot marks elements with, `eN`.
 const REF_ATTRIBUTE: &str = "data-koyo-ref";
@@ -32,7 +32,12 @@ pub(super) async fn evaluate(
         "awaitPromise": await_promise,
         "userGesture": caller.is_some(),
     });
-    let answer = call(page, caller, "Runtime.evaluate", params, cx).await?;
+    let limit = if await_promise {
+        PROMISE_LIMIT
+    } else {
+        CALL_LIMIT
+    };
+    let answer = call_within(page, caller, "Runtime.evaluate", params, limit, cx).await?;
     if let Some(exception) = answer.get("exceptionDetails") {
         let text = (exception.pointer("/exception/description"))
             .or_else(|| exception.get("text"))

@@ -1,5 +1,6 @@
 //! The page an agent means, the pages listed, a page's lease, moving a page, and waiting on
-//! it; and the protocol call every operation here makes, its refusals in app control's words.
+//! it; and the protocol call every operation here makes, within its time limit, its refusals
+//! in app control's words (`refusals.rs`).
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -15,8 +16,8 @@ use koyo_app_control::ops::browser::{
 use serde_json::Value;
 
 use super::super::{Caller, Exec, main_shell, output, window_closed};
-use super::script;
-use crate::browser::agent::{self, Actor, AgentError, Go, Mode, Refused};
+use super::{refusals, script};
+use crate::browser::agent::{self, Actor, Answer, Go, Mode, Refused};
 use crate::browser::{self, BrowserView};
 
 /// How often a wait looks at the page again.
@@ -56,7 +57,7 @@ impl Listed {
     fn page(&self) -> Result<Page, ControlError> {
         match self {
             Listed::Page(page) => Ok(page.clone()),
-            Listed::Unshown(_) => Err(not_open()),
+            Listed::Unshown(info) => Err(refusals::unshown(info.pane)),
         }
     }
 }
@@ -162,25 +163,14 @@ pub(super) fn refused(refused: Refused) -> ControlError {
     }
 }
 
-/// Why a protocol command didn't run, in app control's words.
-fn failed(error: AgentError) -> ControlError {
-    match error {
-        AgentError::Refused(why) => refused(why),
-        AgentError::NotOpen => not_open(),
-    }
-}
+/// The longest a protocol command waits for the page, well within the client's own wait for
+/// the whole call (`koyo_app_control::CALL_TIMEOUT`, 100 s), so the agent hears why.
+pub(super) const CALL_LIMIT: Duration = Duration::from_secs(30);
+/// As long for a script whose promise is awaited, which may wait on the page or the network.
+pub(super) const PROMISE_LIMIT: Duration = Duration::from_secs(90);
 
-/// The page isn't open in the browser engine: one an agent opened is as soon as the engine
-/// runs; any other, a tab brought back at launch say, once its tab is shown.
-fn not_open() -> ControlError {
-    ControlError::browser_unavailable(
-        "The page isn't open in the browser engine yet. A page opened by an agent opens as \
-         soon as the engine runs: try again shortly. Any other opens once its tab is shown \
-         (tab_select or pane_focus).",
-    )
-}
-
-/// Runs `method` on `page`, under its lease for `caller` when `acts`: its result.
+/// Runs `method` on `page`, under its lease for `caller` when `acts`: its result, or
+/// `timeout` once it has waited [`CALL_LIMIT`].
 pub(super) async fn call(
     page: &Page,
     caller: Option<&Caller>,
@@ -188,14 +178,39 @@ pub(super) async fn call(
     params: Value,
     cx: &mut AsyncApp,
 ) -> Result<Value, ControlError> {
+    call_within(page, caller, method, params, CALL_LIMIT, cx).await
+}
+
+// Every command ends within the client's own wait, and a page out of sight stays on screen for
+// the engine through any one call (`AWAKE_FOR`): its longest command, and a wait for a load.
+const _: () = {
+    assert!(CALL_LIMIT.as_millis() < PROMISE_LIMIT.as_millis());
+    assert!(PROMISE_LIMIT.as_millis() < koyo_app_control::CALL_TIMEOUT.as_millis());
+    assert!(PROMISE_LIMIT.as_millis() <= agent::AWAKE_FOR.as_millis());
+    assert!(Duration::from_millis(MAX_TIMEOUT_MS).as_millis() <= agent::AWAKE_FOR.as_millis());
+};
+
+/// As [`call`], waiting `limit` at most.
+pub(super) async fn call_within(
+    page: &Page,
+    caller: Option<&Caller>,
+    method: &str,
+    params: Value,
+    limit: Duration,
+    cx: &mut AsyncApp,
+) -> Result<Value, ControlError> {
     let actor = caller.map(Caller::actor);
-    let answered = cx.update(|cx| agent::cdp(&page.view, actor.as_ref(), method, params, cx));
-    match answered.map_err(failed)?.await {
-        Ok(Ok(value)) => Ok(value),
-        Ok(Err(why)) => Err(ControlError::browser_unavailable(why)),
-        Err(_canceled) => Err(ControlError::browser_unavailable(
+    let asked = cx.update(|cx| agent::cdp(&page.view, actor.as_ref(), method, params, limit, cx));
+    match asked
+        .map_err(|error| refusals::failed(error, page.pane))?
+        .await
+    {
+        Answer::Answered(Ok(value)) => Ok(value),
+        Answer::Answered(Err(why)) => Err(ControlError::browser_unavailable(why)),
+        Answer::Stopped => Err(ControlError::browser_unavailable(
             "The browser engine stopped before it answered.",
         )),
+        Answer::TimedOut => Err(refusals::timed_out(method, limit)),
     }
 }
 
@@ -359,6 +374,9 @@ pub(crate) fn wait(
     Ok(Exec::Later(cx.spawn(async move |cx: &mut AsyncApp| {
         let started = Instant::now();
         loop {
+            // What it waits for may need the page's frames, as an animated page's next step
+            // does: it's on screen for the engine while the agent waits on it.
+            cx.update(|cx| page.view.update(cx, BrowserView::agent_uses));
             let met = met(&page, until, &value, cx).await?;
             if met || started.elapsed() >= limit {
                 return output(&BrowserWaitOutput {

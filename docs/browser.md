@@ -179,9 +179,11 @@ once shown, whoever opened it before.
 
 `browser_list` lists a restored page whose tab wasn't shown yet, with its kept address and
 title, `loading: false` and a 0 × 0 viewport. Every browser tool that names it, or means it
-for lack of another, answers `browser_unavailable` until its tab is shown (`tab_select`,
-`pane_focus`), as a page the host hasn't opened yet does (`docs/app-control.md` 11). Showing
-the tab is what makes the page, so the tools don't make one of their own.
+for lack of another, answers `browser_unavailable` until its tab is shown, not retryable: its
+message says to show the tab (`tab_select`, `pane_focus`) or open a new page, since trying
+again alone never loads it (2026-11-12; an engine still starting is the retryable case,
+`docs/app-control.md` 11). Showing the tab is what makes the page, so the tools don't make
+one of their own.
 
 ## 7. What doesn't come back [decided]
 

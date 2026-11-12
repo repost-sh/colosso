@@ -9,6 +9,7 @@ use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 
 use futures::channel::oneshot;
+use futures::future::{self, Either};
 use gpui_kit::{App, AppContext as _, Context, Entity, Global, Task, WeakEntity};
 use koyo_browser_ipc::client::Connection;
 use koyo_browser_ipc::{AppRequest, PaneId, PixelSize};
@@ -40,6 +41,17 @@ pub enum HostStatus {
 
 /// What a Chrome `DevTools` protocol command answers: its result, or why it failed.
 pub type CdpResult = Result<serde_json::Value, String>;
+
+/// How a protocol command waited for at most a while ended ([`Browsers::ask`]).
+#[derive(Debug, PartialEq)]
+pub enum Answer {
+    /// The page answered, or Chromium said why it couldn't.
+    Answered(CdpResult),
+    /// The engine stopped before it answered.
+    Stopped,
+    /// No answer came within the limit, and the app stopped waiting for it.
+    TimedOut,
+}
 
 enum Host {
     Idle,
@@ -237,12 +249,48 @@ impl Browsers {
         method: &str,
         params: serde_json::Value,
     ) -> oneshot::Receiver<CdpResult> {
+        self.send_call(pane, method, params).1
+    }
+
+    /// Runs a protocol command on `pane`'s page and waits for its answer, at most `limit`.
+    /// Past it the app stops waiting, and an answer that comes later goes nowhere; the host
+    /// lets go of its own note of the command once Chromium answers or the page closes.
+    pub fn ask(
+        &mut self,
+        pane: PaneId,
+        method: &str,
+        params: serde_json::Value,
+        limit: Duration,
+        cx: &mut Context<Self>,
+    ) -> Task<Answer> {
+        let (call, answered) = self.send_call(pane, method, params);
+        let late = cx.background_executor().timer(limit);
+        cx.spawn(
+            async move |this, cx| match future::select(answered, late).await {
+                Either::Left((Ok(result), _)) => Answer::Answered(result),
+                Either::Left((Err(oneshot::Canceled), _)) => Answer::Stopped,
+                Either::Right(((), _)) => {
+                    let _ = this.update(cx, |this, _| this.calls.remove(&call));
+                    Answer::TimedOut
+                }
+            },
+        )
+    }
+
+    /// Sends a protocol command: its number, and the channel its answer arrives on, at once
+    /// when the host isn't running.
+    fn send_call(
+        &mut self,
+        pane: PaneId,
+        method: &str,
+        params: serde_json::Value,
+    ) -> (u64, oneshot::Receiver<CdpResult>) {
         let (answer, answered) = oneshot::channel();
         #[cfg(test)]
         self.asked.push((pane, method.to_owned(), params.clone()));
         if !matches!(self.host, Host::Running { .. } | Host::Starting) {
             let _ = answer.send(Err("The browser engine is not running.".into()));
-            return answered;
+            return (0, answered);
         }
         self.next_call += 1;
         let call = self.next_call;
@@ -253,7 +301,13 @@ impl Browsers {
             method: method.into(),
             params,
         });
-        answered
+        (call, answered)
+    }
+
+    /// How many protocol commands wait for their answer, for a test to read.
+    #[cfg(test)]
+    pub(super) fn calls_waiting(&self) -> usize {
+        self.calls.len()
     }
 
     /// Fails every agent command under way.

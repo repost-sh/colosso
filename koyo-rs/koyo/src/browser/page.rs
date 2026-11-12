@@ -1,7 +1,8 @@
 //! The page itself, as an element: its latest frame drawn in the window's own frame, at the
 //! pane's size (or, in responsive mode, at the size chosen, scaled to fit and centred), and
-//! every pointer event over it. The page counts as on screen while the element is drawn
-//! (`Shown`, in its state): a pane that isn't drawn takes its page out of sight.
+//! every pointer event over it. The page counts as on screen while the element is drawn with
+//! no notice over it, frame or not (`Shown`, in its state): a pane that isn't drawn takes its
+//! page out of sight, unless an agent is using it (`view/sight.rs`).
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
@@ -150,21 +151,25 @@ impl Element for PageSurface {
         }
         let (pane, frame, cursor, open) = {
             let view = self.view.read(cx);
-            let frame = (view.frame.clone()).filter(|_| view.shows_frames() && !self.covered);
+            let frame = (view.frame.clone()).filter(|_| view.shows_frames());
             (view.pane, frame, view.cursor, view.is_open(cx))
         };
-        if let Some(frame) = frame {
+        // Drawn with nothing over it, the page is on screen whether or not a frame is in yet:
+        // one opened out of sight, or hidden before it painted, paints once it's shown.
+        if !self.covered {
             let key = ElementId::NamedInteger("browser-page-view".into(), pane);
             let owner = self.view.downgrade();
             let shown = window.use_keyed_state(key, cx, |_, cx| Shown::new(owner, cx));
-            frame.paint(bounds, placed.fit, window);
+            if let Some(frame) = frame {
+                frame.paint(bounds, placed.fit, window);
+            }
             let shown = shown.downgrade();
             let view = self.view.read(cx);
             // An update counts as a change to the view, so it's made only when one happened.
             if view.shown.as_ref() != Some(&shown) || view.visible != Some(true) {
                 self.view.update(cx, |view, cx| {
                     view.shown = Some(shown);
-                    view.set_visible(true, cx);
+                    view.tell_sight(cx);
                 });
             }
         }

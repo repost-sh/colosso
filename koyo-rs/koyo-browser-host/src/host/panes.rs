@@ -217,7 +217,8 @@ pub(crate) fn found(pane: PaneId, count: i32, active: i32) {
     });
 }
 
-/// A page out of sight stops painting; back in sight it paints afresh.
+/// A page out of sight stops painting; back in sight it paints afresh. A page whose browser
+/// is still to come is told once it arrives (`browser_created`).
 pub(super) fn visible(pane: PaneId, visible: bool) {
     with_pane(pane, |p| p.shown = visible);
     #[cfg(target_os = "macos")]
@@ -275,20 +276,22 @@ pub(super) fn close(pane: PaneId) {
 /// The pane's browser exists; requests that need it work from now on.
 pub(crate) fn browser_created(pane: PaneId, browser: &Browser) {
     let mut waiting = Vec::new();
-    let closing = with(|host| match host.panes.get_mut(&pane) {
-        Some(p) => {
-            p.browser = Some(browser.clone());
-            waiting = std::mem::take(&mut p.waiting);
-            host.shutting_down
-        }
-        None => true,
-    });
+    let (closing, hidden) = with(|host| {
+        let p = host.panes.get_mut(&pane)?;
+        p.browser = Some(browser.clone());
+        waiting = std::mem::take(&mut p.waiting);
+        Some((host.shutting_down, !p.shown))
+    })
+    .flatten()
+    .unwrap_or((true, false));
     // Closed or shutting down before it arrived.
-    if closing != Some(false)
-        && let Some(host) = browser.host()
-    {
+    if closing && let Some(host) = browser.host() {
         host.close_browser(1);
         return;
+    }
+    // Out of sight before it arrived: Chromium is told now, as it would have been then.
+    if hidden {
+        visible(pane, false);
     }
     for request in waiting {
         handle(request);

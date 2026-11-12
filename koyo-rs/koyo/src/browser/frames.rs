@@ -140,7 +140,7 @@ impl Frame {
 
 /// A page drawn in a window, kept by the page element for as long as it's drawn: once it
 /// isn't, the page is out of sight, and the host stops painting it, unless it's drawn
-/// elsewhere since.
+/// elsewhere since or an agent is using it (`view/sight.rs`).
 pub struct Shown;
 
 impl Shown {
@@ -154,7 +154,7 @@ impl Shown {
                     .is_some_and(|shown| shown.entity_id() == me)
                 {
                     page.shown = None;
-                    page.set_visible(false, cx);
+                    page.tell_sight(cx);
                 }
             });
         })

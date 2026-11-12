@@ -8,7 +8,7 @@
 
 use std::time::{Duration, Instant};
 
-use gpui_kit::Context;
+use gpui_kit::{AsyncApp, Context, WeakEntity};
 
 use super::view::BrowserView;
 
@@ -196,21 +196,9 @@ impl BrowserView {
             return;
         }
         let task = cx.spawn(async move |this, cx| {
-            // Sleeps to the deadline, and on to it again each time an act moved it.
-            loop {
-                let left = this.read_with(cx, |this, cx| {
-                    let (until, _) = this.lapse.as_ref()?;
-                    Some(until.saturating_duration_since(cx.background_executor().now()))
-                });
-                match left {
-                    Ok(Some(left)) if !left.is_zero() => {
-                        cx.background_executor().timer(left).await;
-                    }
-                    Ok(Some(_)) => break,
-                    Ok(None) | Err(_) => return,
-                }
+            if sleep_until(&this, |this| Some(this.lapse.as_ref()?.0), cx).await {
+                let _ = this.update(cx, BrowserView::give_back);
             }
-            let _ = this.update(cx, BrowserView::give_back);
         });
         self.lapse = Some((until, task));
     }
@@ -223,7 +211,8 @@ impl BrowserView {
         cx.notify();
     }
 
-    /// `actor`, an agent, asks to drive the page.
+    /// `actor`, an agent, asks to drive the page; one it drives is on screen for the engine
+    /// a while, drawn or not (`view/sight.rs`).
     pub fn agent_claims(
         &mut self,
         actor: Actor,
@@ -232,6 +221,9 @@ impl BrowserView {
         cx: &mut Context<Self>,
     ) -> Result<(), Refused> {
         let claimed = self.control.agent_claims(actor, takeover, reason);
+        if claimed.is_ok() {
+            self.agent_uses(cx);
+        }
         cx.notify();
         claimed
     }
@@ -240,6 +232,26 @@ impl BrowserView {
     pub fn agent_releases(&mut self, actor: &Actor, cx: &mut Context<Self>) {
         self.control.agent_releases(actor);
         cx.notify();
+    }
+}
+
+/// Sleeps until the deadline `deadline` reads from the page, and on to it again each time it
+/// moved meanwhile, so one task waits however often it moves: whether it passed, rather than
+/// the deadline or the page going first.
+pub(super) async fn sleep_until(
+    page: &WeakEntity<BrowserView>,
+    deadline: fn(&BrowserView) -> Option<Instant>,
+    cx: &mut AsyncApp,
+) -> bool {
+    loop {
+        let left = page.read_with(cx, |page, cx| {
+            Some(deadline(page)?.saturating_duration_since(cx.background_executor().now()))
+        });
+        match left {
+            Ok(Some(left)) if !left.is_zero() => cx.background_executor().timer(left).await,
+            Ok(Some(_)) => return true,
+            Ok(None) | Err(_) => return false,
+        }
     }
 }
 
