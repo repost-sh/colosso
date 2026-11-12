@@ -163,9 +163,10 @@ reached only from `phone/`: its API is unstable below 0.2.
   RSD handshake), on a thread of the host's own with its own runtime; the stream is read by a
   task of its own, so nothing the session waits on holds it up. No network interface is made;
   nothing is installed on the device. Ready in 0.5-1.5 s [measured].
-- What must be true first, each told apart so the setup shows the one step missing: connected by
-  cable; trusted; Developer Mode on; iOS or iPadOS 27 or later; the developer image there. When
-  connecting fails the host asks `devicectl list devices` once for which (`phone/checks.rs`).
+- What must be true first, each a step of the person's, told apart so the setup shows the one
+  missing: connected by cable; trusted; Developer Mode on; iOS or iPadOS 27 or later
+  (`real::STEPS`). When connecting fails the host asks `devicectl list devices` for which
+  (`phone/checks.rs`).
 - A device the list says misses one of those isn't started [built]: the app holds its host back
   and says the step in its tab, as the host would have, and an agent's call on it (`device_open`
   and every other) is answered `device_needs_person` with the step at once, with no sheet put
@@ -174,6 +175,17 @@ reached only from `phone/`: its API is unstable below 0.2.
   (QR10, on the owner's iPhone 14 Pro on iOS 26.6.1: listed with "update it in Settings →
   General → Software Update", five tools refused with it, no host, its tunnel left
   disconnected). Once the list says nothing is missing, its tab starts by itself.
+- The developer image is no step of the person's [built]. After a restart it isn't mounted, and
+  nothing of the stream or the input is there. The host's own question of the device's displays
+  through `devicectl`, asked as it starts, mounts it (measured on the owner's iPhone, updated to
+  iOS 27.2.1: `lockState` alone didn't, `device info displays` did in four seconds), and a
+  connection that failed for want of it, or without a name, is made once more once that's
+  answered. `ddiServicesAvailable` in `devicectl`'s list doesn't say whether it's mounted: it is
+  true only while a tunnel of `devicectl`'s stands, false whenever nothing is asking, so the
+  list isn't read for it (`real::first_missing`); only a host that couldn't connect says it
+  (`real::services_down`). Read as a step for an afternoon, with the start held back for it,
+  the updated iPhone was listed "Not ready" and could never become so. The setup has four
+  rows: its fifth, "Developer services: nothing to do", is gone.
 - The device's own screen stream (sound first, then video on the same session), decoded by the
   Mac's hardware decoder in its own format and made BGRA in one surface of the host's, which the
   ring turns upright by the LCD's own turn. The feedback the device is owed: every picture
@@ -242,7 +254,7 @@ reached only from `phone/`: its API is unstable below 0.2.
   `device_list` reads that list while the watcher keeps it. Nothing else polls but a device's
   setup, and only for the steps no plug says. A real device is no simulator: no limit, no share
   of the simulators running at once. A tab that ended for a step the list sees (unplugged, the
-  cable, trust, Developer Mode, the system, the developer services) starts again by itself once a
+  cable, trust, Developer Mode, the system) starts again by itself once a
   listing begun after it ended says the device is ready: three times at most until it stands
   ready or the person starts it, so a host that disagrees with the list is never started in a
   loop; what the list can't see (another app holding the device) waits for Start Again.
@@ -454,9 +466,8 @@ Five rows, each ticked the moment `devicectl` lists it so: connected by cable; t
 it, tap Trust and enter its passcode"); Developer Mode (Settings → Privacy & Security → Developer
 Mode; what it is, that it lowers the device's guard, the restart and Turn On, and that the switch
 shows only once a Mac with Xcode has seen the device); iOS or iPadOS 27 or later (Settings →
-General → Software Update); its developer services (nothing to do: they start once it's
-unlocked). It lists again at each plug, and at the steps no plug says (trust, Developer Mode, the
-services) every two seconds while open with Koyo in front and at once when Koyo comes forward;
+General → Software Update). It lists again at each plug, and at the steps no plug says (trust,
+Developer Mode) every two seconds while open with Koyo in front and at once when Koyo comes forward;
 `Check Again` for the impatient. Koyo changes no setting on the
 device: each step is the person's. A picture of each Settings screen beside its step isn't there:
 it would be a picture of a device.
