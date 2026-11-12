@@ -53,8 +53,8 @@ in `koyo-rs/koyo/src/launcher/` and `koyo-rs/koyo/src/history/`.
   - Desktop: Enter shows the agent desktop's tab, the one there is or a new one, whatever
     is typed. Nothing is listed under the field.
   - Device: the rows are the device tabs open, then Koyo's own simulators no tab shows, then
-    the iPhones and iPads plugged in no tab shows ("Needs setup" beside one that misses a
-    step), those whose names hold every word typed (the simulators are read again each time
+    the iPhones and iPads plugged in no tab shows (the step's label beside one that misses a
+    step: "Needs update"), those whose names hold every word typed (the simulators are read again each time
     the kind is picked; the devices as the plug watcher keeps them). A device picked opens in
     its own tab and starts; an open one is switched to.
     Enter with no row picked opens a device tab on its picker.
