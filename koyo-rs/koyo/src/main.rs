@@ -35,6 +35,7 @@ mod new_worktree;
 mod orca;
 mod pane;
 mod picker;
+mod popup;
 mod projects;
 mod quitting;
 mod responsive;
@@ -126,7 +127,7 @@ fn open_main_window(cx: &mut App) -> gpui_kit::Result<()> {
         // gpui-kit's root paints the theme background by default, covering the blur.
         cx.new(|cx| Root::new(shell, window, cx).bg(transparent_black()))
     })?;
-    modal::refresh_edge(opened.into(), cx);
+    popup::refresh_edge(opened.into(), cx);
     Ok(())
 }
 

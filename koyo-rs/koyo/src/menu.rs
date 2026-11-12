@@ -7,7 +7,6 @@
 
 use std::cell::Cell;
 use std::rc::Rc;
-use std::time::Duration;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::base::ElementExt as _;
@@ -19,6 +18,7 @@ use gpui_kit::{
 };
 
 use self::view::{Menu, Rows};
+use crate::popup;
 use crate::theme;
 use crate::wrapped::wrapped_lines;
 
@@ -43,9 +43,6 @@ const ROW_ROOM: f32 = ROW_PADDING * 2. + ICON + ROW_GAP;
 /// What a shortcut takes of a row, and the gap before it: a row's label is measured for what's left.
 const SHORTCUT: f32 = 50.;
 const SHORTCUT_ROOM: f32 = SHORTCUT + ROW_GAP;
-/// How long the parent window may be inactive before the menu takes it as left, in ms:
-/// long enough for the menu's own activation to arrive after a click on a row.
-const ACTIVATION_GRACE: u64 = 80;
 /// What's clear on each side of the line that sets a switch's row apart, and all it takes of a menu.
 const SEPARATOR_MARGIN: f32 = 4.;
 const SEPARATOR: f32 = 1. + SEPARATOR_MARGIN * 2.;
@@ -99,7 +96,9 @@ fn separated(rows: &[(MenuItem, Option<Kbd>)], index: usize) -> bool {
 }
 
 /// What a menu's window holds, which hears the keys it has a use for ahead of the window that has
-/// them. Escape closes any menu, and so does Enter on a body with no use for it.
+/// them. Escape closes any menu, and so does Enter on a body with no use for it. The window pads
+/// it by [`PADDING`] all round: a body adds none of its own, and the extent it's opened at counts
+/// that padding.
 pub trait MenuBody: Render {
     fn hears(&mut self, key: &str, cx: &mut Context<Self>) -> bool;
 }
@@ -234,19 +233,6 @@ pub(crate) fn row_center(index: usize) -> gpui_kit::Point<Pixels> {
     )
 }
 
-/// Whether the open menu's own window is the active one now.
-fn menu_is_active(cx: &mut App) -> bool {
-    let Some(menu) = cx
-        .try_global::<OpenMenu>()
-        .and_then(|open| open.0.as_ref())
-        .map(|(_, menu)| *menu)
-    else {
-        return false;
-    };
-    menu.update(cx, |_, window, _| window.is_window_active())
-        .unwrap_or(false)
-}
-
 fn is_open(id: &ElementId, cx: &App) -> bool {
     cx.try_global::<OpenMenu>()
         .and_then(|open| open.0.as_ref())
@@ -317,66 +303,38 @@ fn open_surface<B: MenuBody>(
         anchor.bottom() + px(GAP)
     };
     let origin = window.bounds().origin + point(left, top);
-    let options = crate::modal::popup_options(Bounds::new(origin, extent), false, window, cx);
-    let menu = cx.new(|cx: &mut Context<Menu>| {
-        let hearing = body.downgrade();
-        Menu {
-            _subscriptions: vec![
-                // The parent window keeps focus while the menu is up, so it hears Escape and
-                // knows when the user leaves for another window or app. A click on a row makes
-                // the menu's own window the active one instead, a moment after the parent loses
-                // it, so the menu waits for that before taking the loss as leaving.
-                cx.observe_window_activation(window, |_, window, cx| {
-                    if window.is_window_active() {
-                        return;
-                    }
-                    cx.spawn(async move |_, cx| {
-                        cx.background_executor()
-                            .timer(Duration::from_millis(ACTIVATION_GRACE))
-                            .await;
-                        cx.update(|cx| {
-                            if !menu_is_active(cx) {
-                                close(cx);
-                            }
-                        });
-                    })
-                    .detach();
-                }),
-                cx.intercept_keystrokes(move |event, _, cx| {
-                    if event.keystroke.modifiers.modified() {
-                        return;
-                    }
-                    let key = event.keystroke.key.as_str();
-                    let heard = hearing
-                        .update(cx, |body, cx| body.hears(key, cx))
-                        .unwrap_or(false);
-                    let closing = !heard && matches!(key, "escape" | "enter");
-                    if closing {
-                        close(cx);
-                    }
-                    if heard || closing {
-                        cx.stop_propagation();
-                    }
-                }),
-            ],
-            body: body.into(),
-        }
-    });
-    let Ok(handle) = cx.open_window(options, |_, _| menu.clone()) else {
-        return;
-    };
-    cx.set_global(OpenMenu(Some((id, handle.into()))));
-    // Once the menu's own window is the active one, losing that is leaving too.
-    handle
-        .update(cx, |menu, window, cx| {
-            let left = cx.observe_window_activation(window, |_, window, cx| {
-                if !window.is_window_active() {
+    let hearing = body.downgrade();
+    let opened = popup::open(
+        Bounds::new(origin, extent),
+        false,
+        Some(close),
+        window,
+        cx,
+        |_, cx: &mut Context<Menu>| Menu {
+            // The window behind keeps focus while the menu is up, so it hears the keys: the
+            // menu's own, and Escape and Enter, which close it.
+            _keys: cx.intercept_keystrokes(move |event, _, cx| {
+                if event.keystroke.modifiers.modified() {
+                    return;
+                }
+                let key = event.keystroke.key.as_str();
+                let heard = hearing
+                    .update(cx, |body, cx| body.hears(key, cx))
+                    .unwrap_or(false);
+                let closing = !heard && matches!(key, "escape" | "enter");
+                if closing {
                     close(cx);
                 }
-            });
-            menu._subscriptions.push(left);
-        })
-        .ok();
+                if heard || closing {
+                    cx.stop_propagation();
+                }
+            }),
+            body: body.into(),
+        },
+    );
+    if let Some(handle) = opened {
+        cx.set_global(OpenMenu(Some((id, handle.into()))));
+    }
 }
 
 /// How wide a menu is, for its longest row within what a menu can be, and how tall its rows then

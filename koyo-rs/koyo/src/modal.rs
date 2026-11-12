@@ -1,10 +1,8 @@
 //! Dialogs on glass. A dialog sits in a blurred window of its own over the window that opened
 //! it, like the menus and the theme picker, so the desktop shows through it, tinted with the
-//! palette so it follows light and dark. One is open at a time; Escape closes it, and so do a
-//! press in the window behind it and focus leaving them both. Also the pieces dialogs are made
-//! of.
-
-use std::time::Duration;
+//! palette so it follows light and dark; it floats as the app's floating windows do
+//! (`popup.rs`). One is open at a time; Escape closes it, and so do a press in the window behind
+//! it and focus leaving them both. Also the pieces dialogs are made of.
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::Sizable as _;
@@ -12,10 +10,10 @@ use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::{
     AnyElement, AnyView, AnyWindowHandle, App, AppContext as _, Context, Entity, FontWeight,
     Global, InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString, Styled,
-    Subscription, TextStyle, Window, WindowBackgroundAppearance, WindowBounds, WindowKind,
-    WindowOptions, div, point, px, size,
+    Subscription, TextStyle, Window, div, point, px, size,
 };
 
+use crate::popup;
 use crate::shell::icon;
 use crate::theme::{self, Palette};
 use crate::wrapped::wrapped_lines;
@@ -205,78 +203,31 @@ fn open_at<V: Render>(
             px(top).min(frame.size.height - px(height)).max(px(0.)),
         );
     let bounds = gpui_kit::Bounds::new(origin, size(px(width), px(height)));
-    let options = popup_options(bounds, true, parent, cx);
-    let parent_handle = parent.window_handle();
-    let opened = cx.open_window(options, |window, cx| {
+    // A kept dialog stays while the person is away; another closes once they've left it.
+    let leaving: Option<popup::Close> = (!kept).then_some(close);
+    let opened = popup::open(bounds, true, leaving, parent, cx, |window, cx| {
         let content = cx.new(|cx| build(window, cx));
-        #[cfg(target_os = "macos")]
-        if kept {
-            crate::native::window::hide_when_away(window);
+        // The dialog holds focus, so Escape usually arrives in its own window.
+        let escape = cx.intercept_keystrokes(|event, window, cx| {
+            if event.keystroke.key != "escape" {
+                return;
+            }
+            let open = cx.default_global::<OpenModal>().0;
+            if open == Some(window.window_handle()) {
+                dismiss(window, cx);
+            } else {
+                close(cx);
+            }
+        });
+        Surface {
+            content: content.into(),
+            padding,
+            _escape: escape,
         }
-        cx.new(|cx| {
-            // The dialog holds focus, so Escape usually arrives in its own window.
-            let escape = cx.intercept_keystrokes(|event, window, cx| {
-                if event.keystroke.key != "escape" {
-                    return;
-                }
-                let open = cx.default_global::<OpenModal>().0;
-                if open == Some(window.window_handle()) {
-                    dismiss(window, cx);
-                } else {
-                    close(cx);
-                }
-            });
-            let mut subscriptions = vec![escape];
-            if !kept {
-                subscriptions.push(cx.observe_window_activation(parent, move |_, _, cx| {
-                    close_once_left(parent_handle, cx);
-                }));
-                subscriptions.push(cx.observe_window_activation(window, move |_, _, cx| {
-                    close_once_left(parent_handle, cx);
-                }));
-            }
-            Surface {
-                content: content.into(),
-                padding,
-                _subscriptions: subscriptions,
-            }
-        })
     });
-    if let Ok(handle) = opened {
-        refresh_edge(handle.into(), cx);
+    if let Some(handle) = opened {
         cx.set_global(OpenModal(Some(handle.into())));
     }
-}
-
-/// What a glass window over `parent` opens with, at `bounds` on its screen: no title bar, not
-/// moved or resized, and taking the keyboard if it should `focus`.
-pub fn popup_options(
-    bounds: gpui_kit::Bounds<gpui_kit::Pixels>,
-    focus: bool,
-    parent: &Window,
-    cx: &App,
-) -> WindowOptions {
-    WindowOptions {
-        window_bounds: Some(WindowBounds::Windowed(bounds)),
-        titlebar: None,
-        focus,
-        kind: WindowKind::PopUp,
-        is_movable: false,
-        is_resizable: false,
-        is_minimizable: false,
-        window_background: WindowBackgroundAppearance::Blurred,
-        display_id: parent.display(cx).map(|display| display.id()),
-        ..Default::default()
-    }
-}
-
-/// Has a window just opened drawn with its edge as it looks once drawn, not as its first frame
-/// left it (`native::window::refresh_edge`); off macOS there's nothing to do.
-pub fn refresh_edge(window: AnyWindowHandle, cx: &mut App) {
-    #[cfg(target_os = "macos")]
-    crate::native::window::refresh_edge(window, cx);
-    #[cfg(not(target_os = "macos"))]
-    let _ = (window, cx);
 }
 
 /// Closes the dialog, from outside it. It can't reach its own window from inside it.
@@ -310,34 +261,12 @@ pub fn dismiss(window: &mut Window, cx: &mut App) {
     window.remove_window();
 }
 
-/// Closes the dialog if, once focus has settled, neither it nor `parent` holds it.
-fn close_once_left(parent: AnyWindowHandle, cx: &mut App) {
-    cx.spawn(async move |cx| {
-        // The window gaining focus only hears so after the one losing it.
-        cx.background_executor()
-            .timer(Duration::from_millis(50))
-            .await;
-        cx.update(|cx| {
-            let open = cx.try_global::<OpenModal>().and_then(|open| open.0);
-            let focused = |window: AnyWindowHandle, cx: &mut App| {
-                window
-                    .update(cx, |_, window, _| window.is_window_active())
-                    .unwrap_or(false)
-            };
-            if open.is_some_and(|open| !focused(open, cx) && !focused(parent, cx)) {
-                close(cx);
-            }
-        });
-    })
-    .detach();
-}
-
 /// The glass a dialog's view sits on.
 struct Surface {
     content: AnyView,
     /// The room round the view.
     padding: f32,
-    _subscriptions: Vec<Subscription>,
+    _escape: Subscription,
 }
 
 impl Render for Surface {
