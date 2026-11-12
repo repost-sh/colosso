@@ -182,6 +182,8 @@ impl Devices {
             return link.clone();
         }
         let link = cx.new(|cx| Link::new(udid.to_owned(), name.to_owned(), phone, cx));
+        let misses = self.misses(udid).cloned();
+        link.update(cx, |link, cx| link.set_misses(misses, cx));
         // Said when it takes or lets go of its simulator, not at every change of the link; let
         // go, the set is listed again: the simulator is down.
         let mut held = false;

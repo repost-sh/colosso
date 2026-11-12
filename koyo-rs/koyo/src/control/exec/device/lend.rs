@@ -40,8 +40,13 @@ pub(super) fn usable(caller: &Caller, udid: &str, cx: &mut App) -> Result<(), Co
     let Some((name, kind)) = real(udid, cx) else {
         return Ok(());
     };
-    let agent = caller.actor();
+    // Listed with a step missing: said at once, with no question put to the person for a device
+    // that can't be used, and nothing sent to it.
     let registry = devices::devices(cx);
+    if let Some((_, why)) = registry.read(cx).misses(udid) {
+        return Err(super::needs_person(why));
+    }
+    let agent = caller.actor();
     let (now, memory) = (cx.background_executor().now(), Control::get(cx).timeouts.denial_memory);
     let lends = &registry.read(cx).lends;
     if lends.lent_to(udid, &agent) {

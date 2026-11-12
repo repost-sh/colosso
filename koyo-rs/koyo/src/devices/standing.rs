@@ -80,6 +80,32 @@ impl Link {
         self.launch_host(cx);
     }
 
+    /// What the list of plugged-in devices says this one misses now: the registry's to say, at
+    /// each listing.
+    pub fn set_misses(&mut self, misses: Option<(Missing, String)>, cx: &mut Context<Self>) {
+        if self.misses == misses {
+            return;
+        }
+        self.misses = misses;
+        // Not running and saying a step: its words follow the list's.
+        if !self.running_or_starting() && matches!(self.said, Some(Said::Unavailable { .. })) {
+            self.held_back(cx);
+        }
+    }
+
+    /// Whether a start is held back for what the list says the device misses, said as its host
+    /// would say it. No host is started then: nothing is sent to a device that can't be driven
+    /// (an iPhone on iOS 26), where a host connects first and asks what's missing after.
+    pub(super) fn held_back(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some((code, why)) = self.misses.clone() else {
+            return false;
+        };
+        self.said = Some(Said::Unavailable { code, why });
+        self.ended_at = Some(Instant::now());
+        cx.notify();
+        true
+    }
+
     /// When its host said it can't go on, while that stands.
     pub fn ended_at(&self) -> Option<Instant> {
         self.ended_at.filter(|_| self.gave_up())
