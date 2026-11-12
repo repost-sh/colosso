@@ -24,6 +24,7 @@ use koyo_agent::protocol::requests::RequestKind;
 
 use crate::test_support::{click_pane, draw, git, open_page, repo, select, shell_with};
 
+mod space_keys;
 mod spaces;
 mod tabs;
 mod tiles;

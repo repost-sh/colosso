@@ -415,7 +415,9 @@ impl Shell {
 
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let (route, layout) = (self.route(cx), Self::layout(cx));
         let root = crate::key_repeat::track(div(), window, cx)
+            .key_context(Self::root_keys(route, layout))
             .track_focus(&self.focus)
             .map(|root| Self::handle_actions(root, cx))
             .size_full();
@@ -426,8 +428,6 @@ impl Render for Shell {
         // A space settling after a swipe moves a frame on first, so all that's drawn agrees.
         self.step_swipe(window, cx);
         let p = theme::palette(cx);
-        let route = self.route(cx);
-        let layout = Self::layout(cx);
         let width = settings::get(cx).sidebar_width();
         let shown = self.move_rails(window, cx);
         let sidebar = (shown.open.0 > 0.)
@@ -460,32 +460,29 @@ impl Render for Shell {
                 cx.stop_propagation();
             });
 
-        root.when(matches!(route, Route::Settings(_)), |root| {
-            root.key_context("Settings")
-        })
-        .font_family(theme::fonts::interface(cx))
-        .relative()
-        .flex()
-        .flex_col()
-        // A gradient theme paints the glass instead of the plain tint.
-        .when(gradient::current(cx).dots.is_empty(), |root| {
-            root.bg(p.rail_tint)
-        })
-        .text_color(p.text)
-        .child(backdrop::backdrop(cx))
-        .child(self.top_rail(shown, window, cx))
-        .child(
-            div()
-                .flex_1()
-                .min_h_0()
-                .flex()
-                // The window's left edge, as thin as its right.
-                .child(div().w(px(theme::GUTTER)).flex_shrink_0())
-                .children(glass_sidebar)
-                .child(card),
-        )
-        .child(self.status_rail(shown, cx))
-        .into_any_element()
+        root.font_family(theme::fonts::interface(cx))
+            .relative()
+            .flex()
+            .flex_col()
+            // A gradient theme paints the glass instead of the plain tint.
+            .when(gradient::current(cx).dots.is_empty(), |root| {
+                root.bg(p.rail_tint)
+            })
+            .text_color(p.text)
+            .child(backdrop::backdrop(cx))
+            .child(self.top_rail(shown, window, cx))
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .flex()
+                    // The window's left edge, as thin as its right.
+                    .child(div().w(px(theme::GUTTER)).flex_shrink_0())
+                    .children(glass_sidebar)
+                    .child(card),
+            )
+            .child(self.status_rail(shown, cx))
+            .into_any_element()
     }
 }
 
