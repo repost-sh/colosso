@@ -62,6 +62,17 @@ pub fn bundle_version(path: &str) -> Option<String> {
     .flatten()
 }
 
+/// The screen's corner radius in a device type's `capabilities.plist`: `MobileGestalt`'s
+/// `DeviceCornerRadius` where it has one, else its first display's (`cornerRadiusUL`: the four
+/// are the same on every model Xcode 27 has).
+pub fn corner_in(capabilities: &plist::Value) -> Option<f64> {
+    let capabilities = capabilities.as_dictionary()?.get("capabilities")?.as_dictionary()?;
+    let number = |value: &plist::Value| value.as_real().or_else(|| value.as_unsigned_integer().map(|n| n as f64));
+    let device = capabilities.get("DeviceCornerRadius").and_then(number);
+    let display = || number(capabilities.get("displays")?.as_array()?.first()?.as_dictionary()?.get("cornerRadiusUL")?);
+    device.or_else(display).filter(|radius| radius.is_finite() && *radius >= 0.)
+}
+
 /// Whether `version` is at least `wanted`, number by number.
 pub fn at_least(version: &str, wanted: &str) -> bool {
     let numbers =
@@ -138,6 +149,25 @@ impl Device {
         .ok()
         .filter(|scale| *scale >= 1.)
         .unwrap_or(2.)
+    }
+
+    /// The radius of its screen's corners in points, as Xcode records it for the model: 62 for
+    /// an iPhone 18 Pro, 30 for an iPad Pro; 0 for square corners, or when it can't be read.
+    pub fn corner(&self) -> f64 {
+        let bundle = guarded("finding its model", || {
+            // SAFETY: `deviceType` and its `bundle`, an `NSBundle`, asked only where it answers.
+            unsafe {
+                let kind: Retained<AnyObject> = msg_send![&self.0, deviceType];
+                let answers: bool = msg_send![&kind, respondsToSelector: sel!(bundle)];
+                let bundle: Option<Retained<AnyObject>> = if answers { msg_send![&kind, bundle] } else { None };
+                let path: Option<Retained<NSString>> = bundle.and_then(|bundle| msg_send![&bundle, bundlePath]);
+                path.map(|path| path.to_string())
+            }
+        });
+        let capabilities = bundle.ok().flatten().map(|bundle| format!("{bundle}/Contents/Resources/capabilities.plist"));
+        (capabilities.and_then(|path| plist::Value::from_file(path).ok()))
+            .and_then(|capabilities| corner_in(&capabilities))
+            .unwrap_or(0.)
     }
 
     /// A send right to the service `name` in the simulator's own bootstrap namespace.
@@ -301,5 +331,32 @@ impl Display {
                 );
             };
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn capabilities(body: &str) -> plist::Value {
+        let xml = format!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?><plist version=\"1.0\"><dict><key>capabilities</key><dict>{body}</dict></dict></plist>"
+        );
+        plist::Value::from_reader_xml(xml.as_bytes()).unwrap()
+    }
+
+    #[test]
+    fn a_models_corner_is_its_device_corner_radius() {
+        let pro = capabilities("<key>DeviceCornerRadius</key><real>62</real>");
+        assert_eq!(corner_in(&pro), Some(62.));
+        let whole = capabilities("<key>DeviceCornerRadius</key><integer>30</integer>");
+        assert_eq!(corner_in(&whole), Some(30.));
+    }
+
+    #[test]
+    fn without_it_the_first_displays_corner_is_taken() {
+        let display = "<key>displays</key><array><dict><key>cornerRadiusUL</key><real>21.5</real></dict></array>";
+        assert_eq!(corner_in(&capabilities(display)), Some(21.5));
+        assert_eq!(corner_in(&capabilities("")), None);
     }
 }

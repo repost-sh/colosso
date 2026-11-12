@@ -12,7 +12,7 @@ use crate::input::{Input, Orientation};
 use koyo_desk_wire::{Point, Rect, Size};
 
 /// The link's version. Both sides refuse another.
-pub const PROTOCOL: u32 = 2;
+pub const PROTOCOL: u32 = 3;
 
 /// A request, the app's number for it; its answer carries the same.
 pub type RequestId = u64;
@@ -166,6 +166,9 @@ pub struct Screen {
     pub scale: f64,
     pub pixels: PixelSize,
     pub orientation: Orientation,
+    /// The radius of the screen's corners, in points: 62 for an iPhone 18 Pro; 0 for square
+    /// corners, or when the host doesn't know.
+    pub corner: f64,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

@@ -92,6 +92,8 @@ impl Device {
                 Device::Simulator(sim) => sim.facing(),
                 Device::Phone(phone) => phone.held(),
             },
+            // A real device's isn't read yet: its picture stays square.
+            corner: self.simulator().map_or(0., |sim| sim.corner),
         }
     }
 
