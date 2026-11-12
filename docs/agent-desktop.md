@@ -415,9 +415,9 @@ and `internal`, their message as the host wrote it.
 ## 11. Settings → Agent desktop, and the setup [built]
 
 Settings → Agent desktop: on or off (off until the person turns it on); the host's two grants as
-it reports them (Allowed, or Not allowed yet with what it's for) and Set Up… while one is
-missing; the desktop (made, and that it is as large as the display, which Koyo leaves as it
-is); the apps on it. Nothing here is reachable by `settings_set`.
+it reports them, each with what it's for and a mark at its right (a tick and "Allowed", or a
+warning and "Not allowed"), and Set Up… while one is missing; the desktop (ready, and that it
+is the display's size); the apps on it. Nothing here is reachable by `settings_set`.
 
 The setup (`agent_desktop/setup.rs`) is a dialog that takes the person through the two grants
 one at a time: Accessibility, then Screen Recording. It comes up by itself the first time the
