@@ -550,8 +550,13 @@ at 1.9% of a core, as in the PoC.
 - Whether no prompt appears when the host is started by the installed Koyo, from an identity that
   holds nothing.
 - iOS 27.2's simulator starts apps slower than iOS 26.5's, with or without Koyo: its loader
-  walks every dependency at each start (1.4 s of Settings' 3.2), where 26.5 runs from a library
-  cache CoreSimulator built for this Mac (`/Library/Developer/CoreSimulator/Caches/dyld`) and
-  spends 1 ms there. None was built for 27.2. `xcrun simctl runtime dyld_shared_cache update`
-  is Xcode's own way to build one: the owner's to allow, not tried.
+  (`dyld_sim`, in the runtime) takes 1.4 s of Settings' 3.2 to load the app's dependencies,
+  where 26.5's takes under 0.3 s. Both find their libraries in a shared cache and both make
+  their loaders anew at each start (`DYLD_PRINT_LOADERS`: 461 and 494 for `defaults`); 27.2's
+  does it slowly (`JustInTimeLoader::matchesPath` parsing each image's header again). Nothing
+  on the Mac switches it: `xcrun simctl runtime dyld_shared_cache update` says it is obsolete
+  for 27.2, whose runtime has its cache prebuilt, builds nothing, and leaves an empty folder
+  that the next boots take for the cache (tried with the owner's yes, and removed with
+  `... remove` at once). A simulator of iOS 26.5 is the faster one, if speed matters more
+  than the newest system.
 - Pinch, rotation and typed text on a real device.
