@@ -65,7 +65,7 @@ fn a_real_devices_tab_says_what_it_needs_and_isnt_counted_as_a_simulator(cx: &mu
     says(&link, unavailable(Missing::DeveloperMode, off), cx);
     assert_eq!(notice(&view, cx), Some((off.into(), 1)), "Set Up…");
 
-    let old = "Sam's iPad runs iPadOS 26.6. Koyo drives devices on iOS and iPadOS 27 or later.";
+    let old = "Sam's iPad runs iPadOS 26.6, and Koyo needs iPadOS 27 or later.";
     says(&link, unavailable(Missing::System, old), cx);
     assert_eq!(notice(&view, cx), Some((old.into(), 0)), "an update is the person's, on the device");
 

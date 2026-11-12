@@ -303,7 +303,7 @@ fn a_real_device_is_used_once_the_person_lends_it_and_a_call_naming_none_never_f
 fn a_plugged_in_device_that_misses_a_step_is_refused_at_once_with_nothing_asked_or_started(cx: &mut TestAppContext) {
     use crate::devices::connected::Connected;
     let _rig = rig("device-tools-missing", cx);
-    let old = "Sam's iPhone runs iOS 26.6.1. Koyo drives devices on iOS and iPadOS 27 or later.";
+    let old = "Sam's iPhone runs iOS 26.6.1, and Koyo needs iOS 27 or later.";
     cx.update(|cx| {
         let listed = vec![Connected {
             udid: "U-OLD".into(),

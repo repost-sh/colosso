@@ -150,8 +150,8 @@ fn plugged(devices: &Devices) -> SettingsSection {
     section.rows(listed.iter().map(|device| {
         let row = SettingRow::new(device.name.clone());
         match &device.missing {
-            Some((_, said)) => {
-                let needs = Status::missing("Needs setup");
+            Some((code, said)) => {
+                let needs = Status::missing(koyo_device_wire::real::label(*code));
                 row.description(format!("{}. {said}", device.system)).control(needs).control(set_up(Some(device.udid.clone())))
             }
             None => row.description(device.system.clone()).control(Status::met("Ready")),

@@ -67,12 +67,31 @@ pub fn device<'a>(listed: &'a Value, udid: &str) -> Option<&'a Value> {
     devices(listed).find(|device| device["hardwareProperties"]["udid"] == udid)
 }
 
+/// Its system's name: `iPadOS` for an iPad, else `iOS`.
+fn os(device: &Value) -> &'static str {
+    if device["hardwareProperties"]["deviceType"] == "iPad" { "iPadOS" } else { "iOS" }
+}
+
 /// Its system, named: `iPadOS 27.0.1`.
 pub fn system(device: &Value) -> String {
-    let os = if device["hardwareProperties"]["deviceType"] == "iPad" { "iPadOS" } else { "iOS" };
     match device["deviceProperties"]["osVersionNumber"].as_str() {
-        Some(version) => format!("{os} {version}"),
-        None => os.to_owned(),
+        Some(version) => format!("{} {version}", os(device)),
+        None => os(device).to_owned(),
+    }
+}
+
+/// A step a device misses in two or three words: what its tab's bar and Settings say beside
+/// it, and the heading over the sentence that says what to do.
+pub fn label(missing: Missing) -> &'static str {
+    match missing {
+        Missing::Cable => "Not connected",
+        Missing::Trust => "Not trusted",
+        Missing::DeveloperMode => "Developer Mode off",
+        Missing::System => "Needs update",
+        Missing::DeveloperImage => "Not ready",
+        Missing::InUse => "In use",
+        // A simulator's, which a real device never misses, and what has no name.
+        Missing::Xcode | Missing::Simulator | Missing::Input | Missing::Other => "Needs setup",
     }
 }
 
@@ -98,9 +117,10 @@ pub fn first_missing(device: Option<&Value>, name: &str) -> Option<(Missing, Str
         (
             Missing::System,
             format!(
-                "{name} runs {}. Koyo drives devices on iOS and iPadOS {SYSTEM} or later: update it in \
-                 Settings → General → Software Update.",
-                system(device)
+                "{name} runs {}, and Koyo needs {} {SYSTEM} or later. Update it on the device in Settings → \
+                 General → Software Update.",
+                system(device),
+                os(device),
             ),
         )
     } else if properties["ddiServicesAvailable"] == false {
@@ -122,6 +142,14 @@ mod tests {
             "connectionProperties": {"transportType": transport, "pairingState": pairing},
             "deviceProperties": {"developerModeStatus": developer, "osVersionNumber": version, "ddiServicesAvailable": true}
         })
+    }
+
+    #[test]
+    fn each_step_has_a_short_label_and_an_update_is_called_one() {
+        assert_eq!(label(Missing::System), "Needs update");
+        assert_eq!(label(Missing::DeveloperMode), "Developer Mode off");
+        assert_eq!(label(Missing::InUse), "In use");
+        assert_eq!(label(Missing::Other), "Needs setup");
     }
 
     #[test]

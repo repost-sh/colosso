@@ -23,7 +23,7 @@ fn device(udid: &str, name: &str, ipad: bool, missing: Option<(Missing, &str)>) 
     }
 }
 
-const OLDER: &str = "QA iPad runs iPadOS 26.6. Koyo drives devices on iOS and iPadOS 27 or later: update it in Settings → General → Software Update.";
+const OLDER: &str = "QA iPad runs iPadOS 26.6, and Koyo needs iPadOS 27 or later. Update it on the device in Settings → General → Software Update.";
 const DEVELOPER_MODE: &str = "Developer Mode is off on QA iPhone. Turn it on in Settings → Privacy & Security → Developer Mode.";
 
 pub(super) fn plugged(drawn: &mut Drawn, listed: Vec<Connected>) {

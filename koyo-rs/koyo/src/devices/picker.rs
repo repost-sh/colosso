@@ -8,6 +8,8 @@ use gpui_kit::{
     StatefulInteractiveElement as _, Styled as _, div, px,
 };
 
+use koyo_device_wire::Missing;
+
 use super::screens::{Notice, missing, set_up};
 use super::view::{Chosen, DeviceView};
 use crate::theme::Palette;
@@ -37,15 +39,28 @@ impl DeviceView {
         if !connected.is_empty() {
             let plugged = div().w(px(WIDTH)).px_3().pt_2().text_xs().text_color(p.muted).child("Connected");
             list = connected.iter().fold(list.child(plugged), |list, device| {
-                let missing = device.missing.as_ref().map(|(_, said)| said.as_str());
-                list.child(self.row(Chosen::from(device), &device.system, missing, p, cx))
+                list.child(self.row(Chosen::from(device), &device.system, device.missing.as_ref(), p, cx))
             });
         }
         list.into_any_element()
     }
 
     /// A device's row: its name and system, and under them the step it misses.
-    fn row(&self, chosen: Chosen, system: &str, missing: Option<&str>, p: Palette, cx: &mut Context<Self>) -> impl gpui_kit::IntoElement {
+    fn row(
+        &self,
+        chosen: Chosen,
+        system: &str,
+        missing: Option<&(Missing, String)>,
+        p: Palette,
+        cx: &mut Context<Self>,
+    ) -> impl gpui_kit::IntoElement {
+        // What it misses: a warning and two or three words, then what to do.
+        let missing = missing.map(|(code, said)| {
+            let warning = crate::shell::icon(gpui_kit::assets::IconName::TriangleAlert, 12.).text_color(p.modified);
+            (div().pt_1().flex().flex_col().gap(px(2.)).text_xs())
+                .child(div().flex().items_center().gap(px(5.)).text_color(p.text).child(warning).child(koyo_device_wire::real::label(*code)))
+                .child(div().text_color(p.muted).child(said.clone()))
+        });
         let named = (div().flex().justify_between())
             .child(div().text_sm().text_color(p.text).child(chosen.name.clone()))
             .child(div().text_xs().text_color(p.muted).child(system.to_owned()));
@@ -58,7 +73,7 @@ impl DeviceView {
             .cursor_pointer()
             .hover(|row| row.bg(p.hover))
             .child(named)
-            .children(missing.map(|said| div().pt_1().text_xs().text_color(p.muted).child(said.to_owned())))
+            .children(missing)
             .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
                 this.choose(chosen.clone(), cx);
                 this.start_asking(window, cx);

@@ -24,6 +24,9 @@ pub struct Notice {
     busy: bool,
     /// A quieter line under what it says.
     hint: Option<String>,
+    /// A heading over what it says, with a warning beside it: what's wrong in two or three
+    /// words.
+    title: Option<&'static str>,
 }
 
 impl Notice {
@@ -34,6 +37,15 @@ impl Notice {
             over: false,
             busy: false,
             hint: None,
+            title: None,
+        }
+    }
+
+    /// A step a real device misses: what's wrong as a heading, a warning beside it.
+    fn missing(code: Missing, why: String, buttons: Vec<Push>) -> Notice {
+        Notice {
+            title: Some(koyo_device_wire::real::label(code)),
+            ..Notice::new(why, buttons)
         }
     }
 
@@ -66,10 +78,17 @@ impl Notice {
             wheel.with_size(Size::Size(px(24.))).color(p.muted)
         });
         let hint = self.hint.map(|hint| div().text_xs().text_color(p.muted).child(hint));
+        let title = self.title.map(|title| {
+            let warning = crate::shell::icon(gpui_kit::assets::IconName::TriangleAlert, 15.).text_color(p.modified);
+            (div().flex().items_center().gap(px(6.)).text_sm().font_weight(gpui_kit::FontWeight::MEDIUM).text_color(p.text))
+                .child(warning)
+                .child(title)
+        });
         (div().flex().flex_col().items_center().gap_3())
             .children(loader)
             .child(
                 (div().flex().flex_col().items_center().gap_1())
+                    .children(title)
                     .child(div().max_w(px(460.)).text_center().text_sm().text_color(p.muted).child(self.message))
                     .children(hint),
             )
@@ -138,8 +157,8 @@ impl DeviceView {
                 Some(said) => Notice::new(said, vec![set_up()]),
                 None => Notice::new(format!("{why}."), vec![self.start_button("Start Again", cx)]),
             },
-            Missing::System => Notice::new(why, Vec::new()),
-            Missing::Cable | Missing::Trust | Missing::DeveloperMode => Notice::new(why, vec![set_up_device(udid)]),
+            Missing::System => Notice::missing(code, why, Vec::new()),
+            Missing::Cable | Missing::Trust | Missing::DeveloperMode => Notice::missing(code, why, vec![set_up_device(udid)]),
             _ => Notice::new(why, vec![self.start_button("Start Again", cx)]),
         }
     }
@@ -271,6 +290,8 @@ pub(super) fn standing(link: &Link, p: Palette) -> (&'static str, gpui_kit::Hsla
     match link.standing() {
         super::Standing::Ended { missing: None, .. } if link.phone => ("Unplugged", p.danger),
         super::Standing::Ended { missing: None, .. } => ("Gone", p.danger),
+        // A real device's step by its own name: "Needs update", not "Needs setup".
+        super::Standing::Ended { missing: Some(code), .. } if link.phone => (koyo_device_wire::real::label(code), p.danger),
         super::Standing::Ended { .. } => ("Needs setup", p.danger),
         super::Standing::Off => ("Not running", p.muted),
         super::Standing::Failed(_) => ("Stopped", p.danger),
