@@ -54,7 +54,8 @@ pub enum Command {
 }
 
 pub enum Event {
-    Ready { display: Display, locked: bool },
+    /// Connected: how it's held, whether it's locked, and its screen's corner radius in points.
+    Ready { display: Display, locked: bool, corner: f64 },
     Display(Display),
     Locked(bool),
     /// A lock notice came: whether it locked isn't known yet. Acts wait until it is.
@@ -212,7 +213,8 @@ impl Session<'_> {
         let keyframe = Arc::new(Notify::new());
         let (stalls, stalled) = tokio::sync::mpsc::unbounded_channel();
         let (pictures, decoding) = mpsc::channel();
-        let (log, ends) = (self.teller.clone(), Ends { ring: ring.clone(), keyframe: Arc::clone(&keyframe), stalled: stalls });
+        let ends = Ends { ring: ring.clone(), screen: display.pixels, keyframe: Arc::clone(&keyframe), stalled: stalls };
+        let log = self.teller.clone();
         std::thread::Builder::new()
             .name("device-decoder".into())
             .spawn(move || decode::run(ends, &decoding, &log, stats))
@@ -228,7 +230,14 @@ impl Session<'_> {
         let Serving { mut commands, ring, provider, mut info, mut display, mut stalled, locked } = serving;
         let mut input = Input::connect(&mut live.adapter, &mut live.handshake).await.map_err(|why| self.missing(why))?;
         let mut lock = lock::watch(provider, self.udid);
-        (self.tell)(Event::Ready { display, locked });
+        // Xcode's sheets are read off this thread, which the stream is read on.
+        let model = super::model::named(&live.handshake);
+        let corner = tokio::task::spawn_blocking(move || super::model::corner(model.as_deref())).await;
+        let corner = corner.unwrap_or_else(|_| Err("its model's sheet wasn't read".into())).unwrap_or_else(|why| {
+            self.teller.log(LogLevel::Info, why);
+            0.
+        });
+        (self.tell)(Event::Ready { display, locked, corner });
         let mut turned = tokio::time::interval(LOOK_EVERY);
         turned.set_missed_tick_behavior(MissedTickBehavior::Skip);
         let (mut restarts, mut restart_at, mut resting) = (Restarts::default(), None, None);

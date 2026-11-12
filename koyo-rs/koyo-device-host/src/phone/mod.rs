@@ -9,9 +9,11 @@
 )]
 
 mod checks;
+mod crop;
 mod decode;
 mod info;
 mod lock;
+mod model;
 mod session;
 mod stream;
 mod turns;
@@ -41,6 +43,8 @@ pub struct Phone {
     /// How it's held and its points, once connected: as the device said last.
     held: Orientation,
     pub scale: f64,
+    /// The radius of its screen's corners, in points: 0 until it's connected, or when unknown.
+    pub corner: f64,
     locked: bool,
     /// When a lock notice came that isn't yet known to have locked it or not.
     noticed: Option<std::time::Instant>,
@@ -60,6 +64,7 @@ impl Phone {
             events,
             held: Orientation::Portrait,
             scale: 2.,
+            corner: 0.,
             locked: false,
             noticed: None,
             down: Vec::new(),
@@ -71,8 +76,8 @@ impl Phone {
         let events: Vec<Event> = self.events.try_iter().collect();
         for event in &events {
             match event {
-                Event::Ready { display, locked } => {
-                    (self.held, self.scale, self.locked) = (display.held, display.scale, *locked);
+                Event::Ready { display, locked, corner } => {
+                    (self.held, self.scale, self.locked, self.corner) = (display.held, display.scale, *locked, *corner);
                 }
                 Event::Display(display) => (self.held, self.scale) = (display.held, display.scale),
                 Event::Locked(locked) => (self.locked, self.noticed) = (*locked, None),

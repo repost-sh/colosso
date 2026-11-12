@@ -1,6 +1,7 @@
 //! A real device's pictures (`docs/devices.md` 3.1, 5): HEVC in Annex-B form, a picture's units
 //! as they came behind one RTP marker, decoded by the Mac's hardware decoder in its own format
-//! and made BGRA in one surface of the host's own, which the ring turns upright into its slots.
+//! and made BGRA in one surface of the host's own, no more of it than the screen (`crop.rs`),
+//! which the ring turns upright into its slots.
 //! A picture the decoder can't take asks the device for a whole one, twice a second at most; when
 //! asking brings nothing decodable for two seconds, the stream is said to be stalled. While
 //! nobody wants the picture, pictures are dropped undecoded; wanted again, decoding starts from a
@@ -12,17 +13,19 @@ use std::ptr::NonNull;
 use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
 
-use koyo_device_wire::LogLevel;
+use koyo_device_wire::{LogLevel, PixelSize};
 use objc2_core_foundation::{CFBoolean, CFRetained, Type};
 use objc2_core_media::{CMBlockBuffer, CMFormatDescription, CMSampleBuffer, CMSampleTimingInfo, CMVideoFormatDescriptionCreateFromHEVCParameterSets, kCMTimeInvalid};
 use objc2_core_video::{CVImageBuffer, CVPixelBuffer, CVPixelBufferGetHeight, CVPixelBufferGetWidth};
 use objc2_io_surface::IOSurfaceRef;
 use objc2_video_toolbox::{
     VTDecodeFrameFlags, VTDecodeInfoFlags, VTDecompressionOutputCallbackRecord, VTDecompressionSession, VTPixelTransferSession,
-    VTSessionSetProperty, kVTDecompressionPropertyKey_RealTime,
+    VTSessionSetProperty, kVTDecompressionPropertyKey_RealTime, kVTPixelTransferPropertyKey_ScalingMode,
+    kVTScalingMode_CropSourceToCleanAperture,
 };
 use tokio::sync::Notify;
 
+use super::crop::Crop;
 use crate::link::Teller;
 use crate::ring::{self, Ring};
 
@@ -80,6 +83,7 @@ unsafe fn created<T: Type>(status: i32, raw: *mut T) -> Option<CFRetained<T>> {
 /// Where a decoded picture goes: a BGRA surface of the host's own, the ring's source.
 struct Output {
     ring: Ring,
+    crop: Crop,
     transfer: CFRetained<VTPixelTransferSession>,
     source: Option<(CFRetained<IOSurfaceRef>, CFRetained<CVPixelBuffer>)>,
     failed: u64,
@@ -106,7 +110,10 @@ unsafe extern "C-unwind" fn decoded(
 
 impl Output {
     fn present(&mut self, image: &CVPixelBuffer) {
-        let (width, height) = (CVPixelBufferGetWidth(image), CVPixelBufferGetHeight(image));
+        let coded = (CVPixelBufferGetWidth(image), CVPixelBufferGetHeight(image));
+        // No more than the screen, where the device said its size: the rest is padding.
+        let ring = &self.ring;
+        let (width, height) = self.crop.of(image, coded, |said| ring.log_error(said));
         let fits = (self.source.as_ref()).is_some_and(|(surface, _)| surface.width() == width && surface.height() == height);
         if !fits {
             self.source = ring::surface(width, height).and_then(|surface| Some((surface.clone(), ring::pixel_buffer(&surface)?)));
@@ -119,7 +126,8 @@ impl Output {
         let Some((_, pixels)) = &self.source else {
             return;
         };
-        // SAFETY: two pixel buffers of the same size; the transfer converts the decoder's format.
+        // SAFETY: two pixel buffers, the second the size of the first's clean aperture; the
+        // transfer converts the decoder's format.
         let moved = unsafe { self.transfer.transfer_image(image, pixels) };
         if moved == 0 {
             self.ring.frame();
@@ -155,8 +163,11 @@ impl Decoder {
         let made = unsafe { VTPixelTransferSession::create(None, NonNull::from(&mut transfer)) };
         // SAFETY: what the call above wrote.
         let transfer = unsafe { created(made, transfer) }.ok_or("no pixel transfer session")?;
+        // SAFETY: a property of the transfer's own, set to one of its modes: a picture marked
+        // as coded larger than it is has only its clean aperture taken.
+        unsafe { VTSessionSetProperty(&transfer, kVTPixelTransferPropertyKey_ScalingMode, Some(kVTScalingMode_CropSourceToCleanAperture)) };
         Ok(Decoder {
-            output: Box::new(Output { ring: ends.ring, transfer, source: None, failed: 0 }),
+            output: Box::new(Output { ring: ends.ring, crop: Crop::new(ends.screen), transfer, source: None, failed: 0 }),
             session: None,
             format: None,
             sets: Default::default(),
@@ -333,6 +344,8 @@ impl Drop for Decoder {
 /// and a stalled stream said.
 pub struct Ends {
     pub ring: Ring,
+    /// The device's screen in pixels, as it said: no more of a picture is shown.
+    pub screen: Option<PixelSize>,
     pub keyframe: Arc<Notify>,
     pub stalled: tokio::sync::mpsc::UnboundedSender<()>,
 }
