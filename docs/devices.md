@@ -121,6 +121,11 @@ Crates:
 - Koyo's own device set at `<data>/devices/set`. The person's own Xcode simulators are never
   listed, booted or touched.
 - Boot and shutdown by `xcrun simctl --set <set> boot | bootstatus -b | shutdown`, one-shot.
+  The host shuts its simulator down as it goes: when the app says quit, when the app's end of
+  the link closes, and on a terminate, interrupt or hang-up signal. It clears its signal mask
+  as it starts [built]: Koyo's thread that starts it has every signal blocked, the host came
+  with them blocked, and a `kill` did nothing (measured: not gone in 60 s; 3.3 s with the mask
+  cleared).
 - The picture through CoreSimulator (`SimServiceContext`, the device's `io` ports, the main
   display's `framebufferSurface` and its screen callbacks). Every private call can raise an
   Objective-C exception; each is caught and answered as a failure.
@@ -133,11 +138,12 @@ Crates:
   2.9 million reads) and maps places. **Which way is the interface's, not the device's**: told
   upside down, an iPhone's Safari stays on its side. The host reads the simulator's own
   `getdisplayinfo` (the CoreDevice action a real device answers too) for the primary display's
-  `currentOrientation`, after a turn and every two seconds while the picture is wanted. Unread,
-  the picture turns the way the device was told, as the Simulator app shows it [built]: for
-  minutes after a first boot its service may answer only that the connection is invalid. An
-  iPhone's Home Screen doesn't turn, so a turn there shows nothing until an app that turns is in
-  front.
+  `currentOrientation`, after a turn and every two seconds while the picture is wanted, over one
+  connection kept to that service [built]: a second connection made from the same looked-up
+  port is refused as invalid, so with one made a read every other read failed (measured), and
+  in a first boot's first minutes most did. Unread, the picture turns the way the device was
+  told, as the Simulator app shows it [built]. An iPhone's Home Screen doesn't turn, so a turn
+  there shows nothing until an app that turns is in front.
 - Home is the device's own button (the consumer page's Menu usage, held 60 ms); the app
   switcher is Home pressed twice 100 ms apart, as the Simulator app's App Switcher [built].
   Measured on an iPhone 18 Pro: two presses 100, 150 and 250 ms apart each brought it, where the
@@ -253,7 +259,17 @@ reached only from `phone/`: its API is unstable below 0.2.
 - Screenshot: the ring's latest picture as PNG, at one pixel a point by default.
 - Snapshot: indented text with `[ref=eN] @x,y`, from the simulator's accessibility tree where it
   can be had (`source: accessibility`), else text read off the picture with macOS's Vision
-  framework (`source: text`) [built], which is all a real device has. The first read of a new
+  framework (`source: text`) [built], which is all a real device has.
+- **Accessibility is on in a simulator only while its tree is read** [built]. An app has a tree
+  only if `ApplicationAccessibilityEnabled` is on in the simulator's own settings, and every app
+  started while it is on loads its accessibility bundles: Settings 109 of them, 4.7 s of CPU for
+  a launch against 3.4. The simulator's service switches it on at its first start after a boot
+  and nothing switches it off, across boots, so a simulator an agent had read once paid for it
+  ever after. The host switches it on before a read and before an agent's launch (the setting
+  written, two notices posted: an app that runs loads its bundles then; the first read 0.8-1.9
+  s, the next 15-30 ms), off a minute after the last read, off as it goes, and off a minute
+  after its start if an earlier host left it on. A simulator only the person uses never has it
+  on. The first read of a new
   build of the host makes macOS compile its text model, 30-40 s: the host does it as it starts,
   while the simulator boots, and a snapshot asked before then is told to ask again. A `text`
   ref is where its words are: on the home screen that is an app's name, under its icon, where a
@@ -278,17 +294,21 @@ answer), `Request { request, ask }`, `Cancel`, `Quit`. Host to app: `Hello { pro
   device's name.
 - The picture fitted to the pane and centred, never larger than one device pixel to one screen
   pixel, on the tab's own card (no root background of its own).
-- A toolbar as the browser's over a page (40 points, a hairline under it): the device's glyph,
-  its name and a dot and a word for how it stands (green Ready, amber Starting, red what needs
-  doing, grey Not running); then icon buttons, each named by its tooltip with its key: Home
-  (⇧⌘H) and App Switcher, then Rotate Left (⌘←), Rotate Right (⌘→) and Lock for simulators;
-  for a real device the sentence of 5, while its stream is held (ready or locked). Dimmed until
-  the device stands ready.
+- One bar, the pane's own (28 points, a hairline under it) [built]: the device's glyph and name,
+  as any pane's; then a dot and a word for how it stands (green Ready, amber Starting, red what
+  needs doing, grey Not running); then icon buttons at its right, each named by its tooltip with
+  its key: Home (⇧⌘H) and App Switcher, then Rotate Left (⌘←), Rotate Right (⌘→) and Lock for
+  simulators; for a real device the sentence of 5, while its stream is held (ready or locked),
+  and the lend's button. Dimmed until the device stands ready. In a split the same bar has the
+  pane's grip, "Open in a tab of its own" and close round them; alone in its tab a device still
+  has it, where other panes have none. A view of its own (`devices/bar.rs`), drawn again when
+  the standing changes, not with each picture. It was a second bar under the pane's (40
+  points): the owner's "a huge waste of space".
 - The picker lists Koyo's simulators (or what they miss, with `Set Up…`), then under "Plugged in"
   the iPhones and iPads by cable, each with its system and the step it misses.
 - A real device's states: locked ("Unlock your iPad to continue.", the lock screen under it),
   moving on by itself; unplugged ("{name} was unplugged. Plug it back in to continue."; the
-  toolbar says Unplugged), moving on by itself, with Start Again should the plug go unheard; the
+  bar says Unplugged), moving on by itself, with Start Again should the plug go unheard; the
   cable, trust and Developer Mode, each in a sentence with
   `Set Up…`: the cable moves on by itself at the plug; trust and Developer Mode once a listing
   sees them done (the setup's, which looks every two seconds while open, or the next plug's);
@@ -364,7 +384,7 @@ answer), `Request { request, ask }`, `Cancel`, `Quit`. Host to app: `Hello { pro
   yours, lent to {agent} until you take it back." with `Take It Back`, in the agent desktop's
   own notice for an app it lends (`held::notice`), over the top of the picture, which doesn't
   move for it; the person can lend it
-  ahead from the toolbar ("Let Agents Use This iPad"), to every agent. Lent, `device_open` opens
+  ahead from the bar ("Let Agents Use This iPad"), to every agent. Lent, `device_open` opens
   and starts it as a simulator (no limit). The app tools (`device_apps`, `device_launch`, …) are
   refused on it, pointing at `devicectl`; the gate is `control/exec/device/lend.rs`.
 - Nothing unverified is shipped as working: a tool path that couldn't be shown to work on the real
@@ -499,6 +519,20 @@ took it out of the set in 0.3 s.
 M0's numbers were taken on macOS 27.2, Xcode 27.2 (27B52), CoreSimulator 1174.21, iOS 27.2
 (24B8117), with the PoC's `simhost` alone and no window.
 
+What an app's start costs in a simulator (2026-11-12, an M4 Max; Settings and Safari started
+cold by `simctl launch` five and four times, the median; busy is until the app's own process
+rests, CPU its own; `.superpowers/devices/probes/launchcost`):
+
+| Simulator | Settings: busy, CPU | Safari: busy, CPU |
+| --- | --- | --- |
+| iOS 26.5, alone (the PoC's system) | 2.0 s, 2.6 s | 1.0 s, 1.1 s |
+| iOS 27.2 iPhone 18 Pro, alone | 3.2 s, 3.7 s | 2.9 s, 2.5 s |
+| the same with Koyo's host attached | 3.0 s, 3.4 s | 2.7 s, 2.3 s |
+| the same with accessibility left on (before the fix) | 3.6 s, 4.7 s | |
+
+The host costs a start nothing. Through it on iOS 27.2 a page animates at 60.0 frames a second
+at 1.9% of a core, as in the PoC.
+
 ## 13. Where it lives
 
 | What | Where |
@@ -515,5 +549,9 @@ M0's numbers were taken on macOS 27.2, Xcode 27.2 (27B52), CoreSimulator 1174.21
 - An iPhone on iOS 27 was never run: everything real was measured on one iPad.
 - Whether no prompt appears when the host is started by the installed Koyo, from an identity that
   holds nothing.
-- The simulator's accessibility tree on iOS 27.2.
+- iOS 27.2's simulator starts apps slower than iOS 26.5's, with or without Koyo: its loader
+  walks every dependency at each start (1.4 s of Settings' 3.2), where 26.5 runs from a library
+  cache CoreSimulator built for this Mac (`/Library/Developer/CoreSimulator/Caches/dyld`) and
+  spends 1 ms there. None was built for 27.2. `xcrun simctl runtime dyld_shared_cache update`
+  is Xcode's own way to build one: the owner's to allow, not tried.
 - Pinch, rotation and typed text on a real device.
