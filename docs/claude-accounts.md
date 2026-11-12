@@ -127,14 +127,19 @@ cswap's engine with its `weekly-first` strategy:
   active account's weekly usage as a small ring, amber near auto-switch's threshold, red at it.
 - **The panel:** a glass panel anchored to the button, opening away from it
   (`menu::Trigger::toggle_panel` with a `MenuBody`, as `chat/composer/context.rs`), and fitting
-  what it holds as that changes. One block per account: email, plan badge, organisation, the
+  what it holds as that changes. The accounts are grouped by provider, each group headed once
+  by its provider's mark: a small monochrome vector in the small print's grey, its left edge
+  where the emails start, counted in the panel's height like every part. Anthropic's "A\\"
+  heads the Claude logins, the only ones the accounts crate keeps; another provider's accounts
+  would form a group of their own under its mark (`Provider` in `accounts/model.rs`, its mark
+  in `accounts/mark.rs`). One block per account: email, plan badge, organisation, the
   active mark, the 7 d bar and each per-model bar with a tick where even use would have it,
   percentage, and reset countdown; then when the week resets and how old the reading is, or what
   keeps it from being read. A click switches. It goes as every floating window does
   (`koyo-rs/koyo/src/popup.rs`).
-  Under the rows: the Mac's login when it isn't one of Koyo's accounts yet, with Add in
-  Settings, which opens Settings → Accounts, where it's added and the rest is set; and
-  auto-switch's state with what it last did.
+  Last in Anthropic's group, since it's Claude Code's: the Mac's login when it isn't one of
+  Koyo's accounts yet, with Add in Settings, which opens Settings → Accounts, where it's added
+  and the rest is set. Under the groups, auto-switch's state with what it last did.
 - **Settings → Accounts:** a new page (`settings_view/accounts.rs`): Manage Claude accounts, the
   account list with Hold Out / Put Back (out of auto-switch) and Remove, Add Current Login with
   what the Mac's login is to Koyo (not one of its accounts yet, or which account it is),

@@ -16,6 +16,7 @@ use super::service::TestEnv;
 use super::*;
 use crate::test_support::{Blank, in_window};
 
+mod groups;
 mod layout;
 mod to_settings;
 

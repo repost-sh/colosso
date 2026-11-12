@@ -24,7 +24,7 @@ use gpui_kit::{
 
 use koyo_accounts::pace::WEEKLY_PERIOD_S;
 
-use super::model::{AutoSwitch, Bar, Problem, Row, View, WEEKLY};
+use super::model::{AutoSwitch, Bar, Problem, Provider, Row, View, WEEKLY};
 use super::panel::AccountsPanel;
 use super::{Accounts, button};
 use crate::menu::MenuBody as _;
@@ -163,6 +163,7 @@ fn window(label: &str, percent: Option<f64>, resets_in: f64, now: f64) -> Bar {
 fn account(number: &str, email: &str, plan: &str, bars: Vec<Bar>, read_ago: f64, now: f64) -> Row {
     Row {
         number: number.to_owned(),
+        provider: Provider::Anthropic,
         email: email.to_owned().into(),
         organisation: None,
         plan: Some(plan.to_owned().into()),

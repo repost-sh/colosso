@@ -145,6 +145,7 @@ impl Problem {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::accounts::model::Provider;
 
     fn bar(percent: Option<f64>, resets_at: Option<f64>) -> Bar {
         Bar {
@@ -166,6 +167,7 @@ mod tests {
         view.unmanaged = None;
         view.rows.push(Row {
             number: "1".to_owned(),
+            provider: Provider::Anthropic,
             email: "ana@example.com".into(),
             organisation: None,
             plan: None,

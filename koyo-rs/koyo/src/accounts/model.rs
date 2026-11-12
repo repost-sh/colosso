@@ -83,10 +83,18 @@ pub struct Slot {
     pub email: SharedString,
 }
 
+/// Whose login an account is: the panel groups the accounts by it, each group under its mark.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Provider {
+    /// Claude's: the only logins the accounts crate keeps, and Claude Code's on the Mac.
+    Anthropic,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Row {
     /// The account's slot, as the accounts crate numbers them.
     pub number: String,
+    pub provider: Provider,
     pub email: SharedString,
     pub organisation: Option<SharedString>,
     /// The plan's label ("Max 20x", "Pro"), when known.
@@ -151,6 +159,16 @@ pub struct View {
     pub auto_switch: Option<AutoSwitch>,
 }
 
+/// One provider's accounts, as the panel draws them under its mark.
+#[derive(Debug, PartialEq)]
+pub struct Group<'a> {
+    pub provider: Provider,
+    /// Its accounts Koyo keeps, in their order.
+    pub rows: Vec<&'a Row>,
+    /// The Mac's login when Koyo doesn't keep it and it's this provider's: after the rows.
+    pub unmanaged: Option<&'a SharedString>,
+}
+
 /// Auto-switch as the panel says it.
 #[derive(Clone, Debug, PartialEq)]
 pub struct AutoSwitch {
@@ -169,5 +187,27 @@ impl View {
     /// against.
     pub fn line(&self) -> f64 {
         (self.auto_switch.as_ref()).map_or(DEFAULT_THRESHOLD, |auto| auto.threshold)
+    }
+
+    /// The accounts by provider, the groups in the order their first account comes. The Mac's
+    /// login Koyo doesn't keep is Claude Code's, so it's Anthropic's, last in that group.
+    pub fn groups(&self) -> Vec<Group<'_>> {
+        let unmanaged = (self.unmanaged.as_ref()).map(|email| (Provider::Anthropic, email));
+        let providers = (self.rows.iter().map(|row| row.provider))
+            .chain(unmanaged.map(|(provider, _)| provider));
+        let mut groups: Vec<Group<'_>> = Vec::new();
+        for provider in providers {
+            if groups.iter().any(|group| group.provider == provider) {
+                continue;
+            }
+            let rows = (self.rows.iter()).filter(|row| row.provider == provider);
+            let login = unmanaged.filter(|(its, _)| *its == provider);
+            groups.push(Group {
+                provider,
+                rows: rows.collect(),
+                unmanaged: login.map(|(_, email)| email),
+            });
+        }
+        groups
     }
 }

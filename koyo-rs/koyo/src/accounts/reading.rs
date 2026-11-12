@@ -14,7 +14,7 @@ use koyo_accounts::{pace, poll_policy};
 use koyo_agent::protocol::limits::{AccountLimits, LimitWindow};
 use serde_json::Value;
 
-use super::model::{Bar, Problem, Row, WEEKLY};
+use super::model::{Bar, Problem, Provider, Row, WEEKLY};
 
 fn bar(label: &str, window: &Value, measured_at: f64) -> Bar {
     Bar {
@@ -84,6 +84,8 @@ pub fn row(account: &AccountSnapshot, now: f64) -> Row {
     let slot = &account.slot;
     let mut row = Row {
         number: slot.number.clone(),
+        // The accounts crate keeps Claude logins only.
+        provider: Provider::Anthropic,
         email: slot.identity.email.clone().into(),
         // A personal account's organisation is named for its email, which says nothing more.
         organisation: Some(slot.organization_name.clone())

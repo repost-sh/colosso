@@ -10,6 +10,7 @@
 mod auto;
 mod button;
 mod environment;
+mod mark;
 mod model;
 pub(crate) use model::{Problem, Row, Slot, View};
 mod panel;
