@@ -16,6 +16,8 @@ use super::service::TestEnv;
 use super::*;
 use crate::test_support::{Blank, in_window};
 
+mod layout;
+
 pub(crate) const USAGE: &str = "https://api.anthropic.com/api/oauth/usage";
 
 /// Signs `sandbox`'s Mac in to Claude Code as `email`, its token good for a day.
