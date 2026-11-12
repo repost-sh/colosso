@@ -236,7 +236,7 @@ impl DeviceView {
 
 /// The least room round a device's picture, at its sides and above it; the bar's room, which
 /// is more, is under it.
-const MARGIN: f32 = 48.;
+const MARGIN: f32 = 32.;
 
 impl Render for DeviceView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
