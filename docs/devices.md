@@ -615,9 +615,10 @@ at 1.9% of a core, as in the PoC.
 
 ## 14. Open
 
-- On an iPhone the lock and the unplug weren't run: they were measured on one iPad. Its
-  system gestures (QR14), an aimed tap, pinch, rotation, typed text and a stream's recovery
-  were (QR2, QR5, QR12).
+- On an iPhone, not run: a tap just outside a target, the four turns (by `devicectl`, which
+  leaves a device's orientation simulated), the camera and the Auto-Lock rows. Run on it: its
+  system gestures (QR14), an aimed tap, pinch, rotation, typed text, a stream's recovery, the
+  lock and the unplug (QR2, QR5, QR12, QR7, QR8).
 - The crop of a real device's picture to its screen was measured on one iPhone, upright; on
   the iPad by cable the owner saw its whole screen and its corners right (looked at, not
   measured). A stream a device scales, where the screen's size isn't in the picture, isn't
