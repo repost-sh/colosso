@@ -54,7 +54,12 @@ impl Render for AccountsButton {
         let shown: AnyElement = glass("accounts-button", colour, cx)
             .small()
             .tooltip(tip)
-            .child(ring(used.map_or(0, |used| used.round() as u8)).size(px(16.)))
+            // The ring is a mask: it paints in its own text colour, as the composer's does.
+            .child(
+                ring(used.map_or(0, |used| used.round() as u8))
+                    .size(px(16.))
+                    .text_color(colour),
+            )
             .into_any_element();
         accounts
             .trigger
