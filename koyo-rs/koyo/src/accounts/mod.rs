@@ -19,6 +19,8 @@ mod remove;
 pub use remove::ask as ask_remove;
 mod service;
 pub(crate) use service::Job;
+#[cfg(feature = "visual-check")]
+pub mod visual;
 #[cfg(test)]
 pub(crate) use service::TestEnv;
 pub(crate) mod words;
