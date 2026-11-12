@@ -219,6 +219,39 @@ impl RenderOnce for SettingRow {
     }
 }
 
+/// How something a row names stands, at the row's right: a tick and a word once it's there, a
+/// warning and a word while it isn't.
+#[derive(IntoElement)]
+pub struct Status {
+    met: bool,
+    label: SharedString,
+}
+
+impl Status {
+    pub fn met(label: impl Into<SharedString>) -> Self {
+        Status { met: true, label: label.into() }
+    }
+
+    pub fn missing(label: impl Into<SharedString>) -> Self {
+        Status { met: false, label: label.into() }
+    }
+}
+
+impl RenderOnce for Status {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let p = theme::palette(cx);
+        let (glyph, color) = if self.met { (IconName::CircleCheck, p.added) } else { (IconName::TriangleAlert, p.modified) };
+        div()
+            .flex()
+            .items_center()
+            .gap(px(5.))
+            .text_sm()
+            .text_color(p.muted)
+            .child(icon(glyph, 14.).text_color(color))
+            .child(self.label)
+    }
+}
+
 type ClickHandler = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
 
 /// A small rounded button with a text label, for actions a setting offers.
