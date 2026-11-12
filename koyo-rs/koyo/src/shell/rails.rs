@@ -173,8 +173,11 @@ impl Shell {
                         .child(crate::arc::controls(self, cx)),
                 )
             } else {
+                // Orca's: the toggle, the Claude accounts' button (the Arc sidebar's foot has it
+                // there), and the page's back and forward.
                 row.child(lights_area(hover))
                     .child(toggle())
+                    .children(crate::accounts::button(cx))
                     .child(
                         action_button("back", IconName::ArrowLeft, "Back", GoBack, cx)
                             .disabled(!history.can_go_back()),

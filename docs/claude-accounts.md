@@ -4,8 +4,8 @@ Written 2026-11-11 on branch `main`. Drafted with Claude. Author of the vision: 
 
 Koyo keeps several Claude Code logins and makes one of them the Mac's login, the way
 claude-swap (`cswap`) does, so every Claude Code on the Mac follows: Koyo's chats, Koyo's
-terminals, other terminals, the VS Code extension. A button at the left of the sidebar's foot
-opens a glass panel with each account's weekly usage and switches with a click. Auto-switch
+terminals, other terminals, the VS Code extension. A button at the left of the sidebar's foot,
+or on the top rail in the Orca layout, opens a glass panel with each account's weekly usage and switches with a click. Auto-switch
 moves to another account at a threshold the person sets, or when an account hits its limit.
 
 The account logic is a port of claude-swap at commit `0fe22a8` (2026-11-11), not a redesign:
@@ -122,12 +122,16 @@ cswap's engine with its `weekly-first` strategy:
 ## 6. Where the person sees it
 
 - **The button:** the 24 px spacer at the left of the Arc sidebar's foot
-  (`koyo-rs/koyo/src/arc/foot.rs`, `bar`), so the space dots stay centred. It shows the active
-  account's weekly usage as a small ring.
-- **The panel:** a glass panel anchored to the button, opening upward
-  (`menu::Trigger::toggle_panel` with a `MenuBody`, as `chat/composer/context.rs`). One row per
-  account: email, organisation, plan, the active mark, the 7 d bar and each per-model bar with
-  percentage, reset countdown and date, "(ahead of pace)", "(!)" at 100 %. A click switches.
+  (`koyo-rs/koyo/src/arc/foot.rs`, `bar`), so the space dots stay centred; in the Orca layout,
+  on the top rail beside the sidebar's toggle (`koyo-rs/koyo/src/shell/rails.rs`). It shows the
+  active account's weekly usage as a small ring, amber near auto-switch's threshold, red at it.
+- **The panel:** a glass panel anchored to the button, opening away from it
+  (`menu::Trigger::toggle_panel` with a `MenuBody`, as `chat/composer/context.rs`), and fitting
+  what it holds as that changes. One block per account: email, plan badge, organisation, the
+  active mark, the 7 d bar and each per-model bar with a tick where even use would have it,
+  percentage, and reset countdown; then when the week resets and how old the reading is, or what
+  keeps it from being read. A click switches. It goes as every floating window does
+  (`koyo-rs/koyo/src/popup.rs`).
   Under the rows: Add current login when the Mac's login isn't one of Koyo's accounts yet, and
   auto-switch's state with what it last did.
 - **Settings → Accounts:** a new page (`settings_view/accounts.rs`): Manage Claude accounts, the

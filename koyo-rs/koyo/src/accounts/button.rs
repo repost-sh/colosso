@@ -1,5 +1,6 @@
 //! The accounts' button (`docs/claude-accounts.md` 6), in the room at the left of the Arc
-//! sidebar's foot that keeps the space marks centred against the + on the right. It shows the
+//! sidebar's foot that keeps the space marks centred against the + on the right, and on the Orca
+//! layout's top rail beside the sidebar's toggle. It shows the
 //! active account's week as a ring, in the text's colour, amber as it nears auto-switch's line
 //! and red at it, as the panel's bars are; and its press opens the panel over it. A view of its
 //! own, so a new reading redraws it and not the shell. With Koyo not managing the accounts, it's
