@@ -298,3 +298,32 @@ fn a_real_device_is_used_once_the_person_lends_it_and_a_call_naming_none_never_f
     let lent = cx.read(|cx| crate::devices::devices(cx).read(cx).lends.is_lent("U-REAL"));
     assert!(!lent, "the lend ended with its tab");
 }
+
+#[gpui_kit::test]
+fn a_plugged_in_device_that_misses_a_step_is_refused_at_once_with_nothing_asked_or_started(cx: &mut TestAppContext) {
+    use crate::devices::connected::Connected;
+    let _rig = rig("device-tools-missing", cx);
+    let old = "Sam's iPhone runs iOS 26.6.1. Koyo drives devices on iOS and iPadOS 27 or later.";
+    cx.update(|cx| {
+        let listed = vec![Connected {
+            udid: "U-OLD".into(),
+            name: "Sam's iPhone".into(),
+            ipad: false,
+            system: "iOS 26.6.1".into(),
+            missing: Some((koyo_device_wire::Missing::System, old.into())),
+        }];
+        crate::devices::devices(cx).update(cx, |devices, cx| devices.connected_afresh(Ok(listed), std::time::Instant::now(), cx));
+    });
+    for (tool, input) in [
+        ("device_open", json!({ "device": "U-OLD" })),
+        ("device_screenshot", json!({ "device": "U-OLD" })),
+        ("device_tap", json!({ "device": "U-OLD", "x": 1, "y": 2 })),
+    ] {
+        let refused = call(&terminal("t1"), tool, input, cx).unwrap_err();
+        assert_eq!(refused.code, ErrorCode::DeviceNeedsPerson, "{tool}: {}", refused.message);
+        assert!(refused.message.starts_with(old), "{tool}: {}", refused.message);
+        assert!(!cx.has_pending_prompt(), "{tool}: no question to the person for a device that can't be used");
+    }
+    let link = cx.read(|cx| crate::devices::devices(cx).read(cx).existing("U-OLD"));
+    assert!(link.is_none(), "no tab, no host: nothing is sent to it");
+}

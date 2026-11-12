@@ -11,7 +11,7 @@ use futures::channel::{mpsc, oneshot};
 use gpui_kit::{AppContext as _, Context, Entity, EntityId, Task};
 use koyo_device_wire::{
     Answer, Ask, FromHost, Input, LogLevel, Mark, Point, Refusal, RefusalCode, RequestId, Screen,
-    State as Said, ToHost,
+    State as Said, ToHost, Missing,
 };
 
 use super::host::{self, Incoming};
@@ -83,6 +83,8 @@ pub struct Link {
     restarts: Vec<Instant>,
     /// Times it was started again by itself since it last stood ready or the person started it.
     pub(super) tries: u32,
+    /// What the list of plugged-in devices says it misses, kept by the registry.
+    pub(super) misses: Option<(Missing, String)>,
     /// When its host last said it can't go on.
     pub(super) ended_at: Option<Instant>,
     pub started_at: Option<Instant>,
@@ -111,6 +113,7 @@ impl Link {
             failed_starts: 0,
             restarts: Vec::new(),
             tries: 0,
+            misses: None,
             ended_at: None,
             started_at: None,
         }
@@ -161,6 +164,9 @@ impl Link {
 
     /// Starts a host: for a start asked for, or by itself after one went.
     pub(super) fn launch_host(&mut self, cx: &mut Context<Self>) {
+        if self.held_back(cx) {
+            return;
+        }
         let launch = match super::launch(&self.udid, self.phone.then_some(self.name.as_str())) {
             Ok(launch) => launch,
             Err(why) => return self.fail(why, cx),

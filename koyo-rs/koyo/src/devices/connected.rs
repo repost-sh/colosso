@@ -131,6 +131,12 @@ impl Devices {
         self.plugged().iter().find(|device| device.udid == udid)
     }
 
+    /// The step the device `udid` misses to be driven, in the words its tab says, as last
+    /// listed: nothing for one that's ready, or isn't listed.
+    pub fn misses(&self, udid: &str) -> Option<&(Missing, String)> {
+        self.plugged_device(udid)?.missing.as_ref()
+    }
+
     /// Lists what's plugged in again, unless that is under way; and watches for plugs, unless
     /// the watcher runs or went a moment ago.
     pub fn look_connected(&mut self, cx: &mut Context<Self>) {
@@ -177,6 +183,11 @@ impl Devices {
             }
         }
         self.connected = Some(listed);
+        // What each misses now, said to its link: none is started while it misses something.
+        for (udid, link) in &self.links {
+            let misses = self.misses(udid).cloned();
+            link.update(cx, |link, cx| link.set_misses(misses, cx));
+        }
         self.back(since, cx);
         if changed {
             cx.notify();
