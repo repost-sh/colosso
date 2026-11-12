@@ -49,18 +49,23 @@ fn set_password_small_payload_uses_security_i_stdin() {
     assert_eq!(security.get("svc", "acct").as_deref(), Some("short-secret"));
 }
 
-/// cswap falls back to argv for a payload over the line; Koyo refuses instead, and nothing
-/// is run (`docs/claude-accounts.md` 3: no token in a command's arguments).
 #[test]
-fn set_password_large_payload_is_refused_not_put_in_argv() {
+fn set_password_large_payload_falls_back_to_argv() {
     let security = FakeSecurity::default();
+    // Hex doubles the length.
     let big = "x".repeat(SECURITY_STDIN_LINE_LIMIT);
-    assert!(set_password(&security, "svc", "acct", &big).is_err());
-    assert!(security.calls().is_empty());
+    set_password(&security, "svc", "acct", &big).unwrap();
+    let call = &security.calls()[0];
+    assert_eq!(call.args[..2], ["add-generic-password", "-U"]);
+    assert_eq!(call.stdin, None, "not through stdin");
+    // The hex value as one argument of its own: no shell, no quoting.
+    assert!(call.args.contains(&hex(big.as_bytes())));
+    assert!(call.args.iter().any(|arg| arg == "acct") && call.args.iter().any(|arg| arg == "svc"));
+    assert_eq!(security.get("svc", "acct").as_deref(), Some(big.as_str()));
     // The longest that fits still goes through stdin.
     let fits = "x".repeat((SECURITY_STDIN_LINE_LIMIT - 80) / 2);
     set_password(&security, "svc", "acct", &fits).unwrap();
-    assert_eq!(security.calls()[0].args, ["-i"]);
+    assert_eq!(security.calls()[1].args, ["-i"]);
 }
 
 #[test]
