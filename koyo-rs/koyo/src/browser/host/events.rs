@@ -54,8 +54,8 @@ impl Browsers {
                 error,
                 ..
             } => {
-                if let Some(answer) = self.calls.remove(&call) {
-                    let _ = answer.send(match error {
+                if let Some((_, waiter)) = self.calls.remove(&call) {
+                    waiter.reply(match error {
                         Some(error) => Err(error),
                         None => Ok(result.unwrap_or_default()),
                     });
@@ -151,6 +151,9 @@ impl Browsers {
         question: ipc::Dialog,
         cx: &mut Context<Self>,
     ) {
+        if super::super::agent::holds_up(&question) {
+            self.page_asks(pane);
+        }
         let asked = self.update_view(pane, cx, |view, cx| {
             view.dialog_opened(dialog, origin, question, cx);
         });

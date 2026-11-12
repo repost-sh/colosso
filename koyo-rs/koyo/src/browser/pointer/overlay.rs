@@ -53,7 +53,8 @@ impl Default for Marks {
 
 impl BrowserView {
     /// Sends the agent's pointer to `(x, y)` of the page, in its CSS pixels, as the page
-    /// shows it now: answers how long it takes to get there.
+    /// shows it now: answers how long it takes to get there. It travels only where the
+    /// person can follow it; on a page nobody sees it's there at once.
     pub(in crate::browser) fn point_to(
         &mut self,
         x: f64,
@@ -65,7 +66,7 @@ impl BrowserView {
         let page = self.viewport.map_or(size(0., 0.), |viewport| {
             size(viewport.width as f32, viewport.height as f32)
         });
-        let still = cx.reduce_motion();
+        let still = cx.reduce_motion() || !self.drawn();
         let duration = (self.marks.pointer).glide_to(to, page, still, Instant::now());
         cx.notify();
         duration

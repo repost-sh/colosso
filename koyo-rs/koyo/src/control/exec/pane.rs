@@ -35,6 +35,8 @@ pub(crate) fn split(
     cx: &mut App,
 ) -> Result<Exec, ControlError> {
     let (source, target, side) = (input.source()?, input.pane, input.edge.into());
+    // A page split off new is the caller's; one moved stays whoever's it was.
+    let made_by = matches!(source, SplitSource::New(_)).then(|| caller.clone());
     let shown = policy::shows(input.select, cx);
     let opened = try_update_shell(cx, |shell, window, cx| {
         let (project, branch, _) = select::pane(&shell.workspace, target)?;
@@ -76,7 +78,7 @@ pub(crate) fn split(
             } else if let Some(at) = showing.and_then(|first| unit.tab_with(first)) {
                 unit.active_tab = at;
             }
-            open::open_unseen_page(shell, pane, cx);
+            open::open_agents_page(shell, made_by.as_ref(), pane, window, cx);
             cx.notify();
             output(&info::place(shell, pane)?)
         })

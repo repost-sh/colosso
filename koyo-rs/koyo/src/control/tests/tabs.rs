@@ -272,3 +272,22 @@ fn a_page_brought_back_waits_to_be_shown_for_the_browser_tools(cx: &mut TestAppC
     let browsers = call(&agent, "browser_list", json!({}), cx).unwrap();
     assert_eq!(browsers["pages"][0]["url"], json!("https://example.com/"));
 }
+
+/// A page an agent opens is the one its next call without `pane` means, though another tab, the
+/// person's or another agent's, is the one shown.
+#[gpui_kit::test]
+fn a_page_an_agent_opens_is_the_one_its_next_call_means(cx: &mut TestAppContext) {
+    let root = repo("control-opened-page", &[("README.md", "hi\n")]);
+    let rig = controlled("control-opened-page", &[&root], cx);
+    select(&rig.shell, &root, cx);
+    let page = json!({ "kind": "browser", "url": "https://example.com/" });
+    let mut shown = page.clone();
+    shown["select"] = json!(true);
+    let other = call(&terminal("term_2"), "tab_open", shown, cx).unwrap()["pane"].clone();
+    let agent = terminal("term_1");
+    let mine = call(&agent, "tab_open", page, cx).unwrap()["pane"].clone();
+    assert_ne!(mine, other);
+
+    let lease = call(&agent, "browser_claim", json!({}), cx).unwrap();
+    assert_eq!(lease["pane"], mine, "not the page the window shows");
+}

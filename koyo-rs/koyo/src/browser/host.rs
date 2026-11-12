@@ -51,6 +51,26 @@ pub enum Answer {
     Stopped,
     /// No answer came within the limit, and the app stopped waiting for it.
     TimedOut,
+    /// The page asked something meanwhile, which holds it up: the command waits behind it,
+    /// and the app stopped waiting for it ([`Browsers::page_asks`]).
+    Asking,
+}
+
+/// Who waits for a protocol command's answer: the app itself, or an agent, which a page's
+/// question also answers ([`Answer::Asking`]).
+enum Waiter {
+    App(oneshot::Sender<CdpResult>),
+    Agent(oneshot::Sender<Answer>),
+}
+
+impl Waiter {
+    /// Gives it `result`; one that stopped waiting has no use for it.
+    fn reply(self, result: CdpResult) {
+        match self {
+            Waiter::App(answer) => drop(answer.send(result)),
+            Waiter::Agent(answer) => drop(answer.send(Answer::Answered(result))),
+        }
+    }
 }
 
 enum Host {
@@ -79,8 +99,9 @@ pub struct Browsers {
     pending: HashMap<PaneId, (u32, u8, PixelSize)>,
     /// Requests made while the host was starting.
     queued: Vec<AppRequest>,
-    /// Protocol commands under way, the app's and agents', by the app's number for each.
-    calls: HashMap<u64, oneshot::Sender<CdpResult>>,
+    /// Protocol commands under way, the app's and agents', by the app's number for each:
+    /// the page each went to, and who waits for its answer.
+    calls: HashMap<u64, (PaneId, Waiter)>,
     next_call: u64,
     /// Every protocol command asked for, for a test to read: the page, method and params.
     #[cfg(test)]
@@ -249,12 +270,15 @@ impl Browsers {
         method: &str,
         params: serde_json::Value,
     ) -> oneshot::Receiver<CdpResult> {
-        self.send_call(pane, method, params).1
+        let (answer, answered) = oneshot::channel();
+        self.send_call(pane, method, params, Waiter::App(answer));
+        answered
     }
 
-    /// Runs a protocol command on `pane`'s page and waits for its answer, at most `limit`.
-    /// Past it the app stops waiting, and an answer that comes later goes nowhere; the host
-    /// lets go of its own note of the command once Chromium answers or the page closes.
+    /// Runs a protocol command on `pane`'s page for an agent and waits for its answer, at most
+    /// `limit`, and no longer than until the page asks something that holds it up. Past it the
+    /// app stops waiting, and an answer that comes later goes nowhere; the host lets go of its
+    /// own note of the command once Chromium answers or the page closes.
     pub fn ask(
         &mut self,
         pane: PaneId,
@@ -263,11 +287,12 @@ impl Browsers {
         limit: Duration,
         cx: &mut Context<Self>,
     ) -> Task<Answer> {
-        let (call, answered) = self.send_call(pane, method, params);
+        let (answer, answered) = oneshot::channel();
+        let call = self.send_call(pane, method, params, Waiter::Agent(answer));
         let late = cx.background_executor().timer(limit);
         cx.spawn(
             async move |this, cx| match future::select(answered, late).await {
-                Either::Left((Ok(result), _)) => Answer::Answered(result),
+                Either::Left((Ok(answer), _)) => answer,
                 Either::Left((Err(oneshot::Canceled), _)) => Answer::Stopped,
                 Either::Right(((), _)) => {
                     let _ = this.update(cx, |this, _| this.calls.remove(&call));
@@ -277,31 +302,45 @@ impl Browsers {
         )
     }
 
-    /// Sends a protocol command: its number, and the channel its answer arrives on, at once
-    /// when the host isn't running.
+    /// Sends a protocol command, which `waiter` waits for: its number. Answered at once when
+    /// the host isn't running.
     fn send_call(
         &mut self,
         pane: PaneId,
         method: &str,
         params: serde_json::Value,
-    ) -> (u64, oneshot::Receiver<CdpResult>) {
-        let (answer, answered) = oneshot::channel();
+        waiter: Waiter,
+    ) -> u64 {
         #[cfg(test)]
         self.asked.push((pane, method.to_owned(), params.clone()));
         if !matches!(self.host, Host::Running { .. } | Host::Starting) {
-            let _ = answer.send(Err("The browser engine is not running.".into()));
-            return (0, answered);
+            waiter.reply(Err("The browser engine is not running.".into()));
+            return 0;
         }
         self.next_call += 1;
         let call = self.next_call;
-        self.calls.insert(call, answer);
+        self.calls.insert(call, (pane, waiter));
         self.send(AppRequest::Cdp {
             pane,
             call,
             method: method.into(),
             params,
         });
-        (call, answered)
+        call
+    }
+
+    /// `pane`'s page asked something that holds it up: the agents' commands on it wait behind
+    /// it, so they stop waiting ([`Answer::Asking`]). The app's own wait it out.
+    pub(super) fn page_asks(&mut self, pane: PaneId) {
+        let asked: Vec<u64> = (self.calls.iter())
+            .filter(|(_, (page, waiter))| *page == pane && matches!(waiter, Waiter::Agent(_)))
+            .map(|(call, _)| *call)
+            .collect();
+        for call in asked {
+            if let Some((_, Waiter::Agent(answer))) = self.calls.remove(&call) {
+                let _ = answer.send(Answer::Asking);
+            }
+        }
     }
 
     /// How many protocol commands wait for their answer, for a test to read.
@@ -312,8 +351,8 @@ impl Browsers {
 
     /// Fails every agent command under way.
     fn drop_calls(&mut self, why: &str) {
-        for (_, answer) in self.calls.drain() {
-            let _ = answer.send(Err(why.to_owned()));
+        for (_, (_, waiter)) in self.calls.drain() {
+            waiter.reply(Err(why.to_owned()));
         }
     }
 

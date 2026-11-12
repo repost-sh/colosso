@@ -1,12 +1,16 @@
 //! The page's questions wait for the person: alert, confirm and prompt, and a server's
-//! sign-in, each answered in the dialog the pane opens.
+//! sign-in, each answered in the dialog the pane opens; and an agent sees the ones that hold
+//! the page up, and answers them.
 
 use std::time::Instant;
 
 use gpui_kit::{Entity, TestAppContext, VisualTestContext};
+use koyo_app_control::ops::browser::{DialogAction, DialogKind};
 use koyo_browser_ipc::Dialog;
+use serde_json::json;
 
-use super::{PATIENCE, finish, open, wait_for, wait_for_title};
+use super::{PATIENCE, finish, open, run, tester, wait_for, wait_for_title};
+use crate::browser::agent::{self, AgentError, Answer, Unanswered};
 use crate::browser::view::BrowserView;
 use crate::modal;
 
@@ -99,5 +103,75 @@ fn a_sign_in_dialog_sends_the_credentials_the_person_types(cx: &mut TestAppConte
     in_dialog(cx, "", "ada", "tab");
     in_dialog(cx, "", "pw", "enter");
     wait_for_title(cx, &view, "signed in");
+    finish(cx, scratch);
+}
+
+/// A mouse event at the page's `(100, 50)`, as `browser_click` sends it: how the command
+/// ended.
+fn press(cx: &mut VisualTestContext, view: &Entity<BrowserView>, kind: &str) -> Answer {
+    let event = json!({"type": kind, "x": 100, "y": 50, "button": "left", "clickCount": 1});
+    run(cx, view, Some(&tester()), "Input.dispatchMouseEvent", event)
+}
+
+#[gpui_kit::test]
+#[ignore = "needs the engine script/browser-engine packages"]
+fn an_agent_sees_and_answers_the_dialogs_its_click_opens(cx: &mut TestAppContext) {
+    let page = "data:text/html,<title>ready</title><body style='margin:0'>\
+        <button style='position:fixed;left:0;top:0;width:200px;height:100px' \
+        onclick=\"document.title=confirm('Sure?')+' '+prompt('Name?','Ada')\">go</button>";
+    let (view, cx, scratch) = open("agent-dialogs", page, cx);
+    wait_for(cx, &view, "the page on screen", |view| {
+        view.page.title == "ready" && view.frame.is_some()
+    });
+    let actor = tester();
+
+    assert!(matches!(
+        press(cx, &view, "mousePressed"),
+        Answer::Answered(Ok(_))
+    ));
+    assert_eq!(
+        press(cx, &view, "mouseReleased"),
+        Answer::Asking,
+        "the click stops waiting as the confirm it opened holds the page up"
+    );
+    let asked = view
+        .read_with(cx, |view, _| view.dialog())
+        .expect("it asks");
+    assert_eq!(
+        (asked.kind, asked.message.as_str()),
+        (DialogKind::Confirm, "Sure?")
+    );
+    let next = cx.update(|_, cx| {
+        let params = json!({"expression": "1"});
+        agent::cdp(&view, None, "Runtime.evaluate", params, PATIENCE, cx)
+    });
+    assert!(
+        matches!(next, Err(AgentError::Asking(_))),
+        "the page does nothing else meanwhile"
+    );
+
+    let accept = |text: Option<&str>, cx: &mut VisualTestContext| {
+        let text = text.map(str::to_owned);
+        view.update(cx, |view, cx| {
+            view.agent_answers(&actor, DialogAction::Accept, text, cx)
+        })
+    };
+    accept(None, cx).expect("an agent answers a confirm");
+    wait_for(cx, &view, "the prompt", |view| {
+        view.dialog()
+            .is_some_and(|asked| asked.kind == DialogKind::Prompt)
+    });
+    let asked = view
+        .read_with(cx, |view, _| view.dialog())
+        .expect("it asks");
+    assert_eq!(asked.default_text.as_deref(), Some("Ada"));
+    accept(Some("Grace"), cx).expect("and a prompt, with its own text");
+    wait_for_title(cx, &view, "true Grace");
+    assert_eq!(accept(None, cx), Err(Unanswered::NothingAsked));
+    cx.run_until_parked();
+    assert!(
+        cx.update(|_, cx| modal::window(cx)).is_none(),
+        "the person's dialog went with the answer"
+    );
     finish(cx, scratch);
 }

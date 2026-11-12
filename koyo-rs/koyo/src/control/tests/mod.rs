@@ -10,6 +10,7 @@ mod chat_modes;
 mod chat_set;
 mod chats;
 mod host;
+mod pages;
 mod panes;
 mod pipeline;
 mod projects;

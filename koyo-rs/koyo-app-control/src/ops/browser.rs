@@ -20,11 +20,11 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 pub use act::{
-    BrowserClaim, BrowserClaimInput, BrowserClick, BrowserClickInput, BrowserEval,
-    BrowserEvalInput, BrowserEvalOutput, BrowserGo, BrowserGoInput, BrowserNavigate,
-    BrowserNavigateInput, BrowserPressKey, BrowserPressKeyInput, BrowserRelease, BrowserScroll,
-    BrowserScrollInput, BrowserType, BrowserTypeInput, GoAction, Lease, MouseButton, PageInput,
-    WaitUntil,
+    BrowserClaim, BrowserClaimInput, BrowserClick, BrowserClickInput, BrowserDialog,
+    BrowserDialogInput, BrowserEval, BrowserEvalInput, BrowserEvalOutput, BrowserGo,
+    BrowserGoInput, BrowserNavigate, BrowserNavigateInput, BrowserPressKey, BrowserPressKeyInput,
+    BrowserRelease, BrowserScroll, BrowserScrollInput, BrowserType, BrowserTypeInput, DialogAction,
+    GoAction, Lease, MouseButton, PageInput, WaitUntil,
 };
 pub use viewport::{
     BrowserViewport, BrowserViewportInput, BrowserViewportOutput, DeviceName, FitWord,
@@ -50,6 +50,10 @@ pub struct PageOutput {
     pub url: String,
     /// The page's title.
     pub title: String,
+    /// For `browser_navigate` and `browser_go`, which wait for the load: whether the page
+    /// finished loading in that time. Absent when they didn't wait.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loaded: Option<bool>,
 }
 
 impl PageOutput {
@@ -71,6 +75,15 @@ pub struct PageInfo {
     pub title: String,
     /// Whether it's still loading.
     pub loading: bool,
+    /// Whether the browser engine has it open, which the tools need. A tab brought back at
+    /// launch, or one never shown, has none until Koyo's window shows it.
+    #[serde(default = "super::shared::yes")]
+    pub open: bool,
+    /// Whether the engine has it on screen: drawn in the window, or used by an agent in the
+    /// last 90 s. Out of sight its timers slow and its animation frames stop, until the next
+    /// command brings it back.
+    #[serde(default = "super::shared::yes")]
+    pub on_screen: bool,
     /// The worktree whose tab holds it.
     pub worktree: String,
     /// Who holds its lease: an agent's name, or `person`; absent when free.
@@ -79,6 +92,47 @@ pub struct PageInfo {
     /// The size and device it's laid out at (`browser_viewport`); `fill` when it fills its
     /// pane.
     pub viewport: Viewport,
+    /// What the page asks and waits on, the first of its questions; absent when none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dialog: Option<PageDialog>,
+}
+
+/// A question a page waits on.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PageDialog {
+    /// What it is. `alert`, `confirm`, `prompt` and `leave` (the page has unsaved changes and
+    /// asks before it's left) hold the page up, and `browser_dialog` answers them; `signIn`,
+    /// `permission` and `certificate` are the person's to answer.
+    pub kind: DialogKind,
+    /// What the page says; for a sign-in, the site asking; for a permission, what it asks for.
+    pub message: String,
+    /// The text a prompt's field starts with.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_text: Option<String>,
+}
+
+/// What a page asks.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum DialogKind {
+    Alert,
+    Confirm,
+    Prompt,
+    Leave,
+    SignIn,
+    Permission,
+    Certificate,
+}
+
+impl DialogKind {
+    /// Whether the page does nothing else until it's answered, which `browser_dialog` does.
+    pub fn holds_up(self) -> bool {
+        matches!(
+            self,
+            Self::Alert | Self::Confirm | Self::Prompt | Self::Leave
+        )
+    }
 }
 
 /// The window's pages.
@@ -97,7 +151,7 @@ impl Operation for BrowserList {
     const NAME: &'static str = "browser_list";
     const TITLE: &'static str = "List browser pages";
     const SCOPE: Scope = Scope::Read;
-    const DESCRIPTION: &'static str = "Every browser pane in the window: pane id, address, title, whether it's loading, its worktree, who controls it and its viewport. A page the person controls isn't yours to drive.";
+    const DESCRIPTION: &'static str = "Every browser pane in the window: pane id, address, title, whether it's loading, whether the engine has it open (the tools reach only an open page) and on screen, its worktree, who controls it, its viewport, and the dialog it waits on, if any. A page the person controls isn't yours to drive.";
     const HINTS: Hints = Hints::READ;
     type Input = super::shared::NoInput;
     type Output = BrowserListOutput;
@@ -348,7 +402,7 @@ impl Operation for BrowserWait {
     const TITLE: &'static str = "Wait for a page";
     const SUBJECT: &'static [&'static str] = &["value"];
     const SCOPE: Scope = Scope::Read;
-    const DESCRIPTION: &'static str = "Waits until a browser page loads, or has an element (`selector`), text or address part matching `value`. Running out of time answers `met: false`. Prefer this to fixed sleeps.";
+    const DESCRIPTION: &'static str = "Waits until a browser page loads, or has an element (`selector`), text or address part matching `value`. Running out of time answers `met: false`; a page that can't open, or a selector the page can't read, fails at once. Prefer this to fixed sleeps.";
     const HINTS: Hints = Hints::READ;
     type Input = BrowserWaitInput;
     type Output = BrowserWaitOutput;

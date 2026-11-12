@@ -24,6 +24,7 @@ pub(crate) fn status(cx: &mut App) -> AppStatusOutput {
         version: env!("CARGO_PKG_VERSION").to_owned(),
         window_open: false,
         focused: false,
+        on_screen: false,
         route: "workspace".to_owned(),
         layout,
         sidebar_open: false,
@@ -50,6 +51,7 @@ pub(crate) fn status(cx: &mut App) -> AppStatusOutput {
         AppStatusOutput {
             window_open: true,
             focused: window.is_window_active(),
+            on_screen: window.is_visible(),
             route: route(shell.route(cx)),
             sidebar_open: shell.sidebar_open(),
             right_panel: right_panel(shell),

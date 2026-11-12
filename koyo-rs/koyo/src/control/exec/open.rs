@@ -123,20 +123,35 @@ fn page_mode(
         .map_err(ControlError::invalid_input)
 }
 
-/// Opens the page of browser pane `pane` in the browser engine when the window doesn't draw
-/// it: a page opens once it's drawn, and the browser tools reach it only once it's open.
-pub(crate) fn open_unseen_page(shell: &mut Shell, pane: u64, cx: &mut Context<Shell>) {
+/// Opens browser pane `pane`'s page, which an agent placed, in the browser engine: the
+/// browser tools reach a page only once it's open. A tab `window` shows and draws opens it as
+/// it's drawn, at its pane's size; any other page opens at once, as a window minimized or on
+/// another desktop draws nothing. A page `opener` made is then the one its next call without
+/// a `pane` means.
+pub(crate) fn open_agents_page(
+    shell: &mut Shell,
+    opener: Option<&Caller>,
+    pane: u64,
+    window: &Window,
+    cx: &mut Context<Shell>,
+) {
     let workspace = &shell.workspace;
     let Some((at, _)) = workspace.find_pane(|found| found.id == pane) else {
         return;
     };
-    if shell.route(cx) == Route::Workspace && workspace.shown_tab() == Some(at) {
-        return;
-    }
     let view = (workspace.projects[at.0].branches[at.1].pane(pane))
         .and_then(|found| found.view().cloned());
-    if let Some(view) = view {
+    let Some(view) = view else {
+        return;
+    };
+    let drawn = shell.route(cx) == Route::Workspace
+        && shell.workspace.shown_tab() == Some(at)
+        && window.is_visible();
+    if !drawn {
         view.update(cx, BrowserView::open_out_of_sight);
+    }
+    if let Some(opener) = opener {
+        browser::acted(opener, pane, cx);
     }
 }
 

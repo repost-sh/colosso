@@ -101,3 +101,26 @@ fn a_page_the_person_only_uses_goes_back_once_they_have_been_still_a_while(
     view.update(cx, BrowserView::give_back);
     view.read_with(cx, |view, _| assert!(view.control.holder.is_none()));
 }
+
+#[gpui_kit::test]
+fn the_agents_pointer_travels_only_where_the_person_can_see_it(cx: &mut TestAppContext) {
+    let (window, drawn) = start_page(cx);
+    // A page the window holds but doesn't draw, as a tab out of sight.
+    let unseen = window
+        .update(cx, |_, window, cx| {
+            cx.new(|cx| BrowserView::new(String::new(), Path::new("/work/app"), window, cx))
+        })
+        .unwrap();
+    let travel = |view: &Entity<BrowserView>, cx: &mut TestAppContext| {
+        view.update(cx, |view, cx| view.point_to(300., 200., cx))
+    };
+    assert!(
+        travel(&drawn, cx) > std::time::Duration::ZERO,
+        "in sight, the person sees it travel to where it clicks"
+    );
+    assert_eq!(
+        travel(&unseen, cx),
+        std::time::Duration::ZERO,
+        "out of sight, nobody waits for it"
+    );
+}

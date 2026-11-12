@@ -12,5 +12,5 @@ mod script;
 mod viewport;
 
 pub(crate) use acts::{click, eval, press_key, read, screenshot, scroll, snapshot, type_text};
-pub(crate) use page::{claim, go, list, navigate, release, wait};
+pub(crate) use page::{acted, claim, dialog, go, list, navigate, release, wait};
 pub(crate) use viewport::{opening_change, viewport};

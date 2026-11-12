@@ -146,11 +146,11 @@ impl BrowserView {
         }
     }
 
-    /// Opens the page in the host though no pane draws it, as an agent's page opened out of
-    /// sight needs for the browser tools to reach it: at the size a pane assumes before it's
-    /// drawn, until it's drawn at its own. The agent that opened it is using it, so it's on
-    /// screen for the engine until the agent leaves it be (`sight.rs`). A page opens on its
-    /// own only once it's drawn.
+    /// Opens the page in the host though no pane has drawn it, as an agent's page needs for
+    /// the browser tools to reach it, out of sight or in a window that draws nothing: at the
+    /// size a pane assumes before it's drawn, until it's drawn at its own. The agent that
+    /// opened it is using it, so it's on screen for the engine until the agent leaves it be
+    /// (`sight.rs`). A page opens on its own only once it's drawn.
     pub(crate) fn open_out_of_sight(&mut self, cx: &mut Context<Self>) {
         if self.viewport.is_some() || self.is_inspector() {
             return;

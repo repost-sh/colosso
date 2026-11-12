@@ -58,10 +58,15 @@ impl BrowserView {
     /// itself.
     pub(super) fn dialog_closed(&mut self, id: u64, cx: &mut Context<Self>) {
         self.dialogs.retain(|question| question.id != id);
+        self.put_away(id, cx);
+        cx.notify();
+    }
+
+    /// Puts the person's dialog for question `id` away, if it's up.
+    pub(super) fn put_away(&mut self, id: u64, cx: &mut Context<Self>) {
         if self.asked.take_if(|asked| *asked == id).is_some() {
             modal::close(cx);
         }
-        cx.notify();
     }
 
     /// Asks the first waiting question, unless one is on screen. The dialog opens once the
@@ -310,6 +315,21 @@ fn words(question: &Dialog, origin: &str) -> Words {
             accept_default: true,
             carries: Carries::Nothing,
         },
+    }
+}
+
+/// What the person's dialog for `question` says, on one line: a page's own words as they
+/// are, any other question's heading and text.
+pub(super) fn says(question: &Question) -> String {
+    match &question.asked {
+        Dialog::Alert { message }
+        | Dialog::Confirm { message }
+        | Dialog::Prompt { message, .. } => message.clone(),
+        asked => {
+            let words = words(asked, &question.origin);
+            let text = words.text.unwrap_or_default().replace('\n', "; ");
+            format!("{} {text}", words.heading).trim_end().to_owned()
+        }
     }
 }
 

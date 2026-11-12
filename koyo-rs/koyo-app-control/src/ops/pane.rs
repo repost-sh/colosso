@@ -136,8 +136,7 @@ impl Operation for PaneFocus {
     const TITLE: &'static str = "Focus pane";
     const SUBJECT: &'static [&'static str] = &["pane"];
     const SCOPE: Scope = Scope::Navigate;
-    const DESCRIPTION: &'static str =
-        "Selects the tab holding `pane` and gives that pane the keyboard.";
+    const DESCRIPTION: &'static str = "Selects the tab holding `pane` and gives that pane the keyboard. Koyo's window draws it only while it's on screen (app_status' `onScreen`).";
     const HINTS: Hints = Hints::IDEMPOTENT;
     type Input = PaneInput;
     type Output = PanePlace;

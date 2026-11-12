@@ -101,9 +101,10 @@ pub(crate) fn open(
         let at = select::worktree(caller, &shell.workspace, input.worktree.as_deref(), None)?;
         open::open_on(shell, caller, at, &spec, (beside, shown), window, cx)
     })?;
+    let caller = caller.clone();
     Ok(opened.then(cx, move |pane, cx| {
-        try_update_shell(cx, |shell, _, cx| {
-            open::open_unseen_page(shell, pane, cx);
+        try_update_shell(cx, |shell, window, cx| {
+            open::open_agents_page(shell, Some(&caller), pane, window, cx);
             output(&info::place(shell, pane)?)
         })
     }))

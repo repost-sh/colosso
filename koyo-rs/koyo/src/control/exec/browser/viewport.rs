@@ -80,7 +80,7 @@ pub(crate) fn viewport(
         ViewportRefused::Refused(why) => refused(why),
         ViewportRefused::Invalid(why) => ControlError::invalid_input(why),
     })?;
-    acted(caller, &page, cx);
+    acted(caller, page.pane, cx);
     let screenshot = input.screenshot.unwrap_or(false);
     Ok(Exec::Later(cx.spawn(async move |cx: &mut AsyncApp| {
         let settled = match target {
