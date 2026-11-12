@@ -316,7 +316,8 @@ answer), `Request { request, ask }`, `Cancel`, `Quit`. Host to app: `Hello { pro
   real device's corners aren't read yet: its picture stays square.
 - One bar, the pane's own (28 points, a hairline under it) [built]: the device's glyph and name,
   as any pane's; then a dot and a word for how it stands (green Ready, amber Starting, red what
-  needs doing, grey Not running); then icon buttons at its right, each named by its tooltip with
+  needs doing, by its own name for a real device: "Needs update", "Not trusted"; grey Not
+  running); then icon buttons at its right, each named by its tooltip with
   its key: Home (⇧⌘H) and App Switcher, then Rotate Left (⌘←), Rotate Right (⌘→) and Lock for
   simulators; for a real device the sentence of 5, while its stream is held (ready or locked),
   and the lend's button. Dimmed until the device stands ready. In a split the same bar has the
@@ -325,24 +326,27 @@ answer), `Request { request, ask }`, `Cancel`, `Quit`. Host to app: `Hello { pro
   the standing changes, not with each picture. It was a second bar under the pane's (40
   points): the owner's "a huge waste of space".
 - The picker lists Koyo's simulators (or what they miss, with `Set Up…`), then under "Connected"
-  the iPhones and iPads by cable, each with its system and the step it misses.
+  the iPhones and iPads by cable, each with its system and, for one that misses a step, a
+  warning with the step's label and what to do under its name.
+- A real device's step shows the same way in its tab [built, the owner's]: a warning and the
+  step's label as a heading ("Needs update") over the sentence that says what to do. The labels
+  are `koyo_device_wire::real::label`, one for each step, beside the sentences.
 - A real device's states: locked ("Unlock your iPad to continue.", the lock screen under it),
   moving on by itself; unplugged ("{name} was unplugged. Plug it back in to continue."; the
   bar says Unplugged), moving on by itself, with Start Again should the plug go unheard; the
   cable, trust and Developer Mode, each in a sentence with
   `Set Up…`: the cable moves on by itself at the plug; trust and Developer Mode once a listing
   sees them done (the setup's, which looks every two seconds while open, or the next plug's);
-  below 27 ("{name} runs iOS 26.6.1. Koyo drives
-  devices on iOS and iPadOS 27 or later: update it in Settings → General → Software Update."),
-  nothing to press; another app holding it, or its developer services not up, with Start Again.
+  below 27 ("{name} runs iOS 26.6.1, and Koyo needs iOS 27 or later. Update it on the device in
+  Settings → General → Software Update."), nothing to press; another app holding it, or its developer services not up, with Start Again.
 - The control bar is the browser's own pill (`held::bar`). An agent's touches show as marks.
 - After a restart a tab comes back as "{name} isn't running." with `Start`: nothing starts by
   itself. A device no longer in Koyo's set says "{name} is no longer among Koyo's devices." with
   `Choose Another…`, which turns the tab into the picker. Closing the last tab of a device shuts
   its simulator down or lets the device go; two tabs of one device share its host.
 - The launcher's **Device** kind lists the device tabs open, then Koyo's simulators no tab shows,
-  then the iPhones and iPads plugged in no tab shows ("Needs setup" beside one that misses a
-  step), filtered by what's typed; Enter with nothing picked opens a tab on the picker
+  then the iPhones and iPads plugged in no tab shows (the step's label beside one that misses a
+  step: "Needs update"), filtered by what's typed; Enter with nothing picked opens a tab on the picker
   (`docs/new-tab.md`).
 - The device counts as drawn while its picture is painted in a window (a keyed state of the
   picture's element): only then, or while an agent works on it, does the host copy frames. A
@@ -464,8 +468,9 @@ it would be a picture of a device.
   "Setup unfinished") and `Set Up…` while it isn't. Xcode with its version; iOS versions, the
   ones installed with their sizes. No `Delete` for a version: they're Xcode's, and the row says
   to add or remove them in Xcode → Settings → Components.
-- iPhones and iPads plugged in, each marked the same way: "Ready", or "Needs setup" with the
-  step it misses and `Set Up…`; none plugged in, how to plug one in, with `Set Up…`.
+- iPhones and iPads plugged in, each marked the same way: "Ready", or the step it misses in two
+  or three words ("Needs update", "Not trusted", "Developer Mode off", "Not connected") with what
+  to do and `Set Up…`; none plugged in, how to plug one in, with `Set Up…`.
 - Koyo's simulators, each with its system and whether it runs: `Stop` while it does (through its
   host, else as `simctl shutdown`), "Stopping…" until it's down, `Delete` while it doesn't,
   asked first. `New…` lists the newest system's models and makes one.
