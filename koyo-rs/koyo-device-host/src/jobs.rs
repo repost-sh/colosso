@@ -2,8 +2,8 @@
 //! text read off the picture, and a simulator's apps through `simctl`. Each runs on a thread of
 //! its own and is answered when it's done, so the person's input is never kept waiting.
 
+use std::sync::Arc;
 use std::sync::mpsc::{self, TryRecvError};
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use koyo_device_wire::{Answer, App, Ask, Point, Refusal, RefusalCode, RequestId, Source};
@@ -11,6 +11,7 @@ use koyo_device_wire::{Answer, App, Ask, Point, Refusal, RefusalCode, RequestId,
 use crate::host::{Host, refused};
 use crate::look::{self, Sample};
 use crate::ring::Held;
+use crate::sim::access::{Shared, with_tree};
 use crate::sim::{ax, simctl};
 use crate::text;
 
@@ -22,8 +23,6 @@ pub const NUMBERED: u32 = 600;
 /// How long a launch waits for its app to be in front.
 const IN_FRONT_WITHIN: Duration = Duration::from_secs(10);
 
-/// The accessibility connection the jobs share, locked only to take or replace it.
-pub type Shared = Arc<Mutex<Option<Arc<ax::Tree>>>>;
 /// The most elements a snapshot of the accessibility tree reads, and how long it may take.
 const TREE: ax::Limits = ax::Limits {
     elements: 600,
@@ -140,6 +139,7 @@ impl Host {
                 }
                 Ask::Install { path } => run(&["install", &udid, path], 85),
                 Ask::Launch { bundle, arguments } => {
+                    crate::sim::access::wanted(&tree);
                     let mut args = vec![
                         "launch",
                         "--terminate-running-process",
@@ -287,29 +287,10 @@ impl Host {
     /// The accessibility service's port, when no connection is kept: looked up only to make one.
     /// The lock is only tried, never waited on, so the host's loop goes on whatever a job holds.
     fn ax_port(&self) -> Option<u32> {
-        let connected = self.tree.try_lock().map_or(true, |held| held.is_some());
+        // Locked, it is being switched: the port is looked up, should no connection be kept.
+        let connected = self.tree.try_lock().is_ok_and(|held| held.connected());
         (!connected).then(|| self.device.simulator()?.lookup(ax::SERVICE).ok()).flatten()
     }
-}
-
-/// Runs `read` over the kept connection, made from `port` when there is none, and let go when
-/// it broke (interrupted, or the service gone), to be made again.
-fn with_tree<T>(shared: &Shared, port: Option<u32>, read: impl FnOnce(&ax::Tree) -> Result<T, String>) -> Result<T, String> {
-    let tree = {
-        let mut held = shared.lock().map_err(|error| error.to_string())?;
-        if held.as_ref().is_none_or(|tree| tree.broken()) {
-            let port = port.ok_or("the simulator's accessibility isn't connected yet")?;
-            *held = Some(Arc::new(ax::Tree::connect(port)?));
-        }
-        held.clone().ok_or("no accessibility connection")?
-    };
-    let read = read(&tree);
-    if tree.broken()
-        && let Ok(mut held) = shared.lock()
-    {
-        *held = None;
-    }
-    read
 }
 
 /// A snapshot of the simulator's accessibility tree, refs from `first`; why not, when the

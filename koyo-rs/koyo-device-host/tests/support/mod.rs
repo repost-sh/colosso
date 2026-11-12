@@ -13,6 +13,9 @@
 
 pub mod acts;
 pub mod pages;
+mod said;
+
+pub use said::*;
 
 use std::io::BufReader;
 use std::os::unix::net::UnixStream;
@@ -107,6 +110,11 @@ pub fn token() -> String {
 impl Driver {
     /// Starts the host on `target`, says hello, and checks its hello.
     pub fn start(target: &Target, stats: bool) -> Driver {
+        Driver::start_with(target, stats, &[])
+    }
+
+    /// As [`Driver::start`], with `more` in the host's environment.
+    pub fn start_with(target: &Target, stats: bool, more: &[(&str, &str)]) -> Driver {
         let folder: PathBuf = [env!("KOYO_TARGET_DIR"), "ds-state"].iter().collect();
         let (writer, theirs) = UnixStream::pair().unwrap();
         let token = token();
@@ -128,7 +136,8 @@ impl Driver {
                 koyo_device_host::ENV_SOCKET_FD,
                 inherit::HOST_FD.to_string(),
             )
-            .env(koyo_device_host::ENV_TOKEN, &token);
+            .env(koyo_device_host::ENV_TOKEN, &token)
+            .envs(more.iter().copied());
         // What macOS caches for the host (Vision's compiled text model) stays in the checkout.
         if let Ok(home) = std::env::var("KOYO_REAL_SIM_HOME") {
             command.env("CFFIXED_USER_HOME", home);
@@ -380,9 +389,14 @@ impl Driver {
 
     /// The app's end of the socket gone at once, as when Koyo is killed: every descriptor of it
     /// closed together. Waits up to `limit` for the host to go; how long it took.
-    pub fn vanish(mut self, limit: Duration) -> Option<Duration> {
-        self.shown = None;
+    pub fn vanish(self, limit: Duration) -> Option<Duration> {
         let _ = self.writer.shutdown(std::net::Shutdown::Both);
+        self.gone(limit)
+    }
+
+    /// Waits up to `limit` for the host to go by itself; how long it took.
+    pub fn gone(mut self, limit: Duration) -> Option<Duration> {
+        self.shown = None;
         let started = Instant::now();
         while started.elapsed() < limit {
             if let Ok(Some(_)) = self.child.try_wait() {
@@ -420,30 +434,10 @@ impl Drop for Driver {
     }
 }
 
-/// The time of day, for a log of acts.
-pub fn now() -> String {
-    let out = Command::new("/bin/date").arg("+%Y-%m-%d %H:%M:%S").output();
-    out.map(|out| String::from_utf8_lossy(&out.stdout).trim().to_owned()).unwrap_or_default()
-}
-
 fn rand_suffix() -> usize {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |time| time.subsec_nanos() as usize)
-}
-
-/// Saves the picture as `<name>.png` in `$KOYO_REAL_SIM_SHOTS`, when it is set: a simulator's,
-/// never a real device's.
-pub fn shot(host: &mut Driver, name: &str) {
-    let Ok(folder) = std::env::var("KOYO_REAL_SIM_SHOTS") else {
-        return;
-    };
-    if let Ok(Answer::Screenshot { png, .. }) =
-        host.ask(Ask::Screenshot { scale: 1 }, Duration::from_secs(15))
-    {
-        let _ = std::fs::create_dir_all(&folder);
-        let _ = std::fs::write(format!("{folder}/{name}.png"), png.as_slice());
-    }
 }
 
 /// `simctl --set <set>` from the test, as an agent's own `simctl` would.
@@ -459,26 +453,6 @@ pub fn simctl(target: &Target, args: &[&str]) -> String {
         .output()
         .unwrap();
     String::from_utf8_lossy(&out.stdout).into_owned()
-}
-
-/// A row's result, printed and appended to `$KOYO_REAL_SIM_OUT` when it is set.
-pub fn row(id: &str, what: &str, got: &str, pass: bool) {
-    let line = format!(
-        "{id} | {what} | {got} | {}",
-        if pass { "PASS" } else { "FAIL" }
-    );
-    eprintln!("{line}");
-    append("KOYO_REAL_SIM_OUT", &line);
-}
-
-/// Appends `line` to the file the environment's `variable` names, when it's set.
-pub fn append(variable: &str, line: &str) {
-    use std::io::Write as _;
-    if let Ok(path) = std::env::var(variable)
-        && let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path)
-    {
-        let _ = writeln!(file, "{line}");
-    }
 }
 
 /// The change an act answered with.

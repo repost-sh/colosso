@@ -10,7 +10,7 @@ mod turned;
 pub use presses::presses;
 pub use system::system;
 pub use touch::{keys, touches};
-pub use tree::tree;
+pub use tree::{RESTS, rests, tree};
 pub use turned::{turned, turned_tearing, warnings};
 
 use std::time::{Duration, Instant};

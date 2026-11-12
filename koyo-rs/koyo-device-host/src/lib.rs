@@ -23,6 +23,7 @@ mod text;
 mod xpc;
 
 pub use run::{ENV_SOCKET_FD, ENV_TOKEN, NEEDS_XCODE};
+pub use sim::access::ENV_RESTS_MS;
 
 /// The host's entry: `args` without the program's name. Exits 0 when the app said quit or went
 /// away, 1 when it couldn't run, 64 when started wrong.

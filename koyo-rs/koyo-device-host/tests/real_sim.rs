@@ -128,6 +128,21 @@ fn the_accessibility_tree_reads_settings_and_a_system_alert() {
     assert!(host.quit(Duration::from_secs(60)));
 }
 
+/// QI17: accessibility on in the simulator only while its tree is read.
+#[test]
+#[ignore = "needs a simulator: KOYO_REAL_SIM_SET and KOYO_REAL_SIM_UDID"]
+fn accessibility_rests_when_the_tree_goes_unread() {
+    let Some(target) = target() else {
+        eprintln!("skipped: no KOYO_REAL_SIM_SET and KOYO_REAL_SIM_UDID");
+        return;
+    };
+    let mut host = Driver::start_with(&target, false, &[rows::RESTS]);
+    let _ = host.ready(Duration::from_secs(200));
+    host.tell(&ToHost::Visible { visible: true });
+    rows::rests(&target, &mut host);
+    assert!(host.quit(Duration::from_secs(60)));
+}
+
 /// QI16: a fresh simulator of its own, made and deleted here, tapped as soon as the host says
 /// its input is getting ready. Needs `KOYO_REAL_SIM_FRESH=1` beside the set: a first boot is a
 /// minute and some ten gigabytes.
@@ -280,4 +295,40 @@ fn the_host_goes_when_koyo_does() {
     let _ = support::simctl(&target, &["shutdown", &target.udid]);
     let _ = std::fs::remove_file(&record);
     assert!(went.is_some() && left);
+}
+
+/// QH5: the host started from a thread that blocks signals, as Koyo's does, still ends on a
+/// terminate signal, and shuts its simulator down.
+#[test]
+#[ignore = "needs a simulator: KOYO_REAL_SIM_SET and KOYO_REAL_SIM_UDID"]
+fn the_host_ends_on_a_terminate_signal_though_started_with_it_blocked() {
+    let Some(target) = target() else {
+        eprintln!("skipped: no KOYO_REAL_SIM_SET and KOYO_REAL_SIM_UDID");
+        return;
+    };
+    // SAFETY: this thread's own mask, blocked for the start and put back after it.
+    let mut host = unsafe {
+        let (mut blocked, mut before): (libc::sigset_t, libc::sigset_t) = (std::mem::zeroed(), std::mem::zeroed());
+        libc::sigemptyset(&raw mut blocked);
+        libc::sigaddset(&raw mut blocked, libc::SIGTERM);
+        libc::pthread_sigmask(libc::SIG_BLOCK, &raw const blocked, &raw mut before);
+        let host = Driver::start(&target, false);
+        libc::pthread_sigmask(libc::SIG_SETMASK, &raw const before, std::ptr::null_mut());
+        host
+    };
+    host.ready(Duration::from_secs(200));
+    // SAFETY: a signal to the host this test started.
+    unsafe { libc::kill(libc::pid_t::try_from(host.pid).unwrap(), libc::SIGTERM) };
+    let went = host.gone(Duration::from_secs(60));
+    let booted = support::simctl(&target, &["list", "devices", "booted"]).contains(&target.udid);
+    row(
+        "QH5",
+        "a terminate signal: the host goes and shuts the simulator down",
+        &format!("went after {went:?}; booted after {booted}"),
+        went.is_some() && !booted,
+    );
+    if booted {
+        let _ = support::simctl(&target, &["shutdown", &target.udid]);
+    }
+    assert!(went.is_some() && !booted);
 }

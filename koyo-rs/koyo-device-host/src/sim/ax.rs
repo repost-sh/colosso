@@ -3,8 +3,9 @@
 //! `CoreSimulatorBridge` runs inside the simulator, `com.apple.CoreSimulator.accessibility`: the
 //! frontmost app first, then each element's frame, role, label, value and children in one
 //! request. The classes are macOS's own (`AccessibilityPlatformTranslation`), loaded only to
-//! archive the requests and unarchive the answers; nothing is installed in the simulator and
-//! nothing is set there.
+//! archive the requests and unarchive the answers; nothing is installed in the simulator. An
+//! app answers only while accessibility is on in the simulator's settings, which `access.rs`
+//! switches.
 
 use std::ffi::CStr;
 use std::time::{Duration, Instant};
