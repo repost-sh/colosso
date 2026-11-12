@@ -7,11 +7,12 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use gpui_kit::{AnyElement, ClickEvent, Context, IntoElement as _, ParentElement as _, Styled as _, div, px};
+use gpui_kit::{AnyElement, ClickEvent, Context, IntoElement as _, ParentElement as _, Styled as _, div};
 
 use super::Devices;
 use super::view::DeviceView;
 use crate::browser::control::Actor;
+use crate::modal::{Button as Push, Tone};
 
 /// To whom a device is lent.
 #[derive(Default)]
@@ -122,9 +123,9 @@ impl Devices {
 }
 
 impl DeviceView {
-    /// A real device lent: whose it is and to whom, with the person's way to take it back.
-    pub(super) fn lend_bar(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let p = crate::theme::palette(cx);
+    /// A real device lent: whose it is and to whom, with the person's way to take it back, as the
+    /// agent desktop says an app of theirs is lent: the same notice over the top of the pane.
+    pub(super) fn lend_notice(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let chosen = self.device.as_ref()?;
         let whom = super::devices(cx).read(cx).lends.to_whom(&chosen.udid)?;
         let udid = chosen.udid.clone();
@@ -132,14 +133,9 @@ impl DeviceView {
             super::devices(cx).update(cx, |devices, cx| devices.take_back(&udid, cx));
         };
         let said = format!("{} is yours, lent to {whom} until you take it back.", chosen.name);
-        let bar = (div().h(px(36.)).px_3().flex_shrink_0().flex().items_center().gap_2())
-            .border_b_1()
-            .border_color(p.hairline)
-            .bg(p.accent.opacity(0.06))
-            .child(crate::shell::icon(gpui_kit::assets::IconName::Bot, 14.).text_color(p.accent))
-            .child(div().flex_1().min_w_0().truncate().text_xs().text_color(p.text).child(said))
-            .child(crate::settings_view::PillButton::new("device-take-back", "Take It Back").on_click(back));
-        Some(bar.into_any_element())
+        let push = Push::new("device-take-back", "Take It Back", Tone::Primary).on_click(back);
+        let notice = crate::held::notice(said, push, crate::theme::palette(cx));
+        Some(div().absolute().top_2().left_0().w_full().flex().justify_center().child(notice).into_any_element())
     }
 
     /// Lends the device shown to every agent, ahead of being asked.
