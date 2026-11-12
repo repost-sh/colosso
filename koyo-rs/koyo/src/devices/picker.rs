@@ -28,14 +28,14 @@ impl DeviceView {
             .when(choosing, |list| list.child(div().text_sm().text_color(p.muted).child("Choose a device")));
         list = match (missing, simulators) {
             (Some(missing), _) => list.child(Notice::new(missing, vec![set_up()]).block(p)),
-            (None, None) => list.child(Notice::new("Looking for Koyo's simulators…".into(), Vec::new()).block(p)),
+            (None, None) => list.child(Notice::new("Loading simulators…".into(), Vec::new()).block(p)),
             (None, Some(Err(why))) => list.child(Notice::new(why, Vec::new()).block(p)),
             (None, Some(Ok(all))) => all.iter().fold(list, |list, simulator| {
                 list.child(self.row(Chosen::from(simulator), &simulator.system, None, p, cx))
             }),
         };
         if !connected.is_empty() {
-            let plugged = div().w(px(WIDTH)).px_3().pt_2().text_xs().text_color(p.muted).child("Plugged in");
+            let plugged = div().w(px(WIDTH)).px_3().pt_2().text_xs().text_color(p.muted).child("Connected");
             list = connected.iter().fold(list.child(plugged), |list, device| {
                 let missing = device.missing.as_ref().map(|(_, said)| said.as_str());
                 list.child(self.row(Chosen::from(device), &device.system, missing, p, cx))

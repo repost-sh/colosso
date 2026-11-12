@@ -5,7 +5,7 @@
 use gpui_kit::App;
 use koyo_desk_wire::link::DesktopState;
 
-use super::components::{PillButton, SettingRow, SettingsSection};
+use super::components::{PillButton, SettingRow, SettingsSection, Status};
 use super::native_switch::NativeSwitch;
 use crate::agent_desktop::{self, Desk, Grants, State};
 
@@ -22,19 +22,18 @@ pub fn sections(cx: &App) -> Vec<SettingsSection> {
 
 fn on_off(desk: &Desk) -> SettingsSection {
     let stands = match &desk.state {
-        State::Off => "Agents open and drive apps on a desktop of their own, shown live in one \
-                       Koyo tab, while you keep working on yours: your pointer, keyboard and the \
-                       desktop you're on stay yours. On, Koyo keeps one more desktop in Mission \
-                       Control while it runs, and Mission Control shows for a moment as Koyo \
-                       makes it and removes it."
+        State::Off => "Gives agents a desktop of their own to open and control apps, shown live in a \
+                       Koyo tab. Your pointer, keyboard and current desktop stay yours. While on, \
+                       Koyo adds one desktop in Mission Control, which opens briefly when that \
+                       desktop is created or removed."
             .to_owned(),
         State::Starting => "Starting…".to_owned(),
         State::Running => match &desk.desktop {
             Some(DesktopState::Ready { .. }) => {
-                "On. The agent desktop is the last one in Mission Control.".to_owned()
+                "On. It's the last desktop in Mission Control.".to_owned()
             }
             Some(DesktopState::Missing { .. }) | None => {
-                "On, with no desktop made yet: see below what is in the way.".to_owned()
+                "On, but the desktop isn't ready yet. See what's missing below.".to_owned()
             }
         },
         State::Failed(why) => why.clone(),
@@ -56,13 +55,10 @@ fn on_off(desk: &Desk) -> SettingsSection {
     SettingsSection::new("Agent desktop").row(row)
 }
 
-/// A grant's row: how it stands.
+/// A grant's row: what it's for, and whether it's held.
 fn grant(name: &'static str, held: bool, why: &'static str) -> SettingRow {
-    SettingRow::new(name).description(if held {
-        "Allowed.".to_owned()
-    } else {
-        format!("Not allowed yet. {why}")
-    })
+    let status = if held { Status::met("Allowed") } else { Status::missing("Not allowed") };
+    SettingRow::new(name).description(why).control(status)
 }
 
 fn access(grants: Grants) -> SettingsSection {
@@ -70,19 +66,18 @@ fn access(grants: Grants) -> SettingsSection {
         grant(
             "Accessibility",
             grants.accessibility,
-            "Koyo Agent Desktop needs it to make the agent desktop and to act in the apps on it.",
+            "Lets Koyo create the agent desktop and control the apps on it.",
         ),
         grant(
             "Screen Recording",
             grants.screen_recording,
-            "Koyo Agent Desktop needs it to show the agent desktop in its tab and to take \
-             screenshots for agents.",
+            "Lets Koyo show the agent desktop in its tab and take screenshots for agents.",
         ),
     ]);
     if !(grants.accessibility && grants.screen_recording) {
         section = section.row(
             SettingRow::new("Set up")
-                .description("Takes you through both, one at a time, and starts the desktop.")
+                .description("Walks you through both permissions, then starts the desktop.")
                 .control(
                     PillButton::new("agent-desktop-setup", "Set Up…")
                         .on_click(|_, window, cx| agent_desktop::setup::open(window, cx)),
@@ -95,19 +90,18 @@ fn access(grants: Grants) -> SettingsSection {
 fn desktop(desk: &Desk) -> SettingsSection {
     let stands = match &desk.desktop {
         // Its size is the display's, said so that it isn't taken for something Koyo set.
-        Some(DesktopState::Ready { size, .. }) => format!(
-            "Made. It is as large as your display ({:.0} × {:.0}), which Koyo leaves as it is.",
-            size.width, size.height
-        ),
-        Some(DesktopState::Missing { why }) => format!("Not there: {why}."),
-        None => "Being made…".to_owned(),
+        Some(DesktopState::Ready { size, .. }) => {
+            format!("Ready. Same size as your display ({:.0} × {:.0}).", size.width, size.height)
+        }
+        Some(DesktopState::Missing { why }) => format!("Not ready: {why}."),
+        None => "Creating…".to_owned(),
     };
     let windows = &desk.windows;
     let mut apps: Vec<&str> = windows.iter().map(|window| window.app.as_str()).collect();
     apps.sort_unstable();
     apps.dedup();
     let open = if apps.is_empty() {
-        "No app is open on it.".to_owned()
+        "No apps open.".to_owned()
     } else {
         format!(
             "{} with {} {}.",
