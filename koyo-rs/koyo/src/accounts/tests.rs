@@ -17,6 +17,7 @@ use super::*;
 use crate::test_support::{Blank, in_window};
 
 mod layout;
+mod to_settings;
 
 pub(crate) const USAGE: &str = "https://api.anthropic.com/api/oauth/usage";
 
