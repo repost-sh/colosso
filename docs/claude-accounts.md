@@ -132,10 +132,12 @@ cswap's engine with its `weekly-first` strategy:
   percentage, and reset countdown; then when the week resets and how old the reading is, or what
   keeps it from being read. A click switches. It goes as every floating window does
   (`koyo-rs/koyo/src/popup.rs`).
-  Under the rows: Add current login when the Mac's login isn't one of Koyo's accounts yet, and
+  Under the rows: the Mac's login when it isn't one of Koyo's accounts yet, with Add in
+  Settings, which opens Settings → Accounts, where it's added and the rest is set; and
   auto-switch's state with what it last did.
 - **Settings → Accounts:** a new page (`settings_view/accounts.rs`): Manage Claude accounts, the
-  account list with Hold Out / Put Back (out of auto-switch) and Remove, Add Current Login,
+  account list with Hold Out / Put Back (out of auto-switch) and Remove, Add Current Login with
+  what the Mac's login is to Koyo (not one of its accounts yet, or which account it is),
   Auto-switch and its threshold.
 - **App control:** `claude_accounts_list` (read) through `koyo-app-control`, for agents. No agent
   tool changes the accounts: switching, adding, removing, holding one out, auto-switch and

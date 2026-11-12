@@ -5,7 +5,7 @@
 use koyo_accounts::autoswitch::{AutoSwitchEvent, QuarantineReason, Trigger, pct_label};
 use koyo_accounts::oauth::login_expiry_clock;
 
-use super::model::{Bar, Problem, Row};
+use super::model::{Bar, Problem, Row, View};
 
 /// What the Mac's login is when Koyo doesn't keep it.
 pub const NOT_KEPT: &str = "The Mac's login, not one of Koyo's accounts yet";
@@ -59,9 +59,19 @@ pub fn auto_switched(event: &AutoSwitchEvent, now: f64) -> Option<String> {
     }
 }
 
-/// The Mac's login, `email`'s, when Koyo doesn't keep it.
-pub fn unmanaged(email: &str) -> String {
-    format!("The Mac's login, {email}, isn't one of Koyo's accounts yet.")
+/// What the Mac's login is to Koyo, said over Add Current Login: not one of its accounts yet,
+/// or the account it is, so an add says it took; nothing with no login.
+pub fn mac_login(view: &View) -> Option<String> {
+    match (view.unmanaged.as_deref(), view.active()) {
+        (Some(email), _) => Some(format!(
+            "The Mac's login, {email}, isn't one of Koyo's accounts yet."
+        )),
+        (None, Some(row)) => Some(format!(
+            "The Mac's login, {}, is account {}.",
+            row.email, row.number
+        )),
+        (None, None) => None,
+    }
 }
 
 /// An account's last line: when the week resets and how old the reading is, or what keeps it
@@ -143,6 +153,32 @@ mod tests {
             resets_at,
             pace: Some(50.),
         }
+    }
+
+    #[test]
+    fn the_macs_login_is_said_kept_once_added() {
+        let mut view = View {
+            unmanaged: Some("ana@example.com".into()),
+            ..View::default()
+        };
+        let unkept = mac_login(&view).unwrap();
+        assert!(unkept.contains("ana@example.com, isn't one of"), "{unkept}");
+        view.unmanaged = None;
+        view.rows.push(Row {
+            number: "1".to_owned(),
+            email: "ana@example.com".into(),
+            organisation: None,
+            plan: None,
+            active: true,
+            disabled: false,
+            switchable: true,
+            bars: Vec::new(),
+            measured_at: None,
+            problem: None,
+        });
+        let kept = mac_login(&view).unwrap();
+        assert_eq!(kept, "The Mac's login, ana@example.com, is account 1.");
+        assert_eq!(mac_login(&View::default()), None);
     }
 
     #[test]

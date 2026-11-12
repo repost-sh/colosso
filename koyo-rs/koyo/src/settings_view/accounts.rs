@@ -83,8 +83,7 @@ fn kept(cx: &App) -> SettingsSection {
     let said = (view.said.clone())
         .or_else(|| view.doing.clone())
         .unwrap_or_else(|| {
-            let mac = (view.unmanaged.as_deref())
-                .map_or_else(String::new, |email| words::unmanaged(email) + " ");
+            let mac = words::mac_login(view).map_or_else(String::new, |said| said + " ");
             format!(
                 "{mac}Keeps the Mac's Claude Code login as an account. To add another, sign in \
                  to it with Claude Code (/login), then add it here."

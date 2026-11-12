@@ -6,8 +6,9 @@
 //! how near auto-switch's line it is with a tick where even use would have it (the crate's pace),
 //! the percent, and how long until it resets; last, quiet, when the week resets and how old the
 //! reading is, or what keeps it from being read. A click on another account Koyo keeps the login
-//! of switches to it. Then the Mac's login when Koyo doesn't keep it, with Add; what's being done
-//! or went wrong; and auto-switch's state with what it last did.
+//! of switches to it. Then the Mac's login when Koyo doesn't keep it, with a button to Settings →
+//! Accounts, where it's added and the rest is set; what's being done or went wrong; and
+//! auto-switch's state with what it last did.
 //!
 //! Each part is made with how tall it's drawn, so the window it opens in, and fits as it changes,
 //! is sized by the code that draws it. It keeps a copy of what it shows, taken again as the
@@ -24,6 +25,7 @@ use koyo_accounts::oauth::format_countdown;
 use super::model::{Bar, Row, View};
 use super::{Accounts, Job, words};
 use crate::menu::MenuBody;
+use crate::settings_view::SettingsPage;
 use crate::theme::{self, Palette};
 use crate::wrapped::wrapped_lines;
 
@@ -100,13 +102,7 @@ impl AccountsPanel {
             blocks.push((block.into_any_element(), height));
         }
         if let Some(email) = view.unmanaged.clone() {
-            let add = idle.then(|| {
-                let accounts = self.accounts.clone();
-                add_button(p).on_click(move |_, _, cx| {
-                    accounts.update(cx, |accounts, cx| accounts.ask(Job::Add, cx));
-                })
-            });
-            blocks.push(unkept(email, add, p));
+            blocks.push(unkept(email, p));
         }
         let rule = || {
             let rule = div().mx(px(INSET_X)).h(px(RULE)).bg(p.hairline);
@@ -244,10 +240,12 @@ fn badge(plan: SharedString, p: Palette) -> AnyElement {
         .into_any_element()
 }
 
-/// Add, beside the Mac's login: a small button in the accent.
-fn add_button(p: Palette) -> Stateful<Div> {
+/// Beside the Mac's login, a small button in the accent to Settings → Accounts, where it's added:
+/// the panel goes, the page changing or not.
+fn to_settings(p: Palette) -> AnyElement {
     div()
-        .id("accounts-add")
+        .id("accounts-to-settings")
+        .debug_selector(|| "accounts-to-settings".to_owned())
         .flex_shrink_0()
         .h(px(20.))
         .px(px(10.))
@@ -260,20 +258,28 @@ fn add_button(p: Palette) -> Stateful<Div> {
         .font_weight(FontWeight::SEMIBOLD)
         .cursor_pointer()
         .hover(|button| button.opacity(0.85))
-        .child("Add")
+        .child("Add in Settings")
+        .on_click(|_, _, cx| {
+            crate::popup::close(crate::popup::Kind::Menu, cx);
+            if let Some((_, shell)) = crate::control::main_shell(cx) {
+                let page = Some(SettingsPage::Accounts);
+                shell.update(cx, |shell, cx| shell.open_settings_page(page, cx));
+            }
+        })
+        .into_any_element()
 }
 
-/// The Mac's login's block when Koyo doesn't keep it: its email with Add, and what it is.
-fn unkept(email: SharedString, add: Option<Stateful<Div>>, p: Palette) -> Part {
+/// The Mac's login's block when Koyo doesn't keep it: its email with the button to Settings,
+/// and what it is.
+fn unkept(email: SharedString, p: Palette) -> Part {
     let what = div()
         .h(px(LINE))
         .pl(px(INDENT))
         .text_size(SMALL_SIZE)
         .text_color(p.muted)
         .child(words::NOT_KEPT);
-    let add = add.map(IntoElement::into_any_element);
     let block = (div().px(px(INSET_X)).py(px(INSET_Y)))
-        .child(header(email, false, add, p))
+        .child(header(email, false, Some(to_settings(p)), p))
         .child(what);
     (block.into_any_element(), 2. * INSET_Y + HEADER + LINE)
 }
