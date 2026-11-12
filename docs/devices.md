@@ -293,7 +293,7 @@ answer), `Request { request, ask }`, `Cancel`, `Quit`. Host to app: `Hello { pro
 - `PaneKind::Device`, one view per pane, a lease per view, as the browser's pages. The title is the
   device's name.
 - The picture fitted to the pane and centred, never larger than one device pixel to one screen
-  pixel, on the tab's own card (no root background of its own), with at least 48 points of room
+  pixel, on the tab's own card (no root background of its own), with at least 32 points of room
   at its sides and above it [built, the owner's], and the bar's room under it.
 - A simulator's picture has its model's own screen corners [built]. Xcode records them: each
   device type's `capabilities.plist` has `DeviceCornerRadius` in points (MobileGestalt's own
