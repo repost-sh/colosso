@@ -28,7 +28,9 @@ nothing installed on it. Its Objective-C is the recipe; the product is Rust.
 
 - A new kind of tab, one per device. It shows an iPhone or iPad simulator of Koyo's own, or an
   iPhone or iPad on iOS or iPadOS 27 or later connected by cable, live and full size.
-- In the tab: click to tap, press and hold, drag; pinch and rotate on the trackpad; scroll; type.
+- In the tab: click to tap, press and hold, drag; pinch, rotate and scroll with two fingers on
+  the trackpad; type. A mouse's wheel does nothing: a device has none, and a finger put down for
+  each of its notches drags badly and can tap what is under it (tried, and taken out).
   A press that begins at the very edge is that edge's gesture (Home, Notification Centre, Control
   Centre, back). Home and the app switcher are buttons on the tab's bar; a simulator also turns.
 - Settings → Devices installs simulators with their progress shown and walks the person through
