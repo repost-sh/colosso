@@ -95,23 +95,3 @@ pub fn button(
         .child(label)
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
 }
-
-/// A notice over the top of a pane the person lent to agents, or should know something of: what
-/// it says and the one thing to do about it (the agent desktop's lent app, a device lent).
-pub fn notice(said: String, push: crate::modal::Button, p: Palette) -> Div {
-    div()
-        .flex()
-        .items_center()
-        .gap_3()
-        .px_3()
-        .py_2()
-        .rounded(px(8.))
-        .bg(p.raised)
-        .border_1()
-        .border_color(p.hairline)
-        .text_sm()
-        .text_color(p.text)
-        .occlude()
-        .child(said)
-        .child(push)
-}

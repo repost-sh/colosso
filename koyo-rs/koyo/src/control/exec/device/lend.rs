@@ -81,8 +81,8 @@ fn ask(agent: &Actor, udid: &str, name: &str, kind: &str, cx: &mut App) -> Resul
     let question = format!("Let “{}” use your {kind} “{name}”?", agent.label);
     let detail = format!(
         "It will see the {kind}'s screen, and tap, type and open apps on it as you would, with everything on it \
-         that you're signed in to. You can watch and take over in its tab. Take It Back, or pulling the cable, \
-         ends it."
+         that you're signed in to. You can watch in its tab. Take it back there, or pull the cable, to end \
+         it."
     );
     let answer = window
         .update(cx, |_, window, cx| window.prompt(PromptLevel::Warning, &question, Some(&detail), &["Allow", "Don't Allow"], cx))

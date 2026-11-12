@@ -298,7 +298,6 @@ impl Render for DeviceView {
                     })
                     .children(marks)
                     .children(notice.map(|notice| notice.element(p)))
-                    .children(self.lend_notice(cx))
                     .when(self.device.is_none(), |area| area.child(self.picker_list(cx))),
             )
             .children(control)

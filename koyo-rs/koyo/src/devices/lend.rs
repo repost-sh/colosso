@@ -1,18 +1,17 @@
 //! The person's own iPhone or iPad lent to agents (`docs/devices.md` 9): by their click on
 //! Koyo's sheet when an agent first asks (`control/exec/device/lend.rs`), or ahead of that from
 //! the device's tab. Kept in the app by device and agent, so a host that restarts keeps it; it
-//! ends at Take It Back, when the device's tab closes, when it's unplugged and when Koyo quits.
+//! ends at Take it back, when the device's tab closes, when it's unplugged and when Koyo quits.
 //! The person's Don't Allow holds ten minutes for that agent and device.
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use gpui_kit::{AnyElement, ClickEvent, Context, IntoElement as _, ParentElement as _, Styled as _, div};
+use gpui_kit::Context;
 
 use super::Devices;
 use super::view::DeviceView;
 use crate::browser::control::Actor;
-use crate::modal::{Button as Push, Tone};
 
 /// To whom a device is lent.
 #[derive(Default)]
@@ -123,21 +122,6 @@ impl Devices {
 }
 
 impl DeviceView {
-    /// A real device lent: whose it is and to whom, with the person's way to take it back, as the
-    /// agent desktop says an app of theirs is lent: the same notice over the top of the pane.
-    pub(super) fn lend_notice(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let chosen = self.device.as_ref()?;
-        let whom = super::devices(cx).read(cx).lends.to_whom(&chosen.udid)?;
-        let udid = chosen.udid.clone();
-        let back = move |_: &ClickEvent, _: &mut gpui_kit::Window, cx: &mut gpui_kit::App| {
-            super::devices(cx).update(cx, |devices, cx| devices.take_back(&udid, cx));
-        };
-        let said = format!("{} is yours, lent to {whom} until you take it back.", chosen.name);
-        let push = Push::new("device-take-back", "Take It Back", Tone::Primary).on_click(back);
-        let notice = crate::held::notice(said, push, crate::theme::palette(cx));
-        Some(div().absolute().top_2().left_0().w_full().flex().justify_center().child(notice).into_any_element())
-    }
-
     /// Lends the device shown to every agent, ahead of being asked.
     pub(super) fn lend_ahead(&mut self, cx: &mut Context<Self>) {
         let Some(udid) = self.device.as_ref().filter(|device| device.phone).map(|device| device.udid.clone()) else {

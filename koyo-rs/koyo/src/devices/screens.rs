@@ -175,42 +175,62 @@ impl DeviceView {
             && !matches!(link.control.holder, Some(Holder::Agent { .. }))
     }
 
-    /// The bar that says who has the device while it's contested, with the person's way to
-    /// take it or give it back: the browser's own pill.
+    /// The browser's own pill at the pane's foot: who has the device while it's contested, with
+    /// the person's way to take it or give it back; and for a device of the person's own lent to
+    /// agents, what the agent is doing with it or that it's lent, with the way to take it back.
     pub(super) fn control_bar(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         let link = self.link.as_ref()?;
-        let (name, control) = {
+        // Who has it, said as a browser's page says it, and whether that is an agent.
+        let (name, contested) = {
             let link = link.read(cx);
-            (link.name.clone(), (link.control.holder.clone(), link.control.displaced.clone()))
-        };
-        let held = match control {
-            (Some(Holder::Agent { actor, .. }), _) => {
-                let take = link.downgrade();
-                Held {
-                    text: format!("{} is using {name}", actor.label),
-                    id: "device-take-control",
-                    label: "Take control",
-                    on_click: Box::new(move |_, _, cx| {
-                        let _ = take.update(cx, |link, cx| link.person_acts(crate::browser::control::Mode::Explicit, cx));
-                    }),
-                }
-            }
-            (Some(Holder::Human { mode, .. }), Some(displaced)) => {
-                let back = link.downgrade();
-                let text = match mode {
-                    crate::browser::control::Mode::Implicit => format!("{} waits while you use {name}", displaced.label),
-                    crate::browser::control::Mode::Explicit => format!("You took over {name} from {}", displaced.label),
+            let (name, control) = (&link.name, &link.control);
+            let contested = if let Some(agent) = control.agent() {
+                Some((format!("{} is using {name}", agent.label), true))
+            } else if let Some(displaced) = &control.displaced {
+                let text = if control.person_using() {
+                    format!("{} waits while you use {name}", displaced.label)
+                } else {
+                    format!("You took over {name} from {}", displaced.label)
                 };
-                Held {
-                    text,
-                    id: "device-give-back",
-                    label: "Give back",
-                    on_click: Box::new(move |_, _, cx| {
-                        let _ = back.update(cx, Link::give_back);
-                    }),
-                }
-            }
-            _ => return None,
+                Some((text, false))
+            } else {
+                None
+            };
+            (name.clone(), contested)
+        };
+        let lent = self.device.as_ref().and_then(|chosen| {
+            let whom = super::devices(cx).read(cx).lends.to_whom(&chosen.udid)?;
+            Some((chosen.udid.clone(), whom))
+        });
+        let weak = link.downgrade();
+        let held = match (lent, contested) {
+            // Lent, the one thing to do about an agent, whatever it's doing, is to take the
+            // device back: that calls off what it had under way, and its next call asks again.
+            (Some((udid, whom)), contested) => Held {
+                text: contested.map_or_else(|| format!("{name} is lent to {whom}"), |(text, _)| text),
+                id: "device-take-back",
+                label: "Take it back",
+                on_click: Box::new(move |_, _, cx| {
+                    super::devices(cx).update(cx, |devices, cx| devices.take_back(&udid, cx));
+                }),
+            },
+            (None, Some((text, true))) => Held {
+                text,
+                id: "device-take-control",
+                label: "Take control",
+                on_click: Box::new(move |_, _, cx| {
+                    let _ = weak.update(cx, |link, cx| link.person_acts(crate::browser::control::Mode::Explicit, cx));
+                }),
+            },
+            (None, Some((text, false))) => Held {
+                text,
+                id: "device-give-back",
+                label: "Give back",
+                on_click: Box::new(move |_, _, cx| {
+                    let _ = weak.update(cx, Link::give_back);
+                }),
+            },
+            (None, None) => return None,
         };
         // Its glass is a native view keyed by this id: one per tab, as a page's is.
         let glass = gpui_kit::ElementId::NamedInteger("device-control-glass".into(), cx.entity_id().as_u64());
