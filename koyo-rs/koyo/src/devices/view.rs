@@ -7,7 +7,7 @@ use std::time::Instant;
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AppContext as _,
+    AnyView, AppContext as _,
     Action, App, Context, Entity, EventEmitter, FocusHandle, Global,
     InteractiveElement as _, IntoElement, KeyBinding, KeyDownEvent, KeyUpEvent, ParentElement as _,
     PinchEvent, Pixels, Point, Render, Styled as _, Subscription, Task, WeakEntity, Window, div,
@@ -91,8 +91,8 @@ pub struct DeviceView {
     pub(super) born: Instant,
     pub(super) ticking: Option<Task<()>>,
     watching: Vec<Subscription>,
-    /// The device's bar, which the pane's own bar shows: none while the picker is.
-    pub bar: Option<Entity<super::bar::DeviceBar>>,
+    /// The device's bar, which the pane's own header shows: none while the picker is.
+    bar: Option<Entity<super::bar::DeviceBar>>,
 }
 
 impl EventEmitter<DeviceEvent> for DeviceView {}
@@ -141,6 +141,11 @@ impl DeviceView {
         }
     }
 
+    /// The device's bar for its pane's header: its standing and buttons. None with the picker.
+    pub fn bar(&self) -> Option<AnyView> {
+        self.bar.clone().map(AnyView::from)
+    }
+
     /// Shows `chosen` in this tab.
     pub fn choose(&mut self, chosen: Chosen, cx: &mut Context<Self>) {
         let link = super::devices(cx).update(cx, |devices, cx| devices.link(&chosen.udid, &chosen.name, chosen.phone, cx));
@@ -155,8 +160,9 @@ impl DeviceView {
             // The list says whether the device is still there.
             cx.observe(&super::devices(cx), |_, _, cx| cx.notify()),
         ];
-        let view = cx.weak_entity();
-        self.bar = Some(cx.new(|cx| super::bar::DeviceBar::new(view, &link, cx)));
+        let (view, shown, heard) = (cx.weak_entity(), chosen.clone(), link.clone());
+        self.bar = Some(cx.new(|cx| super::bar::DeviceBar::new(view, shown, heard, cx)));
+        // Its pane takes the bar with the title: said after the bar is there.
         cx.emit(DeviceEvent::Titled(chosen.name.clone()));
         self.device = Some(chosen);
         self.link = Some(link);
@@ -234,8 +240,8 @@ impl DeviceView {
     }
 }
 
-/// The least room round a device's picture, at its sides and above it; the bar's room, which
-/// is more, is under it.
+/// The least room round a device's picture, at its sides and above it; the control bar's
+/// room, which is more, is under it.
 const MARGIN: f32 = 32.;
 
 impl Render for DeviceView {
@@ -252,7 +258,7 @@ impl Render for DeviceView {
             window.defer(cx, super::setup::offer);
         }
         let marks = picture.as_ref().and_then(|link| self.marks(link, cx));
-        let bar = self.control_bar(window, cx);
+        let control = self.control_bar(window, cx);
         div()
             .id("device")
             .key_context("Device")
@@ -276,9 +282,9 @@ impl Render for DeviceView {
                     .relative()
                     .flex_1()
                     .min_h_0()
-                    // Room round the picture, so the device doesn't run to the pane's edge. The bar
-                    // floats over the pane's foot: the picture always keeps clear of it, so the
-                    // device's screen is never under it and doesn't move when it comes.
+                    // Room round the picture, so the device doesn't run to the pane's edge. The
+                    // control bar floats over the pane's foot: the picture always keeps clear of
+                    // it, so the device's screen is never under it and doesn't move when it comes.
                     .when(self.device.is_some(), |area| {
                         let margin = gpui_kit::px(MARGIN);
                         area.px(margin).pt(margin).pb(gpui_kit::px(crate::held::ROOM))
@@ -295,7 +301,7 @@ impl Render for DeviceView {
                     .children(self.lend_notice(cx))
                     .when(self.device.is_none(), |area| area.child(self.picker_list(cx))),
             )
-            .children(bar)
+            .children(control)
     }
 }
 

@@ -28,7 +28,6 @@ mod touch;
 mod typing;
 mod view;
 
-pub use bar::DeviceBar;
 pub use link::Link;
 pub use needs::{Found, Need};
 #[cfg(test)]

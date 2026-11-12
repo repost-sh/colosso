@@ -1,5 +1,5 @@
 //! What a device's tab says (`docs/devices.md` 8): the state it stands in with its one way out,
-//! the slim toolbar, the picker, the bar that says who has the device, and an agent's touches.
+//! the picker, the control bar that says who has the device, and an agent's touches.
 //! Every state has a way out or moves on by itself: a dead end is what angered the owner most.
 
 use gpui_kit::{
@@ -284,7 +284,7 @@ impl From<super::Standing<'_>> for Owned {
     }
 }
 
-/// How the device stands, in a word for the toolbar, and its dot's colour: green ready, amber
+/// How the device stands, in a word for its bar, and its dot's colour: green ready, amber
 /// on its way, red what needs doing, grey not running.
 pub(super) fn standing(link: &Link, p: Palette) -> (&'static str, gpui_kit::Hsla) {
     match link.standing() {

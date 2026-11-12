@@ -1,6 +1,6 @@
 //! A real iPhone or iPad's surfaces drawn off screen, played by a stand-in host and a made-up
 //! list of what's plugged in (no real device's name or picture is in them): the picker with a
-//! device plugged in, the tab in each of a device's states with the toolbar's sentence, and the
+//! device plugged in, the tab in each of a device's states with its bar's sentence, and the
 //! device's setup at each step.
 
 use koyo_device_wire::{FromHost, Missing, State as Said};

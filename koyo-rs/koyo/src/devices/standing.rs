@@ -1,6 +1,6 @@
 //! How a device stands, read in one place (`docs/devices.md` 8): the host's last word first,
 //! when it said it can't go on, whatever the link's own state; then the link's state; then what
-//! the host said. The tab, its toolbar, `device_list` and the tools all read it from here; and a
+//! the host said. The tab, its bar, `device_list` and the tools all read it from here; and a
 //! real device that ended is started again by itself from here, bounded.
 
 use std::time::Instant;

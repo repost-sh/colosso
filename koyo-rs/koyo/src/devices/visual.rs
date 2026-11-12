@@ -129,28 +129,38 @@ pub(super) fn open(drawn: &mut Drawn, chosen: Option<Chosen>, start: bool) -> Re
 /// The device beside another pane: the one bar with the pane's grip and buttons round the
 /// device's. Then alone in its tab again.
 fn split(drawn: &mut Drawn, lines: &mut Vec<String>) -> Result<()> {
+    use crate::model::{BranchUnit, Edge};
     let (shell, window) = (drawn.shell.clone(), drawn.window);
-    let moved = |drawn: &mut Drawn, beside: bool| {
-        let moved = drawn.cx.update_window(window, |_, _, cx| {
+    let change = |drawn: &mut Drawn, change: fn(&mut BranchUnit)| {
+        let changed = drawn.cx.update_window(window, |_, _, cx| {
             shell.update(cx, |shell, cx| {
-                let Some(unit) = shell.workspace.branch_mut() else {
-                    return;
-                };
-                let shown = unit.tabs.get(unit.active_tab).map(|tab| tab.first().id);
-                let other = if beside { unit.tabs.first().map(|tab| tab.first().id) } else { unit.tabs.get(unit.active_tab).and_then(|tab| tab.panes().last().map(|pane| pane.id)) };
-                if let (Some(shown), Some(other)) = (shown, other)
-                    && shown != other
-                {
-                    let _ = if beside { unit.move_pane(other, shown, crate::model::Edge::Right) } else { unit.pane_to_tab(other, 0) };
-                }
+                shell.workspace.branch_mut().map(change);
                 cx.notify();
             });
         });
-        moved.map_err(|error| error.to_string())
+        changed.map_err(|error| error.to_string())
     };
-    moved(drawn, true)?;
+    // The first tab's pane comes to the right of the device shown.
+    change(drawn, |unit| {
+        let pane = |tab: Option<&crate::model::Tab>| tab.map(|tab| tab.first().id);
+        if let (Some(shown), Some(other)) = (pane(unit.tabs.get(unit.active_tab)), pane(unit.tabs.first()))
+            && shown != other
+        {
+            unit.move_pane(other, shown, Edge::Right);
+        }
+    })?;
     lines.push(format!("{}", drawn.save("split.png")?.display()));
-    moved(drawn, false)
+    // And the other goes back to a tab of its own, the first, with the device's shown again.
+    change(drawn, |unit| {
+        let Some(tab) = unit.tabs.get(unit.active_tab) else {
+            return;
+        };
+        let (device, panes) = (tab.first().id, tab.panes());
+        if let Some(other) = panes.last().filter(|_| panes.len() > 1).map(|pane| pane.id) {
+            unit.pane_to_tab(other, 0);
+            unit.active_tab = unit.tab_with(device).unwrap_or(unit.active_tab);
+        }
+    })
 }
 
 fn shown_device(shell: &Entity<Shell>, cx: &gpui_kit::App) -> Option<Entity<DeviceView>> {

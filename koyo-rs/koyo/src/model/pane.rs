@@ -5,7 +5,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use gpui_kit::{App, Entity, Image, SharedString};
+use gpui_kit::{AnyView, App, Entity, Image, SharedString};
 use koyo_agent::protocol::ids::ThreadId;
 
 use super::PaneKind;
@@ -91,7 +91,7 @@ impl Pane {
     pub fn device(view: Entity<DeviceView>, cx: &App) -> Self {
         Pane {
             title: view.read(cx).title().into(),
-            page: Some(Page::Device(view)),
+            page: Some(Page::Device(Box::new(Device::of(view, cx)))),
             ..Pane::new(PaneKind::Device)
         }
     }
@@ -99,14 +99,32 @@ impl Pane {
     /// The pane shows `view` from now on, titled as it calls itself.
     pub fn set_device(&mut self, view: Entity<DeviceView>, cx: &App) {
         self.title = view.read(cx).title().into();
-        self.page = Some(Page::Device(view));
+        self.page = Some(Page::Device(Box::new(Device::of(view, cx))));
     }
 
     /// A device's view, in a pane of that kind.
     pub fn device_view(&self) -> Option<&Entity<DeviceView>> {
         match &self.page {
-            Some(Page::Device(view)) => Some(view),
+            Some(Page::Device(device)) => Some(&device.view),
             Some(Page::Made(_) | Page::Desktop(_) | Page::Unloaded(_)) | None => None,
+        }
+    }
+
+    /// What the pane's content adds to its header: a device's standing and buttons. Kept in
+    /// the pane as the title is, said by the view when it changes ([`Pane::set_bar`]), so the
+    /// window doesn't read the view as it draws: it would draw again with each of the device's
+    /// pictures.
+    pub fn bar(&self) -> Option<AnyView> {
+        match &self.page {
+            Some(Page::Device(device)) => device.bar.clone(),
+            Some(Page::Made(_) | Page::Desktop(_) | Page::Unloaded(_)) | None => None,
+        }
+    }
+
+    /// A device's pane has `bar` in its header from now on; no other kind keeps one.
+    pub fn set_bar(&mut self, bar: Option<AnyView>) {
+        if let Some(Page::Device(device)) = &mut self.page {
+            device.bar = bar;
         }
     }
 
@@ -194,13 +212,28 @@ impl Pane {
     }
 }
 
+/// A device's view, and its bar for the pane's header.
+#[derive(Clone, Debug)]
+pub(super) struct Device {
+    view: Entity<DeviceView>,
+    bar: Option<AnyView>,
+}
+
+impl Device {
+    fn of(view: Entity<DeviceView>, cx: &App) -> Self {
+        let bar = view.read(cx).bar();
+        Device { view, bar }
+    }
+}
+
 /// A browser pane's page: made, or what it opens once its tab is shown, never both. Or, in
 /// the agent desktop's pane, its view; in a device's pane, the device's view.
 #[derive(Clone, Debug)]
 pub(super) enum Page {
     Made(Entity<BrowserView>),
     Desktop(Entity<DeskView>),
-    Device(Entity<DeviceView>),
+    /// Boxed, as few panes are a device's.
+    Device(Box<Device>),
     /// A tab brought back at launch, its page made when the tab is first shown
     /// (`docs/browser.md` 5). Boxed, as few panes have one.
     Unloaded(Box<Unloaded>),
