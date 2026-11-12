@@ -377,7 +377,7 @@ impl Shell {
 mod tests {
     use gpui_kit::{AppContext as _, TestAppContext};
 
-    use gpui_kit::{Bounds, Modifiers, VisualTestContext};
+    use gpui_kit::{Modifiers, VisualTestContext};
 
     use crate::menu::{self, MenuItem};
     use crate::model::{PaneKind, Tab};
@@ -421,8 +421,7 @@ mod tests {
                 Box::new(NewChat),
             )];
             menu::open_rows(
-                "test-new-tab-menu".into(),
-                Bounds::default(),
+                crate::popup::Source::new("test-new-tab-menu"),
                 items,
                 None,
                 &focus,

@@ -1,24 +1,23 @@
 //! Dropdown menus in a popup window of their own, so the system blurs what lies behind them
 //! like the window's glass: GPUI can only blur behind a whole window, never behind an element.
 //! The window holds a body: rows, each dispatching an action to a focus handle in the window that
-//! opened the menu, or a panel, a view of its own. The menu closes itself on a pick, Escape, a press
-//! outside it, or its window losing focus. That window keeps the keys while it's up, so what the
-//! body has a use for is heard ahead of it.
-
-use std::cell::Cell;
-use std::rc::Rc;
+//! opened the menu, or a panel, a view of its own. The menu closes itself on a pick, and on a key
+//! it has no use for, which then goes on to the window behind; and as every floating window goes
+//! (`popup.rs`): on a press anywhere else in that window, its page changing, or the person
+//! leaving it. That window keeps the keys while it's up, so what the body has a use for is heard
+//! ahead of it. A panel fits what it holds as that changes, keeping the edge it opened from.
 
 use gpui_kit::assets::IconName;
 use gpui_kit::base::ElementExt as _;
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::{
-    Action, AnyWindowHandle, App, AppContext as _, Bounds, Context, ElementId, Entity, FocusHandle,
-    Global, InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, ParentElement as _,
-    Pixels, Rems, Render, SharedString, Size, Styled as _, Window, div, point, px, size,
+    Action, App, AppContext as _, Bounds, Context, ElementId, Entity, FocusHandle,
+    InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, ParentElement as _, Pixels,
+    Rems, Render, SharedString, Size, Styled as _, Window, div, point, px, size,
 };
 
 use self::view::{Menu, Rows};
-use crate::popup;
+use crate::popup::{self, Kind, Opening};
 use crate::theme;
 use crate::wrapped::wrapped_lines;
 
@@ -96,57 +95,43 @@ fn separated(rows: &[(MenuItem, Option<Kbd>)], index: usize) -> bool {
 }
 
 /// What a menu's window holds, which hears the keys it has a use for ahead of the window that has
-/// them. Escape closes any menu, and so does Enter on a body with no use for it. The window pads
-/// it by [`PADDING`] all round: a body adds none of its own, and the extent it's opened at counts
-/// that padding.
+/// them; any other key closes the menu, Escape and Enter only that. The window pads it by
+/// [`PADDING`] all round: a body adds none of its own, and its extent is its content's.
 pub trait MenuBody: Render {
     fn hears(&mut self, key: &str, cx: &mut Context<Self>) -> bool;
+
+    /// How big its window is, drawn in `window`: asked as it opens, and again each time it
+    /// changes, as the window fits it.
+    fn extent(&self, window: &Window, cx: &App) -> Size<Pixels>;
 }
-
-/// The menu on screen, if any, and the button that opened it.
-#[derive(Default)]
-struct OpenMenu(Option<(ElementId, AnyWindowHandle)>);
-
-impl Global for OpenMenu {}
 
 /// What opens a menu, by a press or by a key: where it's drawn is where the menu goes either way,
 /// below it, or over it with no room below.
 #[derive(Clone)]
-pub struct Trigger {
-    id: ElementId,
-    bounds: Rc<Cell<Bounds<Pixels>>>,
-}
+pub struct Trigger(popup::Source);
 
 impl Trigger {
     pub fn new(id: impl Into<ElementId>) -> Self {
-        Trigger {
-            id: id.into(),
-            bounds: Rc::default(),
-        }
+        Trigger(popup::Source::new(id))
     }
 
-    /// `trigger`, measured, whose press `pressed` hears. A press outside closes what this opened.
+    /// `trigger`, measured, whose press `pressed` hears. A press anywhere else in the window
+    /// closes what this opened (`popup::pressed`).
     pub fn wraps<E, P>(&self, trigger: E, pressed: P) -> impl IntoElement + use<E, P>
     where
         E: IntoElement,
         P: Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
     {
-        let outside = self.id.clone();
-        let measured = self.bounds.clone();
+        let measured = self.0.drawn.clone();
         div()
             .relative()
             .on_mouse_down(MouseButton::Left, pressed)
-            .on_mouse_down_out(move |_, _, cx| {
-                if is_open(&outside, cx) {
-                    close(cx);
-                }
-            })
             .child(trigger)
             .on_prepaint(move |bounds, _, _| measured.set(bounds))
     }
 
     pub fn is_open(&self, cx: &App) -> bool {
-        is_open(&self.id, cx)
+        popup::opened_from(Kind::Menu, cx).as_ref() == Some(&self.0.id)
     }
 
     /// Closes what this opened, if it's still up.
@@ -168,36 +153,20 @@ impl Trigger {
     ) {
         if self.clears_the_way(cx) {
             let items = items(cx);
-            open_rows(
-                self.id.clone(),
-                self.bounds.get(),
-                items,
-                highlighted,
-                target,
-                window,
-                cx,
-            );
+            open_rows(self.0.clone(), items, highlighted, target, window, cx);
         }
     }
 
-    /// Closes what's open, and unless that was this, opens `panel`, in a menu's window this big.
+    /// Closes what's open, and unless that was this, opens `panel` in a menu's window.
     pub fn toggle_panel<B: MenuBody>(
         &self,
-        extent: Size<Pixels>,
         panel: impl FnOnce(&mut App) -> Entity<B>,
         window: &mut Window,
         cx: &mut App,
     ) {
         if self.clears_the_way(cx) {
             let panel = panel(cx);
-            open_surface(
-                self.id.clone(),
-                self.bounds.get(),
-                extent,
-                panel,
-                window,
-                cx,
-            );
+            open_surface(self.0.clone(), panel, window, cx);
         }
     }
 
@@ -233,28 +202,14 @@ pub(crate) fn row_center(index: usize) -> gpui_kit::Point<Pixels> {
     )
 }
 
-fn is_open(id: &ElementId, cx: &App) -> bool {
-    cx.try_global::<OpenMenu>()
-        .and_then(|open| open.0.as_ref())
-        .is_some_and(|(open, _)| open == id)
-}
-
-/// Closes the open menu, if any. Its window goes once nothing is in it: what asks may be in that very
-/// window, as when it hears it's no longer the active one, and a window can't be reached from inside.
+/// Closes the open menu, if any.
 fn close(cx: &mut App) {
-    let Some((_, window)) = cx.default_global::<OpenMenu>().0.take() else {
-        return;
-    };
-    cx.defer(move |cx| {
-        window
-            .update(cx, |_, window, _| window.remove_window())
-            .ok();
-    });
+    popup::close(Kind::Menu, cx);
 }
 
+/// Opens a menu of `items` from `source`, `highlighted` the row the keys start from.
 pub(crate) fn open_rows(
-    id: ElementId,
-    anchor: Bounds<Pixels>,
+    source: popup::Source,
     items: Vec<MenuItem>,
     highlighted: Option<usize>,
     target: &FocusHandle,
@@ -269,72 +224,97 @@ pub(crate) fn open_rows(
             (item, shortcut)
         })
         .collect();
-    let extent = fitted(&items, window);
     let target = target.clone();
     let parent = window.window_handle();
+    let extent = fitted(&items, window);
     let rows = cx.new(|_| Rows {
         items,
+        extent,
         highlighted,
         target,
         parent,
     });
-    open_surface(id, anchor, extent, rows, window, cx);
+    open_surface(source, rows, window, cx);
 }
 
-/// The menu's window, this big, holding `body`.
+/// The menu's window holding `body`, by where `source` was last drawn.
 fn open_surface<B: MenuBody>(
-    id: ElementId,
-    anchor: Bounds<Pixels>,
-    extent: Size<Pixels>,
+    source: popup::Source,
     body: Entity<B>,
     window: &mut Window,
     cx: &mut App,
 ) {
+    let anchor = source.drawn.get();
+    let extent = padded(body.read(cx).extent(window, cx));
     // Right of the window's edge it'd lie over what isn't the app's, so it opens leftwards.
-    let left = if anchor.left() + extent.width > window.bounds().size.width {
+    let leftward = anchor.left() + extent.width > window.bounds().size.width;
+    let left = if leftward {
         anchor.right() - extent.width
     } else {
         anchor.left()
     };
     // Past its bottom edge, likewise, it opens upwards.
-    let top = if anchor.bottom() + px(GAP) + extent.height > window.bounds().size.height {
+    let upward = anchor.bottom() + px(GAP) + extent.height > window.bounds().size.height;
+    let top = if upward {
         anchor.top() - px(GAP) - extent.height
     } else {
         anchor.bottom() + px(GAP)
     };
+    // It keeps the corner nearest the trigger as it fits what it holds.
+    let corner = popup::Corner {
+        top: !upward,
+        left: !leftward,
+    };
     let origin = window.bounds().origin + point(left, top);
     let hearing = body.downgrade();
-    let opened = popup::open(
-        Bounds::new(origin, extent),
-        false,
-        Some(close),
-        window,
-        cx,
-        |_, cx: &mut Context<Menu>| Menu {
-            // The window behind keeps focus while the menu is up, so it hears the keys: the
-            // menu's own, and Escape and Enter, which close it.
-            _keys: cx.intercept_keystrokes(move |event, _, cx| {
-                if event.keystroke.modifiers.modified() {
-                    return;
-                }
-                let key = event.keystroke.key.as_str();
-                let heard = hearing
+    let opening = Opening {
+        kind: Kind::Menu,
+        bounds: Bounds::new(origin, extent),
+        kept: false,
+        source: Some(source),
+    };
+    popup::open(opening, window, cx, |menu, cx: &mut Context<Menu>| Menu {
+        // The window behind keeps focus while the menu is up, so it hears the keys: the menu's
+        // own; Escape and Enter, which only close it; and any other, which goes on to the window
+        // behind and then closes the menu, as a native one's does. Only then, so a shortcut that
+        // toggles the menu finds it up, and closes it.
+        _keys: cx.intercept_keystrokes(move |event, _, cx| {
+            let keystroke = &event.keystroke;
+            let key = keystroke.key.as_str();
+            let plain = !keystroke.modifiers.modified();
+            let heard = plain
+                && hearing
                     .update(cx, |body, cx| body.hears(key, cx))
                     .unwrap_or(false);
-                let closing = !heard && matches!(key, "escape" | "enter");
-                if closing {
-                    close(cx);
-                }
-                if heard || closing {
-                    cx.stop_propagation();
-                }
-            }),
-            body: body.into(),
-        },
-    );
-    if let Some(handle) = opened {
-        cx.set_global(OpenMenu(Some((id, handle.into()))));
-    }
+            if heard {
+                cx.stop_propagation();
+            } else if plain && matches!(key, "escape" | "enter") {
+                close(cx);
+                cx.stop_propagation();
+            } else {
+                let up = popup::window(Kind::Menu, cx);
+                cx.defer(move |cx| {
+                    if up.is_some() && popup::window(Kind::Menu, cx) == up {
+                        close(cx);
+                    }
+                });
+            }
+        }),
+        // A panel whose content changes fits it.
+        _fits: cx.observe_in(&body, menu, move |_, body, window, cx| {
+            let extent = padded(body.read(cx).extent(window, cx));
+            popup::fit(window, extent, corner, cx);
+        }),
+        body: body.into(),
+    });
+}
+
+/// A body's `extent` with the window's padding round it.
+fn padded(extent: Size<Pixels>) -> Size<Pixels> {
+    size(
+        extent.width + px(2. * PADDING),
+        extent.height + px(2. * PADDING),
+    )
 }
 
 /// How wide a menu is, for its longest row within what a menu can be, and how tall its rows then
@@ -355,11 +335,11 @@ fn fitted(items: &[(MenuItem, Option<Kbd>)], window: &Window) -> Size<Pixels> {
         line.width + beside(row)
     });
     // A pixel over, for a label to fit in what it measures rather than wrap at its very end.
-    let width = longest.fold(px(0.), Pixels::max) + px(PADDING * 2. + 1.);
-    let width = width.clamp(px(WIDTH), px(MAX_WIDTH));
+    let width = longest.fold(px(0.), Pixels::max) + px(1.);
+    let width = width.clamp(px(WIDTH - 2. * PADDING), px(MAX_WIDTH - 2. * PADDING));
     let rows = items.iter().enumerate().map(|(index, row)| {
         let label = &row.0.label;
-        let room = width - px(PADDING * 2.) - beside(row);
+        let room = width - beside(row);
         let lines = wrapped_lines(label, &style, font_size, room, window);
         let above = if separated(items, index) {
             SEPARATOR
@@ -368,12 +348,12 @@ fn fitted(items: &[(MenuItem, Option<Kbd>)], window: &Window) -> Size<Pixels> {
         };
         above + theme::ROW_HEIGHT + LABEL_LINE * (lines - 1) as f32
     });
-    size(width, px(PADDING * 2. + rows.sum::<f32>()))
+    size(width, px(rows.sum::<f32>()))
 }
 
 #[cfg(test)]
 mod tests {
-    use gpui_kit::{TestAppContext, WindowHandle};
+    use gpui_kit::{AnyWindowHandle, TestAppContext, WindowHandle};
 
     use super::*;
 
@@ -393,8 +373,7 @@ mod tests {
             .update(cx, |opener, window, cx| {
                 let target = opener.0.clone();
                 open_rows(
-                    "test-menu".into(),
-                    Bounds::default(),
+                    popup::Source::new("test-menu"),
                     Vec::new(),
                     None,
                     &target,

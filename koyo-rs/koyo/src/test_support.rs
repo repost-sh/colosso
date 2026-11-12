@@ -87,6 +87,21 @@ pub fn draw(window: AnyWindowHandle, cx: &mut TestAppContext) {
     cx.run_until_parked();
 }
 
+/// A view that draws nothing: a window to float others over, or what they hold.
+#[cfg(test)]
+pub struct Blank;
+
+#[cfg(test)]
+impl Render for Blank {
+    fn render(
+        &mut self,
+        _: &mut Window,
+        _: &mut gpui_kit::Context<Self>,
+    ) -> impl gpui_kit::IntoElement {
+        gpui_kit::div()
+    }
+}
+
 /// What `build` makes, in a window of its own of `size`.
 #[cfg(test)]
 pub fn in_window<V: Render>(

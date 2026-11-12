@@ -47,7 +47,7 @@ const FILE: &str = "settings.json";
 /// How long changes must settle before they are written, so a drag saves once.
 const SAVE_DELAY: Duration = Duration::from_millis(500);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum Layout {
     #[default]
     Orca,

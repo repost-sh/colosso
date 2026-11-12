@@ -5,7 +5,10 @@
 use koyo_accounts::autoswitch::{AutoSwitchEvent, QuarantineReason, Trigger, pct_label};
 use koyo_accounts::oauth::login_expiry_clock;
 
-use super::model::{Bar, Problem};
+use super::model::{Bar, Problem, Row};
+
+/// What the Mac's login is when Koyo doesn't keep it.
+pub const NOT_KEPT: &str = "The Mac's login, not one of Koyo's accounts yet";
 
 /// "72%", or "?" for an unknown: never 0 %.
 pub fn percent(bar: &Bar) -> String {
@@ -59,6 +62,22 @@ pub fn auto_switched(event: &AutoSwitchEvent, now: f64) -> Option<String> {
 /// The Mac's login, `email`'s, when Koyo doesn't keep it.
 pub fn unmanaged(email: &str) -> String {
     format!("The Mac's login, {email}, isn't one of Koyo's accounts yet.")
+}
+
+/// An account's last line: when the week resets and how old the reading is, or what keeps it
+/// from being read.
+pub fn status(row: &Row, now: f64) -> String {
+    if let Some(problem) = &row.problem {
+        return problem.sentence(now);
+    }
+    let Some(measured) = row.measured_at else {
+        return "Not read yet".to_owned();
+    };
+    let read = age(measured, now);
+    match (row.weekly()).and_then(|week| week.as_of(now).resets_at) {
+        Some(at) => format!("Resets {} · read {read}", login_expiry_clock(at, now)),
+        None => format!("Read {read}"),
+    }
 }
 
 /// How long ago `at` was.
@@ -122,7 +141,7 @@ mod tests {
             label: "7 days".into(),
             percent,
             resets_at,
-            ahead_of_pace: true,
+            pace: Some(50.),
         }
     }
 
@@ -143,7 +162,7 @@ mod tests {
         let passed = bar(Some(83.), Some(now - 10.)).as_of(now);
         assert_eq!(passed.percent, Some(0.));
         assert_eq!(passed.resets_at, Some(now - 10. + WEEKLY_PERIOD_S));
-        assert!(!passed.ahead_of_pace);
+        assert_eq!(passed.pace, None);
         assert_eq!(bar(Some(83.), Some(now - 10.)).used(now), Some(0.));
         let long_ago = bar(Some(83.), Some(now - 2. * WEEKLY_PERIOD_S - 10.)).as_of(now);
         assert_eq!(long_ago.resets_at, Some(now - 10. + WEEKLY_PERIOD_S));

@@ -3,9 +3,9 @@
 use gpui_kit::component::kbd::Kbd;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, AnyView, AnyWindowHandle, Context, Div, ElementId, FocusHandle,
-    InteractiveElement as _, IntoElement, MouseMoveEvent, ParentElement as _, Render, Stateful,
-    StatefulInteractiveElement as _, Styled as _, Subscription, Window, div, px,
+    AnyElement, AnyView, AnyWindowHandle, App, Context, Div, ElementId, FocusHandle,
+    InteractiveElement as _, IntoElement, MouseMoveEvent, ParentElement as _, Pixels, Render, Size,
+    Stateful, StatefulInteractiveElement as _, Styled as _, Subscription, Window, div, px,
 };
 
 use super::switch::row_switch;
@@ -20,6 +20,7 @@ use crate::theme::{self, Palette};
 pub(super) struct Menu {
     pub(super) body: AnyView,
     pub(super) _keys: Subscription,
+    pub(super) _fits: Subscription,
 }
 
 impl Render for Menu {
@@ -39,6 +40,8 @@ impl Render for Menu {
 /// A menu of rows, each saying its action to a focus handle in the window that opened the menu.
 pub(super) struct Rows {
     pub(super) items: Vec<(MenuItem, Option<Kbd>)>,
+    /// What the rows take, measured once: their labels don't change while the menu's up.
+    pub(super) extent: Size<Pixels>,
     /// The row the keys and the pointer are at.
     pub(super) highlighted: Option<usize>,
     pub(super) target: FocusHandle,
@@ -61,6 +64,10 @@ pub(crate) fn row(id: impl Into<ElementId>) -> Stateful<Div> {
 }
 
 impl MenuBody for Rows {
+    fn extent(&self, _: &Window, _: &App) -> Size<Pixels> {
+        self.extent
+    }
+
     fn hears(&mut self, key: &str, cx: &mut Context<Self>) -> bool {
         match key {
             "up" => self.step(-1, cx),

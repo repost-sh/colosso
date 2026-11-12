@@ -8,12 +8,12 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::{
-    AnyElement, AnyView, AnyWindowHandle, App, AppContext as _, Context, Entity, FontWeight,
-    Global, InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString, Styled,
+    AnyElement, AnyView, App, AppContext as _, Context, Entity, FontWeight,
+    InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString, Styled,
     Subscription, TextStyle, Window, div, point, px, size,
 };
 
-use crate::popup;
+use crate::popup::{self, Kind};
 use crate::shell::icon;
 use crate::theme::{self, Palette};
 use crate::wrapped::wrapped_lines;
@@ -107,12 +107,6 @@ pub fn palette(
         .children(status.map(|status| small_line().text_color(p.muted).child(status)))
 }
 
-/// The dialog on screen, if any.
-#[derive(Default)]
-struct OpenModal(Option<AnyWindowHandle>);
-
-impl Global for OpenModal {}
-
 /// Opens the view `build` makes in a `width` by `height` dialog over `parent`, closing any
 /// dialog already open. The dialog takes keyboard focus.
 pub fn open<V: Render>(
@@ -164,21 +158,6 @@ pub fn open_floating<V: Render>(
     open_at(top, width, height, 0., false, parent, cx, build);
 }
 
-/// Makes the dialog in `window` `height` high, its top staying where it is, as a list under a
-/// field grows and shrinks.
-pub fn fit_height(height: f32, window: &mut Window, cx: &mut App) {
-    if (window.bounds().size.height.as_f32() - height).abs() < 0.5 {
-        return;
-    }
-    #[cfg(target_os = "macos")]
-    if crate::native::window::fit_height(window, height, cx) {
-        return;
-    }
-    let _ = cx;
-    let width = window.bounds().size.width;
-    window.resize(size(width, px(height)));
-}
-
 /// [`open_padded`], `top` below the top of `parent`; `kept` while the person is away from
 /// Koyo ([`open_kept`]).
 #[expect(
@@ -195,7 +174,6 @@ fn open_at<V: Render>(
     cx: &mut App,
     build: impl FnOnce(&mut Window, &mut Context<V>) -> V,
 ) {
-    close(cx);
     let frame = parent.bounds();
     let origin = frame.origin
         + point(
@@ -203,19 +181,17 @@ fn open_at<V: Render>(
             px(top).min(frame.size.height - px(height)).max(px(0.)),
         );
     let bounds = gpui_kit::Bounds::new(origin, size(px(width), px(height)));
-    // A kept dialog stays while the person is away; another closes once they've left it.
-    let leaving: Option<popup::Close> = (!kept).then_some(close);
-    let opened = popup::open(bounds, true, leaving, parent, cx, |window, cx| {
+    let opening = popup::Opening {
+        kind: Kind::Dialog,
+        bounds,
+        kept,
+        source: None,
+    };
+    popup::open(opening, parent, cx, |window, cx| {
         let content = cx.new(|cx| build(window, cx));
-        // The dialog holds focus, so Escape usually arrives in its own window.
-        let escape = cx.intercept_keystrokes(|event, window, cx| {
-            if event.keystroke.key != "escape" {
-                return;
-            }
-            let open = cx.default_global::<OpenModal>().0;
-            if open == Some(window.window_handle()) {
-                dismiss(window, cx);
-            } else {
+        // Heard in whichever window has the keys: the dialog usually, as it takes them.
+        let escape = cx.intercept_keystrokes(|event, _, cx| {
+            if event.keystroke.key == "escape" {
                 close(cx);
             }
         });
@@ -225,40 +201,28 @@ fn open_at<V: Render>(
             _escape: escape,
         }
     });
-    if let Some(handle) = opened {
-        cx.set_global(OpenModal(Some(handle.into())));
-    }
 }
 
-/// Closes the dialog, from outside it. It can't reach its own window from inside it.
+/// Closes the dialog, from outside it.
 pub fn close(cx: &mut App) {
-    let Some(window) = cx.default_global::<OpenModal>().0.take() else {
-        return;
-    };
-    window
-        .update(cx, |_, window, _| window.remove_window())
-        .ok();
+    popup::close(Kind::Dialog, cx);
 }
 
 /// What the dialog on screen shows, if one is open and shows a `T`.
 pub fn current<T: 'static>(cx: &App) -> Option<Entity<T>> {
-    let surface = window(cx)?.downcast::<Surface>()?.read(cx).ok()?;
+    let surface = popup::root::<Surface>(Kind::Dialog, cx)?;
     surface.content.clone().downcast::<T>().ok()
 }
 
 /// The window of the dialog on screen, if one is open.
-pub fn window(cx: &App) -> Option<AnyWindowHandle> {
-    cx.try_global::<OpenModal>()?.0
+#[cfg(any(test, feature = "visual-check"))]
+pub fn window(cx: &App) -> Option<gpui_kit::AnyWindowHandle> {
+    popup::window(Kind::Dialog, cx)
 }
 
 /// Closes the dialog in `window`, from inside it.
 pub fn dismiss(window: &mut Window, cx: &mut App) {
-    let open = &mut cx.default_global::<OpenModal>().0;
-    // Another dialog may have opened since this one did; that one stays known.
-    if *open == Some(window.window_handle()) {
-        *open = None;
-    }
-    window.remove_window();
+    popup::close_from_inside(window, cx);
 }
 
 /// The glass a dialog's view sits on.

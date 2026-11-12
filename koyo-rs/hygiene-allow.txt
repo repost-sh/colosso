@@ -6,6 +6,6 @@
 # split along those lines; the diff rows are in view/diffs.rs already.
 koyo/src/changes/view.rs  # 851 lines
 # The theme picker's pad, presets, opacity slider and texture dial.
-koyo/src/picker.rs  # 1009 lines
+koyo/src/picker.rs  # 1000 lines
 # Listing changes, diffing files, and staging, unstaging and discarding them.
 koyo-git/src/changes.rs  # 725 lines

@@ -3,19 +3,19 @@
 
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
-    AnyElement, AppContext as _, Context, Focusable as _, InteractiveElement as _, IntoElement,
-    ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled as _,
-    WeakEntity, Window, div, px, size,
+    AnyElement, App, AppContext as _, Context, Focusable as _, InteractiveElement as _,
+    IntoElement, ParentElement as _, Pixels, Render, SharedString, Size,
+    StatefulInteractiveElement as _, Styled as _, WeakEntity, Window, div, px, size,
 };
 use koyo_agent::words::{NEARLY_FULL, context_line, context_percent};
 
 use super::ChatComposer;
-use crate::menu::{self, MenuBody, PADDING, ROW_PADDING};
+use crate::menu::{self, MenuBody, ROW_PADDING};
 use crate::ring::ring;
 use crate::theme::{self, Palette};
 
-const PANEL_WIDTH: f32 = 220.;
-const PANEL_HEIGHT: f32 = 2. * theme::ROW_HEIGHT + 2. * PADDING;
+const PANEL_WIDTH: f32 = 210.;
+const PANEL_HEIGHT: f32 = 2. * theme::ROW_HEIGHT;
 
 /// What the menu holds: how full it was as the menu opened, and the row that compacts it.
 struct ContextPanel {
@@ -26,6 +26,10 @@ struct ContextPanel {
 impl MenuBody for ContextPanel {
     fn hears(&mut self, _: &str, _: &mut Context<Self>) -> bool {
         false
+    }
+
+    fn extent(&self, _: &Window, _: &App) -> Size<Pixels> {
+        size(px(PANEL_WIDTH), px(PANEL_HEIGHT))
     }
 }
 
@@ -94,7 +98,6 @@ impl ChatComposer {
         let composer = cx.weak_entity();
         let line = context_line(held, room).into();
         self.context_menu.toggle_panel(
-            size(px(PANEL_WIDTH), px(PANEL_HEIGHT)),
             |cx| cx.new(|_| ContextPanel { composer, line }),
             window,
             cx,

@@ -5,18 +5,16 @@
 //! own, so a new reading redraws it and not the shell. With Koyo not managing the accounts, it's
 //! nothing.
 
+use super::model::View;
+use super::{Accounts, panel};
+use crate::ring::ring;
+use crate::theme;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::{
     AnyElement, App, Context, Entity, InteractiveElement as _, IntoElement, ParentElement as _,
     Render, SharedString, StatefulInteractiveElement as _, Styled as _, Subscription, Window, div,
     px,
 };
-use koyo_accounts::autoswitch::DEFAULT_THRESHOLD;
-
-use super::model::View;
-use super::{Accounts, panel};
-use crate::ring::ring;
-use crate::theme;
 
 pub struct AccountsButton {
     accounts: Entity<Accounts>,
@@ -37,14 +35,9 @@ impl AccountsButton {
 pub(super) fn drawn(view: &View, cx: &App) -> AnyElement {
     let p = theme::palette(cx);
     let now = super::now();
-    let line = (view.auto_switch.as_ref()).map_or(DEFAULT_THRESHOLD, |auto| auto.threshold);
     let active = view.active();
     let used = active.and_then(|row| row.weekly()?.used(now));
-    let colour = match used {
-        None => p.muted,
-        Some(used) if used < line - panel::NEAR_LINE => p.text,
-        Some(used) => panel::level(Some(used), line, p),
-    };
+    let colour = panel::level(used, view.line(), p.text, p);
     let tip: SharedString = match (active, used) {
         (Some(row), Some(used)) => format!("{}: {used:.0}% of the week used", row.email),
         (Some(row), None) => row.email.to_string(),
@@ -54,6 +47,7 @@ pub(super) fn drawn(view: &View, cx: &App) -> AnyElement {
     // The ring itself, as the composer's context ring is: a glass button's padding cuts it.
     div()
         .id("accounts-button")
+        .debug_selector(|| "accounts-button".to_owned())
         .size(px(24.))
         .flex()
         .items_center()

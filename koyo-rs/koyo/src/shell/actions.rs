@@ -4,7 +4,7 @@
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     App, Context, Div, InteractiveElement as _, KeyBinding, ModifiersChangedEvent, MouseButton,
-    NavigationDirection, Window, actions,
+    NavigationDirection, ParentElement as _, Window, actions,
 };
 
 use super::{Shell, switcher};
@@ -16,7 +16,7 @@ use crate::settings;
 use crate::settings_view::{
     self, ClearClaudePath, EditBranchPrefix, EditClaudePath, EditPagesOpenAt,
 };
-use crate::{browser, modal, picker, terminals};
+use crate::{browser, picker, terminals};
 
 actions!(
     koyo,
@@ -135,13 +135,9 @@ impl Shell {
                 settings::update(cx, |settings| settings.claude_path = None);
             })
             .on_drag_move(cx.listener(Self::resize_sidebar))
-            // A press in the window puts the picker and any dialog over it away, so what's
-            // typed next goes where the user pressed. It's heard on the way down: text fields
-            // stop presses from reaching anything around them.
-            .capture_any_mouse_down(|_, _, cx| {
-                picker::close(cx);
-                modal::close(cx);
-            })
+            // A press in the window puts what floats over it away, so what's typed next goes
+            // where the person pressed.
+            .child(crate::popup::listener())
             .on_action(cx.listener(|this, _: &EditTheme, window, cx| {
                 picker::open(this.rails_menu_at, window, cx);
             }))

@@ -216,13 +216,8 @@ impl Accounts {
     /// Opens the panel over the button, or closes it; open, another account is read if one's
     /// due.
     fn toggle_panel(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.trigger.is_open(cx) {
-            self.trigger.close(cx);
-            return;
-        }
         let (me, view) = (cx.entity(), self.view.clone());
         self.trigger.toggle_panel(
-            panel::extent(&view, window),
             |cx| cx.new(|cx| panel::AccountsPanel::new(&me, view, cx)),
             window,
             cx,

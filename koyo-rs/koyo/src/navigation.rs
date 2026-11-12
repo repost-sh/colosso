@@ -9,7 +9,7 @@ use crate::settings_view::SettingsPage;
 /// How many steps back the history remembers.
 const HISTORY_LIMIT: usize = 50;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Route {
     Workspace,
     Settings(SettingsPage),
