@@ -334,9 +334,13 @@ answer), `Request { request, ask }`, `Cancel`, `Quit`. Host to app: `Hello { pro
   simulators; for a real device the sentence of 5, while its stream is held (ready or locked),
   and the lend's button. Dimmed until the device stands ready. In a split the same bar has the
   pane's grip, "Open in a tab of its own" and close round them; alone in its tab a device still
-  has it, where other panes have none. A view of its own (`devices/bar.rs`), drawn again when
-  the standing changes, not with each picture. It was a second bar under the pane's (40
-  points): the owner's "a huge waste of space".
+  has it, where other panes have none. A view of its own (`devices/bar.rs`) that reads the
+  device's link and never its view, so it's drawn again when the standing changes, not with
+  each picture; the pane keeps its handle as it keeps the title (`model/pane.rs`, set when the
+  view says its title), so the window doesn't read the device's view either as it draws the
+  pane's bar. The pane's bar gives it the room left and the bar fills it: a width of its own,
+  so it's laid out right whichever pane or split it's moved to. It was a second bar under the
+  pane's (40 points): the owner's "a huge waste of space".
 - The picker lists Koyo's simulators (or what they miss, with `Set Up…`), then under "Connected"
   the iPhones and iPads by cable, each with its system and, for one that misses a step, a
   warning with the step's label and what to do under its name.
