@@ -104,10 +104,10 @@ impl DeviceSetup {
 
     /// What to do at `device`'s step, in plain words.
     fn hint(&self, device: Option<&Connected>, looking: bool, cx: &App) -> String {
-        const BACK: &str = "This dialog sees it by itself.";
+        const BACK: &str = "Koyo notices when that's done.";
         let name = self.name(device, cx).unwrap_or_else(|| "the iPhone or iPad".to_owned());
         match step(device) {
-            _ if looking => "Looking for iPhones and iPads plugged in…".into(),
+            _ if looking => "Checking…".into(),
             Some(Missing::Cable) => format!("Plug {name} into this Mac with a USB cable, and unlock it. {BACK}"),
             Some(Missing::Trust) => format!(
                 "Unlock {name}. When it asks whether to trust this computer, tap Trust and enter its \

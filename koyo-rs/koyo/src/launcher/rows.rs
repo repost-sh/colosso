@@ -453,9 +453,11 @@ fn devices(here: &Here, typed: &str, cx: &App) -> Vec<Row> {
         _ => &[],
     };
     let simulators = simulators.iter().map(|simulator| (Chosen::from(simulator), simulator.system.clone()));
-    // A device that misses a step says so; picked, its tab says which.
-    let plugged = (devices.plugged().iter())
-        .map(|device| (Chosen::from(device), if device.missing.is_some() { "Needs setup".to_owned() } else { device.system.clone() }));
+    // A device that misses a step says which in two or three words; picked, its tab says what to do.
+    let plugged = (devices.plugged().iter()).map(|device| {
+        let detail = (device.missing.as_ref()).map_or_else(|| device.system.clone(), |(code, _)| koyo_device_wire::real::label(*code).to_owned());
+        (Chosen::from(device), detail)
+    });
     for (chosen, detail) in simulators.chain(plugged).filter(|(chosen, _)| !open.contains(&chosen.udid.as_str())) {
         let Some(matched) = match_one(&chosen.name, typed) else {
             continue;
