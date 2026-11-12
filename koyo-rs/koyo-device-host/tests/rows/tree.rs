@@ -30,13 +30,7 @@ fn timed_snapshot(host: &mut Driver) -> (Duration, Option<(String, Source, u32, 
 /// seconds to draw, and until it does the tree names the app before it.
 fn settle(host: &mut Driver) {
     let _ = host.until(Duration::from_secs(1), |_| false);
-    let _ = host.ask(
-        Ask::Wait {
-            quiet_ms: 1500,
-            timeout_ms: 20_000,
-        },
-        Duration::from_secs(25),
-    );
+    host.settle(1_500, 20_000);
 }
 
 pub fn tree(target: &Target, host: &mut Driver) {

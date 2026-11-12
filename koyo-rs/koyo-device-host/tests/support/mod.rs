@@ -23,7 +23,7 @@ use std::time::{Duration, Instant};
 
 use koyo_browser_ipc::{inherit, mach};
 use koyo_device_wire::{
-    Act, Answer, Ask, Change, FromHost, Input, PROTOCOL, Point, Press, Refusal, RequestId, Screen, State, ToHost,
+    Act, Answer, Ask, Change, FromHost, Input, PROTOCOL, Press, Refusal, RequestId, Screen, State, ToHost,
     read_frame, write_frame,
 };
 use objc2_core_foundation::CFRetained;
@@ -335,6 +335,12 @@ impl Driver {
         }
     }
 
+    /// Until the picture has been still `quiet_ms`, or `timeout_ms` passed.
+    pub fn settle(&mut self, quiet_ms: u32, timeout_ms: u32) {
+        let limit = Duration::from_millis(u64::from(timeout_ms)) + Duration::from_secs(10);
+        let _ = self.ask(Ask::Wait { quiet_ms, timeout_ms }, limit);
+    }
+
     pub fn act(&mut self, act: Act) -> Result<Answer, Refusal> {
         self.ask(Ask::Act(act), Duration::from_secs(30))
     }
@@ -485,15 +491,4 @@ pub fn change(answer: &Result<Answer, Refusal>) -> Option<Change> {
 
 pub fn press(host: &mut Driver, button: Press) -> Option<Change> {
     change(&host.act(Act::Button { button }))
-}
-
-/// Where a snapshot's first line that reads `text` places its element, in points.
-pub fn place(tree: &str, text: &str) -> Option<Point> {
-    let line = tree.lines().find(|line| line.contains(&format!("{text:?}")))?;
-    let (_, at) = line.rsplit_once('@')?;
-    let (x, y) = at.split_once(',')?;
-    Some(Point {
-        x: x.trim().parse().ok()?,
-        y: y.split_whitespace().next()?.parse().ok()?,
-    })
 }

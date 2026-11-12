@@ -187,6 +187,11 @@ impl Read {
         describe(self.0)
     }
 
+    /// Whether it's an error, and which.
+    pub fn event(&self) -> Event {
+        event(self.0)
+    }
+
     fn is(&self, kind: &Opaque) -> bool {
         // SAFETY: asking an object's type, which a null one hasn't.
         !self.0.is_null() && unsafe { xpc_get_type(self.0) } == std::ptr::from_ref(kind)

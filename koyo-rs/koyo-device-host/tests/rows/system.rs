@@ -3,28 +3,10 @@
 
 use std::time::Duration;
 
-use koyo_device_wire::{Act, Answer, Ask, Change, Point, Press, Screen, Spot};
+use koyo_device_wire::{Act, Change, Point, Press, Screen, Spot};
 
+use super::snapshot;
 use crate::support::{Driver, Target, change, press, row, simctl};
-
-fn snapshot(host: &mut Driver) -> String {
-    let _ = host.ask(
-        Ask::Wait {
-            quiet_ms: 500,
-            timeout_ms: 3_000,
-        },
-        Duration::from_secs(10),
-    );
-    match host.snapshot() {
-        Ok(Answer::Snapshot { tree, .. }) => {
-            if std::env::var("KOYO_REAL_SIM_TREES").is_ok() {
-                eprintln!("--- tree\n{tree}---");
-            }
-            tree
-        }
-        other => format!("{other:?}"),
-    }
-}
 
 fn home_swipe(host: &mut Driver, screen: &Screen) {
     let at = |y: f64| {
@@ -52,22 +34,10 @@ fn reference(tree: &str, text: &str) -> Option<String> {
 
 pub fn system(target: &Target, host: &mut Driver, screen: &Screen) {
     // Right after a boot the Home Screen is still being drawn.
-    let _ = host.ask(
-        Ask::Wait {
-            quiet_ms: 1_000,
-            timeout_ms: 10_000,
-        },
-        Duration::from_secs(20),
-    );
+    host.settle(1_000, 10_000);
     // An app in front, for Home to leave and for the switcher to show.
     simctl(target, &["launch", &target.udid, "com.apple.mobilesafari"]);
-    let _ = host.ask(
-        Ask::Wait {
-            quiet_ms: 1_000,
-            timeout_ms: 10_000,
-        },
-        Duration::from_secs(20),
-    );
+    host.settle(1_000, 10_000);
     let home = press(host, Press::Home);
     let tree = snapshot(host);
     row(
@@ -81,7 +51,7 @@ pub fn system(target: &Target, host: &mut Driver, screen: &Screen) {
     );
     let switched = press(host, Press::AppSwitcher);
     let tree = snapshot(host);
-    let cards = tree.contains("Safari");
+    let cards = tree.contains("id=\"card:com.apple.mobilesafari");
     row(
         "QI11",
         "app switcher",

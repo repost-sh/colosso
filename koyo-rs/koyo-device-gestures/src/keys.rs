@@ -1,7 +1,30 @@
 //! Keys by their usage on the HID keyboard page (0x07), which is how a simulator and a device
-//! take them, from the names GPUI gives the Mac's keys.
+//! take them, from the names GPUI gives the Mac's keys; and the device's buttons, pressed as a
+//! hand does, for the tab's bar and an agent's act alike.
 
-use koyo_device_wire::Input;
+use koyo_device_wire::{Button, Input};
+
+use crate::Step;
+
+/// A button's press, and from a press's lift to the next: Home twice is the app switcher, as the
+/// Simulator app's App Switcher (measured: 100, 150 and 250 ms apart each brought it, its picture
+/// changing at once, where a swipe held a second took 1.6 s).
+pub const PRESS_HELD_MS: u32 = 60;
+pub const PRESSED_AGAIN_MS: u32 = 100;
+
+/// `button` pressed `times`, each held and the next close after.
+pub fn pressed(button: Button, times: u32) -> Vec<Step> {
+    let step = |after_ms, down| Step {
+        after_ms,
+        input: Input::Button { button, down },
+    };
+    (0..times)
+        .flat_map(|time| {
+            let at = time * (PRESS_HELD_MS + PRESSED_AGAIN_MS);
+            [step(at, true), step(at + PRESS_HELD_MS, false)]
+        })
+        .collect()
+}
 
 /// The modifiers' own keys.
 pub const SHIFT: u16 = 225;

@@ -16,6 +16,12 @@ pub fn facing(quarters: u8) -> Orientation {
     }
 }
 
+/// The quarters clockwise that put the picture upright when the interface faces `orientation`:
+/// [`facing`]'s other way.
+pub fn upright(orientation: Orientation) -> u8 {
+    (4 - orientation.quarters()) % 4
+}
+
 /// Where a share `(u, v)` of the upright picture is on the surface, as a share of it, when the
 /// picture is the surface turned `quarters` clockwise.
 pub fn on_surface(quarters: u8, (u, v): (f64, f64)) -> (f64, f64) {
@@ -56,6 +62,13 @@ mod tests {
             2 => (w - 1 - px, h - 1 - py),
             3 => (h - 1 - py, px),
             _ => (px, py),
+        }
+    }
+
+    #[test]
+    fn upright_is_facing_turned_back() {
+        for quarters in 0..4 {
+            assert_eq!(upright(facing(quarters)), quarters);
         }
     }
 

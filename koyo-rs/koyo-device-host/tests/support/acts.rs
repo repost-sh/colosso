@@ -28,7 +28,7 @@ pub fn place_of(host: &mut Driver, word: &str) -> Option<Point> {
         return None;
     };
     assert_eq!(source, Source::Text, "a real device has no tree");
-    super::place(&tree, word)
+    place(&tree, word)
 }
 
 pub fn tap(host: &mut Driver, at: Point) -> Result<Answer, Refusal> {
@@ -89,4 +89,15 @@ pub fn middle_light(png: &[u8]) -> Option<(f64, f64)> {
     let mean = light.iter().sum::<f64>() / count;
     let spread = (light.iter().map(|value| (value - mean).powi(2)).sum::<f64>() / count).sqrt();
     Some((mean, spread))
+}
+
+/// Where a snapshot's first line that reads `text` places its element, in points.
+fn place(tree: &str, text: &str) -> Option<Point> {
+    let line = tree.lines().find(|line| line.contains(&format!("{text:?}")))?;
+    let (_, at) = line.rsplit_once('@')?;
+    let (x, y) = at.split_once(',')?;
+    Some(Point {
+        x: x.trim().parse().ok()?,
+        y: y.split_whitespace().next()?.parse().ok()?,
+    })
 }

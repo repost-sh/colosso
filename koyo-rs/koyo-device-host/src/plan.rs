@@ -2,15 +2,11 @@
 //! upright picture: what the host's loop sends, a step at a time, so the person can interrupt
 //! it anywhere. The timings are the proof of concept's, which were measured.
 
-use koyo_device_gestures::{At, key_usage};
-use koyo_device_wire::{Act, Edge, Point, Press, Refusal, RefusalCode, Size};
+use koyo_device_gestures::{At, key_usage, pressed};
+use koyo_device_wire::{Act, Button, Edge, Input, Point, Press, Refusal, RefusalCode, Size};
 
 /// HID pages and usages for buttons and modifiers.
 pub const CONSUMER: u32 = 0x0C;
-const HOME: u32 = 0x40;
-const LOCK: u32 = 0x30;
-const VOLUME_UP: u32 = 0xE9;
-const VOLUME_DOWN: u32 = 0xEA;
 const SHIFT: u16 = 0xE1;
 const CONTROL: u16 = 0xE0;
 const OPTION: u16 = 0xE2;
@@ -163,16 +159,32 @@ fn on_screen(x: f64, y: f64, screen: Size) -> Point {
     }
 }
 
-fn button(usage: u32) -> Vec<Timed> {
-    let press = |at_ms, down| Timed {
-        at_ms,
-        touch: Touch::Button {
-            page: CONSUMER,
-            usage,
-            down,
-        },
-    };
-    vec![press(0, true), press(TAP_HELD_MS, false)]
+/// A button's usage on the consumer page.
+pub fn button_usage(button: Button) -> u32 {
+    match button {
+        Button::Home => 0x40,
+        Button::Lock => 0x30,
+        Button::VolumeUp => 0xE9,
+        Button::VolumeDown => 0xEA,
+    }
+}
+
+/// `button` pressed `times`, as the tab's bar presses it.
+fn button(button: Button, times: u32) -> Vec<Timed> {
+    pressed(button, times)
+        .into_iter()
+        .filter_map(|step| match step.input {
+            Input::Button { button, down } => Some(Timed {
+                at_ms: step.after_ms,
+                touch: Touch::Button {
+                    page: CONSUMER,
+                    usage: button_usage(button),
+                    down,
+                },
+            }),
+            _ => None,
+        })
+        .collect()
 }
 
 /// The steps of `act`, whose places (`spot`s) are already points: `at` and `to`.
@@ -254,13 +266,12 @@ pub fn plan(act: &Act, at: Point, to: Point, screen: Size) -> Result<Vec<Timed>,
         Act::Type { text } => typed(text)?,
         Act::Key { combo } => combo_keys(combo)?,
         Act::Button { button: press } => match press {
-            Press::Home => button(HOME),
-            Press::Lock => button(LOCK),
-            Press::VolumeUp => button(VOLUME_UP),
-            Press::VolumeDown => button(VOLUME_DOWN),
-            Press::AppSwitcher => {
-                swipe_shares(screen, (0.5, 0.995), (0.5, 0.72), 600, 1_000, Edge::Bottom)
-            }
+            Press::Home => button(Button::Home, 1),
+            Press::Lock => button(Button::Lock, 1),
+            Press::VolumeUp => button(Button::VolumeUp, 1),
+            Press::VolumeDown => button(Button::VolumeDown, 1),
+            // Home twice, as the Simulator app's App Switcher.
+            Press::AppSwitcher => button(Button::Home, 2),
             Press::NotificationCenter => {
                 swipe_shares(screen, (0.3, 0.003), (0.3, 0.6), 300, 0, Edge::Top)
             }

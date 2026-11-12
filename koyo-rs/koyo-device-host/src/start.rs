@@ -192,11 +192,20 @@ impl Host {
             return;
         };
         match sim.follow(&self.ring) {
-            Ok(true) => self.tell_standing(),
-            Ok(false) => {}
-            Err(why) => self
-                .teller
-                .log(LogLevel::Warn, format!("which way it faces: {why}")),
+            Ok(turned) => {
+                if self.unread.take().is_some() {
+                    self.teller.log(LogLevel::Info, "which way it faces: read again");
+                }
+                if turned {
+                    self.tell_standing();
+                }
+            }
+            // Said once, not every read: it may go unread for minutes after a first boot.
+            Err(why) if self.unread.as_ref() != Some(&why) => {
+                self.teller.log(LogLevel::Warn, format!("which way it faces: {why}"));
+                self.unread = Some(why);
+            }
+            Err(_) => {}
         }
     }
 

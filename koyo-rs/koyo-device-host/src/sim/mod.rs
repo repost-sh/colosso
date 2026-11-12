@@ -35,6 +35,9 @@ pub struct Simulator {
     /// Quarter turns clockwise that put the picture upright: how its interface faces, as its
     /// display says (`display.rs`), not how the device was told to face.
     quarters: u8,
+    /// How it was told to face by a turn not yet read, as quarters clockwise: the picture's way
+    /// if how it faces can't be read.
+    told: Option<u8>,
     core_device: Option<(String, Vec<u64>)>,
     /// Send rights to the services asked often (which way it faces, every two seconds; a turn),
     /// each looked up once: a lookup is a send right more, never given back.
@@ -66,6 +69,7 @@ impl Simulator {
             universal: None,
             many: None,
             quarters: 0,
+            told: None,
             ports: std::collections::HashMap::new(),
             core_device: display::core_device_version(),
             scale,
@@ -199,6 +203,7 @@ impl Simulator {
             self.ports.remove(WORKSPACE);
             return Err(format!("the turn wasn't sent: {sent:#x}"));
         }
+        self.told = Some(places::upright(to));
         Ok(())
     }
 
@@ -212,16 +217,31 @@ impl Simulator {
         Ok(port)
     }
 
-    /// Reads which way its interface faces and turns the picture by it; whether it changed.
-    pub fn follow(&mut self, ring: &Ring) -> Result<bool, String> {
+    /// Which way its interface faces, as quarters clockwise that put the picture upright.
+    fn faces(&mut self) -> Result<u8, String> {
         let port = self.port(display::SERVICE)?;
         let version = self
             .core_device
             .as_ref()
             .ok_or("CoreDevice's version isn't known: is Xcode 27 installed?")?;
-        let quarters = display::ask(port, &self.udid, version).inspect_err(|_| {
+        display::ask(port, &self.udid, version).inspect_err(|_| {
             self.ports.remove(display::SERVICE);
-        })?;
+        })
+    }
+
+    /// Reads which way its interface faces and turns the picture by it; whether it changed.
+    pub fn follow(&mut self, ring: &Ring) -> Result<bool, String> {
+        let quarters = match (self.faces(), self.told) {
+            (Ok(quarters), _) => quarters,
+            // Unread (for minutes after a first boot, its display's service may not answer):
+            // the way it was told to face, as the Simulator app shows it, rather than no turn.
+            (Err(why), Some(told)) if told != self.quarters => {
+                self.teller.log(LogLevel::Warn, format!("which way it faces: {why}; turned as it was told"));
+                told
+            }
+            (Err(why), _) => return Err(why),
+        };
+        self.told = None;
         if quarters == self.quarters {
             return Ok(false);
         }

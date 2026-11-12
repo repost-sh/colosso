@@ -7,7 +7,7 @@
 
 mod keys;
 
-pub use keys::{CONTROL, OPTION, SHIFT, chord, key_usage};
+pub use keys::{CONTROL, OPTION, PRESS_HELD_MS, PRESSED_AGAIN_MS, SHIFT, chord, key_usage, pressed};
 
 use koyo_device_wire::{Edge, Finger, Input, Point, Size};
 

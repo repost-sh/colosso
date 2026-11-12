@@ -98,6 +98,21 @@ fn a_turned_simulator_is_shown_upright_and_touched_where_aimed() {
     assert!(host.quit(Duration::from_secs(60)));
 }
 
+/// QI10, QI11: Home and the app switcher as the tab's buttons send them.
+#[test]
+#[ignore = "needs a simulator: KOYO_REAL_SIM_SET and KOYO_REAL_SIM_UDID"]
+fn home_and_the_app_switcher_are_the_buttons_own() {
+    let Some(target) = target() else {
+        eprintln!("skipped: no KOYO_REAL_SIM_SET and KOYO_REAL_SIM_UDID");
+        return;
+    };
+    let mut host = Driver::start(&target, false);
+    let _ = host.ready(Duration::from_secs(200));
+    host.tell(&ToHost::Visible { visible: true });
+    rows::presses(&target, &mut host);
+    assert!(host.quit(Duration::from_secs(60)));
+}
+
 /// R1, M3's probe: Settings and a system alert read from the simulator's accessibility tree.
 #[test]
 #[ignore = "needs a simulator: KOYO_REAL_SIM_SET and KOYO_REAL_SIM_UDID"]
@@ -183,9 +198,48 @@ fn a_tap_right_after_a_first_boot_waits_for_input_and_lands() {
         ),
         getting_ready.is_some() && landed,
     );
+    let turned = turned_after_a_first_boot(&target, &mut host);
     let quit = host.quit(Duration::from_secs(60));
     let _ = support::simctl(&target, &["delete", &target.udid]);
-    assert!(quit && landed);
+    assert!(quit && landed && turned);
+}
+
+/// QS9: Safari turned on its side a minute after a first boot, when the simulator may not yet
+/// say which way its interface faces: the picture turns all the same.
+fn turned_after_a_first_boot(target: &support::Target, host: &mut Driver) -> bool {
+    use koyo_device_wire::{Act, FromHost, Orientation, State};
+    support::simctl(target, &["launch", &target.udid, "com.apple.mobilesafari"]);
+    // Safari's first start after a first boot takes seconds to draw.
+    let _ = host.until(Duration::from_secs(3), |_| false);
+    host.settle(2_000, 30_000);
+    let answer = host.act(Act::Turn { to: Orientation::LandscapeLeft });
+    let began = std::time::Instant::now();
+    let mut ways = vec![format!("{:?} as the act answered", host.state)];
+    let _ = host.until(Duration::from_secs(3), |message| {
+        if let FromHost::State { state: State::Ready { screen } } = message {
+            ways.push(format!("{:?} at {} ms", screen.orientation, began.elapsed().as_millis()));
+        }
+        false
+    });
+    support::shot(host, "qs9-first-boot");
+    let faces = match &host.state {
+        Some(State::Ready { screen }) => Some(screen.orientation),
+        _ => None,
+    };
+    let as_told = host.logs.iter().any(|l| l.contains("turned as it was told"));
+    let pass = faces == Some(Orientation::LandscapeLeft);
+    if !pass {
+        eprintln!("QS9: told {ways:?}");
+        rows::warnings(host);
+    }
+    row(
+        "QS9",
+        "turned right after a first boot",
+        &format!("{answer:?}; faces {faces:?}; turned as told {as_told}"),
+        pass,
+    );
+    let _ = host.act(Act::Turn { to: Orientation::Portrait });
+    pass
 }
 
 /// QH2: Koyo killed. Its end of the link closes at once; the host shuts the simulator down and

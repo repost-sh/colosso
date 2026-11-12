@@ -6,7 +6,7 @@ use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
 use koyo_device_wire::{
-    Act, Answer, Ask, Button, FromHost, Input, LogLevel, Point, Refusal, RefusalCode, RequestId,
+    Act, Answer, Ask, FromHost, Input, LogLevel, Point, Refusal, RefusalCode, RequestId,
     Screen, Size, Spot, State, ToHost,
 };
 
@@ -46,6 +46,8 @@ pub struct Host {
     /// Until when, after a turn, the interface's way up is read often; and when it last was.
     pub follow_until: Option<Instant>,
     pub followed: Instant,
+    /// Why which way it faces wasn't read last, said once until it's read again.
+    pub unread: Option<String>,
     /// The app said quit: the simulator is shut down as the host goes.
     pub quitting: bool,
     /// The simulator went away: nothing is left to shut down.
@@ -76,6 +78,7 @@ impl Host {
             tree: crate::jobs::Shared::default(),
             follow_until: None,
             followed: Instant::now(),
+            unread: None,
             quitting: false,
             gone: false,
         }
@@ -201,7 +204,7 @@ impl Host {
                 self.device.touch(&at, touching, edge, size)
             }
             Input::Button { button, down } => {
-                self.device.button(CONSUMER, button_usage(button), down);
+                self.device.button(CONSUMER, plan::button_usage(button), down);
                 Ok(())
             }
             Input::Key { usage, down } => {
@@ -295,14 +298,5 @@ impl Host {
             )),
             other => self.job(request, other),
         }
-    }
-}
-
-fn button_usage(button: Button) -> u32 {
-    match button {
-        Button::Home => 0x40,
-        Button::Lock => 0x30,
-        Button::VolumeUp => 0xE9,
-        Button::VolumeDown => 0xEA,
     }
 }
