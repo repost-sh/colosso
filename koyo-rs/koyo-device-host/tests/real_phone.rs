@@ -30,9 +30,19 @@ fn the_host_shows_and_drives_a_real_device() {
     let Some((mut host, screen)) = shown("QR1") else {
         return;
     };
-    stillness(&mut host, &screen);
-    buttons(&mut host);
-    clock(&mut host, &screen);
+    // Groups of rows to run, all by default: `KOYO_REAL_PHONE_ROWS=still,clock` leaves the
+    // volume alone, on a phone of the person's own.
+    let only = std::env::var("KOYO_REAL_PHONE_ROWS").unwrap_or_default();
+    let runs = |group: &str| only.is_empty() || only.split(',').any(|named| named == group);
+    if runs("still") {
+        stillness(&mut host, &screen);
+    }
+    if runs("buttons") {
+        buttons(&mut host);
+    }
+    if runs("clock") {
+        clock(&mut host, &screen);
+    }
     done(host);
 }
 
