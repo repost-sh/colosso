@@ -76,6 +76,26 @@ fn prepare(test: &str, cx: &mut TestAppContext) -> PathBuf {
     scratch
 }
 
+/// Draws and runs the window until `done` holds, [`PATIENCE`] at most: whether it did.
+fn wait_until(
+    cx: &mut VisualTestContext,
+    mut done: impl FnMut(&mut VisualTestContext) -> bool,
+) -> bool {
+    let deadline = Instant::now() + PATIENCE;
+    loop {
+        cx.run_until_parked();
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.run_until_parked();
+        if done(cx) {
+            return true;
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+        pause(Duration::from_millis(20));
+    }
+}
+
 /// Draws and runs the window until `done` holds for the view, or fails the test saying
 /// what it waited for.
 fn wait_for(
@@ -84,23 +104,13 @@ fn wait_for(
     what: &str,
     done: impl Fn(&BrowserView) -> bool,
 ) {
-    let deadline = Instant::now() + PATIENCE;
-    loop {
-        cx.run_until_parked();
-        cx.update(|window, cx| window.draw(cx).clear(cx));
-        cx.run_until_parked();
-        if view.read_with(cx, |view, _| done(view)) {
-            return;
-        }
-        let (title, url) = view.read_with(cx, |view, _| {
-            (view.page.title.clone(), view.page.url.clone())
-        });
-        assert!(
-            Instant::now() < deadline,
-            "timed out waiting for {what}; the page is {title:?} at {url}"
-        );
-        pause(Duration::from_millis(20));
+    if wait_until(cx, |cx| view.read_with(cx, |view, _| done(view))) {
+        return;
     }
+    let (title, url) = view.read_with(cx, |view, _| {
+        (view.page.title.clone(), view.page.url.clone())
+    });
+    panic!("timed out waiting for {what}; the page is {title:?} at {url}");
 }
 
 /// Lets real time pass, for the engine, which runs outside the test's executor.

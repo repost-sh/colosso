@@ -4,8 +4,7 @@
 
 use std::time::Duration;
 
-use futures::channel::oneshot;
-use gpui_kit::{App, Context, Entity};
+use gpui_kit::{App, Context, Entity, Task};
 use koyo_app_control::ops::browser::{
     DeviceName, Orientation, Viewport as ViewportFacts, ViewportMode,
 };
@@ -14,22 +13,36 @@ pub use koyo_browser_ipc::{Go, Viewport};
 
 use super::control::Holder;
 pub use super::control::{Actor, Mode, Refused};
-use super::host::Browsers;
-pub use super::host::CdpResult;
+pub use super::host::Answer;
+use super::host::{Browsers, HostStatus};
 use super::responsive;
 pub use super::responsive::devices::find as find_device;
 pub use super::responsive::{
     Change as ViewportChange, Choice, SetBy, ViewportRefused, Zoom, opening,
 };
 use super::view::BrowserView;
+pub(crate) use super::view::sight::AWAKE_FOR;
 
 /// Why a protocol command didn't run for an agent.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AgentError {
     /// The page's lease keeps the agent out.
     Refused(Refused),
-    /// The host hasn't opened the page: its pane hasn't been drawn yet.
-    NotOpen,
+    /// The engine hasn't the page open, for the reason given.
+    NotOpen(NotOpen),
+}
+
+/// Why the engine hasn't a page open.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum NotOpen {
+    /// The engine is starting, or yet to start: it opens the page once it runs.
+    Starting,
+    /// The engine failed, as the message says, and stays down until the person restarts it.
+    Failed(String),
+    /// The pane shows the start page, which has no page until an address is loaded.
+    StartPage,
+    /// Its pane has never been drawn, and no agent opened it: it opens once its tab is shown.
+    Unshown,
 }
 
 /// The viewport of a page that fills its pane, at `viewport`, shown at `shown_percent`.
@@ -128,9 +141,23 @@ impl BrowserView {
         }
     }
 
+    /// Why the engine hasn't the page open; none when it has.
+    pub fn not_open(&self, cx: &App) -> Option<NotOpen> {
+        if self.is_open(cx) {
+            return None;
+        }
+        Some(match self.status(cx) {
+            HostStatus::Idle | HostStatus::Starting => NotOpen::Starting,
+            HostStatus::Failed(message) => NotOpen::Failed(message),
+            HostStatus::Running if self.is_start_page() => NotOpen::StartPage,
+            HostStatus::Running => NotOpen::Unshown,
+        })
+    }
+
     /// Whether the page can be asked the size it lays out at, as at `target`: it was told
-    /// `target`, and it shows a frame of it, unless it's out of sight, where the host paints
-    /// nothing and the page's own report is all there is.
+    /// `target`, and it shows a frame of it, unless the engine has it out of sight, where
+    /// the host paints nothing and the page's own report is all there is. A page an agent
+    /// uses is on screen for the engine (`view/sight.rs`), so it paints.
     pub fn ready_to_measure(&self, target: Viewport) -> bool {
         self.viewport == Some(target)
             && (self.visible == Some(false) || self.shows_frame_of(target.pixels()))
@@ -208,16 +235,18 @@ fn orientation(landscape: bool) -> Orientation {
 }
 
 /// Runs a protocol command on `view`'s page: under its lease for `actor` when it acts, freely
-/// when it only reads (`actor` is `None`). The answer arrives on the returned channel.
+/// when it only reads (`actor` is `None`). Its answer comes from the returned task, which
+/// waits for it at most `limit` ([`Browsers::ask`]).
 pub fn cdp(
     view: &Entity<BrowserView>,
     actor: Option<&Actor>,
     method: &str,
     params: serde_json::Value,
+    limit: Duration,
     cx: &mut App,
-) -> Result<oneshot::Receiver<CdpResult>, AgentError> {
-    if !view.read(cx).is_open(cx) {
-        return Err(AgentError::NotOpen);
+) -> Result<Task<Answer>, AgentError> {
+    if let Some(why) = view.read(cx).not_open(cx) {
+        return Err(AgentError::NotOpen(why));
     }
     if let Some(actor) = actor {
         (view.update(cx, |view, cx| {
@@ -225,7 +254,10 @@ pub fn cdp(
         }))
         .map_err(AgentError::Refused)?;
     }
+    view.update(cx, BrowserView::agent_uses);
     let pane = view.read(cx).pane;
     let browsers = Browsers::global(cx);
-    Ok(browsers.update(cx, |browsers, _| browsers.call(pane, method, params)))
+    Ok(browsers.update(cx, |browsers, cx| {
+        browsers.ask(pane, method, params, limit, cx)
+    }))
 }

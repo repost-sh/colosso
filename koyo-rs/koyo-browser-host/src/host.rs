@@ -74,6 +74,7 @@ struct Pane {
     /// Whether a frame waits for a slot (`frames::Behind`).
     behind: frames::Behind,
     /// Whether the app shows the page, which the frame clock begins frames of (`clock.rs`).
+    /// Not shown, Chromium was told it's hidden, or is once its browser arrives.
     shown: bool,
     software: bool,
     /// What the trackpad's last events leave for its next.

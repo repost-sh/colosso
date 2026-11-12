@@ -347,7 +347,8 @@ Where the build differs from the sections above, or settles what they left open:
   `Browser.getVersion`. iOS presets send platform `iPhone`/`iPad` and `userAgentMetadata`
   with platform iOS and no brands; Android sends `Linux armv81`.
 - `browser_viewport` settles when a frame within 1 device px of the size has shown (a page
-  out of sight: its `innerWidth`/`innerHeight` alone) and the page's inner size is the size
+  the engine has out of sight: its `innerWidth`/`innerHeight` alone; an agent's change keeps
+  its page on screen for the engine, `docs/app-control.md` 11) and the page's inner size is the size
   ÷ its zoom; a mobile page with no `<meta viewport>` (laid out about 980 wide) settles on
   the device's aspect ratio. With `screenshot: true` the answer carries `mimeType` and
   `data` and the image goes as an MCP image block; a failed capture fails the call after

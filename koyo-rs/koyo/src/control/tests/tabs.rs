@@ -253,6 +253,12 @@ fn a_page_brought_back_waits_to_be_shown_for_the_browser_tools(cx: &mut TestAppC
     assert_eq!(first["viewport"]["width"], json!(0), "not laid out");
     let read = call(&agent, "browser_read", json!({ "pane": pane }), cx).unwrap_err();
     assert_eq!(read.code, ErrorCode::BrowserUnavailable);
+    assert!(
+        !read.retryable,
+        "trying again never loads it: {}",
+        read.message
+    );
+    assert!(read.message.contains("tab_select"), "{}", read.message);
     let unnamed = call(&agent, "browser_read", json!({}), cx).unwrap_err();
     assert_eq!(unnamed.code, ErrorCode::BrowserUnavailable, "the only page");
 

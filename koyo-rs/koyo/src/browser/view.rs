@@ -24,6 +24,7 @@ use crate::history::How;
 
 pub(super) mod lifecycle;
 mod navigation;
+pub(super) mod sight;
 use super::menu::MenuRequest;
 use super::toolbar;
 pub use navigation::{Controls, Visit};
@@ -106,6 +107,9 @@ pub struct BrowserView {
     pub(super) shown: Option<WeakEntity<Shown>>,
     /// Whether the host was last told the page is on screen.
     pub(super) visible: Option<bool>,
+    /// Until when the page is on screen for the engine though no pane draws it, an agent
+    /// having used it, and the task that ends that then (`sight.rs`).
+    pub(super) awake: Option<(Instant, Task<()>)>,
     /// Whether the host was last told a held drag of the pane's edge is under way, and when
     /// the page's size last changed: sizes that keep coming are laid out live (`Dragging`).
     pub(super) drag_sent: bool,
@@ -253,6 +257,7 @@ impl BrowserView {
             resized_at: None,
             shown: None,
             visible: None,
+            awake: None,
             cursor: Cursor::Arrow,
             focus,
             address,
@@ -418,15 +423,6 @@ impl BrowserView {
         (self.frame.replace(frame))
             .map(|previous| (previous.generation, previous.slot))
             .filter(|previous| *previous != slot)
-    }
-
-    /// Tells the host whether the page is on screen, when that changed; out of sight it
-    /// stops painting.
-    pub(super) fn set_visible(&mut self, visible: bool, cx: &mut Context<Self>) {
-        if self.visible.replace(visible) != Some(visible) {
-            let pane = self.pane;
-            self.send_to_page(AppRequest::Visible { pane, visible }, cx);
-        }
     }
 
     /// The address field, which the page's toolbar shows, or the Arc sidebar in its place.

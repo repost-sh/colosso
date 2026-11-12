@@ -135,9 +135,11 @@ impl BrowserView {
         };
         let page = matches!(request, AppRequest::Open { .. });
         self.opened = Some(epoch);
-        // A page opens on screen; the next draw says so again, or that it isn't.
+        // A page opens on screen: the host is told at once whether it is (`sight.rs`), as
+        // one no pane draws, or a hidden tab's after the engine restarts, isn't.
         self.visible = None;
         self.send(request, cx);
+        self.tell_sight(cx);
         if page {
             // Its session is new: what responsive mode emulates is told it again.
             self.session_opened(cx);
@@ -146,17 +148,16 @@ impl BrowserView {
 
     /// Opens the page in the host though no pane draws it, as an agent's page opened out of
     /// sight needs for the browser tools to reach it: at the size a pane assumes before it's
-    /// drawn, until it's drawn at its own, and painting nothing meanwhile. A page opens on
-    /// its own only once it's drawn.
+    /// drawn, until it's drawn at its own. The agent that opened it is using it, so it's on
+    /// screen for the engine until the agent leaves it be (`sight.rs`). A page opens on its
+    /// own only once it's drawn.
     pub(crate) fn open_out_of_sight(&mut self, cx: &mut Context<Self>) {
         if self.viewport.is_some() || self.is_inspector() {
             return;
         }
+        self.agent_uses(cx);
         let viewport = self.undrawn_viewport();
         self.viewport_changed(viewport, Dragging::No, cx);
-        if self.is_open(cx) {
-            self.set_visible(false, cx);
-        }
     }
 
     /// The host started, stopped or failed.

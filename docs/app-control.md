@@ -143,7 +143,11 @@ agent. `project_add`, `worktree_create`, `tab_open`, `pane_split`, `file_open`,
 - `select: true` or `select: false` gets what it says, whatever the setting. Agents are told
   to pass `true` only when the person asked to see the thing.
 - What opens out of sight works as if shown: a terminal starts, a file's editor is ready,
-  a browser page opens in the engine at once (11) so the browser tools drive it.
+  a browser page opens in the engine at once (11) so the browser tools drive it. While an
+  agent uses a page no pane draws, never shown or shown and left, the engine has it on
+  screen: its animation frames run, clicks and keys land at once, screenshots answer. 90 s
+  after the agent's last command it's out of sight for the engine too, and the next command
+  brings it back (11, 2026-11-12).
 - For every caller: agents in Koyo's terminals, external clients and `koyo app`. The
   person's own menus and dialogs are unaffected, and so are terminals an agent opens with
   `terminal_open`, which already come as tabs that aren't shown.
@@ -564,19 +568,43 @@ owner found the list of no use, and agents read the log with `activity_list` (5)
   page opens in the engine once its pane is drawn. One an agent opened out of sight is opened
   at once (`BrowserView::open_out_of_sight`) at its responsive mode's size (1440 × 900 by
   default, 2026-11-08), or, filling its pane, at 1280×800, the size a pane assumes before it's
-  drawn; it's told it's out of sight when the engine already runs, and once shown a page
-  filling its pane takes the pane's size. Any other page never shown answers
-  `browser_unavailable` until it's shown once. A tab brought back at launch has no page until
-  it's shown; `browser_list` lists it with its kept address and title and a 0 × 0 viewport
-  (`docs/browser.md` 6). `browser_read` cuts the page's text in the page, near its limit.
+  drawn; once shown a page filling its pane takes the pane's size. Any other page never
+  shown, and a tab brought back at launch, answers `browser_unavailable`, not retryable,
+  saying to show its tab (`tab_select`, `pane_focus`, and `app_focus` when the window is
+  minimized or on another desktop) or open a new page; a start page says `browser_navigate`
+  loads one; an engine still starting says to try again shortly (retryable); one that failed
+  says the person restarts it (`control/exec/browser/refusals.rs`). A tab brought back at
+  launch has no page until it's shown; `browser_list` lists it with its kept address and
+  title and a 0 × 0 viewport (`docs/browser.md` 6).
+- Not built (found 2026-11-12): a page an agent opens with `select: true` (or with Switch to
+  what agents open on) opens once the window draws its tab, as the person's own pages do;
+  while Koyo's window is minimized or on another desktop it draws nothing, so the page stays
+  unopened and the tools answer as for a page never shown.
+- On screen for the engine (2026-11-12): a page is on screen while its pane draws it with no
+  notice over it, frame or not (`browser/page.rs`), and while an agent uses it
+  (`browser/view/sight.rs`): opening it out of sight, each command through `agent::cdp`, each
+  act that claims it and each look of `browser_wait` keep it on screen for `AWAKE_FOR`, 90 s,
+  longer than any one tool call takes. Past that a page no pane draws is hidden (Chromium's `WasHidden`: no frames, timers
+  slowed, `visibilityState` `hidden`) until the next command. The host applies what it's
+  told before the page's browser exists once the browser arrives
+  (`koyo-browser-host/src/host/panes.rs` `browser_created`), so a page it has out of sight
+  is one Chromium was told is hidden, and the frame clock begins frames of every other.
+- Each protocol command a browser tool sends waits 30 s at most for the page, 90 s for a
+  script whose promise is awaited (`browser_eval` with `awaitPromise`), within the client's
+  own 100 s (`CALL_TIMEOUT`); past it the tool answers `timeout` saying so, and the app stops
+  waiting for it (`Browsers::ask`, its limit given by the caller: `script::evaluate` asks
+  longer when it awaits). The host lets go of its own note of the command once Chromium
+  answers or the page closes.
+- `browser_read` cuts the page's text in the page, near its limit.
   `browser_screenshot`'s image goes once, as an MCP image block; its structured answer
   carries `data` empty. Keys carry the same key codes the person's own typing does. Snapshot
   refs are `data-koyo-ref` attributes set by the snapshot's script. Editing shortcuts
   (⌘A, ⌘C, ⌘X, ⌘V, ⌘Z, ⇧⌘Z) carry their editing command, as Chromium on macOS needs.
 - `browser_viewport` (responsive mode, `docs/responsive.md`; executor in
   `control/exec/browser/viewport.rs`, the mode in `browser/responsive/`) answers once the page
-  showed a frame of the new size (a page out of sight paints none, so there only its report
-  counts) and reported it as `innerWidth`/`innerHeight` (polled every 100 ms, 5 s at most,
+  showed a frame of the new size (a page the engine has out of sight paints none, so there
+  only its report counts; the agent's own change keeps its page on screen for the engine, so
+  that one paints) and reported it as `innerWidth`/`innerHeight` (polled every 100 ms, 5 s at most,
   else `settled: false`). With `screenshot: true` its output carries
   `mimeType` and `data` at the top, which the relay turns into an image block as
   `browser_screenshot`'s.

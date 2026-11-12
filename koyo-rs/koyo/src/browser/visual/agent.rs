@@ -100,8 +100,16 @@ impl Check {
             let event = serde_json::json!({
                 "type": kind, "x": x, "y": y, "button": "left", "clickCount": 1,
             });
-            let sent = (self.drawn.cx)
-                .update(|cx| agent::cdp(page, Some(actor), "Input.dispatchMouseEvent", event, cx));
+            let sent = (self.drawn.cx).update(|cx| {
+                agent::cdp(
+                    page,
+                    Some(actor),
+                    "Input.dispatchMouseEvent",
+                    event,
+                    PATIENCE,
+                    cx,
+                )
+            });
             // The title says whether it landed; the answer adds nothing.
             let _answer = sent.map_err(|why| format!("the click wasn't sent: {why:?}"))?;
         }
