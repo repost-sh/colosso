@@ -166,6 +166,14 @@ reached only from `phone/`: its API is unstable below 0.2.
 - What must be true first, each told apart so the setup shows the one step missing: connected by
   cable; trusted; Developer Mode on; iOS or iPadOS 27 or later; the developer image there. When
   connecting fails the host asks `devicectl list devices` once for which (`phone/checks.rs`).
+- A device the list says misses one of those isn't started [built]: the app holds its host back
+  and says the step in its tab, as the host would have, and an agent's call on it (`device_open`
+  and every other) is answered `device_needs_person` with the step at once, with no sheet put
+  to the person. A host connects first and asks `devicectl` what's missing only after, which
+  sends a tunnel's handshake to a device that can't be driven: an iPhone on iOS 26 gets nothing
+  (QR10, on the owner's iPhone 14 Pro on iOS 26.6.1: listed with "update it in Settings →
+  General → Software Update", five tools refused with it, no host, its tunnel left
+  disconnected). Once the list says nothing is missing, its tab starts by itself.
 - The device's own screen stream (sound first, then video on the same session), decoded by the
   Mac's hardware decoder in its own format and made BGRA in one surface of the host's, which the
   ring turns upright by the LCD's own turn. The feedback the device is owed: every picture
@@ -379,7 +387,7 @@ answer), `Request { request, ask }`, `Cancel`, `Quit`. Host to app: `Hello { pro
   `device_needs_person` (not: locked, not trusted, Developer Mode off, below iOS 27, Xcode missing,
   or the person is being asked whether to lend their device).
 - **The person's own device** [decided 2026-11-11]: the first call of an agent on a real device
-  that isn't lent to it, reads included, puts a sheet in Koyo's window ("Let “{agent}” use your
+  that isn't lent to it and misses no step, reads included, puts a sheet in Koyo's window ("Let “{agent}” use your
   {iPad} “{name}”?", `Allow` / `Don't Allow`) and returns at once with `device_needs_person`. After
   `Allow` the device is that agent's until the person takes it back. `Don't Allow` answers
   `user_declined` and raises no new sheet for that agent and device for ten minutes (the control
