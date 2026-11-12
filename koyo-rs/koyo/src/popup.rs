@@ -150,9 +150,14 @@ pub fn open<V: Render>(
                 };
                 watching.push(cx.observe_window_activation(parent, left));
                 watching.push(cx.observe_window_activation(window, left));
-                // Moved or resized, the window under it would leave it hanging.
-                watching.push(cx.observe_window_bounds(parent, move |_, _, cx| {
-                    close_if_up(kind, popup, cx);
+                // Moved or resized, the window under it would leave it hanging. GPUI says a
+                // window's bounds changed as it's activated or left too, as when this one takes
+                // the keyboard: that's not a move.
+                let opened_over = parent.bounds();
+                watching.push(cx.observe_window_bounds(parent, move |_, parent, cx| {
+                    if parent.bounds() != opened_over {
+                        close_if_up(kind, popup, cx);
+                    }
                 }));
             }
             build(window, cx)

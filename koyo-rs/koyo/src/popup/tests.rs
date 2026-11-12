@@ -1,7 +1,7 @@
 //! How the floating windows go, on test windows: a press in the window they float over, but on a
 //! menu's own trigger; that window showing something else, but for a dialog, or moving; one of a
-//! kind opening over another; leaving, but for a kept dialog; a key a menu has no use for; and a
-//! panel fitting what it holds.
+//! kind opening over another; leaving, but for a kept dialog, and not on moving into it; a key a
+//! menu has no use for; and a panel fitting what it holds.
 
 use std::time::Duration;
 
@@ -159,6 +159,18 @@ fn leaving_puts_away_all_but_a_kept_dialog(cx: &mut TestAppContext) {
         .advance_clock(Duration::from_millis(2 * SETTLE));
     assert!(!up(menu, cx));
     assert!(up(kept, cx));
+}
+
+#[gpui_kit::test]
+fn the_person_moving_into_a_floating_window_keeps_it_up(cx: &mut TestAppContext) {
+    let over = behind(cx);
+    (cx.update_window(over, |_, window, _| window.activate_window())).unwrap();
+    let dialog = float(Kind::Dialog, None, false, over, cx);
+    // As it takes the keyboard: not leaving.
+    (cx.update_window(dialog, |_, window, _| window.activate_window())).unwrap();
+    cx.executor()
+        .advance_clock(Duration::from_millis(2 * SETTLE));
+    assert!(up(dialog, cx));
 }
 
 #[gpui_kit::test]
