@@ -2,17 +2,17 @@
 //! tool, shaped as Claude Code's own `macOsKeychainStorage.ts` does it.
 //!
 //! - A write hex-encodes the value (`-X`) and pipes the command through `security -i`, so the
-//!   secret never appears in a process's arguments.
+//!   secret stays out of a process's arguments; a command too long for `security -i`'s
+//!   4096-byte line goes in the arguments instead, as cswap's and Claude Code's do. A real
+//!   login with MCP tokens runs to about 3.4 KB, twice that as hex, so it's the arguments then:
+//!   the hex shows in `ps` to the person's own processes for the moment `security` runs, where
+//!   cutting the line would silently corrupt the item (Claude Code #30337).
 //! - A read is `find-generic-password … -w`; exit 44 is "not found", any other failure raises,
 //!   so a missing item is never confused with a locked or denied Keychain.
 //! - `/usr/bin/security` by absolute path, so nothing earlier on `PATH` sees a secret; and the
 //!   item's creator and reader are the same stable binary, so reads stay silent while Koyo's
 //!   own signature changes with every build (pitfall 12).
 //! - Every call is bounded by 5 s, so a wedged Keychain can't hang the caller.
-//!
-//! One rule differs from cswap's: a command longer than `security -i`'s 4096-byte line isn't
-//! retried with the secret in the arguments, as cswap and Claude Code do; it fails, because
-//! Koyo puts no token in a process's arguments (`docs/claude-accounts.md` 3).
 //!
 //! `security` itself is behind [`Security`], so tests run on a fake (`testing::FakeSecurity`).
 //! Left out: `item_exists`, which nothing calls.
@@ -207,10 +207,10 @@ pub fn get_password(
 }
 
 /// Creates or updates the item (`-U`), through `security -i` so the secret stays out of the
-/// arguments.
+/// arguments, or in them, as hex, when the command is too long for its line.
 ///
 /// # Errors
-/// A non-zero exit, a timeout, or a command too long for `security -i`'s line.
+/// A non-zero exit, or a timeout.
 pub fn set_password(
     security: &dyn Security,
     service: &str,
@@ -228,14 +228,23 @@ pub fn set_password(
         quote(account),
         quote(service)
     );
-    if command.len() > SECURITY_STDIN_LINE_LIMIT {
-        return Err(KeychainError(format!(
-            "the credential is {} bytes, too long for security -i's line, and Koyo puts no \
-             token in a command's arguments",
-            password.len()
-        )));
-    }
-    let output = security.run(&["-i"], Some(&command))?;
+    let output = if command.len() <= SECURITY_STDIN_LINE_LIMIT {
+        security.run(&["-i"], Some(&command))?
+    } else {
+        // Hex in the arguments defeats a plaintext grep, not a determined observer; the
+        // alternative, a line cut mid-value, is a corrupted item.
+        let args = vec![
+            "add-generic-password",
+            "-U",
+            "-a",
+            account,
+            "-s",
+            service,
+            "-X",
+            &hex,
+        ];
+        security.run(&with_keychain(security, args), None)?
+    };
     if output.status == 0 {
         Ok(())
     } else {

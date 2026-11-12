@@ -72,6 +72,11 @@ limit, each opening with the cswap module and commit it ports.
 - **HTTP** goes through the system `curl`, as Koyo's other requests do, with headers passed on
   stdin (`--config -`), never in argv, so a token never shows in `ps`. The system `curl` trusts
   the Keychain's certificates, which covers TLS-inspecting proxies.
+- **Keychain writes** go through `security -i`'s stdin, so a token stays out of a command's
+  arguments; a credential too long for its 4,096-byte line (a login with MCP tokens, about 3.4 KB,
+  twice that as hex) goes in the arguments as hex instead, as cswap and Claude Code write it:
+  visible in `ps` to the person's own processes while `security` runs, rather than an item cut
+  short (the owner's choice, after a real login didn't fit).
 - **Tokens never reach a log.**
 - **Running Claude Code picks up a switch** within its 30 s Keychain cache, or at once when a
   `.credentials.json` already exists and its mtime is bumped, as cswap does.
