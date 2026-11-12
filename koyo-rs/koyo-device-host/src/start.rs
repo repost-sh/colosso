@@ -214,6 +214,7 @@ impl Host {
         if matches!(self.phase, Phase::Booting { .. } | Phase::Failed { .. }) {
             return;
         }
+        crate::sim::access::rest(&self.tree, !self.jobs.is_empty());
         let Some(sim) = self.device.simulator_mut() else {
             return;
         };

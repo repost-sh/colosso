@@ -408,6 +408,12 @@ impl Link {
                     let _ = answer.send(result);
                 }
             }
+            // The host's frame counts (`KOYO_DEVICE_STATS`; its line begins so in `run.rs`), with
+            // what the tab showed and painted.
+            FromHost::Log { level: LogLevel::Info, text } if text.starts_with("frames:") => {
+                let picture = self.picture.read(cx);
+                log::info!("{}: {text}; the tab: {} shown, {} painted", self.name, picture.frames, picture.paints);
+            }
             FromHost::Log { level, text } => match level {
                 LogLevel::Info => log::info!("{}: {text}", self.name),
                 LogLevel::Warn => log::warn!("{}: {text}", self.name),

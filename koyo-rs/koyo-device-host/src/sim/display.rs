@@ -106,9 +106,15 @@ fn primary(reply: Read) -> Result<u8, String> {
     quarters(&rotation).ok_or_else(|| format!("an orientation not known: {rotation}"))
 }
 
-/// Asks the simulator, through its service's port, which way its interface faces.
-pub fn ask(port: u32, udid: &str, version: &(String, Vec<u64>)) -> Result<u8, String> {
-    let connection = Connection::to_simulator(port, |_| {})?;
+/// A connection to the service, from a send right looked up for it: the connection takes the
+/// right with it, so a second made from the same right is refused as invalid (measured: every
+/// other read failed while each read made its own).
+pub fn connect(port: u32) -> Result<Connection, String> {
+    Connection::to_simulator(port, |_| {})
+}
+
+/// Asks the simulator, on its service's connection, which way its interface faces.
+pub fn ask(connection: &Connection, udid: &str, version: &(String, Vec<u64>)) -> Result<u8, String> {
     // The raw reply, only when asked for: it is read every two seconds while a tab shows.
     let said = std::env::var_os("KOYO_DEVICE_DISPLAY_INFO").is_some();
     let (read, described) = connection

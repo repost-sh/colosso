@@ -160,13 +160,17 @@ fn hello(link: &Link, token: &str) -> Result<(u32, String, Vec<ToHost>), String>
 /// can't be reached at all.
 pub fn run(args: &Args) -> Result<(), String> {
     // SAFETY: a handler that only sets a flag and wakes the loop, for the signals that ask a
-    // process to go.
+    // process to go; and no signal blocked, whatever the app's thread that started the host had:
+    // it comes with them blocked, and so outlived a `kill`, its simulator left booted (measured).
     unsafe {
         let handler: extern "C" fn(libc::c_int) = on_signal;
         let handler = handler as *const () as libc::sighandler_t;
         libc::signal(libc::SIGTERM, handler);
         libc::signal(libc::SIGINT, handler);
         libc::signal(libc::SIGHUP, handler);
+        let mut none: libc::sigset_t = std::mem::zeroed();
+        libc::sigemptyset(&raw mut none);
+        libc::pthread_sigmask(libc::SIG_SETMASK, &raw const none, std::ptr::null_mut());
     }
     let socket =
         std::env::var(ENV_SOCKET_FD).map_err(|error| format!("{ENV_SOCKET_FD}: {error}"))?;
@@ -315,11 +319,13 @@ fn end(host: &mut Host, args: &Args) {
         // A boot under way is let finish, so it can be shut down rather than left booted.
         let _ = done.recv_timeout(Duration::from_secs(400));
     }
-    if !host.gone
-        && let Err(why) = simctl::run(set, &["shutdown", &args.udid], SHUTS_DOWN_WITHIN)
-        && !why.contains("current state: Shutdown")
-    {
-        return host.log(LogLevel::Warn, format!("the simulator wasn't shut down: {why}"));
+    if !host.gone {
+        crate::sim::access::leave(&host.tree);
+        if let Err(why) = simctl::run(set, &["shutdown", &args.udid], SHUTS_DOWN_WITHIN)
+            && !why.contains("current state: Shutdown")
+        {
+            return host.log(LogLevel::Warn, format!("the simulator wasn't shut down: {why}"));
+        }
     }
     let _ = std::fs::remove_file(record_path(&args.state, &args.udid));
 }

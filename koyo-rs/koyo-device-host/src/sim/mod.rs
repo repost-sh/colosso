@@ -1,6 +1,7 @@
 //! A simulator of Koyo's own (`docs/devices.md` 4): found in Koyo's device set, its picture into
 //! the ring, its input, its turn. Booting, shutting down and its apps go through `simctl`.
 
+pub mod access;
 pub mod ax;
 pub mod core;
 pub(crate) mod display;
@@ -39,9 +40,12 @@ pub struct Simulator {
     /// if how it faces can't be read.
     told: Option<u8>,
     core_device: Option<(String, Vec<u64>)>,
-    /// Send rights to the services asked often (which way it faces, every two seconds; a turn),
-    /// each looked up once: a lookup is a send right more, never given back.
+    /// Send rights to the services asked often by a message of their own (a turn), each looked
+    /// up once: a lookup is a send right more, never given back.
     ports: std::collections::HashMap<&'static str, u32>,
+    /// Its display's service, asked which way it faces every two seconds: one connection, made
+    /// again only once it failed.
+    faces: Option<crate::xpc::Connection>,
     pub scale: f64,
     teller: Teller,
 }
@@ -71,6 +75,7 @@ impl Simulator {
             quarters: 0,
             told: None,
             ports: std::collections::HashMap::new(),
+            faces: None,
             core_device: display::core_device_version(),
             scale,
             teller,
@@ -219,14 +224,19 @@ impl Simulator {
 
     /// Which way its interface faces, as quarters clockwise that put the picture upright.
     fn faces(&mut self) -> Result<u8, String> {
-        let port = self.port(display::SERVICE)?;
         let version = self
             .core_device
             .as_ref()
             .ok_or("CoreDevice's version isn't known: is Xcode 27 installed?")?;
-        display::ask(port, &self.udid, version).inspect_err(|_| {
-            self.ports.remove(display::SERVICE);
-        })
+        let connection = match self.faces.take() {
+            Some(connection) => connection,
+            None => display::connect(self.device.lookup(display::SERVICE)?)?,
+        };
+        let read = display::ask(&connection, &self.udid, version);
+        if read.is_ok() {
+            self.faces = Some(connection);
+        }
+        read
     }
 
     /// Reads which way its interface faces and turns the picture by it; whether it changed.
@@ -257,6 +267,7 @@ impl Simulator {
         }
         self.digitizer = None;
         self.universal = None;
+        self.faces = None;
     }
 
     fn log_info(&self, text: &str) {

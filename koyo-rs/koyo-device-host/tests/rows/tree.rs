@@ -87,3 +87,48 @@ pub fn tree(target: &Target, host: &mut Driver) {
     }
     let _ = simctl(target, &["terminate", &target.udid, "com.apple.Maps"]);
 }
+
+/// What the suite's host is started with for [`rests`]: accessibility off three seconds after
+/// its tree was last read, where a minute is the host's own.
+pub const RESTS: (&str, &str) = (koyo_device_host::ENV_RESTS_MS, "3000");
+
+/// Whether accessibility is on in the simulator's own settings.
+fn accessibility(target: &Target) -> bool {
+    let read = ["spawn", &target.udid, "defaults", "read", "com.apple.Accessibility", "ApplicationAccessibilityEnabled"];
+    simctl(target, &read).trim() == "1"
+}
+
+/// QI17: accessibility is on in the simulator only while its tree is read. A read switches it
+/// on, a rest switches it off, an app the person then opens loads none of it, and the next read
+/// has its tree all the same.
+pub fn rests(target: &Target, host: &mut Driver) {
+    let (_, first) = timed_snapshot(host);
+    let read = first.is_some_and(|(_, source, ..)| source == Source::Accessibility);
+    let on = accessibility(target);
+    let started = Instant::now();
+    let _ = host.until(Duration::from_secs(12), |_| !accessibility(target));
+    let (off, after) = (!accessibility(target), started.elapsed());
+    // As the person opens it: no agent's launch, which reads the tree to see it in front.
+    simctl(target, &["launch", "--terminate-running-process", &target.udid, "com.apple.Preferences"]);
+    settle(host);
+    let still_off = !accessibility(target);
+    let (took, again) = timed_snapshot(host);
+    if let Some((tree, source, elements, _)) = &again {
+        eprintln!("after the rest: {source:?}, {elements} elements");
+        tree.lines().take(12).for_each(|line| eprintln!("  | {line}"));
+    }
+    let again = again.is_some_and(|(tree, source, ..)| source == Source::Accessibility && tree.contains("General"));
+    row(
+        "QI17",
+        "accessibility on only while the tree is read",
+        &format!(
+            "read {read}, on with it {on}; off {off} after {} ms; off as the person opens Settings {still_off}; \
+             then read again {again} in {} ms, on {}",
+            after.as_millis(),
+            took.as_millis(),
+            accessibility(target)
+        ),
+        read && on && off && still_off && again,
+    );
+    let _ = simctl(target, &["terminate", &target.udid, "com.apple.Preferences"]);
+}
