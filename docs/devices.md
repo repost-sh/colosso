@@ -59,7 +59,7 @@ Each line is a rule Koyo keeps. The measured proof of each goes into 12 as it is
 | Memory | Each running simulator takes gigabytes (the PoC summed 3.5 GB on iOS 26.5 and 10-13 GB on iOS 27.2 from `top`, not looked into) | Shown in Settings with `Stop`; at most two running at once unless the person raises it; shut down when its tab closes and when Koyo quits or is found to have crashed |
 | Disk | About 2 GB a simulator in Koyo's data folder. A simulator system is about 8 GB in the system's own folder, shared with Xcode. macOS keeps its compiled text model for the host in `~/Library/Caches/koyo-device-host` (12 MB). A simulator's own services that crash leave reports in `~/Library/Logs/DiagnosticReports`, as under Xcode (about a hundred, 2 MB, in a day of testing) and CoreSimulator keeps a log per simulator in `~/Library/Logs/CoreSimulator` | Downloaded only on the person's click, never deleted by Koyo; the reports and logs are macOS's |
 | Their iPhone or iPad | Seen and driven only after they allowed it in Koyo's window; kept awake while its tab is open; no setting changed; never turned, never unlocked | The lend (9.6) and the device's own stream (5) |
-| What is on that device | Its screen goes to the agent that was allowed, as pictures and text | The lend, its notice in the tab and `Take It Back` |
+| What is on that device | Its screen goes to the agent that was allowed, as pictures and text | The lend, its pill in the tab and `Take it back` |
 | The device's own state | Developer Mode must be on, which lowers its guard; the developer image is mounted | The setup says so before the person turns it on |
 | The device's camera and microphone | `[open]` reported off while its screen is viewed | The tab says so; to be checked by the owner once |
 
@@ -110,7 +110,8 @@ Crates:
    surface tears a few reads in ten thousand; the ring's copy didn't in 35,625 (PoC). Waiting for
    the copy brought an iPad simulator from 60 to 46 frames a second (PoC).
 3. Real device: its HEVC stream depacketized, decoded by VideoToolbox, then one
-   `VTPixelRotationSession` pass turns it upright and makes it BGRA in the slot.
+   `VTPixelTransferSession` pass makes it BGRA in a surface of the host's own, no more of it
+   than the screen (5), which the ring turns upright into its slots.
 4. The ring goes to the app once per generation as one mach message (`koyo_browser_ipc::mach`);
    a new generation only when the picture's size changes. Each frame is a socket message
    `Frame { generation, slot }`; the app holds one slot at a time, as the browser does.
@@ -194,6 +195,21 @@ reached only from `phone/`: its API is unstable below 0.2.
   acknowledged, a report every 50 ms, a word every second, a keyframe asked for when a decode
   fails (twice a second at most). Unwanted, pictures are dropped undecoded; wanted again, decoding
   starts from a keyframe asked for (about a second's pictures skipped).
+- Its pictures are coded larger than its screen: an iPhone 14 Pro's 1179 x 2556 pixels in the
+  top left of 1184 x 2576, the rest black (measured a column and a row at a time: the last lit
+  column is 1177, the last lit row 2555), and nothing in the stream says so (the decoder
+  reports no clean aperture; the display the device makes for its stream, "Wireless" in
+  `getdisplayinfo`, is 1184 x 2560: larger than the screen too). The device says its LCD's own
+  size (`nativeSize`, in the LCD's frame as the picture is: neither turns with the device), and
+  the decoder shows that much of each picture from its top left, cropped as it is made BGRA
+  (`phone/crop.rs`: the picture's clean aperture is set and the transfer crops to it). No
+  device's numbers are in Koyo. That what is cut is black is looked at, one picture in thirty,
+  until a picture lit at the screen's edge has said so; should something be there, the crop is
+  given up for that device, its pictures are shown whole, and the host says so: a device that
+  codes its pictures another way is shown with a black edge, never cut. A screen the device
+  doesn't size, or one larger than the picture, is shown whole too. Shown whole, the black was
+  the picture's foot and right edge: the screen ended flat above its rounded corners, and a
+  touch near the foot landed up to 7 points low. Measured on one iPhone, upright.
 - How it's turned and held, from the device's own `deviceinfo` service (`getdisplayinfo`): the
   LCD's `currentOrientation` turns the picture; how it's held turns places, and lying flat
   (`faceUp`) the last way it was held (`currentDeviceNonFlatOrientation`) holds. Read at connect
@@ -317,7 +333,7 @@ answer), `Request { request, ask }`, `Cancel`, `Quit`. Host to app: `Hello { pro
 - The picture fitted to the pane and centred, never larger than one device pixel to one screen
   pixel, on the tab's own card (no root background of its own), with at least 32 points of room
   at its sides and above it [built, the owner's], and the bar's room under it.
-- A simulator's picture has its model's own screen corners [built]. Xcode records them: each
+- A device's picture has its model's own screen corners [built]. Xcode records them: each
   device type's `capabilities.plist` has `DeviceCornerRadius` in points (MobileGestalt's own
   key) and the same on its displays (`cornerRadiusUL`…): 62 for an iPhone 17 Pro and 18 Pro, 55
   for an iPhone 16, 47.33 for a 17e, 30 for an iPad Pro, 21.5 for an iPad mini, 0 for an iPhone
@@ -327,7 +343,13 @@ answer), `Request { request, ask }`, `Cancel`, `Quit`. Host to app: `Hello { pro
   outline (`framebufferMask` in `profile.plist`, a PDF of the screen in pixels with Apple's
   continuous corners, which the Simulator app clips by); a circle of the recorded radius meets
   it at the diagonal to a tenth of a point (62.1 against 62), so the outline isn't parsed. A
-  real device's corners aren't read yet: its picture stays square.
+  real device has them too: it says its model at the handshake (`ProductType`, `iPhone15,2`),
+  and the host reads the sheet of the device type that stands for it among Xcode's
+  (`/Library/Developer/CoreSimulator/Profiles/DeviceTypes`, `phone/model.rs`): 55 for an iPhone
+  14 Pro. A sheet names every identifier of its model (`representedModelIdentifiers`: an iPad's
+  with and without cellular), and Xcode 27 has one for each of the 34 iPhones and 30 iPads iOS
+  27 runs on, all with a radius. A model newer than the Xcode here has none: its picture stays
+  square, and the host says so once.
 - One bar, the pane's own (28 points, a hairline under it) [built]: the device's glyph and name,
   as any pane's; then a dot and a word for how it stands (green Ready, amber Starting, red what
   needs doing, by its own name for a real device: "Needs update", "Not trusted"; grey Not
@@ -421,12 +443,13 @@ answer), `Request { request, ask }`, `Cancel`, `Quit`. Host to app: `Hello { pro
   key and the name it goes by together (`devices/lend.rs`), so a host that stopped and was started
   again by itself keeps it (one stopped, or one that gave up and was started afresh, doesn't); it
   ends when the device is stopped (its tab closed, `device_close`, Koyo quitting) or leaves the
-  list of what's plugged in, and at the tab's `Take It Back`, which also calls off what the
-  agent had under way; its next call asks the person again. The tab shows "{name} is
-  yours, lent to {agent} until you take it back." with `Take It Back`, in the agent desktop's
-  own notice for an app it lends (`held::notice`), over the top of the picture, which doesn't
-  move for it; the person can lend it
-  ahead from the bar ("Let Agents Use This iPad"), to every agent. Lent, `device_open` opens
+  list of what's plugged in, and at the tab's `Take it back`, which also calls off what the
+  agent had under way; its next call asks the person again. The tab says so in the browser's
+  own pill at the pane's foot (`held::bar`): "{name} is lent to {agent}", or what the agent is
+  doing with it ("{agent} is using {name}"), always with `Take it back`, the one thing to do
+  about an agent on a device of the person's own. It was a notice over the top of the picture
+  (the owner: "not inline with browser take back - should be the same component"). The person
+  can lend it ahead from the bar ("Let Agents Use This iPad"), to every agent. Lent, `device_open` opens
   and starts it as a simulator (no limit). The app tools (`device_apps`, `device_launch`, …) are
   refused on it, pointing at `devicectl`; the gate is `control/exec/device/lend.rs`.
 - Nothing unverified is shipped as working: a tool path that couldn't be shown to work on the real
@@ -518,7 +541,7 @@ took it out of the set in 0.3 s.
 | M3 | Agents on a simulator | done: QT1-QT8 and QL1-QL3 through the real MCP client |
 | M4 | The simulator half reviewed and hardened | done: the review's findings fixed, the rows re-run |
 | M5 | Setup and Settings | the setup for simulators, the picker's and the tab's missing states, Settings → Devices and the limit: off screen; the walk through the release bundle in a window waits on the owner |
-| M6 | The real device | done: on the iPad QR1-QR6, QR12, QR13 and U14 (QR4 by `devicectl`, QR6 with Auto-Lock set short, by the owner's word); in the app: listed, its states, its setup, Settings' list, the launcher, the lend by the person's sheet (off screen and through the pipeline's tests). In M7, with the owner's hands, in release: QR7 (his lock stops an agent's typing), QR8 ("was unplugged", back by itself in 9 s), QR9 (his clicks on the sheet: Don't Allow, Allow, Take It Back). Not run: QR10 (the iOS 26 iPhone isn't plugged in), QR14 (no iPhone on iOS 27 here) |
+| M6 | The real device | done: on the iPad QR1-QR6, QR12, QR13 and U14 (QR4 by `devicectl`, QR6 with Auto-Lock set short, by the owner's word); in the app: listed, its states, its setup, Settings' list, the launcher, the lend by the person's sheet (off screen and through the pipeline's tests). In M7, with the owner's hands, in release: QR7 (his lock stops an agent's typing), QR8 ("was unplugged", back by itself in 9 s), QR9 (his clicks on the sheet: Don't Allow, Allow, Take It Back). Since, on the owner's iPhone: QR10 on iOS 26 (listed with what to do, nothing sent) and, updated to iOS 27.2.1, QR14 (shown at 56 pictures a second; Home, Search by a drag, the app switcher, Control Centre and a page swiped, at the host and through the app's tools after the owner's Allow) |
 | M7 | Finish | done: `script/check` green but for the endpoint socket tests (this checkout's path); the second review's findings fixed (an agent's act stopped by a lock among them); the simulator rows in debug and release (R1's 300 ms and QI14 failing at a load average of 50-110 from other work; R1 on the iPad simulator finding Settings on another page); the iPad's rows in release all PASS |
 
 ## 12. Measurements
@@ -591,7 +614,12 @@ at 1.9% of a core, as in the PoC.
 
 ## 14. Open
 
-- An iPhone on iOS 27 was never run: everything real was measured on one iPad.
+- On an iPhone, only the system's gestures were run (QR14): aimed taps, typing, pinch and
+  rotation, the lock and the unplug were measured on one iPad.
+- The crop of a real device's picture to its screen was measured on one iPhone, upright. The
+  iPad's 2736 x 2064 for a 2732 x 2048 screen is to be looked at again with it by cable. A
+  stream a device scales, where the screen's size isn't in the picture, isn't known: it would
+  be shown whole.
 - Whether no prompt appears when the host is started by the installed Koyo, from an identity that
   holds nothing.
 - iOS 27.2's simulator starts apps slower than iOS 26.5's, with or without Koyo: its loader
