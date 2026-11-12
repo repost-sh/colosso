@@ -1,40 +1,21 @@
 //! What the panel says of a reading (`docs/claude-accounts.md` 4), worked out as it's drawn:
-//! the percent ("?" for an unknown, never 0 %), the countdown to a reset and its clock in
-//! claude-swap's grammar (the accounts crate's `oauth` formats both), a reading's age, and each
-//! problem with its remedy.
+//! the percent ("?" for an unknown, never 0 %; the limit is the bar's red), a threshold, what
+//! auto-switch did, a reading's age, and each problem with its remedy.
 
 use koyo_accounts::autoswitch::{AutoSwitchEvent, QuarantineReason, Trigger, pct_label};
-use koyo_accounts::oauth::{format_countdown, login_expiry_clock};
+use koyo_accounts::oauth::login_expiry_clock;
 
-use super::model::{AutoSwitch, Bar, Problem};
+use super::model::{Bar, Problem};
 
-/// "72%", "?" for an unknown, with "(!)" once it's at the limit.
+/// "72%", or "?" for an unknown: never 0 %.
 pub fn percent(bar: &Bar) -> String {
-    match bar.percent {
-        None => "?".to_owned(),
-        Some(percent) if percent >= 100. => format!("{percent:.0}% (!)"),
-        Some(percent) => format!("{percent:.0}%"),
-    }
-}
-
-/// "resets in 2d 4h (Nov 15 08:59)", or nothing for a window with no reset time.
-pub fn resets(bar: &Bar, now: f64) -> Option<String> {
-    let at = bar.resets_at?;
-    Some(format!(
-        "resets in {} ({})",
-        format_countdown(at - now),
-        login_expiry_clock(at, now)
-    ))
+    bar.percent
+        .map_or_else(|| "?".to_owned(), |percent| format!("{percent:.0}%"))
 }
 
 /// A threshold: "90%", "99.9%", never 99.9 rounded to "100%" (the crate's `pct_label`).
 pub fn threshold(threshold: f64) -> String {
     format!("{}%", pct_label(threshold))
-}
-
-/// "Auto-switch is on at 90%."
-pub fn auto_switch(auto: &AutoSwitch) -> String {
-    format!("Auto-switch is on at {}.", threshold(auto.threshold))
 }
 
 /// What auto-switch did that the panel says, as of `now`; `None` for what it does every tick.
@@ -86,6 +67,17 @@ pub fn age(at: f64, now: f64) -> String {
 }
 
 impl Problem {
+    /// Whether it needs the person: anything but a wait that passes by itself.
+    pub fn needs_you(&self) -> bool {
+        !matches!(
+            self,
+            Problem::RateLimited { .. }
+                | Problem::TokenExpired
+                | Problem::KeychainUnavailable
+                | Problem::Offline
+        )
+    }
+
     /// The problem, named with its remedy, as of `now`.
     pub fn sentence(&self, now: f64) -> String {
         match self {
@@ -135,11 +127,10 @@ mod tests {
     }
 
     #[test]
-    fn an_unknown_is_a_question_mark_never_zero_and_the_limit_is_marked() {
+    fn an_unknown_is_a_question_mark_never_zero() {
         assert_eq!(percent(&bar(None, None)), "?");
         assert_eq!(percent(&bar(Some(0.), None)), "0%");
         assert_eq!(percent(&bar(Some(72.4), None)), "72%");
-        assert_eq!(percent(&bar(Some(100.), None)), "100% (!)");
     }
 
     #[test]

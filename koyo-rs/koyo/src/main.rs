@@ -187,6 +187,10 @@ fn main() -> ExitCode {
         return settings_view::native_visual::run();
     }
     #[cfg(feature = "visual-check")]
+    if std::env::args().any(|arg| arg == "--visual-check-accounts") {
+        return accounts::visual::run();
+    }
+    #[cfg(feature = "visual-check")]
     if std::env::args().any(|arg| arg == "--visual-check-accent") {
         return theme::visual::run();
     }
