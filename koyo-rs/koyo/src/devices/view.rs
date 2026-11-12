@@ -7,6 +7,7 @@ use std::time::Instant;
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
+    AppContext as _,
     Action, App, Context, Entity, EventEmitter, FocusHandle, Global,
     InteractiveElement as _, IntoElement, KeyBinding, KeyDownEvent, KeyUpEvent, ParentElement as _,
     PinchEvent, Pixels, Point, Render, Styled as _, Subscription, Task, WeakEntity, Window, div,
@@ -90,6 +91,8 @@ pub struct DeviceView {
     pub(super) born: Instant,
     pub(super) ticking: Option<Task<()>>,
     watching: Vec<Subscription>,
+    /// The device's bar, which the pane's own bar shows: none while the picker is.
+    pub bar: Option<Entity<super::bar::DeviceBar>>,
 }
 
 impl EventEmitter<DeviceEvent> for DeviceView {}
@@ -134,6 +137,7 @@ impl DeviceView {
             born: Instant::now(),
             ticking: None,
             watching,
+            bar: None,
         }
     }
 
@@ -151,6 +155,8 @@ impl DeviceView {
             // The list says whether the device is still there.
             cx.observe(&super::devices(cx), |_, _, cx| cx.notify()),
         ];
+        let view = cx.weak_entity();
+        self.bar = Some(cx.new(|cx| super::bar::DeviceBar::new(view, &link, cx)));
         cx.emit(DeviceEvent::Titled(chosen.name.clone()));
         self.device = Some(chosen);
         self.link = Some(link);
@@ -163,6 +169,7 @@ impl DeviceView {
             link.update(cx, Link::tab_gone);
         }
         self.device = None;
+        self.bar = None;
         super::devices(cx).update(cx, super::Devices::refresh);
         self.watching = vec![cx.observe(&super::devices(cx), |_, _, cx| cx.notify())];
         cx.emit(DeviceEvent::Titled(self.title()));
@@ -260,7 +267,6 @@ impl Render for DeviceView {
                 this.send(koyo_device_wire::Input::Key { usage, down: true }, cx);
                 this.send(koyo_device_wire::Input::Key { usage, down: false }, cx);
             }))
-            .children(self.toolbar(cx))
             .child(
                 div()
                     .relative()

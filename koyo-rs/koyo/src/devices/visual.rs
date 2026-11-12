@@ -125,6 +125,33 @@ pub(super) fn open(drawn: &mut Drawn, chosen: Option<Chosen>, start: bool) -> Re
     Ok(view)
 }
 
+/// The device beside another pane: the one bar with the pane's grip and buttons round the
+/// device's. Then alone in its tab again.
+fn split(drawn: &mut Drawn, lines: &mut Vec<String>) -> Result<()> {
+    let (shell, window) = (drawn.shell.clone(), drawn.window);
+    let moved = |drawn: &mut Drawn, beside: bool| {
+        let moved = drawn.cx.update_window(window, |_, _, cx| {
+            shell.update(cx, |shell, cx| {
+                let Some(unit) = shell.workspace.branch_mut() else {
+                    return;
+                };
+                let shown = unit.tabs.get(unit.active_tab).map(|tab| tab.first().id);
+                let other = if beside { unit.tabs.first().map(|tab| tab.first().id) } else { unit.tabs.get(unit.active_tab).and_then(|tab| tab.panes().last().map(|pane| pane.id)) };
+                if let (Some(shown), Some(other)) = (shown, other)
+                    && shown != other
+                {
+                    let _ = if beside { unit.move_pane(other, shown, crate::model::Edge::Right) } else { unit.pane_to_tab(other, 0) };
+                }
+                cx.notify();
+            });
+        });
+        moved.map_err(|error| error.to_string())
+    };
+    moved(drawn, true)?;
+    lines.push(format!("{}", drawn.save("split.png")?.display()));
+    moved(drawn, false)
+}
+
 fn shown_device(shell: &Entity<Shell>, cx: &gpui_kit::App) -> Option<Entity<DeviceView>> {
     shell.read(cx).shown_device_view(cx)
 }
@@ -221,6 +248,7 @@ fn states(drawn: &mut Drawn, lines: &mut Vec<String>) -> Result<()> {
     lines.push(format!("{}", drawn.save("agent.png")?.display()));
     drawn.cx.update(|cx| link.update(cx, |link, cx| link.person_acts(crate::browser::control::Mode::Explicit, cx)));
     lines.push(format!("{}", drawn.save("taken.png")?.display()));
+    split(drawn, lines)?;
     drawn.cx.update(|cx| link.update(cx, |link, cx| link.failed("iPhone 17 Pro's host stopped three times in a minute.", cx)));
     lines.push(format!("{}", drawn.save("failed.png")?.display()));
     // Settled, so the next run starts where this one is.

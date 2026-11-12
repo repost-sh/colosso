@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 use gpui_kit::{App, AppContext as _, Context, Entity, Global, Subscription};
 
+mod bar;
 mod canvas;
 pub(crate) mod connected;
 mod control;
@@ -27,6 +28,7 @@ mod touch;
 mod typing;
 mod view;
 
+pub use bar::DeviceBar;
 pub use link::Link;
 pub use needs::{Found, Need};
 #[cfg(test)]

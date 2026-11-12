@@ -10,7 +10,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Bounds, Context, DispatchPhase, DragMoveEvent,
+    AnyElement, App, AppContext as _, Bounds, Context, DispatchPhase, DragMoveEvent, Entity,
     InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, ParentElement as _, Pixels,
     Point, Render, SharedString, StatefulInteractiveElement as _, Styled, Window, canvas, deferred,
     div, point, px, relative,
@@ -99,6 +99,11 @@ pub struct SplitDivider(Vec<bool>);
 
 /// The height of the header over each pane of a split.
 const HEADER: f32 = 28.;
+
+/// A device's bar, when `pane` shows a device.
+fn device_bar(pane: &Pane, cx: &App) -> Option<Entity<crate::devices::DeviceBar>> {
+    pane.device_view()?.read(cx).bar.clone()
+}
 
 impl Shell {
     /// The shown tab: its pane, or its split.
@@ -221,7 +226,8 @@ impl Shell {
             .flex()
             .flex_col()
             .child(hears_presses(id, cx))
-            .when(in_split, |part| part.child(self.pane_header(pane, p, cx)))
+            // A device's pane has its bar alone too: its standing and buttons are in it.
+            .when(in_split || device_bar(pane, cx).is_some(), |part| part.child(self.pane_header(pane, in_split, p, cx)))
             .child(
                 div()
                     .flex_1()
@@ -236,10 +242,12 @@ impl Shell {
             .into_any_element()
     }
 
-    /// The header over a pane of a split: dragged, it moves the pane.
-    fn pane_header(&self, pane: &Pane, p: Palette, cx: &mut Context<Self>) -> impl IntoElement {
+    /// The header over a pane: of a split, dragged, it moves the pane, and has the pane's own
+    /// buttons; a device's has the device's bar after its name, in a split or alone.
+    fn pane_header(&self, pane: &Pane, in_split: bool, p: Palette, cx: &mut Context<Self>) -> impl IntoElement {
         let (id, face) = (pane.id, Face::of(pane, cx));
         let (icon_of_pane, label, dirty) = (face.icon(12.), face.label(), face.dirty);
+        let bar = device_bar(pane, cx);
         let held = DraggedPane {
             what: Dragged::Pane(id),
             faces: vec![face],
@@ -261,28 +269,30 @@ impl Shell {
             .border_color(p.hairline)
             .text_xs()
             .text_color(p.muted)
-            .cursor_grab()
-            .on_drag(held, |held, grab, _, cx| {
-                let chip = held.chip(grab);
-                cx.new(|_| chip)
+            .when(in_split, |header| {
+                let dragged = header.cursor_grab().on_drag(held, |held, grab, _, cx| {
+                    let chip = held.chip(grab);
+                    cx.new(|_| chip)
+                });
+                dragged.child(icon(IconName::GripVertical, 12.))
             })
-            .child(icon(IconName::GripVertical, 12.))
             .child(icon_of_pane)
-            .child(label.flex_1())
-            .child(
-                tab_button(("pane-own-tab", id), p)
+            .map(|header| match bar {
+                Some(bar) => header.child(label.flex_shrink_0()).child(bar),
+                None => header.child(label.flex_1()),
+            })
+            .when(in_split, |header| {
+                let own_tab = tab_button(("pane-own-tab", id), p)
                     .debug_selector(move || format!("pane-own-tab-{id}"))
-                    .tooltip(|window, cx| {
-                        Tooltip::new("Open in a tab of its own").build(window, cx)
-                    })
+                    .tooltip(|window, cx| Tooltip::new("Open in a tab of its own").build(window, cx))
                     .child(icon(IconName::SquareArrowOutUpRight, 12.))
                     .on_mouse_down(MouseButton::Left, button_press)
                     .on_click(cx.listener(move |this, _, _, cx| {
                         cx.stop_propagation();
                         this.pane_to_own_tab(id, cx);
-                    })),
-            )
-            .child(pane_close_button("pane-close", id, dirty, p, cx))
+                    }));
+                header.child(own_tab).child(pane_close_button("pane-close", id, dirty, p, cx))
+            })
     }
 
     /// Takes pane `id` out of its split into a tab right after the one shown.

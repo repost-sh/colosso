@@ -2,7 +2,6 @@
 //! the slim toolbar, the picker, the bar that says who has the device, and an agent's touches.
 //! Every state has a way out or moves on by itself: a dead end is what angered the owner most.
 
-use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, ClickEvent, Context, Entity, IntoElement, ParentElement as _, Styled as _, Window, div, px,
 };
@@ -145,93 +144,6 @@ impl DeviceView {
         }
     }
 
-    /// The bar over the picture, as the browser's over a page: the device, a dot and a word for
-    /// how it stands; then its buttons, the system's (Home, the app switcher) and the device's
-    /// own (turning, the lock), each an icon named by its tooltip with its key.
-    pub(super) fn toolbar(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        use gpui_kit::assets::IconName;
-        use gpui_kit::component::{Disableable as _, Sizable as _};
-        use koyo_device_wire::Button;
-
-        let p = crate::theme::palette(cx);
-        let chosen = self.device.as_ref()?;
-        let (ready, held, (words, dot)) = {
-            let link = self.link.as_ref()?.read(cx);
-            let held = matches!(link.standing(), super::Standing::Ready(_) | super::Standing::Locked(_));
-            (link.ready(), held, standing(link, p))
-        };
-        let simulator = self.simulator();
-        // What holding the stream costs, the person's to know while it's held (`docs/devices.md` 5).
-        let awake = (chosen.phone && held).then(|| {
-            format!(
-                "While this tab is open, your {} stays awake and its camera and microphone are off.",
-                self.kind()
-            )
-        });
-        let glyph = if chosen.ipad { IconName::Tablet } else { IconName::Smartphone };
-        let button = |id: &'static str, glyph: IconName, name: &'static str, cx: &mut Context<Self>| {
-            crate::shell::icon_button(id, glyph, name, cx).small().disabled(!ready)
-        };
-        let rule = || div().w(px(1.)).h(px(16.)).mx_1().bg(p.hairline);
-        let home = button("device-home", IconName::House, "Home (⇧⌘H)", cx)
-            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.press_button(Button::Home, cx)));
-        let switcher = button("device-switcher", IconName::SquareStack, "App Switcher", cx)
-            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.app_switcher(cx)));
-        let left = button("device-rotate-left", IconName::RotateCcwSquare, "Rotate Left (⌘←)", cx)
-            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.turn(true, cx)));
-        let right = button("device-rotate-right", IconName::RotateCwSquare, "Rotate Right (⌘→)", cx)
-            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.turn(false, cx)));
-        let lock = button("device-lock", IconName::Lock, "Lock", cx)
-            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.press_button(Button::Lock, cx)));
-        // A real device not lent yet: the person may lend it ahead of an agent's asking.
-        let lendable = chosen.phone && !super::devices(cx).read(cx).lends.is_lent(&chosen.udid);
-        let lend = lendable.then(|| {
-            let named = format!("Let Agents Use This {}", chosen.kind());
-            crate::shell::icon_button("device-lend", IconName::Bot, named, cx)
-                .small()
-                .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.lend_ahead(cx)))
-        });
-        let named = div()
-            .flex()
-            .items_center()
-            .gap_2()
-            .pl_1()
-            .min_w_0()
-            .child(crate::shell::icon(glyph, 14.).text_color(p.muted))
-            .child(div().text_sm().text_color(p.text).truncate().child(chosen.name.clone()))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(5.))
-                    .text_xs()
-                    .text_color(p.muted)
-                    .child(div().size(px(6.)).rounded_full().bg(dot))
-                    .child(words),
-            );
-        Some(
-            div()
-                .h(px(40.))
-                .px_2()
-                .flex_shrink_0()
-                .flex()
-                .items_center()
-                .gap(px(2.))
-                .border_b_1()
-                .border_color(p.hairline)
-                .child(named)
-                .child(match awake {
-                    Some(said) => div().flex_1().min_w_0().ml_3().text_xs().text_color(p.muted).truncate().child(said),
-                    None => div().flex_1(),
-                })
-                .child(home)
-                .child(switcher)
-                .when(simulator, |bar| bar.child(rule()).child(left).child(right).child(lock))
-                .when_some(lend, |bar, lend| bar.child(rule()).child(lend))
-                .into_any_element(),
-        )
-    }
-
     /// Whether this tab brings the setup up by itself when something is missing: the picker,
     /// and a tab the person opened that can't start for want of Xcode. Never a tab an agent
     /// opened.
@@ -355,7 +267,7 @@ impl From<super::Standing<'_>> for Owned {
 
 /// How the device stands, in a word for the toolbar, and its dot's colour: green ready, amber
 /// on its way, red what needs doing, grey not running.
-fn standing(link: &Link, p: Palette) -> (&'static str, gpui_kit::Hsla) {
+pub(super) fn standing(link: &Link, p: Palette) -> (&'static str, gpui_kit::Hsla) {
     match link.standing() {
         super::Standing::Ended { missing: None, .. } if link.phone => ("Unplugged", p.danger),
         super::Standing::Ended { missing: None, .. } => ("Gone", p.danger),
