@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use gpui_kit::{
     ClickEvent, Context, InteractiveElement as _, IntoElement, ParentElement as _, Styled as _,
-    div,
+    div, px,
 };
 use koyo_desk_wire::link::{Lent, ToHost};
 
@@ -84,5 +84,20 @@ impl DeskView {
 
 /// One notice: what it says, and the button for the thing to do about it.
 fn notice(said: String, push: Push, cx: &Context<DeskView>) -> impl IntoElement {
-    crate::held::notice(said, push, theme::palette(cx))
+    let p = theme::palette(cx);
+    div()
+        .flex()
+        .items_center()
+        .gap_3()
+        .px_3()
+        .py_2()
+        .rounded(px(8.))
+        .bg(p.raised)
+        .border_1()
+        .border_color(p.hairline)
+        .text_sm()
+        .text_color(p.text)
+        .occlude()
+        .child(said)
+        .child(push)
 }

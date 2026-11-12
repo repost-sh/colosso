@@ -1,7 +1,8 @@
 //! Who drives a device (`docs/devices.md` 8): the lease a browser page has (`browser::control`),
 //! one per device, with the agent desktop's timers. The person pre-empts any agent: by acting in
 //! the tab, which holds the device while they're at it and [`IMPLICIT_HOLD`] after; or with Take
-//! control, which holds it until they give it back. Agents share a device as they share the
+//! control, which holds it until they give it back (a simulator's: a device of the person's own
+//! that is lent has Take it back, which ends the lend). Agents share a device as they share the
 //! desktop, and one that rests ten seconds has let it go. On a real device the person can also
 //! touch the glass, which no lease stops.
 

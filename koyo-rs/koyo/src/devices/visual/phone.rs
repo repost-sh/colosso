@@ -69,7 +69,7 @@ pub(super) fn run(drawn: &mut Drawn, lines: &mut Vec<String>) -> Result<()> {
         drawn.cx.update(|cx| link.update(cx, |link, cx| link.hear(FromHost::State { state }, cx)));
         lines.push(format!("{}", drawn.save(picture)?.display()));
     }
-    // Lent to an agent: the strip says so, with Take It Back.
+    // Lent to an agent: the pill at the pane's foot says so, with Take it back.
     drawn.cx.update(|cx| link.update(cx, |link, cx| link.hear(FromHost::State { state: Said::Ready { screen: screen() } }, cx)));
     let claude = crate::browser::control::Actor {
         id: "chat:1".into(),
