@@ -1,14 +1,15 @@
 //! The accounts' panel (`docs/claude-accounts.md` 6): on a menu's glass, anchored to the button
 //! and opening away from it, as `chat/composer/context.rs`'s does.
 //!
-//! An account a block: its email, strong, with its plan as a badge, and its organisation when
-//! it's a team's; then a line per window (the week, each model's): its name, a bar coloured by
-//! how near auto-switch's line it is with a tick where even use would have it (the crate's pace),
-//! the percent, and how long until it resets; last, quiet, when the week resets and how old the
-//! reading is, or what keeps it from being read. A click on another account Koyo keeps the login
-//! of switches to it. Then the Mac's login when Koyo doesn't keep it, with a button to Settings →
-//! Accounts, where it's added and the rest is set; what's being done or went wrong; and
-//! auto-switch's state with what it last did.
+//! The accounts by provider, each group under its provider's mark, small and quiet where the
+//! emails start. An account a block: its email, strong, with its plan as a badge, and its
+//! organisation when it's a team's; then a line per window (the week, each model's): its name, a
+//! bar coloured by how near auto-switch's line it is with a tick where even use would have it
+//! (the crate's pace), the percent, and how long until it resets; last, quiet, when the week
+//! resets and how old the reading is, or what keeps it from being read. A click on another
+//! account Koyo keeps the login of switches to it. Last in its group, the Mac's login when Koyo
+//! doesn't keep it, with a button to Settings → Accounts, where it's added and the rest is set.
+//! Then what's being done or went wrong; and auto-switch's state with what it last did.
 //!
 //! Each part is made with how tall it's drawn, so the window it opens in, and fits as it changes,
 //! is sized by the code that draws it. It keeps a copy of what it shows, taken again as the
@@ -22,7 +23,8 @@ use gpui_kit::{
 };
 use koyo_accounts::oauth::format_countdown;
 
-use super::model::{Bar, Row, View};
+use super::mark::mark;
+use super::model::{Bar, Provider, Row, View};
 use super::{Accounts, Job, words};
 use crate::menu::MenuBody;
 use crate::settings_view::SettingsPage;
@@ -30,10 +32,12 @@ use crate::theme::{self, Palette};
 use crate::wrapped::wrapped_lines;
 
 /// What the panel holds, inside the menu's padding (`MenuBody`).
-const WIDTH: f32 = 310.;
+pub(super) const WIDTH: f32 = 310.;
 /// Round an account's block.
 const INSET_X: f32 = 10.;
 const INSET_Y: f32 = 8.;
+/// A provider's mark over its accounts: how tall it's drawn.
+const MARK: f32 = 10.;
 /// The email's line, and the type of it.
 const HEADER: f32 = 18.;
 const TITLE_SIZE: Pixels = px(13.);
@@ -78,42 +82,30 @@ impl AccountsPanel {
         }
     }
 
-    /// The panel's parts, top to bottom.
+    /// The panel's parts, top to bottom: each provider's mark and its accounts, a rule between
+    /// two accounts and between two groups; the notes; auto-switch.
     fn parts(&self, window: &Window, cx: &App) -> Vec<Part> {
         let p = theme::palette(cx);
         let now = super::now();
         let view = &self.view;
-        // One thing at a time: while something's being done, nothing more is offered.
-        let idle = view.doing.is_none();
-        let mut blocks: Vec<Part> = Vec::new();
-        for row in &view.rows {
-            let (block, height) = account(row, now, view.line(), window, p);
-            let switchable = idle && row.switchable && !row.active;
-            let block = block.when(switchable, |block| {
-                let (accounts, slot) = (self.accounts.clone(), row.slot());
-                block
-                    .cursor_pointer()
-                    .hover(move |block| block.bg(p.hover))
-                    .on_click(move |_, _, cx| {
-                        let job = Job::Switch(slot.clone());
-                        accounts.update(cx, |accounts, cx| accounts.ask(job, cx));
-                    })
-            });
-            blocks.push((block.into_any_element(), height));
-        }
-        if let Some(email) = view.unmanaged.clone() {
-            blocks.push(unkept(email, p));
-        }
         let rule = || {
             let rule = div().mx(px(INSET_X)).h(px(RULE)).bg(p.hairline);
             (rule.into_any_element(), RULE)
         };
         let mut parts = Vec::new();
-        for (index, block) in blocks.into_iter().enumerate() {
+        for (index, group) in view.groups().into_iter().enumerate() {
             if index > 0 {
                 parts.push(rule());
             }
-            parts.push(block);
+            parts.push(heading(group.provider, p));
+            let rows = (group.rows.into_iter()).map(|row| self.row(row, now, window, p));
+            let unkept = group.unmanaged.map(|email| unkept(email.clone(), p));
+            for (index, block) in rows.chain(unkept).enumerate() {
+                if index > 0 {
+                    parts.push(rule());
+                }
+                parts.push(block);
+            }
         }
         for (text, failed) in notes(view) {
             let (note, height) = small(text, window, p);
@@ -129,6 +121,25 @@ impl AccountsPanel {
             parts.push(footer(view, window, p));
         }
         parts
+    }
+
+    /// `row`'s block, which a click switches to when Koyo keeps its login and it isn't the Mac's.
+    fn row(&self, row: &Row, now: f64, window: &Window, p: Palette) -> Part {
+        let view = &self.view;
+        // One thing at a time: while something's being done, nothing more is offered.
+        let switchable = view.doing.is_none() && row.switchable && !row.active;
+        let (block, height) = account(row, now, view.line(), window, p);
+        let block = block.when(switchable, |block| {
+            let (accounts, slot) = (self.accounts.clone(), row.slot());
+            block
+                .cursor_pointer()
+                .hover(move |block| block.bg(p.hover))
+                .on_click(move |_, _, cx| {
+                    let job = Job::Switch(slot.clone());
+                    accounts.update(cx, |accounts, cx| accounts.ask(job, cx));
+                })
+        });
+        (block.into_any_element(), height)
     }
 }
 
@@ -150,7 +161,10 @@ impl MenuBody for AccountsPanel {
 impl Render for AccountsPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let parts = self.parts(window, cx).into_iter().map(|(part, _)| part);
-        div().size_full().flex().flex_col().children(parts)
+        // Where what it holds ends, which the tests hold to its extent.
+        let end = div().debug_selector(|| "accounts-panel-end".to_owned());
+        let panel = div().size_full().flex().flex_col();
+        panel.children(parts).child(end)
     }
 }
 
@@ -196,6 +210,18 @@ pub(super) fn level(percent: Option<f64>, line: f64, calm: Hsla, p: Palette) -> 
         Some(used) if used >= line - NEAR_LINE => p.working,
         Some(_) => calm,
     }
+}
+
+/// `provider`'s mark over its accounts, in the muted grey of the small print, its left edge
+/// where the emails start.
+fn heading(provider: Provider, p: Palette) -> Part {
+    let heading = div()
+        .debug_selector(move || format!("accounts-mark-{provider:?}"))
+        .flex()
+        .pl(px(INSET_X + INDENT))
+        .pt(px(INSET_Y))
+        .child(mark(provider, MARK).text_color(p.muted));
+    (heading.into_any_element(), INSET_Y + MARK)
 }
 
 /// An email's line: the dot, lit for the Mac's login, the email, and what's at its end.
