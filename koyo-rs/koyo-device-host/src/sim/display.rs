@@ -7,7 +7,7 @@
 
 use std::time::Duration;
 
-use crate::xpc::{Connection, Dict, Read};
+use crate::xpc::{Connection, Dict, Event, Read};
 
 pub const SERVICE: &str = "com.apple.coredevice.feature.getdisplayinfo";
 const ACTION: &std::ffi::CStr = c"com.apple.coredevice.action.displayinfo";
@@ -74,6 +74,12 @@ fn invocation() -> String {
 
 /// The primary display's turn, from the reply.
 fn primary(reply: Read) -> Result<u8, String> {
+    // Not served: for minutes after a first boot it may answer only that the connection is
+    // invalid.
+    let event = reply.event();
+    if event != Event::Message {
+        return Err(format!("the display's service didn't answer: {event:?}"));
+    }
     if let Some(error) = reply.get(c"CoreDevice.error") {
         let domain = error
             .get(c"domain")

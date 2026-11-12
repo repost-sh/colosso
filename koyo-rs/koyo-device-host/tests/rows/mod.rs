@@ -1,24 +1,41 @@
 //! The real-simulator rows of the matrix (`.superpowers/devices/qa/MATRIX.md`): the picture here,
 //! touches and keys in `touch.rs`, the system's gestures in `system.rs`.
 
+mod presses;
 mod system;
 mod touch;
 mod tree;
 mod turned;
 
+pub use presses::presses;
 pub use system::system;
 pub use touch::{keys, touches};
 pub use tree::tree;
-pub use turned::{turned, turned_tearing};
+pub use turned::{turned, turned_tearing, warnings};
 
 use std::time::{Duration, Instant};
 
-use koyo_device_wire::{Screen, ToHost};
+use koyo_device_wire::{Answer, Screen, ToHost};
 use objc2_io_surface::{IOSurfaceLockOptions, IOSurfaceRef};
 
 use crate::support::pages::open;
 use crate::support::pages::Pages;
 use crate::support::{Driver, Target, row};
+
+/// The screen's text once it has been still half a second: printed with `KOYO_REAL_SIM_TREES`,
+/// and a refusal's words in its place.
+pub fn snapshot(host: &mut Driver) -> String {
+    host.settle(500, 3_000);
+    match host.snapshot() {
+        Ok(Answer::Snapshot { tree, .. }) => {
+            if std::env::var("KOYO_REAL_SIM_TREES").is_ok() {
+                eprintln!("--- tree\n{tree}---");
+            }
+            tree
+        }
+        other => format!("{other:?}"),
+    }
+}
 
 /// The pixel at shares `(x, y)` of `surface`, as red, green, blue.
 pub fn pixel(surface: &IOSurfaceRef, x: f64, y: f64) -> (u8, u8, u8) {

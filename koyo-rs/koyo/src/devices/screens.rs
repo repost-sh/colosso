@@ -244,31 +244,6 @@ impl DeviceView {
             && !matches!(link.control.holder, Some(Holder::Agent { .. }))
     }
 
-    /// The app switcher, as a person brings it up: a slow swipe from the bottom edge, held a
-    /// second before the finger lifts.
-    pub(super) fn app_switcher(&mut self, cx: &mut Context<Self>) {
-        use koyo_device_gestures::{At, Mac};
-        const STEPS: u16 = 38;
-        const APART: std::time::Duration = std::time::Duration::from_millis(16);
-        let at = |step: u16| At::new(0.5, 0.995 - (0.995 - 0.72) * (f32::from(step) / f32::from(STEPS)));
-        cx.spawn(async move |view, cx| {
-            for step in 0..=STEPS {
-                let event = if step == 0 {
-                    Mac::Press { at: at(step), option: false }
-                } else {
-                    Mac::Drag { at: at(step), shift: false }
-                };
-                if view.update(cx, |view, cx| view.mac(event, cx)).is_err() {
-                    return;
-                }
-                cx.background_executor().timer(APART).await;
-            }
-            cx.background_executor().timer(std::time::Duration::from_secs(1)).await;
-            let _ = view.update(cx, |view, cx| view.mac(Mac::Release { at: at(STEPS) }, cx));
-        })
-        .detach();
-    }
-
     /// The bar that says who has the device while it's contested, with the person's way to
     /// take it or give it back: the browser's own pill.
     pub(super) fn control_bar(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {

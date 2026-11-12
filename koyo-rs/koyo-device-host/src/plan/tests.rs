@@ -106,17 +106,20 @@ fn spot_from() -> Spot {
 }
 
 #[test]
-fn the_app_switcher_is_a_slow_swipe_from_the_bottom_edge_held_a_second() {
+fn the_app_switcher_is_home_pressed_twice_close_together() {
     let timed = steps(&Act::Button {
         button: Press::AppSwitcher,
     });
-    let Touch::Fingers { at, edge, .. } = &timed[0].touch else {
-        panic!("fingers");
-    };
-    assert_eq!(*edge, Some(Edge::Bottom));
-    assert!((at[0].y - 0.995 * PHONE.height).abs() < 1e-9);
-    let last = timed.last().unwrap().at_ms;
-    assert!((1_600..1_700).contains(&last), "{last}");
+    let home = button_usage(Button::Home);
+    let presses: Vec<(u32, bool)> = timed
+        .iter()
+        .filter_map(|timed| match timed.touch {
+            Touch::Button { usage, down, .. } if usage == home => Some((timed.at_ms, down)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(presses, [(0, true), (60, false), (160, true), (220, false)]);
+    assert_eq!(timed.len(), 4);
 }
 
 #[test]

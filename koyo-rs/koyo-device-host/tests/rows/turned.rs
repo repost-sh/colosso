@@ -3,10 +3,10 @@
 
 use std::time::{Duration, Instant};
 
-use koyo_device_wire::{Act, Answer, Ask, Orientation, Point, Screen, Spot, State};
+use koyo_device_wire::{Act, Orientation, Point, Screen, Spot, State};
 use serde_json::Value;
 
-use crate::rows::mixed;
+use crate::rows::{mixed, snapshot};
 use crate::support::pages::open;
 use crate::support::pages::Pages;
 use crate::support::{Driver, Target, row};
@@ -37,13 +37,7 @@ fn turn(host: &mut Driver, to: Orientation) -> Option<Screen> {
         eprintln!("turning {to:?}: {answer:?}");
     }
     // The simulator's own turn has its animation.
-    let _ = host.ask(
-        Ask::Wait {
-            quiet_ms: 800,
-            timeout_ms: 5_000,
-        },
-        Duration::from_secs(10),
-    );
+    host.settle(800, 5_000);
     // What the host said of the device, as the app keeps it: the way its interface faces now,
     // which an app that doesn't turn that way leaves as it was.
     match &host.state {
@@ -52,13 +46,6 @@ fn turn(host: &mut Driver, to: Orientation) -> Option<Screen> {
             eprintln!("turning {to:?}: the state is {other:?}");
             None
         }
-    }
-}
-
-fn snapshot(host: &mut Driver) -> String {
-    match host.snapshot() {
-        Ok(Answer::Snapshot { tree, .. }) => tree,
-        _ => String::new(),
     }
 }
 

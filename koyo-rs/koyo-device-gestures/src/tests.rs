@@ -342,3 +342,15 @@ fn keys_go_by_their_hid_usage_with_their_modifiers_round_them() {
     );
     assert!(chord("f13", false, false, false).is_empty());
 }
+
+#[test]
+fn home_pressed_twice_is_two_presses_close_together() {
+    let steps: Vec<(u32, bool)> = pressed(koyo_device_wire::Button::Home, 2)
+        .into_iter()
+        .map(|step| match step.input {
+            Input::Button { down, .. } => (step.after_ms, down),
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    assert_eq!(steps, [(0, true), (60, false), (160, true), (220, false)]);
+}

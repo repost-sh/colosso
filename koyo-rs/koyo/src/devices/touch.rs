@@ -223,12 +223,12 @@ impl DeviceView {
     }
 
     pub(super) fn press_button(&mut self, button: Button, cx: &mut Context<Self>) {
-        self.send(Input::Button { button, down: true }, cx);
-        cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(Duration::from_millis(60)).await;
-            let _ = this.update(cx, |this, cx| this.send(Input::Button { button, down: false }, cx));
-        })
-        .detach();
+        self.steps(koyo_device_gestures::pressed(button, 1), cx);
+    }
+
+    /// The app switcher, as the Simulator app brings it up: Home pressed twice, close together.
+    pub(super) fn app_switcher(&mut self, cx: &mut Context<Self>) {
+        self.steps(koyo_device_gestures::pressed(Button::Home, 2), cx);
     }
 
     /// Turns a simulator a quarter, to the left or the right of how its picture faces now.
