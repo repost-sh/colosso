@@ -26,10 +26,13 @@ impl Shell {
         let Some((at, id)) = self.workspace.find_pane(|pane| pane.device_view() == Some(view)) else {
             return;
         };
+        // A device chosen or let go: its bar comes or goes with its name.
+        let bar = view.read(cx).bar();
         if let Some(pane) = (self.workspace.tab_mut(at))
             .and_then(|tab| tab.panes_mut().into_iter().find(|pane| pane.id == id))
         {
             pane.title = title.clone().into();
+            pane.set_bar(bar);
             cx.notify();
         }
     }

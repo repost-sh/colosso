@@ -10,7 +10,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Bounds, Context, DispatchPhase, DragMoveEvent, Entity,
+    AnyElement, AnyView, App, AppContext as _, Bounds, Context, DispatchPhase, DragMoveEvent,
     InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, ParentElement as _, Pixels,
     Point, Render, SharedString, StatefulInteractiveElement as _, Styled, Window, canvas, deferred,
     div, point, px, relative,
@@ -99,11 +99,6 @@ pub struct SplitDivider(Vec<bool>);
 
 /// The height of the header over each pane of a split.
 const HEADER: f32 = 28.;
-
-/// A device's bar, when `pane` shows a device.
-fn device_bar(pane: &Pane, cx: &App) -> Option<Entity<crate::devices::DeviceBar>> {
-    pane.device_view()?.read(cx).bar.clone()
-}
 
 impl Shell {
     /// The shown tab: its pane, or its split.
@@ -218,7 +213,7 @@ impl Shell {
         in_hand: bool,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let id = pane.id;
+        let (id, bar) = (pane.id, pane.bar());
         // In Arc an island of its own, a split's sides the glass apart.
         part(p, theme::card::islands(cx))
             .debug_selector(move || format!("pane-{id}"))
@@ -226,8 +221,9 @@ impl Shell {
             .flex()
             .flex_col()
             .child(hears_presses(id, cx))
-            // A device's pane has its bar alone too: its standing and buttons are in it.
-            .when(in_split || device_bar(pane, cx).is_some(), |part| part.child(self.pane_header(pane, in_split, p, cx)))
+            // A pane whose content has a bar (a device's standing and buttons) has its header
+            // alone too.
+            .when(in_split || bar.is_some(), |part| part.child(self.pane_header(pane, bar, in_split, p, cx)))
             .child(
                 div()
                     .flex_1()
@@ -243,11 +239,11 @@ impl Shell {
     }
 
     /// The header over a pane: of a split, dragged, it moves the pane, and has the pane's own
-    /// buttons; a device's has the device's bar after its name, in a split or alone.
-    fn pane_header(&self, pane: &Pane, in_split: bool, p: Palette, cx: &mut Context<Self>) -> impl IntoElement {
+    /// buttons; one whose content has a bar (a device's) has it after its name, in a split or
+    /// alone.
+    fn pane_header(&self, pane: &Pane, bar: Option<AnyView>, in_split: bool, p: Palette, cx: &mut Context<Self>) -> impl IntoElement {
         let (id, face) = (pane.id, Face::of(pane, cx));
         let (icon_of_pane, label, dirty) = (face.icon(12.), face.label(), face.dirty);
-        let bar = device_bar(pane, cx);
         let held = DraggedPane {
             what: Dragged::Pane(id),
             faces: vec![face],
@@ -278,7 +274,9 @@ impl Shell {
             })
             .child(icon_of_pane)
             .map(|header| match bar {
-                Some(bar) => header.child(label.flex_shrink_0()).child(bar),
+                // The room left is given here, by what's laid out with every frame: a view kept
+                // from one frame to the next fills it, and isn't the one to stretch into it.
+                Some(bar) => header.child(label.flex_shrink_0()).child(div().flex_1().min_w_0().child(bar)),
                 None => header.child(label.flex_1()),
             })
             .when(in_split, |header| {
