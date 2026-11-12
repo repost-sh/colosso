@@ -65,12 +65,21 @@ pub fn bundle_version(path: &str) -> Option<String> {
 /// The screen's corner radius in a device type's `capabilities.plist`: `MobileGestalt`'s
 /// `DeviceCornerRadius` where it has one, else its first display's (`cornerRadiusUL`: the four
 /// are the same on every model Xcode 27 has).
-pub fn corner_in(capabilities: &plist::Value) -> Option<f64> {
+fn corner_in(capabilities: &plist::Value) -> Option<f64> {
     let capabilities = capabilities.as_dictionary()?.get("capabilities")?.as_dictionary()?;
-    let number = |value: &plist::Value| value.as_real().or_else(|| value.as_unsigned_integer().map(|n| n as f64));
     let device = capabilities.get("DeviceCornerRadius").and_then(number);
     let display = || number(capabilities.get("displays")?.as_array()?.first()?.as_dictionary()?.get("cornerRadiusUL")?);
     device.or_else(display).filter(|radius| radius.is_finite() && *radius >= 0.)
+}
+
+/// A number of a property list, written whole or with a fraction.
+pub fn number(value: &plist::Value) -> Option<f64> {
+    value.as_real().or_else(|| value.as_unsigned_integer().map(|whole| whole as f64))
+}
+
+/// The corner radius the device type bundle at `bundle` records, in points.
+pub fn corner_of(bundle: &std::path::Path) -> Option<f64> {
+    corner_in(&plist::Value::from_file(bundle.join("Contents/Resources/capabilities.plist")).ok()?)
 }
 
 /// Whether `version` is at least `wanted`, number by number.
@@ -164,10 +173,7 @@ impl Device {
                 path.map(|path| path.to_string())
             }
         });
-        let capabilities = bundle.ok().flatten().map(|bundle| format!("{bundle}/Contents/Resources/capabilities.plist"));
-        (capabilities.and_then(|path| plist::Value::from_file(path).ok()))
-            .and_then(|capabilities| corner_in(&capabilities))
-            .unwrap_or(0.)
+        (bundle.ok().flatten()).and_then(|bundle| corner_of(std::path::Path::new(&bundle))).unwrap_or(0.)
     }
 
     /// A send right to the service `name` in the simulator's own bootstrap namespace.
