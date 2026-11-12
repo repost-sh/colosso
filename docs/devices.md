@@ -300,8 +300,9 @@ answer), `Request { request, ask }`, `Cancel`, `Quit`. Host to app: `Hello { pro
   picture's element): only then, or while an agent works on it, does the host copy frames. A
   hidden tab costs no copies.
 - Every state has one way out or moves on by itself: no device chosen (the picker), not running,
-  starting (for the first time: "about a minute"), ready, locked, unplugged, needs setup, below
-  iOS 27, failed.
+  starting (the app's loading wheel over "Starting {name}", or "Getting input ready", and on a
+  first boot "The first start takes about a minute." under it), ready, locked, unplugged, needs
+  setup, below iOS 27, failed.
 - Stopped (its tab closed, Settings' Stop, `device_close`, Koyo quitting), a device is
   stopping until its host has shut the simulator down and closed; it still counts against the
   limit until then, and the set is listed again once it's down.

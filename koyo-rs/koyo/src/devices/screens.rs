@@ -21,6 +21,10 @@ pub struct Notice {
     pub buttons: Vec<Push>,
     /// Whether the picture stays under it (a locked device shows its lock screen).
     pub over: bool,
+    /// Under way: a loader over what it says.
+    busy: bool,
+    /// A quieter line under what it says.
+    hint: Option<String>,
 }
 
 impl Notice {
@@ -29,6 +33,17 @@ impl Notice {
             message,
             buttons,
             over: false,
+            busy: false,
+            hint: None,
+        }
+    }
+
+    /// Something under way: a loader, what it is, and a quieter line under it.
+    fn busy(message: String, hint: Option<String>) -> Notice {
+        Notice {
+            busy: true,
+            hint,
+            ..Notice::new(message, Vec::new())
         }
     }
 
@@ -42,10 +57,23 @@ impl Notice {
         }
     }
 
-    /// What it says and its buttons, in a column, wherever it's put.
+    /// What it says and its buttons, in a column, wherever it's put; under way, a loader first.
     pub(super) fn block(self, p: Palette) -> gpui_kit::Div {
+        use gpui_kit::component::spinner::Spinner;
+        use gpui_kit::component::{Sizable as _, Size};
+        let loader = self.busy.then(|| {
+            // An open arc turning at an even speed, as the app's other waits.
+            let wheel = Spinner::new().icon(gpui_kit::assets::IconName::LoaderCircle).ease(|delta| delta);
+            wheel.with_size(Size::Size(px(24.))).color(p.muted)
+        });
+        let hint = self.hint.map(|hint| div().text_xs().text_color(p.muted).child(hint));
         (div().flex().flex_col().items_center().gap_3())
-            .child(div().max_w(px(460.)).text_center().text_sm().text_color(p.muted).child(self.message))
+            .children(loader)
+            .child(
+                (div().flex().flex_col().items_center().gap_1())
+                    .child(div().max_w(px(460.)).text_center().text_sm().text_color(p.muted).child(self.message))
+                    .children(hint),
+            )
             .child(div().flex().gap_2().children(self.buttons))
     }
 }
@@ -68,10 +96,7 @@ impl DeviceView {
     /// What is in the way of showing the device, and what to do about it.
     pub(super) fn notice(&self, cx: &mut Context<Self>) -> Option<Notice> {
         let (chosen, link) = (self.device.as_ref()?, self.link.as_ref()?);
-        let (standing, since) = {
-            let link = link.read(cx);
-            (Owned::from(link.standing()), link.started_at)
-        };
+        let standing = Owned::from(link.read(cx).standing());
         let name = &chosen.name;
         let listed = super::devices(cx).read(cx).simulators.as_ref().and_then(|listed| listed.as_ref().ok());
         let gone = listed.is_some_and(|listed| listed.iter().all(|simulator| simulator.udid != chosen.udid));
@@ -92,13 +117,12 @@ impl DeviceView {
             Owned::Ended(Some(code), why) => Some(self.unavailable(code, why, cx)),
             Owned::Off => Some(Notice::new(format!("{name} isn't running."), vec![self.start_button("Start", cx)])),
             Owned::Failed(why) => Some(Notice::new(why, vec![self.start_button("Start Again", cx)])),
-            Owned::Starting(None) => Some(Notice::new(format!("Starting {name}…"), Vec::new())),
-            Owned::Starting(Some(step)) => Some(Notice::new(starting(name, step, since), Vec::new())),
+            Owned::Starting(None) => Some(Notice::busy(format!("Starting {name}"), None)),
+            Owned::Starting(Some(step)) => Some(starting_notice(name, step)),
             Owned::Ready => None,
             Owned::Locked => Some(Notice {
-                message: format!("Unlock your {} to continue.", self.kind()),
-                buttons: Vec::new(),
                 over: true,
+                ..Notice::new(format!("Unlock your {} to continue.", self.kind()), Vec::new())
             }),
         }
     }
@@ -369,7 +393,17 @@ fn standing(link: &Link, p: Palette) -> (&'static str, gpui_kit::Hsla) {
     }
 }
 
-/// The words for a start under way.
+/// A start under way, as the tab shows it: a loader, what it is, and on a first boot how long
+/// that takes.
+fn starting_notice(name: &str, step: Step) -> Notice {
+    match step {
+        Step::Booting { first: true } => Notice::busy(format!("Starting {name}"), Some("The first start takes about a minute.".into())),
+        Step::Booting { first: false } | Step::Picture => Notice::busy(format!("Starting {name}"), None),
+        Step::Input => Notice::busy("Getting input ready".into(), None),
+    }
+}
+
+/// The words for a start under way, as the setup says it.
 pub(super) fn starting(name: &str, step: Step, since: Option<std::time::Instant>) -> String {
     let so_far = since.map_or(0, |at| at.elapsed().as_secs());
     match step {
