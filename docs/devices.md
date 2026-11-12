@@ -293,7 +293,19 @@ answer), `Request { request, ask }`, `Cancel`, `Quit`. Host to app: `Hello { pro
 - `PaneKind::Device`, one view per pane, a lease per view, as the browser's pages. The title is the
   device's name.
 - The picture fitted to the pane and centred, never larger than one device pixel to one screen
-  pixel, on the tab's own card (no root background of its own).
+  pixel, on the tab's own card (no root background of its own), with at least 48 points of room
+  at its sides and above it [built, the owner's], and the bar's room under it.
+- A simulator's picture has its model's own screen corners [built]. Xcode records them: each
+  device type's `capabilities.plist` has `DeviceCornerRadius` in points (MobileGestalt's own
+  key) and the same on its displays (`cornerRadiusUL`…): 62 for an iPhone 17 Pro and 18 Pro, 55
+  for an iPhone 16, 47.33 for a 17e, 30 for an iPad Pro, 21.5 for an iPad mini, 0 for an iPhone
+  SE. The host reads it from the simulator's device type bundle and says it in `Screen.corner`;
+  the tab clips the frame to that radius times the fit (a rounded box round the surface, the
+  renderer's own clip: no mask texture, no pass more). Xcode also ships each model's exact
+  outline (`framebufferMask` in `profile.plist`, a PDF of the screen in pixels with Apple's
+  continuous corners, which the Simulator app clips by); a circle of the recorded radius meets
+  it at the diagonal to a tenth of a point (62.1 against 62), so the outline isn't parsed. A
+  real device's corners aren't read yet: its picture stays square.
 - One bar, the pane's own (28 points, a hairline under it) [built]: the device's glyph and name,
   as any pane's; then a dot and a word for how it stands (green Ready, amber Starting, red what
   needs doing, grey Not running); then icon buttons at its right, each named by its tooltip with
@@ -304,7 +316,7 @@ answer), `Request { request, ask }`, `Cancel`, `Quit`. Host to app: `Hello { pro
   has it, where other panes have none. A view of its own (`devices/bar.rs`), drawn again when
   the standing changes, not with each picture. It was a second bar under the pane's (40
   points): the owner's "a huge waste of space".
-- The picker lists Koyo's simulators (or what they miss, with `Set Up…`), then under "Plugged in"
+- The picker lists Koyo's simulators (or what they miss, with `Set Up…`), then under "Connected"
   the iPhones and iPads by cable, each with its system and the step it misses.
 - A real device's states: locked ("Unlock your iPad to continue.", the lock screen under it),
   moving on by itself; unplugged ("{name} was unplugged. Plug it back in to continue."; the
