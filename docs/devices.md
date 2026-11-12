@@ -379,7 +379,8 @@ answer), `Request { request, ask }`, `Cancel`, `Quit`. Host to app: `Hello { pro
   sees them done (the setup's, which looks every two seconds while open, or the next plug's);
   below 27 ("{name} runs iOS 26.6.1, and Koyo needs iOS 27 or later. Update it on the device in
   Settings → General → Software Update."), nothing to press; another app holding it, or its developer services not up, with Start Again.
-- The control bar is the browser's own pill (`held::bar`). An agent's touches show as marks.
+- The control bar is the browser's own pill (`held::bar`). An agent's touches aren't shown:
+  the tab can mark them (`Touched`), but no host sends where they are [not built].
 - After a restart a tab comes back as "{name} isn't running." with `Start`: nothing starts by
   itself. A device no longer in Koyo's set says "{name} is no longer among Koyo's devices." with
   `Choose Another…`, which turns the tab into the picker. Closing the last tab of a device shuts
@@ -614,12 +615,13 @@ at 1.9% of a core, as in the PoC.
 
 ## 14. Open
 
-- On an iPhone, only the system's gestures were run (QR14): aimed taps, typing, pinch and
-  rotation, the lock and the unplug were measured on one iPad.
-- The crop of a real device's picture to its screen was measured on one iPhone, upright. The
-  iPad's 2736 x 2064 for a 2732 x 2048 screen is to be looked at again with it by cable. A
-  stream a device scales, where the screen's size isn't in the picture, isn't known: it would
-  be shown whole.
+- On an iPhone the lock and the unplug weren't run: they were measured on one iPad. Its
+  system gestures (QR14), an aimed tap, pinch, rotation, typed text and a stream's recovery
+  were (QR2, QR5, QR12).
+- The crop of a real device's picture to its screen was measured on one iPhone, upright; on
+  the iPad by cable the owner saw its whole screen and its corners right (looked at, not
+  measured). A stream a device scales, where the screen's size isn't in the picture, isn't
+  known: it would be shown whole.
 - Whether no prompt appears when the host is started by the installed Koyo, from an identity that
   holds nothing.
 - iOS 27.2's simulator starts apps slower than iOS 26.5's, with or without Koyo: its loader
