@@ -261,7 +261,6 @@ impl Render for DeviceView {
                 this.send(koyo_device_wire::Input::Key { usage, down: false }, cx);
             }))
             .children(self.toolbar(cx))
-            .children(self.lend_bar(cx))
             .child(
                 div()
                     .relative()
@@ -279,6 +278,7 @@ impl Render for DeviceView {
                     })
                     .children(marks)
                     .children(notice.map(|notice| notice.element(p)))
+                    .children(self.lend_notice(cx))
                     .when(self.device.is_none(), |area| area.child(self.picker_list(cx))),
             )
             .children(bar)
