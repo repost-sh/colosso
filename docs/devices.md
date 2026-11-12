@@ -438,8 +438,8 @@ took it out of the set in 0.3 s.
 | M3 | Agents on a simulator | done: QT1-QT8 and QL1-QL3 through the real MCP client |
 | M4 | The simulator half reviewed and hardened | done: the review's findings fixed, the rows re-run |
 | M5 | Setup and Settings | the setup for simulators, the picker's and the tab's missing states, Settings → Devices and the limit: off screen; the walk through the release bundle in a window waits on the owner |
-| M6 | The real device | the host on the iPad (QR1-QR3, QR5, QR8, QR13); in the app: listed, its states, its setup, Settings' list, the lend by the person's sheet (off screen and through the pipeline's tests, and the iPad opened and closed through the app). The rows that need the owner's hands to come |
-| M7 | Finish | |
+| M6 | The real device | done: on the iPad QR1-QR6, QR12, QR13 and U14 (QR4 by `devicectl`, QR6 with Auto-Lock set short, by the owner's word); in the app: listed, its states, its setup, Settings' list, the launcher, the lend by the person's sheet (off screen and through the pipeline's tests). Partial: QR7 (locked at start; while open not caught in step), QR8 (back by itself; its sentence fixed after). Not run: QR9 on the device (the owner's click), QR10, QR14 |
+| M7 | Finish | `script/check` green but for the endpoint socket tests (this checkout's path); the second review's findings fixed; the simulator rows in debug and release (timing rows failing at a load average of 50-110 from other work); the device rows in release wait on the owner |
 
 ## 12. Measurements
 
@@ -464,6 +464,22 @@ took it out of the set in 0.3 s.
 | The host killed: noticed; ready again (M2) | | | 133-450 ms; 1.7-4.6 s, the simulator kept booted |
 | Koyo quits: the quit's own time; the simulator down (M2) | | | 1.7 ms; 2.9 s |
 | A second device beside the first (M2) | | | ready in 30-39 s from cold; the hidden first sent 0 frames meanwhile |
+
+**A real device** (iPad Pro 12.9-inch, iPadOS 27.0.1, by cable; M6):
+
+| What | PoC | Built (M6) |
+| --- | --- | --- |
+| Ready from the host's start; through the app's tab | 1-2 s | 0.5-1.5 s; 0.3-0.6 s |
+| Picture | 2736 x 2064 HEVC | 2736 x 2064 at 2x, upright by the LCD's own turn |
+| Pictures a second, a still screen | about 30 | 32.6-33.4 (none lost); 26-28 drawn by the off-screen tab |
+| A turn followed (four ways, by `devicectl`) | | 0.15-2.0 s, upright; Control Centre from the corner in each |
+| Pinch to 2, 1.5, 0.5; rotation 90°; typed ASCII | | 2.00, 1.50, 0.50; 90.00; whole |
+| A wait on a still screen; an act answered there | | still in 0.5 s; 0.4 s |
+| Pictures back after a moment of the stream lost | | 0.95 s, by a keyframe |
+| Awake with the tab open and hidden, nothing sent | 8 and 12 minutes | 12 minutes |
+| Dark by its own Auto-Lock once the stream is let go | 2 min 20 s | within 210 s (Auto-Lock 2 minutes), no session left |
+| Back after an unplug and a replug | | 20 s after the replug |
+| Its camera while viewed | off [read] | a still, dark preview (0 ± 0 of 255) |
 
 M0's numbers were taken on macOS 27.2, Xcode 27.2 (27B52), CoreSimulator 1174.21, iOS 27.2
 (24B8117), with the PoC's `simhost` alone and no window.
