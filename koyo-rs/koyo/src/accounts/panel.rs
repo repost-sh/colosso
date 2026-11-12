@@ -31,7 +31,7 @@ const WIDTH: f32 = 320.;
 const INSET_X: f32 = 10.;
 const INSET_Y: f32 = 8.;
 /// The email's line, and the type of it.
-const HEADER: f32 = 20.;
+const HEADER: f32 = 18.;
 const TITLE_SIZE: Pixels = px(13.);
 /// The active account's dot, and the gap after it: what everything under the email is indented
 /// by, so it lines up with the email.
@@ -51,8 +51,8 @@ const COLUMN_GAP: f32 = 8.;
 const BAR_HEIGHT: f32 = 5.;
 /// The pace tick: a little taller than the bar it marks.
 const TICK_HEIGHT: f32 = 9.;
-/// Auto-switch's line.
-const FOOTER: f32 = 28.;
+/// Auto-switch's line, inset as an account's block is, so the panel's foot matches its head.
+const FOOTER: f32 = 2. * INSET_Y + LINE;
 /// How far under auto-switch's line a window turns amber.
 pub(super) const NEAR_LINE: f64 = 15.;
 
@@ -119,11 +119,12 @@ pub fn extent(view: &View, window: &Window) -> Size<Pixels> {
     let notes: f32 = (notes(view).iter())
         .map(|(text, _)| LINE * lines(text, note_width(), window) + 4.)
         .sum();
+    // The rule over it, its line, and what auto-switch last did.
     let footer = if view.rows.is_empty() {
         0.
     } else {
         1. + FOOTER
-            + auto_said(view).map_or(0., |said| LINE * lines(&said, note_width(), window) + 6.)
+            + auto_said(view).map_or(0., |said| 2. + LINE * lines(&said, note_width(), window))
     };
     let height = rows + unkept + rules + notes + footer + 2. * PADDING;
     size(px(WIDTH), px(height))
@@ -200,9 +201,9 @@ impl Render for AccountsPanel {
                 .pb(px(4.))
                 .when(failed, |note| note.text_color(p.danger))
         });
+        // The menu's window pads it (`MenuBody`).
         div()
             .size_full()
-            .p(px(PADDING))
             .flex()
             .flex_col()
             .children(blocks)
@@ -479,14 +480,14 @@ fn footer(view: &View, p: Palette) -> Div {
         None => "Off".to_owned(),
     };
     div()
-        .mt(px(1.))
         .border_t_1()
         .border_color(p.hairline)
         .pl(px(INSET_X + INDENT))
         .pr(px(INSET_X))
+        .py(px(INSET_Y))
         .child(
             div()
-                .h(px(FOOTER))
+                .h(px(LINE))
                 .flex()
                 .items_center()
                 .justify_between()
@@ -494,5 +495,5 @@ fn footer(view: &View, p: Palette) -> Div {
                 .child(div().text_color(p.text).child("Auto-switch"))
                 .child(div().text_color(p.muted).child(state)),
         )
-        .children(auto_said(view).map(|said| small(said, p).pb(px(6.))))
+        .children(auto_said(view).map(|said| small(said, p).pt(px(2.))))
 }
