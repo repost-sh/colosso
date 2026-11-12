@@ -9,12 +9,12 @@ use super::{Devices, Link, set_dir, simulators};
 impl Devices {
     /// Makes a simulator of `model` on the newest system, saying so on the page.
     pub fn make_new(&mut self, model: String, cx: &mut Context<Self>) {
-        self.said = Some(format!("Making {model}…"));
+        self.said = Some(format!("Creating {model}…"));
         cx.notify();
         self.make(Some(model), cx, |made, cx| {
             super::devices(cx).update(cx, |devices, cx| {
                 devices.said = Some(match made {
-                    Ok(made) => format!("{} is made: a new Device tab opens it.", made.name),
+                    Ok(made) => format!("{} is ready. Open it in a new Device tab.", made.name),
                     Err(why) => why,
                 });
                 cx.notify();
@@ -29,16 +29,16 @@ impl Devices {
             link.update(cx, Link::stop);
             return;
         }
-        self.after(udid, "stopped", simulators::shut_down, cx);
+        self.after(udid, "stop", simulators::shut_down, cx);
     }
 
     /// Deletes the simulator `udid`, and what it held on disk.
     pub fn delete(&mut self, udid: &str, cx: &mut Context<Self>) {
-        self.after(udid, "deleted", simulators::delete, cx);
+        self.after(udid, "delete", simulators::delete, cx);
     }
 
     /// Does `what` to `udid` off the main thread, then lists the set again.
-    fn after(&mut self, udid: &str, done: &'static str, what: fn(&std::path::Path, &str) -> Result<(), String>, cx: &mut Context<Self>) {
+    fn after(&mut self, udid: &str, doing: &'static str, what: fn(&std::path::Path, &str) -> Result<(), String>, cx: &mut Context<Self>) {
         let Some(set) = set_dir() else {
             return;
         };
@@ -49,7 +49,7 @@ impl Devices {
             let did = did.await;
             let _ = this.update(cx, |this, cx| {
                 if let Err(why) = did {
-                    this.said = Some(format!("{name} wasn't {done}: {why}"));
+                    this.said = Some(format!("Couldn't {doing} {name}: {why}"));
                 }
                 this.refresh(cx);
             });

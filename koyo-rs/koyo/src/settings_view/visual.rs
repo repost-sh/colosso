@@ -1,6 +1,7 @@
 //! The General settings page drawn as the app draws it, its Keyboard section with the arrows'
 //! repeat on and off, in the light theme and the dark, the Appearance page with its fonts as
-//! they first show and with others picked, and a chat in the fake provider's words at the ends of
+//! they first show and with others picked, the Agent desktop page with one grant held and one
+//! not, and a chat in the fake provider's words at the ends of
 //! the text size's slider and in other fonts, saved as PNGs in `.superpowers/qa/settings/`:
 //!
 //! ```sh
@@ -83,6 +84,7 @@ fn draw() -> Result<Vec<String>> {
         });
     });
     saved.push(drawn.save("appearance.png")?);
+    saved.push(agent_desktop(&mut drawn)?);
     drawn.cx.update(|cx| {
         settings::update(cx, |settings| {
             settings.fonts = Fonts {
@@ -167,4 +169,27 @@ fn file_in_its_fonts(drawn: &mut Drawn) -> Result<Vec<PathBuf>> {
     });
     saved.push(drawn.save("file-picked.png")?);
     Ok(saved)
+}
+
+/// The agent desktop's page with one grant held and one not, each marked.
+fn agent_desktop(drawn: &mut Drawn) -> Result<PathBuf> {
+    let (shell, desk) = (drawn.shell.clone(), drawn.cx.update(|cx| crate::agent_desktop::desk(cx)));
+    let stands = |drawn: &mut Drawn, state, grants| {
+        drawn.cx.update(|cx| {
+            desk.update(cx, |desk, cx| {
+                (desk.state, desk.grants) = (state, grants);
+                cx.notify();
+            });
+        });
+    };
+    let grants = crate::agent_desktop::Grants {
+        accessibility: true,
+        screen_recording: false,
+    };
+    stands(drawn, crate::agent_desktop::State::Running, Some(grants));
+    drawn.cx.update(|cx| shell.update(cx, |shell, cx| shell.navigate(Route::Settings(SettingsPage::AgentDesktop), cx)));
+    let saved = drawn.save("agent-desktop.png");
+    stands(drawn, crate::agent_desktop::State::Off, None);
+    drawn.cx.update(|cx| shell.update(cx, |shell, cx| shell.navigate(Route::Settings(SettingsPage::Appearance), cx)));
+    saved
 }

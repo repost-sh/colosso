@@ -87,7 +87,7 @@ fn simulators(devices: &Devices, running: &[(String, String)], cx: &App) -> Sett
     let Some(Ok(listed)) = &devices.simulators else {
         let said = match &devices.simulators {
             Some(Err(why)) => why.clone(),
-            _ => "Looking for Koyo's simulators…".to_owned(),
+            _ => "Checking…".to_owned(),
         };
         return section.row(SettingRow::new("Simulators").description(said));
     };
@@ -102,9 +102,9 @@ fn simulators(devices: &Devices, running: &[(String, String)], cx: &App) -> Sett
 fn simulator_row(simulator: &Simulator, runs: bool, stopping: bool) -> SettingRow {
     let udid = simulator.udid.clone();
     let stands = match (stopping, runs) {
-        (true, _) => ". Stopping…",
-        (false, true) => ". Running.",
-        (false, false) => ".",
+        (true, _) => " · Stopping…",
+        (false, true) => " · Running",
+        (false, false) => "",
     };
     let row = SettingRow::new(simulator.name.clone()).description(format!("{}{stands}", simulator.system));
     if stopping {
@@ -120,8 +120,8 @@ fn simulator_row(simulator: &Simulator, runs: bool, stopping: bool) -> SettingRo
         let udid = udid.clone();
         let question = Confirm {
             title: format!("Delete {name}?"),
-            text: "Its apps and everything on it go with it, from Koyo's own set of simulators. \
-                   Xcode's simulators stay as they are."
+            text: "This deletes the simulator and everything installed on it. Xcode's own simulators \
+                   aren't affected."
                 .into(),
             yes: "Delete",
             tone: Tone::Danger,
@@ -141,12 +141,11 @@ fn plugged(devices: &Devices) -> SettingsSection {
     let listed = match &devices.connected {
         Some(Ok(listed)) if !listed.is_empty() => listed,
         Some(Ok(_)) => {
-            let none = "None plugged in. Plug an iPhone or iPad on iOS or iPadOS 27 into this Mac with a \
-                        cable to use it in a Device tab.";
-            return section.row(SettingRow::new("Plugged in").description(none).control(set_up(None)));
+            let none = "Connect an iPhone or iPad running iOS or iPadOS 27 with a cable to use it in a Device tab.";
+            return section.row(SettingRow::new("No device connected").description(none).control(set_up(None)));
         }
-        Some(Err(why)) => return section.row(SettingRow::new("Plugged in").description(why.clone())),
-        None => return section.row(SettingRow::new("Plugged in").description("Looking for iPhones and iPads plugged in…")),
+        Some(Err(why)) => return section.row(SettingRow::new("Connected devices").description(why.clone())),
+        None => return section.row(SettingRow::new("Connected devices").description("Checking…")),
     };
     section.rows(listed.iter().map(|device| {
         let row = SettingRow::new(device.name.clone());
@@ -163,7 +162,7 @@ fn plugged(devices: &Devices) -> SettingsSection {
 /// A new simulator, of a model the newest system has.
 fn new_one(devices: &Devices) -> SettingRow {
     let said = devices.said.clone().unwrap_or_else(|| {
-        "Made on the newest iOS installed, in Koyo's own set: about 2 GB of disk each.".into()
+        "Uses the newest iOS version installed. Each simulator takes about 2 GB of disk space.".into()
     });
     let row = SettingRow::new("New simulator").description(said);
     if devices.found.as_ref().is_none_or(|found| found.models.is_empty()) {
@@ -180,14 +179,11 @@ fn new_one(devices: &Devices) -> SettingRow {
 fn at_once(running: &[(String, String)], cx: &App) -> SettingsSection {
     let most = devices::at_once(cx);
     let running: Vec<&str> = running.iter().map(|(_, name)| name.as_str()).collect();
-    let now = match running.len() {
-        0 => "None runs now.".to_owned(),
-        count => format!("{count} {} now: {}.", if count == 1 { "runs" } else { "run" }, running.join(", ")),
-    };
+    let now = if running.is_empty() { "None are running.".to_owned() } else { format!("Running now: {}.", running.join(", ")) };
     let row = SettingRow::new("Simulators running at once")
         .description(format!(
-            "At most this many run at once. An agent asking for one more is refused; when you \
-             start one more, Koyo asks first. Each takes a share of this Mac's memory. {now}"
+            "The most simulators that can run at the same time, since each one uses a lot of memory. \
+             Agents can't go over the limit, and Koyo asks before you do. {now}"
         ))
         .control(MenuButton::new("simulators-at-once", most.to_string(), |cx| {
             let most = settings::get(cx).simulators_at_once();
@@ -230,7 +226,7 @@ mod tests {
         let titled = |title: &str| sections.iter().find(|section| section.matches(title)).is_some();
         assert!(titled("version 27.2"));
         assert!(titled("ios 27.2 (8.3 gb)"), "the system and its size");
-        assert!(titled("ios 27.2. running."), "the one that runs");
-        assert!(titled("1 runs now: iphone 18 pro."));
+        assert!(titled("ios 27.2 · running"), "the one that runs");
+        assert!(titled("running now: iphone 18 pro."));
     }
 }
