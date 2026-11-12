@@ -1,10 +1,12 @@
-//! What the Arc sidebar does (`docs/arc-sidebar.md`): its actions, which its buttons and menus
-//! dispatch and the window's root hears, and the shell's side of spaces: showing one, following
-//! the project selected into its space, and moving projects among them.
+//! What the Arc sidebar does (`docs/arc-sidebar.md`): its actions, which its buttons, menus and
+//! keys dispatch and the window's root hears, and the shell's side of spaces: showing one,
+//! following the project selected into its space, and moving projects among them.
 
 use std::path::{Path, PathBuf};
 
-use gpui_kit::{Action, Context, Div, InteractiveElement as _, MouseDownEvent, Window, actions};
+use gpui_kit::{
+    Action, App, Context, Div, InteractiveElement as _, KeyBinding, MouseDownEvent, Window, actions,
+};
 use koyo_browser_ipc::Go;
 
 use super::{clear, delete_space, rename};
@@ -22,9 +24,29 @@ actions!(
         PageReload,
         NewSpace,
         RenameSpace,
-        DeleteSpace
+        DeleteSpace,
+        PreviousSpace,
+        NextSpace
     ]
 );
+
+/// The shell root's key context where the Arc sidebar shows the spaces, in the workspace.
+pub const SPACES: &str = "Spaces";
+
+/// Where ⌥← and ⌥→ show the space to the left and to the right (`docs/arc-sidebar.md` 7): the
+/// spaces' context, which a binding with no context would outrank, so a terminal's and a text
+/// field's own ⌥← and ⌥→, a word back and on, bound deeper, win. A web page, an app on the
+/// agent's desktop and a phone or simulator may have a text field Koyo can't see into, so
+/// there they stay keys, which the view's key handler hands on.
+const SPACE_KEYS: &str = "Spaces && !BrowserPage && !AgentDesktop && !Device";
+
+/// Binds ⌥← and ⌥→ where [`SPACE_KEYS`] says.
+pub fn bind_keys(cx: &mut App) {
+    cx.bind_keys([
+        KeyBinding::new("alt-left", PreviousSpace, Some(SPACE_KEYS)),
+        KeyBinding::new("alt-right", NextSpace, Some(SPACE_KEYS)),
+    ]);
+}
 
 /// Moves the project whose main checkout is at the path to the space at the place given.
 #[derive(Clone, Debug, PartialEq, Action)]
@@ -71,6 +93,8 @@ pub fn handle_actions(root: Div, cx: &mut Context<Shell>) -> Div {
             settings::update(cx, |settings| made = settings.add_space());
             this.slide_to_space(made, cx);
         }))
+        .on_action(cx.listener(|this, _: &PreviousSpace, _, cx| this.step_space(-1, cx)))
+        .on_action(cx.listener(|this, _: &NextSpace, _, cx| this.step_space(1, cx)))
         .on_action(
             cx.listener(|this, MoveProject(project, to): &MoveProject, _, cx| {
                 this.move_project(project, Some(*to), cx);
@@ -140,7 +164,7 @@ pub fn handle_actions(root: Div, cx: &mut Context<Shell>) -> Div {
 impl Shell {
     /// The projects of the space the Arc sidebar shows, by their place in the workspace, in the
     /// order its tiles show them. Every project is in a space (`Settings::reconcile_spaces`).
-    pub fn space_projects(&self, cx: &gpui_kit::App) -> Vec<usize> {
+    pub fn space_projects(&self, cx: &App) -> Vec<usize> {
         let Some(space) = settings::get(cx).shown_space() else {
             return Vec::new();
         };
@@ -152,7 +176,7 @@ impl Shell {
     /// How the space at `index` is doing, the most urgent of its projects: what its mark at the
     /// sidebar's foot says while another space is shown (`docs/arc-sidebar.md` 7), from what
     /// the tiles of its projects would say were it shown.
-    pub fn space_activity(&self, index: usize, cx: &gpui_kit::App) -> Activity {
+    pub fn space_activity(&self, index: usize, cx: &App) -> Activity {
         let Some(space) = settings::get(cx).spaces.get(index) else {
             return Activity::Quiet;
         };

@@ -184,7 +184,8 @@ fn keys(drawn: &mut Drawn) -> Result<()> {
 }
 
 /// Keys the app would take if the terminal didn't keep them: Tab reaches the shell, which
-/// completes the command, and ⌘⌫ deletes the line, as `MAC_EDITING` has it.
+/// completes the command, ⌘⌫ deletes the line, and ⌥← and ⌥→ go a word back and on, as
+/// `MAC_EDITING` has them.
 fn program_keys(drawn: &mut Drawn) -> Result<()> {
     type_keys(drawn, "whoam")?;
     wait(drawn, "the start of a command", |text| {
@@ -201,7 +202,27 @@ fn program_keys(drawn: &mut Drawn) -> Result<()> {
     type_line(drawn, "echo keys-reached")?;
     wait(drawn, "a command on the emptied line", |text| {
         text.lines().any(|line| line == "keys-reached")
-    })
+    })?;
+    // ⌥← and ⌥→ go a word back and on, though in the Arc layout they move between spaces
+    // anywhere but in text: "one Xtwo" with an X typed a word back, and a Y at the end.
+    let layout = drawn.cx.read(|cx| settings::get(cx).layout);
+    drawn.cx.update(|cx| {
+        settings::update(cx, |settings| settings.layout = settings::Layout::Arc);
+    });
+    drawn.draw()?;
+    type_keys(drawn, "echo one two")?;
+    press(drawn, "alt-left")?;
+    type_keys(drawn, "X")?;
+    press(drawn, "alt-right")?;
+    type_keys(drawn, "Y")?;
+    press(drawn, "enter")?;
+    wait(drawn, "⌥← and ⌥→ to move a word", |text| {
+        text.lines().any(|line| line == "one XtwoY")
+    })?;
+    drawn
+        .cx
+        .update(|cx| settings::update(cx, |settings| settings.layout = layout));
+    drawn.draw()
 }
 
 /// A word chosen by a double click and a run of cells by a drag, read back as Copy reads

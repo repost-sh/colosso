@@ -30,7 +30,7 @@ mod top;
 pub mod visual;
 mod worktrees;
 
-pub use actions::handle_actions;
+pub use actions::{NextSpace, PreviousSpace, SPACES, bind_keys, handle_actions};
 pub use hover::Hover;
 pub use swipe::Swipe;
 pub use tile_grid::TileHand;

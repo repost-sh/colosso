@@ -3,8 +3,8 @@
 //! space it gives, as a rubber band would. Let go, a spring takes it from there at the speed the
 //! fingers had, so a flick goes on to the next space and a slow pull settles back. Going on, the
 //! space carries on out and the next comes in from the other side in the same motion, slowing
-//! to rest. A click on a space's mark moves the same way, so a switch always looks the same;
-//! with reduced motion, it's at once.
+//! to rest. A click on a space's mark, and ⌥← or ⌥→, move the same way, so a switch always
+//! looks the same; with reduced motion, it's at once.
 
 use std::time::{Duration, Instant};
 
@@ -33,6 +33,9 @@ const MOST_SPEED: f32 = 5000.;
 const HELD_STILL: Duration = Duration::from_millis(60);
 /// How far the fingers move before the gesture is judged a swipe or a scroll.
 const DECIDE: f32 = 2.;
+/// How fast ⌥← or ⌥→ throws the space toward a side with no space past it, in points a
+/// second: the spring takes it out a dozen points or so and back, as a rubber band gives.
+const NUDGE: f32 = 500.;
 
 /// `travel` past the first or last space, as far as a rubber band lets it go: less and less the
 /// further it's pulled, never more than `width` gives.
@@ -198,10 +201,14 @@ impl Shell {
     }
 
     /// Moves to the space at `index` as a swipe would, the space carrying on out and it coming in
-    /// from the other side; at once with reduced motion.
+    /// from the other side; at once with reduced motion. The space shown, on its way out to
+    /// another, comes back to rest.
     pub fn slide_to_space(&mut self, index: usize, cx: &mut Context<Self>) {
         let shown = settings::get(cx).space;
         if index == shown {
+            if self.swipe.settling.is_some() {
+                self.settle(None, cx);
+            }
             return;
         }
         if cx.reduce_motion() {
@@ -209,6 +216,29 @@ impl Shell {
             return;
         }
         self.settle(Some(index), cx);
+    }
+
+    /// Shows the space a `step` to the left (-1) or to the right (1), as ⌥← and ⌥→ do: on from
+    /// the space a switch is already on its way to, so pressed again it goes one further. Past
+    /// the first or last space there's none, and as with a swipe the space gives a little and
+    /// settles back; it doesn't wrap round.
+    pub(super) fn step_space(&mut self, step: isize, cx: &mut Context<Self>) {
+        let settings = settings::get(cx);
+        let heading = self
+            .swipe
+            .settling
+            .as_ref()
+            .and_then(|settling| settling.goal);
+        let to = (heading.unwrap_or(settings.space).checked_add_signed(step))
+            .filter(|&to| to < settings.spaces.len());
+        if let Some(to) = to {
+            self.slide_to_space(to, cx);
+        } else if heading.is_none() && !cx.reduce_motion() {
+            // Not already on its way to the first or last space: it gives toward the side
+            // with none.
+            self.swipe.velocity = -(step as f32) * NUDGE;
+            self.settle(None, cx);
+        }
     }
 
     /// Lets the spring take the space from where it is at the speed it has: to rest, or out the

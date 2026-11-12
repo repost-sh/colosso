@@ -4,6 +4,7 @@ use gpui_kit::component::kbd::Kbd;
 use gpui_kit::{Action, App, AsKeystroke as _, IntoElement, ParentElement as _, Styled as _, div};
 
 use super::components::{SettingRow, SettingsSection};
+use crate::arc::{NextSpace, PreviousSpace};
 use crate::chat::{
     AllowRequest, AllowRequestForChat, DenyRequest, ImplementPlan, OpenModelMenu, OpenParent,
     RecallPrompt, SkipQuestion, StopTurn, ToggleDetails, TogglePlan,
@@ -41,6 +42,13 @@ const SECTIONS: &[(&str, &[Command])] = &[
             ("Toggle right panel", &ToggleRightPanel),
             ("Toggle bottom panel", &ToggleBottomPanel),
             ("Cycle theme", &CycleTheme),
+        ],
+    ),
+    (
+        "Spaces",
+        &[
+            ("Show the space to the left", &PreviousSpace),
+            ("Show the space to the right", &NextSpace),
         ],
     ),
     ("Worktrees", &[("New worktree", &NewWorktree)]),
@@ -112,17 +120,19 @@ mod tests {
     use super::{SECTIONS, keys};
     use crate::chat;
 
-    /// A row of the Chat section that says "Not assigned" is a key someone unbound.
+    /// A row of the Chat or Spaces section that says "Not assigned" is a key someone unbound.
     #[gpui_kit::test]
-    fn every_chat_command_has_its_key(cx: &mut TestAppContext) {
+    fn every_chat_and_space_command_has_its_key(cx: &mut TestAppContext) {
         cx.update(|cx| {
             chat::init(cx);
-            let (_, commands) = SECTIONS
+            crate::arc::bind_keys(cx);
+            let sections = SECTIONS
                 .iter()
-                .find(|(title, _)| *title == "Chat")
-                .expect("a Chat section");
-            for (label, action) in *commands {
-                assert!(keys(*action, cx).is_some(), "{label} has no key");
+                .filter(|(title, _)| ["Chat", "Spaces"].contains(title));
+            for (title, commands) in sections {
+                for (label, action) in *commands {
+                    assert!(keys(*action, cx).is_some(), "{title}: {label} has no key");
+                }
             }
         });
     }

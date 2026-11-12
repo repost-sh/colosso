@@ -87,6 +87,7 @@ fn init(cx: &mut App) {
     files::init(cx);
     viewer::init(cx);
     navigation::bind_keys(cx);
+    arc::bind_keys(cx);
     go_to_file::init(cx);
     chat::init(cx);
     symbols::init(cx);

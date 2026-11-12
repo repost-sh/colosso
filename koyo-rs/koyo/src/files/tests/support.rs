@@ -81,6 +81,11 @@ pub(crate) fn settle(
     }
 }
 
+/// Waits for `panel` to have listed its checkout, its tree drawn.
+pub(crate) fn listed(panel: &Entity<FilesPanel>, cx: &mut TestAppContext) {
+    settle(panel, cx, |files| files.scanned);
+}
+
 /// The rows shown, indented by depth, a folder's name ending in `/`.
 pub(crate) fn shown(panel: &Entity<FilesPanel>, cx: &TestAppContext) -> Vec<String> {
     cx.read(|cx| {

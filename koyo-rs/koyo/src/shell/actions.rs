@@ -3,8 +3,8 @@
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    App, Context, Div, InteractiveElement as _, KeyBinding, ModifiersChangedEvent, MouseButton,
-    NavigationDirection, ParentElement as _, Window, actions,
+    App, Context, Div, InteractiveElement as _, KeyBinding, KeyContext, ModifiersChangedEvent,
+    MouseButton, NavigationDirection, ParentElement as _, Window, actions,
 };
 
 use super::{Shell, switcher};
@@ -12,7 +12,7 @@ use crate::files;
 use crate::model::PaneKind;
 use crate::navigation::{CloseSettings, GoBack, GoForward, Navigate, NavigationHistory, Route};
 use crate::projects::{self, NewWorktree};
-use crate::settings;
+use crate::settings::{self, Layout};
 use crate::settings_view::{
     self, ClearClaudePath, EditBranchPrefix, EditClaudePath, EditPagesOpenAt,
 };
@@ -56,6 +56,18 @@ pub fn init(cx: &mut App) {
 }
 
 impl Shell {
+    /// The key context of the window's root: the settings' on a settings page, the spaces'
+    /// where the Arc sidebar shows them (`arc::bind_keys`).
+    pub(super) fn root_keys(route: Route, layout: Layout) -> KeyContext {
+        let mut keys = KeyContext::default();
+        match (route, layout) {
+            (Route::Settings(_), _) => keys.add("Settings"),
+            (Route::Workspace, Layout::Arc) => keys.add(crate::arc::SPACES),
+            (Route::Workspace, Layout::Orca) => {}
+        }
+        keys
+    }
+
     /// What the window does with its actions, presses and drags, wherever they land.
     pub(super) fn handle_actions(root: Div, cx: &mut Context<Self>) -> Div {
         root.on_action(cx.listener(|this, Navigate(route), _, cx| this.navigate(*route, cx)))

@@ -14,7 +14,8 @@ fn a_terminal_gets_its_keys_before_the_app(cx: &mut TestAppContext) {
         crate::init(cx);
         let keymap = cx.key_bindings();
         let keymap = keymap.borrow();
-        let stack: Vec<KeyContext> = ["Root", koyo_term::CONTEXT]
+        // As the window has it in the Arc layout: the terminal under the spaces' context.
+        let stack: Vec<KeyContext> = ["Root", crate::arc::SPACES, koyo_term::CONTEXT]
             .iter()
             .map(|at| KeyContext::parse(at).unwrap())
             .collect();

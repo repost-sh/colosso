@@ -50,9 +50,14 @@ pub fn stop_host(said: &mut Vec<String>) {
 /// step is a frame of the display's, which is what a fade or a spring under way waits for to
 /// draw again.
 pub fn settle(drawn: &mut Drawn) -> Result<()> {
+    frames(drawn, 8, Duration::from_millis(100))
+}
+
+/// `count` frames of the display's, `step` apart, each drawn.
+pub fn frames(drawn: &mut Drawn, count: usize, step: Duration) -> Result<()> {
     let window = drawn.window;
-    for _ in 0..8 {
-        drawn.cx.advance_clock(Duration::from_millis(100));
+    for _ in 0..count {
+        drawn.cx.advance_clock(step);
         (drawn.cx)
             .update_window(window, |_, window, cx| window.simulate_next_frame(cx))
             .map_err(|error| error.to_string())?;

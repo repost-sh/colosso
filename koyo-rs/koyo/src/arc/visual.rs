@@ -3,7 +3,9 @@
 //! a space of its own with its own colours, and an empty space, light and dark; then what a
 //! person does there (`acts`): a space's mark saying a chat in it works and then waits, a tab's
 //! row and its tile saying the same, a tile dragged to another row and back, the address bar
-//! following the pane pressed in, and ⌘L's launcher on a page. It shows a chat, so it runs on a data folder and an agent host of its own:
+//! following the pane pressed in, ⌘L's launcher on a page, and ⌥← and ⌥→ between spaces, in a
+//! composer and on the shortcuts page (`keys`). It shows a chat, so it runs on a data folder
+//! and an agent host of its own:
 //!
 //! ```sh
 //! Q=$PWD/.superpowers/qa/arc && mkdir -p $Q/tmp &&
@@ -28,6 +30,7 @@ use crate::theme::{UseDarkTheme, UseLightTheme};
 use crate::visual::{Drawn, Result, checkout};
 
 mod acts;
+mod keys;
 
 /// Where the pictures go, relative to the checkout.
 const OUT: &str = ".superpowers/qa/arc";
@@ -162,6 +165,7 @@ fn draw() -> Result<Vec<String>> {
     acts::tab_marks(&mut drawn, &mut said)?;
     acts::drag_tile(&mut drawn, &mut said)?;
     acts::address(&mut drawn, &mut said)?;
+    keys::space_keys(&mut drawn, &mut said)?;
     acts::stop_host(&mut said);
     // The Orca layout keeps one card, hairlines between its parts: no islands there.
     drawn.cx.update(|cx| {
