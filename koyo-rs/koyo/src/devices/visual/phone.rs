@@ -102,7 +102,6 @@ pub(super) fn run(drawn: &mut Drawn, lines: &mut Vec<String>) -> Result<()> {
         ("setup-phone-trust.png", vec![missing(Missing::Trust)]),
         ("setup-phone-developer-mode.png", vec![missing(Missing::DeveloperMode)]),
         ("setup-phone-system.png", vec![older]),
-        ("setup-phone-services.png", vec![missing(Missing::DeveloperImage)]),
         ("setup-phone-ready.png", vec![ipad()]),
     ];
     for (picture, listed) in steps {

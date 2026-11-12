@@ -16,9 +16,9 @@ use crate::link::{Missing, Refusal, RefusalCode};
 /// The first iOS or iPadOS a real device is driven on.
 pub const SYSTEM: u32 = 27;
 
-/// The steps a device takes to be driven, in the order the setup takes the person through them:
-/// each one `devicectl list devices` sees.
-pub const STEPS: [Missing; 5] = [Missing::Cable, Missing::Trust, Missing::DeveloperMode, Missing::System, Missing::DeveloperImage];
+/// The steps the person takes for a device to be driven, in the order the setup takes them
+/// through: each one `devicectl list devices` sees.
+pub const STEPS: [Missing; 4] = [Missing::Cable, Missing::Trust, Missing::DeveloperMode, Missing::System];
 
 /// A `devicectl` call takes a second or two; one that hangs is ended after this.
 const DEVICECTL_WITHIN: Duration = Duration::from_secs(15);
@@ -123,11 +123,17 @@ pub fn first_missing(device: Option<&Value>, name: &str) -> Option<(Missing, Str
                 os(device),
             ),
         )
-    } else if properties["ddiServicesAvailable"] == false {
-        (Missing::DeveloperImage, format!("{name}'s developer services aren't ready yet. Unlock it, then start it again."))
     } else {
         return None;
     })
+}
+
+/// Its developer services not up, for a host that couldn't connect to say. No step of the
+/// person's, and not for the app's list: `ddiServicesAvailable` is true only while a tunnel of
+/// `devicectl`'s stands, so a device nothing is asking always reads as without them.
+pub fn services_down(device: &Value, name: &str) -> Option<(Missing, String)> {
+    (device["deviceProperties"]["ddiServicesAvailable"] == false)
+        .then(|| (Missing::DeveloperImage, format!("{name}'s developer services aren't ready yet. Unlock it, then start it again.")))
 }
 
 #[cfg(test)]
@@ -163,7 +169,9 @@ mod tests {
         assert!(said.as_ref().is_some_and(|(code, why)| *code == Missing::System && why.contains("runs iOS 26.6.1")), "{said:?}");
         let mut unready = device("wired", "paired", "enabled", "27.0.1");
         unready["deviceProperties"]["ddiServicesAvailable"] = json!(false);
-        assert_eq!(code(Some(&unready)), Some(Missing::DeveloperImage));
+        assert_eq!(code(Some(&unready)), None, "no step of the person's");
+        assert_eq!(services_down(&unready, "An iPhone").map(|(code, _)| code), Some(Missing::DeveloperImage));
+        assert_eq!(services_down(&device("wired", "paired", "enabled", "27.0.1"), "An iPhone"), None);
         assert_eq!(code(Some(&device("wired", "paired", "enabled", "27.0.1"))), None);
     }
 }

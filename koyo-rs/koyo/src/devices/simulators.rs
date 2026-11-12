@@ -305,6 +305,14 @@ mod tests {
         assert!(lock(&state, "HELD").is_none(), "a host holds it");
         assert!(lock(&state, "FREE").is_some(), "nobody does");
         drop(held);
-        assert!(lock(&state, "HELD").is_some(), "let go");
+        // Let go with the last copy of the descriptor: a process another test is starting holds
+        // one for a moment, until it has become its program.
+        let free = (0..200).any(|_| {
+            lock(&state, "HELD").is_some() || {
+                std::thread::park_timeout(Duration::from_millis(5));
+                false
+            }
+        });
+        assert!(free, "let go");
     }
 }

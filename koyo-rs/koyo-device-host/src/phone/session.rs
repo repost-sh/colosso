@@ -161,13 +161,25 @@ impl Session<'_> {
     async fn run(&self, commands: UnboundedReceiver<Command>, ring: &Ring, stats: bool) -> Result<(), Ending> {
         // Asked while the tunnel is made: `devicectl` takes a second or so.
         let udid = self.udid.to_owned();
-        let locked = tokio::task::spawn_blocking(move || checks::locked(&udid));
-        let connected = match tokio::time::timeout(CONNECTS_WITHIN, self.connect(ring, stats)).await {
+        let asked = tokio::task::spawn_blocking(move || checks::locked(&udid));
+        let first = tokio::time::timeout(CONNECTS_WITHIN, self.connect(ring, stats)).await;
+        let locked = asked.await.ok().flatten().unwrap_or(false);
+        let connected = match first {
+            // After a restart the device's developer services aren't loaded, and nothing of the
+            // stream or the input is there. What was asked of `devicectl` above (its displays,
+            // when it's unlocked) loads them, and is answered by now: once more. Unnamed too:
+            // by the time the list was read for the failure's name, they may have been up.
+            Ok(Err((Missing::DeveloperImage | Missing::Other, _))) => {
+                self.teller.log(LogLevel::Info, "its developer services were asked for: connecting once more");
+                match tokio::time::timeout(CONNECTS_WITHIN, self.connect(ring, stats)).await {
+                    Ok(connected) => connected?,
+                    Err(_) => return Err(self.unanswered()),
+                }
+            }
             Ok(connected) => connected?,
-            Err(_) => return Err(self.missing(format!("{} didn't answer in {} s", self.name, CONNECTS_WITHIN.as_secs()))),
+            Err(_) => return Err(self.unanswered()),
         };
         let Connected { provider, mut live, info, display, stalled } = connected;
-        let locked = locked.await.ok().flatten().unwrap_or(false);
         let outcome = self.serve(&mut live, Serving { commands, ring, provider: &provider, info, display, stalled, locked }).await;
         // However it ended, the device's stream is told to stop with this end: else the device
         // keeps its session, and itself awake, long after (QR6). Unplugged, there's none to stop.
@@ -180,6 +192,11 @@ impl Session<'_> {
             self.teller.log(LogLevel::Warn, why);
         }
         outcome
+    }
+
+    /// A connection that didn't come within [`CONNECTS_WITHIN`], named.
+    fn unanswered(&self) -> Ending {
+        self.missing(format!("{} didn't answer in {} s", self.name, CONNECTS_WITHIN.as_secs()))
     }
 
     /// Connects to the device and starts its stream: the tunnel, what it says of itself, the
