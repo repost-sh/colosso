@@ -1,7 +1,9 @@
 //! The host against a real iPhone or iPad by cable (`docs/devices.md` 13, M6): its picture, its
 //! stillness, an aimed tap, buttons and five fingers, with only the acts approval D allows (Home,
-//! the volume one step and back, the Clock app). It prints counts and places, never a picture,
-//! the text read off it, or anything the device holds; each act goes to `KOYO_REAL_PHONE_ACTS`.
+//! the volume one step and back, the Clock app); and QR14, for a phone of the person's own, by
+//! the system's gestures alone (Home, Search, the app switcher, Control Centre, a page swiped).
+//! It prints counts and places, never a picture, the text read off it, or anything the device
+//! holds; each act goes to `KOYO_REAL_PHONE_ACTS`.
 //!
 //! ```sh
 //! KOYO_REAL_PHONE_UDID=<udid> KOYO_REAL_PHONE_ACTS=$PWD/.superpowers/devices/qa/m6/acts.md \
@@ -19,38 +21,92 @@ mod support;
 use std::time::{Duration, Instant};
 
 use koyo_device_wire::{Act, Answer, Ask, Change, Finger, FromHost, Input, Point, Press, Refusal, Screen, Spot, State, ToHost};
-use support::acts::{act, place_of, press, said, tap};
+use support::acts::{act, corner, place_of, press, said, swipe, tap};
 use support::{Driver, change, phone, row};
 
 #[test]
 #[ignore = "needs a real device by cable: KOYO_REAL_PHONE_UDID"]
 fn the_host_shows_and_drives_a_real_device() {
+    let Some((mut host, screen)) = shown("QR1") else {
+        return;
+    };
+    stillness(&mut host, &screen);
+    buttons(&mut host);
+    clock(&mut host, &screen);
+    done(host);
+}
+
+/// The host started on the device by cable, and shown: ready with its picture's size, and how
+/// many pictures a second come of a still screen, as rows of `id`. None without a device.
+fn shown(id: &str) -> Option<(Driver, Screen)> {
     let Some(target) = phone() else {
         eprintln!("skipped: no KOYO_REAL_PHONE_UDID");
-        return;
+        return None;
     };
     let started = Instant::now();
     let mut host = Driver::start(&target, true);
     let screen = host.ready(Duration::from_secs(60));
     row(
-        "QR1",
+        id,
         "ready, and the picture's size",
-        &format!("{:?} at {}x, {:?}, {} ms", screen.pixels, screen.scale, screen.orientation, started.elapsed().as_millis()),
+        &format!(
+            "{:?} at {}x, {:?}, corners of {} points, {} ms",
+            screen.pixels,
+            screen.scale,
+            screen.orientation,
+            screen.corner,
+            started.elapsed().as_millis()
+        ),
         screen.pixels.width > 0,
     );
     host.tell(&ToHost::Visible { visible: true });
     // Shown again, the host asks for a whole picture and decodes from it (within a second, P13).
     let _ = host.until(Duration::from_secs(2), |_| false);
     let frames = host.count_frames(Duration::from_secs(5));
-    row("QR1", "pictures a second while shown, a still screen", &format!("{:.1}", frames as f64 / 5.), frames >= 150);
-    stillness(&mut host, &screen);
-    buttons(&mut host);
-    clock(&mut host, &screen);
+    row(id, "pictures a second while shown, a still screen", &format!("{:.1}", frames as f64 / 5.), frames >= 150);
+    Some((host, screen))
+}
+
+/// What the host said of its pictures, and the host gone when told.
+fn done(host: Driver) {
     for line in host.logs.iter().filter(|line| line.contains("frames:") || line.contains("pictures:")) {
         eprintln!("host: {line}");
     }
     let quit = host.quit(Duration::from_secs(10));
     row("QR8", "the host goes when told", &format!("{quit}"), quit);
+}
+
+/// QR14 (U12): an iPhone on iOS 27 by cable, by the system's own gestures only: its picture,
+/// Home, Search by a drag down the Home Screen, the app switcher, Control Centre from its
+/// corner, and the Home Screen swiped to its next page and back. No app is opened, nothing is
+/// typed and no volume is changed: what the owner allowed on a phone of their own.
+#[test]
+#[ignore = "needs a real iPhone by cable: KOYO_REAL_PHONE_UDID"]
+fn an_iphone_is_shown_and_driven_by_the_systems_gestures() {
+    let Some((mut host, screen)) = shown("QR14") else {
+        return;
+    };
+    act("Home pressed");
+    let home = press(&mut host, Press::Home);
+    row("QR14", "Home", &said(&home), home.is_ok());
+    stillness(&mut host, &screen);
+    let changed = |answer: &Result<Answer, Refusal>| change(answer).is_some_and(|change| change != Change::None);
+    act("the app switcher opened");
+    let switcher = press(&mut host, Press::AppSwitcher);
+    act("Home pressed (the app switcher left)");
+    let left = press(&mut host, Press::Home);
+    let opened = change(&switcher) == Some(Change::Large) && changed(&left);
+    row("QR14", "the app switcher, and Home out of it", &format!("{}; {}", said(&switcher), said(&left)), opened);
+    corner(&mut host, &screen);
+    let (w, h) = (screen.size.width, screen.size.height);
+    let (right, left) = (Point { x: w * 0.8, y: h / 2. }, Point { x: w * 0.2, y: h / 2. });
+    act("the Home Screen swiped to its next page");
+    let next = swipe(&mut host, right, left, 250);
+    act("the Home Screen swiped back");
+    let back = swipe(&mut host, left, right, 250);
+    let moved = changed(&next) && changed(&back);
+    row("QR14", "the Home Screen swiped to its next page and back", &format!("{}; {}", said(&next), said(&back)), moved);
+    done(host);
 }
 
 /// QR13: on a still screen (Search, opened from the Home Screen: the Home Screen's clock widget
@@ -61,12 +117,7 @@ fn stillness(host: &mut Driver, screen: &Screen) {
     row("QR13", "device_wait on the Home Screen (its clock widget moves)", &format!("{waited:?} after {} ms", home.elapsed().as_millis()), true);
     let (w, h) = (screen.size.width, screen.size.height);
     act("Search opened by a drag down the middle of the Home Screen");
-    let opened = host.act(Act::Swipe {
-        from: Spot::Point(Point { x: w / 2., y: h * 0.3 }),
-        to: Spot::Point(Point { x: w / 2., y: h * 0.6 }),
-        ms: 300,
-        fingers: 1,
-    });
+    let opened = swipe(host, Point { x: w / 2., y: h * 0.3 }, Point { x: w / 2., y: h * 0.6 }, 300);
     let asked = Instant::now();
     let waited = host.ask(Ask::Wait { quiet_ms: 500, timeout_ms: 5000 }, Duration::from_secs(10));
     let still = matches!(waited, Ok(Answer::Waited { still: true, .. }));
