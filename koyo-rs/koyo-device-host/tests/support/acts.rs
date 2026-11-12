@@ -40,6 +40,16 @@ pub fn tap(host: &mut Driver, at: Point) -> Result<Answer, Refusal> {
     })
 }
 
+/// One finger dragged from `from` to `to` over `ms`.
+pub fn swipe(host: &mut Driver, from: Point, to: Point, ms: u32) -> Result<Answer, Refusal> {
+    host.act(Act::Swipe {
+        from: Spot::Point(from),
+        to: Spot::Point(to),
+        ms,
+        fingers: 1,
+    })
+}
+
 pub fn press(host: &mut Driver, button: Press) -> Result<Answer, Refusal> {
     host.act(Act::Button { button })
 }
@@ -62,12 +72,7 @@ pub fn upright(screen: &Screen) -> bool {
 pub fn corner(host: &mut Driver, screen: &Screen) {
     let (w, h) = (screen.size.width, screen.size.height);
     act(&format!("Control Centre opened from the top right corner ({:?})", screen.orientation));
-    let opened = host.act(Act::Swipe {
-        from: Spot::Point(Point { x: w - 24., y: 2. }),
-        to: Spot::Point(Point { x: w - 24., y: h * 0.45 }),
-        ms: 350,
-        fingers: 1,
-    });
+    let opened = swipe(host, Point { x: w - 24., y: 2. }, Point { x: w - 24., y: h * 0.45 }, 350);
     act("Home pressed (Control Centre closed)");
     let closed = press(host, Press::Home);
     let large = matches!(opened, Ok(Answer::Acted { change: Change::Large, .. }));
