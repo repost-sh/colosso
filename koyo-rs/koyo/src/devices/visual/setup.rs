@@ -81,11 +81,17 @@ fn settings_page(drawn: &mut Drawn, lines: &mut Vec<String>) -> Result<()> {
         name: name.into(),
         ..booted(udid)
     };
-    let listed = vec![booted("V-ONE", "iPhone 18 Pro"), booted("V-TWO", "iPad Pro 13-inch (M5)"), simulator("V-THREE")];
-    shows(drawn, found(ready(), true, true), listed);
+    let listed = || vec![booted("V-ONE", "iPhone 18 Pro"), booted("V-TWO", "iPad Pro 13-inch (M5)"), simulator("V-THREE")];
+    shows(drawn, found(ready(), true, true), listed());
     let shell = drawn.shell.clone();
     drawn.cx.update(|cx| shell.update(cx, |shell, cx| shell.open_settings_page(Some(crate::settings_view::SettingsPage::Devices), cx)));
     lines.push(format!("{}", drawn.save("settings-devices.png")?.display()));
+    // What's missing, marked: an Xcode too old, then no iOS version.
+    for (picture, missing) in [("settings-devices-xcode.png", older()), ("settings-devices-system.png", found(ready(), true, false))] {
+        shows(drawn, missing, Vec::new());
+        lines.push(format!("{}", drawn.save(picture)?.display()));
+    }
+    shows(drawn, found(ready(), true, true), listed());
     drawn.cx.update(|cx| shell.update(cx, |shell, cx| shell.navigate(crate::navigation::Route::Workspace, cx)));
     let chosen = crate::devices::Chosen {
         udid: "V-THREE".into(),

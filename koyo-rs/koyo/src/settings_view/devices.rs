@@ -1,11 +1,12 @@
-//! Settings → Devices (`docs/devices.md` 10): what Koyo's simulators need of the Mac and what
-//! it has, Koyo's own simulators with what runs, the iPhones and iPads plugged in with the step
-//! each misses, how many simulators may run at once, and in words what Koyo doesn't touch. Nothing here is reachable by `settings_set`: only the person changes it.
+//! Settings → Devices (`docs/devices.md` 10): what Koyo's simulators need of the Mac, each
+//! marked there or missing; Koyo's own simulators with what runs; the iPhones and iPads plugged
+//! in, ready or with the step each misses; and how many simulators may run at once. Nothing
+//! here is reachable by `settings_set`: only the person changes it.
 
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::{Action, App, ElementId, SharedString};
 
-use super::components::{MenuButton, PillButton, SettingRow, SettingsSection};
+use super::components::{MenuButton, PillButton, SettingRow, SettingsSection, Status};
 use crate::devices::needs::{Found, Xcode};
 use crate::devices::{self, Devices, Need, Simulator};
 use crate::modal::{self, Confirm, Tone};
@@ -34,7 +35,7 @@ pub fn sections(cx: &App) -> Vec<SettingsSection> {
     let devices = devices::devices(cx);
     let devices = devices.read(cx);
     let running = devices.running_now(cx);
-    vec![needs(devices), simulators(devices, &running, cx), plugged(devices), at_once(&running, cx), untouched()]
+    vec![needs(devices), simulators(devices, &running, cx), plugged(devices), at_once(&running, cx)]
 }
 
 fn id(what: &str, udid: &str) -> ElementId {
@@ -45,41 +46,39 @@ fn set_up() -> PillButton {
     PillButton::new("devices-set-up", "Set Up…").on_click(|_, window, cx| devices::setup::open(window, cx))
 }
 
-/// Xcode and the systems: what Koyo's simulators need of the Mac.
+/// Xcode and the iOS versions simulators run: each says whether it's there.
 fn needs(devices: &Devices) -> SettingsSection {
-    let section = SettingsSection::new("What simulators need");
+    let section = SettingsSection::new("Requirements");
     let Some(found) = &devices.found else {
-        return section.row(SettingRow::new("Xcode").description("Looking at what this Mac has…"));
+        return section.row(SettingRow::new("Xcode").description("Checking…"));
     };
-    let missing = matches!(found.need(), Some(Need::Xcode | Need::Components));
-    let xcode = SettingRow::new("Xcode").description(match (&found.xcode, missing) {
-        (Xcode::Ready(version), true) => format!("Xcode {version}, the one in use. {}", found.sentence(Need::Components)),
-        (Xcode::Ready(version), false) => format!("Xcode {version}, the one in use, set up."),
-        _ => found.sentence(Need::Xcode),
-    });
-    if missing {
+    let (said, status) = match &found.xcode {
+        Xcode::Ready(version) if found.components => (format!("Version {version}"), Status::met("Installed")),
+        Xcode::Ready(version) => (format!("Version {version}. {}", found.sentence(Need::Components)), Status::missing("Setup unfinished")),
+        Xcode::Older(_) => (found.sentence(Need::Xcode), Status::missing("Update needed")),
+        Xcode::Other { .. } => (found.sentence(Need::Xcode), Status::missing("Not selected")),
+        Xcode::Missing => (found.sentence(Need::Xcode), Status::missing("Not installed")),
+    };
+    let xcode = SettingRow::new("Xcode").description(said).control(status);
+    if matches!(found.need(), Some(Need::Xcode | Need::Components)) {
         return section.row(xcode.control(set_up()));
     }
     section.row(xcode).row(systems(found))
 }
 
 fn systems(found: &Found) -> SettingRow {
-    let row = SettingRow::new("iOS systems");
+    let row = SettingRow::new("iOS versions");
     if found.systems.is_empty() {
         return row
-            .description(
-                "None installed. Xcode downloads one, about 8 GB: in Xcode, choose Settings → \
-                 Components.",
-            )
+            .description("None installed. Download one in Xcode → Settings → Components (about 8 GB).")
+            .control(Status::missing("Not installed"))
             .control(set_up());
     }
     let listed: Vec<String> = (found.systems.iter())
         .map(|system| format!("{} ({})", system.name, crate::viewer::size_on_disk(system.bytes)))
         .collect();
-    row.description(format!(
-        "{}. They're Xcode's too: add or remove one in Xcode, under Settings → Components.",
-        listed.join(", ")
-    ))
+    row.description(format!("{}. Add or remove versions in Xcode → Settings → Components.", listed.join(", ")))
+        .control(Status::met("Installed"))
 }
 
 /// Koyo's own simulators, each with Stop while it runs and Delete while it doesn't, and a new one.
@@ -152,8 +151,11 @@ fn plugged(devices: &Devices) -> SettingsSection {
     section.rows(listed.iter().map(|device| {
         let row = SettingRow::new(device.name.clone());
         match &device.missing {
-            Some((_, said)) => row.description(format!("{}. {said}", device.system)).control(set_up(Some(device.udid.clone()))),
-            None => row.description(format!("{}. Ready to use in a Device tab.", device.system)),
+            Some((_, said)) => {
+                let needs = Status::missing("Needs setup");
+                row.description(format!("{}. {said}", device.system)).control(needs).control(set_up(Some(device.udid.clone())))
+            }
+            None => row.description(device.system.clone()).control(Status::met("Ready")),
         }
     }))
 }
@@ -196,23 +198,26 @@ fn at_once(running: &[(String, String)], cx: &App) -> SettingsSection {
     SettingsSection::new("Running").row(row)
 }
 
-fn untouched() -> SettingsSection {
-    SettingsSection::new("What Koyo doesn't touch")
-        .row(SettingRow::new("Xcode's simulators").description(
-            "Koyo keeps its simulators apart from Xcode's and never changes yours. It deletes a \
-             simulator only when you press Delete here, and never an iOS system: those are Xcode's.",
-        ))
-        .row(SettingRow::new("Your iPhone or iPad").description(
-            "Koyo changes no setting on it: it keeps it awake only while its tab is open, and its \
-             camera and microphone are off meanwhile.",
-        ))
-}
-
 #[cfg(test)]
 mod tests {
     use gpui_kit::TestAppContext;
 
+    use crate::devices::needs::Xcode;
     use crate::devices::needs::fixtures::{booted, found, ready, simulator};
+
+    #[gpui_kit::test]
+    fn an_xcode_too_old_is_said_and_no_ios_version_is_listed(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        cx.update(|cx| {
+            let old = found(Xcode::Older("26.4".into()), false, false);
+            crate::devices::devices(cx).update(cx, |devices, cx| devices.listed(Ok(Vec::new()), Some(old), cx));
+        });
+        let sections = cx.read(super::sections);
+        let titled = |title: &str| sections.iter().any(|section| section.matches(title));
+        assert!(titled("requirements"));
+        assert!(titled("you have xcode 26.4"));
+        assert!(!titled("ios versions"), "not until Xcode will do");
+    }
 
     #[gpui_kit::test]
     fn the_page_shows_what_runs_with_stop_and_the_limit(cx: &mut TestAppContext) {
@@ -223,10 +228,9 @@ mod tests {
         });
         let sections = cx.read(super::sections);
         let titled = |title: &str| sections.iter().find(|section| section.matches(title)).is_some();
-        assert!(titled("xcode 27.2, the one in use, set up"));
+        assert!(titled("version 27.2"));
         assert!(titled("ios 27.2 (8.3 gb)"), "the system and its size");
         assert!(titled("ios 27.2. running."), "the one that runs");
         assert!(titled("1 runs now: iphone 18 pro."));
-        assert!(titled("what koyo doesn't touch"));
     }
 }
