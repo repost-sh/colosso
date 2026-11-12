@@ -247,7 +247,7 @@ impl Devices {
     }
 
     /// A device whose tab ended for want of a step the list sees (plugged in, trusted,
-    /// Developer Mode, its system, its services) starts again by itself once a listing begun
+    /// Developer Mode, its system) starts again by itself once a listing begun
     /// after it ended says the device is ready, as one unplugged does when it's back. The link
     /// counts these starts: what the list can't see (another app holding the device) or a host
     /// that disagrees with the list never starts it in a loop.
@@ -284,6 +284,9 @@ mod tests {
             {"hardwareProperties": {"udid": "OLD", "deviceType": "iPhone"},
              "connectionProperties": {"transportType": "wired", "pairingState": "paired"},
              "deviceProperties": {"name": "An iPhone", "developerModeStatus": "enabled", "osVersionNumber": "26.6.1", "ddiServicesAvailable": false}},
+            {"hardwareProperties": {"udid": "FRESH", "deviceType": "iPhone"},
+             "connectionProperties": {"transportType": "wired", "pairingState": "paired"},
+             "deviceProperties": {"name": "Restarted", "developerModeStatus": "enabled", "osVersionNumber": "27.2.1", "ddiServicesAvailable": false}},
             {"hardwareProperties": {"udid": "AIR", "deviceType": "iPhone"},
              "connectionProperties": {"transportType": "localNetwork", "pairingState": "paired"},
              "deviceProperties": {"name": "Over the air", "osVersionNumber": "27.0"}},
@@ -292,10 +295,11 @@ mod tests {
         ]}});
         let connected = parse(&listed);
         let udids: Vec<&str> = connected.iter().map(|device| device.udid.as_str()).collect();
-        assert_eq!(udids, ["OLD", "IPAD"], "by name; by cable only; iPhones and iPads only");
-        assert_eq!(connected[1].missing, None);
-        assert!(connected[1].ipad);
-        assert_eq!(connected[1].system, "iPadOS 27.0.1");
+        assert_eq!(udids, ["OLD", "FRESH", "IPAD"], "by name; by cable only; iPhones and iPads only");
+        assert_eq!(connected[1].missing, None, "its developer services load as it's started: no step of the person's");
+        assert_eq!(connected[2].missing, None);
+        assert!(connected[2].ipad);
+        assert_eq!(connected[2].system, "iPadOS 27.0.1");
         let (code, why) = connected[0].missing.clone().unwrap_or((Missing::Other, String::new()));
         assert_eq!(code, Missing::System);
         assert!(why.contains("An iPhone runs iOS 26.6.1"), "{why}");

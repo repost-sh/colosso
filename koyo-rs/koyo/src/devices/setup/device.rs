@@ -1,8 +1,8 @@
 //! Setting up a real iPhone or iPad (`docs/devices.md` 5, 10): a dialog with what it takes to
 //! be driven, each a step the person takes on the device with its exact path there: connected
-//! by cable, trusted, Developer Mode on, iOS 27 or later, its developer services up
+//! by cable, trusted, Developer Mode on, iOS 27 or later
 //! (`koyo_device_wire::real::STEPS`). Each row flips the moment `devicectl` says so: at each
-//! plug, and for the steps no plug says (trust, Developer Mode, the services), every two seconds
+//! plug, and for the steps no plug says (trust, Developer Mode), every two seconds
 //! while the dialog is open and Koyo in front, and the moment Koyo comes forward. Nothing is run
 //! on the device, and no setting of it is changed.
 
@@ -32,7 +32,6 @@ const ROWS: [(&str, &str); STEPS.len()] = [
     ("Trusted", "Unlock it and tap Trust when it asks."),
     ("Developer Mode", "Settings → Privacy & Security → Developer Mode."),
     ("iOS or iPadOS 27 or later", "Settings → General → Software Update."),
-    ("Developer services", "Nothing to do: they start once it's unlocked."),
 ];
 
 /// The step `device` misses (not plugged in, the cable); `None` once it misses none.
@@ -90,7 +89,7 @@ impl DeviceSetup {
     /// Whether the person's at a step no plug says is done: the list is looked at on a timer.
     fn waiting(&self, cx: &App) -> bool {
         let unknown = self.devices.read(cx).connected.is_none();
-        unknown || matches!(step(self.device(cx)), Some(Missing::Trust | Missing::DeveloperMode | Missing::DeveloperImage))
+        unknown || matches!(step(self.device(cx)), Some(Missing::Trust | Missing::DeveloperMode))
     }
 
     /// The device's name: as listed, or as its tab knows it while it isn't plugged in.
@@ -120,7 +119,6 @@ impl DeviceSetup {
                  The switch shows up only once the device has been connected to a Mac with Xcode: \
                  keep it plugged in. {BACK}"
             ),
-            Some(Missing::DeveloperImage) => format!("Unlock {name}: its developer services start by themselves once it is. {BACK}"),
             // What the list says of it, as the tab does: the update is the person's.
             Some(_) => device.and_then(|device| device.missing.as_ref()).map_or_else(String::new, |(_, said)| format!("{said} {BACK}")),
             None => format!(
