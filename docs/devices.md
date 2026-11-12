@@ -133,7 +133,15 @@ Crates:
   2.9 million reads) and maps places. **Which way is the interface's, not the device's**: told
   upside down, an iPhone's Safari stays on its side. The host reads the simulator's own
   `getdisplayinfo` (the CoreDevice action a real device answers too) for the primary display's
-  `currentOrientation`, after a turn and every two seconds while the picture is wanted.
+  `currentOrientation`, after a turn and every two seconds while the picture is wanted. Unread,
+  the picture turns the way the device was told, as the Simulator app shows it [built]: for
+  minutes after a first boot its service may answer only that the connection is invalid. An
+  iPhone's Home Screen doesn't turn, so a turn there shows nothing until an app that turns is in
+  front.
+- Home is the device's own button (the consumer page's Menu usage, held 60 ms); the app
+  switcher is Home pressed twice 100 ms apart, as the Simulator app's App Switcher [built].
+  Measured on an iPhone 18 Pro: two presses 100, 150 and 250 ms apart each brought it, where the
+  swipe from the bottom edge held a second took 1.6 s before it showed.
 - A contact's last move is folded into its lift unless the lift comes more than a frame later
   and the last place is sent once more (measured: a drag 17 steps of 18, two fingers 30 of 31,
   before the fix) [built].
