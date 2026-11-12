@@ -1,13 +1,13 @@
 //! The device's picture as an element (`docs/devices.md` 8): fitted to the pane and centred,
-//! never larger than one of the device's pixels to one of the screen's, its frames painted as
-//! they come, and the pointer over it heard. The device counts as drawn while the element is
+//! never larger than one of the device's pixels to one of the screen's, its corners rounded as
+//! the device's own screen's are, its frames painted as they come, and the pointer over it
+//! heard. The device counts as drawn while the element is
 //! (`Shown`, in its state): the host keeps the picture current only then, or for an agent.
 
 use gpui_kit::{
-    App, Bounds, ContentMask, Element, ElementId, ElementInputHandler, Entity, GlobalElementId,
-    Hitbox, HitboxBehavior, InspectorElementId, IntoElement, LayoutId, MouseDownEvent,
-    MouseMoveEvent, MouseUpEvent, Pixels, ScrollEvent, Style, WeakEntity, Window, point, px,
-    relative, size, DispatchPhase, Context,
+    App, Bounds, ContentMask, Context, Corners, DispatchPhase, Element, ElementId, ElementInputHandler, Entity,
+    GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, IntoElement, LayoutId, MouseDownEvent, MouseMoveEvent,
+    MouseUpEvent, Overflow, Pixels, ScrollEvent, Style, WeakEntity, Window, point, px, relative, size,
 };
 use koyo_device_wire::Size;
 
@@ -23,6 +23,8 @@ pub struct Canvas {
 pub struct Placed {
     hitbox: Hitbox,
     shown: Bounds<Pixels>,
+    /// The radius of the screen's corners as shown.
+    corner: Pixels,
 }
 
 /// The device drawn in a window, kept by the element for as long as it's drawn.
@@ -101,7 +103,7 @@ impl Element for Canvas {
         cx: &mut App,
     ) -> Placed {
         let screen = self.link.read(cx).screen();
-        let (points, scale) = screen.map_or((Size::default(), 1.), |s| (s.size, s.scale as f32));
+        let (points, scale, corner) = screen.map_or((Size::default(), 1., 0.), |s| (s.size, s.scale as f32, s.corner as f32));
         // Never larger than one device pixel to one of the screen's.
         let most = scale / window.scale_factor().max(1.);
         let (shown, fit) = fitted(bounds, points, most);
@@ -112,6 +114,7 @@ impl Element for Canvas {
         Placed {
             hitbox: window.insert_hitbox(shown, HitboxBehavior::Normal),
             shown,
+            corner: px(corner * fit),
         }
     }
 
@@ -132,8 +135,20 @@ impl Element for Canvas {
         let picture = self.link.read(cx).picture.clone();
         let pixels = picture.read(cx).shown.as_ref().map(|shown| shown.pixels.clone());
         if let Some(pixels) = pixels {
-            window.with_content_mask(Some(ContentMask { bounds: shown }), |window| {
-                window.paint_surface(shown, pixels);
+            // A box of the screen's shape: its rounded corners clip the frame, as the device's do.
+            let corner = gpui_kit::AbsoluteLength::from(placed.corner);
+            let shape = Style {
+                overflow: point(Overflow::Hidden, Overflow::Hidden),
+                corner_radii: Corners {
+                    top_left: corner,
+                    top_right: corner,
+                    bottom_right: corner,
+                    bottom_left: corner,
+                },
+                ..Style::default()
+            };
+            shape.paint(shown, window, cx, |window, _| {
+                window.with_content_mask(Some(ContentMask { bounds: shown }), |window| window.paint_surface(shown, pixels));
             });
             picture.update(cx, |picture, _| picture.paints += 1);
         }

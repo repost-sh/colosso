@@ -47,6 +47,8 @@ pub struct Simulator {
     /// again only once it failed.
     faces: Option<crate::xpc::Connection>,
     pub scale: f64,
+    /// The radius of its screen's corners, in points.
+    pub corner: f64,
     teller: Teller,
 }
 
@@ -63,7 +65,7 @@ impl Simulator {
         teller: Teller,
     ) -> Result<Simulator, String> {
         let device = Device::find(developer, set, udid)?;
-        let scale = device.scale();
+        let (scale, corner) = (device.scale(), device.corner());
         Ok(Simulator {
             udid: udid.to_owned(),
             set: set.to_owned(),
@@ -78,6 +80,7 @@ impl Simulator {
             faces: None,
             core_device: display::core_device_version(),
             scale,
+            corner,
             teller,
         })
     }

@@ -77,6 +77,7 @@ fn screen() -> Screen {
             height: 2622,
         },
         orientation: Orientation::Portrait,
+        corner: 62.,
     }
 }
 

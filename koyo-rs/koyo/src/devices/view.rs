@@ -234,6 +234,10 @@ impl DeviceView {
     }
 }
 
+/// The least room round a device's picture, at its sides and above it; the bar's room, which
+/// is more, is under it.
+const MARGIN: f32 = 48.;
+
 impl Render for DeviceView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = theme::palette(cx);
@@ -272,9 +276,13 @@ impl Render for DeviceView {
                     .relative()
                     .flex_1()
                     .min_h_0()
-                    // The bar floats over the pane's foot: the picture always keeps clear of it,
-                    // so the device's screen is never under it and doesn't move when it comes.
-                    .when(self.device.is_some(), |area| area.pb(gpui_kit::px(crate::held::ROOM)))
+                    // Room round the picture, so the device doesn't run to the pane's edge. The bar
+                    // floats over the pane's foot: the picture always keeps clear of it, so the
+                    // device's screen is never under it and doesn't move when it comes.
+                    .when(self.device.is_some(), |area| {
+                        let margin = gpui_kit::px(MARGIN);
+                        area.px(margin).pt(margin).pb(gpui_kit::px(crate::held::ROOM))
+                    })
                     .when_some(picture.filter(|_| notice.as_ref().is_none_or(|n| n.over)), |area, link| {
                         area.child(Canvas {
                             view: cx.entity(),

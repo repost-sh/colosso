@@ -40,6 +40,13 @@ fn the_host_shows_and_drives_a_simulator() {
         &format!("{:?} at {}x", screen.pixels, screen.scale),
         screen.pixels.width > 0,
     );
+    // An iPhone 17 Pro's is 62 points, an iPad Pro's 30: every model of Koyo's set has one.
+    row(
+        "QS10",
+        "the screen's corner radius, as Xcode has it for the model",
+        &format!("{} points", screen.corner),
+        screen.corner > 0. && screen.corner < 100.,
+    );
     host.tell(&ToHost::Visible { visible: true });
     // Groups of rows to run, all by default: `KOYO_REAL_SIM_ROWS=picture,touches`.
     let only = std::env::var("KOYO_REAL_SIM_ROWS").unwrap_or_default();
