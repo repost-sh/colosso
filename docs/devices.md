@@ -439,11 +439,13 @@ it would be a picture of a device.
 
 **Settings → Devices** (`settings_view/devices.rs`; `settings_open` with `devices`):
 
-- iPhones and iPads plugged in, each ready ("Ready to use in a Device tab") or with the step it
-  misses and `Set Up…`; none plugged in, how to plug one in, with `Set Up…`.
-- What simulators need: Xcode's version and whether it's set up, with `Set Up…` when it isn't;
-  the iOS systems installed with their sizes. No `Delete` for a system: they're Xcode's too, and
-  the page says to add or remove one in Xcode, under Settings → Components.
+- Requirements, each row marked at its right [built]: a green tick and a word once it's there
+  ("Installed"), an amber warning, a word ("Update needed", "Not selected", "Not installed",
+  "Setup unfinished") and `Set Up…` while it isn't. Xcode with its version; iOS versions, the
+  ones installed with their sizes. No `Delete` for a version: they're Xcode's, and the row says
+  to add or remove them in Xcode → Settings → Components.
+- iPhones and iPads plugged in, each marked the same way: "Ready", or "Needs setup" with the
+  step it misses and `Set Up…`; none plugged in, how to plug one in, with `Set Up…`.
 - Koyo's simulators, each with its system and whether it runs: `Stop` while it does (through its
   host, else as `simctl shutdown`), "Stopping…" until it's down, `Delete` while it doesn't,
   asked first. `New…` lists the newest system's models and makes one.
@@ -454,9 +456,10 @@ it would be a picture of a device.
   starting, running or still shutting down. Opening a tab starts nothing: whoever opens it starts
   it, the person through the question. No figure for memory: none was measured well enough to
   show.
-- What Koyo doesn't touch, in words: Xcode's simulators, and an iOS system ever; a simulator only
-  at the person's Delete; on an iPhone or iPad, no setting: it's kept awake only while its tab is
-  open, its camera and microphone off meanwhile.
+- No section of what Koyo doesn't touch [decided, the owner's]: rows that change nothing read
+  as options. Each of those facts is said where it applies: Delete's question says Xcode's
+  simulators stay as they are, and a real device's bar says it stays awake only while its tab
+  is open, its camera and microphone off.
 - Nothing here is reachable by `settings_set`.
 
 Measured off screen at the end of the walk: the page showed the device running; its `Stop` had
