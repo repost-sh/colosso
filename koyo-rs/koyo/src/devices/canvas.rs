@@ -162,7 +162,8 @@ impl Element for Canvas {
 
 impl Canvas {
     /// The pointer over the picture: a press focuses the tab, a drag that began on it keeps
-    /// reaching it, and what's scrolled over it scrolls the device, not the pane.
+    /// reaching it, and a trackpad's scroll over it scrolls the device; nothing scrolled over it
+    /// reaches the pane.
     fn listen(&self, hitbox: &Hitbox, window: &mut Window) {
         let (down, over_down) = (self.view.downgrade(), hitbox.clone());
         window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
@@ -191,7 +192,7 @@ impl Canvas {
             if phase != DispatchPhase::Bubble || !over_scroll.should_handle_scroll(window) {
                 return;
             }
-            let _ = scrolled.update(cx, |view, cx| view.wheel(event, cx));
+            let _ = scrolled.update(cx, |view, cx| view.scrolled(event, cx));
             cx.stop_propagation();
         });
     }

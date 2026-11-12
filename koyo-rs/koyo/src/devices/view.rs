@@ -310,6 +310,10 @@ impl Render for DeviceView {
 pub enum Trackpad {
     Rotate { phase: Phase, degrees: f32 },
     SmartZoom,
+    /// Two fingers that rested on it lifted without scrolling. GPUI tells that as a scroll
+    /// going on, so the scroll they began would never end, and a mouse's wheel smoothed by a
+    /// utility would be taken for it.
+    Lifted,
 }
 
 /// The device view the pointer was last over: where a trackpad gesture goes.
@@ -325,12 +329,15 @@ pub(super) fn hovered(view: WeakEntity<DeviceView>, cx: &mut App) {
 }
 
 /// Installs, once, the monitor that hears the trackpad's rotation and two-finger double tap
-/// (`NSEventTypeRotate`, `NSEventTypeSmartMagnify`): GPUI passes them to no one. The proof of
+/// (`NSEventTypeRotate`, `NSEventTypeSmartMagnify`), which GPUI passes to no one, and a scroll
+/// that was cancelled (`NSEventPhaseCancelled`), which it tells as one going on. The proof of
 /// concept's own, which a played rotation of 60° reached as 60°.
 fn watch_trackpad(cx: &mut App) {
     use objc2::runtime::AnyObject;
     const ROTATE: usize = 18;
+    const SCROLL_WHEEL: usize = 22;
     const SMART_MAGNIFY: usize = 32;
+    const CANCELLED: usize = 16;
     let (tell, mut heard) = futures::channel::mpsc::unbounded::<Trackpad>();
     let handler = block2::RcBlock::new(move |event: *mut AnyObject| -> *mut AnyObject {
         // SAFETY: an `NSEvent` AppKit hands the monitor, alive for the call; `type` and `phase`
@@ -348,11 +355,16 @@ fn watch_trackpad(cx: &mut App) {
                 let _ = tell.unbounded_send(Trackpad::Rotate { phase, degrees });
             } else if kind == SMART_MAGNIFY {
                 let _ = tell.unbounded_send(Trackpad::SmartZoom);
+            } else if kind == SCROLL_WHEEL {
+                let phase: usize = objc2::msg_send![event, phase];
+                if phase == CANCELLED {
+                    let _ = tell.unbounded_send(Trackpad::Lifted);
+                }
             }
         }
         event
     });
-    let mask: u64 = (1 << ROTATE) | (1 << SMART_MAGNIFY);
+    let mask: u64 = (1 << ROTATE) | (1 << SCROLL_WHEEL) | (1 << SMART_MAGNIFY);
     // SAFETY: a class method that copies the block and keeps it; called on the main thread.
     unsafe {
         let _: *mut AnyObject = objc2::msg_send![

@@ -69,13 +69,12 @@ fn release(x: f32, y: f32) -> Mac {
     Mac::Release { at: At::new(x, y) }
 }
 
-fn scroll(phase: Phase, dy: f32, precise: bool) -> Mac {
+fn scroll(phase: Phase, dy: f32) -> Mac {
     Mac::Scroll {
         at: At::new(0.5, 0.5),
         phase,
         dx: 0.,
         dy,
-        precise,
     }
 }
 
@@ -188,26 +187,26 @@ fn a_pinch_and_a_rotation_at_once_share_the_fingers_and_lift_them_once() {
 fn a_trackpad_scroll_is_a_finger_that_drags_and_its_glide_is_left_to_the_device() {
     let mut f = fingers();
     // Fingers resting on the trackpad put none on the screen.
-    assert!(f.take(scroll(Phase::Started, 0., true), 0).is_empty());
+    assert!(f.take(scroll(Phase::Started, 0.), 0).is_empty());
     assert_eq!(
-        lines(&f.take(scroll(Phase::Moved, -0.1, true), 10)),
+        lines(&f.take(scroll(Phase::Moved, -0.1), 10)),
         ["d 0.5000 0.5000 0", "d 0.5000 0.4000 0"]
     );
     assert_eq!(
-        lines(&f.take(scroll(Phase::Ended, 0., true), 20)),
+        lines(&f.take(scroll(Phase::Ended, 0.), 20)),
         ["u 0.5000 0.4000 0"]
     );
     // The trackpad's own momentum comes after, with no beginning: nothing is touched.
-    assert!(f.take(scroll(Phase::Moved, -0.05, true), 30).is_empty());
+    assert!(f.take(scroll(Phase::Moved, -0.05), 30).is_empty());
     assert!(!f.down());
 }
 
 #[test]
 fn a_scroll_longer_than_the_screen_takes_hold_again_where_it_began() {
     let mut f = fingers();
-    f.take(scroll(Phase::Started, 0., true), 0);
-    f.take(scroll(Phase::Moved, -0.4, true), 10);
-    let steps = lines(&f.take(scroll(Phase::Moved, -0.2, true), 20));
+    f.take(scroll(Phase::Started, 0.), 0);
+    f.take(scroll(Phase::Moved, -0.4), 10);
+    let steps = lines(&f.take(scroll(Phase::Moved, -0.2), 20));
     assert_eq!(
         steps,
         [
@@ -221,8 +220,8 @@ fn a_scroll_longer_than_the_screen_takes_hold_again_where_it_began() {
 #[test]
 fn trackpad_fingers_that_just_stop_are_lifted_and_come_down_again_when_they_go_on() {
     let mut f = fingers();
-    f.take(scroll(Phase::Started, 0., true), 0);
-    f.take(scroll(Phase::Moved, -0.1, true), 10);
+    f.take(scroll(Phase::Started, 0.), 0);
+    f.take(scroll(Phase::Moved, -0.1), 10);
     assert!(f.tick(200).is_empty());
     assert_eq!(
         lines(&f.tick(10 + TRACKPAD_RESTS_MS)),
@@ -230,7 +229,7 @@ fn trackpad_fingers_that_just_stop_are_lifted_and_come_down_again_when_they_go_o
     );
     // The same scroll goes on: a finger again, where the pointer is.
     assert_eq!(
-        lines(&f.take(scroll(Phase::Moved, -0.1, true), 900)),
+        lines(&f.take(scroll(Phase::Moved, -0.1), 900)),
         ["d 0.5000 0.5000 0", "d 0.5000 0.4000 0"]
     );
     // A pinch the system took back never says it ended.
@@ -238,22 +237,6 @@ fn trackpad_fingers_that_just_stop_are_lifted_and_come_down_again_when_they_go_o
     f.take(pinch(Phase::Started, 0.), 0);
     f.take(pinch(Phase::Moved, 0.1), 10);
     assert!(lines(&f.tick(10 + TRACKPAD_RESTS_MS))[0].starts_with("u2 "));
-    assert!(!f.down());
-}
-
-#[test]
-fn a_wheel_drags_a_finger_that_lifts_once_the_wheel_rests() {
-    let mut f = fingers();
-    assert_eq!(
-        lines(&f.take(scroll(Phase::Moved, -0.04, false), 0)),
-        ["d 0.5000 0.5000 0", "d 0.5000 0.4600 0"]
-    );
-    assert_eq!(
-        lines(&f.take(scroll(Phase::Moved, -0.04, false), 50)),
-        ["d 0.5000 0.4200 0"]
-    );
-    assert!(f.tick(100).is_empty());
-    assert_eq!(lines(&f.tick(50 + WHEEL_RESTS_MS)), ["u 0.5000 0.4200 0"]);
     assert!(!f.down());
 }
 
@@ -293,7 +276,7 @@ fn option_drag_is_two_fingers_across_the_middle_and_shift_moves_them_together() 
 fn a_scroll_does_nothing_while_the_button_holds_a_finger_down() {
     let mut f = fingers();
     f.take(press(0.5, 0.5), 0);
-    assert!(f.take(scroll(Phase::Started, 0.1, true), 5).is_empty());
+    assert!(f.take(scroll(Phase::Started, 0.1), 5).is_empty());
     assert!(f.take(pinch(Phase::Started, 0.1), 6).is_empty());
     assert_eq!(lines(&f.take(release(0.5, 0.5), 10)), ["u 0.5000 0.5000 0"]);
 }
