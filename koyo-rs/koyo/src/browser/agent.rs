@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use gpui_kit::{App, Context, Entity, Task};
 use koyo_app_control::ops::browser::{
-    DeviceName, Orientation, Viewport as ViewportFacts, ViewportMode,
+    DeviceName, Orientation, PageDialog, Viewport as ViewportFacts, ViewportMode,
 };
 use koyo_browser_ipc::AppRequest;
 pub use koyo_browser_ipc::{Go, Viewport};
@@ -23,6 +23,10 @@ pub use super::responsive::{
 use super::view::BrowserView;
 pub(crate) use super::view::sight::AWAKE_FOR;
 
+mod asking;
+pub use asking::Unanswered;
+pub(in crate::browser) use asking::holds_up;
+
 /// Why a protocol command didn't run for an agent.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AgentError {
@@ -30,6 +34,8 @@ pub enum AgentError {
     Refused(Refused),
     /// The engine hasn't the page open, for the reason given.
     NotOpen(NotOpen),
+    /// The page waits on a question, and does nothing else until it's answered.
+    Asking(PageDialog),
 }
 
 /// Why the engine hasn't a page open.
@@ -84,8 +90,12 @@ pub struct PageFacts {
     pub controller: Option<String>,
     /// Whether the host has it open, so commands reach it.
     pub open: bool,
+    /// Whether the engine has it on screen: drawn, or used by an agent lately.
+    pub on_screen: bool,
     /// The size and device it's laid out at.
     pub viewport: ViewportFacts,
+    /// What it asks and waits on, the first of its questions.
+    pub dialog: Option<PageDialog>,
 }
 
 impl BrowserView {
@@ -101,7 +111,9 @@ impl BrowserView {
                 None => None,
             },
             open: self.is_open(cx),
+            on_screen: self.is_open(cx) && self.on_screen(),
             viewport: self.viewport_facts(cx),
+            dialog: self.dialog(),
         }
     }
 
@@ -141,6 +153,16 @@ impl BrowserView {
         }
     }
 
+    /// The page's address.
+    pub fn url(&self) -> &str {
+        &self.page.url
+    }
+
+    /// Whether the page is loading.
+    pub fn loading(&self) -> bool {
+        self.page.loading
+    }
+
     /// Why the engine hasn't the page open; none when it has.
     pub fn not_open(&self, cx: &App) -> Option<NotOpen> {
         if self.is_open(cx) {
@@ -174,14 +196,19 @@ impl BrowserView {
         responsive::laid_out(target.width, target.height, self.zoom, mobile, inner)
     }
 
-    /// Loads `url` for `actor`, which must hold the page or find it free.
+    /// Loads `url` for `actor`, which must hold the page or find it free. A page the engine
+    /// is starting for opens at the new address, and a start page is one to load it in.
     pub fn agent_navigate(
         &mut self,
         actor: &Actor,
         url: String,
         cx: &mut Context<Self>,
-    ) -> Result<(), Refused> {
-        self.agent_claims(actor.clone(), false, None, cx)?;
+    ) -> Result<(), AgentError> {
+        match self.ready_for_agents(cx) {
+            Ok(()) | Err(AgentError::NotOpen(NotOpen::Starting | NotOpen::StartPage)) => {}
+            Err(why) => return Err(why),
+        }
+        (self.agent_claims(actor.clone(), false, None, cx)).map_err(AgentError::Refused)?;
         self.navigate(url, cx);
         Ok(())
     }
@@ -193,8 +220,9 @@ impl BrowserView {
         actor: &Actor,
         to: Go,
         cx: &mut Context<Self>,
-    ) -> Result<(), Refused> {
-        self.agent_claims(actor.clone(), false, None, cx)?;
+    ) -> Result<(), AgentError> {
+        self.ready_for_agents(cx)?;
+        (self.agent_claims(actor.clone(), false, None, cx)).map_err(AgentError::Refused)?;
         let pane = self.pane;
         self.page.loading = true;
         self.send_to_page(AppRequest::Go { pane, to }, cx);
@@ -236,7 +264,8 @@ fn orientation(landscape: bool) -> Orientation {
 
 /// Runs a protocol command on `view`'s page: under its lease for `actor` when it acts, freely
 /// when it only reads (`actor` is `None`). Its answer comes from the returned task, which
-/// waits for it at most `limit` ([`Browsers::ask`]).
+/// waits for it at most `limit`, and no longer than until the page asks something that holds
+/// it up ([`Browsers::ask`]).
 pub fn cdp(
     view: &Entity<BrowserView>,
     actor: Option<&Actor>,
@@ -245,17 +274,17 @@ pub fn cdp(
     limit: Duration,
     cx: &mut App,
 ) -> Result<Task<Answer>, AgentError> {
-    if let Some(why) = view.read(cx).not_open(cx) {
-        return Err(AgentError::NotOpen(why));
-    }
+    view.read(cx).ready_for_agents(cx)?;
     if let Some(actor) = actor {
         (view.update(cx, |view, cx| {
             view.agent_claims(actor.clone(), false, None, cx)
         }))
         .map_err(AgentError::Refused)?;
     }
-    view.update(cx, BrowserView::agent_uses);
-    let pane = view.read(cx).pane;
+    let pane = view.update(cx, |view, cx| {
+        view.agent_uses(cx);
+        view.pane
+    });
     let browsers = Browsers::global(cx);
     Ok(browsers.update(cx, |browsers, cx| {
         browsers.ask(pane, method, params, limit, cx)

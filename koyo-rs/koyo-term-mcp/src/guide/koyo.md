@@ -9,7 +9,8 @@ Koyo only through them: never edit its settings, data or other files.
 ## Finding your way
 
 - `app_status` says what the window shows (the workspace or a settings page), its layout
-  and panels, and the selected project, worktree and pane. Start here.
+  and panels, and the selected project, worktree and pane, and whether the window is on
+  screen at all (`onScreen`: not minimized or on another desktop). Start here.
 - `project_list` lists the projects in sidebar order, each with its worktrees: path,
   branch, whether it's the main checkout or selected, and how many tabs and terminals it
   has.
@@ -135,7 +136,16 @@ chat stays `working` until they do. Tell them rather than wait on it.
 ## Browser pages
 
 Open a page with `tab_open` (`kind: "browser"`, `url`) or `pane_split`, and find one with
-`browser_list`. `browser_navigate` moves a page that's open; it never opens one.
+`browser_list`. `browser_navigate` moves a page that's open; it never opens one. The page
+you open last is the one your browser calls mean when they leave out `pane`; name `pane`
+whenever more than one page is about, so you never act on the person's.
+
+A page opens in the engine at once, shown or not. `browser_list` says whether the engine
+has each one `open` (the tools reach only an open page; a tab brought back at launch has no
+page until the person shows it) and `onScreen`. Out of sight, a page you use is on screen
+for the engine all the same: its animation frames run, clicks and keys land at once,
+screenshots answer. 90 s after your last command it goes out of sight (its timers slow and
+`visibilityState` turns `hidden`), and your next command brings it back.
 
 A page you open starts in responsive mode at 1440 × 900, a desktop screen's size, scaled
 down to fit its pane, so it lays out and screenshots as on a desktop whatever the
@@ -149,7 +159,9 @@ Reading needs nothing more: `browser_read` gives the page as text, Markdown or H
 or one element's (`selector`); `browser_snapshot` gives its accessibility tree with
 elements marked `[ref=eN]`; `browser_screenshot` gives an image; `browser_wait` waits for
 the page to load, or for an element, text or address to appear (`met: false` when time ran
-out is an answer, not an error). Prefer the snapshot and the read to screenshots.
+out is an answer, not an error; a page that can't open or a selector the page can't read
+fails at once). Prefer the snapshot and the read to screenshots. `browser_navigate` and
+`browser_go` say whether the page finished loading (`loaded`).
 
 Acting needs the page's lease, which your first act on a free page claims:
 `browser_navigate`, `browser_go` (`back`, `forward`, `reload`), `browser_click`,
@@ -157,6 +169,13 @@ Acting needs the page's lease, which your first act on a free page claims:
 `browser_eval`. Point at elements with a snapshot's `ref` rather than coordinates, and
 snapshot again after the page navigates, since refs don't outlive it. `browser_claim` and
 `browser_release` take and give back the lease outright.
+
+A page's `alert`, `confirm`, `prompt` or question before it's left holds it up: every
+command on it waits behind it. A command under way when the page asks stops at once with
+`browser_unavailable` naming the dialog (an act that opened it landed: don't repeat it),
+and `browser_list` shows it as the page's `dialog`. Answer it with `browser_dialog`
+(`accept`, with `text` for a prompt, or `dismiss`). A sign-in, permission or certificate
+question is the person's to answer.
 
 `person_has_control` means the person holds the page, and its message says which way. A
 page they're only using (they clicked or typed in it) comes back on its own 5 s after
@@ -307,8 +326,8 @@ A failure has a `code`, a `message` and `retryable`; retry only what is retryabl
 | `unsaved_changes` | Save `details.files` first, or discard them with the person's confirmation. |
 | `person_has_control` | The person holds the page, terminal or agent desktop. A page or the desktop they're only using comes back 5 s after they stop (`retryable`): wait, then retry. Otherwise use another. |
 | `control_required` | Claim the page first. |
-| `timeout` | Retry, or wait for something narrower. |
-| `browser_unavailable` | The browser engine is restarting: retry shortly. |
+| `timeout` | Retry when `retryable`, or wait for something narrower. A browser act that timed out may have acted all the same (`retryable: false`): look at the page before doing it again. |
+| `browser_unavailable` | The page can't take the command now, as the message says. Retryable: the engine is starting, or the page is between documents; try again shortly. Not retryable: the page waits on a dialog (answer it with `browser_dialog`), a tab brought back at launch or never shown (ask the person to show it, or open your own page), a start page (`browser_navigate` loads one), a failed engine (the person restarts it), or a closed page. |
 | `desktop_unavailable` | The agent desktop is off, starting or lacks a grant, as the message says: tell the person (Settings → Agent desktop); don't retry in a loop. |
 | `git_failed` | Git refused; the message says why. |
 | `internal` | Something broke in Koyo; the message says what. |

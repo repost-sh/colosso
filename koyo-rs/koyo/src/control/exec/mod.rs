@@ -109,6 +109,7 @@ pub(crate) fn run(caller: &Caller, command: Command, cx: &mut App) -> Exec {
         C::BrowserPressKey(input) => browser::press_key(caller, &input, cx).into(),
         C::BrowserScroll(input) => browser::scroll(caller, input, cx).into(),
         C::BrowserViewport(input) => browser::viewport(caller, &input, cx).into(),
+        C::BrowserDialog(input) => browser::dialog(caller, &input, cx).into(),
         C::DesktopOpen(input) => desktop::open(caller, input, cx),
         C::DesktopWindows(_) => desktop::windows(cx),
         C::DesktopScreenshot(input) => desktop::screenshot(&input, cx).into(),

@@ -348,14 +348,15 @@ The person sees an agent at work (`browser/pointer.rs`): a glow inside the page'
 while an agent holds it, and for `browser_click` the agent's pointer, a navigation arrow
 that travels to the point along an arc of an ellipse, easing in and out, its heading the
 arc's. The click waits for it to arrive, 0.38 to 0.9 s by distance (none with reduced
-motion), and sends a ring out where it lands; the pointer fades 6 s after its last click.
+motion, nor on a page nobody can see: out of sight, or in a window off screen), and sends a ring out where
+it lands; the pointer fades 6 s after its last click.
 
 ```
-browser_list     [read] R {} → { pages: [{ pane, url, title, loading, worktree, controller?,
-                   viewport }] }
+browser_list     [read] R {} → { pages: [{ pane, url, title, loading, open, onScreen,
+                   worktree, controller?, viewport, dialog?: { kind, message, defaultText? } }] }
 browser_navigate [browser] C { pane?, url, wait?: "load"|"none" (default load), timeoutMs? }
-                   → an open page's; it never opens one
-browser_go       [browser] C { pane?, action: "back"|"forward"|"reload" }
+                   → { pane, url, title, loaded? }; an open page's, it never opens one
+browser_go       [browser] C { pane?, action: "back"|"forward"|"reload" } → as navigate
 browser_read     [read] R { pane?, format?: "text"|"markdown"|"html" (default text),
                    selector?, limit? } → { url, title, content, truncated }
 browser_snapshot [read] R { pane?, interactive?: bool } → { url, title, tree: text with
@@ -369,6 +370,8 @@ browser_scroll   [browser] C { pane?, dx?, dy?, ref? | selector? (scroll into vi
 browser_wait     [read] R { pane?, for: "load"|"selector"|"text"|"url", value?, timeoutMs? }
                    → { met, elapsedMs }
 browser_claim    [browser] I { pane?, takeover?, reason? } ; browser_release [browser] I { pane? }
+browser_dialog   [browser] C { pane?, action: "accept"|"dismiss", text? } → the page's; answers
+                   the alert, confirm, prompt or leave-page question it waits on
 browser_viewport [browser] I { pane?, device?, width?, height?, scale?, mobile?, touch?,
                    userAgent?, orientation?, zoom?, fill?: true, screenshot?: bool }
                    → { viewport, settled } (+ image block with `screenshot`); responsive mode,
@@ -553,7 +556,7 @@ owner found the list of no use, and agents read the log with `activity_list` (5)
 
 ## 11. As implemented (2026-11-02)
 
-- Crates: `koyo-rs/koyo-app-control` (70 operations, frames, socket, client, `koyo app`),
+- Crates: `koyo-rs/koyo-app-control` (71 operations, frames, socket, client, `koyo app`),
   `koyo-rs/koyo/src/control/` (listener, gate, approval, confirmations, receipts, activity,
   topics, in-process client, HTTP server in `control/http.rs`, executors in `control/exec/`,
   browser executors in `control/exec/browser/`, the agent desktop's in
@@ -561,27 +564,46 @@ owner found the list of no use, and agents read the log with `activity_list` (5)
   `backend.rs`, `socket.rs`, `app.rs`, `tools.rs`, `launch.rs`, `subscriptions.rs`,
   `http.rs`), the Settings page in `settings_view/mcp_server.rs`, `mcp_agents.rs` (the
   Agents section) and `mcp_clients.rs`.
-- `koyo mcp` lists 85 tools (14 terminal, 70 app, `app_launch`); HTTP lists 84 (no
+- `koyo mcp` lists 86 tools (14 terminal, 71 app, `app_launch`); HTTP lists 85 (no
   `app_launch`). The server is named `koyo`. A chat's session registers it under that name,
   with `KOYO_CHAT` (`docs/chat.md` O1).
 - Browser tools run over CDP through `browser/agent.rs`, its refusals typed (`AgentError`). A
-  page opens in the engine once its pane is drawn. One an agent opened out of sight is opened
-  at once (`BrowserView::open_out_of_sight`) at its responsive mode's size (1440 × 900 by
-  default, 2026-11-08), or, filling its pane, at 1280×800, the size a pane assumes before it's
-  drawn; once shown a page filling its pane takes the pane's size. Any other page never
-  shown, and a tab brought back at launch, answers `browser_unavailable`, not retryable,
-  saying to show its tab (`tab_select`, `pane_focus`, and `app_focus` when the window is
-  minimized or on another desktop) or open a new page; a start page says `browser_navigate`
-  loads one; an engine still starting says to try again shortly (retryable); one that failed
-  says the person restarts it (`control/exec/browser/refusals.rs`). A tab brought back at
-  launch has no page until it's shown; `browser_list` lists it with its kept address and
-  title and a 0 × 0 viewport (`docs/browser.md` 6).
-- Not built (found 2026-11-12): a page an agent opens with `select: true` (or with Switch to
-  what agents open on) opens once the window draws its tab, as the person's own pages do;
-  while Koyo's window is minimized or on another desktop it draws nothing, so the page stays
-  unopened and the tools answer as for a page never shown.
+  page opens in the engine once its pane is drawn. One an agent opens is opened at once
+  unless it's in the tab a window on screen shows, which draws it next
+  (`control/exec/open.rs` `open_agents_page`, 2026-11-12: a window minimized or on another
+  desktop draws nothing, so before a `select: true` page there never opened), at its
+  responsive mode's size (1440 × 900 by default, 2026-11-08), or, filling its pane, at
+  1280×800, the size a pane assumes before it's drawn; once shown a page filling its pane
+  takes the pane's size. A page an agent opens (not one it moves) is the one its calls
+  without `pane` mean from then on, as the page it acted on last is (2026-11-12). Any other
+  page never shown, and a tab brought back at launch, answers `browser_unavailable`, not
+  retryable, saying to open a page of its own or ask the person to show it, showing it
+  itself only if the person asked to see it (5, the person decides); a start page says
+  `browser_navigate` loads one; an engine still starting says to try again shortly
+  (retryable); one that failed says the person restarts it
+  (`control/exec/browser/refusals.rs`). A tab brought back at launch has no page until it's
+  shown; `browser_list` lists it with its kept address and title, `open: false` and a 0 × 0
+  viewport (`docs/browser.md` 6).
+- What an agent can tell of a page (2026-11-12): `browser_list` says whether the engine has
+  each page `open` and `onScreen`, and the `dialog` it waits on; `app_status` says whether
+  the window is `onScreen` (GPUI's window visibility; minimized, on another desktop or wholly
+  covered it draws nothing, and a page in it counts as out of sight: `BrowserView::drawn`). `browser_wait` fails at once on a page that won't open or a
+  script that throws (a selector the page can't read), rather than when its time runs out;
+  `browser_navigate` and `browser_go` refuse a page that can't take a command, as every act
+  does (`BrowserView::ready_for_agents`: not open, or held up by a question; navigate loads
+  an address in a start page, or once a starting engine runs) and say whether the page
+  finished loading (`loaded`). A command Chromium takes for malformed answers `internal`, and
+  one on a page that closed isn't retryable.
+- Dialogs (2026-11-12): an alert, confirm, prompt or question before a page is left holds the
+  page up, so a command on it waits behind it. Every agent command is refused at once while
+  the page waits on such a question, and one under way when the page asks one stops waiting
+  (`Browsers::page_asks` ends the pane's agent commands with `Answer::Asking`), answering
+  `browser_unavailable` with the dialog in `details` (an act that opened it landed). `browser_dialog` answers it as the person's dialog would, closing
+  that dialog if it's up (`browser/agent/asking.rs`); a sign-in, permission or certificate
+  question is the person's (`person_has_control`).
 - On screen for the engine (2026-11-12): a page is on screen while its pane draws it with no
-  notice over it, frame or not (`browser/page.rs`), and while an agent uses it
+  notice over it, frame or not (`browser/page.rs`), in a window on screen, and while an agent
+  uses it
   (`browser/view/sight.rs`): opening it out of sight, each command through `agent::cdp`, each
   act that claims it and each look of `browser_wait` keep it on screen for `AWAKE_FOR`, 90 s,
   longer than any one tool call takes. Past that a page no pane draws is hidden (Chromium's `WasHidden`: no frames, timers
@@ -591,7 +613,8 @@ owner found the list of no use, and agents read the log with `activity_list` (5)
   is one Chromium was told is hidden, and the frame clock begins frames of every other.
 - Each protocol command a browser tool sends waits 30 s at most for the page, 90 s for a
   script whose promise is awaited (`browser_eval` with `awaitPromise`), within the client's
-  own 100 s (`CALL_TIMEOUT`); past it the tool answers `timeout` saying so, and the app stops
+  own 100 s (`CALL_TIMEOUT`); past it the tool answers `timeout` saying so, not retryable for
+  an act, which may have landed all the same, and the app stops
   waiting for it (`Browsers::ask`, its limit given by the caller: `script::evaluate` asks
   longer when it awaits). The host lets go of its own note of the command once Chromium
   answers or the page closes.
@@ -798,11 +821,10 @@ where it lives:
 
 - Today: `browser_click` shows the agent's pointer travelling to the point and waits for
   it, 0.38 to 0.9 s by distance (`browser/pointer.rs`), with a glow while an agent holds
-  the page; none with reduced motion. It waits on a page out of sight too, where nobody
-  sees it.
+  the page; none with reduced motion, and none on a page nobody can see (out of sight, or in
+  a window off screen; 2026-11-12).
 - Proposed: `externalControl.showAgentPointer: bool`, default on. Off, the glow stays and
-  clicks don't wait. Separately, a fix rather than a setting: skip the wait on a page out
-  of sight.
+  clicks don't wait.
 - Protects: the person's view of what agents do in pages (on), against agents' speed (off).
 - Home: `externalControl`: an agent turning it off would act less visibly.
 

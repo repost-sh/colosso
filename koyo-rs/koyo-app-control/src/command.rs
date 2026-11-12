@@ -192,6 +192,7 @@ registry! {
     BrowserScroll => ops::browser::BrowserScroll,
     BrowserWait => ops::browser::BrowserWait,
     BrowserViewport => ops::browser::BrowserViewport,
+    BrowserDialog => ops::browser::BrowserDialog,
     BrowserClaim => ops::browser::BrowserClaim,
     BrowserRelease => ops::browser::BrowserRelease,
     DesktopOpen => ops::desktop::DesktopOpen,

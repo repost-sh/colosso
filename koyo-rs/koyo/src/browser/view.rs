@@ -107,6 +107,9 @@ pub struct BrowserView {
     pub(super) shown: Option<WeakEntity<Shown>>,
     /// Whether the host was last told the page is on screen.
     pub(super) visible: Option<bool>,
+    /// Whether the page's window is on screen: minimized or on another desktop it draws
+    /// nothing, so the page isn't seen however its pane is laid out (`sight.rs`).
+    pub(super) window_visible: bool,
     /// Until when the page is on screen for the engine though no pane draws it, an agent
     /// having used it, and the task that ends that then (`sight.rs`).
     pub(super) awake: Option<(Instant, Task<()>)>,
@@ -208,6 +211,10 @@ impl BrowserView {
         let pane = NEXT_PANE.fetch_add(1, Ordering::Relaxed);
         let focus = cx.focus_handle();
         let subscriptions = vec![
+            cx.observe_window_visibility(window, |this, visibility, _, cx| {
+                this.window_visible = visibility.is_visible();
+                this.tell_sight(cx);
+            }),
             cx.on_focus(&focus, window, |this, _, cx| this.set_focused(true, cx)),
             cx.on_blur(&focus, window, |this, _, cx| this.set_focused(false, cx)),
             cx.subscribe_in(
@@ -257,6 +264,7 @@ impl BrowserView {
             resized_at: None,
             shown: None,
             visible: None,
+            window_visible: window.is_visible(),
             awake: None,
             cursor: Cursor::Arrow,
             focus,

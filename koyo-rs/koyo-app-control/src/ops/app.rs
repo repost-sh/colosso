@@ -105,6 +105,10 @@ pub struct AppStatusOutput {
     pub window_open: bool,
     /// Whether the window has the system's focus.
     pub focused: bool,
+    /// Whether the window is on screen: not minimized, on another desktop or wholly covered.
+    /// While it isn't, it draws nothing, so a tab it shows isn't drawn either.
+    #[serde(default = "super::shared::yes")]
+    pub on_screen: bool,
     /// What the window shows: `workspace`, or `settings:<page>`.
     pub route: String,
     /// `orca` or `arc`.
@@ -149,7 +153,7 @@ impl Operation for AppStatus {
     const NAME: &'static str = "app_status";
     const TITLE: &'static str = "Read app status";
     const SCOPE: Scope = Scope::Read;
-    const DESCRIPTION: &'static str = "What Koyo's window shows: its version, whether the window is open and focused, the route (workspace or a settings page), layout and panels, the selected project, worktree and pane, the MCP server's address and the data folder. Start here.";
+    const DESCRIPTION: &'static str = "What Koyo's window shows: its version, whether the window is open, focused and on screen (not minimized or on another desktop), the route (workspace or a settings page), layout and panels, the selected project, worktree and pane, the MCP server's address and the data folder. Start here.";
     const HINTS: Hints = Hints::READ;
     type Input = NoInput;
     type Output = AppStatusOutput;

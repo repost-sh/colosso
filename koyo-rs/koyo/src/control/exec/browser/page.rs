@@ -9,15 +9,15 @@ use std::time::{Duration, Instant};
 use gpui_kit::{App, AsyncApp, Entity, Global};
 use koyo_app_control::ControlError;
 use koyo_app_control::ops::browser::{
-    BrowserClaimInput, BrowserGoInput, BrowserListOutput, BrowserNavigateInput, BrowserWaitInput,
-    BrowserWaitOutput, DEFAULT_TIMEOUT_MS, GoAction, Lease, MAX_TIMEOUT_MS, PageInfo, PageOutput,
-    WaitFor, WaitUntil,
+    BrowserClaimInput, BrowserDialogInput, BrowserGoInput, BrowserListOutput, BrowserNavigateInput,
+    BrowserWaitInput, BrowserWaitOutput, DEFAULT_TIMEOUT_MS, GoAction, Lease, MAX_TIMEOUT_MS,
+    PageInfo, PageOutput, WaitFor, WaitUntil,
 };
 use serde_json::Value;
 
 use super::super::{Caller, Exec, main_shell, output, window_closed};
 use super::{refusals, script};
-use crate::browser::agent::{self, Actor, Answer, Go, Mode, Refused};
+use crate::browser::agent::{self, Actor, AgentError, Answer, Go, Mode, NotOpen, Refused};
 use crate::browser::{self, BrowserView};
 
 /// How often a wait looks at the page again.
@@ -85,9 +85,12 @@ fn pages(cx: &App) -> Result<(Vec<Listed>, Option<u64>), ControlError> {
                             url: address.to_owned(),
                             title: pane.title.to_string(),
                             loading: false,
+                            open: false,
+                            on_screen: false,
                             worktree: unit.worktree.path.display().to_string(),
                             controller: None,
                             viewport: agent::unshown_viewport(),
+                            dialog: None,
                         }));
                     }
                 }
@@ -141,11 +144,12 @@ pub(super) fn resolve(
     }
 }
 
-/// Notes `page` as the one `caller` acted on last.
-pub(super) fn acted(caller: &Caller, page: &Page, cx: &mut App) {
+/// Notes pane `pane`, a page `caller` opened or acted on, as the one its next call without a
+/// `pane` means.
+pub(crate) fn acted(caller: &Caller, pane: u64, cx: &mut App) {
     cx.default_global::<LastPages>()
         .0
-        .insert(caller.key(), page.pane);
+        .insert(caller.key(), pane);
 }
 
 /// A refusal of the page's lease, in app control's words.
@@ -206,11 +210,19 @@ pub(super) async fn call_within(
         .await
     {
         Answer::Answered(Ok(value)) => Ok(value),
-        Answer::Answered(Err(why)) => Err(ControlError::browser_unavailable(why)),
+        Answer::Answered(Err(why)) => Err(refusals::command_failed(method, why)),
         Answer::Stopped => Err(ControlError::browser_unavailable(
             "The browser engine stopped before it answered.",
         )),
-        Answer::TimedOut => Err(refusals::timed_out(method, limit)),
+        Answer::TimedOut => Err(refusals::timed_out(method, limit, caller.is_some())),
+        Answer::Asking => {
+            let dialog = cx.update(|cx| page.view.read(cx).dialog());
+            Err(refusals::asked_meanwhile(
+                method,
+                dialog.as_ref(),
+                caller.is_some(),
+            ))
+        }
     }
 }
 
@@ -221,6 +233,7 @@ pub(super) fn now(page: &Page, cx: &App) -> PageOutput {
         pane: page.pane,
         url: facts.url,
         title: facts.title,
+        loaded: None,
     }
 }
 
@@ -235,9 +248,12 @@ pub(crate) fn list(cx: &mut App) -> Result<Value, ControlError> {
                     url: facts.url,
                     title: facts.title,
                     loading: facts.loading,
+                    open: facts.open,
+                    on_screen: facts.on_screen,
                     worktree: page.worktree.display().to_string(),
                     controller: facts.controller,
                     viewport: facts.viewport,
+                    dialog: facts.dialog,
                 }
             }
             Listed::Unshown(info) => info.clone(),
@@ -261,11 +277,27 @@ pub(crate) fn claim(
         view.agent_claims(actor, takeover, reason, cx)
     }))
     .map_err(refused)?;
-    acted(caller, &page, cx);
+    acted(caller, page.pane, cx);
     output(&Lease {
         pane: page.pane,
         held: true,
     })
+}
+
+/// Answers the question `caller`'s page waits on, as `input` says.
+pub(crate) fn dialog(
+    caller: &Caller,
+    input: &BrowserDialogInput,
+    cx: &mut App,
+) -> Result<Exec, ControlError> {
+    let page = resolve(caller, input.pane, cx)?;
+    let (actor, action, text) = (caller.actor(), input.action, input.text.clone());
+    (page
+        .view
+        .update(cx, |view, cx| view.agent_answers(&actor, action, text, cx)))
+    .map_err(|why| refusals::unanswered(why, page.pane))?;
+    acted(caller, page.pane, cx);
+    Ok(Exec::Ready(output(&now(&page, cx))))
 }
 
 pub(crate) fn release(
@@ -321,7 +353,7 @@ pub(crate) fn go(
 }
 
 /// Moves the page for `caller` with `act`, then waits up to `limit` for it to load: where
-/// it is then.
+/// it is then, and whether it loaded.
 fn steer(
     caller: &Caller,
     named: Option<u64>,
@@ -331,31 +363,37 @@ fn steer(
         &mut BrowserView,
         &Actor,
         &mut gpui_kit::Context<BrowserView>,
-    ) -> Result<(), Refused>,
+    ) -> Result<(), AgentError>,
 ) -> Result<Exec, ControlError> {
     let page = resolve(caller, named, cx)?;
     let actor = caller.actor();
-    (page.view.update(cx, |view, cx| act(view, &actor, cx))).map_err(refused)?;
-    acted(caller, &page, cx);
+    (page.view.update(cx, |view, cx| act(view, &actor, cx)))
+        .map_err(|why| refusals::failed(why, page.pane))?;
+    acted(caller, page.pane, cx);
     Ok(Exec::Later(cx.spawn(async move |cx: &mut AsyncApp| {
-        if let Some(limit) = limit {
-            settle(&page, limit, cx).await;
-        }
-        output(&cx.update(|cx| now(&page, cx)))
+        let loaded = match limit {
+            Some(limit) => Some(settle(&page, limit, cx).await),
+            None => None,
+        };
+        output(&PageOutput {
+            loaded,
+            ..cx.update(|cx| now(&page, cx))
+        })
     })))
 }
 
-/// Waits, up to `limit`, until the page has started and finished loading.
-async fn settle(page: &Page, limit: Duration, cx: &mut AsyncApp) {
+/// Waits, up to `limit`, until the page has started and finished loading: whether it did.
+async fn settle(page: &Page, limit: Duration, cx: &mut AsyncApp) -> bool {
     let started = Instant::now();
     // The host says the page is loading a moment after it's asked to load.
     cx.background_executor().timer(POLL).await;
     while started.elapsed() < limit {
-        if !cx.update(|cx| page.view.read(cx).facts(cx).loading) {
-            return;
+        if !cx.update(|cx| page.view.read(cx).loading()) {
+            return true;
         }
         cx.background_executor().timer(POLL).await;
     }
+    false
 }
 
 pub(crate) fn wait(
@@ -389,6 +427,20 @@ pub(crate) fn wait(
     })))
 }
 
+/// The script that says whether the page meets `until` for `value`; none for an address,
+/// which the app knows.
+fn condition(until: WaitFor, value: &str) -> Option<String> {
+    Some(match until {
+        WaitFor::Url => return None,
+        WaitFor::Load => "document.readyState === 'complete'".to_owned(),
+        WaitFor::Selector => format!("!!document.querySelector({})", script::quote(value)),
+        WaitFor::Text => format!(
+            "(document.body ? document.body.innerText : '').includes({})",
+            script::quote(value)
+        ),
+    })
+}
+
 /// Whether the page meets the condition now.
 async fn met(
     page: &Page,
@@ -396,21 +448,33 @@ async fn met(
     value: &str,
     cx: &mut AsyncApp,
 ) -> Result<bool, ControlError> {
-    let facts = cx.update(|cx| page.view.read(cx).facts(cx));
-    let expression = match until {
-        WaitFor::Url => return Ok(facts.url.contains(value)),
-        WaitFor::Load if facts.loading || !facts.open => return Ok(false),
-        WaitFor::Load => "document.readyState === 'complete'".to_owned(),
-        WaitFor::Selector => format!("!!document.querySelector({})", script::quote(value)),
-        WaitFor::Text => format!(
-            "(document.body ? document.body.innerText : '').includes({})",
-            script::quote(value)
-        ),
+    let (url, loading, ready) = cx.update(|cx| {
+        let view = page.view.read(cx);
+        (
+            view.url().to_owned(),
+            view.loading(),
+            view.ready_for_agents(cx),
+        )
+    });
+    let Some(expression) = condition(until, value) else {
+        return Ok(url.contains(value));
     };
-    if !facts.open {
+    // A page that can't take a command fails the wait at once; one the engine is starting
+    // for, it opens.
+    match ready {
+        Ok(()) => {}
+        Err(AgentError::NotOpen(NotOpen::Starting)) => return Ok(false),
+        Err(why) => return Err(refusals::failed(why, page.pane)),
+    }
+    if until == WaitFor::Load && loading {
         return Ok(false);
     }
-    let found = script::evaluate(page, None, &expression, false, cx).await;
-    // A page between documents can't answer; it isn't there yet.
-    Ok(found.is_ok_and(|value| value == Value::Bool(true)))
+    match script::evaluate(page, None, &expression, false, cx).await {
+        Ok(found) => Ok(found == Value::Bool(true)),
+        // What fails for good, a selector the page can't read or a page that closed, fails
+        // the wait at once.
+        Err(error) if !error.retryable => Err(error),
+        // A page between documents can't answer; it isn't there yet.
+        Err(_) => Ok(false),
+    }
 }

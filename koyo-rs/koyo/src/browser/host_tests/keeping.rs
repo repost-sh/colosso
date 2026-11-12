@@ -12,13 +12,13 @@ use gpui_kit::{
 use koyo_browser_ipc::Go;
 use serde_json::{Value, json};
 
-use super::super::agent::{self, Actor, Answer};
+use super::super::agent::Answer;
 use super::super::host::{Browsers, CdpResult, HostStatus};
 use super::super::keys::key_codes;
 use super::super::view::BrowserView;
 use super::super::view::sight::AWAKE_FOR;
 use super::{
-    PATIENCE, centre, finish, open, pause, prepare, serve, wait_for, wait_for_title, wait_until,
+    centre, finish, open, pause, prepare, run, serve, tester, wait_for, wait_for_title, wait_until,
 };
 
 /// A window showing its page or not, as a tab does once another is picked.
@@ -125,20 +125,9 @@ fn ask(
     method: &str,
     params: Value,
 ) -> CdpResult {
-    let actor = acts.then(|| Actor {
-        id: "tester".into(),
-        label: "Tester".into(),
-    });
-    let asked = cx.update(|_, cx| agent::cdp(view, actor.as_ref(), method, params, PATIENCE, cx));
-    let mut asked = asked.expect("the page is open");
-    let mut answer = None;
-    let answered = wait_until(cx, |_| {
-        answer = (&mut asked).now_or_never();
-        answer.is_some()
-    });
-    assert!(answered, "{method} had no answer after {PATIENCE:?}");
-    match answer {
-        Some(Answer::Answered(result)) => result,
+    let actor = acts.then(tester);
+    match run(cx, view, actor.as_ref(), method, params) {
+        Answer::Answered(result) => result,
         ended => panic!("{method} ended as {ended:?}"),
     }
 }

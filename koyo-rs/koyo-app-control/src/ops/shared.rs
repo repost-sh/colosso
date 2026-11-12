@@ -223,6 +223,11 @@ pub struct PaneSpec {
     pub viewport: Option<OpenViewport>,
 }
 
+/// True: what a field an older app's answer lacks reads as, where that's how it behaved.
+pub(crate) fn yes() -> bool {
+    true
+}
+
 #[expect(
     clippy::trivially_copy_pass_by_ref,
     reason = "serde's skip_serializing_if passes the field by reference"

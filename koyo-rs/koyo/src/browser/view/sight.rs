@@ -41,10 +41,19 @@ impl BrowserView {
         self.tell_sight(cx);
     }
 
-    /// Tells the host whether the page is on screen: drawn, or used by an agent lately.
+    /// Whether the person can see the page: its pane draws it, in a window on screen.
+    pub(in crate::browser) fn drawn(&self) -> bool {
+        self.shown.is_some() && self.window_visible
+    }
+
+    /// Whether the page is on screen for the engine: drawn, or used by an agent lately.
+    pub(in crate::browser) fn on_screen(&self) -> bool {
+        self.drawn() || self.awake.is_some()
+    }
+
+    /// Tells the host whether the page is on screen ([`BrowserView::on_screen`]).
     pub(in crate::browser) fn tell_sight(&mut self, cx: &mut Context<Self>) {
-        let on_screen = self.shown.is_some() || self.awake.is_some();
-        self.set_visible(on_screen, cx);
+        self.set_visible(self.on_screen(), cx);
     }
 
     /// Tells the host whether the page is on screen, when that changed; out of sight it

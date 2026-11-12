@@ -155,6 +155,51 @@ impl Operation for BrowserEval {
     }
 }
 
+/// How to answer a page's dialog.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DialogAction {
+    /// OK, or Leave the page.
+    Accept,
+    /// Cancel, or Stay on the page.
+    Dismiss,
+}
+
+/// The answer to a page's dialog.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowserDialogInput {
+    /// The browser pane. Left out, the page you acted on last, else the shown tab's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pane: Option<PaneId>,
+    /// `accept` (OK, Leave) or `dismiss` (Cancel, Stay).
+    pub action: DialogAction,
+    /// A prompt's answer, with `accept`; left out, the text its field starts with.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+}
+
+/// `browser_dialog`: answer what a page asks.
+#[derive(Debug)]
+pub struct BrowserDialog;
+
+impl Operation for BrowserDialog {
+    const NAME: &'static str = "browser_dialog";
+    const TITLE: &'static str = "Answer a page's dialog";
+    const SUBJECT: &'static [&'static str] = &["action"];
+    const SCOPE: Scope = Scope::Browser;
+    const DESCRIPTION: &'static str = leased!(
+        "Answers the alert, confirm, prompt or leave-page question a browser page waits on (browser_list shows it), which holds up every other command on the page: `accept` (OK, Leave; `text` answers a prompt) or `dismiss` (Cancel, Stay). A sign-in, permission or certificate question is the person's to answer."
+    );
+    const HINTS: Hints = Hints::CHANGE;
+    type Input = BrowserDialogInput;
+    type Output = PageOutput;
+
+    fn summary(output: &PageOutput) -> String {
+        format!("Answered the dialog of {}", output.summary())
+    }
+}
+
 /// A mouse button.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]

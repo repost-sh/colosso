@@ -233,8 +233,7 @@ impl Operation for TabSelect {
     const TITLE: &'static str = "Select tab";
     const SUBJECT: &'static [&'static str] = &["pane", "index"];
     const SCOPE: Scope = Scope::Navigate;
-    const DESCRIPTION: &'static str =
-        "Shows a tab: the one holding `pane`, or the one at `index` in a worktree.";
+    const DESCRIPTION: &'static str = "Shows a tab: the one holding `pane`, or the one at `index` in a worktree. Koyo's window draws it only while it's on screen (app_status' `onScreen`).";
     const HINTS: Hints = Hints::IDEMPOTENT;
     type Input = TabSelectInput;
     type Output = PanePlace;

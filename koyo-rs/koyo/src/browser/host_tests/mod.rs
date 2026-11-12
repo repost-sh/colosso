@@ -15,6 +15,10 @@ use gpui_kit::{Entity, Modifiers, MouseButton, TestAppContext, VisualTestContext
 use koyo_browser_ipc::Go;
 use koyo_browser_ipc::client::Launch;
 
+use futures::FutureExt as _;
+use serde_json::Value;
+
+use super::agent::{self, Actor, Answer};
 use super::frames::Frame;
 use super::host::{Browsers, HostStatus, TestLaunch};
 use super::view::BrowserView;
@@ -94,6 +98,34 @@ fn wait_until(
         }
         pause(Duration::from_millis(20));
     }
+}
+
+/// The agent the tests' commands act for.
+fn tester() -> Actor {
+    Actor {
+        id: "tester".into(),
+        label: "Tester".into(),
+    }
+}
+
+/// Runs a protocol command on the page as an agent does, for `actor` when it acts: how it
+/// ended, the window drawn meanwhile.
+fn run(
+    cx: &mut VisualTestContext,
+    view: &Entity<BrowserView>,
+    actor: Option<&Actor>,
+    method: &str,
+    params: Value,
+) -> Answer {
+    let sent = cx.update(|_, cx| agent::cdp(view, actor, method, params, PATIENCE, cx));
+    let mut sent = sent.expect("the page takes commands");
+    let mut ended = None;
+    let answered = wait_until(cx, |_| {
+        ended = (&mut sent).now_or_never();
+        ended.is_some()
+    });
+    assert!(answered, "{method} had no answer after {PATIENCE:?}");
+    ended.expect("it ended")
 }
 
 /// Draws and runs the window until `done` holds for the view, or fails the test saying

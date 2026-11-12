@@ -33,7 +33,7 @@ where
     F: AsyncFnOnce(Page, Option<Caller>, &mut AsyncApp) -> Result<Value, ControlError> + 'static,
 {
     let found = resolve(caller, named, cx)?;
-    acted(caller, &found, cx);
+    acted(caller, found.pane, cx);
     let actor = acts.then(|| caller.clone());
     Ok(Exec::Later(cx.spawn(async move |cx: &mut AsyncApp| {
         act(found, actor, cx).await
