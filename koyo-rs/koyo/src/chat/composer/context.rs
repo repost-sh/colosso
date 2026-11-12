@@ -35,7 +35,6 @@ impl Render for ContextPanel {
         let composer = self.composer.clone();
         div()
             .size_full()
-            .p(px(PADDING))
             .child(
                 div()
                     .h(px(theme::ROW_HEIGHT))

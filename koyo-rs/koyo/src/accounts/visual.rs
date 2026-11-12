@@ -25,6 +25,7 @@ use gpui_kit::{
 use super::model::{AutoSwitch, Bar, Problem, Row, View, WEEKLY};
 use super::panel::{self, AccountsPanel};
 use super::{Accounts, button};
+use crate::menu::PADDING;
 use crate::theme::{self, UseDarkTheme, UseLightTheme};
 use crate::visual::{Result, out_dir};
 
@@ -134,13 +135,13 @@ impl Render for Stage {
             .flex_col()
             .gap(px(8.))
             .child(
+                // As the menu's window holds it: padded all round, no edge of its own.
                 div()
                     .w(extent.width)
                     .h(extent.height)
+                    .p(px(PADDING))
                     .rounded(px(12.))
                     .bg(p.menu)
-                    .border_1()
-                    .border_color(p.glass_edge)
                     .child(self.panel.clone()),
             )
             .child(foot)
