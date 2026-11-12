@@ -188,9 +188,13 @@ reached only from `phone/`: its API is unstable below 0.2.
   which way: the device's `getlockstate` answers "not implemented" on iPadOS 27.0.1, with or
   without its action. The tab says "Unlock
   your iPad to continue." and agents' acts are refused at once: one under way when it locks is
-  cut short and those queued refused, and at a lock notice acts wait (3 s at most) until it's
-  known which way it went, since a key sent to a locked device goes to its passcode field. The
-  notices are watched again a moment after they stop. Koyo never types, asks for or
+  cut short and those queued refused, and at a lock notice acts wait (5 s at most) until it's
+  known which way it went, since a key sent to a locked device goes to its passcode field. Locked
+  means its passcode is needed now **or its screen is dark**: just locked by its side button, a
+  device whose passcode is asked only after a while says none is needed, and keys sent to it
+  went on to the app behind (M7: the person locked it 5 s into a line of letters; the act was
+  refused at 171 of 2000, and 171 reached the page). The notices are watched again a moment
+  after they stop. Koyo never types, asks for or
   stores a passcode.
 - Looking: a real device has no accessibility tree, so a snapshot is the text read off its picture.
   Its stream is encoded afresh, so a still screen's pictures differ a little: a point counts as

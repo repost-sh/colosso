@@ -49,7 +49,7 @@ pub struct Phone {
 }
 
 /// How long acts wait on a lock notice for word of which way it went.
-const UNSURE_FOR: std::time::Duration = std::time::Duration::from_secs(3);
+const UNSURE_FOR: std::time::Duration = std::time::Duration::from_secs(5);
 
 impl Phone {
     /// Starts the session with the device `udid`, named `name`; its counts logged with `stats`.

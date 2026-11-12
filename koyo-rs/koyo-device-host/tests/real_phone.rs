@@ -254,3 +254,43 @@ fn a_picture_that_fails_to_decode_comes_back_by_a_keyframe() {
     }
     let _ = host.quit(Duration::from_secs(10));
 }
+
+/// QR7, the person's lock under an agent's typing (the second review's finding): a long line of
+/// letters typed into the keys page's field (approval E), the person locks the device midway,
+/// and the typing stops there, refused as locked, no letter reaching the page after. Letters
+/// only: nothing that would submit a passcode. `KOYO_REAL_PHONE_SAY` names a file each step the
+/// person takes is written to as it comes.
+/// About ninety seconds of letters: time for the person to lock it midway.
+const LETTERS: usize = 2000;
+
+#[test]
+#[ignore = "needs a real device by cable and the person to lock it: KOYO_REAL_PHONE_UDID and KOYO_REAL_PHONE_LAB"]
+fn typing_stops_when_the_person_locks_the_device() {
+    let (Some(target), Some(_)) = (phone(), std::env::var_os("KOYO_REAL_PHONE_LAB")) else {
+        eprintln!("skipped: no KOYO_REAL_PHONE_UDID and KOYO_REAL_PHONE_LAB");
+        return;
+    };
+    let say = |what: &str| support::append("KOYO_REAL_PHONE_SAY", &format!("{} {what}", support::now()));
+    let pages = support::pages::Pages::serve_lan();
+    let mut host = Driver::start(&target, true);
+    let screen = host.ready(Duration::from_secs(60));
+    host.tell(&ToHost::Visible { visible: true });
+    act("Safari opened on the keys page served from this Mac; letters typed into its field until the person locked it");
+    let _ = support::pages::open(&target, &pages, "keys.html", "ready-keys");
+    let _ = tap(&mut host, Point { x: screen.size.width / 2., y: screen.size.height * 0.3 });
+    pages.clear();
+    let text = "a".repeat(LETTERS);
+    say("typing: lock it now");
+    let asked = Instant::now();
+    let typed = host.ask(Ask::Act(Act::Type { text }), Duration::from_secs(150));
+    let stopped = asked.elapsed();
+    say("stopped: unlock it now");
+    let reached = (pages.reported(Duration::from_secs(2)).last())
+        .and_then(|report| report["text"].as_str().map(str::len))
+        .unwrap_or(0);
+    let refusal = typed.as_ref().err().map(|refusal| (refusal.code, refusal.message.clone()));
+    let locked = refusal.as_ref().is_some_and(|(code, _)| *code == koyo_device_wire::RefusalCode::Locked);
+    let got = format!("{refusal:?} after {} s; {reached} letters reached the page", stopped.as_secs());
+    row("QR7", "typing stops when the person locks the device", &got, locked && reached < LETTERS);
+    let _ = host.quit(Duration::from_secs(10));
+}
