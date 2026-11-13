@@ -28,8 +28,11 @@ use crate::shell::{
 
 /// A tab's row, and a worktree's header.
 const ROW: f32 = 36.;
-/// Between a worktree's rows, and between the worktrees.
+/// Between a worktree's rows.
 const GAP: f32 = 2.;
+/// Between the worktrees: more than between a worktree's rows, so each header sits on its own
+/// tabs and the worktrees stand apart.
+const WORKTREE_GAP: f32 = 8.;
 /// The tabs' icons.
 pub(super) const TAB_ICON: f32 = 16.;
 
@@ -107,7 +110,8 @@ pub fn space(
                 }
             });
             let (list, hand) = (list_of(project_index), shell.worktree_hand.clone());
-            let worktrees = Reorder::worktrees(list, worktrees, hand, px(GAP), Rc::new(on_drop));
+            let worktrees =
+                Reorder::worktrees(list, worktrees, hand, px(WORKTREE_GAP), Rc::new(on_drop));
             body.push(worktrees.into_any_element());
         }
     }

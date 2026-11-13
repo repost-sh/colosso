@@ -12,9 +12,10 @@ use crate::settings;
 /// Side of the square pad that dot positions are measured in.
 pub const PAD: f32 = 358.;
 pub const MAX_DOTS: usize = 3;
-/// The opacity slider's range: lower washes the colors out, higher hides the blur.
+/// The opacity slider's range: lower washes the colors out, higher hides the blur, until at the
+/// top the colors cover it, solid.
 pub const MIN_OPACITY: f32 = 0.3;
-pub const MAX_OPACITY: f32 = 0.8;
+pub const MAX_OPACITY: f32 = 1.;
 /// The texture dial's detents, a full turn apart.
 pub const TEXTURE_STEPS: f32 = 16.;
 

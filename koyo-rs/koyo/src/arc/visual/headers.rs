@@ -12,7 +12,8 @@ use std::time::Duration;
 use gpui_kit::{Action, Bounds, Modifiers, Pixels, Point, point, px};
 
 use super::acts::{Part, drag, frames, save_with, settle};
-use super::{project_beside, web_page};
+use super::{project_beside, titled, web_page};
+use crate::model::PaneKind;
 use crate::projects::read_worktrees;
 use crate::settings::{self, Layout};
 use crate::test_support::try_git;
@@ -99,6 +100,7 @@ pub fn headers(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     let shell = drawn.shell.clone();
     let read = read_worktrees(&root);
     let login = root.with_file_name("acme-login");
+    let payouts = root.with_file_name("acme-payouts");
     drawn.cx.update(|cx| {
         settings::update(cx, |settings| settings.layout = Layout::Arc);
         shell.update(cx, |shell, cx| {
@@ -109,9 +111,15 @@ pub fn headers(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
             for (address, title) in TABS {
                 shell.workspace.push_tab(web_page(address, title));
             }
-            // The main checkout selected, with no tab, so no tab of the login worktree's is a
-            // pill, as none of the references' is.
+            // A tab on the payouts worktree, and one on the main checkout, which is shown, so no
+            // tab of the login worktree's is a pill, as none of the references' is.
+            shell.workspace.select_worktree(project, &payouts);
+            let chat = titled(PaneKind::Chat, "Payouts retry when the bank says 429");
+            shell.workspace.push_tab(chat);
             shell.workspace.select_worktree(project, &root);
+            shell
+                .workspace
+                .push_tab(titled(PaneKind::Editor, "README.md"));
             cx.notify();
         });
     });
@@ -125,6 +133,8 @@ pub fn headers(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     for (theme, name) in themes {
         drawn.cx.update(|cx| cx.dispatch_action(theme));
         rest_at(drawn, away())?;
+        let saved = save_with(drawn, &format!("arc-worktrees-{name}"), Part::Rows)?;
+        said.push(format!("the worktrees, {name}: {saved}"));
         let bounds = header(place)?;
         let (top, on) = (bounds.top(), bounds.center());
         let states = [
@@ -178,8 +188,8 @@ fn reorder(drawn: &mut Drawn, root: &Path, said: &mut Vec<String>) -> Result<()>
     rest_at(drawn, away())?;
     let main = header(place_of(drawn, "main")?)?;
     let last = header(listed(drawn).len() - 1)?;
-    // Past the middle of the last worktree, which has no tabs: its header.
-    let to = last.center() + point(px(0.), px(10.));
+    // Past the middle of the last worktree: its tab's row.
+    let to = last.center() + point(px(0.), px(38.));
     let part = Part::Worktree {
         top: main.top(),
         rows: 12,

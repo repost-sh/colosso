@@ -123,6 +123,9 @@ pub struct Project {
     pub error: Option<SharedString>,
     /// The number of the worktree listing shown, so an older one arriving late is ignored.
     pub read: u64,
+    /// The GitHub user the person's own branches are prefixed with here, once git's listing
+    /// said: what the Arc sidebar leaves off their worktrees' names.
+    pub user: Option<SharedString>,
 }
 
 /// What a project is called until it's given a name: its folder's.
@@ -144,6 +147,7 @@ impl Project {
             active_branch: 0,
             error: None,
             read: 0,
+            user: None,
         }
     }
 

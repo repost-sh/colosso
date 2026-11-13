@@ -116,8 +116,15 @@ Arc's favourites grid, holding the projects of the space shown.
   (`arc/header.rs`, `arc/worktrees.rs`).
 - The header is a row as tall as a tab's, with its corners. A chevron sits in the tabs' icons'
   column, pointing down while the worktree is open and right while it's collapsed, and the
-  worktree's name where the tabs' titles are: at their size, semibold, in the muted grey of New
-  Tab, cut short with an ellipsis before the row's end. No other icon, and no badges.
+  worktree's name where the tabs' titles are, a label over them: smaller and lighter than they
+  are (12 pt, medium), in the muted grey of the sidebar's labels, cut short with an ellipsis
+  before the row's end. No other icon, and no badges.
+- The name is the branch in words, without the prefix new worktrees' branches get (Settings →
+  General: the person's GitHub user unless they set another): `schulzfel/some-nasty-name`
+  shows as "Some nasty name", `main` as "Main". A detached checkout keeps "detached at …".
+  The Clear dialog calls it so too; the Orca layout lists the branch.
+- The worktrees stand apart by space: 8 pt between one worktree and the next, 2 pt between a
+  header and its tabs, so each header sits on its own tabs.
 - Under the pointer a pill fades in across the header, as a tab's hover tint, with a muted `…`
   and a **+** at its end; leaving, they fade out (150 ms, as the sidebar's other hovers do).
 - **Clicking the header collapses the worktree, or opens it**, as Arc's folder does. Its tabs
