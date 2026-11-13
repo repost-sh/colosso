@@ -21,7 +21,7 @@ use super::reorder::TabHand;
 use super::tab_face::Face;
 use super::{Shell, icon};
 use crate::model::{Edge, Pane, SPLIT_MIN, Split, SplitAxis, Tab};
-use crate::pane::tab_button;
+use crate::pane::{CLOSE, tab_button};
 use crate::theme::card::part;
 use crate::theme::{self, Palette};
 
@@ -289,7 +289,8 @@ impl Shell {
                         cx.stop_propagation();
                         this.pane_to_own_tab(id, cx);
                     }));
-                header.child(own_tab).child(pane_close_button("pane-close", id, dirty, p, cx))
+                let close = pane_close_button("pane-close", id, (dirty, CLOSE), p, cx);
+                header.child(own_tab).child(close)
             })
     }
 

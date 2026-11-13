@@ -8,8 +8,8 @@ use std::rc::Rc;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Along as _, AnyElement, AppContext as _, Axis, Context, Div, InteractiveElement as _,
-    IntoElement as _, ParentElement as _, Pixels, Point, Stateful, StatefulInteractiveElement as _,
-    Styled as _, px,
+    IntoElement, ParentElement as _, Pixels, Point, Stateful, StatefulInteractiveElement as _,
+    Styled as _, div, px,
 };
 
 use super::Shell;
@@ -17,10 +17,14 @@ use super::reorder::{Drop, Reorder, TabHand};
 use super::splits::{Dragged, DraggedPane};
 use super::tab_face::{Face, split_chips};
 use crate::model::Tab;
+use crate::pane::ROW_BUTTON;
 use crate::theme::Palette;
 
 /// How much of the tab in hand shows while it's over a tab it would join.
 const JOINING_OPACITY: f32 = 0.35;
+/// The room a title leaves at its row's end for what shows there: a row's button, and a
+/// little space before it.
+const END: f32 = ROW_BUTTON + 6.;
 
 /// The list of the checkout `(project, branch)`.
 fn list_id((project, branch): (usize, usize)) -> u64 {
@@ -66,6 +70,33 @@ pub fn tab_row(
     let key = tab.first().id;
     let row = tab_drag(row, (at, key), (axis, hand), faces, p, cx);
     (key, row.into_any_element())
+}
+
+/// `title`, and `end` over its end rather than after it, filling the rest of a sidebar row
+/// (`docs/arc-sidebar.md` 5): the title runs on to the end while nothing's there, and makes
+/// room while `shown`, or while the pointer's on `group`, as `end` shows then. The title has an
+/// id because GPUI lays a hover out only for an element that has one.
+pub fn title_with_end(
+    title: Stateful<Div>,
+    end: impl IntoElement,
+    shown: bool,
+    group: &'static str,
+) -> Div {
+    let (title, room) = (title.flex_1().min_w_0(), px(END));
+    let title = if shown {
+        title.mr(room)
+    } else {
+        title.group_hover(group, move |style| style.mr(room))
+    };
+    let end = (div().absolute().top_0().bottom_0().right_0())
+        .flex()
+        .items_center()
+        .child(end);
+    (div().relative().flex_1().min_w_0().h_full())
+        .flex()
+        .items_center()
+        .child(title)
+        .child(end)
 }
 
 /// The row of the tab `key` at `at`: dragged, it's taken up by the list, and what's dropped

@@ -14,14 +14,14 @@ use gpui_kit::{
 
 use super::Shell;
 use super::elements::{ellipsized, icon, pane_close_button};
+use super::tab_list::title_with_end;
 use crate::files::{FilePane, file_icon};
 use crate::model::{Pane, Tab};
+use crate::pane::{CLOSE, ROW_GLYPH, row_sized};
 use crate::theme::Palette;
 
 /// The widest a chip of a split gets in the strip.
 const CHIP_MAX: f32 = 180.;
-/// A pane's close button, which a half of a split down the sidebar makes room for as it shows.
-const CLOSE: f32 = 18.;
 
 /// What a pane shows as in a tab: its icon, or its page's own, and its title.
 #[derive(Clone)]
@@ -103,7 +103,7 @@ pub fn split_chips(faces: &[Face], axis: Axis, p: Palette, cx: &mut Context<Shel
         return split_halves(faces, p, cx);
     }
     let chips = faces.iter().map(|face| {
-        let close = pane_close_button("pane-chip-close", face.id, face.dirty, p, cx);
+        let close = pane_close_button("pane-chip-close", face.id, (face.dirty, CLOSE), p, cx);
         face.chip()
             .max_w(px(CHIP_MAX))
             .pl_1p5()
@@ -134,22 +134,18 @@ fn split_halves(faces: &[Face], p: Palette, cx: &mut Context<Shell>) -> Div {
                     .into_any_element(),
             );
         }
-        // It takes room only while it shows, so the title has all the half till then.
-        let close = div()
-            .flex_shrink_0()
-            .overflow_hidden()
-            .when(!face.dirty, |close| {
-                close
-                    .w(px(0.))
-                    .group_hover("pane-half", |style| style.w(px(CLOSE)))
-            })
-            .child(pane_close_button(
-                "pane-chip-close",
-                face.id,
-                face.dirty,
-                p,
-                cx,
-            ));
+        // Shown while the pointer's on the half, and its dot for unsaved edits always; the
+        // title has all the half until then.
+        let close = pane_close_button("pane-chip-close", face.id, (face.dirty, ROW_GLYPH), p, cx);
+        let close = row_sized(close).when(!face.dirty, |close| {
+            close
+                .opacity(0.)
+                .group_hover("pane-half", |style| style.opacity(1.))
+        });
+        let title = div()
+            .id(("pane-half-title", face.id))
+            .flex()
+            .child(face.label().flex_1());
         parts.push(
             div()
                 .group("pane-half")
@@ -165,8 +161,7 @@ fn split_halves(faces: &[Face], p: Palette, cx: &mut Context<Shell>) -> Div {
                         .text_color(p.text.opacity(0.75))
                         .child(face.icon(16.)),
                 )
-                .child(face.label().flex_1())
-                .child(close)
+                .child(title_with_end(title, close, face.dirty, "pane-half"))
                 .into_any_element(),
         );
     }

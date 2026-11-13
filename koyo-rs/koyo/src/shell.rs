@@ -59,7 +59,7 @@ pub use elements::{
 pub use kept::KeptWindow;
 pub use reorder::{Drop, MOTION, Reorder, TabHand};
 pub use splits::{Dragged, DraggedPane};
-pub use tab_list::{tab_list, tab_row};
+pub use tab_list::{tab_list, tab_row, title_with_end};
 
 pub struct Shell {
     pub workspace: Workspace,

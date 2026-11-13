@@ -127,8 +127,8 @@ Arc's favourites grid, holding the projects of the space shown.
   header and its tabs, so each header sits on its own tabs.
 - Under the pointer a pill fades in across the header, as a tab's hover tint, with a muted `…`
   and a **+** at its end; leaving, they fade out (150 ms, as the sidebar's other hovers do).
-  The `…`, the **+** and a tab's × are Arc's size, bigger than a tab bar's: 24 pt squares,
-  their glyphs 18 pt.
+  The `…`, the **+** and a tab's ×, or a split's pane's, are Arc's size, bigger than a tab
+  bar's: 24 pt squares, their glyphs 18 pt.
 - **Clicking the header collapses the worktree, or opens it**, as Arc's folder does. Its tabs
   slide closed or open, in the time a tab takes to slide into place (240 ms, easing out); at
   once with reduced motion.
@@ -154,7 +154,9 @@ Arc's favourites grid, holding the projects of the space shown.
   kept for the next launch (section 9); a worktree it doesn't name, as a new one, comes last.
 - Tab rows as Arc's, 36 pt high with 10 pt corners: a 16 pt icon, the title cut short, the
   selected tab a pill of white laid thin over the colours, so it takes their hue, with no
-  shadow; a hover tint, and a close button at its end on hover, and on the tab shown.
+  shadow; a hover tint, and a close button at its end on hover, and on the tab shown. While
+  nothing's at its end, the title and what was said under it run on to the row's end; they
+  make room once the × or how the tab's doing shows there, as a split's panes do.
 - A chat's icon is Claude's logo in its colour, claude.ai's own, as a page shows its own
   (`Pane::favicon`), there and wherever a tab shows its icon.
 - A chat's row, but for the tab shown's, says under its title the start of what was said last

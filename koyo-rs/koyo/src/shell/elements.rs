@@ -14,7 +14,7 @@ use gpui_kit::{
 
 use super::Shell;
 use crate::launcher::NewTab;
-use crate::pane::{CLOSE, sized_close_button, tab_button, unsaved_dot};
+use crate::pane::{sized_close_button, tab_button, unsaved_dot};
 use crate::projects::AddProject;
 use crate::theme::{self, Palette};
 
@@ -148,11 +148,11 @@ fn close_or_dot(id: impl Into<ElementId>, dirty: bool, glyph: f32, p: Palette) -
 pub fn pane_close_button(
     name: &'static str,
     id: u64,
-    dirty: bool,
+    (dirty, glyph): (bool, f32),
     p: Palette,
     cx: &mut Context<Shell>,
 ) -> Stateful<Div> {
-    close_or_dot((name, id), dirty, CLOSE, p)
+    close_or_dot((name, id), dirty, glyph, p)
         .debug_selector(move || format!("{name}-{id}"))
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .on_click(cx.listener(move |this, _, window, cx| {
