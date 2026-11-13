@@ -78,9 +78,11 @@ binary="koyo-rs/target/$profile/koyo-browser-host"
 dir="$out/$version"
 app="$dir/$HOST_NAME.app/Contents"
 packaged="$app/MacOS/$HOST_NAME"
-# Packaged again once the host, its icon or this script is newer than the package.
+# Packaged again once the host, its icon, this script or the CEF distribution (script/cef
+# puts a framework built with H.264 and AAC in it) is newer than the package.
 if [ -f "$packaged" ] && [ -f "$dir/engine.json" ] && ! [ "$binary" -nt "$packaged" ] &&
-  ! [ "$ICON" -nt "$packaged" ] && ! [ "$0" -nt "$packaged" ]; then
+  ! [ "$ICON" -nt "$packaged" ] && ! [ "$0" -nt "$packaged" ] &&
+  ! [ "$cef/archive.json" -nt "$packaged" ]; then
   echo "Browser engine $version is packaged in $dir"
   exit 0
 fi

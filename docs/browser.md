@@ -464,3 +464,101 @@ folder (`settings::data_dir()`; `KOYO_DATA_DIR` moves it):
   (`TODAY`, which a later build has to go on reading), a later and an earlier build's files
   read and written again with nothing lost, the file set aside, the pages back in a new
   window, and a window file that can't be read.
+
+---
+
+## 11. Video and sound
+
+Written 2026-11-13 on branch `schulzfel/fix-video-playback`, when the owner found that
+WhatsApp's videos don't play. Drafted with Claude. What a page's `<video>` and `<audio>` play
+is decided when the engine is built, not by anything Koyo sets, and not by how a page is
+drawn, off screen or in a window of its own: it's the same framework either way.
+
+### 11.1 What CEF's own build plays [checked 2026-11-13]
+
+The framework `cef-dll-sys` fetches on the first build is CEF's own
+(`cef-builds.spotifycdn.com`). Asked in a page of the app as installed, and of the engine
+packaged from this checkout (CEF 156.0.14, Chromium 156.0.8078.48):
+
+- **Plays:** VP8, VP9 and AV1 video; Opus, Vorbis, FLAC, MP3 and WAV sound (by
+  `canPlayType`; a clip of VP9 with Opus was played). Calls go another way: WebRTC lists
+  H.264 beside VP8, VP9 and AV1 among what it receives (`RTCRtpReceiver.getCapabilities`).
+- **Doesn't:** H.264, AAC, HEVC and HLS playlists. For each, `canPlayType` is `""` and
+  `MediaSource.isTypeSupported` is false; `WebCodecs` has none of the three codecs. A
+  `<video>` given H.264 with AAC in MP4 ends in `MEDIA_ERR_SRC_NOT_SUPPORTED`,
+  `DEMUXER_ERROR_NO_SUPPORTED_STREAMS: FFmpegDemuxer: no supported streams`, while the same
+  picture as VP9 in WebM plays beside it.
+- **So:** WhatsApp's videos don't play: they are MP4 with H.264 and AAC (Meta's media
+  reference for the platform: "Only H.264 video codec and AAC audio codec supported"). That
+  is read off the format, not seen in WhatsApp Web itself, which takes the owner's sign-in.
+  The same goes for whatever else comes as MP4 or HLS and nothing else; a site that offers
+  VP9 or AV1 as well can still play.
+
+### 11.2 Why, and what brings them back [decided]
+
+- H.264 and AAC are patent-licensed, and CEF's builds leave them out for that
+  (`chromiumembedded/cef` issue 3559). In Chromium they are compile-time switches,
+  `proprietary_codecs` and `ffmpeg_branding`, and FFmpeg is linked into the framework: no
+  setting, command-line switch or feature flag turns them on in a framework built without.
+- So the framework is built again, from source, with
+  `proprietary_codecs=true ffmpeg_branding=Chrome` over CEF's official configuration, at the
+  commit CEF's own was built from: **`script/cef`**, which says how. The headers, the C++
+  wrapper and the `cef` crate's bindings stay what they were; only the framework differs.
+- The same switch compiles in HEVC through the Mac's own decoder and Chromium's HLS demuxer
+  (`media/media_options.gni` of Chromium 156), and on the build both play (11.5).
+
+### 11.3 What it costs
+
+- Xcode with its Metal toolchain (`xcodebuild -downloadComponent MetalToolchain`, a
+  component for the whole machine), 90 GB free to start with, and some hours.
+  **[checked 2026-11-13]** On an M4 Max that was building other things too it ran to its
+  end in about three hours, twenty minutes of fetching and two and a half hours of
+  compiling its 76,000 steps, and its folder then held 46 GB.
+- It all goes into one folder, in the checkout unless `--dir` names another. On the owner's
+  Mac that's `~/.cache/cef-build`, beside the shared cargo build folder, so that it outlives
+  a worktree: `script/cef --dir ~/.cache/cef-build`. Another worktree gets the framework by
+  running the same there, which builds nothing again and takes twenty seconds
+  **[checked 2026-11-14]**.
+- The framework an app carries is its worktree's: bundled where `script/cef` hasn't run, it
+  carries CEF's own, and installing that app takes the codecs away again. So in a worktree
+  whose app is to be installed, `script/cef` runs before `script/bundle`.
+- A later CEF version is built from scratch, from an emptied folder (the script's header
+  says why), so keeping up with Chromium's security updates costs those hours each time.
+- **[not decided]** Where a built framework is kept for other Macs and for CI.
+  `download-cef` fetches from `CEF_DOWNLOAD_URL` when it's set, an address that serves an
+  `index.json` shaped as CEF's and an archive under CEF's name for it; then `cef-dll-sys`
+  would fetch the build with the codecs itself, in every worktree, and `script/cef` would
+  only make it.
+
+### 11.4 Licences [not decided]
+
+A build with the codecs carries FFmpeg's H.264 and AAC decoders, and both codecs are
+patent-licensed (Via LA administers the two pools). What that asks of Koyo before such a
+build is handed to anyone else is the owner's to settle, and isn't settled here.
+
+### 11.5 The check
+
+`koyo-browser-host/tests/smoke/media.rs`: a page plays a second of H.264 with AAC, in a
+packaged engine, and the clip's picture is in the frame the app is handed.
+**[checked 2026-11-13]** It fails on CEF's own build, with the engine's reason, and passes
+on the build `script/cef` made.
+
+```sh
+KOYO_BROWSER_ENGINE=$PWD/koyo-rs/target/browser-engine/<version> \
+  script/cargo test -p koyo-browser-host --test smoke -- --ignored a_page_plays
+```
+
+**[checked 2026-11-14]** In the app bundled with that build, run as a second instance and
+used as a person would, a page at a time:
+
+- **Plays now:** H.264 with AAC from a file, handed to the player as a blob (how a page
+  plays a video it fetched itself) and through Media Source Extensions; AAC alone; HEVC
+  with AAC; an HLS playlist by its own address and through hls.js. `canPlayType` says
+  `"probably"` and `MediaSource.isTypeSupported` true for H.264, AAC and HEVC.
+- **On the web:** MDN's and w3schools' MP4 clips and Mux's HLS stream play, and Vimeo's
+  player, which showed "Player error" on CEF's own build. YouTube's plays as it did, and
+  WhatsApp Web opens to its sign-in.
+- **As before:** VP9, AV1, Opus and MP3; seeking, pausing, a reload, full screen, two clips
+  at once, a clip whose tab is out of sight; a format no browser plays still says so. The
+  host's smoke suite and the app's host tests fare as on CEF's own build.
+- **Not seen:** a video in a WhatsApp chat, which takes the owner's sign-in.

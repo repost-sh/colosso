@@ -16,6 +16,7 @@ mod agents;
 mod input;
 mod live_resize;
 mod location;
+mod media;
 mod passkeys;
 mod support;
 

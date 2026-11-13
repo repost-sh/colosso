@@ -1,0 +1,118 @@
+#!/bin/sh
+# Builds the Chromium Embedded Framework from source with H.264 and AAC, and puts it in place
+# of CEF's own in the distribution the browser engine is packaged from (script/browser-engine):
+#
+#   script/cef [--dir <dir>]
+#
+# CEF's own builds, which cef-dll-sys fetches, leave those codecs out, so no MP4 plays in a
+# page, and nothing Koyo sets brings them back: why, and what this costs, is docs/browser.md
+# 11. The framework is built at the commit of the distribution in place, so the headers, the
+# C++ wrapper and the cef crate's bindings stay as they are and only the framework is swapped.
+# To have CEF's own back, remove .superpowers/cef/<version>/cef_macos_<arch>: the next build
+# of koyo-browser-host fetches it again.
+#
+# Everything this makes is under one folder, .superpowers/cef-build.noindex unless --dir names
+# another: depot_tools, Chromium's sources and the build, and the home and temporary folders
+# its tools write to. Run again, it carries on where it stopped and builds nothing twice. For
+# a later CEF version the folder is emptied first: fetched without Chromium's history, the
+# sources can't be moved on to another Chromium, and CEF's tools refuse to.
+set -eu
+cd "$(dirname "$0")/.."
+
+FRAMEWORK="Chromium Embedded Framework.framework"
+
+fail() {
+  echo "script/cef: $*" >&2
+  exit 1
+}
+
+dir=.superpowers/cef-build.noindex
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --dir) dir="$2"; shift ;;
+    *) echo "script/cef: unknown option $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+# The distribution in place, as script/browser-engine finds it: the lockfile's CEF, for this
+# Mac's CPU, which CEF's own tools name another way.
+version=$(awk '/^name = "cef-dll-sys"$/ { getline; sub(/^version = "[^+]*\+/, ""); sub(/"$/, ""); print }' koyo-rs/Cargo.lock)
+[ -n "$version" ] || fail "cef-dll-sys is not in koyo-rs/Cargo.lock"
+case "$(uname -m)" in
+  arm64) arch=aarch64; cpu=arm64 ;;
+  *) arch=x86_64; cpu=x64 ;;
+esac
+dist="${CEF_PATH:-.superpowers/cef}/$version/cef_macos_$arch"
+
+# What it was built from: CEF's commit, and the Chromium its whole version ends in
+# (156.0.14+g4fa4ab5+chromium-156.0.8078.48), whose third number is CEF's branch.
+header="$dist/include/cef_version.h"
+[ -f "$header" ] || fail "no CEF distribution at $dist: build koyo-rs/koyo-browser-host first"
+full=$(sed -n 's/^#define CEF_VERSION "\(.*\)"$/\1/p' "$header")
+commit=$(sed -n 's/^#define CEF_COMMIT_HASH "\(.*\)"$/\1/p' "$header")
+chromium=${full##*chromium-}
+branch=$(echo "$chromium" | cut -d. -f3)
+
+mkdir -p "$dir/home" "$dir/tmp"
+dir=$(cd "$dir" && pwd)
+# The tools' own files stay in the folder too: gclient, vpython, cipd, gsutil and siso keep
+# caches and settings in the home folder, and all of them write temporary files.
+export HOME="$dir/home" TMPDIR="$dir/tmp"
+export XDG_CACHE_HOME="$dir/home/.cache" XDG_CONFIG_HOME="$dir/home/.config"
+# depot_tools would ask its makers whether to send them metrics, and ask here before it
+# writes the git settings it wants: it sends none, and writes them into the folder's home.
+export DEPOT_TOOLS_METRICS=0
+git config --global depot-tools.allowGlobalGitConfig true
+
+# What the build can't do without, found out before the hours rather than in them. ANGLE
+# compiles Metal shaders, and Xcode keeps the Metal toolchain apart: its own component,
+# installed for the whole machine, so asked for rather than fetched from here.
+xcodebuild -version > /dev/null 2>&1 || fail "it needs Xcode (xcode-select -p)"
+xcrun metal --version > /dev/null 2>&1 ||
+  fail "Xcode's Metal toolchain is missing: xcodebuild -downloadComponent MetalToolchain"
+if [ ! -d "$dir/chromium/src/out" ] && [ "$(df -g "$dir" | awk 'NR == 2 { print $4 }')" -lt 90 ]; then
+  fail "$dir has less than the 90 GB free that the sources and the build take"
+fi
+
+# CEF's official configuration with the codecs, and without the debug symbols, which would
+# take another 50 GB and are never packaged; and a GN project for this build alone, where
+# CEF's hook would write one for a debug build too.
+export GN_DEFINES="is_official_build=true proprietary_codecs=true ffmpeg_branding=Chrome symbol_level=0 blink_symbol_level=0 v8_symbol_level=0 enable_dsyms=false"
+export GN_OUT_CONFIGS="Release_GN_$cpu"
+
+# CEF's own automate-git.py, as of the commit, does the rest: depot_tools, CEF at the commit
+# and Chromium at its tag, without history; CEF's hook, which patches Chromium and writes the
+# GN project; and the build of cefclient, which holds the framework. --force-build has it
+# carry on with a build that stopped.
+echo "Building CEF $full with H.264 and AAC in $dir"
+curl -fsSL -o "$dir/automate-git.py.part" \
+  "https://raw.githubusercontent.com/chromiumembedded/cef/$commit/tools/automate/automate-git.py"
+mv "$dir/automate-git.py.part" "$dir/automate-git.py"
+python3 "$dir/automate-git.py" \
+  --download-dir="$dir" \
+  --depot-tools-dir="$dir/depot_tools" \
+  --branch="$branch" \
+  --checkout="$commit" \
+  --chromium-checkout="refs/tags/$chromium" \
+  "--$cpu-build" \
+  --no-chromium-history \
+  --with-pgo-profiles \
+  --no-debug-build \
+  --force-build \
+  --no-distrib
+
+# The framework it built, in place of CEF's own: the folder CEF's distributions carry as
+# theirs (make_distrib.py). Only one newer than the one in place, so that a run with nothing
+# to build leaves cargo and the package alone; script/browser-engine packages again once the
+# distribution's archive.json is newer than its package.
+built="$dir/chromium/src/out/Release_GN_$cpu/cefclient.app/Contents/Frameworks/$FRAMEWORK/Versions/A"
+binary="Chromium Embedded Framework"
+[ -f "$built/$binary" ] || fail "the build left no framework at $built"
+if [ "$built/$binary" -nt "$dist/$FRAMEWORK/$binary" ]; then
+  rm -rf "$dist/$FRAMEWORK"
+  cp -cR "$built" "$dist/$FRAMEWORK"
+  touch "$dist/archive.json"
+fi
+echo "CEF $full with H.264 and AAC is in place at $dist"
+echo "Package it: script/browser-engine"

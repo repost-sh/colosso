@@ -13,7 +13,8 @@ path = "src/main.rs"
 [dependencies]
 koyo-browser-ipc = { path = "../koyo-browser-ipc" }
 # Chromium, embedded: the exact version the distribution under .superpowers/cef matches
-# (script/cef fetches it; cef-dll-sys builds its C++ wrapper with script/cmake).
+# (cef-dll-sys fetches it there and builds its C++ wrapper with script/cmake; script/cef
+# builds its framework again with H.264 and AAC).
 cef = { version = "=156.2.0", default-features = false, features = ["sandbox"] }
 # The DevTools bridge: a websocket to Chromium's remote debugging port.
 tungstenite = { version = "0.26", default-features = false, features = ["handshake"] }
