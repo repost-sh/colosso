@@ -195,10 +195,38 @@ fn a_project_is_renamed_and_given_its_folders_name_back() {
 }
 
 #[test]
+fn a_projects_worktrees_keep_their_order_and_folding_until_git_no_longer_lists_them() {
+    let mut settings = settings(&["app"]);
+    let (app, feat, fix) = (path("app"), path("app-feat"), path("app-fix"));
+    assert!(settings.worktree_order(&app).is_empty(), "git's order");
+    settings.set_worktree_order(&app, vec![fix.clone(), app.clone(), feat.clone()]);
+    settings.toggle_collapsed(&app, &feat);
+    settings.toggle_collapsed(&app, &fix);
+    assert!(settings.is_collapsed(&app, &feat));
+    assert!(!settings.is_collapsed(&app, &app));
+    settings.toggle_collapsed(&app, &fix);
+    assert!(!settings.is_collapsed(&app, &fix), "opened again");
+    settings.reconcile_spaces();
+    assert_eq!(
+        settings.worktree_order(&app),
+        [fix.clone(), app.clone(), feat.clone()]
+    );
+    // Feat deleted: what was kept of it goes.
+    settings.keep_worktrees(&app, &[app.clone(), fix.clone()]);
+    assert_eq!(settings.worktree_order(&app), [fix.clone(), app.clone()]);
+    assert!(!settings.is_collapsed(&app, &feat));
+    // Nothing left to keep, the project's look goes with it.
+    settings.set_worktree_order(&app, Vec::new());
+    assert!(settings.project_looks.is_empty());
+}
+
+#[test]
 fn spaces_survive_a_round_trip() {
     let mut settings = settings(&["app"]);
     settings.reconcile_spaces();
     settings.set_project_icon(&path("app"), Some("/pictures/app.png".into()));
+    settings.set_worktree_order(&path("app"), vec![path("app-feat"), path("app")]);
+    settings.toggle_collapsed(&path("app"), &path("app-feat"));
     let json = serde_json::to_vec(&settings).unwrap();
     let read: Settings = serde_json::from_slice(&json).unwrap();
     assert_eq!(read, settings);
@@ -206,4 +234,9 @@ fn spaces_survive_a_round_trip() {
     let older: Settings =
         serde_json::from_str(r#"{ "spaces": [{ "name": "Work", "icon": "rocket" }] }"#).unwrap();
     assert_eq!(older.spaces[0].name, "Work");
+    // And a project's look from before its worktrees had an order and folding.
+    let older: Settings =
+        serde_json::from_str(r#"{ "project_looks": { "/src/app": { "name": "App" } } }"#).unwrap();
+    assert!(older.worktree_order(&path("app")).is_empty());
+    assert!(!older.is_collapsed(&path("app"), &path("app")));
 }

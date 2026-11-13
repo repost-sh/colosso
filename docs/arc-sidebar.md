@@ -1,10 +1,10 @@
-# Koyo's Arc sidebar: spaces, project tiles and worktree dividers
+# Koyo's Arc sidebar: spaces, project tiles and worktree folders
 
 Written 2026-11-08 on branch `schulzfel/arc-like-sidebar`. Drafted with Claude.
 
 The Arc layout's sidebar is rebuilt to look and work like Arc's own: browser controls and an
 address bar at the top, the projects of a **space** as tiles, the space's name, and each
-worktree of the selected project as a divider with its tabs under it. Spaces are switched
+worktree of the selected project as a folder with its tabs under it. Spaces are switched
 along the sidebar's foot. This note is the spec the work followed; keep it in step with the
 code in `koyo-rs/koyo/src/arc/` and `koyo-rs/koyo/src/spaces.rs`. The visual check draws it,
 and then does what a person does in it (a space's mark saying a chat in it works and waits, a
@@ -107,25 +107,42 @@ Arc's favourites grid, holding the projects of the space shown.
 ## 4. Project name
 
 - The selected project's name, after the space's dot in its colour. Nothing sits between it and
-  the first worktree divider. The space's own name shows on glass over its mark at the foot
+  the first worktree's header. The space's own name shows on glass over its mark at the foot
   while the pointer's on it (section 7).
 
 ## 5. Worktrees and their tabs
 
-- Each worktree is an Arc-style divider: the worktree's name on the left in the small style
-  Arc gives "Clear", and a thin line to the end. Hovering the divider fades in what the
-  worktree offers at the end, in the destructive colour, the line making room for it; leaving
-  fades it out and the line runs to the end again. No badges on it.
-  - **Clear**, while it has tabs: it asks first, then closes every tab of the worktree,
-    stopping its terminals and chats.
-  - **Delete**, while it has none: the usual Delete Worktree dialog, which says what deleting
-    would lose before anything goes. Its switch, and the New Worktree dialog's, are the
-    settings' own, macOS's `NSSwitch`.
-  - Nothing for a main checkout with no tabs: git can't delete it, and there's nothing to clear.
-- Right-clicking a divider opens the worktree's menu (Reveal in Finder, Copy Path, Stop
-  Terminals…, Delete Worktree…). Clicking its name selects the worktree.
-- A **+ New Tab** row under each divider, in Arc's style: it selects the worktree and opens
-  the ⌘T launcher.
+- Each worktree is a folder, as in Arc's sidebar: a header, and its tabs under it
+  (`arc/header.rs`, `arc/worktrees.rs`).
+- The header is a row as tall as a tab's, with its corners. A chevron sits in the tabs' icons'
+  column, pointing down while the worktree is open and right while it's collapsed, and the
+  worktree's name where the tabs' titles are: at their size, semibold, in the muted grey of New
+  Tab, cut short with an ellipsis before the row's end. No other icon, and no badges.
+- Under the pointer a pill fades in across the header, as a tab's hover tint, with a muted `…`
+  and a **+** at its end; leaving, they fade out (150 ms, as the sidebar's other hovers do).
+- **Clicking the header collapses the worktree, or opens it**, as Arc's folder does. Its tabs
+  slide closed or open and the chevron turns between right and down as they go, in the time a
+  tab takes to slide into place (240 ms, easing out); at once with reduced motion.
+- Collapsed, all its tabs are hidden, the tab shown among them too: the panes still show it.
+  Only its header opens it again, so a tab moved onto it, or shown some other way, leaves it
+  collapsed.
+- The header's **+** selects the worktree and opens the ⌘T launcher on it, opening the
+  worktree first if it's collapsed, so the tab it opens shows. Clicking the rest of the header
+  doesn't select the worktree: its **+** and its tabs do.
+- The `…`, or a right-click on the header, opens the worktree's menu:
+  - **Clear Tabs…**: asks first, then closes every tab of the worktree, stopping its terminals
+    and chats. Greyed out while it has no tabs.
+  - **Delete Worktree…**: the usual Delete Worktree dialog, which says what deleting would lose
+    before anything goes. Greyed out on a main checkout, which git can't delete. Its switch, and
+    the New Worktree dialog's, are the settings' own, macOS's `NSSwitch`.
+  - **Reveal in Finder** and **Copy Path**, after a separator.
+  - Stopping all of a worktree's terminals is left to the Orca layout's menu.
+- **Dragging a header moves its worktree**, header and rows together, among the project's, as a
+  tab moves in its list (`shell/reorder.rs`): it follows the pointer, the worktrees it passes
+  slide into the place it left once it's past their middle, and let go it slides into the place
+  it's over. It joins none, and stays on the list wherever the pointer goes. The order is the
+  project's (`Project::branches`), so the Orca layout lists the worktrees in it too, and it's
+  kept for the next launch (section 9); a worktree it doesn't name, as a new one, comes last.
 - Tab rows as Arc's, 36 pt high with 10 pt corners: a 16 pt icon, the title cut short, the
   selected tab a pill of white laid thin over the colours, so it takes their hue, with no
   shadow; a hover tint, and a close button at its end on hover, and on the tab shown.
@@ -143,10 +160,11 @@ Arc's favourites grid, holding the projects of the space shown.
     shown included.
   - A split's row is its panes, each with its own ×: there it goes before them.
 - Unsaved edits' and splits' dots, middle-click to close, and dragging to reorder stay.
-- A tab dragged past its list's end, onto another worktree's tabs, divider or New Tab row,
-  moves to that worktree and shows there: where the tab it's dropped on is, or first. Its
-  content doesn't move: a terminal stays in its folder, a chat with its thread. The window
-  comes back with the tab where it was put (`docs/browser.md` 1).
+- A tab dragged past its list's end, onto another worktree's tabs or header, moves to that
+  worktree and shows there: where the tab it's dropped on is, or first. A collapsed worktree's
+  header takes it too, and the worktree stays collapsed. Its content doesn't move: a terminal
+  stays in its folder, a chat with its thread. The window comes back with the tab where it was
+  put (`docs/browser.md` 1).
 - The sidebar's search field and its "New worktree" row are gone.
 
 ## 6. Space menu
@@ -217,7 +235,10 @@ Arc's favourites grid, holding the projects of the space shown.
 - `settings.json` keeps the spaces (`spaces`: name, light and dark themes, projects in the
   sidebar's order, the project selected) and the space shown (`space`). An `icon` a space has from an earlier
   build is ignored.
-- It keeps each project's Koyo-only name and icon (`project_looks`).
+- It keeps each project's Koyo-only name and icon (`project_looks`), and with them how its
+  worktrees show in the sidebar (section 5): their order once one's been dragged (`worktrees`)
+  and those collapsed (`collapsed`), each by its folder. What's kept of a worktree git no longer
+  lists goes when the project's worktrees are next read.
 - A new project joins the space shown, and so do projects no space holds, as every project
   the first time this runs, into a first space made then. A project removed leaves its space.
 - ⌘⌥← and ⌘⌥→ change the space shown (`space`) one either way, as a swipe does, and only in the

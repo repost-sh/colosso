@@ -1,41 +1,58 @@
 //! The space under its tiles (`docs/arc-sidebar.md` 4, 5): the selected project's name, then each
-//! of its worktrees as Arc's divider, the worktree's name on the left and, while the pointer's on
-//! it, Clear or Delete on the right; a New Tab row, and its tabs as Arc's rows, the one shown a
-//! pill. A tab says at its end how it's doing, as its project's tile does: the spinner while a
-//! chat in it is at work, an indigo dot once something in it waits for the person.
+//! of its worktrees as Arc's folder, under a header (`header.rs`) that collapses it, opens a tab
+//! in it and drags it to another place among the project's; open, its tabs as Arc's rows, the one
+//! shown a pill. A tab says at its end how it's doing, as its project's tile does: the spinner
+//! while a chat in it is at work, an indigo dot once something in it waits for the person.
 
-use std::path::PathBuf;
-use std::time::Duration;
+use std::rc::Rc;
 
-use gpui_kit::assets::IconName;
+use gpui_kit::base::motion::{Transition, transition};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    Action, AnyElement, Axis, ClickEvent, Context, Div, FontWeight, InteractiveElement as _,
+    AnyElement, Axis, ClickEvent, Context, Div, ElementId, FontWeight, InteractiveElement as _,
     IntoElement, MouseButton, ParentElement as _, Stateful, StatefulInteractiveElement as _,
-    Styled as _, Window, div, px, relative,
+    Styled as _, Window, div, px,
 };
 
-use super::actions::ClearWorktree;
+use super::header::header;
+use super::tiles::key_of;
 use super::{Look, space_colour, space_dot};
 use crate::chat::{Activity, spinner};
-use crate::launcher::NewTab;
 use crate::model::{BranchUnit, Tab};
 use crate::pane::dot;
-use crate::projects::{DeleteWorktree, with_menu, worktree_menu};
 use crate::settings;
 use crate::shell::{
-    Dragged, DraggedPane, Shell, add_project_row, ellipsized, icon, project_error,
+    Dragged, DraggedPane, Drop, MOTION, Reorder, Shell, add_project_row, ellipsized, project_error,
     tab_close_button, tab_list, tab_row,
 };
-use crate::theme;
 
-/// A tab's row, and New Tab's.
+/// A tab's row, and a worktree's header.
 const ROW: f32 = 36.;
-/// How long a divider's Clear or Delete takes to fade in or out as the pointer comes onto it or
-/// leaves.
-const OFFER_FADE: Duration = Duration::from_millis(150);
+/// Between a worktree's rows, and between the worktrees.
+const GAP: f32 = 2.;
 /// The tabs' icons.
-const TAB_ICON: f32 = 16.;
+pub(super) const TAB_ICON: f32 = 16.;
+
+/// The list the worktrees of the project at `project` are dragged along.
+pub(super) fn list_of(project: usize) -> u64 {
+    project as u64
+}
+
+/// A row of a worktree's, as Arc's are: its header, a tab. Its icon goes first, in a column
+/// `TAB_ICON` wide, its text after.
+pub(super) fn arc_row(id: impl Into<ElementId>) -> Stateful<Div> {
+    div()
+        .id(id)
+        .h(px(ROW))
+        .flex_shrink_0()
+        .px(px(10.))
+        .flex()
+        .items_center()
+        .gap(px(10.))
+        .rounded(px(10.))
+        .cursor_pointer()
+        .text_sm()
+}
 
 /// The project shown's name and its worktrees, scrolling under the tiles.
 pub fn space(
@@ -51,7 +68,7 @@ pub fn space(
         (shell.workspace.active_project()).map(|index| (index, &shell.workspace.projects[index]));
     let name = project.map(|(_, project)| project.name.clone());
     let colour = space_colour(settings::get(cx).space, cx);
-    let header = div()
+    let heading = div()
         .debug_selector(|| "arc-project-name".to_owned())
         .h(px(28.))
         .flex_shrink_0()
@@ -75,12 +92,23 @@ pub fn space(
             if let Some(error) = project.error.clone() {
                 body.push(project_error(error, p).into_any_element());
             }
-            for (branch_index, unit) in project.branches.iter().enumerate() {
-                let active_tab = (branch_index == project.active_branch).then_some(unit.active_tab);
-                let at = (project_index, branch_index);
-                let worktree = worktree(shell, at, unit, active_tab, look, window, cx);
-                body.push(worktree.into_any_element());
-            }
+            let worktrees = (project.branches.iter().enumerate())
+                .map(|(branch_index, unit)| {
+                    let active_tab =
+                        (branch_index == project.active_branch).then_some(unit.active_tab);
+                    let at = (project_index, branch_index);
+                    worktree(shell, at, unit, active_tab, look, window, cx)
+                })
+                .collect();
+            // A worktree let go among them goes there, in both layouts' lists.
+            let on_drop = cx.listener(move |this, drop: &Drop, _, cx| {
+                if let Drop::Move { from, to } = *drop {
+                    this.move_worktree(project_index, from, to, cx);
+                }
+            });
+            let (list, hand) = (list_of(project_index), shell.worktree_hand.clone());
+            let worktrees = Reorder::worktrees(list, worktrees, hand, px(GAP), Rc::new(on_drop));
+            body.push(worktrees.into_any_element());
         }
     }
     div()
@@ -90,12 +118,13 @@ pub fn space(
         .overflow_y_scroll()
         .flex()
         .flex_col()
-        .child(header)
+        .child(heading)
         .children(body)
 }
 
-/// A worktree's divider, its New Tab row and its tabs; `active_tab` is set only on the
-/// selected worktree.
+/// A worktree's header and, unless it's collapsed, its tabs, sliding open or closed as it's
+/// opened or collapsed, by the key it keeps as it moves among the project's;
+/// `active_tab` is set only on the selected worktree.
 fn worktree(
     shell: &Shell,
     (project_index, branch_index): (usize, usize),
@@ -104,211 +133,49 @@ fn worktree(
     look: Look,
     window: &mut Window,
     cx: &mut Context<Shell>,
-) -> impl IntoElement + use<> {
+) -> (u64, AnyElement) {
     let p = look.p;
-    let selected = active_tab.is_some();
-    let divider = divider(
-        shell,
-        (project_index, branch_index),
-        unit,
-        selected,
-        look,
-        window,
-        cx,
-    );
-    let new_tab = div()
-        .id(("arc-new-tab", branch_index))
-        .debug_selector(move || format!("arc-new-tab-{branch_index}"))
-        .h(px(ROW))
-        .flex_shrink_0()
-        .px(px(10.))
-        .flex()
-        .items_center()
-        .gap(px(10.))
-        .rounded(px(10.))
-        .cursor_pointer()
-        .text_sm()
-        .text_color(look.label)
-        .hover(|style| style.bg(look.row_hover))
-        .child(icon(IconName::Plus, TAB_ICON))
-        .child("New Tab")
-        // The launcher opens its tab on the selected worktree, so this one is selected on the
-        // press that opens it.
-        .on_mouse_down(
-            MouseButton::Left,
-            cx.listener(move |this, _, _, cx| {
-                this.workspace.select_branch(project_index, branch_index);
-                cx.notify();
-            }),
-        )
-        .on_click(|_, window, cx| window.dispatch_action(Box::new(NewTab), cx));
-    let new_tab = takes_tabs(new_tab, (project_index, branch_index), look, cx);
-    let rows = (unit.tabs.iter().enumerate())
+    let project = &shell.workspace.projects[project_index].path;
+    let path = &unit.worktree.path;
+    let key = key_of(path);
+    // As far open as it's come, as a tab slides into place.
+    let target = if settings::get(cx).is_collapsed(project, path) {
+        0.
+    } else {
+        1.
+    };
+    let id = ElementId::from(("arc-open", key));
+    let open = transition(id, target, Transition::new(MOTION), window, cx);
+    let at = (project_index, branch_index, key);
+    let header = header(shell, at, unit, open, look, window, cx);
+    // Collapsed and still, or with no tabs, it has no rows: none is drawn, or picked.
+    if open == 0. || unit.tabs.is_empty() {
+        return (key, header.into_any_element());
+    }
+    let rows: Vec<_> = (unit.tabs.iter().enumerate())
         .map(|(tab_index, tab)| {
             let at = (project_index, branch_index, tab_index);
             tab_row_of(shell, at, tab, active_tab == Some(tab_index), look, cx)
         })
         .collect();
     let list = ((project_index, branch_index), Axis::Vertical);
-    div()
-        .flex()
-        .flex_col()
-        .gap_px()
-        .child(divider)
-        .child(new_tab)
-        .child(tab_list(&shell.tab_hand, list, rows, px(2.), p, cx))
-}
-
-/// What a worktree's divider offers at its end while it's hovered (`docs/arc-sidebar.md` 5).
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Offer {
-    /// It has tabs: closing them all, once the person says so.
-    Clear,
-    /// It has none, and it's a linked worktree: deleting it, through the Delete Worktree dialog.
-    Delete,
-}
-
-impl Offer {
-    /// What a worktree with `tabs` tabs offers; a main checkout with none, which git can't delete,
-    /// offers nothing.
-    fn of(tabs: usize, is_main: bool) -> Option<Offer> {
-        match (tabs, is_main) {
-            (0, true) => None,
-            (0, false) => Some(Offer::Delete),
-            _ => Some(Offer::Clear),
-        }
-    }
-
-    fn word(self) -> &'static str {
-        match self {
-            Offer::Clear => "Clear",
-            Offer::Delete => "Delete",
-        }
-    }
-
-    /// The id of its word on a divider, which the branch's index follows.
-    fn id(self) -> &'static str {
-        match self {
-            Offer::Clear => "arc-clear",
-            Offer::Delete => "arc-delete",
-        }
-    }
-
-    /// The room the line leaves the word: the word and the gap before it.
-    fn room(self) -> f32 {
-        match self {
-            Offer::Clear => 38.,
-            Offer::Delete => 46.,
-        }
-    }
-
-    fn action(self, worktree: PathBuf) -> Box<dyn Action> {
-        match self {
-            Offer::Clear => Box::new(ClearWorktree(worktree)),
-            Offer::Delete => Box::new(DeleteWorktree(worktree)),
-        }
-    }
-}
-
-/// A worktree's divider: its name, which selects it, the line, and at its end what the worktree
-/// offers, Clear or Delete, shown only while the divider's hovered, fading in and out as Arc's
-/// does; right-clicked, the worktree's menu.
-fn divider(
-    shell: &Shell,
-    (project_index, branch_index): (usize, usize),
-    unit: &BranchUnit,
-    selected: bool,
-    look: Look,
-    window: &mut Window,
-    cx: &mut Context<Shell>,
-) -> impl IntoElement + use<> {
-    let p = look.p;
-    let (path, is_main) = (unit.worktree.path.clone(), unit.is_main());
-    let terminals = shell.has_terminals(&path);
-    // What it offers shows only while the divider's hovered, fading in and out as Arc's does,
-    // the line making room for it as it comes and running to the end once it's gone.
-    let offer = Offer::of(unit.tabs.len(), is_main);
-    let (shown, hover) = theme::hover::eased(
-        gpui_kit::ElementId::Name(format!("arc-offer-{}", path.display()).into()),
-        OFFER_FADE,
-        window,
-        cx,
-    );
-    let divider = div()
-        .id(("arc-divider", branch_index))
-        .debug_selector(move || format!("arc-divider-{branch_index}"))
-        .h(px(26.))
-        .mt(px(6.))
-        .px(px(10.))
-        .relative()
+    let tabs = tab_list(&shell.tab_hand, list, rows, px(GAP), p, cx);
+    // As they slide, they're clipped to the share of their height `open` has them at; still,
+    // they take their own. Each row is `ROW` high, a gap before it, so their height is known
+    // before they're drawn.
+    let height = unit.tabs.len() as f32 * (ROW + GAP);
+    let sliding = div()
         .flex_shrink_0()
-        .flex()
-        .items_center()
-        .gap(px(8.))
-        .rounded(px(6.))
-        .text_size(px(11.))
-        .font_weight(FontWeight::SEMIBOLD)
-        .on_hover(hover)
-        .child(
-            div()
-                .id(("arc-worktree", branch_index))
-                .min_w_0()
-                .max_w(relative(0.7))
-                .truncate()
-                .cursor_pointer()
-                .text_color(if selected {
-                    p.text.opacity(0.8)
-                } else {
-                    look.label
-                })
-                .hover(|style| style.text_color(p.text))
-                // Selecting the worktree points the changes panel at its checkout.
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.workspace.select_branch(project_index, branch_index);
-                    cx.notify();
-                }))
-                .child(unit.name()),
-        )
-        .child(
-            div()
-                .flex_1()
-                .h(px(1.))
-                .mr(px(offer.map_or(0., Offer::room) * shown))
-                .bg(look.line),
-        )
-        .when_some(offer, |divider, offer| {
-            let (word, worktree) = (offer.word(), path.clone());
-            divider.child(
-                div()
-                    .id((offer.id(), branch_index))
-                    .debug_selector(move || format!("{}-{branch_index}", offer.id()))
-                    .absolute()
-                    .top_0()
-                    .bottom_0()
-                    .right(px(10.))
-                    .flex()
-                    .items_center()
-                    .text_color(p.danger)
-                    .opacity(0.85 * shown)
-                    .when(shown > 0., |clear| {
-                        clear.cursor_pointer().hover(|style| style.opacity(1.))
-                    })
-                    .child(word)
-                    .on_click(move |_, window, cx| {
-                        window.dispatch_action(offer.action(worktree.clone()), cx);
-                    }),
-            )
-        });
-    let divider = takes_tabs(divider, (project_index, branch_index), look, cx);
-    let menu_path = path;
-    with_menu(divider, move |_, _| {
-        worktree_menu(&menu_path, is_main, terminals)
-    })
+        .overflow_hidden()
+        .when(open < 1., |sliding| sliding.h(px(height * open)))
+        .child(div().pt(px(GAP)).child(tabs));
+    let worktree = div().flex().flex_col().child(header).child(sliding);
+    (key, worktree.into_any_element())
 }
 
 /// Has `row` take a tab dragged from another checkout's list, which then goes first among the
 /// tabs of the checkout `to`, as `(project, branch)`; lit while one's over it.
-fn takes_tabs(
+pub(super) fn takes_tabs(
     row: Stateful<Div>,
     to: (usize, usize),
     look: Look,
@@ -337,17 +204,7 @@ fn tab_row_of(
     let p = look.p;
     let (project_index, branch_index, tab_index) = at;
     let (activity, first) = (shell.tab_activity(tab, cx), tab.first().id);
-    let row = div()
-        .id(("arc-tab", branch_index * 100 + tab_index))
-        .h(px(ROW))
-        .flex_shrink_0()
-        .px(px(10.))
-        .flex()
-        .items_center()
-        .gap(px(10.))
-        .rounded(px(10.))
-        .text_sm()
-        .cursor_pointer()
+    let row = arc_row(("arc-tab", branch_index * 100 + tab_index))
         .group("arc-tab")
         .when(active, |row| row.bg(look.pill))
         .when(!active, |row| row.hover(|style| style.bg(look.row_hover)))
@@ -419,18 +276,4 @@ fn at_end(sign: Div) -> Div {
         // which a fade round it wouldn't reach.
         .group_hover("arc-tab", gpui_kit::Styled::invisible)
         .child(sign)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::Offer;
-
-    #[test]
-    fn a_worktree_with_tabs_offers_clear_and_an_empty_one_delete() {
-        assert!(matches!(Offer::of(3, false), Some(Offer::Clear)));
-        assert!(matches!(Offer::of(1, true), Some(Offer::Clear)));
-        assert!(matches!(Offer::of(0, false), Some(Offer::Delete)));
-        // Git can't delete a main checkout, and with no tabs there's nothing to clear.
-        assert!(Offer::of(0, true).is_none());
-    }
 }

@@ -81,7 +81,7 @@ mod tests {
             head: Head::Branch("main".into()),
             is_main: true,
         };
-        workspace.set_worktrees(0, vec![main]);
+        workspace.set_worktrees(0, vec![main], &[]);
         workspace.select_worktree(0, "/src/app".as_ref());
         workspace
     }

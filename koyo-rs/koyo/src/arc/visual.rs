@@ -3,8 +3,9 @@
 //! a space of its own with its own colours, and an empty space, light and dark; then what a
 //! person does there (`acts`): a space's mark saying a chat in it works and then waits, a tab's
 //! row and its tile saying the same, a tile dragged to another row and back, the address bar
-//! following the pane pressed in, ⌘L's launcher on a page, and ⌥← and ⌥→ between spaces, in a
-//! composer and on the shortcuts page (`keys`). It shows a chat, so it runs on a data folder
+//! following the pane pressed in, ⌘L's launcher on a page, ⌥← and ⌥→ between spaces, in a
+//! composer and on the shortcuts page (`keys`), and a project's worktrees under their headers,
+//! collapsed, opened, dragged and kept (`headers`). It shows a chat, so it runs on a data folder
 //! and an agent host of its own:
 //!
 //! ```sh
@@ -30,6 +31,7 @@ use crate::theme::{UseDarkTheme, UseLightTheme};
 use crate::visual::{Drawn, Result, checkout};
 
 mod acts;
+mod headers;
 mod keys;
 
 /// Where the pictures go, relative to the checkout.
@@ -184,5 +186,7 @@ fn draw() -> Result<Vec<String>> {
     said.push(format!("spaces: {shown}"));
     let held = |path: &Path| path.display().to_string();
     said.push(format!("second project: {}", held(&site)));
+    // Back in Arc, a project's worktrees under their headers, which Orca then lists as moved.
+    headers::headers(&mut drawn, &mut said)?;
     Ok(said)
 }
