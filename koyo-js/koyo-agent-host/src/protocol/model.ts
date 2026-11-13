@@ -423,5 +423,10 @@ export const ThreadSummary = z.object({
   unread: z.boolean(),
   tabOpen: z.boolean(),
   updatedAt: Time,
+  /**
+   * The start of what was said last in it, the person's message or the agent's reply, on one
+   * line (`opening`), as a tab's row shows it; null before anything was.
+   */
+  said: z.string().nullable(),
 });
 export type ThreadSummary = z.infer<typeof ThreadSummary>;

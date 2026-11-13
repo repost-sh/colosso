@@ -477,6 +477,10 @@ pub struct ThreadSummary {
     pub unread: bool,
     pub tab_open: bool,
     pub updated_at: Time,
+    /// The start of what was said last in it, the person's message or the agent's reply, on one
+    /// line, as a tab's row shows it; none before anything was, or from an older host.
+    #[serde(default)]
+    pub said: Option<String>,
 }
 
 /// The answers to a question request, by question id: the chosen labels, or the typed text.

@@ -30,12 +30,21 @@ const VersionRow = z.object({ user_version: z.int() });
 const IdRow = z.object({ id: ThreadId });
 const LastRow = z.object({ last: z.int().nullable() });
 const FileRow = z.object({ file: z.string() });
+const SaidRow = z.object({ ordinal: z.int(), text: z.string() });
+/** The kinds of item that say something: the person's messages and the agent's replies. */
+const SPOKEN = "('user_message', 'assistant_text')";
 
 /** What a thread is doing, as `Store.state` reads it. */
 export interface State {
   readonly unsettled: readonly Run[];
   readonly ended: Run | undefined;
   readonly pending: readonly Request[];
+}
+
+/** What was said last in a thread, the person's message or the agent's reply, and where. */
+export interface Said {
+  readonly ordinal: number;
+  readonly text: string;
 }
 
 export class Store {
@@ -187,6 +196,15 @@ export class Store {
       ended: ended.at(0),
       pending: this.#query(Request, `${REQUESTS} AND status = 'pending' ORDER BY id`, id),
     };
+  }
+
+  /** What was said last in the thread: its latest message of the person's or reply with text. */
+  said(id: ThreadId): Said | null {
+    const sql = `SELECT ordinal, json_extract(data, '$.payload.text') AS text FROM items
+      WHERE thread_id = ? AND json_extract(data, '$.kind') IN ${SPOKEN}
+      AND json_extract(data, '$.payload.text') != '' ORDER BY ordinal DESC LIMIT 1`;
+    const row = this.#db.query(sql).get(id);
+    return row === null ? null : SaidRow.parse(row);
   }
 
   /** The place in the timeline the thread's next item takes. */

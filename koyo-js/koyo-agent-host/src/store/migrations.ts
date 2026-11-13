@@ -63,4 +63,8 @@ export const MIGRATIONS: readonly string[] = [
   CREATE INDEX threads_by_parent ON threads (json_extract(data, '$.parent.threadId'))
     WHERE json_extract(data, '$.parent.threadId') IS NOT NULL;
   `,
+  // What was said last in a thread is read from its latest items back (Store.said).
+  `
+  CREATE INDEX items_by_ordinal ON items (thread_id, ordinal);
+  `,
 ];

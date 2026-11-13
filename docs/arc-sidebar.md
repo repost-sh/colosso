@@ -123,7 +123,7 @@ Arc's favourites grid, holding the projects of the space shown.
   General: the person's GitHub user unless they set another): `schulzfel/some-nasty-name`
   shows as "Some nasty name", `main` as "Main". A detached checkout keeps "detached at …".
   The Clear dialog calls it so too; the Orca layout lists the branch.
-- The worktrees stand apart by space: 8 pt between one worktree and the next, 2 pt between a
+- The worktrees stand apart by space: 12 pt between one worktree and the next, 2 pt between a
   header and its tabs, so each header sits on its own tabs.
 - Under the pointer a pill fades in across the header, as a tab's hover tint, with a muted `…`
   and a **+** at its end; leaving, they fade out (150 ms, as the sidebar's other hovers do).
@@ -153,6 +153,12 @@ Arc's favourites grid, holding the projects of the space shown.
 - Tab rows as Arc's, 36 pt high with 10 pt corners: a 16 pt icon, the title cut short, the
   selected tab a pill of white laid thin over the colours, so it takes their hue, with no
   shadow; a hover tint, and a close button at its end on hover, and on the tab shown.
+- A chat's icon is Claude's logo in its colour, claude.ai's own, as a page shows its own
+  (`Pane::favicon`), there and wherever a tab shows its icon.
+- A chat's row, but for the tab shown's, says under its title the start of what was said last
+  in it, the person's message or the agent's reply, smaller and in the labels' grey, the two
+  lines in the row's height, as Arc's say what's recent in a tab. The tab shown shows the chat
+  beside the sidebar, so its row has the title alone. Pages' rows don't.
 - A split tab's row shows its panes side by side as Arc does: each pane's icon and title,
   sharing the row, a hairline between them and no fill of their own, the row's tint or pill
   being theirs. Each pane shows its × while the pointer's on it, making room for it then; one

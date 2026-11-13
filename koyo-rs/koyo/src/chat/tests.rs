@@ -72,6 +72,7 @@ pub(crate) fn summary(id: &str, cwd: &Path, title: &str, tab_open: bool) -> Thre
         unread: false,
         tab_open,
         updated_at: Time(AT.into()),
+        said: None,
     }
 }
 

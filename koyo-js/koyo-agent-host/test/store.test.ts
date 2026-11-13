@@ -6,6 +6,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { MIGRATIONS } from "../src/store/migrations";
 import { Store } from "../src/store/store";
 import { userMessage } from "../src/threads/records";
+import { prompt } from "./support/actor";
 import { request, run, text, thread } from "./support/records";
 import { removeScratch, scratch } from "./support/scratch";
 
@@ -49,6 +50,24 @@ describe("commit", () => {
     expect(() => chats.commit(stray.id, { runs: [run(stray)] })).toThrow();
     expect(chats.head(stray.id)).toBe(0);
     expect(chats.latest(stray.id, 10).runs).toStrictEqual([]);
+  });
+});
+
+describe("what was said last", () => {
+  test("is the latest message or reply with text, whatever came after it", () => {
+    const chats = store();
+    const chat = thread();
+    chats.commit(chat.id, { thread: chat });
+    expect(chats.said(chat.id)).toBeNull();
+    const turn = run(chat);
+    const asked = prompt("Find the flaky test.");
+    chats.commit(chat.id, { runs: [turn], items: [userMessage(turn, 0, asked, "turn")] });
+    expect(chats.said(chat.id)).toStrictEqual({ ordinal: 0, text: "Find the flaky test." });
+    // A reply still empty says nothing yet; one with words does.
+    chats.commit(chat.id, { items: [text(turn, 1)] });
+    expect(chats.said(chat.id)?.ordinal).toBe(0);
+    chats.commit(chat.id, { items: [text(turn, 2, "It shares a folder.")] });
+    expect(chats.said(chat.id)).toStrictEqual({ ordinal: 2, text: "It shares a folder." });
   });
 });
 

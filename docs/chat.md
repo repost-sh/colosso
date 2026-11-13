@@ -534,12 +534,16 @@ Request {
 
 ThreadSummary = id, cwd, title, provider, model, effort, fast, permission, plan, updatedAt,
   status: "idle"|"working"|"failed", needs: "approval"|"question"|"plan" | null,
-  background: bool, queued: count, unread: bool
+  background: bool, queued: count, unread: bool,
+  said: string | null    // the start of the last message, the person's or the agent's
 ```
 
 Derived, never stored (T3: status written twice drifts):
 - `status`, in one function: working while a run is starting, running or stopping; failed
   when the latest settled run failed; else idle. `needs` from the oldest pending request.
+- `said`, from the latest item of the person's message or the agent's reply that has words:
+  its first such line, without markdown's marks, spaces closed up, at most 200 characters
+  (`opening`). A tab's row in the Arc sidebar shows it (`docs/arc-sidebar.md` 5).
   `unread` when the latest settled run ended after `readAt`. `background` while the thread's
   `backgroundTasks` isn't 0 (4.5.6).
 - The stop divider ("You stopped this response") from `Run.stop`; the failure row from

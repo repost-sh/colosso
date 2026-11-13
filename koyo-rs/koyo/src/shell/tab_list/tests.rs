@@ -3,7 +3,7 @@ use gpui_kit::{
     VisualTestContext, point, px,
 };
 
-use crate::model::{PaneKind, SplitAxis, Tab};
+use crate::model::{Pane, PaneKind, SplitAxis, Tab};
 use crate::settings::{self, Layout};
 use crate::shell::Shell;
 use crate::test_support::{draw, repo, select, shell_with};
@@ -134,4 +134,14 @@ fn orca_strip_narrows_its_tabs_to_fit_beside_the_new_tab_button(cx: &mut TestApp
             assert!(tab.size.width > px(0.), "tab {at} of {count} has no width");
         }
     }
+}
+
+#[gpui_kit::test]
+fn a_chat_shows_claudes_logo_as_a_page_shows_its_own(cx: &mut TestAppContext) {
+    let (chat, terminal) = cx.update(|cx| {
+        let face = |kind| Pane::new(kind).favicon(cx).is_some();
+        (face(PaneKind::Chat), face(PaneKind::Terminal))
+    });
+    assert!(chat, "Claude's logo");
+    assert!(!terminal, "its kind's icon");
 }

@@ -12,7 +12,7 @@ import type { Store } from "../store/store";
 import { ThreadActor } from "./actor";
 import { draftAttachments, removeAttachments, sweepAttachments } from "./attachments";
 import type { Context } from "./context";
-import { newThread } from "./records";
+import { newThread, opening } from "./records";
 import { filesBack, rewind } from "./rewind";
 import { summary } from "./rules";
 import type { Subscriber } from "./state";
@@ -92,7 +92,7 @@ export class Threads {
     this.#watchers.add(watcher);
     const { store } = this.#options;
     return store.chats().map((thread) =>
-      this.#actors.get(thread.id)?.summary() ?? summary(thread, store.state(thread.id)));
+      this.#actors.get(thread.id)?.summary() ?? stored(store, thread));
   }
 
   create(params: Params<"threads.create">): Thread {
@@ -277,4 +277,10 @@ function missing(id: ProviderId): Provider {
     restoreFiles: async () => { await Promise.reject(refusal); },
     title: async () => await Promise.reject(refusal),
   };
+}
+
+/** `thread` as lists show it, summed up from the store as it is. */
+function stored(store: Store, thread: Thread): ThreadSummary {
+  const said = store.said(thread.id);
+  return summary(thread, store.state(thread.id), said === null ? null : opening(said.text));
 }
