@@ -2,7 +2,8 @@
 //! in hand follows the pointer, the others step out of its way into the slot it left, along
 //! their row and round onto the next, and let go it slides into the slot it's over. Taken well
 //! away from the grid it goes back to its own slot, and letting go there changes nothing. The
-//! grid's counterpart of the tab lists' `Reorder`, which runs one way only.
+//! grid's counterpart of the tab lists' `Reorder`, which runs one way only. The projects' tiles
+//! are one grid, the pinned pages' another (`docs/arc-sidebar.md` 11), each with its own hand.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -35,6 +36,10 @@ struct Drag {
     grab: Point<Pixels>,
     /// Its slot and the slot it's over, where it goes when it's let go, as last drawn.
     slots: Option<(usize, usize)>,
+    /// Whether it was well away from the grid then, back in its own slot.
+    away: bool,
+    /// Whether it has been well away from the grid since it was taken up.
+    left: bool,
 }
 
 /// The tile in hand as the grid draws it this frame.
@@ -55,7 +60,21 @@ impl TileHand {
             key,
             grab,
             slots: None,
+            away: false,
+            left: false,
         });
+    }
+
+    /// Whether the tile in hand has been well away from its grid since it was taken up: what
+    /// takes it elsewhere shows for it from then until it's let go.
+    pub fn left_grid(&self) -> bool {
+        self.drag.borrow().as_ref().is_some_and(|drag| drag.left)
+    }
+
+    /// Whether the tile in hand is well away from its grid, where it's gone back to its slot:
+    /// what's let go there is no move among the tiles.
+    pub fn away(&self) -> bool {
+        self.drag.borrow().as_ref().is_some_and(|drag| drag.away)
     }
 
     /// The tile in hand, by its key.
@@ -110,7 +129,8 @@ impl TileHand {
             .min_by(|(_, a), (_, b)| far(*a).total_cmp(&far(*b)))
             .map_or(at, |(nearest, _)| nearest);
         let to = if away { at } else { nearest };
-        drag.slots = Some((at, to));
+        (drag.slots, drag.away) = (Some((at, to)), away);
+        drag.left |= away;
         Some(Held {
             at,
             origin,
@@ -170,6 +190,8 @@ pub type OnDrop = Rc<dyn Fn(&(usize, usize), &mut Window, &mut App)>;
 
 /// Tiles in a grid, each drawn where its motion has it.
 pub struct TileGrid {
+    /// Which grid it is, of the sidebar's.
+    name: &'static str,
     tiles: Vec<(u64, AnyElement)>,
     per_row: usize,
     gap: Pixels,
@@ -194,15 +216,17 @@ impl Placement {
 }
 
 impl TileGrid {
-    /// The `tiles`, each by a key it keeps as it moves, `per_row` to a row with `gap` between
-    /// them, `on_drop` doing what's done with one let go over another slot.
+    /// The grid called `name`: its `tiles`, each by a key it keeps as it moves, `per_row` to a
+    /// row with `gap` between them, `on_drop` doing what's done with one let go over another slot.
     pub fn new(
+        name: &'static str,
         tiles: Vec<(u64, AnyElement)>,
         (per_row, gap): (usize, Pixels),
         hand: Rc<TileHand>,
         on_drop: OnDrop,
     ) -> Self {
         TileGrid {
+            name,
             tiles,
             per_row,
             gap,
@@ -225,7 +249,7 @@ impl Element for TileGrid {
     type PrepaintState = Placement;
 
     fn id(&self) -> Option<ElementId> {
-        Some("arc-tile-grid".into())
+        Some(self.name.into())
     }
 
     fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
@@ -431,7 +455,7 @@ mod tests {
         hand.take(101, point(px(30.), px(22.)));
         let held = hand.place(&keys, (&slots, 3), bounds, middle_at(98., 300.), true);
         let held = held.expect("a tile in hand");
-        assert!(held.away);
+        assert!(held.away && hand.away());
         assert_eq!((held.to, held.origin), (1, point(px(68.), px(0.))));
         assert_eq!(hand.release(), None, "it's where it was");
 

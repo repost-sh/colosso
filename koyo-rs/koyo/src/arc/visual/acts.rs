@@ -70,8 +70,10 @@ pub fn frames(drawn: &mut Drawn, count: usize, step: Duration) -> Result<()> {
 /// across.
 #[derive(Clone, Copy)]
 pub enum Part {
-    /// The tiles and the worktrees' rows under them.
+    /// The sidebar's head: the pinned pages, the loose ones and the worktrees' rows under them.
     Rows,
+    /// The space's projects' tiles, at the sidebar's foot, and the spaces' marks under them.
+    Tiles,
     /// The spaces' marks.
     Foot,
     /// A worktree's rows, `rows` of them down from `top`, a little room round them.
@@ -79,7 +81,7 @@ pub enum Part {
 }
 
 /// Saves the window as `name`, and `part` of the sidebar, three or four times its size, as
-/// `name`-rows, `name`-foot or `name`-part.
+/// `name`-rows, `name`-foot, `name`-tiles or `name`-part.
 pub fn save_with(drawn: &mut Drawn, name: &str, part: Part) -> Result<String> {
     let path = drawn.save(&format!("{name}.png"))?;
     let picture = image::open(&path).map_err(|error| error.to_string())?;
@@ -90,6 +92,7 @@ pub fn save_with(drawn: &mut Drawn, name: &str, part: Part) -> Result<String> {
     let (label, top, down, times) = match part {
         Part::Rows => ("rows", (80 * scale).min(height), 600 * scale, 3),
         Part::Foot => ("foot", height.saturating_sub(110 * scale), 110 * scale, 4),
+        Part::Tiles => ("tiles", height.saturating_sub(200 * scale), 200 * scale, 3),
         // Each row is 38 points apart.
         Part::Worktree { top, rows } => {
             let top = (top.as_f32() as u32).saturating_sub(8) * scale;
@@ -281,7 +284,7 @@ pub fn drag_tile(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     let last = before.len() - 1;
     let pictures = ["arc-tile-in-hand", "arc-tile-over-its-slot"];
     let (first, end) = (tile_at(drawn, 0)?, tile_at(drawn, last)?);
-    drag(drawn, (first, end), Some((pictures, Part::Rows)), said)?;
+    drag(drawn, (first, end), Some((pictures, Part::Tiles)), said)?;
     let path = drawn.save("arc-tile-moved.png")?;
     said.push(format!(
         "tiles {before:?} dragged first onto last: {:?}; the sidebar's order saved as {:?}; saved {}",

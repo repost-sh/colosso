@@ -59,7 +59,7 @@ impl Shell {
     /// After each change of the shell, as a file and the diffs are made over the panels of
     /// their checkout, which is the selected one once the tab is shown.
     pub(crate) fn make_shown_editors(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(at) = self.workspace.shown_tab() else {
+        let Some(at) = self.workspace.shown_checkout_tab() else {
             return;
         };
         let panes = self.workspace.tab(at).map(Tab::panes).unwrap_or_default();

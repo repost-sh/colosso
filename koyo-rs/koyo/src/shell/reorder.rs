@@ -106,6 +106,27 @@ impl Reorder {
         }
     }
 
+    /// The loose pages of list `list` down the Arc sidebar, each by a key it keeps as it moves,
+    /// with `gap` between them, `on_drop` doing what's done with one let go over the list: they
+    /// move as tabs do and leave the list as tabs do, but join none.
+    pub fn pages(
+        list: u64,
+        pages: Vec<(u64, AnyElement)>,
+        hand: Rc<TabHand>,
+        gap: Pixels,
+        on_drop: OnDrop,
+    ) -> Self {
+        Reorder {
+            list,
+            holds: Holds::Pages,
+            axis: Axis::Vertical,
+            tabs: pages,
+            hand,
+            gap,
+            on_drop,
+        }
+    }
+
     /// The worktrees of project `list` down the Arc sidebar, each by a key it keeps as it moves,
     /// with `gap` between them, `on_drop` doing what's done with one let go: they move as tabs
     /// do, but join none, and stay on the list wherever they're taken.
@@ -144,6 +165,7 @@ impl Element for Reorder {
         let name = match self.holds {
             Holds::Tabs { .. } => "tab-list",
             Holds::Worktrees => "worktree-list",
+            Holds::Pages => "page-list",
         };
         Some((name, self.list).into())
     }

@@ -145,7 +145,7 @@ pub(crate) fn open_agents_page(
         return;
     };
     let drawn = shell.route(cx) == Route::Workspace
-        && shell.workspace.shown_tab() == Some(at)
+        && shell.workspace.shown_checkout_tab() == Some(at)
         && window.is_visible();
     if !drawn {
         view.update(cx, BrowserView::open_out_of_sight);

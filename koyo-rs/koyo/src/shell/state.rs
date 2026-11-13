@@ -10,6 +10,11 @@ use crate::navigation::Route;
 use crate::settings_view::SettingsPage;
 
 impl Shell {
+    /// What the sidebar's search field holds.
+    pub fn search_query(&self, cx: &App) -> gpui_kit::SharedString {
+        self.search.read(cx).value()
+    }
+
     /// Whether the sidebar is open, or sliding open; closed, the window is in compact mode.
     pub(crate) fn sidebar_open(&self) -> bool {
         self.sidebar_open

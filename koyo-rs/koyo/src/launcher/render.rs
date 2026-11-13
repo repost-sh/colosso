@@ -105,7 +105,8 @@ impl Launcher {
                     .on_click(cx.listener(|this, _, window, cx| this.step_kind(1, window, cx))),
             )
             .child(input)
-            .child(
+            // Not where only a page opens: Tab goes to no other kind there.
+            .when(!self.pages_only(), |field| field.child(
                 div()
                     .id("launcher-next-kind")
                     .flex()
@@ -118,7 +119,7 @@ impl Launcher {
                     .child(next.label())
                     .children(Keystroke::parse("tab").ok().map(Kbd::new))
                     .on_click(cx.listener(|this, _, window, cx| this.step_kind(1, window, cx))),
-            )
+            ))
     }
 
     /// Row `at`, picked when clicked.

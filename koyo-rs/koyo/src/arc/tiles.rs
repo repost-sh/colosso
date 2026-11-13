@@ -13,9 +13,9 @@ use gpui_kit::base::ElementExt as _;
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Div, FontWeight, InteractiveElement as _,
-    IntoElement, MouseButton, ParentElement as _, Render, StatefulInteractiveElement as _,
-    Styled as _, Window, div, img, px,
+    AnyElement, App, AppContext as _, Context, Div, ElementId, FontWeight,
+    InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, Render, Stateful,
+    StatefulInteractiveElement as _, Styled as _, Window, div, img, px,
 };
 
 use super::Look;
@@ -33,13 +33,15 @@ use crate::settings;
 use crate::shell::Shell;
 use crate::theme::Palette;
 
-const TILE: f32 = 44.;
-const GAP: f32 = 8.;
-const PICTURE: f32 = 20.;
+/// A tile's height, the room between tiles, and the picture in one: the pinned pages' tiles
+/// are the same (`pinned.rs`).
+pub(super) const TILE: f32 = 44.;
+pub(super) const GAP: f32 = 8.;
+pub(super) const PICTURE: f32 = 20.;
 
-/// How many tiles a row holds for `count` projects: up to four, three for five or six, so the
-/// rows come out even.
-fn per_row(count: usize) -> usize {
+/// How many tiles a row holds for `count` projects, or pinned pages: up to four, three for five
+/// or six, so the rows come out even.
+pub(super) fn per_row(count: usize) -> usize {
     match count {
         5 | 6 => 3,
         count => count.clamp(1, 4),
@@ -71,6 +73,7 @@ pub fn grid(
     });
     let rows = (per_row(projects.len()), px(GAP));
     Some(TileGrid::new(
+        "arc-tile-grid",
         tiles,
         rows,
         shell.tile_hand.clone(),
@@ -137,6 +140,44 @@ fn picture(project: &Project, p: Palette, cx: &mut App) -> AnyElement {
     }
 }
 
+/// A tile's frame, a project's or a pinned page's alike (`pinned.rs`): a rounded square that
+/// lights under the pointer, lit when it's the one `selected`, lifted off its grid while it's in
+/// hand, and noting where it's drawn for the card of what's `hovered`, which a press puts away.
+pub(super) fn tile_frame(
+    id: impl Into<ElementId>,
+    hovered: Hovered,
+    (selected, lifted): (bool, bool),
+    shell: &Shell,
+    look: Look,
+    cx: &mut Context<Shell>,
+) -> Stateful<Div> {
+    div()
+        .id(id)
+        .min_w_0()
+        .h(px(TILE))
+        .relative()
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded(px(10.))
+        .cursor_pointer()
+        .when(selected, |tile| tile.bg(look.tile_selected))
+        .when(!selected, |tile| {
+            tile.bg(look.tile).hover(|style| style.bg(look.tile_hover))
+        })
+        // In hand, it's lifted off the grid, over the tiles it passes.
+        .when(lifted, |tile| tile.bg(look.tile_selected).shadow_md())
+        // Where it's drawn, for its card; which comes a moment after the pointer rests on it.
+        .on_prepaint(shell.arc_hover.noting(hovered))
+        .on_hover(cx.listener(move |this, over: &bool, window, cx| {
+            this.hover(hovered, *over, window, cx);
+        }))
+        .on_mouse_down(
+            MouseButton::Left,
+            cx.listener(|this, _, _, cx| this.press_hovered(cx)),
+        )
+}
+
 /// The tile of the project at `index` in the workspace, known in its space's grid by `key`.
 fn tile(
     shell: &Shell,
@@ -152,39 +193,22 @@ fn tile(
     let face = picture(project, p, cx);
     let hand = shell.tile_hand.clone();
     let lifted = hand.holding() == Some(key);
-    let tile = div()
-        .id(("arc-tile", index))
-        .debug_selector(move || format!("arc-tile-{index}"))
-        .min_w_0()
-        .h(px(TILE))
-        .relative()
-        .flex()
-        .items_center()
-        .justify_center()
-        .rounded(px(10.))
-        .cursor_pointer()
-        .when(selected, |tile| tile.bg(look.tile_selected))
-        .when(!selected, |tile| {
-            tile.bg(look.tile).hover(|style| style.bg(look.tile_hover))
-        })
-        // In hand, it's lifted off the grid, over the tiles it passes.
-        .when(lifted, |tile| tile.bg(look.tile_selected).shadow_md())
-        .on_drag(DraggedTile, move |_, grab, _, cx| {
-            hand.take(key, grab);
-            cx.new(|_| DraggedTile)
-        })
-        .child(face)
-        .children(corner.map(|corner| div().absolute().top(px(6.)).right(px(6.)).child(corner)))
-        // Where it's drawn, for its card; which comes a moment after the pointer rests on it.
-        .on_prepaint(shell.arc_hover.noting(Hovered::Tile(index)))
-        .on_hover(cx.listener(move |this, hovered: &bool, window, cx| {
-            this.hover(Hovered::Tile(index), *hovered, window, cx);
-        }))
-        .on_mouse_down(
-            MouseButton::Left,
-            cx.listener(|this, _, _, cx| this.press_hovered(cx)),
-        )
-        .on_click(cx.listener(move |this, _, _, cx| this.select_project(index, cx)));
+    let tile = tile_frame(
+        ("arc-tile", index),
+        Hovered::Tile(index),
+        (selected, lifted),
+        shell,
+        look,
+        cx,
+    )
+    .debug_selector(move || format!("arc-tile-{index}"))
+    .on_drag(DraggedTile, move |_, grab, _, cx| {
+        hand.take(key, grab);
+        cx.new(|_| DraggedTile)
+    })
+    .child(face)
+    .children(corner.map(|corner| div().absolute().top(px(6.)).right(px(6.)).child(corner)))
+    .on_click(cx.listener(move |this, _, _, cx| this.select_project(index, cx)));
     with_menu(tile, move |_, cx| tile_menu(&path, cx))
 }
 

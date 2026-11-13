@@ -21,6 +21,9 @@ pub(crate) struct Kept {
     target: (usize, usize, Option<u64>),
     /// What had the keyboard, which a new page's address or a file's editor would take.
     focused: Option<FocusHandle>,
+    /// The pinned page shown in place of the checkout's tab, and the loose one, each by its
+    /// page's pane, if one was.
+    apart: (Option<u64>, Option<u64>),
 }
 
 impl Kept {
@@ -43,6 +46,10 @@ impl Kept {
                 unit.tabs.get(unit.active_tab).map(|tab| tab.first().id),
             ),
             focused: window.focused(cx),
+            apart: (
+                (workspace.pinned_shown()).map(|at| workspace.pinned()[at].key()),
+                (workspace.loose_shown()).map(|at| workspace.loose()[at].key()),
+            ),
         }
     }
 
@@ -62,6 +69,14 @@ impl Kept {
             selected => shell
                 .workspace
                 .select_project(selected.map(|(project, _)| project)),
+        }
+        // Selecting a checkout leaves a pinned or a loose page: it's shown again, as it was.
+        let (pinned, loose) = self.apart;
+        if let Some(at) = loose.and_then(|key| shell.workspace.loose_at(key)) {
+            shell.workspace.show_loose(at);
+        }
+        if let Some(at) = pinned.and_then(|key| shell.workspace.pinned_at(key)) {
+            shell.workspace.show_pinned(at);
         }
         shell.follow_selection(window, cx);
         shell.come_back(self.route, cx);

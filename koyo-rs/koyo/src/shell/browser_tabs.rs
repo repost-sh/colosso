@@ -3,14 +3,14 @@
 //! split into its tab, closing with it. And closing tabs and panes of any kind, asking
 //! first about a file's unsaved edits.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use gpui_kit::{App, AppContext as _, Context, Entity, Window};
 
 use super::Shell;
-use crate::browser::{BrowserEvent, BrowserView, Dock, Responsive};
+use crate::browser::{self, BrowserEvent, BrowserView, Dock, Responsive};
 use crate::files::{self, FileEditor, Then};
-use crate::model::{ClosedTab, Edge, Pane, Tab};
+use crate::model::{ClosedTab, Edge, Loose, Pane, Tab};
 use crate::navigation::Route;
 
 impl Shell {
@@ -37,7 +37,28 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<u64> {
-        let Some(project) = self.workspace.project().map(|project| project.path.clone()) else {
+        // Where the person is in no worktree, it's a loose page of the space shown.
+        let loose = self.opens_loose(cx);
+        self.open_page(url, (loose, beside), mode.filter(|_| !loose), window, cx)
+    }
+
+    /// Opens a page at `url`, or the start page, and shows it: when `loose`, a loose page of the
+    /// space shown (`docs/arc-sidebar.md` 11), after the loose page shown or after them all, of
+    /// the person's own profile, taking the keyboard; else a tab of the selected checkout, as
+    /// `open_browser_tab` says. Its pane.
+    pub(super) fn open_page(
+        &mut self,
+        url: Option<String>,
+        (loose, beside): (bool, bool),
+        mode: Option<Responsive>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<u64> {
+        let project = if loose {
+            PathBuf::from(browser::NO_PROJECT)
+        } else if let Some(project) = self.workspace.project() {
+            project.path.clone()
+        } else {
             log::warn!("no checkout is selected to open a browser tab on");
             return None;
         };
@@ -48,11 +69,14 @@ impl Shell {
             view.update(cx, |view, _| view.start_in(mode));
         }
         let pane = Pane::browser(view.clone(), cx);
-        let id = pane.id;
-        if beside {
-            self.workspace.open_beside_shown(Tab::Single(pane));
+        let (id, tab) = (pane.id, Tab::Single(pane));
+        if loose {
+            let place = (self.workspace.loose_shown()).map_or(usize::MAX, |shown| shown + 1);
+            (self.workspace).add_loose(Loose { tab, project }, place, true);
+        } else if beside {
+            self.workspace.open_beside_shown(tab);
         } else {
-            self.workspace.push_tab(Tab::Single(pane));
+            self.workspace.push_tab(tab);
         }
         // The keyboard is in its address on the start page, else in the page.
         if start {
@@ -117,16 +141,11 @@ impl Shell {
         self.pane_of(view).map(|(at, _)| at)
     }
 
-    /// The tab's title follows its page's.
+    /// The tab's title follows its page's, a pinned or a loose page's too.
     fn retitle(&mut self, view: &Entity<BrowserView>, cx: &mut Context<Self>) {
         let title = view.read(cx).title();
-        let Some((at, id)) = self.pane_of(view) else {
-            return;
-        };
-        let Some(tab) = self.workspace.tab_mut(at) else {
-            return;
-        };
-        if let Some(pane) = tab.panes_mut().into_iter().find(|pane| pane.id == id) {
+        let showing = self.workspace.pane_mut_where(|pane| pane.view() == Some(view));
+        if let Some(pane) = showing {
             pane.title = title.into();
             cx.notify();
         }
@@ -141,7 +160,7 @@ impl Shell {
         cx: &mut Context<Self>,
     ) {
         let Some(at) = self.tab_of(view) else {
-            return;
+            return self.open_from_apart(view, url, window, cx);
         };
         let project = self.workspace.projects[at.0].path.clone();
         let beside = self.browser_view(url, &project, window, cx);
@@ -158,15 +177,15 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some((at, target)) = self.pane_of(page) else {
+        let Some(target) = self.pane_showing(page) else {
             return;
         };
-        if self.tab_of(tools).is_some() {
+        if self.pane_showing(tools).is_some() {
             return;
         }
         cx.subscribe_in(tools, window, Self::browser_event).detach();
         let beside = Tab::Single(Pane::browser(tools.clone(), cx));
-        if let Some(tab) = self.workspace.tab_mut(at) {
+        if let Some(tab) = self.workspace.tab_holding_mut(target) {
             tab.place(target, Edge::Right, beside);
             cx.notify();
         }
@@ -175,7 +194,7 @@ impl Shell {
     /// Takes the pane showing `view` out of its tab, closing the tab when it was alone.
     fn remove_browser_pane(&mut self, view: &Entity<BrowserView>, cx: &mut Context<Self>) {
         let Some(((project, branch, _), id)) = self.pane_of(view) else {
-            return;
+            return self.remove_apart_pane(view, cx);
         };
         if let Some(unit) = self.workspace.unit_mut(project, branch) {
             unit.close_pane(id);
@@ -208,7 +227,7 @@ impl Shell {
     /// detached `DevTools` close with it.
     pub(crate) fn close_pane_now(&mut self, id: u64, cx: &mut Context<Self>) {
         let Some(((project, branch, _), _)) = self.workspace.find_pane(|pane| pane.id == id) else {
-            return;
+            return self.close_apart_pane(id, cx);
         };
         let unit = self.workspace.unit_mut(project, branch);
         let view = unit.and_then(|unit| unit.pane(id)?.view().cloned());
@@ -238,8 +257,8 @@ impl Shell {
             .collect();
         // Found again by a pane of it once answered: tabs may have moved meanwhile. Closed
         // with the keyboard in it, the tab shown in its place has the keyboard.
-        let typing =
-            self.workspace.shown_tab() == Some(at) && self.pane_with_keyboard(window, cx).is_some();
+        let shown = self.workspace.shown_checkout_tab() == Some(at);
+        let typing = shown && self.pane_with_keyboard(window, cx).is_some();
         let id = tab.first().id;
         let close = move |shell: &mut Self, cx: &mut Context<Self>| {
             if let Some((at, _)) = shell.workspace.find_pane(|pane| pane.id == id) {
@@ -377,7 +396,7 @@ impl Shell {
 
     /// The `DevTools` of `view`'s page, or `view`'s own when it's a page, close; detached,
     /// their pane goes too.
-    fn let_devtools_go(&mut self, view: Entity<BrowserView>, cx: &mut Context<Self>) {
+    pub(super) fn let_devtools_go(&mut self, view: Entity<BrowserView>, cx: &mut Context<Self>) {
         let page = view.read(cx).inspected().cloned().unwrap_or(view);
         let detached = page.read(cx).devtools_dock() == Some(Dock::Detached);
         let tools = page.read(cx).devtools().cloned().filter(|_| detached);

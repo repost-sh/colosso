@@ -217,6 +217,10 @@ pub fn search_url(query: &str) -> String {
     format!("https://www.google.com/search?q={encoded}")
 }
 
+/// What stands for a project where a page is none's (`docs/arc-sidebar.md` 11): a loose page
+/// opened outside any project. Such pages share one profile, the person's own, in every space.
+pub const NO_PROJECT: &str = "no-project";
+
 /// The profile a project's panes share: cookies, storage and cache never cross projects.
 pub fn profile(project: &Path) -> String {
     // FNV-1a of the path: the name must stay the same across releases, or a project would

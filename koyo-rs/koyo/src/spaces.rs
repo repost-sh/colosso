@@ -16,6 +16,10 @@ use crate::settings::{Layout, Settings};
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Space {
+    /// What it's known by whatever its place among the spaces, which a space deleted before it
+    /// changes: the pages open in it that are no project's go by it (`docs/arc-sidebar.md` 11).
+    /// None, 0, until the spaces are next put right, which gives it one.
+    pub id: u64,
     pub name: String,
     /// The main checkouts of its projects, in the order its tiles show them.
     pub projects: Vec<PathBuf>,
@@ -35,6 +39,7 @@ impl Default for Space {
 impl Space {
     pub fn named(name: impl Into<String>) -> Self {
         Space {
+            id: 0,
             name: name.into(),
             projects: Vec::new(),
             selected: None,
@@ -105,6 +110,7 @@ impl Settings {
             self.spaces.push(Space::default());
         }
         self.space = self.space.min(self.spaces.len() - 1);
+        self.name_spaces();
         let mut seen: Vec<PathBuf> = Vec::new();
         for space in &mut self.spaces {
             space.projects.retain(|project| {
@@ -134,6 +140,26 @@ impl Settings {
         }
         self.project_looks
             .retain(|project, look| projects.contains(project) && !look.is_empty());
+    }
+
+    /// Gives each space that has none, or another's, an id of its own: one more than the
+    /// highest there is, in the order of the spaces, so a file from before ids gets the same
+    /// ones each time it's read.
+    fn name_spaces(&mut self) {
+        let mut taken: Vec<u64> = Vec::new();
+        let mut next = self.spaces.iter().map(|space| space.id).max().unwrap_or(0);
+        for space in &mut self.spaces {
+            if space.id == 0 || taken.contains(&space.id) {
+                next += 1;
+                space.id = next;
+            }
+            taken.push(space.id);
+        }
+    }
+
+    /// The id of the space the Arc sidebar shows; none of any space's, 0, with none shown.
+    pub fn shown_space_id(&self) -> u64 {
+        self.shown_space().map_or(0, |space| space.id)
     }
 
     /// The space the Arc sidebar shows.
@@ -182,6 +208,7 @@ impl Settings {
     pub fn add_space(&mut self) -> usize {
         let name = self.next_space_name();
         self.spaces.push(Space::named(name));
+        self.name_spaces();
         self.spaces.len() - 1
     }
 

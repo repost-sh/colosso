@@ -210,6 +210,23 @@ fn prompts_float_until_a_person_turns_it_off_which_is_kept() {
 }
 
 #[test]
+fn the_pinned_tabs_zone_shows_until_a_person_puts_it_away_which_is_kept() {
+    assert!(!Settings::default().pinned_zone_dismissed, "shown at first");
+    let missing: Settings = serde_json::from_str("{}").unwrap();
+    assert!(
+        !missing.pinned_zone_dismissed,
+        "a file from before shows it"
+    );
+    let away = Settings {
+        pinned_zone_dismissed: true,
+        ..Settings::default()
+    };
+    let json = serde_json::to_value(&away).unwrap();
+    assert_eq!(json["pinned_zone_dismissed"], true);
+    assert_eq!(serde_json::from_value::<Settings>(json).unwrap(), away);
+}
+
+#[test]
 fn worktrees_go_in_a_folder_per_project() {
     let settings = Settings {
         worktrees_dir: Some("/work".into()),

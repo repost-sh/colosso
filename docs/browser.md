@@ -101,6 +101,26 @@ beside `history.json`:
   each, as they did then. From the first change on, `window.json` has them. The old file is
   never written again and is left where it is, for a build that still reads it.
 
+- **Loose pages** (`docs/arc-sidebar.md` 11), the pages open in a space that are no
+  project's, are in this file too, under `spaces`, left out while there are none:
+
+  ```json
+  "spaces": [
+    { "space": 2, "shown": 0, "tabs": [
+      { "url": "https://mail.example.com/", "title": "Inbox", "project": "no-project" }
+    ] }
+  ]
+  ```
+
+  `space` is the space's `id` in `settings.json`, which stays its own whatever its place
+  among the spaces; `shown` the place of the loose page the space showed, left out when it
+  showed its project's tab; each of `tabs` a page's address, its title, and the project
+  whose browsing profile it keeps, `no-project` for a page opened outside any. They come
+  back as the window opens, waiting for no checkout: `Shell::restore_pages`. Those of a
+  space the settings no longer have are the space shown's.
+- **Pinned pages** (`docs/arc-sidebar.md` 11) aren't in this file: they're no checkout's and
+  no space's. They have a file of their own beside it, section 10.
+
 ## 3. One rule for what's kept [decided]
 
 After each change of the shell, as `Terminals::retain` and `ChatTabs::retain` run,
@@ -209,6 +229,8 @@ don't make one of their own.
 | `koyo/src/shell/kept.rs` | The file, the rule (`keep_window`, `window_due`) and restoring (`restore_window`) |
 | `koyo/src/shell/kept/shape.rs` | A tab as it's kept, and both ways between that and the tab |
 | `koyo/src/shell/kept/before.rs` | Reading `browser-tabs.json`, the file the builds before kept |
+| `koyo/src/shell/kept/pinned.rs`, `tests/pinned.rs` | `pinned-tabs.json`: the pinned pages kept, read tolerantly, and brought back |
+| `koyo/src/shell/kept/loose.rs`, `tests/loose.rs` | Each space's loose pages in `window.json`, and `restore_pages` |
 | `koyo/src/shell/kept/tests.rs`, `tests/back.rs` | The file, the rule, what waits for a checkout, the old file; the window coming back, content made when shown, terminals and chats gone meanwhile |
 | `koyo/src/browser/tabs.rs` | A page as it's brought back, and `make_shown_browsers` |
 | `koyo/src/terminals/restore.rs` | The daemon's list settling the terminal panes brought back, and tabs for the rest |
@@ -381,3 +403,64 @@ has shown.
 | `koyo/src/browser/passkeys/mod.rs` | The entitlement check, one request per page, the sheet over its window |
 | `koyo/src/browser/passkeys/sheet.rs` | `ASAuthorizationController`: requests, the sheet, answers and errors |
 | `script/bundle` | `--sign`/`--profile`: the signed build that claims the entitlement |
+
+---
+
+## 10. Pinned pages [decided]
+
+Added 2026-11-13 on `schulzfel/pinned-browser-tabs`. The pages pinned at the head of the Arc
+sidebar (`docs/arc-sidebar.md` 11) are no checkout's and common to every space, so the window's
+file doesn't hold them. They're kept in `pinned-tabs.json`, beside `window.json` in the data
+folder (`settings::data_dir()`; `KOYO_DATA_DIR` moves it):
+
+```json
+{
+  "version": 1,
+  "shown": 0,
+  "tabs": [
+    {
+      "url": "https://mail.example.com/inbox",
+      "title": "Inbox (3)",
+      "pinnedUrl": "https://mail.example.com/",
+      "project": "/Users/me/src/app"
+    }
+  ]
+}
+```
+
+- `tabs`: the pinned pages in the order of their tiles. `url` is the address the page last
+  showed, empty for a start page; `title` its title then; `pinnedUrl` the address it's pinned
+  at, where it goes back once closed; `project` the main checkout of the project whose
+  browsing profile it keeps, for its sign-ins.
+- `shown`: the place among `tabs` of the pinned page that was the tab shown, left out when
+  none was.
+- `version`: 1. It's there for a later build to tell files apart; no build refuses a file for
+  its version.
+- **What comes back:** each page, in order, at `url`, titled as it was, with its site's icon
+  when one is kept (`history-icons/`), pinned at `pinnedUrl`, of `project`'s profile; and
+  the one `shown` is shown, in place of the space's own tab. As with any page (section 5),
+  none is made until it's shown: the others are tiles until picked. `Shell::restore_pages`
+  brings them back once as the window opens, with the loose pages (section 2), before any
+  project's worktrees are listed, as they wait for none.
+- **The rule** is the window's (section 3): after each change of the shell a write is due,
+  made 500 ms on or on the way out from the pinned pages as they are then, through
+  `atomic_file`, and only if it differs from what the file holds.
+- **Read tolerantly**, by hand rather than by a shape (`shell/kept/pinned.rs`), so that no
+  build's file drops a pinned page:
+  - A field this build doesn't know, in the file or in a page's entry, is carried with what
+    it was read with and written back as it was.
+  - A field left out, or of another type than this build writes, has its default: no title,
+    no project, pinned where it showed, none shown.
+  - An entry with no `url`, which this build can't read as a page, stays in the file as it
+    was, after the pages it could read.
+  - A `version` later than this build's is kept, not taken back to 1.
+  - A file that isn't this at all (not JSON, not an object, `tabs` no list) is renamed
+    `pinned-tabs.unreadable.json` beside it and read as no pages, so the next write doesn't
+    lose what it held.
+- **Apart from the window's file:** neither is read through the other, so a `window.json`
+  that can't be read brings back no tabs and every pinned page.
+- Tests and visual checks keep no file, as with the window's.
+- `shell/kept/tests/pinned.rs` has the round trip, the file exactly as this build writes it
+  (`TODAY`, which a later build has to go on reading), a later and an earlier build's files
+  read and written again with nothing lost, the file set aside, the pages back in a new
+  window, and a window file that can't be read.

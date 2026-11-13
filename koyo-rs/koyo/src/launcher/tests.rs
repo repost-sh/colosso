@@ -383,6 +383,7 @@ fn a_page_a_tab_shows_is_switched_to_and_searches_share_the_rows(cx: &mut TestAp
             "https://github.com/zen-browser/desktop",
         )],
         chats: Vec::new(),
+        pages_only: false,
     };
     cx.update(|cx| {
         let elsewhere = place(Path::new("/elsewhere"));
@@ -466,6 +467,7 @@ fn the_page_the_first_row_visits_is_not_listed_again(cx: &mut TestAppContext) {
         place: place(Path::new("/work/app")),
         tabs: Vec::new(),
         chats: Vec::new(),
+        pages_only: false,
     };
     cx.update(|cx| {
         history::visited(

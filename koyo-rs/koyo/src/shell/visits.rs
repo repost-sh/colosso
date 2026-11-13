@@ -19,7 +19,7 @@ impl Shell {
     ) {
         match visit.how {
             Some(how) => {
-                if let Some(place) = self.tab_of(view).and_then(|at| self.place_at(at)) {
+                if let Some(place) = self.place_of(view) {
                     history::visited(&visit.url, &visit.title, how, &place, cx);
                 }
             }
@@ -47,16 +47,24 @@ impl Shell {
         words: &str,
         cx: &mut Context<Self>,
     ) {
-        if let Some(place) = self.tab_of(view).and_then(|at| self.place_at(at)) {
+        if let Some(place) = self.place_of(view) {
             history::used(history::Kind::Search, words, &place, cx);
         }
     }
 
     /// The page browser pane `pane` opens first was asked for by name, in the launcher.
     pub(crate) fn mark_typed(&mut self, pane: u64, cx: &mut Context<Self>) {
-        let view = (self.workspace.branch()).and_then(|unit| unit.pane(pane)?.view().cloned());
+        let view = (self.workspace.pane(pane)).and_then(|pane| pane.view().cloned());
         if let Some(view) = view {
             view.update(cx, |view, _| view.mark_typed());
+        }
+    }
+
+    /// Where the tab showing `view` is: its checkout, or a pinned or a loose page's project.
+    fn place_of(&self, view: &Entity<BrowserView>) -> Option<Place> {
+        match self.tab_of(view) {
+            Some(at) => self.place_at(at),
+            None => self.apart_place(view),
         }
     }
 

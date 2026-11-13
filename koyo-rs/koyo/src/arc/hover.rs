@@ -1,6 +1,7 @@
 //! What the pointer rests on in the Arc sidebar, and the card that says more of it
-//! (`docs/arc-sidebar.md` 3, 7): a project's after a moment on its tile, a space's name after a
-//! shorter one on its dot, at once while another card's up, as tooltips go from one to the next.
+//! (`docs/arc-sidebar.md` 3, 7, 11): a project's after a moment on its tile, a pinned page's on
+//! its own, a space's name after a shorter one on its dot, at once while another card's up, as
+//! tooltips go from one to the next.
 //! Tiles and dots note where they're drawn, which the card is placed by.
 
 use std::cell::RefCell;
@@ -10,7 +11,7 @@ use std::time::Duration;
 
 use gpui_kit::{App, Bounds, Context, Pixels, Task, Window};
 
-use super::card::{self, Card, ProjectCard};
+use super::card::{self, Card, PageCard, ProjectCard};
 use super::{avatar, space_colour};
 use crate::projects::display_path;
 use crate::settings;
@@ -28,6 +29,8 @@ pub enum Hovered {
     Tile(usize),
     /// The space at this place in the list, by its dot.
     Space(usize),
+    /// The pinned page known by this, its page's pane, by its tile.
+    Pin(u64),
 }
 
 /// What the pointer's on, where the tiles and dots were last drawn, and the wait for a card.
@@ -88,7 +91,7 @@ impl Shell {
             return;
         }
         let wait = match what {
-            Hovered::Tile(_) => TILE_WAIT,
+            Hovered::Tile(_) | Hovered::Pin(_) => TILE_WAIT,
             Hovered::Space(_) => SPACE_WAIT,
         };
         self.arc_hover.wait = Some(cx.spawn_in(window, async move |this, cx| {
@@ -128,8 +131,25 @@ impl Shell {
                     colour: space_colour(index, cx),
                 }
             }
+            Hovered::Pin(key) => {
+                let Some(card) = self.page_card(key, cx) else {
+                    return;
+                };
+                Card::Page(card)
+            }
         };
         card::show(card, anchor, window, cx);
+    }
+
+    /// What the card of the pinned page known by `key` says of it: its title and its host.
+    fn page_card(&self, key: u64, cx: &App) -> Option<PageCard> {
+        let page = self.workspace.pinned_of(key)?.tab.first();
+        let address = page.address(cx).unwrap_or_default();
+        Some(PageCard {
+            title: page.title.clone(),
+            host: super::top::host_of(&address).into(),
+            icon: page.favicon(cx),
+        })
     }
 
     /// What the card of the project at `index` says of it.

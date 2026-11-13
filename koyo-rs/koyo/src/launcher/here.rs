@@ -17,6 +17,9 @@ pub struct Here {
     pub tabs: Vec<OpenTab>,
     /// The checkout's chats no tab shows, the latest first.
     pub chats: Vec<(ThreadId, SharedString)>,
+    /// Whether only a page opens here: no checkout is selected for a chat, a terminal or a
+    /// worktree to open on, as in a space with no project (`docs/arc-sidebar.md` 11).
+    pub pages_only: bool,
 }
 
 pub struct OpenTab {
@@ -31,14 +34,36 @@ pub struct OpenTab {
 }
 
 impl Here {
-    /// Where `shell` would open a tab now, if a checkout is selected.
+    /// Where `shell` would open a tab now. With no checkout selected, as in a space with no
+    /// project, the Arc layout still opens a page, a loose one of the space, and has a pinned or
+    /// a loose page's address to change: the place is no project's. The Orca layout, which
+    /// lists no such pages, opens nothing then.
     pub fn of(shell: &Shell, cx: &App) -> Option<Here> {
-        let (project, unit) = (shell.workspace.project()?, shell.workspace.branch()?);
+        let workspace = &shell.workspace;
+        let (Some(project), Some(unit)) = (workspace.project(), workspace.branch()) else {
+            if crate::settings::get(cx).layout != crate::settings::Layout::Arc {
+                return None;
+            }
+            let nowhere = std::path::PathBuf::from(crate::browser::NO_PROJECT);
+            let place = Place {
+                worktree: nowhere.clone(),
+                project: nowhere,
+            };
+            return Some(Here {
+                place,
+                tabs: Vec::new(),
+                chats: Vec::new(),
+                pages_only: true,
+            });
+        };
         let place = Place {
             worktree: unit.worktree.path.clone(),
             project: project.path.clone(),
         };
-        let shown: Vec<u64> = (unit.tabs.get(unit.active_tab))
+        // A pinned or a loose page shown is no tab of the checkout's: all of its tabs can be
+        // switched to.
+        let shown: Vec<u64> = (workspace.shown_checkout_tab())
+            .and_then(|at| workspace.tab(at))
             .map(|tab| tab.panes().iter().map(|pane| pane.id).collect())
             .unwrap_or_default();
         let tabs = (unit.tabs.iter())
@@ -64,7 +89,12 @@ impl Here {
             })
             .collect();
         let chats = shell.chats_without_tabs(&unit.worktree.path, cx);
-        Some(Here { place, tabs, chats })
+        Some(Here {
+            place,
+            tabs,
+            chats,
+            pages_only: false,
+        })
     }
 
     /// The open tabs of `kind`.

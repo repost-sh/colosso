@@ -10,7 +10,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, AnyView, App, AppContext as _, Bounds, Context, DispatchPhase, DragMoveEvent,
+    AnyElement, AnyView, App, AppContext as _, Bounds, Context, DispatchPhase, Div, DragMoveEvent,
     InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, ParentElement as _, Pixels,
     Point, Render, SharedString, StatefulInteractiveElement as _, Styled, Window, canvas, deferred,
     div, point, px, relative,
@@ -32,6 +32,9 @@ pub enum Dragged {
     Tab(usize, usize, usize),
     /// A pane of a split.
     Pane(u64),
+    /// A loose page of the space shown (`docs/arc-sidebar.md` 11), known by its pane, which is
+    /// its only face.
+    Loose,
 }
 
 /// Where the chip sits from the pointer: just up and left of it, the pointer over its icon.
@@ -62,35 +65,39 @@ impl DraggedPane {
 
 impl Render for DraggedPane {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let p = theme::palette(cx);
-        let chip = div();
         if self.hand.as_ref().is_some_and(|hand| !hand.chip_shows()) {
-            return chip;
+            return div();
         }
-        // Drawn from where the pointer is less how far in it took hold, so set back by that.
-        let by = (self.grab - CHIP_AT).max(&Point::default());
-        // A split's panes each in a chip of their own, as its tab shows them.
-        let split = self.faces.len() > 1;
-        let faces = self.faces.iter().map(|face| {
-            (face.chip().max_w(px(200.)).px_1p5()).when(split, |chip| chip.bg(p.hover))
-        });
-        chip.pl(by.x).pt(by.y).child(
-            div()
-                .h(px(28.))
-                .px_1()
-                .flex()
-                .items_center()
-                .gap_1()
-                .rounded(px(6.))
-                .border_1()
-                .border_color(p.hairline)
-                .bg(p.raised)
-                .shadow_md()
-                .text_sm()
-                .text_color(p.text)
-                .children(faces),
-        )
+        drag_chip(&self.faces, self.grab, theme::palette(cx))
     }
+}
+
+/// The chip under the pointer for what's in hand, by its panes' `faces`, taken up `grab` in
+/// from its corner: a tab off its list, a pane of a split, or a pinned page off its grid.
+pub fn drag_chip(faces: &[Face], grab: Point<Pixels>, p: Palette) -> Div {
+    // Drawn from where the pointer is less how far in it took hold, so set back by that.
+    let by = (grab - CHIP_AT).max(&Point::default());
+    // A split's panes each in a chip of their own, as its tab shows them.
+    let split = faces.len() > 1;
+    let faces = faces
+        .iter()
+        .map(|face| (face.chip().max_w(px(200.)).px_1p5()).when(split, |chip| chip.bg(p.hover)));
+    div().pl(by.x).pt(by.y).child(
+        div()
+            .h(px(28.))
+            .px_1()
+            .flex()
+            .items_center()
+            .gap_1()
+            .rounded(px(6.))
+            .border_1()
+            .border_color(p.hairline)
+            .bg(p.raised)
+            .shadow_md()
+            .text_sm()
+            .text_color(p.text)
+            .children(faces),
+    )
 }
 
 /// A split's divider in hand, by the split's path in its tab.
@@ -104,7 +111,8 @@ impl Shell {
     /// The shown tab: its pane, or its split.
     pub(super) fn tab_content(&self, tab: &Tab, cx: &mut Context<Self>) -> AnyElement {
         let p = theme::palette(cx);
-        let in_hand = cx.has_active_drag();
+        // A pinned or a loose page is split with nothing: no side of it takes what's in hand.
+        let in_hand = cx.has_active_drag() && !self.workspace.apart_shown();
         self.part(tab, Vec::new(), p, in_hand, cx)
     }
 
@@ -191,11 +199,8 @@ impl Shell {
 
     /// The split at `path` in the shown tab gives its first side `share` of the room.
     fn resize_split(&mut self, path: &[bool], share: f32, cx: &mut Context<Self>) {
-        let Some(unit) = self.workspace.branch_mut() else {
-            return;
-        };
-        let at = unit.active_tab;
-        let Some(split) = unit.tabs.get_mut(at).and_then(|tab| tab.split_at_mut(path)) else {
+        let shown = self.workspace.tab_shown_mut();
+        let Some(split) = shown.and_then(|tab| tab.split_at_mut(path)) else {
             return;
         };
         let share = share.clamp(SPLIT_MIN, 1. - SPLIT_MIN);
@@ -244,6 +249,9 @@ impl Shell {
     fn pane_header(&self, pane: &Pane, bar: Option<AnyView>, in_split: bool, p: Palette, cx: &mut Context<Self>) -> impl IntoElement {
         let (id, face) = (pane.id, Face::of(pane, cx));
         let (icon_of_pane, label, dirty) = (face.icon(12.), face.label(), face.dirty);
+        // A pinned or a loose page's panes, its `DevTools` beside it, stay where they are: they
+        // close only.
+        let moves = in_split && !self.workspace.apart_shown();
         let held = DraggedPane {
             what: Dragged::Pane(id),
             faces: vec![face],
@@ -265,7 +273,7 @@ impl Shell {
             .border_color(p.hairline)
             .text_xs()
             .text_color(p.muted)
-            .when(in_split, |header| {
+            .when(moves, |header| {
                 let dragged = header.cursor_grab().on_drag(held, |held, grab, _, cx| {
                     let chip = held.chip(grab);
                     cx.new(|_| chip)
@@ -290,7 +298,7 @@ impl Shell {
                         this.pane_to_own_tab(id, cx);
                     }));
                 let close = pane_close_button("pane-close", id, (dirty, CLOSE), p, cx);
-                header.child(own_tab).child(close)
+                header.when(moves, |header| header.child(own_tab)).child(close)
             })
     }
 
@@ -306,7 +314,7 @@ impl Shell {
 
     /// `held` dropped on `edge` of pane `target`.
     fn drop_on_pane(&mut self, held: Dragged, target: u64, edge: Edge, cx: &mut Context<Self>) {
-        let selected = self.selected_branch();
+        let selected = self.checkout_shown();
         let Some(unit) = self.workspace.branch_mut() else {
             return;
         };
@@ -314,7 +322,8 @@ impl Shell {
             Dragged::Tab(project, branch, at) if Some((project, branch)) == selected => {
                 unit.drop_tab(at, target, edge)
             }
-            Dragged::Tab(..) => false,
+            // A loose page isn't split with a checkout's tab: it's let go on a list.
+            Dragged::Tab(..) | Dragged::Loose => false,
             Dragged::Pane(id) => unit.move_pane(id, target, edge),
         };
         if moved {
@@ -340,8 +349,11 @@ impl Shell {
                     cx.notify();
                 }
             }
-            // From another checkout's list: it goes where the tab it's dropped on is.
-            Dragged::Tab(..) => self.drop_tab_on_checkout(held, (project, branch), to, cx),
+            // From another checkout's list, or the loose pages': it goes where the tab it's
+            // dropped on is.
+            Dragged::Tab(..) | Dragged::Loose => {
+                self.drop_tab_on_checkout(held, (project, branch), to, cx);
+            }
         }
     }
 
@@ -356,21 +368,21 @@ impl Shell {
         at: usize,
         cx: &mut Context<Self>,
     ) {
-        let (Dragged::Tab(..), Some(face)) = (held.what, held.faces.first()) else {
+        let Some(face) = held.faces.first() else {
             return;
         };
+        match held.what {
+            Dragged::Tab(..) => {}
+            // A loose page let go there is a tab of the checkout's.
+            Dragged::Loose => return self.settle_loose(face.id, to, at, cx),
+            Dragged::Pane(_) => return,
+        }
         let Some((from, _)) = self.workspace.find_pane(|pane| pane.id == face.id) else {
             return;
         };
         if self.workspace.move_tab_to_checkout(from, to, at) {
             cx.notify();
         }
-    }
-
-    /// The selected checkout, as `(project, branch)`.
-    fn selected_branch(&self) -> Option<(usize, usize)> {
-        let project = self.workspace.project()?;
-        Some((self.workspace.active_project()?, project.active_branch))
     }
 }
 

@@ -314,3 +314,39 @@ fn clearing_browsing_data_restarts_the_engine_with_nothing_kept(cx: &mut TestApp
     });
     finish(cx, scratch);
 }
+
+/// A page that signs a person in as sites do, and whose title says what its site still had of
+/// an earlier visit: a session cookie, a cookie with an age, and what it kept in its storage.
+fn account(name: &str) -> Option<String> {
+    (name == "account").then(|| {
+        "<script>const had=[document.cookie.includes('session=1')&&'session',\
+         document.cookie.includes('kept=1')&&'cookie',\
+         localStorage.getItem('token')&&'storage'].filter(Boolean).join('+');\
+         document.cookie='session=1; path=/';\
+         document.cookie='kept=1; path=/; max-age=86400';\
+         localStorage.setItem('token','yes');\
+         document.title=had||'signed out'</script>"
+            .to_owned()
+    })
+}
+
+/// What a pinned page counts on (`docs/arc-sidebar.md` 11): its project's profile keeps a
+/// sign-in across Koyo quitting and starting again, when the engine goes and comes back.
+#[gpui_kit::test]
+#[ignore = "needs the engine script/browser-engine packages"]
+fn a_sign_in_outlives_the_engine_quitting_and_starting_again(cx: &mut TestAppContext) {
+    let port = serve(account);
+    let (view, cx, scratch) = open("signed-in", &format!("http://127.0.0.1:{port}/account"), cx);
+    wait_for_title(cx, &view, "signed out");
+
+    // Koyo quits: the engine is asked to, and goes.
+    let browsers = cx.update(|_, cx| Browsers::global(cx));
+    let connection = browsers.update(cx, |browsers, _| browsers.stop());
+    connection
+        .expect("the engine, running")
+        .shutdown(Duration::from_secs(5));
+    // And starts again on the same profiles: the page opens anew, and its site knows it.
+    browsers.update(cx, Browsers::restart);
+    wait_for_title(cx, &view, "session+cookie+storage");
+    finish(cx, scratch);
+}

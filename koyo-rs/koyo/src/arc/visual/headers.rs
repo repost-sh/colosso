@@ -82,7 +82,7 @@ fn listed(drawn: &Drawn) -> Vec<String> {
 }
 
 /// Where the pointer rests when it's on nothing of the sidebar's: over the panes.
-fn away() -> Point<Pixels> {
+pub(super) fn away() -> Point<Pixels> {
     point(px(1200.), px(500.))
 }
 

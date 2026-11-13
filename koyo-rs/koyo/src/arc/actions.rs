@@ -4,6 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Action, App, Context, Div, InteractiveElement as _, KeyBinding, MouseDownEvent, Window, actions,
 };
@@ -84,6 +85,31 @@ pub struct ResetProjectIcon(pub PathBuf);
 #[action(namespace = arc, no_json)]
 pub struct ClearWorktree(pub PathBuf);
 
+/// Closes the pinned page known by this, its page's pane: it stays pinned.
+#[derive(Clone, Debug, PartialEq, Action)]
+#[action(namespace = arc, no_json)]
+pub struct ClosePinned(pub u64);
+
+/// Unpins the pinned page known by this onto the selected worktree's tabs.
+#[derive(Clone, Debug, PartialEq, Action)]
+#[action(namespace = arc, no_json)]
+pub struct Unpin(pub u64);
+
+/// Removes the pinned page known by this from the pinned, its page with it.
+#[derive(Clone, Debug, PartialEq, Action)]
+#[action(namespace = arc, no_json)]
+pub struct RemovePinned(pub u64);
+
+/// Pins the pinned page known by this at the address it shows.
+#[derive(Clone, Debug, PartialEq, Action)]
+#[action(namespace = arc, no_json)]
+pub struct RepinAtCurrent(pub u64);
+
+/// Asks for the address the pinned page known by this is pinned at.
+#[derive(Clone, Debug, PartialEq, Action)]
+#[action(namespace = arc, no_json)]
+pub struct EditPinned(pub u64);
+
 /// Has the window's root handle the Arc sidebar's actions.
 pub fn handle_actions(root: Div, cx: &mut Context<Shell>) -> Div {
     root.on_action(cx.listener(|this, _: &PageBack, _, cx| this.steer_page(Go::Back, cx)))
@@ -101,6 +127,7 @@ pub fn handle_actions(root: Div, cx: &mut Context<Shell>) -> Div {
         }))
         .on_action(cx.listener(|this, _: &PreviousSpace, _, cx| this.step_space(-1, cx)))
         .on_action(cx.listener(|this, _: &NextSpace, _, cx| this.step_space(1, cx)))
+        .map(|root| super::pinned::handle_actions(root, cx))
         .on_action(
             cx.listener(|this, MoveProject(project, to): &MoveProject, _, cx| {
                 this.move_project(project, Some(*to), cx);
@@ -205,14 +232,18 @@ impl Shell {
         });
         let index = target.and_then(|path| self.workspace.project_index(path));
         self.workspace.select_project(index);
+        // A pinned page shown stays shown, the keyboard where it was: only the sidebar's tiles
+        // and worktrees change (`docs/arc-sidebar.md` 11).
+        self.follow_space_pages(cx);
         self.navigate(Route::Workspace, cx);
         cx.notify();
     }
 
-    /// Selects the project at `index` from its tile.
+    /// Selects the project at `index` from its tile, leaving a pinned or a loose page shown for
+    /// it.
     pub fn select_project(&mut self, index: usize, cx: &mut Context<Self>) {
         if index < self.workspace.projects.len() {
-            self.workspace.select_project(Some(index));
+            self.workspace.show_project(index);
             self.navigate(Route::Workspace, cx);
             cx.notify();
         }

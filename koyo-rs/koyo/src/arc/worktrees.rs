@@ -14,6 +14,7 @@ use gpui_kit::{
     Styled as _, Window, div, px,
 };
 
+use super::DraggedPin;
 use super::header::header;
 use super::tiles::key_of;
 use super::{Look, space_colour, space_dot};
@@ -21,8 +22,9 @@ use crate::chat::{Activity, spinner};
 use crate::model::{BranchUnit, Tab};
 use crate::pane::{ROW_GLYPH, dot, row_sized};
 use crate::settings;
+use crate::theme::Palette;
 use crate::shell::{
-    Dragged, DraggedPane, Drop, MOTION, Reorder, Shell, add_project_row, ellipsized, project_error,
+    Dragged, DraggedPane, Drop, Face, MOTION, Reorder, Shell, add_project_row, ellipsized, project_error,
     tab_close_button, tab_list, tab_row, title_with_end,
 };
 
@@ -59,33 +61,45 @@ pub(super) fn arc_row(id: impl Into<ElementId>) -> Stateful<Div> {
         .text_sm()
 }
 
-/// The project shown's name and its worktrees, scrolling under the tiles.
+/// A tab's icon at the head of its row, a little fainter than its title.
+pub(super) fn tab_icon(face: &Face, p: Palette) -> Div {
+    div()
+        .flex_shrink_0()
+        .text_color(p.text.opacity(0.75))
+        .child(face.icon(TAB_ICON))
+}
+
+/// The space's loose pages, then the project shown's name and its worktrees, scrolling between
+/// the pinned pages and the space's tiles. `loosens` says something the loose pages take is in
+/// hand.
 pub fn space(
     shell: &Shell,
+    loosens: bool,
     look: Look,
     window: &mut Window,
     cx: &mut Context<Shell>,
 ) -> impl IntoElement {
     let p = look.p;
-    // The project's name, in its space's dot; none while no project is shown, as an empty space
-    // shows none.
+    // The project's name, after its space's dot; neither while no project is shown, as a space
+    // with no project has none to name.
     let project =
         (shell.workspace.active_project()).map(|index| (index, &shell.workspace.projects[index]));
-    let name = project.map(|(_, project)| project.name.clone());
     let colour = space_colour(settings::get(cx).space, cx);
-    let heading = div()
-        .debug_selector(|| "arc-project-name".to_owned())
-        .h(px(28.))
-        .flex_shrink_0()
-        .px(px(10.))
-        .flex()
-        .items_center()
-        .gap(px(8.))
-        .text_sm()
-        .font_weight(FontWeight::SEMIBOLD)
-        .text_color(look.label)
-        .child(space_dot(colour))
-        .children(name.map(ellipsized));
+    let heading = project.map(|(_, project)| {
+        div()
+            .debug_selector(|| "arc-project-name".to_owned())
+            .h(px(28.))
+            .flex_shrink_0()
+            .px(px(10.))
+            .flex()
+            .items_center()
+            .gap(px(8.))
+            .text_sm()
+            .font_weight(FontWeight::SEMIBOLD)
+            .text_color(look.label)
+            .child(space_dot(colour))
+            .child(ellipsized(project.name.clone()))
+    });
     let mut body: Vec<AnyElement> = Vec::new();
     match project {
         None => body.push(
@@ -97,11 +111,13 @@ pub fn space(
             if let Some(error) = project.error.clone() {
                 body.push(project_error(error, p).into_any_element());
             }
+            // A pinned or a loose page shown, no tab of a worktree's is: none is the pill.
+            let shown = shell.workspace.shown_checkout_tab();
             let worktrees = (project.branches.iter().enumerate())
                 .map(|(branch_index, unit)| {
-                    let active_tab =
-                        (branch_index == project.active_branch).then_some(unit.active_tab);
                     let at = (project_index, branch_index);
+                    let active_tab = shown.filter(|shown| (shown.0, shown.1) == at);
+                    let active_tab = active_tab.map(|shown| shown.2);
                     worktree(shell, at, unit, active_tab, look, window, cx)
                 })
                 .collect();
@@ -124,7 +140,8 @@ pub fn space(
         .overflow_y_scroll()
         .flex()
         .flex_col()
-        .child(heading)
+        .children(super::loose::list(shell, loosens, look, cx))
+        .children(heading)
         .children(body)
 }
 
@@ -180,20 +197,40 @@ fn worktree(
 }
 
 /// Has `row` take a tab dragged from another checkout's list, which then goes first among the
-/// tabs of the checkout `to`, as `(project, branch)`; lit while one's over it.
+/// tabs of the checkout `to`, as `(project, branch)`; lit while one's over it. And a pinned
+/// page's tile, unpinned there.
 pub(super) fn takes_tabs(
     row: Stateful<Div>,
     to: (usize, usize),
     look: Look,
     cx: &mut Context<Shell>,
 ) -> Stateful<Div> {
-    row.drag_over::<DraggedPane>(move |style, held, _, _| match held.what {
-        Dragged::Tab(project, branch, _) if (project, branch) != to => style.bg(look.row_hover),
-        _ => style,
-    })
-    .on_drop(cx.listener(move |this, held: &DraggedPane, _, cx| {
-        this.drop_tab_on_checkout(held, to, 0, cx);
-    }))
+    let row = row
+        .drag_over::<DraggedPane>(move |style, held, _, _| match held.what {
+            Dragged::Tab(project, branch, _) if (project, branch) != to => style.bg(look.row_hover),
+            Dragged::Loose => style.bg(look.row_hover),
+            Dragged::Tab(..) | Dragged::Pane(_) => style,
+        })
+        .on_drop(cx.listener(move |this, held: &DraggedPane, _, cx| {
+            this.drop_tab_on_checkout(held, to, 0, cx);
+        }));
+    takes_pins(row, to, 0, look, cx)
+}
+
+/// Has `row` take a pinned page's tile let go on it (`docs/arc-sidebar.md` 11): unpinned, it's a
+/// tab of the checkout `to`, as `(project, branch)`, at `place` among its tabs, and shows there;
+/// lit while one's over it.
+fn takes_pins(
+    row: Stateful<Div>,
+    to: (usize, usize),
+    place: usize,
+    look: Look,
+    cx: &mut Context<Shell>,
+) -> Stateful<Div> {
+    row.drag_over::<DraggedPin>(move |style, _, _, _| style.bg(look.row_hover))
+        .on_drop(cx.listener(move |this, pin: &DraggedPin, _, cx| {
+            this.unpin_onto(pin.key, to, place, cx);
+        }))
 }
 
 /// The tab `tab` at `at` as Arc's row: the one shown a pill, the others tinted while hovered,
@@ -233,6 +270,15 @@ fn tab_row_of(
         .when(matches!(tab, Tab::Split(_)), |row| {
             row.children(sign(activity, first, look, cx))
         });
+    // A pinned page's tile let go on it is unpinned where it is.
+    let row = takes_pins(row, (project_index, branch_index), tab_index, look, cx);
+    // The visual check takes a tab up where its row is drawn.
+    #[cfg(feature = "visual-check")]
+    let row = {
+        use gpui_kit::base::ElementExt as _;
+        let name = format!("arc-tab-{branch_index}-{tab_index}");
+        row.on_prepaint(crate::visual::noting(name))
+    };
     let list = (Axis::Vertical, &shell.tab_hand);
     tab_row(row, (at, tab), list, p, cx, |row, face, cx| {
         let close = ("arc-tab-close", branch_index * 100 + tab_index);
@@ -248,10 +294,7 @@ fn tab_row_of(
                 .opacity(0.)
                 .group_hover("arc-tab", |style| style.opacity(1.))
         });
-        let icon = div()
-            .flex_shrink_0()
-            .text_color(p.text.opacity(0.75))
-            .child(face.icon(TAB_ICON));
+        let icon = tab_icon(face, p);
         let end = div().relative().children(mark).child(close);
         // With what was said, two lines in a row's height, as Arc's are; it's fainter than the
         // labels, saying less than the title it's under.

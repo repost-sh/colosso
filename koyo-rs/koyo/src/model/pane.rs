@@ -165,6 +165,12 @@ impl Pane {
         self.page = Some(Page::Made(view));
     }
 
+    /// A browser pane's page is closed: it holds what it opens once its tab is shown again, as
+    /// a pinned page does once it's closed (`docs/arc-sidebar.md` 11).
+    pub fn unload(&mut self, unloaded: Unloaded) {
+        self.page = Some(Page::Unloaded(Box::new(unloaded)));
+    }
+
     /// The address a browser pane with no view opens once its tab is shown.
     pub fn unloaded_address(&self) -> Option<&str> {
         match &self.page {
