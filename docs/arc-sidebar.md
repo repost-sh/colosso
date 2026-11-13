@@ -81,8 +81,8 @@ is ⌘⇧M or the rails' right-click menu, and the appearance is in that menu an
 The projects of the space shown, as tiles at the foot of the space, over the spaces' marks
 (section 11.1 has the sidebar's order). They're the space's, so they swipe away with it.
 
-- One rounded tile per project, its icon centred. Tiles share the row's width and wrap
-  onto new rows.
+- One rounded tile per project, its icon centred, 16 pt as a tab row's icon is (`tiles.rs`
+  `PICTURE`). Tiles share the row's width and wrap onto new rows.
 - The icon comes from the repository's git host: the `origin` remote says which host
   (GitHub, GitLab, Bitbucket or another) and owner, and the owner's or repository's avatar
   is fetched once and kept in the app's data folder. With no remote, or no avatar to fetch,
@@ -360,9 +360,9 @@ project's name would be (section 4). **[asked]**
   8 pt apart, sharing the sidebar's width, up to four to a row and three for five or six, in
   the `Look`'s tile shades, the page shown's lit as the selected project's is. **[asked: as
   the project tiles; ours: the same sizes and columns, no numbers of its own]**
-- A tile shows its page's site icon, the favicon the browser fetched, 20 pt; with none kept,
-  the first letter of its host; a globe for a page with no host, as a start page. **[asked:
-  icon, initials or a globe; ours: one letter]**
+- A tile shows its page's site icon, the favicon the browser fetched, 16 pt as a tab row's
+  icon is; with none kept, the first letter of its host; a globe for a page with no host, as
+  a start page. **[asked: icon, initials or a globe, and the row's size; ours: one letter]**
 - **A page's favicon has its corners rounded 2 pt wherever a tab shows it**: on a pinned
   tile, a loose page's row, a worktree's tab row and a split's halves, the chip of a tab in
   hand, and a tab along the Orca layout's strip (`Face::icon`, `FAVICON_CORNERS`). **[asked]**

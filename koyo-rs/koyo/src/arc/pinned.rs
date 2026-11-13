@@ -196,8 +196,9 @@ fn initial(address: &str) -> Option<SharedString> {
     Some(first.to_uppercase().collect::<String>().into())
 }
 
-/// A pinned page's picture: its site's icon, its corners a little rounded; with none, its
-/// host's initial; a globe for a page with no host, as a new tab's start page.
+/// A pinned page's picture, the size of a tab row's icon: its site's icon, its corners a little
+/// rounded; with none, its host's initial; a globe for a page with no host, as a new tab's
+/// start page.
 fn picture(page: &Pane, look: Look, cx: &App) -> AnyElement {
     if let Some(favicon) = page.favicon(cx) {
         return img(favicon)
@@ -213,7 +214,7 @@ fn picture(page: &Pane, look: Look, cx: &App) -> AnyElement {
             .child(initial)
             .into_any_element(),
         None => muted
-            .child(icon(IconName::Globe, PICTURE - 2.))
+            .child(icon(IconName::Globe, PICTURE))
             .into_any_element(),
     }
 }

@@ -25,6 +25,7 @@ use super::actions::{
 use super::avatar;
 use super::hover::Hovered;
 use super::tile_grid::TileGrid;
+use super::worktrees::TAB_ICON;
 use crate::chat::{Activity, spinner};
 use crate::model::Project;
 use crate::pane::dot;
@@ -33,11 +34,11 @@ use crate::settings;
 use crate::shell::Shell;
 use crate::theme::Palette;
 
-/// A tile's height, the room between tiles, and the picture in one: the pinned pages' tiles
-/// are the same (`pinned.rs`).
+/// A tile's height, the room between tiles, and the picture in one, the size of a tab row's
+/// icon: the pinned pages' tiles are the same (`pinned.rs`).
 pub(super) const TILE: f32 = 44.;
 pub(super) const GAP: f32 = 8.;
-pub(super) const PICTURE: f32 = 20.;
+pub(super) const PICTURE: f32 = TAB_ICON;
 
 /// How many tiles a row holds for `count` projects, or pinned pages: up to four, three for five
 /// or six, so the rows come out even.
@@ -129,7 +130,7 @@ fn picture(project: &Project, p: Palette, cx: &mut App) -> AnyElement {
     match avatar::picture(&project.path, cx) {
         Some(picture) => img(picture)
             .size(px(PICTURE))
-            .rounded(px(5.))
+            .rounded(px(4.))
             .into_any_element(),
         None => div()
             .text_xs()
