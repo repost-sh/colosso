@@ -128,9 +128,7 @@ pub fn shell_with(roots: &[&Path], cx: &mut TestAppContext) -> (AnyWindowHandle,
     // Each checkout's project lists and watches it on a thread of its own.
     cx.executor().allow_parking();
     cx.update(crate::init);
-    let (window, shell) = in_window(size(px(1400.), px(900.)), cx, |window, cx| {
-        cx.new(|cx| Shell::new(window, cx))
-    });
+    let (window, shell) = shell_window(cx);
     shell.update(cx, |shell, cx| {
         for root in roots {
             shell.workspace.add_project(root.to_path_buf());
@@ -140,6 +138,14 @@ pub fn shell_with(roots: &[&Path], cx: &mut TestAppContext) -> (AnyWindowHandle,
         shell.save_projects(cx);
     });
     (window, shell)
+}
+
+/// The shell in a laptop-sized window of its own, as the app opens it.
+#[cfg(test)]
+pub fn shell_window(cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<Shell>) {
+    in_window(size(px(1400.), px(900.)), cx, |window, cx| {
+        cx.new(|cx| Shell::new(window, cx))
+    })
 }
 
 /// Selects the checkout at `root` in the sidebar.
@@ -175,9 +181,18 @@ pub fn open_page(
 #[cfg(test)]
 pub fn click_pane(window: AnyWindowHandle, pane: u64, cx: &mut TestAppContext) {
     draw(window, cx);
-    let selector: &'static str = Box::leak(format!("pane-{pane}").into_boxed_str());
+    click(
+        window,
+        Box::leak(format!("pane-{pane}").into_boxed_str()),
+        cx,
+    );
+}
+
+/// Clicks the middle of what `selector` names in `window`, and draws what that changed.
+#[cfg(test)]
+pub fn click(window: AnyWindowHandle, selector: &'static str, cx: &mut TestAppContext) {
     let mut vcx = VisualTestContext::from_window(window, cx);
-    let at = vcx.debug_bounds(selector).expect("the pane").center();
+    let at = vcx.debug_bounds(selector).expect(selector).center();
     vcx.simulate_click(at, Modifiers::default());
     draw(window, cx);
 }

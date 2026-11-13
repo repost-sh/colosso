@@ -16,13 +16,14 @@ use gpui_kit::{
     point, px, relative, size,
 };
 
+use hand::Holds;
 use hand::List;
 pub use hand::{Drop, TabHand};
 
 mod hand;
 
 /// How long a tab takes to slide into place.
-const MOTION: Duration = Duration::from_millis(240);
+pub const MOTION: Duration = Duration::from_millis(240);
 /// The corners of a tab, and of the light over one being joined.
 const RADIUS: f32 = 6.;
 
@@ -54,15 +55,15 @@ fn beyond_ends(axis: Axis, bounds: Bounds<Pixels>, at: Point<Pixels>) -> bool {
 /// What's done with a tab let go over its list.
 pub type OnDrop = Rc<dyn Fn(&Drop, &mut Window, &mut App)>;
 
-/// Tabs in a list, each drawn where its motion has it.
+/// Tabs in a list, each drawn where its motion has it; or a project's worktrees, by the same
+/// rules but for joining and leaving the list.
 pub struct Reorder {
     list: u64,
+    holds: Holds,
     axis: Axis,
     tabs: Vec<(u64, AnyElement)>,
     hand: Rc<TabHand>,
     gap: Pixels,
-    /// The colour a tab being joined is lit in.
-    accent: Hsla,
     on_drop: OnDrop,
 }
 
@@ -96,11 +97,32 @@ impl Reorder {
     ) -> Self {
         Reorder {
             list,
+            holds: Holds::Tabs { accent },
             axis,
             tabs,
             hand,
             gap,
-            accent,
+            on_drop,
+        }
+    }
+
+    /// The worktrees of project `list` down the Arc sidebar, each by a key it keeps as it moves,
+    /// with `gap` between them, `on_drop` doing what's done with one let go: they move as tabs
+    /// do, but join none, and stay on the list wherever they're taken.
+    pub fn worktrees(
+        list: u64,
+        worktrees: Vec<(u64, AnyElement)>,
+        hand: Rc<TabHand>,
+        gap: Pixels,
+        on_drop: OnDrop,
+    ) -> Self {
+        Reorder {
+            list,
+            holds: Holds::Worktrees,
+            axis: Axis::Vertical,
+            tabs: worktrees,
+            hand,
+            gap,
             on_drop,
         }
     }
@@ -119,7 +141,11 @@ impl Element for Reorder {
     type PrepaintState = Placement;
 
     fn id(&self) -> Option<ElementId> {
-        Some(("tab-list", self.list).into())
+        let name = match self.holds {
+            Holds::Tabs { .. } => "tab-list",
+            Holds::Worktrees => "worktree-list",
+        };
+        Some((name, self.list).into())
     }
 
     fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
@@ -174,6 +200,7 @@ impl Element for Reorder {
         let slots: Vec<_> = tabs.iter().map(|id| window.layout_bounds(*id)).collect();
         let list = List {
             id: self.list,
+            holds: self.holds,
             axis,
             keys: self.tabs.iter().map(|(key, _)| *key).collect(),
             bounds,
@@ -250,8 +277,8 @@ impl Element for Reorder {
         for at in placement.order() {
             self.tabs[at].1.paint(window, cx);
         }
-        if let Some((bounds, after)) = placement.join {
-            paint_join(bounds, after, self.accent, window);
+        if let (Some((bounds, after)), Holds::Tabs { accent }) = (placement.join, self.holds) {
+            paint_join(bounds, after, accent, window);
         }
         // The list lets its own tab go, wherever over it the pointer is, before anything
         // under the pointer hears the release: off the list, a pane's side takes it.

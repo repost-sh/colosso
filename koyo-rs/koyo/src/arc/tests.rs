@@ -15,19 +15,19 @@ use crate::files::tests::{dialog, tabs};
 use crate::launcher::Launcher;
 use crate::model::{Edge, Pane, PaneKind, Tab, Unloaded};
 use crate::navigation::Route;
-use crate::projects::read_worktrees;
 use crate::settings::{self, Layout};
 use crate::settings_view::SettingsPage;
 use crate::shell::{CloseTab, Shell};
 use koyo_agent::protocol::model::{Status, ThreadSummary};
 use koyo_agent::protocol::requests::RequestKind;
 
-use crate::test_support::{click_pane, draw, git, open_page, repo, select, shell_with};
+use crate::test_support::{click_pane, draw, open_page, repo, select, shell_with};
 
 mod space_keys;
 mod spaces;
 mod tabs;
 mod tiles;
+mod worktrees;
 
 /// The shell in the Arc layout with a project for each of `names`, saved, the first selected.
 fn arc_shell(
@@ -371,6 +371,16 @@ fn a_tab_and_its_projects_tile_say_when_a_chat_wants_the_person(cx: &mut TestApp
     assert_eq!(told(cx), (false, Activity::Quiet), "seen: nothing");
 }
 
+/// Where `selector` names something drawn in `window`, if it names anything.
+fn drawn(
+    window: AnyWindowHandle,
+    selector: impl Into<String>,
+    cx: &mut TestAppContext,
+) -> Option<gpui_kit::Bounds<gpui_kit::Pixels>> {
+    let selector: &'static str = Box::leak(selector.into().into_boxed_str());
+    VisualTestContext::from_window(window, cx).debug_bounds(selector)
+}
+
 /// Takes up what `from` names by its middle and lets it go over the middle of what `to` names,
 /// drawing at each step as a person's drag would be drawn.
 fn drag(window: AnyWindowHandle, from: &'static str, to: &'static str, cx: &mut TestAppContext) {
@@ -387,48 +397,6 @@ fn drag(window: AnyWindowHandle, from: &'static str, to: &'static str, cx: &mut 
     let mut vcx = VisualTestContext::from_window(window, cx);
     vcx.simulate_mouse_up(target, MouseButton::Left, none);
     draw(window, cx);
-}
-
-#[gpui_kit::test]
-fn a_tab_dragged_onto_another_worktree_moves_there(cx: &mut TestAppContext) {
-    let (window, shell, roots) = arc_shell(&["arc-drag-across"], cx);
-    let root = roots[0].clone();
-    let feat = root.with_file_name("arc-drag-across-feat");
-    let _ = std::fs::remove_dir_all(&feat);
-    git(
-        &root,
-        &[
-            "worktree",
-            "add",
-            "-q",
-            "-b",
-            "feat",
-            feat.to_str().unwrap(),
-        ],
-    );
-    shell.update(cx, |shell, cx| {
-        shell.show_worktrees(&root, read_worktrees(&root), cx);
-        for title in ["one", "two"] {
-            shell.workspace.push_tab(chat(title));
-        }
-        cx.notify();
-    });
-    draw(window, cx);
-    let titles = |branch: usize, cx: &TestAppContext| -> Vec<String> {
-        cx.read(|cx| {
-            let units = &shell.read(cx).workspace.projects[0].branches;
-            (units[branch].tabs.iter())
-                .map(|tab| tab.first().title.to_string())
-                .collect()
-        })
-    };
-    assert_eq!(titles(0, cx), ["one", "two"]);
-
-    drag(window, "tab-0-0-0", "arc-divider-1", cx);
-    assert_eq!(titles(0, cx), ["two"], "it left its own worktree");
-    assert_eq!(titles(1, cx), ["one"], "and went to the other's");
-    let shown = cx.read(|cx| shell.read(cx).workspace.shown_tab());
-    assert_eq!(shown, Some((0, 1, 0)), "where it shows");
 }
 
 #[gpui_kit::test]

@@ -18,7 +18,7 @@ pub(super) fn workspace(worktrees: &[&str]) -> Workspace {
                 .map(|name| worktree(&format!("/work/{name}"), name)),
         )
         .collect();
-    workspace.set_worktrees(0, listed);
+    workspace.set_worktrees(0, listed, &[]);
     workspace
 }
 
@@ -188,7 +188,7 @@ fn projects_are_called_what_they_were_named_in_koyo_or_their_folder() {
         "/src/site".into(),
         crate::spaces::ProjectLook {
             name: Some("Website".into()),
-            icon: None,
+            ..crate::spaces::ProjectLook::default()
         },
     );
     workspace.name_projects(&looks);
@@ -210,6 +210,7 @@ fn rereading_worktrees_keeps_tabs_and_selection() {
             worktree("/work/new", "new"),
             worktree("/work/fix", "fix"),
         ],
+        &[],
     );
     let unit = workspace.branch().unwrap();
     assert_eq!(unit.name(), "fix");
@@ -219,10 +220,64 @@ fn rereading_worktrees_keeps_tabs_and_selection() {
 
 #[test]
 fn a_selected_worktree_that_went_away_falls_back_to_the_main_checkout() {
-    let mut workspace = workspace(&["feat"]);
+    let mut first = workspace(&["feat"]);
+    first.select_branch(0, 1);
+    first.set_worktrees(0, vec![worktree("/src/app", "main")], &[]);
+    assert!(first.branch().unwrap().is_main());
+    // Wherever it's listed, as the person may have put it after their worktrees.
+    let mut moved = workspace(&["feat", "fix"]);
+    moved.select_branch(0, 2);
+    let listed = vec![worktree("/work/feat", "feat"), worktree("/src/app", "main")];
+    moved.set_worktrees(0, listed, &[]);
+    assert!(moved.branch().unwrap().is_main());
+}
+
+/// The names of the project's worktrees, in the order they're listed.
+fn listed(workspace: &Workspace) -> Vec<String> {
+    let units = &workspace.projects[0].branches;
+    units.iter().map(|unit| unit.name().to_string()).collect()
+}
+
+#[test]
+fn a_worktree_moves_among_its_projects_and_the_selected_one_stays_selected() {
+    let mut workspace = workspace(&["feat", "fix"]);
     workspace.select_branch(0, 1);
-    workspace.set_worktrees(0, vec![worktree("/src/app", "main")]);
-    assert!(workspace.branch().unwrap().is_main());
+    assert!(workspace.move_worktree(0, 0, 2), "main after the others");
+    assert_eq!(listed(&workspace), ["feat", "fix", "main"]);
+    assert_eq!(workspace.branch().unwrap().name(), "feat");
+    assert!(workspace.move_worktree(0, 1, 0));
+    assert_eq!(listed(&workspace), ["fix", "feat", "main"]);
+    assert_eq!(workspace.branch().unwrap().name(), "feat");
+    assert!(!workspace.move_worktree(0, 1, 1), "the same place");
+    assert!(!workspace.move_worktree(0, 0, 3), "no such place");
+    assert!(!workspace.move_worktree(1, 0, 1), "no such project");
+    assert_eq!(listed(&workspace), ["fix", "feat", "main"]);
+}
+
+#[test]
+fn worktrees_are_listed_in_the_order_kept_those_it_doesnt_name_after_it() {
+    let mut workspace = workspace(&["feat", "fix", "new"]);
+    workspace.select_branch(0, 2);
+    let git: Vec<Worktree> = (workspace.projects[0].branches.iter())
+        .map(|unit| unit.worktree.clone())
+        .collect();
+    let order: Vec<PathBuf> = ["/work/fix", "/gone", "/src/app"]
+        .into_iter()
+        .map(Into::into)
+        .collect();
+    workspace.set_worktrees(0, git.clone(), &order);
+    assert_eq!(listed(&workspace), ["fix", "main", "feat", "new"]);
+    assert_eq!(workspace.branch().unwrap().name(), "fix", "still selected");
+    assert_eq!(
+        workspace.projects[0].worktree_paths()[..2],
+        ["/work/fix".into(), PathBuf::from("/src/app")]
+    );
+    workspace.set_worktrees(0, git, &[]);
+    assert_eq!(
+        listed(&workspace),
+        ["main", "feat", "fix", "new"],
+        "none kept: git's order"
+    );
 }
 
 #[test]

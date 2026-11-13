@@ -78,15 +78,17 @@ pub fn grid(
     ))
 }
 
-/// What a project's tile is known by as it moves, whatever its place: its folder's.
-fn key_of(path: &Path) -> u64 {
+/// What a project's tile, or a worktree's place in the sidebar, is known by as it moves,
+/// whatever its place: its folder's.
+pub(super) fn key_of(path: &Path) -> u64 {
     let mut hasher = DefaultHasher::new();
     path.hash(&mut hasher);
     hasher.finish()
 }
 
-/// A tile in hand. Nothing's drawn for it under the pointer: its grid draws the tile there.
-struct DraggedTile;
+/// A tile or a worktree in hand. Nothing's drawn for it under the pointer: its grid or list
+/// draws it there.
+pub(super) struct DraggedTile;
 
 impl Render for DraggedTile {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
