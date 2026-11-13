@@ -28,6 +28,7 @@ mod details;
 mod drawers;
 mod drawing;
 mod floating;
+mod keys;
 mod pointer;
 mod recent;
 mod rewind;

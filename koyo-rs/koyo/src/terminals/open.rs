@@ -143,15 +143,16 @@ impl Shell {
                     ..open_request(&worktree, name.clone())
                 };
                 let id = this.terminals.add(Source::Open(Box::new(request)));
-                if shown {
-                    this.terminals.focus_next = Some(id);
-                }
                 if let Some(typed) = typed {
                     this.terminals.typing.insert(id, typed);
                 }
                 let pane = this
                     .workspace
                     .add_terminal_tab(&worktree, id, name.into(), shown);
+                // Shown, it has the keyboard once its view is made.
+                if shown && pane.is_some() {
+                    this.keys_to_shown_tab(cx);
+                }
                 cx.notify();
                 pane
             })

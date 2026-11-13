@@ -34,6 +34,7 @@ mod browser_tabs;
 mod device_tabs;
 mod elements;
 mod kept;
+mod keys;
 mod rails;
 mod reopen;
 mod reorder;
@@ -46,8 +47,8 @@ mod tab_list;
 mod visits;
 
 pub use actions::{
-    CloseTab, EditTheme, KeysToWindow, NewChat, ReopenClosedTab, SwitchTab, SwitchTabBack,
-    ToggleBottomPanel, ToggleRightPanel, ToggleSidebar, ToggleSidebarMode, init,
+    CloseTab, EditTheme, NewChat, ReopenClosedTab, SwitchTab, SwitchTabBack, ToggleBottomPanel,
+    ToggleRightPanel, ToggleSidebar, ToggleSidebarMode, init,
 };
 #[cfg(feature = "visual-check")]
 pub use actions::{NewTerminal, StopTerminal};
@@ -82,8 +83,8 @@ pub struct Shell {
     /// settles it.
     pub swipe: arc::Swipe,
     pub focus: FocusHandle,
-    /// The tab, by its first pane, the keyboard was left at the window on (`keys_to_window`).
-    pub(crate) keys_left: Option<u64>,
+    /// What's still to happen to the keyboard, which only the person moves (`keys`).
+    keys: keys::Handing,
     /// What the sidebar's search field narrows its worktrees to.
     pub search: Entity<InputState>,
     /// Where the rails or the Arc sidebar were last right-clicked, for the theme picker their
@@ -154,9 +155,8 @@ impl Shell {
                 let showing = (this.route(cx), Self::layout(cx), this.sidebar_open, pane);
                 crate::popup::showing(window.window_handle(), &showing, cx);
             }),
-            // What had the keyboard is gone, as a closed panel's list is: actions then start
-            // at the window's root, above the shell's, and the top bar's buttons and keys
-            // would do nothing until something else took the keyboard.
+            // What had the keyboard is gone, a closed panel's list or another space's chat: the
+            // shell has it then, or actions would start above it and its keys do nothing.
             cx.on_focus_lost(window, |this, window, cx| window.focus(&this.focus, cx)),
             // Every terminal's program follows the app's theme, its tab shown or not; each
             // project goes by the name the person gave it in Koyo, or its folder's.
@@ -192,7 +192,7 @@ impl Shell {
             status_bar,
             terminals: crate::terminals::Terminals::default(),
             chat_tabs,
-            keys_left: None,
+            keys: keys::Handing::default(),
             kept,
             swipe: arc::Swipe::default(),
             focus,
@@ -273,12 +273,9 @@ impl Shell {
             }
             PaneKind::Chat | PaneKind::Browser | PaneKind::Editor => self.workspace.new_tab(kind),
         }
-        if kind == PaneKind::Chat {
-            self.focus_chat_next();
-        }
-        // A new tab is something to look at, so leave settings for it.
+        // To type in, so it takes the keyboard, and settings are left for it.
+        self.keys_to_new_tab(kind, cx);
         self.navigate(Route::Workspace, cx);
-        cx.notify();
     }
 
     fn resize_sidebar(
@@ -386,7 +383,7 @@ impl Shell {
         self.make_shown_terminals(window, cx);
         self.make_shown_chats(window, cx);
         self.make_shown_browsers(window, cx);
-        self.give_shown_tab_the_keyboard(window, cx);
+        self.hand_keys_over(window, cx);
         let workspace = &self.workspace;
         let islands = theme::card::islands(cx);
         let note = |text: &'static str| {
@@ -431,6 +428,7 @@ impl Render for Shell {
         if let Some(page) = crate::browser::fullscreen::settle(window, cx) {
             return root.bg(gpui_kit::black()).child(page).into_any_element();
         }
+        self.keys_follow_route(route, window, cx);
         // A space settling after a swipe moves a frame on first, so all that's drawn agrees.
         self.step_swipe(window, cx);
         let p = theme::palette(cx);

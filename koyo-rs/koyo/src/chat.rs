@@ -61,7 +61,7 @@ pub use composer::{
 pub use spinner::{spinner, spinner_of};
 pub use status::Activity;
 pub use subagent_bar::OpenParent;
-pub use tabs::ChatTabs;
+pub use tabs::{ChatTabs, heard_at_window};
 pub use view::details::ToggleDetails;
 
 /// How long after a connection ends it's made again, and the first wait after that fails.

@@ -54,8 +54,11 @@ impl Shell {
         } else {
             self.workspace.push_tab(Tab::Single(pane));
         }
+        // The keyboard is in its address on the start page, else in the page.
         if start {
             view.update(cx, |view, cx| view.focus_address(window, cx));
+        } else {
+            self.keys_to_shown_tab(cx);
         }
         // A new tab is something to look at, so leave settings for it.
         self.navigate(Route::Workspace, cx);
@@ -189,13 +192,15 @@ impl Shell {
             .into_iter()
             .collect();
         let terminals = pane.and_then(|pane| pane.terminal).into_iter().collect();
-        self.ask_then(
-            editors,
-            terminals,
-            move |shell, cx| shell.close_pane_now(id, cx),
-            window,
-            cx,
-        );
+        // Closed with the keyboard in it, the pane left beside it has the keyboard.
+        let typing = self.pane_with_keyboard(window, cx) == Some(id);
+        let close = move |shell: &mut Self, cx: &mut Context<Self>| {
+            shell.close_pane_now(id, cx);
+            if typing {
+                shell.keys_to_shown_tab(cx);
+            }
+        };
+        self.ask_then(editors, terminals, close, window, cx);
     }
 
     /// Closes pane `id`, on whichever checkout it is, and its tab when it's the tab's only
@@ -231,11 +236,17 @@ impl Shell {
         let terminals = (tab.panes().into_iter())
             .filter_map(|pane| pane.terminal)
             .collect();
-        // Found again by a pane of it once answered: tabs may have moved meanwhile.
+        // Found again by a pane of it once answered: tabs may have moved meanwhile. Closed
+        // with the keyboard in it, the tab shown in its place has the keyboard.
+        let typing =
+            self.workspace.shown_tab() == Some(at) && self.pane_with_keyboard(window, cx).is_some();
         let id = tab.first().id;
         let close = move |shell: &mut Self, cx: &mut Context<Self>| {
             if let Some((at, _)) = shell.workspace.find_pane(|pane| pane.id == id) {
                 shell.close_tab_now(at, cx);
+                if typing {
+                    shell.keys_to_shown_tab(cx);
+                }
             }
         };
         self.ask_then(editors, terminals, close, window, cx);

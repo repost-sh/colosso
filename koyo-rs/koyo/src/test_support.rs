@@ -9,7 +9,7 @@ use std::path::PathBuf;
 #[cfg(test)]
 use gpui_kit::{
     AnyWindowHandle, App, AppContext as _, Bounds, Entity, Modifiers, Point, Render, Size,
-    TestAppContext, VisualTestContext, Window, WindowBounds, WindowOptions, px, size,
+    TestAppContext, VisualTestContext, Window, WindowBounds, WindowOptions, point, px, size,
 };
 #[cfg(test)]
 use koyo_term_control::{Actor, Control, Handle, Status, TerminalRecord, WorktreeRef};
@@ -194,6 +194,69 @@ pub fn click(window: AnyWindowHandle, selector: &'static str, cx: &mut TestAppCo
     let mut vcx = VisualTestContext::from_window(window, cx);
     let at = vcx.debug_bounds(selector).expect(selector).center();
     vcx.simulate_click(at, Modifiers::default());
+    draw(window, cx);
+}
+
+/// Whether the keyboard is in key context `context` after a few frames, where what would take
+/// it or give it back has had its chance: [`PROMPT`] for a chat's prompt.
+#[cfg(test)]
+pub fn keyboard_in(window: AnyWindowHandle, context: &str, cx: &mut TestAppContext) -> bool {
+    for _ in 0..3 {
+        draw(window, cx);
+    }
+    let stack = cx.update_window(window, |_, window, _| window.context_stack());
+    stack.unwrap().iter().any(|at| at.contains(context))
+}
+
+/// The key context of a chat's prompt.
+#[cfg(test)]
+pub const PROMPT: &str = "ChatComposer";
+
+/// Whether the window itself has the keyboard after a few frames, and so no pane of it.
+#[cfg(test)]
+pub fn keyboard_at_window(
+    window: AnyWindowHandle,
+    shell: &Entity<Shell>,
+    cx: &mut TestAppContext,
+) -> bool {
+    for _ in 0..3 {
+        draw(window, cx);
+    }
+    let at = cx.update_window(window, |_, window, cx| {
+        shell.read(cx).focus.is_focused(window)
+    });
+    at.unwrap()
+}
+
+/// Presses the chat shown, over its empty background high above the prompt.
+#[cfg(test)]
+pub fn press_chat_background(
+    window: AnyWindowHandle,
+    shell: &Entity<Shell>,
+    cx: &mut TestAppContext,
+) {
+    draw(window, cx);
+    let pane = shell.read_with(cx, |shell, _| shell.shown_tab_key().expect("a tab shown"));
+    let selector: &'static str = Box::leak(format!("pane-{pane}").into_boxed_str());
+    let mut vcx = VisualTestContext::from_window(window, cx);
+    let bounds = vcx.debug_bounds(selector).expect("the chat's pane");
+    vcx.simulate_click(
+        point(bounds.center().x, bounds.top() + px(80.)),
+        Modifiers::default(),
+    );
+    draw(window, cx);
+}
+
+/// Presses the prompt of the chat shown, in its first line of text, as a person does to type.
+#[cfg(test)]
+pub fn press_prompt(window: AnyWindowHandle, cx: &mut TestAppContext) {
+    draw(window, cx);
+    let mut vcx = VisualTestContext::from_window(window, cx);
+    let glass = vcx.debug_bounds("chat-composer").expect("the prompt's box");
+    vcx.simulate_click(
+        point(glass.center().x, glass.top() + px(22.)),
+        Modifiers::default(),
+    );
     draw(window, cx);
 }
 

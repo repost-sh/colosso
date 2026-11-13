@@ -2,7 +2,7 @@
 
 use std::time::{Duration, Instant};
 
-use gpui_kit::TestAppContext;
+use gpui_kit::{Modifiers, MouseButton, TestAppContext, VisualTestContext, point, px};
 use koyo_agent::protocol::methods::{Catalog, Command, UpdateParams};
 use koyo_agent::protocol::requests::{Questions, Request, RequestPayload, RequestStatus};
 use koyo_project::Feed;
@@ -11,7 +11,7 @@ use super::{catalog, catalog_is, chat, nothing, picking, press, type_in, updated
 use crate::chat::tests::asks::{Asking, request};
 use crate::chat::tests::question;
 use crate::checkouts;
-use crate::test_support::draw;
+use crate::test_support::{PROMPT, draw, keyboard_in, press_prompt};
 
 fn suggesting(chat: &Asking, cx: &TestAppContext) -> bool {
     chat.composer
@@ -179,4 +179,28 @@ fn an_at_finds_the_files_of_the_checkout_and_names_the_one_picked(cx: &mut TestA
     press(&chat, "enter", cx);
 
     assert_eq!(chat.typed(cx), "see @README.md ");
+}
+
+/// A press on the rows leaves the keyboard in what's typed, where their keys are heard: the
+/// rows are the prompt's own, over its box.
+#[gpui_kit::test]
+fn a_press_on_the_rows_leaves_the_keyboard_in_the_prompt(cx: &mut TestAppContext) {
+    let chat = with_commands("chat-suggest-press", cx);
+    press_prompt(chat.window, cx);
+    type_in(&chat, "/rev", cx);
+    assert!(suggesting(&chat, cx));
+    assert!(keyboard_in(chat.window, PROMPT, cx));
+
+    // The rows are over the box, a little above its top.
+    let mut vcx = VisualTestContext::from_window(chat.window, cx);
+    let glass = vcx.debug_bounds("chat-composer").expect("the prompt's box");
+    let row = point(glass.left() + px(40.), glass.top() - px(30.));
+    vcx.simulate_mouse_down(row, MouseButton::Left, Modifiers::default());
+    assert!(
+        keyboard_in(chat.window, PROMPT, cx),
+        "pressed, the row left it there"
+    );
+    let mut vcx = VisualTestContext::from_window(chat.window, cx);
+    vcx.simulate_mouse_up(row, MouseButton::Left, Modifiers::default());
+    assert!(keyboard_in(chat.window, PROMPT, cx), "and let go");
 }

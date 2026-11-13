@@ -25,7 +25,8 @@ mod subagents;
 #[cfg(test)]
 pub(in crate::chat) use git_actions::{commit_files, went_old};
 pub(super) use git_actions::{keep_fresh, window_active_again};
-pub(super) use open_in::{OpenIn, opened_in};
+pub(in crate::chat) use open_in::OpenIn;
+pub(super) use open_in::opened_in;
 
 use super::ChatView;
 use crate::checkout::Checkout;

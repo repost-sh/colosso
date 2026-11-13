@@ -50,7 +50,7 @@ impl Shell {
         self.reopen_files(at, &closed.files, window, cx);
         self.reopen_changes(at, &closed.changes, window, cx);
         self.navigate(Route::Workspace, cx);
-        cx.notify();
+        self.keys_to_shown_tab(cx);
         Some(at)
     }
 

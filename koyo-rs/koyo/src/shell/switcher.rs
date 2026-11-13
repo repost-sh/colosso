@@ -130,7 +130,7 @@ fn rows(shell: &Shell, cx: &App) -> Vec<Row> {
 
 impl Shell {
     /// Shows the tab holding pane `key` on the selected checkout, if it's still open, and
-    /// gives the keyboard to its file, or else to the window.
+    /// gives the keyboard to its file, or else to the pane of it the person was in.
     fn switch_to(&mut self, key: u64, window: &mut Window, cx: &mut Context<Self>) {
         let Some(unit) = self.workspace.branch_mut() else {
             return;
@@ -141,7 +141,7 @@ impl Shell {
         unit.active_tab = at;
         match unit.tabs[at].files().first() {
             Some(file) => file.update(cx, |file, cx| file.focus(window, cx)),
-            None => window.focus(&self.focus, cx),
+            None => self.keys_to_shown_tab(cx),
         }
         cx.notify();
     }

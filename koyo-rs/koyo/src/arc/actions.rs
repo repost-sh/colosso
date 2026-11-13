@@ -205,7 +205,6 @@ impl Shell {
         });
         let index = target.and_then(|path| self.workspace.project_index(path));
         self.workspace.select_project(index);
-        self.leave_keys_at_window();
         self.navigate(Route::Workspace, cx);
         cx.notify();
     }
@@ -214,7 +213,6 @@ impl Shell {
     pub fn select_project(&mut self, index: usize, cx: &mut Context<Self>) {
         if index < self.workspace.projects.len() {
             self.workspace.select_project(Some(index));
-            self.leave_keys_at_window();
             self.navigate(Route::Workspace, cx);
             cx.notify();
         }
