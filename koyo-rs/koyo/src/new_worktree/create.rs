@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use gpui_kit::{App, AppContext as _, Task, WeakEntity};
 use koyo_git::{NewWorktree, Ref, Repo, Start, Worktree};
 
-use crate::projects::read_worktrees;
+use crate::projects::{read_worktrees, user_prefix};
 use crate::settings::BranchPrefix;
 use crate::shell::Shell;
 
@@ -25,16 +25,11 @@ pub(crate) struct Bases {
 
 /// Reads what new worktrees of the project whose main checkout is `project` start from, the
 /// prefix taken as `prefix` names it. Call it off the main thread.
-pub(crate) fn read_branches(project: &Path, prefix: BranchPrefix) -> koyo_git::Result<Bases> {
+pub(crate) fn read_branches(project: &Path, prefix: &BranchPrefix) -> koyo_git::Result<Bases> {
     let repo = Repo::open(project)?;
     let branches = repo.branches()?;
     let default = repo.default_base(&branches);
-    let prefix = match prefix {
-        BranchPrefix::GitHubUser => repo.user_branch_prefix(),
-        BranchPrefix::Custom(prefix) => Some(prefix.trim().to_owned()),
-        BranchPrefix::None => None,
-    }
-    .filter(|prefix| !prefix.is_empty());
+    let prefix = prefix.own(user_prefix(&repo).as_deref()).map(str::to_owned);
     Ok(Bases {
         repo,
         prefix,

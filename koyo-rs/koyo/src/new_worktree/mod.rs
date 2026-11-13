@@ -125,7 +125,7 @@ impl NewWorktreeDialog {
         let parent = settings::get(cx).worktrees_dir(&project_name);
         let load = {
             let project_path = project_path.clone();
-            cx.background_spawn(async move { read_branches(&project_path, prefix) })
+            cx.background_spawn(async move { read_branches(&project_path, &prefix) })
         };
         cx.spawn(async move |this, cx| {
             let loaded = load.await;

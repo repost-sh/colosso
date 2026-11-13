@@ -64,7 +64,7 @@ pub(crate) fn branches(
     let prefix = settings.branch_prefix.clone();
     let folder = settings.worktrees_dir(&project.folder);
     let reading = cx.background_spawn(async move {
-        let branches = new_worktree::read_branches(&project.path, prefix)?;
+        let branches = new_worktree::read_branches(&project.path, &prefix)?;
         let current = (branches.repo.worktrees()?.into_iter())
             .find(|worktree| worktree.is_main)
             .and_then(|worktree| match worktree.head {
@@ -116,7 +116,7 @@ pub(crate) fn create(
     let parent = settings.worktrees_dir(&project.folder);
     let reading = cx.background_spawn({
         let path = project.path.clone();
-        async move { new_worktree::read_branches(&path, prefix) }
+        async move { new_worktree::read_branches(&path, &prefix) }
     });
     Ok(Exec::Later(cx.spawn(async move |cx: &mut AsyncApp| {
         let branches = reading.await.map_err(git_failed)?;

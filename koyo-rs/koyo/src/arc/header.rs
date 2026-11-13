@@ -1,4 +1,4 @@
-//! A worktree's header in the Arc sidebar (`docs/arc-sidebar.md` 5), as Arc's folder's: a
+//! A worktree's header in the Arc sidebar (`docs/arc-sidebar.md` 5), a label over its tabs: a
 //! chevron in the tabs' icons' column, the worktree's name where their titles are and, while the
 //! pointer's on it, a pill under the row and a `…` and a `+` at its end, fading in and out.
 //! Clicked, it opens or collapses the worktree's rows, the chevron turning as they slide. Its `…`,
@@ -14,8 +14,8 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::{
     Action, App, AppContext as _, Context, Div, FontWeight, InteractiveElement as _, MouseButton,
-    MouseDownEvent, ParentElement as _, Stateful, StatefulInteractiveElement as _, Styled as _,
-    Window, div, px, radians,
+    MouseDownEvent, ParentElement as _, SharedString, Stateful, StatefulInteractiveElement as _,
+    Styled as _, Window, div, px, radians,
 };
 
 use super::Look;
@@ -23,6 +23,8 @@ use super::actions::ClearWorktree;
 use super::tiles::DraggedTile;
 use super::worktrees::{TAB_ICON, arc_row, list_of, takes_tabs};
 use crate::launcher::NewTab;
+use koyo_git::Head;
+
 use crate::model::BranchUnit;
 use crate::pane::tab_button;
 use crate::projects::{DeleteWorktree, path_items};
@@ -49,6 +51,7 @@ pub(super) fn header(
     window: &mut Window,
     cx: &mut Context<Shell>,
 ) -> Stateful<Div> {
+    let name = title(unit, shell.own_prefix(project, cx));
     let (shown, hover) = theme::hover::eased(("arc-header", key), HOVER_FADE, window, cx);
     // In hand, it's lit as it is under the pointer, wherever the pointer is.
     let lit = if shell.worktree_hand.holding() == Some(key) {
@@ -92,7 +95,9 @@ pub(super) fn header(
     let header = arc_row(("arc-header", branch))
         .debug_selector(move || format!("arc-header-{branch}"))
         .pr(px(6.))
-        .font_weight(FontWeight::SEMIBOLD)
+        // Its name smaller and lighter than the tabs' titles, a label over them.
+        .text_xs()
+        .font_weight(FontWeight::MEDIUM)
         .text_color(look.label)
         .bg(look.row_hover.opacity(lit))
         .on_hover(hover)
@@ -103,7 +108,7 @@ pub(super) fn header(
             cx.new(|_| DraggedTile)
         })
         .child(chevron)
-        .child(ellipsized(unit.name()).flex_1())
+        .child(ellipsized(name).flex_1())
         .child(ends);
     // The visual check points at a header where it's drawn.
     #[cfg(feature = "visual-check")]
@@ -167,7 +172,29 @@ impl Items {
     }
 }
 
+/// A worktree's name in words: its branch less `prefix`, the one the person's own branches carry,
+/// its dashes and underscores spaces and its first letter a capital, so
+/// `schulzfel/some-nasty-name` is "Some nasty name". A detached checkout keeps its name.
+pub(super) fn title(unit: &BranchUnit, prefix: Option<&str>) -> SharedString {
+    let Head::Branch(branch) = &unit.worktree.head else {
+        return unit.name();
+    };
+    let own = prefix.and_then(|prefix| branch.strip_prefix(prefix)?.strip_prefix('/'));
+    let mut words = own.unwrap_or(branch).replace(['-', '_'], " ");
+    if let Some(first) = words.get_mut(..1) {
+        first.make_ascii_uppercase();
+    }
+    words.into()
+}
+
 impl Shell {
+    /// The prefix the person's own branches carry in the project at `project`, which `title`
+    /// leaves off: the one new worktrees' branches get (Settings → General).
+    pub(super) fn own_prefix<'a>(&'a self, project: usize, cx: &'a App) -> Option<&'a str> {
+        let user = self.workspace.projects.get(project)?.user.as_deref();
+        settings::get(cx).branch_prefix.own(user)
+    }
+
     /// The folders of the project at `project` and of its worktree at `branch`, if it has one.
     fn folders_at(&self, (project, branch): (usize, usize)) -> Option<(&Path, &Path)> {
         let folder = self.workspace.projects.get(project)?;

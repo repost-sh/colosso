@@ -9,6 +9,7 @@ use gpui_kit::{
 };
 use koyo_browser_ipc::Go;
 
+use super::header::title;
 use super::{clear, delete_space, rename};
 use crate::browser::BrowserView;
 use crate::chat::Activity;
@@ -160,7 +161,7 @@ pub fn handle_actions(root: Div, cx: &mut Context<Shell>) -> Div {
                     return;
                 };
                 let unit = &this.workspace.projects[project].branches[branch];
-                let (tabs, name) = (unit.tabs.len(), unit.name());
+                let (tabs, name) = (unit.tabs.len(), title(unit, this.own_prefix(project, cx)));
                 clear::open(cx.weak_entity(), path.clone(), &name, tabs, window, cx);
             }),
         )

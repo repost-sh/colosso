@@ -11,12 +11,12 @@ use koyo_git::{Head, Worktree};
 
 use super::{arc_shell, chat, drag, drawn};
 use crate::arc::actions::ClearWorktree;
-use crate::arc::header::Items;
+use crate::arc::header::{Items, title};
 use crate::files::tests::{dialog, press};
 use crate::launcher::Launcher;
 use crate::model::BranchUnit;
 use crate::projects::{DeleteWorktree, read_worktrees};
-use crate::settings::{self, Layout};
+use crate::settings::{self, BranchPrefix, Layout};
 use crate::shell::Shell;
 use crate::test_support::{click, draw, git, shell_window};
 
@@ -268,4 +268,51 @@ fn the_menu_offers_clearing_and_deleting_as_the_worktree_can_be() {
     let main = ("Delete Worktree…", false);
     assert_eq!(offers(&unit("/src/app", true, 1)), [clear, main]);
     assert_eq!(offers(&unit("/src/app", true, 0)), [nothing, main]);
+}
+
+#[test]
+fn a_worktree_is_called_by_its_branch_in_words_without_the_persons_prefix() {
+    let named = |branch: &str| {
+        let mut named = unit("/work/x", false, 0);
+        named.worktree.head = Head::Branch(branch.into());
+        named
+    };
+    let called = |branch, prefix| title(&named(branch), prefix).to_string();
+    let mine = Some("schulzfel");
+    assert_eq!(called("schulzfel/some-nasty-name", mine), "Some nasty name");
+    assert_eq!(called("schulzfel/fix_login", mine), "Fix login");
+    assert_eq!(called("main", mine), "Main");
+    assert_eq!(
+        called("feat/login", mine),
+        "Feat/login",
+        "another prefix stays"
+    );
+    assert_eq!(
+        called("schulzfelix/x", mine),
+        "Schulzfelix/x",
+        "only the whole prefix"
+    );
+    assert_eq!(
+        called("schulzfel/x", None),
+        "Schulzfel/x",
+        "no prefix known"
+    );
+    let mut detached = named("x");
+    detached.worktree.head = Head::Detached("0123456789abcdef".into());
+    assert_eq!(title(&detached, mine), "detached at 0123456");
+}
+
+#[test]
+fn the_persons_own_prefix_is_the_one_new_worktrees_get() {
+    let user = Some("schulzfel");
+    assert_eq!(BranchPrefix::GitHubUser.own(user), user);
+    assert_eq!(BranchPrefix::GitHubUser.own(None), None, "no user known");
+    let custom = BranchPrefix::Custom(" team ".into());
+    assert_eq!(custom.own(user), Some("team"));
+    assert_eq!(
+        BranchPrefix::Custom("  ".into()).own(user),
+        None,
+        "an empty one is none"
+    );
+    assert_eq!(BranchPrefix::None.own(user), None);
 }

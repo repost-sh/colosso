@@ -2,13 +2,15 @@
 //! adds and removes projects, and saves the list. Git is asked again on launch, whenever the
 //! window comes back to the front, and after the app changes a project's worktrees itself.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{LazyLock, Mutex};
 
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::{
     Action, App, AppContext as _, ClipboardItem, Context, Div, InteractiveElement, MouseButton,
-    MouseDownEvent, PathPromptOptions, Task, Window, actions,
+    MouseDownEvent, PathPromptOptions, SharedString, Task, Window, actions,
 };
 use koyo_git::{Repo, Worktree};
 
@@ -176,6 +178,8 @@ pub fn display_path(path: &Path) -> String {
 pub struct WorktreeRead {
     number: u64,
     worktrees: koyo_git::Result<Vec<Worktree>>,
+    /// The GitHub user the person's own branches are prefixed with there, if one's known.
+    user: Option<String>,
 }
 
 /// Lists the worktrees of the project whose main checkout is at `path`. Call it off the main
@@ -184,9 +188,41 @@ pub fn read_worktrees(path: &Path) -> WorktreeRead {
     static STARTED: AtomicU64 = AtomicU64::new(0);
     // Numbered before git looks, so a listing that started earlier never wins over a later one.
     let number = STARTED.fetch_add(1, Ordering::Relaxed) + 1;
+    let repo = Repo::open(path);
     WorktreeRead {
         number,
-        worktrees: Repo::open(path).and_then(|repo| repo.worktrees()),
+        user: repo.as_ref().ok().and_then(user_prefix),
+        worktrees: repo.and_then(|repo| repo.worktrees()),
+    }
+}
+
+/// The GitHub user the person's own branches are prefixed with in `repo`, as a new worktree's
+/// are (`BranchPrefix::GitHubUser`): looked up once a run, as git's config and the GitHub CLI's
+/// it comes from hardly change, and asking them takes a few programs each time. Repositories
+/// looked up at once don't wait on each other.
+pub(crate) fn user_prefix(repo: &Repo) -> Option<String> {
+    static KNOWN: LazyLock<Mutex<HashMap<PathBuf, Option<String>>>> = LazyLock::new(Mutex::default);
+    if let Some(user) = KNOWN.lock().ok()?.get(repo.path()) {
+        return user.clone();
+    }
+    let user = repo.user_branch_prefix();
+    KNOWN
+        .lock()
+        .ok()?
+        .insert(repo.path().to_owned(), user.clone());
+    user
+}
+
+impl settings::BranchPrefix {
+    /// The prefix the person's own branches get, `github_user` answering for their GitHub user;
+    /// none when it's empty.
+    pub fn own<'a>(&'a self, github_user: Option<&'a str>) -> Option<&'a str> {
+        match self {
+            settings::BranchPrefix::GitHubUser => github_user,
+            settings::BranchPrefix::Custom(prefix) => Some(prefix.trim()),
+            settings::BranchPrefix::None => None,
+        }
+        .filter(|prefix| !prefix.is_empty())
     }
 }
 
@@ -226,6 +262,7 @@ impl Shell {
         *shown = read.number;
         match read.worktrees {
             Ok(worktrees) => {
+                self.workspace.projects[project].user = read.user.map(SharedString::from);
                 self.set_worktrees(project, worktrees, cx);
                 let checkouts: Vec<(PathBuf, PathBuf)> = (self.workspace.projects.iter())
                     .flat_map(|project| {
