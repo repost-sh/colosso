@@ -2,15 +2,20 @@
 
 Written 2026-11-08 on branch `schulzfel/arc-like-sidebar`. Drafted with Claude.
 
-The Arc layout's sidebar is rebuilt to look and work like Arc's own: browser controls and an
-address bar at the top, the projects of a **space** as tiles, the space's name, and each
-worktree of the selected project as a folder with its tabs under it. Spaces are switched
-along the sidebar's foot. This note is the spec the work followed; keep it in step with the
-code in `koyo-rs/koyo/src/arc/` and `koyo-rs/koyo/src/spaces.rs`. The visual check draws it,
-and then does what a person does in it (a space's mark saying a chat in it works and waits, a
-tab's row and its tile saying the same, a tile dragged to another row and back, the address
-bar following the pane pressed in, ⌘L on a page), saving a picture of each. It shows a chat, so it wants a data folder and an agent host
-of its own, and says so if it isn't given them:
+The Arc layout's sidebar is rebuilt to look and work like Arc's own. From the top: browser
+controls and an address bar; the pages **pinned** for every space, as tiles; the **space**'s
+own loose pages; the selected project's name and each of its worktrees as a folder with its
+tabs under it; the projects of the space as tiles; and the spaces, switched along the
+sidebar's foot. The pinned and the loose pages, and that order, are section 11, added
+2026-11-13 on `schulzfel/pinned-browser-tabs`. This note is the spec the work followed; keep it
+in step with the code in `koyo-rs/koyo/src/arc/` and `koyo-rs/koyo/src/spaces.rs`. The visual
+check draws it, and then does what a person does in it (a space's mark saying a chat in it
+works and waits, a tab's row and its tile saying the same, a tile dragged to another row and
+back, the address bar following the pane pressed in, ⌘L on a page, and the pinned and loose
+pages: the empty zone, a page's tab dragged onto it and onto the space's own pages, the tiles,
+one in hand, one shown as the space changes, a space with no project), saving a picture of
+each. It shows a chat, so it wants a data folder and
+an agent host of its own, and says so if it isn't given them:
 
 ```sh
 Q=$PWD/.superpowers/qa/arc && mkdir -p $Q/tmp &&
@@ -59,6 +64,9 @@ is ⌘⇧M or the rails' right-click menu, and the appearance is in that menu an
   change an address, so the bar is never a field for it.
 - With no page in the tab shown there's no address to change: a click on the bar does
   nothing, and ⌘L opens nothing. A new tab is ⌘T's.
+- A pinned or a loose page shown (section 11) is a page shown like any other: the bar says
+  its host, a click or ⌘L opens the launcher on it, and back, forward and reload act on it,
+  whichever space and project the sidebar lists, a space with no project too.
 - The exception is a new browser tab opened empty: its start page has no address to show, so
   the bar is the page's own address field, the keyboard in it, until an address is entered.
 - A page takes the keyboard when its tab is picked in the sidebar, as a terminal does, so its
@@ -70,7 +78,8 @@ is ⌘⇧M or the rails' right-click menu, and the appearance is in that menu an
 
 ## 3. Project tiles
 
-Arc's favourites grid, holding the projects of the space shown.
+The projects of the space shown, as tiles at the foot of the space, over the spaces' marks
+(section 11.1 has the sidebar's order). They're the space's, so they swipe away with it.
 
 - One rounded tile per project, its icon centred. Tiles share the row's width and wrap
   onto new rows.
@@ -85,7 +94,9 @@ Arc's favourites grid, holding the projects of the space shown.
   counts as the last slot. Taken well away from the grid it goes back, and letting go there
   changes nothing. The order is the sidebar's (`settings.projects`), saved at once: the
   projects of other spaces keep their places in it, the Orca list shows the same order, and
-  the project selected stays selected.
+  the project selected stays selected. The pinned pages' tiles, at the sidebar's head, are a
+  second grid of the same kind, with a hand of its own (`Shell::pinned_hand`), so the two
+  move alike (section 11).
 - A small indigo dot in the tile's top-right corner while any tab of the project needs
   attention (section 5). Indigo is what waits for the person (`Palette::waiting`), on a tile,
   a tab's row and a space's mark; amber is what's at work, and red is kept for what went wrong.
@@ -95,7 +106,8 @@ Arc's favourites grid, holding the projects of the space shown.
   steps, and all of them turn together. Wherever a chat is said to be working, a tab's row,
   a space's mark, the Orca layout's tabs and rows, it's this spinner.
 - Hovering a tile shows a card with the project's name and stats: its worktrees, and its
-  activity (chats running, terminals, tabs open).
+  activity (chats running, terminals, tabs open). The card is under its tile, or over it
+  where there's no room under, as at the sidebar's foot.
 - Right-clicking a tile opens its menu:
   - **Move to ›**: the spaces, the current one checked, a divider, then **New Space…**,
     which makes a space and moves the project into it.
@@ -107,9 +119,12 @@ Arc's favourites grid, holding the projects of the space shown.
 
 ## 4. Project name
 
-- The selected project's name, after the space's dot in its colour. Nothing sits between it and
-  the first worktree's header. The space's own name shows on glass over its mark at the foot
-  while the pointer's on it (section 7).
+- The selected project's name, after the space's dot in its colour, under the space's loose
+  pages (section 11). Nothing sits between it and the first worktree's header. The space's own
+  name shows on glass over its mark at the foot while the pointer's on it (section 7), and
+  nowhere else.
+- A space with no project shows neither: no dot, and no name. It's a space like any other,
+  with its loose pages and the pinned ones.
 
 ## 5. Worktrees and their tabs
 
@@ -183,6 +198,10 @@ Arc's favourites grid, holding the projects of the space shown.
   header takes it too, and the worktree stays collapsed. Its content doesn't move: a terminal
   stays in its folder, a chat with its thread. The window comes back with the tab where it was
   put (`docs/browser.md` 1).
+- A page's tab dragged onto the pinned pages at the sidebar's head is pinned, and onto the
+  space's loose pages is one of them; a pinned page's tile or a loose page's row let go on a
+  worktree's tabs or header is a tab there (section 11). While a pinned or a loose page is
+  shown, no tab's row is the pill.
 - The sidebar's search field and its "New worktree" row are gone.
 
 ## 6. Space menu
@@ -202,6 +221,7 @@ Arc's favourites grid, holding the projects of the space shown.
 
 ## 7. Bottom bar
 
+- Over it, the tiles of the space's projects (section 3).
 - The spaces, centred, each a mark in its colour: its theme's hue at a lightness that reads on
   the glass, or the text's colour while it has none. The space shown is a capsule at full
   strength, the others dimmed dots that brighten under the pointer, its name showing on glass
@@ -281,11 +301,18 @@ Arc's favourites grid, holding the projects of the space shown.
 - ⌥← / ⌥→ and ⌘⌥← / ⌘⌥→ change the space shown (`space`) one either way, as a swipe does, and only in the
   Arc layout (section 7).
 - Selected another way (app control, the Orca layout, a link), a project's own space is
-  shown. An empty space shows no project at all: the window shows none of another space's
-  tabs, and ⌘W, ⌘T, the switcher and the side panel have nothing to act on, until a project
-  is picked.
+  shown. A space with no project shows no project at all: the window shows none of another
+  space's tabs, and the switcher and the side panel have nothing to act on, until a project
+  is picked. ⌘T opens a page there, a loose one of the space, and ⌘W closes the loose or the
+  pinned page shown (section 11).
+- Each space has an `id`, given once and kept whatever its place among the spaces: its loose
+  pages go by it (`docs/browser.md` 2).
 - A space lists its projects in the sidebar's order, so moving a project in the Orca list or
   through app control moves its tile too.
+- The pinned pages are no space's and no project's: they're kept in a file of their own in the
+  data folder, `pinned-tabs.json` (section 11, `docs/browser.md` 10). `settings.json` keeps only
+  whether their empty zone was put away (`pinned_zone_dismissed`). A space's loose pages are
+  open tabs, kept with the window (`window.json`, `docs/browser.md` 2).
 
 ## 10. Islands
 
@@ -302,3 +329,221 @@ Arc's favourites grid, holding the projects of the space shown.
 - A page is drawn in the window's own frame, so the island's rounded corners clip it as they
   clip the rest of what's on it.
 
+## 11. Pinned tabs and loose pages
+
+Written 2026-11-13 on branch `schulzfel/pinned-browser-tabs`. Drafted with Claude. Arc's pinned
+tabs, for pages, and under them the pages open in a space that are no project's. First built
+with the pinned pages at the sidebar's foot; the owner turned it round the same day, to the
+order below. What the owner decided is marked **[asked]**; what was decided while building it,
+and is the owner's to change, **[ours]**.
+
+### 11.1 The sidebar's order
+
+From the top: **[asked]**
+
+1. The window's controls and the address bar (sections 1, 2).
+2. **The pinned pages**, as tiles. The same in every space: they're outside what swipes, and
+   stay where they are as a space goes out and the next comes in.
+3. **The space's loose pages**, as rows: the pages open in this space that are no project's.
+   Each space has its own.
+4. **The open project**: its name and its worktrees with their tabs (sections 4, 5). The
+   loose pages and the project scroll together, between the pinned pages and the tiles.
+5. **The space's projects**, as tiles (section 3).
+6. The foot: the accounts, the spaces' marks, the + (section 7).
+
+No space's name shows in the sidebar, and a space with no project shows no dot where a
+project's name would be (section 4). **[asked]**
+
+### 11.2 The pinned pages
+
+- A tile per pinned page, as the projects' tiles are (section 3): 44 pt high, 10 pt corners,
+  8 pt apart, sharing the sidebar's width, up to four to a row and three for five or six, in
+  the `Look`'s tile shades, the page shown's lit as the selected project's is. **[asked: as
+  the project tiles; ours: the same sizes and columns, no numbers of its own]**
+- A tile shows its page's site icon, the favicon the browser fetched, 20 pt; with none kept,
+  the first letter of its host; a globe for a page with no host, as a start page. **[asked:
+  icon, initials or a globe; ours: one letter]**
+- **A page's favicon has its corners rounded 2 pt wherever a tab shows it**: on a pinned
+  tile, a loose page's row, a worktree's tab row and a split's halves, the chip of a tab in
+  hand, and a tab along the Orca layout's strip (`Face::icon`, `FAVICON_CORNERS`). **[asked]**
+- The picture of a page that isn't open, closed or not opened since the window came back, is
+  drawn at 60 % strength, so it's plain which pinned pages are open. **[ours]**
+- The pointer resting on a tile brings its card: the page's icon, its title, and its host.
+  **[asked]**
+- With no page pinned the region is a zone a tile high with a dotted outline, saying "Drag a
+  page here to pin it". The pointer on it shows a × at its end (tooltip "Hide") that puts the
+  zone away; that's kept in `settings.json` (`pinned_zone_dismissed`). **[asked; ours: the
+  copy, the height, the ×]**
+- Put away, the zone is back once a page's tab is taken off its list, saying "Drop to pin",
+  and gone again when the tab's let go elsewhere. Nothing brings it back for good: pinning a
+  page shows tiles instead, and with the last pin gone it stays away. **[asked; ours: that
+  nothing un-hides it]**
+- **Only a tab whose single pane is a page is pinned.** A split, a terminal, a chat, a file
+  or a page's `DevTools` in a tab of their own isn't taken, and the region doesn't light for
+  one. A loose page is always one. **[asked]**
+- A page's tab dragged from a worktree's list, or a loose page's row, onto the region is
+  pinned: off its list it's a chip; the zone, or a dotted outline round the tiles, lights
+  under it; let go, it leaves where it was and is the last tile. **[asked; ours: it goes
+  last rather than where it's dropped among the tiles]**
+- It goes on showing if it was the tab shown, and its page isn't reloaded. **[ours]**
+- Tiles move among themselves as project tiles do (`arc/tile_grid.rs`): the one in hand
+  follows the pointer, the others step out of its way, let go it slides into its slot, and
+  taken well away it goes back with nothing changed. **[asked]**
+- Taken well away, the tile in hand travels as a chip, as a tab off its list does. Let go on
+  a worktree's tab or header it's **unpinned** there: a tab of that worktree where that tab
+  is, or first, and shown. Let go on a loose page's row it's a loose page of the space, where
+  that row is. **[asked; ours: the chip, and the loose pages taking it]**
+
+### 11.3 The loose pages
+
+- **A space's own.** Each space lists the pages opened in it that belong to no project, as
+  rows like a worktree's tabs: the page's icon and title, the one shown a pill, a × at its
+  end on hover and on the one shown. Another space lists its own, and a space shown again
+  shows the loose page it showed last. **[asked: per space]**
+- **Only pages.** No chat, terminal or file is loose: each needs a worktree to be in.
+  **[asked, for now]**
+- **How a page comes to be one:** **[asked]**
+  - **Opened where the person is in no worktree.** A browser tab opened (⌘T, a link picked
+    in the launcher) while no project is shown, or while a loose or a pinned page is the tab
+    shown, is a loose page of the space: after the loose page shown, or after them all, and
+    shown. **[ours: that a loose or a pinned page shown counts as being in no worktree]**
+  - **Dragged.** A page's tab taken off a worktree's list and let go on a loose page's row
+    goes where that row is; a pinned page's tile let go there is unpinned there. Either
+    shows.
+  - With no loose page yet there are no rows: once a page's tab is off its list, or a pinned
+    tile well away from the others, a dotted row under the pinned pages says "Drop to keep
+    it in this space" and takes it. It stays until what's in hand is let go, and doesn't
+    show for a tab moved along its own list. **[ours]**
+- In a space with no project ⌘T opens the launcher for a page only: Tab goes to no other
+  kind there, as a chat, a terminal and a worktree need a project. **[ours]**
+- A row is dragged among the others, as a tab along its list, but joins none: each stays a
+  page. Dragged onto a worktree's tab or header it's a tab of that worktree, shown; onto the
+  pinned pages, pinned. **[ours]**
+- ⌘W, its ×, or a middle click closes a loose page: it's gone. The one before it shows in
+  its place, the one after when it was the first, and the selected worktree's tab when it
+  was the only one. It isn't among the tabs ⌘⇧T brings back. **[ours]**
+- A space deleted hands its loose pages on with its projects: to the space that takes them,
+  after that space's own; they close when the projects are taken out of Koyo. **[ours]**
+
+### 11.4 The tab shown
+
+- The panes show one tab: a pinned page, else the loose page the space shows, else the
+  selected worktree's tab. A click on a pinned tile or a loose row shows its page, which
+  takes the keyboard. It's a page like any other: the same browser host, its keys (⌘R, ⌘F,
+  zoom, ⌘[ and ⌘]), `DevTools` and right-click menu, and the sidebar's address and controls
+  (section 2). **[asked]**
+- **Switching space leaves a pinned page shown.** By a swipe, ⌥← and ⌥→, ⌘⌥← and ⌘⌥→, or a
+  click on a space's mark, the sidebar's loose pages, project and tiles change and the panes
+  don't: the pinned page stays, the keyboard where it was. A space with no project shows it
+  too. A click on a space's mark doesn't take the keyboard to the window while a pinned page
+  is shown, as a press elsewhere in the sidebar does (section 7). **[asked; ours: the mark's
+  press]**
+- The keyboard goes by section 9 with these pages as with any tab: one opened or picked
+  takes it; one closed with the keyboard in it (its ×, its menu, ⌘W) hands it to what shows
+  in its place; one moved (pinned, unpinned, dragged among the loose pages or onto a
+  worktree) leaves it where it was (`Shell::close_apart`, `picked_tab_shown`). **[ours]**
+- A loose page shown is its space's: another space shows what it showed last.
+- Picking a tab of a worktree, or a project's tile, leaves a pinned or a loose page for that;
+  so does anything else that shows a worktree's tab: ⌃⇥, a file opened, ⌘⇧T, a worktree's +,
+  app control selecting a tab, worktree or project. A pinned page's page stays open, as it
+  was, and shows again when its tile is picked. **[asked; ours: the list of what else leaves
+  it]**
+- A pinned or a loose page's `DevTools`, detached, split its tab as they split any page's;
+  their pane has only its ×, as such a page's panes aren't dragged elsewhere. No side of one
+  takes a tab in hand: it's split with nothing. **[ours]**
+- In the Orca layout, which lists neither, the selected worktree's tab shows; the pinned and
+  the loose pages stay as they are, and are back with the Arc layout. A page opened there
+  with no checkout selected opens nothing, as before. **[ours]**
+
+### 11.5 The address a page is pinned at, and closing it
+
+From the owner's answers while it was built: closing a pinned page doesn't unpin it, and its
+menu is Arc's.
+
+- **A pinned page keeps the address it's pinned at**: where its page was when it was pinned.
+  Its page may go on anywhere from there. **[asked, from Arc's menu]**
+- **⌘W, or Close from its menu, closes the page and leaves it pinned.** Its page and its
+  `DevTools` go, its tile stays, fainter, and what the space shows under it shows in its
+  place. Picked again, it opens at the address it's pinned at. Closing it is how it's taken
+  back there. **[asked: closing doesn't unpin; ours: that it goes back to the pinned address
+  rather than the one it last showed]**
+- Right-clicking a tile opens its menu, as Arc's for a pinned tab: **[asked]**
+  - **Edit Pinned Page ›**
+    - **Replace Pinned URL with Current**: pins it at the address its page shows. Greyed out
+      while that's the one it's pinned at.
+    - **Edit…**: a dialog with the address in a field, read as the address bar reads one
+      (`example.com` is `https://example.com`); words that are no address change nothing. An
+      open page stays where it is; a closed one opens at the new address.
+  - **Close**: as ⌘W. Greyed out when there's nothing to close.
+  - **Unpin**: a tab of the selected worktree, after its others, shown there; with no
+    worktree selected, a loose page of the space. **[ours: where it goes with no worktree]**
+  - **Remove Pinned Tab**: the page goes and it's pinned no longer. **[ours: Arc's "Remove
+    Favorite"; the brief's first Close did this]**
+- A pinned page closed or removed isn't among the tabs ⌘⇧T brings back. **[ours]**
+
+### 11.6 Links, sign-ins and agents
+
+- A link that asks for a new window (`target="_blank"`, `window.open`) loads in the page
+  itself, pinned or loose, as it does in any page tab today: the host opens no windows
+  (`koyo-browser-host/src/pane.rs`, `on_before_popup`). ⌘[ goes back. **[ours: as a page tab]**
+- **Open Link in New Tab** from a pinned or a loose page's right-click menu, and a link
+  opened from its `DevTools`, open a loose page of the space shown, right after a loose
+  opener or after them all, without leaving the page, as a page tab's opens beside it.
+  **[ours]**
+- A page keeps a browsing profile, its cookies and sign-ins (`browser::profile`):
+  - one pinned or dragged out of a worktree keeps its project's, whichever project is
+    selected, and is of that profile again after a relaunch;
+  - one opened outside any project keeps the person's own, the same in every space
+    (`browser::NO_PROJECT`);
+  - one a pinned or a loose page opens keeps its opener's, so it's signed in as its opener
+    is;
+  - one moved onto a worktree's tabs keeps its profile while the window lives, and is its
+    worktree's project's once brought back with the window. **[ours]**
+- Sign-ins survive a relaunch: a profile is a folder under `browser/profiles/` in the data
+  folder, with session cookies kept (`persist_session_cookies`,
+  `koyo-browser-host/src/host/panes.rs`). `browser::host_tests::keeping::
+  a_sign_in_outlives_the_engine_quitting_and_starting_again` proves it against the packaged
+  engine: a session cookie, a cookie with an age and `localStorage` are all there once the
+  engine has quit and started again. **[checked 2026-11-13]**
+- The history keeps a pinned or a loose page's visits under the project whose profile it
+  keeps (`Shell::apart_place`).
+- App control lists and drives worktrees' tabs only: a pinned or a loose page isn't in
+  `tab_list` or `browser_list`, and an agent can't drive it. What an agent opens out of sight
+  leaves such a page shown. **[ours]**
+
+### 11.7 Kept for the next launch
+
+- **Pinned pages** survive a relaunch, a reboot and an update: `pinned-tabs.json` in the data
+  folder (`settings::data_dir()`, which `KOYO_DATA_DIR` moves), beside `window.json` and
+  apart from it, so a window file that can't be read doesn't take them with it
+  (`docs/browser.md` 10). **[asked]**
+- Each comes back in the order of the tiles, at the address it last showed, titled as it
+  was, with its site's icon (`history-icons/`), pinned where it was, of the profile it had.
+  The one that was shown is shown again; no other page is made until its tile is picked.
+  **[asked; ours: that the one shown is shown again]**
+- Written 500 ms after a change and on the way out, through `atomic_file`, only when it
+  differs from what the file holds. Read tolerantly: see `docs/browser.md` 10. **[asked]**
+- **Loose pages** are open tabs, so they're kept with the window, in `window.json`, by their
+  space's `id` (`docs/browser.md` 2): each comes back in its space, in order, at the address
+  it showed, titled as it was, of the profile it had, the one the space showed shown. Those
+  of a space the settings no longer have are the space shown's, rather than lost. **[ours]**
+
+### 11.8 Where it lives
+
+| Path | What |
+| --- | --- |
+| `koyo/src/model/pinned.rs` | The pinned pages on the workspace: pinning, moving, closing, the pinned address, unpinning, removing |
+| `koyo/src/model/loose.rs` | Each space's loose pages, the tab shown among pinned, loose and a worktree's, and a page's tab moving between the three |
+| `koyo/src/shell/pinned.rs` | The shell's side of the pinned pages: what a pin takes, picking, closing, the pinned address |
+| `koyo/src/shell/loose.rs` | The shell's side of the loose pages: opening one, picking, closing, moving; and a pinned or a loose page's own events |
+| `koyo/src/shell/kept/pinned.rs` | `pinned-tabs.json`: reading it tolerantly, writing it, and bringing the pinned pages back |
+| `koyo/src/shell/kept/loose.rs` | The loose pages in `window.json`, and bringing both kinds back as the window opens |
+| `koyo/src/arc/pinned.rs` | The pinned region: tiles, the zone, the chip, the menu and its actions |
+| `koyo/src/arc/loose.rs` | The loose rows and the strip that takes the first |
+| `koyo/src/arc/tile_grid.rs` | The grid both kinds of tiles share, each with its own `TileHand` |
+| `koyo/src/arc/card.rs`, `hover.rs` | A pinned page's card |
+| `koyo/src/shell/reorder.rs`, `reorder/hand.rs` | The loose rows' list, and a tab off its list (`TabHand::left_list`, `taken_at`) |
+| `koyo/src/spaces.rs` | A space's `id` |
+| `koyo/src/launcher/here.rs` | The launcher where no checkout is selected: a page only |
+| `koyo/src/arc/tests/pinned.rs`, `tests/loose.rs`, `shell/kept/tests/pinned.rs`, `tests/loose.rs`, `model/pinned/tests.rs`, `model/loose/tests.rs` | The tests |
+| `koyo/src/arc/visual/pins.rs` | The pictures (`arc-pinned-*.png`, `arc-loose-*.png`) |

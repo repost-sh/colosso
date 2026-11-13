@@ -166,7 +166,11 @@ impl Shell {
         };
         pane.set_file(file.clone());
         pane.title = title.into();
-        unit.active_tab = unit.tab_with(id).unwrap_or(unit.active_tab);
+        let shown = unit.tab_with(id).unwrap_or(unit.active_tab);
+        // Shown in place of a pinned or a loose page too, which selecting a tab leaves.
+        if let Some((project, branch, _)) = self.workspace.shown_tab() {
+            self.workspace.select_tab(project, branch, shown);
+        }
     }
 
     /// The file at `path` of `checkout` in a pane, a preview if `preview`: a picture, a
@@ -289,8 +293,7 @@ impl Shell {
     /// The file shown: in the shown tab, the one whose editor has the keyboard, or else
     /// its first.
     pub fn shown_file(&self, window: &Window, cx: &App) -> Option<Entity<FilePane>> {
-        let unit = self.workspace.branch()?;
-        let files = unit.tabs.get(unit.active_tab)?.files();
+        let files = self.workspace.tab_shown()?.files();
         let focused = files
             .iter()
             .find(|file| file.read(cx).has_focus(window, cx));

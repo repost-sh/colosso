@@ -58,7 +58,8 @@ pub(crate) fn add(
 pub(crate) fn select(selector: &str, cx: &mut App) -> Result<Value, ControlError> {
     let path = try_update_shell(cx, |shell, window, cx| {
         let at = select::project(&shell.workspace, selector)?;
-        shell.workspace.select_project(Some(at));
+        // The project's tab shows, in place of a pinned or a loose page.
+        shell.workspace.show_project(at);
         shell.follow_selection(window, cx);
         cx.notify();
         Ok(shell.workspace.projects[at].path.clone())

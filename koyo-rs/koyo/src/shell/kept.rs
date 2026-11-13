@@ -3,7 +3,8 @@
 //! project, in a file in the app's data folder. What's kept follows from what the panes show:
 //! any change to the shell, whichever way a tab came, moved or went, has it written a moment
 //! later, and on the way out, as the panes show it then. A window closed and opened again from
-//! the Dock reads it as a launch does.
+//! the Dock reads it as a launch does. Each space's loose pages, which are no checkout's, are in
+//! it too (`loose.rs`); the pinned pages are kept beside it in a file of their own (`pinned.rs`).
 //!
 //! A checkout's tabs come back once git lists it, before the terminals the daemon keeps and the
 //! chats the host does are looked for: those find their panes where they were, and bring back
@@ -22,10 +23,13 @@ use crate::model::{Tab, Workspace};
 use crate::settings;
 
 mod before;
+mod loose;
+mod pinned;
 mod shape;
 #[cfg(test)]
 mod tests;
 
+pub use loose::KeptSpace;
 pub use shape::{KeptPane, KeptTree};
 
 /// What the file is called, in the app's data folder.
@@ -60,6 +64,9 @@ pub struct Kept {
     pub projects: Vec<KeptProject>,
     #[serde(default)]
     pub checkouts: Vec<KeptCheckout>,
+    /// Each space's loose pages, which are no checkout's (`loose.rs`); left out with none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub spaces: Vec<KeptSpace>,
 }
 
 pub struct KeptWindow {
@@ -73,6 +80,8 @@ pub struct KeptWindow {
     selecting: Vec<KeptProject>,
     /// What the file holds, or will once the write due is done.
     kept: Kept,
+    /// The pinned pages' file, beside the window's (`pinned.rs`).
+    pins: pinned::PinsFile,
 }
 
 /// Whether the window is kept in a file. Tests keep none; nor does a visual check, which draws
@@ -95,11 +104,11 @@ impl KeptWindow {
         // A change still settling when the app quits or the window closes is written then, as
         // the next window reads the file again.
         cx.on_app_quit(|shell, cx| {
-            kept_file::write_now(shell.window_due(cx));
+            shell.write_what_is_due(cx);
             async {}
         })
         .detach();
-        cx.on_release(|shell, cx| kept_file::write_now(shell.window_due(cx)))
+        cx.on_release(|shell, cx| shell.write_what_is_due(cx))
             .detach();
         Self::at(path)
     }
@@ -109,10 +118,11 @@ impl KeptWindow {
     pub(super) fn at(path: Option<PathBuf>) -> Self {
         let kept = path.as_deref().map(read_file).unwrap_or_default();
         KeptWindow {
-            file: KeptFile::new(path),
+            file: KeptFile::new(path.clone()),
             waiting: kept.checkouts.clone(),
             selecting: kept.projects.clone(),
             kept,
+            pins: pinned::PinsFile::at(path.map(|path| path.with_file_name(pinned::FILE))),
         }
     }
 
@@ -134,8 +144,8 @@ impl KeptWindow {
 fn read_file(path: &Path) -> Kept {
     if !path.exists() {
         return Kept {
-            projects: Vec::new(),
             checkouts: before::tabs_kept_before(path),
+            ..Kept::default()
         };
     }
     kept_file::read(path).unwrap_or_default()
@@ -165,12 +175,19 @@ impl Shell {
     /// Has the window written a moment from now, after any change to the shell: as it is
     /// then, so a run of changes, a divider dragged or a row fading, is looked at once.
     pub(crate) fn keep_window(&mut self, cx: &mut Context<Self>) {
+        self.keep_pinned(cx);
         if self.kept.file.changed() {
             let shell = cx.weak_entity();
             kept_file::write_later(cx, SAVE_DELAY, move |cx| {
                 shell.update(cx, |shell, cx| shell.window_due(cx)).ok()?
             });
         }
+    }
+
+    /// Writes the window and the pinned pages now, on the way out, if a write of either is due.
+    fn write_what_is_due(&mut self, cx: &App) {
+        kept_file::write_now(self.window_due(cx));
+        kept_file::write_now(self.pinned_due(cx));
     }
 
     /// Where to write the window as it is now, and its JSON, if a write is due, which then no
@@ -216,6 +233,7 @@ impl Shell {
             }
         }
         now.checkouts.extend(self.kept.waiting.iter().cloned());
+        now.spaces = self.kept_spaces(cx);
         now
     }
 

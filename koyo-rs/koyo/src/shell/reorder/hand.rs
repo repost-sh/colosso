@@ -22,6 +22,9 @@ pub struct TabHand {
     drag: RefCell<Option<Drag>>,
     /// The list whose tabs still slide into place after one was let go.
     settling: Cell<Option<u64>>,
+    /// Where, outside the lists, a tab let go is taken, as last drawn: the pinned pages' region
+    /// in the Arc sidebar (`docs/arc-sidebar.md` 11). Over it, a tab is off its list.
+    elsewhere: Cell<Option<Bounds<Pixels>>>,
 }
 
 struct Drag {
@@ -36,6 +39,8 @@ struct Drag {
     join: Option<Join>,
     /// Whether it's off its list, a chip over the panes.
     off: bool,
+    /// Whether it has been off its list since it was taken up.
+    left: bool,
 }
 
 /// The tab another one would join, and whether what joins it goes after it.
@@ -73,6 +78,7 @@ pub(super) struct Held {
 impl TabHand {
     /// Takes up the tab `key` of `list`, in slot `at`, held `grab` in from its start.
     pub fn take(&self, list: u64, key: u64, at: usize, grab: Pixels) {
+        self.elsewhere.set(None);
         *self.drag.borrow_mut() = Some(Drag {
             list,
             key,
@@ -81,7 +87,22 @@ impl TabHand {
             to: at,
             join: None,
             off: false,
+            left: false,
         });
+    }
+
+    /// The tab in hand, by its key, once it has been off its list: what takes a tab elsewhere
+    /// in the sidebar shows for it from then until it's let go, so a tab moved along its own
+    /// list moves nothing else, and nothing comes and goes as it crosses its list's edge.
+    pub fn left_list(&self) -> Option<u64> {
+        let drag = self.drag.borrow();
+        drag.as_ref().filter(|drag| drag.left).map(|drag| drag.key)
+    }
+
+    /// Notes where, outside the lists, a tab let go is taken, as it's drawn there. It holds for
+    /// the tab in hand: the next one taken up starts with none.
+    pub fn taken_at(&self, place: Bounds<Pixels>) {
+        self.elsewhere.set(Some(place));
     }
 
     /// The tab in hand, by its key.
@@ -159,15 +180,20 @@ impl TabHand {
         let (axis, bounds) = (list.axis, list.bounds);
         let outside = outside(axis, bounds, at);
         // A worktree joins none, and has nowhere else to go: it stays on its list, wherever the
-        // pointer takes it.
+        // pointer takes it. A loose page leaves its list as a tab does, and joins none.
         let tabs = matches!(list.holds, Holds::Tabs { .. });
-        drag.off = tabs
-            && (beyond_ends(axis, bounds, at)
+        let leaves = !matches!(list.holds, Holds::Worktrees);
+        // Over what takes it elsewhere, it's off its list, whose own room may run under there.
+        let taken = (self.elsewhere.get()).is_some_and(|place| place.contains(&at));
+        drag.off = leaves
+            && (taken
+                || beyond_ends(axis, bounds, at)
                 || if drag.off {
                     outside > px(0.)
                 } else {
                     outside > px(PULL)
                 });
+        drag.left |= drag.off;
         drag.from = index;
         let start = bounds.origin.along(axis);
         let len = slots[index].size.along(axis);
@@ -221,6 +247,10 @@ pub(super) enum Holds {
     Tabs { accent: Hsla },
     /// A project's worktrees in the Arc sidebar (`docs/arc-sidebar.md` 5), which only move.
     Worktrees,
+    /// A space's loose pages in the Arc sidebar (`docs/arc-sidebar.md` 11): they move, and one
+    /// taken off the list is a chip for a checkout's list or the pinned pages, but none joins
+    /// another, as each is a page.
+    Pages,
 }
 
 /// A list's own facts beside its tabs: which list it is, what it holds, which way it runs, its

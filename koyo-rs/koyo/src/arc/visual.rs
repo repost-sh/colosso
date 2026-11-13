@@ -4,7 +4,9 @@
 //! person does there (`acts`): a space's mark saying a chat in it works and then waits, a tab's
 //! row and its tile saying the same, a tile dragged to another row and back, the address bar
 //! following the pane pressed in, ⌘L's launcher on a page, ⌥← and ⌥→ between spaces, in a
-//! composer and on the shortcuts page (`keys`), and a project's worktrees under their headers,
+//! composer and on the shortcuts page (`keys`), the pages pinned at the sidebar's head and the
+//! space's loose pages under them, pinned and kept by a drop, dragged, shown as the space
+//! changes, closed and put away (`pins`), and a project's worktrees under their headers,
 //! collapsed, opened, dragged and kept (`headers`). It shows a chat, so it runs on a data folder
 //! and an agent host of its own:
 //!
@@ -33,6 +35,7 @@ use crate::visual::{Drawn, Result, checkout};
 mod acts;
 mod headers;
 mod keys;
+mod pins;
 
 /// Where the pictures go, relative to the checkout.
 const OUT: &str = ".superpowers/qa/arc";
@@ -168,6 +171,8 @@ fn draw() -> Result<Vec<String>> {
     acts::drag_tile(&mut drawn, &mut said)?;
     acts::address(&mut drawn, &mut said)?;
     keys::space_keys(&mut drawn, &mut said)?;
+    // The pages pinned at the sidebar's head and the space's loose ones, from none and back.
+    pins::pins(&mut drawn, &mut said)?;
     acts::stop_host(&mut said);
     // The Orca layout keeps one card, hairlines between its parts: no islands there.
     drawn.cx.update(|cx| {

@@ -1,5 +1,6 @@
 //! A dialog asking for a name (`docs/arc-sidebar.md` 3, 6): a project's in Koyo, or a space's.
-//! Enter or Rename gives it to whoever asked; Escape or Cancel leaves the name as it was.
+//! Enter or Rename gives it to whoever asked; Escape or Cancel leaves the name as it was. And
+//! for the address a page is pinned at (11), the same with Save.
 
 use std::rc::Rc;
 
@@ -28,16 +29,31 @@ pub fn open(
     cx: &mut App,
     done: impl Fn(String, &mut App) + 'static,
 ) {
+    ask((title, "Rename"), current, placeholder, window, cx, done);
+}
+
+/// Asks for a line of text under `title`, the button that gives it saying `confirm`, the field
+/// holding `current` and saying `placeholder` once it's emptied; `done` hears it, trimmed.
+pub fn ask(
+    (title, confirm): (&'static str, &'static str),
+    current: String,
+    placeholder: &'static str,
+    window: &mut Window,
+    cx: &mut App,
+    done: impl Fn(String, &mut App) + 'static,
+) {
     let height =
         2. * modal::PADDING + modal::HEADING_LINE + GAP + modal::FIELD + GAP + modal::FOOTER;
     let done: Done = Rc::new(done);
     modal::open(WIDTH, height, window, cx, move |window, cx| {
-        Rename::new(title.into(), current, placeholder, done, window, cx)
+        Rename::new((title.into(), confirm), current, placeholder, done, window, cx)
     });
 }
 
 struct Rename {
     title: SharedString,
+    /// What the button that gives the text says.
+    confirm: &'static str,
     input: Entity<InputState>,
     done: Done,
     _subscription: Subscription,
@@ -45,7 +61,7 @@ struct Rename {
 
 impl Rename {
     fn new(
-        title: SharedString,
+        (title, confirm): (SharedString, &'static str),
         current: String,
         placeholder: &'static str,
         done: Done,
@@ -65,6 +81,7 @@ impl Rename {
         });
         Rename {
             title,
+            confirm,
             input,
             done,
             _subscription,
@@ -97,7 +114,7 @@ impl Render for Rename {
                 modal::footer(None, p)
                     .child(modal::cancel("rename-cancel"))
                     .child(
-                        Button::new("rename-confirm", "Rename", Tone::Primary)
+                        Button::new("rename-confirm", self.confirm, Tone::Primary)
                             .on_click(cx.listener(|this, _, window, cx| this.confirm(window, cx))),
                     ),
             )

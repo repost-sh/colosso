@@ -60,6 +60,7 @@ fn the_window_comes_back_split_ordered_and_selected_as_it_was(cx: &mut TestAppCo
                 ],
             ),
         ],
+        ..Kept::default()
     };
     let path = file("kept-window-back-file", &kept);
     let (window, shell) = shell_with(&[&root], cx);

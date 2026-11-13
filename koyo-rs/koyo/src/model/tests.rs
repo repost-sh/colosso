@@ -22,6 +22,32 @@ pub(super) fn workspace(worktrees: &[&str]) -> Workspace {
     workspace
 }
 
+/// A tab of a page at `address`, titled with it, its page not made yet.
+pub(super) fn page(address: &str) -> Tab {
+    let unloaded = Unloaded {
+        address: address.into(),
+        favicon: None,
+    };
+    Tab::Single(Pane::unloaded(unloaded, address.to_owned().into()))
+}
+
+/// One project with its main checkout and a worktree, the main one's tabs a chat and the pages
+/// at `addresses`, the last shown.
+pub(super) fn with_pages(addresses: &[&str]) -> Workspace {
+    let mut workspace = workspace(&["feature"]);
+    workspace.new_tab(PaneKind::Chat);
+    for address in addresses {
+        workspace.push_tab(page(address));
+    }
+    workspace
+}
+
+/// The title of the tab shown.
+pub(super) fn shown(workspace: &Workspace) -> String {
+    let tab = workspace.tab_shown().expect("a tab");
+    tab.first().title.to_string()
+}
+
 fn unit_with_tabs(count: usize, active: usize) -> Workspace {
     let mut workspace = workspace(&[]);
     let unit = workspace.branch_mut().unwrap();

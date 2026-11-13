@@ -80,13 +80,26 @@ impl DeleteSpace {
             Leftovers::MoveTo(self.target)
         };
         let index = self.index;
+        // Its loose pages go where its projects do: to the space that takes them, or with it.
+        let id = |at: usize| settings::get(cx).spaces.get(at).map(|space| space.id);
+        let gone = id(index);
+        let takes = match leftovers {
+            Leftovers::MoveTo(to) => id(to),
+            Leftovers::Remove => None,
+        };
         let mut removed = Vec::new();
         settings::update(cx, |settings| {
             removed = settings.delete_space(index, leftovers);
         });
         let shell = self.shell.clone();
         modal::dismiss(window, cx);
-        (shell.update(cx, |shell, cx| shell.remove_projects(&removed, cx))).ok();
+        let deleted = shell.update(cx, |shell, cx| {
+            if let Some(gone) = gone {
+                shell.hand_on_loose(gone, takes, cx);
+            }
+            shell.remove_projects(&removed, cx);
+        });
+        deleted.ok();
     }
 
     /// The dropdown of the spaces the projects may move to.

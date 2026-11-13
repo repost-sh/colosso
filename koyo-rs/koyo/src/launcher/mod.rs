@@ -170,7 +170,7 @@ impl Shell {
     /// page in the tab shown there's no address to change, and nothing opens: the key goes on
     /// to whatever has the keyboard, as one the window doesn't take.
     pub fn open_address(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let shown = (self.shown_page(cx)).and_then(|view| Some((self.pane_of(&view)?.1, view)));
+        let shown = (self.shown_page(cx)).and_then(|view| Some((self.pane_showing(&view)?, view)));
         let Some((pane, view)) = shown else {
             return cx.propagate();
         };

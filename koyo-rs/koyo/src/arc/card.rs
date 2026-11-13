@@ -1,15 +1,19 @@
-//! What the Arc sidebar shows of something hovered (`docs/arc-sidebar.md` 3, 7): a project's card
-//! under its tile, its picture, name, folder and what's in it; or a space's name over its dot. It's
+//! What the Arc sidebar shows of something hovered (`docs/arc-sidebar.md` 3, 7, 11): a project's
+//! card by its tile, its picture, name, folder and what's in it; a pinned page's by its tile,
+//! its icon, title and host; or a space's name over its dot. A tile's card is under it, or over
+//! it where there's no room under. It's
 //! on glass, a blurred window of its own tinted as the launcher's is, so it reads as the launcher
 //! and the menus do over whatever the window shows. It never takes the keyboard, fades in as it
 //! comes, and goes when the pointer leaves what it's about, the window goes to the back, or
 //! another opens.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
+use gpui_kit::assets::IconName;
 use gpui_kit::{
-    Animation, AnimationExt as _, AnyElement, App, Bounds, Context, Div, FontWeight, Hsla,
+    Animation, AnimationExt as _, AnyElement, App, Bounds, Context, Div, FontWeight, Hsla, Image,
     IntoElement, ParentElement as _, Pixels, Render, SharedString, Styled, TextStyle, Window, div,
     ease_out_quint, img, point, px, size,
 };
@@ -34,6 +38,8 @@ const STAT_GAP: f32 = 10.;
 /// foot.
 const CARD_HEIGHT: f32 =
     2. * PADDING + PICTURE + 2. * SECTION_GAP + 1. + 2. * (COUNT_LINE + LABEL_LINE) + STAT_GAP;
+/// A pinned page's card: its head alone.
+const PAGE_HEIGHT: f32 = 2. * PADDING + PICTURE;
 /// A space's name over its dot: its height, the room either side of the name, and its text's
 /// size.
 const LABEL_HEIGHT: f32 = 28.;
@@ -46,6 +52,8 @@ const OFFSET: f32 = 6.;
 #[derive(Clone, PartialEq)]
 pub enum Card {
     Project(ProjectCard),
+    /// A pinned page, by its tile at the sidebar's head.
+    Page(PageCard),
     /// A space's name, in its colour's dot.
     Space {
         name: SharedString,
@@ -68,6 +76,24 @@ pub struct ProjectCard {
     pub terminals: usize,
 }
 
+/// A pinned page as its card says it.
+#[derive(Clone)]
+pub struct PageCard {
+    pub title: SharedString,
+    /// Its address's host, or the whole of an address that has none.
+    pub host: SharedString,
+    /// Its site's icon, or a globe while it has none.
+    pub icon: Option<Arc<Image>>,
+}
+
+impl PartialEq for PageCard {
+    /// The same card while it says the same of the same icon.
+    fn eq(&self, other: &Self) -> bool {
+        let icon = |card: &PageCard| card.icon.as_ref().map(Arc::as_ptr);
+        (&self.title, &self.host, icon(self)) == (&other.title, &other.host, icon(other))
+    }
+}
+
 /// Shows `card` about what's at `anchor` in `parent`: a project's under it, a space's name over
 /// it, both kept on the window. One that shows the same already stays.
 pub fn show(card: Card, anchor: Bounds<Pixels>, parent: &mut Window, cx: &mut App) {
@@ -76,11 +102,20 @@ pub fn show(card: Card, anchor: Bounds<Pixels>, parent: &mut Window, cx: &mut Ap
     }
     let (width, height) = match &card {
         Card::Project(_) => (CARD_WIDTH, CARD_HEIGHT),
+        Card::Page(_) => (CARD_WIDTH, PAGE_HEIGHT),
         Card::Space { name, .. } => (label_width(name_width(name, parent)), LABEL_HEIGHT),
     };
     let within = parent.bounds();
+    // Under its tile; over it where there's no room under, as at the sidebar's foot.
+    let under = anchor.bottom() + px(OFFSET);
+    let fits = under + px(height) <= within.size.height;
+    let beside = if fits {
+        under
+    } else {
+        anchor.top() - px(height + OFFSET)
+    };
     let at = match &card {
-        Card::Project(_) => point(anchor.left(), anchor.bottom() + px(OFFSET)),
+        Card::Project(_) | Card::Page(_) => point(anchor.left(), beside),
         Card::Space { .. } => point(
             anchor.center().x - px(width / 2.),
             anchor.top() - px(height + OFFSET),
@@ -103,6 +138,13 @@ pub fn show(card: Card, anchor: Bounds<Pixels>, parent: &mut Window, cx: &mut Ap
 /// Puts the card away, if one's up.
 pub fn hide(cx: &mut App) {
     popup::close(Kind::Card, cx);
+}
+
+/// The card that's up, if one is.
+#[cfg(test)]
+pub fn shown(cx: &App) -> Option<Card> {
+    let surface = popup::root::<Surface>(Kind::Card, cx)?;
+    Some(surface.card.clone())
 }
 
 /// Whether a card's up, so the next one shows at once rather than after a wait.
@@ -139,6 +181,7 @@ impl Render for Surface {
         let p = theme::palette(cx);
         let content = match &self.card {
             Card::Project(project) => project_card(project, p).into_any_element(),
+            Card::Page(page) => page_card(page, p).into_any_element(),
             Card::Space { name, colour } => space_label(name, *colour, p).into_any_element(),
         };
         div()
@@ -180,25 +223,84 @@ fn stat(count: usize, one: &str, many: &str, p: Palette) -> Div {
         )
 }
 
+/// A card's head: `picture`, and beside it `name` over `under`, which is cut short as `cut` has
+/// it.
+fn head(
+    picture: AnyElement,
+    (name, under): (SharedString, SharedString),
+    cut: impl FnOnce(Div) -> Div,
+    p: Palette,
+) -> Div {
+    let line = div()
+        .text_xs()
+        .text_color(p.muted)
+        .overflow_hidden()
+        .whitespace_nowrap();
+    div()
+        .h(px(PICTURE))
+        .flex()
+        .items_center()
+        .gap(px(10.))
+        .child(div().flex_shrink_0().child(picture))
+        .child(
+            div()
+                .min_w_0()
+                .flex_1()
+                .flex()
+                .flex_col()
+                .gap(px(1.))
+                .child(
+                    div()
+                        .text_sm()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .truncate()
+                        .child(name),
+                )
+                .child(cut(line).child(under)),
+        )
+}
+
+/// What stands in for a picture a card has none of: `mark` on a tinted square.
+fn stand_in(mark: impl IntoElement, p: Palette) -> AnyElement {
+    div()
+        .size(px(PICTURE))
+        .rounded(px(8.))
+        .flex()
+        .items_center()
+        .justify_center()
+        .bg(p.hover)
+        .text_xs()
+        .font_weight(FontWeight::SEMIBOLD)
+        .text_color(p.muted)
+        .child(mark)
+        .into_any_element()
+}
+
+fn page_card(page: &PageCard, p: Palette) -> Div {
+    let picture = match &page.icon {
+        Some(icon) => img(icon.clone())
+            .size(px(PICTURE))
+            .rounded(px(8.))
+            .into_any_element(),
+        None => stand_in(crate::shell::icon(IconName::Globe, 16.), p),
+    };
+    let says = (page.title.clone(), page.host.clone());
+    div()
+        .size_full()
+        .overflow_hidden()
+        .p(px(PADDING))
+        .child(head(picture, says, Styled::text_ellipsis, p))
+}
+
 fn project_card(project: &ProjectCard, p: Palette) -> Div {
     let picture: AnyElement = match &project.picture {
         Some(picture) => img(picture.clone())
             .size(px(PICTURE))
             .rounded(px(8.))
             .into_any_element(),
-        None => div()
-            .size(px(PICTURE))
-            .rounded(px(8.))
-            .flex()
-            .items_center()
-            .justify_center()
-            .bg(p.hover)
-            .text_xs()
-            .font_weight(FontWeight::SEMIBOLD)
-            .text_color(p.muted)
-            .child(project.initials.clone())
-            .into_any_element(),
+        None => stand_in(project.initials.clone(), p),
     };
+    let says = (project.name.clone(), project.path.clone());
     div()
         .size_full()
         .overflow_hidden()
@@ -206,39 +308,8 @@ fn project_card(project: &ProjectCard, p: Palette) -> Div {
         .flex()
         .flex_col()
         .gap(px(SECTION_GAP))
-        .child(
-            div()
-                .h(px(PICTURE))
-                .flex()
-                .items_center()
-                .gap(px(10.))
-                .child(div().flex_shrink_0().child(picture))
-                .child(
-                    div()
-                        .min_w_0()
-                        .flex_1()
-                        .flex()
-                        .flex_col()
-                        .gap(px(1.))
-                        .child(
-                            div()
-                                .text_sm()
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .truncate()
-                                .child(project.name.clone()),
-                        )
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(p.muted)
-                                .overflow_hidden()
-                                .whitespace_nowrap()
-                                // Cut from the start, so the folder's own name stays in view.
-                                .text_ellipsis_start()
-                                .child(project.path.clone()),
-                        ),
-                ),
-        )
+        // Its folder cut from the start, so the folder's own name stays in view.
+        .child(head(picture, says, Styled::text_ellipsis_start, p))
         .child(div().h(px(1.)).bg(p.hairline))
         .child(
             div()

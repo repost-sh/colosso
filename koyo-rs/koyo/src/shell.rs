@@ -11,7 +11,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, DragMoveEvent, Entity, FocusHandle,
     InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, ParentElement as _, Pixels,
-    Point, Render, SharedString, Styled, Subscription, Window, div, px,
+    Point, Render, Styled, Subscription, Window, div, px,
 };
 
 use crate::bottom::StatusBar;
@@ -35,6 +35,8 @@ mod device_tabs;
 mod elements;
 mod kept;
 mod keys;
+mod loose;
+mod pinned;
 mod rails;
 mod reopen;
 mod reorder;
@@ -59,7 +61,8 @@ pub use elements::{
 };
 pub use kept::KeptWindow;
 pub use reorder::{Drop, MOTION, Reorder, TabHand};
-pub use splits::{Dragged, DraggedPane};
+pub use splits::{Dragged, DraggedPane, drag_chip};
+pub use tab_face::{FAVICON_CORNERS, Face};
 pub use tab_list::{tab_list, tab_row, title_with_end};
 
 pub struct Shell {
@@ -90,7 +93,6 @@ pub struct Shell {
     /// Where the rails or the Arc sidebar were last right-clicked, for the theme picker their
     /// menu opens.
     pub(crate) rails_menu_at: Point<Pixels>,
-    /// The project selected when the Arc sidebar last followed it into its space.
     /// The tile or space dot in the Arc sidebar under the pointer, and its card.
     pub(crate) arc_hover: arc::Hover,
     /// The tab being dragged along its list, shared by every list of tabs.
@@ -99,6 +101,8 @@ pub struct Shell {
     pub worktree_hand: Rc<TabHand>,
     /// The project tile being dragged about the Arc sidebar's grid.
     pub tile_hand: Rc<arc::TileHand>,
+    /// The pinned page's tile being dragged about its own grid, at the sidebar's head.
+    pub pinned_hand: Rc<arc::TileHand>,
     /// The places a symbol led to, listed under the tabs, while they are.
     pub locations: Option<Entity<Locations>>,
     _subscriptions: [Subscription; 13],
@@ -150,21 +154,14 @@ impl Shell {
                 this.chat_tabs.retain(&this.workspace, cx);
                 this.keep_window(cx);
                 // What floats over the window goes as it comes to show something else.
-                let tab = (this.workspace.shown_tab()).and_then(|at| this.workspace.tab(at));
-                let pane = tab.and_then(|tab| Some(tab.panes().first()?.id));
+                let pane = (this.workspace.tab_shown()).map(|tab| tab.first().id);
                 let showing = (this.route(cx), Self::layout(cx), this.sidebar_open, pane);
                 crate::popup::showing(window.window_handle(), &showing, cx);
             }),
             // What had the keyboard is gone, a closed panel's list or another space's chat: the
             // shell has it then, or actions would start above it and its keys do nothing.
             cx.on_focus_lost(window, |this, window, cx| window.focus(&this.focus, cx)),
-            // Every terminal's program follows the app's theme, its tab shown or not; each
-            // project goes by the name the person gave it in Koyo, or its folder's.
-            settings::on_change(cx, |this, cx| {
-                this.terminals.tell_theme(cx);
-                this.workspace
-                    .name_projects(&settings::get(cx).project_looks);
-            }),
+            settings::on_change(cx, Self::settings_changed),
             cx.observe_global::<Theme>(|this, cx| this.terminals.tell_theme(cx)),
             // Settings → Agent desktop shows how the host stands as it changes, Settings →
             // Accounts the accounts, and Settings → Devices what runs. Only while the page
@@ -202,10 +199,13 @@ impl Shell {
             tab_hand: Rc::default(),
             worktree_hand: Rc::default(),
             tile_hand: Rc::default(),
+            pinned_hand: Rc::default(),
             locations: None,
             _subscriptions,
         };
-        // On the space shown, its project selected, as a switch to it leaves them.
+        // The pinned and the loose pages first, so one shown stays shown. Then on the space shown,
+        // its project selected, as a switch to it leaves them.
+        shell.restore_pages(cx);
         shell.show_space(settings::get(cx).space, cx);
         shell.reload_projects(cx);
         shell.terminals.tell_theme(cx);
@@ -397,20 +397,21 @@ impl Shell {
                 .child(text)
                 .into_any_element()
         };
-        let content = match (workspace.project(), workspace.branch()) {
-            (None, _) if workspace.projects.is_empty() => {
+        let content = match (workspace.tab_shown(), workspace.project(), workspace.branch()) {
+            // The selected checkout's tab, or a pinned page, whichever project is shown.
+            (Some(tab), ..) => self.tab_content(tab, cx),
+            (None, None, _) if workspace.projects.is_empty() => {
                 note("Add a project to see its worktrees here.")
             }
-            // No project shown: an empty space, which in Arc the + below fills.
-            (None, _) if Self::layout(cx) == Layout::Arc => {
-                note("This space has no projects. Add one with the + below.")
+            // No project shown: a space with none, where a page still opens.
+            (None, None, _) if Self::layout(cx) == Layout::Arc => {
+                note("No tab open. ⌘T opens a page, and the + below adds a project.")
             }
-            (None, _) => note("No project selected."),
-            (Some(_), None) => note("No checkout selected."),
-            (Some(_), Some(branch)) => match branch.tabs.get(branch.active_tab) {
-                Some(tab) => self.tab_content(tab, cx),
-                None => note("No tabs on this branch. ⌘T opens a tab, ⌘P opens a file."),
-            },
+            (None, None, _) => note("No project selected."),
+            (None, Some(_), None) => note("No checkout selected."),
+            (None, Some(_), Some(_)) => {
+                note("No tabs on this branch. ⌘T opens a tab, ⌘P opens a file.")
+            }
         };
         div().flex_1().min_h_0().child(content)
     }
@@ -487,12 +488,5 @@ impl Render for Shell {
             )
             .child(self.status_rail(shown, cx))
             .into_any_element()
-    }
-}
-
-impl Shell {
-    /// What the sidebar's search field holds.
-    pub fn search_query(&self, cx: &App) -> SharedString {
-        self.search.read(cx).value()
     }
 }

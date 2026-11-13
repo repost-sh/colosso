@@ -100,11 +100,14 @@ impl Shell {
             .on_action(cx.listener(Self::toggle_bottom_panel))
             .on_action(cx.listener(|this, _: &NewChat, _, cx| this.new_tab(PaneKind::Chat, cx)))
             // ⌘W closes what's looked at: the settings, or else the tab shown, asking about
-            // its unsaved edits first. Never the window.
+            // its unsaved edits first. Never the window. A pinned page shown closes and stays
+            // pinned; a loose one closes (`docs/arc-sidebar.md` 11).
             .on_action(cx.listener(|this, _: &CloseTab, window, cx| {
                 if matches!(this.route(cx), Route::Settings(_)) {
                     this.navigate(Route::Workspace, cx);
-                } else if let Some(at) = this.workspace.shown_tab() {
+                } else if !this.close_apart_shown(window, cx)
+                    && let Some(at) = this.workspace.shown_tab()
+                {
                     this.close_tab_at(at, window, cx);
                 }
             }))

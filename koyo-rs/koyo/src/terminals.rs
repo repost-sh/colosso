@@ -324,8 +324,7 @@ impl Shell {
 
     /// The shown tab's first terminal pane: its terminal's id and view, if it's made.
     fn shown(&self) -> Option<(u64, Option<Entity<TerminalView>>)> {
-        let branch = self.workspace.branch()?;
-        let tab = branch.tabs.get(branch.active_tab)?;
+        let tab = self.workspace.tab_shown()?;
         let id = tab.panes().iter().find_map(|pane| pane.terminal)?;
         Some((id, self.terminals.view(id)))
     }

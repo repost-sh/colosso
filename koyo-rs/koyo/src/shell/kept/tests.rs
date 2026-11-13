@@ -13,6 +13,8 @@ use crate::shell::Shell;
 use crate::test_support::{draw, open_page, repo, scratch, select, shell_with};
 
 mod back;
+mod loose;
+mod pinned;
 
 fn page(url: &str, title: &str) -> KeptTree {
     KeptTree::Pane(KeptPane::Page {
@@ -47,6 +49,7 @@ fn main_with(root: &Path, shown: usize, tabs: &[KeptTree]) -> Kept {
             checkout: root.to_owned(),
         }],
         checkouts: vec![checkout(root, root, shown, tabs)],
+        ..Kept::default()
     }
 }
 
@@ -148,6 +151,7 @@ fn the_file_reads_back_what_was_written_and_a_bad_one_is_nothing() {
                 ],
             ),
         ],
+        ..Kept::default()
     };
     let path = file("kept-window-file", &kept);
     assert_eq!(read_file(&path), kept);
@@ -250,6 +254,7 @@ fn tabs_wait_for_their_checkout_and_go_with_it_or_its_project(cx: &mut TestAppCo
             checkout(&root, &gone, 0, &[page("https://example.org/", "Gone")]),
             waiting.clone(),
         ],
+        ..Kept::default()
     };
     let path = file("kept-window-wait-file", &kept);
     let (window, shell) = shell_with(&[&root], cx);

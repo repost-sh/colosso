@@ -23,6 +23,8 @@ use koyo_agent::protocol::requests::RequestKind;
 
 use crate::test_support::{click_pane, draw, open_page, repo, select, shell_with};
 
+mod loose;
+mod pinned;
 mod space_keys;
 mod spaces;
 mod tabs;
@@ -380,6 +382,15 @@ fn a_tab_and_its_projects_tile_say_when_a_chat_wants_the_person(cx: &mut TestApp
     assert_eq!(told(cx), (false, Activity::Quiet), "seen: nothing");
 }
 
+/// The selected checkout's tabs, by their first panes' titles.
+fn listed(shell: &Entity<Shell>, cx: &TestAppContext) -> Vec<String> {
+    cx.read(|cx| {
+        let unit = shell.read(cx).workspace.branch().expect("a checkout");
+        let titles = unit.tabs.iter().map(|tab| tab.first().title.to_string());
+        titles.collect()
+    })
+}
+
 /// Where `selector` names something drawn in `window`, if it names anything.
 fn drawn(
     window: AnyWindowHandle,
@@ -406,6 +417,44 @@ fn drag(window: AnyWindowHandle, from: &'static str, to: &'static str, cx: &mut 
     let mut vcx = VisualTestContext::from_window(window, cx);
     vcx.simulate_mouse_up(target, MouseButton::Left, none);
     draw(window, cx);
+}
+
+/// Takes up what `from` names by its middle and carries it well off whatever list or grid it's
+/// on, over the panes, as a person dragging it elsewhere does: what takes it shows from then.
+fn take_up(window: AnyWindowHandle, from: &'static str, cx: &mut TestAppContext) {
+    let (none, held) = (Modifiers::default(), Some(MouseButton::Left));
+    let mut vcx = VisualTestContext::from_window(window, cx);
+    let at = vcx.debug_bounds(from).expect("what's dragged").center();
+    vcx.simulate_mouse_down(at, MouseButton::Left, none);
+    vcx.simulate_mouse_move(at + point(px(3.), px(3.)), held, none);
+    draw(window, cx);
+    let mut vcx = VisualTestContext::from_window(window, cx);
+    vcx.simulate_mouse_move(point(px(900.), px(450.)), held, none);
+    draw(window, cx);
+}
+
+/// Carries what's in hand over the middle of what `to` names, as it's drawn now, and lets it go.
+fn let_go_on(window: AnyWindowHandle, to: &'static str, cx: &mut TestAppContext) {
+    let none = Modifiers::default();
+    let mut vcx = VisualTestContext::from_window(window, cx);
+    let target = vcx.debug_bounds(to).expect("where it's dropped").center();
+    vcx.simulate_mouse_move(target, Some(MouseButton::Left), none);
+    draw(window, cx);
+    let mut vcx = VisualTestContext::from_window(window, cx);
+    vcx.simulate_mouse_up(target, MouseButton::Left, none);
+    draw(window, cx);
+}
+
+/// Drags what `from` names off its list or grid and onto what `to` names, where that is once
+/// what's in hand has left: a strip or a zone that takes it shows only then.
+fn drag_onto(
+    window: AnyWindowHandle,
+    from: &'static str,
+    to: &'static str,
+    cx: &mut TestAppContext,
+) {
+    take_up(window, from, cx);
+    let_go_on(window, to, cx);
 }
 
 #[gpui_kit::test]

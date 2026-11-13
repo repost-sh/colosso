@@ -357,8 +357,7 @@ impl Shell {
             return;
         };
         let (open, view) = (panel.open, panel.view);
-        let diffs_shown = (workspace.branch())
-            .and_then(|unit| unit.tabs.get(unit.active_tab))
+        let diffs_shown = (workspace.tab_shown())
             .is_some_and(|tab| tab.panes().iter().any(|pane| pane.changes.is_some()));
         let mut focus = mem::take(&mut panel.focus);
         panel.make_panels(root, window, cx);

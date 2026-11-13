@@ -132,14 +132,16 @@ impl Shell {
     /// Shows the tab holding pane `key` on the selected checkout, if it's still open, and
     /// gives the keyboard to its file, or else to the pane of it the person was in.
     fn switch_to(&mut self, key: u64, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(unit) = self.workspace.branch_mut() else {
+        let Some((project, branch)) = self.checkout_shown() else {
             return;
         };
-        let Some(at) = unit.tab_with(key) else {
+        let Some(at) = (self.workspace.branch()).and_then(|unit| unit.tab_with(key)) else {
             return;
         };
-        unit.active_tab = at;
-        match unit.tabs[at].files().first() {
+        // In place of a pinned or a loose page too, which selecting a tab leaves.
+        self.workspace.select_tab(project, branch, at);
+        let file = self.workspace.tab_shown().and_then(|tab| tab.files().first().copied().cloned());
+        match file {
             Some(file) => file.update(cx, |file, cx| file.focus(window, cx)),
             None => self.keys_to_shown_tab(cx),
         }

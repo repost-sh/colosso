@@ -20,6 +20,7 @@ mod file;
 mod fonts;
 mod language_servers;
 mod migration;
+mod picks;
 mod project_scripts;
 mod save_scope;
 
@@ -36,6 +37,7 @@ pub use fonts::{
     CHAT_SIZES, Fonts, SetChatTextSize, SetCodeFont, SetInterfaceFont, chat_size_menu,
 };
 pub use language_servers::{LanguageServers, Scope, SetLanguageServer};
+pub use picks::{SetBranchPrefix, SetMostLanguageServers, SetPreviewFiles};
 pub use project_scripts::{ProjectScript, ProjectScripts};
 pub use save_scope::{SaveScope, SetSaveScope};
 
@@ -109,21 +111,6 @@ pub enum BranchPrefix {
     None,
 }
 
-/// Turns the preview tab of files picked in the tree on or off, from the tree's menu.
-#[derive(Clone, Debug, PartialEq, Action)]
-#[action(namespace = settings, no_json)]
-pub struct SetPreviewFiles(pub bool);
-
-/// Picks how many language servers run at once, or no limit, from a menu.
-#[derive(Clone, Debug, PartialEq, Action)]
-#[action(namespace = settings, no_json)]
-pub struct SetMostLanguageServers(pub Option<usize>);
-
-/// Picks what new branches are named under, from a menu.
-#[derive(Clone, Debug, PartialEq, Action)]
-#[action(namespace = settings, no_json)]
-pub struct SetBranchPrefix(pub BranchPrefix);
-
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 #[expect(
@@ -165,6 +152,9 @@ pub struct Settings {
     pub space: usize,
     /// What projects are called and show as in Koyo, by their main checkout.
     pub project_looks: crate::spaces::ProjectLooks,
+    /// Whether the person put the Arc sidebar's empty zone for pinned tabs away
+    /// (`docs/arc-sidebar.md` 11): it shows again only while a page's tab is dragged.
+    pub pinned_zone_dismissed: bool,
     /// Where new worktrees go, in a folder per project. Unset, they go in
     /// `~/koyo/workspaces`.
     pub worktrees_dir: Option<PathBuf>,
@@ -287,6 +277,7 @@ impl Default for Settings {
             spaces: Vec::new(),
             space: 0,
             project_looks: crate::spaces::ProjectLooks::new(),
+            pinned_zone_dismissed: false,
             worktrees_dir: None,
             branch_prefix: BranchPrefix::default(),
             most_language_servers: None,

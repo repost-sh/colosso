@@ -1,7 +1,9 @@
 //! Arc layout (`docs/arc-sidebar.md`): the sidebar on the glass as Arc's. Under the top rail's
-//! browser controls, an address bar says what's shown; then the projects of the space shown as
-//! tiles, the selected project's name, and each worktree of the project selected as a folder, its
-//! tabs under its header. The spaces line the sidebar's foot, and two fingers swipe between them.
+//! browser controls, an address bar says what's shown; then the pages pinned for every space as
+//! tiles, which stay as a space swipes away; then the space: its loose pages, the selected
+//! project's name and each of its worktrees as a folder, its tabs under its header, and at its
+//! foot the space's projects as tiles. The spaces line the sidebar's foot, and two fingers swipe
+//! between them.
 
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::{
@@ -20,6 +22,8 @@ mod delete_space;
 mod foot;
 mod header;
 mod hover;
+mod loose;
+mod pinned;
 mod rename;
 mod swipe;
 #[cfg(test)]
@@ -33,11 +37,13 @@ mod worktrees;
 
 pub use actions::{NextSpace, PreviousSpace, SPACES, bind_keys, handle_actions};
 pub use hover::Hover;
+pub use pinned::DraggedPin;
 pub use swipe::Swipe;
 pub use tile_grid::TileHand;
 pub use top::controls;
 
-/// Between the sidebar's parts: the address bar, the tiles, the space, the foot.
+/// Between the sidebar's parts: the address bar, the pinned pages, the space, its projects' tiles,
+/// the foot.
 const GAP: f32 = 10.;
 
 /// The shades the Arc sidebar lays on the glass, brighter than the rest of the window's, as
@@ -116,8 +122,12 @@ pub fn sidebar(shell: &Shell, window: &mut Window, cx: &mut Context<Shell>) -> i
     let look = Look::of(cx);
     let width = crate::settings::get(cx).sidebar_width();
     let projects = shell.space_projects(cx);
-    // The space moves as two fingers or the spring have it (`swipe.rs`): its tiles, its name and
-    // its worktrees, fainter the further it's from where it rests.
+    // What's in hand that the pinned or the loose pages take, once it has left where it was
+    // taken from: worked out once, for both.
+    let (pins, loosens) = shell.taken_elsewhere(cx);
+    // The space moves as two fingers or the spring have it (`swipe.rs`): its loose pages, its
+    // project's name and worktrees, and its projects' tiles under them, fainter the further it's
+    // from where it rests.
     let space = div()
         .flex_1()
         .min_h_0()
@@ -127,8 +137,8 @@ pub fn sidebar(shell: &Shell, window: &mut Window, cx: &mut Context<Shell>) -> i
         .flex()
         .flex_col()
         .gap(px(GAP))
-        .children(tiles::grid(shell, &projects, look, cx))
-        .child(worktrees::space(shell, look, window, cx));
+        .child(worktrees::space(shell, loosens, look, window, cx))
+        .children(tiles::grid(shell, &projects, look, cx));
     div()
         .id("arc-sidebar")
         .debug_selector(|| "arc-sidebar".to_owned())
@@ -140,6 +150,8 @@ pub fn sidebar(shell: &Shell, window: &mut Window, cx: &mut Context<Shell>) -> i
         .on_scroll(cx.listener(Shell::swipe))
         .on_mouse_down(MouseButton::Right, cx.listener(Shell::show_space_menu))
         .child(top::address_bar(shell, look, window, cx))
+        // Outside the space, so they stay where they are as it swipes away.
+        .children(pinned::region(shell, pins, look, cx))
         .child(space)
         .child(foot::bar(shell, window, cx))
 }

@@ -220,7 +220,15 @@ fn mark<F: FnOnce(Bounds<Pixels>, &mut Window, &mut App) + 'static>(
         }))
         .on_mouse_down(
             MouseButton::Left,
-            cx.listener(|this, _, _, cx| this.press_hovered(cx)),
+            cx.listener(|this, _, _, cx| {
+                this.press_hovered(cx);
+                // A pinned page shown stays shown in the space picked, the keyboard where it
+                // is: the press doesn't take it to the window, as one elsewhere in the sidebar
+                // does (`docs/arc-sidebar.md` 11).
+                if this.workspace.pinned_shown().is_some() {
+                    cx.stop_propagation();
+                }
+            }),
         )
         .on_click(cx.listener(move |this, _, _, cx| this.slide_to_space(index, cx)))
 }

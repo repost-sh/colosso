@@ -18,19 +18,48 @@ impl Workspace {
         to: (usize, usize),
         at: usize,
     ) -> bool {
-        if (project, branch) == to || self.unit_mut(to.0, to.1).is_none() {
+        if (project, branch) == to {
             return false;
         }
-        let Some(moved) = (self.unit_mut(project, branch)).and_then(|unit| unit.close(tab)) else {
+        self.settle(to, at, |workspace| {
+            workspace.unit_mut(project, branch)?.close(tab)
+        })
+    }
+
+    /// Puts the tab `take` hands over among the tabs of the checkout `to`, as
+    /// `(project, branch)`, at `place` or after them, and shows it there: a tab from another
+    /// checkout, a page unpinned, a loose page. False when the checkout isn't there, when
+    /// nothing's taken, or when there was nothing to take.
+    pub(super) fn settle(
+        &mut self,
+        to: (usize, usize),
+        place: usize,
+        take: impl FnOnce(&mut Self) -> Option<Tab>,
+    ) -> bool {
+        if self.unit_mut(to.0, to.1).is_none() {
+            return false;
+        }
+        let Some(tab) = take(self) else {
             return false;
         };
         let Some(unit) = self.unit_mut(to.0, to.1) else {
             return false;
         };
-        let at = at.min(unit.tabs.len());
-        unit.tabs.insert(at, moved);
-        self.select_tab(to.0, to.1, at);
+        let place = place.min(unit.tabs.len());
+        unit.tabs.insert(place, tab);
+        self.select_tab(to.0, to.1, place);
         true
+    }
+
+    /// Takes the tab at `at`, as `(project, branch, tab)`, off its checkout, if its single pane
+    /// is a page: the tab, and its project's main checkout, whose profile its page keeps. What
+    /// the pinned and the loose pages take.
+    pub(super) fn take_page_tab(&mut self, at: (usize, usize, usize)) -> Option<(Tab, PathBuf)> {
+        if !self.is_page_tab(at) {
+            return None;
+        }
+        let project = self.projects.get(at.0)?.path.clone();
+        Some((self.unit_mut(at.0, at.1)?.close(at.2)?, project))
     }
 }
 

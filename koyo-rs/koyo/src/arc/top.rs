@@ -79,7 +79,7 @@ pub(super) fn said(shell: &Shell, cx: &App) -> (SharedString, bool) {
 }
 
 /// A web address as Arc shows it: its host, less `www.`; anything else as it is.
-fn host_of(address: &str) -> String {
+pub(super) fn host_of(address: &str) -> String {
     crate::history::host(address).unwrap_or_else(|| address.to_owned())
 }
 

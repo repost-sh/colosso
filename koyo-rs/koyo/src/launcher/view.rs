@@ -79,6 +79,8 @@ pub fn open(
         Some(page) => (page.address.clone(), Kind::Browser),
         None => take_dismissed(cx),
     };
+    // Only a page opens where no checkout is selected.
+    let kind = if here.pages_only { Kind::Browser } else { kind };
     let query = Query {
         kind,
         typed: &text,
@@ -312,8 +314,17 @@ impl Launcher {
         }));
     }
 
+    /// Whether only a page opens where it opened, with no kind to go to.
+    pub(super) fn pages_only(&self) -> bool {
+        self.here.pages_only
+    }
+
     /// Goes to the kind `by` steps on, what's typed kept, a completion let go.
     pub(super) fn step_kind(&mut self, by: isize, window: &mut Window, cx: &mut Context<Self>) {
+        // Where only a page opens, there's no other kind to go to.
+        if self.here.pages_only {
+            return;
+        }
         self.kind = self.kind.step(by);
         let (typed, kind) = (self.typed.clone(), self.kind);
         let completed = self.autofilled.take().is_some();

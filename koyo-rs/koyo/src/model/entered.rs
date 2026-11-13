@@ -8,11 +8,8 @@ impl Workspace {
     /// The person is in pane `id` from now on, as its tab's `current` answers. Whether that's
     /// news: false when it was its tab's current pane already, or no such pane is open.
     pub fn enter_pane(&mut self, id: u64) -> bool {
-        let Some((at, _)) = self.find_pane(|pane| pane.id == id) else {
-            return false;
-        };
         let next = self.entered + 1;
-        let Some(tab) = self.tab_mut(at) else {
+        let Some(tab) = self.tab_holding_mut(id) else {
             return false;
         };
         if tab.current().id == id {

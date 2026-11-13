@@ -130,7 +130,7 @@ fn tab_drag(
             cx.new(|_| chip)
         })
         .drag_over::<DraggedPane>(move |style, held, _, _| match held.what {
-            Dragged::Pane(_) => style.bg(p.hover),
+            Dragged::Pane(_) | Dragged::Loose => style.bg(p.hover),
             // A tab from another checkout's list would go here.
             Dragged::Tab(project, branch, _) if (project, branch) != (at.0, at.1) => {
                 style.bg(p.hover)

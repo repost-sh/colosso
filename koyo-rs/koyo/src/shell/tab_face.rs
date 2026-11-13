@@ -22,6 +22,9 @@ use crate::theme::Palette;
 
 /// The widest a chip of a split gets in the strip.
 const CHIP_MAX: f32 = 180.;
+/// How round the corners of a page's own icon are, wherever a tab shows it: a row down the Arc
+/// sidebar, a tab along Orca's strip, a pinned page's tile.
+pub const FAVICON_CORNERS: f32 = 2.;
 
 /// What a pane shows as in a tab: its icon, or its page's own, and its title.
 #[derive(Clone)]
@@ -70,11 +73,13 @@ impl Face {
             .collect()
     }
 
-    /// Its icon, `size` points square: the page's own when it has one.
+    /// Its icon, `size` points square: the page's own when it has one, its corners a little
+    /// rounded.
     pub fn icon(&self, size: f32) -> AnyElement {
         match &self.favicon {
             Some(favicon) => img(favicon.clone())
                 .size(px(size))
+                .rounded(px(FAVICON_CORNERS))
                 .flex_shrink_0()
                 .into_any_element(),
             None => icon(self.icon, size).into_any_element(),

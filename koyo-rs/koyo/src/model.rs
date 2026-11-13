@@ -11,13 +11,17 @@ use koyo_git::{Head, Worktree};
 mod chats;
 mod closed;
 mod entered;
+mod loose;
 mod moves;
 mod pane;
+mod pinned;
 mod tab;
 mod terminals;
 mod unopened;
 pub use closed::ClosedTab;
+pub use loose::Loose;
 pub use pane::{Pane, Unloaded};
+pub use pinned::Pinned;
 pub use tab::{Edge, SPLIT_MIN, Split, SplitAxis, Tab};
 pub use unopened::Unopened;
 
@@ -190,6 +194,8 @@ pub struct Workspace {
     turn: u64,
     /// What the pane the person entered last was stamped with (`enter_pane`).
     entered: u64,
+    /// The pages of no checkout: the pinned, and each space's loose ones (`loose.rs`).
+    apart: loose::Apart,
 }
 
 impl Workspace {
@@ -201,6 +207,7 @@ impl Workspace {
             closed: Vec::new(),
             turn: 0,
             entered: 0,
+            apart: loose::Apart::default(),
         }
     }
 
@@ -218,8 +225,12 @@ impl Workspace {
         self.active_project = index.filter(|&index| index < self.projects.len());
     }
 
-    /// The tab shown: the selected worktree's, if a project is shown and it has one.
+    /// The tab shown: the pinned page shown, whichever project is; else the loose page the
+    /// space shows; else the selected worktree's, if a project is shown and it has one.
     pub fn tab_shown(&self) -> Option<&Tab> {
+        if let Some(apart) = self.apart.shown_tab() {
+            return Some(apart);
+        }
         let unit = self.branch()?;
         unit.tabs.get(unit.active_tab)
     }
@@ -363,7 +374,10 @@ impl Workspace {
         true
     }
 
+    /// Selects the checkout at `branch` of `project`, whose tab shows in place of a pinned or
+    /// a loose page.
     pub fn select_branch(&mut self, project: usize, branch: usize) {
+        self.apart.leave();
         self.active_project = Some(project);
         self.projects[project].active_branch = branch;
     }
@@ -392,6 +406,7 @@ impl Workspace {
         };
         unit.tabs.push(tab);
         unit.active_tab = unit.tabs.len() - 1;
+        self.apart.leave();
     }
 
     /// Opens `tab` right after the tab shown on the selected checkout, or first when it has
@@ -404,13 +419,15 @@ impl Workspace {
         let at = (unit.active_tab + 1).min(unit.tabs.len());
         unit.tabs.insert(at, tab);
         unit.active_tab = at;
+        self.apart.leave();
     }
 
     /// Stamps the tab shown with the next turn, unless it was the last one shown: so the
     /// tabs order by when they were last looked at.
     pub fn stamp_shown(&mut self) {
         let turn = self.turn;
-        let Some(tab) = self.shown_tab().and_then(|at| self.tab_mut(at)) else {
+        // A pinned or a loose page shown is no tab of the checkout's: its tabs keep their turns.
+        let Some(tab) = (self.shown_checkout_tab()).and_then(|at| self.tab_mut(at)) else {
             return;
         };
         if turn > 0 && tab.shown_at() == turn {
@@ -447,7 +464,8 @@ impl Workspace {
         })
     }
 
-    /// Where the tab shown is, as `(project, branch, tab)`.
+    /// Where the selected checkout's tab is, as `(project, branch, tab)`: the tab shown, unless a
+    /// pinned or a loose page is (`pinned_shown`, `loose_shown`).
     pub fn shown_tab(&self) -> Option<(usize, usize, usize)> {
         let project = self.project()?;
         let unit = project.branch()?;
