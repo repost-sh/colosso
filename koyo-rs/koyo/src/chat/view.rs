@@ -272,7 +272,9 @@ impl ChatView {
         self.showing_changed(window, cx);
     }
 
-    /// Another chat's on show: the pill was the last one's, and the keys go with it.
+    /// Another chat's on show: the pill was the last one's. A subagent's bar takes the keys, so
+    /// Esc comes back from it; back in the chat under it, the prompt is left alone
+    /// (`shell/keys.rs`), and the window has them once the bar is gone.
     fn showing_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.pill = false;
         self.showing_pill = None;
@@ -284,7 +286,9 @@ impl ChatView {
             (self.scrolled_to, self.hand_scrolls) =
                 (scroller.scroll_offset(), scroller.hand_scrolls());
         }
-        window.focus(&self.focus_handle(cx), cx);
+        if let Some(bar) = self.bar() {
+            window.focus(&bar.read(cx).focus_handle(cx), cx);
+        }
         cx.notify();
     }
 

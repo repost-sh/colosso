@@ -19,7 +19,6 @@ mod footer;
 mod markdown;
 mod missing;
 mod model_menu;
-mod outside;
 mod question;
 mod sending;
 mod suggest;
@@ -42,8 +41,8 @@ use gpui_kit::component::input::{InputEvent, Textarea, TextareaState};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, ClickEvent, Context, ElementId, Entity, EventEmitter,
-    FocusHandle, Focusable, InteractiveElement as _, IntoElement, KeyContext, ParentElement as _,
-    Render, SharedString, Styled as _, Subscription, Task, Window, div, px,
+    FocusHandle, Focusable, InteractiveElement as _, IntoElement, KeyContext, MouseButton,
+    ParentElement as _, Render, SharedString, Styled as _, Subscription, Task, Window, div, px,
 };
 #[cfg(test)]
 use koyo_agent::protocol::ids::RequestId;
@@ -402,6 +401,7 @@ impl Render for ChatComposer {
             .pb_2()
             .px_3()
             .rounded(px(RADIUS))
+            .debug_selector(|| "chat-composer".to_owned())
             .occlude();
         let typed = self.text.read(cx).value();
         let surface = Self::takes_drops(liquid::floating(surface, on_glass, p), p, cx)
@@ -416,7 +416,12 @@ impl Render for ChatComposer {
             ))
             .child(self.footer(&typed, p, cx))
             .children(self.suggestions(p, window, cx))
-            .on_mouse_down_out(cx.listener(Self::pressed_outside));
+            // A press anywhere in the box is a press in the prompt: on its chips and its edge
+            // too, the keyboard is the prompt's.
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, window, cx| window.focus(&this.focus_handle(cx), cx)),
+            );
         // Measured round it, so what's measured is its glass, or its hairline where there's none.
         let placement = self.placement.clone();
         let surface = div()

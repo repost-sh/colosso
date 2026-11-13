@@ -40,7 +40,7 @@ const EDITORS: [&str; 15] = [
 /// Opens the chat's checkout in an editor, from the card's menu.
 #[derive(Clone, Debug, PartialEq, Action)]
 #[action(namespace = chat, no_json)]
-pub(in super::super) struct OpenIn(pub(in super::super) &'static str);
+pub(in crate::chat) struct OpenIn(pub(in super::super) &'static str);
 
 /// The editors here, looked for once: an app put there meanwhile shows the next time Koyo starts.
 fn installed() -> &'static [&'static str] {

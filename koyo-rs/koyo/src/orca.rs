@@ -35,8 +35,6 @@ pub fn sidebar(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
         .flex()
         .flex_col()
         .gap_px()
-        // As in the Arc sidebar, a press here takes the keyboard out of the pane it was in.
-        .on_mouse_down(MouseButton::Left, cx.listener(Shell::keys_to_window))
         .child(search_field(&shell.search, p))
         .child(
             section_label(p)

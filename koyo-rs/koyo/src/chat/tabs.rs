@@ -7,16 +7,18 @@ use std::path::{Path, PathBuf};
 
 use futures::StreamExt as _;
 use gpui_kit::{
-    App, AppContext as _, Context, Entity, Focusable as _, SharedString, Subscription, Task, Window,
+    Action, App, AppContext as _, Context, Div, Entity, Focusable as _, InteractiveElement as _,
+    SharedString, Subscription, Task, Window,
 };
 use koyo_agent::protocol::ids::ThreadId;
 
-use super::view::details::Workplace;
+use super::view::details::{OpenIn, ToggleDetails, Workplace};
 use super::view::{ChatView, ChatViewEvent};
 use super::{Chats, ChatsEvent};
 use crate::files::Place;
 use crate::model::{PaneKind, Workspace};
 use crate::native::notifications;
+use crate::navigation::Route;
 use crate::shell::Shell;
 
 /// Shows the chat a person clicked a notification of, or only brings Koyo to the front for a
@@ -50,8 +52,6 @@ pub struct ChatTabs {
     /// The threads of panes the window brought back that the host hasn't yet said it still
     /// has (`restore_chats`).
     unconfirmed: HashSet<ThreadId>,
-    /// The pane whose view takes the keyboard once it's made: the chat just opened.
-    focus_next: Option<u64>,
     /// What a pane's chat is told as soon as its view is made: the launcher's message.
     say_next: Option<(u64, String)>,
     _followed: Subscription,
@@ -80,7 +80,6 @@ impl ChatTabs {
             views: HashMap::new(),
             shown: HashSet::new(),
             unconfirmed: HashSet::new(),
-            focus_next: None,
             say_next: None,
             _followed,
             _clicked,
@@ -120,6 +119,18 @@ impl ChatTabs {
         });
         self.shown = shown;
     }
+}
+
+/// Has the window's root hear what a chat hears on its own root, its card's key and its
+/// menu, while the keyboard isn't in the chat: at the window, as after a press on what was
+/// said or another space shown. They go on to the chat the person is in.
+pub fn heard_at_window(root: Div, cx: &mut Context<Shell>) -> Div {
+    root.on_action(cx.listener(|shell, action: &ToggleDetails, window, cx| {
+        shell.tell_chat(action, window, cx);
+    }))
+    .on_action(cx.listener(|shell, action: &OpenIn, window, cx| {
+        shell.tell_chat(action, window, cx);
+    }))
 }
 
 impl Shell {
@@ -203,10 +214,6 @@ impl Shell {
                 }
             },
         );
-        if self.chat_tabs.focus_next.take() == Some(pane) {
-            let focus = view.focus_handle(cx);
-            cx.defer_in(window, move |_, window, cx| window.focus(&focus, cx));
-        }
         if let Some((_, text)) = self.chat_tabs.say_next.take_if(|(next, _)| *next == pane) {
             let composer = view.read(cx).composer.clone();
             cx.defer_in(window, move |_, window, cx| {
@@ -222,22 +229,27 @@ impl Shell {
         );
     }
 
-    /// The view of a chat pane that just opened takes the keyboard once it's made.
-    pub(crate) fn focus_chat_next(&mut self) {
-        self.chat_tabs.focus_next = self.shown_pane();
-    }
-
-    /// The first pane of the tab shown.
-    fn shown_pane(&self) -> Option<u64> {
-        (self.workspace.branch())
-            .and_then(|unit| unit.tabs.get(unit.active_tab))
-            .map(|tab| tab.first().id)
+    /// Hands `action`, heard at the window, on to the chat the person is in, where the
+    /// workspace shows it.
+    fn tell_chat(&mut self, action: &dyn Action, window: &mut Window, cx: &mut Context<Self>) {
+        let chat = (self.route(cx) == Route::Workspace)
+            .then(|| self.focused_pane(window, cx))
+            .flatten()
+            .and_then(|pane| self.chat_tabs.view(pane))
+            .map(|chat| chat.focus_handle(cx));
+        match chat {
+            // With the keyboard in the chat it heard this first, and let it by.
+            Some(chat) if !chat.contains_focused(window, cx) => {
+                chat.dispatch_action(action, window, cx);
+            }
+            _ => cx.propagate(),
+        }
     }
 
     /// Opens a new chat on the selected checkout and says `text` to it, as its composer would.
     pub(crate) fn ask_new_chat(&mut self, text: String, cx: &mut Context<Self>) {
         self.new_tab(PaneKind::Chat, cx);
-        self.chat_tabs.say_next = self.shown_pane().map(|pane| (pane, text));
+        self.chat_tabs.say_next = self.shown_tab_key().map(|pane| (pane, text));
     }
 
     /// Shows thread `id`: the tab showing it already, or a new one on its checkout. The pane that
@@ -247,8 +259,7 @@ impl Shell {
             .workspace
             .find_pane(|pane| pane.chat.as_ref() == Some(id))
         {
-            self.workspace.select_tab(at.0, at.1, at.2);
-            cx.notify();
+            self.pick_tab(at.0, at.1, at.2, cx);
             return Some(pane);
         }
         let cwd = PathBuf::from(&self.chat_tabs.chats.read(cx).summary(id)?.cwd);
@@ -264,10 +275,8 @@ impl Shell {
         select: bool,
         cx: &mut Context<Self>,
     ) -> Option<u64> {
+        // Moved to, not opened to type in: the keyboard stays where it is (`shell/keys.rs`).
         let pane = self.workspace.add_chat_tab(cwd, id, select)?;
-        if select {
-            self.focus_chat_next();
-        }
         self.follow_chats(cx);
         Some(pane)
     }

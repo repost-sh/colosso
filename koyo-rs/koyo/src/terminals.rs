@@ -11,9 +11,8 @@ use std::time::Duration;
 
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Entity, Focusable as _, Hsla,
-    InteractiveElement as _, IntoElement as _, ParentElement as _, Rgba, Styled as _, Subscription,
-    Task, Window, div, px,
+    AnyElement, App, AppContext as _, Context, Entity, Hsla, InteractiveElement as _,
+    IntoElement as _, ParentElement as _, Rgba, Styled as _, Subscription, Task, Window, div, px,
 };
 use koyo_term::{LinkTarget, Look, Source, TermClient, TerminalEvent, TerminalView};
 use koyo_term_control::{DaemonCommand, Handle, IfExists, OpenRequest, Selector, TermDir, Theme};
@@ -51,8 +50,6 @@ pub struct Terminals {
     /// The tabs the window brought back that the daemon hasn't yet said still run
     /// (`restore.rs`).
     unconfirmed: HashSet<u64>,
-    /// The tab whose view takes the keyboard once it's made: the terminal just opened.
-    focus_next: Option<u64>,
     /// What the daemon says of every terminal, and the task that keeps it current.
     states: states::States,
     watching: Option<Task<()>>,
@@ -282,10 +279,6 @@ impl Shell {
             _events: events,
         };
         self.terminals.views.insert(id, made);
-        if self.terminals.focus_next.take() == Some(id) {
-            let focus = view.focus_handle(cx);
-            cx.defer_in(window, move |_, window, cx| window.focus(&focus, cx));
-        }
         Some(view)
     }
 

@@ -10,7 +10,7 @@ use std::rc::Rc;
 
 use gpui_kit::{
     AnyWindowHandle, AppContext as _, Entity, FocusHandle, Focusable as _, KeyContext, KeyUpEvent,
-    Keystroke, Modifiers, PlatformInput, TestAppContext, VisualTestContext, point, px,
+    Keystroke, PlatformInput, TestAppContext,
 };
 
 use super::{act, arc_shell};
@@ -21,7 +21,10 @@ use crate::files::{At, Place};
 use crate::right_panel::ShowFiles;
 use crate::settings::{self, Layout};
 use crate::shell::Shell;
-use crate::test_support::{click_pane, draw, open_page, select, write};
+use crate::test_support::{
+    PROMPT, click, click_pane, draw, keyboard_at_window, keyboard_in, open_page,
+    press_chat_background, press_prompt, select, write,
+};
 
 /// The shell in the Arc layout over two projects, each in a space of its own, the first shown.
 fn two_spaces(name: &str, cx: &mut TestAppContext) -> (AnyWindowHandle, Entity<Shell>, PathBuf) {
@@ -177,11 +180,11 @@ fn the_keys_show_the_space_beside_from_text_where_option_arrows_jump_a_word(
     new_chat(window, cx);
     draw(window, cx);
     cx.simulate_input(window, "hello world");
-    let action = pressed_in(window, "alt-left", "ChatComposer", cx);
+    let action = pressed_in(window, "alt-left", PROMPT, cx);
     assert_eq!((action, space(cx)), (WORDS[0], 0));
-    let action = pressed_in(window, "alt-right", "ChatComposer", cx);
+    let action = pressed_in(window, "alt-right", PROMPT, cx);
     assert_eq!((action, space(cx)), (WORDS[1], 0));
-    let action = pressed_in(window, "cmd-alt-right", "ChatComposer", cx);
+    let action = pressed_in(window, "cmd-alt-right", PROMPT, cx);
     assert_eq!((action, space(cx)), (SPACES_MOVE[1], 1));
 }
 
@@ -190,8 +193,8 @@ fn the_keys_show_the_space_beside_from_text_where_option_arrows_jump_a_word(
 #[gpui_kit::test]
 fn the_keys_show_the_space_beside_from_a_web_page(cx: &mut TestAppContext) {
     let (window, shell, _) = two_spaces("space-keys-page", cx);
-    let pane = open_page(window, &shell, Some("https://www.example.com/"), cx);
-    click_pane(window, pane, cx);
+    // Opened at an address, the page has the keyboard.
+    open_page(window, &shell, Some("https://www.example.com/"), cx);
     for key in ["alt-left", "alt-right"] {
         let action = pressed_in(window, key, "BrowserPage", cx);
         assert_eq!((action, space(cx)), (None, 0), "{key}");
@@ -219,58 +222,41 @@ fn the_keys_move_nothing_in_the_orca_layout_or_the_settings(cx: &mut TestAppCont
     );
 }
 
-/// Whether the shell's own focus has the keyboard after a few frames, where a pane that would
-/// take it back has had its chance.
-fn keyboard_at_window(
-    window: AnyWindowHandle,
-    shell: &Entity<Shell>,
-    cx: &mut TestAppContext,
-) -> bool {
-    for _ in 0..3 {
-        draw(window, cx);
-    }
-    let at = cx.update_window(window, |_, window, cx| {
-        shell.read(cx).focus.is_focused(window)
-    });
-    at.unwrap()
-}
-
-/// Presses the chat shown, over its empty background high above the prompt.
-fn press_chat_background(window: AnyWindowHandle, shell: &Entity<Shell>, cx: &mut TestAppContext) {
+/// Presses the sidebar, on the name of the project shown.
+fn press_sidebar(window: AnyWindowHandle, cx: &mut TestAppContext) {
     draw(window, cx);
-    let pane = cx.read(|cx| shell.read(cx).workspace.tab_shown().unwrap().panes()[0].id);
-    let selector: &'static str = Box::leak(format!("pane-{pane}").into_boxed_str());
-    let mut vcx = VisualTestContext::from_window(window, cx);
-    let bounds = vcx.debug_bounds(selector).expect("the chat's pane");
-    let at = point(bounds.center().x, bounds.top() + px(80.));
-    vcx.simulate_click(at, Modifiers::default());
+    click(window, "arc-project-name", cx);
 }
 
-/// A chat's prompt has the keyboard only when the person puts it there: a press on the chat's
-/// background or in the sidebar takes it out, ⌥← and ⌥→ then move between spaces, and another
-/// space shown leaves it at the window, its chat's prompt or not. Picking the chat's tab puts
-/// it back.
-#[gpui_kit::test]
-fn a_chats_prompt_has_the_keyboard_only_when_the_person_puts_it_there(cx: &mut TestAppContext) {
-    let (window, shell, app) = two_spaces("space-keys-prompt", cx);
-    // A chat in each space, the first's prompt with the keyboard.
+/// Two spaces, a chat in each, and the person typing in the prompt of the first's: where they
+/// are nearly always.
+fn typing_in_a_prompt(
+    name: &str,
+    cx: &mut TestAppContext,
+) -> (AnyWindowHandle, Entity<Shell>, PathBuf) {
+    let (window, shell, app) = two_spaces(name, cx);
     shell.update(cx, |shell, cx| shell.show_space(1, cx));
     new_chat(window, cx);
     back_to_first(window, &shell, &app, cx);
     new_chat(window, cx);
-    assert!(
-        !keyboard_at_window(window, &shell, cx),
-        "a new chat's prompt has it"
-    );
+    draw(window, cx);
+    cx.simulate_input(window, "hello world");
+    let action = pressed_in(window, "alt-left", PROMPT, cx);
+    assert_eq!((action, space(cx)), (WORDS[0], 0), "a word back, in text");
+    (window, shell, app)
+}
 
-    // A press on the chat's background: out of the prompt, for good.
+/// A press on the chat's background takes the keyboard out of its prompt, where it stays: ⌥→
+/// and ⌥← then move between spaces, the other space's chat leaving the keyboard be. A press
+/// in the prompt puts it back.
+#[gpui_kit::test]
+fn a_press_on_the_chats_background_takes_the_keyboard_out_of_its_prompt(cx: &mut TestAppContext) {
+    let (window, shell, _) = typing_in_a_prompt("space-keys-background", cx);
     press_chat_background(window, &shell, cx);
     assert!(
         keyboard_at_window(window, &shell, cx),
         "pressed the chat's background"
     );
-
-    // ⌥→ and ⌥← move between spaces now, the other space's chat leaving the keyboard be.
     assert_eq!(
         (pressed(window, "alt-right", cx).0, space(cx)),
         (SPACES_MOVE[1], 1)
@@ -288,19 +274,84 @@ fn a_chats_prompt_has_the_keyboard_only_when_the_person_puts_it_there(cx: &mut T
         "back in the first space"
     );
 
-    // Its tab picked in the sidebar, the chat's prompt takes the keyboard; a press in the
-    // sidebar takes it out again.
+    press_prompt(window, cx);
+    assert!(keyboard_in(window, PROMPT, cx), "pressed in the prompt");
+    let action = pressed_in(window, "alt-right", PROMPT, cx);
+    assert_eq!((action, space(cx)), (WORDS[1], 0), "a word on, in text");
+}
+
+/// From the prompt, ⌘⌥→ shows the next space, whose chat's prompt doesn't take the keyboard, so
+/// ⌥← comes back; nor does the first's then, nor once its tab is picked in the sidebar.
+#[gpui_kit::test]
+fn another_space_shown_from_a_prompt_leaves_the_keyboard_at_the_window(cx: &mut TestAppContext) {
+    let (window, shell, _) = typing_in_a_prompt("space-keys-from-prompt", cx);
+    let action = pressed_in(window, "cmd-alt-right", PROMPT, cx);
+    assert_eq!((action, space(cx)), (SPACES_MOVE[1], 1));
+    assert!(
+        keyboard_at_window(window, &shell, cx),
+        "the next space's chat"
+    );
+    assert_eq!(
+        (pressed(window, "alt-left", cx).0, space(cx)),
+        (SPACES_MOVE[0], 0)
+    );
+    assert!(
+        keyboard_at_window(window, &shell, cx),
+        "back in the first space"
+    );
+
+    // Its tab picked in the sidebar, the chat still isn't typed in, and ⌥→ still moves
+    // spaces; pressed in its prompt, it is.
     shell.update(cx, |shell, cx| shell.pick_tab(0, 0, 0, cx));
-    assert!(!keyboard_at_window(window, &shell, cx), "its tab picked");
-    let mut vcx = VisualTestContext::from_window(window, cx);
-    let at = vcx
-        .debug_bounds("arc-project-name")
-        .expect("the project's name")
-        .center();
-    vcx.simulate_click(at, Modifiers::default());
+    assert!(keyboard_at_window(window, &shell, cx), "its tab picked");
+    assert_eq!(
+        (pressed(window, "alt-right", cx).0, space(cx)),
+        (SPACES_MOVE[1], 1)
+    );
+    assert_eq!(
+        (pressed(window, "alt-left", cx).0, space(cx)),
+        (SPACES_MOVE[0], 0)
+    );
+    press_prompt(window, cx);
+    assert!(keyboard_in(window, PROMPT, cx), "pressed in its prompt");
+}
+
+/// A press in the sidebar takes the keyboard out of the prompt, and out of a file's text, where
+/// a press in the text puts it back.
+#[gpui_kit::test]
+fn a_press_in_the_sidebar_takes_the_keyboard_out_of_a_prompt_and_a_files_text(
+    cx: &mut TestAppContext,
+) {
+    let (window, shell, app) = typing_in_a_prompt("space-keys-sidebar", cx);
+    press_sidebar(window, cx);
     assert!(
         keyboard_at_window(window, &shell, cx),
         "pressed the sidebar"
+    );
+    assert_eq!(
+        (pressed(window, "alt-right", cx).0, space(cx)),
+        (SPACES_MOVE[1], 1)
+    );
+
+    // A file's text, pressed into: ⌥← is a word back there, and after a press in the sidebar
+    // the space to the left.
+    back_to_first(window, &shell, &app, cx);
+    write(&app, "notes.txt", b"hello world");
+    editing(window, &shell, "notes.txt", At::Bytes(11..11), cx);
+    let pane = cx.read(|cx| shell.read(cx).shown_tab_key().unwrap());
+    click_pane(window, pane, cx);
+    assert!(keyboard_in(window, "Input", cx), "pressed in the file");
+    click_pane(window, pane, cx);
+    assert!(keyboard_in(window, "Input", cx), "pressed in it again");
+    press_sidebar(window, cx);
+    assert!(
+        keyboard_at_window(window, &shell, cx),
+        "pressed the sidebar from the file"
+    );
+    shell.update(cx, |shell, cx| shell.show_space(1, cx));
+    assert_eq!(
+        (pressed(window, "alt-left", cx).0, space(cx)),
+        (SPACES_MOVE[0], 0)
     );
 }
 

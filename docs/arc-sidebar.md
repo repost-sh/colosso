@@ -61,11 +61,12 @@ is ⌘⇧M or the rails' right-click menu, and the appearance is in that menu an
   nothing, and ⌘L opens nothing. A new tab is ⌘T's.
 - The exception is a new browser tab opened empty: its start page has no address to show, so
   the bar is the page's own address field, the keyboard in it, until an address is entered.
-- A page takes the keyboard when its tab is picked in the sidebar, as a terminal and a chat
-  do, so its own keys (⌘R, ⌘F, ⌘G, ⌘[, ⌘], zoom, ⌘⌥I) work at once. In a split, the pane
-  the person was in takes it, a file's editor too; a file they've only looked at, as the
-  tree previews one, leaves the keyboard to the tab's first terminal, chat or page
-  (`Shell::give_shown_tab_the_keyboard`).
+- A page takes the keyboard when its tab is picked in the sidebar, as a terminal does, so its
+  own keys (⌘R, ⌘F, ⌘G, ⌘[, ⌘], zoom, ⌘⌥I) work at once. In a split, the pane the person
+  was in takes it, a file's editor too; a file they've only looked at, as the tree previews
+  one, leaves the keyboard to the tab's first terminal or page. A chat takes none: its prompt
+  has the keyboard once it's pressed (`Shell::keys_to_shown_tab`; section 9 has where the
+  keyboard is).
 
 ## 3. Project tiles
 
@@ -222,10 +223,6 @@ Arc's favourites grid, holding the projects of the space shown.
   first or last space the space gives a little toward the side with none and springs back, as
   a swipe's rubber band does; they never wrap round. Held, they repeat as the arrows do. In the
   Orca layout and on a settings page, where no spaces show, they do nothing.
-- A chat's prompt has the keyboard only when the person puts it there: pressed in, its tab
-  picked, a chat opened. A press outside it (the chat's background, its messages, the sidebar)
-  takes the keyboard to the window, and another space or project shown leaves it there, its
-  chat's prompt or not.
 - A space that isn't shown says on its mark what its tiles would (section 3), so a chat that
   finished there is noticed: a small indigo dot up and right of the mark while something in it
   waits for the person (a chat unread, failed or asking, a terminal waiting), the tiles'
@@ -262,6 +259,23 @@ Arc's favourites grid, holding the projects of the space shown.
   worktrees show in the sidebar (section 5): their order once one's been dragged (`worktrees`)
   and those collapsed (`collapsed`), each by its folder. What's kept of a worktree git no longer
   lists goes when the project's worktrees are next read.
+- The keyboard is where the person puts it (`shell/keys.rs`), in either layout. A pane has it
+  once they press in it, or ask for its tab: picked in the sidebar, opened (⌘T, a new terminal,
+  a file), switched to (⌃⇥), opened again (⌘⇧T), shown in place of the tab or the split's pane
+  they were typing in and closed, or come back to from a settings page they left it for.
+- A chat's prompt is the exception: moving to a chat, by any of those or by another space or
+  project shown, never puts the keyboard in its prompt, so ⌥← and ⌥→ go on moving between
+  spaces. The prompt has the keyboard once the person presses in it, or in a chat they've
+  just opened to type in (⌘T, a question asked from the launcher). A chat brought back with
+  the window has none, and coming back from a subagent's chat leaves the prompt alone too.
+- A press on anything that takes no keyboard (a chat's background or its messages, the
+  sidebar, the glass) takes it out of the pane, to the window, where the window's own keys
+  work and nothing is typed into; a press on a button, a menu or a scrollbar leaves it where
+  it was. Another space, project or worktree shown leaves it at the window: no tab takes the
+  keyboard for being the one shown. With the keyboard at the window, what a chat hears on its
+  own root, its card's key (⌘⇧B) and its menu, still reaches the chat the person is in
+  (`chat::heard_at_window`); the keys of its prompt (Esc to stop, ↑, ⌘↵) need the keyboard in
+  the prompt.
 - A new project joins the space shown, and so do projects no space holds, as every project
   the first time this runs, into a first space made then. A project removed leaves its space.
 - ⌥← / ⌥→ and ⌘⌥← / ⌘⌥→ change the space shown (`space`) one either way, as a swipe does, and only in the
