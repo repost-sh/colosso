@@ -1,7 +1,7 @@
-//! ⌥← and ⌥→ as a person presses them (`docs/arc-sidebar.md` 7): with nothing focused they
-//! slide the space over as a swipe does, a frame of it caught mid-way; at the last space the
-//! space gives and settles back; in a new chat's composer they go a word back and on instead.
-//! Then Settings → Keyboard shortcuts, which lists them.
+//! ⌘⌥← and ⌘⌥→ as a person presses them (`docs/arc-sidebar.md` 7): they slide the space
+//! over as a swipe does, a frame of it caught mid-way; at the last space the space gives and
+//! settles back; from a new chat's composer, where ⌥← and ⌥→ go a word back and on, ⌘⌥→ shows
+//! the next space all the same. Then Settings → Keyboard shortcuts, which lists them.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -72,7 +72,7 @@ pub fn space_keys(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     shortcuts_page(drawn, said)
 }
 
-/// With nothing focused: ⌥→ slides to the next space, gives at the last, and ⌥← comes back.
+/// With nothing focused: ⌘⌘⌥→ slides to the next space, gives at the last, ⌘⌘⌥← comes back.
 fn between_spaces(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     let shell = drawn.shell.clone();
     drawn
@@ -84,43 +84,44 @@ fn between_spaces(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
         .map_err(|error| error.to_string())?;
     drawn.draw()?;
 
-    let (action, _) = press(drawn, "alt-right")?;
+    let (action, _) = press(drawn, "cmd-alt-right")?;
     frames(drawn, 5, FRAME)?;
     let path = drawn.save("keys-sliding.png")?;
-    said.push(format!("saved {} (⌥→ mid-slide)", path.display()));
+    said.push(format!("saved {} (⌘⌥→ mid-slide)", path.display()));
     settle(drawn)?;
     let path = drawn.save("keys-next-space.png")?;
-    said.push(format!("⌥→ ran {action:?}: space 0 → {}", space(drawn)));
+    said.push(format!("⌘⌥→ ran {action:?}: space 0 → {}", space(drawn)));
     said.push(format!("saved {}", path.display()));
     if space(drawn) != 1 {
-        return Err("⌥→ didn't show the second space".into());
+        return Err("⌘⌥→ didn't show the second space".into());
     }
-    press(drawn, "alt-right")?;
+    press(drawn, "cmd-alt-right")?;
     settle(drawn)?;
     let last = space(drawn);
-    press(drawn, "alt-right")?;
+    press(drawn, "cmd-alt-right")?;
     frames(drawn, 4, FRAME)?;
     let offset = drawn.cx.read(|cx| shell.read(cx).swipe.offset);
     let path = drawn.save("keys-last-gives.png")?;
     settle(drawn)?;
     said.push(format!(
-        "⌥→ at the last space ({last}) gave {offset:.1} pt and settled back on {}",
+        "⌘⌥→ at the last space ({last}) gave {offset:.1} pt and settled back on {}",
         space(drawn)
     ));
     said.push(format!("saved {}", path.display()));
     if space(drawn) != last || offset >= 0. {
-        return Err("⌥→ at the last space didn't give and stay".into());
+        return Err("⌘⌥→ at the last space didn't give and stay".into());
     }
-    press(drawn, "alt-left alt-left")?;
+    press(drawn, "cmd-alt-left cmd-alt-left")?;
     settle(drawn)?;
-    said.push(format!("⌥← twice: back on space {}", space(drawn)));
+    said.push(format!("⌘⌥← twice: back on space {}", space(drawn)));
     if space(drawn) != 0 {
-        return Err("⌥← didn't come back to the first space".into());
+        return Err("⌘⌥← didn't come back to the first space".into());
     }
     Ok(())
 }
 
-/// A new chat's composer has the keyboard: a word back and on, the space staying put.
+/// A new chat's composer has the keyboard: ⌥← and ⌥→ go a word back and on, and ⌘⌥→ shows the
+/// next space from there.
 fn in_the_composer(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     (drawn.cx)
         .update_window(drawn.window, |_, window, cx| {
@@ -143,10 +144,22 @@ fn in_the_composer(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     {
         return Err("⌥← and ⌥→ didn't move a word in the composer".into());
     }
+    let (next, contexts) = press(drawn, "cmd-alt-right")?;
+    frames(drawn, 5, FRAME)?;
+    let path = drawn.save("keys-from-the-composer.png")?;
+    settle(drawn)?;
+    said.push(format!(
+        "in the composer ⌘⌥→ ran {next:?} in {contexts}: space 0 → {}",
+        space(drawn)
+    ));
+    said.push(format!("saved {} (mid-slide)", path.display()));
+    if space(drawn) != 1 {
+        return Err("⌘⌥→ didn't show the next space from the composer".into());
+    }
     Ok(())
 }
 
-/// Settings → Keyboard shortcuts, its Spaces section listing ⌥← and ⌥→.
+/// Settings → Keyboard shortcuts, its Spaces section listing ⌘⌥← and ⌘⌥→.
 fn shortcuts_page(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     let shell = drawn.shell.clone();
     let go = |drawn: &mut Drawn, route| {
