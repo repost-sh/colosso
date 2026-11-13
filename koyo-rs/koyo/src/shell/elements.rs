@@ -14,7 +14,7 @@ use gpui_kit::{
 
 use super::Shell;
 use crate::launcher::NewTab;
-use crate::pane::{close_button, tab_button, unsaved_dot};
+use crate::pane::{CLOSE, sized_close_button, tab_button, unsaved_dot};
 use crate::projects::AddProject;
 use crate::theme::{self, Palette};
 
@@ -117,28 +117,28 @@ pub fn row(id: impl Into<ElementId>, selected: bool, p: Palette) -> Stateful<Div
 }
 
 /// The × that closes the tab at `(project, branch, tab)` without selecting it, asking
-/// first about unsaved edits and running programs; a dot in its place while its files have
-/// unsaved edits.
+/// first about unsaved edits and running programs, `glyph` wide; a dot in its place while its
+/// files have unsaved edits.
 pub fn tab_close_button(
     id: impl Into<ElementId>,
     (project, branch, tab): (usize, usize, usize),
-    dirty: bool,
+    (dirty, glyph): (bool, f32),
     p: Palette,
     cx: &mut Context<Shell>,
 ) -> Stateful<Div> {
     let at = (project, branch, tab);
-    close_or_dot(id, dirty, p).on_click(cx.listener(move |this, _, window, cx| {
+    close_or_dot(id, dirty, glyph, p).on_click(cx.listener(move |this, _, window, cx| {
         cx.stop_propagation();
         this.close_tab_at(at, window, cx);
     }))
 }
 
-/// A tab's ×, or its dot while its files have unsaved edits.
-fn close_or_dot(id: impl Into<ElementId>, dirty: bool, p: Palette) -> Stateful<Div> {
+/// A tab's ×, `glyph` wide, or its dot while its files have unsaved edits.
+fn close_or_dot(id: impl Into<ElementId>, dirty: bool, glyph: f32, p: Palette) -> Stateful<Div> {
     if dirty {
         tab_button(id, p).child(unsaved_dot(p))
     } else {
-        close_button(id, p)
+        sized_close_button(id, glyph, p)
     }
 }
 
@@ -152,7 +152,7 @@ pub fn pane_close_button(
     p: Palette,
     cx: &mut Context<Shell>,
 ) -> Stateful<Div> {
-    close_or_dot((name, id), dirty, p)
+    close_or_dot((name, id), dirty, CLOSE, p)
         .debug_selector(move || format!("{name}-{id}"))
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .on_click(cx.listener(move |this, _, window, cx| {

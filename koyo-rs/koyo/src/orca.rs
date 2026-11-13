@@ -10,6 +10,7 @@ use gpui_kit::{
 };
 
 use crate::model::BranchUnit;
+use crate::pane::CLOSE;
 use crate::projects::{AddProject, NewWorktreeIn, project_menu, with_menu, worktree_menu};
 use crate::shell::{
     Shell, action_button, add_project_row, ellipsized, icon, icon_button, new_tab_button,
@@ -199,7 +200,7 @@ pub fn tab_strip(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
                     .child(face.icon(13.))
                     .children(dot)
                     .child(face.label())
-                    .child(tab_close_button(close, at, face.dirty, p, cx))
+                    .child(tab_close_button(close, at, (face.dirty, CLOSE), p, cx))
             })
         })
         .collect();

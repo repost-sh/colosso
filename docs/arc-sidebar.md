@@ -114,11 +114,11 @@ Arc's favourites grid, holding the projects of the space shown.
 
 - Each worktree is a folder, as in Arc's sidebar: a header, and its tabs under it
   (`arc/header.rs`, `arc/worktrees.rs`).
-- The header is a row as tall as a tab's, with its corners. A chevron sits in the tabs' icons'
-  column, pointing down while the worktree is open and right while it's collapsed, and the
-  worktree's name where the tabs' titles are, a label over them: smaller and lighter than they
-  are (12 pt, medium), in the muted grey of the sidebar's labels, cut short with an ellipsis
-  before the row's end. No other icon, and no badges.
+- The header is a row as tall as a tab's, with its corners: the worktree's name alone, from
+  where the tabs' icons start, a label over them: smaller and lighter than their titles
+  (12 pt, medium), in the muted grey of the sidebar's labels, cut short with an ellipsis
+  before the row's end. No chevron, no other icon, and no badges: a collapsed worktree shows
+  by its tabs being gone.
 - The name is the branch in words, without the prefix new worktrees' branches get (Settings →
   General: the person's GitHub user unless they set another): `schulzfel/some-nasty-name`
   shows as "Some nasty name", `main` as "Main". A detached checkout keeps "detached at …".
@@ -127,9 +127,11 @@ Arc's favourites grid, holding the projects of the space shown.
   header and its tabs, so each header sits on its own tabs.
 - Under the pointer a pill fades in across the header, as a tab's hover tint, with a muted `…`
   and a **+** at its end; leaving, they fade out (150 ms, as the sidebar's other hovers do).
+  The `…`, the **+** and a tab's × are Arc's size, bigger than a tab bar's: 24 pt squares,
+  their glyphs 18 pt.
 - **Clicking the header collapses the worktree, or opens it**, as Arc's folder does. Its tabs
-  slide closed or open and the chevron turns between right and down as they go, in the time a
-  tab takes to slide into place (240 ms, easing out); at once with reduced motion.
+  slide closed or open, in the time a tab takes to slide into place (240 ms, easing out); at
+  once with reduced motion.
 - Collapsed, all its tabs are hidden, the tab shown among them too: the panes still show it.
   Only its header opens it again, so a tab moved onto it, or shown some other way, leaves it
   collapsed.

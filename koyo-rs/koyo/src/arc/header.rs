@@ -1,12 +1,11 @@
-//! A worktree's header in the Arc sidebar (`docs/arc-sidebar.md` 5), a label over its tabs: a
-//! chevron in the tabs' icons' column, the worktree's name where their titles are and, while the
-//! pointer's on it, a pill under the row and a `…` and a `+` at its end, fading in and out.
-//! Clicked, it opens or collapses the worktree's rows, the chevron turning as they slide. Its `…`,
+//! A worktree's header in the Arc sidebar (`docs/arc-sidebar.md` 5), a label over its tabs: the
+//! worktree's name, from where their icons start, and, while the pointer's on it, a pill under the
+//! row and a `…` and a `+` at its end, fading in and out.
+//! Clicked, it opens or collapses the worktree's rows, which slide as they go. Its `…`,
 //! or a right-click, opens the worktree's menu, and its `+` a new tab in it; dragged, it takes the
 //! worktree, rows and all, to another place among the project's; and a tab from another worktree
 //! let go on it moves there.
 
-use std::f32::consts::FRAC_PI_2;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -15,13 +14,13 @@ use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::{
     Action, App, AppContext as _, Context, Div, FontWeight, InteractiveElement as _, MouseButton,
     MouseDownEvent, ParentElement as _, SharedString, Stateful, StatefulInteractiveElement as _,
-    Styled as _, Window, div, px, radians,
+    Styled as _, Window, div, px,
 };
 
 use super::Look;
 use super::actions::ClearWorktree;
 use super::tiles::DraggedTile;
-use super::worktrees::{TAB_ICON, arc_row, list_of, takes_tabs};
+use super::worktrees::{GLYPH, arc_button, arc_row, list_of, takes_tabs};
 use crate::launcher::NewTab;
 use koyo_git::Head;
 
@@ -35,18 +34,13 @@ use crate::theme;
 /// How long the pill, the `…` and the `+` take to fade in or out as the pointer comes onto the
 /// header or leaves, as the sidebar's other hovers do.
 const HOVER_FADE: Duration = Duration::from_millis(150);
-/// The chevron, drawn a little wider than the tabs' icons' column, as Arc's is.
-const CHEVRON: f32 = 20.;
-/// The `…` and the `+`.
-const MORE: f32 = 16.;
 
 /// The header of the worktree `unit`, the `branch`th of the project at `project`, known by
-/// `key` as it moves; `open`, 0 to 1, is how far its rows are open, which the chevron turns with.
+/// `key` as it moves.
 pub(super) fn header(
     shell: &Shell,
     (project, branch, key): (usize, usize, u64),
     unit: &BranchUnit,
-    open: f32,
     look: Look,
     window: &mut Window,
     cx: &mut Context<Shell>,
@@ -59,22 +53,16 @@ pub(super) fn header(
     } else {
         shown
     };
-    let chevron = div()
-        .w(px(TAB_ICON))
-        .flex_shrink_0()
-        .flex()
-        .justify_center()
-        .child(icon(IconName::ChevronRight, CHEVRON).rotate(radians(open * FRAC_PI_2)));
     let at = (project, branch);
-    let more = tab_button(("arc-header-more", branch), look.p)
+    let more = arc_button(tab_button(("arc-header-more", branch), look.p))
         .debug_selector(move || format!("arc-header-more-{branch}"))
-        .child(icon(IconName::Ellipsis, MORE))
+        .child(icon(IconName::Ellipsis, GLYPH))
         .on_mouse_down(MouseButton::Left, opens_menu(at, cx));
     // The launcher opens its tab on the selected worktree, so this one is selected, and opened,
     // on the press that opens it.
-    let new_tab = tab_button(("arc-header-new-tab", branch), look.p)
+    let new_tab = arc_button(tab_button(("arc-header-new-tab", branch), look.p))
         .debug_selector(move || format!("arc-header-new-tab-{branch}"))
-        .child(icon(IconName::Plus, MORE))
+        .child(icon(IconName::Plus, GLYPH))
         .on_mouse_down(
             MouseButton::Left,
             cx.listener(move |this, _, _, cx| {
@@ -107,7 +95,6 @@ pub(super) fn header(
             hand.take(list_of(project), key, branch, grab.y);
             cx.new(|_| DraggedTile)
         })
-        .child(chevron)
         .child(ellipsized(name).flex_1())
         .child(ends);
     // The visual check points at a header where it's drawn.

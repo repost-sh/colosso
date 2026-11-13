@@ -11,9 +11,17 @@ use crate::model::{Pane, PaneKind};
 use crate::shell::icon;
 use crate::theme::Palette;
 
+/// How wide a tab's close button draws its X.
+pub const CLOSE: f32 = 12.;
+
 /// A tab's close button: an X, lit when the pointer's over it.
 pub fn close_button(id: impl Into<ElementId>, p: Palette) -> Stateful<Div> {
-    tab_button(id, p).child(icon(IconName::X, 12.))
+    sized_close_button(id, CLOSE, p)
+}
+
+/// A close button whose X is `glyph` wide, for a row taller than a tab.
+pub fn sized_close_button(id: impl Into<ElementId>, glyph: f32, p: Palette) -> Stateful<Div> {
+    tab_button(id, p).child(icon(IconName::X, glyph))
 }
 
 /// A round mark of `color`, as a tab or a row says how something's doing.

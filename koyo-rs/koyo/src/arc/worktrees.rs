@@ -35,6 +35,15 @@ const GAP: f32 = 2.;
 const WORKTREE_GAP: f32 = 12.;
 /// The tabs' icons.
 pub(super) const TAB_ICON: f32 = 16.;
+/// A row's buttons, as big as Arc's: a header's `…` and `+`, a tab's ×.
+const BUTTON: f32 = 24.;
+/// What a row's buttons draw.
+pub(super) const GLYPH: f32 = 18.;
+
+/// `button` as big as a row's buttons are, Arc's size rather than a tab's.
+pub(super) fn arc_button(button: Stateful<Div>) -> Stateful<Div> {
+    button.size(px(BUTTON)).rounded(px(6.))
+}
 
 /// The list the worktrees of the project at `project` are dragged along.
 pub(super) fn list_of(project: usize) -> u64 {
@@ -151,7 +160,7 @@ fn worktree(
     let id = ElementId::from(("arc-open", key));
     let open = transition(id, target, Transition::new(MOTION), window, cx);
     let at = (project_index, branch_index, key);
-    let header = header(shell, at, unit, open, look, window, cx);
+    let header = header(shell, at, unit, look, window, cx);
     // Collapsed and still, or with no tabs, it has no rows: none is drawn, or picked.
     if open == 0. || unit.tabs.is_empty() {
         return (key, header.into_any_element());
@@ -237,7 +246,8 @@ fn tab_row_of(
         // Shown on the tab shown, and on the others while hovered; a dot for unsaved edits
         // always. What the row says of its tab has the ×'s place until the pointer's on it.
         let hidden = !face.dirty && (!active || mark.is_some());
-        let close = tab_close_button(close, at, face.dirty, p, cx).when(hidden, |close| {
+        let close = tab_close_button(close, at, (face.dirty, GLYPH), p, cx);
+        let close = arc_button(close).when(hidden, |close| {
             close
                 .opacity(0.)
                 .group_hover("arc-tab", |style| style.opacity(1.))
