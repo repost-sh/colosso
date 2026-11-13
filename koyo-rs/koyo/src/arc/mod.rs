@@ -1,7 +1,7 @@
 //! Arc layout (`docs/arc-sidebar.md`): the sidebar on the glass as Arc's. Under the top rail's
 //! browser controls, an address bar says what's shown; then the projects of the space shown as
-//! tiles, the selected project's name, and each worktree of the project selected as a divider with its
-//! tabs under it. The spaces line the sidebar's foot, and two fingers swipe between them.
+//! tiles, the selected project's name, and each worktree of the project selected as a folder, its
+//! tabs under its header. The spaces line the sidebar's foot, and two fingers swipe between them.
 
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::{
@@ -18,6 +18,7 @@ mod card;
 mod clear;
 mod delete_space;
 mod foot;
+mod header;
 mod hover;
 mod rename;
 mod swipe;
@@ -51,10 +52,9 @@ pub(crate) struct Look {
     pub tile_selected: Hsla,
     /// The tab shown.
     pub pill: Hsla,
+    /// A row under the pointer: a tab's, a worktree's header.
     pub row_hover: Hsla,
-    /// A worktree's divider.
-    pub line: Hsla,
-    /// The space's name, a worktree's, and New Tab.
+    /// The space's name, a worktree's, and its header's `…` and `+`.
     pub label: Hsla,
 }
 
@@ -72,7 +72,6 @@ impl Look {
                 tile_selected: gray(1., 0.24),
                 pill: gray(1., 0.24),
                 row_hover: gray(1., 0.08),
-                line: gray(1., 0.12),
                 label: gray(1., 0.55),
             }
         } else {
@@ -84,7 +83,6 @@ impl Look {
                 tile_selected: gray(1., 0.8),
                 pill: gray(1., 0.75),
                 row_hover: gray(1., 0.3),
-                line: gray(0., 0.1),
                 label: gray(0., 0.5),
             }
         }

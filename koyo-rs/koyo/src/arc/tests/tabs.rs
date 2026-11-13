@@ -2,25 +2,15 @@
 //! the spinner while a chat in it is at work, an indigo dot once something in it waits for the
 //! person, at the row's end, where its × is.
 
-use gpui_kit::{Bounds, Pixels, TestAppContext, VisualTestContext};
+use gpui_kit::TestAppContext;
 use koyo_agent::protocol::ids::ThreadId;
 use koyo_agent::protocol::model::Status;
 use koyo_agent::protocol::requests::RequestKind;
 
-use super::{arc_shell, chat, hear};
+use super::{arc_shell, chat, drawn, hear};
 use crate::chat::Activity;
 use crate::model::{Edge, Pane, PaneKind, Tab};
 use crate::test_support::draw;
-
-/// Where `selector` names something drawn, if it names anything.
-fn drawn(
-    window: gpui_kit::AnyWindowHandle,
-    selector: String,
-    cx: &mut TestAppContext,
-) -> Option<Bounds<Pixels>> {
-    let selector: &'static str = Box::leak(selector.into_boxed_str());
-    VisualTestContext::from_window(window, cx).debug_bounds(selector)
-}
 
 #[gpui_kit::test]
 fn a_tabs_row_says_its_chat_works_and_then_that_it_waits(cx: &mut TestAppContext) {
@@ -59,7 +49,7 @@ fn a_tabs_row_says_its_chat_works_and_then_that_it_waits(cx: &mut TestAppContext
     assert_eq!((activity, waiting), (Activity::Working, None));
     // At the row's end, in the middle of its height.
     let spinner = working.expect("the spinner on the row of the chat at work");
-    let row = drawn(window, "tab-0-0-0".into(), cx).expect("the chat's row");
+    let row = drawn(window, "tab-0-0-0", cx).expect("the chat's row");
     assert!(
         row.right() - spinner.right() < gpui_kit::px(16.),
         "{spinner:?} in {row:?}"
@@ -94,6 +84,6 @@ fn a_tabs_row_says_its_chat_works_and_then_that_it_waits(cx: &mut TestAppContext
     let (activity, working, _) = told(cx);
     assert_eq!(activity, Activity::Working);
     let spinner = working.expect("the spinner on the split's row");
-    let row = drawn(window, "tab-0-0-0".into(), cx).expect("the split's row");
+    let row = drawn(window, "tab-0-0-0", cx).expect("the split's row");
     assert!(spinner.right() < row.center().x, "{spinner:?} in {row:?}");
 }

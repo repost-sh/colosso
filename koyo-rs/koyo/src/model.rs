@@ -303,9 +303,11 @@ impl Workspace {
         });
     }
 
-    /// Takes what git now reports for `project`. Checkouts it still has keep their tabs, and
-    /// the selected one stays selected; if it went away, the main checkout is selected.
-    pub fn set_worktrees(&mut self, project: usize, worktrees: Vec<Worktree>) {
+    /// Takes what git now reports for `project`, in `order` by the worktrees' folders, those it
+    /// doesn't name after them in git's order (`docs/arc-sidebar.md` 5). Checkouts it still has
+    /// keep their tabs, and the selected one stays selected; if it went away, the main checkout
+    /// is selected.
+    pub fn set_worktrees(&mut self, project: usize, worktrees: Vec<Worktree>, order: &[PathBuf]) {
         let project = &mut self.projects[project];
         let selected = project.branch().map(|unit| unit.worktree.path.clone());
         let mut previous = std::mem::take(&mut project.branches);
@@ -324,14 +326,13 @@ impl Workspace {
                 }
             })
             .collect();
-        project.active_branch = selected
-            .and_then(|path| {
-                project
-                    .branches
-                    .iter()
-                    .position(|unit| unit.worktree.path == path)
-            })
-            .unwrap_or(0);
+        if !order.is_empty() {
+            project.branches.sort_by_cached_key(|unit| {
+                let kept = order.iter().position(|path| *path == unit.worktree.path);
+                kept.unwrap_or(order.len())
+            });
+        }
+        project.reselect(selected);
         project.error = None;
     }
 

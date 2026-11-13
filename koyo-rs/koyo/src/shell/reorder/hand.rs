@@ -4,7 +4,7 @@
 
 use std::cell::{Cell, RefCell};
 
-use gpui_kit::{Along as _, Axis, Bounds, Pixels, Point, px};
+use gpui_kit::{Along as _, Axis, Bounds, Hsla, Pixels, Point, px};
 
 use super::{beyond_ends, outside};
 
@@ -158,12 +158,16 @@ impl TabHand {
         };
         let (axis, bounds) = (list.axis, list.bounds);
         let outside = outside(axis, bounds, at);
-        drag.off = beyond_ends(axis, bounds, at)
-            || if drag.off {
-                outside > px(0.)
-            } else {
-                outside > px(PULL)
-            };
+        // A worktree joins none, and has nowhere else to go: it stays on its list, wherever the
+        // pointer takes it.
+        let tabs = matches!(list.holds, Holds::Tabs { .. });
+        drag.off = tabs
+            && (beyond_ends(axis, bounds, at)
+                || if drag.off {
+                    outside > px(0.)
+                } else {
+                    outside > px(PULL)
+                });
         drag.from = index;
         let start = bounds.origin.along(axis);
         let len = slots[index].size.along(axis);
@@ -176,7 +180,7 @@ impl TabHand {
             // before.
             let probe = at.along(axis);
             let others = (slots.iter().enumerate()).filter(|(other, _)| *other != index);
-            drag.join = others.clone().find_map(|(onto, slot)| {
+            let over_middle = others.clone().find_map(|(onto, slot)| {
                 let (from, extent) = (slot.origin.along(axis), slot.size.along(axis));
                 let inset = extent * ((1. - JOIN_ZONE) / 2.);
                 let over = probe >= from + inset && probe <= from + extent - inset;
@@ -185,6 +189,7 @@ impl TabHand {
                     after: at.x > slot.center().x,
                 })
             });
+            drag.join = over_middle.filter(|_| tabs);
             drag.to = match drag.join {
                 // The tab joined stays where it is, those between it and the slot left out of
                 // the way.
@@ -207,10 +212,22 @@ impl TabHand {
     }
 }
 
-/// A list's own facts beside its tabs: which list it is, which way it runs, its tabs'
-/// keys, and where it is.
+/// What a list holds, which says what one held over it can do besides move.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) enum Holds {
+    /// A checkout's tabs: one held over another's middle joins it, lit in `accent`, and one
+    /// taken off the list is a chip for a pane's side or, down the sidebar, another checkout's
+    /// list.
+    Tabs { accent: Hsla },
+    /// A project's worktrees in the Arc sidebar (`docs/arc-sidebar.md` 5), which only move.
+    Worktrees,
+}
+
+/// A list's own facts beside its tabs: which list it is, what it holds, which way it runs, its
+/// tabs' keys, and where it is.
 pub(super) struct List {
     pub id: u64,
+    pub holds: Holds,
     pub axis: Axis,
     pub keys: Vec<u64>,
     pub bounds: Bounds<Pixels>,
@@ -232,6 +249,9 @@ mod tests {
             .collect();
         let list = List {
             id: 7,
+            holds: Holds::Tabs {
+                accent: Hsla::default(),
+            },
             axis: Axis::Horizontal,
             keys: (100..).take(count).collect(),
             bounds: Bounds {
@@ -329,6 +349,41 @@ mod tests {
         assert!(!hand.chip_shows(), "over the strip it's back on");
         hand.place(&list, &slots, at(150., 80.), true);
         assert_eq!(hand.release(7), None);
+    }
+
+    #[test]
+    fn a_worktree_only_moves_and_stays_on_its_list_wherever_the_pointer_goes() {
+        let hand = TabHand::default();
+        // Three worktrees down the sidebar, the middle one open on its tabs.
+        let slots = [(0., 36.), (36., 112.), (148., 36.)].map(|(top, height)| Bounds {
+            origin: point(px(0.), px(top)),
+            size: size(px(240.), px(height)),
+        });
+        let list = List {
+            id: 9,
+            holds: Holds::Worktrees,
+            axis: Axis::Vertical,
+            keys: vec![1, 2, 3],
+            bounds: Bounds {
+                origin: point(px(0.), px(0.)),
+                size: size(px(240.), px(184.)),
+            },
+        };
+        hand.take(9, 1, 0, px(18.));
+        let place = |x, y| hand.place(&list, &slots, at(x, y), true).unwrap();
+        let held = place(120., 70.);
+        assert_eq!(
+            (held.to, held.join),
+            (0, None),
+            "over the middle: no joining"
+        );
+        assert_eq!(place(120., 100.).to, 1, "past the open one's middle");
+        let held = place(120., 400.);
+        assert!(!held.off, "past the list's end it's still on it");
+        assert_eq!((held.to, held.pos), (2, px(184. - 36.)), "last, at the end");
+        assert!(!place(900., 400.).off, "nor taken off sideways");
+        assert!(!hand.chip_shows());
+        assert_eq!(hand.release(9), Some(Drop::Move { from: 0, to: 2 }));
     }
 
     #[test]
