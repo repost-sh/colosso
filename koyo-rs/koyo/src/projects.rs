@@ -94,7 +94,7 @@ pub fn worktree_menu(path: &Path, is_main: bool, terminals: bool) -> NativeMenu 
 }
 
 /// What any folder's menu offers.
-fn path_items(menu: NativeMenu, path: &Path) -> NativeMenu {
+pub fn path_items(menu: NativeMenu, path: &Path) -> NativeMenu {
     menu.menu(
         "Reveal in Finder",
         Box::new(RevealInFinder(path.to_owned())),
@@ -226,7 +226,7 @@ impl Shell {
         *shown = read.number;
         match read.worktrees {
             Ok(worktrees) => {
-                self.workspace.set_worktrees(project, worktrees);
+                self.set_worktrees(project, worktrees, cx);
                 let checkouts: Vec<(PathBuf, PathBuf)> = (self.workspace.projects.iter())
                     .flat_map(|project| {
                         let main = &project.path;
@@ -245,6 +245,39 @@ impl Shell {
             }
             Err(error) => self.workspace.set_error(project, error.message),
         }
+        cx.notify();
+    }
+
+    /// Takes what git now reports as the worktrees of the project at `project`, in the order
+    /// the person put them in, and forgets the order and folding of those it no longer lists.
+    fn set_worktrees(&mut self, project: usize, worktrees: Vec<Worktree>, cx: &mut Context<Self>) {
+        let path = &self.workspace.projects[project].path;
+        let order = settings::get(cx).worktree_order(path);
+        self.workspace.set_worktrees(project, worktrees, order);
+        let project = &self.workspace.projects[project];
+        let listed = project.worktree_paths();
+        if settings::get(cx).keeps_gone_worktrees(&project.path, &listed) {
+            let path = project.path.clone();
+            settings::update(cx, |settings| settings.keep_worktrees(&path, &listed));
+        }
+    }
+
+    /// Moves the worktree of the project at `project` from `from` to where the one at `to` is,
+    /// in both layouts' lists, and keeps the order for the next launch (`docs/arc-sidebar.md`
+    /// 5, 9).
+    pub fn move_worktree(
+        &mut self,
+        project: usize,
+        from: usize,
+        to: usize,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.workspace.move_worktree(project, from, to) {
+            return;
+        }
+        let project = &self.workspace.projects[project];
+        let (path, order) = (project.path.clone(), project.worktree_paths());
+        settings::update(cx, |settings| settings.set_worktree_order(&path, order));
         cx.notify();
     }
 
@@ -293,7 +326,7 @@ impl Shell {
                 if !select {
                     this.workspace.select_project(selected);
                 }
-                this.workspace.set_worktrees(project, worktrees);
+                this.set_worktrees(project, worktrees, cx);
                 this.save_projects(cx);
                 cx.notify();
             })

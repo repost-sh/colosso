@@ -1,9 +1,12 @@
 //! Moving tabs and panes on a checkout: a tab dropped on a side of a pane splits with it,
 //! a pane dragged out of its split goes to another pane or a tab of its own, a tab dropped
 //! on another joins it side by side, and tabs reorder in the strip. And a tab dragged from
-//! one checkout's list in the Arc sidebar to another's (`docs/arc-sidebar.md` 5).
+//! one checkout's list in the Arc sidebar to another's, and a project's worktrees put in the
+//! order the person drags them into there (`docs/arc-sidebar.md` 5), which Orca lists too.
 
-use super::{BranchUnit, Edge, Pane, Tab, Workspace};
+use std::path::PathBuf;
+
+use super::{BranchUnit, Edge, Pane, Project, Tab, Workspace};
 
 impl Workspace {
     /// Moves the tab at `from`, as `(project, branch, tab)`, to the checkout `to`, as
@@ -62,6 +65,45 @@ impl Workspace {
         let reselected = selected.and_then(|path| self.project_index(&path));
         self.select_project(reselected);
         true
+    }
+}
+
+impl Workspace {
+    /// Moves the worktree of `project` at `from` to where the one at `to` is, the others closing
+    /// up; the worktree selected stays selected. False, and nothing changes, when there's no
+    /// such worktree or it's the same one.
+    pub fn move_worktree(&mut self, project: usize, from: usize, to: usize) -> bool {
+        let Some(project) = self.projects.get_mut(project) else {
+            return false;
+        };
+        let count = project.branches.len();
+        if from == to || from >= count || to >= count {
+            return false;
+        }
+        let selected = project.branch().map(|unit| unit.worktree.path.clone());
+        let moved = project.branches.remove(from);
+        project.branches.insert(to, moved);
+        project.reselect(selected);
+        true
+    }
+}
+
+impl Project {
+    /// Selects the worktree at `selected` again, wherever it's listed now; the main checkout
+    /// once it's gone.
+    pub(super) fn reselect(&mut self, selected: Option<PathBuf>) {
+        let units = &self.branches;
+        let found =
+            selected.and_then(|path| units.iter().position(|unit| unit.worktree.path == path));
+        self.active_branch =
+            (found.or_else(|| units.iter().position(BranchUnit::is_main))).unwrap_or(0);
+    }
+
+    /// Its worktrees' folders, in the order they're listed.
+    pub fn worktree_paths(&self) -> Vec<PathBuf> {
+        (self.branches.iter())
+            .map(|unit| unit.worktree.path.clone())
+            .collect()
     }
 }
 

@@ -3,6 +3,8 @@
 //! `.superpowers/qa/`. macOS makes windows only on the main thread, so each check is a mode of
 //! the app rather than a test, run with `--features visual-check`.
 
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::future::Future;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
@@ -15,8 +17,8 @@ use std::time::{Duration, Instant};
 
 use gpui_kit::base::Root;
 use gpui_kit::{
-    AnyWindowHandle, AppContext as _, Entity, KeyUpEvent, Keystroke, PlatformInput,
-    VisualTestAppContext, px, size,
+    AnyWindowHandle, App, AppContext as _, Bounds, Entity, KeyUpEvent, Keystroke, Pixels,
+    PlatformInput, VisualTestAppContext, Window, px, size,
 };
 use koyo_agent::protocol::ids::{MessageId, ThreadId};
 use koyo_agent::protocol::methods::Delivery;
@@ -52,10 +54,42 @@ pub fn glass_as_fill() -> bool {
     GLASS_AS_FILL.load(Ordering::Relaxed)
 }
 
+thread_local! {
+    /// Where what the app notes for the checks was last drawn, by name (`noting`).
+    static NOTED: RefCell<HashMap<String, Bounds<Pixels>>> = RefCell::default();
+}
+
+/// Notes where what `name` names is drawn, given its bounds (`ElementExt::on_prepaint`), for a
+/// check to point at it there.
+pub fn noting(name: String) -> impl FnOnce(Bounds<Pixels>, &mut Window, &mut App) + 'static {
+    move |bounds, _, _| {
+        NOTED.with_borrow_mut(|noted| noted.insert(name, bounds));
+    }
+}
+
+/// Where what `name` names was last drawn, as `noting` noted it.
+pub fn noted(name: &str) -> Option<Bounds<Pixels>> {
+    NOTED.with_borrow(|noted| noted.get(name).copied())
+}
+
 /// Whether the app was started as one of the visual checks, each a `--visual-check…` mode of
 /// it, rather than as the app a person uses.
 pub fn checking() -> bool {
     std::env::args().any(|arg| arg.starts_with("--visual-check"))
+}
+
+/// A laptop-sized window off screen with a shell of its own in it.
+fn shell_window(cx: &mut VisualTestAppContext) -> Result<(AnyWindowHandle, Entity<Shell>)> {
+    let mut made = None;
+    let window = cx
+        .open_offscreen_window(size(px(1600.), px(1000.)), |window, cx| {
+            let shell = cx.new(|cx| Shell::new(window, cx));
+            made = Some(shell.clone());
+            cx.new(|cx| Root::new(shell, window, cx))
+        })
+        .map_err(|error| error.to_string())?;
+    let shell = made.ok_or("the window opened without the shell")?;
+    Ok((window.into(), shell))
 }
 
 /// Runs a check: says each line `draw` returns, the pictures it saved and what it measured,
@@ -122,21 +156,24 @@ impl Drawn {
             crate::init(cx);
             cx.dispatch_action(&UseLightTheme);
         });
-        let mut made = None;
-        let window = cx
-            .open_offscreen_window(size(px(1600.), px(1000.)), |window, cx| {
-                let shell = cx.new(|cx| Shell::new(window, cx));
-                made = Some(shell.clone());
-                cx.new(|cx| Root::new(shell, window, cx))
-            })
-            .map_err(|error| error.to_string())?;
-        let shell = made.ok_or("the window opened without the shell")?;
+        let (window, shell) = shell_window(&mut cx)?;
         Ok(Drawn {
             cx,
-            window: window.into(),
+            window,
             shell,
             out,
         })
+    }
+
+    /// Closes the window and opens the app's window again, as its next launch does, on the
+    /// settings as they are. What was noted of the window closed goes with it.
+    pub fn reopen(&mut self) -> Result<()> {
+        (self.cx)
+            .update_window(self.window, |_, window, _| window.remove_window())
+            .map_err(|error| error.to_string())?;
+        NOTED.with_borrow_mut(HashMap::clear);
+        (self.window, self.shell) = shell_window(&mut self.cx)?;
+        self.draw()
     }
 
     /// The shell off screen, its pictures going to `out` under the checkout, and its

@@ -69,16 +69,18 @@ pub fn frames(drawn: &mut Drawn, count: usize, step: Duration) -> Result<()> {
 /// A part of the sidebar a picture shows again, larger: what's said there is a few points
 /// across.
 #[derive(Clone, Copy)]
-enum Part {
+pub enum Part {
     /// The tiles and the worktrees' rows under them.
     Rows,
     /// The spaces' marks.
     Foot,
+    /// A worktree's rows, `rows` of them down from `top`, a little room round them.
+    Worktree { top: Pixels, rows: u32 },
 }
 
 /// Saves the window as `name`, and `part` of the sidebar, three or four times its size, as
-/// `name`-rows or `name`-foot.
-fn save_with(drawn: &mut Drawn, name: &str, part: Part) -> Result<String> {
+/// `name`-rows, `name`-foot or `name`-part.
+pub fn save_with(drawn: &mut Drawn, name: &str, part: Part) -> Result<String> {
     let path = drawn.save(&format!("{name}.png"))?;
     let picture = image::open(&path).map_err(|error| error.to_string())?;
     let (width, height) = (picture.width(), picture.height());
@@ -88,6 +90,11 @@ fn save_with(drawn: &mut Drawn, name: &str, part: Part) -> Result<String> {
     let (label, top, down, times) = match part {
         Part::Rows => ("rows", (80 * scale).min(height), 600 * scale, 3),
         Part::Foot => ("foot", height.saturating_sub(110 * scale), 110 * scale, 4),
+        // Each row is 38 points apart.
+        Part::Worktree { top, rows } => {
+            let top = (top.as_f32() as u32).saturating_sub(8) * scale;
+            ("part", top.min(height), (rows * 38 + 16) * scale, 3)
+        }
     };
     let down = down.min(height - top);
     let part = imageops::crop_imm(&picture.to_rgba8(), 0, top, across, down).to_image();
@@ -211,17 +218,16 @@ fn tile_at(drawn: &Drawn, slot: usize) -> Result<Point<Pixels>> {
     Ok(drawn_at.ok_or("the tile isn't drawn")?.center())
 }
 
-/// Drags the tile in slot `from` of the space shown onto the one in slot `to`, as a person
-/// would: taken up, half way there, over its slot, let go. With `pictures`, half way and over
-/// its slot are saved under those names.
-fn drag(
+/// Drags what's at `from` to `to`, as a person would: taken up, half way there, over where it
+/// goes, let go. With `pictures`, half way and over where it goes are saved under those names,
+/// with `part` of the sidebar.
+pub fn drag(
     drawn: &mut Drawn,
-    (from, to): (usize, usize),
-    pictures: Option<[&str; 2]>,
+    (from, to): (Point<Pixels>, Point<Pixels>),
+    pictures: Option<([&str; 2], Part)>,
     said: &mut Vec<String>,
 ) -> Result<()> {
     let window = drawn.window;
-    let (from, to) = (tile_at(drawn, from)?, tile_at(drawn, to)?);
     let none = Modifiers::default();
     let held = Some(MouseButton::Left);
     (drawn.cx).simulate_mouse_down(window, from, MouseButton::Left, none);
@@ -232,9 +238,8 @@ fn drag(
     for (step, at) in [half, to].into_iter().enumerate() {
         (drawn.cx).simulate_mouse_move(window, at, held, none);
         settle(drawn)?;
-        if let Some(names) = pictures {
-            let path = drawn.save(&format!("{}.png", names[step]))?;
-            said.push(format!("saved {}", path.display()));
+        if let Some((names, part)) = pictures {
+            said.push(save_with(drawn, names[step], part)?);
         }
     }
     (drawn.cx).simulate_mouse_up(window, to, MouseButton::Left, none);
@@ -274,7 +279,8 @@ pub fn drag_tile(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     let before = tiles(drawn);
     let last = before.len() - 1;
     let pictures = ["arc-tile-in-hand", "arc-tile-over-its-slot"];
-    drag(drawn, (0, last), Some(pictures), said)?;
+    let (first, end) = (tile_at(drawn, 0)?, tile_at(drawn, last)?);
+    drag(drawn, (first, end), Some((pictures, Part::Rows)), said)?;
     let path = drawn.save("arc-tile-moved.png")?;
     said.push(format!(
         "tiles {before:?} dragged first onto last: {:?}; the sidebar's order saved as {:?}; saved {}",
@@ -282,7 +288,8 @@ pub fn drag_tile(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
         kept_order(drawn),
         path.display()
     ));
-    drag(drawn, (last, 0), None, said)?;
+    let (first, end) = (tile_at(drawn, 0)?, tile_at(drawn, last)?);
+    drag(drawn, (end, first), None, said)?;
     said.push(format!(
         "and the last dragged back onto the first: {:?}; saved as {:?}",
         tiles(drawn),

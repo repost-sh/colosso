@@ -57,7 +57,7 @@ pub use elements::{
     no_matches, project_error, row, search_field, section_label, solid, tab_close_button,
 };
 pub use kept::KeptWindow;
-pub use reorder::TabHand;
+pub use reorder::{Drop, MOTION, Reorder, TabHand};
 pub use splits::{Dragged, DraggedPane};
 pub use tab_list::{tab_list, tab_row};
 
@@ -92,6 +92,8 @@ pub struct Shell {
     pub(crate) arc_hover: arc::Hover,
     /// The tab being dragged along its list, shared by every list of tabs.
     pub tab_hand: Rc<TabHand>,
+    /// The worktree being dragged among its project's in the Arc sidebar.
+    pub worktree_hand: Rc<TabHand>,
     /// The project tile being dragged about the Arc sidebar's grid.
     pub tile_hand: Rc<arc::TileHand>,
     /// The places a symbol led to, listed under the tabs, while they are.
@@ -195,6 +197,7 @@ impl Shell {
             rails_menu_at: Point::default(),
             arc_hover: arc::Hover::default(),
             tab_hand: Rc::default(),
+            worktree_hand: Rc::default(),
             tile_hand: Rc::default(),
             locations: None,
             _subscriptions,

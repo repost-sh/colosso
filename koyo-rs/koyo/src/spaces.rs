@@ -1,9 +1,10 @@
 //! Spaces (`docs/arc-sidebar.md` 6, 9): the Arc sidebar shows the projects of one space at a
 //! time, and the window takes that space's colours. Each project is in exactly one space, and
 //! there's always a space. What a project is called and shows as in Koyo, whatever its folder,
-//! is kept here too. All of it lives in the settings file.
+//! and the order and folding of its worktrees in the sidebar, are kept here too. All of it lives
+//! in the settings file.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use gpui_kit::Hsla;
@@ -64,7 +65,8 @@ impl Space {
     }
 }
 
-/// What a project is called and shows as in Koyo, whatever its folder.
+/// What a project is called and shows as in Koyo, whatever its folder, and how its worktrees
+/// show in the sidebar (`docs/arc-sidebar.md` 5).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ProjectLook {
@@ -72,11 +74,16 @@ pub struct ProjectLook {
     pub name: Option<String>,
     /// An image the person picked; the git host's avatar otherwise.
     pub icon: Option<PathBuf>,
+    /// Its worktrees in the order the person dragged them into, by their folders; git's order
+    /// until they do, and for any git lists that isn't here, after these.
+    pub worktrees: Vec<PathBuf>,
+    /// Its worktrees collapsed in the Arc sidebar, by their folders.
+    pub collapsed: BTreeSet<PathBuf>,
 }
 
 impl ProjectLook {
     fn is_empty(&self) -> bool {
-        self.name.is_none() && self.icon.is_none()
+        *self == ProjectLook::default()
     }
 }
 
@@ -263,6 +270,59 @@ impl Settings {
             .entry(project.to_owned())
             .or_default()
             .icon = icon;
+        self.drop_empty_look(project);
+    }
+
+    /// The order the person put `project`'s worktrees in, by their folders: none until they
+    /// move one.
+    pub fn worktree_order(&self, project: &Path) -> &[PathBuf] {
+        let look = self.project_looks.get(project);
+        look.map(|look| look.worktrees.as_slice())
+            .unwrap_or_default()
+    }
+
+    /// Lists `project`'s worktrees in `order`, by their folders, from now on.
+    pub fn set_worktree_order(&mut self, project: &Path, order: Vec<PathBuf>) {
+        self.project_looks
+            .entry(project.to_owned())
+            .or_default()
+            .worktrees = order;
+        self.drop_empty_look(project);
+    }
+
+    /// Whether `project`'s worktree at `worktree` is collapsed in the Arc sidebar.
+    pub fn is_collapsed(&self, project: &Path, worktree: &Path) -> bool {
+        (self.project_looks.get(project)).is_some_and(|look| look.collapsed.contains(worktree))
+    }
+
+    /// Collapses `project`'s worktree at `worktree` in the Arc sidebar, or opens it again.
+    pub fn toggle_collapsed(&mut self, project: &Path, worktree: &Path) {
+        let collapsed = &mut self
+            .project_looks
+            .entry(project.to_owned())
+            .or_default()
+            .collapsed;
+        if !collapsed.remove(worktree) {
+            collapsed.insert(worktree.to_owned());
+        }
+        self.drop_empty_look(project);
+    }
+
+    /// Whether anything's kept of a worktree of `project`'s that git no longer lists, as
+    /// `listed`: what `keep_worktrees` forgets.
+    pub fn keeps_gone_worktrees(&self, project: &Path, listed: &[PathBuf]) -> bool {
+        self.project_looks.get(project).is_some_and(|look| {
+            (look.worktrees.iter().chain(&look.collapsed)).any(|kept| !listed.contains(kept))
+        })
+    }
+
+    /// Forgets the order and folding of `project`'s worktrees git no longer lists, as `listed`.
+    pub fn keep_worktrees(&mut self, project: &Path, listed: &[PathBuf]) {
+        let Some(look) = self.project_looks.get_mut(project) else {
+            return;
+        };
+        look.worktrees.retain(|worktree| listed.contains(worktree));
+        look.collapsed.retain(|worktree| listed.contains(worktree));
         self.drop_empty_look(project);
     }
 
