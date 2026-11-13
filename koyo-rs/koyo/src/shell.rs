@@ -46,8 +46,8 @@ mod tab_list;
 mod visits;
 
 pub use actions::{
-    CloseTab, EditTheme, NewChat, ReopenClosedTab, SwitchTab, SwitchTabBack, ToggleBottomPanel,
-    ToggleRightPanel, ToggleSidebar, ToggleSidebarMode, init,
+    CloseTab, EditTheme, KeysToWindow, NewChat, ReopenClosedTab, SwitchTab, SwitchTabBack,
+    ToggleBottomPanel, ToggleRightPanel, ToggleSidebar, ToggleSidebarMode, init,
 };
 #[cfg(feature = "visual-check")]
 pub use actions::{NewTerminal, StopTerminal};

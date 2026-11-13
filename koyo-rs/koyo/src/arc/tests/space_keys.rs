@@ -1,7 +1,8 @@
-//! ⌘⌥← and ⌘⌥→ show the space to the left and to the right (`docs/arc-sidebar.md` 7) from
-//! wherever the keyboard is, the chat's composer and a terminal included, where ⌥← and ⌥→ stay
-//! a word back and on. At the first or last space they show nothing new, and in the Orca
-//! layout and on a settings page nothing at all.
+//! ⌥← and ⌥→ show the space to the left and to the right (`docs/arc-sidebar.md` 7) wherever
+//! the keyboard isn't in text, where they stay a word back and on; ⌘⌥← and ⌘⌥→ from wherever it
+//! is, the chat's composer and a terminal included. A chat's prompt has the keyboard only when
+//! the person puts it there. At the first or last space the keys show nothing new, and in the
+//! Orca layout and on a settings page nothing at all.
 
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
@@ -9,7 +10,7 @@ use std::rc::Rc;
 
 use gpui_kit::{
     AnyWindowHandle, AppContext as _, Entity, FocusHandle, Focusable as _, KeyContext, KeyUpEvent,
-    Keystroke, Modifiers, PlatformInput, TestAppContext, VisualTestContext,
+    Keystroke, Modifiers, PlatformInput, TestAppContext, VisualTestContext, point, px,
 };
 
 use super::{act, arc_shell};
@@ -103,21 +104,15 @@ fn the_keys_show_the_space_beside_and_stop_at_the_ends(cx: &mut TestAppContext) 
     // With nothing focused, as when the window has just come forward.
     (cx.update_window(window, |_, window, cx| window.blur(cx))).unwrap();
     let [previous, next] = SPACES_MOVE;
-    assert_eq!(
-        (pressed(window, "cmd-alt-right", cx).0, space(cx)),
-        (next, 1)
-    );
+    assert_eq!((pressed(window, "alt-right", cx).0, space(cx)), (next, 1));
     // The last space: nothing past it, and no wrapping round to the first.
+    assert_eq!((pressed(window, "alt-right", cx).0, space(cx)), (next, 1));
     assert_eq!(
-        (pressed(window, "cmd-alt-right", cx).0, space(cx)),
-        (next, 1)
-    );
-    assert_eq!(
-        (pressed(window, "cmd-alt-left", cx).0, space(cx)),
+        (pressed(window, "alt-left", cx).0, space(cx)),
         (previous, 0)
     );
     assert_eq!(
-        (pressed(window, "cmd-alt-left", cx).0, space(cx)),
+        (pressed(window, "alt-left", cx).0, space(cx)),
         (previous, 0)
     );
     // From the shell's own focus, where the keyboard is with no tab's view in it.
@@ -139,7 +134,7 @@ fn the_keys_show_the_space_beside_from_the_file_tree_and_a_viewer(cx: &mut TestA
     listed(&tree, cx);
     let tree = cx.read(|cx| tree.read(cx).focus_handle().clone());
     focus(window, &tree, cx);
-    let action = pressed_in(window, "cmd-alt-right", "FilesTree", cx);
+    let action = pressed_in(window, "alt-right", "FilesTree", cx);
     assert_eq!((action, space(cx)), (SPACES_MOVE[1], 1));
 
     back_to_first(window, &shell, &app, cx);
@@ -153,7 +148,7 @@ fn the_keys_show_the_space_beside_from_the_file_tree_and_a_viewer(cx: &mut TestA
         unit.tabs[unit.active_tab].panes()[0].id
     });
     click_pane(window, pane, cx);
-    let action = pressed_in(window, "cmd-alt-right", "Viewer", cx);
+    let action = pressed_in(window, "alt-right", "Viewer", cx);
     assert_eq!((action, space(cx)), (SPACES_MOVE[1], 1));
 }
 
@@ -240,9 +235,21 @@ fn keyboard_at_window(
     at.unwrap()
 }
 
-/// A chat's prompt has the keyboard only when the person puts it there: a press in the sidebar
-/// takes it out, and another space shown leaves it at the window, its chat's prompt or not.
-/// Picking the chat's tab puts it back.
+/// Presses the chat shown, over its empty background high above the prompt.
+fn press_chat_background(window: AnyWindowHandle, shell: &Entity<Shell>, cx: &mut TestAppContext) {
+    draw(window, cx);
+    let pane = cx.read(|cx| shell.read(cx).workspace.tab_shown().unwrap().panes()[0].id);
+    let selector: &'static str = Box::leak(format!("pane-{pane}").into_boxed_str());
+    let mut vcx = VisualTestContext::from_window(window, cx);
+    let bounds = vcx.debug_bounds(selector).expect("the chat's pane");
+    let at = point(bounds.center().x, bounds.top() + px(80.));
+    vcx.simulate_click(at, Modifiers::default());
+}
+
+/// A chat's prompt has the keyboard only when the person puts it there: a press on the chat's
+/// background or in the sidebar takes it out, ⌥← and ⌥→ then move between spaces, and another
+/// space shown leaves it at the window, its chat's prompt or not. Picking the chat's tab puts
+/// it back.
 #[gpui_kit::test]
 fn a_chats_prompt_has_the_keyboard_only_when_the_person_puts_it_there(cx: &mut TestAppContext) {
     let (window, shell, app) = two_spaces("space-keys-prompt", cx);
@@ -256,7 +263,35 @@ fn a_chats_prompt_has_the_keyboard_only_when_the_person_puts_it_there(cx: &mut T
         "a new chat's prompt has it"
     );
 
-    // A press in the sidebar, where nothing takes the keyboard: out of the prompt, for good.
+    // A press on the chat's background: out of the prompt, for good.
+    press_chat_background(window, &shell, cx);
+    assert!(
+        keyboard_at_window(window, &shell, cx),
+        "pressed the chat's background"
+    );
+
+    // ⌥→ and ⌥← move between spaces now, the other space's chat leaving the keyboard be.
+    assert_eq!(
+        (pressed(window, "alt-right", cx).0, space(cx)),
+        (SPACES_MOVE[1], 1)
+    );
+    assert!(
+        keyboard_at_window(window, &shell, cx),
+        "the next space's chat"
+    );
+    assert_eq!(
+        (pressed(window, "alt-left", cx).0, space(cx)),
+        (SPACES_MOVE[0], 0)
+    );
+    assert!(
+        keyboard_at_window(window, &shell, cx),
+        "back in the first space"
+    );
+
+    // Its tab picked in the sidebar, the chat's prompt takes the keyboard; a press in the
+    // sidebar takes it out again.
+    shell.update(cx, |shell, cx| shell.pick_tab(0, 0, 0, cx));
+    assert!(!keyboard_at_window(window, &shell, cx), "its tab picked");
     let mut vcx = VisualTestContext::from_window(window, cx);
     let at = vcx
         .debug_bounds("arc-project-name")
@@ -265,33 +300,11 @@ fn a_chats_prompt_has_the_keyboard_only_when_the_person_puts_it_there(cx: &mut T
     vcx.simulate_click(at, Modifiers::default());
     assert!(
         keyboard_at_window(window, &shell, cx),
-        "pressed outside the prompt"
+        "pressed the sidebar"
     );
-
-    // The other space, its chat shown: the keyboard stays at the window, and back again too.
-    assert_eq!(
-        (pressed(window, "cmd-alt-right", cx).0, space(cx)),
-        (SPACES_MOVE[1], 1)
-    );
-    assert!(
-        keyboard_at_window(window, &shell, cx),
-        "the next space's chat"
-    );
-    assert_eq!(
-        (pressed(window, "cmd-alt-left", cx).0, space(cx)),
-        (SPACES_MOVE[0], 0)
-    );
-    assert!(
-        keyboard_at_window(window, &shell, cx),
-        "back in the first space"
-    );
-
-    // Its tab picked in the sidebar, the chat's prompt takes the keyboard.
-    shell.update(cx, |shell, cx| shell.pick_tab(0, 0, 0, cx));
-    assert!(!keyboard_at_window(window, &shell, cx), "its tab picked");
 }
 
-/// What ⌘⌥← and ⌘⌥→ run where they move between spaces, and ⌥← and ⌥→ in a text field.
+/// What the keys run where they move between spaces, and what ⌥← and ⌥→ run in a text field.
 const SPACES_MOVE: [Option<&str>; 2] = [Some("arc::PreviousSpace"), Some("arc::NextSpace")];
 const WORDS: [Option<&str>; 2] = [
     Some("input::MoveToPreviousWord"),
@@ -302,7 +315,9 @@ const WORDS: [Option<&str>; 2] = [
 /// can't run: in each key context stack the window can have, what ⌘⌥← and ⌘⌥→, and ⌥← and ⌥→,
 /// run, whatever order they were bound in.
 #[gpui_kit::test]
-fn the_keymap_has_the_spaces_on_command_option_arrows_everywhere(cx: &mut TestAppContext) {
+fn the_keymap_has_the_spaces_on_option_arrows_outside_text_and_command_option_arrows_everywhere(
+    cx: &mut TestAppContext,
+) {
     cx.update(|cx| {
         crate::init(cx);
         let keymap = cx.key_bindings();
@@ -316,11 +331,11 @@ fn the_keymap_has_the_spaces_on_command_option_arrows_everywhere(cx: &mut TestAp
             bindings.first().map(|binding| binding.action().name())
         };
         let terminal = [Some("terminal::SendText"); 2];
-        // Where spaces show, ⌘⌥← and ⌘⌥→ move them; ⌥← and ⌥→ are as each place has them.
+        // Where spaces show, ⌘⌥← and ⌘⌥→ move them; ⌥← and ⌥→ too, but where text keeps them.
         let places: &[(&[&str], [Option<&str>; 2])] = &[
-            (&["Root", SPACES], [None; 2]),
-            (&["Root", SPACES, "FilesTree"], [None; 2]),
-            (&["Root", SPACES, "Viewer"], [None; 2]),
+            (&["Root", SPACES], SPACES_MOVE),
+            (&["Root", SPACES, "FilesTree"], SPACES_MOVE),
+            (&["Root", SPACES, "Viewer"], SPACES_MOVE),
             (&["Root", SPACES, koyo_term::CONTEXT], terminal),
             (&["Root", SPACES, "ChatComposer", "Input"], WORDS),
             (&["Root", SPACES, "BrowserAddress", "Input"], WORDS),
@@ -338,6 +353,8 @@ fn the_keymap_has_the_spaces_on_command_option_arrows_everywhere(cx: &mut TestAp
         for stack in [&["Root"][..], &["Root", "Settings"]] {
             let command = [fires(stack, "cmd-alt-left"), fires(stack, "cmd-alt-right")];
             assert_eq!(command, [None; 2], "⌘⌥ in {stack:?}");
+            let plain = [fires(stack, "alt-left"), fires(stack, "alt-right")];
+            assert_eq!(plain, [None; 2], "⌥ in {stack:?}");
         }
     });
 }

@@ -178,7 +178,8 @@ Arc's favourites grid, holding the projects of the space shown.
 - Each space keeps its own theme (light and dark gradients), starting from the window's.
   Switching spaces switches the window's colours. In the Arc layout every theme edit goes to
   the space shown.
-- **⌘⌥←** and **⌘⌥→** show the space to the left and to the right, as a swipe does (section 7).
+- **⌥←** / **⌥→**, and **⌘⌥←** / **⌘⌥→**, show the space to the left and to the right, as a swipe does
+  (section 7).
   Settings → Keyboard shortcuts lists them under Spaces.
 
 ## 7. Bottom bar
@@ -192,17 +193,22 @@ Arc's favourites grid, holding the projects of the space shown.
   band past the first and last space. Let go, a spring takes it at the fingers' speed: a flick
   goes on to the next space, a slow short pull settles back. Going on, the space carries on out
   and the next comes in from the other side in the same motion, slowing to rest. A click on a
-  mark, a new space, and **⌘⌥←** / **⌘⌥→**, move the same way; with reduced motion the switch
-  is at once.
-- **⌘⌥←** and **⌘⌥→** (`arc::PreviousSpace`, `arc::NextSpace`) show the space to the left and
-  to the right, from wherever the keyboard is: the chat's composer, a terminal, the file editor,
-  a web page as much as the sidebar or nothing focused. Pressed again while a switch is under
-  way, they go on from the space it's headed for, so two presses go two spaces. At the first or
-  last space the space gives a little toward the side with none and springs back, as a swipe's
-  rubber band does; they never wrap round. Held, they repeat as the arrows do, a space a step.
-  In the Orca layout and on a settings page, where no spaces show, they do nothing. ⌥← and ⌥→
-  stay a word back and on in text: the chat's composer always has the keyboard, so they
-  couldn't move spaces as well.
+  mark, a new space, and the keys below move the same way; with reduced motion the switch is
+  at once.
+- **⌥←** and **⌥→** (`arc::PreviousSpace`, `arc::NextSpace`) show the space to the left and
+  to the right wherever the keyboard isn't in text: nothing focused, the sidebar, the file tree,
+  a viewer. In text they stay a word back and on: a terminal (its program gets `ESC b` /
+  `ESC f`), Koyo's text fields (the chat's prompt, the file editor, the address bar), and a web
+  page, the agent desktop or a phone or simulator, whose own text field Koyo can't see.
+  **⌘⌥←** and **⌘⌥→** do the same from wherever the keyboard is, the chat's prompt included.
+  Pressed again while a switch is under way, they go on from the space it's headed for. At the
+  first or last space the space gives a little toward the side with none and springs back, as
+  a swipe's rubber band does; they never wrap round. Held, they repeat as the arrows do. In the
+  Orca layout and on a settings page, where no spaces show, they do nothing.
+- A chat's prompt has the keyboard only when the person puts it there: pressed in, its tab
+  picked, a chat opened. A press outside it (the chat's background, its messages, the sidebar)
+  takes the keyboard to the window, and another space or project shown leaves it there, its
+  chat's prompt or not.
 - A space that isn't shown says on its mark what its tiles would (section 3), so a chat that
   finished there is noticed: a small indigo dot up and right of the mark while something in it
   waits for the person (a chat unread, failed or asking, a terminal waiting), the tiles'
@@ -241,7 +247,7 @@ Arc's favourites grid, holding the projects of the space shown.
   lists goes when the project's worktrees are next read.
 - A new project joins the space shown, and so do projects no space holds, as every project
   the first time this runs, into a first space made then. A project removed leaves its space.
-- ⌘⌥← and ⌘⌥→ change the space shown (`space`) one either way, as a swipe does, and only in the
+- ⌥← / ⌥→ and ⌘⌥← / ⌘⌥→ change the space shown (`space`) one either way, as a swipe does, and only in the
   Arc layout (section 7).
 - Selected another way (app control, the Orca layout, a link), a project's own space is
   shown. An empty space shows no project at all: the window shows none of another space's
