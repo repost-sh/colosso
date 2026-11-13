@@ -19,6 +19,7 @@ mod footer;
 mod markdown;
 mod missing;
 mod model_menu;
+mod outside;
 mod question;
 mod sending;
 mod suggest;
@@ -414,7 +415,8 @@ impl Render for ChatComposer {
                 cx,
             ))
             .child(self.footer(&typed, p, cx))
-            .children(self.suggestions(p, window, cx));
+            .children(self.suggestions(p, window, cx))
+            .on_mouse_down_out(cx.listener(Self::pressed_outside));
         // Measured round it, so what's measured is its glass, or its hairline where there's none.
         let placement = self.placement.clone();
         let surface = div()

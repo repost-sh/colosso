@@ -1,4 +1,4 @@
-//! ⌘⌥← and ⌘⌥→ as a person presses them (`docs/arc-sidebar.md` 7): they slide the space
+//! ⌥→, ⌘⌥← and ⌘⌥→ as a person presses them (`docs/arc-sidebar.md` 7): they slide the space
 //! over as a swipe does, a frame of it caught mid-way; at the last space the space gives and
 //! settles back; from a new chat's composer, where ⌥← and ⌥→ go a word back and on, ⌘⌥→ shows
 //! the next space all the same. Then Settings → Keyboard shortcuts, which lists them.
@@ -84,16 +84,16 @@ fn between_spaces(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
         .map_err(|error| error.to_string())?;
     drawn.draw()?;
 
-    let (action, _) = press(drawn, "cmd-alt-right")?;
+    let (action, _) = press(drawn, "alt-right")?;
     frames(drawn, 5, FRAME)?;
     let path = drawn.save("keys-sliding.png")?;
-    said.push(format!("saved {} (⌘⌥→ mid-slide)", path.display()));
+    said.push(format!("saved {} (⌥→ mid-slide)", path.display()));
     settle(drawn)?;
     let path = drawn.save("keys-next-space.png")?;
-    said.push(format!("⌘⌥→ ran {action:?}: space 0 → {}", space(drawn)));
+    said.push(format!("⌥→ ran {action:?}: space 0 → {}", space(drawn)));
     said.push(format!("saved {}", path.display()));
     if space(drawn) != 1 {
-        return Err("⌘⌥→ didn't show the second space".into());
+        return Err("⌥→ didn't show the second space".into());
     }
     press(drawn, "cmd-alt-right")?;
     settle(drawn)?;

@@ -32,7 +32,8 @@ actions!(
         CloseTab,
         SwitchTab,
         SwitchTabBack,
-        EditTheme
+        EditTheme,
+        KeysToWindow
     ]
 );
 
@@ -71,6 +72,11 @@ impl Shell {
     /// What the window does with its actions, presses and drags, wherever they land.
     pub(super) fn handle_actions(root: Div, cx: &mut Context<Self>) -> Div {
         root.on_action(cx.listener(|this, Navigate(route), _, cx| this.navigate(*route, cx)))
+            // A chat's prompt pressed outside of: the keyboard comes out of it, to stay out.
+            .on_action(cx.listener(|this, _: &KeysToWindow, window, cx| {
+                window.focus(&this.focus, cx);
+                this.leave_keys_at_window();
+            }))
             .on_action(cx.listener(Self::open_settings))
             .on_action(
                 cx.listener(|this, _: &CloseSettings, _, cx| this.navigate(Route::Workspace, cx)),
