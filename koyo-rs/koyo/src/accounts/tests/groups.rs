@@ -113,6 +113,20 @@ fn the_mark_heads_claudes_accounts_and_the_window_fits_as_they_change(cx: &mut T
     let ana = (drawn.debug_bounds("accounts-row-ana@example.com")).expect("ana is drawn");
     assert!(above.bottom() <= ana.top(), "{above:?} over {ana:?}");
     assert!(above.size.height > px(0.), "{above:?}");
+    // As far from the panel's edge over it as from ana's letters under it, which start 12 pt
+    // into her block (its 8 pt of padding, and 4 into the email's line); her block's tint under
+    // the pointer doesn't meet it. The edge is the menu's window's padding over the body, which
+    // is drawn here without it.
+    let over = above.top() + px(crate::menu::PADDING);
+    let (block, letters) = (
+        ana.top() - above.bottom(),
+        ana.top() + px(12.) - above.bottom(),
+    );
+    assert!(
+        (over - letters).abs() < px(0.5),
+        "{over:?} over it, {letters:?} under it"
+    );
+    assert!(block >= px(4.), "{block:?} to ana's block");
     // Another account, a note that wraps and what auto-switch did.
     let said = "Couldn't switch to bob@example.com: Claude Code's lock stayed held; try again.";
     let more = View {

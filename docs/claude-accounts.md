@@ -128,8 +128,10 @@ cswap's engine with its `weekly-first` strategy:
 - **The panel:** a glass panel anchored to the button, opening away from it
   (`menu::Trigger::toggle_panel` with a `MenuBody`, as `chat/composer/context.rs`), and fitting
   what it holds as that changes. The accounts are grouped by provider, each group headed once
-  by its provider's mark: a small monochrome vector in the small print's grey, its left edge
-  where the emails start, counted in the panel's height like every part. Anthropic's "A\\"
+  by its provider's mark: a monochrome vector 14 pt high in the small print's grey, its left
+  edge where the emails start, as far from the panel's edge over it as from the first email's
+  letters under it (16 pt each; a hovered account's tint stays 4 pt clear of it), counted in
+  the panel's height like every part. Anthropic's "A\\"
   heads the Claude logins, the only ones the accounts crate keeps; another provider's accounts
   would form a group of their own under its mark (`Provider` in `accounts/model.rs`, its mark
   in `accounts/mark.rs`). One block per account: email, plan badge, organisation, the
