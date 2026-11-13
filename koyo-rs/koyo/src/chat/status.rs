@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use gpui_kit::{App, Context, Div};
+use gpui_kit::{App, Context, Div, SharedString};
 use koyo_agent::protocol::ids::ThreadId;
 use koyo_agent::protocol::methods::{ThreadParams, ThreadsRead};
 use koyo_agent::protocol::model::{Status, ThreadSummary};
@@ -121,11 +121,19 @@ impl Shell {
         Some(mark.shown(format!("tab-{}", tab.first().id), p, cx))
     }
 
-    /// The marks of `tab`'s chats, those with something to show.
-    fn tab_chat_marks(&self, tab: &Tab, cx: &App) -> impl Iterator<Item = ChatMark> {
+    /// The summaries of `tab`'s chats, as the host last sent them.
+    fn tab_summaries<'a>(
+        &'a self,
+        tab: &'a Tab,
+        cx: &'a App,
+    ) -> impl Iterator<Item = &'a ThreadSummary> {
         let chats = self.chat_tabs.chats.read(cx);
-        (tab.panes().into_iter())
-            .filter_map(move |pane| chats.summary(pane.chat.as_ref()?).and_then(ChatMark::of))
+        (tab.panes().into_iter()).filter_map(move |pane| chats.summary(pane.chat.as_ref()?))
+    }
+
+    /// The marks of `tab`'s chats, those with something to show.
+    fn tab_chat_marks<'a>(&'a self, tab: &'a Tab, cx: &'a App) -> impl Iterator<Item = ChatMark> {
+        self.tab_summaries(tab, cx).filter_map(ChatMark::of)
     }
 
     /// The mark on the row of the checkout at `worktree`.
@@ -153,6 +161,15 @@ impl Shell {
         } else {
             Activity::Quiet
         }
+    }
+
+    /// What a chat's tab says under its title in the Arc sidebar (`docs/arc-sidebar.md` 5): the
+    /// start of what was said last in its chat, as the host sums it up.
+    pub fn tab_said(&self, tab: &Tab, cx: &App) -> Option<SharedString> {
+        let Tab::Single(_) = tab else {
+            return None;
+        };
+        Some(self.tab_summaries(tab, cx).next()?.said.clone()?.into())
     }
 
     /// How the checkout at `worktree` is doing, as a project's tile sums it up.

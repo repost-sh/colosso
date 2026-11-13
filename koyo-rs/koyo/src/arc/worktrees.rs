@@ -32,7 +32,7 @@ const ROW: f32 = 36.;
 const GAP: f32 = 2.;
 /// Between the worktrees: more than between a worktree's rows, so each header sits on its own
 /// tabs and the worktrees stand apart.
-const WORKTREE_GAP: f32 = 8.;
+const WORKTREE_GAP: f32 = 12.;
 /// The tabs' icons.
 pub(super) const TAB_ICON: f32 = 16.;
 
@@ -196,7 +196,7 @@ pub(super) fn takes_tabs(
 
 /// The tab `tab` at `at` as Arc's row: the one shown a pill, the others tinted while hovered,
 /// and at its end how it's doing (`sign`), or its × while it's hovered, or shown with nothing to
-/// say.
+/// say. A chat's, but for the tab shown's, says under its title what was said last in it.
 fn tab_row_of(
     shell: &Shell,
     at: (usize, usize, usize),
@@ -208,6 +208,8 @@ fn tab_row_of(
     let p = look.p;
     let (project_index, branch_index, tab_index) = at;
     let (activity, first) = (shell.tab_activity(tab, cx), tab.first().id);
+    // The tab shown shows its chat beside the sidebar, so what was said is said there.
+    let said = shell.tab_said(tab, cx).filter(|_| !active);
     let row = arc_row(("arc-tab", branch_index * 100 + tab_index))
         .group("arc-tab")
         .when(active, |row| row.bg(look.pill))
@@ -245,10 +247,26 @@ fn tab_row_of(
             .text_color(p.text.opacity(0.75))
             .child(face.icon(TAB_ICON));
         let end = div().relative().flex_shrink_0().children(mark).child(close);
-        row.pr(px(6.))
-            .child(icon)
-            .child(face.label().flex_1())
-            .child(end)
+        // With what was said, two lines in a row's height, as Arc's are; it's fainter than the
+        // labels, saying less than the title it's under.
+        let said = said.map(|said| {
+            ellipsized(said)
+                .debug_selector(move || format!("arc-tab-said-{first}"))
+                .text_xs()
+                .line_height(px(15.))
+                .text_color(look.label.opacity(0.75))
+        });
+        let title = div()
+            .flex_1()
+            .min_w_0()
+            .flex()
+            .flex_col()
+            .child(
+                face.label()
+                    .when(said.is_some(), |label| label.line_height(px(18.))),
+            )
+            .children(said);
+        row.pr(px(6.)).child(icon).child(title).child(end)
     })
 }
 

@@ -123,6 +123,7 @@ fn hear(drawn: &mut Drawn, (id, folder): (&str, &Path), status: Status, unread: 
         unread,
         tab_open: true,
         updated_at: Time("2026-11-10T10:00:00Z".into()),
+        said: None,
     };
     let chats = drawn.cx.read(|cx| drawn.shell.read(cx).chats().clone());
     (drawn.cx).update(|cx| chats.update(cx, |chats, cx| chats.hear_summaries(vec![summary], cx)));

@@ -72,6 +72,7 @@ fn chat(status: Status, needs: Option<RequestKind>, background: bool) -> ThreadS
         unread: false,
         tab_open: true,
         updated_at: Time("2026-11-07T09:00:00.000Z".into()),
+        said: None,
     }
 }
 

@@ -75,7 +75,8 @@ function unread(thread: Thread, state: State): boolean {
   return ended !== null && (thread.readAt === null || ended > thread.readAt);
 }
 
-export function summary(thread: Thread, state: State): ThreadSummary {
+/** `thread` as lists show it, `said` being what was said in it last as `opening` has it. */
+export function summary(thread: Thread, state: State, said: string | null): ThreadSummary {
   return {
     id: thread.id,
     cwd: thread.cwd,
@@ -93,5 +94,6 @@ export function summary(thread: Thread, state: State): ThreadSummary {
     unread: unread(thread, state),
     tabOpen: thread.tabOpen,
     updatedAt: thread.updatedAt,
+    said,
   };
 }

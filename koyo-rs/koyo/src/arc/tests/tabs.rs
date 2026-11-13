@@ -3,29 +3,18 @@
 //! person, at the row's end, where its × is.
 
 use gpui_kit::TestAppContext;
-use koyo_agent::protocol::ids::ThreadId;
-use koyo_agent::protocol::model::Status;
+use koyo_agent::protocol::model::{Status, ThreadSummary};
 use koyo_agent::protocol::requests::RequestKind;
 
-use super::{arc_shell, chat, drawn, hear};
+use super::{arc_shell, drawn, hear, tell, unseen_chat};
 use crate::chat::Activity;
-use crate::model::{Edge, Pane, PaneKind, Tab};
+use crate::model::Edge;
 use crate::test_support::draw;
 
 #[gpui_kit::test]
 fn a_tabs_row_says_its_chat_works_and_then_that_it_waits(cx: &mut TestAppContext) {
     let (window, shell, roots) = arc_shell(&["arc-tab-says"], cx);
-    // The chat's tab isn't the one shown, so nothing marks it seen.
-    let pane = shell.update(cx, |shell, cx| {
-        let mut pane = Pane::new(PaneKind::Chat);
-        pane.title = "A chat".into();
-        pane.chat = Some(ThreadId("0001".into()));
-        let id = pane.id;
-        shell.workspace.push_tab(Tab::Single(pane));
-        shell.workspace.push_tab(chat("another"));
-        cx.notify();
-        id
-    });
+    let pane = unseen_chat(&shell, cx);
     let worktree = roots[0].clone();
     let hear = |status, needs, unread, cx: &mut TestAppContext| {
         hear(&shell, ("0001", &worktree), (status, needs, unread), cx);
@@ -86,4 +75,30 @@ fn a_tabs_row_says_its_chat_works_and_then_that_it_waits(cx: &mut TestAppContext
     let spinner = working.expect("the spinner on the split's row");
     let row = drawn(window, "tab-0-0-0", cx).expect("the split's row");
     assert!(spinner.right() < row.center().x, "{spinner:?} in {row:?}");
+}
+
+#[gpui_kit::test]
+fn a_chats_row_says_what_was_said_last_unless_its_tab_is_shown(cx: &mut TestAppContext) {
+    let (window, shell, roots) = arc_shell(&["arc-tab-said"], cx);
+    let pane = unseen_chat(&shell, cx);
+    let summary = ThreadSummary {
+        said: Some("It shares a folder.".into()),
+        ..crate::chat::tests::summary("0001", &roots[0], "A chat", true)
+    };
+    tell(&shell, summary, cx);
+    draw(window, cx);
+    let said = format!("arc-tab-said-{pane}");
+    assert!(
+        drawn(window, said.clone(), cx).is_some(),
+        "under its title, its tab not shown"
+    );
+    shell.update(cx, |shell, cx| {
+        shell.workspace.select_tab(0, 0, 0);
+        cx.notify();
+    });
+    draw(window, cx);
+    assert!(
+        drawn(window, said, cx).is_none(),
+        "shown, its chat says it beside the sidebar"
+    );
 }

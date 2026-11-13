@@ -461,13 +461,31 @@ export function seedTitle(text: string): string {
   return line.length > SEED_TITLE ? `${line.slice(0, SEED_TITLE - 1).trimEnd()}…` : line;
 }
 
+/** The first line of `text` that isn't blank, trimmed. */
+function firstLine(text: string): string {
+  return text.split("\n").find((line) => line.trim() !== "")?.trim() ?? "";
+}
+
 /**
  * The title a model's `reply` makes: its first line that isn't empty, without the quotes and
  * markdown around it, at most six words; `undefined` when nothing is left.
  */
 export function titleFrom(reply: string): string | undefined {
-  const line = reply.split("\n").map((each) => each.trim()).find((each) => each !== "") ?? "";
-  const bare = line.replace(/^[\s"'`*#]+|[\s"'`*.]+$/gu, "");
+  const bare = firstLine(reply).replace(/^[\s"'`*#]+|[\s"'`*.]+$/gu, "");
   const words = bare.split(/\s+/u).filter((word) => word !== "").slice(0, TITLE_WORDS);
   return words.length === 0 ? undefined : words.join(" ");
+}
+
+/**
+ * What a list says was said last in a chat (`ThreadSummary.said`): the first line of `text`
+ * that isn't blank, without markdown's marks for a heading, a quote, an item or emphasis, its
+ * spaces closed up, at most 200 characters; null when nothing is left.
+ */
+export function opening(text: string): string | null {
+  const said = firstLine(text)
+    .replace(/^(#{1,6}\s+|>\s*|[-*+]\s+|\d+[.)]\s+)/u, "")
+    .replaceAll(/\*\*|__|`|~~/gu, "")
+    .replaceAll(/\s+/gu, " ")
+    .trim();
+  return said === "" ? null : said.slice(0, 200);
 }

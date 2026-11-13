@@ -16,8 +16,8 @@ import type {
 } from "../protocol/model";
 import { eventLine, HostError } from "../protocol/wire";
 import type { DriverEvent, ItemEvent } from "../providers/provider";
-import type { Change, Store } from "../store/store";
-import { lost, moved, notice, orphaned, queuedRun, settled, stopBy } from "./records";
+import type { Change, Said, Store } from "../store/store";
+import { lost, moved, notice, opening, orphaned, queuedRun, settled, stopBy } from "./records";
 import { isLive, isSettled, summary } from "./rules";
 import { LiveTurn } from "./turn";
 
@@ -47,6 +47,8 @@ export class ThreadState {
   #ended: Run | undefined;
   /** The requests that wait for the person, oldest first. */
   #pending: readonly Request[];
+  /** What was said last, where, and as lists show it (`opening`). */
+  #said: { readonly ordinal: number; readonly opening: string | null } | null;
   #ordinal: number;
   /** The mode the provider said its session runs in, for a chat that names none. */
   #mode: Mode | null = null;
@@ -70,6 +72,7 @@ export class ThreadState {
     this.#unsettled = state.unsettled;
     this.#ended = state.ended;
     this.#pending = state.pending;
+    this.#said = spoken(store.said(thread.id));
     this.#ordinal = store.nextOrdinal(thread.id);
   }
 
@@ -100,7 +103,7 @@ export class ThreadState {
 
   summary(): ThreadSummary {
     const state = { unsettled: this.#unsettled, ended: this.#ended, pending: this.#pending };
-    return summary(this.#thread, state);
+    return summary(this.#thread, state, this.#said?.opening ?? null);
   }
 
   live(): Run | undefined {
@@ -255,11 +258,21 @@ export class ThreadState {
       }
     }
     this.#pending = kept(this.#pending, committed.requests, (row) => row.status === "pending");
+    for (const item of committed.items) {
+      const text = item.kind === "user_message" || item.kind === "assistant_text"
+        ? item.payload.text
+        : "";
+      if (text !== "" && item.ordinal >= (this.#said?.ordinal ?? -1)) {
+        this.#said = spoken({ ordinal: item.ordinal, text });
+      }
+    }
     if (committed.runs.some((run) => run.status === "removed")) {
-      // What ended last, and what waits for the person, may be among what's gone.
+      // What ended last, what waits for the person and what was said last may be among
+      // what's gone.
       const state = this.#store.state(this.#thread.id);
       this.#ended = state.ended;
       this.#pending = state.pending;
+      this.#said = spoken(this.#store.said(this.#thread.id));
     }
     const turn = this.#turn;
     turn?.remember(committed.items);
@@ -392,4 +405,9 @@ function byId(a: { readonly id: string }, b: { readonly id: string }): number {
     return 0;
   }
   return a.id < b.id ? -1 : 1;
+}
+
+/** What was said last, as a thread's state keeps it: where, and as lists show it. */
+function spoken(said: Said | null): { ordinal: number; opening: string | null } | null {
+  return said === null ? null : { ordinal: said.ordinal, opening: opening(said.text) };
 }

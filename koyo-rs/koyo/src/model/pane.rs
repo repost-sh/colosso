@@ -2,10 +2,10 @@
 //! tab is shown; a file or the checkout's diffs; a terminal or a chat, by what knows them; the
 //! agent desktop's view, or a device's.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, LazyLock};
 
-use gpui_kit::{AnyView, App, Entity, Image, SharedString};
+use gpui_kit::{AnyView, App, Entity, Image, ImageFormat, SharedString};
 use koyo_agent::protocol::ids::ThreadId;
 
 use super::PaneKind;
@@ -17,6 +17,11 @@ use crate::files::FilePane;
 
 /// Ids for panes, never reused while the app runs.
 static NEXT_PANE: AtomicU64 = AtomicU64::new(1);
+/// Claude's logo, claude.ai's own icon: a single shape in Claude's orange.
+static CLAUDE: LazyLock<Arc<Image>> = LazyLock::new(|| {
+    let svg = include_bytes!("../chat/claude.svg").to_vec();
+    Arc::new(Image::from_bytes(ImageFormat::Svg, svg))
+});
 
 #[derive(Clone, Debug)]
 pub struct Pane {
@@ -183,13 +188,14 @@ impl Pane {
         self.view().is_some_and(|view| view.read(cx).is_inspector())
     }
 
-    /// The site's icon a browser pane's tab shows: its page's, or the one kept for its address
-    /// while it has no view.
+    /// The image a pane's tab shows for its icon: a browser pane's site's, its page's or the
+    /// one kept for its address while it has no view; a chat's, Claude's logo in its colour.
     pub fn favicon(&self, cx: &App) -> Option<Arc<Image>> {
         match &self.page {
             Some(Page::Made(view)) => view.read(cx).favicon(),
             Some(Page::Unloaded(unloaded)) => unloaded.favicon.clone(),
-            Some(Page::Desktop(_) | Page::Device(_)) | None => None,
+            Some(Page::Desktop(_) | Page::Device(_)) => None,
+            None => (self.kind == PaneKind::Chat).then(|| Arc::clone(&CLAUDE)),
         }
     }
 

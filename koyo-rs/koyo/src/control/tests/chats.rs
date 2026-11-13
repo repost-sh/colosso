@@ -34,6 +34,7 @@ pub(super) fn summary(id: &str, cwd: &Path, at: &str) -> ThreadSummary {
         unread: true,
         tab_open: false,
         updated_at: Time(at.into()),
+        said: None,
     }
 }
 

@@ -318,28 +318,37 @@ fn hear(
         unread,
         ..crate::chat::tests::summary(id, cwd, "A chat", true)
     };
+    tell(shell, summary, cx);
+}
+
+/// The chats' host sends `summary`.
+fn tell(shell: &Entity<Shell>, summary: ThreadSummary, cx: &mut TestAppContext) {
     let chats = shell.read_with(cx, |shell, _| shell.chats().clone());
     chats.update(cx, |chats, cx| chats.hear_summaries(vec![summary], cx));
     cx.run_until_parked();
 }
 
-#[gpui_kit::test]
-fn a_tab_and_its_projects_tile_say_when_a_chat_wants_the_person(cx: &mut TestAppContext) {
-    use koyo_agent::protocol::ids::ThreadId;
-
-    use crate::chat::Activity;
-
-    let (window, shell, roots) = arc_shell(&["arc-attention"], cx);
-    let thread = ThreadId("0001".into());
-    // The chat's tab isn't the one shown, so nothing marks it seen.
+/// A tab of chat `0001`, called "A chat", and another tab after it, shown, so nothing marks the
+/// chat seen: its pane.
+fn unseen_chat(shell: &Entity<Shell>, cx: &mut TestAppContext) -> u64 {
     shell.update(cx, |shell, cx| {
         let mut pane = Pane::new(PaneKind::Chat);
         pane.title = "A chat".into();
-        pane.chat = Some(thread.clone());
+        pane.chat = Some(koyo_agent::protocol::ids::ThreadId("0001".into()));
+        let id = pane.id;
         shell.workspace.push_tab(Tab::Single(pane));
         shell.workspace.push_tab(chat("another"));
         cx.notify();
-    });
+        id
+    })
+}
+
+#[gpui_kit::test]
+fn a_tab_and_its_projects_tile_say_when_a_chat_wants_the_person(cx: &mut TestAppContext) {
+    use crate::chat::Activity;
+
+    let (window, shell, roots) = arc_shell(&["arc-attention"], cx);
+    unseen_chat(&shell, cx);
     draw(window, cx);
     let worktree = roots[0].clone();
     let hear = |status, needs, unread, cx: &mut TestAppContext| {

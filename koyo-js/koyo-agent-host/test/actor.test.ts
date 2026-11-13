@@ -65,6 +65,8 @@ describe("a turn", () => {
     expect(session.spec.resume).toBe(false);
     expect(chats.actor.thread.sessionId).toBe(session.spec.sessionId);
     expect(chats.actor.thread.title).toBe("Find the flaky test.");
+    // What was said last, for the tab's row: the prompt, until the reply has words.
+    expect(chats.actor.summary().said).toBe("Find the flaky test.");
     session.started();
     session.startsText("m1:0");
     session.report({ type: "item.appended", key: "m1:0", text: "It shares " });
@@ -85,7 +87,11 @@ describe("a turn", () => {
       ["assistant_text", "completed"],
     ]);
     expect(textOf(items)).toBe("It shares a folder.");
-    expect(chats.actor.summary()).toMatchObject({ status: "idle", unread: true });
+    expect(chats.actor.summary()).toMatchObject({
+      status: "idle",
+      unread: true,
+      said: "It shares a folder.",
+    });
   });
 
   test("answers a send repeated from what it became, and sends it once", async () => {
