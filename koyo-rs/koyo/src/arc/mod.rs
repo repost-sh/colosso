@@ -138,6 +138,9 @@ pub fn sidebar(shell: &Shell, window: &mut Window, cx: &mut Context<Shell>) -> i
         .flex_col()
         .gap(px(GAP))
         .on_scroll(cx.listener(Shell::swipe))
+        // A press in the sidebar takes the keyboard out of the pane it was in, a chat's prompt
+        // say, to the window, where it stays until the person picks a tab or presses in a pane.
+        .on_mouse_down(MouseButton::Left, cx.listener(Shell::keys_to_window))
         .on_mouse_down(MouseButton::Right, cx.listener(Shell::show_space_menu))
         .child(top::address_bar(shell, look, window, cx))
         .child(space)
