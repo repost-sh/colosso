@@ -30,7 +30,7 @@ pub(crate) use view::row;
 /// person agrees to, so it's never cut.
 const WIDTH: f32 = 220.;
 const MAX_WIDTH: f32 = 420.;
-pub(crate) const PADDING: f32 = 5.;
+pub(crate) const PADDING: f32 = 4.;
 /// How tall a line of a label is; what a row adds past its first.
 const LABEL_LINE: f32 = 18.;
 pub(crate) const ROW_PADDING: f32 = 8.;

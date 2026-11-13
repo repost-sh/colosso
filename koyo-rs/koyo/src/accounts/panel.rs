@@ -26,7 +26,7 @@ use koyo_accounts::oauth::format_countdown;
 use super::mark::mark;
 use super::model::{Bar, Provider, Row, View};
 use super::{Accounts, Job, words};
-use crate::menu::MenuBody;
+use crate::menu::{self, MenuBody};
 use crate::settings_view::SettingsPage;
 use crate::theme::{self, Palette};
 use crate::wrapped::wrapped_lines;
@@ -36,8 +36,14 @@ pub(super) const WIDTH: f32 = 310.;
 /// Round an account's block.
 const INSET_X: f32 = 10.;
 const INSET_Y: f32 = 8.;
-/// A provider's mark over its accounts: how tall it's drawn.
-const MARK: f32 = 10.;
+/// A provider's mark over its accounts, and how tall it's drawn.
+const MARK: f32 = 14.;
+/// Under the mark, to its first account's block, whose tint under the pointer never meets it.
+const UNDER_MARK: f32 = 4.;
+/// How far an email's letters are into its line.
+const EMAIL_INK: f32 = 4.;
+/// Over the mark: the panel's edge is as far over it as the first email's letters are under it.
+const OVER_MARK: f32 = UNDER_MARK + INSET_Y + EMAIL_INK - menu::PADDING;
 /// The email's line, and the type of it.
 const HEADER: f32 = 18.;
 const TITLE_SIZE: Pixels = px(13.);
@@ -213,15 +219,19 @@ pub(super) fn level(percent: Option<f64>, line: f64, calm: Hsla, p: Palette) -> 
 }
 
 /// `provider`'s mark over its accounts, in the muted grey of the small print, its left edge
-/// where the emails start.
+/// where the emails start, as far from the panel's edge over it as from the first email's
+/// letters under it.
 fn heading(provider: Provider, p: Palette) -> Part {
-    let heading = div()
+    let mark = mark(provider, MARK)
         .debug_selector(move || format!("accounts-mark-{provider:?}"))
+        .text_color(p.muted);
+    let heading = div()
         .flex()
         .pl(px(INSET_X + INDENT))
-        .pt(px(INSET_Y))
-        .child(mark(provider, MARK).text_color(p.muted));
-    (heading.into_any_element(), INSET_Y + MARK)
+        .pt(px(OVER_MARK))
+        .pb(px(UNDER_MARK))
+        .child(mark);
+    (heading.into_any_element(), OVER_MARK + MARK + UNDER_MARK)
 }
 
 /// An email's line: the dot, lit for the Mac's login, the email, and what's at its end.
