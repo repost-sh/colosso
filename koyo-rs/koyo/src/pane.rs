@@ -13,6 +13,11 @@ use crate::theme::Palette;
 
 /// How wide a tab's close button draws its X.
 pub const CLOSE: f32 = 12.;
+/// A button in a row down the sidebar, a worktree's header's `…` or `+` or a tab's ×: Arc's
+/// size, bigger than a tab bar's.
+pub const ROW_BUTTON: f32 = 24.;
+/// What a sidebar row's button draws.
+pub const ROW_GLYPH: f32 = 18.;
 
 /// A tab's close button: an X, lit when the pointer's over it.
 pub fn close_button(id: impl Into<ElementId>, p: Palette) -> Stateful<Div> {
@@ -32,6 +37,11 @@ pub fn dot(color: Hsla) -> Div {
 /// The dot that marks a file with unsaved edits, on its tab and in the switcher.
 pub fn unsaved_dot(p: Palette) -> Div {
     dot(p.text)
+}
+
+/// `button`, a tab's, at a sidebar row's size.
+pub fn row_sized(button: Stateful<Div>) -> Stateful<Div> {
+    button.size(px(ROW_BUTTON)).rounded(px(6.))
 }
 
 /// A small square button in a tab, lit when hovered, without what's drawn in it.

@@ -19,11 +19,11 @@ use super::tiles::key_of;
 use super::{Look, space_colour, space_dot};
 use crate::chat::{Activity, spinner};
 use crate::model::{BranchUnit, Tab};
-use crate::pane::dot;
+use crate::pane::{ROW_GLYPH, dot, row_sized};
 use crate::settings;
 use crate::shell::{
     Dragged, DraggedPane, Drop, MOTION, Reorder, Shell, add_project_row, ellipsized, project_error,
-    tab_close_button, tab_list, tab_row,
+    tab_close_button, tab_list, tab_row, title_with_end,
 };
 
 /// A tab's row, and a worktree's header.
@@ -35,15 +35,8 @@ const GAP: f32 = 2.;
 const WORKTREE_GAP: f32 = 12.;
 /// The tabs' icons.
 pub(super) const TAB_ICON: f32 = 16.;
-/// A row's buttons, as big as Arc's: a header's `…` and `+`, a tab's ×.
-const BUTTON: f32 = 24.;
-/// What a row's buttons draw.
-pub(super) const GLYPH: f32 = 18.;
-
-/// `button` as big as a row's buttons are, Arc's size rather than a tab's.
-pub(super) fn arc_button(button: Stateful<Div>) -> Stateful<Div> {
-    button.size(px(BUTTON)).rounded(px(6.))
-}
+/// How far in from a row's end what's there sits: a header's `…` and `+`, a tab's ×.
+pub(super) const ROW_END: f32 = 6.;
 
 /// The list the worktrees of the project at `project` are dragged along.
 pub(super) fn list_of(project: usize) -> u64 {
@@ -221,6 +214,7 @@ fn tab_row_of(
     let said = shell.tab_said(tab, cx).filter(|_| !active);
     let row = arc_row(("arc-tab", branch_index * 100 + tab_index))
         .group("arc-tab")
+        .pr(px(ROW_END))
         .when(active, |row| row.bg(look.pill))
         .when(!active, |row| row.hover(|style| style.bg(look.row_hover)))
         .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
@@ -246,8 +240,10 @@ fn tab_row_of(
         // Shown on the tab shown, and on the others while hovered; a dot for unsaved edits
         // always. What the row says of its tab has the ×'s place until the pointer's on it.
         let hidden = !face.dirty && (!active || mark.is_some());
-        let close = tab_close_button(close, at, (face.dirty, GLYPH), p, cx);
-        let close = arc_button(close).when(hidden, |close| {
+        // Something's at its end, or only once the pointer's on the row.
+        let shown = !hidden || mark.is_some();
+        let close = tab_close_button(close, at, (face.dirty, ROW_GLYPH), p, cx);
+        let close = row_sized(close).when(hidden, |close| {
             close
                 .opacity(0.)
                 .group_hover("arc-tab", |style| style.opacity(1.))
@@ -256,7 +252,7 @@ fn tab_row_of(
             .flex_shrink_0()
             .text_color(p.text.opacity(0.75))
             .child(face.icon(TAB_ICON));
-        let end = div().relative().flex_shrink_0().children(mark).child(close);
+        let end = div().relative().children(mark).child(close);
         // With what was said, two lines in a row's height, as Arc's are; it's fainter than the
         // labels, saying less than the title it's under.
         let said = said.map(|said| {
@@ -267,8 +263,8 @@ fn tab_row_of(
                 .text_color(look.label.opacity(0.75))
         });
         let title = div()
-            .flex_1()
-            .min_w_0()
+            .id(("arc-tab-title", first))
+            .debug_selector(move || format!("arc-tab-title-{first}"))
             .flex()
             .flex_col()
             .child(
@@ -276,7 +272,8 @@ fn tab_row_of(
                     .when(said.is_some(), |label| label.line_height(px(18.))),
             )
             .children(said);
-        row.pr(px(6.)).child(icon).child(title).child(end)
+        let title = title_with_end(title, end, shown, "arc-tab");
+        row.child(icon).child(title)
     })
 }
 

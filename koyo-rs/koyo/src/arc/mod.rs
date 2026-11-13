@@ -70,7 +70,7 @@ impl Look {
                 tile: gray(1., 0.1),
                 tile_hover: gray(1., 0.15),
                 tile_selected: gray(1., 0.24),
-                pill: gray(1., 0.24),
+                pill: gray(1., 0.18),
                 row_hover: gray(1., 0.08),
                 label: gray(1., 0.55),
             }
@@ -81,7 +81,7 @@ impl Look {
                 tile: gray(1., 0.35),
                 tile_hover: gray(1., 0.5),
                 tile_selected: gray(1., 0.8),
-                pill: gray(1., 0.75),
+                pill: gray(1., 0.6),
                 row_hover: gray(1., 0.3),
                 label: gray(0., 0.5),
             }

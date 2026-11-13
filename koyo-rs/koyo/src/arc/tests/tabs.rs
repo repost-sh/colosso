@@ -2,7 +2,7 @@
 //! the spinner while a chat in it is at work, an indigo dot once something in it waits for the
 //! person, at the row's end, where its × is.
 
-use gpui_kit::TestAppContext;
+use gpui_kit::{Modifiers, TestAppContext, VisualTestContext, point, px};
 use koyo_agent::protocol::model::{Status, ThreadSummary};
 use koyo_agent::protocol::requests::RequestKind;
 
@@ -40,7 +40,7 @@ fn a_tabs_row_says_its_chat_works_and_then_that_it_waits(cx: &mut TestAppContext
     let spinner = working.expect("the spinner on the row of the chat at work");
     let row = drawn(window, "tab-0-0-0", cx).expect("the chat's row");
     assert!(
-        row.right() - spinner.right() < gpui_kit::px(16.),
+        row.right() - spinner.right() < px(16.),
         "{spinner:?} in {row:?}"
     );
     assert!(spinner.left() > row.center().x);
@@ -100,5 +100,54 @@ fn a_chats_row_says_what_was_said_last_unless_its_tab_is_shown(cx: &mut TestAppC
     assert!(
         drawn(window, said, cx).is_none(),
         "shown, its chat says it beside the sidebar"
+    );
+}
+
+#[gpui_kit::test]
+fn a_tabs_title_runs_on_to_its_rows_end_until_the_pointers_on_it(cx: &mut TestAppContext) {
+    let (window, shell, _) = arc_shell(&["arc-tab-title"], cx);
+    let pane = unseen_chat(&shell, cx);
+    draw(window, cx);
+    let title = format!("arc-tab-title-{pane}");
+    let row = drawn(window, "tab-0-0-0", cx).expect("the chat's row");
+    let alone = drawn(window, title.clone(), cx).expect("its title");
+    assert!(
+        row.right() - alone.right() <= px(6.),
+        "nothing at its end, the title runs on to it: {alone:?} in {row:?}"
+    );
+    let mut vcx = VisualTestContext::from_window(window, cx);
+    vcx.simulate_mouse_move(row.center(), None, Modifiers::default());
+    draw(window, cx);
+    let hovered = drawn(window, title, cx).expect("its title, hovered");
+    assert!(
+        hovered.right() <= alone.right() - px(24.),
+        "hovered, it makes room for the ×: {hovered:?}, from {alone:?}"
+    );
+}
+
+#[gpui_kit::test]
+fn a_splits_pane_shows_its_x_while_the_pointers_on_it(cx: &mut TestAppContext) {
+    let (window, shell, _) = arc_shell(&["arc-split-close"], cx);
+    unseen_chat(&shell, cx);
+    let right = shell.update(cx, |shell, cx| {
+        let unit = shell.workspace.branch_mut().expect("a checkout");
+        let (beside, right) = (unit.tabs[0].first().id, unit.tabs[1].first().id);
+        assert!(
+            unit.drop_tab(1, beside, Edge::Right),
+            "the two chats side by side"
+        );
+        cx.notify();
+        right
+    });
+    draw(window, cx);
+    let row = drawn(window, "tab-0-0-0", cx).expect("the split's row");
+    // The pointer on the right pane, three quarters along the row.
+    let on = point(row.left() + row.size.width * 0.75, row.center().y);
+    VisualTestContext::from_window(window, cx).simulate_mouse_move(on, None, Modifiers::default());
+    draw(window, cx);
+    let close = drawn(window, format!("pane-chip-close-{right}"), cx).expect("its ×");
+    assert!(
+        close.left() > row.center().x && close.right() <= row.right() - px(6.),
+        "its × shows at its end, in the row: {close:?} in {row:?}"
     );
 }

@@ -20,12 +20,12 @@ use gpui_kit::{
 use super::Look;
 use super::actions::ClearWorktree;
 use super::tiles::DraggedTile;
-use super::worktrees::{GLYPH, arc_button, arc_row, list_of, takes_tabs};
+use super::worktrees::{ROW_END, arc_row, list_of, takes_tabs};
 use crate::launcher::NewTab;
 use koyo_git::Head;
 
 use crate::model::BranchUnit;
-use crate::pane::tab_button;
+use crate::pane::{ROW_GLYPH, row_sized, tab_button};
 use crate::projects::{DeleteWorktree, path_items};
 use crate::settings;
 use crate::shell::{Shell, ellipsized, icon};
@@ -54,15 +54,15 @@ pub(super) fn header(
         shown
     };
     let at = (project, branch);
-    let more = arc_button(tab_button(("arc-header-more", branch), look.p))
+    let more = row_sized(tab_button(("arc-header-more", branch), look.p))
         .debug_selector(move || format!("arc-header-more-{branch}"))
-        .child(icon(IconName::Ellipsis, GLYPH))
+        .child(icon(IconName::Ellipsis, ROW_GLYPH))
         .on_mouse_down(MouseButton::Left, opens_menu(at, cx));
     // The launcher opens its tab on the selected worktree, so this one is selected, and opened,
     // on the press that opens it.
-    let new_tab = arc_button(tab_button(("arc-header-new-tab", branch), look.p))
+    let new_tab = row_sized(tab_button(("arc-header-new-tab", branch), look.p))
         .debug_selector(move || format!("arc-header-new-tab-{branch}"))
-        .child(icon(IconName::Plus, GLYPH))
+        .child(icon(IconName::Plus, ROW_GLYPH))
         .on_mouse_down(
             MouseButton::Left,
             cx.listener(move |this, _, _, cx| {
@@ -82,7 +82,7 @@ pub(super) fn header(
     let hand = shell.worktree_hand.clone();
     let header = arc_row(("arc-header", branch))
         .debug_selector(move || format!("arc-header-{branch}"))
-        .pr(px(6.))
+        .pr(px(ROW_END))
         // Its name smaller and lighter than the tabs' titles, a label over them.
         .text_xs()
         .font_weight(FontWeight::MEDIUM)
