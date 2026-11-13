@@ -33,18 +33,14 @@ actions!(
 /// The shell root's key context where the Arc sidebar shows the spaces, in the workspace.
 pub const SPACES: &str = "Spaces";
 
-/// Where ⌥← and ⌥→ show the space to the left and to the right (`docs/arc-sidebar.md` 7): the
-/// spaces' context, which a binding with no context would outrank, so a terminal's and a text
-/// field's own ⌥← and ⌥→, a word back and on, bound deeper, win. A web page, an app on the
-/// agent's desktop and a phone or simulator may have a text field Koyo can't see into, so
-/// there they stay keys, which the view's key handler hands on.
-const SPACE_KEYS: &str = "Spaces && !BrowserPage && !AgentDesktop && !Device";
-
-/// Binds ⌥← and ⌥→ where [`SPACE_KEYS`] says.
+/// ⌘⌥← and ⌘⌥→ show the space to the left and to the right (`docs/arc-sidebar.md` 7), from
+/// wherever the keyboard is, the chat's composer included, as nothing under the shell binds
+/// them. Bound to the spaces' context, so they're unbound where no spaces show. ⌥← and ⌥→ stay
+/// a word back and on in text.
 pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
-        KeyBinding::new("alt-left", PreviousSpace, Some(SPACE_KEYS)),
-        KeyBinding::new("alt-right", NextSpace, Some(SPACE_KEYS)),
+        KeyBinding::new("cmd-alt-left", PreviousSpace, Some(SPACES)),
+        KeyBinding::new("cmd-alt-right", NextSpace, Some(SPACES)),
     ]);
 }
 

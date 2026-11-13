@@ -203,13 +203,7 @@ fn program_keys(drawn: &mut Drawn) -> Result<()> {
     wait(drawn, "a command on the emptied line", |text| {
         text.lines().any(|line| line == "keys-reached")
     })?;
-    // ⌥← and ⌥→ go a word back and on, though in the Arc layout they move between spaces
-    // anywhere but in text: "one Xtwo" with an X typed a word back, and a Y at the end.
-    let layout = drawn.cx.read(|cx| settings::get(cx).layout);
-    drawn.cx.update(|cx| {
-        settings::update(cx, |settings| settings.layout = settings::Layout::Arc);
-    });
-    drawn.draw()?;
+    // ⌥← and ⌥→ go a word back and on: "one XtwoY", an X typed a word back, a Y at the end.
     type_keys(drawn, "echo one two")?;
     press(drawn, "alt-left")?;
     type_keys(drawn, "X")?;
@@ -218,11 +212,7 @@ fn program_keys(drawn: &mut Drawn) -> Result<()> {
     press(drawn, "enter")?;
     wait(drawn, "⌥← and ⌥→ to move a word", |text| {
         text.lines().any(|line| line == "one XtwoY")
-    })?;
-    drawn
-        .cx
-        .update(|cx| settings::update(cx, |settings| settings.layout = layout));
-    drawn.draw()
+    })
 }
 
 /// A word chosen by a double click and a run of cells by a drag, read back as Copy reads
