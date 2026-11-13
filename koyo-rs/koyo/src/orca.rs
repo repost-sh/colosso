@@ -34,6 +34,8 @@ pub fn sidebar(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
         .flex()
         .flex_col()
         .gap_px()
+        // As in the Arc sidebar, a press here takes the keyboard out of the pane it was in.
+        .on_mouse_down(MouseButton::Left, cx.listener(Shell::keys_to_window))
         .child(search_field(&shell.search, p))
         .child(
             section_label(p)
@@ -176,13 +178,11 @@ pub fn tab_strip(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
                 .overflow_hidden()
                 .when(!active, |tab| tab.text_color(p.muted))
                 .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
-                    this.workspace
-                        .select_tab(project_index, branch_index, tab_index);
+                    this.pick_tab(project_index, branch_index, tab_index, cx);
                     // A second click keeps a previewed file open.
                     if event.click_count() > 1 {
                         this.keep_tab(at, cx);
                     }
-                    cx.notify();
                 }))
                 .on_mouse_down(
                     MouseButton::Middle,

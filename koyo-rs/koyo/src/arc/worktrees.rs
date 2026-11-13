@@ -209,13 +209,11 @@ fn tab_row_of(
         .when(active, |row| row.bg(look.pill))
         .when(!active, |row| row.hover(|style| style.bg(look.row_hover)))
         .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
-            this.workspace
-                .select_tab(project_index, branch_index, tab_index);
+            this.pick_tab(project_index, branch_index, tab_index, cx);
             // A second click keeps a previewed file open.
             if event.click_count() > 1 {
                 this.keep_tab(at, cx);
             }
-            cx.notify();
         }))
         .on_mouse_down(
             MouseButton::Middle,

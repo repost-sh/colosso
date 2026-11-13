@@ -9,7 +9,7 @@ use std::rc::Rc;
 
 use gpui_kit::{
     AnyWindowHandle, AppContext as _, Entity, FocusHandle, Focusable as _, KeyContext, KeyUpEvent,
-    Keystroke, PlatformInput, TestAppContext,
+    Keystroke, Modifiers, PlatformInput, TestAppContext, VisualTestContext,
 };
 
 use super::{act, arc_shell};
@@ -222,6 +222,73 @@ fn the_keys_move_nothing_in_the_orca_layout_or_the_settings(cx: &mut TestAppCont
         (pressed(window, "cmd-alt-right", cx).0, space(cx)),
         (None, 0)
     );
+}
+
+/// Whether the shell's own focus has the keyboard after a few frames, where a pane that would
+/// take it back has had its chance.
+fn keyboard_at_window(
+    window: AnyWindowHandle,
+    shell: &Entity<Shell>,
+    cx: &mut TestAppContext,
+) -> bool {
+    for _ in 0..3 {
+        draw(window, cx);
+    }
+    let at = cx.update_window(window, |_, window, cx| {
+        shell.read(cx).focus.is_focused(window)
+    });
+    at.unwrap()
+}
+
+/// A chat's prompt has the keyboard only when the person puts it there: a press in the sidebar
+/// takes it out, and another space shown leaves it at the window, its chat's prompt or not.
+/// Picking the chat's tab puts it back.
+#[gpui_kit::test]
+fn a_chats_prompt_has_the_keyboard_only_when_the_person_puts_it_there(cx: &mut TestAppContext) {
+    let (window, shell, app) = two_spaces("space-keys-prompt", cx);
+    // A chat in each space, the first's prompt with the keyboard.
+    shell.update(cx, |shell, cx| shell.show_space(1, cx));
+    new_chat(window, cx);
+    back_to_first(window, &shell, &app, cx);
+    new_chat(window, cx);
+    assert!(
+        !keyboard_at_window(window, &shell, cx),
+        "a new chat's prompt has it"
+    );
+
+    // A press in the sidebar, where nothing takes the keyboard: out of the prompt, for good.
+    let mut vcx = VisualTestContext::from_window(window, cx);
+    let at = vcx
+        .debug_bounds("arc-project-name")
+        .expect("the project's name")
+        .center();
+    vcx.simulate_click(at, Modifiers::default());
+    assert!(
+        keyboard_at_window(window, &shell, cx),
+        "pressed outside the prompt"
+    );
+
+    // The other space, its chat shown: the keyboard stays at the window, and back again too.
+    assert_eq!(
+        (pressed(window, "cmd-alt-right", cx).0, space(cx)),
+        (SPACES_MOVE[1], 1)
+    );
+    assert!(
+        keyboard_at_window(window, &shell, cx),
+        "the next space's chat"
+    );
+    assert_eq!(
+        (pressed(window, "cmd-alt-left", cx).0, space(cx)),
+        (SPACES_MOVE[0], 0)
+    );
+    assert!(
+        keyboard_at_window(window, &shell, cx),
+        "back in the first space"
+    );
+
+    // Its tab picked in the sidebar, the chat's prompt takes the keyboard.
+    shell.update(cx, |shell, cx| shell.pick_tab(0, 0, 0, cx));
+    assert!(!keyboard_at_window(window, &shell, cx), "its tab picked");
 }
 
 /// What ⌘⌥← and ⌘⌥→ run where they move between spaces, and ⌥← and ⌥→ in a text field.

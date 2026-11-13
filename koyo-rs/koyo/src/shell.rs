@@ -82,6 +82,8 @@ pub struct Shell {
     /// settles it.
     pub swipe: arc::Swipe,
     pub focus: FocusHandle,
+    /// The tab, by its first pane, the keyboard was left at the window on (`keys_to_window`).
+    pub(crate) keys_left: Option<u64>,
     /// What the sidebar's search field narrows its worktrees to.
     pub search: Entity<InputState>,
     /// Where the rails or the Arc sidebar were last right-clicked, for the theme picker their
@@ -190,6 +192,7 @@ impl Shell {
             status_bar,
             terminals: crate::terminals::Terminals::default(),
             chat_tabs,
+            keys_left: None,
             kept,
             swipe: arc::Swipe::default(),
             focus,

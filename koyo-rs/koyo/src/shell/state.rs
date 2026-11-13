@@ -2,7 +2,9 @@
 //! and sets them: the sidebar, the bottom panel, the settings pages, and the pane the person
 //! is in, which has the keyboard or had it last.
 
-use gpui_kit::{App, AppContext as _, Context, Entity, FocusHandle, Focusable as _, Window};
+use gpui_kit::{
+    App, AppContext as _, Context, Entity, FocusHandle, Focusable as _, MouseDownEvent, Window,
+};
 
 use super::Shell;
 use crate::files::FilePane;
@@ -155,16 +157,59 @@ impl Shell {
         panes.into_iter().find(held).map(|pane| pane.id)
     }
 
+    /// The keyboard goes out of the shown tab's pane that has it, a chat's prompt say, to the
+    /// window itself, and stays there. A field the press has just put it in, the sidebar's own,
+    /// keeps it.
+    pub(crate) fn keys_to_window(
+        &mut self,
+        _: &MouseDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.pane_with_keyboard(window, cx).is_some() {
+            window.focus(&self.focus, cx);
+        }
+        self.leave_keys_at_window();
+    }
+
+    /// The tab shown now doesn't take the keyboard when the window has it: another space or
+    /// project has just been shown, or the person pressed outside its panes.
+    pub(crate) fn leave_keys_at_window(&mut self) {
+        self.keys_left = self.shown_tab();
+    }
+
+    /// The tab shown, by its first pane.
+    fn shown_tab(&self) -> Option<u64> {
+        Some(self.workspace.tab_shown()?.panes().first()?.id)
+    }
+
+    /// Shows the tab at `tab` of the checkout at `branch` of `project`, as a press on its row
+    /// does: one of its panes takes the keyboard, even where it was left at the window.
+    pub(crate) fn pick_tab(
+        &mut self,
+        project: usize,
+        branch: usize,
+        tab: usize,
+        cx: &mut Context<Self>,
+    ) {
+        self.workspace.select_tab(project, branch, tab);
+        self.keys_left = None;
+        cx.notify();
+    }
+
     /// Shown with nothing else holding the keyboard, a pane of the tab takes it, so its keys
-    /// work as soon as its tab is picked in the sidebar: the pane the person was in, a file
-    /// among them, else the tab's first terminal, chat or page. Only then, as reading a view
+    /// work as soon as its tab is picked in the sidebar or opened: the pane the person was in,
+    /// a file among them, else the tab's first terminal, chat or page. Not where the keyboard
+    /// was left at the window for this tab (`leave_keys_at_window`): a chat's prompt doesn't
+    /// take it just for being in the space or project shown. Only then, as reading a view
     /// while the window draws makes it draw again whenever that view changes.
     pub(super) fn give_shown_tab_the_keyboard(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.focus.is_focused(window) {
+        let left = self.keys_left.is_some() && self.keys_left == self.shown_tab();
+        if left || !self.focus.is_focused(window) {
             return;
         }
         let Some(tab) = self.workspace.tab_shown() else {
