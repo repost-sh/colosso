@@ -18,6 +18,7 @@ use koyo_browser_ipc::{Cursor, HostEvent, PaneId};
 use std::os::raw::c_int;
 
 mod favicon;
+mod keys;
 mod prompts;
 
 /// The client a pane's browser is created with; `devtools` for a `DevTools`
@@ -65,6 +66,9 @@ wrap_client! {
         }
         fn frame_handler(&self) -> Option<FrameHandler> {
             Some(PaneFrames::new(self.pane))
+        }
+        fn keyboard_handler(&self) -> Option<cef::KeyboardHandler> {
+            host::native().then(|| keys::keys(self.pane))
         }
         fn on_process_message_received(
             &self,
@@ -298,8 +302,9 @@ wrap_display_handler! {
             _custom_cursor_info: Option<&CursorInfo>,
         ) -> c_int {
             host::cursor_changed(self.pane, cursor(type_));
-            // The app draws the pointer; CEF must not touch NSCursor.
-            1
+            // The app draws the pointer over an off-screen page, and CEF must not touch
+            // NSCursor; a native page's pointer is Chromium's to set.
+            c_int::from(!host::native())
         }
     }
 }

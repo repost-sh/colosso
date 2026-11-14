@@ -4,8 +4,10 @@ use super::frames::new_ring;
 use super::inspect::{cdp_failed, to_page};
 use super::{Pane, Queued, browser_of, enqueue, handle, host_of, send, with, with_pane};
 use cef::{
-    Browser, BrowserSettings, ImplBrowser, ImplBrowserHost, ImplFrame, ImplTask, RequestContext,
-    RequestContextSettings, Task, ThreadId, WindowInfo, WrapTask, rc::Rc, wrap_task,
+    Browser, BrowserSettings, ImplBrowser, ImplBrowserHost, ImplFrame, ImplRequestContextHandler,
+    ImplTask, RequestContext, RequestContextHandler, RequestContextSettings, Task, ThreadId,
+    WindowInfo, WrapRequestContextHandler, WrapTask, rc::Rc, wrap_request_context_handler,
+    wrap_task,
 };
 use koyo_browser_ipc::{AppRequest, Cursor, HostEvent, PageState, PaneId, ViewAction, Viewport};
 
@@ -36,9 +38,25 @@ fn context(profile: &str) -> Option<RequestContext> {
         persist_session_cookies: 1,
         ..RequestContextSettings::default()
     };
-    let context = cef::request_context_create_context(Some(&settings), None)?;
+    let mut ready = ContextReady::new(profile.to_owned());
+    let context = cef::request_context_create_context(Some(&settings), Some(&mut ready))?;
     with(|host| host.contexts.insert(profile.into(), context.clone()));
     Some(context)
+}
+
+// A profile's request context has initialized on disk: a native page of it can be made
+// (`native.rs`).
+wrap_request_context_handler! {
+    struct ContextReady {
+        profile: String,
+    }
+
+    impl RequestContextHandler {
+        fn on_request_context_initialized(&self, _request_context: Option<&mut RequestContext>) {
+            #[cfg(target_os = "macos")]
+            crate::native::context_ready(&self.profile);
+        }
+    }
 }
 
 pub(super) fn open(pane: PaneId, url: &str, viewport: Viewport, profile: &str) {
@@ -54,6 +72,11 @@ pub(super) fn open(pane: PaneId, url: &str, viewport: Viewport, profile: &str) {
         });
         return;
     };
+    #[cfg(target_os = "macos")]
+    if super::native() {
+        crate::native::create(pane, url, Some((profile, context)));
+        return;
+    }
     create(pane, url, Some(&mut context), false);
 }
 
@@ -67,6 +90,13 @@ pub(super) fn create(
     context: Option<&mut RequestContext>,
     devtools: bool,
 ) {
+    // In the app's process every pane is native; one made with no profile is `DevTools`.
+    #[cfg(target_os = "macos")]
+    if super::native() {
+        let _ = (context, devtools);
+        crate::native::create(pane, url, None);
+        return;
+    }
     new_ring(pane);
     // Frames begin as the display refreshes, by the host's clock, when it runs (`clock.rs`).
     #[cfg(target_os = "macos")]
@@ -94,15 +124,7 @@ pub(super) fn create(
         context,
     );
     if created != 1 {
-        with(|host| host.panes.remove(&pane));
-        send(&HostEvent::Error {
-            pane: Some(pane),
-            message: if devtools {
-                "Could not open DevTools.".into()
-            } else {
-                "Could not open the page.".into()
-            },
-        });
+        super::failed_to_open(pane, devtools);
     }
 }
 
@@ -110,6 +132,14 @@ pub(super) fn create(
 /// the page follows it live (`live.rs`), or Chromium lays it out now, or once the size it's
 /// laying out has painted (`sizing.rs`).
 pub(super) fn resize(pane: PaneId, viewport: Viewport, dragging: bool) {
+    // A native page is the size of its holder, which the app places; out of sight it's the
+    // size it's told here.
+    #[cfg(target_os = "macos")]
+    if super::native() {
+        with_pane(pane, |p| p.viewport = viewport);
+        crate::native::size(pane, viewport.width, viewport.height);
+        return;
+    }
     if super::live::drive::ask(pane, viewport, dragging) {
         return;
     }
@@ -221,6 +251,12 @@ pub(crate) fn found(pane: PaneId, count: i32, active: i32) {
 /// is still to come is told once it arrives (`browser_created`).
 pub(super) fn visible(pane: PaneId, visible: bool) {
     with_pane(pane, |p| p.shown = visible);
+    // A native page is on screen for the engine by where its views are.
+    #[cfg(target_os = "macos")]
+    if super::native() {
+        crate::native::on_screen(pane, visible);
+        return;
+    }
     #[cfg(target_os = "macos")]
     if visible {
         super::clock::start();
@@ -301,6 +337,8 @@ pub(crate) fn browser_created(pane: PaneId, browser: &Browser) {
 /// The pane's browser is gone. A page's `DevTools` close with it, and each
 /// is reported as it goes.
 pub(crate) fn browser_closed(pane: PaneId) {
+    #[cfg(target_os = "macos")]
+    crate::native::closed(pane);
     crate::dialogs::pane_closed(pane);
     crate::menus::pane_closed(pane);
     crate::passkeys::pane_gone(pane);
@@ -339,7 +377,7 @@ pub(crate) fn browser_closed(pane: PaneId) {
         close(devtools);
     }
     if done {
-        cef::quit_message_loop();
+        super::quit();
     }
 }
 

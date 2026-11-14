@@ -1,0 +1,164 @@
+//! CEF's work, run from `AppKit`'s run loop on the main thread, which the app runs: CEF says when
+//! it next has work (`OnScheduleMessagePumpWork`, from any thread) and a run-loop timer in the
+//! common modes runs it then, at the latest a thirtieth of a second on, as CEF advises. The
+//! timer fires during a menu's or a window's tracking too, as those run the loop in modes the
+//! common ones include.
+
+use std::ffi::c_void;
+use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU64, Ordering};
+
+/// Never run CEF's work further apart than this.
+const AT_MOST: f64 = 1. / 30.;
+
+#[link(name = "CoreFoundation", kind = "framework")]
+unsafe extern "C" {
+    fn CFAbsoluteTimeGetCurrent() -> f64;
+    fn CFRunLoopGetMain() -> *mut c_void;
+    fn CFRunLoopTimerCreate(
+        allocator: *const c_void,
+        fire_date: f64,
+        interval: f64,
+        flags: usize,
+        order: isize,
+        callout: extern "C" fn(*mut c_void, *mut c_void),
+        context: *mut c_void,
+    ) -> *mut c_void;
+    fn CFRunLoopAddTimer(run_loop: *mut c_void, timer: *mut c_void, mode: *const c_void);
+    fn CFRunLoopTimerSetNextFireDate(timer: *mut c_void, fire_date: f64);
+    fn CFRunLoopWakeUp(run_loop: *mut c_void);
+    static kCFRunLoopCommonModes: *const c_void;
+}
+
+static TIMER: AtomicPtr<c_void> = AtomicPtr::new(std::ptr::null_mut());
+/// Whether CEF has started, and so has work to run.
+static STARTED: AtomicBool = AtomicBool::new(false);
+
+/// What to run on the main thread at the timer's next firing, outside whatever asked.
+static LATER: std::sync::Mutex<Vec<Box<dyn FnOnce() + Send>>> = std::sync::Mutex::new(Vec::new());
+
+/// Runs `then` on the main thread from the run loop, soon: outside the app's own update and
+/// frame, which whatever CEF does in answer (a window made, a run loop spun) mustn't be in.
+/// From any thread.
+pub fn on_main(then: impl FnOnce() + Send + 'static) {
+    install();
+    if let Ok(mut later) = LATER.lock() {
+        later.push(Box::new(then));
+    }
+    schedule(0);
+}
+
+/// CEF has started: its work runs from here on.
+pub fn started() {
+    STARTED.store(true, Ordering::Release);
+    schedule(0);
+}
+
+/// Whether CEF's work runs.
+pub fn is_started() -> bool {
+    STARTED.load(Ordering::Acquire)
+}
+
+/// CEF is about to shut down: no more of its work runs.
+pub fn stop() {
+    STARTED.store(false, Ordering::Release);
+}
+
+/// Runs CEF's work now, on the main thread, unless it's running already (a run loop spun
+/// from inside it mustn't run it again) or CEF isn't running.
+pub fn work() {
+    if !STARTED.load(Ordering::Acquire) || WORKING.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    cef::do_message_loop_work();
+    WORKING.store(false, Ordering::Release);
+}
+
+/// The earliest time work was asked for since the timer last fired, as an `f64`'s bits.
+static ASKED: AtomicU64 = AtomicU64::new(f64::INFINITY.to_bits());
+/// Whether CEF's work is running, so a run loop it spins meanwhile doesn't run it again.
+static WORKING: AtomicBool = AtomicBool::new(false);
+
+/// Makes the timer, the first time, on the main thread's run loop; from any thread.
+pub fn install() {
+    if !TIMER.load(Ordering::Acquire).is_null() {
+        return;
+    }
+    // SAFETY: CF's run-loop calls on the main thread's run loop, which lives as long as the
+    // process; the timer is kept for as long too.
+    unsafe {
+        let timer = CFRunLoopTimerCreate(
+            std::ptr::null(),
+            CFAbsoluteTimeGetCurrent() + AT_MOST,
+            // Repeating, so firing never invalidates it; each firing sets the next.
+            1.0e9,
+            0,
+            0,
+            fire,
+            std::ptr::null_mut(),
+        );
+        if timer.is_null() {
+            log::error!("native pages: no run-loop timer for CEF's work");
+            return;
+        }
+        CFRunLoopAddTimer(CFRunLoopGetMain(), timer, kCFRunLoopCommonModes);
+        TIMER.store(timer, Ordering::Release);
+    }
+}
+
+/// CEF has work in `delay_ms`; from any thread.
+pub fn schedule(delay_ms: i64) {
+    let timer = TIMER.load(Ordering::Acquire);
+    if timer.is_null() {
+        return;
+    }
+    // SAFETY: a CF call with no arguments.
+    let when = unsafe { CFAbsoluteTimeGetCurrent() } + (delay_ms.max(0) as f64) / 1000.;
+    let mut asked = ASKED.load(Ordering::Acquire);
+    while when < f64::from_bits(asked) {
+        match ASKED.compare_exchange_weak(asked, when.to_bits(), Ordering::AcqRel, Ordering::Acquire) {
+            Ok(_) => {
+                // SAFETY: CF's timers and run loops may be changed from any thread.
+                unsafe {
+                    CFRunLoopTimerSetNextFireDate(timer, when);
+                    CFRunLoopWakeUp(CFRunLoopGetMain());
+                }
+                return;
+            }
+            Err(now) => asked = now,
+        }
+    }
+}
+
+extern "C" fn fire(timer: *mut c_void, _: *mut c_void) {
+    // SAFETY: a CF call with no arguments.
+    let now = unsafe { CFAbsoluteTimeGetCurrent() };
+    if WORKING.load(Ordering::Acquire) {
+        // Inside CEF's own work, in a loop it spins: once it's done.
+        // SAFETY: the timer is ours and alive.
+        unsafe { CFRunLoopTimerSetNextFireDate(timer, now + AT_MOST / 2.) };
+        return;
+    }
+    ASKED.store(f64::INFINITY.to_bits(), Ordering::Release);
+    let later = (LATER.lock())
+        .map(|mut later| std::mem::take(&mut *later))
+        .unwrap_or_default();
+    for then in later {
+        then();
+    }
+    work();
+    // What was asked for meanwhile, and while CEF runs never later than `AT_MOST`; with CEF
+    // not running the timer rests until something is asked of it.
+    let asked = f64::from_bits(ASKED.load(Ordering::Acquire));
+    // SAFETY: as above.
+    let now = unsafe { CFAbsoluteTimeGetCurrent() };
+    let at_most = if STARTED.load(Ordering::Acquire) {
+        now + AT_MOST
+    } else {
+        f64::INFINITY
+    };
+    let next = asked.min(at_most);
+    if next.is_finite() {
+        // SAFETY: the timer is ours and alive.
+        unsafe { CFRunLoopTimerSetNextFireDate(timer, next) };
+    }
+}

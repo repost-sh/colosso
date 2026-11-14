@@ -182,7 +182,9 @@ impl BrowserView {
     /// uses is on screen for the engine (`view/sight.rs`), so it paints.
     pub fn ready_to_measure(&self, target: Viewport) -> bool {
         self.viewport == Some(target)
-            && (self.visible == Some(false) || self.shows_frame_of(target.pixels()))
+            && (self.visible == Some(false)
+                || self.is_native()
+                || self.shows_frame_of(target.pixels()))
     }
 
     /// Whether a page reporting `inner` (`innerWidth`, `innerHeight`) has laid out at

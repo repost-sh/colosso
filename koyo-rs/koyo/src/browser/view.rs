@@ -446,7 +446,7 @@ impl BrowserView {
         });
     }
 
-    fn set_focused(&mut self, focused: bool, cx: &mut Context<Self>) {
+    pub(super) fn set_focused(&mut self, focused: bool, cx: &mut Context<Self>) {
         let pane = self.pane;
         self.send_to_page(AppRequest::Focus { pane, focused }, cx);
     }

@@ -13,7 +13,7 @@ mod icon;
 pub mod liquid;
 pub mod notifications;
 pub mod slider;
-mod surface;
+pub(crate) mod surface;
 pub mod switch;
 mod target;
 pub mod traffic_lights;

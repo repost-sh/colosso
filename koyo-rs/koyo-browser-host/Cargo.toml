@@ -6,6 +6,10 @@ license.workspace = true
 publish.workspace = true
 description = "Koyo's browser host: a CEF app that renders browser panes off screen and serves them to the app over koyo-browser-ipc."
 
+[lib]
+name = "koyo_browser_host"
+path = "src/lib.rs"
+
 [[bin]]
 name = "koyo-browser-host"
 path = "src/main.rs"
@@ -18,6 +22,8 @@ koyo-browser-ipc = { path = "../koyo-browser-ipc" }
 cef = { version = "=156.2.0", default-features = false, features = ["sandbox"] }
 # The DevTools bridge: a websocket to Chromium's remote debugging port.
 tungstenite = { version = "0.26", default-features = false, features = ["handshake"] }
+# What the host says when it runs inside Koyo, which keeps the log.
+log = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Which suffixes of a domain are public (the Public Suffix List, built in), so a page's passkeys are
@@ -30,7 +36,7 @@ url = "2"
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSObject", "NSString", "NSBundle", "NSValue", "NSDate", "NSGeometry", "NSProcessInfo"] }
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSEvent", "NSGraphicsContext", "NSResponder", "NSRunningApplication", "NSScreen"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSColor", "NSEvent", "NSGraphicsContext", "NSResponder", "NSRunningApplication", "NSScreen", "NSView", "NSWindow"] }
 objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFDictionary", "CFNumber", "CFString", "CFBase"] }
 objc2-core-location = { version = "0.3", default-features = false, features = ["std", "CLLocationManager"] }
 objc2-io-surface = { version = "0.3", default-features = false, features = ["std", "IOSurfaceRef", "IOSurfaceTypes", "libc", "objc2", "objc2-core-foundation"] }

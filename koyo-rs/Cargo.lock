@@ -5368,6 +5368,7 @@ dependencies = [
  "koyo-accounts",
  "koyo-agent",
  "koyo-app-control",
+ "koyo-browser-host",
  "koyo-browser-ipc",
  "koyo-daemon",
  "koyo-desk-wire",
@@ -5480,6 +5481,7 @@ version = "0.1.0"
 dependencies = [
  "cef",
  "koyo-browser-ipc",
+ "log",
  "objc2 0.6.5",
  "objc2-app-kit 0.3.2",
  "objc2-core-foundation",

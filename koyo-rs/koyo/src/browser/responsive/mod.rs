@@ -157,6 +157,7 @@ impl Responsive {
             mobile: self.mobile,
             touch: self.touch,
             agent,
+            shown: None,
         }
     }
 }
@@ -168,19 +169,44 @@ pub struct Emulation {
     pub mobile: bool,
     pub touch: bool,
     pub agent: Option<Override>,
+    /// The size the page is told while it shows scaled: a native page (`browser/native`) is
+    /// drawn by the engine itself, at the size of its view, so the mode's size, its pixel ratio
+    /// and how much of its true size it shows at are the engine's to emulate. None off screen,
+    /// where the page is its true size and the app scales its picture.
+    pub shown: Option<Scaled>,
+}
+
+/// A page's size as the engine emulates it in a view of another size.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Scaled {
+    pub width: u32,
+    pub height: u32,
+    /// Device pixels per CSS pixel.
+    pub device_scale: f32,
+    /// How much of its true size the page shows at.
+    pub fit: f32,
 }
 
 /// The protocol commands that take a session from emulating `applied` to `wanted`.
 pub fn commands(applied: &Emulation, wanted: &Emulation) -> Vec<(&'static str, Value)> {
     let mut commands = Vec::new();
-    if applied.mobile != wanted.mobile {
-        commands.push(if wanted.mobile {
-            // Zeros keep the real size and scale: only `mobile` is overridden.
-            let metrics =
-                json!({ "width": 0, "height": 0, "deviceScaleFactor": 0, "mobile": true });
-            ("Emulation.setDeviceMetricsOverride", metrics)
-        } else {
-            ("Emulation.clearDeviceMetricsOverride", json!({}))
+    if applied.mobile != wanted.mobile || applied.shown != wanted.shown {
+        commands.push(match wanted.shown {
+            Some(shown) => {
+                let metrics = json!({
+                    "width": shown.width, "height": shown.height,
+                    "deviceScaleFactor": shown.device_scale, "mobile": wanted.mobile,
+                    "scale": shown.fit,
+                });
+                ("Emulation.setDeviceMetricsOverride", metrics)
+            }
+            None if wanted.mobile => {
+                // Zeros keep the real size and scale: only `mobile` is overridden.
+                let metrics =
+                    json!({ "width": 0, "height": 0, "deviceScaleFactor": 0, "mobile": true });
+                ("Emulation.setDeviceMetricsOverride", metrics)
+            }
+            None => ("Emulation.clearDeviceMetricsOverride", json!({})),
         });
     }
     if applied.touch != wanted.touch {

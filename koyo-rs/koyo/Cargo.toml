@@ -121,6 +121,8 @@ gpui-kit = { workspace = true, features = ["test-support"] }
 koyo-accounts = { path = "../koyo-accounts", features = ["testing"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+# Native pages (browser/native/): the browser host as a library, run in the app's own process.
+koyo-browser-host = { path = "../koyo-browser-host" }
 # GPUI's Metal renderer, which draws a browser page's frame in the window's own frame, the
 # part of the shared surface the page fills said by `set_surface_picture` (`vendor/README.md`).
 gpui-fast-apple = "0.1.12"

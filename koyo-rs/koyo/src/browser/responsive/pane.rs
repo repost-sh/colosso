@@ -269,6 +269,13 @@ impl BrowserView {
             cx.notify();
         }
         self.viewport_changed(viewport, dragging, cx);
+        // A native page's emulated size follows the size it shows at, while the mode is on
+        // or was.
+        if self.is_native()
+            && (self.responsive.mode.is_some() || self.responsive.emulated.shown.is_some())
+        {
+            self.emulate(cx);
+        }
     }
 
     /// The window's scale as last drawn, or a likely one before.
@@ -432,9 +439,19 @@ impl BrowserView {
             return;
         }
         let major = self.browsers.read(cx).chromium_major().unwrap_or_default();
-        let wanted = (self.responsive.mode.as_ref())
+        let mut wanted = (self.responsive.mode.as_ref())
             .map(|mode| mode.emulation(&major))
             .unwrap_or_default();
+        // A native page is drawn by the engine at its view's size: the mode's size and how
+        // much of it shows are the engine's to emulate.
+        if self.is_native() && self.responsive.mode.is_some() {
+            wanted.shown = self.viewport.map(|viewport| super::Scaled {
+                width: viewport.width,
+                height: viewport.height,
+                device_scale: viewport.scale,
+                fit: self.responsive.fit,
+            });
+        }
         let sent = commands(&self.responsive.emulated, &wanted);
         let agent_changed = wanted.agent != self.responsive.emulated.agent;
         self.responsive.emulated = wanted;

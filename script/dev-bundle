@@ -1,0 +1,75 @@
+#!/bin/sh
+# Lays the debug build out as an app bundle with the browser engine inside, and runs it:
+#
+#   script/dev-bundle [--no-run] [-- <arguments for Koyo>]
+#
+# Native pages (docs/native-pages.md) need it: the browser engine runs in Koyo's own process
+# then, and its helpers only start when Koyo runs from a bundle that holds the engine, as a
+# packaged Koyo does (script/bundle). A bare `cargo run` or script/dev binary keeps pages off
+# screen. The bundle is koyo-rs/target/dev-bundle/Koyo Dev.app, made of clones of the build's
+# files, so making it again after a build costs nothing.
+#
+# The environment is the caller's: KOYO_NATIVE_PAGES=1 turns native pages on whatever the
+# settings say, and KOYO_DATA_DIR, KOYO_CONFIG_DIR and KOYO_LOG_DIR keep a run apart from the
+# Koyo in use.
+set -eu
+cd "$(dirname "$0")/.."
+
+run=yes
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --no-run) run=no ;;
+    --) shift; break ;;
+    *) echo "unknown option $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+script/browser-engine
+script/agent-host
+script/cargo build -p koyo
+
+version=$(awk '/^name = "cef-dll-sys"$/ { getline; sub(/^version = "[^+]*\+/, ""); sub(/"$/, ""); print }' koyo-rs/Cargo.lock)
+engine="koyo-rs/target/browser-engine/$version/Koyo Browser Host.app"
+app="koyo-rs/target/dev-bundle/Koyo Dev.app/Contents"
+mkdir -p "$app/MacOS" "$app/Frameworks" "$app/Resources"
+cp -c koyo-rs/target/debug/koyo "$app/MacOS/koyo.new"
+mv "$app/MacOS/koyo.new" "$app/MacOS/koyo"
+rm -rf "$app/Frameworks/Koyo Browser Host.app"
+cp -cR "$engine" "$app/Frameworks/"
+cp -c koyo-rs/koyo/icons/Koyo.icns "$app/Resources/Koyo.icns"
+# What pages may reach, said why, as the packaged app says it (script/bundle): with the engine
+# in Koyo's process, macOS ends Koyo itself for reaching the camera, the microphone, Bluetooth
+# or the location without a reason in its own Info.plist. The reasons are the engine's.
+reason() { plutil -extract "$1" raw -o - "$app/Frameworks/Koyo Browser Host.app/Contents/Info.plist"; }
+location=$(reason NSLocationUsageDescription)
+bluetooth=$(reason NSBluetoothAlwaysUsageDescription)
+camera=$(reason NSCameraUsageDescription)
+microphone=$(reason NSMicrophoneUsageDescription)
+cat > "$app/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key><string>en</string>
+  <key>CFBundleExecutable</key><string>koyo</string>
+  <key>CFBundleIconFile</key><string>Koyo</string>
+  <key>CFBundleIdentifier</key><string>dev.koyo.desktop.dev</string>
+  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+  <key>CFBundleName</key><string>Koyo Dev</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>0.0.0</string>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>NSLocationUsageDescription</key><string>$location</string>
+  <key>NSLocationWhenInUseUsageDescription</key><string>$location</string>
+  <key>NSBluetoothAlwaysUsageDescription</key><string>$bluetooth</string>
+  <key>NSCameraUsageDescription</key><string>$camera</string>
+  <key>NSMicrophoneUsageDescription</key><string>$microphone</string>
+</dict>
+</plist>
+PLIST
+
+echo "Koyo Dev.app is in koyo-rs/target/dev-bundle"
+if [ "$run" = yes ]; then
+  exec "$app/MacOS/koyo" "$@"
+fi
