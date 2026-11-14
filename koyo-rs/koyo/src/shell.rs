@@ -50,11 +50,13 @@ mod tab_list;
 mod visits;
 
 pub use actions::{
-    CloseTab, EditTheme, NewChat, ReopenClosedTab, SwitchTab, SwitchTabBack, ToggleBottomPanel,
-    ToggleRightPanel, ToggleSidebar, ToggleSidebarMode, init,
+    CloseTab, EditTheme, NewChat, ReopenClosedTab, SwitchTab, ToggleBottomPanel, ToggleRightPanel,
+    ToggleSidebar, ToggleSidebarMode, init,
 };
 #[cfg(feature = "visual-check")]
 pub use actions::{NewTerminal, StopTerminal};
+#[cfg(all(target_os = "macos", feature = "visual-check"))]
+pub use switcher::visual::run as check_switcher;
 use elements::drag_area;
 pub use elements::{
     action_button, add_project_row, ellipsized, glass, icon, icon_button, new_tab_button,

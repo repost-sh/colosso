@@ -182,6 +182,8 @@ impl Workspace {
         let mut page = tab.first().clone();
         page.title = title;
         page.unload(rested);
+        // Its page is gone: ⌃⇥ lists it again once it's opened and looked at.
+        page.shown_at = 0;
         *tab = Tab::Single(page);
         true
     }

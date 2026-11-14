@@ -18,6 +18,7 @@ pub mod switch;
 mod target;
 pub mod traffic_lights;
 pub mod window;
+pub mod window_glass;
 
 pub use host::{Control, host};
 

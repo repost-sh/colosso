@@ -1,6 +1,7 @@
 //! A GPUI window's `NSWindow`, for what GPUI doesn't do with it: fitting a window to its content
 //! from the corner it keeps, where GPUI's resize keeps the bottom left, as `AppKit` does; keeping
-//! a floating window to its Space; and its traffic lights (`traffic_lights.rs`).
+//! a floating window to its Space; showing one that opened unseen; and its traffic lights
+//! (`traffic_lights.rs`).
 
 use gpui_kit::{AnyWindowHandle, App, AsyncApp, Pixels, Size, Window};
 use objc2::rc::Retained;
@@ -83,6 +84,13 @@ pub fn refresh_edge(window: AnyWindowHandle, cx: &mut App) {
         }
     })
     .detach();
+}
+
+/// Shows `window`, opened unseen, over the others, without giving it the keyboard.
+pub fn show(window: &Window) {
+    if let Some(ns_window) = ns_window(window) {
+        ns_window.orderFront(None);
+    }
 }
 
 /// Keeps a floating `window` to the Space it opens on, and unseen while Koyo isn't the app in

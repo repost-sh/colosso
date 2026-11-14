@@ -18,12 +18,14 @@ mod pinned;
 mod tab;
 mod terminals;
 mod unopened;
+mod visits;
 pub use closed::ClosedTab;
 pub use loose::Loose;
 pub use pane::{Pane, Unloaded};
 pub use pinned::Pinned;
 pub use tab::{Edge, SPLIT_MIN, Split, SplitAxis, Tab};
 pub use unopened::Unopened;
+pub use visits::{Spot, Visited};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PaneKind {
@@ -422,23 +424,6 @@ impl Workspace {
         self.apart.leave();
     }
 
-    /// Stamps the tab shown with the next turn, unless it was the last one shown: so the
-    /// tabs order by when they were last looked at.
-    pub fn stamp_shown(&mut self) {
-        let turn = self.turn;
-        // A pinned or a loose page shown is no tab of the checkout's: its tabs keep their turns.
-        let Some(tab) = (self.shown_checkout_tab()).and_then(|at| self.tab_mut(at)) else {
-            return;
-        };
-        if turn > 0 && tab.shown_at() == turn {
-            return;
-        }
-        for pane in tab.panes_mut() {
-            pane.shown_at = turn + 1;
-        }
-        self.turn = turn + 1;
-    }
-
     /// Opens `tab` right after the tab at `(project, branch, at)`, without showing it.
     pub fn insert_tab_after(&mut self, (project, branch, at): (usize, usize, usize), tab: Tab) {
         let Some(unit) = self.unit_mut(project, branch) else {
@@ -491,4 +476,4 @@ impl Workspace {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

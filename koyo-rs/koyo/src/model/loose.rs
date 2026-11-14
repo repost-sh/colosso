@@ -135,6 +135,11 @@ impl Workspace {
         changed
     }
 
+    /// The space shown, by its id.
+    pub(super) fn space_shown(&self) -> u64 {
+        self.apart.space
+    }
+
     /// The loose pages of the space shown, in the order of their rows.
     pub fn loose(&self) -> &[Loose] {
         self.apart.here().map_or(&[], |here| &here.pages)
@@ -295,10 +300,7 @@ impl Workspace {
 
     /// Every tab there is: the pinned, each space's loose ones, and every checkout's.
     fn tabs(&self) -> impl Iterator<Item = &Tab> {
-        let open = (self.projects.iter())
-            .flat_map(|project| &project.branches)
-            .flat_map(|unit| &unit.tabs);
-        self.apart.pages().map(|(tab, _)| tab).chain(open)
+        self.everywhere().map(|visited| visited.tab)
     }
 
     /// Every tab there is, to change.

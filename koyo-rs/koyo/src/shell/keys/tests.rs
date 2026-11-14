@@ -90,10 +90,9 @@ fn moving_to_a_chat_never_puts_the_keyboard_in_its_prompt(cx: &mut TestAppContex
         Some(first),
         "pressed in its prompt"
     );
+    // ⌃⇥ tapped: ⌃ let go at once shows the tab before, without the switcher's panel.
     cx.simulate_keystrokes(window, "ctrl-tab");
-    let (switcher, _) =
-        crate::files::tests::dialog::<super::super::switcher::Switcher>(cx).expect("the switcher");
-    cx.simulate_keystrokes(switcher, "enter");
+    crate::files::tests::let_go(window, cx);
     assert_eq!(
         shell.read_with(cx, |shell, _| shell.shown_tab_key()),
         Some(second),

@@ -1,37 +1,50 @@
-//! ⌃⇥ lists the selected checkout's tabs, the latest shown first, in a palette where ⌘P's
-//! opens: chats, terminals, pages and files alike, a split as one row naming its panes.
-//! Each ⌃⇥ moves the pick on and ⌃⇧⇥ back, round the ends, as the arrows do, and letting
-//! go of ⌃ shows the tab picked, as Enter or a click does.
+//! ⌃⇥ (`docs/tab-switcher.md`): the tabs looked at last, the latest first, wherever they are,
+//! then the open ones not looked at yet; five at most, the one shown among them, as cards on a
+//! panel of the app switcher's glass.
+//!
+//! The panel is a floating window that never has the keyboard: every key goes on being heard
+//! where the person was, in the window behind, so none is missed while one window takes the
+//! keys from another. ⌃⇥ opens it unseen, the tab before picked, and it shows once ⌃ has been
+//! held a moment; each ⌃⇥ more moves the pick on and ⌃⇧⇥ back, round the ends, and shows it at
+//! once. Letting go of ⌃ shows the tab picked, whether the panel shows yet or not: a ⌃⇥ tapped
+//! goes to the tab before with no panel. A click on a card shows its tab, the pointer moved
+//! over one picks it, and Escape, like a press in the window behind, leaves things as they
+//! were.
 
-use std::ops::Range;
-use std::path::Path;
+use std::time::Duration;
 
-use gpui_kit::assets::IconName;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, AnyWindowHandle, App, Context, Entity, FocusHandle, InteractiveElement as _,
-    IntoElement, KeyBinding, ModifiersChangedEvent, ParentElement as _, Render, ScrollStrategy,
-    SharedString, StatefulInteractiveElement as _, Styled, UniformListScrollHandle, Window, div,
+    AnyWindowHandle, App, Bounds, Context, Entity, IntoElement, ParentElement as _, Pixels, Render,
+    Styled as _, Subscription, Task, Window, WindowHandle, div, px, size,
 };
 
-use super::tab_face::Face;
-use super::{Shell, SwitchTab, SwitchTabBack};
-use crate::files::{ROW, file_row};
-use crate::list::{self, Activate, PageDown, PageUp, SelectNext, SelectPrevious};
-use crate::modal;
-use crate::model::Tab;
-use crate::pane::unsaved_dot;
-use crate::theme::{self, Palette};
+use super::Shell;
+use crate::popup::{self, Kind, Opening};
+use crate::settings::Layout;
+use crate::theme;
+use card::{CARD_GAP, CARD_HEIGHT, CARD_RADIUS, CARD_WIDTH, Card};
 
-/// The keys that move the switcher's pick, and Enter to show the tab picked.
-pub(super) fn init(cx: &mut App) {
-    list::bind_keys("TabSwitcher", cx);
-    cx.bind_keys([KeyBinding::new("enter", Activate, Some("TabSwitcher"))]);
-}
+mod card;
+mod show;
+#[cfg(all(target_os = "macos", feature = "visual-check"))]
+pub mod visual;
 
-/// Opens the switcher over the selected checkout's tabs with the pick moved `by` rows from
-/// the tab shown, or moves the open switcher's pick `by` rows. With one tab open there's
-/// nothing to switch to.
+/// How many tabs it lists, the one shown among them, as Arc's does.
+const MOST: usize = 5;
+/// How long ⌃ is held after ⌃⇥ before the panel shows: let go sooner, the tab picked shows
+/// without it, as with Arc's and macOS's.
+const HOLD: Duration = Duration::from_millis(200);
+/// The glass round the cards, and the panel's corners, concentric with theirs: at the panel's
+/// full size, as the cards' sizes are.
+const PADDING: f32 = 21.;
+const RADIUS: f32 = CARD_RADIUS + PADDING;
+/// The least room left between the panel and the sides of its screen.
+const MARGIN: f32 = 24.;
+
+/// ⌃⇥ (`by` 1) or ⌃⇧⇥ (`by` -1) in `window`: moves the pick `by` cards if the switcher is up,
+/// and else opens it over `window` on the tabs to switch among, the pick `by` from the tab
+/// shown. With one tab open there's nothing to switch to.
 pub(super) fn switch(
     shell: &Shell,
     entity: Entity<Shell>,
@@ -39,215 +52,204 @@ pub(super) fn switch(
     window: &mut Window,
     cx: &mut App,
 ) {
-    if let Some(open) = modal::current::<Switcher>(cx) {
-        open.update(cx, |switcher, cx| switcher.step(by, cx));
+    if let Some(panel) = panel(cx) {
+        (panel.update(cx, |switcher, window, cx| switcher.step(by, window, cx))).ok();
         return;
     }
-    let rows = rows(shell, cx);
-    if rows.len() < 2 {
+    let cards = cards(shell, cx);
+    if cards.len() < 2 {
         return;
     }
+    let picked = stepped(0, by, cards.len());
+    open(entity, cards, picked, window, cx);
+}
+
+/// ⌃ let go: the tab picked shows, and the switcher goes.
+pub(super) fn released(cx: &mut App) {
+    if let Some(panel) = panel(cx) {
+        (panel.update(cx, |switcher, _, cx| switcher.pick(cx))).ok();
+    }
+}
+
+/// The switcher's panel, if it's up, seen or not.
+fn panel(cx: &App) -> Option<WindowHandle<Switcher>> {
+    popup::window(Kind::Switcher, cx)?.downcast()
+}
+
+/// Where the panel for `count` cards goes, and at how much of its full size: across the middle
+/// of the window at `behind`, shrunk if `screen`, what's free of the screen that window is on,
+/// is too small for it, and moved to lie on that screen. A window that isn't on its screen at
+/// all, as a check's off screen isn't, has the panel over it all the same.
+fn placed(
+    count: usize,
+    behind: Bounds<Pixels>,
+    screen: Option<Bounds<Pixels>>,
+) -> (Bounds<Pixels>, f32) {
+    let count = count as f32;
+    let full = size(
+        px(2. * PADDING + count * CARD_WIDTH + (count - 1.) * CARD_GAP),
+        px(2. * PADDING + CARD_HEIGHT),
+    );
+    let room =
+        (screen.filter(|screen| screen.intersects(&behind))).map(|screen| screen.inset(px(MARGIN)));
+    let scale = room.map_or(1., |room| {
+        (room.size.width / full.width)
+            .min(room.size.height / full.height)
+            .min(1.)
+    });
+    let mut bounds = Bounds::centered_at(behind.center(), full.map(|side| side * scale));
+    if let Some(room) = room {
+        let Bounds { origin, size } = &mut bounds;
+        origin.x = origin.x.min(room.right() - size.width).max(room.left());
+        origin.y = origin.y.min(room.bottom() - size.height).max(room.top());
+    }
+    (bounds, scale)
+}
+
+/// Opens the switcher's panel, unseen, over `window`, with `cards` and the one at `picked`
+/// picked.
+fn open(shell: Entity<Shell>, cards: Vec<Card>, picked: usize, window: &mut Window, cx: &mut App) {
+    let screen = window.display(cx).map(|display| display.visible_bounds());
+    let (bounds, scale) = placed(cards.len(), window.bounds(), screen);
+    let opening = Opening {
+        kind: Kind::Switcher,
+        bounds,
+        kept: false,
+        source: None,
+    };
     let behind = window.window_handle();
-    modal::open_list(rows.len(), window, cx, |window, cx| {
-        let focus = cx.focus_handle();
-        window.focus(&focus, cx);
-        let mut switcher = Switcher {
-            shell: entity,
-            rows,
-            selected: 0,
+    popup::open(opening, window, cx, |window, cx: &mut Context<Switcher>| {
+        let reveal = cx.spawn_in(window, async move |this, cx| {
+            cx.background_executor().timer(HOLD).await;
+            this.update_in(cx, Switcher::show).ok();
+        });
+        // Heard before the pane the person is in hears it, and kept from it.
+        let escape = cx.intercept_keystrokes(|event, _, cx| {
+            if event.keystroke.key == "escape" {
+                popup::close(Kind::Switcher, cx);
+                cx.stop_propagation();
+            }
+        });
+        #[cfg(target_os = "macos")]
+        let glass = crate::native::window_glass::fill(window, RADIUS * scale, cx);
+        #[cfg(not(target_os = "macos"))]
+        let glass = false;
+        Switcher {
+            shell,
             behind,
-            focus,
-            scroll: UniformListScrollHandle::new(),
-        };
-        switcher.step(by, cx);
-        switcher
+            cards,
+            picked,
+            scale,
+            shown: false,
+            glass,
+            _reveal: reveal,
+            _escape: escape,
+        }
     });
 }
 
-/// ⌃ let go in `window`, the one behind the switcher, before the switcher's own window had
-/// the keyboard: shows the tab picked and closes the switcher. It's done from here because
-/// a window handling an event can't be reached from another.
-pub(super) fn released(window: &mut Window, cx: &mut App) {
-    let Some(switcher) = modal::current::<Switcher>(cx) else {
-        return;
-    };
-    let (shell, picked) = {
-        let switcher = switcher.read(cx);
-        (switcher.shell.clone(), switcher.picked())
-    };
-    modal::close(cx);
-    if let Some(key) = picked {
-        shell.update(cx, |shell, cx| shell.switch_to(key, window, cx));
-    }
-}
-
-/// A tab as its row shows it.
-struct Row {
-    /// Its first pane's id, which finds it wherever it's moved.
-    key: u64,
-    icon: IconName,
-    name: SharedString,
-    /// For a file alone in its tab, the folder it's in.
-    folder: SharedString,
-    preview: bool,
-    dirty: bool,
-}
-
-/// The selected checkout's tabs as rows, the latest shown first.
-fn rows(shell: &Shell, cx: &App) -> Vec<Row> {
-    let Some(unit) = shell.workspace.branch() else {
-        return Vec::new();
-    };
-    let mut tabs: Vec<&Tab> = unit.tabs.iter().collect();
-    tabs.sort_by_key(|tab| std::cmp::Reverse(tab.shown_at()));
-    (tabs.into_iter())
-        .map(|tab| {
-            let faces = Face::all(tab, cx);
-            let titles: Vec<&str> = faces.iter().map(|face| face.title.as_ref()).collect();
-            let folder = match (tab, tab.files().as_slice()) {
-                (Tab::Single(_), [file]) => {
-                    let file = file.read(cx);
-                    // The path as the tree names it, or whole outside the checkout: its folder.
-                    let shown = file
-                        .relative
-                        .as_deref()
-                        .map_or(file.path.as_path(), Path::new);
-                    (shown.parent()).map_or(String::new(), |folder| folder.display().to_string())
-                }
-                _ => String::new(),
-            };
-            Row {
-                key: tab.first().id,
-                icon: faces.first().map_or(IconName::File, |face| face.icon),
-                name: titles.join("  ·  ").into(),
-                folder: folder.into(),
-                preview: faces.len() == 1 && faces.iter().all(|face| face.preview),
-                dirty: faces.iter().any(|face| face.dirty),
-            }
-        })
+/// The tabs to switch among as cards (`Workspace::latest`): those looked at, the latest first,
+/// then the open ones not looked at yet; pinned and loose pages only in the Arc layout, which
+/// lists them.
+fn cards(shell: &Shell, cx: &mut App) -> Vec<Card> {
+    let apart = Shell::layout(cx) == Layout::Arc;
+    (shell.workspace.latest(MOST, apart).iter())
+        .filter_map(|visited| Card::of(visited, &shell.workspace, cx))
         .collect()
 }
 
-impl Shell {
-    /// Shows the tab holding pane `key` on the selected checkout, if it's still open, and
-    /// gives the keyboard to its file, or else to the pane of it the person was in.
-    fn switch_to(&mut self, key: u64, window: &mut Window, cx: &mut Context<Self>) {
-        let Some((project, branch)) = self.checkout_shown() else {
-            return;
-        };
-        let Some(at) = (self.workspace.branch()).and_then(|unit| unit.tab_with(key)) else {
-            return;
-        };
-        // In place of a pinned or a loose page too, which selecting a tab leaves.
-        self.workspace.select_tab(project, branch, at);
-        let file = self.workspace.tab_shown().and_then(|tab| tab.files().first().copied().cloned());
-        match file {
-            Some(file) => file.update(cx, |file, cx| file.focus(window, cx)),
-            None => self.keys_to_shown_tab(cx),
-        }
-        cx.notify();
-    }
+/// Where a step of `by` from `at` lands among `len`, round the ends.
+fn stepped(at: usize, by: isize, len: usize) -> usize {
+    (at as isize + by).rem_euclid(len.max(1) as isize) as usize
 }
 
+/// The switcher while ⌃ holds it up: what its panel's window shows.
 pub(super) struct Switcher {
     shell: Entity<Shell>,
-    rows: Vec<Row>,
-    selected: usize,
-    /// The window the switcher sits over, where the tab picked is shown.
+    /// The window it floats over, where the keys are heard and the tab picked is shown.
     behind: AnyWindowHandle,
-    focus: FocusHandle,
-    scroll: UniformListScrollHandle,
+    cards: Vec<Card>,
+    picked: usize,
+    /// How much of its full size it's drawn at, to fit its screen.
+    scale: f32,
+    /// Whether its window shows yet.
+    shown: bool,
+    /// Whether its window is glass; one that isn't is tinted, as the app's other floating
+    /// windows are.
+    glass: bool,
+    /// The wait for ⌃ to have been held, which shows it.
+    _reveal: Task<()>,
+    /// Escape, which closes it.
+    _escape: Subscription,
 }
 
 impl Switcher {
-    /// The key of the tab picked.
-    fn picked(&self) -> Option<u64> {
-        self.rows.get(self.selected).map(|row| row.key)
-    }
-
-    /// Moves the pick `by` rows, round the ends.
-    fn step(&mut self, by: isize, cx: &mut Context<Self>) {
-        let len = self.rows.len() as isize;
-        self.select((self.selected as isize + by).rem_euclid(len) as usize, cx);
-    }
-
-    /// Moves the pick `by` pages, stopping at the ends.
-    fn page(&mut self, by: isize, cx: &mut Context<Self>) {
-        let by = by * list::page(&self.scroll, ROW);
-        if let Some(at) = list::stepped(Some(self.selected), by, self.rows.len()) {
-            self.select(at, cx);
-        }
+    /// Moves the pick `by` cards, round the ends, and shows the panel: past the tab before, the
+    /// person has to see where the pick is.
+    fn step(&mut self, by: isize, window: &mut Window, cx: &mut Context<Self>) {
+        self.select(stepped(self.picked, by, self.cards.len()), cx);
+        self.show(window, cx);
     }
 
     fn select(&mut self, at: usize, cx: &mut Context<Self>) {
-        self.selected = at;
-        self.scroll.scroll_to_item(at, ScrollStrategy::Nearest);
-        cx.notify();
+        if at != self.picked {
+            self.picked = at;
+            cx.notify();
+        }
     }
 
-    /// Shows the tab picked in the window behind, and closes the switcher.
-    fn pick(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(key) = self.picked() {
-            let shell = &self.shell;
-            (self.behind.update(cx, |_, window, cx| {
-                shell.update(cx, |shell, cx| shell.switch_to(key, window, cx));
+    /// Shows the panel's `window`, if it doesn't show yet.
+    fn show(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.shown {
+            self.shown = true;
+            popup::show(window, cx);
+        }
+    }
+
+    /// Closes the switcher and shows the tab picked in the window behind, once that window is
+    /// free: ⌃ let go is heard in it, and a window can't be reached while it hears an event.
+    fn pick(&self, cx: &mut App) {
+        popup::close(Kind::Switcher, cx);
+        let Some(key) = self.cards.get(self.picked).map(Card::key) else {
+            return;
+        };
+        let (shell, behind) = (self.shell.clone(), self.behind);
+        cx.defer(move |cx| {
+            (behind.update(cx, |_, window, cx| {
+                shell.update(cx, |shell, cx| shell.show_visited(key, window, cx));
             }))
             .ok();
-        }
-        modal::dismiss(window, cx);
-    }
-
-    fn row(&self, index: usize, p: Palette, cx: &mut Context<Self>) -> AnyElement {
-        let Some(row) = self.rows.get(index) else {
-            return div().into_any_element();
-        };
-        let name = div()
-            .when(row.preview, Styled::italic)
-            .child(row.name.clone());
-        let selected = index == self.selected;
-        file_row(
-            ("tab-switcher-row", index),
-            selected,
-            row.icon,
-            name,
-            row.folder.clone(),
-            p,
-        )
-        .on_click(cx.listener(move |this, _, window, cx| {
-            this.selected = index;
-            this.pick(window, cx);
-        }))
-        .when(row.dirty, |row| row.child(unsaved_dot(p)))
-        .into_any_element()
+        });
     }
 }
 
 impl Render for Switcher {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = theme::palette(cx);
-        let rows = cx.processor(move |this: &mut Self, range: Range<usize>, _, cx| {
-            range.map(|index| this.row(index, p, cx)).collect()
-        });
-        let list = list::scrolling("tab-switcher", self.rows.len(), &self.scroll, rows);
-        modal::palette(None, list, None, p)
-            .track_focus(&self.focus)
-            .key_context("TabSwitcher")
-            .on_action(cx.listener(|this, _: &SelectPrevious, _, cx| this.step(-1, cx)))
-            .on_action(cx.listener(|this, _: &SelectNext, _, cx| this.step(1, cx)))
-            .on_action(cx.listener(|this, _: &PageUp, _, cx| this.page(-1, cx)))
-            .on_action(cx.listener(|this, _: &PageDown, _, cx| this.page(1, cx)))
-            .on_action(cx.listener(|this, _: &SwitchTab, _, cx| this.step(1, cx)))
-            .on_action(cx.listener(|this, _: &SwitchTabBack, _, cx| this.step(-1, cx)))
-            .on_action(cx.listener(|this, _: &Activate, window, cx| this.pick(window, cx)))
-            // Letting go of ⌃ shows the tab picked.
-            .on_modifiers_changed(
-                cx.listener(|this, event: &ModifiersChangedEvent, window, cx| {
-                    if !event.modifiers.control {
-                        this.pick(window, cx);
-                    }
-                }),
-            )
+        let cards: Vec<_> = (self.cards.iter().enumerate())
+            .map(|(index, card)| card.element(index, index == self.picked, self.scale, p, cx))
+            .collect();
+        div()
+            .size_full()
+            .flex()
+            .items_center()
+            .p(px(PADDING * self.scale))
+            .gap(px(CARD_GAP * self.scale))
+            .text_color(p.text)
+            .when(!self.glass, |panel| panel.bg(p.menu))
+            .children(cards)
     }
+}
+
+/// The switcher, if it's up, as a test or the check reads it: its cards' titles, the pick, and
+/// whether its panel shows.
+#[cfg(any(test, feature = "visual-check"))]
+fn state(cx: &App) -> Option<(Vec<String>, usize, bool)> {
+    let switcher = popup::root::<Switcher>(Kind::Switcher, cx)?;
+    let titles = (switcher.cards.iter())
+        .map(|card| card.title.to_string())
+        .collect();
+    Some((titles, switcher.picked, switcher.shown))
 }
 
 #[cfg(test)]
