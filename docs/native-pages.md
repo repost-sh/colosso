@@ -15,8 +15,8 @@ screen. Since then the browser host runs inside Koyo as a library, every pane a 
 over the protocol the off-screen host speaks, and it was checked in the running app, on
 screen: the picture, the pointer, typing, the keyboard going back to Koyo and into the page
 again, edits, find, `DevTools`, responsive mode, the browser tools, pages out of sight,
-closing and a clean quit (section 7). Still to build: full screen, the bar's glass by the
-page, and the resize proposal (section 6). Native pages are off unless asked for (section 9).
+closing and a clean quit (section 7). Still to build: the bar's glass by the page, and the
+resize proposal (section 6). Native pages are off unless asked for (section 9).
 
 ---
 
@@ -283,10 +283,13 @@ Checked means run in the debug build as a bundle, through the host, on screen
 | Koyo stays behind when a page is made | `NSApp` turns Chromium's activation down | checked |
 | Restored, pinned and loose pages | made when shown, as before | a restored page checked; rest by construction |
 | Dialogs, sign-in, file choosers, certificate errors | the host's handlers | `confirm` checked through `browser_dialog`; the rest not |
-| Context menu, zoom, cursor | the host's handlers; Chromium's cursor | not checked |
+| Context menu | the host's menu handler; Koyo's native menu at the click | checked: asked, shown, closed with Escape |
+| Zoom | the host's zoom level | checked: ⌘= twice, 554 to 443 CSS pixels wide; ⌘0 back |
+| Full screen, filling the pane | the page's own full screen in the pane it has; Chrome's window stays as it is (it can't go full screen beside another, which the holder is set to) | checked: entered, Escape leaves it |
+| Full screen, filling the screen (the default) | Koyo's window goes full screen with that page alone, as off screen | not checked: by construction the same, the page's views following its pane |
+| Cursor | Chromium's own | not checked |
 | Permissions, passkeys, location | the host's handlers, in Koyo's process now | not checked; `script/bundle` and `script/dev-bundle` give Koyo the usage reasons macOS asks for |
 | Trackpad swipe back, pinch | Chromium's own | not checked |
-| Full screen | not built: Chrome wants its window full screen | gap |
 | The bar's glass dark or light by the page | not built: no pixels in Koyo | gap; the theme's |
 | The person "has" a page by typing in it | not built: only presses count | gap |
 | A window moved without a repaint | the holder stays where it was until the pane is next drawn | gap; only Chromium's own menus and bubbles are placed by it |
@@ -325,7 +328,7 @@ What it doesn't say:
 
 Native pages are off unless asked for, as Koyo starts:
 
-- **Settings → Browser → Native pages** (`nativePages` in `settings.json`), read at start.
+- **Settings → Browser → Native pages** (`native_pages` in `settings.json`), read at start.
 - `KOYO_NATIVE_PAGES=1` or `=0` in the environment overrides the setting.
 - Koyo has to run from a bundle that holds the engine (section 3.1): a packaged Koyo does
   (`script/bundle`); for the debug build, `script/dev-bundle` makes and runs
