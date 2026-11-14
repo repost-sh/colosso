@@ -418,6 +418,11 @@ answer), `Request { request, ask }`, `Cancel`, `Quit`. Host to app: `Hello { pro
   A call naming no device never finds a real one.
 - `device_list` lists Koyo's simulators and the iPhones and iPads plugged in (`kind: device`, no
   `set`; `needsPerson` with the step a device misses until its tab says more).
+- `device_open`'s tab opens where the agent is, out of sight: on the checkout of the agent's own
+  tab (its chat's, its terminal's), right after that tab, else on its worktree; never on the
+  checkout the person happens to be on, as it did until 2026-11-14
+  (`control/exec/beside.rs`, shared with the agent desktop's tab). A device a tab shows
+  already keeps that tab.
 - `device_snapshot` reads a simulator's own accessibility tree (`source: accessibility`), asked of
   its CoreSimulatorBridge as idb asks it: roles, labels, values, ids, a ref touching the
   element's activation point (a switch's row on its switch). A system alert is an app of its

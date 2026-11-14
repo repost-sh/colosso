@@ -36,6 +36,7 @@ mod elements;
 mod kept;
 mod keys;
 mod loose;
+mod one_tab;
 mod pinned;
 mod rails;
 mod reopen;
@@ -60,6 +61,7 @@ pub use elements::{
     no_matches, project_error, row, search_field, section_label, solid, tab_close_button,
 };
 pub use kept::KeptWindow;
+pub(crate) use one_tab::Place;
 pub use reorder::{Drop, MOTION, Reorder, TabHand};
 pub use splits::{Dragged, DraggedPane, drag_chip};
 pub use tab_face::{FAVICON_CORNERS, Face};

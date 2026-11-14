@@ -6,6 +6,7 @@
 mod accounts;
 mod activity;
 mod app;
+mod beside;
 mod browser;
 mod chat;
 mod desktop;

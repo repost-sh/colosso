@@ -187,6 +187,13 @@ impl Shell {
         pane
     }
 
+    /// Where the tab showing terminal `handle` is, as `(project, branch, tab)`, if one does.
+    pub(crate) fn terminal_tab(&self, handle: &Handle) -> Option<(usize, usize, usize)> {
+        let id = self.terminals.tab_of(handle)?;
+        let shown = self.workspace.find_pane(|pane| pane.terminal == Some(id));
+        shown.map(|(at, _)| at)
+    }
+
     /// Whether the daemon has said it runs terminal `handle`.
     pub(crate) fn terminal_known(&self, handle: &Handle) -> bool {
         self.terminals.states.get(handle).is_some()

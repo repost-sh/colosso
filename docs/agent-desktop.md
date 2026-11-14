@@ -353,8 +353,17 @@ quiet time: a cursor never rests.
 ## 9. The tab [built]
 
 - Pane kind `desktop`, one in the window, titled "Agent desktop". Opened by the person from the
-  new-tab launcher (Desktop), by `tab_open`, or by an agent's `desktop_open` (out of sight, as
-  every agent's tab: after the tab that shows, or shown when the checkout has no tab).
+  new-tab launcher (Desktop), by `tab_open`, or by an agent's `desktop_open`: out of sight, as
+  every agent's tab, and where the agent is, never where the person happens to be
+  (`control/exec/beside.rs`, 2026-11-14). That's right after the agent's own tab (its
+  chat's, its terminal's), the tab that checkout shows left shown; for an agent no tab
+  shows, its worktree, after the tab it shows (the desktop's is the one shown on a checkout
+  with no tab); for a client outside every checkout, the selected one. The tab is put there
+  directly (`Shell::one_pane` at a `Place`, `shell/one_tab.rs`): no checkout is selected on
+  the way, so the window isn't touched. It goes to the tab only when the person set Switch
+  to what agents open. Before, it opened on the checkout the person was on, after the tab
+  they were at: an agent in one project put it in whichever project the person was working
+  in. Open already, it stays where it is.
 - The canvas keeps the desktop's shape, fitted to the pane and never blown up. Each window's
   latest surface is drawn at its place.
 - The agent's pointer is drawn where the host says it acted, the arrow a page's agent has.
@@ -395,7 +404,7 @@ agents have open on the desktop, and can open nothing there itself. Inputs and o
 
 | Tool | Scope | Does |
 | --- | --- | --- |
-| `desktop_open` | `desktop` | Starts an app (name, bundle id or path), optionally with a file or URL, on the agent desktop; opens the tab out of sight. With `personsOwn`, or for an app that takes no second instance, the person's own running one, once `consent` carries their words (5); the answer then says `lent` |
+| `desktop_open` | `desktop` | Starts an app (name, bundle id or path), optionally with a file or URL, on the agent desktop; opens the tab out of sight, after the caller's own tab (9). With `personsOwn`, or for an app that takes no second instance, the person's own running one, once `consent` carries their words (5); the answer then says `lent` |
 | `desktop_windows` | `read` | The windows there, front to back: id, process, app, title, frame |
 | `desktop_screenshot` | `read` | A window, or the whole desktop, as PNG with its place on the desktop; points equal pixels at scale 1 |
 | `desktop_snapshot` | `read` | The accessibility tree with refs and each one's middle, optionally the menu bars |
@@ -509,6 +518,8 @@ showing, on the debug and the release host).
 | `koyo-rs/koyo/src/settings_view/agent_desktop.rs` | Settings → Agent desktop |
 | `koyo-rs/koyo-app-control/src/ops/desktop.rs`, `ops/desktop/` | The tools' inputs and outputs |
 | `koyo-rs/koyo/src/control/exec/desktop.rs` | The tools' executors |
+| `koyo-rs/koyo/src/control/exec/beside.rs` | Where the tab an agent's `desktop_open` opens goes: beside the caller |
+| `koyo-rs/koyo/src/shell/one_tab.rs` | The one pane there is, or a new one in a tab at a place; a device's tab opens through it too |
 
 Running it from a checkout: `script/dev` packages the host in `koyo-rs/target/desk-host`; its
 loader has no grants until the person gives them in Settings → Agent desktop. In a debug build

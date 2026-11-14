@@ -6,6 +6,7 @@
 mod accounts;
 mod activity;
 mod approval;
+mod beside;
 mod chat_modes;
 mod chat_set;
 mod chats;

@@ -12,7 +12,7 @@ use koyo_app_control::ops::device::{DeviceDone, DeviceOpenInput, DeviceOpenOutpu
 use super::looks::{screen, step};
 use super::{claim, last_device, panes_of, remember, which};
 use crate::control::Caller;
-use crate::control::exec::{Exec, output, update_shell};
+use crate::control::exec::{Exec, beside, output, update_shell};
 use crate::devices::{self, Chosen, Simulator, Standing};
 
 /// How long `device_open` waits for the device to stand ready before it answers that it is
@@ -90,8 +90,11 @@ fn opened(caller: &Caller, chosen: Chosen, cx: &mut App) -> Result<u64, ControlE
             return Err(too_many(&names));
         }
     }
-    let pane = update_shell(cx, |shell, _, cx| shell.device_pane(Some(chosen), shows, cx))?
-        .ok_or_else(|| ControlError::internal("The device's tab couldn't be opened."))?;
+    // Its tab, where the caller is and not where the person is (`beside::tab`).
+    let pane = update_shell(cx, |shell, window, cx| {
+        beside::tab(shell, caller, shows, window, cx, |shell, place, cx| shell.device_pane_at(Some(chosen), place, cx))
+    })?
+    .ok_or_else(|| ControlError::internal("The device's tab couldn't be opened."))?;
     let devices = devices::devices(cx);
     // A simulator just made isn't in the list the launcher and the picker read yet.
     if simulator && devices.read(cx).simulator(&udid).is_none() {

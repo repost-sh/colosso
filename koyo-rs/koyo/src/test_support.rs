@@ -12,7 +12,9 @@ use gpui_kit::{
     TestAppContext, VisualTestContext, Window, WindowBounds, WindowOptions, point, px, size,
 };
 #[cfg(test)]
-use koyo_term_control::{Actor, Control, Handle, Status, TerminalRecord, WorktreeRef};
+use koyo_term_control::{
+    Actor, Control, Handle, Status, TerminalRecord, TerminalSummary, WorktreeRef,
+};
 
 #[cfg(test)]
 use crate::projects::read_worktrees;
@@ -258,6 +260,20 @@ pub fn press_prompt(window: AnyWindowHandle, cx: &mut TestAppContext) {
         Modifiers::default(),
     );
     draw(window, cx);
+}
+
+/// Terminal `handle` as the daemon lists it: called `name`, at its prompt in the checkout at
+/// `worktree`.
+#[cfg(test)]
+pub fn terminal_listed(handle: &str, name: &str, worktree: &Path) -> TerminalSummary {
+    let at = worktree.to_str().expect("a path that's text");
+    TerminalSummary {
+        record: TerminalRecord {
+            name: name.into(),
+            ..terminal_record(handle, at, Status::Idle, "prompt")
+        },
+        preview: String::new(),
+    }
 }
 
 /// A terminal as the daemon tells of it: `handle`, named after it, in the checkout at

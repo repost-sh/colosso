@@ -22,10 +22,11 @@ use koyo_desk_wire::keys::flags;
 use koyo_desk_wire::link::{Act, Answer, Ask, Button, Close, Refusal, RefusalCode, Spot, Window};
 use serde_json::Value;
 
-use super::{Exec, output, update_shell};
+use super::{Exec, beside, output, update_shell};
 use crate::agent_desktop;
 use crate::browser::control::{Mode, Refused};
 use crate::control::Caller;
+use crate::shell::Shell;
 
 /// How long each ask may take before the call fails `timeout`; each well inside the client's
 /// `CALL_TIMEOUT`.
@@ -173,10 +174,13 @@ pub(crate) fn open(caller: &Caller, input: DesktopOpenInput, cx: &mut App) -> Ex
     // The desktop is this agent's from here on, if the person doesn't hold it: an app is
     // opened either way, out of the person's sight.
     let _ = agent_desktop::agent_acts(cx, caller.actor());
-    // The desktop's tab, shown or not as the person set what agents open to be; the desktop
-    // works without it, and with the window closed there's none to open.
+    // The desktop's tab, where the caller is and not where the person is (`beside::tab`),
+    // shown or not as the person set what agents open to be; the desktop works without it,
+    // and with the window closed there's none to open.
     let shows = crate::control::policy::shows(None, cx);
-    let _ = update_shell(cx, |shell, _, cx| shell.desktop_pane(shows, cx));
+    let _ = update_shell(cx, |shell, window, cx| {
+        beside::tab(shell, caller, shows, window, cx, Shell::desktop_pane_at)
+    });
     let ask = Ask::Open {
         app: input.app,
         document: input.file,

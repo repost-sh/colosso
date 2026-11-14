@@ -4,8 +4,8 @@
 
 use gpui_kit::{App, AppContext as _, Context};
 
-use super::Shell;
-use crate::model::{Pane, PaneKind, Tab};
+use super::{Place, Shell};
+use crate::model::{Pane, PaneKind};
 use crate::navigation::Route;
 use crate::settings_view::SettingsPage;
 
@@ -70,23 +70,15 @@ impl Shell {
     /// one comes after the tab that is, out of sight, as a tab an agent opens does. `None`
     /// with no checkout to open it on.
     pub fn desktop_pane(&mut self, shown: bool, cx: &mut Context<Self>) -> Option<u64> {
+        self.desktop_pane_at(self.place(shown), cx)
+    }
+
+    /// [`Self::desktop_pane`], a new one's tab at `place`.
+    pub(crate) fn desktop_pane_at(&mut self, place: Place, cx: &mut Context<Self>) -> Option<u64> {
         let open = (self.workspace).find_pane(|pane| pane.kind == PaneKind::Desktop);
-        if let Some(((project, branch, tab), pane)) = open {
-            if shown {
-                self.workspace.select_tab(project, branch, tab);
-            }
-            return Some(pane);
-        }
-        let pane = Pane::desktop(cx.new(crate::agent_desktop::DeskView::new));
-        let id = pane.id;
-        // Out of sight it comes after the tab that shows; with no tab showing there's
-        // nothing to keep the person on, and it's the one shown.
-        let beside = (self.workspace.shown_tab()).filter(|at| self.workspace.tab(*at).is_some());
-        match beside {
-            Some(beside) if !shown => (self.workspace).insert_tab_after(beside, Tab::Single(pane)),
-            _ => self.workspace.push_tab(Tab::Single(pane)),
-        }
-        cx.notify();
-        (self.workspace.find_pane(|pane| pane.id == id)).map(|_| id)
+        let make = |_: &mut Self, cx: &mut Context<Self>| {
+            Pane::desktop(cx.new(crate::agent_desktop::DeskView::new))
+        };
+        self.one_pane(open, place, make, cx)
     }
 }
