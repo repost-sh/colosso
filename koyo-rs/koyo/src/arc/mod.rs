@@ -15,7 +15,7 @@ use crate::shell::Shell;
 use crate::theme::{self, Palette, gray};
 
 mod actions;
-mod avatar;
+pub(crate) mod avatar;
 mod card;
 mod clear;
 mod delete_space;

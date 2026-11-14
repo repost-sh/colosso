@@ -300,11 +300,12 @@ The projects of the space shown, as tiles at the foot of the space, over the spa
   the first time this runs, into a first space made then. A project removed leaves its space.
 - ⌥← / ⌥→ and ⌘⌥← / ⌘⌥→ change the space shown (`space`) one either way, as a swipe does, and only in the
   Arc layout (section 7).
-- Selected another way (app control, the Orca layout, a link), a project's own space is
-  shown. A space with no project shows no project at all: the window shows none of another
-  space's tabs, and the switcher and the side panel have nothing to act on, until a project
-  is picked. ⌘T opens a page there, a loose one of the space, and ⌘W closes the loose or the
-  pinned page shown (section 11).
+- Selected another way (app control, the Orca layout, a link, ⌃⇥), a project's own space is
+  shown, and its tab there, not the loose page that space showed last (`follow_space`). A
+  space with no project shows no project at all: the window shows none of another space's
+  tabs, and the side panel has nothing to act on, until a project is picked; ⌃⇥ still goes to
+  the tabs looked at last, wherever they are (`docs/tab-switcher.md`). ⌘T opens a page there,
+  a loose one of the space, and ⌘W closes the loose or the pinned page shown (section 11).
 - Each space has an `id`, given once and kept whatever its place among the spaces: its loose
   pages go by it (`docs/browser.md` 2).
 - A space lists its projects in the sidebar's order, so moving a project in the Orca list or
@@ -444,10 +445,11 @@ project's name would be (section 4). **[asked]**
   worktree) leaves it where it was (`Shell::close_apart`, `picked_tab_shown`). **[ours]**
 - A loose page shown is its space's: another space shows what it showed last.
 - Picking a tab of a worktree, or a project's tile, leaves a pinned or a loose page for that;
-  so does anything else that shows a worktree's tab: ⌃⇥, a file opened, ⌘⇧T, a worktree's +,
-  app control selecting a tab, worktree or project. A pinned page's page stays open, as it
-  was, and shows again when its tile is picked. **[asked; ours: the list of what else leaves
-  it]**
+  so does anything else that shows a worktree's tab: ⌃⇥ picking one, a file opened, ⌘⇧T, a
+  worktree's +, app control selecting a tab, worktree or project. A pinned page's page stays
+  open, as it was, and shows again when its tile is picked. ⌃⇥ lists the pinned and the loose
+  pages among the tabs looked at last, and shows one picked as its tile or row would
+  (`docs/tab-switcher.md`). **[asked; ours: the list of what else leaves it]**
 - A pinned or a loose page's `DevTools`, detached, split its tab as they split any page's;
   their pane has only its ×, as such a page's panes aren't dragged elsewhere. No side of one
   takes a tab in hand: it's split with nothing. **[ours]**

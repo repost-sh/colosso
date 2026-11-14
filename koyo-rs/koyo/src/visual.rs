@@ -240,6 +240,11 @@ impl Drawn {
     pub fn save_dialog(&mut self, name: &str) -> Result<PathBuf> {
         self.draw()?;
         let window = (self.cx.read(crate::modal::window)).ok_or("no dialog is open")?;
+        self.save_window(window, name)
+    }
+
+    /// Draws `window`, one that floats over the shell's, and saves it as `name`, saying where.
+    pub fn save_window(&mut self, window: AnyWindowHandle, name: &str) -> Result<PathBuf> {
         (self.cx)
             .update_window(window, |_, window, cx| window.draw(cx).clear(cx))
             .map_err(|error| error.to_string())?;

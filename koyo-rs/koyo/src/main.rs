@@ -215,6 +215,10 @@ fn main() -> ExitCode {
     if std::env::args().any(|arg| arg == "--visual-check-terminal") {
         return terminals::visual::run();
     }
+    #[cfg(all(target_os = "macos", feature = "visual-check"))]
+    if std::env::args().any(|arg| arg == "--visual-check-switcher") {
+        return shell::check_switcher();
+    }
     let app = gpui_kit::application()
         // The full Lucide set: the default bundle leaves out icons we use, which then draw nothing.
         .with_assets(gpui_kit::assets::AllAssets);

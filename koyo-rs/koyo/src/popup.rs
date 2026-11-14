@@ -1,7 +1,7 @@
 //! The app's floating windows: menus and their panels (`menu.rs`), dialogs (`modal.rs`), the
-//! theme picker (`picker.rs`) and the sidebar's hover cards (`arc/card.rs`). Each is a glass
-//! window over the window it belongs to, opened here, one of each kind up at a time, and they all
-//! float and go the same way:
+//! theme picker (`picker.rs`), the sidebar's hover cards (`arc/card.rs`) and the tab switcher's
+//! panel (`shell/switcher.rs`). Each is a glass window over the window it belongs to, opened
+//! here, one of each kind up at a time, and they all float and go the same way:
 //!
 //! - It stays on the Space it opened on, and goes unseen while Koyo isn't the app in front. GPUI
 //!   has a pop-up panel join every Space, so one left open went with the person to another
@@ -43,6 +43,7 @@ pub enum Kind {
     Dialog,
     Picker,
     Card,
+    Switcher,
 }
 
 impl Kind {
@@ -50,6 +51,12 @@ impl Kind {
     /// task of its own.
     fn is_task(self) -> bool {
         self == Kind::Dialog
+    }
+
+    /// The tab switcher's panel opens unseen: the switcher shows it ([`show`]) once ⌃ has been
+    /// held a moment, and a ⌃⇥ let go sooner never shows one.
+    fn opens_unseen(self) -> bool {
+        self == Kind::Switcher
     }
 }
 
@@ -104,13 +111,15 @@ struct Popups {
 
 impl Global for Popups {}
 
-/// What a floating window over `parent` opens with, at `bounds` on its screen: no title bar, not
-/// moved or resized, and taking the keyboard if it should `focus`.
-fn options(bounds: Bounds<Pixels>, focus: bool, parent: &Window, cx: &App) -> WindowOptions {
+/// What a floating window of `kind` over `parent` opens with, at `bounds` on its screen: no title
+/// bar, not moved or resized, taking the keyboard if it's a task, and seen unless its kind opens
+/// unseen.
+fn options(bounds: Bounds<Pixels>, kind: Kind, parent: &Window, cx: &App) -> WindowOptions {
     WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(bounds)),
         titlebar: None,
-        focus,
+        focus: kind.is_task(),
+        show: !kind.opens_unseen(),
         kind: WindowKind::PopUp,
         is_movable: false,
         is_resizable: false,
@@ -136,7 +145,7 @@ pub fn open<V: Render>(
         source,
     } = opening;
     close(kind, cx);
-    let options = options(bounds, kind.is_task(), parent, cx);
+    let options = options(bounds, kind, parent, cx);
     let over = parent.window_handle();
     let mut watching = Vec::new();
     let opened = cx.open_window(options, |window, cx| {
@@ -164,7 +173,9 @@ pub fn open<V: Render>(
         })
     });
     let handle = opened.ok()?;
-    refresh_edge(handle.into(), cx);
+    if !kind.opens_unseen() {
+        refresh_edge(handle.into(), cx);
+    }
     let up = Up {
         window: handle.into(),
         over,
@@ -174,6 +185,18 @@ pub fn open<V: Render>(
     };
     cx.default_global::<Popups>().up.insert(kind, up);
     Some(handle)
+}
+
+/// Shows the floating `window`, one of a kind that opens unseen, over the others, without giving
+/// it the keyboard; off macOS, where GPUI can only show a window by giving it the keyboard, with
+/// it. Its edge is worked out again from here, as a window's that's seen as it opens is from its
+/// opening.
+pub fn show(window: &mut Window, cx: &mut App) {
+    #[cfg(target_os = "macos")]
+    crate::native::window::show(window);
+    #[cfg(not(target_os = "macos"))]
+    window.activate_window();
+    refresh_edge(window.window_handle(), cx);
 }
 
 /// The window of the floating window of `kind` that's up, if one is.

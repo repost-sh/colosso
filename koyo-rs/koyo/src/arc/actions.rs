@@ -251,7 +251,8 @@ impl Shell {
 
     /// Follows the project selected, however it was: into its space if it's in another, and as
     /// the project its space shows. An empty space shown has no project to follow, so it stays
-    /// shown.
+    /// shown. Followed into another space, it's the project that was asked for: its tab shows,
+    /// not the loose page that space showed last, which would come back with the space's pages.
     pub(crate) fn follow_space(&mut self, cx: &mut Context<Self>) {
         let Some(active) = self.workspace.project().map(|project| &project.path) else {
             return;
@@ -265,11 +266,16 @@ impl Shell {
         if followed {
             return;
         }
+        let elsewhere = settings.space != space;
         let active = active.clone();
         settings::update(cx, |settings| {
             settings.space = space;
             settings.spaces[space].selected = Some(active);
         });
+        if elsewhere {
+            self.follow_space_pages(cx);
+            self.workspace.leave_apart();
+        }
     }
 
     /// Moves `project` to the space at `to`, or a new one, and shows it there.

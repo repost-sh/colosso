@@ -8,7 +8,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::{
-    AnyElement, AnyView, App, AppContext as _, Context, Entity, FontWeight,
+    AnyView, App, AppContext as _, Context, Entity, FontWeight,
     InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString, Styled,
     Subscription, TextStyle, Window, div, point, px, size,
 };
@@ -61,54 +61,31 @@ pub fn open_palette<V: Render>(
     cx: &mut App,
     build: impl FnOnce(&mut Window, &mut Context<V>) -> V,
 ) {
-    let height = palette_height(true, true, PALETTE_ROWS);
+    // Its field, the most rows it shows and its status line, with the room between them.
+    let rows = PALETTE_ROWS as f32 * crate::files::ROW;
+    let height = 2. * PALETTE_PADDING + FIELD + GAP + rows + GAP + SMALL_LINE;
     open_padded(PALETTE_WIDTH, height, PALETTE_PADDING, parent, cx, build);
 }
 
-/// Opens the list `build` makes over `parent`: a dialog a [`palette`] of rows alone fills,
-/// sized to its `rows`, up to the most a palette shows.
-pub fn open_list<V: Render>(
-    rows: usize,
-    parent: &mut Window,
-    cx: &mut App,
-    build: impl FnOnce(&mut Window, &mut Context<V>) -> V,
-) {
-    let height = palette_height(false, false, rows);
-    open_padded(PALETTE_WIDTH, height, PALETTE_PADDING, parent, cx, build);
-}
-
-/// How high a palette is with `rows` rows, a field over them if `field` and a line under
-/// them if `status`.
-fn palette_height(field: bool, status: bool, rows: usize) -> f32 {
-    let field = if field { FIELD + GAP } else { 0. };
-    let status = if status { GAP + SMALL_LINE } else { 0. };
-    let rows = rows.min(PALETTE_ROWS) as f32 * crate::files::ROW;
-    2. * PALETTE_PADDING + field + rows + status
-}
-
-/// A palette: its field, if it has one, over `list`, what it finds, and under that
-/// `status`, if it has one, a small muted line on how much; the pieces [`open_palette`] and
-/// [`open_list`] size the dialog for.
+/// A palette: its field over `list`, what it finds, and under that `status`, a small muted
+/// line on how much; the pieces [`open_palette`] sizes the dialog for.
 pub fn palette(
-    input: Option<&Entity<InputState>>,
+    input: &Entity<InputState>,
     list: impl IntoElement,
-    status: Option<AnyElement>,
+    status: impl IntoElement,
     p: Palette,
 ) -> gpui_kit::Div {
-    let field = input.map(|input| {
-        let input = Input::new(input)
-            .small()
-            .prefix(icon(IconName::Search, 14.).text_color(p.muted));
-        field(input, p)
-    });
+    let input = Input::new(input)
+        .small()
+        .prefix(icon(IconName::Search, 14.).text_color(p.muted));
     div()
         .size_full()
         .flex()
         .flex_col()
         .gap(px(GAP))
-        .children(field)
+        .child(field(input, p))
         .child(list)
-        .children(status.map(|status| small_line().text_color(p.muted).child(status)))
+        .child(small_line().text_color(p.muted).child(status))
 }
 
 /// Opens the view `build` makes in a `width` by `height` dialog over `parent`, closing any

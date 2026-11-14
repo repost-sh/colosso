@@ -7,7 +7,8 @@ use std::time::{Duration, Instant};
 
 use gpui_kit::component::input::EditorState;
 use gpui_kit::{
-    AnyWindowHandle, AppContext as _, Context, Entity, TestAppContext, Window, px, size,
+    AnyWindowHandle, AppContext as _, Context, Entity, Modifiers, TestAppContext,
+    VisualTestContext, Window, px, size,
 };
 use koyo_project::Feed;
 
@@ -246,6 +247,12 @@ pub(crate) fn shell_with_tree(
 pub(crate) fn press(window: AnyWindowHandle, keys: &str, cx: &mut TestAppContext) {
     (cx.update_window(window, |_, window, cx| window.draw(cx).clear(cx))).unwrap();
     cx.simulate_keystrokes(window, keys);
+}
+
+/// Lets go, in `window`, of every modifier key held: ⌃ after ⌃⇥, say.
+pub(crate) fn let_go(window: AnyWindowHandle, cx: &mut TestAppContext) {
+    VisualTestContext::from_window(window, cx).simulate_modifiers_change(Modifiers::none());
+    cx.run_until_parked();
 }
 
 /// Opens a new chat in `window` as a person does: ⌘T, Tab to a chat, Enter.

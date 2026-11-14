@@ -27,6 +27,7 @@ mod loose;
 mod pinned;
 mod space_keys;
 mod spaces;
+mod switcher;
 mod tabs;
 mod tiles;
 mod worktrees;
@@ -67,11 +68,7 @@ fn shown(shell: &Entity<Shell>, cx: &TestAppContext) -> (std::path::PathBuf, usi
     })
 }
 
-fn chat(title: &str) -> Tab {
-    let mut pane = Pane::new(PaneKind::Chat);
-    pane.title = title.to_owned().into();
-    Tab::Single(pane)
-}
+use crate::model::tests::chat;
 
 #[gpui_kit::test]
 fn a_space_shows_the_project_it_showed_last_and_an_empty_one_hides_the_others(

@@ -3,16 +3,8 @@
 
 use std::path::Path;
 
-use crate::model::tests::{page, shown};
-use crate::model::{Loose, Workspace};
-
-/// A loose page at `address`, of no project.
-fn loose(address: &str) -> Loose {
-    Loose {
-        tab: page(address),
-        project: "no-project".into(),
-    }
-}
+use crate::model::Workspace;
+use crate::model::tests::{loose, shown};
 
 /// The workspace of the pinned pages' tests, the space known by 1 shown.
 fn with_pages(addresses: &[&str]) -> Workspace {

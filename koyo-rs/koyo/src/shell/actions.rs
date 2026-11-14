@@ -48,7 +48,6 @@ pub fn init(cx: &mut App) {
         KeyBinding::new("ctrl-tab", SwitchTab, None),
         KeyBinding::new("ctrl-shift-tab", SwitchTabBack, None),
     ]);
-    switcher::init(cx);
     // The layout is a setting, so this works from any window or menu.
     cx.on_action(|_: &ToggleSidebarMode, cx| {
         settings::update(cx, |settings| settings.layout = settings.layout.other());
@@ -117,10 +116,10 @@ impl Shell {
             .on_action(cx.listener(|this, _: &SwitchTabBack, window, cx| {
                 switcher::switch(this, cx.entity(), -1, window, cx);
             }))
-            // ⌃ let go before the switcher's window has the keyboard is heard here.
-            .on_modifiers_changed(|event: &ModifiersChangedEvent, window, cx| {
+            // ⌃ let go shows the tab the switcher has picked: its panel never has the keyboard.
+            .on_modifiers_changed(|event: &ModifiersChangedEvent, _, cx| {
                 if !event.modifiers.control {
-                    switcher::released(window, cx);
+                    switcher::released(cx);
                 }
             })
             .on_action(

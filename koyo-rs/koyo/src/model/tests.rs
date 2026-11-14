@@ -22,8 +22,23 @@ pub(super) fn workspace(worktrees: &[&str]) -> Workspace {
     workspace
 }
 
+/// A chat's tab, titled `title`.
+pub(crate) fn chat(title: &str) -> Tab {
+    let mut pane = Pane::new(PaneKind::Chat);
+    pane.title = title.to_owned().into();
+    Tab::Single(pane)
+}
+
+/// A loose page at `address`, of no project.
+pub(crate) fn loose(address: &str) -> Loose {
+    Loose {
+        tab: page(address),
+        project: "no-project".into(),
+    }
+}
+
 /// A tab of a page at `address`, titled with it, its page not made yet.
-pub(super) fn page(address: &str) -> Tab {
+pub(crate) fn page(address: &str) -> Tab {
     let unloaded = Unloaded {
         address: address.into(),
         favicon: None,

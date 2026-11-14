@@ -178,15 +178,39 @@ fn ns_colour(colour: Hsla) -> Retained<NSColor> {
     NSColor::colorWithSRGBRed_green_blue_alpha(r.into(), g.into(), b.into(), a.into())
 }
 
-/// New glass in `shown`, `EDGE` past it all round whatever size it goes to.
-fn glass_in(shown: &NSView) -> Retained<NSGlassEffectView> {
-    let view = NSGlassEffectView::new(shown.mtm());
-    // Its look from its appearance, which `place` sets, not from what's behind it.
+/// Whether the system has Liquid Glass: macOS 26 on.
+pub(super) fn has_glass() -> bool {
+    AnyClass::get(c"NSGlassEffectView").is_some()
+}
+
+/// New glass that takes its look from its own appearance ([`appear`]), not from what's behind
+/// it.
+pub(super) fn new_glass(main: MainThreadMarker) -> Retained<NSGlassEffectView> {
+    let view = NSGlassEffectView::new(main);
     if view.respondsToSelector(sel!(set_adaptiveAppearance:)) {
         // SAFETY: the setter, private, takes an `NSInteger`, of which 1 has the glass
         // follow its view's appearance.
         let _: () = unsafe { msg_send![&view, set_adaptiveAppearance: 1isize] };
     }
+    view
+}
+
+/// Gives `view` the dark appearance or the light, which its glass is then.
+pub(super) fn appear(view: &NSGlassEffectView, dark: bool) {
+    // SAFETY: names AppKit defines.
+    let name = unsafe {
+        if dark {
+            NSAppearanceNameDarkAqua
+        } else {
+            NSAppearanceNameAqua
+        }
+    };
+    view.setAppearance(NSAppearance::appearanceNamed(name).as_deref());
+}
+
+/// New glass in `shown`, `EDGE` past it all round whatever size it goes to.
+fn glass_in(shown: &NSView) -> Retained<NSGlassEffectView> {
+    let view = new_glass(shown.mtm());
     let size = shown.bounds().size;
     view.setFrame(NSRect::new(
         NSPoint::new(-EDGE, -EDGE),
@@ -208,7 +232,9 @@ impl Hosted for Native {
 impl Native {
     fn new(window: &Window) -> Result<Native, String> {
         let main = MainThreadMarker::new().ok_or("not on the main thread")?;
-        AnyClass::get(c"NSGlassEffectView").ok_or("the system has no Liquid Glass")?;
+        if !has_glass() {
+            return Err("the system has no Liquid Glass".into());
+        }
         let shown = NSView::new(main);
         shown.setWantsLayer(true);
         let view = RefCell::new(glass_in(&shown));
@@ -241,15 +267,7 @@ impl Native {
                 self.corners.set(None);
             }
             let view = self.view.borrow();
-            // SAFETY: names AppKit defines.
-            let name = unsafe {
-                if dark {
-                    NSAppearanceNameDarkAqua
-                } else {
-                    NSAppearanceNameAqua
-                }
-            };
-            view.setAppearance(NSAppearance::appearanceNamed(name).as_deref());
+            appear(&view, dark);
             if dark {
                 view.setStyle(NSGlassEffectViewStyle::Clear);
             }
