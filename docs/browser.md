@@ -562,3 +562,137 @@ used as a person would, a page at a time:
   at once, a clip whose tab is out of sight; a format no browser plays still says so. The
   host's smoke suite and the app's host tests fare as on CEF's own build.
 - **Not seen:** a video in a WhatsApp chat, which takes the owner's sign-in.
+
+## 12. Site controls
+
+Written 2026-11-14 on branch `schulzfel/browser-extensions`. Drafted with Claude. The owner
+asked for a page's permissions where Arc and Zen have them: a popover off the address field,
+with the same look. This is that popover, what it holds, and what of Arc's and Zen's it
+leaves out. Zen's is `ZenSiteDataPanel.sys.mjs` and `zen-panels/site-data.inc`
+(`.superpowers/research/zen/files/`), whose sizes these are. Keep it in step with
+`koyo-rs/koyo/src/browser/site.rs`.
+
+### 12.1 In the address field [decided]
+
+- Two buttons at the field's right end, with a page shown, in both layouts (the Arc
+  sidebar's bar, `arc/top.rs`; the page's toolbar in Orca's, `browser/toolbar.rs`):
+  - **Copy link:** the page's whole address to the clipboard. The link turns to a check for
+    a second and a half.
+  - **Site controls** (sliders): opens the popover under it, and closes it again. It stays
+    lit while the popover is up.
+- They're there while the pointer is over the field, fading in and out over 150 ms as a
+  tab's close button does over its row (`theme::hover::eased`), and whatever the pointer
+  does while the popover is up or the address was just copied.
+- Neither is there while the field is being typed in, nor on a start page, which has no
+  site. In the Arc layout a press on either is theirs alone: the launcher, which a press on
+  the rest of the bar opens, stays shut.
+
+### 12.2 The popover [decided]
+
+A menu's window (`menu::Trigger::toggle_panel`), 232 points wide, as a callout
+(`MenuBody::callout`): centred under the sliders, kept within the window, an arrow on its
+top edge pointing at the button's middle, its corners 16 points round. It lies over the
+sidebar and the page both, so it's on glass of its own (`MenuBody::backdrop`), thicker than
+a menu's: dark with a dark theme and light with a light one, what's behind tinting it as in
+Arc, and what's on it reading over a white page. The owner turned down a menu's own thin
+glass (white text washed out over a light page) and a nearly opaque dark one (too dark),
+2026-11-14. A press anywhere else in the window closes it, and so do Escape, the window
+showing something else, and Koyo no longer being the app in front. Top to bottom:
+
+- **Actions:** a row of four buttons of one width, 32 points high, an icon each:
+  - **Share:** macOS's share sheet for the page's address.
+  - **Screenshot:** a picture of the page as its pane shows it, on the clipboard.
+  - **Find:** the page's find bar (⌘F).
+  - **Developer tools:** opens or closes them (⌥⌘I).
+
+  Each closes the popover as it acts.
+- **Settings:** what the site has been allowed or blocked from, one row each: a round icon,
+  the permission's name, and under it "Allowed" or "Blocked". The round is filled while it's
+  allowed. A press on a row turns it to the other, there and then, and the page is told the
+  next time it asks: no reload. Only what was decided is listed, as in Zen: a permission the
+  site never asked for, or was never answered about, isn't there, and with none the section
+  isn't either.
+- **Foot:** under a hairline, the connection: "Secure" with a lock for `https`, "Not
+  Secure" with an open one for anything else.
+
+What Arc and Zen have here that Koyo doesn't, so it isn't shown `[not built]`: extensions
+(the row of their icons and the "+"), boosts, reader mode, bookmarks; a certificate's
+details behind "Secure"; the "…" at the foot's right, a menu of the page's other commands. "Developer Mode" and
+"Automatic Picture-in-Picture", rows of Arc's own, have no counterpart: the developer tools
+are an action here.
+
+### 12.3 Where a site's permissions are kept [decided]
+
+Chromium keeps them, in the profile, as the site's content settings; Koyo keeps none of its
+own. So they're a profile's (a project's pages share them, another project's don't), they go
+with "Clear browsing data", and a page of either kind, native or off screen, reads the same.
+
+- The app asks the host for a page's (`AppRequest::SiteSettings`, protocol 11) as the
+  popover opens and after each change; the host answers with, for each
+  permission it can name and has a decision for, whether it's allowed or blocked
+  (`HostEvent::SiteSettings`). A row pressed is `AppRequest::SetSiteSetting`.
+- The permissions that can be listed are those Chromium asks the person about and keeps as
+  a content setting: the camera, the microphone, the location, notifications, the
+  clipboard, MIDI devices, installed fonts, window placement, several downloads.
+- **The camera and the microphone** weren't kept before: CEF hands every such request to
+  the host, which asked the person every time. Now the host keeps an Allow as the site's
+  setting, and answers by the setting without asking while it's allowed or blocked
+  (`pane/prompts.rs`). The screen is asked for every time, as in every browser.
+- The location is `GEOLOCATION`, the content setting Chromium keeps today; the newer
+  `GEOLOCATION_WITH_OPTIONS` is a website setting, and asked for as a content setting stops
+  the host (`location.rs`).
+
+### 12.4 A page asks for a permission [decided]
+
+The owner asked for Arc's way, not a dialog in the middle of the window (2026-11-14): the
+question comes out of the sliders button, a callout as the popover is (`site/prompt.rs`).
+
+- A round icon for what's asked, the question ("Allow example.com to access your camera,
+  microphone?", not bold), and two buttons of one width: **Not Now** and **Allow**. Return
+  is Allow.
+- **Allow** is kept for the site, by Chromium for what it asks itself and by the host for
+  the camera and the microphone (12.3), and shows in the popover's Settings from then on.
+- **Not Now** keeps nothing: the page is told no this once and may ask again
+  (`PermissionRequestResult::DISMISS`, where the dialog's Block was a kept `DENY`). Put
+  away any other way, by a press elsewhere, Escape, or Koyo no longer in front, it's Not
+  Now. A site is blocked from the popover: allowed once, its row turns to Blocked at a
+  press. One never allowed has no row to block; it's asked each time.
+- The button is lit and there while the question is up. Where it isn't drawn for the page
+  that asks (its address field has never been laid out), the question is a dialog as
+  before, with the same two answers.
+- The question is still the person's: `browser_dialog` answers none of this kind
+  (`docs/app-control.md`), and `browser_list` shows it waiting.
+
+### 12.5 The callout's window [decided]
+
+`native::window::callout`, asked for by the menu's surface each time its window's size
+changes (`menu/view.rs`).
+
+- macOS frames a window as a rectangle, whatever is in it, so a callout's window gives up
+  the frame: the bits of its style that make one go (titled, closable, resizable, content
+  under the title bar), the rest of what it is stays, and it's clear and not opaque.
+- Its blur is cut to the callout's shape by a mask on its effect view, a point inside the
+  outline the app draws, stretched only in the straight between its corners so the shape
+  holds while the window fits what it lists.
+- The app draws the rest as one outline, arrow and all: filled with the glass, then framed
+  with two hairlines, a dark one at the edge and a light one inside it, as a window's frame
+  is. The owner isn't satisfied with how that frame looks against the blur and left it as
+  it is, 2026-11-14: to come back to.
+
+### 12.6 Checked
+
+On Koyo's agent desktop, on a native page, the debug build, 2026-11-14
+(`.superpowers/native/desk/`): the two buttons come with the pointer over the bar; the
+popover opens centred under the sliders and lists a site's blocked notifications; a press
+on the row turned the page's `Notification.permission` from `denied` to `granted` with no
+reload; Find closed the popover and brought the find bar up; Share brought macOS's share
+sheet up from the button, with the page's address; the developer tools opened from it; copy
+link put the address on the clipboard, and the owner saw its check. A camera request came
+out of the button as a question; Not Now told the page no, and the next request asked
+again. The owner allowed a location on it and the page had its position.
+
+Not tried: the picture, which writes the person's clipboard; the camera and the microphone
+allowed, kept and answered by their setting (the owner's camera request ended in
+`NotAllowedError`, not looked into); the Orca layout's field. There is no test of the
+popover or the question in a window: `site/panel.rs` has its height and its names,
+`site/prompt.rs` its wording, `host/site.rs` a site's address and a media request's devices.

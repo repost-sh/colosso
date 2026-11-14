@@ -56,7 +56,11 @@ fn initialize(args: &Args, profiles: &std::path::Path) -> Result<(), String> {
     let profiles = profiles
         .canonicalize()
         .map_err(|e| format!("{}: {e}", profiles.display()))?;
-    with(|host| host.profiles.clone_from(&profiles));
+    let generation = super::profiles::generation(&profiles);
+    with(|host| {
+        host.profiles.clone_from(&profiles);
+        host.generation = generation;
+    });
     let path = |p: PathBuf| CefString::from(p.to_string_lossy().as_ref());
     #[cfg(target_os = "macos")]
     let engine = crate::embedded::engine();
@@ -149,6 +153,7 @@ pub(crate) fn run(args: &Args) -> Result<(), String> {
     if code >= 0 {
         return Err(format!("started as a subprocess ({code})"));
     }
+    super::profiles::drop_cleared(&profiles);
     initialize(args, &profiles)?;
     serve(reader)?;
     cef::run_message_loop();

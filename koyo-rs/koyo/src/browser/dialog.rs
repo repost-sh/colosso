@@ -6,7 +6,7 @@
 
 use std::path::PathBuf;
 
-use gpui_kit::{Context, PathPromptOptions, Window};
+use gpui_kit::{App, AppContext as _, Context, PathPromptOptions, Window};
 use koyo_browser_ipc::{Answer, AppRequest, Dialog, FileMode, Permission};
 
 use super::view::BrowserView;
@@ -14,6 +14,15 @@ use crate::modal;
 use window::PageDialog;
 
 mod window;
+
+/// Where a question is put to the person: a dialog over the window, or, a permission's, the
+/// site controls' popover (`site/prompt.rs`).
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub(super) enum Put {
+    #[default]
+    Dialog,
+    Site,
+}
 
 /// A question the page waits on.
 pub(super) struct Question {
@@ -65,7 +74,12 @@ impl BrowserView {
     /// Puts the person's dialog for question `id` away, if it's up.
     pub(super) fn put_away(&mut self, id: u64, cx: &mut Context<Self>) {
         if self.asked.take_if(|asked| *asked == id).is_some() {
-            modal::close(cx);
+            // A permission's question is in the site controls' popover, any other in a dialog.
+            if std::mem::take(&mut self.asked_in) == Put::Site {
+                self.site_trigger.close(cx);
+            } else {
+                modal::close(cx);
+            }
         }
     }
 
@@ -79,6 +93,24 @@ impl BrowserView {
             return;
         };
         let id = question.id;
+        // A permission is asked for from the site controls' button, as in Arc
+        // (`site/prompt.rs`); from a dialog only where that button isn't drawn.
+        if let Dialog::Permission { permissions } = &question.asked
+            && self.has_site_button()
+        {
+            let (origin, permissions) = (question.origin.clone(), permissions.clone());
+            let (page, from) = (cx.weak_entity(), self.site_trigger.clone());
+            self.asked = Some(id);
+            self.asked_in = Put::Site;
+            // The button is lit, and there, while its popover is up.
+            cx.refresh_windows();
+            window.defer(cx, move |window, cx| {
+                let prompt =
+                    |cx: &mut App| cx.new(|cx| super::site::Prompt::new(page, id, &origin, &permissions, cx));
+                from.open_panel(prompt, window, cx);
+            });
+            return;
+        }
         let words = words(&question.asked, &question.origin);
         let fields = words.carries.fields();
         self.asked = Some(id);
@@ -96,6 +128,7 @@ impl BrowserView {
     pub(super) fn answered(&mut self, id: u64, answer: Answer, cx: &mut Context<Self>) {
         if self.asked == Some(id) {
             self.asked = None;
+            self.asked_in = Put::Dialog;
         }
         if let Some(at) = self.dialogs.iter().position(|question| question.id == id) {
             self.dialogs.remove(at);
@@ -290,7 +323,7 @@ fn words(question: &Dialog, origin: &str) -> Words {
                     .collect::<Vec<_>>()
                     .join("\n"),
             ),
-            cancel: Some("Block"),
+            cancel: Some("Not Now"),
             confirm: "Allow",
             accept_default: true,
             carries: Carries::Nothing,

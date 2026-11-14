@@ -9,7 +9,7 @@
 //! <folder>/cmd     one command a line, taken (and removed) once it's there
 //! <folder>/out     what each command found, appended
 //!
-//! shot <name>              the window as <folder>/<name>.png, a point a pixel
+//! shot <name> [number]     the window (or the app's window of that number) as <folder>/<name>.png
 //! front                    the window in front of every other, the app staying behind
 //! windows                  the app's windows
 //! activate                 the app in front and the window key
@@ -17,17 +17,24 @@
 //! draw                     GPUI lays out and paints now, though nothing shows the window
 //! quit                     the app quits, as from its menu
 //! pages                    the native pages and where their views are
-//! click <x> <y>            a press and release at a point of the window, from its top left
+//! click <x> <y> [number]   a press and release at a point of the window (or the app's window
+//!                          of that number), from its top left
 //! rclick <x> <y>           a right press and release there
 //! move <x> <y>             the pointer moved there
+//! hover <x> <y>            the pointer's move handed to the view there and to GPUI's, as their
+//!                          tracking areas would be: a window nothing shows gets none of its own
 //! scroll <dy>              a wheel turned by dy pixels, where the pointer is (a wheel event
 //!                          made here has the pointer's place, not one of its own)
 //! type <text>              keys for the text, to the window's first responder
 //! key <code> <chars> [cmd|shift|ctrl|alt…]   a key down and up, as a key equivalent first
 //! state                    the window's first responder and whether it's key
+//! cursor                   the cursor the app has set, and where the window is on screen
+//! tick                     windows nothing shows drawn all the same, ten times a second (again: off)
 //! views                    the window's views, by class
+//! layers                   the layers under GPUI's view, by class, and what each holds
 //! frame <x> <y> <w> <h>    the window's frame set, in screen points from the bottom left
 //! wait <ms>                nothing for a while
+//! clear-data               browsing data cleared, as from Settings
 //! burst <keys|wheels> <n> <gap ms> [x y]   n inputs, each stamped as it's handed to the window
 //! ```
 
@@ -43,7 +50,7 @@ use objc2_app_kit::{NSApplication, NSWindow};
 use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
 
 mod look;
-use look::{state, views, windows};
+use look::{draw, quit, state, views, windows};
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -97,6 +104,9 @@ pub fn start(cx: &mut App) {
         let (cmd, out) = (folder.join("cmd"), folder.join("out"));
         loop {
             cx.background_executor().timer(Duration::from_millis(100)).await;
+            if look::TICKS.load(std::sync::atomic::Ordering::Relaxed) {
+                look::draw_unseen();
+            }
             let Ok(text) = std::fs::read_to_string(&cmd) else {
                 continue;
             };
@@ -108,6 +118,10 @@ pub fn start(cx: &mut App) {
                     let ms = rest.parse().unwrap_or(100);
                     cx.background_executor().timer(Duration::from_millis(ms)).await;
                     "waited".to_owned()
+                } else if verb == "clear-data" {
+                    // What Settings → Browser → Clear browsing data does, once confirmed.
+                    cx.update(crate::browser::clear_data);
+                    "clearing".to_owned()
                 } else if verb == "burst" {
                     burst(rest, &folder, cx).await
                 } else {
@@ -180,10 +194,15 @@ fn run(verb: &str, rest: &str, folder: &Path) -> String {
     };
     let numbers: Vec<f64> = rest.split(' ').filter_map(|word| word.parse().ok()).collect();
     match (verb, numbers.as_slice()) {
-        ("shot", _) => match u32::try_from(window.windowNumber()) {
-            Ok(number) => shot(number, &folder.join(format!("{rest}.png"))),
-            Err(_) => "no window number".into(),
-        },
+        ("shot", _) => {
+            // The window named by its number, as a dialog's; else the app's own.
+            let (name, number) = rest.split_once(' ').unwrap_or((rest, ""));
+            let number = number.parse().ok().or_else(|| u32::try_from(window.windowNumber()).ok());
+            match number {
+                Some(number) => shot(number, &folder.join(format!("{name}.png"))),
+                None => "no window number".into(),
+            }
+        }
         ("front", _) => {
             window.orderFrontRegardless();
             "in front".into()
@@ -194,6 +213,17 @@ fn run(verb: &str, rest: &str, folder: &Path) -> String {
         ("draw", _) => draw(&window),
         ("quit", _) => quit(),
         ("pages", _) => koyo_browser_host::native::describe(),
+        // In another window of the app's, by its number: a popover's, a dialog's.
+        ("click", [x, y, number]) => match look::numbered(*number as isize) {
+            Some(other) => {
+                let at = point(&other, *x, *y);
+                mouse(&other, 5, at, 0);
+                mouse(&other, 1, at, 1);
+                mouse(&other, 2, at, 1);
+                "clicked there".into()
+            }
+            None => "no such window".into(),
+        },
         ("click", [x, y]) => {
             let at = point(&window, *x, *y);
             mouse(&window, 5, at, 0); // moved
@@ -208,6 +238,7 @@ fn run(verb: &str, rest: &str, folder: &Path) -> String {
             mouse(&window, 4, at, 1); // right up
             "right-clicked".into()
         }
+        ("hover", [x, y]) => look::hover(&window, mouse_event(&window, 5, point(&window, *x, *y), 0)),
         ("move", [x, y]) => {
             mouse(&window, 5, point(&window, *x, *y), 0);
             "moved".into()
@@ -237,6 +268,12 @@ fn run(verb: &str, rest: &str, folder: &Path) -> String {
             key(&window, code, chars, flags, true)
         }
         ("state", _) => state(&window),
+        ("cursor", _) => look::cursor(&window),
+        ("layers", _) => look::layers(&window),
+        ("tick", _) => {
+            let on = !look::TICKS.fetch_xor(true, std::sync::atomic::Ordering::Relaxed);
+            format!("ticking {on}")
+        }
         ("views", _) => {
             let mut text = String::new();
             if let Some(content) = window.contentView() {
@@ -292,35 +329,6 @@ fn escape(window: &NSWindow) -> String {
     "escape posted".into()
 }
 
-/// Has GPUI lay out and paint though nothing shows the window, as with the display asleep:
-/// what a frame does (a page placed, the keyboard moved) is done.
-fn draw(window: &NSWindow) -> String {
-    let layer = (window.contentView())
-        .and_then(|content| koyo_browser_host::native::find_view(&content, c"GPUIView"))
-        .and_then(|view| view.layer());
-    match layer {
-        Some(layer) => {
-            layer.display();
-            "drawn".into()
-        }
-        None => "no GPUI view".into(),
-    }
-}
-
-/// Quits the app, as its menu's Quit does.
-fn quit() -> String {
-    if let Some(main) = MainThreadMarker::new() {
-        // SAFETY: `NSApplication`'s own, as the Quit menu item sends it.
-        unsafe {
-            let _: () = msg_send![
-                &*NSApplication::sharedApplication(main),
-                terminate: std::ptr::null::<AnyObject>()
-            ];
-        }
-    }
-    "quitting".into()
-}
-
 /// A point of the window given from its top left, as `AppKit` has it: from the bottom left.
 fn point(window: &NSWindow, x: f64, y: f64) -> NSPoint {
     let height = window.contentView().map_or(0., |view| view.frame().size.height);
@@ -336,8 +344,18 @@ fn uptime() -> f64 {
 }
 
 fn mouse(window: &NSWindow, kind: usize, at: NSPoint, clicks: isize) {
+    let event = mouse_event(window, kind, at, clicks);
+    if !event.is_null() {
+        // SAFETY: an event of this window's, handed to it as the app would.
+        unsafe {
+            let _: () = msg_send![window, sendEvent: event];
+        }
+    }
+}
+
+fn mouse_event(window: &NSWindow, kind: usize, at: NSPoint, clicks: isize) -> *mut AnyObject {
     // SAFETY: NSEvent's own constructor, its arguments as it declares them.
-    let event: *mut AnyObject = unsafe {
+    unsafe {
         msg_send![
             class!(NSEvent),
             mouseEventWithType: kind,
@@ -350,12 +368,6 @@ fn mouse(window: &NSWindow, kind: usize, at: NSPoint, clicks: isize) {
             clickCount: clicks,
             pressure: if clicks > 0 { 1.0f32 } else { 0.0f32 }
         ]
-    };
-    if !event.is_null() {
-        // SAFETY: an event of this window's, handed to it as the app would.
-        unsafe {
-            let _: () = msg_send![window, sendEvent: event];
-        }
     }
 }
 

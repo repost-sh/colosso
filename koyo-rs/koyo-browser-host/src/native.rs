@@ -98,6 +98,11 @@ pub(crate) fn context_ready(profile: &str) {
     }
 }
 
+/// The profiles were cleared: each is a new request context from now on, ready when it says.
+pub(crate) fn profiles_cleared() {
+    PROFILES.with(|profiles| profiles.borrow_mut().clear());
+}
+
 /// Makes `pane`'s page, once the profile it's of is ready (a new one initializes on disk
 /// first, and CEF makes no browser view before): a Chrome-style browser view with the pane's
 /// client, in a holder of its own. No profile is `DevTools`, which use the engine's own
@@ -268,10 +273,41 @@ pub fn place(pane: PaneId, container: &NSView, home: &NSView, screen: NSRect) {
     if moved {
         settle(pane);
     }
-    if let Some(holder) = holder
-        && holder.frame() != screen
-    {
+    let Some(holder) = holder else {
+        return;
+    };
+    // Not a child of the app's window, which would move it along with it: Chromium turns
+    // down the pointer over a page while a child of the page's window lies over that place.
+    if holder.frame() != screen {
         holder.setFrame_display(screen, false);
+        // Chromium lays the page's views out again as their holder changes, now or as it
+        // next works: they're put back to fill the app's view both times.
+        fill(pane);
+        crate::embedded::on_main(move || fill(pane));
+    } else if moved {
+        fill(pane);
+    }
+}
+
+/// Has `pane`'s views fill the view of the app's that shows them. Chromium places them by
+/// its holder's measure whenever the holder changes size, which is right for the holder and,
+/// left alone, puts a page whose pane grew or shrank off its place by the difference: the
+/// page's top cut off, a gap at its foot.
+fn fill(pane: PaneId) {
+    let shown = page(pane, |entry| {
+        if !entry.on_screen {
+            return None;
+        }
+        Some((entry.shown_in.as_ref()?.0.clone(), entry.views.clone()?))
+    });
+    let Some(Some((container, (compositor, web)))) = shown else {
+        return;
+    };
+    let bounds = container.bounds();
+    for view in [&compositor, &web] {
+        if view.isDescendantOf(&container) && view.frame() != bounds {
+            view.setFrame(bounds);
+        }
     }
 }
 

@@ -103,7 +103,24 @@ pub trait MenuBody: Render {
     /// How big its window is, drawn in `window`: asked as it opens, and again each time it
     /// changes, as the window fits it.
     fn extent(&self, window: &Window, cx: &App) -> Size<Pixels>;
+
+    /// What its window is filled with over the blur, where a menu's own thin glass won't do:
+    /// a panel that has to read over whatever is behind it, a page as much as the sidebar.
+    fn backdrop(&self, _: &App) -> Option<gpui_kit::Hsla> {
+        None
+    }
+
+    /// Whether it's a callout, as a browser's popover off its address field: centred under
+    /// its trigger, an arrow at its top pointing at it, its corners rounder.
+    fn callout(&self) -> bool {
+        false
+    }
 }
+
+/// A callout's arrow: how high it is, half how wide, and the corners of what it's on.
+pub(crate) const TIP: f32 = 9.;
+pub(crate) const TIP_HALF: f32 = 10.;
+pub(crate) const CALLOUT_RADIUS: f32 = 16.;
 
 /// What opens a menu, by a press or by a key: where it's drawn is where the menu goes either way,
 /// below it, or over it with no room below.
@@ -128,6 +145,11 @@ impl Trigger {
             .on_mouse_down(MouseButton::Left, pressed)
             .child(trigger)
             .on_prepaint(move |bounds, _, _| measured.set(bounds))
+    }
+
+    /// Where it was last drawn, in its window.
+    pub fn drawn(&self) -> Bounds<Pixels> {
+        self.0.drawn.get()
     }
 
     pub fn is_open(&self, cx: &App) -> bool {
@@ -168,6 +190,19 @@ impl Trigger {
             let panel = panel(cx);
             open_surface(self.0.clone(), panel, window, cx);
         }
+    }
+
+    /// Opens `panel` in a menu's window whatever is open, which closes: for what the app puts
+    /// up by itself, as a page's question, where a press would toggle.
+    pub fn open_panel<B: MenuBody>(
+        &self,
+        panel: impl FnOnce(&mut App) -> Entity<B>,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        close(cx);
+        let panel = panel(cx);
+        open_surface(self.0.clone(), panel, window, cx);
     }
 
     /// Closes what's open, and says whether this is to open: not if it was what's open.
@@ -245,28 +280,43 @@ fn open_surface<B: MenuBody>(
     cx: &mut App,
 ) {
     let anchor = source.drawn.get();
-    let extent = padded(body.read(cx).extent(window, cx));
+    let mut extent = padded(body.read(cx).extent(window, cx));
     // Right of the window's edge it'd lie over what isn't the app's, so it opens leftwards.
     let leftward = anchor.left() + extent.width > window.bounds().size.width;
-    let left = if leftward {
+    let mut left = if leftward {
         anchor.right() - extent.width
     } else {
         anchor.left()
     };
     // Past its bottom edge, likewise, it opens upwards.
     let upward = anchor.bottom() + px(GAP) + extent.height > window.bounds().size.height;
-    let top = if upward {
+    let mut top = if upward {
         anchor.top() - px(GAP) - extent.height
     } else {
         anchor.bottom() + px(GAP)
     };
     // It keeps the corner nearest the trigger as it fits what it holds.
-    let corner = popup::Corner {
+    let mut corner = popup::Corner {
         top: !upward,
         left: !leftward,
     };
+    // A callout hangs centred under its trigger, kept within the window, its arrow at the
+    // trigger's middle; with no room below it's a menu as any other.
+    let tip = (body.read(cx).callout() && !upward).then(|| {
+        let middle = anchor.left() + anchor.size.width / 2.;
+        let furthest = (window.bounds().size.width - extent.width - px(GAP)).max(px(GAP));
+        left = (middle - extent.width / 2.).clamp(px(GAP), furthest);
+        top = anchor.bottom() + px(1.);
+        extent.height += px(TIP);
+        corner = popup::Corner {
+            top: true,
+            left: true,
+        };
+        middle - left
+    });
     let origin = window.bounds().origin + point(left, top);
     let hearing = body.downgrade();
+    let backdrop = body.read(cx).backdrop(cx);
     let opening = Opening {
         kind: Kind::Menu,
         bounds: Bounds::new(origin, extent),
@@ -302,10 +352,16 @@ fn open_surface<B: MenuBody>(
         }),
         // A panel whose content changes fits it.
         _fits: cx.observe_in(&body, menu, move |_, body, window, cx| {
-            let extent = padded(body.read(cx).extent(window, cx));
+            let mut extent = padded(body.read(cx).extent(window, cx));
+            if tip.is_some() {
+                extent.height += px(TIP);
+            }
             popup::fit(window, extent, corner, cx);
         }),
         body: body.into(),
+        backdrop,
+        tip,
+        shaped: None,
     });
 }
 

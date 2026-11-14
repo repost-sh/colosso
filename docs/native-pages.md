@@ -15,7 +15,12 @@ screen. Since then the browser host runs inside Koyo as a library, every pane a 
 over the protocol the off-screen host speaks, and it was checked in the running app, on
 screen: the picture, the pointer, typing, the keyboard going back to Koyo and into the page
 again, edits, find, `DevTools`, responsive mode, the browser tools, pages out of sight,
-closing and a clean quit (section 7). Still to build: the resize proposal (section 6). Native pages are off unless asked for (section 9).
+closing and a clean quit (section 7). On the agent desktop since: the cursor, full screen on
+the whole screen, permission prompts, passkeys turned down, browsing data cleared at once,
+the holder following the window, and a split's divider dragged along a page, the last run
+of them on the build as committed. What nobody has
+seen yet is a split drag on a real screen with the GPU on (section 6). Native pages are off
+unless asked for (section 9).
 
 ---
 
@@ -187,7 +192,7 @@ locked, a page opened in the background answered `visible` with frames running, 
 Whether the off-screen path stays for agents' or responsive pages once native has parity is
 the owner's. `[owner]` What's measured so far gives no reason to keep it for pages out of sight.
 
-## 6. Resizes [proven in part]
+## 6. Resizes [built; not seen on a real screen]
 
 The risk: the pane's edge is GPUI's and lands in GPUI's frame; the page is Chromium's and
 lands when its next frame is ready.
@@ -204,19 +209,39 @@ lands when its next frame is ready.
   `CATransactionCoordinator` did not hold anything back: it waits only for a live resize of a
   window of Chromium's own. `[proven]` with software compositing; with the GPU on the content
   can't be read from Koyo's process, and nothing suggests it would differ.
-- Not measured: what those 21 to 32 ms look like (the old frame stretched, or pinned to a
-  corner with the page's colour showing beside it), and how long a commit takes; the
-  measurement's timing of commits read zero and isn't trusted.
 
-Proposed, to be judged in the running app `[proposed]`:
+Two things are out of step in such a drag, and each has its own answer.
 
-1. On a frame in which a native page's size changes, GPUI presents in the transaction, as it
-   does for a window resize, so the edge and the page's view move together. Only then.
-2. The page's layer is pinned to its top left, never stretched, with the page's background
-   behind it, so the gap shows as page colour at the far edge, which is what a browser shows.
-3. Only if that isn't good enough: hold the edge until Chromium's frame at the new size is in,
-   for at most a frame or two. It needs a signal of that frame, which the windowed path
-   doesn't give today.
+1. **The page's view against GPUI's frame.** The view moves in Core Animation's transaction,
+   at the end of the turn; GPUI's frame, drawn at the screen's refresh, presents by itself,
+   and the two can land a refresh apart: a pane made narrower would show its page over its
+   neighbour for a frame. As built: once a frame has changed a native page's size, every
+   move of a drag for the next quarter second is drawn at once and presented in the
+   transaction (`native::window::draw_in_transaction`, asked for by the page element in
+   `page.rs`; `NativePage::resizing`), the way a fitted pop-up is. Only then: a drag that
+   resizes no page, and a page resized by anything but a drag, draw as ever. The first frame
+   of a drag still presents by itself. GPUI's renderer can't be told to present a frame in
+   the transaction once it's being drawn, and which frame will resize a page isn't known
+   before it's laid out.
+2. **The page's picture against its view.** Chromium's frame at the new size comes a frame
+   or two after the view. Its layer isn't stretched meanwhile: Chromium gives the layer that
+   holds the picture a frame of its own, the picture's size, at the view's top left
+   (the harness's `layers`). What shows beside it in a pane made wider is what's behind the
+   page, which is now the colour the page's own canvas is painted (the root's background,
+   else the body's, else white; asked with the page's tone, `tone.rs`), where it was white
+   whatever the page. A dark page no longer flashes a white strip at the edge.
+
+`[proven]` on the agent desktop, software compositing: a split's divider dragged 200 points
+along a page drew eleven frames in the transaction and none after the drag, and the page was
+822 points wide before and 1023 after; the canvas's colour was read (238 246 255, and
+20 24 28 once the page was made dark).
+
+Not seen: any of this on a real screen with the GPU on. A window on the agent desktop isn't
+on screen, so GPUI draws it only when asked, and every such frame presents in a transaction:
+the difference this section is about can't be seen there. Whether a drag now looks right is
+for the owner to judge in the running app. If it doesn't, what's left is to hold the edge
+until Chromium's frame at the new size is in, for a frame or two at most; that needs a signal
+of that frame, which the windowed path doesn't give today. `[proposed]`
 
 ## 7. Parity
 
@@ -244,23 +269,48 @@ holder) and on the app's side in `browser/native` (a page's view in its pane).
 - **Keys the page leaves** go from CEF's `OnKeyEvent` to the app's own view in that window
   (`pane/keys.rs`), as they would have had the page not had the keyboard. ⌘ and ⌃ shortcuts
   don't need it: GPUI is asked about key equivalents first.
-- **Responsive mode** is Chromium's own emulation: `Emulation.setDeviceMetricsOverride` with
-  the mode's width, height and pixel ratio and `scale`, how much of its true size the page
-  shows at, in a view of the size shown (`responsive::Scaled`). Scaling the view instead
-  doesn't work: Chromium sizes a page by what its view measures on screen.
-- **No off-screen plumbing in-process:** no surfaces' mach service, no Metal device, and
-  CEF's windowless rendering is off.
-- **Clearing browsing data** can't stop the engine under its pages here: it's marked and done
-  as the engine next starts, in either mode (`browser/engine.rs`). Off screen it's done at
-  once.
+- **Keys before the page hears them** (`OnPreKeyEvent`, `pane/keys.rs`) do what the app does
+  with an off-screen page's keys on their way through it. A key with an event of the
+  system's behind it is the person's: the app is told (`HostEvent::Typed`, protocol 10, at
+  most twice a second a pane) and counts them as at the page, as a press does, so an agent's
+  command waits. And Escape takes a page out of full screen without the page hearing it:
+  Chromium's own does that only in a window of its own that has the keys.
+- **The cursor** is Chromium's to set (`OnCursorChange` lets it), and the app is told which
+  it is as before. GPUI sets the window's cursor after each of its frames from what's under
+  the pointer, which over a native page was nothing, so an arrow: the page element names the
+  page's cursor for its place, as it does off screen, and the two agree.
+- **The page's views are put back to fill their place** when their holder changes, and
+  once more as Chromium next works (`native::fill`): Chromium lays them out again by its
+  holder's measure whenever the holder changes size, and left alone a page whose pane grew
+  or shrank, as when the developer tools closed, sat off its place by the difference.
+- **The holder follows Koyo's window**: it's put over the pane as the pane is drawn, and
+  GPUI draws a window again when its bounds change, a move too. It isn't made a child of
+  Koyo's window, which would move it for nothing: tried, and with a child window lying over
+  it the page took no pointer.
+- **Clearing browsing data** can't stop the engine under its pages here, and a profile's
+  folder can't be deleted under a running Chromium. So every profile moves to a fresh folder
+  (`AppRequest::ClearData`, protocol 10; `host/panes.rs`): the root keeps how many times it
+  was cleared (`generation`), a profile's folder is `profile-<name>` and after that
+  `profile-<name>.g<times>`, the host closes every page, and the app opens each again at the
+  address it showed (`Browsers::reopening`, `BrowserView::reopen`). The old folders go as the
+  host next starts, before CEF opens the root, and come off Chrome's list of profiles
+  (`Local State`), which it would make them again from. Off screen the host is stopped and
+  the folders deleted, as before.
 - **The window delegate's `CanClose`** has to be implemented: the Rust wrapper's default is
   no, where CEF's is yes, and a holder that can't close keeps its page from closing and CEF
   from shutting down.
 - **A class is asked with `[object class]`**, never read off `isa`: a window or view under
   key-value observing has a subclass there the runtime made (`native::class_of`).
 
-Checked means run in the debug build as a bundle, through the host, on screen
-(`.superpowers/native/test/`, 2026-11-14).
+Checked means run in the debug build as a bundle, through the host: on screen
+(`.superpowers/native/test/`), or, where it says so, on Koyo's agent desktop
+(`.superpowers/native/desk/`), both 2026-11-14. A window on the agent desktop isn't on
+screen: there the harness has GPUI draw it (`tick`), a page counts as out of sight unless a
+browser tool used it in the last 90 s (and is hidden again once a press makes it the
+person's), and the pointer's moves are handed to the views (`hover`), as no tracking area
+gets them. Captures need software compositing, under which a page in a window that isn't on
+screen often took neither moves nor presses: what the pointer does was checked with the GPU
+on, what a page shows with it off.
 
 | What | Native | State |
 | --- | --- | --- |
@@ -285,13 +335,16 @@ Checked means run in the debug build as a bundle, through the host, on screen
 | Context menu | the host's menu handler; Koyo's native menu at the click | checked: asked, shown, closed with Escape |
 | Zoom | the host's zoom level | checked: ⌘= twice, 554 to 443 CSS pixels wide; ⌘0 back |
 | Full screen, filling the pane | the page's own full screen in the pane it has; Chrome's window stays as it is (it can't go full screen beside another, which the holder is set to) | checked: entered, Escape leaves it |
-| Full screen, filling the screen (the default) | Koyo's window goes full screen with that page alone, as off screen | not checked: by construction the same, the page's views following its pane |
-| Cursor | Chromium's own | not checked |
-| Permissions, passkeys, location | the host's handlers, in Koyo's process now | not checked; `script/bundle` and `script/dev-bundle` give Koyo the usage reasons macOS asks for |
+| Full screen, filling the screen (the default) | Koyo's window goes full screen, macOS's own, with that page alone, as off screen | checked, agent desktop: the window and the page 2560 × 1440, the page's picture filling it; Escape and the page's own `exitFullscreen` each bring the window and the pane back. Escape is the host's (section 3): Chromium's own didn't leave it |
+| Cursor | Chromium's own, and GPUI told the same | checked, agent desktop, by moves handed to the views: a hand over a link, an I-beam over a field, an arrow over the page. With the real pointer, before the fix, it was an arrow nearly everywhere; not tried with the real pointer since |
+| Permissions | the host's handlers, in Koyo's process now; Koyo's own prompt | checked, agent desktop: notifications asked, Allow, the page told `granted`; put away, `denied`. Location and the camera asked and blocked, the page told so. Allowed, those two go on to macOS's own prompt, which shows on the person's screen: not tried. `script/bundle` and `script/dev-bundle` give Koyo the usage reasons macOS asks for |
+| Passkeys | the host's bridge, as off screen | checked, agent desktop: turned down at once (`NotAllowedError` in 2 ms), as an unsigned build does (`docs/browser.md` 9). The sheet itself needs a signed build |
 | Trackpad swipe back, pinch | Chromium's own | not checked |
 | The bar's glass dark or light by the page | the page says how light it is: once a second while drawn, the background colour at a 12 by 8 grid of its points, through its session (`browser/tone.rs`). Pictures and gradients read as what's behind them | checked: the bar changed tone over a page turned dark |
-| The person "has" a page by typing in it | not built: only presses count | gap |
-| A window moved without a repaint | the holder stays where it was until the pane is next drawn | gap; only Chromium's own menus and bubbles are placed by it |
+| The person "has" a page by typing in it | the host says a key of the person's was pressed (`Typed`) | checked: after typing with no press, an agent's command was told the person has the page |
+| Clearing browsing data | every profile to a fresh folder, pages closed and opened again (section 3) | checked: a cookie, `localStorage` and a granted permission gone, the page back at its address; the old folder deleted at the next start |
+| A window moved | GPUI draws the window again, and the holder is put over the pane | checked, agent desktop: the window moved 80 by 45 points, the holder with it |
+| A split's divider dragged along a page | drawn in the transaction; the page's canvas colour behind it (section 6) | checked that it's done, agent desktop; how it looks on a real screen not seen |
 
 ## 8. Measuring [first numbers; the bar not met]
 
@@ -343,7 +396,9 @@ commands from `<folder>/cmd` (`browser/native/probe.rs`): captures of the app's 
 taken in the process, and clicks, keys and scrolls made as `NSEvent`s and handed to the
 window, so nothing is injected into the system. The checks in this document were run with it,
 on a copy of the bundle with data, settings, logs and temporary folders of its own inside the
-checkout (`.superpowers/native/test/`).
+checkout (`.superpowers/native/test/`), and on another for Koyo's agent desktop
+(`.superpowers/native/desk/`, its environment in its `Info.plist`, as the desktop starts apps
+without one).
 
 ## 10. Where it lives
 
@@ -356,15 +411,18 @@ checkout (`.superpowers/native/test/`).
 | `koyo-browser-host/src/native.rs` | A native pane: its browser view, its holder, where its views are, the keyboard |
 | `koyo-browser-host/src/native/holder.rs`, `parts.rs` | The holder's window made inert; the delegates; the client of browsers Chrome makes on its own |
 | `koyo-browser-host/src/host/start.rs` | Hello, CEF's settings and start, shared by both ways of running |
-| `koyo-browser-host/src/pane/keys.rs` | Keys a page leaves, handed to the app's view |
+| `koyo-browser-host/src/pane/keys.rs` | Keys a page leaves, handed to the app's view; the person's keys told to the app; Escape out of full screen |
+| `koyo-browser-host/src/host/panes.rs` | Profiles' folders by how often they were cleared; clearing without stopping |
 | `koyo-browser-ipc/src/client.rs` | `Connection::start_embedded`, beside the start of a host process |
 | `koyo/src/browser/native/mod.rs` | Whether pages are native; the host started in the app; a page's view in its pane |
 | `koyo/src/browser/native_off.rs` | The same calls where pages are never native |
 | `koyo/src/browser/native/probe.rs`, `probe/look.rs` | The harness, in debug builds |
 | `koyo/src/browser/page.rs`, `input.rs` | The page element's native branch: no frame, no GPUI key handling, a press heard on its way to the page |
-| `koyo/src/browser/engine.rs` | The engine in Koyo's own bundle; browsing data cleared as the engine next starts |
+| `koyo/src/browser/engine.rs` | The engine in Koyo's own bundle |
+| `koyo/src/browser/host.rs`, `host/events.rs`, `view/lifecycle.rs` | Clearing data under running pages: which pages open again, and how |
+| `koyo/src/native/window.rs` | A frame drawn in the transaction a native view moves in |
 | `koyo/src/browser/responsive/` | The size and scale a native page is told |
-| `koyo/src/browser/tone.rs`, `lightness.rs` | How light a native page says it is, for the glass over it |
+| `koyo/src/browser/tone.rs`, `lightness.rs` | How light a native page says it is, for the glass over it, and its canvas's colour, for what's behind it |
 | `koyo/src/settings_view/browser.rs` | The setting's switch |
 | `script/dev-bundle` | The debug build as a bundle round the engine |
 
@@ -378,7 +436,8 @@ Open:
    of sight.
 2. **Private parts relied on**: Chromium's view class names, two methods of CEF's window class
    and three of `NSApplication` replaced at run time. Cra relies on the first two.
-3. **Resizes** (section 6): the proposal isn't built.
+3. **Resizes** (section 6): built, and to be judged by eye in a split drag on the real
+   screen with the GPU on, which nothing but a person at the screen can do.
 4. **`script/check`** stops on timing-dependent tests when the Mac is busy with other builds
    (file watching, inlay hints): different ones each run, each passing alone.
 5. **The own CEF build** (`fix-video-playback`): not needed for the page; the extension UI

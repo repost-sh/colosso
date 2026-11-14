@@ -212,6 +212,23 @@ impl BrowserView {
         );
     }
 
+    /// The host closed the page to clear its profile's data from under it
+    /// (`Browsers::clear_data`): it opens again, at the address it showed, in the profile's
+    /// fresh folder. `DevTools` just close, as when their page goes.
+    pub(in crate::browser) fn reopen(&mut self, cx: &mut Context<Self>) {
+        if self.is_inspector() {
+            self.closed(cx);
+            return;
+        }
+        self.opened = None;
+        self.frame = None;
+        if !self.page.url.is_empty() {
+            self.target.clone_from(&self.page.url);
+        }
+        self.ensure_open(cx);
+        cx.notify();
+    }
+
     /// Whether the frame shown is `size`, give or take a device pixel of rounding.
     pub(in crate::browser) fn shows_frame_of(&self, size: PixelSize) -> bool {
         self.frame

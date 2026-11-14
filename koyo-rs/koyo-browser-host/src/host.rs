@@ -23,7 +23,9 @@ mod input;
 mod inspect;
 mod live;
 mod panes;
+mod profiles;
 mod queue;
+mod site;
 mod sizing;
 mod start;
 
@@ -36,6 +38,9 @@ pub(crate) use panes::{
     navigate_later, page_changed, renderer_gone, software_frame,
 };
 use panes::{close, exit_fullscreen, navigate, open, resize, view, visible};
+pub(crate) use panes::leave_fullscreen;
+pub(crate) use profiles::drop_cleared;
+pub(crate) use site::{keep_media, media_decided};
 pub(crate) use queue::context_initialized;
 use queue::{Queued, enqueue, read_requests};
 pub(crate) use start::{quit, run, teardown};
@@ -54,6 +59,9 @@ struct Host {
     ready: bool,
     shutting_down: bool,
     profiles: PathBuf,
+    /// How many times the profiles were cleared: each profile's folder is named for it, so
+    /// clearing is a fresh folder (`panes::clear_data`).
+    generation: u32,
     contexts: HashMap<String, RequestContext>,
     panes: HashMap<PaneId, Pane>,
     #[cfg(target_os = "macos")]
@@ -253,6 +261,12 @@ fn handle(request: AppRequest) {
         }
         AppRequest::Close { pane } => close(pane),
         AppRequest::ExitFullscreen { pane } => exit_fullscreen(pane),
+        AppRequest::SiteSettings { pane } => site::tell(pane),
+        AppRequest::SetSiteSetting {
+            pane,
+            permission,
+            allowed,
+        } => site::set(pane, permission, allowed),
         AppRequest::Visible {
             pane,
             visible: shown,
@@ -317,6 +331,7 @@ fn handle(request: AppRequest) {
             method,
             params,
         } => cdp(pane, call, &method, params),
+        AppRequest::ClearData => panes::clear_data(),
         AppRequest::Shutdown => shutdown(),
     }
 }

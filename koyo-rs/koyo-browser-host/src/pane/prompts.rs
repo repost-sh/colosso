@@ -6,7 +6,7 @@ use crate::host;
 use cef::{
     AuthCallback, Browser, Callback, CefString, CefStringList, DialogHandler, Errorcode,
     FileDialogCallback, FileDialogMode, Frame, ImplDialogHandler, ImplJsdialogHandler,
-    ImplPermissionHandler, ImplRequestHandler, JsdialogCallback, JsdialogHandler, JsdialogType,
+    ImplMediaAccessCallback, ImplPermissionHandler, ImplRequestHandler, JsdialogCallback, JsdialogHandler, JsdialogType,
     MediaAccessCallback, PermissionHandler, PermissionPromptCallback, PermissionRequestResult,
     RequestHandler, Sslinfo, TerminationStatus, WrapDialogHandler, WrapJsdialogHandler,
     WrapPermissionHandler, WrapRequestHandler, rc::Rc, wrap_dialog_handler, wrap_jsdialog_handler,
@@ -239,14 +239,24 @@ wrap_permission_handler! {
             let Some(callback) = callback else {
                 return 0;
             };
-            dialogs::ask(
-                self.pane,
-                &text(requesting_origin),
-                Dialog::Permission {
-                    permissions: dialogs::media(requested_permissions),
-                },
-                Waiting::Media(requested_permissions, callback.clone()),
-            );
+            let origin = text(requesting_origin);
+            // Decided for the site before, it's answered as it was (`host/site.rs`).
+            match host::media_decided(self.pane, &origin, requested_permissions) {
+                Some(true) => callback.cont(requested_permissions),
+                Some(false) => callback.cancel(),
+                None => dialogs::ask(
+                    self.pane,
+                    &origin,
+                    Dialog::Permission {
+                        permissions: dialogs::media(requested_permissions),
+                    },
+                    Waiting::Media {
+                        bits: requested_permissions,
+                        origin: origin.clone(),
+                        callback: callback.clone(),
+                    },
+                ),
+            }
             1
         }
 

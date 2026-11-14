@@ -86,7 +86,14 @@ pub struct NativePage {
     surface: Surface,
     /// Whether the page has been placed yet.
     placed: std::cell::Cell<bool>,
+    /// The size it was last placed at, and when that last changed.
+    size: std::cell::Cell<Option<gpui_kit::Size<Pixels>>>,
+    resized: std::cell::Cell<Option<std::time::Instant>>,
 }
+
+/// How long after its size last changed a page counts as being resized: a drag's moves come
+/// far closer together than this.
+const RESIZING_FOR: std::time::Duration = std::time::Duration::from_millis(250);
 
 impl Hosted for NativePage {
     fn into_surface(self) -> Surface {
@@ -107,6 +114,8 @@ impl NativePage {
             container,
             surface,
             placed: std::cell::Cell::new(false),
+            size: std::cell::Cell::new(None),
+            resized: std::cell::Cell::new(None),
         })
     }
 
@@ -114,6 +123,9 @@ impl NativePage {
     /// whether that's the first time.
     pub fn place(&self, bounds: Bounds<Pixels>, clip: Bounds<Pixels>, window: &Window) -> bool {
         self.surface.place(bounds, clip, window);
+        if self.size.replace(Some(bounds.size)).is_some_and(|was| was != bounds.size) {
+            self.resized.set(Some(std::time::Instant::now()));
+        }
         // The view GPUI draws in is the page's home: the keyboard's when the page hasn't it.
         let Some(home) = crate::native::window::gpui_view(window) else {
             return false;
@@ -132,5 +144,10 @@ impl NativePage {
         let screen = ns_window.convertRectToScreen(in_window);
         koyo_browser_host::native::place(self.pane, &self.container, &home, screen);
         !self.placed.replace(true)
+    }
+
+    /// Whether the page's size has just changed, as while an edge of its pane is dragged.
+    pub fn resizing(&self) -> bool {
+        self.resized.get().is_some_and(|at| at.elapsed() < RESIZING_FOR)
     }
 }

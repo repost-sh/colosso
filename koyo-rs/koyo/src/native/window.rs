@@ -61,6 +61,124 @@ pub fn fit(window: &Window, extent: Size<Pixels>, corner: Corner, cx: &mut App) 
     true
 }
 
+/// Has GPUI draw `window` once the app is free of the update asking for it, rather than at the
+/// screen's next refresh, presenting the frame in the Core Animation transaction a native
+/// view's move commits in: what GPUI draws and the view land on screen together. For a frame
+/// that moves a native view against GPUI's own content, as a pane's edge dragged along a
+/// native page; a window drawn at the screen's refresh presents by itself, a refresh or two
+/// apart from the view.
+#[cfg(not(test))]
+pub fn draw_in_transaction(window: &Window, cx: &mut App) {
+    let Some(layer) = gpui_view(window).and_then(|view| view.layer()) else {
+        return;
+    };
+    thread_local! {
+        /// Whether a draw is asked for and not yet made: a drag's moves, and the pages it
+        /// resizes, come faster than frames, and one draw shows them all.
+        static ASKED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    }
+    if ASKED.replace(true) {
+        return;
+    }
+    // GPUI's view draws its layer when asked to display it, presenting in the transaction.
+    cx.spawn(async move |_: &mut AsyncApp| {
+        ASKED.set(false);
+        layer.display();
+    })
+    .detach();
+}
+
+/// Makes `window` a callout: a rounded rectangle with an arrow on its top edge, `tip` high and
+/// twice `half` wide, its point `at` points along from the window's left. The window loses the
+/// frame macOS gives it, whose rounded edge is drawn round the whole rectangle whatever is in
+/// it, and its blur is cut to the callout's shape, so nothing but the callout is there and
+/// macOS draws the shadow round that. Done once the app is free of the update asking for it:
+/// `AppKit` tells GPUI of a window's changes as they happen. Nothing where the window has no
+/// blur of its own, as a test's hasn't.
+pub fn callout(window: &Window, at: f32, tip: f32, half: f32, radius: f32, cx: &mut App) {
+    use objc2::rc::Retained;
+    use objc2::runtime::AnyObject;
+    use objc2::{class, msg_send};
+    use objc2_foundation::{NSPoint, NSRect, NSSize};
+
+    let Some(ns_window) = ns_window(window) else {
+        return;
+    };
+    let Some(blur) = (ns_window.contentView()).and_then(|content| effect_view(&content)) else {
+        return;
+    };
+    let (at, tip, half, radius) = (f64::from(at), f64::from(tip), f64::from(half), f64::from(radius));
+    cx.spawn(async move |_: &mut AsyncApp| {
+        // SAFETY: AppKit's own, on the main thread: the window's style and colour, an image
+        // its size drawn into while it has the focus, and the effect view, which keeps it.
+        unsafe {
+            // Titled, closable, miniaturizable, resizable, and content under the title bar:
+            // what gives a window its frame. What else it is, as a panel that takes no
+            // activation, stays.
+            let style: usize = msg_send![&*ns_window, styleMask];
+            let bare = style & !(0b1111 | (1 << 15));
+            if bare != style {
+                let _: () = msg_send![&*ns_window, setStyleMask: bare];
+            }
+            let clear: Retained<AnyObject> = msg_send![class!(NSColor), clearColor];
+            let _: () = msg_send![&*ns_window, setBackgroundColor: &*clear];
+            ns_window.setOpaque(false);
+            let extent = ns_window.frame().size;
+            // A point inside the outline the app draws, so no blur shows beyond its rim.
+            let inset = 1.;
+            let body = NSRect::new(
+                NSPoint::new(inset, inset),
+                NSSize::new(extent.width - 2. * inset, extent.height - tip - inset),
+            );
+            let radius = radius - inset / 2.;
+            let image: Retained<AnyObject> = msg_send![msg_send![class!(NSImage), alloc], initWithSize: extent];
+            let _: () = msg_send![&*image, lockFocus];
+            let black: Retained<AnyObject> = msg_send![class!(NSColor), blackColor];
+            let _: () = msg_send![&*black, setFill];
+            let rounded: Retained<AnyObject> = msg_send![
+                class!(NSBezierPath),
+                bezierPathWithRoundedRect: body,
+                xRadius: radius,
+                yRadius: radius
+            ];
+            let _: () = msg_send![&*rounded, fill];
+            // The image's origin is its bottom left: the arrow stands on the body's top edge.
+            let arrow: Retained<AnyObject> = msg_send![class!(NSBezierPath), bezierPath];
+            let _: () = msg_send![&*arrow, moveToPoint: NSPoint::new(at - half + inset, extent.height - tip)];
+            let _: () = msg_send![&*arrow, lineToPoint: NSPoint::new(at, extent.height - inset)];
+            let _: () = msg_send![&*arrow, lineToPoint: NSPoint::new(at + half - inset, extent.height - tip)];
+            let _: () = msg_send![&*arrow, closePath];
+            let _: () = msg_send![&*arrow, fill];
+            let _: () = msg_send![&*image, unlockFocus];
+            // Stretched only between its corners, top and bottom, so the shape holds while the
+            // window grows or shrinks to what it lists, until it's cut again at the new size.
+            let caps = objc2_foundation::NSEdgeInsets {
+                top: tip + radius + inset,
+                left: 0.,
+                bottom: radius + inset,
+                right: 0.,
+            };
+            let _: () = msg_send![&*image, setCapInsets: caps];
+            let _: () = msg_send![&*blur, setMaskImage: &*image];
+        }
+        ns_window.invalidateShadow();
+    })
+    .detach();
+    // And the shadow again once what's drawn in it has settled.
+    refresh_edge(window.window_handle(), cx);
+}
+
+/// The effect view under `view` that blurs what's behind its window, if it has one.
+fn effect_view(view: &NSView) -> Option<Retained<NSView>> {
+    use objc2::{class, msg_send};
+    // SAFETY: NSObject's own.
+    let blurs: bool = unsafe { msg_send![view, isKindOfClass: class!(NSVisualEffectView)] };
+    if blurs {
+        return Some(Retained::from(view));
+    }
+    view.subviews().iter().find_map(|under| effect_view(&under))
+}
+
 /// Has macOS work out `window`'s shadow and edge again from what's drawn in it by now. It works
 /// them out from a see-through window's content once, as the window first shows, and keeps them
 /// until a resize: drawn before the content had settled, the edge along the window's foot came

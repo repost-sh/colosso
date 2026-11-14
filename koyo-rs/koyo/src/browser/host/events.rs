@@ -21,6 +21,21 @@ impl Browsers {
         self.views.get(&pane)?.update(cx, update).ok()
     }
 
+    /// The host closed `pane`'s page: for its data's clearing, in which case it opens again
+    /// (`Browsers::clear_data`), else for good.
+    fn page_closed(&mut self, pane: PaneId, cx: &mut Context<Self>) {
+        if !self.reopening.remove(&pane) {
+            self.update_view(pane, cx, BrowserView::closed);
+            return;
+        }
+        // Opening asks this entity how the host is: after this update.
+        if let Some(view) = self.views.get(&pane).cloned() {
+            cx.defer(move |cx| {
+                let _ = view.update(cx, BrowserView::reopen);
+            });
+        }
+    }
+
     pub(super) fn receive(&mut self, message: Incoming, cx: &mut Context<Self>) {
         match message {
             Incoming::Event(event) => self.event(event, cx),
@@ -76,6 +91,9 @@ impl Browsers {
             HostEvent::Fullscreen { pane, on } => {
                 self.update_view(pane, cx, |view, cx| view.fullscreen_changed(on, cx));
             }
+            HostEvent::SiteSettings { pane, settings } => {
+                self.update_view(pane, cx, |view, cx| view.site_settings(settings, cx));
+            }
             HostEvent::Cursor { pane, cursor } => {
                 self.update_view(pane, cx, |view, cx| view.cursor_changed(cursor, cx));
             }
@@ -89,9 +107,10 @@ impl Browsers {
             HostEvent::Gone { pane, reason } => {
                 self.update_view(pane, cx, |view, cx| view.gone(reason, cx));
             }
-            HostEvent::Closed { pane } => {
-                self.update_view(pane, cx, BrowserView::closed);
+            HostEvent::Typed { pane } => {
+                self.update_view(pane, cx, BrowserView::typed);
             }
+            HostEvent::Closed { pane } => self.page_closed(pane, cx),
             HostEvent::OpenUrl { pane, url } => {
                 self.update_view(pane, cx, |_, cx| cx.emit(BrowserEvent::OpenTab(url)));
             }

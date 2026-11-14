@@ -28,7 +28,7 @@ mod passkeys;
 mod requests;
 
 pub use dialogs::{Answer, Dialog, FileMode, MenuEntry, MenuTarget, Permission};
-pub use events::{Cursor, HostEvent, PageState};
+pub use events::{Cursor, HostEvent, PageState, SiteSetting};
 pub use input::{
     KeyKind, Modifiers, MouseButton, MouseKind, PinchPhase, PixelSize, Point, Viewport,
 };
@@ -51,7 +51,11 @@ pub use requests::{AppRequest, Edit, Go, Ime, ViewAction};
 /// 8: a page's full screen ([`HostEvent::Fullscreen`], [`AppRequest::ExitFullscreen`]).
 /// 9: passkeys ([`Hello::passkeys`], [`HostEvent::Passkey`], [`HostEvent::PasskeyWithdrawn`],
 /// [`AppRequest::Passkey`]).
-pub const PROTOCOL: u32 = 9;
+/// 10: a native page's keys count as the person's ([`HostEvent::Typed`]), and browsing data is
+/// cleared without stopping the host ([`AppRequest::ClearData`]).
+/// 11: what a page's site is allowed and blocked from ([`AppRequest::SiteSettings`],
+/// [`AppRequest::SetSiteSetting`], [`HostEvent::SiteSettings`]).
+pub const PROTOCOL: u32 = 11;
 
 /// Frames larger than this are refused, so a confused peer cannot make the
 /// other side allocate without bound.
