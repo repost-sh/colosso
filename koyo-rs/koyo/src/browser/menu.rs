@@ -264,6 +264,7 @@ impl BrowserView {
         if cfg!(feature = "visual-check") {
             return;
         }
+        log::debug!("showing a page's menu at {at:?}");
         native(rows, self.pane, request.id).show(at, window, cx);
     }
 

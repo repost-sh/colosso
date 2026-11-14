@@ -11,7 +11,7 @@
 //! its overlays.
 //!
 //! Chosen once, as Koyo starts, for all its pages ([`decide`]): by `KOYO_NATIVE_PAGES` (`1` or
-//! `0`) where it's set, else by the setting (`nativePages`). Koyo has to run from a bundle
+//! `0`) where it's set, else by the setting (`native_pages`). Koyo has to run from a bundle
 //! that holds the engine; from a bare binary, pages stay off screen.
 
 use std::path::PathBuf;

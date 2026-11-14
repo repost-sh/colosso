@@ -13,10 +13,12 @@
 //! front                    the window in front of every other, the app staying behind
 //! windows                  the app's windows
 //! activate                 the app in front and the window key
+//! escape                   an Escape in the app's event queue, which closes a native menu
 //! draw                     GPUI lays out and paints now, though nothing shows the window
 //! quit                     the app quits, as from its menu
 //! pages                    the native pages and where their views are
 //! click <x> <y>            a press and release at a point of the window, from its top left
+//! rclick <x> <y>           a right press and release there
 //! move <x> <y>             the pointer moved there
 //! scroll <dy>              a wheel turned by dy pixels, where the pointer is (a wheel event
 //!                          made here has the pointer's place, not one of its own)
@@ -187,15 +189,8 @@ fn run(verb: &str, rest: &str, folder: &Path) -> String {
             "in front".into()
         }
         ("windows", _) => windows(),
-        ("activate", _) => {
-            // The app in front and the window key, as when the person works in it.
-            if let Some(main) = MainThreadMarker::new() {
-                #[expect(deprecated, reason = "the one call that brings an app in front of another")]
-                NSApplication::sharedApplication(main).activateIgnoringOtherApps(true);
-            }
-            window.makeKeyAndOrderFront(None);
-            "active".into()
-        }
+        ("activate", _) => activate(&window),
+        ("escape", _) => escape(&window),
         ("draw", _) => draw(&window),
         ("quit", _) => quit(),
         ("pages", _) => koyo_browser_host::native::describe(),
@@ -205,6 +200,13 @@ fn run(verb: &str, rest: &str, folder: &Path) -> String {
             mouse(&window, 1, at, 1); // left down
             mouse(&window, 2, at, 1); // left up
             "clicked".into()
+        }
+        ("rclick", [x, y]) => {
+            let at = point(&window, *x, *y);
+            mouse(&window, 5, at, 0); // moved
+            mouse(&window, 3, at, 1); // right down
+            mouse(&window, 4, at, 1); // right up
+            "right-clicked".into()
         }
         ("move", [x, y]) => {
             mouse(&window, 5, point(&window, *x, *y), 0);
@@ -248,6 +250,46 @@ fn run(verb: &str, rest: &str, folder: &Path) -> String {
         }
         _ => "unknown".into(),
     }
+}
+
+/// The app in front and the window key, as when the person works in it.
+fn activate(window: &NSWindow) -> String {
+    if let Some(main) = MainThreadMarker::new() {
+        #[expect(deprecated, reason = "the one call that brings an app in front of another")]
+        NSApplication::sharedApplication(main).activateIgnoringOtherApps(true);
+    }
+    window.makeKeyAndOrderFront(None);
+    "active".into()
+}
+
+/// An Escape put in the app's own event queue, which a menu being tracked reads: it closes a
+/// native menu, which takes no event handed to the window.
+fn escape(window: &NSWindow) -> String {
+    let text = NSString::from_str("\u{1b}");
+    // SAFETY: NSEvent's own constructor and NSApplication's own queue.
+    unsafe {
+        let event: *mut AnyObject = msg_send![
+            class!(NSEvent),
+            keyEventWithType: 10usize,
+            location: NSPoint::new(0., 0.),
+            modifierFlags: 0usize,
+            timestamp: uptime(),
+            windowNumber: window.windowNumber(),
+            context: std::ptr::null::<AnyObject>(),
+            characters: &*text,
+            charactersIgnoringModifiers: &*text,
+            isARepeat: Bool::NO,
+            keyCode: 53u16
+        ];
+        if let (Some(main), false) = (MainThreadMarker::new(), event.is_null()) {
+            let _: () = msg_send![
+                &*NSApplication::sharedApplication(main),
+                postEvent: event,
+                atStart: Bool::YES
+            ];
+        }
+    }
+    "escape posted".into()
 }
 
 /// Has GPUI lay out and paint though nothing shows the window, as with the display asleep:
