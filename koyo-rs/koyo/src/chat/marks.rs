@@ -61,7 +61,7 @@ impl Drawing {
             NoticeLevel::Warning => (IconName::TriangleAlert, p.modified),
             NoticeLevel::Error => (IconName::CircleX, p.danger),
         };
-        marked(mark, color).child(text.to_owned())
+        said(mark, color, text.to_owned())
     }
 
     pub(super) fn failure(&self, run: &Run) -> impl IntoElement {
@@ -69,7 +69,7 @@ impl Drawing {
             .failure
             .as_ref()
             .map_or_else(|| "This response failed.".to_owned(), failed);
-        marked(IconName::CircleX, self.p.danger).child(text)
+        said(IconName::CircleX, self.p.danger, text)
     }
 
     pub(super) fn stopped(&self, run: &Run) -> AnyElement {
@@ -134,6 +134,12 @@ impl Drawing {
                 self.on_timeline(move |_, _, cx| cx.emit(ChatViewEvent::OpenFile(path.clone()))),
             )
     }
+}
+
+/// `text` after `mark`, in `color`, wrapped at the column's width however long it is: text
+/// straight in a row is as wide as it's long, and runs out of the column.
+fn said(mark: IconName, color: Hsla, text: String) -> Div {
+    marked(mark, color).child(div().min_w_0().child(text))
 }
 
 /// A row of small text in `color`, with `mark` first.

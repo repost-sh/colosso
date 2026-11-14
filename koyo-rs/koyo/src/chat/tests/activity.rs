@@ -48,7 +48,6 @@ fn the_working_edge_steps_alone_while_it_moves_and_draws_nothing_once_it_has_fad
     let chat = Asking::new("chat-working-edge", Vec::new(), cx);
     cx.update_window(chat.window, |_, window, _| window.activate_window())
         .unwrap();
-    // The edge is drawn again for the window coming forward, once.
     cx.run_until_parked();
     let (_, idle) = drawn(&chat, cx);
     steps(10, cx);
@@ -85,6 +84,24 @@ fn the_working_edge_steps_alone_while_it_moves_and_draws_nothing_once_it_has_fad
     assert!(!stepping(&chat, cx));
 }
 
+/// It held still whenever Koyo wasn't the app in front, which read as a chat that had stopped.
+#[gpui_kit::test]
+fn the_working_edge_goes_round_with_another_app_in_front(cx: &mut TestAppContext) {
+    let chat = Asking::new("chat-working-edge-elsewhere", Vec::new(), cx);
+    cx.update(|cx| assert!(cx.active_window().is_none(), "Koyo isn't in front"));
+    run_is(&chat, RunStatus::Running, 20, cx);
+    // Past its fade in, so what goes on is the line going round.
+    steps(30, cx);
+    let (_, moving) = drawn(&chat, cx);
+    steps(10, cx);
+    let (_, moved) = drawn(&chat, cx);
+    assert!(stepping(&chat, cx), "it goes on round");
+    assert!(
+        (9..=11).contains(&(moved - moving)),
+        "a step each frame's time: {moving} to {moved}"
+    );
+}
+
 #[gpui_kit::test]
 fn the_working_edge_holds_still_with_reduced_motion_or_its_setting_and_shows_nothing_off(
     cx: &mut TestAppContext,
@@ -92,7 +109,6 @@ fn the_working_edge_holds_still_with_reduced_motion_or_its_setting_and_shows_not
     let chat = Asking::new("chat-working-edge-still", Vec::new(), cx);
     cx.update_window(chat.window, |_, window, _| window.activate_window())
         .unwrap();
-    // The edge is drawn again for the window coming forward, once.
     cx.run_until_parked();
     cx.update(|cx| cx.set_reduce_motion(true));
     run_is(&chat, RunStatus::Running, 20, cx);

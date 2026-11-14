@@ -224,7 +224,7 @@ impl ChatComposer {
         ];
         let connection = chats.read(cx).connection().clone();
         let placement = Rc::new(Placement::default());
-        let activity = cx.new(|cx| Activity::new(placement.clone(), window, cx));
+        let activity = cx.new(|cx| Activity::new(placement.clone(), cx));
         let mut composer = ChatComposer {
             chats,
             catalog,
@@ -360,7 +360,8 @@ impl ChatComposer {
             .gap_2()
             .text_sm()
             .text_color(p.danger)
-            .child(text)
+            .debug_selector(|| "chat-note".to_owned())
+            .child(div().min_w_0().child(text))
             .when(restart, |row| {
                 row.child(
                     glass("chat-restart-host", p.text, cx)

@@ -1066,8 +1066,9 @@ Layout, top to bottom inside the pane's card:
   them; waiting on a person alone, it doesn't. Settings › Chat › Composer › While it works:
   "Subtle line" (the default), "Clear line" (brighter, 170 pt, 1.5 pt wide), "Still edge" (the
   whole edge a little brighter, holding still) or "Off" (the faint edge only). A line holds still
-  as that brighter edge where motion isn't wanted: Reduce motion (read as the app starts), or
-  Koyo not in front. Nothing is drawn for it once nothing works. Only the composer has it; a
+  as that brighter edge where motion isn't wanted: Reduce motion (read as the app starts). It
+  goes round whichever app is in front (2026-11-14: until then it held still while Koyo wasn't,
+  which read as a chat that had stopped). Nothing is drawn for it once nothing works. Only the composer has it; a
   subagent's bar and the other glass keep the faint edge. It's laid over the composer by the tab,
   not drawn in it, and draws where the composer last said its glass is.
 - **Empty chat.** The composer sits centred with the worktree's name above it ("Chat in
@@ -1257,7 +1258,9 @@ Layout, top to bottom inside the pane's card:
   the list's top row and where it laid the next prompt's row, as a person scrolls and after each
   draw of the tab.
 - **Status in the shell.** The tab face shows a spinner while working (`chat/spinner.rs`: a small
-  bold ring in amber, going round, drawn at every frame), a dot in the text's colour
+  bold ring in amber, going round, drawn at every frame the window is shown, whichever app is in
+  front: a window nobody can see, minimized, covered or on another desktop, is shown none; until
+  2026-11-14 it stood still while Koyo wasn't in front), a dot in the text's colour
   when it needs you, a dot when unread, red when failed. In the Arc layout a tab's row says it
   at its end instead: the spinner, then an indigo dot (`docs/arc-sidebar.md` 5). The sidebar's worktree row shows the
   most urgent of its chats, and a chat with no tab counts only while it's working or needs you.
