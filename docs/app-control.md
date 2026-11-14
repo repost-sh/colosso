@@ -398,7 +398,7 @@ still starting, or its host lacks a grant. The reads are `read`, as the browser'
 desktop_open       [desktop] C { app: name|bundle id|path, file?: path|URL, args?: [string],
                      personsOwn?: bool, consent?: the person's words }
                      → { app, pid, windows: [DesktopWindow], lent? }; the desktop's tab
-                     opens out of sight
+                     opens out of sight on the caller's worktree, after the caller's own tab
 desktop_windows    [read] R {} → { windows: [{ window, pid, app, title, x, y, width,
                      height }] }, front to back
 desktop_screenshot [read] R { window?, scale?: 1|2 (default 1: a pixel a point) } → image
@@ -465,7 +465,8 @@ device_list        [read] R {} → { devices: [{ device, name, kind: simulator|d
                      controller?, screen?: DeviceScreen, set? }] }; Koyo's set read afresh, then
                      the iPhones and iPads plugged in by cable (no `set`)
 device_open        [devices] C { device? | model? } → { device, name, pane, ready, step?:
-                     booting|firstBoot|picture|input, screen? }; its tab out of sight; answers
+                     booting|firstBoot|picture|input, screen? }; its tab out of sight on the
+                     caller's worktree, after the caller's own tab; answers
                      within 60 s, called again until ready; a simulator refused past the
                      person's limit of simulators at once; a real device opened once lent
 device_close       [devices] C { device? | pane? } → { device, name }; shut down, tab closed
@@ -715,6 +716,15 @@ owner found the list of no use, and agents read the log with `activity_list` (5)
   by one step Back, the keyboard), so nothing is drawn in between. A new terminal's tab
   arrives once the daemon answers, not shown and without the keyboard (`open_terminal`'s
   `shown`); `add_project_at` and `add_chat` take `select` themselves.
+- The tab a tool opens by itself (2026-11-14): `desktop_open`'s and `device_open`'s take no
+  `worktree`, and went straight to the selected checkout, so an agent's tab appeared in
+  whichever project the person was working in. `control/exec/beside.rs` names the place
+  where the caller is: right after its own tab (its chat's by `KOYO_CHAT`, its terminal's by
+  `KOYO_TERMINAL`), else after the tab its worktree shows, the worktree found as a selector
+  left out finds it (3). The shell puts the tab there itself (`Shell::one_pane` at a
+  `Place`, `shell/one_tab.rs`), with no checkout selected on the way and so nothing for
+  `kept.rs` to put back. Shown, the window then goes to the tab as `tab_select` takes it
+  there. A tab that's open already stays where it is.
 - `activity_list` (5, 2026-11-08): `ops/activity.rs`, executor `control/exec/activity.rs`
   over `control::policy::activity`, read in place; the log's decisions are the operation's
   `ActivityDecision`; the log's size is `ops::activity::KEPT`, which

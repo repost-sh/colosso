@@ -13,7 +13,7 @@ use super::{Rig, call, controlled, path_of, read_shell, terminal};
 use crate::test_support::{draw, repo, select};
 
 /// Has the person turn Switch to what agents open on or off.
-fn show_what_agents_open(on: bool, cx: &mut TestAppContext) {
+pub(super) fn show_what_agents_open(on: bool, cx: &mut TestAppContext) {
     cx.update(|cx| {
         crate::settings::update(cx, |settings| {
             settings.external_control.show_what_agents_open = on;
@@ -22,7 +22,7 @@ fn show_what_agents_open(on: bool, cx: &mut TestAppContext) {
 }
 
 /// The checkout the window shows, and the first pane of the tab it shows.
-fn shown(rig: &Rig, cx: &TestAppContext) -> (PathBuf, Option<u64>) {
+pub(super) fn shown(rig: &Rig, cx: &TestAppContext) -> (PathBuf, Option<u64>) {
     read_shell(rig, cx, |shell, _| {
         let unit = shell.workspace.branch().expect("a checkout is selected");
         let tab = unit.tabs.get(unit.active_tab);

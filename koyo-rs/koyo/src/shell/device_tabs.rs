@@ -4,9 +4,9 @@
 
 use gpui_kit::{AppContext as _, Context, Entity};
 
-use super::Shell;
+use super::{Place, Shell};
 use crate::devices::{Chosen, DeviceEvent, DeviceView};
-use crate::model::{Pane, Tab};
+use crate::model::Pane;
 
 impl Shell {
     /// A device's view (the picker with none), the shell hearing it. Opening a tab starts
@@ -41,30 +41,23 @@ impl Shell {
     /// when `chosen` is `None`. Its tab is shown when `shown`; else a new
     /// one comes after the tab that is, out of sight, as a tab an agent opens does.
     pub fn device_pane(&mut self, chosen: Option<Chosen>, shown: bool, cx: &mut Context<Self>) -> Option<u64> {
-        if let Some(chosen) = &chosen {
-            let open = self.workspace.find_pane(|pane| {
+        self.device_pane_at(chosen, self.place(shown), cx)
+    }
+
+    /// [`Self::device_pane`], a new one's tab at `place`.
+    pub(crate) fn device_pane_at(&mut self, chosen: Option<Chosen>, place: Place, cx: &mut Context<Self>) -> Option<u64> {
+        let open = chosen.as_ref().and_then(|chosen| {
+            self.workspace.find_pane(|pane| {
                 (pane.device_view())
                     .and_then(|view| view.read(cx).chosen().cloned())
                     .is_some_and(|open| open.udid == chosen.udid)
-            });
-            if let Some(((project, branch, tab), pane)) = open {
-                if shown {
-                    self.workspace.select_tab(project, branch, tab);
-                }
-                cx.notify();
-                return Some(pane);
-            }
-        }
-        let view = self.device_view(chosen, cx);
-        let pane = Pane::device(view, cx);
-        let id = pane.id;
-        let beside = (self.workspace.shown_tab()).filter(|at| self.workspace.tab(*at).is_some());
-        match beside {
-            Some(beside) if !shown => (self.workspace).insert_tab_after(beside, Tab::Single(pane)),
-            _ => self.workspace.push_tab(Tab::Single(pane)),
-        }
-        cx.notify();
-        (self.workspace.find_pane(|pane| pane.id == id)).map(|_| id)
+            })
+        });
+        let make = |shell: &mut Self, cx: &mut Context<Self>| {
+            let view = shell.device_view(chosen, cx);
+            Pane::device(view, cx)
+        };
+        self.one_pane(open, place, make, cx)
     }
 
     /// The device view of pane `id`, wherever it is.

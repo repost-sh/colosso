@@ -2,18 +2,16 @@
 //! the checkout selected; nothing made until it's shown; and the panes whose terminal ended or
 //! whose chat was deleted while the window was closed.
 
-use std::path::Path;
-
 use gpui_kit::{AppContext as _, TestAppContext};
 use koyo_agent::protocol::ids::ThreadId;
-use koyo_term_control::{Actor, ActorKind, Exit, Handle, TerminalRecord, TerminalSummary};
+use koyo_term_control::{Actor, ActorKind, Exit, Handle};
 
 use super::{
     at, checkout, file, launch, main_with, page, read_file, split, tabs_of, titles, written,
 };
 use crate::model::{SplitAxis, Tab};
 use crate::shell::kept::{Kept, KeptPane, KeptProject, KeptTree};
-use crate::test_support::{draw, git, open_page, repo, select, shell_with, terminal_record};
+use crate::test_support::{draw, git, open_page, repo, select, shell_with, terminal_listed};
 
 #[gpui_kit::test]
 fn the_window_comes_back_split_ordered_and_selected_as_it_was(cx: &mut TestAppContext) {
@@ -301,18 +299,6 @@ fn a_window_closed_and_opened_again_comes_back_as_it_was(cx: &mut TestAppContext
     });
 }
 
-/// A terminal the daemon lists in the checkout at `worktree`, running.
-fn terminal(handle: &str, name: &str, worktree: &Path) -> TerminalSummary {
-    let at = worktree.to_str().expect("a path that's text");
-    TerminalSummary {
-        record: TerminalRecord {
-            name: name.into(),
-            ..terminal_record(handle, at, koyo_term_control::Status::Idle, "prompt")
-        },
-        preview: String::new(),
-    }
-}
-
 fn kept_terminal(handle: &str, name: &str) -> KeptTree {
     KeptTree::Pane(KeptPane::Terminal {
         handle: Handle(handle.into()),
@@ -357,8 +343,8 @@ fn a_terminal_that_ended_leaves_its_pane_and_one_opened_meanwhile_gets_a_tab(
     // The daemon runs one of them still, and one the window didn't know of.
     shell.update(cx, |shell, cx| {
         let listed = vec![
-            terminal("term_a", "zsh", &root),
-            terminal("term_new", "build", &root),
+            terminal_listed("term_a", "zsh", &root),
+            terminal_listed("term_new", "build", &root),
         ];
         shell.take_terminals(std::slice::from_ref(&root), listed, cx);
     });
@@ -406,7 +392,7 @@ fn a_shell_a_daemon_restart_ended_runs_again_in_the_pane_it_had(cx: &mut TestApp
     launch(&shell, &path, &[&root], cx);
     // The daemon came back after a restart: the person's shell is listed as ended by it.
     shell.update(cx, |shell, cx| {
-        let mut ended = terminal("term_shell", "zsh", &root);
+        let mut ended = terminal_listed("term_shell", "zsh", &root);
         ended.record.created_by = Actor {
             kind: ActorKind::Human,
             id: "app".into(),
