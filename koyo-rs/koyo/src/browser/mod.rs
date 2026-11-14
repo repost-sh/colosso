@@ -42,6 +42,7 @@ mod passkeys;
 pub(crate) mod pointer;
 mod responsive;
 mod tabs;
+mod tone;
 mod toolbar;
 mod trackpad;
 mod view;

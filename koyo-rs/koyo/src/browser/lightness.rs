@@ -1,6 +1,6 @@
 //! How light the pages under glass over them are, which then takes the other tone
 //! (`theme::glass`): the mean luminance of each page's latest frame there, read from the surface
-//! the host shares with the app. A grid of its pixels is enough, as glass blurs what's under it and
+//! the host shares with the app (a native page, which has none, says it itself: `tone.rs`). A grid of its pixels is enough, as glass blurs what's under it and
 //! the page is read as a whole there.
 
 use gpui_kit::{Bounds, Pixels};
@@ -45,7 +45,7 @@ impl BrowserView {
     /// How light the page is where it's under `region` of the window, and how much of `region`
     /// that is; none where it isn't drawn, has no frame yet, or isn't under it.
     pub(super) fn under(&self, region: Bounds<Pixels>) -> Option<Under> {
-        let frame = self.frame.as_ref().filter(|_| self.shown.is_some())?;
+        self.shown.as_ref()?;
         let over = self.page_bounds()?.intersect(&region);
         let (width, height) = (over.size.width.as_f32(), over.size.height.as_f32());
         if width <= 0. || height <= 0. {
@@ -55,6 +55,22 @@ impl BrowserView {
             self.page_point(over.origin),
             self.page_point(over.bottom_right()),
         );
+        // A native page has no frame here: it says how light it is itself (`tone.rs`).
+        if self.is_native() {
+            let page = self.viewport?;
+            let (wide, tall) = (page.width.max(1) as f32, page.height.max(1) as f32);
+            let shares = [
+                from.x.as_f32() / wide,
+                from.y.as_f32() / tall,
+                to.x.as_f32() / wide,
+                to.y.as_f32() / tall,
+            ];
+            return Some(Under {
+                area: width * height,
+                lightness: self.tone.as_ref()?.lightness(shares)?,
+            });
+        }
+        let frame = self.frame.as_ref()?;
         // From the page's points to its frame's device pixels.
         let device = |at: Pixels| at.as_f32() * frame.scale;
         let area = [device(from.x), device(from.y), device(to.x), device(to.y)];

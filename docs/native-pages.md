@@ -15,8 +15,7 @@ screen. Since then the browser host runs inside Koyo as a library, every pane a 
 over the protocol the off-screen host speaks, and it was checked in the running app, on
 screen: the picture, the pointer, typing, the keyboard going back to Koyo and into the page
 again, edits, find, `DevTools`, responsive mode, the browser tools, pages out of sight,
-closing and a clean quit (section 7). Still to build: the bar's glass by the page, and the
-resize proposal (section 6). Native pages are off unless asked for (section 9).
+closing and a clean quit (section 7). Still to build: the resize proposal (section 6). Native pages are off unless asked for (section 9).
 
 ---
 
@@ -290,7 +289,7 @@ Checked means run in the debug build as a bundle, through the host, on screen
 | Cursor | Chromium's own | not checked |
 | Permissions, passkeys, location | the host's handlers, in Koyo's process now | not checked; `script/bundle` and `script/dev-bundle` give Koyo the usage reasons macOS asks for |
 | Trackpad swipe back, pinch | Chromium's own | not checked |
-| The bar's glass dark or light by the page | not built: no pixels in Koyo | gap; the theme's |
+| The bar's glass dark or light by the page | the page says how light it is: once a second while drawn, the background colour at a 12 by 8 grid of its points, through its session (`browser/tone.rs`). Pictures and gradients read as what's behind them | checked: the bar changed tone over a page turned dark |
 | The person "has" a page by typing in it | not built: only presses count | gap |
 | A window moved without a repaint | the holder stays where it was until the pane is next drawn | gap; only Chromium's own menus and bubbles are placed by it |
 
@@ -365,6 +364,7 @@ checkout (`.superpowers/native/test/`).
 | `koyo/src/browser/page.rs`, `input.rs` | The page element's native branch: no frame, no GPUI key handling, a press heard on its way to the page |
 | `koyo/src/browser/engine.rs` | The engine in Koyo's own bundle; browsing data cleared as the engine next starts |
 | `koyo/src/browser/responsive/` | The size and scale a native page is told |
+| `koyo/src/browser/tone.rs`, `lightness.rs` | How light a native page says it is, for the glass over it |
 | `koyo/src/settings_view/browser.rs` | The setting's switch |
 | `script/dev-bundle` | The debug build as a bundle round the engine |
 
