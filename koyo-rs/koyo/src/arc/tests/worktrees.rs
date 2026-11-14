@@ -22,7 +22,7 @@ use crate::test_support::{click, draw, git, shell_window};
 
 /// The Arc sidebar on a project `name` with worktrees `feat` and `fix` beside its main
 /// checkout, listed in that order: the window, the shell and the main checkout.
-fn with_worktrees(
+pub(super) fn with_worktrees(
     name: &str,
     cx: &mut TestAppContext,
 ) -> (AnyWindowHandle, Entity<Shell>, PathBuf) {
@@ -51,7 +51,7 @@ fn with_worktrees(
 }
 
 /// The folder of the worktree on `branch` of the first project.
-fn folder_of(shell: &Shell, branch: &str) -> PathBuf {
+pub(super) fn folder_of(shell: &Shell, branch: &str) -> PathBuf {
     let units = &shell.workspace.projects[0].branches;
     let unit = (units.iter()).find(|unit| unit.name() == branch);
     unit.expect("the worktree").worktree.path.clone()

@@ -9,12 +9,13 @@ use std::rc::Rc;
 use gpui_kit::base::motion::{Transition, transition};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, Axis, ClickEvent, Context, Div, ElementId, FontWeight, InteractiveElement as _,
-    IntoElement, MouseButton, ParentElement as _, Stateful, StatefulInteractiveElement as _,
-    Styled as _, Window, div, px,
+    AnyElement, App, Axis, ClickEvent, Context, Div, ElementId, FontWeight,
+    InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, Stateful,
+    StatefulInteractiveElement as _, Styled as _, Window, div, px,
 };
 
 use super::DraggedPin;
+use super::glide;
 use super::header::header;
 use super::tiles::key_of;
 use super::{Look, space_colour, space_dot};
@@ -22,11 +23,11 @@ use crate::chat::{Activity, spinner};
 use crate::model::{BranchUnit, Tab};
 use crate::pane::{ROW_GLYPH, dot, row_sized};
 use crate::settings;
-use crate::theme::Palette;
 use crate::shell::{
-    Dragged, DraggedPane, Drop, Face, MOTION, Reorder, Shell, add_project_row, ellipsized, project_error,
-    tab_close_button, tab_list, tab_row, title_with_end,
+    Dragged, DraggedPane, Drop, Face, MOTION, Reorder, Shell, add_project_row, ellipsized,
+    project_error, tab_close_button, tab_list, tab_row, title_with_end,
 };
+use crate::theme::Palette;
 
 /// A tab's row, and a worktree's header.
 const ROW: f32 = 36.;
@@ -56,9 +57,27 @@ pub(super) fn arc_row(id: impl Into<ElementId>) -> Stateful<Div> {
         .flex()
         .items_center()
         .gap(px(10.))
-        .rounded(px(10.))
+        .rounded(px(super::ROUNDED))
         .cursor_pointer()
         .text_sm()
+}
+
+/// A row that shows a tab, a worktree's or a loose page, known by `key`, its first pane: the
+/// pill while it's the tab shown, or as far as the pill passing through it has it (`glide`), and
+/// lit under the pointer otherwise. Before anything else goes in it, as the pill goes under.
+pub(super) fn pill_row(
+    row: Stateful<Div>,
+    (key, active): (u64, bool),
+    shell: &Shell,
+    look: Look,
+    cx: &App,
+) -> Stateful<Div> {
+    let passing = shell.swipe.glides.rows.lit(key, cx.background_executor().now());
+    let light = passing.and_then(|lit| glide::light(lit, Axis::Vertical, look.pill));
+    row.relative()
+        .when(active && passing.is_none(), |row| row.bg(look.pill))
+        .when(!active, |row| row.hover(|style| style.bg(look.row_hover)))
+        .children(light.map(|light| light.debug_selector(move || format!("arc-tab-light-{key}"))))
 }
 
 /// A tab's icon at the head of its row, a little fainter than its title.
@@ -249,11 +268,9 @@ fn tab_row_of(
     let (activity, first) = (shell.tab_activity(tab, cx), tab.first().id);
     // The tab shown shows its chat beside the sidebar, so what was said is said there.
     let said = shell.tab_said(tab, cx).filter(|_| !active);
-    let row = arc_row(("arc-tab", branch_index * 100 + tab_index))
-        .group("arc-tab")
+    let row = arc_row(("arc-tab", branch_index * 100 + tab_index)).group("arc-tab");
+    let row = pill_row(row, (first, active), shell, look, cx)
         .pr(px(ROW_END))
-        .when(active, |row| row.bg(look.pill))
-        .when(!active, |row| row.hover(|style| style.bg(look.row_hover)))
         .on_click(cx.listener(move |this, event: &ClickEvent, _, cx| {
             this.pick_tab(project_index, branch_index, tab_index, cx);
             // A second click keeps a previewed file open.

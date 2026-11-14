@@ -13,7 +13,7 @@ use gpui_kit::{
     ParentElement as _, Point, Stateful, StatefulInteractiveElement as _, Styled as _, div, px,
 };
 
-use super::worktrees::{ROW_END, arc_row, tab_icon};
+use super::worktrees::{ROW_END, arc_row, pill_row, tab_icon};
 use super::{DraggedPin, Look};
 use crate::model::Loose;
 use crate::pane::{ROW_GLYPH, row_sized, sized_close_button};
@@ -133,10 +133,9 @@ fn row(
         .child(face.label());
     let row = arc_row(("arc-loose", key))
         .group("arc-loose")
-        .debug_selector(move || format!("arc-loose-{at}"))
+        .debug_selector(move || format!("arc-loose-{at}"));
+    let row = pill_row(row, (key, active), shell, look, cx)
         .pr(px(ROW_END))
-        .when(active, |row| row.bg(look.pill))
-        .when(!active, |row| row.hover(|style| style.bg(look.row_hover)))
         // In hand, it's lifted off the list, over the rows it passes.
         .when(lifted, |row| row.bg(p.hover).shadow_sm())
         .on_click(cx.listener(move |this, _, _, cx| this.pick_loose(key, cx)))

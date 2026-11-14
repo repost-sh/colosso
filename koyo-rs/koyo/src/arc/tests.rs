@@ -25,9 +25,11 @@ use crate::test_support::{click_pane, draw, open_page, repo, select, shell_with}
 
 mod loose;
 mod pinned;
+mod project_keys;
 mod space_keys;
 mod spaces;
 mod switcher;
+mod tab_keys;
 mod tabs;
 mod tiles;
 mod worktrees;

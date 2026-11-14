@@ -27,7 +27,7 @@ impl Shell {
 
     /// What's shown just now is looked at, in the workspace: a page was moved and shows where
     /// it went. The keyboard stays where it is, as it does for a tab moved (`shell/keys.rs`).
-    pub(super) fn look_at_tab_shown(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn look_at_tab_shown(&mut self, cx: &mut Context<Self>) {
         self.navigate(Route::Workspace, cx);
         cx.notify();
     }

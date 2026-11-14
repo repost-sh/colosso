@@ -48,6 +48,11 @@ impl Space {
         }
     }
 
+    /// The project it shows: the one it showed last, its first otherwise; none while it has none.
+    pub fn shown_project(&self) -> Option<&Path> {
+        (self.selected.as_deref()).or_else(|| self.projects.first().map(PathBuf::as_path))
+    }
+
     /// Its own theme for the appearance, if it has one.
     pub fn theme(&self, dark: bool) -> Option<&GradientTheme> {
         if dark {

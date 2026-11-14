@@ -3,13 +3,16 @@
 //! space it gives, as a rubber band would. Let go, a spring takes it from there at the speed the
 //! fingers had, so a flick goes on to the next space and a slow pull settles back. Going on, the
 //! space carries on out and the next comes in from the other side in the same motion, slowing
-//! to rest. A click on a space's mark, and ⌘⌥← or ⌘⌥→, move the same way, so a switch
-//! always looks the same; with reduced motion, it's at once.
+//! to rest. A click on a space's mark, ⌥⇧← and ⌥⇧→, and ⌥← and ⌥→ past a space's first or last
+//! project, move the same way, so a switch always looks the same; with reduced motion, it's at
+//! once.
 
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use gpui_kit::{Context, ScrollDelta, ScrollEvent, SpringConfig, SpringState, TouchPhase, Window};
 
+use super::tiles::key_of;
 use crate::settings;
 use crate::shell::Shell;
 
@@ -33,8 +36,9 @@ const MOST_SPEED: f32 = 5000.;
 const HELD_STILL: Duration = Duration::from_millis(60);
 /// How far the fingers move before the gesture is judged a swipe or a scroll.
 const DECIDE: f32 = 2.;
-/// How fast ⌘⌥← or ⌘⌥→ throws the space toward a side with no space past it, in points a
-/// second: the spring takes it out a dozen points or so and back, as a rubber band gives.
+/// How fast the keys throw the space toward a side with no space, or no project, past it, in
+/// points a second: the spring takes it out a dozen points or so and back, as a rubber band
+/// gives.
 const NUDGE: f32 = 500.;
 
 /// `travel` past the first or last space, as far as a rubber band lets it go: less and less the
@@ -77,6 +81,9 @@ struct Fingers {
 struct Settling {
     /// The space it goes on to, until it's half-way out and that one's shown; none to rest.
     goal: Option<usize>,
+    /// The project ⌥← or ⌥→ is on its way to in the space at `goal`: shown, as its tile shows
+    /// it, once that space comes in.
+    project: Option<PathBuf>,
     /// When it last moved.
     at: Instant,
 }
@@ -90,6 +97,9 @@ pub struct Swipe {
     velocity: f32,
     fingers: Option<Fingers>,
     settling: Option<Settling>,
+    /// The selected tile's light, and the tab shown's pill, passing to the next as the ⌥ arrows
+    /// step (`glide`).
+    pub(crate) glides: super::glide::Glides,
 }
 
 impl Swipe {
@@ -218,24 +228,93 @@ impl Shell {
         self.settle(Some(index), cx);
     }
 
-    /// Shows the space a `step` to the left (-1) or to the right (1), as ⌘⌥← and ⌘⌥→ do: on
+    /// Shows the space a `step` to the left (-1) or to the right (1), as ⌥⇧← and ⌥⇧→ do: on
     /// from the space a switch is already on its way to, so pressed again it goes one further.
     /// Past the first or last space there's none, and as with a swipe the space gives a little
     /// and settles back; it doesn't wrap round.
     pub(super) fn step_space(&mut self, step: isize, cx: &mut Context<Self>) {
         let settings = settings::get(cx);
-        let heading = self
-            .swipe
-            .settling
-            .as_ref()
-            .and_then(|settling| settling.goal);
+        let heading = self.heading();
         let to = (heading.unwrap_or(settings.space).checked_add_signed(step))
             .filter(|&to| to < settings.spaces.len());
         if let Some(to) = to {
             self.slide_to_space(to, cx);
-        } else if heading.is_none() && !cx.reduce_motion() {
-            // Not already on its way to the first or last space: it gives toward the side
-            // with none.
+        } else if heading.is_none() {
+            // Not already on its way to the first or last space.
+            self.nudge(step, cx);
+        }
+    }
+
+    /// Shows the project a `step` to the left (-1) or to the right (1), as ⌥← and ⌥→ do, as its
+    /// tile would: along the space's tiles, and past its first or last into the space beside, at
+    /// the project nearest, as a swipe brings that space in. A space with no project is passed
+    /// over. On from the project a switch is already on its way to, so pressed again it goes one
+    /// further. Past the first or last project of all there's none, and the space gives as it
+    /// does at the first or last space; it doesn't wrap round.
+    pub(super) fn step_project(&mut self, step: isize, cx: &mut Context<Self>) {
+        let heading = self.heading();
+        let settings = settings::get(cx);
+        let from = heading.unwrap_or(settings.space);
+        // The project the keys go on from: the one on its way in, or else the one shown.
+        let at = match heading {
+            Some(goal) => (self.swipe.settling.as_ref())
+                .and_then(|settling| settling.project.clone())
+                .or_else(|| Some(settings.spaces.get(goal)?.shown_project()?.to_owned())),
+            None => self.workspace.project().map(|project| project.path.clone()),
+        };
+        // Every project, space by space, each space's in the order its tiles show them: its
+        // space, its folder and its place in the workspace.
+        let order: Vec<(usize, &PathBuf, usize)> = (settings.spaces.iter().enumerate())
+            .flat_map(|(space, held)| held.projects.iter().map(move |path| (space, path)))
+            .filter_map(|(space, path)| Some((space, path, self.workspace.project_index(path)?)))
+            .collect();
+        let here = at.as_ref().and_then(|at| {
+            (order.iter()).position(|&(space, path, _)| space == from && path == at)
+        });
+        let to = match here {
+            Some(here) => here.checked_add_signed(step).and_then(|to| order.get(to)),
+            // None shown, as in a space with no project: the nearest that way.
+            None if step > 0 => order.iter().find(|&&(space, ..)| space >= from),
+            None => order.iter().rev().find(|&&(space, ..)| space <= from),
+        };
+        let Some(&(space, path, index)) = to else {
+            if heading.is_none() {
+                self.nudge(step, cx);
+            }
+            return;
+        };
+        let path = path.clone();
+        let along = heading.is_none() && space == from;
+        let leaving = self
+            .workspace
+            .project()
+            .map(|project| key_of(&project.path));
+        // Its space slides in as a swipe brings it, at once with reduced motion; the space shown
+        // comes back to rest.
+        self.slide_to_space(space, cx);
+        if settings::get(cx).space != space {
+            if let Some(settling) = self.swipe.settling.as_mut() {
+                settling.project = Some(path);
+            }
+            return;
+        }
+        self.select_project(index, cx);
+        // Along the tiles of the space shown, the light passes from the one to the other.
+        if let Some(leaving) = leaving.filter(|_| along && !cx.reduce_motion()) {
+            let at = cx.background_executor().now();
+            (self.swipe.glides.tiles).start(leaving, key_of(&path), step > 0, at);
+        }
+    }
+
+    /// The space a switch is on its way to, until it's half-way and that space is shown.
+    fn heading(&self) -> Option<usize> {
+        (self.swipe.settling.as_ref()).and_then(|settling| settling.goal)
+    }
+
+    /// The space gives a little toward the side a `step` goes, where there's nothing to show,
+    /// and settles back, as a swipe's rubber band does; with reduced motion, it stays still.
+    fn nudge(&mut self, step: isize, cx: &mut Context<Self>) {
+        if !cx.reduce_motion() {
             self.swipe.velocity = -(step as f32) * NUDGE;
             self.settle(None, cx);
         }
@@ -245,7 +324,11 @@ impl Shell {
     /// side away from the space at `goal`, which comes in from the other once it's half-way.
     fn settle(&mut self, goal: Option<usize>, cx: &mut Context<Self>) {
         let at = cx.background_executor().now();
-        self.swipe.settling = Some(Settling { goal, at });
+        self.swipe.settling = Some(Settling {
+            goal,
+            project: None,
+            at,
+        });
         cx.notify();
     }
 
@@ -275,11 +358,18 @@ impl Shell {
                 // Half-way out: the next space comes in from the other side, as fast, where it's
                 // as faint as this one is.
                 swipe.offset += way * width;
+                let project = swipe.settling.take().and_then(|settling| settling.project);
                 swipe.settling = Some(Settling {
                     goal: None,
+                    project: None,
                     at: now,
                 });
                 self.show_space(goal, cx);
+                // The project ⌥← or ⌥→ was on its way to shows, as its tile would show it.
+                let index = project.and_then(|path| self.workspace.project_index(&path));
+                if let Some(index) = index {
+                    self.select_project(index, cx);
+                }
             }
         } else if SPRING.is_settled(moved, 0., REST) {
             (swipe.offset, swipe.velocity, swipe.settling) = (0., 0., None);

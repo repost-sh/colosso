@@ -3,12 +3,12 @@
 //! a space of its own with its own colours, and an empty space, light and dark; then what a
 //! person does there (`acts`): a space's mark saying a chat in it works and then waits, a tab's
 //! row and its tile saying the same, a tile dragged to another row and back, the address bar
-//! following the pane pressed in, ⌘L's launcher on a page, ⌥← and ⌥→ between spaces, in a
-//! composer and on the shortcuts page (`keys`), the pages pinned at the sidebar's head and the
-//! space's loose pages under them, pinned and kept by a drop, dragged, shown as the space
-//! changes, closed and put away (`pins`), and a project's worktrees under their headers,
-//! collapsed, opened, dragged and kept (`headers`). It shows a chat, so it runs on a data folder
-//! and an agent host of its own:
+//! following the pane pressed in, ⌘L's launcher on a page, ⌥← and ⌥→ between projects and ⌥⇧←
+//! and ⌥⇧→ between spaces, in a composer and on the shortcuts page (`keys`), the pages pinned
+//! at the sidebar's head and the space's loose pages under them, pinned and kept by a drop,
+//! dragged, shown as the space changes, closed and put away (`pins`), and a project's worktrees
+//! under their headers, collapsed, opened, dragged and kept (`headers`). It shows a chat, so it
+//! runs on a data folder and an agent host of its own:
 //!
 //! ```sh
 //! Q=$PWD/.superpowers/qa/arc && mkdir -p $Q/tmp &&

@@ -17,6 +17,7 @@ use crate::chat::Activity;
 use crate::navigation::Route;
 use crate::settings;
 use crate::shell::Shell;
+use crate::spaces::Space;
 
 actions!(
     arc,
@@ -28,30 +29,47 @@ actions!(
         RenameSpace,
         DeleteSpace,
         PreviousSpace,
-        NextSpace
+        NextSpace,
+        PreviousProject,
+        NextProject,
+        PreviousTab,
+        NextTab
     ]
 );
 
 /// The shell root's key context where the Arc sidebar shows the spaces, in the workspace.
 pub const SPACES: &str = "Spaces";
 
-/// Where ⌥← and ⌥→ show the space to the left and to the right: the spaces' context, which a
-/// binding with no context would outrank, so a terminal's and a text field's own ⌥← and ⌥→, a
-/// word back and on, bound deeper, win. A web page, an app on the agent's desktop and a phone
-/// or simulator may have a text field Koyo can't see into, so there they stay keys, which the
-/// view's key handler hands on.
-const OPTION_ARROWS: &str = "Spaces && !BrowserPage && !AgentDesktop && !Device";
+/// Where the ⌥ arrows move between projects, spaces and tabs: the spaces' context, but not where
+/// the keyboard is in text. A text field and a terminal keep them, as a word back and on (⌥←,
+/// ⌥→), a word's selection (⌥⇧←, ⌥⇧→) or their own (⌥↑ and ⌥↓, which no text field of Koyo's
+/// binds, so that a press meant for the text never changes the tab); a terminal hands them to
+/// its program. A web page, an app on the agent's desktop and a phone or simulator may have a
+/// text field Koyo can't see into, so there they stay keys, which the view's key handler hands
+/// on.
+const OUTSIDE_TEXT: &str =
+    "Spaces && !Input && !Terminal && !BrowserPage && !AgentDesktop && !Device";
 
-/// ⌥← and ⌥→ show the space to the left and to the right (`docs/arc-sidebar.md` 7) wherever the
-/// keyboard isn't in text; ⌘⌥← and ⌘⌥→ from wherever it is, the chat's composer included, as
-/// nothing under the shell binds them. Bound to the spaces' context, so they're unbound where
-/// no spaces show. ⌥← and ⌥→ last, so the shortcuts page shows them.
+/// ⌥← and ⌥→ show the project to the left and to the right, on into the space beside past the
+/// first or last of the space's (`docs/arc-sidebar.md` 7), and ⌥⇧← and ⌥⇧→ the space to the left
+/// and to the right, wherever the keyboard isn't in text; ⌘⌥← and ⌘⌥→, and ⌘⌥⇧← and ⌘⌥⇧→, the
+/// same from wherever it is, the chat's composer included, as nothing under the shell binds
+/// them. ⌥↑ and ⌥↓ show the tab above and below in the sidebar where the keyboard isn't in
+/// text; there's no ⌘ for them, as a text field's ⌘⌥↑ and ⌘⌥↓ add a cursor. Bound to the
+/// spaces' context, so they're unbound where no spaces show. ⌥← and ⌥→, and ⌥⇧← and ⌥⇧→, last,
+/// so the shortcuts page shows them.
 pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
-        KeyBinding::new("cmd-alt-left", PreviousSpace, Some(SPACES)),
-        KeyBinding::new("cmd-alt-right", NextSpace, Some(SPACES)),
-        KeyBinding::new("alt-left", PreviousSpace, Some(OPTION_ARROWS)),
-        KeyBinding::new("alt-right", NextSpace, Some(OPTION_ARROWS)),
+        KeyBinding::new("cmd-alt-left", PreviousProject, Some(SPACES)),
+        KeyBinding::new("cmd-alt-right", NextProject, Some(SPACES)),
+        KeyBinding::new("alt-left", PreviousProject, Some(OUTSIDE_TEXT)),
+        KeyBinding::new("alt-right", NextProject, Some(OUTSIDE_TEXT)),
+        KeyBinding::new("cmd-alt-shift-left", PreviousSpace, Some(SPACES)),
+        KeyBinding::new("cmd-alt-shift-right", NextSpace, Some(SPACES)),
+        KeyBinding::new("alt-shift-left", PreviousSpace, Some(OUTSIDE_TEXT)),
+        KeyBinding::new("alt-shift-right", NextSpace, Some(OUTSIDE_TEXT)),
+        KeyBinding::new("alt-up", PreviousTab, Some(OUTSIDE_TEXT)),
+        KeyBinding::new("alt-down", NextTab, Some(OUTSIDE_TEXT)),
     ]);
 }
 
@@ -127,6 +145,10 @@ pub fn handle_actions(root: Div, cx: &mut Context<Shell>) -> Div {
         }))
         .on_action(cx.listener(|this, _: &PreviousSpace, _, cx| this.step_space(-1, cx)))
         .on_action(cx.listener(|this, _: &NextSpace, _, cx| this.step_space(1, cx)))
+        .on_action(cx.listener(|this, _: &PreviousProject, _, cx| this.step_project(-1, cx)))
+        .on_action(cx.listener(|this, _: &NextProject, _, cx| this.step_project(1, cx)))
+        .on_action(cx.listener(|this, _: &PreviousTab, _, cx| this.step_tab(-1, cx)))
+        .on_action(cx.listener(|this, _: &NextTab, _, cx| this.step_tab(1, cx)))
         .map(|root| super::pinned::handle_actions(root, cx))
         .on_action(
             cx.listener(|this, MoveProject(project, to): &MoveProject, _, cx| {
@@ -226,10 +248,9 @@ impl Shell {
         settings::update(cx, |settings| {
             settings.space = index.min(settings.spaces.len().saturating_sub(1));
         });
-        let space = settings::get(cx).shown_space();
-        let target = space.and_then(|space| {
-            (space.selected.as_deref()).or_else(|| space.projects.first().map(PathBuf::as_path))
-        });
+        let target = settings::get(cx)
+            .shown_space()
+            .and_then(Space::shown_project);
         let index = target.and_then(|path| self.workspace.project_index(path));
         self.workspace.select_project(index);
         // A pinned page shown stays shown, the keyboard where it was: only the sidebar's tiles

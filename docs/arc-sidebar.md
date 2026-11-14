@@ -88,6 +88,11 @@ The projects of the space shown, as tiles at the foot of the space, over the spa
   is fetched once and kept in the app's data folder. With no remote, or no avatar to fetch,
   the project's initials stand in.
 - The selected project's tile is highlighted. Clicking a tile selects that project.
+- As ⌥← and ⌥→ step along the tiles (section 7), the light passes from the tile left to the
+  next: it slides out of the one toward the other and into that one from the side it comes
+  from, both together, each part of it rounded as a tile is, in the lit tile's shade
+  (`arc/glide.rs`). With reduced motion it's at once; into another space, the space slides
+  instead.
 - Dragging a tile moves its project among the space's (`arc/tile_grid.rs`): the tile follows
   the pointer, the tiles it passes step into the slot it left, along their row and round onto
   the next, and let go it slides into the slot it's over. The room a short last row leaves
@@ -215,8 +220,9 @@ The projects of the space shown, as tiles at the foot of the space, over the spa
 - Each space keeps its own theme (light and dark gradients), starting from the window's.
   Switching spaces switches the window's colours. In the Arc layout every theme edit goes to
   the space shown.
-- **⌥←** / **⌥→**, and **⌘⌥←** / **⌘⌥→**, show the space to the left and to the right, as a swipe does
-  (section 7).
+- **⌥⇧←** / **⌥⇧→**, and **⌘⌥⇧←** / **⌘⌥⇧→**, show the space to the left and to the right, as a
+  swipe does; **⌥←** / **⌥→**, and **⌘⌥←** / **⌘⌥→**, the project to the left and to the right,
+  on into the space beside past the space's first or last (section 7).
   Settings → Keyboard shortcuts lists them under Spaces.
 
 ## 7. Bottom bar
@@ -233,16 +239,36 @@ The projects of the space shown, as tiles at the foot of the space, over the spa
   and the next comes in from the other side in the same motion, slowing to rest. A click on a
   mark, a new space, and the keys below move the same way; with reduced motion the switch is
   at once.
-- **⌥←** and **⌥→** (`arc::PreviousSpace`, `arc::NextSpace`) show the space to the left and
-  to the right wherever the keyboard isn't in text: nothing focused, the sidebar, the file tree,
-  a viewer. In text they stay a word back and on: a terminal (its program gets `ESC b` /
-  `ESC f`), Koyo's text fields (the chat's prompt, the file editor, the address bar), and a web
-  page, the agent desktop or a phone or simulator, whose own text field Koyo can't see.
-  **⌘⌥←** and **⌘⌥→** do the same from wherever the keyboard is, the chat's prompt included.
-  Pressed again while a switch is under way, they go on from the space it's headed for. At the
-  first or last space the space gives a little toward the side with none and springs back, as
-  a swipe's rubber band does; they never wrap round. Held, they repeat as the arrows do. In the
-  Orca layout and on a settings page, where no spaces show, they do nothing.
+- **⌥←** and **⌥→** (`arc::PreviousProject`, `arc::NextProject`) show the project to the left
+  and to the right, as its tile would (section 3): along the space's tiles, and past its first
+  or last on into the space beside, at the project nearest (its last going left, its first
+  going right), the space sliding in as a swipe brings it. A space with no project is passed
+  over. A pinned or a loose page shown is left for the project's tab, as a tile's click leaves
+  it (section 11.4).
+- **⌥⇧←** and **⌥⇧→** (`arc::PreviousSpace`, `arc::NextSpace`) show the space to the left and
+  to the right, at the project it showed last, a space with no project too.
+- Both work wherever the keyboard isn't in text: nothing focused, the sidebar, the file tree, a
+  viewer. In text they stay a word back and on, and a word's selection: a terminal (its program
+  gets `ESC b` / `ESC f`, and ⌥⇧← and ⌥⇧→ as they are), Koyo's text fields (the chat's prompt,
+  the file editor, the address bar), and a web page, the agent desktop or a phone or simulator,
+  whose own text field Koyo can't see. **⌘⌥←** and **⌘⌥→**, and **⌘⌥⇧←** and **⌘⌥⇧→**, do the
+  same from wherever the keyboard is, the chat's prompt included. Pressed again while a switch
+  is under way, they go on from the project, or the space, it's headed for. Past the first or
+  last project of all, and at the first or last space, the space gives a little toward the side
+  with none and springs back, as a swipe's rubber band does; they never wrap round. Held, they
+  repeat as the arrows do. In the Orca layout and on a settings page, where no spaces show,
+  they do nothing.
+- **⌥↑** and **⌥↓** (`arc::PreviousTab`, `arc::NextTab`) show the tab above and below, down the
+  sidebar's rows as it lists them: the space's loose pages, then the tabs of each of the
+  project's worktrees, a collapsed worktree's passed over. The tab shown's pill passes from
+  the row it leaves to the next as the tiles' light does (section 3): out of the one toward the
+  other and into that one from the side it comes from, at once with reduced motion. The tab
+  shown doesn't take the keyboard, so pressed again they go on from it; with none of the rows
+  shown, as while a pinned page is, ⌥↓ shows the first and ⌥↑ the last. At the first or last
+  row nothing changes; they don't wrap round. They work where ⌥← and ⌥→ do, and not in a text
+  field either: Koyo's have no ⌥↑ or ⌥↓ of their own, but a press meant for the text never
+  changes the tab. There's no ⌘ for them, as a text field's ⌘⌥↑ and ⌘⌥↓ add a cursor. Only in
+  the Arc layout.
 - A space that isn't shown says on its mark what its tiles would (section 3), so a chat that
   finished there is noticed: a small indigo dot up and right of the mark while something in it
   waits for the person (a chat unread, failed or asking, a terminal waiting), the tiles'
@@ -285,21 +311,23 @@ The projects of the space shown, as tiles at the foot of the space, over the spa
   they were typing in and closed, or come back to from a settings page they left it for.
 - A chat's prompt is the exception: moving to a chat, by any of those or by another space or
   project shown, never puts the keyboard in its prompt, so ⌥← and ⌥→ go on moving between
-  spaces. The prompt has the keyboard once the person presses in it, or in a chat they've
-  just opened to type in (⌘T, a question asked from the launcher). A chat brought back with
-  the window has none, and coming back from a subagent's chat leaves the prompt alone too.
+  projects, ⌥⇧← and ⌥⇧→ between spaces, and ⌥↑ and ⌥↓ between tabs. The prompt has the
+  keyboard once the person presses in it, or in a chat they've just opened to type in (⌘T, a
+  question asked from the launcher). A chat brought back with the window has none, and coming
+  back from a subagent's chat leaves the prompt alone too.
 - A press on anything that takes no keyboard (a chat's background or its messages, the
   sidebar, the glass) takes it out of the pane, to the window, where the window's own keys
   work and nothing is typed into; a press on a button, a menu or a scrollbar leaves it where
-  it was. Another space, project or worktree shown leaves it at the window: no tab takes the
-  keyboard for being the one shown. With the keyboard at the window, what a chat hears on its
-  own root, its card's key (⌘⇧B) and its menu, still reaches the chat the person is in
-  (`chat::heard_at_window`); the keys of its prompt (Esc to stop, ↑, ⌘↵) need the keyboard in
-  the prompt.
+  it was. Another space, project or worktree shown, or another tab by ⌥↑ or ⌥↓, leaves it at
+  the window: no tab takes the keyboard for being the one shown. With the keyboard at the
+  window, what a chat hears on its own root, its card's key (⌘⇧B) and its menu, still reaches
+  the chat the person is in (`chat::heard_at_window`); the keys of its prompt (Esc to stop, ↑,
+  ⌘↵) need the keyboard in the prompt.
 - A new project joins the space shown, and so do projects no space holds, as every project
   the first time this runs, into a first space made then. A project removed leaves its space.
-- ⌥← / ⌥→ and ⌘⌥← / ⌘⌥→ change the space shown (`space`) one either way, as a swipe does, and only in the
-  Arc layout (section 7).
+- ⌥⇧← / ⌥⇧→ and ⌘⌥⇧← / ⌘⌥⇧→ change the space shown (`space`) one either way, as a swipe does;
+  ⌥← / ⌥→ and ⌘⌥← / ⌘⌥→ the project shown, its space's `selected` with it, and the space shown
+  too past a space's first or last project. Only in the Arc layout (section 7).
 - Selected another way (app control, the Orca layout, a link, ⌃⇥), a project's own space is
   shown, and its tab there, not the loose page that space showed last (`follow_space`). A
   space with no project shows no project at all: the window shows none of another space's
@@ -433,7 +461,7 @@ project's name would be (section 4). **[asked]**
   takes the keyboard. It's a page like any other: the same browser host, its keys (⌘R, ⌘F,
   zoom, ⌘[ and ⌘]), `DevTools` and right-click menu, and the sidebar's address and controls
   (section 2). **[asked]**
-- **Switching space leaves a pinned page shown.** By a swipe, ⌥← and ⌥→, ⌘⌥← and ⌘⌥→, or a
+- **Switching space leaves a pinned page shown.** By a swipe, ⌥⇧← and ⌥⇧→, ⌘⌥⇧← and ⌘⌥⇧→, or a
   click on a space's mark, the sidebar's loose pages, project and tiles change and the panes
   don't: the pinned page stays, the keyboard where it was. A space with no project shows it
   too. A click on a space's mark doesn't take the keyboard to the window while a pinned page
@@ -446,10 +474,11 @@ project's name would be (section 4). **[asked]**
 - A loose page shown is its space's: another space shows what it showed last.
 - Picking a tab of a worktree, or a project's tile, leaves a pinned or a loose page for that;
   so does anything else that shows a worktree's tab: ⌃⇥ picking one, a file opened, ⌘⇧T, a
-  worktree's +, app control selecting a tab, worktree or project. A pinned page's page stays
-  open, as it was, and shows again when its tile is picked. ⌃⇥ lists the pinned and the loose
-  pages among the tabs looked at last, and shows one picked as its tile or row would
-  (`docs/tab-switcher.md`). **[asked; ours: the list of what else leaves it]**
+  worktree's +, app control selecting a tab, worktree or project, ⌥← and ⌥→ (⌘⌥← and ⌘⌥→)
+  showing a project, in another space too, and ⌥↑ and ⌥↓ showing a worktree's tab. A pinned
+  page's page stays open, as it was, and shows again when its tile is picked. ⌃⇥ lists the
+  pinned and the loose pages among the tabs looked at last, and shows one picked as its tile
+  or row would (`docs/tab-switcher.md`). **[asked; ours: the list of what else leaves it]**
 - A pinned or a loose page's `DevTools`, detached, split its tab as they split any page's;
   their pane has only its ×, as such a page's panes aren't dragged elsewhere. No side of one
   takes a tab in hand: it's split with nothing. **[ours]**

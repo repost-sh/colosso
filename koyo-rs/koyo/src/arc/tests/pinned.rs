@@ -251,7 +251,7 @@ fn a_pinned_page_shown_stays_shown_with_the_keyboard_as_the_space_changes(cx: &m
         assert_eq!(now, Some((view, true)), "the same page, the keyboard in it");
     };
 
-    // ⌘⌥→, as ⌥→ and a swipe go: the sidebar lists the other space's project, the panes don't
+    // ⌥⇧→, as a swipe goes: the sidebar lists the other space's project, the panes don't
     // change.
     act(window, NextSpace, cx);
     assert_eq!((space(cx), project(cx)), (1, Some(roots[1].clone())));
