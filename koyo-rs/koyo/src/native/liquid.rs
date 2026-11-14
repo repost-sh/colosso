@@ -11,6 +11,9 @@
 //!
 //! It moves only when the element does: a frame that moves nothing tells `AppKit` nothing.
 //!
+//! In a picture of the window, a tab's for the tab switcher, which can't hold it
+//! (`native/surface.rs`), it shows as the element is filled where there's no glass.
+//!
 //! It ends at its own edge. Its shadow would reach past that, but a surface shows only what's over
 //! the element, since anything more would hide the page from the pointer: so the shadow would be
 //! cut off at the element's rectangle and show only in its corners, as grey squares on a light page.
@@ -22,6 +25,7 @@
 use std::cell::{Cell, RefCell};
 use std::sync::Once;
 
+use gpui_apple::metal_renderer::SurfacePane;
 use gpui_kit::component::ActiveTheme as _;
 use gpui_kit::{
     AnyElement, App, Bounds, BoxShadow, ElementId, Hsla, IntoElement as _, ParentElement, Pixels,
@@ -137,9 +141,11 @@ fn glass(
         |_, _, _| (),
         move |bounds, (), window, cx| {
             let clip = window.content_mask().bounds;
+            let p = theme::palette_for(look.dark, cx);
             pane.update(cx, |pane, _| {
                 if let Some(native) = &pane.0 {
                     native.place(bounds, clip, radius, look, window);
+                    native.mark(bounds, radius, p, window);
                 }
             });
         },
@@ -246,6 +252,18 @@ impl Native {
             corners: Cell::new(None),
             look: Cell::new(None),
         })
+    }
+
+    /// Has the glass show in a picture of the window, over `bounds`, as the element is where
+    /// there's no glass ([`floating`]): filled in `p`, the palette of the glass's tone, its
+    /// corners `radius` round.
+    fn mark(&self, bounds: Bounds<Pixels>, radius: Pixels, p: Palette, window: &mut Window) {
+        let pane = SurfacePane {
+            radius: f32::from(radius) * window.scale_factor(),
+            fill: p.floating(),
+            edge: p.hairline,
+        };
+        self.surface.mark(bounds, pane, window);
     }
 
     /// Puts the glass over `bounds`, as much of it as `clip` shows, looking as `look` says.

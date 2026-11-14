@@ -113,22 +113,49 @@ As Arc and macOS have them. **[ours, but asked: Arc's behaviour]**
 
 ## 4. The pictures
 
-- **Taken from what Koyo draws.** GPUI's Metal renderer (`koyo-rs/vendor/gpui-fast-apple`)
-  shrinks the tab's part of a frame it has just drawn, its islands, into a small picture on the
-  GPU, about 312 × 196 pixels: nothing is copied to the CPU, and macOS asks no permission.
-  It works for every kind of tab alike: terminal, chat, file, page, split, device, desktop.
-  **[ours]**
-- Each tab keeps one, by its first pane, in memory only **[asked]**: taken again while the tab
-  shows, at most four times a second (Koyo draws only what changes), and once more as the
-  switcher opens. A tab left has a picture at most a quarter second old. A tab closed lets
-  its picture go.
+- **Taken from what Koyo draws.** GPUI's Metal renderer (`koyo-rs/vendor/gpui-fast-apple`,
+  `vendor/README.md`) copies the tab's part of a frame it has just drawn and shrinks it into a
+  small picture on the GPU, 312 × 196 pixels, a card's picture twice over: nothing is copied
+  to the CPU, and macOS asks no permission. It works for every kind of tab alike: terminal,
+  chat, file, page, split, device, desktop. **[ours]**
+- **How** (`shell/pictures.rs`). A tab's picture is a small surface with two buffers over it.
+  One is painted over the tab in Koyo's window: it draws nothing, and has the renderer take the
+  picture of what the frame shows under it. The other is painted in the tab's card. The first
+  is painted from the window's root, where the tab's panes were laid out, not among them:
+  they're drawn into a layer of their own, where the corners of the card they're on clip them,
+  and the renderer takes pictures of what's painted in the frame itself.
+- **Across the window's two layers.** Where the window has glass or another native view in it,
+  it draws in two layers, one under the view and one over it, each a frame of its own: what's
+  on glass, a chat's prompt, is in the upper. The lower layer's renderer takes the picture, and
+  the upper's draws its own part of the frame over it (`metal_renderer::set_surface_capture`
+  says how). macOS draws the glass itself, between the two, so no frame holds it: each glass
+  element paints a marker over itself, which draws nothing (`native/surface.rs`), and the
+  picture has a pane there, under what's on the glass, filled as the element is where there's
+  no glass, its edge a pixel of the picture wide so it shows at that size. **[ours]**
+- **What's in it:** all the tab is drawn in, across its whole width from its top, as high as
+  a card's picture's shape makes that; or, in a window wider than that shape, its whole height
+  across its middle. A split's panes are in it side by side. What the app draws on glass is
+  in it, on a pane that stands for the glass: a new chat, which is nearly all prompt, shows
+  its prompt.
+- Each tab keeps one, by its first pane, in memory only **[asked]**: taken again while the
+  window is drawn anew with the tab shown, at most four times a second (Koyo draws only what
+  changes), and once more as the switcher opens. A tab left has a picture at most a quarter
+  second old. A tab closed lets its picture go.
 - The switcher draws them as a page's frame is drawn, a surface the renderer samples, in the
   card's rounded corners.
 - A tab not shown since launch has no picture: its card shows its icon large on the theme's
   card colour.
-- What it costs is measured: reading back a frame takes the window's drawable off its
-  display-only mode. If that shows in `koyo-bench`, the frames a picture is taken from are
-  drawn a second time, off screen, instead.
+- **What it costs.** The check (section 7) draws a frame of a 1600 × 1000 point window with a
+  picture taken of it and without, waiting for the GPU each time: over six runs a picture added
+  from nothing it could tell to 3.5 ms to a frame, about a millisecond in most, in a debug
+  build on a MacBook Pro with an M4 Max, the middle of 40 frames each, with the machine busy. In
+  the app nothing waits for it, and it's four frames a second at most. The check times a frame
+  drawn as one; in a window of two layers the upper one's part is copied and drawn as well,
+  which isn't timed. Reading a frame back
+  takes the window's layer off its display-only mode (`framebufferOnly`), from the first
+  picture on; what that costs a frame that takes none isn't measured: the check's frames are
+  off screen. Koyo's window is see-through, which already keeps its frames from going straight
+  to the display.
 - Not taken another way: ScreenCaptureKit asks for Screen Recording, `CGWindowListCreateImage`
   is gone since macOS 15, GPUI can't draw a tab's views shrunk, and a page's own frames cover
   pages only.
@@ -145,9 +172,10 @@ As Arc and macOS have them. **[ours, but asked: Arc's behaviour]**
    **Built.**
 2. The glass, compared with ⌘⇥ (section 6). **The owner picked the App switcher's.**
 3. The panel: its window (`popup.rs`'s switcher kind, `native/window_glass.rs`), the cards
-   with their icons and badges (`switcher/card.rs`), the keys. It replaces the list. **Built,
-   with a card's icon large where its picture will be; reworked once (section 6).**
-4. The pictures, and their cost measured.
+   with their icons and badges (`switcher/card.rs`), the keys. It replaces the list. **Built;
+   reworked once (section 6).**
+4. The pictures (`shell/pictures.rs`, the renderer's `set_surface_capture`), and their cost
+   measured. **Built.**
 
 ## 6. What was tried and dropped
 
@@ -171,14 +199,19 @@ As Arc and macOS have them. **[ours, but asked: Arc's behaviour]**
 
 ## 7. The check
 
-The switcher in real windows off screen: the shell on this checkout with three files' tabs,
-⌃⇥ as typed, and what macOS says of the panel's window: unseen until ⌃ has been held, never
-with the keyboard, with no edge of its own and the glass behind what GPUI draws; then ⌃⇥ again
-and ⌃ let go, heard in the shell's window, and the tab picked shown. It saves what GPUI draws
-of the panel, the cards without the glass, as `.superpowers/qa/switcher/switcher.png`.
+The switcher in real windows off screen: the shell on this checkout with a new chat's tab and
+three files', ⌃⇥ as typed, and what macOS says of the panel's window: unseen until ⌃ has been
+held, never with the keyboard, with no edge of its own and the glass behind what GPUI draws;
+then ⌃⇥ again and ⌃ let go, heard in the shell's window, and the tab picked shown. Each tab's
+frame is first presented as the app presents one, in the window's two layers, and its picture
+read once the GPU has drawn it. The chat's, saved as `chat-picture.png`, is looked at for its
+prompt: the pane that stands for the glass, and what's on it. The check says what a picture
+adds to a frame (section 4). It saves what GPUI draws of the panel, the cards with their
+tabs' pictures and without the glass, as `.superpowers/qa/switcher/switcher.png`.
 
 ```sh
 Q=$PWD/.superpowers/qa/switcher && mkdir -p $Q/tmp &&
-  KOYO_DATA_DIR=$Q/data TMPDIR=$Q/tmp KOYO_CONFIG_DIR=$Q/config KOYO_LOG_DIR=$Q/logs \
-  script/cargo run -p koyo --features visual-check -- --visual-check-switcher
+  KOYO_AGENT_PROVIDER=fake KOYO_DATA_DIR=$Q/data TMPDIR=$Q/tmp KOYO_CONFIG_DIR=$Q/config \
+  KOYO_LOG_DIR=$Q/logs script/cargo run -p koyo --features visual-check -- \
+  --visual-check-switcher
 ```

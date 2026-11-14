@@ -60,6 +60,11 @@ pub(super) fn switch(
     if cards.len() < 2 {
         return;
     }
+    // The tab shown has its picture taken anew, by the frame this asks for, for its card.
+    if let Some(shown) = shell.shown_tab_key() {
+        super::pictures::retake(shown, cx);
+        window.refresh();
+    }
     let picked = stepped(0, by, cards.len());
     open(entity, cards, picked, window, cx);
 }

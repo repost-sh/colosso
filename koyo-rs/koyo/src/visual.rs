@@ -231,6 +231,11 @@ impl Drawn {
     pub fn save(&mut self, name: &str) -> Result<PathBuf> {
         self.draw()?;
         let image = (self.cx.capture_screenshot(self.window)).map_err(|error| error.to_string())?;
+        self.save_image(&image, name)
+    }
+
+    /// Saves `image` as `name`, saying where.
+    pub fn save_image(&self, image: &image::RgbaImage, name: &str) -> Result<PathBuf> {
         let path = self.out.join(name);
         image.save(&path).map_err(|error| error.to_string())?;
         Ok(path)
@@ -249,9 +254,7 @@ impl Drawn {
             .update_window(window, |_, window, cx| window.draw(cx).clear(cx))
             .map_err(|error| error.to_string())?;
         let image = (self.cx.capture_screenshot(window)).map_err(|error| error.to_string())?;
-        let path = self.out.join(name);
-        image.save(&path).map_err(|error| error.to_string())?;
-        Ok(path)
+        self.save_image(&image, name)
     }
 
     /// Draws until `done`, for up to `patience`, waiting between looks for what the selected
@@ -436,6 +439,13 @@ impl Drawn {
     fn park(&self, future: impl Future<Output = ()>) {
         let _: Option<()> =
             (self.cx.foreground_executor()).block_on(koyo_lsp::within(PARK, future));
+    }
+
+    /// Waits `long` by the clock, running the background work meanwhile: for what nothing
+    /// wakes the scheduler about, the GPU having drawn what it was given.
+    pub fn rest(&self, long: Duration) {
+        let never = std::future::pending::<()>();
+        let _: Option<()> = (self.cx.foreground_executor()).block_on(koyo_lsp::within(long, never));
     }
 }
 

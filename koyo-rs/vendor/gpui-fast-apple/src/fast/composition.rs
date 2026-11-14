@@ -18,7 +18,10 @@ use crate::metal_renderer::{Context, InstanceBufferPool, MetalRenderer, Renderer
 /// A renderer for an overlay surface above `base`: transparent, on its own
 /// layer, sharing `base`'s device and sprite atlas.
 pub(crate) fn new_overlay_renderer(context: Context, base: &Renderer) -> Renderer {
-    new_sharing_atlas(base, context, true)
+    let mut renderer = new_sharing_atlas(base, context, true);
+    // Koyo: what it draws is over `base`'s in a picture of the window too.
+    renderer.draws_over(base);
+    renderer
 }
 
 /// A renderer on a new `CAMetalLayer` that draws with `base`'s device and

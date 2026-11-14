@@ -112,7 +112,7 @@ pub(crate) fn ns_window(window: &Window) -> Option<Retained<NSWindow>> {
 }
 
 /// The view GPUI draws `window` in, its layer GPUI's; none for a test's window.
-fn gpui_view(window: &Window) -> Option<Retained<NSView>> {
+pub(crate) fn gpui_view(window: &Window) -> Option<Retained<NSView>> {
     let handle = HasWindowHandle::window_handle(window).ok()?;
     let RawWindowHandle::AppKit(appkit) = handle.as_raw() else {
         return None;

@@ -4,8 +4,8 @@ use anyhow::{Context as _, Result};
 use block2::RcBlock;
 use core_graphics::geometry::CGSize;
 use gpui::{
-    AtlasTextureId, Background, Bounds, ContentMask, DevicePixels, PaintSurface, Path, Point,
-    PrimitiveBatch, ScaledPixels, Scene, Size, point, size,
+    AtlasTextureId, Background, Bounds, ContentMask, Corners, DevicePixels, Edges, Hsla,
+    PaintSurface, Path, Point, PrimitiveBatch, Quad, ScaledPixels, Scene, Size, point, size,
 };
 #[cfg(any(test, feature = "bench-support", feature = "test-support"))]
 use image::RgbaImage;
@@ -28,12 +28,15 @@ use objc2_core_foundation::{CFData, CFString};
 use parking_lot::Mutex;
 
 use std::{
-    cell::Cell,
+    cell::{Cell, RefCell},
     ffi::c_void,
-    mem,
+    iter, mem,
+    time::{Duration, Instant},
     mem::MaybeUninit,
     ops::Range,
-    ptr, slice,
+    ptr,
+    rc::Rc,
+    slice,
     sync::Arc,
 };
 
@@ -151,6 +154,8 @@ pub struct MetalRenderer {
         CFRetained<CVPixelBuffer>,
         objc2::rc::Retained<objc2::runtime::ProtocolObject<dyn objc2_metal::MTLTexture>>,
     )>,
+    /// Koyo: the pictures taken of parts of a frame (`set_surface_capture`).
+    pictures: Pictures,
     pub(crate) unit_vertices: metal::Buffer,
     #[allow(clippy::arc_with_non_send_sync)]
     pub(crate) instance_buffer_pool: Arc<Mutex<InstanceBufferPool>>,
@@ -463,6 +468,7 @@ impl MetalRenderer {
             surfaces_pipeline_state,
             page_surfaces_pipeline_state,
             page_surfaces_in_flight: Vec::new(),
+            pictures: Pictures::default(),
             unit_vertices,
             instance_buffer_pool,
             sprite_atlas,
@@ -622,6 +628,10 @@ impl MetalRenderer {
                 scene.surfaces.len(),
             )
         })?;
+        // Koyo: what the frame's own scene asks of pictures is noted as its surfaces are drawn,
+        // not what a layer's content, drawn into its tiles above, would.
+        self.pictures.asked.clear();
+        self.pictures.panes.clear();
         let command_buffer = self.draw_primitives_to_texture(
             scene,
             &instance_bindings,
@@ -629,6 +639,8 @@ impl MetalRenderer {
             texture,
             viewport_size,
         )?;
+        // Koyo: the pictures the scene asks for are taken of the frame as it's drawn by now.
+        self.take_pictures(texture, &command_buffer);
 
         let instance_buffer_pool = self.instance_buffer_pool.clone();
         let instance_buffer = Cell::new(Some(writer.finish()));
@@ -1385,7 +1397,20 @@ impl MetalRenderer {
         command_encoder: &metal::RenderCommandEncoderRef,
     ) {
         let image_buffer = &surface.image_buffer;
-        let picture = surface_picture(image_buffer);
+        // Koyo: a surface a picture is taken into draws nothing, the frame is drawn into it;
+        // nor does a pane, which only a picture shows. Both are noted for `take_pictures`.
+        let picture = match surface_mark(image_buffer) {
+            Some(Mark::Capture(request)) => {
+                self.pictures.asked.push((surface.clone(), request));
+                return;
+            }
+            Some(Mark::Pane(pane)) => {
+                self.pictures.panes.push((surface.clone(), pane));
+                return;
+            }
+            Some(Mark::Picture(picture)) => Some(picture),
+            None => None,
+        };
         let mask = surface.content_mask.bounds;
         let quad = if picture.is_some() {
             mask
@@ -1398,7 +1423,9 @@ impl MetalRenderer {
         let texture_extent = [texture_size.width.0 as f32, texture_size.height.0 as f32];
         // Made over the surface itself, not through Core Video's texture cache, which would
         // keep the pixel buffer, so its surface in use, until the cache is next flushed.
-        let Some(metal_texture) = page_surface_texture(&self.device, image_buffer, texture_size)
+        let usage = objc2_metal::MTLTextureUsage::ShaderRead;
+        let Some(metal_texture) =
+            page_surface_texture(&self.device, image_buffer, texture_size, usage)
         else {
             log::error!("a BGRA surface has no Metal texture");
             return;
@@ -1409,6 +1436,24 @@ impl MetalRenderer {
             picture: picture.unwrap_or(texture_extent),
             texture_size: texture_extent,
         };
+        // SAFETY: metal and objc2-metal expose the same Objective-C texture, which
+        // `metal_texture` keeps until the frame is done (`page_surfaces_in_flight`).
+        let texture = unsafe {
+            metal::TextureRef::from_ptr(objc2::rc::Retained::as_ptr(&metal_texture) as *mut _)
+        };
+        self.draw_page(&page, texture, command_encoder);
+        self.page_surfaces_in_flight
+            .push((image_buffer.clone(), metal_texture));
+    }
+
+    /// Koyo: draws `page` of `texture`, a BGRA surface's, with `command_encoder`, whose unit
+    /// vertices and viewport are set.
+    fn draw_page(
+        &self,
+        page: &PageSurface,
+        texture: &metal::TextureRef,
+        command_encoder: &metal::RenderCommandEncoderRef,
+    ) {
         command_encoder.set_render_pipeline_state(&self.page_surfaces_pipeline_state);
         for set_bytes in [
             metal::RenderCommandEncoderRef::set_vertex_bytes,
@@ -1417,28 +1462,24 @@ impl MetalRenderer {
             set_bytes(
                 command_encoder,
                 SurfaceInputIndex::Page as u64,
-                mem::size_of_val(&page) as u64,
-                &page as *const PageSurface as *const _,
+                mem::size_of_val(page) as u64,
+                page as *const PageSurface as *const _,
             );
         }
-        command_encoder.set_fragment_texture(SurfaceInputIndex::YTexture as u64, unsafe {
-            Some(metal::TextureRef::from_ptr(
-                objc2::rc::Retained::as_ptr(&metal_texture) as *mut _,
-            ))
-        });
+        command_encoder.set_fragment_texture(SurfaceInputIndex::YTexture as u64, Some(texture));
         command_encoder.draw_primitives(metal::MTLPrimitiveType::Triangle, 0, 6);
-        self.page_surfaces_in_flight
-            .push((image_buffer.clone(), metal_texture));
     }
 }
 
-/// Koyo: a Metal texture over the `IOSurface` a BGRA pixel buffer is made over, `size` of it.
+/// Koyo: a Metal texture over the `IOSurface` a BGRA pixel buffer is made over, `size` of it,
+/// to read or to draw into as `usage` says.
 fn page_surface_texture(
     device: &metal::Device,
     image_buffer: &CVPixelBuffer,
     size: Size<DevicePixels>,
+    usage: objc2_metal::MTLTextureUsage,
 ) -> Option<objc2::rc::Retained<objc2::runtime::ProtocolObject<dyn objc2_metal::MTLTexture>>> {
-    use objc2_metal::{MTLDevice as _, MTLTextureDescriptor, MTLTextureUsage};
+    use objc2_metal::{MTLDevice as _, MTLTextureDescriptor};
     let surface = objc2_core_video::CVPixelBufferGetIOSurface(Some(image_buffer))?;
     // SAFETY: a 2D texture the size of the surface.
     let descriptor = unsafe {
@@ -1449,7 +1490,7 @@ fn page_surface_texture(
             false,
         )
     };
-    descriptor.setUsage(MTLTextureUsage::ShaderRead);
+    descriptor.setUsage(usage);
     // SAFETY: metal and objc2-metal expose the same Objective-C device; the borrowed protocol
     // object remains valid while `device` owns it.
     let device = unsafe {
@@ -1471,8 +1512,86 @@ struct PageSurface {
 }
 
 thread_local! {
-    /// Koyo: the attachment a BGRA surface's picture is in (`set_surface_picture`).
-    static SURFACE_PICTURE: CFRetained<CFString> = CFString::from_static_str("KoyoSurfacePicture");
+    /// Koyo: the attachment that says what a BGRA surface is beyond pixels to draw (`Mark`).
+    static SURFACE_MARK: CFRetained<CFString> = CFString::from_static_str("KoyoSurfaceMark");
+}
+
+/// Koyo: what a BGRA surface painted in a scene is beyond pixels to draw. One attachment says
+/// it, so drawing a surface reads it once.
+#[derive(Clone, Copy)]
+enum Mark {
+    /// This much of it, at its top left, in texels, is its picture (`set_surface_picture`).
+    Picture([f32; 2]),
+    /// A picture is taken into it, for this request (`set_surface_capture`).
+    Capture(u32),
+    /// It stands for a native view in a picture (`set_surface_pane`).
+    Pane(SurfacePane),
+}
+
+impl Mark {
+    /// The mark as the attachment holds it: which it is, then what it says.
+    fn words(self) -> Vec<u32> {
+        match self {
+            Mark::Picture(size) => iter::once(0).chain(size.map(f32::to_bits)).collect(),
+            Mark::Capture(request) => vec![1, request],
+            Mark::Pane(SurfacePane { radius, fill, edge }) => {
+                let said = [
+                    radius, fill.h, fill.s, fill.l, fill.a, edge.h, edge.s, edge.l, edge.a,
+                ];
+                iter::once(2).chain(said.map(f32::to_bits)).collect()
+            }
+        }
+    }
+
+    /// The mark whose words, as `words` wrote them, `word` gives by their place.
+    fn read(word: impl Fn(usize) -> Option<u32>) -> Option<Mark> {
+        let part = |at: usize| word(at).map(f32::from_bits);
+        let colour = |at: usize| {
+            Some(Hsla {
+                h: part(at)?,
+                s: part(at + 1)?,
+                l: part(at + 2)?,
+                a: part(at + 3)?,
+            })
+        };
+        match word(0)? {
+            0 => Some(Mark::Picture([part(1)?, part(2)?])),
+            1 => Some(Mark::Capture(word(1)?)),
+            2 => Some(Mark::Pane(SurfacePane {
+                radius: part(1)?,
+                fill: colour(2)?,
+                edge: colour(6)?,
+            })),
+            _ => None,
+        }
+    }
+}
+
+/// Koyo: marks `buffer`, which keeps the mark for every scene that draws it after.
+fn mark_surface(buffer: &CVPixelBuffer, mark: Mark) {
+    let bytes: Vec<u8> = mark
+        .words()
+        .iter()
+        .flat_map(|word| word.to_ne_bytes())
+        .collect();
+    let data = CFData::from_bytes(&bytes);
+    // SAFETY: the attachment is a `CFData`, which is how `surface_mark` reads it.
+    SURFACE_MARK.with(|key| unsafe {
+        buffer.set_attachment(key, &data, CVAttachmentMode::ShouldNotPropagate)
+    });
+}
+
+/// Koyo: how `buffer` is marked, if it is.
+fn surface_mark(buffer: &CVPixelBuffer) -> Option<Mark> {
+    // SAFETY: a null mode pointer is allowed.
+    let value = SURFACE_MARK.with(|key| unsafe { buffer.attachment(key, ptr::null_mut()) })?;
+    let data = value.downcast::<CFData>().ok()?;
+    // SAFETY: the data is what `mark_surface` attached, which nothing writes to after.
+    let bytes = unsafe { data.as_bytes_unchecked() };
+    Mark::read(|at| {
+        let word = bytes.get(at * 4..at * 4 + 4)?;
+        Some(u32::from_ne_bytes(word.try_into().ok()?))
+    })
 }
 
 /// Koyo: says that `size` of `buffer`, a BGRA surface, at its top left, is its picture.
@@ -1480,27 +1599,369 @@ thread_local! {
 /// filled by the picture's edges reaching out, as a browser fills a window grown faster than
 /// its page is laid out. The buffer keeps it for every scene that draws it after.
 pub fn set_surface_picture(buffer: &CVPixelBuffer, size: Size<DevicePixels>) {
-    let bytes: Vec<u8> = [size.width.0, size.height.0]
-        .iter()
-        .flat_map(|value| value.to_ne_bytes())
-        .collect();
-    let data = CFData::from_bytes(&bytes);
-    // SAFETY: the attachment is a `CFData`, which is how `surface_picture` reads it.
-    SURFACE_PICTURE.with(|key| unsafe {
-        buffer.set_attachment(key, &data, CVAttachmentMode::ShouldNotPropagate)
-    });
+    let size = [size.width.0 as f32, size.height.0 as f32];
+    mark_surface(buffer, Mark::Picture(size));
 }
 
-/// The picture size `set_surface_picture` gave `buffer`, if any, in texels.
-fn surface_picture(buffer: &CVPixelBuffer) -> Option<[f32; 2]> {
-    // SAFETY: a null mode pointer is allowed.
-    let value = SURFACE_PICTURE.with(|key| unsafe { buffer.attachment(key, ptr::null_mut()) })?;
-    let bytes = value.downcast::<CFData>().ok()?.to_vec();
-    let value = |index: usize| -> Option<f32> {
-        let chunk = bytes.get(index * 4..index * 4 + 4)?;
-        Some(i32::from_ne_bytes(chunk.try_into().ok()?) as f32)
-    };
-    Some([value(0)?, value(1)?])
+/// Koyo: how often a picture is taken again while what asks for it asks the same
+/// (`set_surface_capture`).
+const PICTURE_EVERY: Duration = Duration::from_millis(250);
+
+/// Koyo: has a picture taken into `buffer`, a BGRA surface, of what the window draws under it.
+/// Painted in a scene, the buffer draws nothing itself: once the frame is drawn, the frame's
+/// pixels under the surface's bounds, as far as its content mask shows them, are shrunk to fill
+/// the buffer's own surface, which another buffer over it then paints as a picture. One is
+/// taken at most every [`PICTURE_EVERY`] while `request` stays the same, and with the next frame
+/// when it changes. Only a surface painted in the frame's own scene has its picture taken, not
+/// one inside a layer's content.
+///
+/// A window that composes native views draws in layers, each a frame of its own with a
+/// renderer of its own (`fast/composition.rs`). The buffer is painted on the lowest, from the
+/// root view, whose renderer takes the picture; the renderer of each layer over it
+/// ([`MetalRenderer::draws_over`]) then draws its own part of the frame over that picture, so
+/// the picture is of all GPUI draws there. The native views between the layers are in no
+/// frame: in the picture a pane stands for one ([`set_surface_pane`]).
+pub fn set_surface_capture(buffer: &CVPixelBuffer, request: u32) {
+    mark_surface(buffer, Mark::Capture(request));
+}
+
+/// Koyo: how a pane shows in a picture (`set_surface_pane`): how round its corners are, in the
+/// frame's pixels, its fill, and the line just inside its edge.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SurfacePane {
+    pub radius: f32,
+    pub fill: Hsla,
+    pub edge: Hsla,
+}
+
+/// Koyo: marks `buffer`, a BGRA one of any size, as a pane: what stands, in a picture
+/// (`set_surface_capture`), for a native view the window shows between its layers, glass say,
+/// which no frame holds. Painted in a scene, it draws nothing. Painted on a layer over the
+/// window's lowest, it's filled in a picture as `pane` says, over its bounds as far as its
+/// content mask shows them, under what that layer draws.
+pub fn set_surface_pane(buffer: &CVPixelBuffer, pane: SurfacePane) {
+    mark_surface(buffer, Mark::Pane(pane));
+}
+
+/// Koyo: what a renderer keeps of the pictures taken of its frames.
+#[derive(Default)]
+struct Pictures {
+    /// The surfaces the scene being drawn has pictures taken into, with their requests, and
+    /// its panes: noted as its surfaces are drawn.
+    asked: Vec<(PaintSurface, u32)>,
+    panes: Vec<(PaintSurface, SurfacePane)>,
+    /// The request the last picture answered, and when: the lowest layer's.
+    last: Option<(u32, Instant)>,
+    /// For the renderer of a layer over the window's lowest (`draws_over`), how many pictures
+    /// the lowest had taken when this one last drew its part over one. None for the lowest's.
+    over: Option<u64>,
+    /// What the renderers of the window's layers share.
+    window: Rc<RefCell<WindowPictures>>,
+}
+
+/// Koyo: what the renderers of a window's layers share of its pictures (`draws_over`).
+#[derive(Default)]
+struct WindowPictures {
+    /// The part of a frame last copied out, with the smaller copies of it a picture is shrunk
+    /// from: kept while the next part is the same size, and used by each layer in its turn.
+    source: Option<metal::Texture>,
+    /// Whether a picture has been asked of the window: every layer's frames are then to be
+    /// read.
+    asked: bool,
+    /// The picture the lowest layer last took.
+    taken: Option<Taken>,
+}
+
+/// Koyo: a picture the window's lowest layer took.
+#[derive(Clone)]
+struct Taken {
+    /// The buffer it's in.
+    into: CFRetained<CVPixelBuffer>,
+    /// The part of the frame it's of.
+    part: Bounds<ScaledPixels>,
+    /// How many that layer has taken by now.
+    count: u64,
+}
+
+impl MetalRenderer {
+    /// Koyo: makes this the renderer of a layer over `base`'s in the same window. What it draws
+    /// goes to the GPU in turn with what `base` draws, on the one queue, so its part of a
+    /// picture is drawn after `base`'s; and it shares what `base` keeps of the window's
+    /// pictures.
+    pub(crate) fn draws_over(&mut self, base: &MetalRenderer) {
+        self.command_queue = base.command_queue.clone();
+        self.pictures.window = base.pictures.window.clone();
+        self.pictures.over = Some(0);
+    }
+
+    /// Koyo: takes the pictures the scene just drawn into `frame` asks for
+    /// (`set_surface_capture`), with what `command_buffer` holds so far; or, the renderer of a
+    /// layer over the window's lowest, draws its part of the frame over the picture that one
+    /// last took, once.
+    fn take_pictures(
+        &mut self,
+        frame: &metal::TextureRef,
+        command_buffer: &metal::CommandBufferRef,
+    ) {
+        let Some(drawn_over) = self.pictures.over else {
+            // Put back, to be emptied as the next frame is drawn, for the room it has.
+            let asked = mem::take(&mut self.pictures.asked);
+            for (surface, request) in &asked {
+                self.take_picture(surface, *request, frame, command_buffer);
+            }
+            self.pictures.asked = asked;
+            return;
+        };
+        let due = {
+            let window = self.pictures.window.borrow();
+            if !window.asked {
+                return;
+            }
+            let taken = window.taken.as_ref();
+            taken.filter(|taken| taken.count != drawn_over).cloned()
+        };
+        if !self.reads(frame) {
+            return;
+        }
+        if let Some(taken) = due
+            && self.shrink(taken.part, frame, &taken.into, true, command_buffer)
+        {
+            self.pictures.over = Some(taken.count);
+        }
+    }
+
+    /// Koyo: whether `frame` can be read. A layer's frames can't until the layer is told they
+    /// will be, which holds from its next: it's told here, when this one can't.
+    fn reads(&self, frame: &metal::TextureRef) -> bool {
+        if frame.framebuffer_only()
+            && let Some(layer) = &self.layer
+        {
+            layer.set_framebuffer_only(false);
+        }
+        !frame.framebuffer_only()
+    }
+
+    /// Koyo: takes the picture `surface` asks for of `frame`; unless one was taken into its
+    /// buffer for the same `request` less than [`PICTURE_EVERY`] ago.
+    fn take_picture(
+        &mut self,
+        surface: &PaintSurface,
+        request: u32,
+        frame: &metal::TextureRef,
+        command_buffer: &metal::CommandBufferRef,
+    ) {
+        let into = &surface.image_buffer;
+        let last = {
+            let mut window = self.pictures.window.borrow_mut();
+            window.asked = true;
+            let same = |taken: &Taken| CFRetained::as_ptr(&taken.into) == CFRetained::as_ptr(into);
+            window.taken.as_ref().map(|taken| (same(taken), taken.count))
+        };
+        if !self.reads(frame) {
+            return;
+        }
+        let (same, count) = last.unwrap_or((false, 0));
+        let now = Instant::now();
+        if same
+            && let Some((answered, at)) = self.pictures.last
+            && answered == request
+            && now.duration_since(at) < PICTURE_EVERY
+        {
+            return;
+        }
+        let part = surface.bounds.intersect(&surface.content_mask.bounds);
+        if self.shrink(part, frame, into, false, command_buffer) {
+            self.pictures.last = Some((request, now));
+            self.pictures.window.borrow_mut().taken = Some(Taken {
+                into: into.clone(),
+                part,
+                count: count + 1,
+            });
+        }
+    }
+
+    /// Koyo: copies the part of `frame` at `part` out, with smaller copies of it to shrink it
+    /// from, and draws it shrunk over all of `into`'s own surface: in place of what was there,
+    /// or, `over` it, blended into it, the scene's panes filled under it. Whether it was drawn:
+    /// not if none of the part is in the frame.
+    fn shrink(
+        &mut self,
+        part: Bounds<ScaledPixels>,
+        frame: &metal::TextureRef,
+        into: &CFRetained<CVPixelBuffer>,
+        over: bool,
+        command_buffer: &metal::CommandBufferRef,
+    ) -> bool {
+        let left = part.origin.x.0.max(0.).floor();
+        let top = part.origin.y.0.max(0.).floor();
+        let right = (part.origin.x.0 + part.size.width.0).min(frame.width() as f32);
+        let bottom = (part.origin.y.0 + part.size.height.0).min(frame.height() as f32);
+        if right - left < 1. || bottom - top < 1. {
+            return false;
+        }
+        let origin = metal::MTLOrigin {
+            x: left as NSUInteger,
+            y: top as NSUInteger,
+            z: 0,
+        };
+        let extent = metal::MTLSize {
+            width: (right - left) as NSUInteger,
+            height: (bottom - top) as NSUInteger,
+            depth: 1,
+        };
+        let size = size(
+            DevicePixels::from(CVPixelBufferGetWidth(into) as i32),
+            DevicePixels::from(CVPixelBufferGetHeight(into) as i32),
+        );
+        let usage = objc2_metal::MTLTextureUsage::RenderTarget;
+        let Some(picture) = page_surface_texture(&self.device, into, size, usage) else {
+            log::error!("a surface a picture is taken into has no Metal texture");
+            return false;
+        };
+        let source = self.picture_source(extent);
+        let blit = command_buffer.new_blit_command_encoder();
+        let start = metal::MTLOrigin { x: 0, y: 0, z: 0 };
+        blit.copy_from_texture(frame, 0, 0, origin, extent, &source, 0, 0, start);
+        blit.generate_mipmaps(&source);
+        blit.end_encoding();
+
+        let clear = (!over).then(|| metal::MTLClearColor::new(0., 0., 0., 0.));
+        let command_encoder = new_command_encoder_for_texture(
+            command_buffer,
+            // SAFETY: metal and objc2-metal expose the same Objective-C texture, which
+            // `picture` keeps until the frame is done (`page_surfaces_in_flight`).
+            unsafe {
+                metal::TextureRef::from_ptr(objc2::rc::Retained::as_ptr(&picture) as *mut _)
+            },
+            size,
+            clear,
+        );
+        let copied = [extent.width as f32, extent.height as f32];
+        if over {
+            let scale = [
+                size.width.0 as f32 / copied[0],
+                size.height.0 as f32 / copied[1],
+            ];
+            self.fill_panes([left, top], scale, size, command_encoder);
+        }
+        // The copy, all of it, over the whole picture: drawn as a page's frame is, which
+        // samples the smaller copies as it shrinks.
+        let whole = Bounds {
+            origin: point(ScaledPixels(0.), ScaledPixels(0.)),
+            size: gpui::size(
+                ScaledPixels(size.width.0 as f32),
+                ScaledPixels(size.height.0 as f32),
+            ),
+        };
+        let page = PageSurface {
+            quad: whole,
+            mapping: whole,
+            picture: copied,
+            texture_size: copied,
+        };
+        command_encoder.set_vertex_buffer(
+            SurfaceInputIndex::Vertices as u64,
+            Some(&self.unit_vertices),
+            0,
+        );
+        command_encoder.set_vertex_bytes(
+            SurfaceInputIndex::ViewportSize as u64,
+            mem::size_of_val(&size) as u64,
+            &size as *const Size<DevicePixels> as *const _,
+        );
+        self.draw_page(&page, &source, command_encoder);
+        command_encoder.end_encoding();
+        self.page_surfaces_in_flight.push((into.clone(), picture));
+        true
+    }
+
+    /// Koyo: fills the scene's panes (`set_surface_pane`) in a picture `size` large that
+    /// `command_encoder` draws into: each where it lies in the part of the frame the picture
+    /// is of, which starts at `origin` and is `scale` as large in the picture, its edge a
+    /// pixel of the picture wide so it shows at that size.
+    fn fill_panes(
+        &self,
+        origin: [f32; 2],
+        scale: [f32; 2],
+        size: Size<DevicePixels>,
+        command_encoder: &metal::RenderCommandEncoderRef,
+    ) {
+        if self.pictures.panes.is_empty() {
+            return;
+        }
+        command_encoder.set_render_pipeline_state(&self.quads_pipeline_state);
+        command_encoder.set_vertex_buffer(
+            QuadInputIndex::Vertices as u64,
+            Some(&self.unit_vertices),
+            0,
+        );
+        command_encoder.set_vertex_bytes(
+            QuadInputIndex::ViewportSize as u64,
+            mem::size_of_val(&size) as u64,
+            &size as *const Size<DevicePixels> as *const _,
+        );
+        let shrunk = |bounds: Bounds<ScaledPixels>| Bounds {
+            origin: point(
+                ScaledPixels((bounds.origin.x.0 - origin[0]) * scale[0]),
+                ScaledPixels((bounds.origin.y.0 - origin[1]) * scale[1]),
+            ),
+            size: gpui::size(
+                ScaledPixels(bounds.size.width.0 * scale[0]),
+                ScaledPixels(bounds.size.height.0 * scale[1]),
+            ),
+        };
+        for (surface, pane) in &self.pictures.panes {
+            let bounds = shrunk(surface.bounds);
+            let radius = (pane.radius * scale[0])
+                .min(bounds.size.width.0 / 2.)
+                .min(bounds.size.height.0 / 2.);
+            let quad = Quad {
+                bounds,
+                content_mask: ContentMask {
+                    bounds: shrunk(surface.content_mask.bounds),
+                },
+                background: pane.fill.into(),
+                border_color: pane.edge,
+                corner_radii: Corners::all(ScaledPixels(radius)),
+                border_widths: Edges::all(ScaledPixels(1.)),
+                ..Quad::default()
+            };
+            for set_bytes in [
+                metal::RenderCommandEncoderRef::set_vertex_bytes,
+                metal::RenderCommandEncoderRef::set_fragment_bytes,
+            ] {
+                set_bytes(
+                    command_encoder,
+                    QuadInputIndex::Quads as u64,
+                    mem::size_of_val(&quad) as u64,
+                    &quad as *const Quad as *const _,
+                );
+            }
+            command_encoder.draw_primitives_instanced(metal::MTLPrimitiveType::Triangle, 0, 6, 1);
+        }
+    }
+
+    /// Koyo: a texture `extent` in size to copy a part of a frame into, with room for the
+    /// smaller copies of it: the last one the window's layers made, while it's that size.
+    fn picture_source(&mut self, extent: metal::MTLSize) -> metal::Texture {
+        let mut window = self.pictures.window.borrow_mut();
+        let kept = (window.source.as_ref())
+            .filter(|source| (source.width(), source.height()) == (extent.width, extent.height));
+        if let Some(source) = kept {
+            return source.clone();
+        }
+        let descriptor = metal::TextureDescriptor::new();
+        descriptor.set_width(extent.width);
+        descriptor.set_height(extent.height);
+        descriptor.set_pixel_format(MTLPixelFormat::BGRA8Unorm);
+        descriptor.set_mipmap_level_count_for_size(extent);
+        descriptor
+            .set_usage(metal::MTLTextureUsage::RenderTarget | metal::MTLTextureUsage::ShaderRead);
+        descriptor.set_storage_mode(metal::MTLStorageMode::Private);
+        let source = self.device.new_texture(&descriptor);
+        window.source = Some(source.clone());
+        source
+    }
 }
 
 pub(crate) fn new_command_encoder_for_texture<'a>(

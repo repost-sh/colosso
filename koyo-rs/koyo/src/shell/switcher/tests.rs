@@ -11,7 +11,8 @@ use gpui_kit::{
     AnyWindowHandle, Entity, Modifiers, TestAppContext, VisualTestContext, point, px, size,
 };
 
-use super::{HOLD, placed};
+use super::card::Card;
+use super::{HOLD, Switcher, placed};
 use crate::files::At;
 use crate::files::tests::{checkout, editing, let_go, new_chat, press, shell_showing, tabs};
 use crate::model::tests::chat;
@@ -141,6 +142,12 @@ fn tabs_open_but_not_looked_at_yet_are_switched_among_too(cx: &mut TestAppContex
     press(window, "ctrl-tab", cx);
     let listed = ["README.md", "First", "Second"].map(String::from).to_vec();
     assert_eq!(up(cx), Some((listed, 1, false)));
+    // Only the tab that's been shown has a picture; the others show their icons.
+    let pictured = cx.read(|cx| {
+        let switcher = popup::root::<Switcher>(Kind::Switcher, cx)?;
+        Some((switcher.cards.iter().map(Card::has_picture)).collect::<Vec<_>>())
+    });
+    assert_eq!(pictured, Some(vec![true, false, false]));
     let_go(window, cx);
     assert_eq!(shown(&shell, cx).as_deref(), Some("[First]"));
     let _ = std::fs::remove_dir_all(&root);
