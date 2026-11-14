@@ -1,5 +1,5 @@
 //! What the host tells the app: pages changing, frames ready, and what each page asks.
-use crate::{Dialog, MenuEntry, MenuTarget, PaneId, PasskeyAsk, PixelSize};
+use crate::{Dialog, MenuEntry, MenuTarget, PaneId, PasskeyAsk, Permission, PixelSize};
 use serde::{Deserialize, Serialize};
 
 /// The pointer the page asks for.
@@ -51,6 +51,16 @@ pub struct PageState {
     /// [`HostEvent::Favicon`].
     #[serde(default)]
     pub favicon: String,
+}
+
+/// What a site was decided about one permission.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SiteSetting {
+    /// What it may or may not use.
+    pub permission: Permission,
+    /// Whether it may.
+    pub allowed: bool,
 }
 
 /// An event from the host to the app.
@@ -120,6 +130,15 @@ pub enum HostEvent {
         /// Whether it's full screen now.
         on: bool,
     },
+    /// What the pane's site is allowed and blocked from, as the profile keeps it: after
+    /// [`crate::AppRequest::SiteSettings`], and after each change the app makes.
+    SiteSettings {
+        /// The pane.
+        pane: PaneId,
+        /// Each permission decided for it, and whether it's allowed. One never asked for,
+        /// or never answered, isn't here.
+        settings: Vec<SiteSetting>,
+    },
     /// The page asks for another pointer.
     Cursor {
         /// The pane.
@@ -142,6 +161,12 @@ pub enum HostEvent {
         pane: PaneId,
         /// Why, for the person.
         reason: String,
+    },
+    /// The person pressed a key in a native page, which `AppKit` hands the page without the app
+    /// hearing of it: said at most twice a second for a pane, and never for keys an agent sends.
+    Typed {
+        /// The pane.
+        pane: PaneId,
     },
     /// The pane's browser is gone: the app closed it, its page closed
     /// (`DevTools` go with their page), or the host is shutting down. Its

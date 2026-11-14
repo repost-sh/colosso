@@ -50,6 +50,7 @@ pub(crate) fn engine() -> Option<&'static Path> {
 /// there too.
 pub fn start(start: Start) {
     // Read and written here, off the main thread, before CEF opens the profiles.
+    crate::host::drop_cleared(&start.profiles);
     forget_sessions(&start.profiles);
     on_main(move || {
         if ENGINE.set(start.engine.clone()).is_err() {

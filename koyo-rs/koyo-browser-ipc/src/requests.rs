@@ -1,8 +1,8 @@
 //! What the app asks of the host: panes opened, sized and closed, and what the person does
 //! in them.
 use crate::{
-    Answer, KeyKind, Modifiers, MouseButton, MouseKind, PaneId, PasskeyAnswer, PinchPhase, Point,
-    Viewport,
+    Answer, KeyKind, Modifiers, MouseButton, MouseKind, PaneId, PasskeyAnswer, Permission,
+    PinchPhase, Point, Viewport,
 };
 use serde::{Deserialize, Serialize};
 
@@ -76,6 +76,22 @@ pub enum AppRequest {
     ExitFullscreen {
         /// The pane.
         pane: PaneId,
+    },
+    /// What the pane's site is allowed and blocked from is wanted
+    /// ([`crate::HostEvent::SiteSettings`]).
+    SiteSettings {
+        /// The pane.
+        pane: PaneId,
+    },
+    /// The pane's site is allowed `permission` from now on, or blocked from it. The host says
+    /// how its settings stand after ([`crate::HostEvent::SiteSettings`]).
+    SetSiteSetting {
+        /// The pane.
+        pane: PaneId,
+        /// What it may or may not use.
+        permission: Permission,
+        /// Whether it may.
+        allowed: bool,
     },
     /// The pane gained or lost keyboard focus.
     Focus {
@@ -228,6 +244,11 @@ pub enum AppRequest {
         #[serde(default)]
         params: serde_json::Value,
     },
+    /// Forget what every profile keeps (cookies, sign-ins, caches, site storage) without
+    /// stopping: every pane closes ([`HostEvent::Closed`]) and a page opened from then on is of
+    /// a fresh profile. For a host in the app's own process, which can't be stopped and
+    /// started again.
+    ClearData,
     /// Quit the host.
     Shutdown,
 }
@@ -246,6 +267,8 @@ impl AppRequest {
             | Self::Focus { pane, .. }
             | Self::Visible { pane, .. }
             | Self::ExitFullscreen { pane }
+            | Self::SiteSettings { pane }
+            | Self::SetSiteSetting { pane, .. }
             | Self::View { pane, .. }
             | Self::Mouse { pane, .. }
             | Self::Wheel { pane, .. }
@@ -258,7 +281,7 @@ impl AppRequest {
             | Self::Passkey { pane, .. }
             | Self::MenuCommand { pane, .. }
             | Self::Cdp { pane, .. } => Some(*pane),
-            Self::Shutdown => None,
+            Self::ClearData | Self::Shutdown => None,
         }
     }
 }

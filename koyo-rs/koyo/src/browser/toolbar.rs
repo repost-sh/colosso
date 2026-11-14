@@ -49,7 +49,11 @@ fn history_button(back: bool, enabled: bool, cx: &mut Context<BrowserView>) -> D
 
 /// The toolbar: history, reload, the address and the inspector, lit while the shell shows the
 /// `DevTools`.
-pub(super) fn toolbar(view: &BrowserView, window: &Window, cx: &mut Context<BrowserView>) -> Div {
+pub(super) fn toolbar(
+    view: &BrowserView,
+    window: &mut Window,
+    cx: &mut Context<BrowserView>,
+) -> Div {
     let p = theme::palette(cx);
     let page = &view.page;
     let (open, controls) = (view.is_open(cx), view.controls(cx));
@@ -83,7 +87,7 @@ pub(super) fn toolbar(view: &BrowserView, window: &Window, cx: &mut Context<Brow
             .disabled(!controls.reload)
             .on_click(cx.listener(|this, _, _, cx| this.reload_or_stop(cx))),
         )
-        .child(address(view, editing, p))
+        .child(address(view, editing, window, cx))
         .children(view.zoom_chip(cx))
         .child(
             toggle_button(
@@ -131,9 +135,22 @@ fn progress(page: &PageState, p: Palette) -> Option<Div> {
 }
 
 /// The address field, with a lock while a secure page shows in it.
-fn address(view: &BrowserView, editing: bool, p: Palette) -> Div {
+fn address(
+    view: &BrowserView,
+    editing: bool,
+    window: &mut Window,
+    cx: &mut Context<BrowserView>,
+) -> impl IntoElement + use<> {
+    let p = theme::palette(cx);
     let secure = view.page.url.starts_with("https://");
+    // Copy link and site controls (`site.rs`), there while the pointer is over the field.
+    let id = ElementId::NamedInteger("browser-address".into(), view.pane);
+    let (hovered, hover) = theme::hover::eased(id.clone(), super::site::FADE, window, cx);
+    // Not while the field is being typed in.
+    let ends = (!editing).then(|| super::site::buttons(view, &cx.entity(), p.muted, hovered, cx)).flatten();
     div()
+        .id(id)
+        .on_hover(hover)
         .key_context("BrowserAddress")
         .ml_1()
         .h(px(26.))
@@ -156,6 +173,7 @@ fn address(view: &BrowserView, editing: bool, p: Palette) -> Div {
                 .flex_1()
                 .child(Input::new(&view.address).appearance(false).small()),
         )
+        .children(ends)
 }
 
 /// The bar at the bottom of the page while it's contested: an agent using it, with the

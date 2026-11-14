@@ -21,7 +21,9 @@ const NOTICEABLE: f32 = 0.04;
 
 /// The relative luminance of the opaque background at each point of an `ACROSS` by `DOWN` grid
 /// over the page's viewport, row by row, as a comma-separated list. Where no element has one
-/// it's the body's, which paints the whole canvas when the root has none, else white.
+/// it's the body's, which paints the whole canvas when the root has none, else white. Then,
+/// after a semicolon, the canvas's colour itself (the root's, else the body's, else white) as
+/// red, green and blue.
 const ASK: &str = "(() => { const C = 12, R = 8, w = innerWidth, h = innerHeight, out = []; \
 const lum = (c) => { if (!c.startsWith('rgb')) return null; const m = c.match(/[\\d.]+/g); \
 if (!m || m.length < 3 || (m.length > 3 && +m[3] < 0.5)) return null; \
@@ -31,17 +33,30 @@ for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) { let v = null; \
 for (const el of document.elementsFromPoint((c + 0.5) * w / C, (r + 0.5) * h / R)) { \
 v = lum(getComputedStyle(el).backgroundColor); if (v !== null) break; } \
 if (v === null && document.body) v = lum(getComputedStyle(document.body).backgroundColor); \
-out.push(v === null ? 1 : Math.round(v * 1000) / 1000); } return out.join(','); })()";
+out.push(v === null ? 1 : Math.round(v * 1000) / 1000); } \
+const bg = (el) => { const c = el ? getComputedStyle(el).backgroundColor : ''; \
+const m = c.startsWith('rgb') ? c.match(/[\\d.]+/g) : null; \
+return m && m.length >= 3 && !(m.length > 3 && +m[3] < 0.5) ? m.slice(0, 3).map((v) => Math.round(+v)).join(' ') : null; }; \
+return out.join(',') + ';' + (bg(document.documentElement) || bg(document.body) || '255 255 255'); })()";
 
-/// How light a page is at each point of the grid.
+/// How light a page is at each point of the grid, and the colour of its canvas.
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct Tone(Vec<f32>);
+pub(super) struct Tone(Vec<f32>, [u8; 3]);
 
 impl Tone {
     /// What the page answered [`ASK`] with.
     fn parse(answer: &str) -> Option<Tone> {
-        let cells: Vec<f32> = answer.split(',').filter_map(|cell| cell.parse().ok()).collect();
-        (cells.len() == ACROSS * DOWN).then_some(Tone(cells))
+        let (grid, canvas) = answer.split_once(';').unwrap_or((answer, ""));
+        let cells: Vec<f32> = grid.split(',').filter_map(|cell| cell.parse().ok()).collect();
+        let parts: Vec<u8> = canvas.split(' ').filter_map(|part| part.parse().ok()).collect();
+        let canvas = <[u8; 3]>::try_from(parts).unwrap_or([255; 3]);
+        (cells.len() == ACROSS * DOWN).then_some(Tone(cells, canvas))
+    }
+
+    /// The colour the page's canvas is painted, which shows wherever nothing of the page does.
+    pub(super) fn canvas(&self) -> gpui_kit::Hsla {
+        let [red, green, blue] = self.1.map(u32::from);
+        gpui_kit::rgb(red << 16 | green << 8 | blue).into()
     }
 
     /// The mean lightness within `[left, top, right, bottom]`, each a share of the page's width
@@ -61,7 +76,7 @@ impl Tone {
 
     /// Whether `other` differs enough for glass to look different over it.
     fn differs(&self, other: &Tone) -> bool {
-        self.0.iter().zip(&other.0).any(|(a, b)| (a - b).abs() > NOTICEABLE)
+        self.1 != other.1 || self.0.iter().zip(&other.0).any(|(a, b)| (a - b).abs() > NOTICEABLE)
     }
 }
 
@@ -132,6 +147,18 @@ mod tests {
         assert!(page.lightness([0., 0.9, 1., 1.]).unwrap() < 0.01);
         assert!(page.lightness([0., 0., 1., 0.5]).unwrap() > 0.99);
         assert_eq!(page.lightness([0.5, 0.5, 0.5, 0.6]), None);
+    }
+
+    #[test]
+    fn the_canvas_is_the_colour_the_page_names() {
+        let grid = vec!["1"; ACROSS * DOWN].join(",");
+        let dark = Tone::parse(&format!("{grid};18 18 18")).unwrap();
+        assert_eq!(dark.canvas(), gpui_kit::Hsla::from(gpui_kit::rgb(0x0012_1212)));
+        // None named, or one that isn't a colour: white, as a page with no background is.
+        let white = gpui_kit::Hsla::from(gpui_kit::rgb(0x00ff_ffff));
+        assert_eq!(Tone::parse(&grid).unwrap().canvas(), white);
+        assert_eq!(Tone::parse(&format!("{grid};red")).unwrap().canvas(), white);
+        assert!(dark.differs(&Tone::parse(&grid).unwrap()));
     }
 
     #[test]

@@ -179,6 +179,18 @@ impl Element for PageSurface {
                 if first && self.focused {
                     self.view.update(cx, |view, cx| view.set_focused(true, cx));
                 }
+                // A drag that resizes the page (a split's divider, a panel's edge) moves its
+                // view against what GPUI draws beside it: from the first frame that did, each
+                // move of the drag is drawn at once, in the transaction the view moves in, so
+                // the edge and the page land together (`docs/native-pages.md` 6).
+                window.on_mouse_event(move |_: &MouseMoveEvent, phase, window, cx| {
+                    let resizing = phase == DispatchPhase::Capture
+                        && cx.has_active_drag()
+                        && (kept.read(cx).0.as_ref()).is_some_and(super::native::NativePage::resizing);
+                    if resizing {
+                        crate::native::window::draw_in_transaction(window, cx);
+                    }
+                });
             }
             let shown = shown.downgrade();
             let view = self.view.read(cx);
@@ -191,12 +203,14 @@ impl Element for PageSurface {
             }
         }
         // A native page's pointer, keys and text are Chromium's own, handed to it by `AppKit`.
+        // GPUI sets the window's cursor after each of its frames from what's under the pointer:
+        // over a page, the page's own, which a native page's Chromium sets as well.
+        if open {
+            window.set_cursor_style(cursor_style(cursor), hitbox);
+        }
         if native {
             self.listen_native(bounds, window);
             return;
-        }
-        if open {
-            window.set_cursor_style(cursor_style(cursor), hitbox);
         }
         if self.focused {
             let focus = self.view.read(cx).focus.clone();
@@ -312,7 +326,9 @@ impl BrowserView {
             .bg(match (responsive, blank) {
                 (true, _) => p.sunken,
                 (false, true) => p.card,
-                (false, false) => white(),
+                // Behind a native page, what its own canvas is painted: that's what shows
+                // beside it for the frame or two its picture lags a pane's edge by.
+                (false, false) => (self.tone.as_ref()).map_or_else(white, super::tone::Tone::canvas),
             })
             .child(PageSurface {
                 view: cx.entity(),

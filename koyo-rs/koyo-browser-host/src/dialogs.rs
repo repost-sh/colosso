@@ -32,8 +32,12 @@ pub(crate) enum Waiting {
         location: bool,
         callback: PermissionPromptCallback,
     },
-    /// Camera, microphone or screen, with the bits asked for.
-    Media(u32, MediaAccessCallback),
+    /// Camera, microphone or screen, with the bits asked for and who asks.
+    Media {
+        bits: u32,
+        origin: String,
+        callback: MediaAccessCallback,
+    },
     /// An untrusted certificate.
     Certificate(Callback),
     /// A file chooser.
@@ -66,6 +70,14 @@ pub(crate) fn ask(pane: PaneId, origin: &str, question: Dialog, waiting: Waiting
 /// The person answered.
 pub(crate) fn answer(pane: PaneId, dialog: u64, answer: Answer) {
     if let Some(waiting) = with(|dialogs| dialogs.remove(pane, dialog)) {
+        // The person's own answer about the camera or the microphone is kept for the site,
+        // as Chromium keeps the others (`host/site.rs`).
+        // Not now isn't kept: the page may ask again, and blocking is the site controls'.
+        if let Waiting::Media { bits, origin, .. } = &waiting
+            && !matches!(answer, Answer::Dismiss)
+        {
+            host::keep_media(pane, origin, *bits);
+        }
         resolve(waiting, answer);
     }
 }
@@ -105,10 +117,7 @@ fn withdraw(pane: PaneId, which: impl Fn(&Waiting) -> bool) {
 }
 
 fn decline(waiting: Waiting) {
-    match waiting {
-        Waiting::Prompt { callback, .. } => callback.cont(PermissionRequestResult::DISMISS),
-        waiting => resolve(waiting, Answer::Dismiss),
-    }
+    resolve(waiting, Answer::Dismiss);
 }
 
 fn resolve(waiting: Waiting, answer: Answer) {
@@ -133,10 +142,11 @@ fn resolve(waiting: Waiting, answer: Answer) {
         Waiting::Prompt {
             location, callback, ..
         } => {
+            // Not now is no decision: Chromium keeps nothing, and the page may ask again.
             callback.cont(if accepted {
                 PermissionRequestResult::ACCEPT
             } else {
-                PermissionRequestResult::DENY
+                PermissionRequestResult::DISMISS
             });
             // Chromium reads the position only once macOS lets the host know it.
             if accepted && location {
@@ -144,9 +154,9 @@ fn resolve(waiting: Waiting, answer: Answer) {
                 crate::location::allowed();
             }
         }
-        Waiting::Media(requested, callback) => {
+        Waiting::Media { bits, callback, .. } => {
             if accepted {
-                callback.cont(requested);
+                callback.cont(bits);
             } else {
                 callback.cancel();
             }

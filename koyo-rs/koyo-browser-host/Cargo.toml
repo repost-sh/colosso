@@ -42,5 +42,8 @@ objc2-core-location = { version = "0.3", default-features = false, features = ["
 objc2-io-surface = { version = "0.3", default-features = false, features = ["std", "IOSurfaceRef", "IOSurfaceTypes", "libc", "objc2", "objc2-core-foundation"] }
 objc2-metal = { version = "0.3", default-features = false, features = ["std", "MTLDevice", "MTLTexture", "MTLCommandQueue", "MTLCommandBuffer", "MTLCommandEncoder", "MTLBlitCommandEncoder", "MTLResource", "MTLAllocation", "MTLBuffer", "MTLPixelFormat", "MTLTypes", "objc2-io-surface"] }
 
+[dev-dependencies]
+tempfile = "3"
+
 [lints]
 workspace = true

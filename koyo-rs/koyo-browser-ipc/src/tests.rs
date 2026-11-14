@@ -31,6 +31,13 @@ fn frames_round_trip_and_a_clean_end_is_none() {
             delta: -0.25,
             phase: PinchPhase::Moved,
         },
+        AppRequest::SiteSettings { pane: 7 },
+        AppRequest::SetSiteSetting {
+            pane: 7,
+            permission: Permission::Camera,
+            allowed: false,
+        },
+        AppRequest::ClearData,
         AppRequest::Shutdown,
     ];
     let mut buf = Vec::new();

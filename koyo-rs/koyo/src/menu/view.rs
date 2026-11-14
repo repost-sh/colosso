@@ -19,22 +19,116 @@ use crate::theme::{self, Palette};
 
 pub(super) struct Menu {
     pub(super) body: AnyView,
+    /// What the window is filled with instead of a menu's glass (`MenuBody::backdrop`).
+    pub(super) backdrop: Option<gpui_kit::Hsla>,
+    /// A callout's arrow, by how far along the window's top it points (`MenuBody::callout`),
+    /// and the size the window's glass was last cut to that shape at.
+    pub(super) tip: Option<Pixels>,
+    pub(super) shaped: Option<Size<Pixels>>,
     pub(super) _keys: Subscription,
     pub(super) _fits: Subscription,
 }
 
 impl Render for Menu {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = theme::palette(cx);
-        div()
-            .size_full()
+        let fill = self.backdrop.unwrap_or(p.menu);
+        let Some(tip) = self.tip else {
+            return div()
+                .size_full()
+                .p(px(PADDING))
+                .flex()
+                .flex_col()
+                .bg(fill)
+                .text_color(p.text)
+                .child(self.body.clone())
+                .into_any_element();
+        };
+        // The window's blur is cut to the callout's shape, again whenever the window's size
+        // changes; what's drawn over it is that shape too, the arrow and then the rest.
+        let extent = window.viewport_size();
+        if self.shaped.replace(extent) != Some(extent) {
+            let (high, half, round) = (super::TIP, super::TIP_HALF, super::CALLOUT_RADIUS);
+            crate::native::window::callout(window, tip.as_f32(), high, half, round, cx);
+        }
+        // The frame a floating window has, which macOS draws only round a rectangle: a dark
+        // hairline at the very edge and a light one just inside it.
+        let dark = p.text.l > 0.5;
+        let (outer, inner) = if dark {
+            (theme::gray(0., 0.45), theme::gray(1., 0.16))
+        } else {
+            (theme::gray(0., 0.2), theme::gray(1., 0.7))
+        };
+        // One outline for the callout, arrow and all: filled with its glass, then framed.
+        let shape = gpui_kit::canvas(
+            |_, _, _| {},
+            move |bounds, (), window, _| {
+                let mut filled = gpui_kit::PathBuilder::fill();
+                outline(&mut filled, bounds, tip, 0.5);
+                if let Ok(path) = filled.build() {
+                    window.paint_path(path, fill);
+                }
+                for (inset, colour) in [(1.5, inner), (0.5, outer)] {
+                    let mut edge = gpui_kit::PathBuilder::stroke(px(1.));
+                    outline(&mut edge, bounds, tip, inset);
+                    if let Ok(path) = edge.build() {
+                        window.paint_path(path, colour);
+                    }
+                }
+            },
+        )
+        .absolute()
+        .size_full();
+        // The surface is the callout's body, under the arrow; the shape behind it has its fill.
+        let body = div()
+            .absolute()
+            .top(px(super::TIP))
+            .left_0()
+            .right_0()
+            .bottom_0()
             .p(px(PADDING))
             .flex()
             .flex_col()
-            .bg(p.menu)
             .text_color(p.text)
-            .child(self.body.clone())
+            .child(self.body.clone());
+        div().size_full().relative().child(shape).child(body).into_any_element()
     }
+}
+
+/// A callout's outline `inset` points within `bounds`, clockwise from its top left: the top
+/// edge with the arrow standing on it, its point `tip` along, and four round corners, each a
+/// few short lines. Half a point in, a line a point wide lies within the window.
+fn outline(
+    path: &mut gpui_kit::PathBuilder,
+    bounds: gpui_kit::Bounds<Pixels>,
+    tip: Pixels,
+    inset: f32,
+) {
+    use gpui_kit::point;
+    let inset = px(inset);
+    let (left, right) = (bounds.left() + inset, bounds.right() - inset);
+    let (top, bottom) = (bounds.top() + px(super::TIP) + inset - px(0.5), bounds.bottom() - inset);
+    let round = px(super::CALLOUT_RADIUS) - inset + px(0.5);
+    let half = px(super::TIP_HALF) - inset + px(0.5);
+    // The arrow stays on the straight of the top edge.
+    let middle = (bounds.left() + tip).clamp(left + round + half, right - round - half);
+    path.move_to(point(left + round, top));
+    path.line_to(point(middle - half, top));
+    path.line_to(point(middle, bounds.top() + inset));
+    path.line_to(point(middle + half, top));
+    let corners = [
+        (right - round, top + round, 270.),
+        (right - round, bottom - round, 0.),
+        (left + round, bottom - round, 90.),
+        (left + round, top + round, 180.),
+    ];
+    for (x, y, from) in corners {
+        for step in 0..=8 {
+            let turn = (from + step as f32 * 11.25_f32).to_radians();
+            path.line_to(point(x + round * turn.cos(), y + round * turn.sin()));
+        }
+    }
+    path.close();
 }
 
 /// A menu of rows, each saying its action to a focus handle in the window that opened the menu.

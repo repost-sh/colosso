@@ -91,7 +91,7 @@ pub(super) fn host_of(address: &str) -> String {
 pub fn address_bar(
     shell: &Shell,
     look: Look,
-    window: &Window,
+    window: &mut Window,
     cx: &mut Context<Shell>,
 ) -> impl IntoElement {
     let p = look.p;
@@ -104,12 +104,21 @@ pub fn address_bar(
                 .filter_map(|pane| Some(pane.view()?.read(cx).address_field().clone()))
                 .find(|field| field.read(cx).focus_handle(cx).is_focused(window))
         });
+    // There while the pointer is over the bar, as a tab's close button is over its row.
+    let (hovered, hover) =
+        crate::theme::hover::eased("arc-address", crate::browser::SITE_BUTTONS_FADE, window, cx);
+    let ends = (editing.is_none()).then(|| shell.shown_page(cx)).flatten().and_then(|page| {
+        crate::browser::site_buttons(page.read(cx), &page, p.text.opacity(0.7), hovered, cx)
+    });
     div()
         .id("arc-address")
+        .on_hover(hover)
         .debug_selector(|| "arc-address".to_owned())
         .h(px(34.))
         .flex_shrink_0()
-        .px(px(12.))
+        .pl(px(12.))
+        .pr(px(6.))
+        .gap(px(4.))
         .flex()
         .items_center()
         .rounded(px(10.))
@@ -129,12 +138,14 @@ pub fn address_bar(
                     .child(Input::new(&field).appearance(false).small()),
             ),
             None => bar
-                .child(div().min_w_0().truncate().child(text))
+                .child(div().min_w_0().flex_1().truncate().child(text))
                 .when(has_page, |bar| {
                     bar.cursor_text().on_click(|_, window, cx| {
                         window.dispatch_action(Box::new(OpenAddress), cx);
                     })
-                }),
+                })
+                // Copy link and site controls, for the page shown (`browser/site.rs`).
+                .children(ends),
         })
 }
 

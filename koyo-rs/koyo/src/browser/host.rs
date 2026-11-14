@@ -94,6 +94,9 @@ pub struct Browsers {
     /// When a running host stopped on its own, lately.
     stops: Vec<Instant>,
     views: HashMap<PaneId, WeakEntity<BrowserView>>,
+    /// Pages the host is closing because browsing data was cleared under it: each opens
+    /// again, in its profile's fresh folder, once the host says it has closed.
+    reopening: std::collections::HashSet<PaneId>,
     rings: HashMap<PaneId, Ring>,
     /// The newest frame of a pane whose ring has not arrived yet.
     pending: HashMap<PaneId, (u32, u8, PixelSize)>,
@@ -143,6 +146,7 @@ impl Browsers {
             failed_starts: 0,
             stops: Vec::new(),
             views: HashMap::new(),
+            reopening: std::collections::HashSet::new(),
             rings: HashMap::new(),
             pending: HashMap::new(),
             queued: Vec::new(),
@@ -392,11 +396,13 @@ impl Browsers {
             return;
         };
         // The engine in Koyo's own process (`browser/native`) starts once a run and can't be
-        // stopped under its pages: their data goes as Koyo next starts.
+        // stopped under its pages: it's asked to move every profile to a fresh folder, and
+        // closes its pages, which open again as the views hear of it.
         if let Host::Running { connection, .. } = &self.host
             && connection.embedded()
         {
-            super::engine::clear_at_next_start(&profiles);
+            self.reopening = self.views.keys().copied().collect();
+            self.send(AppRequest::ClearData);
             return;
         }
         let connection = self.stop();

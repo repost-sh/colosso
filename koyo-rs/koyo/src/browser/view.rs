@@ -102,6 +102,13 @@ pub struct BrowserView {
     /// How light a native page is, as it last said, and the task that asks it (`tone.rs`).
     pub(super) tone: Option<super::tone::Tone>,
     pub(super) tone_watch: Option<Task<()>>,
+    /// What the page's site is allowed and blocked from, as the host last said, the button
+    /// its popover opens from, and when its address was last copied (`site.rs`).
+    pub(super) site: Option<Vec<koyo_browser_ipc::SiteSetting>>,
+    pub(super) site_trigger: crate::menu::Trigger,
+    pub(super) link_copied: Option<Instant>,
+    /// Where the question on screen (`asked`) was put.
+    pub(super) asked_in: super::dialog::Put,
     /// Whether the page is full screen, and where (`fullscreen.rs`).
     pub(super) fullscreen: super::fullscreen::Fullscreen,
     /// How many frames the page has shown, which tests count.
@@ -263,6 +270,10 @@ impl BrowserView {
             bar_dark: None,
             tone: None,
             tone_watch: None,
+            site: None,
+            site_trigger: super::site::trigger(pane),
+            link_copied: None,
+            asked_in: super::dialog::Put::Dialog,
             fullscreen: super::fullscreen::Fullscreen::default(),
             frames_shown: 0,
             drag_sent: false,

@@ -27,12 +27,9 @@ fn context(profile: &str) -> Option<RequestContext> {
         })
         .take(64)
         .collect();
-    let root = with(|host| host.profiles.clone())?;
+    let (root, generation) = with(|host| (host.profiles.clone(), host.generation))?;
     // Chromium profiles must sit directly in the root cache folder.
-    let dir = root.join(format!(
-        "profile-{}",
-        if name.is_empty() { "default" } else { &name }
-    ));
+    let dir = root.join(super::profiles::folder(if name.is_empty() { "default" } else { &name }, generation));
     let settings = RequestContextSettings {
         cache_path: dir.to_string_lossy().as_ref().into(),
         persist_session_cookies: 1,
@@ -56,6 +53,24 @@ wrap_request_context_handler! {
             #[cfg(target_os = "macos")]
             crate::native::context_ready(&self.profile);
         }
+    }
+}
+
+/// Forgets what every profile keeps, without stopping: the profiles move to fresh folders,
+/// and every pane closes, to be opened again by the app in its profile's new one. The old
+/// folders, open until their pages have closed, go as the host next starts (`profiles::drop_cleared`).
+pub(super) fn clear_data() {
+    let open: Vec<PaneId> = with(|host| {
+        host.generation += 1;
+        host.contexts.clear();
+        super::profiles::keep_generation(&host.profiles, host.generation);
+        host.panes.keys().copied().collect()
+    })
+    .unwrap_or_default();
+    #[cfg(target_os = "macos")]
+    crate::native::profiles_cleared();
+    for pane in open {
+        close(pane);
     }
 }
 
@@ -435,7 +450,21 @@ pub(crate) fn cursor_changed(pane: PaneId, cursor: Cursor) {
 
 /// The page went full screen or left it: the app gives it the screen, or its pane back.
 pub(crate) fn fullscreen_changed(pane: PaneId, on: bool) {
+    FULLSCREEN.with(|full| {
+        let mut full = full.borrow_mut();
+        if on {
+            full.insert(pane);
+        } else {
+            full.remove(&pane);
+        }
+    });
     send(&HostEvent::Fullscreen { pane, on });
+}
+
+thread_local! {
+    /// The panes whose pages are full screen, as CEF last said on this, its UI thread.
+    static FULLSCREEN: std::cell::RefCell<std::collections::HashSet<PaneId>> =
+        std::cell::RefCell::new(std::collections::HashSet::new());
 }
 
 /// The app has the page leave full screen.
@@ -443,6 +472,15 @@ pub(super) fn exit_fullscreen(pane: PaneId) {
     if let Some(host) = host_of(pane) {
         host.exit_fullscreen(1);
     }
+}
+
+/// Has `pane`'s page leave full screen, if it's in it: whether it was.
+pub(crate) fn leave_fullscreen(pane: PaneId) -> bool {
+    let full = FULLSCREEN.with(|full| full.borrow().contains(&pane));
+    if full {
+        exit_fullscreen(pane);
+    }
+    full
 }
 
 pub(crate) fn renderer_gone(pane: PaneId, reason: String) {

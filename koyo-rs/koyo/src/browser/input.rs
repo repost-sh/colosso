@@ -258,6 +258,15 @@ pub(super) fn listen(page: Stateful<Div>, cx: &mut Context<BrowserView>) -> Stat
         }))
 }
 
+impl BrowserView {
+    /// The person pressed a key in a native page, as the host says (`HostEvent::Typed`):
+    /// `AppKit` hands the page its keys without GPUI hearing of them. They're at the page, as
+    /// when they press on it.
+    pub(super) fn typed(&mut self, cx: &mut Context<Self>) {
+        self.person_acts(Mode::Implicit, cx);
+    }
+}
+
 /// The edits Koyo binds (⌘C and the rest), done in the page. All a native page hears of the
 /// keyboard through GPUI: `AppKit` hands it its keys itself, GPUI hearing only the shortcuts
 /// it's asked about first.

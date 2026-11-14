@@ -51,7 +51,6 @@ impl Browsers {
                     .err()
                     .map(mpsc::TrySendError::into_inner)
             };
-            crate::browser::engine::clear_if_asked(&launch.profiles);
             match embedded {
                 Some(embedded) => Connection::start_embedded(&launch, embedded, sink),
                 None => Connection::start(&launch, sink),
