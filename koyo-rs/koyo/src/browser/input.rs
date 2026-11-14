@@ -96,6 +96,10 @@ impl BrowserView {
             self.person_acts(Mode::Implicit, cx);
             self.resolve_menu(cx);
         }
+        // `AppKit` hands a native page its pointer itself.
+        if self.is_native() {
+            return;
+        }
         let at = self.page_point(position);
         self.send_to_page(
             AppRequest::Mouse {
@@ -236,17 +240,12 @@ impl BrowserView {
 
 /// `page` hearing the keys and the actions bound to the page.
 pub(super) fn listen(page: Stateful<Div>, cx: &mut Context<BrowserView>) -> Stateful<Div> {
-    page.on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| this.key_down(event, cx)))
+    edits(page, cx)
+        .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| this.key_down(event, cx)))
         .on_key_up(cx.listener(|this, event: &KeyUpEvent, _, cx| this.key_up(event, cx)))
         .on_modifiers_changed(cx.listener(|this, event: &ModifiersChangedEvent, _, cx| {
             this.modifiers_changed(event.modifiers, cx);
         }))
-        .on_action(cx.listener(|this, _: &Copy, _, cx| this.edit(ipc::Edit::Copy, cx)))
-        .on_action(cx.listener(|this, _: &Cut, _, cx| this.edit(ipc::Edit::Cut, cx)))
-        .on_action(cx.listener(|this, _: &Paste, _, cx| this.edit(ipc::Edit::Paste, cx)))
-        .on_action(cx.listener(|this, _: &SelectAll, _, cx| this.edit(ipc::Edit::SelectAll, cx)))
-        .on_action(cx.listener(|this, _: &Undo, _, cx| this.edit(ipc::Edit::Undo, cx)))
-        .on_action(cx.listener(|this, _: &Redo, _, cx| this.edit(ipc::Edit::Redo, cx)))
         .on_action(cx.listener(|this, _: &SendTab, _, cx| this.press("tab", false, Some("\t"), cx)))
         .on_action(cx.listener(|this, _: &SendBackTab, _, cx| {
             this.press("tab", true, Some("\t"), cx);
@@ -257,6 +256,18 @@ pub(super) fn listen(page: Stateful<Div>, cx: &mut Context<BrowserView>) -> Stat
                 this.press("escape", false, None, cx);
             }
         }))
+}
+
+/// The edits Koyo binds (⌘C and the rest), done in the page. All a native page hears of the
+/// keyboard through GPUI: `AppKit` hands it its keys itself, GPUI hearing only the shortcuts
+/// it's asked about first.
+pub(super) fn edits(page: Stateful<Div>, cx: &mut Context<BrowserView>) -> Stateful<Div> {
+    page.on_action(cx.listener(|this, _: &Copy, _, cx| this.edit(ipc::Edit::Copy, cx)))
+        .on_action(cx.listener(|this, _: &Cut, _, cx| this.edit(ipc::Edit::Cut, cx)))
+        .on_action(cx.listener(|this, _: &Paste, _, cx| this.edit(ipc::Edit::Paste, cx)))
+        .on_action(cx.listener(|this, _: &SelectAll, _, cx| this.edit(ipc::Edit::SelectAll, cx)))
+        .on_action(cx.listener(|this, _: &Undo, _, cx| this.edit(ipc::Edit::Undo, cx)))
+        .on_action(cx.listener(|this, _: &Redo, _, cx| this.edit(ipc::Edit::Redo, cx)))
 }
 
 /// `view` hearing the keys that steer the page from anywhere in its pane: the page, the

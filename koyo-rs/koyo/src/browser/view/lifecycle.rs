@@ -219,3 +219,11 @@ impl BrowserView {
             .is_some_and(|frame| frame.size.near(size))
     }
 }
+
+impl BrowserView {
+    /// Whether the page is native: Chromium's own views in the window, which draw themselves
+    /// and take their input from `AppKit` (`browser/native`). Every page is, or none.
+    pub(in crate::browser) fn is_native(&self) -> bool {
+        crate::browser::native::enabled()
+    }
+}

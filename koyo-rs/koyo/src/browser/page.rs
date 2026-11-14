@@ -149,10 +149,10 @@ impl Element for PageSurface {
             let held = (self.view.read(cx).responsive.drag.as_ref()).map(|drag| drag.grip);
             grips::paint(&placed.grips, held, &self.view, p, window);
         }
-        let (pane, frame, cursor, open) = {
+        let (pane, frame, cursor, open, native) = {
             let view = self.view.read(cx);
             let frame = (view.frame.clone()).filter(|_| view.shows_frames());
-            (view.pane, frame, view.cursor, view.is_open(cx))
+            (view.pane, frame, view.cursor, view.is_open(cx), view.is_native())
         };
         // Drawn with nothing over it, the page is on screen whether or not a frame is in yet:
         // one opened out of sight, or hidden before it painted, paints once it's shown.
@@ -163,6 +163,23 @@ impl Element for PageSurface {
             if let Some(frame) = frame {
                 frame.paint(bounds, placed.fit, window);
             }
+            #[cfg(all(target_os = "macos", not(test)))]
+            if native && open {
+                let clip = window.content_mask().bounds;
+                let key = ElementId::NamedInteger("browser-native-page".into(), pane);
+                let kept = crate::native::surface::keep(key, window, cx, |window| {
+                    super::native::NativePage::new(window, pane)
+                        .inspect_err(|why| log::error!("no place for a native page: {why}"))
+                        .ok()
+                });
+                let first = (kept.read(cx).0.as_ref())
+                    .is_some_and(|native| native.place(bounds, clip, window));
+                // The keyboard follows GPUI's focus as it moves (`set_focused`); a page that
+                // had the focus before it was here is told now.
+                if first && self.focused {
+                    self.view.update(cx, |view, cx| view.set_focused(true, cx));
+                }
+            }
             let shown = shown.downgrade();
             let view = self.view.read(cx);
             // An update counts as a change to the view, so it's made only when one happened.
@@ -172,6 +189,11 @@ impl Element for PageSurface {
                     view.tell_sight(cx);
                 });
             }
+        }
+        // A native page's pointer, keys and text are Chromium's own, handed to it by `AppKit`.
+        if native {
+            self.listen_native(bounds, window);
+            return;
         }
         if open {
             window.set_cursor_style(cursor_style(cursor), hitbox);
@@ -189,6 +211,24 @@ impl Element for PageSurface {
 }
 
 impl PageSurface {
+    /// A press on a native page, which `AppKit` hands the page itself: GPUI's focus follows it
+    /// into the page, so Koyo's keys are the page's, and the person has the page, as when
+    /// they press on one drawn off screen. Heard before the page hears it, and left to it.
+    fn listen_native(&self, bounds: Bounds<Pixels>, window: &mut Window) {
+        let down = self.view.downgrade();
+        window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
+            if phase == DispatchPhase::Capture && bounds.contains(&event.position) {
+                let _ = down.update(cx, |view, cx| view.pressed_at(event, window, cx));
+            }
+        });
+        let up = self.view.downgrade();
+        window.on_mouse_event(move |event: &MouseUpEvent, phase, _, cx| {
+            if phase == DispatchPhase::Capture {
+                let _ = up.update(cx, |view, cx| view.released_at(event, cx));
+            }
+        });
+    }
+
     /// The pointer over the page: presses focus it, a drag that started in it keeps
     /// reaching it, and what's scrolled or pinched over it scrolls or zooms it rather than
     /// the pane.
@@ -288,6 +328,9 @@ impl BrowserView {
             .children(self.responsive.mode.as_ref().and_then(|mode| {
                 grips::label(self.responsive.drag.as_ref(), mode.width, mode.height, p)
             }));
+        if self.is_native() {
+            return input::edits(page, cx);
+        }
         input::listen(page, cx)
     }
 }

@@ -32,6 +32,11 @@ mod input;
 pub(crate) mod keys;
 mod lightness;
 mod menu;
+#[cfg(all(target_os = "macos", not(test)))]
+pub(crate) mod native;
+#[cfg(not(all(target_os = "macos", not(test))))]
+#[path = "native_off.rs"]
+pub(crate) mod native;
 mod page;
 mod passkeys;
 pub(crate) mod pointer;
@@ -54,6 +59,7 @@ pub use view::{BrowserEvent, BrowserView, Controls, Visit};
 
 /// Starts the engine, so the first page opens as quickly as the next.
 pub fn warm_up(cx: &mut App) {
+    native::decide(cx);
     let browsers = host::Browsers::global(cx);
     browsers.update(cx, host::Browsers::start_if_idle);
 }

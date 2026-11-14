@@ -51,10 +51,25 @@ pub enum Incoming {
 pub trait Sink: Fn(Incoming) -> Option<Incoming> + Clone + Send + 'static {}
 impl<F: Fn(Incoming) -> Option<Incoming> + Clone + Send + 'static> Sink for F {}
 
+/// How the host is started and stopped inside the app's own process, where pages are native
+/// (`docs/native-pages.md`): the app gives the host's library its end of the socket, and at
+/// the end has it stop on the main thread, which is the host's there.
+pub struct Embedded {
+    /// Starts the host with its end of the socket and the token it's greeted with. From any
+    /// thread.
+    pub start: Box<dyn FnOnce(UnixStream, String) + Send>,
+    /// Stops the host within the time given, once it's been asked to shut down. On the main
+    /// thread.
+    pub finish: Box<dyn FnOnce(Duration) + Send>,
+}
+
 /// A running host.
 pub struct Connection {
     writer: UnixStream,
-    child: Child,
+    /// The host's process; none when it runs in the app's.
+    child: Option<Child>,
+    /// What stops a host in the app's process.
+    finish: Option<Box<dyn FnOnce(Duration) + Send>>,
     stop: Arc<AtomicBool>,
     /// Told once the reader thread ends: the host closed its end, as it does
     /// when it exits.
@@ -147,11 +162,7 @@ impl Connection {
     /// cannot be started, does not connect in time, or speaks another
     /// protocol.
     pub fn start(launch: &Launch, sink: impl Sink) -> io::Result<Self> {
-        if let Some(name) = launch.executable.file_name() {
-            crate::profiles::free(&launch.profiles, &name.to_string_lossy())?;
-        }
-        let (mut stream, host_end) = UnixStream::pair()?;
-        let token = token()?;
+        let (mut stream, host_end, token) = Self::begin(launch)?;
         let mut command = Command::new(&launch.executable);
         inherit::pass(&mut command, &host_end);
         command
@@ -172,7 +183,7 @@ impl Connection {
         let mut child = command.spawn()?;
         // The host holds its end now; ours closing is how it learns we left.
         drop(host_end);
-        let (engine, chromium) = match handshake(&mut stream, token, launch.passkeys) {
+        let versions = match handshake(&mut stream, token, launch.passkeys) {
             Ok(versions) => versions,
             Err(e) => {
                 let exited = child.try_wait().ok().flatten();
@@ -191,32 +202,84 @@ impl Connection {
                 });
             }
         };
-        let stop = Arc::new(AtomicBool::new(false));
-        let reader = stream.try_clone()?;
-        let events = sink.clone();
-        let (ended, exited) = mpsc::channel();
-        std::thread::Builder::new()
-            .name("browser-host-events".into())
-            .spawn(move || {
-                read_events(reader, &events);
-                let _ = ended.send(());
-            })?;
+        let connection = Self::connected(stream, versions, Some(child), None, sink.clone())?;
         #[cfg(target_os = "macos")]
         {
-            let host = child.id();
-            let stop = stop.clone();
+            let host = connection.pid();
+            let stop = connection.stop.clone();
             std::thread::Builder::new()
                 .name("browser-host-surfaces".into())
                 .spawn(move || read_rings(&receiver, host, &stop, &sink))?;
         }
+        Ok(connection)
+    }
+
+    /// Starts the host in the app's own process and completes the handshake, as
+    /// [`Connection::start`] does with a host process. The handshake waits for the host,
+    /// which starts on the main thread: call this off it. Its pages are native, so no
+    /// surfaces come from it.
+    ///
+    /// # Errors
+    /// When a host process left behind holds the profiles, or the host doesn't start in
+    /// time, or says why it can't.
+    pub fn start_embedded(
+        launch: &Launch,
+        embedded: Embedded,
+        sink: impl Sink,
+    ) -> io::Result<Self> {
+        let (mut stream, host_end, token) = Self::begin(launch)?;
+        (embedded.start)(host_end, token.clone());
+        let versions = handshake(&mut stream, token, launch.passkeys).map_err(|e| {
+            if matches!(e.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut) {
+                io::Error::new(io::ErrorKind::TimedOut, "the browser engine did not start")
+            } else {
+                e
+            }
+        })?;
+        Self::connected(stream, versions, None, Some(embedded.finish), sink)
+    }
+
+    /// What both starts begin with: the profiles freed of a host left behind, the socket
+    /// pair (ours, the host's) and the token the host is greeted with.
+    fn begin(launch: &Launch) -> io::Result<(UnixStream, UnixStream, String)> {
+        if let Some(name) = launch.executable.file_name() {
+            crate::profiles::free(&launch.profiles, &name.to_string_lossy())?;
+        }
+        let (stream, host_end) = UnixStream::pair()?;
+        Ok((stream, host_end, token()?))
+    }
+
+    /// The connection once the host has said hello, its events going to `sink`.
+    fn connected(
+        stream: UnixStream,
+        (engine, chromium): (String, String),
+        child: Option<Child>,
+        finish: Option<Box<dyn FnOnce(Duration) + Send>>,
+        sink: impl Sink,
+    ) -> io::Result<Self> {
+        let reader = stream.try_clone()?;
+        let (ended, exited) = mpsc::channel();
+        std::thread::Builder::new()
+            .name("browser-host-events".into())
+            .spawn(move || {
+                read_events(reader, &sink);
+                let _ = ended.send(());
+            })?;
         Ok(Self {
             writer: stream,
             child,
-            stop,
+            finish,
+            stop: Arc::new(AtomicBool::new(false)),
             exited,
             engine,
             chromium,
         })
+    }
+
+    /// Whether the host runs in the app's own process.
+    #[must_use]
+    pub fn embedded(&self) -> bool {
+        self.child.is_none()
     }
 
     /// Sends a request.
@@ -238,13 +301,19 @@ impl Connection {
     /// The host's process id.
     #[must_use]
     pub fn pid(&self) -> u32 {
-        self.child.id()
+        self.child.as_ref().map_or_else(std::process::id, Child::id)
     }
 
     /// Asks the host to quit and waits up to `grace` for it to go; a host
     /// still running after that is killed.
     pub fn shutdown(mut self, grace: Duration) {
         let _ = self.send(&AppRequest::Shutdown);
+        // A host in the app's process closes its pages and stops as it's run here, on the
+        // main thread.
+        if let Some(finish) = self.finish.take() {
+            finish(grace);
+            return;
+        }
         // The host's end closes as it exits, which ends the reader thread.
         let _ = self.exited.recv_timeout(grace);
         // Dropped here: a host still running is killed, and one that
@@ -256,9 +325,11 @@ impl Drop for Connection {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
         let _ = self.writer.shutdown(std::net::Shutdown::Both);
-        if matches!(self.child.try_wait(), Ok(None)) {
-            let _ = self.child.kill();
-            let _ = self.child.wait();
+        if let Some(child) = &mut self.child
+            && matches!(child.try_wait(), Ok(None))
+        {
+            let _ = child.kill();
+            let _ = child.wait();
         }
     }
 }

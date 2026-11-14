@@ -53,6 +53,47 @@ fn host_beside(executable: &Path) -> Option<PathBuf> {
     host.is_file().then_some(host)
 }
 
+/// The engine's `Koyo Browser Host.app` in the bundle Koyo itself runs from, which native
+/// pages need (`browser/native`): the engine's helpers start only from inside Koyo's bundle.
+#[cfg_attr(
+    any(test, not(target_os = "macos")),
+    expect(dead_code, reason = "pages are native on macOS only, and never in tests")
+)]
+pub fn bundled() -> Option<PathBuf> {
+    let host = host_beside(&std::env::current_exe().ok()?)?;
+    // …/Koyo Browser Host.app/Contents/MacOS/Koyo Browser Host
+    Some(host.parent()?.parent()?.parent()?.to_path_buf())
+}
+
+/// The mark, beside the profiles, that they're to be cleared as the engine next starts.
+fn clear_mark(profiles: &Path) -> PathBuf {
+    profiles.with_extension("clear")
+}
+
+/// Has every profile's data go as the engine next starts: an engine in Koyo's own process
+/// (`browser/native`) can't be stopped under its pages to delete it now, as a host process is.
+pub fn clear_at_next_start(profiles: &Path) {
+    match std::fs::write(clear_mark(profiles), b"") {
+        Ok(()) => log::info!("browsing data is cleared as Koyo next starts"),
+        Err(error) => log::warn!("couldn't mark browsing data to be cleared: {error}"),
+    }
+}
+
+/// Clears the profiles before the engine starts, if that was asked for last run. It deletes
+/// a great many files: not on the main thread.
+pub fn clear_if_asked(profiles: &Path) {
+    let mark = clear_mark(profiles);
+    if !mark.exists() {
+        return;
+    }
+    match std::fs::remove_dir_all(profiles) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => log::warn!("couldn't clear {}: {error}", profiles.display()),
+    }
+    let _ = std::fs::remove_file(mark);
+}
+
 /// The engines `script/browser-engine` packaged in the checkout, newest version first.
 #[cfg(debug_assertions)]
 fn packaged_in_checkout() -> Vec<PathBuf> {

@@ -90,5 +90,19 @@ fn engine(cx: &App) -> SettingsSection {
         Some((engine, chromium)) => format!("Chromium {chromium}, in engine {engine}."),
         None => "Packaged with the app; it starts with the first page.".to_owned(),
     };
-    SettingsSection::new("Engine").row(SettingRow::new("Browser engine").description(description))
+    SettingsSection::new("Engine")
+        .row(SettingRow::new("Browser engine").description(description))
+        .row(
+            SettingRow::new("Native pages")
+                .description(
+                    "Pages are Chromium's own views in Koyo's window: it draws them itself and \
+                     takes the pointer and keys straight from macOS. Off, pages are rendered off \
+                     screen in a host of their own. Takes effect the next time Koyo starts.",
+                )
+                .control(NativeSwitch::new(
+                    "native-pages",
+                    |settings| settings.native_pages,
+                    |settings, on| settings.native_pages = on,
+                )),
+        )
 }

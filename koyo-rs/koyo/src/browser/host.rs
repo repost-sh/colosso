@@ -391,6 +391,14 @@ impl Browsers {
         let Some(profiles) = profiles(cx) else {
             return;
         };
+        // The engine in Koyo's own process (`browser/native`) starts once a run and can't be
+        // stopped under its pages: their data goes as Koyo next starts.
+        if let Host::Running { connection, .. } = &self.host
+            && connection.embedded()
+        {
+            super::engine::clear_at_next_start(&profiles);
+            return;
+        }
         let connection = self.stop();
         // No page starts it again meanwhile: their requests wait for the new one.
         self.host = Host::Starting;

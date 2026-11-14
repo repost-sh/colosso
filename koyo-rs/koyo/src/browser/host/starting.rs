@@ -43,12 +43,19 @@ impl Browsers {
         self.starting_since = Some(Instant::now());
         self.notify_views(cx);
         let (tell, mut told) = mpsc::unbounded::<Incoming>();
+        // Where pages are native the host runs in the app's own process (`browser/native`).
+        let embedded = crate::browser::native::embedded(&launch);
         let started = cx.background_executor().spawn(async move {
-            Connection::start(&launch, move |message: Incoming| {
+            let sink = move |message: Incoming| {
                 tell.unbounded_send(message)
                     .err()
                     .map(mpsc::TrySendError::into_inner)
-            })
+            };
+            crate::browser::engine::clear_if_asked(&launch.profiles);
+            match embedded {
+                Some(embedded) => Connection::start_embedded(&launch, embedded, sink),
+                None => Connection::start(&launch, sink),
+            }
         });
         let quietly = cx.background_executor().timer(STARTING_QUIETLY);
         self._events = Some(cx.spawn(async move |this, cx| {
