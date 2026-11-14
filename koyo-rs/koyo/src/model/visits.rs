@@ -90,6 +90,11 @@ impl Workspace {
             .map(|visited| visited.spot)
     }
 
+    /// What every tab there is is known by: its first pane.
+    pub fn tab_keys(&self) -> impl Iterator<Item = u64> + '_ {
+        self.everywhere().map(|visited| visited.tab.first().id)
+    }
+
     /// Every tab there is, with where it is: the pinned, each space's loose ones, and every
     /// checkout's.
     pub(super) fn everywhere(&self) -> impl Iterator<Item = Visited<'_>> {

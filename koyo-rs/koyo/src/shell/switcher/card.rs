@@ -1,7 +1,7 @@
 //! A tab as the switcher shows it (`docs/tab-switcher.md` 3), as Arc's switcher does: a picture
-//! of it over its icon and title, in a card that's lit, as macOS's switcher lights the app it
-//! picks, when it's the one picked. A tab of another project than the one shown carries that
-//! project's picture on its own's corner.
+//! of it (`shell/pictures.rs`) over its icon and title, in a card that's lit, as macOS's
+//! switcher lights the app it picks, when it's the one picked. A tab of another project than
+//! the one shown carries that project's picture on its own's corner.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -9,14 +9,18 @@ use std::sync::Arc;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, Context, FontWeight, InteractiveElement as _, IntoElement, MouseMoveEvent,
-    ParentElement as _, SharedString, StatefulInteractiveElement as _, Styled, div, img, px,
+    ObjectFit, ParentElement as _, SharedString, StatefulInteractiveElement as _, Styled, div, img,
+    px, surface,
 };
+use objc2_core_foundation::CFRetained;
+use objc2_core_video::CVPixelBuffer;
 
 use super::Switcher;
 use crate::arc::avatar;
 use crate::model::{Spot, Visited, Workspace};
 use crate::pane::unsaved_dot;
 use crate::shell::elements::ellipsized;
+use crate::shell::pictures;
 use crate::shell::tab_face::Face;
 use crate::theme::Palette;
 
@@ -54,6 +58,8 @@ pub(super) struct Card {
     face: Face,
     /// Its panes' titles, a split's side by side.
     pub(super) title: SharedString,
+    /// The picture of it, as the window last drew it: none until it's been shown.
+    picture: Option<CFRetained<CVPixelBuffer>>,
     preview: bool,
     dirty: bool,
     /// The project it's of, when that's not the one shown.
@@ -84,8 +90,10 @@ impl Card {
             }
             _ => None,
         };
+        let face = faces.into_iter().next()?;
         Some(Card {
-            face: faces.into_iter().next()?,
+            picture: pictures::of(face.id, cx),
+            face,
             title,
             preview,
             dirty,
@@ -96,6 +104,12 @@ impl Card {
     /// What its tab is known by wherever it's moved: its first pane.
     pub(super) fn key(&self) -> u64 {
         self.face.id
+    }
+
+    /// Whether it has a picture of its tab to show, as a test asks.
+    #[cfg(test)]
+    pub(super) fn has_picture(&self) -> bool {
+        self.picture.is_some()
     }
 
     /// The card at `index`, lit if `picked`, at `scale` of its full size: picked as the pointer
@@ -151,6 +165,13 @@ impl Card {
     /// Until there's a picture of it, its icon, large.
     fn picture(&self, scale: f32, p: Palette) -> impl IntoElement {
         let at = |points: f32| px(points * scale);
+        let taken = self.picture.clone().map(|picture| {
+            (surface(picture).object_fit(ObjectFit::Fill))
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full()
+        });
         let badge = self.project.as_ref().map(|badge| {
             let face = match &badge.picture {
                 Some(picture) => img(picture.clone()).size_full().into_any_element(),
@@ -186,7 +207,10 @@ impl Card {
             .overflow_hidden()
             .rounded(at(PICTURE_RADIUS))
             .bg(p.card)
-            .child(self.face.icon(LARGE_ICON * scale))
+            .when(taken.is_none(), |picture| {
+                picture.child(self.face.icon(LARGE_ICON * scale))
+            })
+            .children(taken)
             .children(badge)
     }
 }

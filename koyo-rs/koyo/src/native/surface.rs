@@ -1,8 +1,14 @@
 //! A view in a native surface of GPUI's window composition: put where the page lays it out,
 //! shown only as far as the page shows it, and taken out of the window with the page.
+//!
+//! No frame GPUI draws holds such a view, so neither does a picture taken of what the window
+//! draws, a tab's for the tab switcher (`shell/pictures.rs`): there a pane can stand for it
+//! ([`Surface::mark`]).
 
-use std::cell::Cell;
+use std::cell::{Cell, OnceCell};
+use std::ptr::NonNull;
 
+use gpui_apple::metal_renderer::{SurfacePane, set_surface_pane};
 use gpui_kit::{
     AnyWindowHandle, App, Bounds, DevicePixels, ElementId, Entity, Pixels,
     PlatformSurfaceAttachment, Size, Window, WindowCompositionSurface,
@@ -10,6 +16,10 @@ use gpui_kit::{
 use objc2::Message as _;
 use objc2::rc::Retained;
 use objc2_app_kit::NSView;
+use objc2_core_foundation::CFRetained;
+use objc2_core_video::{
+    CVPixelBuffer, CVPixelBufferCreate, kCVPixelFormatType_32BGRA, kCVReturnSuccess,
+};
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 
 pub struct Surface {
@@ -25,6 +35,11 @@ pub struct Surface {
     visible: Cell<Option<bool>>,
     /// Where the view was last put in its surface.
     frame: Cell<Option<NSRect>>,
+    /// What stands for the view in a picture of the window ([`Surface::mark`]): a buffer that
+    /// draws nothing, made when first asked for, none if the system gives none; and how a
+    /// picture was last told to fill it.
+    marker: OnceCell<Option<CFRetained<CVPixelBuffer>>>,
+    marked: Cell<Option<SurfacePane>>,
 }
 
 impl Surface {
@@ -55,7 +70,22 @@ impl Surface {
             placed: Cell::new(None),
             visible: Cell::new(None),
             frame: Cell::new(None),
+            marker: OnceCell::new(),
+            marked: Cell::new(None),
         })
+    }
+
+    /// Paints what stands for the view in a picture of the window, over `bounds`: it draws
+    /// nothing in the window, and a picture fills it as `pane` says, under what GPUI draws
+    /// over the view (`gpui_apple::metal_renderer::set_surface_pane`).
+    pub fn mark(&self, bounds: Bounds<Pixels>, pane: SurfacePane, window: &mut Window) {
+        let Some(marker) = self.marker.get_or_init(marker) else {
+            return;
+        };
+        if self.marked.replace(Some(pane)) != Some(pane) {
+            set_surface_pane(marker, pane);
+        }
+        window.paint_surface(bounds, marker.clone());
     }
 
     /// Puts the view over `bounds`, showing only what of it lies within `clip`.
@@ -130,6 +160,21 @@ impl Surface {
             drop(surface);
         });
     }
+}
+
+/// A buffer to mark as a pane ([`Surface::mark`]): a pixel of it, as none is ever drawn.
+fn marker() -> Option<CFRetained<CVPixelBuffer>> {
+    let mut buffer = std::ptr::null_mut();
+    // SAFETY: `buffer` is a valid out-pointer; the default allocator, no attributes.
+    let status = unsafe {
+        let made = NonNull::from(&mut buffer);
+        CVPixelBufferCreate(None, 1, 1, kCVPixelFormatType_32BGRA, None, made)
+    };
+    if status != kCVReturnSuccess {
+        return None;
+    }
+    // SAFETY: a buffer created for the caller, who owns it.
+    NonNull::new(buffer).map(|buffer| unsafe { CFRetained::from_raw(buffer) })
 }
 
 /// What holds a native view in a surface of its own, given up when the view goes.

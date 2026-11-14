@@ -37,6 +37,7 @@ mod kept;
 mod keys;
 mod loose;
 mod one_tab;
+mod pictures;
 mod pinned;
 mod rails;
 mod reopen;
@@ -156,6 +157,7 @@ impl Shell {
                 // Closed terminal tabs let their views go, which detaches them.
                 this.terminals.retain(&this.workspace);
                 this.chat_tabs.retain(&this.workspace, cx);
+                pictures::retain(&this.workspace, cx);
                 this.keep_window(cx);
                 // What floats over the window goes as it comes to show something else.
                 let pane = (this.workspace.tab_shown()).map(|tab| tab.first().id);
@@ -417,7 +419,7 @@ impl Shell {
                 note("No tabs on this branch. ⌘T opens a tab, ⌘P opens a file.")
             }
         };
-        div().flex_1().min_h_0().child(content)
+        pictures::watched(div().flex_1().min_h_0().child(content), self.shown_tab_key())
     }
 }
 
@@ -491,6 +493,7 @@ impl Render for Shell {
                     .child(card),
             )
             .child(self.status_rail(shown, cx))
+            .child(pictures::taker())
             .into_any_element()
     }
 }

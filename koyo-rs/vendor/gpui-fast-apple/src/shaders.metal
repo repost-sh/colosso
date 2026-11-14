@@ -940,7 +940,10 @@ fragment float4 page_surface_fragment(PageSurfaceVarying input [[stage_in]],
                                       [[buffer(SurfaceInputIndex_Page)]],
                                       texture2d<float> picture_texture
                                       [[texture(SurfaceInputIndex_YTexture)]]) {
-  constexpr sampler texture_sampler(mag_filter::linear, min_filter::linear);
+  // Koyo: shrunk, it's sampled from the smaller copies a texture has of itself, if it has
+  // any, as the part of a frame a picture is taken of has (`take_picture`).
+  constexpr sampler texture_sampler(mag_filter::linear, min_filter::linear,
+                                    mip_filter::linear);
   float2 texel = clamp(input.texel, 0.5, max(0.5, surface->picture - 0.5));
   float4 color = picture_texture.sample(texture_sampler, texel / surface->texture_size);
   // The texture's colours are premultiplied; GPUI blends straight ones.
