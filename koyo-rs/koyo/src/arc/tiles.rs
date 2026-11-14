@@ -1,19 +1,21 @@
 //! The projects of the space shown, as Arc's favourites (`docs/arc-sidebar.md` 3): a tile each,
 //! its picture centred, sharing the sidebar's width a row at a time. The selected project's is
-//! lit. An indigo dot in its corner says something in the project waits for the person, a spinner
-//! that something works. Hovered, it names the project and sums up what's in it; right-clicked,
-//! it can move to another space, be renamed, take another picture, or go; dragged, it moves
-//! among its space's tiles (`tile_grid`).
+//! lit, and as ⌥← and ⌥→ step along the tiles the light passes to the next (`glide`). An indigo
+//! dot in its corner says something in the project waits for the person, a spinner that
+//! something works. Hovered, it names the project and sums up what's in it; right-clicked, it can
+//! move to another space, be renamed, take another picture, or go; dragged, it moves among its
+//! space's tiles (`tile_grid`).
 
 use std::hash::{DefaultHasher, Hash as _, Hasher as _};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::time::Instant;
 
 use gpui_kit::base::ElementExt as _;
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Context, Div, ElementId, FontWeight,
+    AnyElement, App, AppContext as _, Axis, Context, Div, ElementId, FontWeight,
     InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, Render, Stateful,
     StatefulInteractiveElement as _, Styled as _, Window, div, img, px,
 };
@@ -23,6 +25,7 @@ use super::actions::{
     ChangeProjectIcon, MoveProject, MoveProjectToNewSpace, RenameProject, ResetProjectIcon,
 };
 use super::avatar;
+use super::glide::{self, Lit};
 use super::hover::Hovered;
 use super::tile_grid::TileGrid;
 use super::worktrees::TAB_ICON;
@@ -51,11 +54,12 @@ pub(super) fn per_row(count: usize) -> usize {
 
 /// The tiles of the space shown, for its `projects`, in a grid they're dragged about in; none
 /// while it has no projects. The selected project's is lit: a project the space doesn't hold
-/// isn't among them.
+/// isn't among them; at `now` the light may be passing from one tile to the next.
 pub fn grid(
     shell: &Shell,
     projects: &[usize],
     look: Look,
+    now: Instant,
     cx: &mut Context<Shell>,
 ) -> Option<TileGrid> {
     if projects.is_empty() {
@@ -65,7 +69,8 @@ pub fn grid(
     let tiles = (projects.iter())
         .map(|&index| {
             let key = key_of(&shell.workspace.projects[index].path);
-            let tile = tile(shell, (index, key), selected == Some(index), look, cx);
+            let lit = (selected == Some(index), shell.swipe.glides.tiles.lit(key, now));
+            let tile = tile(shell, (index, key), lit, look, cx);
             (key, tile.into_any_element())
         })
         .collect();
@@ -160,7 +165,7 @@ pub(super) fn tile_frame(
         .flex()
         .items_center()
         .justify_center()
-        .rounded(px(10.))
+        .rounded(px(super::ROUNDED))
         .cursor_pointer()
         .when(selected, |tile| tile.bg(look.tile_selected))
         .when(!selected, |tile| {
@@ -179,11 +184,12 @@ pub(super) fn tile_frame(
         )
 }
 
-/// The tile of the project at `index` in the workspace, known in its space's grid by `key`.
+/// The tile of the project at `index` in the workspace, known in its space's grid by `key`: lit
+/// when it's `selected`, or as far as the light passing through it has it.
 fn tile(
     shell: &Shell,
     (index, key): (usize, u64),
-    selected: bool,
+    (selected, passing): (bool, Option<Lit>),
     look: Look,
     cx: &mut Context<Shell>,
 ) -> impl IntoElement + use<> {
@@ -197,7 +203,7 @@ fn tile(
     let tile = tile_frame(
         ("arc-tile", index),
         Hovered::Tile(index),
-        (selected, lifted),
+        (selected && passing.is_none(), lifted),
         shell,
         look,
         cx,
@@ -207,6 +213,13 @@ fn tile(
         hand.take(key, grab);
         cx.new(|_| DraggedTile)
     })
+    // Under the picture: its part of the light passing, laid over the unlit tile so it shows as
+    // a lit one does.
+    .children(passing.and_then(|lit| {
+        let colour = glide::over(look.tile, look.tile_selected);
+        let light = glide::light(lit, Axis::Horizontal, colour)?;
+        Some(light.debug_selector(move || format!("arc-tile-light-{index}")))
+    }))
     .child(face)
     .children(corner.map(|corner| div().absolute().top(px(6.)).right(px(6.)).child(corner)))
     .on_click(cx.listener(move |this, _, _, cx| this.select_project(index, cx)));

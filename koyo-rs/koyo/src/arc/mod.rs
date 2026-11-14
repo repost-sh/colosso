@@ -20,12 +20,14 @@ mod card;
 mod clear;
 mod delete_space;
 mod foot;
+mod glide;
 mod header;
 mod hover;
 mod loose;
 mod pinned;
 mod rename;
 mod swipe;
+mod tab_steps;
 #[cfg(test)]
 mod tests;
 mod tile_grid;
@@ -35,7 +37,10 @@ mod top;
 pub mod visual;
 mod worktrees;
 
-pub use actions::{NextSpace, PreviousSpace, SPACES, bind_keys, handle_actions};
+pub use actions::{
+    NextProject, NextSpace, NextTab, PreviousProject, PreviousSpace, PreviousTab, SPACES, bind_keys,
+    handle_actions,
+};
 pub use hover::Hover;
 pub use pinned::DraggedPin;
 pub use swipe::Swipe;
@@ -45,6 +50,8 @@ pub use top::controls;
 /// Between the sidebar's parts: the address bar, the pinned pages, the space, its projects' tiles,
 /// the foot.
 const GAP: f32 = 10.;
+/// The corners of a tile and a row alike, and of the light passing between them (`glide`).
+const ROUNDED: f32 = 10.;
 
 /// The shades the Arc sidebar lays on the glass, brighter than the rest of the window's, as
 /// Arc's are: white over the colours in either appearance, the tab shown a pill of it.
@@ -122,6 +129,11 @@ pub fn sidebar(shell: &Shell, window: &mut Window, cx: &mut Context<Shell>) -> i
     let look = Look::of(cx);
     let width = crate::settings::get(cx).sidebar_width();
     let projects = shell.space_projects(cx);
+    // While a tile's light or a row's pill passes to the next, it's drawn again each frame.
+    let now = cx.background_executor().now();
+    if shell.swipe.glides.moving(now) {
+        window.request_animation_frame();
+    }
     // What's in hand that the pinned or the loose pages take, once it has left where it was
     // taken from: worked out once, for both.
     let (pins, loosens) = shell.taken_elsewhere(cx);
@@ -138,7 +150,7 @@ pub fn sidebar(shell: &Shell, window: &mut Window, cx: &mut Context<Shell>) -> i
         .flex_col()
         .gap(px(GAP))
         .child(worktrees::space(shell, loosens, look, window, cx))
-        .children(tiles::grid(shell, &projects, look, cx));
+        .children(tiles::grid(shell, &projects, look, now, cx));
     div()
         .id("arc-sidebar")
         .debug_selector(|| "arc-sidebar".to_owned())

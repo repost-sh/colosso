@@ -1,8 +1,10 @@
-//! ⌥← and ⌥→ show the space to the left and to the right (`docs/arc-sidebar.md` 7) wherever
-//! the keyboard isn't in text, where they stay a word back and on; ⌘⌥← and ⌘⌥→ from wherever it
-//! is, the chat's composer and a terminal included. A chat's prompt has the keyboard only when
-//! the person puts it there. At the first or last space the keys show nothing new, and in the
-//! Orca layout and on a settings page nothing at all.
+//! ⌥← and ⌥→ show the project to the left and to the right, and ⌥⇧← and ⌥⇧→ the space
+//! (`docs/arc-sidebar.md` 7), wherever the keyboard isn't in text, where they stay a word back
+//! and on, and a word's selection; ⌘⌥← and ⌘⌥→, and ⌘⌥⇧← and ⌘⌥⇧→, from wherever it is, the
+//! chat's composer and a terminal included. A chat's prompt has the keyboard only when the
+//! person puts it there. At the first or last project, and space, the keys show nothing new,
+//! and in the Orca layout and on a settings page nothing at all. `project_keys` has where ⌥←
+//! and ⌥→ go among a space's projects.
 
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
@@ -46,7 +48,7 @@ fn back_to_first(
     draw(window, cx);
 }
 
-fn space(cx: &TestAppContext) -> usize {
+pub(super) fn space(cx: &TestAppContext) -> usize {
     cx.read(|cx| settings::get(cx).space)
 }
 
@@ -59,7 +61,7 @@ fn focus(window: AnyWindowHandle, handle: &FocusHandle, cx: &mut TestAppContext)
 /// it came up is taken for macOS repeating it (`key_repeat`). Drawn first, so the keyboard is
 /// where the last change left it. The action bound to it that ran, if one did, and the key
 /// contexts it was pressed in.
-fn pressed(
+pub(super) fn pressed(
     window: AnyWindowHandle,
     key: &'static str,
     cx: &mut TestAppContext,
@@ -101,29 +103,32 @@ fn pressed_in(
     action
 }
 
+/// Each space holds one project, so the project beside is the space beside's.
 #[gpui_kit::test]
-fn the_keys_show_the_space_beside_and_stop_at_the_ends(cx: &mut TestAppContext) {
+fn the_keys_show_the_project_and_the_space_beside_and_stop_at_the_ends(cx: &mut TestAppContext) {
     let (window, shell, _) = two_spaces("space-keys-ends", cx);
     // With nothing focused, as when the window has just come forward.
     (cx.update_window(window, |_, window, cx| window.blur(cx))).unwrap();
-    let [previous, next] = SPACES_MOVE;
-    assert_eq!((pressed(window, "alt-right", cx).0, space(cx)), (next, 1));
-    // The last space: nothing past it, and no wrapping round to the first.
-    assert_eq!((pressed(window, "alt-right", cx).0, space(cx)), (next, 1));
-    assert_eq!(
-        (pressed(window, "alt-left", cx).0, space(cx)),
-        (previous, 0)
-    );
-    assert_eq!(
-        (pressed(window, "alt-left", cx).0, space(cx)),
-        (previous, 0)
-    );
+    for ([previous, next], [back, on]) in [
+        (PROJECTS_MOVE, ["alt-left", "alt-right"]),
+        (SPACES_MOVE, ["alt-shift-left", "alt-shift-right"]),
+    ] {
+        assert_eq!((pressed(window, on, cx).0, space(cx)), (next, 1), "{on}");
+        // The last: nothing past it, and no wrapping round to the first.
+        assert_eq!((pressed(window, on, cx).0, space(cx)), (next, 1), "{on}");
+        assert_eq!((pressed(window, back, cx).0, space(cx)), (previous, 0));
+        assert_eq!((pressed(window, back, cx).0, space(cx)), (previous, 0));
+    }
     // From the shell's own focus, where the keyboard is with no tab's view in it.
     let root = cx.read(|cx| shell.read(cx).focus.clone());
     focus(window, &root, cx);
     assert_eq!(
         (pressed(window, "cmd-alt-right", cx).0, space(cx)),
-        (next, 1)
+        (PROJECTS_MOVE[1], 1)
+    );
+    assert_eq!(
+        (pressed(window, "cmd-alt-shift-left", cx).0, space(cx)),
+        (SPACES_MOVE[0], 0)
     );
 }
 
@@ -138,7 +143,7 @@ fn the_keys_show_the_space_beside_from_the_file_tree_and_a_viewer(cx: &mut TestA
     let tree = cx.read(|cx| tree.read(cx).focus_handle().clone());
     focus(window, &tree, cx);
     let action = pressed_in(window, "alt-right", "FilesTree", cx);
-    assert_eq!((action, space(cx)), (SPACES_MOVE[1], 1));
+    assert_eq!((action, space(cx)), (PROJECTS_MOVE[1], 1));
 
     back_to_first(window, &shell, &app, cx);
     let picture = image::RgbaImage::from_pixel(8, 8, image::Rgba([128, 128, 128, 255]));
@@ -151,11 +156,12 @@ fn the_keys_show_the_space_beside_from_the_file_tree_and_a_viewer(cx: &mut TestA
         unit.tabs[unit.active_tab].panes()[0].id
     });
     click_pane(window, pane, cx);
-    let action = pressed_in(window, "alt-right", "Viewer", cx);
+    let action = pressed_in(window, "alt-shift-right", "Viewer", cx);
     assert_eq!((action, space(cx)), (SPACES_MOVE[1], 1));
 }
 
-/// In the editor and the composer ⌥← and ⌥→ jump a word, and ⌘⌥→ shows the next space.
+/// In the editor and the composer ⌥← and ⌥→ jump a word and ⌥⇧← selects one, and ⌘⌥→ shows
+/// the next project, the next space's here.
 #[gpui_kit::test]
 fn the_keys_show_the_space_beside_from_text_where_option_arrows_jump_a_word(
     cx: &mut TestAppContext,
@@ -172,8 +178,10 @@ fn the_keys_show_the_space_beside_from_text_where_option_arrows_jump_a_word(
     assert_eq!((action, cursor(cx), space(cx)), (WORDS[0], 6..6, 0));
     let action = pressed_in(window, "alt-right", "Input", cx);
     assert_eq!((action, cursor(cx), space(cx)), (WORDS[1], 11..11, 0));
+    let action = pressed_in(window, "alt-shift-left", "Input", cx);
+    assert_eq!((action, cursor(cx), space(cx)), (SELECT_WORDS[0], 6..11, 0));
     let action = pressed_in(window, "cmd-alt-right", "Input", cx);
-    assert_eq!((action, space(cx)), (SPACES_MOVE[1], 1));
+    assert_eq!((action, space(cx)), (PROJECTS_MOVE[1], 1));
 
     // The chat's composer, where a new chat leaves the keyboard.
     back_to_first(window, &shell, &app, cx);
@@ -184,23 +192,23 @@ fn the_keys_show_the_space_beside_from_text_where_option_arrows_jump_a_word(
     assert_eq!((action, space(cx)), (WORDS[0], 0));
     let action = pressed_in(window, "alt-right", PROMPT, cx);
     assert_eq!((action, space(cx)), (WORDS[1], 0));
-    let action = pressed_in(window, "cmd-alt-right", PROMPT, cx);
+    let action = pressed_in(window, "cmd-alt-shift-right", PROMPT, cx);
     assert_eq!((action, space(cx)), (SPACES_MOVE[1], 1));
 }
 
-/// A web page keeps ⌥← and ⌥→, sent to it as keys for its own text fields; ⌘⌥→ shows the next
-/// space.
+/// A web page keeps ⌥← and ⌥→, and ⌥⇧← and ⌥⇧→, sent to it as keys for its own text fields;
+/// ⌘⌥→ shows the next project.
 #[gpui_kit::test]
 fn the_keys_show_the_space_beside_from_a_web_page(cx: &mut TestAppContext) {
     let (window, shell, _) = two_spaces("space-keys-page", cx);
     // Opened at an address, the page has the keyboard.
     open_page(window, &shell, Some("https://www.example.com/"), cx);
-    for key in ["alt-left", "alt-right"] {
+    for key in ["alt-left", "alt-right", "alt-shift-left", "alt-shift-right"] {
         let action = pressed_in(window, key, "BrowserPage", cx);
         assert_eq!((action, space(cx)), (None, 0), "{key}");
     }
     let action = pressed_in(window, "cmd-alt-right", "BrowserPage", cx);
-    assert_eq!((action, space(cx)), (SPACES_MOVE[1], 1));
+    assert_eq!((action, space(cx)), (PROJECTS_MOVE[1], 1));
 }
 
 #[gpui_kit::test]
@@ -209,17 +217,15 @@ fn the_keys_move_nothing_in_the_orca_layout_or_the_settings(cx: &mut TestAppCont
     cx.update(|cx| settings::update(cx, |settings| settings.layout = Layout::Orca));
     draw(window, cx);
     (cx.update_window(window, |_, window, cx| window.blur(cx))).unwrap();
-    assert_eq!(
-        (pressed(window, "cmd-alt-right", cx).0, space(cx)),
-        (None, 0)
-    );
+    for key in ["cmd-alt-right", "cmd-alt-shift-right"] {
+        assert_eq!((pressed(window, key, cx).0, space(cx)), (None, 0), "{key}");
+    }
     // Nor on a settings page in the Arc layout, where the sidebar lists the pages.
     cx.update(|cx| settings::update(cx, |settings| settings.layout = Layout::Arc));
     press(window, "cmd-,", cx);
-    assert_eq!(
-        (pressed(window, "cmd-alt-right", cx).0, space(cx)),
-        (None, 0)
-    );
+    for key in ["cmd-alt-right", "cmd-alt-shift-right"] {
+        assert_eq!((pressed(window, key, cx).0, space(cx)), (None, 0), "{key}");
+    }
 }
 
 /// Presses the sidebar, on the name of the project shown.
@@ -247,7 +253,8 @@ fn typing_in_a_prompt(
 }
 
 /// A press on the chat's background takes the keyboard out of its prompt, where it stays: ⌥→
-/// and ⌥← then move between spaces, the other space's chat leaving the keyboard be. A press
+/// and ⌥← then move between projects, here each in a space of its own, the other space's chat
+/// leaving the keyboard be. A press
 /// in the prompt puts it back.
 #[gpui_kit::test]
 fn a_press_on_the_chats_background_takes_the_keyboard_out_of_its_prompt(cx: &mut TestAppContext) {
@@ -259,7 +266,7 @@ fn a_press_on_the_chats_background_takes_the_keyboard_out_of_its_prompt(cx: &mut
     );
     assert_eq!(
         (pressed(window, "alt-right", cx).0, space(cx)),
-        (SPACES_MOVE[1], 1)
+        (PROJECTS_MOVE[1], 1)
     );
     assert!(
         keyboard_at_window(window, &shell, cx),
@@ -267,7 +274,7 @@ fn a_press_on_the_chats_background_takes_the_keyboard_out_of_its_prompt(cx: &mut
     );
     assert_eq!(
         (pressed(window, "alt-left", cx).0, space(cx)),
-        (SPACES_MOVE[0], 0)
+        (PROJECTS_MOVE[0], 0)
     );
     assert!(
         keyboard_at_window(window, &shell, cx),
@@ -280,20 +287,20 @@ fn a_press_on_the_chats_background_takes_the_keyboard_out_of_its_prompt(cx: &mut
     assert_eq!((action, space(cx)), (WORDS[1], 0), "a word on, in text");
 }
 
-/// From the prompt, ⌘⌥→ shows the next space, whose chat's prompt doesn't take the keyboard, so
-/// ⌥← comes back; nor does the first's then, nor once its tab is picked in the sidebar.
+/// From the prompt, ⌘⌥→ shows the next project, in the next space, whose chat's prompt doesn't
+/// take the keyboard, so ⌥← comes back; nor does the first's then, nor once its tab is picked in the sidebar.
 #[gpui_kit::test]
 fn another_space_shown_from_a_prompt_leaves_the_keyboard_at_the_window(cx: &mut TestAppContext) {
     let (window, shell, _) = typing_in_a_prompt("space-keys-from-prompt", cx);
     let action = pressed_in(window, "cmd-alt-right", PROMPT, cx);
-    assert_eq!((action, space(cx)), (SPACES_MOVE[1], 1));
+    assert_eq!((action, space(cx)), (PROJECTS_MOVE[1], 1));
     assert!(
         keyboard_at_window(window, &shell, cx),
         "the next space's chat"
     );
     assert_eq!(
         (pressed(window, "alt-left", cx).0, space(cx)),
-        (SPACES_MOVE[0], 0)
+        (PROJECTS_MOVE[0], 0)
     );
     assert!(
         keyboard_at_window(window, &shell, cx),
@@ -301,16 +308,16 @@ fn another_space_shown_from_a_prompt_leaves_the_keyboard_at_the_window(cx: &mut 
     );
 
     // Its tab picked in the sidebar, the chat still isn't typed in, and ⌥→ still moves
-    // spaces; pressed in its prompt, it is.
+    // between projects; pressed in its prompt, it is.
     shell.update(cx, |shell, cx| shell.pick_tab(0, 0, 0, cx));
     assert!(keyboard_at_window(window, &shell, cx), "its tab picked");
     assert_eq!(
         (pressed(window, "alt-right", cx).0, space(cx)),
-        (SPACES_MOVE[1], 1)
+        (PROJECTS_MOVE[1], 1)
     );
     assert_eq!(
         (pressed(window, "alt-left", cx).0, space(cx)),
-        (SPACES_MOVE[0], 0)
+        (PROJECTS_MOVE[0], 0)
     );
     press_prompt(window, cx);
     assert!(keyboard_in(window, PROMPT, cx), "pressed in its prompt");
@@ -330,7 +337,7 @@ fn a_press_in_the_sidebar_takes_the_keyboard_out_of_a_prompt_and_a_files_text(
     );
     assert_eq!(
         (pressed(window, "alt-right", cx).0, space(cx)),
-        (SPACES_MOVE[1], 1)
+        (PROJECTS_MOVE[1], 1)
     );
 
     // A file's text, pressed into: ⌥← is a word back there, and after a press in the sidebar
@@ -351,61 +358,100 @@ fn a_press_in_the_sidebar_takes_the_keyboard_out_of_a_prompt_and_a_files_text(
     shell.update(cx, |shell, cx| shell.show_space(1, cx));
     assert_eq!(
         (pressed(window, "alt-left", cx).0, space(cx)),
-        (SPACES_MOVE[0], 0)
+        (PROJECTS_MOVE[0], 0)
     );
 }
 
-/// What the keys run where they move between spaces, and what ⌥← and ⌥→ run in a text field.
-const SPACES_MOVE: [Option<&str>; 2] = [Some("arc::PreviousSpace"), Some("arc::NextSpace")];
+/// What the keys run where they move between projects, spaces and tabs, and what ⌥← and ⌥→,
+/// and ⌥⇧← and ⌥⇧→, run in a text field.
+pub(super) const PROJECTS_MOVE: [Option<&str>; 2] =
+    [Some("arc::PreviousProject"), Some("arc::NextProject")];
+pub(super) const SPACES_MOVE: [Option<&str>; 2] =
+    [Some("arc::PreviousSpace"), Some("arc::NextSpace")];
+pub(super) const TABS_MOVE: [Option<&str>; 2] = [Some("arc::PreviousTab"), Some("arc::NextTab")];
 const WORDS: [Option<&str>; 2] = [
     Some("input::MoveToPreviousWord"),
     Some("input::MoveToNextWord"),
 ];
+const SELECT_WORDS: [Option<&str>; 2] = [
+    Some("input::SelectToPreviousWordStart"),
+    Some("input::SelectToNextWordEnd"),
+];
+const NONE: [Option<&str>; 2] = [None; 2];
+
+/// A key context stack, and what ⌥← and ⌥→, ⌥⇧← and ⌥⇧→, and ⌥↑ and ⌥↓ run in it.
+type Keyed<'a> = (&'a [&'a str], [[Option<&'a str>; 2]; 3]);
 
 /// The keymap's side of it, for a terminal, the agent desktop and a device too, which a test
-/// can't run: in each key context stack the window can have, what ⌘⌥← and ⌘⌥→, and ⌥← and ⌥→,
-/// run, whatever order they were bound in.
+/// can't run: in each key context stack the window can have, what ⌘⌥← and ⌘⌥→, ⌘⌥⇧← and ⌘⌥⇧→,
+/// ⌥← and ⌥→, ⌥⇧← and ⌥⇧→, and ⌥↑ and ⌥↓ run, whatever order they were bound in.
 #[gpui_kit::test]
-fn the_keymap_has_the_spaces_on_option_arrows_outside_text_and_command_option_arrows_everywhere(
+fn the_keymap_has_projects_spaces_and_tabs_on_the_option_arrows_outside_text(
     cx: &mut TestAppContext,
 ) {
     cx.update(|cx| {
         crate::init(cx);
         let keymap = cx.key_bindings();
         let keymap = keymap.borrow();
-        let fires = |stack: &[&str], key: &'static str| -> Option<&'static str> {
+        let fires = |stack: &[&str], keys: [&'static str; 2]| -> [Option<&'static str>; 2] {
             let stack: Vec<_> = (stack.iter())
                 .map(|context| KeyContext::parse(context).unwrap())
                 .collect();
-            let (bindings, _) =
-                keymap.bindings_for_input(&[Keystroke::parse(key).unwrap()], &stack);
-            bindings.first().map(|binding| binding.action().name())
+            keys.map(|key| {
+                let (bindings, _) =
+                    keymap.bindings_for_input(&[Keystroke::parse(key).unwrap()], &stack);
+                bindings.first().map(|binding| binding.action().name())
+            })
         };
-        let terminal = [Some("terminal::SendText"); 2];
-        // Where spaces show, ⌘⌥← and ⌘⌥→ move them; ⌥← and ⌥→ too, but where text keeps them.
-        let places: &[(&[&str], [Option<&str>; 2])] = &[
-            (&["Root", SPACES], SPACES_MOVE),
-            (&["Root", SPACES, "FilesTree"], SPACES_MOVE),
-            (&["Root", SPACES, "Viewer"], SPACES_MOVE),
-            (&["Root", SPACES, koyo_term::CONTEXT], terminal),
-            (&["Root", SPACES, "ChatComposer", "Input"], WORDS),
-            (&["Root", SPACES, "BrowserAddress", "Input"], WORDS),
-            (&["Root", SPACES, "BrowserPage"], [None; 2]),
-            (&["Root", SPACES, "AgentDesktop"], [None; 2]),
-            (&["Root", SPACES, "Device"], [None; 2]),
+        let command = ["cmd-alt-left", "cmd-alt-right"];
+        let command_shift = ["cmd-alt-shift-left", "cmd-alt-shift-right"];
+        let option = [
+            ["alt-left", "alt-right"],
+            ["alt-shift-left", "alt-shift-right"],
+            ["alt-up", "alt-down"],
         ];
-        for (stack, option) in places {
-            let command = [fires(stack, "cmd-alt-left"), fires(stack, "cmd-alt-right")];
-            assert_eq!(command, SPACES_MOVE, "⌘⌥ in {stack:?}");
-            let plain = [fires(stack, "alt-left"), fires(stack, "alt-right")];
-            assert_eq!(plain, *option, "⌥ in {stack:?}");
+        let terminal = [Some("terminal::SendText"); 2];
+        // Where spaces show, ⌘⌥← and ⌘⌥→ move between projects and ⌘⌥⇧← and ⌘⌥⇧→ between
+        // spaces; the ⌥ arrows move between projects, spaces and tabs too, but where text keeps
+        // them. A terminal binds only ⌥← and ⌥→, and hands its program the others.
+        let places: &[Keyed] = &[
+            (&["Root", SPACES], [PROJECTS_MOVE, SPACES_MOVE, TABS_MOVE]),
+            (
+                &["Root", SPACES, "FilesTree"],
+                [PROJECTS_MOVE, SPACES_MOVE, TABS_MOVE],
+            ),
+            (
+                &["Root", SPACES, "Viewer"],
+                [PROJECTS_MOVE, SPACES_MOVE, TABS_MOVE],
+            ),
+            (
+                &["Root", SPACES, koyo_term::CONTEXT],
+                [terminal, NONE, NONE],
+            ),
+            (
+                &["Root", SPACES, "ChatComposer", "Input"],
+                [WORDS, SELECT_WORDS, NONE],
+            ),
+            (
+                &["Root", SPACES, "BrowserAddress", "Input"],
+                [WORDS, SELECT_WORDS, NONE],
+            ),
+            (&["Root", SPACES, "BrowserPage"], [NONE; 3]),
+            (&["Root", SPACES, "AgentDesktop"], [NONE; 3]),
+            (&["Root", SPACES, "Device"], [NONE; 3]),
+        ];
+        for (stack, expected) in places {
+            assert_eq!(fires(stack, command), PROJECTS_MOVE, "⌘⌥ in {stack:?}");
+            assert_eq!(fires(stack, command_shift), SPACES_MOVE, "⌘⌥⇧ in {stack:?}");
+            for (keys, expected) in option.iter().zip(expected) {
+                assert_eq!(fires(stack, *keys), *expected, "{keys:?} in {stack:?}");
+            }
         }
         // The Orca layout, and a settings page: no spaces shown, so the keys are unbound.
         for stack in [&["Root"][..], &["Root", "Settings"]] {
-            let command = [fires(stack, "cmd-alt-left"), fires(stack, "cmd-alt-right")];
-            assert_eq!(command, [None; 2], "⌘⌥ in {stack:?}");
-            let plain = [fires(stack, "alt-left"), fires(stack, "alt-right")];
-            assert_eq!(plain, [None; 2], "⌥ in {stack:?}");
+            for keys in [command, command_shift].iter().chain(&option) {
+                assert_eq!(fires(stack, *keys), NONE, "{keys:?} in {stack:?}");
+            }
         }
     });
 }

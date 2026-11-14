@@ -4,7 +4,7 @@ use gpui_kit::component::kbd::Kbd;
 use gpui_kit::{Action, App, AsKeystroke as _, IntoElement, ParentElement as _, Styled as _, div};
 
 use super::components::{SettingRow, SettingsSection};
-use crate::arc::{NextSpace, PreviousSpace};
+use crate::arc::{NextProject, NextSpace, NextTab, PreviousProject, PreviousSpace, PreviousTab};
 use crate::chat::{
     AllowRequest, AllowRequestForChat, DenyRequest, ImplementPlan, OpenModelMenu, OpenParent,
     RecallPrompt, SkipQuestion, StopTurn, ToggleDetails, TogglePlan,
@@ -47,8 +47,18 @@ const SECTIONS: &[(&str, &[Command])] = &[
     (
         "Spaces",
         &[
+            (
+                "Show the project to the left, in this space or the one before",
+                &PreviousProject,
+            ),
+            (
+                "Show the project to the right, in this space or the next",
+                &NextProject,
+            ),
             ("Show the space to the left", &PreviousSpace),
             ("Show the space to the right", &NextSpace),
+            ("Show the tab above in the sidebar", &PreviousTab),
+            ("Show the tab below in the sidebar", &NextTab),
         ],
     ),
     ("Worktrees", &[("New worktree", &NewWorktree)]),

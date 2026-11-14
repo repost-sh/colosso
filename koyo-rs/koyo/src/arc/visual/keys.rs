@@ -1,7 +1,8 @@
-//! ⌥→, ⌘⌥← and ⌘⌥→ as a person presses them (`docs/arc-sidebar.md` 7): they slide the space
-//! over as a swipe does, a frame of it caught mid-way; at the last space the space gives and
+//! ⌥← and ⌥→, ⌥⇧← and ⌥⇧→, and ⌘⌥→ as a person presses them (`docs/arc-sidebar.md` 7): ⌥→
+//! shows the next project, the light passing to its tile, a frame of it caught mid-way, and
+//! from the space's last tile the next space's, sliding the space over as a swipe does; past the last project, and ⌥⇧→ at the last space, the space gives and
 //! settles back; from a new chat's composer, where ⌥← and ⌥→ go a word back and on, ⌘⌥→ shows
-//! the next space all the same, and a press on the chat's background takes the keyboard out
+//! the next project all the same, and a press on the chat's background takes the keyboard out
 //! of the prompt, where it stays (`shell/keys.rs`). Then Settings → Keyboard shortcuts, which
 //! lists them.
 
@@ -11,7 +12,7 @@ use std::time::Duration;
 
 use gpui_kit::{KeyUpEvent, Keystroke, Modifiers, PlatformInput, point, px};
 
-use super::acts::{frames, settle};
+use super::acts::{Part, frames, save_with, settle};
 use crate::navigation::Route;
 use crate::settings;
 use crate::settings_view::SettingsPage;
@@ -66,66 +67,129 @@ fn space(drawn: &Drawn) -> usize {
     drawn.cx.read(|cx| settings::get(cx).space)
 }
 
-/// The keys between spaces, in a composer, and on the shortcuts page; `said` gets the pictures
-/// and what each key did.
+/// The keys between projects and spaces, in a composer, and on the shortcuts page; `said` gets
+/// the pictures and what each key did.
 pub fn space_keys(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     between_spaces(drawn, said)?;
     in_the_composer(drawn, said)?;
     shortcuts_page(drawn, said)
 }
 
-/// With nothing focused: ⌘⌘⌥→ slides to the next space, gives at the last, ⌘⌘⌥← comes back.
-fn between_spaces(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
+/// The place among the tiles of the space shown of the project selected.
+fn slot(drawn: &Drawn) -> Option<usize> {
+    drawn.cx.read(|cx| {
+        let shell = drawn.shell.read(cx);
+        let selected = shell.workspace.active_project();
+        (shell.space_projects(cx).iter()).position(|&index| Some(index) == selected)
+    })
+}
+
+/// Shows the first space, its tile at `slot` selected (its last for none), as a click on it
+/// does, and lets it settle with nothing focused, as when the window has just come forward:
+/// the slot.
+fn on_tile(drawn: &mut Drawn, slot: Option<usize>) -> Result<usize> {
     let shell = drawn.shell.clone();
-    drawn
-        .cx
-        .update(|cx| shell.update(cx, |shell, cx| shell.show_space(0, cx)));
+    let slot = drawn.cx.update(|cx| {
+        shell.update(cx, |shell, cx| {
+            shell.show_space(0, cx);
+            let tiles = shell.space_projects(cx);
+            let slot = slot.unwrap_or(tiles.len().saturating_sub(1));
+            if let Some(&index) = tiles.get(slot) {
+                shell.select_project(index, cx);
+            }
+            slot
+        })
+    });
     settle(drawn)?;
     (drawn.cx)
         .update_window(drawn.window, |_, window, cx| window.blur(cx))
         .map_err(|error| error.to_string())?;
     drawn.draw()?;
+    Ok(slot)
+}
 
+/// With nothing focused: ⌥→ passes the light from the first tile to the next; from the space's
+/// last tile it slides to the next project, the next space's, and past it, with only an empty
+/// space after, gives; ⌥⇧→ shows that space and gives at it, the last; ⌥⇧← twice comes back to
+/// the first.
+fn between_spaces(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
+    on_tile(drawn, Some(0))?;
+    let (action, _) = press(drawn, "alt-right")?;
+    frames(drawn, 3, FRAME)?;
+    let saved = save_with(drawn, "keys-light-passing", Part::Tiles)?;
+    said.push(format!(
+        "⌥→ ran {action:?}, the light caught passing: {saved}"
+    ));
+    settle(drawn)?;
+    let saved = save_with(drawn, "keys-next-tile", Part::Tiles)?;
+    said.push(format!(
+        "then on tile {:?} of space {}: {saved}",
+        slot(drawn),
+        space(drawn)
+    ));
+    if (slot(drawn), space(drawn)) != (Some(1), 0) {
+        return Err("⌥→ didn't light the next tile".into());
+    }
+
+    let last = on_tile(drawn, None)?;
+    said.push(format!("on the first space's last tile, {last}"));
     let (action, _) = press(drawn, "alt-right")?;
     frames(drawn, 5, FRAME)?;
     let path = drawn.save("keys-sliding.png")?;
     said.push(format!("saved {} (⌥→ mid-slide)", path.display()));
     settle(drawn)?;
-    let path = drawn.save("keys-next-space.png")?;
+    let path = drawn.save("keys-next-project.png")?;
     said.push(format!("⌥→ ran {action:?}: space 0 → {}", space(drawn)));
     said.push(format!("saved {}", path.display()));
     if space(drawn) != 1 {
-        return Err("⌥→ didn't show the second space".into());
+        return Err("⌥→ didn't show the second space's project".into());
     }
-    press(drawn, "cmd-alt-right")?;
-    settle(drawn)?;
-    let last = space(drawn);
-    press(drawn, "cmd-alt-right")?;
-    frames(drawn, 4, FRAME)?;
-    let offset = drawn.cx.read(|cx| shell.read(cx).swipe.offset);
-    let path = drawn.save("keys-last-gives.png")?;
-    settle(drawn)?;
-    said.push(format!(
-        "⌘⌥→ at the last space ({last}) gave {offset:.1} pt and settled back on {}",
-        space(drawn)
-    ));
-    said.push(format!("saved {}", path.display()));
-    if space(drawn) != last || offset >= 0. {
-        return Err("⌘⌥→ at the last space didn't give and stay".into());
+    // No project past it: the empty space after is passed over, so there's nothing to show.
+    let gave = gives(drawn, "alt-right", "keys-last-project-gives.png", said)?;
+    if space(drawn) != 1 || gave >= 0. {
+        return Err("⌥→ past the last project didn't give and stay".into());
     }
-    press(drawn, "cmd-alt-left cmd-alt-left")?;
+    let (action, _) = press(drawn, "alt-shift-right")?;
     settle(drawn)?;
-    said.push(format!("⌘⌥← twice: back on space {}", space(drawn)));
+    said.push(format!("⌥⇧→ ran {action:?}: on to space {}", space(drawn)));
+    if space(drawn) != 2 {
+        return Err("⌥⇧→ didn't show the empty space".into());
+    }
+    let gave = gives(drawn, "alt-shift-right", "keys-last-gives.png", said)?;
+    if space(drawn) != 2 || gave >= 0. {
+        return Err("⌥⇧→ at the last space didn't give and stay".into());
+    }
+    press(drawn, "alt-shift-left alt-shift-left")?;
+    settle(drawn)?;
+    said.push(format!("⌥⇧← twice: back on space {}", space(drawn)));
     if space(drawn) != 0 {
-        return Err("⌘⌥← didn't come back to the first space".into());
+        return Err("⌥⇧← didn't come back to the first space".into());
     }
     Ok(())
 }
 
-/// A new chat's composer has the keyboard: ⌥← and ⌥→ go a word back and on, a press on the
-/// chat's background takes the keyboard out (`out_of_the_prompt`), and ⌘⌥→ shows the next
-/// space from the prompt.
+/// Presses `key` where it has nothing more to show, a frame of the space giving saved as `name`:
+/// how far it gave, once it's settled back.
+fn gives(drawn: &mut Drawn, key: &'static str, name: &str, said: &mut Vec<String>) -> Result<f32> {
+    let shell = drawn.shell.clone();
+    let (action, _) = press(drawn, key)?;
+    frames(drawn, 4, FRAME)?;
+    let offset = drawn.cx.read(|cx| shell.read(cx).swipe.offset);
+    let path = drawn.save(name)?;
+    settle(drawn)?;
+    said.push(format!(
+        "{key} ran {action:?} with nothing past: gave {offset:.1} pt and settled back on space {}",
+        space(drawn)
+    ));
+    said.push(format!("saved {}", path.display()));
+    Ok(offset)
+}
+
+/// A new chat's composer, on the first space's last tile's project, has the keyboard: ⌥← and ⌥→
+/// go a word back and on, a press on the chat's background takes the keyboard out
+/// (`out_of_the_prompt`), and ⌘⌥→ shows the next project, the next space's, from the prompt.
 fn in_the_composer(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
+    on_tile(drawn, None)?;
     (drawn.cx)
         .update_window(drawn.window, |_, window, cx| {
             window.dispatch_action(Box::new(NewChat), cx);
@@ -158,14 +222,15 @@ fn in_the_composer(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     ));
     said.push(format!("saved {} (mid-slide)", path.display()));
     if space(drawn) != 1 {
-        return Err("⌘⌥→ didn't show the next space from the composer".into());
+        return Err("⌘⌥→ didn't show the next project from the composer".into());
     }
     Ok(())
 }
 
 /// From the prompt, a press on the chat's background takes the keyboard out of it, where it
-/// stays: ⌥→ shows the next space and ⌥← comes back, the chat shown again not taking the
-/// keyboard, nor once its tab is picked. A press in the prompt puts it back.
+/// stays: ⌥→ shows the next project, the next space's, and ⌥⇧← comes back, the chat shown again
+/// not taking the keyboard, nor once its tab is picked. A press in the prompt puts it back. The
+/// chat is the first space's last tile's, so ⌥→ goes on into the next space.
 fn out_of_the_prompt(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     let window = drawn.window;
     // The chat's empty background, high above the prompt's box.
@@ -177,18 +242,18 @@ fn out_of_the_prompt(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
         "the chat's background pressed, ⌥→ ran {next:?} in {contexts}: space 0 → {}",
         space(drawn)
     ));
-    if next != Some("arc::NextSpace") || space(drawn) != 1 {
+    if next != Some("arc::NextProject") || space(drawn) != 1 {
         return Err("a press on the chat's background left the keyboard in its prompt".into());
     }
-    let (back, _) = press(drawn, "alt-left")?;
+    // Back to the space, which shows the chat's project again: at the first space ⌥⇧← has none
+    // to show, and in the prompt it would select a word back instead.
+    let (back, _) = press(drawn, "alt-shift-left")?;
     settle(drawn)?;
-    // Back where the chat is shown: at the first space ⌥← has no space to show, and in the
-    // prompt it would be a word back instead.
-    let (still, contexts) = press(drawn, "alt-left")?;
+    let (still, contexts) = press(drawn, "alt-shift-left")?;
     settle(drawn)?;
     let path = drawn.save("keys-out-of-the-prompt.png")?;
     said.push(format!(
-        "⌥← ran {back:?}: back on space {}; again, with the chat shown, {still:?} in {contexts}",
+        "⌥⇧← ran {back:?}: back on space {}; again, with the chat shown, {still:?} in {contexts}",
         space(drawn)
     ));
     said.push(format!("saved {}", path.display()));
@@ -205,9 +270,9 @@ fn out_of_the_prompt(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
         });
     });
     settle(drawn)?;
-    let (picked, contexts) = press(drawn, "alt-left")?;
+    let (picked, contexts) = press(drawn, "alt-shift-left")?;
     settle(drawn)?;
-    said.push(format!("its tab picked, ⌥← ran {picked:?} in {contexts}"));
+    said.push(format!("its tab picked, ⌥⇧← ran {picked:?} in {contexts}"));
     if picked != Some("arc::PreviousSpace") {
         return Err("the chat's tab picked put the keyboard in its prompt".into());
     }
@@ -222,7 +287,8 @@ fn out_of_the_prompt(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     Ok(())
 }
 
-/// Settings → Keyboard shortcuts, its Spaces section listing ⌘⌥← and ⌘⌥→.
+/// Settings → Keyboard shortcuts, its Spaces section listing ⌥← and ⌥→ for the projects and
+/// ⌥⇧← and ⌥⇧→ for the spaces.
 fn shortcuts_page(drawn: &mut Drawn, said: &mut Vec<String>) -> Result<()> {
     let shell = drawn.shell.clone();
     let go = |drawn: &mut Drawn, route| {
