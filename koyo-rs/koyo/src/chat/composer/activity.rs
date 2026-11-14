@@ -18,7 +18,6 @@ use gpui_kit::{
 };
 
 use super::RADIUS;
-use crate::chat::status::is_frontmost;
 use crate::fade::Fade;
 use crate::native::liquid;
 use crate::settings::{self, ChatActivity};
@@ -100,28 +99,21 @@ pub(in crate::chat) struct Activity {
     set_off: Instant,
     /// The next step, while it moves or fades: dropped, it's not taken.
     next: Option<Task<()>>,
-    _subscriptions: [Subscription; 2],
+    /// It moves as Settings says.
+    _settings: Subscription,
     /// How many times it's been drawn.
     #[cfg(test)]
     pub(in crate::chat) renders: usize,
 }
 
 impl Activity {
-    pub(super) fn new(
-        placement: Rc<Placement>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
+    pub(super) fn new(placement: Rc<Placement>, cx: &mut Context<Self>) -> Self {
         Activity {
             placement,
             fade: Fade::new(FADE_IN, FADE_OUT),
             set_off: cx.background_executor().now(),
             next: None,
-            // It moves only while the app's in front, and as Settings says.
-            _subscriptions: [
-                cx.observe_window_activation(window, |_, _, cx| cx.notify()),
-                settings::observe(cx),
-            ],
+            _settings: settings::observe(cx),
             #[cfg(test)]
             renders: 0,
         }
@@ -169,7 +161,8 @@ impl Render for Activity {
         let now = cx.background_executor().now();
         let changing = self.fade.changing(now);
         let activity = settings::get(cx).chat_activity;
-        let look = Look::of(activity).filter(|_| !cx.reduce_motion() && is_frontmost(cx));
+        // Whichever app is in front: a chat works on while its person is elsewhere.
+        let look = Look::of(activity).filter(|_| !cx.reduce_motion());
         let shows = activity != ChatActivity::Off && (self.fade.is_on() || changing);
         // A step is taken while it moves or fades, in place of any that's waiting.
         self.next = (shows && (look.is_some() || changing)).then(|| step_later(cx));

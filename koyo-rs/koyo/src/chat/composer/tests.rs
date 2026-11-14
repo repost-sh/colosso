@@ -22,6 +22,7 @@ mod attach;
 mod effort;
 mod markdown;
 mod missing;
+mod note;
 mod suggest;
 
 fn model(id: &str, efforts: &[Effort], fast: bool, auto: bool) -> Model {

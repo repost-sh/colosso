@@ -3,8 +3,11 @@
 //! with a gap in it, its line bold for its size, going round.
 //!
 //! It's drawn at every frame the display shows, so it turns evenly rather than in steps, and all
-//! of them turn together, off one clock. It moves only while the app's in front, and as a view
-//! of its own: a turn can take a long time, and each frame draws only it, not the shell.
+//! of them turn together, off one clock. It turns whichever app is in front, for as long as the
+//! window is shown frames: a chat works while its person is elsewhere, and a spinner standing
+//! still there read as a chat that had stopped. A window nobody can see (minimized, covered, on
+//! another desktop) is shown none, and costs nothing. It's a view of its own: a turn can take a
+//! long time, and each frame draws only it, not the shell.
 
 use std::collections::HashMap;
 use std::f32::consts::{FRAC_PI_2, TAU};
@@ -16,7 +19,6 @@ use gpui_kit::{
     px, size,
 };
 
-use super::status::is_frontmost;
 use crate::theme;
 
 /// The spinner's square where nothing asks for another: the same as a dot's room.
@@ -39,18 +41,12 @@ struct Spin {
 impl Render for Spin {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let colour = theme::palette(cx).working;
+        // No limit on how often it's drawn: each frame the display shows turns it a little.
+        let going = Animation::new(TURN).repeat_synced();
         let holder = div().size(px(self.size)).flex_shrink_0();
-        if is_frontmost(cx) {
-            // No limit on how often it's drawn: each frame the display shows turns it a little.
-            let going = Animation::new(TURN).repeat_synced();
-            holder
-                .with_animation("chat-working", going, move |holder, turn| {
-                    holder.child(ring(turn, colour))
-                })
-                .into_any_element()
-        } else {
-            holder.child(ring(0., colour)).into_any_element()
-        }
+        holder.with_animation("chat-working", going, move |holder, turn| {
+            holder.child(ring(turn, colour))
+        })
     }
 }
 
