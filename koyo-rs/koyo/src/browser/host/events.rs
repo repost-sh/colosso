@@ -114,6 +114,7 @@ impl Browsers {
             HostEvent::OpenUrl { pane, url } => {
                 self.update_view(pane, cx, |_, cx| cx.emit(BrowserEvent::OpenTab(url)));
             }
+            HostEvent::DevTools { pane, ask } => self.devtools_asked(pane, ask, cx),
             HostEvent::Error { pane, message } => {
                 if let Some(pane) = pane {
                     self.update_view(pane, cx, |view, cx| view.failed(message, cx));
@@ -158,6 +159,18 @@ impl Browsers {
                     });
                 }
             }
+        }
+    }
+
+    /// What the `DevTools` pane `pane` asked from its own controls, for the page they inspect
+    /// to do, after this update: what it does (responsive mode, closing them) goes to the
+    /// host through these browsers.
+    fn devtools_asked(&self, pane: PaneId, ask: ipc::DevToolsAsk, cx: &mut Context<Self>) {
+        let inspected = self
+            .view(pane)
+            .and_then(|tools| tools.read(cx).inspected().cloned());
+        if let Some(inspected) = inspected {
+            cx.defer(move |cx| inspected.update(cx, |page, cx| page.devtools_asked(ask, cx)));
         }
     }
 

@@ -339,7 +339,8 @@ the daemon runs the operations (8.1). Loopback HTTP is deferred.
   when that fits, else by the way to it from the working directory
   (`koyo_daemon::socket_address`, `bind`, `connect`): a daemon runs in its own folder, so it
   binds its socket by name, and a test runs in its package, inside the checkout.
-- Files, under `settings::data_dir()/term/` (macOS: `~/Library/Application Support/Koyo/term/`):
+- Files, under `settings::data_dir()/term/` (macOS:
+  `~/Library/Application Support/codes.koyo.desktop/term/`):
   - `daemon.sock` (mode 0600), `daemon.lock`, `daemon.version` (protocol + build),
     `daemon.log` (rotated, size-bounded).
   - `registry.json` (atomic replace via temp file + rename), see 5.9.

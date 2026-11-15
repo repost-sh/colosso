@@ -1,19 +1,24 @@
 //! A page inspected: Chrome `DevTools` in a pane of their own, joined to the page's session,
-//! and the app's own protocol commands on it.
+//! with the shim in their frontend's page (`devtools/embedder.rs`), and the app's own protocol
+//! commands on it.
 use super::panes::create;
 use super::{Pane, Queued, enqueue, host_of, send, with, with_pane};
+use crate::devtools::embedder;
 use cef::{BrowserHost, ImplBrowserHost};
-use koyo_browser_ipc::{self as ipc, AppRequest, HostEvent, PaneId, Viewport};
+use koyo_browser_ipc::{
+    self as ipc, AppRequest, DevToolsAsk, DevToolsDock, HostEvent, PaneId, Viewport,
+};
 
 /// Chrome `DevTools` for `page`, as the pane `devtools`: the inspector
 /// frontend in a second off-screen browser, joined to the page's session
-/// over the bridge (`devtools`). Open already, it reveals the element at
-/// `inspect`.
+/// over the bridge (`devtools`), opening at `dock`. Open already, it reveals
+/// the element at `inspect`.
 pub(super) fn open_dev_tools(
     page: PaneId,
     devtools: PaneId,
     viewport: Viewport,
     inspect: Option<ipc::Point>,
+    dock: DevToolsDock,
 ) {
     // The page is on its way: its DevTools follow once it is there.
     let waiting = with(|host| {
@@ -26,6 +31,7 @@ pub(super) fn open_dev_tools(
             devtools,
             viewport,
             inspect,
+            dock,
         });
         Some(())
     });
@@ -81,7 +87,7 @@ pub(super) fn open_dev_tools(
         fail("Could not attach DevTools to the page.".into());
         return;
     }
-    let mut inspected = crate::devtools::Inspected::new(devtools);
+    let mut inspected = crate::devtools::Inspected::new(devtools, dock);
     if let Some(at) = inspect {
         // Nothing to look up yet: the frontend has not turned the DOM on.
         let _ = inspected.session.inspect(at);
@@ -285,28 +291,85 @@ fn reveal(page: PaneId, at: ipc::Point) {
 }
 
 /// A `DevTools` frontend's message: to its page's session, with the host's
-/// own lookups when an element waits to be revealed.
+/// own lookups when an element waits to be revealed, or answered here when
+/// the host does it instead.
 pub(super) fn frontend_message(devtools: PaneId, text: &str) {
-    let Some(page) = with_pane(devtools, |p| p.inspector.as_ref().map(|(page, _)| *page)).flatten()
-    else {
+    let to_send = with(|host| {
+        let page = host.panes.get(&devtools)?.inspector.as_ref()?.0;
+        let routed = (host.panes.get_mut(&page)?.inspected.as_mut())?
+            .session
+            .frontend_said(text);
+        if let Some((_, bridge)) = host.panes.get(&devtools)?.inspector.as_ref() {
+            for message in routed.to_frontend {
+                crate::devtools::to_frontend(bridge, message);
+            }
+        }
+        Some((page, routed.to_page))
+    })
+    .flatten();
+    if let Some((page, messages)) = to_send {
+        to_page(page, &messages);
+    }
+}
+
+/// The `DevTools` pane `devtools` stopped loading: at the frontend's own page, the shim goes
+/// in, over the page's own session, with the side the frontend is to be at (`embedder`). A
+/// load clears it, so it goes in after each.
+pub(super) fn frontend_loaded(devtools: PaneId) {
+    let side = with(|host| {
+        let tools = host.panes.get(&devtools)?;
+        let page = tools.inspector.as_ref()?.0;
+        if !tools.page.url.starts_with(embedder::FRONTEND) {
+            return None;
+        }
+        let inspected = host.panes.get(&page)?.inspected.as_ref()?;
+        (inspected.devtools == devtools).then_some(inspected.side)
+    })
+    .flatten();
+    let Some(side) = side else {
         return;
     };
-    let messages = with_pane(page, |p| {
-        p.inspected
-            .as_mut()
-            .map(|inspected| inspected.session.frontend_said(text))
+    for (method, params) in embedder::install(side) {
+        let own = Whose::Host(super::live::drive::Own::Other);
+        if let Err(why) = send_in_session(devtools, method, params, own) {
+            log::warn!("the developer tools' own controls aren't heard: {method} {why:?}");
+            return;
+        }
+    }
+}
+
+/// What `devtools`' frontend asked from its own controls, through the shim: the app is told,
+/// and the side it asked for is where the shim puts it after its next load.
+fn devtools_asked(devtools: PaneId, ask: DevToolsAsk) {
+    let ours = with(|host| {
+        let page = host.panes.get(&devtools)?.inspector.as_ref()?.0;
+        let inspected = (host.panes.get_mut(&page)?.inspected.as_mut())
+            .filter(|inspected| inspected.devtools == devtools)?;
+        if let DevToolsAsk::Dock { side } = ask {
+            inspected.side = side;
+        }
+        Some(())
     })
-    .flatten()
-    .unwrap_or_default();
-    to_page(page, &messages);
+    .flatten();
+    if ours.is_some() {
+        send(&HostEvent::DevTools {
+            pane: devtools,
+            ask,
+        });
+    }
 }
 
 /// A message from `page`'s session, from its observer on the UI thread:
-/// to the frontend, or kept when it is the host's.
+/// to the frontend, or kept when it is the host's. On a `DevTools` pane's
+/// own page, the shim's binding calls are what its frontend asks.
 pub(crate) fn from_page(page: PaneId, text: &str) {
     let Some(mut fields) = crate::devtools::object(text) else {
         return;
     };
+    if let Some(ask) = embedder::asked(&fields) {
+        devtools_asked(page, ask);
+        return;
+    }
     if agent_message(page, &mut fields) {
         return;
     }

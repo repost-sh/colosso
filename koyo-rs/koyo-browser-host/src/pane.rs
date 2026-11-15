@@ -370,8 +370,11 @@ wrap_life_span_handler! {
             _no_javascript_access: Option<&mut c_int>,
         ) -> c_int {
             // No native popup windows: the page opens in its own pane, and
-            // a link from DevTools in a new tab of the app.
+            // a link from DevTools in a new tab of the app. DevTools' own pages
+            // go nowhere: undocked, the frontend opens a window for its device
+            // toolbar, which Koyo's responsive mode stands in for.
             match target_url {
+                Some(url) if self.devtools && url.to_string().starts_with("devtools://") => {}
                 Some(url) if self.devtools => host::send(&HostEvent::OpenUrl {
                     pane: self.pane,
                     url: url.to_string(),

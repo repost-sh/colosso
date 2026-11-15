@@ -16,7 +16,7 @@ set -eu
 cd "$(dirname "$0")/.."
 
 HOST_NAME="Koyo Browser Host"
-BUNDLE_ID="dev.koyo.desktop.browser-host"
+BUNDLE_ID="codes.koyo.desktop.browser-host"
 FRAMEWORK="Chromium Embedded Framework.framework"
 # The app's icon, which macOS shows for the host and its helpers when one asks for
 # something, as for notifications.

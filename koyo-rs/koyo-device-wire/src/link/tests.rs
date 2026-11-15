@@ -83,7 +83,7 @@ fn every_message_to_the_host_round_trips() {
         ToHost::Hello {
             protocol: PROTOCOL,
             token: "a1b2".into(),
-            surfaces: "dev.koyo.device.12.1".into(),
+            surfaces: "codes.koyo.device.12.1".into(),
         },
         ToHost::Visible { visible: true },
         ToHost::Input {

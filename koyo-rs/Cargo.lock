@@ -5446,7 +5446,6 @@ name = "koyo-app-control"
 version = "0.1.0"
 dependencies = [
  "crossbeam-channel",
- "dirs 6.0.0",
  "koyo-daemon",
  "koyo-term-control",
  "libc",
@@ -5511,6 +5510,7 @@ dependencies = [
 name = "koyo-daemon"
 version = "0.1.0"
 dependencies = [
+ "dirs 6.0.0",
  "libc",
  "log",
 ]
@@ -5644,7 +5644,6 @@ dependencies = [
  "bytes",
  "ciborium",
  "crossbeam-channel",
- "dirs 6.0.0",
  "fastrand",
  "koyo-daemon",
  "log",

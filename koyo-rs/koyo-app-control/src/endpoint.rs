@@ -1,6 +1,6 @@
 //! Where the app listens (`docs/app-control.md` 6): a socket file in the data folder's own
 //! `control/` subfolder, `<data_dir>/control/koyo-control.sock`. The data folder is the
-//! app's (`KOYO_DATA_DIR` moves it), so the app, its relays and the CLI agree on it. A
+//! app's (`koyo_daemon::data_dir`), so the app, its relays and the CLI agree on it. A
 //! data folder too deep for a socket path gets a private folder named after it under the
 //! temporary folder instead: `$TMPDIR/koyo-<uid>-<hash8>/control.sock`.
 
@@ -11,9 +11,6 @@ use sha2::{Digest, Sha256};
 
 use crate::ControlError;
 
-/// The app's folder name under the platform's data folder, as `settings::data_dir` and the
-/// terminals' `paths::APP_ID` name it.
-pub const APP_ID: &str = "dev.koyo.desktop";
 /// The subfolder of the data folder that holds the socket. Only this folder is made private
 /// (0700); the data folder keeps its permissions.
 pub const SOCKET_DIR: &str = "control";
@@ -24,15 +21,6 @@ pub const FALLBACK_SOCKET_FILE: &str = "control.sock";
 /// The longest socket path used, in bytes. macOS allows 103 in `sun_path`; the margin keeps
 /// a path that fits there fitting everywhere.
 pub const MAX_SOCKET_PATH: usize = 100;
-
-/// The app's data folder: `KOYO_DATA_DIR` when set, else `dev.koyo.desktop` in the
-/// platform's data folder (Application Support on macOS). The same folder as the app's
-/// `settings::data_dir`.
-pub fn data_dir() -> Option<PathBuf> {
-    std::env::var_os("KOYO_DATA_DIR")
-        .map(PathBuf::from)
-        .or_else(|| dirs::data_dir().map(|dir| dir.join(APP_ID)))
-}
 
 /// The control socket of one data folder.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -46,7 +34,7 @@ impl Endpoint {
     /// # Errors
     /// `internal` when the platform has no data folder; as [`Endpoint::for_data_dir`].
     pub fn from_env() -> Result<Endpoint, ControlError> {
-        let dir = data_dir().ok_or_else(|| {
+        let dir = koyo_daemon::data_dir().ok_or_else(|| {
             ControlError::internal("This system has no data folder for Koyo. Set KOYO_DATA_DIR.")
         })?;
         Endpoint::for_data_dir(&dir)

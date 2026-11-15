@@ -18,7 +18,8 @@ fn devtools(cx: &App) -> SettingsSection {
         SettingRow::new("DevTools open")
             .description(
                 "Docked at a side of the page, past a divider you drag, or in a pane of their \
-                 own beside it. Moving them in their bar changes where the next ones open.",
+                 own beside it. Moving them from Dock side in their ⋮ menu changes where the \
+                 next ones open.",
             )
             .control(MenuButton::new("devtools-dock", dock.label(), |cx| {
                 settings::get(cx).devtools.dock.menu()

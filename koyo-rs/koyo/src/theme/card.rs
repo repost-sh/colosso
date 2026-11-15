@@ -71,16 +71,71 @@ pub fn seam<T: Clone + 'static>(
 ) -> AnyElement {
     let id = id.into();
     if islands {
-        gap(id, row, payload).into_any_element()
+        band(id.clone(), id, row, payload, super::GUTTER).into_any_element()
     } else {
-        divider(id.clone(), id, row, payload, p).into_any_element()
+        hairline(id.clone(), id, row, payload, p).into_any_element()
     }
 }
 
-/// The line between two parts, `row` when they sit side by side, picked up a few pixels either
-/// side of it to drag `payload`. The part picked up is among the window's overlays, so the
-/// parts either side, drawn after it, don't hide the part of it that reaches over them.
+/// How thick the divider between two parts is, and its grip: how long, how thick.
+pub const DIVIDER: f32 = 9.;
+const GRIP: (f32, f32) = (28., 4.);
+
+/// The divider between two parts, `row` when they sit side by side, with a grip in its middle
+/// as Arc has between a page and its developer tools: picked up anywhere along it, it drags
+/// `payload`. It has room of its own between the parts rather than reaching over them: either
+/// may be a native view, which takes a press over it before the app's own content does.
 pub fn divider<T: Clone + 'static>(
+    id: impl Into<ElementId>,
+    selector: SharedString,
+    row: bool,
+    payload: T,
+    p: Palette,
+) -> Stateful<Div> {
+    let grip = div().rounded_full().bg(p.muted.opacity(0.7)).map(|grip| {
+        if row {
+            grip.w(px(GRIP.1)).h(px(GRIP.0))
+        } else {
+            grip.w(px(GRIP.0)).h(px(GRIP.1))
+        }
+    });
+    band(id, selector, row, payload, DIVIDER)
+        .flex()
+        .items_center()
+        .justify_center()
+        .hover(move |band| band.bg(p.hover))
+        .child(grip)
+}
+
+/// A band `thickness` thick between two parts, `row` when they sit side by side, with room of
+/// its own: picked up, it drags `payload`, resizing them. Bare, it's the glass between two
+/// islands.
+fn band<T: Clone + 'static>(
+    id: impl Into<ElementId>,
+    selector: SharedString,
+    row: bool,
+    payload: T,
+    thickness: f32,
+) -> Stateful<Div> {
+    div()
+        .id(id)
+        .debug_selector(move || selector.to_string())
+        .flex_shrink_0()
+        .map(|band| {
+            if row {
+                band.w(px(thickness)).h_full().cursor_col_resize()
+            } else {
+                band.h(px(thickness)).w_full().cursor_row_resize()
+            }
+        })
+        .on_drag(payload, |_, _, _, cx| cx.new(|_| EmptyView))
+}
+
+/// The line between two parts on the one card, `row` when they sit side by side, picked up a
+/// few pixels either side of it to drag `payload`. The part picked up is among the window's
+/// overlays, so the parts either side, drawn after it, don't hide the part of it that reaches
+/// over them.
+fn hairline<T: Clone + 'static>(
     id: impl Into<ElementId>,
     selector: SharedString,
     row: bool,
@@ -116,22 +171,4 @@ pub fn divider<T: Clone + 'static>(
     } else {
         line.h(px(1.)).w_full().child(deferred(handle))
     }
-}
-
-/// The glass between two parts, each on an island of its own, `row` when they sit side by
-/// side: picked up, it drags `payload`, resizing them.
-fn gap<T: Clone + 'static>(id: SharedString, row: bool, payload: T) -> Stateful<Div> {
-    let selector = id.clone();
-    div()
-        .id(id)
-        .debug_selector(move || selector.to_string())
-        .flex_shrink_0()
-        .map(|gap| {
-            if row {
-                gap.w(px(super::GUTTER)).h_full().cursor_col_resize()
-            } else {
-                gap.h(px(super::GUTTER)).w_full().cursor_row_resize()
-            }
-        })
-        .on_drag(payload, |_, _, _, cx| cx.new(|_| EmptyView))
 }

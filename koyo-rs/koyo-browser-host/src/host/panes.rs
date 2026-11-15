@@ -1,7 +1,7 @@
 //! Panes from open to closed: their profiles, their browsers made and gone, and what each
 //! page reports meanwhile.
 use super::frames::new_ring;
-use super::inspect::{cdp_failed, to_page};
+use super::inspect::{cdp_failed, frontend_loaded, to_page};
 use super::{Pane, Queued, browser_of, enqueue, handle, host_of, send, with, with_pane};
 use cef::{
     Browser, BrowserSettings, ImplBrowser, ImplBrowserHost, ImplFrame, ImplRequestContextHandler,
@@ -407,7 +407,8 @@ pub(crate) fn software_frame(pane: PaneId) {
 }
 
 /// The page started or stopped loading. Once the first page has loaded,
-/// agent commands that waited for it run.
+/// agent commands that waited for it run; a `DevTools` pane's frontend gets
+/// its shim after every load (`inspect::frontend_loaded`).
 pub(crate) fn loading_changed(pane: PaneId, loading: bool) {
     if loading {
         return;
@@ -423,6 +424,7 @@ pub(crate) fn loading_changed(pane: PaneId, loading: bool) {
     for request in early {
         handle(request);
     }
+    frontend_loaded(pane);
 }
 
 /// Makes `change` to `pane`'s page, telling the app of it if it changed anything; whether

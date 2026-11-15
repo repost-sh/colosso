@@ -102,7 +102,7 @@ pub fn program() -> Result<PathBuf, String> {
 pub fn start(launch: &Launch, sink: impl Fn(Incoming) + Clone + Send + 'static) -> io::Result<Running> {
     let (mut ours, theirs) = UnixStream::pair()?;
     let token = client::token()?;
-    let service = format!("dev.koyo.device.{}.{}", std::process::id(), &token[..12]);
+    let service = format!("codes.koyo.device.{}.{}", std::process::id(), &token[..12]);
     let receiver = mach::Receiver::check_in(&service)?;
     std::fs::create_dir_all(&launch.state)?;
     let log = std::fs::OpenOptions::new()

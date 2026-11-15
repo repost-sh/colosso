@@ -42,7 +42,7 @@ const PARSED_IN: Duration = Duration::from_millis(400);
 /// "You said: ", so each starts with words the construct can follow.
 const CONSTRUCTS: [&str; 2] = [
     "Every construct, the first half:\n## A heading\n**Bold**, *italic*, ~~struck~~ and \
-     `code`, with [a link](https://koyo.dev).\n- A list item\n- [ ] A task\n1. A numbered one",
+     `code`, with [a link](https://koyo.codes).\n- A list item\n- [ ] A task\n1. A numbered one",
     "And the second:\n> A quote from the docs.\n```rust\nfn main() {}\n```\n| Construct | Marks \
      |\n|---|---|\n| Bold | `**` |",
 ];
@@ -58,7 +58,7 @@ const TYPED: [(&str, &str); 10] = [
     ("list", "- one\n- two\n1. three\n- [ ] four"),
     (
         "link",
-        "See [the docs](https://koyo.dev) or <https://koyo.dev>",
+        "See [the docs](https://koyo.codes) or <https://koyo.codes>",
     ),
     ("quote", "> A quote\n> on two lines"),
     ("table", "| a | b |\n|---|---|\n| 1 | 2 |"),

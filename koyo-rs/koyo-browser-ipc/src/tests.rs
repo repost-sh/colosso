@@ -108,20 +108,72 @@ fn the_wire_names_are_stable() {
             scale: 1.,
         },
         inspect: Some(Point { x: 10., y: 20.5 }),
+        dock: DevToolsDock::Undocked,
     };
     assert_eq!(
         serde_json::to_value(&devtools).expect("json"),
         serde_json::json!({
             "type": "openDevTools", "pane": 1, "devtools": 2,
             "viewport": {"width": 300, "height": 200, "scale": 1.0},
-            "inspect": {"x": 10.0, "y": 20.5}
+            "inspect": {"x": 10.0, "y": 20.5},
+            "dock": "undocked"
         })
     );
     assert_eq!(devtools.pane(), Some(1), "it acts on the page");
+    let unsaid: AppRequest = serde_json::from_value(serde_json::json!({
+        "type": "openDevTools", "pane": 1, "devtools": 2,
+        "viewport": {"width": 300, "height": 200, "scale": 1.0}, "inspect": null
+    }))
+    .expect("an older app's request");
+    assert!(
+        matches!(
+            unsaid,
+            AppRequest::OpenDevTools {
+                dock: DevToolsDock::Bottom,
+                ..
+            }
+        ),
+        "no side said is the bottom"
+    );
     assert_eq!(
         serde_json::to_value(HostEvent::Closed { pane: 2 }).expect("json"),
         serde_json::json!({"type": "closed", "pane": 2})
     );
+}
+
+#[test]
+fn what_devtools_ask_from_their_own_controls_has_stable_wire_names() {
+    let asks = [
+        (
+            DevToolsAsk::Dock {
+                side: DevToolsDock::Left,
+            },
+            serde_json::json!({"op": "dock", "side": "left"}),
+        ),
+        (
+            DevToolsAsk::Dock {
+                side: DevToolsDock::Undocked,
+            },
+            serde_json::json!({"op": "dock", "side": "undocked"}),
+        ),
+        (DevToolsAsk::Close, serde_json::json!({"op": "close"})),
+        (
+            DevToolsAsk::DeviceMode { on: true },
+            serde_json::json!({"op": "deviceMode", "on": true}),
+        ),
+    ];
+    for (ask, wire) in asks {
+        let event = HostEvent::DevTools { pane: 3, ask };
+        let json = serde_json::to_value(&event).expect("json");
+        assert_eq!(
+            json,
+            serde_json::json!({"type": "devTools", "pane": 3, "ask": wire})
+        );
+        assert_eq!(
+            serde_json::from_value::<HostEvent>(json).expect("back"),
+            event
+        );
+    }
 }
 
 #[test]

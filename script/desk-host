@@ -14,7 +14,7 @@ set -eu
 cd "$(dirname "$0")/.."
 
 NAME="Koyo Agent Desktop"
-BUNDLE_ID="dev.koyo.agent-desktop.host"
+BUNDLE_ID="codes.koyo.agent-desktop.host"
 LIBRARY=libkoyo_desk_host.dylib
 SOURCE=koyo-rs/koyo-desk-host/loader/main.c
 ICON=koyo-rs/koyo/icons/Koyo.icns
@@ -51,9 +51,13 @@ sign_code() { # path
   fi
 }
 
-# The loader: built when there's none, or its source is newer. Rebuilding it gives the same
-# binary from the same source and compiler, so the grants hold; a new compiler may not.
-if [ ! -x "$loader" ] || [ "$SOURCE" -nt "$loader" ]; then
+# The loader: built when there's none, its source is newer, or it was built under another
+# bundle id, as before the domain became koyo.codes. Rebuilding it gives the same binary from
+# the same source and compiler, so the grants hold; a new compiler may not, and macOS keeps a
+# grant by bundle id, so a new one is asked for again.
+built_as="$app/Contents/Info.plist"
+identifier=$(plutil -extract CFBundleIdentifier raw -o - "$built_as" 2>/dev/null || true)
+if [ ! -x "$loader" ] || [ "$SOURCE" -nt "$loader" ] || [ "$identifier" != "$BUNDLE_ID" ]; then
   rm -rf "$app"
   mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
   cat > "$app/Contents/Info.plist" <<PLIST

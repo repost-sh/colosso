@@ -380,11 +380,13 @@ impl BrowserView {
             *inspect = Some(at);
             return;
         };
+        let page = inspected.read(cx);
         let request = AppRequest::OpenDevTools {
-            pane: inspected.read(cx).pane,
+            pane: page.pane,
             devtools: self.pane,
             viewport,
             inspect: Some(at),
+            dock: page.devtools_side(cx),
         };
         self.send(request, cx);
     }

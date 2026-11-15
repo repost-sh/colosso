@@ -251,3 +251,54 @@ pub(super) fn numbered(number: isize) -> Option<objc2::rc::Retained<NSWindow>> {
     let windows = NSApplication::sharedApplication(main).windows();
     windows.iter().find(|window| window.windowNumber() == number)
 }
+
+/// Evaluates a script in a page, by its pane's number as `pages` lists them: `<pane> <script>`.
+/// Any page of the host's, the developer tools' own too, which no browser tool reaches.
+pub(super) async fn eval(rest: &str, cx: &mut gpui_kit::AsyncApp) -> String {
+    let (pane, script) = rest.split_once(' ').unwrap_or((rest, ""));
+    let Ok(pane) = pane.parse() else {
+        return "no pane".into();
+    };
+    let params = serde_json::json!({ "expression": script, "returnByValue": true });
+    let answered = cx.update(|cx| {
+        let browsers = crate::browser::host::Browsers::global(cx);
+        browsers.update(cx, |browsers, _| browsers.call(pane, "Runtime.evaluate", params))
+    });
+    match answered.await {
+        Ok(Ok(answer)) => answer.to_string(),
+        Ok(Err(why)) => why,
+        Err(_) => "no answer".into(),
+    }
+}
+
+/// A left drag across the window, as a hand makes it: a press at the first point, a move to
+/// each of the others a pause apart, so what answers a move has its turn before the next, and
+/// a release at the last. `<ms a move> <x> <y> <x> <y> …`, from the window's top left.
+pub(super) async fn drag(rest: &str, cx: &mut gpui_kit::AsyncApp) -> String {
+    const USAGE: &str = "drag <ms> <x> <y> <x> <y> …";
+    let given: Vec<f64> = rest.split(' ').filter_map(|word| word.parse().ok()).collect();
+    let Some((pause, points)) = given.split_first() else {
+        return USAGE.into();
+    };
+    let ([first, moves @ ..], _) = points.as_chunks::<2>() else {
+        return USAGE.into();
+    };
+    let Some(last) = moves.last() else {
+        return USAGE.into();
+    };
+    let Some(window) = super::window() else {
+        return "no window".into();
+    };
+    let pause = std::time::Duration::from_millis(*pause as u64);
+    let at = |[x, y]: &[f64; 2]| super::point(&window, *x, *y);
+    // The pointer moved there (5), a left press (1), a left drag to each point (6), and the
+    // release (2).
+    super::mouse(&window, 5, at(first), 0);
+    super::mouse(&window, 1, at(first), 1);
+    for to in moves {
+        super::mouse(&window, 6, at(to), 1);
+        cx.background_executor().timer(pause).await;
+    }
+    super::mouse(&window, 2, at(last), 1);
+    "dragged".into()
+}

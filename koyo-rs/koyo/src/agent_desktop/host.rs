@@ -362,7 +362,7 @@ pub fn start(
     // The person's alone.
     std::fs::set_permissions(&socket, std::fs::Permissions::from_mode(0o600))?;
     let service = format!(
-        "dev.koyo.desk.{}.{}",
+        "codes.koyo.desk.{}.{}",
         std::process::id(),
         SERVICES.fetch_add(1, Ordering::Relaxed)
     );

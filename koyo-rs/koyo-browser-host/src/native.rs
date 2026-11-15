@@ -32,10 +32,12 @@ use objc2_foundation::{NSPoint, NSRect, NSSize};
 
 mod holder;
 mod parts;
+mod report;
 
 use holder::{hold, let_go};
 pub(crate) use parts::stray_client;
 use parts::{HolderDelegate, PageViewDelegate};
+pub use report::describe;
 
 /// Chromium's view that hosts a window's compositor, the page's view over it, and the view in
 /// that which takes the page's keys.
@@ -253,9 +255,11 @@ fn settle(pane: PaneId) {
 
 /// Shows `pane`'s page in `container`, a view of the app's, which the page's views fill, and
 /// puts its holder over `screen`, where the container is on screen (in points from the bottom
-/// left): the page is that size. `home` is the app's own view in that window: it has the
-/// keyboard when the page hasn't, and takes the keys the page leaves. The app calls this as
-/// it draws the pane, each time.
+/// left): the page is that size. Whole points, both: Chromium lays the page out by its
+/// holder's size, a window's, and the views resize with the container, so the two have to
+/// agree, and a view between points puts Chromium's picture off it (`docs/native-pages.md`
+/// 6). `home` is the app's own view in that window: it has the keyboard when the page hasn't,
+/// and takes the keys the page leaves. The app calls this as it draws the pane, each time.
 pub fn place(pane: PaneId, container: &NSView, home: &NSView, screen: NSRect) {
     let Some((moved, holder)) = page(pane, |entry| {
         let same = (entry.shown_in.as_ref())
@@ -276,38 +280,16 @@ pub fn place(pane: PaneId, container: &NSView, home: &NSView, screen: NSRect) {
     let Some(holder) = holder else {
         return;
     };
+    debug_assert!(
+        screen.size.width.fract() == 0. && screen.size.height.fract() == 0.,
+        "a native page between points: {} by {}",
+        screen.size.width,
+        screen.size.height
+    );
     // Not a child of the app's window, which would move it along with it: Chromium turns
     // down the pointer over a page while a child of the page's window lies over that place.
     if holder.frame() != screen {
         holder.setFrame_display(screen, false);
-        // Chromium lays the page's views out again as their holder changes, now or as it
-        // next works: they're put back to fill the app's view both times.
-        fill(pane);
-        crate::embedded::on_main(move || fill(pane));
-    } else if moved {
-        fill(pane);
-    }
-}
-
-/// Has `pane`'s views fill the view of the app's that shows them. Chromium places them by
-/// its holder's measure whenever the holder changes size, which is right for the holder and,
-/// left alone, puts a page whose pane grew or shrank off its place by the difference: the
-/// page's top cut off, a gap at its foot.
-fn fill(pane: PaneId) {
-    let shown = page(pane, |entry| {
-        if !entry.on_screen {
-            return None;
-        }
-        Some((entry.shown_in.as_ref()?.0.clone(), entry.views.clone()?))
-    });
-    let Some(Some((container, (compositor, web)))) = shown else {
-        return;
-    };
-    let bounds = container.bounds();
-    for view in [&compositor, &web] {
-        if view.isDescendantOf(&container) && view.frame() != bounds {
-            view.setFrame(bounds);
-        }
     }
 }
 
@@ -428,30 +410,6 @@ pub(crate) fn closed(pane: PaneId) {
 pub(crate) fn clear() {
     PAGES.with(|pages| pages.borrow_mut().clear());
     PROFILES.with(|profiles| profiles.borrow_mut().clear());
-}
-
-/// Every native page and where its views are, for the app's harness.
-#[must_use]
-pub fn describe() -> String {
-    use std::fmt::Write as _;
-    PAGES.with(|pages| {
-        let mut text = String::new();
-        for (pane, entry) in pages.borrow().iter() {
-            let place = entry.views.as_ref().map_or("no views yet".to_owned(), |(_, web)| {
-                web.window().map_or("views in no window".to_owned(), |window| {
-                    let class = class_of(&window).name().to_string_lossy();
-                    format!("views in {class} visible {}", window.isVisible())
-                })
-            });
-            let _ = write!(
-                text,
-                "\npage {pane}: {place}, drawn by a pane {}, on screen for the engine {}",
-                entry.shown_in.is_some(),
-                entry.on_screen
-            );
-        }
-        text
-    })
 }
 
 /// The class `object` says it is. Not its `isa`, which for an object under key-value observing

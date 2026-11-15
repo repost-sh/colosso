@@ -312,9 +312,9 @@ What the person who owns Koyo's Apple developer account does, once:
 1. An Apple Developer Program membership as an organization. The entitlement is requested
    by its Account Holder, at
    <https://developer.apple.com/contact/request/macos-browsers-passkeys/>, for the App ID
-   `dev.koyo.desktop`; Apple reviews the request.
+   `codes.koyo.desktop`; Apple reviews the request.
 2. Once granted: in Certificates, Identifiers & Profiles, the explicit App ID
-   `dev.koyo.desktop` with the granted capability turned on; a Developer ID Application
+   `codes.koyo.desktop` with the granted capability turned on; a Developer ID Application
    certificate in the keychain of the Mac that builds; and a Developer ID provisioning profile
    for that App ID, downloaded as a `.provisionprofile`.
 3. The build, signed and checked:
@@ -325,7 +325,7 @@ What the person who owns Koyo's Apple developer account does, once:
    ```
 
    `script/bundle` checks the profile before building (it names the team, is for
-   `<TEAMID>.dev.koyo.desktop` and carries the entitlement), writes the app's entitlements
+   `<TEAMID>.codes.koyo.desktop` and carries the entitlement), writes the app's entitlements
    from it, embeds it as `Contents/embedded.provisionprofile`, signs the engine
    (`script/browser-engine --sign`), the agent host and the app with the hardened runtime,
    and says the signature back.
@@ -674,10 +674,11 @@ changes (`menu/view.rs`).
 - Its blur is cut to the callout's shape by a mask on its effect view, a point inside the
   outline the app draws, stretched only in the straight between its corners so the shape
   holds while the window fits what it lists.
-- The app draws the rest as one outline, arrow and all: filled with the glass, then framed
-  with two hairlines, a dark one at the edge and a light one inside it, as a window's frame
-  is. The owner isn't satisfied with how that frame looks against the blur and left it as
-  it is, 2026-11-14: to come back to.
+- The app draws the rest: the body as a bordered, rounded surface, as any panel's, so its
+  edge is a sharp one-point line, in three strips side by side with the one under the arrow
+  left open at the top; and the arrow over it, its fill and its two slants. A first go drew
+  the whole frame as stroked outlines, which came out soft; the owner turned it down, and
+  found this one acceptable, 2026-11-14.
 
 ### 12.6 Checked
 
@@ -696,3 +697,151 @@ allowed, kept and answered by their setting (the owner's camera request ended in
 `NotAllowedError`, not looked into); the Orca layout's field. There is no test of the
 popover or the question in a window: `site/panel.rs` has its height and its names,
 `site/prompt.rs` its wording, `host/site.rs` a site's address and a media request's devices.
+
+## 13. Developer tools
+
+Written 2026-11-14 on branch `schulzfel/browser-extensions`. Drafted with Claude. The owner
+asked for the developer tools as Arc and Chrome have them: no bar of Koyo's over them, the
+tools' own controls instead. Until now they ran as a plain page of the tools' frontend with a
+bar of Koyo's on top ("DevTools · title", dock left, bottom, right, detach, close). Keep it
+in step with `koyo-rs/koyo/src/browser/dock.rs` and
+`koyo-rs/koyo-browser-host/src/devtools/`.
+
+### 13.1 What the person gets [decided]
+
+- The tools have no bar of Koyo's. Their own toolbar has what Chrome's has: at its right end
+  the "⋮" menu with **Dock side** (undock, left, bottom, right) and the **×** that closes
+  them; at its left the element picker and the **device toolbar** toggle.
+- Picking a side in the tools moves them there, as Koyo's buttons did, and the side is kept
+  as before (`settings.devtools.dock`). ⇧⌘D in the tools goes back to the side before.
+- **Undock into separate window** is Koyo's detached place: a pane of their own beside the
+  page, not a window of macOS's. Undocked, the tools show no × of their own (Chrome's
+  don't either): the pane's × closes them, or they're docked back from "⋮".
+- **×** closes them, as ⌥⌘I does, with the keys in the page or in the tools themselves.
+- **The device toolbar toggle** turns Koyo's responsive mode on and off for the page
+  (`docs/responsive.md`). The tools' own device toolbar isn't shown: see 13.3.
+- Between the page and the tools is Koyo's divider, as Arc has it: a band of its own, nine
+  points, with a grip in its middle, picked up anywhere along it (`theme::card::divider`). It
+  has room of its own rather than lying over the two, either of which may be a native view
+  that takes a press before Koyo's own content does. Dragged, the pointer holds its middle.
+  The size it sets is kept as before, in whole points, as a native page's is
+  (`docs/native-pages.md` 6), and leaves the page and the tools 120 points each at the
+  least.
+
+### 13.2 How [decided]
+
+The tools' frontend decides what it shows by how it's loaded and by what its embedder
+answers. At a valid frontend address Chromium attaches its own embedder to the page, as it
+does to any tab showing a `devtools://` page (`DevToolsUIBindings`: `DevToolsHost` and
+`devtools_compatibility.js`'s `DevToolsAPI` in the page, seen on screen with
+`typeof DevToolsHost` `"object"` and `isHostedMode()` false). For a page that isn't one of
+Chrome's own DevTools windows that embedder's delegate does nothing with docking or closing:
+the frontend's × and dock menu would go nowhere.
+
+- **Loaded with `can_dock=true`**, which is all that turns on the dock menu, the × and the
+  device toggle (the frontend of Chromium 156, read from the engine's resources). The
+  address is `devtools_app.html?ws=…&can_dock=true` and nothing else: Chromium loads a
+  frontend only at an address its own check (`SanitizeFrontendURL`) leaves as it is, and
+  that check drops every parameter it doesn't know, so an address with one of Koyo's was
+  refused (`ERR_INVALID_URL`, seen on screen with `koyo_dock=right`). Both are kept as they
+  are: the bridge as given, `can_dock` as `true`, which Chrome's own docked tools are
+  loaded with.
+- **A shim in the tools' page** (`devtools/embedder.js`) takes what the frontend sends its
+  embedder, at `DevToolsAPI.sendMessageToEmbedder`, which every `InspectorFrontendHost`
+  method goes through, the × button's bound one too:
+  - `setIsDocked`: the frontend has written the new side to its preferences just before;
+    the shim tells the host the side, and calls back at once, which the frontend waits for
+    (Chromium's embedder isn't asked).
+  - `closeWindow`: tells the host.
+  - `setPreference` for `emulation.show-device-mode`: tells the host, and passes it on.
+- **The host puts the shim in** over the tools' page's own `DevTools` session (the one
+  the browser tools use), each time the page has loaded at the frontend's address: the
+  page's runtime on, a binding (`Runtime.addBinding`, `koyoDevToolsAsk`), and the shim,
+  evaluated with the side and the binding's name. The shim tells the host by calling the
+  binding; the host hears `Runtime.bindingCalled` for it in that session only. An error page
+  in the frontend's place isn't at the frontend's address and gets none. The first try, a
+  shim put in by the renderer as the page's script context was made, wasn't in the page on
+  screen (why wasn't found: no hook of the renderer is needed now, and none is left).
+- **Its first side.** The frontend boots after its page's load, with the side its
+  preferences say: Chromium keeps them in the profile the tools' browser is of
+  (`devtools.preferences`), which for `DevTools` panes, made with no profile of Koyo's, is
+  the engine's own (`profiles/default`). The frontend writes the side there itself as it
+  moves, which is where the app moves them too, so it mostly boots where Koyo has the tools.
+  As it boots it docks itself there (`setIsDocked`), and shows its device toolbar if its
+  preferences say so. None of that is the person asking: the shim tells the host of a side
+  or of the device mode only once the frontend is up and the shim has set it as Koyo has
+  it, at Koyo's side through its own setting (`currentDockState`) and its device toolbar
+  off (`emulation.show-device-mode`), as responsive mode is off for a page until it's
+  turned on (`docs/responsive.md`). In a frontend whose insides it can't find (a later
+  Chromium's, say) the shim gives up after 20 s and passes asks on from then, the boot long
+  over, so the tools' controls still work, with the placeholder showing
+  (`koyoDevTools.unsettled`). Told of the boot, as it first was, Koyo followed the
+  frontend: tools opened after Koyo's side was changed from Settings went back to the side
+  the frontend remembered and wrote it over the setting (seen: set to the right, opened at
+  the bottom, the setting the bottom again).
+- **The host tells the app** (`HostEvent::DevTools`, protocol 12): `Dock { side }`
+  (undocked is the side `undocked`), `Close`, `DeviceMode { on }`. The side the frontend
+  asks for is kept with the page's open tools in the host, and is the side the shim puts
+  the frontend at after a reload. The app does what its bar's buttons did
+  (`BrowserView::dock_devtools`, `close_devtools`), and for device mode what its own toggle
+  does (`toggle_responsive`); a side the tools are at already, or a mode the page is in
+  already, changes nothing.
+- **Undocked, the frontend opens a window** for its device toolbar
+  (`device_mode_emulation_frame.html`). The host turns down every `devtools://` popup of a
+  `DevTools` pane.
+- **A side Koyo changes itself** (Settings, an agent's `settings_set`) is told to open
+  tools the next time they open: open ones keep theirs until moved from their menu.
+
+### 13.3 What stays Koyo's, and why [decided]
+
+In Chrome the docked tools take the tab's whole area and leave a hole the page is put in
+(`setInspectedPageBounds`): the frontend draws the divider, and the device toolbar round the
+hole. In Koyo the tools are a pane of their own beside the page's, each a page with its own
+picture and input, off screen or native. Following Chrome there means layering two pages'
+pictures and routing every press to the right one, in both modes: a far larger change, for a
+divider and a toolbar. So:
+
+- The frontend's page placeholder, which it shows beside itself when docked, is hidden
+  (its split's `hideMain`): the tools fill their pane. Once the frontend is up the shim
+  hides it on the frontend's own `AdvancedApp` (`Emulation.AdvancedApp.instance()`), and
+  wraps that instance's `updateForDocked` to hide it again after each docked layout.
+- The divider is Koyo's.
+- The device toolbar is Koyo's responsive mode. The frontend's own emulation commands for
+  it are answered and not passed on, so only one of the two sizes the page: the host
+  answers `Emulation.setDeviceMetricsOverride` and `Emulation.clearDeviceMetricsOverride`
+  in the frontend's own session with an empty result (`devtools/session.rs`). The same
+  commands in a session under the frontend's (Lighthouse's) still go to the page, as do the
+  frontend's other emulation (touch, user agent, sensors).
+- Koyo's responsive mode doesn't tell the frontend: turned off from Koyo's device bar or
+  ⌥⌘R, the frontend's toggle stays on, and its next click (off) changes nothing; a page in
+  responsive mode when its tools open shows the toggle off. **[not built]**
+
+### 13.4 Where it lives, and what's checked
+
+- `koyo-rs/koyo-browser-ipc/src/devtools.rs`: `DevToolsDock`, `DevToolsAsk`.
+- `koyo-rs/koyo-browser-host/src/devtools/embedder.rs` and `embedder.js`: the address, the
+  shim, what puts it in and what its binding's calls become; `devtools/session.rs`: the
+  emulation answered, and the side kept with the page's open tools (`Inspected::side`);
+  `host/inspect.rs`: the shim put in after each load (`frontend_loaded`, from
+  `host/panes.rs`'s `loading_changed`), its calls heard (`from_page`); `pane.rs`: the
+  popups turned down.
+- `koyo-rs/koyo/src/browser/dock.rs` (`devtools_asked`, `devtools_side`) and
+  `host/events.rs`: what the app does.
+- Unit tests: the address (nothing in it Chromium's check drops or changes), each side's
+  name, what puts the shim in, its binding's calls heard and others not, what the shim's
+  messages become, the wire names, the emulation answered, and a page following what its
+  tools ask (`browser/view/tests.rs`). The shim was run under Node against a stand-in of
+  the frontend with Chromium's embedder (a bound × button, settings that keep
+  `setPreference` unbound, the frontend up after the shim), not in the frontend.
+- On screen (2026-11-14, native): with the side in the address, the tools' pane showed
+  Chromium's error page (`ERR_INVALID_URL`); without it and with no shim, the frontend's own
+  toolbar and no bar of Koyo's, but the placeholder shown and the × doing nothing. As built,
+  seen: the tools' own toolbar; docked at the bottom and undocked into a pane of their own
+  and back from "⋮", and at every side and undocked by the frontend's own setting, which is
+  what "⋮" sets; the × closing them; the
+  device toggle turning responsive mode on and off; the placeholder hidden
+  (`koyoDevTools` in the tools' page: the side, `ready`, `OnlySidebar`). Opened at each side
+  set from Koyo's (an agent's `settings_set`) while the frontend remembered another: at
+  Koyo's side, the setting left as it was. ⌥⌘I with the keys in the tools closed them. The
+  divider dragged at each side with every page fitting its pane after (`docs/native-pages.md`
+  6), and with pages off screen. Not tried: a link followed from inside the tools.

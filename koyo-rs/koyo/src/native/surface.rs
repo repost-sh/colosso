@@ -11,7 +11,7 @@ use std::ptr::NonNull;
 use gpui_apple::metal_renderer::{SurfacePane, set_surface_pane};
 use gpui_kit::{
     AnyWindowHandle, App, Bounds, DevicePixels, ElementId, Entity, Pixels,
-    PlatformSurfaceAttachment, Size, Window, WindowCompositionSurface,
+    PlatformSurfaceAttachment, Size, Window, WindowCompositionSurface, point,
 };
 use objc2::Message as _;
 use objc2::rc::Retained;
@@ -177,6 +177,16 @@ fn marker() -> Option<CFRetained<CVPixelBuffer>> {
     NonNull::new(buffer).map(|buffer| unsafe { CFRetained::from_raw(buffer) })
 }
 
+/// `bounds` with each edge on the nearest whole point, for a view that has to be a whole
+/// number of points in size. Two that share an edge round it the same way, so they still
+/// meet, and a size that was whole stays what it was wherever it starts.
+pub fn on_whole_points(bounds: Bounds<Pixels>) -> Bounds<Pixels> {
+    Bounds::from_corners(
+        point(bounds.left().round(), bounds.top().round()),
+        point(bounds.right().round(), bounds.bottom().round()),
+    )
+}
+
 /// What holds a native view in a surface of its own, given up when the view goes.
 pub trait Hosted: 'static {
     fn into_surface(self) -> Surface;
@@ -203,4 +213,27 @@ pub fn keep<T: Hosted>(
         .detach();
         Kept(make(window))
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use gpui_kit::{Bounds, point, px, size};
+
+    use super::on_whole_points;
+
+    #[test]
+    fn a_view_on_whole_points_keeps_a_whole_size_and_meets_its_neighbour() {
+        let bounds = |x: f32, y: f32, w: f32, h: f32| Bounds::new(point(px(x), px(y)), size(px(w), px(h)));
+        // A pane a pointer sized: half a point over, and anywhere between.
+        assert_eq!(on_whole_points(bounds(268., 40., 1644., 739.5)), bounds(268., 40., 1644., 740.));
+        assert_eq!(on_whole_points(bounds(267.3, 40.4, 821.9, 515.2)), bounds(267., 40., 822., 516.));
+        // A whole size stays what it was, wherever it starts: a device's, centred in a pane.
+        for at in [0., 0.25, 0.5, 0.75] {
+            let placed = on_whole_points(bounds(100. + at, 60. + at, 390., 844.));
+            assert_eq!(placed.size, size(px(390.), px(844.)), "from {at}");
+        }
+        // Two panes with an edge between them round it the same way: no gap, no overlap.
+        let (above, below) = (bounds(0., 40., 800., 371.5), bounds(0., 411.5, 800., 300.));
+        assert_eq!(on_whole_points(above).bottom(), on_whole_points(below).top());
+    }
 }

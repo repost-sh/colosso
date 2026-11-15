@@ -1,11 +1,22 @@
 //! The frontend's session on the page, from finding the page's target to detaching from
 //! it: the host's own steps and lookups told apart from the frontend's by their message ids.
-use koyo_browser_ipc::{PaneId, Point};
+//! The frontend's own device emulation is answered here and goes no further: Koyo's
+//! responsive mode sizes the page instead (`docs/browser.md` 13.3).
+use koyo_browser_ipc::{DevToolsDock, PaneId, Point};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicI64, Ordering};
 
 /// Where the host's own message ids start; the frontend counts up from one.
 const HOST_IDS: i64 = 1 << 30;
+
+/// The commands the frontend's device toolbar sizes the page with, in its own session. Its
+/// toolbar turns Koyo's responsive mode on instead, which sizes the page in the page's root
+/// session; two sizes at once would fight. Another client's session under the frontend's
+/// (Lighthouse's, say) keeps its own.
+const DEVICE_METRICS: [&str; 2] = [
+    "Emulation.setDeviceMetricsOverride",
+    "Emulation.clearDeviceMetricsOverride",
+];
 
 static NEXT_ID: AtomicI64 = AtomicI64::new(HOST_IDS);
 
@@ -15,14 +26,18 @@ pub(crate) struct Inspected {
     pub(crate) devtools: PaneId,
     /// The frontend's session on the page.
     pub(crate) session: Session,
+    /// Where the frontend is: where it opened, then where it last asked to be. The shim puts
+    /// it there again after a load (`embedder`).
+    pub(crate) side: DevToolsDock,
 }
 
 impl Inspected {
-    /// For `DevTools` pane `devtools`.
-    pub(crate) fn new(devtools: PaneId) -> Self {
+    /// For `DevTools` pane `devtools`, opening at `side`.
+    pub(crate) fn new(devtools: PaneId, side: DevToolsDock) -> Self {
         Self {
             devtools,
             session: Session::default(),
+            side,
         }
     }
 }
@@ -88,7 +103,7 @@ enum Own {
     Kept,
 }
 
-/// Messages a page message turned into.
+/// Messages a page's or a frontend's message turned into.
 #[derive(Default)]
 pub(crate) struct Routed {
     pub(crate) to_frontend: Vec<String>,
@@ -164,40 +179,58 @@ impl Session {
     }
 
     /// A message from the frontend: what goes to the page for it, now or,
-    /// while the session is being made, once it is open.
-    pub(crate) fn frontend_said(&mut self, text: &str) -> Vec<String> {
+    /// while the session is being made, once it is open, or its answer when
+    /// the host does it instead.
+    pub(crate) fn frontend_said(&mut self, text: &str) -> Routed {
         if matches!(
             self.stage,
             Stage::Idle | Stage::Finding(_) | Stage::Attaching(_)
         ) {
             self.held.push(text.to_owned());
-            return Vec::new();
+            return Routed::default();
         }
         let fields = object(text);
         let own = fields
             .as_ref()
             .is_some_and(|f| !f.contains_key("sessionId"));
-        let mut to_page = vec![self.addressed(text.to_owned())];
         let method = fields
             .as_ref()
             .and_then(|f| f.get("method"))
             .and_then(serde_json::Value::as_str);
+        // What Koyo does instead of the frontend (`DEVICE_METRICS`), in the frontend's own
+        // session, is answered here: done, with nothing to say.
+        if own
+            && method.is_some_and(|method| DEVICE_METRICS.contains(&method))
+            && let Some(id) = fields.as_ref().and_then(|f| f.get("id"))
+        {
+            return Routed {
+                to_frontend: vec![serde_json::json!({"id": id, "result": {}}).to_string()],
+                to_page: Vec::new(),
+            };
+        }
+        let mut to_page = vec![self.addressed(text.to_owned())];
         if own && method == Some("DOM.enable") {
             self.reveal.dom_enabled = true;
         }
         if let Some(lookup) = node_lookup(&mut self.reveal) {
             to_page.push(self.addressed(lookup));
         }
-        to_page
+        Routed {
+            to_frontend: Vec::new(),
+            to_page,
+        }
     }
 
     /// The session is open, or given up on: what the frontend sent
     /// meanwhile goes now.
-    fn release(&mut self) -> Vec<String> {
-        std::mem::take(&mut self.held)
-            .iter()
-            .flat_map(|text| self.frontend_said(text))
-            .collect()
+    fn release(&mut self) -> Routed {
+        let mut routed = Routed::default();
+        for text in std::mem::take(&mut self.held) {
+            let said = self.frontend_said(&text);
+            routed.to_frontend.extend(said.to_frontend);
+            routed.to_page.extend(said.to_page);
+        }
+        routed
     }
 
     /// A message from the page: the host's own steps and answers are
@@ -226,7 +259,7 @@ impl Session {
                     self.stage = Stage::Attaching(id);
                 } else {
                     self.stage = Stage::Shared;
-                    routed.to_page = self.release();
+                    routed = self.release();
                 }
             }
             (Stage::Attaching(want), None) if id == Some(*want) => {
@@ -234,7 +267,7 @@ impl Session {
                     Some(session) => Stage::Open(session.to_owned()),
                     None => Stage::Shared,
                 };
-                routed.to_page = self.release();
+                routed = self.release();
             }
             (Stage::Shared, None) => match self.own_message(&fields, id) {
                 Own::Forward => routed.to_frontend.push(text.to_owned()),

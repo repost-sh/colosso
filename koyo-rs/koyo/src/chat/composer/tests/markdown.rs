@@ -45,8 +45,8 @@ fn each_construct_styles_its_words_and_dims_its_marks() {
     assert_eq!(looks("1. one"), [("1. ", Mark)]);
     assert_eq!(looks("- [ ] to do"), [("- [ ] ", Mark)]);
     assert_eq!(
-        looks("[Koyo](https://koyo.dev)"),
-        [("[", Mark), ("Koyo", Link), ("](https://koyo.dev)", Mark)]
+        looks("[Koyo](https://koyo.codes)"),
+        [("[", Mark), ("Koyo", Link), ("](https://koyo.codes)", Mark)]
     );
     assert_eq!(
         looks("> said\n> again"),
@@ -73,7 +73,7 @@ fn what_makes_no_markdown_is_left_plain() {
 
 #[test]
 fn whats_sent_is_what_was_typed_but_the_blank_lines_round_it() {
-    let typed = "# Plan\n\n- **one** and `two`\n\n> [docs](https://koyo.dev)";
+    let typed = "# Plan\n\n- **one** and `two`\n\n> [docs](https://koyo.codes)";
     assert_eq!(sent(typed), typed);
     assert_eq!(sent(&format!("\n\n{typed}\n  \n")), typed);
     assert_eq!(
@@ -162,7 +162,7 @@ fn typing_styles_whats_typed_in_place_and_edits_by_its_marks_style_it_again(
 #[gpui_kit::test]
 fn a_message_goes_as_the_markdown_that_was_typed(cx: &mut TestAppContext) {
     let chat = chat("composer-markdown-sent", cx);
-    let typed = "## Plan\n\n1. **Read** `main.rs`\n2. [Docs](https://koyo.dev)\n\n> ~~not~~ this";
+    let typed = "## Plan\n\n1. **Read** `main.rs`\n2. [Docs](https://koyo.codes)\n\n> ~~not~~ this";
     type_in(&chat, typed, cx);
     assert!(!styled(&chat, cx).is_empty());
 

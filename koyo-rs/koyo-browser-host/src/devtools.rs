@@ -17,6 +17,10 @@
 //! are replayed to it, breakpoints are gone. The root session stays free
 //! for other clients. The host's own commands in the frontend's session
 //! are told apart by their message ids.
+//!
+//! The frontend's own controls (its dock menu, its ×, its device toolbar
+//! toggle) are on, and a shim in its page passes what they ask to the app
+//! (`embedder`, `docs/browser.md` 13).
 use crate::host;
 use cef::{
     Browser, DevToolsMessageObserver, ImplDevToolsMessageObserver, WrapDevToolsMessageObserver,
@@ -33,6 +37,7 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::time::Duration;
 use tungstenite::{Message, WebSocket};
 
+pub(crate) mod embedder;
 mod session;
 
 pub(crate) use session::{Fields, Inspected, host_id, object};
@@ -43,12 +48,9 @@ const HANDSHAKE: Duration = Duration::from_secs(5);
 /// was read.
 const IDLE: Duration = Duration::from_millis(5);
 
-/// The frontend's address for `bridge`.
+/// The frontend's address for `bridge` (`embedder`).
 pub(crate) fn frontend_url(bridge: &Bridge) -> String {
-    format!(
-        "devtools://devtools/bundled/devtools_app.html?ws=127.0.0.1:{}/{}",
-        bridge.port, bridge.token
-    )
+    embedder::address(bridge.port, &bridge.token)
 }
 
 /// Starts listening to `page`'s `DevTools` protocol messages; dropping the

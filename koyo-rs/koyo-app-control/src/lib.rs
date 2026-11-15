@@ -30,8 +30,7 @@ pub use cli::cli_main;
 pub use client::{CALL_TIMEOUT, Client, HELLO_TIMEOUT, Notice};
 pub use command::{Command, Registered, catalog, info, infos, summarize};
 pub use endpoint::{
-    APP_ID, Endpoint, FALLBACK_SOCKET_FILE, MAX_SOCKET_PATH, SOCKET_DIR, SOCKET_FILE, data_dir,
-    fallback_dir,
+    Endpoint, FALLBACK_SOCKET_FILE, MAX_SOCKET_PATH, SOCKET_DIR, SOCKET_FILE, fallback_dir,
 };
 pub use error::{ControlError, ErrorCode};
 pub use frame::{ClientFrame, ClientInfo, Hello, ServerFrame};

@@ -16,8 +16,9 @@ fn open(session: &mut Session, early: &[&str]) -> Vec<String> {
     let find = json(&session.begin());
     assert_eq!(find["method"], "Target.getTargetInfo");
     for text in early {
+        let held = session.frontend_said(text);
         assert!(
-            session.frontend_said(text).is_empty(),
+            held.to_page.is_empty() && held.to_frontend.is_empty(),
             "held until the session is open"
         );
     }
@@ -80,7 +81,7 @@ fn each_frontend_talks_in_a_session_of_its_own_and_ends_it() {
     let child = r#"{"sessionId":"FRAME","method":"Runtime.executionContextCreated","params":{}}"#;
     assert_eq!(session.said(child).to_frontend, [child]);
     let to_frame = r#"{"id":9,"method":"Runtime.enable","sessionId":"FRAME"}"#;
-    assert_eq!(session.frontend_said(to_frame), [to_frame]);
+    assert_eq!(session.frontend_said(to_frame).to_page, [to_frame]);
     session.said(
         r#"{"sessionId":"OWN","method":"Target.detachedFromTarget","params":{"sessionId":"FRAME"}}"#,
     );
@@ -99,6 +100,7 @@ fn without_a_session_of_its_own_the_frontend_shares_the_root_one() {
     assert!(
         session
             .frontend_said(r#"{"id":1,"method":"Page.enable"}"#)
+            .to_page
             .is_empty()
     );
     let routed = session
@@ -119,7 +121,9 @@ fn revealing_an_element_waits_for_the_dom_and_asks_in_the_frontends_session() {
         session.inspect(Point { x: 10., y: 20.4 }).is_none(),
         "nothing to look up before the DOM domain is on"
     );
-    let sent = session.frontend_said(r#"{"id":2,"method":"DOM.enable"}"#);
+    let sent = session
+        .frontend_said(r#"{"id":2,"method":"DOM.enable"}"#)
+        .to_page;
     assert_eq!(sent.len(), 2);
     let lookup = json(&sent[1]);
     assert_eq!(lookup["method"], "DOM.getNodeForLocation");
@@ -142,4 +146,33 @@ fn revealing_an_element_waits_for_the_dom_and_asks_in_the_frontends_session() {
     // Once the DOM is on, a reveal is asked for at once.
     let again = json(&session.inspect(Point { x: 1., y: 2. }).expect("a lookup"));
     assert_eq!(again["sessionId"], "OWN");
+}
+
+#[test]
+fn the_frontends_device_emulation_is_answered_and_goes_no_further() {
+    let mut session = Session::default();
+    let early = r#"{"id":3,"method":"Emulation.clearDeviceMetricsOverride","params":{}}"#;
+    let find = json(&session.begin());
+    assert!(session.frontend_said(early).to_frontend.is_empty(), "held");
+    let attach = session.said(
+        &json!({"id": find["id"], "result": {"targetInfo": {"targetId": "PAGE"}}}).to_string(),
+    );
+    let attach = json(&attach.to_page[0]);
+    let opened =
+        session.said(&json!({"id": attach["id"], "result": {"sessionId": "OWN"}}).to_string());
+    assert!(opened.to_page.is_empty(), "held, and still not passed on");
+    assert_eq!(opened.to_frontend, [r#"{"id":3,"result":{}}"#]);
+
+    let set = r#"{"id":4,"method":"Emulation.setDeviceMetricsOverride","params":{"width":390}}"#;
+    let routed = session.frontend_said(set);
+    assert!(routed.to_page.is_empty());
+    assert_eq!(routed.to_frontend, [r#"{"id":4,"result":{}}"#]);
+
+    // The rest of the frontend's emulation, and a session under its own, go to the page.
+    let touch = r#"{"id":5,"method":"Emulation.setTouchEmulationEnabled","params":{}}"#;
+    assert_eq!(session.frontend_said(touch).to_page.len(), 1);
+    let other = r#"{"id":6,"method":"Emulation.setDeviceMetricsOverride","sessionId":"LH"}"#;
+    let routed = session.frontend_said(other);
+    assert_eq!(routed.to_page, [other]);
+    assert!(routed.to_frontend.is_empty());
 }

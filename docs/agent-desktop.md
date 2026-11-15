@@ -82,10 +82,12 @@ scope too. Koyo itself is the one app it can't open. `[open]` a per-app allow li
 - `koyo-rs/koyo-desk-wire`: what both sides agree on, no Apple frameworks: the link's messages
   and frames, shapes, key names. Tested by itself.
 - `koyo-rs/koyo-desk-host`: the host, a library loaded by a small loader app, `Koyo Agent
-  Desktop.app` (bundle id `dev.koyo.agent-desktop.host`, `LSUIElement`; `loader/main.c`, packaged
-  by `script/desk-host`). The loader never changes, so the privacy grants given to it survive
-  every new build of the host: an ad-hoc signature's grant is tied to the binary's hash, and the
-  library lies beside the loader's bundle, outside its signature. It loads only that library.
+  Desktop.app` (bundle id `codes.koyo.agent-desktop.host`, `LSUIElement`; `loader/main.c`,
+  packaged by `script/desk-host`). The loader never changes, so the privacy grants given to it
+  survive every new build of the host: an ad-hoc signature's grant is tied to the binary's hash,
+  and the library lies beside the loader's bundle, outside its signature. It loads only that
+  library. The grants are kept by bundle id too: the loader was `dev.koyo.agent-desktop.host`
+  until the project's domain became koyo.codes, and the grants given to it are asked for again.
   `[open]` On a build signed ad hoc that also means whoever can write the folder can run code
   with the loader's grants; a release signs both with a Developer ID and the hardened runtime,
   and should have the loader check the library's signature.
@@ -146,8 +148,9 @@ Koyo started again at once waits for the last one's host to finish.
   window is told it's active after 0.8 s and opened once more through Launch Services after
   1.8 s (Calculator shows its window only then).
 - An app is found by path, bundle id, or name: in the Applications folders, CoreServices, then
-  wherever Launch Services knows it. Koyo itself (`dev.koyo.*`) is refused: a second Koyo on the
-  person's data could grant an agent what the person didn't. A file is a full path or a URL.
+  wherever Launch Services knows it. Koyo itself (`codes.koyo.*`, and `dev.koyo.*`, a Koyo from
+  before the domain became koyo.codes) is refused: a second Koyo on the person's data could
+  grant an agent what the person didn't. A file is a full path or a URL.
 - An app assigns whole, and some hand a second launch to the instance that runs. Chromium and
   Electron apps (told by their frameworks) get a data folder of their own under the host's state
   folder, so the agent's instance is apart from the person's and never hands over (a

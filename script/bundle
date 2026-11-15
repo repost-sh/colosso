@@ -13,7 +13,7 @@
 #   script/bundle --sign "Developer ID Application: <Org> (<TEAMID>)" [--profile <file>]
 #
 # signs it with a Developer ID identity instead, with the hardened runtime notarization needs.
-# With --profile, a Developer ID provisioning profile for dev.koyo.desktop that carries Apple's
+# With --profile, a Developer ID provisioning profile for codes.koyo.desktop that carries Apple's
 # browser-passkey entitlement, the app claims that entitlement and embeds the profile, so its
 # pages can use passkeys (docs/browser.md 9). The profile is checked before anything is built.
 # An ad-hoc build never claims an entitlement: macOS won't start an app that claims a managed
@@ -26,7 +26,7 @@ export CARGO_HOME="${CARGO_HOME:-$PWD/.cargo-home}"
 # The managed entitlement macOS asks of a browser before its passkey sheet takes requests for
 # any site; the app checks for it at start (koyo-rs/koyo/src/browser/passkeys/mod.rs).
 PASSKEYS=com.apple.developer.web-browser.public-key-credential
-BUNDLE_ID=dev.koyo.desktop
+BUNDLE_ID=codes.koyo.desktop
 
 identity=""
 profile=""

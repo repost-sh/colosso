@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 use koyo_app_control::transport::{BindError, Connection, Listener};
 use koyo_app_control::{
-    APP_ID, Endpoint, ErrorCode, FALLBACK_SOCKET_FILE, MAX_SOCKET_PATH, fallback_dir,
+    Endpoint, ErrorCode, FALLBACK_SOCKET_FILE, MAX_SOCKET_PATH, fallback_dir,
 };
 
 // Marked as test code, as everything here is, so the lints' leave for tests (to unwrap, to
@@ -35,11 +35,6 @@ fn deep_data_dir(root: &Path) -> PathBuf {
     let deep = root.join("a-data-folder-nested-deep-enough".repeat(2));
     assert!(deep.join("control/koyo-control.sock").as_os_str().len() > MAX_SOCKET_PATH);
     deep
-}
-
-#[test]
-fn the_app_folder_is_the_one_the_terminals_use() {
-    assert_eq!(APP_ID, koyo_term_control::APP_ID);
 }
 
 #[test]

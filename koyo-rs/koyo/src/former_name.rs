@@ -1,19 +1,23 @@
-//! The app was called Colosso before it was Koyo, and kept its folders under that name: its
-//! data in `dev.colosso.desktop` in Application Support, its log in `~/Library/Logs/Colosso`.
-//! The first Koyo to start moves them to Koyo's names, so settings, projects, terminals and
-//! browser sign-ins carry over. Nothing moves once Koyo has a folder of its own, or while
-//! `KOYO_DATA_DIR` or `KOYO_CONFIG_DIR` points the app somewhere else, as tests do.
+//! The app has kept its folders under other names. As Colosso it kept its data in
+//! `dev.colosso.desktop` in Application Support and its log in `~/Library/Logs/Colosso`; as
+//! Koyo while the project's domain was koyo.dev, its data in `dev.koyo.desktop`. The first
+//! Koyo to start under the koyo.codes id moves the newest of those data folders to its own,
+//! `codes.koyo.desktop`, and Colosso's log to Koyo's, so settings, projects, terminals, chats
+//! and browser sign-ins carry over. Nothing moves once Koyo has a folder of its own, while an
+//! older Koyo still runs on its folder, or while `KOYO_DATA_DIR` or `KOYO_CONFIG_DIR` points
+//! the app somewhere else, as tests do.
 
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+use koyo_agent::client::{host_dir, stop_host};
+use koyo_app_control::Endpoint;
+use koyo_daemon::{APP_ID, FORMER_APP_ID};
 use koyo_term_control::{ClientKind, Hello, TermDir};
 
-use crate::settings::APP_ID;
-
 /// The app's folder under the platform's data folder, as Colosso named it.
-const FORMER_APP_ID: &str = "dev.colosso.desktop";
+const COLOSSO_APP_ID: &str = "dev.colosso.desktop";
 /// The log file's name as Colosso named it, with `.log`; Koyo's is `Koyo.log`.
 const FORMER_LOG: &str = "Colosso";
 
@@ -33,22 +37,22 @@ pub fn move_logs() {
     }
 }
 
-/// Moves Colosso's data folder to Koyo's, once its terminal daemon has stopped.
+/// Moves the newest former data folder to Koyo's, once what ran in it has stopped.
 pub fn move_data() {
     if pointed_elsewhere() {
         return;
     }
-    let Some(data) = dirs::data_dir() else {
+    let Some(base) = dirs::data_dir() else {
         return;
     };
-    let stop = |dir: &TermDir| {
-        let hello = Hello::new(ClientKind::Cli, "koyo", env!("CARGO_PKG_VERSION"));
-        koyo_term_control::client::stop_daemon(dir, &hello).map_err(io::Error::other)
-    };
-    match move_data_folder(&data.join(FORMER_APP_ID), &data.join(APP_ID), stop) {
-        Ok(true) => log::info!("moved Colosso's data to {}", data.join(APP_ID).display()),
-        Ok(false) => {}
-        Err(error) => log::warn!("couldn't move Colosso's data to Koyo's folder: {error}"),
+    match move_newest(&base, older_koyo_runs, stop_daemons) {
+        Ok(Some(former)) => log::info!(
+            "moved {} to {}",
+            former.display(),
+            base.join(APP_ID).display()
+        ),
+        Ok(None) => {}
+        Err(error) => log::warn!("couldn't move the former data folder to Koyo's: {error}"),
     }
 }
 
@@ -58,19 +62,71 @@ fn pointed_elsewhere() -> bool {
         .any(|name| std::env::var_os(name).is_some())
 }
 
-/// Moves `former` to `data` when only `former` is there, saying whether it did. Colosso's
-/// terminal daemon writes to its folder for as long as it runs, so `stop` stops it first:
-/// moved from under it, it would make the folder again. Its terminals end, as they would
-/// for any daemon of an older build.
+/// Moves the newest former folder in `base` to Koyo's when Koyo has none, saying which it
+/// moved. The koyo.dev folder is newer than Colosso's, which stays where it is beside it, as it
+/// did beside Koyo's own. An older Koyo that `runs` on the koyo.dev folder keeps it in place:
+/// moved from under it, its terminals and chats would stop mid-use and it would make the folder
+/// again. This build uses that folder meanwhile (`app_folder`), and a start after that Koyo has
+/// quit moves it.
+fn move_newest(
+    base: &Path,
+    runs: impl FnOnce(&Path) -> bool,
+    stop: impl FnOnce(&Path) -> io::Result<()>,
+) -> io::Result<Option<PathBuf>> {
+    let data = base.join(APP_ID);
+    if data.exists() {
+        return Ok(None);
+    }
+    let koyo = base.join(FORMER_APP_ID);
+    let former = if koyo.is_dir() {
+        if runs(&koyo) {
+            log::info!(
+                "an older Koyo runs on {}: it moves once that Koyo has quit",
+                koyo.display()
+            );
+            return Ok(None);
+        }
+        koyo
+    } else {
+        base.join(COLOSSO_APP_ID)
+    };
+    Ok(move_data_folder(&former, &data, stop)?.then_some(former))
+}
+
+/// Whether a Koyo answers on the control socket of the folder `former`, as every running Koyo
+/// serves its folder's (`control::start`).
+fn older_koyo_runs(former: &Path) -> bool {
+    Endpoint::for_data_dir(former).is_ok_and(|endpoint| answers(endpoint.path()))
+}
+
+/// Whether something listens on the socket `path`.
+fn answers(path: &Path) -> bool {
+    koyo_daemon::connect(path).is_ok()
+}
+
+/// Stops what an older build may still run in its folder `former` and write to: the terminal
+/// daemon and the agent host, which both outlive the app. Their terminals end and their running
+/// turns stop, as "Restart terminals" and "Restart chats" would end them; what they kept moves
+/// with the folder.
+fn stop_daemons(former: &Path) -> io::Result<()> {
+    let hello = Hello::new(ClientKind::Cli, "koyo", env!("CARGO_PKG_VERSION"));
+    let term = TermDir::at(former.join("term"));
+    koyo_term_control::client::stop_daemon(&term, &hello).map_err(io::Error::other)?;
+    stop_host(&host_dir(former)).map_err(io::Error::other)
+}
+
+/// Moves `former` to `data` when only `former` is there, saying whether it did. What an older
+/// build runs in `former` writes to it for as long as it runs, so `stop` stops it first: moved
+/// from under it, it would make the folder again.
 fn move_data_folder(
     former: &Path,
     data: &Path,
-    stop: impl FnOnce(&TermDir) -> io::Result<()>,
+    stop: impl FnOnce(&Path) -> io::Result<()>,
 ) -> io::Result<bool> {
     if !former.is_dir() || data.exists() {
         return Ok(false);
     }
-    stop(&TermDir::at(former.join("term")))?;
+    stop(former)?;
     fs::rename(former, data)?;
     // The socket Colosso listened on; Koyo's has its own name, and nothing listens on it.
     let _ = fs::remove_file(data.join("control/colosso-control.sock"));
