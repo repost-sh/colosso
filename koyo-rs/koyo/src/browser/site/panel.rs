@@ -95,6 +95,8 @@ pub(super) struct SitePanel {
     at: menu::Trigger,
     /// What it lists: the site's settings as the host last said.
     listed: Vec<SiteSetting>,
+    /// What the extensions' row was drawn from (`BrowserView::extension_changes`).
+    extensions: u64,
     _page_changed: Option<Subscription>,
 }
 
@@ -114,17 +116,21 @@ impl SitePanel {
         at: menu::Trigger,
         cx: &mut Context<Self>,
     ) -> Self {
-        // Drawn again as the host says how the site's settings stand, and only then: a page's
-        // view changes far more often, with its cursor and its tone.
+        // Drawn again as the host says how the site's settings stand, or what an extension
+        // set its icon or badge to, and only then: a page's view changes far more often, with
+        // its cursor and its tone.
         let page_changed = page.upgrade().map(|page| {
             cx.observe(&page, |panel: &mut Self, page, cx| {
                 let listed = page.read(cx).site.clone().unwrap_or_default();
-                if panel.listed != listed {
+                let extensions = page.read(cx).extension_changes(cx);
+                if panel.listed != listed || panel.extensions != extensions {
                     panel.listed = listed;
+                    panel.extensions = extensions;
                     cx.notify();
                 }
             })
         });
+        let extensions = (page.upgrade()).map_or(0, |page| page.read(cx).extension_changes(cx));
         let listed = (page.upgrade())
             .and_then(|page| page.read(cx).site.clone())
             .unwrap_or_default();
@@ -133,6 +139,7 @@ impl SitePanel {
             parent,
             at,
             listed,
+            extensions,
             _page_changed: page_changed,
         }
     }

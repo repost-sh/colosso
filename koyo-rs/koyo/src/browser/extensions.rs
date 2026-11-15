@@ -33,6 +33,9 @@ pub(super) struct Store {
     actions: HashMap<(String, String), Actions>,
     /// Icons read and decoded once: by file, or by the `data:` address an extension set.
     icons: HashMap<String, Option<Arc<Image>>>,
+    /// How many times what's kept here changed: what draws from it knows by this to draw
+    /// again.
+    changes: u64,
 }
 
 /// A badge on an icon: its text, and its colours when the extension chose them.
@@ -69,6 +72,12 @@ impl Store {
             *of != profile || extensions.iter().any(|extension| extension.id == *id)
         });
         self.lists.insert(profile, extensions);
+        self.changes += 1;
+    }
+
+    /// How many times what the engine said changed.
+    pub(super) fn changes(&self) -> u64 {
+        self.changes
     }
 
     /// Whether the engine runs `profile`'s extensions with their icons and popups: it has
@@ -91,6 +100,7 @@ impl Store {
             Some(pane) => drop(actions.panes.insert(pane, action)),
             None => actions.all = action,
         }
+        self.changes += 1;
     }
 
     /// `pane`'s page is gone, and what was set for it.
