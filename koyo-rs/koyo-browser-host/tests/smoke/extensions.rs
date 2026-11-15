@@ -1,8 +1,8 @@
 //! Extensions (`docs/extensions.md`), against an engine whose framework `script/cef` built
 //! with Koyo's patches: one loaded from a folder is listed for its profile, its badge is
 //! told, a press on its icon runs its action on the page with that page as the current tab
-//! of a `normal` window, the tab it opens becomes a pane, and it's pinned, turned off and
-//! removed.
+//! of a `normal` window, the tab it opens becomes a pane and the tab it closes is told, and
+//! it's pinned, turned off and removed.
 use std::path::Path;
 
 use koyo_browser_ipc::{AppRequest, Extension, ExtensionChange, HostEvent};
@@ -102,6 +102,25 @@ fn an_extension_is_listed_acts_on_the_page_opens_a_tab_and_is_pinned_and_removed
     assert_eq!(url, format!("{address}opened"));
     session.wait("the opened tab's page to load", |event| {
         matches!(event, HostEvent::Page { pane, state } if *pane == tab && state.url == url && !state.loading)
+    });
+
+    // Pressed again, the extension closes the tab it opened: the app is told the tab went
+    // without its asking, and that the pane closed.
+    (session.host)
+        .send(&AppRequest::ExtensionAct {
+            pane: 1,
+            extension: id.clone(),
+            at: [200., 200.],
+        })
+        .expect("act again");
+    let (mut went, mut closed) = (false, false);
+    session.wait("the tab the extension closed", |event| {
+        match event {
+            HostEvent::TabClosed { pane } => went |= *pane == tab,
+            HostEvent::Closed { pane } => closed |= *pane == tab,
+            _ => {}
+        }
+        went && closed
     });
 
     // Pinned, it says so; turned off, it's listed as off; removed, it's gone.

@@ -68,8 +68,8 @@ pub use requests::{AppRequest, Edit, Go, ViewAction};
 /// ([`HostEvent::Extensions`]) and their toolbar actions ([`HostEvent::ExtensionAction`]), an
 /// action run ([`AppRequest::ExtensionAct`]), an extension turned off, pinned or removed
 /// ([`AppRequest::ChangeExtension`]), the page the person is on ([`AppRequest::Active`]), and
-/// the tabs extensions open and bring forward ([`HostEvent::TabOpened`],
-/// [`HostEvent::TabActivated`]).
+/// the tabs extensions open, bring forward and close ([`HostEvent::TabOpened`],
+/// [`HostEvent::TabActivated`], [`HostEvent::TabClosed`]).
 pub const PROTOCOL: u32 = 15;
 
 /// Frames larger than this are refused, so a confused peer cannot make the

@@ -22,6 +22,8 @@ impl Browsers {
     /// The host closed `pane`'s page: for its data's clearing, in which case it opens again
     /// (`Browsers::clear_data`), else for good.
     fn page_closed(&mut self, pane: PaneId, cx: &mut Context<Self>) {
+        // What extensions set for the page goes with it.
+        self.extensions.pane_closed(pane);
         if !self.reopening.remove(&pane) {
             self.update_view(pane, cx, BrowserView::closed);
             return;
@@ -61,6 +63,9 @@ impl Browsers {
             }
             HostEvent::TabActivated { pane } => {
                 self.update_view(pane, cx, |_, cx| cx.emit(BrowserEvent::Activate));
+            }
+            HostEvent::TabClosed { pane } => {
+                self.update_view(pane, cx, |_, cx| cx.emit(BrowserEvent::ClosedItself));
             }
             _ => {}
         }
@@ -117,14 +122,12 @@ impl Browsers {
             HostEvent::Typed { pane } => {
                 self.update_view(pane, cx, BrowserView::typed);
             }
-            HostEvent::Closed { pane } => {
-                self.extensions.pane_closed(pane);
-                self.page_closed(pane, cx);
-            }
+            HostEvent::Closed { pane } => self.page_closed(pane, cx),
             event @ (HostEvent::Extensions { .. }
             | HostEvent::ExtensionAction { .. }
             | HostEvent::TabOpened { .. }
-            | HostEvent::TabActivated { .. }) => self.extension_event(event, cx),
+            | HostEvent::TabActivated { .. }
+            | HostEvent::TabClosed { .. }) => self.extension_event(event, cx),
             HostEvent::OpenUrl { pane, url } => {
                 self.update_view(pane, cx, |_, cx| cx.emit(BrowserEvent::OpenTab(url)));
             }

@@ -31,8 +31,12 @@ pub(super) struct Store {
     lists: HashMap<String, Vec<Extension>>,
     /// What each set its action to, by profile and extension.
     actions: HashMap<(String, String), Actions>,
-    /// Icons read and decoded once: by file, or by the `data:` address an extension set.
-    icons: HashMap<String, Option<Arc<Image>>>,
+    /// The manifests' icons, read and decoded once, by file.
+    files: HashMap<String, Option<Arc<Image>>>,
+    /// The icon each extension last set, decoded: by profile, extension, and the page it's
+    /// for, none for every page. One set anew takes the place of the one before, so an
+    /// extension that animates its icon keeps one picture here, not all of them.
+    set: HashMap<(String, String, Option<PaneId>), Arc<Image>>,
     /// How many times what's kept here changed: what draws from it knows by this to draw
     /// again.
     changes: u64,
@@ -68,9 +72,11 @@ pub(super) struct Shown {
 impl Store {
     /// The engine listed `profile`'s extensions. Actions of those that went are forgotten.
     pub(super) fn listed(&mut self, profile: String, extensions: Vec<Extension>) {
-        self.actions.retain(|(of, id), _| {
+        let stays = |of: &String, id: &String| {
             *of != profile || extensions.iter().any(|extension| extension.id == *id)
-        });
+        };
+        self.actions.retain(|(of, id), _| stays(of, id));
+        self.set.retain(|(of, id, _), _| stays(of, id));
         self.lists.insert(profile, extensions);
         self.changes += 1;
     }
@@ -95,6 +101,11 @@ impl Store {
         pane: Option<PaneId>,
         action: ExtensionAction,
     ) {
+        let slot = (profile.clone(), extension.clone(), pane);
+        match image(&action.icon) {
+            Some(icon) => drop(self.set.insert(slot, icon)),
+            None => drop(self.set.remove(&slot)),
+        }
         let actions = self.actions.entry((profile, extension)).or_default();
         match pane {
             Some(pane) => drop(actions.panes.insert(pane, action)),
@@ -108,6 +119,7 @@ impl Store {
         for actions in self.actions.values_mut() {
             actions.panes.remove(&pane);
         }
+        self.set.retain(|(_, _, of), _| *of != Some(pane));
     }
 
     /// How many of `profile`'s extensions are turned on, and so have an icon.
@@ -135,11 +147,19 @@ impl Store {
         for extension in list {
             let actions = self.actions.get(&(profile.to_owned(), extension.id.clone()));
             let resolved = resolve(actions, pane);
-            let source = if resolved.icon.is_empty() { &extension.icon_path } else { &resolved.icon };
-            let icon = if source.is_empty() {
+            // The picture set for the page, else the one set for all, else the manifest's.
+            let own = (actions.and_then(|actions| actions.panes.get(&pane)))
+                .is_some_and(|own| !own.icon.is_empty());
+            let slot = |pane| (profile.to_owned(), extension.id.clone(), pane);
+            let icon = if own {
+                self.set.get(&slot(Some(pane))).cloned()
+            } else if !resolved.icon.is_empty() {
+                self.set.get(&slot(None)).cloned()
+            } else if extension.icon_path.is_empty() {
                 None
             } else {
-                (self.icons.entry(source.clone()).or_insert_with(|| image(source))).clone()
+                let file = &extension.icon_path;
+                (self.files.entry(file.clone()).or_insert_with(|| image(file))).clone()
             };
             shown.push(Shown {
                 id: extension.id.clone(),
@@ -195,9 +215,13 @@ fn rgba(text: &str) -> Option<[u8; 4]> {
 }
 
 /// The picture at `source`: a `data:` address of a PNG, as an extension sets one, or a file
-/// of the extension's own. None when it can't be read or isn't a picture the app draws.
+/// of the extension's own. None for no source, or when it can't be read or isn't a picture
+/// the app draws.
 fn image(source: &str) -> Option<Arc<Image>> {
     use base64::Engine as _;
+    if source.is_empty() {
+        return None;
+    }
     if let Some(data) = source.strip_prefix("data:image/png;base64,") {
         let png = base64::engine::general_purpose::STANDARD.decode(data).ok()?;
         return Some(Arc::new(Image::from_bytes(ImageFormat::Png, png)));
@@ -285,6 +309,33 @@ mod tests {
         store.pane_closed(7);
         let back = &store.shown("p", 7, false)[0];
         assert_eq!(back.badge.as_ref().map(|badge| badge.text.as_str()), Some("3"));
+    }
+
+    #[test]
+    fn an_icon_set_anew_takes_the_place_of_the_one_before() {
+        let png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+        let with_icon = |icon: &str| ExtensionAction { icon: icon.into(), enabled: true, ..ExtensionAction::default() };
+        let mut store = Store::default();
+        store.listed("p".into(), vec![extension("a", "Alpha", true, true)]);
+        assert!(store.shown("p", 1, false)[0].icon.is_none(), "it has none of its own");
+        // Set for all, every page shows it; set for a page, that page shows its own.
+        store.acted("p".into(), "a".into(), None, with_icon(png));
+        let for_all = store.shown("p", 1, false)[0].icon.clone().expect("the one set for all");
+        store.acted("p".into(), "a".into(), Some(7), with_icon(png));
+        let for_seven = store.shown("p", 7, false)[0].icon.clone().expect("the one set for the page");
+        assert!(!Arc::ptr_eq(&for_all, &for_seven));
+        assert!(Arc::ptr_eq(&for_all, store.shown("p", 1, false)[0].icon.as_ref().expect("still")));
+        // Set again and again, as an animated icon is, one picture is kept for each place.
+        for _ in 0..50 {
+            store.acted("p".into(), "a".into(), Some(7), with_icon(png));
+        }
+        assert_eq!(store.set.len(), 2);
+        // Set to none, the page shows what's set for all again; closed, nothing of it stays.
+        store.acted("p".into(), "a".into(), Some(7), with_icon(""));
+        assert!(Arc::ptr_eq(&for_all, store.shown("p", 7, false)[0].icon.as_ref().expect("back")));
+        store.acted("p".into(), "a".into(), Some(7), with_icon(png));
+        store.pane_closed(7);
+        assert_eq!(store.set.len(), 1);
     }
 
     #[test]

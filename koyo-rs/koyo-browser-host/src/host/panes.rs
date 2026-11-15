@@ -161,6 +161,7 @@ pub(super) fn close(pane: PaneId) {
         to_page(target, &[end]);
     }
     if let Some(host) = host_of(pane) {
+        with_pane(pane, |p| p.closing = true);
         host.close_browser(1);
     } else {
         with(|host| host.panes.remove(&pane));
@@ -200,8 +201,11 @@ pub(crate) fn browser_closed(pane: PaneId) {
     crate::menus::pane_closed(pane);
     crate::passkeys::pane_gone(pane);
     crate::extensions::pane_closed(pane);
-    let (done, devtools, calls) = with(|host| {
+    let (done, devtools, calls, unasked) = with(|host| {
         let mut closed = host.panes.remove(&pane);
+        // A page nobody here asked to close: an extension closed its tab, or it closed itself.
+        let unasked = !host.shutting_down
+            && closed.as_ref().is_some_and(|c| !c.closing && c.inspector.is_none());
         let mut calls: Vec<u64> = closed
             .as_mut()
             .and_then(|c| c.agent.take())
@@ -224,18 +228,21 @@ pub(crate) fn browser_closed(pane: PaneId) {
         {
             page.inspected = None;
         }
-        (host.shutting_down && host.panes.is_empty(), devtools, calls)
+        (host.shutting_down && host.panes.is_empty(), devtools, calls, unasked)
     })
-    .unwrap_or((false, None, Vec::new()));
+    .unwrap_or((false, None, Vec::new(), false));
     for call in calls {
         cdp_failed(pane, call, "The page is closed.");
+    }
+    if unasked {
+        send(&HostEvent::TabClosed { pane });
     }
     send(&HostEvent::Closed { pane });
     if let Some(devtools) = devtools {
         close(devtools);
     }
     if done {
-        super::quit();
+        super::quit_when_closed();
     }
 }
 

@@ -112,8 +112,10 @@ popup itself (`.superpowers/research/run/03-popup-as-page.out`).
   would need Chrome's tab strip model to hold pages CEF made separately; Cra ships the
   one-window-per-page shape and extensions work in it. `[decided]`
 - **The current window is the page the person is on.** The app tells the host which page
-  has the keyboard, or was shown last (`AppRequest::Active`); the host tells Chrome
-  (`koyoSetActivePage`), whose "last active browser" it becomes, the others ceasing to be. So `tabs.query({active: true, currentWindow: true})`
+  has the keyboard, or was shown last (`AppRequest::Active`); the host tells Chrome each
+  time (`koyoSetActivePage`), whose "last active browser" it becomes, the others ceasing
+  to be. Each time, as a window of Chrome's own may have been the active one in between,
+  which the host doesn't hear of. So `tabs.query({active: true, currentWindow: true})`
   from a service worker, a context-menu click or a shortcut is that page.
 - **`tabs.create`** opens a Koyo tab: Chrome offers the new tab to the page's client as it
   offers a `window.open` (`OnBeforePopup`, marked `koyo_extension_tab`, which no page can
@@ -122,15 +124,21 @@ popup itself (`.superpowers/research/run/03-popup-as-page.out`).
   the app is told to give it a tab beside its opener's (`HostEvent::TabOpened`), in front
   when the extension asked. The tab the extension gets back is that page, so what it does
   with the tab's id afterwards (a sign-in it watches, a page it closes) works.
-- **`tabs.update({active: true})`** selects the Koyo tab; **`tabs.remove`** closes it.
+- **`tabs.update({active: true})`** selects the Koyo tab (`HostEvent::TabActivated`).
+- **`tabs.remove`** closes the Koyo tab: a page that closes without the app having asked
+  is told apart from one the app closed (`HostEvent::TabClosed`), and its tab goes; a
+  pinned page's page closes and stays pinned. A page a script opened that closes itself is
+  the same case. Before this a page the engine closed left its tab standing over nothing.
 - **A window Chrome makes on its own** (`native/strays.rs`). `windows.create` with type
   `popup` or `panel` (a wallet's confirmation, a sign-in window, a popped-out popup) stays
   a window of Chrome's, drawn as Chrome draws it: that is what the extension asked for,
   and Arc does the same. A tabbed window Chrome makes (a tab it has nowhere to put, as an
   extension's options or the page it opens once removed; `windows.create` with type
   `normal`) has no place in Koyo: the address it goes to opens as a Koyo tab beside the
-  page the person is on, and the window is closed before it shows. Before this, every
-  such browser was closed at once. Such windows close as Koyo quits. `[decided]`
+  page the person is on when that's of the window's profile, else beside another page of
+  that profile, and the window is closed before it shows. Such windows close as Koyo
+  quits. On CEF's own framework, where extensions have no controls, every such browser is
+  closed at once, as all were before. `[decided]`
 
 ## 4. Installing
 
@@ -173,7 +181,7 @@ popup itself (`.superpowers/research/run/03-popup-as-page.out`).
 ## 6. Popups
 
 - A press on an icon asks the host to trigger the action on that pane's page
-  (`Extensions.triggerAction`): Chrome grants `activeTab`, then opens the popup or fires
+  (`Extensions.koyoTriggerAction`): Chrome grants `activeTab`, then opens the popup or fires
   `action.onClicked`.
 - Chrome opens the popup as a bubble of its own under its hidden toolbar. The host finds
   the new window and puts it where the app said: its top right corner under the icon's,
@@ -184,6 +192,12 @@ popup itself (`.superpowers/research/run/03-popup-as-page.out`).
   parent yet, lies over the page.
 - A press that opens no popup (`action.onClicked`) is waited on for five seconds, a new
   bubble kept clear meanwhile, then let be.
+- **What it rests on.** Nothing of Chrome's says which window a popup is: the host takes
+  the first new bubble over the page within those five seconds, a sheet excepted (the
+  dialog Chrome asks an extension's permissions in). A bubble of Chrome's own that an
+  action brings up instead of a popup would be taken for one and put under the icon. The
+  engine saying which window it opened would end the guessing; that is a patch not written.
+  `[open]`
 - The popup is the extension's `popup` view: it sizes itself, takes the keyboard, and
   closes when it loses it, as in Chrome. Two patches take out a two-second wait before its
   page loads and a quarter second's animation of the hidden toolbar.

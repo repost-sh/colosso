@@ -147,6 +147,11 @@ impl Shell {
                 self.tab_adopted(view, *pane, url.clone(), *active, window, cx);
             }
             BrowserEvent::Activate => self.tab_asked_for(view, cx),
+            BrowserEvent::ClosedItself => {
+                if let Some(pane) = self.pane_showing(view) {
+                    self.close_pane_now(pane, cx);
+                }
+            }
             BrowserEvent::Detach(tools) => self.detach_devtools(view, tools, window, cx),
             BrowserEvent::Undock(tools) => self.remove_browser_pane(tools, cx),
             // DevTools the host closed with their page leave the tab.
@@ -217,8 +222,11 @@ impl Shell {
         self.open_beside(view, Some(pane), url, window, cx);
         let opened = (self.workspace)
             .locate(|shown| shown.view().is_some_and(|page| page.read(cx).host_pane() == pane));
-        if let (true, Some(opened)) = (active, opened) {
-            self.show_tab_holding(opened.pane, cx);
+        match opened {
+            Some(opened) if active => drop(self.show_tab_holding(opened.pane, cx)),
+            Some(_) => {}
+            // Its opener's tab wasn't found: the page has no tab, and closes in the engine.
+            None => browser::close_page(pane, cx),
         }
     }
 

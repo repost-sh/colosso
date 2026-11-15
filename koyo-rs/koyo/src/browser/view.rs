@@ -54,6 +54,9 @@ pub enum BrowserEvent {
     },
     /// An extension asked for this page's tab in front (`chrome.tabs.update`).
     Activate,
+    /// The page closed without the app asking: an extension closed its tab
+    /// (`chrome.tabs.remove`), or a page a script opened closed itself. Its tab goes.
+    ClosedItself,
     /// The person searched the web for this from the address.
     Searched(String),
     /// A page loaded, as the history keeps it (`navigation.rs`).

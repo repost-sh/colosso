@@ -10,6 +10,9 @@
 //!
 //! Chrome tells a client nothing of a browser's kind. A popup's window shows its title in a
 //! title bar of its own; a tabbed window's title bar holds its tabs, and shows no title.
+//!
+//! On an engine without Koyo's patches, where extensions have no controls of the app's
+//! (`extensions::on`), every such browser is closed as soon as it's made, as before.
 
 use std::cell::RefCell;
 
@@ -105,16 +108,29 @@ wrap_life_span_handler! {
                 return;
             };
             let window = window_of(browser);
-            let tabbed = window.as_deref().is_none_or(is_tabbed);
+            let kept = crate::extensions::on();
+            let tabbed = !kept || window.as_deref().is_none_or(is_tabbed);
             log::info!(
                 "Chrome made a browser on its own: {}",
-                if tabbed { "a tabbed window, whose page becomes a tab" } else { "a window, which stays" }
+                if !kept {
+                    "closed"
+                } else if tabbed {
+                    "a tabbed window, whose page becomes a tab"
+                } else {
+                    "a window, which stays"
+                }
             );
             if tabbed && let Some(window) = &window {
                 // Never seen: it closes once it says where it was going.
                 set_alpha(window, 0.);
                 window.setIgnoresMouseEvents(true);
                 window.orderOut(None);
+            }
+            if !kept {
+                if let Some(host) = browser.host() {
+                    host.close_browser(1);
+                }
+                return;
             }
             STRAYS.with(|strays| {
                 strays.borrow_mut().push((browser.identifier(), browser.clone(), tabbed));
@@ -125,6 +141,8 @@ wrap_life_span_handler! {
             if let Some(browser) = browser {
                 let id = browser.identifier();
                 STRAYS.with(|strays| strays.borrow_mut().retain(|(stray, ..)| *stray != id));
+                // The last of them to close may be all a quitting host waited for.
+                crate::host::quit_when_closed();
             }
         }
     }
@@ -134,8 +152,9 @@ wrap_request_handler! {
     struct StrayRequests;
 
     impl RequestHandler {
-        // A tabbed window's first page: it opens as a tab of the app's instead, beside the
-        // page the person is on, and the window goes.
+        // A tabbed window's first page: it opens as a tab of the app's instead, of the
+        // window's own profile, beside the page the person is on when that's of it, else
+        // beside another of that profile's; and the window goes.
         fn on_before_browse(
             &self,
             browser: Option<&mut Browser>,
@@ -156,9 +175,14 @@ wrap_request_handler! {
             }
             let url = cef::CefString::from(&request.url()).to_string();
             if !url.is_empty() && url != "about:blank" {
-                match crate::extensions::active_pane() {
+                let beside = (browser.host())
+                    .and_then(|host| host.request_context())
+                    .and_then(|mut profile| {
+                        crate::host::pane_of_profile(&mut profile, crate::extensions::active_pane())
+                    });
+                match beside {
                     Some(pane) => crate::host::send(&HostEvent::OpenUrl { pane, url }),
-                    None => log::warn!("a page Chrome opened has no pane to open beside: {url}"),
+                    None => log::warn!("a page Chrome opened has no pane of its profile to open beside: {url}"),
                 }
             }
             if let Some(host) = browser.host() {
