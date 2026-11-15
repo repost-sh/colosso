@@ -1,0 +1,31 @@
+--- a/content/browser/devtools/devtools_agent_host_impl.cc
++++ b/content/browser/devtools/devtools_agent_host_impl.cc
+@@ -228,6 +228,28 @@
+   if (!io_pipes.empty() && !AdoptPipes(io_pipes, read_fd, write_fd)) {
+     std::move(on_disconnect).Run();
+     return;
++  }
++#else
++  // Koyo: an embedder that runs the browser in a process of its own making
++  // can't promise file descriptors 3 and 4, which are taken long before the
++  // browser starts. --remote-debugging-io-pipes=<read>,<write> names the
++  // descriptors to use, as it names the handles on Windows.
++  const std::string io_pipes =
++      base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
++          "remote-debugging-io-pipes");
++  if (!io_pipes.empty()) {
++    const std::vector<std::string> names = base::SplitString(
++        io_pipes, ",", base::TRIM_WHITESPACE, base::SPLIT_WANT_ALL);
++    int named_read_fd = -1;
++    int named_write_fd = -1;
++    if (names.size() != 2 || !base::StringToInt(names[0], &named_read_fd) ||
++        !base::StringToInt(names[1], &named_write_fd) || named_read_fd < 0 ||
++        named_write_fd < 0) {
++      std::move(on_disconnect).Run();
++      return;
++    }
++    read_fd = named_read_fd;
++    write_fd = named_write_fd;
+   }
+ #endif
+   SetDevToolsPipeHandler(std::make_unique<DevToolsPipeHandler>(

@@ -47,6 +47,53 @@ fn history_button(back: bool, enabled: bool, cx: &mut Context<BrowserView>) -> D
     super::history::button(button, back, enabled, cx)
 }
 
+/// The icons of the extensions pinned to the toolbar (`docs/extensions.md` 5), right of the
+/// address: a press runs one's action, a right press opens its menu.
+fn pinned_extensions(view: &BrowserView, p: Palette, cx: &mut Context<BrowserView>) -> Vec<AnyElement> {
+    use gpui_kit::MouseButton;
+    use gpui_kit::component::tooltip::Tooltip;
+
+    use super::extensions::icon;
+    if view.is_inspector() {
+        return Vec::new();
+    }
+    let shown = view.extensions(true, cx);
+    let buttons = shown.into_iter().enumerate().map(|(index, shown)| {
+        let says = shown.title.clone();
+        let (pressed, asked) = (shown.id.clone(), shown.clone());
+        div()
+            .id(("browser-extension", index))
+            .debug_selector(move || format!("browser-extension-{index}"))
+            .size(px(28.))
+            .flex_shrink_0()
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(px(6.))
+            .cursor_pointer()
+            .hover(move |button| button.bg(p.hover))
+            .tooltip(move |window, cx| Tooltip::new(says.clone()).build(window, cx))
+            .child(icon::face(&shown, p.text, p.selected))
+            .on_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
+                // The popup hangs from under the icon: the page's top edge is the toolbar's foot.
+                let half = px(icon::BUTTON / 2.);
+                let at = Bounds::new(
+                    point(event.position().x - half, this.origin.y - px(icon::BUTTON)),
+                    size(px(icon::BUTTON), px(icon::BUTTON)),
+                );
+                this.extension_act(&pressed, at, window, cx);
+            }))
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(move |this, event: &gpui_kit::MouseDownEvent, window, cx| {
+                    this.extension_menu(&asked, event.position, window, cx);
+                }),
+            )
+            .into_any_element()
+    });
+    buttons.collect()
+}
+
 /// The toolbar: history, reload, the address and the inspector, lit while the shell shows the
 /// `DevTools`.
 pub(super) fn toolbar(
@@ -89,6 +136,7 @@ pub(super) fn toolbar(
         )
         .child(address(view, editing, window, cx))
         .children(view.zoom_chip(cx))
+        .children(pinned_extensions(view, p, cx))
         .child(
             toggle_button(
                 "browser-responsive",

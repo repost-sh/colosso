@@ -229,6 +229,18 @@ pub fn dismiss(window: &NSWindow) {
     unsafe { koyo_seam::windows::dismiss(std::ptr::from_ref(window).cast_mut().cast()) };
 }
 
+/// Where the point `at` of `window`, counted from its top left, is on the screen: in points
+/// from the main screen's bottom left, as `AppKit` counts them. None for a test's window.
+pub fn on_screen(window: &Window, at: gpui_kit::Point<Pixels>) -> Option<[f64; 2]> {
+    let view = gpui_view(window)?;
+    let ns_window = view.window()?;
+    let points = |pixels: Pixels| f64::from(f32::from(pixels));
+    // The view's own origin is at its bottom left.
+    let in_view = objc2_foundation::NSPoint::new(points(at.x), view.frame().size.height - points(at.y));
+    let on_screen = ns_window.convertPointToScreen(view.convertPoint_toView(in_view, None));
+    Some([on_screen.x, on_screen.y])
+}
+
 /// The `NSWindow` GPUI draws `window` in; none for a test's window.
 pub(crate) fn ns_window(window: &Window) -> Option<Retained<NSWindow>> {
     gpui_view(window)?.window()

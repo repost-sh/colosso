@@ -1,5 +1,8 @@
 //! What the host tells the app: pages changing, and what each page asks.
-use crate::{DevToolsAsk, Dialog, MenuEntry, MenuTarget, PaneId, PasskeyAsk, Permission};
+use crate::{
+    DevToolsAsk, Dialog, Extension, ExtensionAction, MenuEntry, MenuTarget, PaneId, PasskeyAsk,
+    Permission,
+};
 use serde::{Deserialize, Serialize};
 
 /// The pointer the page asks for.
@@ -244,6 +247,47 @@ pub enum HostEvent {
         method: String,
         /// Its parameters.
         params: serde_json::Value,
+    },
+    /// The extensions installed in a profile (`docs/extensions.md`): once the engine has
+    /// the profile open, and whenever one is installed, removed, turned on or off, updated
+    /// or pinned. A profile with none is told so, with none: that it's told at all says the
+    /// engine runs extensions with their icons and popups.
+    Extensions {
+        /// The profile, as [`AppRequest::Open`] names it.
+        profile: String,
+        /// Its extensions, by name.
+        extensions: Vec<Extension>,
+    },
+    /// What an extension set its toolbar action to (`chrome.action.setIcon`, `setTitle`,
+    /// `setBadgeText`, `disable`): for one page, or for every page of the profile.
+    ExtensionAction {
+        /// The profile.
+        profile: String,
+        /// The extension's id.
+        extension: String,
+        /// The page it's for; `None` for every page.
+        pane: Option<PaneId>,
+        /// What it's set to.
+        action: ExtensionAction,
+    },
+    /// An extension opened a tab (`chrome.tabs.create`, its options, its welcome page). Its
+    /// page is made already, as pane `pane`, a number the host gave it: the app gives it a
+    /// tab, and sizes and shows it as any pane, without opening it.
+    TabOpened {
+        /// The new page's pane.
+        pane: PaneId,
+        /// The pane whose profile it's of, and beside whose tab it belongs.
+        opener: PaneId,
+        /// The page it loads.
+        url: String,
+        /// Whether the extension asked for it in front.
+        active: bool,
+    },
+    /// An extension asked for the pane's tab to be brought forward
+    /// (`chrome.tabs.update` with `active`).
+    TabActivated {
+        /// The pane.
+        pane: PaneId,
     },
     /// A request could not be carried out.
     Error {

@@ -96,6 +96,9 @@ pub struct Browsers {
     reopening: std::collections::HashSet<PaneId>,
     /// Requests made while the host was starting.
     queued: Vec<AppRequest>,
+    /// Every profile's extensions and their toolbar actions, as the host last said
+    /// (`extensions.rs`).
+    pub(super) extensions: super::extensions::Store,
     /// Protocol commands under way, the app's and agents', by the app's number for each:
     /// the page each went to, and who waits for its answer.
     calls: HashMap<u64, (PaneId, Waiter)>,
@@ -157,6 +160,7 @@ impl Browsers {
             views: HashMap::new(),
             reopening: std::collections::HashSet::new(),
             queued: Vec::new(),
+            extensions: super::extensions::Store::default(),
             calls: HashMap::new(),
             next_call: 0,
             #[cfg(test)]

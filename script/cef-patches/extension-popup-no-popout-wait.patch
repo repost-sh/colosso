@@ -1,0 +1,42 @@
+diff --git a/chrome/browser/ui/views/extensions/extensions_toolbar_desktop.cc b/chrome/browser/ui/views/extensions/extensions_toolbar_desktop.cc
+index db2447a0db..f714ad282b 100644
+--- a/chrome/browser/ui/views/extensions/extensions_toolbar_desktop.cc
++++ b/chrome/browser/ui/views/extensions/extensions_toolbar_desktop.cc
+@@ -12,6 +12,7 @@
+ #include "base/functional/callback_helpers.h"
+ #include "base/no_destructor.h"
+ #include "base/scoped_observation.h"
++#include "base/task/sequenced_task_runner.h"
+ #include "base/time/time.h"
+ #include "build/build_config.h"
+ #include "chrome/app/vector_icons/vector_icons.h"
+@@ -68,6 +69,10 @@
+ #include "ui/views/widget/widget.h"
+ #include "ui/views/widget/widget_observer.h"
+ 
++#if BUILDFLAG(ENABLE_CEF)
++#include "cef/libcef/browser/chrome/browser_delegate.h"
++#endif
++
+ namespace {
+ 
+ class IphWidgetActivationObserver : public views::WidgetObserver {
+@@ -633,6 +638,18 @@ void ExtensionsToolbarDesktop::PopOutAction(
+   DCHECK(!popped_out_action_.has_value());
+   popped_out_action_ = action_id;
+   UpdateIconVisibility(action_id);
++#if BUILDFLAG(ENABLE_CEF)
++  // Cra: the toolbar is hidden under Cra's own, so nobody sees the icon pop out
++  // and waiting for its 250 ms animation only delays the popup. Snap to the new
++  // layout and open the popup right away.
++  if (browser_->cef_delegate() && browser_->cef_delegate()->IsViewsHosted()) {
++    UpdateContainerVisibility();
++    GetAnimatingLayoutManager()->ResetLayout();
++    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(FROM_HERE,
++                                                             std::move(closure));
++    return;
++  }
++#endif
+   GetAnimatingLayoutManager()->PostOrQueueAction(std::move(closure));
+   UpdateContainerVisibility();
+ }

@@ -13,6 +13,7 @@
 )]
 
 mod agents;
+mod extensions;
 mod location;
 mod media;
 mod passkeys;

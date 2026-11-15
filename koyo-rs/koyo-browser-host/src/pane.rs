@@ -4,14 +4,15 @@ use crate::host;
 use cef::{
     Browser, BrowserSettings, CefString, CefStringList, Client, ContextMenuHandler,
     ContextMenuParams, CursorInfo, CursorType, DialogHandler, DictionaryValue, DisplayHandler,
-    FindHandler, Frame, FrameHandler, ImplClient, ImplContextMenuHandler, ImplDisplayHandler,
-    ImplFindHandler, ImplFrameHandler, ImplLifeSpanHandler, ImplLoadHandler, JsdialogHandler,
-    LifeSpanHandler, LoadHandler, MenuModel, PermissionHandler, PopupFeatures, ProcessId,
-    ProcessMessage, Rect, RequestHandler, RunContextMenuCallback, TransitionType, WindowInfo,
-    WindowOpenDisposition, WrapClient, WrapContextMenuHandler, WrapDisplayHandler,
-    WrapFindHandler, WrapFrameHandler, WrapLifeSpanHandler, WrapLoadHandler, rc::Rc,
-    wrap_client, wrap_context_menu_handler, wrap_display_handler, wrap_find_handler,
-    wrap_frame_handler, wrap_life_span_handler, wrap_load_handler,
+    FindHandler, Frame, FrameHandler, ImplClient, ImplContextMenuHandler, ImplDictionaryValue,
+    ImplDisplayHandler, ImplFindHandler, ImplFrameHandler, ImplLifeSpanHandler, ImplLoadHandler,
+    ImplProcessMessage, JsdialogHandler, LifeSpanHandler, LoadHandler, MenuModel,
+    PermissionHandler, PopupFeatures, ProcessId, ProcessMessage, Rect, RequestHandler,
+    RunContextMenuCallback, TransitionType, WindowInfo, WindowOpenDisposition, WrapClient,
+    WrapContextMenuHandler, WrapDisplayHandler, WrapFindHandler, WrapFrameHandler,
+    WrapLifeSpanHandler, WrapLoadHandler, rc::Rc, wrap_client, wrap_context_menu_handler,
+    wrap_display_handler, wrap_find_handler, wrap_frame_handler, wrap_life_span_handler,
+    wrap_load_handler,
 };
 use koyo_browser_ipc::{Cursor, HostEvent, PaneId};
 use std::os::raw::c_int;
@@ -70,12 +71,21 @@ wrap_client! {
             &self,
             browser: Option<&mut Browser>,
             frame: Option<&mut Frame>,
-            _source_process: ProcessId,
+            source_process: ProcessId,
             message: Option<&mut ProcessMessage>,
         ) -> c_int {
             let (Some(browser), Some(frame), Some(message)) = (browser, frame, message) else {
                 return 0;
             };
+            // The engine itself says an extension asked for the page's tab in front
+            // (`chrome.tabs.update` with `active`; a patch of Koyo's, `docs/extensions.md` 10).
+            if source_process == ProcessId::BROWSER {
+                let asked = CefString::from(&message.name()).to_string() == "Koyo.activate";
+                if asked {
+                    host::send(&HostEvent::TabActivated { pane: self.pane });
+                }
+                return c_int::from(asked);
+            }
             c_int::from(crate::passkeys::from_renderer(self.pane, browser, frame, message))
         }
     }
@@ -281,15 +291,34 @@ wrap_life_span_handler! {
             _popup_id: c_int,
             target_url: Option<&CefString>,
             _target_frame_name: Option<&CefString>,
-            _target_disposition: WindowOpenDisposition,
+            target_disposition: WindowOpenDisposition,
             _user_gesture: c_int,
             _popup_features: Option<&PopupFeatures>,
             _window_info: Option<&mut WindowInfo>,
-            _client: Option<&mut Option<Client>>,
+            client: Option<&mut Option<Client>>,
             _settings: Option<&mut BrowserSettings>,
-            _extra_info: Option<&mut Option<DictionaryValue>>,
+            extra_info: Option<&mut Option<DictionaryValue>>,
             _no_javascript_access: Option<&mut c_int>,
         ) -> c_int {
+            // A tab an extension opens (`chrome.tabs.create`), which the engine offers as a
+            // popup of this page, marked as no page can mark one: it becomes a pane of its
+            // own, and the extension gets that page back as its tab (`docs/extensions.md` 3).
+            let extension_tab = (extra_info.as_deref().and_then(Option::as_ref))
+                .is_some_and(|info| info.has_key(Some(&"koyo_extension_tab".into())) != 0);
+            if extension_tab {
+                if let (Some(url), Some(client)) = (target_url, client)
+                    && let Some(tab) = crate::native::adopt(
+                        self.pane,
+                        &url.to_string(),
+                        target_disposition != WindowOpenDisposition::NEW_BACKGROUND_TAB,
+                    )
+                {
+                    *client = Some(tab);
+                    return 0;
+                }
+                // Not taken: Chrome opens the tab its own way.
+                return 1;
+            }
             // No native popup windows: the page opens in its own pane, and
             // a link from DevTools in a new tab of the app. DevTools' own pages
             // go nowhere: undocked, the frontend opens a window for its device

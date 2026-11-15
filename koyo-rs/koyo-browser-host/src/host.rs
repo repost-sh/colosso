@@ -27,12 +27,13 @@ pub(crate) use panes::{
     browser_closed, browser_created, cursor_changed, found, fullscreen_changed, loading_changed,
     navigate_later, page_changed, renderer_gone,
 };
+pub(crate) use panes::adopt;
 use panes::{close, exit_fullscreen, navigate, open, resize, view, visible};
 pub(crate) use panes::leave_fullscreen;
 pub(crate) use profiles::drop_cleared;
 pub use profiles::{forget_profile, keeps_profile};
 pub(crate) use site::{keep_media, media_decided};
-pub(crate) use queue::context_initialized;
+pub(crate) use queue::{context_initialized, protocol_heard};
 use queue::{Queued, enqueue, read_requests};
 pub(crate) use start::{quit, run, teardown};
 pub(crate) use start::run_embedded;
@@ -164,6 +165,47 @@ fn browser_of(pane: PaneId) -> Option<Browser> {
     with_pane(pane, |p| p.browser.clone()).flatten()
 }
 
+/// CEF's identifier of `pane`'s browser, once it's made: how Chromium is told of a page
+/// (`extensions.rs`).
+pub(crate) fn browser_id(pane: PaneId) -> Option<i32> {
+    browser_of(pane).map(|browser| browser.identifier())
+}
+
+/// The pane whose browser CEF identifies as `browser`.
+pub(crate) fn pane_of_browser(browser: i32) -> Option<PaneId> {
+    with(|host| {
+        (host.panes.iter())
+            .find(|(_, pane)| pane.browser.as_ref().is_some_and(|b| b.identifier() == browser))
+            .map(|(pane, _)| *pane)
+    })
+    .flatten()
+}
+
+/// The profile, as the app names it, whose folder in the root is `folder`: one a pane was
+/// opened in since the host started. Chromium names a profile by its folder.
+pub(crate) fn profile_of_folder(folder: &str) -> Option<String> {
+    with(|host| {
+        (host.contexts.keys())
+            .find(|profile| profiles::folder_of(profile, host.generation) == folder)
+            .cloned()
+    })
+    .flatten()
+}
+
+/// The profiles a pane was opened in since the host started, as the app names them.
+pub(crate) fn profiles() -> Vec<String> {
+    with(|host| host.contexts.keys().cloned().collect()).unwrap_or_default()
+}
+
+/// The folder in the root of the profile the app names `profile`, if a pane was opened in it.
+pub(crate) fn folder_of_profile(profile: &str) -> Option<String> {
+    with(|host| {
+        (host.contexts.contains_key(profile))
+            .then(|| profiles::folder_of(profile, host.generation))
+    })
+    .flatten()
+}
+
 fn host_of(pane: PaneId) -> Option<BrowserHost> {
     browser_of(pane).and_then(|b| b.host())
 }
@@ -243,6 +285,17 @@ fn handle(request: AppRequest) {
             method,
             params,
         } => cdp(pane, call, &method, params),
+        AppRequest::ExtensionAct {
+            pane,
+            extension,
+            at,
+        } => crate::extensions::act(pane, &extension, at),
+        AppRequest::ChangeExtension {
+            profile,
+            extension,
+            change,
+        } => crate::extensions::change(&profile, &extension, change),
+        AppRequest::Active { pane } => crate::extensions::active(pane),
         AppRequest::ClearData => panes::clear_data(),
         AppRequest::Shutdown => shutdown(),
     }

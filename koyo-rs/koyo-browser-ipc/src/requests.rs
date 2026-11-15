@@ -1,6 +1,8 @@
 //! What the app asks of the host: panes opened, sized and closed, and what the person asks
 //! of their pages. A page's pointer, wheel and keys are `AppKit`'s to hand it, not the app's.
-use crate::{Answer, DevToolsDock, PaneId, PasskeyAnswer, Permission, Point, Viewport};
+use crate::{
+    Answer, DevToolsDock, ExtensionChange, PaneId, PasskeyAnswer, Permission, Point, Viewport,
+};
 use serde::{Deserialize, Serialize};
 
 /// A request from the app to the host.
@@ -156,6 +158,34 @@ pub enum AppRequest {
         #[serde(default)]
         params: serde_json::Value,
     },
+    /// Run an extension's toolbar action on the pane's page, as a press on its icon does
+    /// (`docs/extensions.md` 6): its popup opens, or it hears `action.onClicked`, with
+    /// `activeTab` for the page either way.
+    ExtensionAct {
+        /// The page.
+        pane: PaneId,
+        /// The extension's id.
+        extension: String,
+        /// Where its popup hangs from, its top right corner there: a point of the screen, in
+        /// points from the main screen's bottom left, as `AppKit` counts them.
+        at: [f64; 2],
+    },
+    /// Turn an extension of a profile on or off, pin it, or remove it. The host says how
+    /// the profile's extensions stand after ([`crate::HostEvent::Extensions`]).
+    ChangeExtension {
+        /// The profile, as [`AppRequest::Open`] names it.
+        profile: String,
+        /// The extension's id.
+        extension: String,
+        /// What to do with it.
+        change: ExtensionChange,
+    },
+    /// The person is on this page: the one with the keyboard, or shown last. Extensions get
+    /// it as the current window's active tab.
+    Active {
+        /// The page.
+        pane: PaneId,
+    },
     /// Forget what every profile keeps (cookies, sign-ins, caches, site storage) without
     /// stopping: every pane closes ([`HostEvent::Closed`]) and a page opened from then on is of
     /// a fresh profile. For a host in the app's own process, which can't be stopped and
@@ -185,8 +215,10 @@ impl AppRequest {
             | Self::Answer { pane, .. }
             | Self::Passkey { pane, .. }
             | Self::MenuCommand { pane, .. }
+            | Self::ExtensionAct { pane, .. }
+            | Self::Active { pane }
             | Self::Cdp { pane, .. } => Some(*pane),
-            Self::ClearData | Self::Shutdown => None,
+            Self::ChangeExtension { .. } | Self::ClearData | Self::Shutdown => None,
         }
     }
 }

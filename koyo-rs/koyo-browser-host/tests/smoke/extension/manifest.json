@@ -1,0 +1,9 @@
+{
+  "manifest_version": 3,
+  "name": "Koyo Smoke",
+  "version": "1.0",
+  "description": "What the browser host's smoke test of extensions loads.",
+  "permissions": ["tabs"],
+  "background": { "service_worker": "worker.js" },
+  "action": { "default_title": "Smoke" }
+}

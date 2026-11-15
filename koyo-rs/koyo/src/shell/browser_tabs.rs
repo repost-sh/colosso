@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use gpui_kit::{AppContext as _, Context, Entity, Window};
 
 use super::Shell;
+use crate::browser::profiles::By;
 use crate::browser::{self, BrowserEvent, BrowserView, Responsive};
 use crate::history::Place;
 use crate::keyboard::Intent;
@@ -127,7 +128,7 @@ impl Shell {
         view
     }
 
-    fn browser_event(
+    pub(super) fn browser_event(
         &mut self,
         view: &Entity<BrowserView>,
         event: &BrowserEvent,
@@ -141,7 +142,11 @@ impl Shell {
             }
             BrowserEvent::Visited(visit) => self.note_visit(view, visit, cx),
             BrowserEvent::Searched(words) => self.note_search(view, words, cx),
-            BrowserEvent::OpenTab(url) => self.open_beside(view, url.clone(), window, cx),
+            BrowserEvent::OpenTab(url) => self.open_beside(view, None, url.clone(), window, cx),
+            BrowserEvent::Adopted { pane, url, active } => {
+                self.tab_adopted(view, *pane, url.clone(), *active, window, cx);
+            }
+            BrowserEvent::Activate => self.tab_asked_for(view, cx),
             BrowserEvent::Detach(tools) => self.detach_devtools(view, tools, window, cx),
             BrowserEvent::Undock(tools) => self.remove_browser_pane(tools, cx),
             // DevTools the host closed with their page leave the tab.
@@ -173,14 +178,67 @@ impl Shell {
         }
     }
 
+    // Tabs extensions open and ask for (`docs/extensions.md` 3): a tab an extension opened is
+    // a page the engine made already, which gets a tab beside the one it was opened from.
+
+    /// A page at `url` of the profile `project`'s pages have when `by` opens them, the shell
+    /// hearing what it says: a new one, or with `adopted` the one the host made already under
+    /// that number, in its opener's profile.
+    pub(crate) fn page_view(
+        &mut self,
+        adopted: Option<koyo_browser_ipc::PaneId>,
+        url: String,
+        (project, by): (&Path, By),
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<BrowserView> {
+        let Some(pane) = adopted else {
+            let view = self.browser_view(url, project, window, cx);
+            view.update(cx, |view, _| view.made_by(by));
+            return view;
+        };
+        let view = cx.new(|cx| BrowserView::adopted(pane, url, (project, by), window, cx));
+        cx.subscribe_in(&view, window, Self::browser_event).detach();
+        view
+    }
+
+    /// An extension opened a tab from `view`'s page, which the engine made as its pane
+    /// `pane`: it gets a tab right after `view`'s, wherever that is, shown when the extension
+    /// asked for it in front.
+    pub(super) fn tab_adopted(
+        &mut self,
+        view: &Entity<BrowserView>,
+        pane: koyo_browser_ipc::PaneId,
+        url: String,
+        active: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_beside(view, Some(pane), url, window, cx);
+        let opened = (self.workspace)
+            .locate(|shown| shown.view().is_some_and(|page| page.read(cx).host_pane() == pane));
+        if let (true, Some(opened)) = (active, opened) {
+            self.show_tab_holding(opened.pane, cx);
+        }
+    }
+
+    /// An extension asked for `view`'s tab in front.
+    pub(super) fn tab_asked_for(&mut self, view: &Entity<BrowserView>, cx: &mut Context<Self>) {
+        if let Some(pane) = self.pane_showing(view) {
+            self.show_tab_holding(pane, cx);
+        }
+    }
+
     /// A link from `view`'s page, or from its `DevTools`, opens in a tab right after the tab
     /// it's in, without leaving it, of its opener's profile, so it's signed in as its opener
     /// is, and an agent's if its opener is: on its checkout, after its tab; from a pinned or a
     /// loose page, as a loose page of the space shown, right after a loose opener or after them
-    /// all.
-    fn open_beside(
+    /// all. With `adopted`, the page is one the host made already under that number, a tab an
+    /// extension opened (`BrowserView::adopted`).
+    pub(super) fn open_beside(
         &mut self,
         view: &Entity<BrowserView>,
+        adopted: Option<koyo_browser_ipc::PaneId>,
         url: String,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -192,8 +250,7 @@ impl Shell {
             return;
         };
         let by = view.read(cx).inspected().unwrap_or(view).read(cx).by();
-        let opened = self.browser_view(url, &project, window, cx);
-        opened.update(cx, |opened, _| opened.made_by(by));
+        let opened = self.page_view(adopted, url, (&project, by), window, cx);
         let tab = Tab::Single(Pane::browser(opened, cx));
         match located.spot {
             Spot::Checkout(project_at, branch, at) => {

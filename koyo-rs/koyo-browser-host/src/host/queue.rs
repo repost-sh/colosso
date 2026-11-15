@@ -27,10 +27,18 @@ pub(super) enum Queued {
         page: PaneId,
         messages: Vec<String>,
     },
+    /// What Chromium wrote on the browser's `DevTools` pipe, read on the pipe's own thread
+    /// (`extensions.rs`).
+    Protocol(String),
 }
 
 /// Work waiting for the UI thread.
 static QUEUE: Mutex<VecDeque<Queued>> = Mutex::new(VecDeque::new());
+/// A message Chromium wrote on the browser's `DevTools` pipe; from the pipe's thread.
+pub(crate) fn protocol_heard(message: String) {
+    enqueue(Queued::Protocol(message));
+}
+
 pub(super) fn read_requests(reader: UnixStream) {
     let mut reader = std::io::BufReader::new(reader);
     loop {
@@ -79,6 +87,7 @@ fn post_drain() {
 /// CEF's context is up: requests that came early can run now.
 pub(crate) fn context_initialized() {
     with(|host| host.ready = true);
+    crate::extensions::started();
     drain();
 }
 
@@ -96,6 +105,7 @@ fn drain() {
             Queued::App(request) => handle(request),
             Queued::Frontend { pane, text } => frontend_message(pane, &text),
             Queued::ToPage { page, messages } => to_page(page, &messages),
+            Queued::Protocol(message) => crate::extensions::heard(&message),
         }
     }
 }

@@ -1,13 +1,19 @@
 #!/bin/sh
-# Builds the Chromium Embedded Framework from source with H.264 and AAC, and puts it in place
-# of CEF's own in the distribution the browser engine is packaged from (script/browser-engine):
+# Builds the Chromium Embedded Framework from source with H.264 and AAC and with Koyo's
+# patches, and puts it in place of CEF's own in the distribution the browser engine is
+# packaged from (script/browser-engine):
 #
 #   script/cef [--dir <dir>]
 #
 # CEF's own builds, which cef-dll-sys fetches, leave those codecs out, so no MP4 plays in a
 # page, and nothing Koyo sets brings them back: why, and what this costs, is docs/browser.md
-# 11. The framework is built at the commit of the distribution in place, so the headers, the
-# C++ wrapper and the cef crate's bindings stay as they are and only the framework is swapped.
+# 11. And extensions' icons, popups and installs need changes to Chromium no setting makes:
+# script/cef-patches/*.patch, applied in name order over CEF's own patches
+# (docs/extensions.md 10, and the README there). The framework says which it was built with,
+# in its Resources/koyo-patches.txt, and the host asks for nothing a framework without them
+# hasn't got. The framework is built at the commit of the distribution in place, so the
+# headers, the C++ wrapper and the cef crate's bindings stay as they are and only the
+# framework is swapped.
 # To have CEF's own back, remove .superpowers/cef/<version>/cef_macos_<arch>: the next build
 # of koyo-browser-host fetches it again.
 #
@@ -81,11 +87,11 @@ fi
 export GN_DEFINES="is_official_build=true proprietary_codecs=true ffmpeg_branding=Chrome symbol_level=0 blink_symbol_level=0 v8_symbol_level=0 enable_dsyms=false"
 export GN_OUT_CONFIGS="Release_GN_$cpu"
 
-# CEF's own automate-git.py, as of the commit, does the rest: depot_tools, CEF at the commit
-# and Chromium at its tag, without history; CEF's hook, which patches Chromium and writes the
-# GN project; and the build of cefclient, which holds the framework. --force-build has it
-# carry on with a build that stopped.
-echo "Building CEF $full with H.264 and AAC in $dir"
+# CEF's own automate-git.py, as of the commit, fetches: depot_tools, CEF at the commit and
+# Chromium at its tag, without history. It isn't left to build, as its build begins with
+# CEF's hook, which patches Chromium with CEF's own patches: Koyo's go on top of those, so
+# the hook runs here, once, then Koyo's patches, then the build.
+echo "Building CEF $full with H.264, AAC and Koyo's patches in $dir"
 curl -fsSL -o "$dir/automate-git.py.part" \
   "https://raw.githubusercontent.com/chromiumembedded/cef/$commit/tools/automate/automate-git.py"
 mv "$dir/automate-git.py.part" "$dir/automate-git.py"
@@ -99,8 +105,38 @@ python3 "$dir/automate-git.py" \
   --no-chromium-history \
   --with-pgo-profiles \
   --no-debug-build \
-  --force-build \
+  --no-build \
   --no-distrib
+
+src="$dir/chromium/src"
+out="out/Release_GN_$cpu"
+export PATH="$dir/depot_tools:$PATH"
+export DEPOT_TOOLS_UPDATE=0
+
+# CEF's hook: its own patches over Chromium, and the GN project, written from GN_DEFINES.
+# Once: a second run would meet its patches applied, with Koyo's over them.
+if [ ! -f "$src/$out/args.gn" ]; then
+  (cd "$src/cef" && python3 tools/gclient_hook.py)
+fi
+
+# Koyo's patches, in name order. One that's in already is passed over; one that neither
+# applies nor is in stops the build with its name: the sources moved under it.
+patches="$PWD/script/cef-patches"
+applied=""
+for patch in "$patches"/*.patch; do
+  name=$(basename "$patch" .patch)
+  if git -C "$src" apply --check "$patch" 2> /dev/null; then
+    git -C "$src" apply "$patch"
+    echo "Applied $name"
+  elif ! git -C "$src" apply --check --reverse "$patch" 2> /dev/null; then
+    fail "$name.patch neither applies to $src nor is applied there"
+  fi
+  applied="$applied$name
+"
+done
+
+# The build of cefclient, which holds the framework. It carries on with one that stopped.
+(cd "$src" && autoninja -C "$out" cefclient)
 
 # The framework it built, in place of CEF's own: the folder CEF's distributions carry as
 # theirs (make_distrib.py). Only one newer than the one in place, so that a run with nothing
@@ -109,10 +145,13 @@ python3 "$dir/automate-git.py" \
 built="$dir/chromium/src/out/Release_GN_$cpu/cefclient.app/Contents/Frameworks/$FRAMEWORK/Versions/A"
 binary="Chromium Embedded Framework"
 [ -f "$built/$binary" ] || fail "the build left no framework at $built"
-if [ "$built/$binary" -nt "$dist/$FRAMEWORK/$binary" ]; then
+if [ "$built/$binary" -nt "$dist/$FRAMEWORK/$binary" ] ||
+  [ "$(cat "$dist/$FRAMEWORK/Resources/koyo-patches.txt" 2> /dev/null)" != "$(printf %s "$applied")" ]; then
   rm -rf "$dist/$FRAMEWORK"
   cp -cR "$built" "$dist/$FRAMEWORK"
+  # Which patches it was built with, where the host reads it (its `extensions.rs`).
+  printf %s "$applied" > "$dist/$FRAMEWORK/Resources/koyo-patches.txt"
   touch "$dist/archive.json"
 fi
-echo "CEF $full with H.264 and AAC is in place at $dist"
+echo "CEF $full with H.264, AAC and Koyo's patches is in place at $dist"
 echo "Package it: script/browser-engine"

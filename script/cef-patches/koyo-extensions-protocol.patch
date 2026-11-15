@@ -1,0 +1,931 @@
+--- a/chrome/browser/devtools/inspector_protocol_config.json
++++ b/chrome/browser/devtools/inspector_protocol_config.json
+@@ -39,7 +39,7 @@
+             },
+             {
+                 "domain": "Extensions",
+-                "include": [ "triggerAction", "loadUnpacked", "getStorageItems", "setStorageItems", "removeStorageItems", "clearStorageItems", "uninstall", "getExtensions" ],
++                "include": [ "triggerAction", "koyoSetUpdatesEnabled", "koyoGetInstalled", "koyoSetEnabled", "koyoUninstall", "koyoSetPinned", "koyoSetActivePage", "koyoTriggerAction", "loadUnpacked", "getStorageItems", "setStorageItems", "removeStorageItems", "clearStorageItems", "uninstall", "getExtensions" ],
+                 "async": [ "loadUnpacked", "getStorageItems", "setStorageItems", "removeStorageItems", "clearStorageItems", "uninstall" ]
+             },
+             {
+--- a/chrome/browser/devtools/protocol/extensions_handler.cc
++++ b/chrome/browser/devtools/protocol/extensions_handler.cc
+@@ -4,29 +4,69 @@
+ 
+ #include "chrome/browser/devtools/protocol/extensions_handler.h"
+ 
++#include <map>
+ #include <memory>
+ #include <string>
++#include <vector>
+ 
++#include "base/base64.h"
+ #include "base/files/file_path.h"
+ #include "base/functional/bind.h"
++#include "base/memory/raw_ptr.h"
++#include "base/scoped_observation.h"
++#include "base/strings/string_number_conversions.h"
++#include "base/strings/stringprintf.h"
+ #include "base/strings/utf_string_conversions.h"
++#include "cef/libcef/features/features.h"
++#include "chrome/browser/browser_process.h"
+ #include "chrome/browser/devtools/chrome_devtools_manager_delegate.h"
+ #include "chrome/browser/devtools/devtools_browser_context_manager.h"
+ #include "chrome/browser/devtools/protocol/extensions.h"
+ #include "chrome/browser/devtools/protocol/protocol.h"
+ #include "chrome/browser/extensions/browser_window_util.h"
++#include "chrome/browser/extensions/extension_action_dispatcher.h"
++#include "chrome/browser/extensions/extension_tab_util.h"
+ #include "chrome/browser/extensions/extension_util.h"
++#include "chrome/browser/profiles/profile.h"
++#include "chrome/browser/ui/browser_active_state_manager/browser_active_state_manager.h"
++#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
++#include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
+ #include "chrome/browser/ui/extensions/extension_action_view_model.h"
+ #include "chrome/browser/ui/extensions/extensions_container.h"
+ #include "chrome/browser/ui/toolbar/toolbar_action_view_model.h"
++#include "chrome/browser/ui/toolbar/toolbar_actions_model.h"
+ #include "content/public/browser/devtools_agent_host.h"
+ #include "content/public/browser/web_contents.h"
+ #include "extensions/browser/api/storage/storage_area_namespace.h"
+ #include "extensions/browser/api/storage/storage_utils.h"
++#include "extensions/browser/disable_reason.h"
++#include "extensions/browser/extension_action.h"
++#include "extensions/browser/extension_action_manager.h"
+ #include "extensions/browser/extension_registrar.h"
++#include "extensions/browser/extension_registry.h"
++#include "extensions/browser/extension_registry_observer.h"
++#include "extensions/browser/extension_system.h"
++#include "extensions/browser/management_policy.h"
++#include "extensions/browser/ui_util.h"
++#include "extensions/browser/uninstall_reason.h"
+ #include "extensions/browser/unpacked_installer.h"
++#include "extensions/common/api/extension_action/action_info.h"
++#include "extensions/common/icons/extension_icon_set.h"
+ #include "extensions/common/manifest.h"
++#include "extensions/common/manifest_handlers/description_info.h"
++#include "extensions/common/manifest_handlers/icons_handler.h"
++#include "extensions/common/manifest_handlers/manifest_url_handlers.h"
++#include "extensions/common/manifest_handlers/options_page_info.h"
++#include "extensions/common/mojom/manifest.mojom.h"
++#include "ui/gfx/codec/png_codec.h"
++#include "ui/gfx/image/image.h"
++#include "ui/gfx/image/image_skia.h"
++#include "ui/gfx/image/image_skia_rep.h"
+ 
++#if BUILDFLAG(ENABLE_CEF)
++#include "cef/libcef/browser/chrome/browser_delegate.h"
++#endif
++
+ namespace {
+ 
+ // Gets an extension with ID `id`. If no extension is found, returns a
+@@ -158,10 +198,543 @@
+   result.frontend = extensions::StorageFrontend::Get(context);
+ 
+   return result;
++}
++
++// Koyo: `image` as a PNG data: URL from its largest scale, empty when it has
++// none. (From Cra's extensions-action-updates.patch, MIT.)
++std::string PngDataUrl(const gfx::Image& image) {
++  if (image.IsEmpty()) {
++    return std::string();
++  }
++  // image_reps() returns a copy: keep it alive while `best` points into it.
++  const std::vector<gfx::ImageSkiaRep> reps = image.AsImageSkia().image_reps();
++  const gfx::ImageSkiaRep* best = nullptr;
++  for (const gfx::ImageSkiaRep& rep : reps) {
++    if (!best || rep.scale() > best->scale()) {
++      best = &rep;
++    }
++  }
++  if (!best || best->GetBitmap().drawsNothing()) {
++    return std::string();
++  }
++  std::optional<std::vector<uint8_t>> png = gfx::PNGCodec::EncodeBGRASkBitmap(
++      best->GetBitmap(), /*discard_transparency=*/false);
++  return png ? "data:image/png;base64," + base::Base64Encode(*png)
++             : std::string();
++}
++
++// Koyo: the name of `context`'s profile directory, which is how the embedder
++// knows a profile.
++std::string KoyoProfileName(content::BrowserContext* context) {
++  return Profile::FromBrowserContext(context)
++      ->GetOriginalProfile()
++      ->GetBaseName()
++      .AsUTF8Unsafe();
++}
++
++// Koyo: the loaded profile whose directory is named `name`.
++Profile* KoyoProfileNamed(const std::string& name) {
++  ProfileManager* manager = g_browser_process->profile_manager();
++  if (!manager) {
++    return nullptr;
++  }
++  for (Profile* profile : manager->GetLoadedProfiles()) {
++    if (profile->GetBaseName().AsUTF8Unsafe() == name) {
++      return profile;
++    }
++  }
++  return nullptr;
++}
++
++// Koyo: the file of `extension`'s toolbar icon, the largest it comes in up to
++// 128 pixels: the action's default icon, else the extension's own.
++std::string KoyoIconPath(const extensions::Extension& extension) {
++  auto pick = [](const ExtensionIconSet& icons) {
++    std::string path = icons.Get(128, ExtensionIconSet::Match::kSmaller);
++    return path.empty() ? icons.Get(128, ExtensionIconSet::Match::kBigger)
++                        : path;
++  };
++  std::string relative;
++  if (const extensions::ActionInfo* info =
++          extensions::ActionInfo::GetExtensionActionInfo(&extension)) {
++    relative = pick(info->default_icon);
++  }
++  if (relative.empty()) {
++    relative = pick(extensions::IconsInfo::GetIcons(&extension));
++  }
++  if (relative.empty()) {
++    return std::string();
++  }
++  return extension.path()
++      .Append(base::FilePath::FromUTF8Unsafe(relative))
++      .AsUTF8Unsafe();
++}
++
++std::string KoyoLocation(const extensions::Extension& extension) {
++  using extensions::mojom::ManifestLocation;
++  switch (extension.location()) {
++    case ManifestLocation::kUnpacked:
++      return "unpacked";
++    case ManifestLocation::kCommandLine:
++      return "commandLine";
++    case ManifestLocation::kExternalPolicy:
++    case ManifestLocation::kExternalPolicyDownload:
++      return "policy";
++    default:
++      return extension.from_webstore() ? "store" : "other";
++  }
++}
++
++// Koyo: the page the embedder knows as CEF browser `browser_id`.
++content::WebContents* KoyoPage(int browser_id) {
++#if BUILDFLAG(ENABLE_CEF)
++  return cef::GetWebContentsForBrowserId(browser_id);
++#else
++  return nullptr;
++#endif
++}
++
++// Koyo: the CEF browser identifier of `web_contents`'s page, 0 for a page
++// that is not the embedder's (an extension's popup, a background page).
++int KoyoBrowserId(content::WebContents* web_contents) {
++#if BUILDFLAG(ENABLE_CEF)
++  return cef::GetBrowserIdForWebContents(web_contents);
++#else
++  return 0;
++#endif
++}
++
++// Koyo: whether the person may turn `extension` off or remove it.
++bool KoyoRemovable(Profile* profile, const extensions::Extension& extension) {
++  extensions::ManagementPolicy* policy =
++      extensions::ExtensionSystem::Get(profile)->management_policy();
++  return !policy || (policy->UserMayModifySettings(&extension, nullptr) &&
++                     !policy->MustRemainInstalled(&extension, nullptr));
+ }
+ 
+ }  // namespace
++
++// Koyo: forwards one profile's changes to the handler: its extensions'
++// actions, which extensions it has, and which are pinned.
++class ExtensionsHandler::ProfileWatch
++    : public extensions::ExtensionActionDispatcher::Observer,
++      public extensions::ExtensionRegistryObserver,
++      public ToolbarActionsModel::Observer {
++ public:
++  ProfileWatch(ExtensionsHandler* handler, Profile* profile)
++      : handler_(handler), profile_(profile->GetBaseName().AsUTF8Unsafe()) {
++    if (auto* dispatcher = extensions::ExtensionActionDispatcher::Get(profile)) {
++      actions_.Observe(dispatcher);
++    }
++    if (auto* registry = extensions::ExtensionRegistry::Get(profile)) {
++      registry_.Observe(registry);
++    }
++    if (auto* toolbar = ToolbarActionsModel::Get(profile)) {
++      toolbar_.Observe(toolbar);
++    }
++  }
++
++  const std::string& profile() const { return profile_; }
++
++  // extensions::ExtensionActionDispatcher::Observer:
++  void OnExtensionActionUpdated(
++      extensions::ExtensionAction* extension_action,
++      content::WebContents* web_contents,
++      content::BrowserContext* browser_context) override {
++    handler_->ReportAction(*extension_action, web_contents, browser_context);
++  }
++  void OnShuttingDown() override { actions_.Reset(); }
++
++  // extensions::ExtensionRegistryObserver:
++  void OnExtensionLoaded(content::BrowserContext* browser_context,
++                         const extensions::Extension* extension) override {
++    handler_->ReportInstalledChanged(profile_);
++  }
++  void OnExtensionUnloaded(content::BrowserContext* browser_context,
++                           const extensions::Extension* extension,
++                           extensions::UnloadedExtensionReason reason) override {
++    handler_->ReportInstalledChanged(profile_);
++  }
++  void OnExtensionInstalled(content::BrowserContext* browser_context,
++                            const extensions::Extension* extension,
++                            bool is_update) override {
++    handler_->ReportInstalledChanged(profile_);
++  }
++  void OnExtensionUninstalled(content::BrowserContext* browser_context,
++                              const extensions::Extension* extension,
++                              extensions::UninstallReason reason) override {
++    handler_->ReportInstalledChanged(profile_);
++  }
++  void OnShutdown(extensions::ExtensionRegistry* registry) override {
++    registry_.Reset();
++  }
++
++  // ToolbarActionsModel::Observer:
++  void OnToolbarActionAdded(const ToolbarActionsModel::ActionId& id) override {}
++  void OnToolbarActionRemoved(
++      const ToolbarActionsModel::ActionId& id) override {}
++  void OnToolbarActionUpdated(
++      const ToolbarActionsModel::ActionId& id) override {}
++  void OnToolbarModelInitialized() override {}
++  void OnToolbarPinnedActionsChanged() override {
++    handler_->ReportInstalledChanged(profile_);
++  }
++  void OnToolbarActionsModelShutdown() override { toolbar_.Reset(); }
++
++ private:
++  raw_ptr<ExtensionsHandler> handler_;
++  const std::string profile_;
++  base::ScopedObservation<extensions::ExtensionActionDispatcher,
++                          extensions::ExtensionActionDispatcher::Observer>
++      actions_{this};
++  base::ScopedObservation<extensions::ExtensionRegistry,
++                          extensions::ExtensionRegistryObserver>
++      registry_{this};
++  base::ScopedObservation<ToolbarActionsModel, ToolbarActionsModel::Observer>
++      toolbar_{this};
++};
++
++protocol::DispatchResponse ExtensionsHandler::KoyoSetUpdatesEnabled(
++    bool enabled) {
++  if (!allow_loading_extensions_) {
++    return protocol::Response::ServerError("Method not available.");
++  }
++  if (!enabled) {
++    profile_watches_.clear();
++    profile_manager_observation_.Reset();
++    reported_actions_.clear();
++    return protocol::Response::Success();
++  }
++  ProfileManager* profile_manager = g_browser_process->profile_manager();
++  if (!profile_manager) {
++    return protocol::Response::ServerError("No profile manager.");
++  }
++  if (!profile_manager_observation_.IsObserving()) {
++    profile_manager_observation_.Observe(profile_manager);
++  }
++  for (Profile* profile : profile_manager->GetLoadedProfiles()) {
++    WatchProfile(profile);
++  }
++  return protocol::Response::Success();
++}
++
++void ExtensionsHandler::OnProfileAdded(Profile* profile) {
++  WatchProfile(profile);
++  ReportInstalledChanged(profile->GetBaseName().AsUTF8Unsafe());
++}
++
++void ExtensionsHandler::OnProfileManagerDestroying() {
++  profile_watches_.clear();
++  profile_manager_observation_.Reset();
++}
++
++// Observes `profile` and reports its actions' tab-independent state.
++void ExtensionsHandler::WatchProfile(Profile* profile) {
++  if (profile->IsOffTheRecord()) {
++    return;
++  }
++  const std::string name = profile->GetBaseName().AsUTF8Unsafe();
++  for (const auto& watch : profile_watches_) {
++    if (watch->profile() == name) {
++      return;
++    }
++  }
++  profile_watches_.push_back(std::make_unique<ProfileWatch>(this, profile));
++  extensions::ExtensionActionManager* manager =
++      extensions::ExtensionActionManager::Get(profile);
++  extensions::ExtensionRegistry* registry =
++      extensions::ExtensionRegistry::Get(profile);
++  if (!manager || !registry) {
++    return;
++  }
++  for (const auto& extension : registry->enabled_extensions()) {
++    if (extensions::ExtensionAction* action =
++            manager->GetExtensionAction(*extension)) {
++      ReportAction(*action, nullptr, profile);
++    }
++  }
++}
++
++// Reports what the extension set for a tab (only that tab's own values), or
++// with no `web_contents` its tab-independent values. (After Cra's
++// extensions-action-updates.patch, MIT.)
++void ExtensionsHandler::ReportAction(const extensions::ExtensionAction& action,
++                                     content::WebContents* web_contents,
++                                     content::BrowserContext* context) {
++  if (!frontend_ || !context) {
++    return;
++  }
++  const std::string profile = KoyoProfileName(context);
++  int tab_id = extensions::ExtensionAction::kDefaultTabId;
++  std::optional<int> browser_id;
++  if (web_contents) {
++    // The embedder knows a tab by its page's CEF browser; a page with none
++    // isn't one of its tabs.
++    const int id = KoyoBrowserId(web_contents);
++    if (id <= 0) {
++      return;
++    }
++    browser_id = id;
++    tab_id = extensions::ExtensionTabUtil::GetTabId(web_contents);
++  }
++  const std::string key =
++      profile + "/" + action.extension_id() + "/" +
++      (browser_id ? base::NumberToString(*browser_id) : std::string());
++  if (web_contents && web_contents->IsBeingDestroyed()) {
++    reported_actions_.erase(key);
++    return;
++  }
++  const bool for_tab = browser_id.has_value();
++  const std::string icon = PngDataUrl(
++      !for_tab || action.HasIcon(tab_id) ? action.GetExplicitlySetIcon(tab_id)
++                                         : action.GetDeclarativeIcon(tab_id));
++  const std::string title =
++      !for_tab || action.HasTitle(tab_id) ? action.GetTitle(tab_id) : "";
++  // A tab's badge is its own text, else the declarativeNetRequest action
++  // count when the extension asked for it.
++  const std::string badge_text =
++      !for_tab ? action.GetExplicitlySetBadgeText(tab_id)
++      : action.HasBadgeText(tab_id) || action.HasDNRActionCount(tab_id)
++          ? action.GetDisplayBadgeText(tab_id)
++          : "";
++  auto hex = [](SkColor color) {
++    return base::StringPrintf("#%02X%02X%02X%02X", SkColorGetR(color),
++                              SkColorGetG(color), SkColorGetB(color),
++                              SkColorGetA(color));
++  };
++  const std::string badge_color =
++      !for_tab || action.HasBadgeBackgroundColor(tab_id)
++          ? hex(action.GetBadgeBackgroundColor(tab_id))
++          : "";
++  const std::string badge_text_color =
++      !for_tab || action.HasBadgeTextColor(tab_id)
++          ? hex(action.GetBadgeTextColor(tab_id))
++          : "";
++  const bool enabled = action.GetIsVisible(tab_id);
++  const std::string state = icon + "\n" + title + "\n" + badge_text + "\n" +
++                            badge_color + "\n" + badge_text_color + "\n" +
++                            (enabled ? "1" : "0");
++  // A tab with nothing of its own, and enabled as every tab is, has no state.
++  const bool empty = icon.empty() && title.empty() && badge_text.empty() &&
++                     badge_color.empty() && badge_text_color.empty() &&
++                     enabled ==
++                         action.GetIsVisible(
++                             extensions::ExtensionAction::kDefaultTabId);
++  auto it = reported_actions_.find(key);
++  if (it == reported_actions_.end() ? (empty && for_tab)
++                                    : it->second == state) {
++    return;
++  }
++  if (empty && for_tab) {
++    reported_actions_.erase(key);
++  } else {
++    reported_actions_[key] = state;
++  }
++  frontend_->KoyoActionUpdated(action.extension_id(), profile, icon, title,
++                               badge_text, badge_color, badge_text_color,
++                               enabled, std::move(browser_id));
++}
+ 
++void ExtensionsHandler::ReportInstalledChanged(const std::string& profile) {
++  if (frontend_) {
++    frontend_->KoyoInstalledChanged(profile);
++  }
++}
++
++protocol::DispatchResponse ExtensionsHandler::KoyoGetInstalled(
++    std::unique_ptr<protocol::Array<protocol::Extensions::KoyoExtension>>*
++        out_extensions) {
++  if (!allow_loading_extensions_) {
++    return protocol::Response::ServerError("Method not available.");
++  }
++  ProfileManager* profile_manager = g_browser_process->profile_manager();
++  if (!profile_manager) {
++    return protocol::Response::ServerError("No profile manager.");
++  }
++  auto result =
++      std::make_unique<protocol::Array<protocol::Extensions::KoyoExtension>>();
++  for (Profile* profile : profile_manager->GetLoadedProfiles()) {
++    extensions::ExtensionRegistry* registry =
++        extensions::ExtensionRegistry::Get(profile);
++    if (!registry || profile->IsOffTheRecord()) {
++      continue;
++    }
++    ToolbarActionsModel* toolbar = ToolbarActionsModel::Get(profile);
++    const std::string profile_name = profile->GetBaseName().AsUTF8Unsafe();
++    const extensions::ExtensionSet installed =
++        registry->GenerateInstalledExtensionsSet();
++    for (const auto& extension : installed) {
++      if (!extensions::ui_util::ShouldDisplayInExtensionSettings(*extension)) {
++        continue;
++      }
++      const extensions::ActionInfo* info =
++          extensions::ActionInfo::GetExtensionActionInfo(extension.get());
++      result->emplace_back(
++          protocol::Extensions::KoyoExtension::Create()
++              .SetId(extension->id())
++              .SetProfile(profile_name)
++              .SetName(extension->name())
++              .SetVersion(extension->VersionString())
++              .SetDescription(
++                  extensions::DescriptionInfo::GetDescription(*extension))
++              .SetEnabled(
++                  registry->enabled_extensions().Contains(extension->id()))
++              .SetRemovable(KoyoRemovable(profile, *extension))
++              .SetHasAction(info != nullptr)
++              .SetHasPopup(info && !info->default_popup_url.is_empty())
++              .SetPinned(toolbar && toolbar->IsActionPinned(extension->id()))
++              .SetOptionsUrl(
++                  extensions::OptionsPageInfo::HasOptionsPage(extension.get())
++                      ? extensions::OptionsPageInfo::GetOptionsPage(
++                            extension.get())
++                            .spec()
++                      : std::string())
++              .SetHomepageUrl(
++                  extensions::ManifestURL::GetHomepageURL(extension.get())
++                      .spec())
++              .SetIconPath(KoyoIconPath(*extension))
++              .SetLocation(KoyoLocation(*extension))
++              .Build());
++    }
++  }
++  *out_extensions = std::move(result);
++  return protocol::Response::Success();
++}
++
++protocol::DispatchResponse ExtensionsHandler::KoyoSetEnabled(
++    const protocol::String& id,
++    const protocol::String& profile_name,
++    bool enabled) {
++  if (!allow_loading_extensions_) {
++    return protocol::Response::ServerError("Method not available.");
++  }
++  Profile* profile = KoyoProfileNamed(profile_name);
++  if (!profile) {
++    return protocol::Response::ServerError("No such profile.");
++  }
++  const extensions::Extension* extension =
++      extensions::ExtensionRegistry::Get(profile)->GetInstalledExtension(id);
++  if (!extension) {
++    return protocol::Response::ServerError("No such extension.");
++  }
++  if (!KoyoRemovable(profile, *extension)) {
++    return protocol::Response::ServerError("A policy keeps it as it is.");
++  }
++  extensions::ExtensionRegistrar* registrar =
++      extensions::ExtensionRegistrar::Get(profile);
++  if (enabled) {
++    registrar->EnableExtension(id);
++  } else {
++    registrar->DisableExtension(
++        id, {extensions::disable_reason::DISABLE_USER_ACTION});
++  }
++  return protocol::Response::Success();
++}
++
++protocol::DispatchResponse ExtensionsHandler::KoyoUninstall(
++    const protocol::String& id,
++    const protocol::String& profile_name) {
++  if (!allow_loading_extensions_) {
++    return protocol::Response::ServerError("Method not available.");
++  }
++  Profile* profile = KoyoProfileNamed(profile_name);
++  if (!profile) {
++    return protocol::Response::ServerError("No such profile.");
++  }
++  const extensions::Extension* extension =
++      extensions::ExtensionRegistry::Get(profile)->GetInstalledExtension(id);
++  if (!extension) {
++    return protocol::Response::ServerError("No such extension.");
++  }
++  if (!KoyoRemovable(profile, *extension)) {
++    return protocol::Response::ServerError("A policy keeps it installed.");
++  }
++  std::u16string error;
++  if (!extensions::ExtensionRegistrar::Get(profile)->UninstallExtension(
++          id, extensions::UNINSTALL_REASON_USER_INITIATED, &error)) {
++    return protocol::Response::ServerError(base::UTF16ToUTF8(error));
++  }
++  return protocol::Response::Success();
++}
++
++protocol::DispatchResponse ExtensionsHandler::KoyoSetPinned(
++    const protocol::String& id,
++    const protocol::String& profile_name,
++    bool pinned) {
++  if (!allow_loading_extensions_) {
++    return protocol::Response::ServerError("Method not available.");
++  }
++  Profile* profile = KoyoProfileNamed(profile_name);
++  ToolbarActionsModel* toolbar =
++      profile ? ToolbarActionsModel::Get(profile) : nullptr;
++  if (!toolbar) {
++    return protocol::Response::ServerError("No such profile.");
++  }
++  if (!toolbar->HasAction(id)) {
++    return protocol::Response::ServerError("No such extension.");
++  }
++  if (toolbar->IsActionForcePinned(id)) {
++    return protocol::Response::ServerError("A policy keeps it pinned.");
++  }
++  if (toolbar->IsActionPinned(id) != pinned) {
++    toolbar->SetActionVisibility(id, pinned);
++  }
++  return protocol::Response::Success();
++}
++
++protocol::DispatchResponse ExtensionsHandler::KoyoTriggerAction(
++    const protocol::String& id,
++    int browser_id) {
++  if (!allow_loading_extensions_) {
++    return protocol::Response::ServerError("Method not available.");
++  }
++  content::WebContents* web_contents = KoyoPage(browser_id);
++  if (!web_contents) {
++    return protocol::Response::ServerError("No page for the provided id.");
++  }
++  return RunAction(id, web_contents);
++}
++
++protocol::DispatchResponse ExtensionsHandler::KoyoSetActivePage(
++    int browser_id) {
++  if (!allow_loading_extensions_) {
++    return protocol::Response::ServerError("Method not available.");
++  }
++  content::WebContents* web_contents = KoyoPage(browser_id);
++  if (!web_contents) {
++    return protocol::Response::ServerError("No page for the provided id.");
++  }
++  BrowserWindowInterface* browser =
++      extensions::browser_window_util::GetBrowserForTabContents(*web_contents);
++  BrowserActiveStateManager* state =
++      browser ? BrowserActiveStateManager::From(browser) : nullptr;
++  if (!state) {
++    return protocol::Response::ServerError("The page is in no browser.");
++  }
++#if BUILDFLAG(ENABLE_CEF)
++  // The embedder's other pages stop being the active one: none of their
++  // windows is ever key, so nothing else tells them. A window of Chrome's own
++  // hears it from its widget and is left alone.
++  std::vector<BrowserWindowInterface*> others;
++  ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
++      [&](BrowserWindowInterface* other) {
++        if (other != browser && other->cef_delegate() &&
++            other->cef_delegate()->IsViewsHosted()) {
++          others.push_back(other);
++        }
++        return true;
++      });
++  for (BrowserWindowInterface* other : others) {
++    if (BrowserActiveStateManager* other_state =
++            BrowserActiveStateManager::From(other)) {
++      other_state->DidBecomeInactive();
++    }
++  }
++#endif
++  state->DidBecomeActive();
++  return protocol::Response::Success();
++}
++
+ protocol::DispatchResponse ExtensionsHandler::TriggerAction(
+     const std::string& extension_id,
+     const std::string& target_id) {
+@@ -184,15 +757,35 @@
+   if (web_contents == nullptr) {
+     return protocol::Response::ServerError("Tab target has no WebContents.");
+   }
++  return RunAction(extension_id, web_contents);
++}
+ 
++protocol::DispatchResponse ExtensionsHandler::RunAction(
++    const std::string& extension_id,
++    content::WebContents* web_contents) {
+   BrowserWindowInterface* browser =
+       extensions::browser_window_util::GetBrowserForTabContents(*web_contents);
++  // Koyo: answer with an error instead of crashing. A disabled or uninstalled
++  // extension has no toolbar action, and a tab need not be in a browser with
++  // an extensions container. (From Cra's
++  // extension-trigger-action-null-checks.patch, MIT.)
++  if (browser == nullptr) {
++    return protocol::Response::ServerError("Tab target has no browser.");
++  }
+ 
+   ExtensionsContainer* extension_container =
+       ExtensionsContainer::From(*browser);
++  if (extension_container == nullptr) {
++    return protocol::Response::ServerError(
++        "Browser has no extensions toolbar.");
++  }
+ 
+   ToolbarActionViewModel* extension_model =
+       extension_container->GetActionForId(extension_id);
++  if (extension_model == nullptr) {
++    return protocol::Response::ServerError(
++        "No enabled extension with the provided id.");
++  }
+ 
+   extension_model->ExecuteUserAction(
+       ExtensionActionViewModel::InvocationSource::kCdp);
+@@ -206,6 +799,9 @@
+     : target_id_(target_id),
+       allow_loading_extensions_(allow_loading_extensions) {
+   protocol::Extensions::Dispatcher::wire(dispatcher, this);
++  // Koyo: its events need a frontend.
++  frontend_ =
++      std::make_unique<protocol::Extensions::Frontend>(dispatcher->channel());
+ }
+ 
+ ExtensionsHandler::~ExtensionsHandler() = default;
+--- a/chrome/browser/devtools/protocol/extensions_handler.h
++++ b/chrome/browser/devtools/protocol/extensions_handler.h
+@@ -5,13 +5,33 @@
+ #ifndef CHROME_BROWSER_DEVTOOLS_PROTOCOL_EXTENSIONS_HANDLER_H_
+ #define CHROME_BROWSER_DEVTOOLS_PROTOCOL_EXTENSIONS_HANDLER_H_
+ 
++#include <map>
++#include <memory>
++#include <string>
++#include <vector>
++
++#include "base/scoped_observation.h"
+ #include "chrome/browser/devtools/protocol/extensions.h"
+ #include "chrome/browser/devtools/protocol/protocol.h"
++#include "chrome/browser/profiles/profile_manager.h"
++#include "chrome/browser/profiles/profile_manager_observer.h"
+ #include "extensions/browser/api/storage/storage_frontend.h"
+ #include "extensions/common/extension.h"
+ 
++class Profile;
++
++namespace content {
++class BrowserContext;
++class WebContents;
++}  // namespace content
++
++namespace extensions {
++class ExtensionAction;
++}  // namespace extensions
++
+ // Implements the Extensions domain for Chrome DevTools Protocol.
+-class ExtensionsHandler : public protocol::Extensions::Backend {
++class ExtensionsHandler : public protocol::Extensions::Backend,
++                          public ProfileManagerObserver {
+  public:
+   explicit ExtensionsHandler(protocol::UberDispatcher* dispatcher,
+                              const std::string& target_id,
+@@ -26,6 +46,40 @@
+   protocol::DispatchResponse TriggerAction(
+       const protocol::String& extendsion_id,
+       const protocol::String& target_id) override;
++  // Koyo: what an embedder that draws its own toolbar needs to know and do
++  // about extensions, in every profile (Extensions.pdl).
++  protocol::DispatchResponse KoyoSetUpdatesEnabled(bool enabled) override;
++  protocol::DispatchResponse KoyoGetInstalled(
++      std::unique_ptr<protocol::Array<protocol::Extensions::KoyoExtension>>*
++          out_extensions) override;
++  protocol::DispatchResponse KoyoSetEnabled(const protocol::String& id,
++                                            const protocol::String& profile,
++                                            bool enabled) override;
++  protocol::DispatchResponse KoyoUninstall(
++      const protocol::String& id,
++      const protocol::String& profile) override;
++  protocol::DispatchResponse KoyoSetPinned(const protocol::String& id,
++                                           const protocol::String& profile,
++                                           bool pinned) override;
++  protocol::DispatchResponse KoyoSetActivePage(int browser_id) override;
++  protocol::DispatchResponse KoyoTriggerAction(const protocol::String& id,
++                                               int browser_id) override;
++  // Koyo: runs `extension_id`'s action on the tab holding `web_contents`.
++  protocol::DispatchResponse RunAction(const std::string& extension_id,
++                                       content::WebContents* web_contents);
++  // ProfileManagerObserver:
++  void OnProfileAdded(Profile* profile) override;
++  void OnProfileManagerDestroying() override;
++  // Koyo: observes `profile`'s extensions and their actions.
++  void WatchProfile(Profile* profile);
++  // Koyo: sends koyoActionUpdated for what changed in `action`, for a tab
++  // (`web_contents`) or for every tab (null).
++  void ReportAction(const extensions::ExtensionAction& action,
++                    content::WebContents* web_contents,
++                    content::BrowserContext* context);
++  // Koyo: sends koyoInstalledChanged for the profile in the directory named
++  // `profile`.
++  void ReportInstalledChanged(const std::string& profile);
+   void LoadUnpacked(const protocol::String& path,
+                     std::optional<bool> enable_in_incognito,
+                     std::unique_ptr<LoadUnpackedCallback> callback) override;
+@@ -83,6 +137,17 @@
+   bool allow_loading_extensions_;
+ 
+   std::unique_ptr<protocol::Extensions::Frontend> frontend_;
++
++  // Koyo: one watch per profile, of its extension registry, its toolbar
++  // model and its actions, while updates are on.
++  class ProfileWatch;
++  std::vector<std::unique_ptr<ProfileWatch>> profile_watches_;
++  base::ScopedObservation<ProfileManager, ProfileManagerObserver>
++      profile_manager_observation_{this};
++  // The last reported state of each action that has one, by profile,
++  // extension and page target, so a navigation that clears nothing reports
++  // nothing.
++  std::map<std::string, std::string> reported_actions_;
+   base::WeakPtrFactory<ExtensionsHandler> weak_factory_{this};
+ };
+ 
+--- a/third_party/blink/public/devtools_protocol/domains/Extensions.pdl
++++ b/third_party/blink/public/devtools_protocol/domains/Extensions.pdl
+@@ -22,6 +22,124 @@
+       # A tab target ID to trigger the default extension action on.
+       string targetId
+ 
++  # Koyo: an installed extension, as a browser's toolbar and its list of
++  # extensions show it. Every profile's are listed, each under its profile.
++  type KoyoExtension extends object
++    properties
++      # Extension id.
++      string id
++      # Profile directory name ("Default", "profile-work").
++      string profile
++      string name
++      string version
++      string description
++      boolean enabled
++      # Whether the person may turn it off or remove it; one a policy installed
++      # may not be.
++      boolean removable
++      # Whether it has a toolbar action.
++      boolean hasAction
++      # Whether the action opens a popup unless a tab says otherwise.
++      boolean hasPopup
++      # Whether the person pinned it to the toolbar.
++      boolean pinned
++      # Its options page, empty when it has none.
++      string optionsUrl
++      # Its home page (the Web Store's page for one from there), or empty.
++      string homepageUrl
++      # The file of its toolbar icon at the largest size it comes in up to
++      # 128 pixels (the action's default icon, else the extension's), or empty.
++      string iconPath
++      # Where it came from: "store", "unpacked", "commandLine", "policy" or
++      # "other".
++      string location
++
++  # Koyo: reports changes to extensions in every profile: `koyoActionUpdated`
++  # for a toolbar action (chrome.action.setIcon, setTitle, setBadgeText) and
++  # `koyoInstalledChanged` when the list `koyoGetInstalled` answers changed.
++  # Turning it on first reports each enabled extension's tab-independent
++  # action state.
++  command koyoSetUpdatesEnabled
++    parameters
++      boolean enabled
++
++  # Koyo: the extensions installed in every loaded profile.
++  command koyoGetInstalled
++    returns
++      array of KoyoExtension extensions
++
++  # Koyo: turns an extension on or off, as chrome://extensions does.
++  command koyoSetEnabled
++    parameters
++      string id
++      # Profile directory name.
++      string profile
++      boolean enabled
++
++  # Koyo: removes an extension of any kind from a profile, without asking.
++  command koyoUninstall
++    parameters
++      string id
++      # Profile directory name.
++      string profile
++
++  # Koyo: pins an extension to the toolbar or takes it off, which the
++  # extension reads as chrome.action.getUserSettings().isOnToolbar.
++  command koyoSetPinned
++    parameters
++      string id
++      # Profile directory name.
++      string profile
++      boolean pinned
++
++  # Koyo: says which page the person is on. Its browser becomes the last
++  # active one, which is what extensions get as the current window. The
++  # embedder's pages are not in windows that become key, so nothing else says.
++  command koyoSetActivePage
++    parameters
++      # The page's CEF browser identifier (CefBrowser::GetIdentifier).
++      integer browserId
++
++  # Koyo: runs an extension's toolbar action on a page, as a click on its
++  # toolbar button does: `triggerAction` for a page the embedder knows by its
++  # CEF browser identifier.
++  command koyoTriggerAction
++    parameters
++      # Extension id.
++      string id
++      # The page's CEF browser identifier.
++      integer browserId
++
++  # Koyo: an extension changed its toolbar action. Empty values are ones the
++  # extension did not set: the manifest's default applies, or for a tab, the
++  # tab-independent value.
++  event koyoActionUpdated
++    parameters
++      # Extension id.
++      string id
++      # Profile directory name.
++      string profile
++      # The icon the extension set, as a PNG data: URL at its largest scale.
++      string icon
++      string title
++      string badgeText
++      # Badge background as #RRGGBBAA.
++      string badgeColor
++      # Badge text colour as #RRGGBBAA.
++      string badgeTextColor
++      # Whether the action is enabled (chrome.action.disable greys it out).
++      boolean enabled
++      # CEF browser identifier of the page the change is for; absent for the
++      # tab-independent state.
++      optional integer browserId
++
++  # Koyo: the extensions installed in a profile changed: one was installed,
++  # removed, turned on or off, updated, or pinned.
++  event koyoInstalledChanged
++    parameters
++      # Profile directory name.
++      string profile
++
+   # Installs an unpacked extension from the filesystem similar to
+   # --load-extension CLI flags. Returns extension ID once the extension
+   # has been installed.
+--- a/cef/libcef/browser/chrome/browser_delegate.h
++++ b/cef/libcef/browser/chrome/browser_delegate.h
+@@ -212,6 +212,13 @@
+   virtual bool HasViewsHostedOpener() const { return false; }
+ };
+ 
++// Koyo: the page a client knows as CEF browser |browser_id|
++// (CefBrowser::GetIdentifier), nullptr when there is none; and the identifier
++// of |web_contents|'s CEF browser, 0 when it has none (an extension's popup or
++// background page). For Chrome code that can't include CEF's public headers.
++content::WebContents* GetWebContentsForBrowserId(int browser_id);
++int GetBrowserIdForWebContents(content::WebContents* web_contents);
++
+ }  // namespace cef
+ 
+ #endif  // CEF_LIBCEF_BROWSER_CHROME_BROWSER_DELEGATE_H_
+--- a/cef/libcef/browser/chrome/chrome_browser_delegate.cc
++++ b/cef/libcef/browser/chrome/chrome_browser_delegate.cc
+@@ -757,6 +757,16 @@
+     std::unique_ptr<content::WebContents>& devtools_contents) {
+   return ChromeBrowserDelegate::CreateDevToolsBrowser(
+       profile, opener, inspected_web_contents, devtools_contents);
++}
++
++content::WebContents* GetWebContentsForBrowserId(int browser_id) {
++  auto browser = CefBrowserHostBase::GetBrowserForBrowserId(browser_id);
++  return browser ? browser->GetWebContents() : nullptr;
++}
++
++int GetBrowserIdForWebContents(content::WebContents* web_contents) {
++  auto browser = CefBrowserHostBase::GetBrowserForContents(web_contents);
++  return browser ? browser->GetIdentifier() : 0;
+ }
+ 
+ }  // namespace cef

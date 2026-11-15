@@ -48,6 +48,17 @@ wrap_app! {
             if crate::mock_keychain() {
                 command_line.append_switch(Some(&"use-mock-keychain".into()));
             }
+            // Extensions (`docs/extensions.md`): the host drives Chrome's own extension UI over
+            // the `DevTools` protocol at the browser's level, on a pipe inside this process
+            // whose ends are named here. Only an engine with Koyo's patches takes the names;
+            // any other would read and write descriptors 3 and 4, which are somebody's.
+            if let Some(ends) = crate::extensions::pipe_switch() {
+                command_line.append_switch(Some(&"remote-debugging-pipe".into()));
+                command_line.append_switch_with_value(
+                    Some(&"remote-debugging-io-pipes".into()),
+                    Some(&ends.as_str().into()),
+                );
+            }
             // Switches to try things out with, in a debug build: `KOYO_NATIVE_SWITCHES="a b=c"`.
             let extra = if cfg!(debug_assertions) {
                 std::env::var("KOYO_NATIVE_SWITCHES").unwrap_or_default()
