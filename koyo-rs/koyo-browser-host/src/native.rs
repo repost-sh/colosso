@@ -377,8 +377,8 @@ fn take_keyboard(pane: PaneId) {
     }
 }
 
-/// A key `pane`'s page left unhandled, as the `NSEvent` it came as, goes to the app's own
-/// view, as it would have had the page not had the keyboard; whether there was one to take it.
+/// A key `pane`'s page left unhandled, as the `NSEvent` it came as, is offered to the app's
+/// own view as a shortcut; whether there was a view to offer it.
 pub(crate) fn unhandled_key(pane: PaneId, event: *mut AnyObject) -> bool {
     let Some(Some(home)) = page(pane, |entry| Some(entry.shown_in.as_ref()?.1.clone())) else {
         return false;
@@ -386,10 +386,13 @@ pub(crate) fn unhandled_key(pane: PaneId, event: *mut AnyObject) -> bool {
     if event.is_null() {
         return false;
     }
-    // SAFETY: `event` is the `NSEvent` CEF is handling, alive through this call; a view
-    // takes a key as `AppKit` would hand it one.
+    // As a shortcut, and not as a key press: the page has had the key, as text where it's
+    // text, and a view handed a key press it has no use for passes it on to the text system,
+    // which types it into whatever has the keyboard, the page, a second time.
+    // SAFETY: `event` is the `NSEvent` CEF is handling, alive through this call; a view is
+    // asked whether a key is a shortcut of its own as `AppKit` asks it.
     unsafe {
-        let _: () = objc2::msg_send![&*home, keyDown: event];
+        let _: objc2::runtime::Bool = objc2::msg_send![&*home, performKeyEquivalent: event];
     }
     true
 }
