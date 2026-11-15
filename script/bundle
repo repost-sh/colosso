@@ -102,6 +102,17 @@ else
       "until script/signing-identity has run once (docs/browser.md 12.7)" >&2
   fi
 fi
+# codesign would wait on a password dialog for as long as nobody answered it, so a build that
+# can't sign unasked stops here, and again before signing, the keychain having locked
+# meanwhile. Not ad hoc instead, which would lose what Koyo was allowed.
+signing_ready() {
+  [ -z "${local_identity:-}" ] && return
+  script/signing-identity --ready && return
+  echo "script/bundle: codesign can't sign with \"Koyo Local Signing\" without a password" \
+    "dialog: unlock the login keychain, or run script/signing-identity once at the Mac" >&2
+  exit 1
+}
+signing_ready
 
 script/cargo build -p koyo --release
 # A device's host: a plain executable beside the app's own, holding no grant (docs/devices.md 3).
@@ -203,6 +214,7 @@ if [ -n "$identity" ]; then
 else
   # The app's own signature is what macOS keeps its grants by: the engine's helpers and the
   # agent host run as Koyo's, so theirs stay ad hoc.
+  signing_ready
   codesign --force --timestamp=none --sign "${local_identity:--}" "$app"
 fi
 codesign --verify --strict "$app"

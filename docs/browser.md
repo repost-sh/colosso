@@ -750,8 +750,14 @@ macOS's privacy service (`log show --predicate 'process == "tccd"'`) that day:
   and still don't match. They're removed with "−" in System Settings, or
   `tccutil reset ScreenCapture codes.koyo.desktop` (and `dev.koyo.desktop`, and `Camera`
   and `Microphone` alike), and the first build signed by the identity is allowed once.
-  The first time codesign signs with the key, macOS may ask whether it may use it: Always
-  Allow.
+- **codesign uses the key unasked** only once the key lets in codesign's partition,
+  `apple:`: one the security tool imports lets in `apple-tool:` alone, and codesign then asks
+  for the login keychain's password in a dialog, which waits for as long as nobody answers
+  (a build left running waited two hours, 2026-11-15). `script/signing-identity` lets it
+  in, asking the password once in the terminal. `script/bundle` checks, without a dialog,
+  that the keychain is unlocked (`SecKeychainGetStatus`) and the key lets codesign in (its
+  access list, read by `security dump-keychain -a`): before building, and again before
+  signing. When either fails it stops and says so, rather than sign ad hoc.
 
 Checked 2026-11-15: the identity made; a build signed by it installed (`019344328a8e…`,
 `certificate leaf = H"6b376c3f…"`); the camera and the microphone asked for and kept under
