@@ -216,7 +216,9 @@ fn a_page_brought_back_opens_only_once_shown_and_reopens_at_its_address(cx: &mut
     let reopened = cx.update_window(window, |_, window, cx| {
         shell.update(cx, |shell, cx| shell.reopen_closed_tab(window, cx))
     });
-    assert_eq!(reopened.unwrap(), Some(page_at), "back where it was");
+    let (project, branch, at) = page_at;
+    let back = Some(crate::model::Spot::Checkout(project, branch, at));
+    assert_eq!(reopened.unwrap(), back, "back where it was");
     draw(window, cx);
     let page = view(cx).expect("shown, its page is made");
     cx.read(|cx| {

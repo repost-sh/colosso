@@ -17,7 +17,6 @@ use super::Shell;
 use crate::files::FilePane;
 use crate::model::{Pane, PaneKind, Spot};
 use crate::navigation::Route;
-use crate::settings;
 
 /// What's still to happen to the keyboard, between what the person did and the frame that
 /// settles it.
@@ -113,11 +112,7 @@ impl Shell {
             return false;
         };
         if let Spot::Loose(space) = located.spot {
-            let settings = settings::get(cx);
-            let index = settings.spaces.iter().position(|kept| kept.id == space);
-            if let Some(index) = index.filter(|index| *index != settings.space) {
-                self.show_space(index, cx);
-            }
+            self.show_space_known_by(space, cx);
         }
         let shown = self.workspace.show_tab(located.spot, located.tab);
         if shown {

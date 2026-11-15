@@ -3,14 +3,16 @@
 //! a page's tab let go on them is one, a loose page let go on a worktree's tabs is its tab, and
 //! on the pinned pages is pinned; and a space with no project shows no dot.
 
-use gpui_kit::{Entity, Modifiers, MouseButton, TestAppContext, VisualTestContext, point, px};
+use gpui_kit::{
+    AppContext as _, Entity, Modifiers, MouseButton, TestAppContext, VisualTestContext, point, px,
+};
 
 use super::{act, arc_shell, chat, drag, drag_onto, drawn, let_go_on, listed, take_up};
 use crate::arc::actions::{NewSpace, PreviousSpace};
 use crate::files::tests::{dialog, press};
 use crate::launcher::{Launcher, NewTab};
 use crate::settings;
-use crate::shell::{CloseTab, Shell};
+use crate::shell::{CloseTab, ReopenClosedTab, Shell};
 use crate::test_support::{click, draw, open_page};
 
 /// The loose pages of the space shown, by the addresses they show, in the order of their rows.
@@ -200,4 +202,30 @@ fn a_pages_tab_moves_between_a_worktree_the_loose_pages_and_the_pinned_by_draggi
         (0, vec![pages[1].to_owned()])
     );
     assert_eq!(shown(&shell, cx), (Some(pages[1].into()), true));
+}
+
+#[gpui_kit::test]
+fn a_loose_page_closed_comes_back_where_it_was_with_cmd_shift_t(cx: &mut TestAppContext) {
+    let (window, shell, _) = arc_shell(&["arc-loose-reopen"], cx);
+    // A space with no project, where pages open loose.
+    act(window, NewSpace, cx);
+    let page = |name: &str| format!("https://example.org/{name}");
+    for name in ["one", "two", "three"] {
+        open_page(window, &shell, Some(&page(name)), cx);
+    }
+    click(window, "arc-loose-1", cx);
+    act(window, CloseTab, cx);
+    assert_eq!(loose(&shell, cx), [page("one"), page("three")]);
+    // An agent's tab_reopen brings back worktrees' tabs only: the person's page stays closed.
+    let reopened = cx.update_window(window, |_, window, cx| {
+        shell.update(cx, |shell, cx| shell.reopen_closed_checkout_tab(window, cx))
+    });
+    assert_eq!(reopened.unwrap(), None);
+    // ⌘⇧T from the first space: it's back at its place in its own, shown, at its address.
+    act(window, PreviousSpace, cx);
+    act(window, ReopenClosedTab, cx);
+    draw(window, cx);
+    assert_eq!(cx.read(|cx| settings::get(cx).space), 1);
+    assert_eq!(loose(&shell, cx), [page("one"), page("two"), page("three")]);
+    assert_eq!(shown(&shell, cx), (Some(page("two")), true));
 }

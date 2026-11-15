@@ -118,7 +118,7 @@ fn a_closed_tab_comes_back_where_it_was_and_shows() {
     let before = ids(&workspace);
     let tab = workspace.close_tab(0, 0, 1).unwrap();
     workspace.remember_closed(ClosedTab {
-        checkout: "/src/app".into(),
+        from: ClosedFrom::Checkout("/src/app".into()),
         at: 1,
         tab,
         addresses: Vec::new(),
@@ -126,13 +126,13 @@ fn a_closed_tab_comes_back_where_it_was_and_shows() {
         changes: Vec::new(),
         devices: Vec::new(),
     });
-    let (closed, at) = workspace.take_closed().unwrap();
-    assert_eq!(at, (0, 0, 1));
-    workspace.restore_tab(at, closed.tab);
+    let (closed, at) = workspace.take_closed(|_| true).unwrap();
+    assert_eq!(at, Spot::Checkout(0, 0, 1));
+    workspace.restore_tab((0, 0, 1), closed.tab);
     assert_eq!(ids(&workspace), before);
     assert_eq!(workspace.branch().unwrap().active_tab, 1);
     assert!(
-        workspace.take_closed().is_none(),
+        workspace.take_closed(|_| true).is_none(),
         "each closed tab comes back once"
     );
 }
@@ -143,7 +143,7 @@ fn closed_tabs_of_a_checkout_gone_since_are_let_go() {
     for (checkout, at) in [("/src/app", 0), ("/work/gone", 0)] {
         let tab = workspace.close_tab(0, 0, 0).unwrap();
         workspace.remember_closed(ClosedTab {
-            checkout: checkout.into(),
+            from: ClosedFrom::Checkout(checkout.into()),
             at,
             tab,
             addresses: Vec::new(),
@@ -153,9 +153,38 @@ fn closed_tabs_of_a_checkout_gone_since_are_let_go() {
         });
     }
     // The newest is of a checkout no longer listed, so the one before it comes back.
-    let (_, at) = workspace.take_closed().unwrap();
-    assert_eq!(at, (0, 0, 0));
-    assert!(workspace.take_closed().is_none());
+    let (_, at) = workspace.take_closed(|_| true).unwrap();
+    assert_eq!(at, Spot::Checkout(0, 0, 0));
+    assert!(workspace.take_closed(|_| true).is_none());
+}
+
+#[test]
+fn a_closed_loose_page_goes_back_to_its_space_and_a_take_of_worktree_tabs_leaves_it() {
+    let mut workspace = unit_with_tabs(1, 0);
+    let tab = workspace.branch().unwrap().tabs[0].clone();
+    let loose = ClosedFrom::Loose {
+        space: 7,
+        project: "/src/app".into(),
+    };
+    for from in [ClosedFrom::Checkout("/src/app".into()), loose.clone()] {
+        workspace.remember_closed(ClosedTab {
+            from,
+            at: 0,
+            tab: tab.clone(),
+            addresses: Vec::new(),
+            files: Vec::new(),
+            changes: Vec::new(),
+            devices: Vec::new(),
+        });
+    }
+    // An agent's tab_reopen: the worktree's tab, past the loose page closed after it.
+    let checkout = |from: &ClosedFrom| matches!(from, ClosedFrom::Checkout(_));
+    let (_, back) = workspace.take_closed(checkout).unwrap();
+    assert_eq!(back, Spot::Checkout(0, 0, 0));
+    assert!(workspace.take_closed(checkout).is_none());
+    // ⌘⇧T: the loose page, to its space.
+    let (closed, back) = workspace.take_closed(|_| true).unwrap();
+    assert_eq!((closed.from, back), (loose, Spot::Loose(7)));
 }
 
 #[test]
@@ -164,7 +193,7 @@ fn only_the_newest_closed_tabs_are_kept() {
     let tab = workspace.branch().unwrap().tabs[0].clone();
     for at in 0..closed::KEPT + 5 {
         workspace.remember_closed(ClosedTab {
-            checkout: "/src/app".into(),
+            from: ClosedFrom::Checkout("/src/app".into()),
             at,
             tab: tab.clone(),
             addresses: Vec::new(),
@@ -174,7 +203,7 @@ fn only_the_newest_closed_tabs_are_kept() {
         });
     }
     let mut kept = 0;
-    while workspace.take_closed().is_some() {
+    while workspace.take_closed(|_| true).is_some() {
         kept += 1;
     }
     assert_eq!(kept, closed::KEPT);

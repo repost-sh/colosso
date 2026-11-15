@@ -317,7 +317,7 @@ impl Operation for TabClose {
     }
 }
 
-/// `tab_reopen`: the latest closed tab back.
+/// `tab_reopen`: the latest closed worktree tab back.
 #[derive(Debug)]
 pub struct TabReopen;
 
@@ -325,7 +325,8 @@ impl Operation for TabReopen {
     const NAME: &'static str = "tab_reopen";
     const TITLE: &'static str = "Reopen closed tab";
     const SCOPE: Scope = Scope::Navigate;
-    const DESCRIPTION: &'static str = "Reopens the tab closed last, as ⇧⌘T does.";
+    const DESCRIPTION: &'static str =
+        "Reopens the worktree tab closed last, as ⇧⌘T does; a loose page the person closed stays closed.";
     const HINTS: Hints = Hints::CHANGE;
     type Input = NoInput;
     type Output = PanePlace;
