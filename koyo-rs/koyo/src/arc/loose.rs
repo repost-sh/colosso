@@ -138,7 +138,9 @@ fn row(
         .pr(px(ROW_END))
         // In hand, it's lifted off the list, over the rows it passes.
         .when(lifted, |row| row.bg(p.hover).shadow_sm())
-        .on_click(cx.listener(move |this, _, _, cx| this.pick_loose(key, cx)))
+        .on_click(cx.listener(move |this, _, _, cx| {
+            this.show_tab_holding(key, cx);
+        }))
         .on_mouse_down(
             MouseButton::Middle,
             cx.listener(move |this, _, window, cx| {

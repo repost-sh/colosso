@@ -1,18 +1,12 @@
 //! The shell's side of the loose pages (`docs/arc-sidebar.md` 11), the pages open in a space
 //! that are no project's: one opened where the person is in no worktree, shown as its row is
 //! picked, moved among them, closed, taken from a checkout's tabs or to them, and to and from
-//! the pinned pages. And what the events of a page that's no checkout's do, a pinned one's or a
-//! loose one's, as a page's in a checkout's tab: a link it opens in a new tab, its `DevTools`
-//! beside it, what it tells the history.
+//! the pinned pages. What a page's events do, a link it opens, its `DevTools` beside it, what
+//! it tells the history, goes one way whichever kind of tab it's in (`browser_tabs.rs`).
 
-use std::path::Path;
-
-use gpui_kit::{App, Context, Entity, Window};
+use gpui_kit::{App, Context, Window};
 
 use super::Shell;
-use crate::browser::BrowserView;
-use crate::history::Place;
-use crate::model::{Loose, Pane, Tab};
 use crate::navigation::Route;
 use crate::settings::{self, Layout};
 
@@ -30,22 +24,6 @@ impl Shell {
     pub(crate) fn look_at_tab_shown(&mut self, cx: &mut Context<Self>) {
         self.navigate(Route::Workspace, cx);
         cx.notify();
-    }
-
-    /// The pinned tile or the loose row of the page now shown was picked: its page takes the
-    /// keyboard, as a tab picked in the sidebar does (`pick_tab`).
-    pub(super) fn picked_tab_shown(&mut self, cx: &mut Context<Self>) {
-        self.navigate(Route::Workspace, cx);
-        self.keys_to_shown_tab(cx);
-    }
-
-    /// Shows the loose page known by `key`, as a press on its row does: its page takes the
-    /// keyboard.
-    pub(crate) fn pick_loose(&mut self, key: u64, cx: &mut Context<Self>) {
-        let at = self.workspace.loose_at(key);
-        if at.is_some_and(|at| self.workspace.show_loose(at)) {
-            self.picked_tab_shown(cx);
-        }
     }
 
     /// A loose page's row let go at another place of their list: it moves there.
@@ -97,7 +75,7 @@ impl Shell {
     pub(crate) fn close_apart_shown(&mut self, window: &Window, cx: &mut Context<Self>) -> bool {
         let shown = self.workspace.apart_shown_key();
         if let Some(key) = shown {
-            self.close_apart(key, Self::close_apart_pane, window, cx);
+            self.close_apart(key, Self::close_pane_now, window, cx);
         }
         shown.is_some()
     }
@@ -149,81 +127,6 @@ impl Shell {
         // What's handed back is let go here, pages and all.
         drop(self.workspace.hand_on_loose(gone, to));
         cx.notify();
-    }
-
-    /// The pane showing `view` when it's no checkout's, pinned or loose: its id, and the
-    /// project whose profile its page keeps.
-    fn apart_page_of(&self, view: &Entity<BrowserView>) -> Option<(u64, &Path)> {
-        self.workspace.find_apart(|pane| pane.view() == Some(view))
-    }
-
-    /// The pane showing `view`, wherever it is: on a checkout, pinned or loose. Its id.
-    pub(crate) fn pane_showing(&self, view: &Entity<BrowserView>) -> Option<u64> {
-        let open = self.pane_of(view).map(|(_, id)| id);
-        open.or_else(|| self.apart_page_of(view).map(|(id, _)| id))
-    }
-
-    /// Where the history keeps what `view`'s page shows visited, when it's no checkout's, pinned
-    /// or loose: the project whose profile it keeps.
-    pub(super) fn apart_place(&self, view: &Entity<BrowserView>) -> Option<Place> {
-        let (_, project) = self.apart_page_of(view)?;
-        Some(Place {
-            worktree: project.to_owned(),
-            project: project.to_owned(),
-        })
-    }
-
-    /// A link the page `view`, pinned or loose, opens in a new tab, from its menu or its
-    /// `DevTools`: a loose page of the space shown, right after a loose opener or after them
-    /// all, out of sight, as a page's link opens beside it without leaving it; of its opener's
-    /// profile, so it's signed in as its opener is.
-    pub(super) fn open_from_apart(
-        &mut self,
-        view: &Entity<BrowserView>,
-        url: String,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let from = self.apart_page_of(view);
-        let Some((from, project)) = from.map(|(id, project)| (id, project.to_owned())) else {
-            return;
-        };
-        let opened = self.browser_view(url, &project, window, cx);
-        let tab = Tab::Single(Pane::browser(opened, cx));
-        let place = (self.workspace.loose_at(from)).map_or(usize::MAX, |beside| beside + 1);
-        (self.workspace).add_loose(Loose { tab, project }, place, false);
-        cx.notify();
-    }
-
-    /// Takes the pane showing `view` out of the tab it's in, a pinned page's or a loose one's:
-    /// its `DevTools`, docked again or closed. The page itself stays, as it's all its tab is.
-    pub(super) fn remove_apart_pane(&mut self, view: &Entity<BrowserView>, cx: &mut Context<Self>) {
-        let Some((id, _)) = self.apart_page_of(view) else {
-            return;
-        };
-        let tab = self.workspace.tab_holding_mut(id);
-        if tab.is_some_and(|tab| tab.take(id).is_some()) {
-            cx.notify();
-        }
-    }
-
-    /// Closes pane `id` of a pinned or a loose page's tab: its `DevTools` alone; or, its page,
-    /// the pinned page, which stays pinned, or the loose one, which is gone.
-    pub(super) fn close_apart_pane(&mut self, id: u64, cx: &mut Context<Self>) {
-        let Some(pane) = self.workspace.pane(id) else {
-            return;
-        };
-        if pane.is_inspector(cx) {
-            if let Some(tools) = pane.view().cloned() {
-                self.let_devtools_go(tools, cx);
-            }
-            return;
-        }
-        if self.workspace.pinned_at(id).is_some() {
-            self.close_pinned(id, cx);
-        } else {
-            self.close_loose(id, cx);
-        }
     }
 
     /// The settings changed: every terminal's program follows the app's theme, its tab shown or

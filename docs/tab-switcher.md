@@ -66,6 +66,9 @@ As Arc and macOS have them. **[ours, but asked: Arc's behaviour]**
   in the sidebar does: a worktree's tab leaves a pinned or a loose page for it, a loose page
   of another space shows that space, and a pinned page shows over whatever space is shown.
   The tab picked takes the keyboard (`docs/arc-sidebar.md` 9).
+- With the keyboard in a browser page, the page's view hears ⌃ let go in GPUI's place; the
+  window hands GPUI each change of the modifiers all the same (`docs/native-pages.md` 6), so
+  ⌃⇥ from a page, a pinned one's or a worktree's, switches as from anywhere.
 - Known limit: GPUI tells a window of the modifier keys only as they change from what it last
   told that window. If ⌃ went down while another window had the keyboard and ⌃⇥ is pressed
   with it still held, Koyo's window is never told ⌃ was let go, and the panel stays until

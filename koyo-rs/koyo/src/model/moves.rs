@@ -247,13 +247,15 @@ impl BranchUnit {
     }
 
     /// Closes pane `id`: out of its split, or with its tab when it's the tab's only pane.
-    pub fn close_pane(&mut self, id: u64) {
+    /// Whether it was there.
+    pub fn close_pane(&mut self, id: u64) -> bool {
         let Some(at) = self.tab_with(id) else {
-            return;
+            return false;
         };
         if self.tabs[at].take(id).is_none() {
             self.close(at);
         }
+        true
     }
 }
 

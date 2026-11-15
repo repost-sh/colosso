@@ -189,7 +189,9 @@ fn option_arrows_leave_a_pinned_page_for_the_project(cx: &mut TestAppContext) {
     assert!(pinned(cx).is_some(), "the pinned page shows");
     assert_eq!(press(window, &shell, "alt-right", cx), (Some(site), 0));
     assert!(pinned(cx).is_none(), "left for the next tile's project");
-    shell.update(cx, |shell, cx| shell.pick_pinned(key, cx));
+    shell.update(cx, |shell, cx| {
+        shell.show_tab_holding(key, cx);
+    });
     draw(window, cx);
     assert!(pinned(cx).is_some(), "the pinned page shows again");
     assert_eq!(press(window, &shell, "alt-right", cx), (Some(docs), 1));

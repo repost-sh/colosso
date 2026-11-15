@@ -90,7 +90,7 @@ fn loose_pages_come_back_in_their_spaces_with_the_one_each_showed(cx: &mut TestA
                 };
                 let first = open("https://a.example/");
                 let second = open("https://b.example/");
-                shell.pick_loose(first, cx);
+                shell.show_tab_holding(first, cx);
                 (first, second)
             })
         })

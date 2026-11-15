@@ -147,3 +147,56 @@ fn a_tab_keeps_its_place_as_it_moves_and_leaves_once_closed() {
     assert_eq!(latest(&workspace, 5), ["b", "New chat"]);
     assert_eq!(workspace.spot_of(b), Some(Spot::Pinned));
 }
+
+#[test]
+fn a_pane_is_found_shown_and_taken_out_the_same_way_wherever_its_tab_is() {
+    // Pages a and b on the main checkout, a loose page in the space shown, a pinned page; and
+    // beside a, the pinned page and the loose one, a second pane (their DevTools, say).
+    let mut workspace = with_pages(&["a", "b"]);
+    workspace.show_pages_of(7);
+    workspace.bring_back_loose(7, vec![loose("here")], None);
+    workspace.add_pinned(pinned("tile"), false);
+    let key = |workspace: &Workspace, title: &str| {
+        (workspace.everywhere())
+            .find(|visited| visited.tab.first().title.as_ref() == title)
+            .map(|visited| visited.tab.first().id)
+            .expect("the tab is open")
+    };
+    let mut beside = Vec::new();
+    for title in ["a", "here", "tile"] {
+        let id = key(&workspace, title);
+        let tools = page("tools");
+        beside.push(tools.first().id);
+        let tab = workspace.tab_holding_mut(id).expect("its tab");
+        assert!(tab.place(id, crate::model::Edge::Right, tools));
+    }
+    // Found where each is, the pane beside the page as the page itself.
+    let a = key(&workspace, "a");
+    let (here, tile) = (key(&workspace, "here"), key(&workspace, "tile"));
+    let located = workspace.locate(|pane| pane.id == beside[0]).expect("beside a");
+    assert_eq!((located.spot, located.tab), (Spot::Checkout(0, 0, 1), a));
+    assert_eq!(workspace.spot_of(beside[1]), Some(Spot::Loose(7)));
+    assert_eq!(workspace.spot_of(beside[2]), Some(Spot::Pinned));
+    // Shown wherever it is, a pinned page and a loose one in place of the checkout's tab.
+    for (spot, key, title) in [(Spot::Pinned, tile, "tile"), (Spot::Loose(7), here, "here")] {
+        assert!(workspace.show_tab(spot, key));
+        let shown = workspace.tab_shown().expect("a tab shown");
+        assert_eq!(shown.first().title.as_ref(), title);
+    }
+    assert!(workspace.show_tab(Spot::Checkout(0, 0, 2), key(&workspace, "b")));
+    assert_eq!(workspace.tab_shown().map(|tab| tab.first().title.to_string()), Some("b".into()));
+    assert!(!workspace.show_tab(Spot::Checkout(0, 0, 9), 0), "no such tab");
+    // The panes beside are taken out alike, each tab left with its page.
+    for id in beside {
+        assert!(workspace.remove_pane(id));
+        assert_eq!(workspace.spot_of(id), None);
+    }
+    // A pinned or a loose page's tab is its page, which stays; a checkout's tab goes with its
+    // only pane.
+    for id in [here, tile] {
+        assert!(!workspace.remove_pane(id));
+        assert!(workspace.pane(id).is_some());
+    }
+    assert!(workspace.remove_pane(a));
+    assert_eq!(workspace.spot_of(a), None);
+}

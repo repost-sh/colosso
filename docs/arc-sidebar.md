@@ -470,7 +470,16 @@ project's name would be (section 4). **[asked]**
 - The keyboard goes by section 9 with these pages as with any tab: one opened or picked
   takes it; one closed with the keyboard in it (its ×, its menu, ⌘W) hands it to what shows
   in its place; one moved (pinned, unpinned, dragged among the loose pages or onto a
-  worktree) leaves it where it was (`Shell::close_apart`, `picked_tab_shown`). **[ours]**
+  worktree) leaves it where it was (`Shell::close_apart`, `show_tab_holding`). **[ours]**
+- One path for every page (2026-11-15, the owner: "no behaviour difference between them"): a
+  pinned or a loose page is found, shown, closed, has its `DevTools` taken out of its tab and
+  opens its links the way a worktree's page does, each found wherever its tab is
+  (`Workspace::locate`, `shell/browser_tabs.rs`, `shell/closing.rs`, and
+  `Shell::show_tab_holding` for the sidebar's rows and tiles and ⌃⇥). What stays apart are
+  the rules of the pages themselves: a pinned page closed stays pinned, a loose one is gone;
+  their tabs are a page and its `DevTools`, nothing more; a link from one opens a loose page;
+  they keep their own profile's project; and app control's reach, below. A link from a loose
+  page's `DevTools` now opens beside the page, as from the page, not after every loose page.
 - A loose page shown is its space's: another space shows what it showed last.
 - Picking a tab of a worktree, or a project's tile, leaves a pinned or a loose page for that;
   so does anything else that shows a worktree's tab: ⌃⇥ picking one, a file opened, ⌘⇧T, a
@@ -537,7 +546,7 @@ menu is Arc's.
   engine: a session cookie, a cookie with an age and `localStorage` are all there once the
   engine has quit and started again. **[checked 2026-11-13]**
 - The history keeps a pinned or a loose page's visits under the project whose profile it
-  keeps (`Shell::apart_place`).
+  keeps (`Shell::profile_place`).
 - App control lists and drives worktrees' tabs only: a pinned or a loose page isn't in
   `tab_list` or `browser_list`, and an agent can't drive it. What an agent opens out of sight
   leaves such a page shown. **[ours]**
@@ -566,7 +575,8 @@ menu is Arc's.
 | `koyo/src/model/pinned.rs` | The pinned pages on the workspace: pinning, moving, closing, the pinned address, unpinning, removing |
 | `koyo/src/model/loose.rs` | Each space's loose pages, the tab shown among pinned, loose and a worktree's, and a page's tab moving between the three |
 | `koyo/src/shell/pinned.rs` | The shell's side of the pinned pages: what a pin takes, picking, closing, the pinned address |
-| `koyo/src/shell/loose.rs` | The shell's side of the loose pages: opening one, picking, closing, moving; and a pinned or a loose page's own events |
+| `koyo/src/shell/loose.rs` | The shell's side of the loose pages: opening one, closing, moving |
+| `koyo/src/shell/browser_tabs.rs`, `shell/closing.rs`, `shell/keys.rs` | A page's events, closing a pane and showing a tab, one way for a worktree's, a pinned and a loose page (`Workspace::locate`, `Shell::show_tab_holding`) |
 | `koyo/src/shell/kept/pinned.rs` | `pinned-tabs.json`: reading it tolerantly, writing it, and bringing the pinned pages back |
 | `koyo/src/shell/kept/loose.rs` | The loose pages in `window.json`, and bringing both kinds back as the window opens |
 | `koyo/src/arc/pinned.rs` | The pinned region: tiles, the zone, the chip, the menu and its actions |

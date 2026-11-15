@@ -218,13 +218,25 @@ pub(crate) unsafe fn register_window_input(decl: &mut ClassBuilder, superclass: 
 }
 
 fn send_window_event(this: &AnyObject, event: Id, superclass: &AnyClass) {
+    let kind: NSEventType = unsafe { msg_send![event, type] };
+    // Koyo: the modifiers are the window's, whoever has the keyboard. GPUI hears them change
+    // only through its own view, and a native view that has the keyboard (a browser page's)
+    // hears them in its place: ⌃ let go after ⌃⇥ in a page never reached GPUI, and the tab
+    // switcher waited for it for good. So GPUI hears each change, and a change it also hears
+    // from its own view it counts once (`handle_view_event`).
+    if kind == NSEventType::FlagsChanged {
+        let root = unsafe { get_window_state(this) }.lock().native_view;
+        let first: Id = unsafe { msg_send![this, firstResponder] };
+        if first != root.as_ptr() {
+            handle_view_event(unsafe { root.as_ref() }, sel!(flagsChanged:), event);
+        }
+    }
     if !unsafe { *ivar(this, NATIVE_INPUT_IVAR).load::<Bool>(this) }.as_bool() {
         unsafe {
             let _: () = msg_send![super(this, superclass), sendEvent: event];
         }
         return;
     }
-    let kind: NSEventType = unsafe { msg_send![event, type] };
     let observe = matches!(
         kind,
         NSEventType::LeftMouseDown

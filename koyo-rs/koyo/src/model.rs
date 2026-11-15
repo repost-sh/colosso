@@ -25,7 +25,7 @@ pub use pane::{Pane, Unloaded};
 pub use pinned::Pinned;
 pub use tab::{Edge, SPLIT_MIN, Split, SplitAxis, Tab};
 pub use unopened::Unopened;
-pub use visits::{Spot, Visited};
+pub use visits::{Located, Spot, Visited};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PaneKind {
@@ -439,13 +439,12 @@ impl Workspace {
     /// The first pane that is `found`: where its tab is, as `(project, branch, tab)`, and
     /// the pane's id.
     pub fn find_pane(&self, found: impl Fn(&Pane) -> bool) -> Option<((usize, usize, usize), u64)> {
-        self.projects.iter().enumerate().find_map(|(p, project)| {
-            project.branches.iter().enumerate().find_map(|(b, unit)| {
-                unit.tabs.iter().enumerate().find_map(|(t, tab)| {
-                    let pane = tab.panes().into_iter().find(|pane| found(pane))?;
-                    Some(((p, b, t), pane.id))
-                })
-            })
+        self.everywhere().find_map(|visited| {
+            let Spot::Checkout(project, branch, at) = visited.spot else {
+                return None;
+            };
+            let pane = visited.tab.panes().into_iter().find(|pane| found(pane))?;
+            Some(((project, branch, at), pane.id))
         })
     }
 

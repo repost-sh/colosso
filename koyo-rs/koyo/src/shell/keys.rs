@@ -15,8 +15,9 @@ use gpui_kit::{App, Context, Entity, FocusHandle, Focusable as _, Window};
 
 use super::Shell;
 use crate::files::FilePane;
-use crate::model::{Pane, PaneKind, Workspace};
+use crate::model::{Pane, PaneKind, Spot};
 use crate::navigation::Route;
+use crate::settings;
 
 /// What's still to happen to the keyboard, between what the person did and the frame that
 /// settles it.
@@ -53,25 +54,19 @@ impl Keys {
     }
 }
 
-/// Pane `id` of the tab at `at`, as `(project, branch, tab)`.
-fn pane_in(workspace: &Workspace, at: (usize, usize, usize), id: u64) -> Option<&Pane> {
-    let panes = workspace.tab(at)?.panes();
-    panes.into_iter().find(|pane| pane.id == id)
-}
-
 impl Shell {
-    /// Shows the tab holding pane `id`, on whichever checkout it is, and gives the pane the
-    /// keyboard, a chat's excepted; false when no such pane is open.
+    /// Shows the tab holding pane `id`, wherever it is, a checkout's, a pinned page's or a
+    /// loose one's, and gives the pane the keyboard, a chat's excepted; false when no such
+    /// pane is open.
     pub(crate) fn focus_pane(
         &mut self,
         id: u64,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        let Some((at, _)) = self.workspace.find_pane(|pane| pane.id == id) else {
+        if !self.select_tab_holding(id, cx) {
             return false;
-        };
-        self.workspace.select_tab(at.0, at.1, at.2);
+        }
         self.workspace.enter_pane(id);
         self.navigate(Route::Workspace, cx);
         self.follow_selection(window, cx);
@@ -79,12 +74,12 @@ impl Shell {
         // at launch, a chat's view, a terminal's.
         self.make_shown_browsers(window, cx);
         self.make_shown_chats(window, cx);
-        let terminal = pane_in(&self.workspace, at, id).and_then(|pane| pane.terminal);
+        let terminal = self.workspace.pane(id).and_then(|pane| pane.terminal);
         if let Some(terminal) = terminal {
             self.terminal_view(terminal, window, cx);
         }
         // A chat is moved to, not typed in: its prompt is left alone, the window has the keys.
-        let keys = (pane_in(&self.workspace, at, id))
+        let keys = (self.workspace.pane(id))
             .filter(|pane| pane.kind != PaneKind::Chat)
             .and_then(|pane| self.keys_of(pane, cx));
         match keys {
@@ -95,6 +90,40 @@ impl Shell {
         }
         cx.notify();
         true
+    }
+
+    /// Shows the tab holding pane `id` and gives it the keyboard, as a press on its row or its
+    /// tile does, wherever it is: a checkout's tab in its checkout, a pinned page over the
+    /// space shown, a loose page in its space. The one way a tab is shown when asked for, by
+    /// the sidebar, ⌃⇥ or the launcher, so a page goes the same way whichever kind of tab it's
+    /// in. False when no such pane is open.
+    pub(crate) fn show_tab_holding(&mut self, id: u64, cx: &mut Context<Self>) -> bool {
+        let shown = self.select_tab_holding(id, cx);
+        if shown {
+            self.navigate(Route::Workspace, cx);
+            self.keys_to_shown_tab(cx);
+        }
+        shown
+    }
+
+    /// Makes the tab holding pane `id` the one shown, wherever it is, a loose page's space
+    /// coming to show with it. Whether there's such a tab.
+    fn select_tab_holding(&mut self, id: u64, cx: &mut Context<Self>) -> bool {
+        let Some(located) = self.workspace.locate(|pane| pane.id == id) else {
+            return false;
+        };
+        if let Spot::Loose(space) = located.spot {
+            let settings = settings::get(cx);
+            let index = settings.spaces.iter().position(|kept| kept.id == space);
+            if let Some(index) = index.filter(|index| *index != settings.space) {
+                self.show_space(index, cx);
+            }
+        }
+        let shown = self.workspace.show_tab(located.spot, located.tab);
+        if shown {
+            cx.notify();
+        }
+        shown
     }
 
     /// What takes the keyboard for `pane`: its chat's, its terminal's or its page's view, once
@@ -136,8 +165,10 @@ impl Shell {
         tab: usize,
         cx: &mut Context<Self>,
     ) {
-        self.workspace.select_tab(project, branch, tab);
-        self.keys_to_shown_tab(cx);
+        let key = self.workspace.tab((project, branch, tab)).map(|tab| tab.first().id);
+        if let Some(key) = key {
+            self.show_tab_holding(key, cx);
+        }
     }
 
     /// The person pressed in pane `id`, or gave it the keyboard: they're in it from now on, and
