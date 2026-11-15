@@ -177,7 +177,13 @@ popup itself (`.superpowers/research/run/03-popup-as-page.out`).
   `action.onClicked`.
 - Chrome opens the popup as a bubble of its own under its hidden toolbar. The host finds
   the new window and puts it where the app said: its top right corner under the icon's,
-  kept on the screen. Until it's placed it's clear, so it doesn't flash at the page's top.
+  kept on the screen, and put back there whenever Chrome anchors it to its toolbar again,
+  which it does as the popup's page resizes. Until it's placed it's clear, so it doesn't
+  flash at the page's top. The window is known for the popup by what it is: a new bubble
+  of Chromium's that is a child of the page's holder, or, where Chromium has given it no
+  parent yet, lies over the page.
+- A press that opens no popup (`action.onClicked`) is waited on for five seconds, a new
+  bubble kept clear meanwhile, then let be.
 - The popup is the extension's `popup` view: it sizes itself, takes the keyboard, and
   closes when it loses it, as in Chrome. Two patches take out a two-second wait before its
   page loads and a quarter second's animation of the hidden toolbar.
@@ -281,7 +287,7 @@ tools, an extension loaded from a folder (`.superpowers/research/ext/probe`):
 | A page is a `normal` window with one active tab, and the current one | checked: the probe's `windows.getAll`, `windows.getCurrent` and `tabs.query({active, currentWindow})` |
 | Chrome's toolbar, carried hidden, takes no room and isn't seen | checked: the page fills its pane, by eye |
 | The popover's row: the extension's icon (a letter, it has none) and "+" | checked, by eye |
-| A press on the icon opens Chrome's own popup | checked: Chrome's bubble opened, the size of the probe's popup. **Not yet put under the icon**: it wasn't recognised as the popup, stayed clear for three seconds and then showed where Chrome put it `[open]` |
+| A press on the icon opens Chrome's own popup | checked: Chrome's bubble opened, the size of the probe's popup. It wasn't put under the icon: it stayed clear for three seconds and then showed where Chrome put it. Why, `[read]`: Chromium makes a bubble a child of its page's window only once that window is on the Space shown (`native_widget_ns_window_bridge.mm`, `OrderChildren`), which on the agent desktop it never is, and the popup was known by being that child. It's now known, where it has no parent, by lying over its page (`popup.rs`, `is_popup_of`). **Not seen since** `[open]` |
 | Koyo quits cleanly with the pipe open | checked: "the browser engine stopped in 90 ms" |
 | `script/cef` on a built folder | checked: patches found applied, nothing built, the framework and its list of patches in place, 6 seconds |
 
