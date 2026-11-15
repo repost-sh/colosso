@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use futures::channel::oneshot;
 use futures::future::{self, Either};
-use gpui_kit::{App, AppContext as _, Context, Entity, Global, Task, WeakEntity};
+use gpui_kit::{App, AppContext as _, Context, Entity, EntityId, Global, Task, WeakEntity};
 use koyo_browser_ipc::client::Connection;
 use koyo_browser_ipc::{AppRequest, PaneId};
 
@@ -186,11 +186,14 @@ impl Browsers {
         self.views.insert(pane, view);
     }
 
-    /// A view left: its page closes.
-    pub fn detach(&mut self, pane: PaneId) {
-        if self.views.remove(&pane).is_none() {
+    /// The view known by `view` left: its page closes. A pane another view has taken since,
+    /// as a page opened again there, stays that view's.
+    pub fn detach(&mut self, pane: PaneId, view: EntityId) {
+        let registered = self.views.get(&pane).map(|view| view.entity_id());
+        if registered != Some(view) {
             return;
         }
+        self.views.remove(&pane);
         self.queued.retain(|request| request.pane() != Some(pane));
         if matches!(self.host, Host::Running { .. }) {
             self.send(AppRequest::Close { pane });

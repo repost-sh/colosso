@@ -230,11 +230,11 @@ impl BrowserView {
                 },
             ),
         ];
-        let weak = cx.weak_entity();
+        let (weak, id) = (cx.weak_entity(), cx.entity_id());
         browsers.update(cx, |browsers, _| browsers.attach(pane, weak));
         let releasing = browsers.clone();
         cx.on_release(move |_, cx| {
-            releasing.update(cx, |browsers, _| browsers.detach(pane));
+            releasing.update(cx, |browsers, _| browsers.detach(pane, id));
         })
         .detach();
         // The window's scale is known before the pane is drawn.

@@ -105,7 +105,7 @@ pub(crate) fn open_on(
 /// The responsive mode the page `spec` opens for `caller` starts in, in `window`: as its
 /// `viewport` asks, else as the person set pages agents open to; `None` when it fills its
 /// pane, or isn't a page.
-fn page_mode(
+pub(crate) fn page_mode(
     caller: &Caller,
     spec: &PaneSpec,
     window: &Window,

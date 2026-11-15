@@ -3,20 +3,24 @@
 //! space's tabs. The one shown is a pill, as a worktree's tab is. A row is dragged among them, onto
 //! a worktree's tabs, where it's a tab of that worktree, or onto the pinned pages, where it's
 //! pinned; and a page's tab from a worktree, or a pinned page's tile, let go on them is one of
-//! them. With none, there's no list: a dotted strip takes one that's in hand.
+//! them. Right-clicked, a row is copied into the selected worktree. With none, there's no list:
+//! a dotted strip takes one that's in hand.
 
 use std::rc::Rc;
 
+use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, AppContext as _, Context, Div, InteractiveElement as _, IntoElement, MouseButton,
     ParentElement as _, Point, Stateful, StatefulInteractiveElement as _, Styled as _, div, px,
 };
 
+use super::actions::CopyToWorktree;
 use super::worktrees::{ROW_END, arc_row, pill_row, tab_icon};
 use super::{DraggedPin, Look};
 use crate::model::Loose;
 use crate::pane::{ROW_GLYPH, row_sized, sized_close_button};
+use crate::projects::with_menu;
 use crate::shell::{Dragged, DraggedPane, Drop, Face, Reorder, Shell, title_with_end};
 
 /// The list the loose pages are dragged along: no checkout's, whose lists are known by their
@@ -160,8 +164,23 @@ fn row(
         use gpui_kit::base::ElementExt as _;
         row.on_prepaint(crate::visual::noting(format!("arc-loose-{at}")))
     };
+    // Its menu is worked out as it's opened, not as the row's drawn.
+    let shell = cx.weak_entity();
+    let row = with_menu(row, move |_, cx| {
+        let worktree = shell.read_with(cx, |shell, _| shell.checkout_shown().is_some());
+        menu(key, worktree.unwrap_or(false))
+    });
     (
         key,
         takes_pages(row, (at, taking), look, cx).into_any_element(),
+    )
+}
+
+/// What a loose page's menu offers: a copy of it in the selected worktree, while one is.
+fn menu(key: u64, worktree: bool) -> NativeMenu {
+    NativeMenu::new().menu_with_disabled(
+        "Copy to Worktree",
+        !worktree,
+        Box::new(CopyToWorktree(key)),
     )
 }

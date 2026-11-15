@@ -195,6 +195,7 @@ registry! {
     BrowserDialog => ops::browser::BrowserDialog,
     BrowserClaim => ops::browser::BrowserClaim,
     BrowserRelease => ops::browser::BrowserRelease,
+    BrowserDuplicate => ops::browser::BrowserDuplicate,
     DesktopOpen => ops::desktop::DesktopOpen,
     DesktopWindows => ops::desktop::DesktopWindows,
     DesktopScreenshot => ops::desktop::DesktopScreenshot,

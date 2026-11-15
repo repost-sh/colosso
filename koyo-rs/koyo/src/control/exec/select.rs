@@ -1,7 +1,7 @@
 //! What a selector picks (`docs/app-control.md` 3): a project by its main checkout's path or
 //! its name when no other project has it; a worktree by its checkout's path, its branch when
 //! that's unique, or `current`, the caller's; left out, the caller's worktree, else the one
-//! selected in the window; and a pane by its id.
+//! selected in the window; and a pane by its id, a worktree's.
 
 use std::path::{Path, PathBuf};
 
@@ -9,7 +9,7 @@ use koyo_app_control::{ControlError, ErrorCode};
 use koyo_git::Head;
 
 use super::super::Caller;
-use crate::model::{BranchUnit, Workspace};
+use crate::model::{BranchUnit, Spot, Workspace};
 
 /// Where a tab is, as `(project, branch, tab)`.
 pub(crate) type TabAt = (usize, usize, usize);
@@ -162,7 +162,7 @@ fn caller_worktree(caller: &Caller, workspace: &Workspace) -> Option<(usize, usi
 
 /// The checkout holding `path`, the deepest when one is inside another.
 /// Compared as written first, then with links followed, so most calls look up no folder.
-fn containing(workspace: &Workspace, path: &Path) -> Option<(usize, usize)> {
+pub(crate) fn containing(workspace: &Workspace, path: &Path) -> Option<(usize, usize)> {
     let units = || {
         (workspace.projects.iter().enumerate()).flat_map(|(at, project)| {
             (project.branches.iter().enumerate()).map(move |(branch, unit)| (at, branch, unit))
@@ -188,11 +188,22 @@ fn selected(workspace: &Workspace, within: Option<usize>) -> Option<(usize, usiz
     Some((at, project.active_branch))
 }
 
-/// The tab holding pane `id`, and so the pane's checkout.
+/// The tab holding pane `id`, and so the pane's checkout: a worktree's only. A pinned or a
+/// loose page is the person's, which no window tool shows, moves or closes, and is refused so.
 pub(crate) fn pane(workspace: &Workspace, id: u64) -> Result<TabAt, ControlError> {
-    (workspace.find_pane(|pane| pane.id == id))
-        .map(|(at, _)| at)
-        .ok_or_else(|| {
+    if let Some((at, _)) = workspace.find_pane(|pane| pane.id == id) {
+        return Ok(at);
+    }
+    let persons = |kind: &str| {
+        ControlError::not_found(format!(
+            "Pane {id} is the person's {kind} page: showing, moving, splitting and closing it is theirs, so the window tools leave it be. The browser tools reach it with their consent, which browser_claim asks for."
+        ))
+    };
+    Err(match workspace.spot_of(id) {
+        Some(Spot::Pinned) => persons("pinned"),
+        Some(Spot::Loose(_)) => persons("loose"),
+        Some(Spot::Checkout(..)) | None => {
             ControlError::not_found(format!("No pane {id} is open; tab_list lists the panes."))
-        })
+        }
+    })
 }

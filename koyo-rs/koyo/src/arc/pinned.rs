@@ -5,7 +5,8 @@
 //! off them onto a worktree's tabs or the space's loose pages is unpinned there. With none
 //! pinned, a dotted zone says where one goes, which the person can put away: it still shows
 //! once a page's tab is taken off its list. Hovered, a tile says its page's title and host;
-//! right-clicked, it's pinned elsewhere, closed, unpinned or removed.
+//! right-clicked, it's pinned elsewhere, closed, unpinned, copied into the selected worktree or
+//! removed.
 
 use std::rc::Rc;
 
@@ -21,7 +22,9 @@ use gpui_kit::{
 };
 
 use super::Look;
-use super::actions::{ClosePinned, EditPinned, RemovePinned, RepinAtCurrent, Unpin};
+use super::actions::{
+    ClosePinned, CopyToWorktree, EditPinned, RemovePinned, RepinAtCurrent, Unpin,
+};
 use super::hover::Hovered;
 use super::rename;
 use super::tile_grid::{TileGrid, TileHand};
@@ -271,9 +274,14 @@ fn tile(
     })
 }
 
-/// Has the window's root handle what a pinned page's menu picks.
+/// Has the window's root handle what a pinned page's menu picks, and a loose page's.
 pub(super) fn handle_actions(root: Div, cx: &mut Context<Shell>) -> Div {
     root.on_action(
+        cx.listener(|this, CopyToWorktree(key): &CopyToWorktree, window, cx| {
+            this.copy_to_worktree(*key, window, cx);
+        }),
+    )
+    .on_action(
         cx.listener(|this, ClosePinned(key): &ClosePinned, window, cx| {
             this.close_apart(*key, Shell::close_pinned, window, cx);
         }),
@@ -325,6 +333,8 @@ pub(super) struct Menu {
     pub strayed: bool,
     /// Whether it has a page to close.
     pub open: bool,
+    /// Whether a worktree is selected, to copy it into.
+    pub worktree: bool,
 }
 
 impl Menu {
@@ -333,11 +343,13 @@ impl Menu {
             key,
             strayed: shell.pinned_strayed(key, cx).is_some(),
             open: shell.pinned_is_open(key, cx),
+            worktree: shell.checkout_shown().is_some(),
         }
     }
 
     /// The menu, as Arc's for a pinned tab: the address it's pinned at, to change; then closing
-    /// it, which leaves it pinned, and unpinning it; and removing it, apart.
+    /// it, which leaves it pinned, unpinning it, and a copy of it in the selected worktree; and
+    /// removing it, apart.
     fn build(self) -> NativeMenu {
         let key = self.key;
         let edit = NativeMenu::new()
@@ -352,6 +364,11 @@ impl Menu {
             .separator()
             .menu_with_disabled("Close", !self.open, Box::new(ClosePinned(key)))
             .menu("Unpin", Box::new(Unpin(key)))
+            .menu_with_disabled(
+                "Copy to Worktree",
+                !self.worktree,
+                Box::new(CopyToWorktree(key)),
+            )
             .separator()
             .menu("Remove Pinned Tab", Box::new(RemovePinned(key)))
     }

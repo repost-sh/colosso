@@ -47,12 +47,29 @@ pub struct WorktreeTabs {
     pub tabs: Vec<TabInfo>,
 }
 
+/// The person's own pages, which are no worktree's: each a tab of a page, with its `DevTools`
+/// beside it while they're detached.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PersonsTabs {
+    /// The pages pinned at the sidebar's head, in the order of their tiles; `selected` the one
+    /// shown in place of the worktree's tab.
+    pub pinned: Vec<TabInfo>,
+    /// Every space's loose pages, each space's in the order of its rows; `index` is a page's
+    /// place among its space's, `selected` the one shown.
+    pub loose: Vec<TabInfo>,
+}
+
 /// The tabs `tab_list` found.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TabListOutput {
     /// Each worktree listed, with its tabs.
     pub worktrees: Vec<WorktreeTabs>,
+    /// The person's own pages, pinned and loose, listed whatever worktree is asked for. The
+    /// window tools leave them be; the browser tools need the person's consent for them.
+    #[serde(default)]
+    pub persons: PersonsTabs,
 }
 
 /// `tab_list`: tabs, panes and their ids.
@@ -64,7 +81,7 @@ impl Operation for TabList {
     const TITLE: &'static str = "List tabs";
     const SUBJECT: &'static [&'static str] = &["worktree"];
     const SCOPE: Scope = Scope::Read;
-    const DESCRIPTION: &'static str = "A worktree's tabs (or every worktree's, with `all`), each with its split layout and panes: id, kind, title, address, file, unsaved edits, terminal handle, focus. Pane ids from here address every pane and browser tool.";
+    const DESCRIPTION: &'static str = "A worktree's tabs (or every worktree's, with `all`), each with its split layout and panes: id, kind, title, address, file, unsaved edits, terminal handle, focus. Pane ids from here address every pane and browser tool. `persons` lists the person's own pages, pinned and loose: the window tools refuse them, and the browser tools need the person's consent (browser_claim asks).";
     const HINTS: Hints = Hints::READ;
     type Input = TabListInput;
     type Output = TabListOutput;

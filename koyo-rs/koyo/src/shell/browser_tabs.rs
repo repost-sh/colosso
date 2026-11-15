@@ -92,6 +92,25 @@ impl Shell {
         Some(id)
     }
 
+    /// Opens a copy of the pinned or the loose page known by `key` as a tab of the selected
+    /// checkout, as that page's menu does: at the address its page shows, or opens at, of the
+    /// checkout's project's profile, after its tabs, and shown. Nothing with no checkout
+    /// selected.
+    pub(crate) fn copy_to_worktree(
+        &mut self,
+        key: u64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.checkout_shown().is_none() {
+            return;
+        }
+        let Some(address) = self.workspace.pane(key).and_then(|pane| pane.address(cx)) else {
+            return;
+        };
+        self.open_page(Some(address), (false, false), None, window, cx);
+    }
+
     /// A page of `project`'s profile at `url`, the shell hearing what it says.
     pub(crate) fn browser_view(
         &mut self,

@@ -118,6 +118,12 @@ pub struct Unpin(pub u64);
 #[action(namespace = arc, no_json)]
 pub struct RemovePinned(pub u64);
 
+/// Opens a copy of the pinned or the loose page known by this, its page's pane, in a tab of the
+/// selected worktree.
+#[derive(Clone, Debug, PartialEq, Action)]
+#[action(namespace = arc, no_json)]
+pub struct CopyToWorktree(pub u64);
+
 /// Pins the pinned page known by this at the address it shows.
 #[derive(Clone, Debug, PartialEq, Action)]
 #[action(namespace = arc, no_json)]

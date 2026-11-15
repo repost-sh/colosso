@@ -27,6 +27,11 @@ pub struct InProcess {
     caller: Mutex<Option<Caller>>,
     /// The connections its subscriptions follow topics on, let go when it's dropped.
     connections: Mutex<Vec<u64>>,
+    /// Its connection, as its calls give it once it's said hello, which closes when it's
+    /// dropped.
+    connection: u64,
+    /// Whether it's said hello, so its connection is open.
+    present: Mutex<bool>,
 }
 
 impl InProcess {
@@ -43,6 +48,8 @@ impl InProcess {
             requests,
             caller: Mutex::new(None),
             connections: Mutex::new(Vec::new()),
+            connection: next_connection(),
+            present: Mutex::new(false),
         }
     }
 
@@ -59,8 +66,22 @@ impl InProcess {
             hello,
             reply,
         })?;
+        let connection = self.connection;
+        if let Ok(mut present) = self.present.lock()
+            && !*present
+        {
+            let open = Request::Present {
+                connection,
+                open: true,
+            };
+            self.requests.unbounded_send(open).ok();
+            *present = true;
+        }
         if let Ok(mut caller) = self.caller.lock() {
-            *caller = Some(welcome.caller);
+            *caller = Some(Caller {
+                connection: Some(connection),
+                ..welcome.caller
+            });
         }
         Ok(welcome.grant)
     }
@@ -78,8 +99,8 @@ impl InProcess {
     ) -> Result<Value, ControlError> {
         check_request_id(request_id.as_deref())?;
         let caller = self.caller()?;
-        // A call the person may have to confirm waits for them as well.
-        let timeout = if command.confirmed() {
+        // A call the person may have to confirm, or be asked about, waits for them as well.
+        let timeout = if command.confirmed() || command.info().asks {
             CALL_TIMEOUT + CONFIRM_TIMEOUT
         } else {
             CALL_TIMEOUT
@@ -149,6 +170,13 @@ impl Drop for InProcess {
             self.requests
                 .unbounded_send(Request::Closed { connection })
                 .ok();
+        }
+        if self.present.lock().is_ok_and(|present| *present) {
+            let closed = Request::Present {
+                connection: self.connection,
+                open: false,
+            };
+            self.requests.unbounded_send(closed).ok();
         }
     }
 }

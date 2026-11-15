@@ -61,6 +61,9 @@ pub struct Control {
     pub holder: Option<Holder>,
     /// The agent the person took the page from, named until they give it back.
     pub displaced: Option<Actor>,
+    /// Counts the agents' leases the page has had: each new one gets the next, a renewal keeps
+    /// its own, so a lease is told from one taken after it by the same agent.
+    leases: u64,
 }
 
 impl Control {
@@ -72,40 +75,47 @@ impl Control {
         takeover: bool,
         reason: Option<String>,
     ) -> Result<(), Refused> {
-        match &self.holder {
-            Some(Holder::Human { since, mode }) => {
-                return Err(Refused::PersonHasControl {
-                    since: *since,
-                    mode: *mode,
-                });
-            }
-            Some(Holder::Agent { actor: holder, .. }) if *holder != actor && !takeover => {
-                return Err(Refused::ControlRequired {
-                    holder: holder.clone(),
-                });
-            }
-            Some(Holder::Agent {
-                actor: holder,
-                since,
-                ..
-            }) if *holder == actor => {
-                // Its own lease, renewed.
-                self.holder = Some(Holder::Agent {
-                    actor,
-                    since: *since,
-                    reason,
-                });
-                return Ok(());
-            }
-            _ => {}
+        self.may_claim(&actor, takeover)?;
+        if let Some(Holder::Agent {
+            actor: holder,
+            since,
+            ..
+        }) = &self.holder
+            && *holder == actor
+        {
+            // Its own lease, renewed.
+            self.holder = Some(Holder::Agent {
+                actor,
+                since: *since,
+                reason,
+            });
+            return Ok(());
         }
         self.holder = Some(Holder::Agent {
             actor,
             since: Instant::now(),
             reason,
         });
+        self.leases += 1;
         self.displaced = None;
         Ok(())
+    }
+
+    /// Whether `actor` may drive the page, as [`Control::agent_claims`] would let it: never
+    /// over the person, over another agent only with `takeover`.
+    pub fn may_claim(&self, actor: &Actor, takeover: bool) -> Result<(), Refused> {
+        match &self.holder {
+            Some(Holder::Human { since, mode }) => Err(Refused::PersonHasControl {
+                since: *since,
+                mode: *mode,
+            }),
+            Some(Holder::Agent { actor: holder, .. }) if holder != actor && !takeover => {
+                Err(Refused::ControlRequired {
+                    holder: holder.clone(),
+                })
+            }
+            _ => Ok(()),
+        }
     }
 
     /// The person acts in the page or asks for it: theirs from now on. The agent that
@@ -165,6 +175,11 @@ impl Control {
             Some(Holder::Agent { actor, .. }) => Some(actor),
             _ => None,
         }
+    }
+
+    /// The agent driving the page and which of the page's leases it holds, if one does.
+    pub fn agent_lease(&self) -> Option<(&Actor, u64)> {
+        self.agent().map(|actor| (actor, self.leases))
     }
 }
 
@@ -232,6 +247,27 @@ impl BrowserView {
     pub fn agent_releases(&mut self, actor: &Actor, cx: &mut Context<Self>) {
         self.control.agent_releases(actor);
         cx.notify();
+    }
+
+    /// Whether `actor` may drive the page now, as [`BrowserView::agent_claims`] would let it.
+    pub fn agent_may_claim(&self, actor: &Actor, takeover: bool) -> Result<(), Refused> {
+        self.control.may_claim(actor, takeover)
+    }
+
+    /// The agent driving the page, if one does.
+    pub fn agent_holding(&self) -> Option<&Actor> {
+        self.control.agent()
+    }
+
+    /// The agent driving the page and which of the page's leases it holds: one taken after it
+    /// ended, by the same agent too, is another.
+    pub fn agent_lease(&self) -> Option<(&Actor, u64)> {
+        self.control.agent_lease()
+    }
+
+    /// Whether the person holds the page.
+    pub fn person_holding(&self) -> bool {
+        self.control.person_holds()
     }
 }
 
@@ -329,6 +365,21 @@ mod tests {
         assert_eq!(control.holder, None);
         assert_eq!(control.displaced, None);
         assert_eq!(control.agent_claims(agent("b"), false, None), Ok(()));
+    }
+
+    #[test]
+    fn a_lease_taken_again_after_the_person_had_the_page_is_another() {
+        let mut control = Control::default();
+        control.agent_claims(agent("a"), false, None).unwrap();
+        let first = control.agent_lease().map(|(_, lease)| lease);
+        control.agent_claims(agent("a"), false, None).unwrap();
+        assert_eq!(control.agent_lease().map(|(_, lease)| lease), first, "renewed");
+        control.person_takes(Mode::Implicit);
+        control.person_gives_back();
+        assert_eq!(control.agent_lease(), None);
+        control.agent_claims(agent("a"), false, None).unwrap();
+        let again = control.agent_lease().map(|(_, lease)| lease);
+        assert_ne!(again, first, "taken again, it's another lease");
     }
 
     #[test]

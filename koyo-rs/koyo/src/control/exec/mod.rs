@@ -33,6 +33,12 @@ use super::confirm::Question;
 use crate::shell::Shell;
 
 pub(crate) use app::status_value;
+#[cfg(test)]
+pub(crate) use browser::{DECLINED_FOR, IDLE, OTHERS_WAIT, declines_kept};
+pub(crate) use browser::{
+    joined as client_joined, left as client_left, prune as consents_follow,
+    rescope as consents_rescope,
+};
 pub(crate) use project::list as projects_value;
 pub(crate) use settings::get as settings_value;
 pub(crate) use tab::list_all as tabs_value;
@@ -96,9 +102,10 @@ pub(crate) fn run(caller: &Caller, command: Command, cx: &mut App) -> Exec {
         C::SettingsSet(input) => Exec::Ready(settings::set(input, cx)),
         C::ActivityList(input) => Exec::Ready(activity::list(caller, &input, cx)),
         C::ClaudeAccountsList(_) => Exec::Ready(accounts::list(cx)),
-        C::BrowserList(_) => Exec::Ready(browser::list(cx)),
-        C::BrowserClaim(input) => Exec::Ready(browser::claim(caller, &input, cx)),
+        C::BrowserList(_) => Exec::Ready(browser::list(caller, cx)),
+        C::BrowserClaim(input) => browser::claim(caller, &input, cx).into(),
         C::BrowserRelease(input) => Exec::Ready(browser::release(caller, input.pane, cx)),
+        C::BrowserDuplicate(input) => browser::duplicate(caller, &input, cx).into(),
         C::BrowserNavigate(input) => browser::navigate(caller, &input, cx).into(),
         C::BrowserGo(input) => browser::go(caller, &input, cx).into(),
         C::BrowserWait(input) => browser::wait(caller, &input, cx).into(),

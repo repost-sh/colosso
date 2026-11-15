@@ -14,6 +14,7 @@ macro_rules! leased {
 }
 
 mod act;
+mod duplicate;
 mod viewport;
 
 use schemars::JsonSchema;
@@ -26,6 +27,7 @@ pub use act::{
     BrowserRelease, BrowserScroll, BrowserScrollInput, BrowserType, BrowserTypeInput, DialogAction,
     GoAction, Lease, MouseButton, PageInput, WaitUntil,
 };
+pub use duplicate::{BrowserDuplicate, BrowserDuplicateInput};
 pub use viewport::{
     BrowserViewport, BrowserViewportInput, BrowserViewportOutput, DeviceName, FitWord,
     OpenViewport, Orientation, Viewport, ViewportMode, ViewportZoom,
@@ -84,8 +86,9 @@ pub struct PageInfo {
     /// command brings it back.
     #[serde(default = "super::shared::yes")]
     pub on_screen: bool,
-    /// The worktree whose tab holds it.
-    pub worktree: String,
+    /// Whose page it is: a worktree's, or the person's own.
+    #[serde(flatten)]
+    pub whose: PageOwner,
     /// Who holds its lease: an agent's name, or `person`; absent when free.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub controller: Option<String>,
@@ -95,6 +98,57 @@ pub struct PageInfo {
     /// What the page asks and waits on, the first of its questions; absent when none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dialog: Option<PageDialog>,
+}
+
+/// Whose a browser page is, and whether the person lets the caller use it, theirs.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PageOwner {
+    /// The worktree whose tab holds it; null for the person's own pages, which are no
+    /// worktree's.
+    #[serde(default)]
+    pub worktree: Option<String>,
+    /// Where it is: `worktree`, a worktree's tab; `pinned`, a page the person pinned; `loose`,
+    /// a page open in one of their spaces that is no project's.
+    #[serde(default)]
+    pub place: PagePlace,
+    /// Whether it's the person's own page, pinned or loose. Every browser tool needs their
+    /// consent for it and is refused with `consent_required` without; `browser_claim` with its
+    /// `pane` asks them.
+    #[serde(default)]
+    pub persons: bool,
+    /// Whether the person let you use it: `granted` while your lease of their page lasts,
+    /// else `none`. A worktree's page needs none.
+    #[serde(default)]
+    pub consent: Consent,
+}
+
+/// Where a browser page is.
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum PagePlace {
+    /// A worktree's tab.
+    #[default]
+    Worktree,
+    /// Pinned by the person, at the sidebar's head.
+    Pinned,
+    /// A page open in one of the person's spaces that is no project's.
+    Loose,
+}
+
+/// Whether the person let the caller use one of their own pages.
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum Consent {
+    /// Not, or no longer.
+    #[default]
+    None,
+    /// They allowed it, for as long as the caller's lease of the page lasts.
+    Granted,
 }
 
 /// A question a page waits on.
@@ -139,7 +193,8 @@ impl DialogKind {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct BrowserListOutput {
-    /// Every browser pane of every worktree.
+    /// Every browser pane of every worktree, then the person's own pages: the pinned, then
+    /// every space's loose pages.
     pub pages: Vec<PageInfo>,
 }
 
@@ -151,7 +206,7 @@ impl Operation for BrowserList {
     const NAME: &'static str = "browser_list";
     const TITLE: &'static str = "List browser pages";
     const SCOPE: Scope = Scope::Read;
-    const DESCRIPTION: &'static str = "Every browser pane in the window: pane id, address, title, whether it's loading, whether the engine has it open (the tools reach only an open page) and on screen, its worktree, who controls it, its viewport, and the dialog it waits on, if any. A page the person controls isn't yours to drive.";
+    const DESCRIPTION: &'static str = "Every browser pane in the window: pane id, address, title, whether it's loading, whether the engine has it open (the tools reach only an open page) and on screen, its worktree, who controls it, its viewport, and the dialog it waits on, if any. A page the person controls isn't yours to drive. The person's own pages, pinned or loose (`persons`), are listed too: using one needs their consent, which browser_claim with its pane asks for; browser_duplicate asks for a copy in your worktree instead.";
     const HINTS: Hints = Hints::READ;
     type Input = super::shared::NoInput;
     type Output = BrowserListOutput;

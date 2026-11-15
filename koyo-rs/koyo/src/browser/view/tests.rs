@@ -182,3 +182,24 @@ fn the_devtools_own_controls_move_and_close_them_and_turn_responsive_mode_on_and
     cx.run_until_parked();
     view.read_with(cx, |view, _| assert!(view.devtools().is_none(), "closed from inside"));
 }
+
+/// A page's pane id taken by another view, as a page opened again there takes it: the first
+/// view going lets go of nothing but its own.
+#[gpui_kit::test]
+fn a_view_going_leaves_its_pane_to_the_view_that_took_it_since(cx: &mut TestAppContext) {
+    let (window, first) = start_page(cx);
+    let (_, second) = start_page(cx);
+    let pane = first.read_with(cx, |view, _| view.pane);
+    let browsers = cx.update(Browsers::global);
+    browsers.update(cx, |browsers, _| browsers.attach(pane, second.downgrade()));
+    // The first view goes with its window.
+    let gone = first.downgrade();
+    drop(first);
+    (cx.update_window(window, |_, window, _| window.remove_window())).unwrap();
+    cx.run_until_parked();
+    assert!(gone.upgrade().is_none(), "the first view is released");
+    let kept = browsers.read_with(cx, |browsers, _| browsers.view(pane));
+    assert_eq!(kept, Some(second.clone()), "the second view keeps the pane");
+    browsers.update(cx, |browsers, _| browsers.detach(pane, second.entity_id()));
+    assert_eq!(browsers.read_with(cx, |browsers, _| browsers.view(pane)), None);
+}

@@ -14,6 +14,9 @@ mod devices;
 mod host;
 mod pages;
 mod panes;
+mod persons;
+mod persons_asked;
+mod persons_ends;
 mod pipeline;
 mod projects;
 mod settings;
@@ -82,25 +85,28 @@ fn controlled(name: &str, roots: &[&Path], cx: &mut TestAppContext) -> Rig {
     }
 }
 
-/// An agent in Koyo terminal `handle`.
+/// An agent in Koyo terminal `handle`, on a connection of its own.
 fn terminal(handle: &str) -> Caller {
-    Caller {
+    let caller = Caller {
         terminal: Some(handle.into()),
         ..external("koyo app")
-    }
+    };
+    connected(caller)
 }
 
-/// The agent of Koyo chat `id`, as Koyo's MCP server in its session says hello.
+/// The agent of Koyo chat `id`, as Koyo's MCP server in its session says hello, on a
+/// connection of its own.
 fn chat(id: &str) -> Caller {
-    Caller {
+    let caller = Caller {
         chat: Some(id.into()),
         ..external("claude-code")
-    }
+    };
+    connected(caller)
 }
 
-/// An external client called `name`.
+/// An external client called `name`, on a connection of its own.
 fn external(name: &str) -> Caller {
-    Caller {
+    connected(Caller {
         client: ClientInfo {
             name: name.into(),
             version: "test".into(),
@@ -109,6 +115,19 @@ fn external(name: &str) -> Caller {
         chat: None,
         worktree: None,
         cwd: None,
+        connection: None,
+    })
+}
+
+/// `caller` on the connection its name gives it: the same for the same name, as a client's
+/// is while it stays connected, which its calls open (`send`).
+fn connected(caller: Caller) -> Caller {
+    use std::hash::{Hash as _, Hasher as _};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    caller.key().hash(&mut hasher);
+    Caller {
+        connection: Some(hasher.finish() >> 1),
+        ..caller
     }
 }
 
@@ -165,6 +184,10 @@ fn send(
     cx: &mut TestAppContext,
 ) -> Slot<Value> {
     let (answered, reply) = slot();
+    // A client's call comes on a connection that's open.
+    if let Some(connection) = caller.connection {
+        cx.update(|cx| handle(Request::Present { connection, open: true }, cx));
+    }
     let request = Request::Call(super::pipeline::Pending {
         caller: caller.clone(),
         request_id: request_id.map(Into::into),

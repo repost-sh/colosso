@@ -13,7 +13,8 @@ use koyo_app_control::ops::browser::{
 
 use super::super::{Caller, Exec, output};
 use super::acts::capture;
-use super::page::{Page, acted, refused, resolve};
+use super::page::{acted, later, refused, resolve};
+use super::pages::Page;
 use super::script::evaluate;
 use crate::browser::agent::{self, Choice, Viewport, ViewportChange, ViewportRefused, Zoom};
 
@@ -74,22 +75,22 @@ pub(crate) fn viewport(
     let page = resolve(caller, input.pane, cx)?;
     let actor = caller.actor();
     let target = (page
-        .view
+        .view()?
         .update(cx, |view, cx| view.agent_viewport(&actor, &change, cx)))
     .map_err(|why| match why {
         ViewportRefused::Refused(why) => refused(why),
         ViewportRefused::Invalid(why) => ControlError::invalid_input(why),
     })?;
-    acted(caller, page.pane, cx);
+    acted(caller, page.pane(), cx);
     let screenshot = input.screenshot.unwrap_or(false);
-    Ok(Exec::Later(cx.spawn(async move |cx: &mut AsyncApp| {
+    Ok(later(page, cx, async move |page, cx| {
         let settled = match target {
-            Some(target) => settle(&page, target, cx).await,
+            Some(target) => settle(page, target, cx).await,
             None => false,
         };
-        let viewport = cx.update(|cx| page.view.read(cx).viewport_facts(cx));
+        let viewport = cx.update(|cx| page.view().map(|view| view.read(cx).viewport_facts(cx)))?;
         let image = if screenshot {
-            Some(capture(&page, ImageFormat::Png, false, cx).await?)
+            Some(capture(page, ImageFormat::Png, false, cx).await?)
         } else {
             None
         };
@@ -99,19 +100,27 @@ pub(crate) fn viewport(
             mime_type: (image.as_ref()).map(|_| ImageFormat::Png.mime_type().to_owned()),
             data: image,
         })
-    })))
+    }))
 }
 
 /// Waits, 5 seconds at most, until the page, told `target`, reports it as the size it lays
 /// out at: whether it did.
 async fn settle(page: &Page, target: Viewport, cx: &mut AsyncApp) -> bool {
     for _ in 0..POLLS {
-        if cx.update(|cx| page.view.read(cx).ready_to_measure(target)) {
+        let ready = |cx: &mut App| {
+            (page.view()).is_ok_and(|view| view.read(cx).ready_to_measure(target))
+        };
+        if cx.update(ready) {
             let inner = evaluate(page, None, "[innerWidth, innerHeight]", false, cx).await;
             let inner = (inner.ok())
                 .and_then(|inner| Some((inner.get(0)?.as_f64()?, inner.get(1)?.as_f64()?)));
             let laid_out = inner
-                .is_some_and(|inner| cx.update(|cx| page.view.read(cx).laid_out_at(target, inner)));
+                .is_some_and(|inner| {
+                    let laid_out = |cx: &mut App| {
+                        (page.view()).is_ok_and(|view| view.read(cx).laid_out_at(target, inner))
+                    };
+                    cx.update(laid_out)
+                });
             if laid_out {
                 return true;
             }

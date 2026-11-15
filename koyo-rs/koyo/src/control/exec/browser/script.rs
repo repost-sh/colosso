@@ -7,7 +7,8 @@ use koyo_app_control::ControlError;
 use serde_json::{Value, json};
 
 use super::super::Caller;
-use super::page::{CALL_LIMIT, PROMISE_LIMIT, Page, call_within};
+use super::page::{CALL_LIMIT, PROMISE_LIMIT, call_within};
+use super::pages::Page;
 
 /// The attribute a snapshot marks elements with, `eN`.
 const REF_ATTRIBUTE: &str = "data-koyo-ref";

@@ -67,9 +67,9 @@ As monocode and `docs/terminals.md` 8.2:
 - Errors: an `isError` result with `{ code, message, retryable, details? }`. Codes:
   `invalid_input`, `not_found`, `ambiguous`, `scope_denied`, `user_declined`,
   `request_conflict`, `control_disabled`, `app_not_running`, `unsaved_changes`,
-  `person_has_control`, `control_required`, `timeout`, `browser_unavailable`,
-  `desktop_unavailable`, `git_failed`, `internal`, plus the terminal codes of
-  `docs/terminals.md` 8.2.
+  `person_has_control`, `control_required`, `consent_required`, `timeout`,
+  `browser_unavailable`, `desktop_unavailable`, `git_failed`, `internal`, plus the terminal
+  codes of `docs/terminals.md` 8.2.
 - Selectors. `project`: main checkout path, or project name when unique. `worktree`:
   checkout path, branch name (unique across projects, or within `project`), or `"current"`
   (the caller's worktree: `KOYO_WORKTREE`, else its cwd's checkout); when no branch has the
@@ -77,8 +77,9 @@ As monocode and `docs/terminals.md` 8.2:
   on `schulzfel/mcp-check`), matched as git slugs it. Absent `worktree`
   means the caller's worktree, else the selected one in the window. `pane`: the pane id
   (`u64`, stable while the app runs, listed by `tab_list`). Absent `pane` on a browser tool
-  means the browser pane the caller last acted on, else the shown tab's browser pane, else
-  `not_found` listing candidates.
+  means the worktree's browser pane the caller last acted on, else the shown worktree tab's,
+  else the only one, else `not_found` or `ambiguous` listing candidates: never one of the
+  person's own pages, pinned or loose, which a call names (Browser, The person's own pages).
 
 ## 4. Callers, identity and scopes [decided]
 
@@ -94,6 +95,19 @@ approval is consent, not security; names are self-reported. External names may n
 with `terminal:` or `chat:`. Receipts, prompts, page leases and the activity log know a
 caller by `terminal:<handle>`, `chat:<id>` or its name.
 
+**Known limitation [2026-11-15].** A hello's chat id, terminal handle and client name are
+self-reported: `KOYO_CHAT` and `KOYO_TERMINAL` are whatever the environment says, and
+`clientInfo.name` whatever the client says. Koyo checks only that such a chat or terminal
+exists, so any process running as the user can say hello as a Koyo chat's or terminal's
+agent, with what that agent may do. A prompt therefore can't vouch for who asks: it says
+what the caller says it is, marked as said ("An agent saying it's from the chat …", 5,
+The person's own pages). This reaches the destructive confirmations too (12.2), not only
+the person's pages. In place against it: the person's consent for one of their pages is
+bound to the connection that asked for it, and a page they turned down isn't asked about
+again for 10 minutes, whoever asks. Proposed, not built: a per-session secret Koyo mints
+for each chat and terminal it starts, passed in their environment and checked at hello, so
+Koyo can tell its own agents from processes claiming to be them.
+
 Scopes:
 
 | Scope | Allows |
@@ -101,7 +115,7 @@ Scopes:
 | `read` | lists, reads, status, screenshots, resources |
 | `navigate` | select projects and worktrees, open/select/move/close tabs, split/focus/resize panes, panels, layout, open settings pages, open files |
 | `manage` | add/remove/reorder projects, create worktrees, save files |
-| `browser` | drive pages: navigate, eval, click, type, keys, scroll, claim/release |
+| `browser` | drive pages: navigate, eval, click, type, keys, scroll, claim/release; ask the person for one of their own pages, or a copy of it |
 | `desktop` | drive apps on the agent desktop: open, click, move, drag, scroll, type, keys, focus, close |
 | `devices` | drive iPhone and iPad simulators, and the person's own iPhone or iPad once they've lent it: open, tap, swipe, scroll, pinch, type, keys, buttons, rotate, install, launch, terminate, open links, close |
 | `settings` | `settings_set` (the allowlisted fields) |
@@ -231,7 +245,13 @@ worktree_delete [destructive] D, confirmed { worktree, force?: bool } → refuse
 
 ```
 tab_list   [read] R { worktree?, all?: bool } → { worktrees: [{ path, tabs: [{ index, selected,
-             layout: PaneTree, panes: [PaneInfo] }] }] }
+             layout: PaneTree, panes: [PaneInfo] }] }], persons: { pinned: [Tab],
+             loose: [Tab] } }
+             `persons` lists the person's own pages whatever worktree is asked for: the
+             pinned in the order of their tiles, every space's loose pages in the order of
+             their rows (`index` a page's place among its space's), `selected` the one shown
+             in place of the worktree's tab (`docs/arc-sidebar.md` 11). The window tools
+             refuse them (below); the browser tools need the person's consent (Browser).
              PaneInfo = { pane, kind: "terminal"|"browser"|"editor"|"changes"|"chat"|
              "desktop"|"device", title,
              url?, file?, unsaved?, terminal?: handle, focused }
@@ -268,6 +288,12 @@ pane_resize [navigate] I { pane, ratio } → the split holding the pane gives th
 pane_detach [navigate] I { pane } → moves the pane out of its split into a tab of its own
 pane_close [navigate] I { pane } → takes the pane out (same unsaved rule as tab_close)
 ```
+
+Every tool here that takes a `pane` (`tab_select`, `tab_move`, `tab_close`, `pane_split`, its
+`move` too, `pane_focus`, `pane_resize`, `pane_detach`, `pane_close`, and `file_save`'s)
+reaches a worktree's panes only. The person's own pages, pinned and loose, are theirs to show,
+move, split and close: a call naming one fails `not_found` saying it's the person's pinned or
+loose page, with no consent that changes it (`select.rs` `pane`). [2026-11-15]
 
 ### Chats
 
@@ -356,7 +382,11 @@ it lands; the pointer fades 6 s after its last click.
 
 ```
 browser_list     [read] R {} → { pages: [{ pane, url, title, loading, open, onScreen,
-                   worktree, controller?, viewport, dialog?: { kind, message, defaultText? } }] }
+                   worktree: path | null, place: "worktree"|"pinned"|"loose", persons: bool,
+                   consent: "none"|"granted", controller?, viewport,
+                   dialog?: { kind, message, defaultText? } }] }; every worktree's pages,
+                   then the person's own: the pinned (a tile with no page open is listed as
+                   a tab not shown yet is, `open: false`), then every space's loose pages
 browser_navigate [browser] C { pane?, url, wait?: "load"|"none" (default load), timeoutMs? }
                    → { pane, url, title, loaded? }; an open page's, it never opens one
 browser_go       [browser] C { pane?, action: "back"|"forward"|"reload" } → as navigate
@@ -373,6 +403,9 @@ browser_scroll   [browser] C { pane?, dx?, dy?, ref? | selector? (scroll into vi
 browser_wait     [read] R { pane?, for: "load"|"selector"|"text"|"url", value?, timeoutMs? }
                    → { met, elapsedMs }
 browser_claim    [browser] I { pane?, takeover?, reason? } ; browser_release [browser] I { pane? }
+                   on the person's own page, claim asks them, release ends their consent
+browser_duplicate [browser] C { pane, reason? } → { pane, tab, worktree }; asks the person
+                   for a copy of their page in the caller's worktree
 browser_dialog   [browser] C { pane?, action: "accept"|"dismiss", text? } → the page's; answers
                    the alert, confirm, prompt or leave-page question it waits on
 browser_viewport [browser] I { pane?, device?, width?, height?, scale?, mobile?, touch?,
@@ -380,6 +413,103 @@ browser_viewport [browser] I { pane?, device?, width?, height?, scale?, mobile?,
                    → { viewport, settled } (+ image block with `screenshot`); responsive mode,
                    `docs/responsive.md` 4.1
 ```
+
+#### The person's own pages [decided 2026-11-15]
+
+The pinned pages and the loose ones (`docs/arc-sidebar.md` 11) are the person's: no
+worktree's, signed in as they are. Agents see them and can't use them unless the person says
+so, in Koyo's window.
+
+- **Listed.** `browser_list` lists them with their titles and addresses, `place` `pinned` or
+  `loose`, `persons: true`, `worktree` null, and `consent` for the calling client; a pinned
+  tile with no page open as a page not shown yet. Who holds one is said only as `you` (this
+  connection, under its own consent), `agent` (any other client, unnamed, another connection
+  under the same name too) or `person`, and the question it waits on (`dialog`) only to a
+  client whose consent holds. `tab_list` lists them under `persons`.
+- **One gate.** Every browser tool gets its page through one lookup (`page.rs` `resolve`).
+  A person's page is handed over (`pages/consent.rs` `Persons::admit`) only to a client they
+  let use it, on the connection it asked on, holding the lease it took then, and still
+  granted the `browser` scope (else the consent ends, `scope_denied`); the others fail
+  `consent_required` (not retryable): "Pane 12 is the person's pinned page. Call
+  browser_claim with pane 12 to ask them, or browser_duplicate to ask for a copy in your
+  worktree." The page a tool gets is made only in `pages/` (`Page`), and held weakly. The
+  gate is asked again before every command a call sends the page, each turn of a
+  `browser_wait`, and once the call is done: a call whose consent ended meanwhile answers
+  `consent_required`, its result dropped, and any lease it left let go; so does a call on a
+  worktree's page that became the person's meanwhile (pinned, or loose); a call whose page
+  closed answers `browser_unavailable`. A caller with no connection is never given consent,
+  and isn't asked about (`invalid_input`). A call naming no
+  pane never means one of their pages: the last-page, shown-tab and only-page rules pass
+  over them. `browser_list` and `browser_release` need no consent. A test runs every
+  browser tool in the registry against a person's page, so a tool added later fails until
+  it's said what it does with one (`control/tests/persons.rs`).
+- **Asking.** Only `browser_claim` naming the page asks, with the `browser` scope: "An agent
+  saying it's from the chat “Fix login” (koyo/feat-x) wants to use your page “Inbox”
+  (mail.example.com)", detail "It can read the page, run script in it, click, type and
+  navigate it, signed in as you, until it lets go, you take the page back, or 10 minutes
+  pass without it acting.", Allow / Cancel. The caller's `reason`, when it gives one,
+  follows as its own words. Allowed, it holds the page's lease as any claim does. Cancel, or
+  2 min without an answer, fails `user_declined`. The client turned down, known by its name
+  and, apart from that, by its connection, isn't let ask about that page again (a claim or a
+  copy) for 10 minutes, and anyone else waits a minute: each declined at once, with no
+  prompt; refusals that are over are forgotten. The person is asked about a page by one
+  client at a time: another asking meanwhile gets `request_conflict` (retryable). An answer
+  that comes after the asking connection closed grants nothing: the log has the person's
+  Allow, and the call fails `not_found` saying the connection had closed. One prompt per
+  client at a time, as for confirmations; each is logged as one is. A prompt that times out
+  stays on screen until it's answered or dismissed, as GPUI's prompts can't be closed from
+  Koyo; answering it then changes nothing.
+- **Another holder.** A claim of a page another client holds says only "Another agent holds
+  this page; browser_claim with takeover asks the person for it.", naming no one; a lease
+  held under another connection's consent, under the same name, counts as another's. With
+  `takeover` the person is asked, and allowed, the other's consent ends. `browser_release`
+  from another connection of the same name leaves that consent and its lease be.
+- **Who asks**, as it says it is, said so, in Koyo's words for it (Known limitation, 4): "An
+  agent saying it's from the chat “<Koyo's title for that chat>” (<project>/<branch>)", the
+  worktree its folder is in; "An agent saying it runs in the terminal “<name>”
+  (<project>/<branch>)", as the daemon names it ("… in a Koyo terminal" until the window
+  has heard of it); "An MCP client calling itself “<name>”". Every worktree a prompt names
+  is `project/branch`. Of a client's name, a chat's title, a terminal's name, a page's title
+  and host, a worktree's names and a reason, a prompt keeps only letters and digits of any
+  script, spaces and `- _ . , : ; ! ? ( ) [ ] / & + # @ %`: quote marks of every kind,
+  combining marks, symbols, emoji, and control, format and invisible characters go, and
+  each is cut to 60, 80 and 200 characters with an ellipsis, so nothing they say reads as
+  Koyo's own words.
+- **What consent covers**: that client (`terminal:<handle>`, `chat:<id>` or its name) on the
+  connection it asked on, that page, every read and act, for as long as the lease it took
+  lasts. It ends when the client calls `browser_release`; when the person takes the page (a
+  press or a key in it, or Take control): a lease the client comes to hold after that, the
+  person having given the page back, is another, and has none; after 10 minutes without that
+  client using the page, which lets the lease go too; when the page closes, is unpinned,
+  moved (onto a worktree it's an ordinary page and needs none), pinned again or pinned at
+  another address (Replace Pinned URL with Current, Edit…), as a grant is for the page in
+  that pane where it was, so a pane that shows another page later has none; when its
+  connection closes, or its chat ends; when the client may no longer drive pages, at once
+  as the person changes what it may do; and when Koyo quits: it's kept in memory only. A
+  lease an agent holds of one of the person's pages under no consent, as of a worktree's
+  page pinned while an agent drove it, is let go as the window changes. As it's per connection, `koyo app`, which opens one
+  per call, keeps consent only for the call that asked; the MCP server's session keeps it.
+- **A copy instead.** `browser_duplicate { pane, reason? }`, with the `navigate` scope too
+  as `tab_open` needs, asks "An agent saying it's from the chat “Fix login” (koyo/feat-x)
+  asks for a copy of your page “Inbox” (mail.example.com) in its worktree koyo/feat-x",
+  Allow / Cancel, the same 10-minute memory of a refusal. Its detail says how the copy is
+  signed in: "signed in as you, as this page is" when the worktree's project's profile is
+  the page's (`browser::profile`), else "with that worktree's own sign-ins". Allowed, a
+  browser tab of the caller's worktree opens at the address the page had when the person was
+  asked, as a page the agent opens does: beside the agent's own tab (else after the one its
+  worktree shows), out of sight unless Switch to what agents open is on, at the size Pages
+  agents open says, of that worktree's project's profile. A page that closed, moved or went
+  to another address meanwhile isn't copied (`browser_unavailable`). Only the address is
+  copied; the copy is an ordinary page of the worktree, the agent's to drive. The caller's
+  worktree is a chat's folder's checkout, a terminal's checkout as the daemon says it, and
+  for any other client the one its hello names (`KOYO_WORKTREE`, else its working folder);
+  a client in none is refused `not_found`, before anyone's asked. A worktree's page is
+  refused `invalid_input`: `tab_open` opens another.
+- **Profiles are shared.** `browser_list` lists a person's page's address, so an agent may
+  `tab_open` it in a worktree of the same project and read it signed in, as that profile is
+  the page's too (`docs/arc-sidebar.md` 11.6). That's what a profile is, and it's for the
+  owner, with browser profiles, to decide; the consent above doesn't cover it.
+- **The window tools** refuse the person's pages outright (Tabs and panes).
 
 ### Agent desktop (`docs/agent-desktop.md`, through its host)
 

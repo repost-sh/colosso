@@ -379,13 +379,15 @@ impl Operation for BrowserScroll {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BrowserClaimInput {
-    /// The browser pane. Left out, the page you acted on last, else the shown tab's.
+    /// The browser pane. Left out, the page you acted on last, else the shown tab's; never
+    /// the person's own page, which is only ever named.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pane: Option<PaneId>,
     /// Take the page from another agent. Never takes it from the person.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub takeover: Option<bool>,
-    /// Why, shown to whoever loses the page.
+    /// Why, shown to whoever loses the page, and on the person's own page in the question
+    /// they're asked, as your own words.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
 }
@@ -408,8 +410,9 @@ impl Operation for BrowserClaim {
     const NAME: &'static str = "browser_claim";
     const TITLE: &'static str = "Take control of a page";
     const SCOPE: Scope = Scope::Browser;
-    const DESCRIPTION: &'static str = "Takes a browser page's lease so only you act on it. `takeover` displaces another agent, never the person: person_has_control means leave the page alone, and its message says whether it comes back on its own or to open another.";
+    const DESCRIPTION: &'static str = "Takes a browser page's lease so only you act on it. `takeover` displaces another agent, never the person: person_has_control means leave the page alone, and its message says whether it comes back on its own or to open another. On the person's own page (pinned or loose: `persons` in browser_list), named by `pane`, it asks them in Koyo's window; allowed, you may read and act on that page, on this connection, until you release it, they take it back, or 10 minutes pass without you using it. Cancel, or two minutes without an answer, fails user_declined: you can't ask about that page again for 10 minutes, and others wait a minute. The person is asked about a page by one client at a time (request_conflict meanwhile).";
     const HINTS: Hints = Hints::IDEMPOTENT;
+    const ASKS: bool = true;
     type Input = BrowserClaimInput;
     type Output = Lease;
 
@@ -426,8 +429,7 @@ impl Operation for BrowserRelease {
     const NAME: &'static str = "browser_release";
     const TITLE: &'static str = "Give up control of a page";
     const SCOPE: Scope = Scope::Browser;
-    const DESCRIPTION: &'static str =
-        "Gives a browser page's lease up, so the page is free for others.";
+    const DESCRIPTION: &'static str = "Gives a browser page's lease up, so the page is free for others. On the person's own page it ends their consent too.";
     const HINTS: Hints = Hints::IDEMPOTENT;
     type Input = PageInput;
     type Output = Lease;
