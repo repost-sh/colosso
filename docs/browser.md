@@ -300,10 +300,10 @@ tells the browser host whether it carries the entitlement (`Hello.passkeys`). Wi
 host answers every `create` and `get` with `NotAllowedError` as soon as it has checked it,
 within a few milliseconds, and the availability checks say no; so a site goes straight to its
 other ways of signing in ("Try another way") instead of waiting. Builds made with
-`script/dev` and the ad-hoc `script/bundle` are such builds, and stay so: an ad-hoc build
-never claims the entitlement, since macOS won't start an app that claims a managed
-entitlement without the provisioning profile granting it, and `script/bundle` stops if an
-ad-hoc signature claims any entitlement at all.
+`script/dev` and `script/bundle` without `--sign` are such builds, and stay so: signed ad hoc
+or by this Mac's own identity (12.7), a build never claims the entitlement, since macOS won't
+start an app that claims a managed entitlement without the provisioning profile granting it,
+and `script/bundle` stops if such a build claims any entitlement at all.
 
 ### 9.4 Getting the entitlement [not done]
 
@@ -696,6 +696,62 @@ allowed, kept and answered by their setting (the owner's camera request ended in
 `NotAllowedError`, not looked into); the Orca layout's field. There is no test of the
 popover or the question in a window: `site/panel.rs` has its height and its names,
 `site/prompt.rs` its wording, `host/site.rs` a site's address and a media request's devices.
+
+### 12.7 What macOS allows Koyo: the screen, the camera, the microphone [not run]
+
+The owner reported, 2026-11-15: a page asked to share the screen, macOS opened System
+Settings on Screen Recording, and Koyo wasn't in the list to switch on. Read from the log of
+macOS's privacy service (`log show --predicate 'process == "tccd"'`) that day:
+
+- **Whose request it is.** Chromium's browser process is Koyo's (`docs/native-pages.md` 3.1),
+  and the screen is taken there, through ScreenCaptureKit: macOS asks about Koyo itself,
+  `codes.koyo.desktop` at `/Applications/Koyo.app/Contents/MacOS/koyo`, never a helper. A
+  first request is refused (Screen Recording is never asked about) and macOS shows its own
+  alert, which offers System Settings and puts the app in the list; switched on, the same
+  Koyo process shares the screen with no restart (pid 72316 refused at 12:03, sharing at
+  12:06).
+- **Why Koyo wasn't listed.** macOS keeps an app's grants by its bundle id and its designated
+  requirement. Two things stood in the way, both of this Mac:
+  - The bundle id had moved from `dev.koyo.desktop` that morning (`2e193a503`). Launch
+    Services still knew `/Applications/Koyo.app` by the old id and the list held an entry for
+    it, so macOS's alert listed the app as `dev.koyo.desktop`: a switch for the old id, none
+    for the Koyo that asked. The owner added `/Applications/Koyo.app` with "+" (12:05) and
+    the screen was shared. Launch Services knows the new id now.
+  - Signed ad hoc, the designated requirement is the build's hash, so every build is another
+    app to macOS. The entry made for one build stays in the list, switched on, and the next
+    build is refused against it ("Failed to match existing code requirement"), with nothing
+    of its own to switch on. The camera's and the microphone's grants are tied to the build
+    the same way. The build installed at 16:22 (`8662b8e0…`) doesn't match the entry of the
+    one that shared the screen at noon (`c50aaec1…`).
+- **Someone new to Koyo** has no entry from an older build or an older id: the first
+  request puts Koyo in the list. They'd lose the grants with every update of a build signed
+  ad hoc; a release is signed with a Developer ID (9.4), whose designated requirement names
+  the team, and keeps them.
+- **So a build is signed by one identity** (`script/bundle`): one made on this Mac, once, by
+  `script/signing-identity` (a certificate for code signing, signed by itself, its key in
+  the login keychain for codesign alone). Signed by it, the designated requirement is
+  `identifier "codes.koyo.desktop" and certificate root = H"…"`, the same for every build,
+  and only code signed with that key meets it. Until it exists a build is signed ad hoc, and
+  says so. Only the app's own signature counts: the engine's helpers run as Koyo's, and keep
+  theirs ad hoc, so the engine still packs `KoyoMockKeychain` and the profiles' cookie key
+  stays as it was.
+- **Not taken:** an ad-hoc signature with a designated requirement of the bundle id alone.
+  It needs no identity, but any program signing itself `codes.koyo.desktop` would get what
+  Koyo was allowed: the screen, the camera, the microphone, Accessibility.
+- **Left as they are:** `script/dev-bundle`'s `Koyo Dev.app` isn't sealed at all, so its
+  grants still go with each debug build; signing it too would put the keychain in every
+  checkout's debug loop. The agent desktop's loader keeps its grants already, being the same
+  binary in every build (`docs/agent-desktop.md` 3: 2c96b1ec… through the 15:08 and 16:22
+  installs, its Screen Recording allowed after both).
+- **Once, by the owner:** entries made for older builds and the old id stay in the list
+  and still don't match. They're removed with "−" in System Settings, or
+  `tccutil reset ScreenCapture codes.koyo.desktop` (and `dev.koyo.desktop`, and `Camera`
+  and `Microphone` alike), and the first build signed by the identity is allowed once.
+  The first time codesign signs with the key, macOS may ask whether it may use it: Always
+  Allow.
+
+Not run yet: no identity has been made on this Mac, so no build has been signed by one, nor
+a grant seen to hold across two builds.
 
 ## 13. Developer tools
 
