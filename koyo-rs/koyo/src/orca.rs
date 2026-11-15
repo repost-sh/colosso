@@ -100,7 +100,7 @@ pub fn sidebar(shell: &Shell, cx: &mut Context<Shell>) -> impl IntoElement {
                         ),
                     {
                         let path = project.path.clone();
-                        move |_, _| project_menu(&path)
+                        move |_, cx| project_menu(&path, cx)
                     },
                 ))
                 .when_some(project.error.clone(), |group, error| {

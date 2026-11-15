@@ -40,6 +40,7 @@ pub(crate) mod native;
 mod page;
 mod passkeys;
 pub(crate) mod pointer;
+pub mod profiles;
 mod responsive;
 mod site;
 mod tabs;
@@ -63,7 +64,7 @@ pub fn warm_up(cx: &mut App) {
     browsers.update(cx, host::Browsers::start_if_idle);
 }
 
-/// Forgets every project's browsing data, the open pages loading again afresh; and the pages
+/// Forgets every profile's browsing data, the open pages loading again afresh; and the pages
 /// visited and the searches made, which the new-tab launcher offers.
 pub fn clear_data(cx: &mut App) {
     let browsers = host::Browsers::global(cx);
@@ -111,6 +112,7 @@ actions!(
 /// share with it; and where `DevTools` open, picked in settings. ⌘L isn't among them: it's the
 /// window's, heard wherever the keyboard is (`launcher::OpenAddress`).
 pub fn init(cx: &mut App) {
+    profiles::init(cx);
     cx.on_action(|SetDevtoolsDock(dock): &SetDevtoolsDock, cx| {
         crate::settings::update(cx, |settings| settings.devtools.dock = *dock);
     });
@@ -222,29 +224,15 @@ pub fn search_url(query: &str) -> String {
 }
 
 /// What stands for a project where a page is none's (`docs/arc-sidebar.md` 11): a loose page
-/// opened outside any project. Such pages share one profile, the person's own, in every space.
+/// opened outside any project. Such pages use Default, the person's own, in every space.
 pub const NO_PROJECT: &str = "no-project";
 
-/// The profile a project's panes share: cookies, storage and cache never cross projects.
-pub fn profile(project: &Path) -> String {
-    // FNV-1a of the path: the name must stay the same across releases, or a project would
-    // lose its logins.
-    let hash = project
-        .to_string_lossy()
-        .bytes()
-        .fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
-            (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
-        });
-    let name = project
-        .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_default()
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
-        .take(24)
-        .collect::<String>()
-        .to_ascii_lowercase();
-    format!("{name}-{hash:016x}")
+/// The profile a page opened for `project`, a main checkout or [`NO_PROJECT`], is of: the one
+/// its project is on, Default outside any (`profiles.rs`). Every way of opening a page asks
+/// here, so the pages of a project are of one profile, and cookies, storage and cache never
+/// cross profiles.
+pub fn profile<'a>(project: &Path, cx: &'a App) -> &'a str {
+    profiles::get(cx).of(project)
 }
 
 #[cfg(test)]
@@ -280,14 +268,5 @@ mod tests {
             Some("https://www.google.com/search?q=c%2B%2B+%26+co")
         );
         assert_eq!(address_to_url("   "), None);
-    }
-
-    #[test]
-    fn each_project_has_its_own_stable_profile() {
-        let a = profile(Path::new("/work/koyo"));
-        assert_eq!(a, profile(Path::new("/work/koyo")));
-        assert_ne!(a, profile(Path::new("/work/other")));
-        assert!(a.starts_with("koyo-"));
-        assert!(a.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'));
     }
 }

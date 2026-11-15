@@ -65,14 +65,15 @@ pub fn with_menu<E: InteractiveElement>(
 }
 
 /// The menu a project's row opens, for its main checkout at `path`.
-pub fn project_menu(path: &Path) -> NativeMenu {
-    project_items(NativeMenu::new(), path)
+pub fn project_menu(path: &Path, cx: &App) -> NativeMenu {
+    project_items(NativeMenu::new(), path, cx)
 }
 
-/// What any project's menu offers, after `menu`'s own items: a new worktree, the folder's
-/// items, and removing it.
-pub fn project_items(menu: NativeMenu, path: &Path) -> NativeMenu {
+/// What any project's menu offers, after `menu`'s own items: the profile its pages use, a new
+/// worktree, the folder's items, and removing it.
+pub fn project_items(menu: NativeMenu, path: &Path, cx: &App) -> NativeMenu {
     let menu = menu
+        .submenu("Set Profile", crate::browser::profiles::menu(path, cx))
         .menu("New Worktree…", Box::new(NewWorktreeIn(path.to_owned())))
         .separator();
     path_items(menu, path)

@@ -119,6 +119,9 @@ The projects of the space shown, as tiles at the foot of the space, over the spa
   - **Rename…**: a name kept only in Koyo; the folder isn't renamed.
   - **Change Icon…**: an image picked from disk stands in for the git host's avatar;
     **Reset Icon** goes back to it.
+  - **Set Profile ›**: the browsing profiles, the one its pages use checked, a divider, then
+    **New Profile…**, which makes one and puts the project on it (`docs/browser.md` 15). The
+    Orca layout's project row has it too, as it has New Worktree….
   - **New Worktree…**, **Reveal in Finder** and **Copy Path**, as before.
   - **Remove Project**: takes it out of Koyo, as before. Its files stay.
 
@@ -342,6 +345,9 @@ The projects of the space shown, as tiles at the foot of the space, over the spa
   data folder, `pinned-tabs.json` (section 11, `docs/browser.md` 10). `settings.json` keeps only
   whether their empty zone was put away (`pinned_zone_dismissed`). A space's loose pages are
   open tabs, kept with the window (`window.json`, `docs/browser.md` 2).
+- The browsing profiles, and the one each project is on, are a file of their own too,
+  `browser-profiles.json`, so a build that doesn't know them can't drop them from
+  `settings.json` (`docs/browser.md` 15).
 
 ## 10. Islands
 
@@ -541,10 +547,12 @@ menu is Arc's.
   opened from its `DevTools`, open a loose page of the space shown, right after a loose
   opener or after them all, without leaving the page, as a page tab's opens beside it.
   **[ours]**
-- A page keeps a browsing profile, its cookies and sign-ins (`browser::profile`):
+- A page keeps a browsing profile, its cookies and sign-ins (`browser::profile`,
+  `docs/browser.md` 15):
   - one pinned or dragged out of a worktree keeps its project's, whichever project is
-    selected, and is of that profile again after a relaunch;
-  - one opened outside any project keeps the person's own, the same in every space
+    selected, follows its project onto another profile, and is of that profile again after
+    a relaunch;
+  - one opened outside any project keeps Default, the person's own, the same in every space
     (`browser::NO_PROJECT`);
   - one a pinned or a loose page opens keeps its opener's, so it's signed in as its opener
     is;

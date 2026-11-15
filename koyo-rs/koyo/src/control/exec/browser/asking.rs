@@ -301,10 +301,10 @@ fn to_copy(
     let asker = asker::named(caller, shell, cx);
     let (title, site) = shown_as(persons);
     let worktree = asker::label(shell, at);
-    let copy_profile = browser::profile(&shell.workspace.projects[at.0].path);
+    let copy_profile = browser::profile(&shell.workspace.projects[at.0].path, cx);
     let page_profile = (shell.workspace.find_apart(|pane| pane.id == persons.pane))
-        .map(|(_, project)| browser::profile(project));
-    let signed_in = if page_profile.as_ref() == Some(&copy_profile) {
+        .map(|(_, project)| browser::profile(project, cx));
+    let signed_in = if page_profile == Some(copy_profile) {
         "signed in as you, as this page is"
     } else {
         "with that worktree's own sign-ins"

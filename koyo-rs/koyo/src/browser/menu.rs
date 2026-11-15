@@ -338,6 +338,7 @@ impl BrowserView {
 /// page they name, wherever the keyboard is.
 pub fn handle_actions(root: Div) -> Div {
     let root = super::responsive::bar::handle_actions(root);
+    let root = super::profiles::handle_actions(root);
     root.on_action(|pick: &MenuPick, _, cx| {
         with_view(pick.pane, cx, |view, cx| {
             view.picked(pick.menu, pick.pick.clone(), cx);

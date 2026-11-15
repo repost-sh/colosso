@@ -115,7 +115,7 @@ beside `history.json`:
   `space` is the space's `id` in `settings.json`, which stays its own whatever its place
   among the spaces; `shown` the place of the loose page the space showed, left out when it
   showed its project's tab; each of `tabs` a page's address, its title, and the project
-  whose browsing profile it keeps, `no-project` for a page opened outside any. They come
+  whose browsing profile it keeps (section 15), `no-project` for a page opened outside any. They come
   back as the window opens, waiting for no checkout: `Shell::restore_pages`. Those of a
   space the settings no longer have are the space shown's.
 - **Pinned pages** (`docs/arc-sidebar.md` 11) aren't in this file: they're no checkout's and
@@ -431,7 +431,7 @@ folder (`settings::data_dir()`; `KOYO_DATA_DIR` moves it):
 - `tabs`: the pinned pages in the order of their tiles. `url` is the address the page last
   showed, empty for a start page; `title` its title then; `pinnedUrl` the address it's pinned
   at, where it goes back once closed; `project` the main checkout of the project whose
-  browsing profile it keeps, for its sign-ins.
+  browsing profile it keeps (section 15), for its sign-ins.
 - `shown`: the place among `tabs` of the pinned page that was the tab shown, left out when
   none was.
 - `version`: 1. It's there for a later build to tell files apart; no build refuses a file for
@@ -623,7 +623,7 @@ are an action here.
 ### 12.3 Where a site's permissions are kept [decided]
 
 Chromium keeps them, in the profile, as the site's content settings; Koyo keeps none of its
-own. So they're a profile's (a project's pages share them, another project's don't), they go
+own. So they're a profile's (its pages share them, another profile's don't, section 15), they go
 with "Clear browsing data".
 
 - The app asks the host for a page's (`AppRequest::SiteSettings`, protocol 11) as the
@@ -982,3 +982,107 @@ window's Space, which every window there fails first; that an input posted into 
 the person's own screen is refused has no case to try, as nothing posts into the person's
 Koyo. `[open]` on screen: the person's own right-click on a page and a `<select>` on a page
 still open their menus (the owner's QA).
+
+## 15. Browsing profiles
+
+Written 2026-11-15 on branch `schulzfel/browser-profiles`. Drafted with Claude. Arc's profiles,
+as the open-source Arc replacement Cra rebuilds them: named profiles, each with its own cookies,
+sign-ins, site storage and caches, and every project on one of them. The owner asked for it
+because a page opened in a worktree was signed out of everything his pinned pages were signed
+in to. What the owner decided is marked **[asked]**; what was decided while building it, and is
+the owner's to change, **[ours]**.
+
+### 15.1 What a profile is [decided]
+
+- A profile is a folder in the engine's root, `browser/profiles/profile-<id>` in the data
+  folder (`docs/native-pages.md` 3). Its pages share their cookies, sign-ins, site storage,
+  caches and site permissions (section 12.3); another profile's pages share none of them.
+- **Default** is always there: pages opened outside any project (loose pages, `no-project`)
+  use it, and so does every project not put on another. It can't be renamed or deleted. New
+  projects start on it, as a new space starts on Arc's. **[asked: as Arc; ours: new projects
+  on Default]**
+- The person makes as many more as they like. **[asked]**
+- A project's pages, in every worktree of it, use the profile it's on, and projects on the
+  same profile are signed in alike. Whichever way a page is opened (a worktree's tab, ⌘T, a
+  link opened beside its page, ⌘⇧T, brought back with the window, pinned, loose, an agent's),
+  it asks one place which profile it's of: `browser::profile`, from the project it's opened
+  for. **[asked: which profile a project's worktrees get; ours: one place]**
+
+### 15.2 Where it's picked [decided]
+
+- Right-clicking a project's tile in the Arc sidebar, or its row in the Orca layout:
+  **Set Profile ›**, beside New Worktree… among what any project's menu offers
+  (`project_items`), lists Default and the profiles made, the one the project is on checked,
+  then a divider and **New Profile…**, which asks for a name, makes the profile and puts the
+  project on it. **[asked]**
+- **Settings → Browser → Profiles**: New Profile…, then every profile with the projects on it,
+  each but Default with **Rename…** and **Delete…**. **Project profiles**: each project, with a
+  pill naming the profile it's on whose menu is its Set Profile's. **[asked: a setting; ours:
+  where and how]**
+- **Delete…** asks first (`modal::confirm`), saying its sign-ins go for good and how many
+  projects move to Default. Deleted, it's off the list and its projects are on Default. Its
+  folder can't go from under a running Chromium, so it's listed in `browser/profiles/deleted`
+  and goes the next time the engine of a build with profiles starts, before CEF opens the root
+  (`drop_cleared`). A profile made later never takes a deleted one's folder: its id ends in
+  when it was made. **[ours]**
+
+### 15.3 A project put on another profile [decided]
+
+- Its open pages, shown or not, close and open again in the new profile at the address they
+  showed, as the same pages, as they do once their data's cleared (`Browsers::profiles_changed`,
+  `BrowserView::reopen`): an agent holding one still holds it, and its zoom and responsive
+  mode stay. Their `DevTools` close with them. A page opens in the profile its project is on
+  as it opens (`ensure_open`), so one not open yet needs nothing. **[ours]**
+- **A pinned or a loose page follows the project it keeps** (its `project` in
+  `pinned-tabs.json` and `window.json`): a page pinned from a project moves with that
+  project to its new profile, and a loose page opened outside any project stays on Default.
+  **[ours, for now: the profile's decided in one place while pinned and loose pages move onto
+  the path a worktree's tabs take; a pinned page keeping its own profile whatever its
+  project's on is the owner's to ask for]**
+
+### 15.4 What was kept from before [decided]
+
+Before profiles had names each project had a folder of its own, `<folder name>-<hash of its
+path>` (`profiles::own`), and pages outside any project `no-project-<hash>`. Nothing they were
+signed in to is lost: **[asked]**
+
+- Default is that `no-project` folder (`profiles::DEFAULT`), so the pages opened outside any
+  project, pinned or loose, stay signed in.
+- Once, the first time a build with profiles starts, with no `browser-profiles.json` yet,
+  each project whose folder holds anything becomes a profile called as the project is, with
+  the project on it (`Profiles::bring_over`), and the file is written at once: its pages, its
+  worktrees' and those pinned from it, stay signed in as they were. A project whose pages kept
+  nothing starts on Default, as a new one does.
+
+### 15.5 Kept [decided]
+
+- `browser-profiles.json` in the data folder (`settings::data_dir()`, beside
+  `pinned-tabs.json`): `made`, each profile's `id` (its folder's name) and `name`, in their
+  order; and `projects`, each project's main checkout and the id of the profile it's on, left
+  out for Default. A profile the file names that's gone is Default. Written 300 ms after a
+  change and on the way out, through `atomic_file` (`kept_file`).
+- **Not in `settings.json`**, so a build without profiles can't lose them: such a build reads
+  the settings into what it knows and writes back only that, which would drop keys it doesn't
+  know, but it never opens this file. Installed between two builds with profiles, it uses each
+  project's own folder and `no-project`, as before, and the next build with profiles takes up
+  the file as it was: the profiles made, their names, and every project's choice. A profile
+  deleted just before has its folder go once a build with profiles starts again.
+
+### 15.6 Where it lives, and what's checked
+
+| File | What |
+|---|---|
+| `koyo-rs/koyo/src/browser/profiles.rs` | The profiles, Default, which one a project is on, bringing the old folders over, and their file |
+| `koyo-rs/koyo/src/browser/profiles/actions.rs` | Set Profile's menu, and making, renaming and deleting a profile |
+| `koyo-rs/koyo/src/browser/mod.rs` | `browser::profile`, the one place a page's profile is decided |
+| `koyo-rs/koyo/src/browser/host.rs`, `browser/view/lifecycle.rs` | Open pages closing and opening again in the profile their project's on now |
+| `koyo-rs/koyo/src/settings_view/browser.rs` | Settings → Browser's Profiles and Project profiles |
+| `koyo-rs/koyo-browser-host/src/host/profiles.rs` | Whether a profile's folder holds anything; deleted profiles' folders going at the next start |
+
+- Unit tests: Default is the old `no-project` folder; a project on Default until put on
+  another; a new profile's folder no other had; Default kept; a profile deleted puts its
+  projects on Default; each project's old folder brought over with its name; the file read
+  back as it was kept, and nothing brought over again once it's there; an open page to close
+  and open again once its project's on another profile, and one not open not; a deleted
+  profile's folders gone at the next start, its neighbours' left.
+- Not run here: the engine against a real profile change. The owner checks it by hand.

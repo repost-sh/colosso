@@ -30,6 +30,7 @@ pub(crate) use panes::{
 use panes::{close, exit_fullscreen, navigate, open, resize, view, visible};
 pub(crate) use panes::leave_fullscreen;
 pub(crate) use profiles::drop_cleared;
+pub use profiles::{forget_profile, keeps_profile};
 pub(crate) use site::{keep_media, media_decided};
 pub(crate) use queue::context_initialized;
 use queue::{Queued, enqueue, read_requests};
