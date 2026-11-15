@@ -1,35 +1,12 @@
 //! A page's life in the host: opened once the host runs and the pane has a size, opened
-//! again after the host restarts, and the requests that go to it meanwhile.
-
-use std::time::{Duration, Instant};
+//! again once clearing the browsing data has closed it, and the requests that go to it
+//! meanwhile.
 
 use gpui_kit::{App, Context};
-use koyo_browser_ipc::{AppRequest, PixelSize, Viewport};
+use koyo_browser_ipc::{AppRequest, Viewport};
 
 use super::{BrowserView, Kind};
 use crate::browser::host::{Browsers, HostStatus};
-
-/// Where a new size of the page's comes from, which says how the host lays the page out to
-/// it. Sizes that keep coming are laid out live, a frame behind each (the host's `live.rs`),
-/// and settled once they stop; a lone size is laid out as it is. The window never waits for
-/// the page to catch up, but draws it as it is, its edges reaching out where it's smaller
-/// than its pane (`frames.rs`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(in crate::browser) enum Dragging {
-    /// A size on its own (an agent's, a preset, the mode turned on, a panel opened, the
-    /// sidebar folded with Reduce Motion on): laid out as it is.
-    No,
-    /// A drag whose end the app sees: a drag in hand in GPUI (a split's divider, a panel's
-    /// edge, docked `DevTools`' divider) or a responsive grip held.
-    Held,
-    /// Sizes layout keeps giving the page ([`MOVING`]): the window's edge dragged, the
-    /// sidebar folding. Nothing tells of their end, so the host finds it by time.
-    Layout,
-}
-
-/// How soon after the page's last new size another one is part of a run of them: a few of
-/// the display's frames.
-pub(in crate::browser) const MOVING: Duration = Duration::from_millis(50);
 
 impl BrowserView {
     pub(in crate::browser) fn status(&self, cx: &App) -> HostStatus {
@@ -39,10 +16,6 @@ impl BrowserView {
     /// Whether the host has been starting long enough to say so.
     pub(in crate::browser) fn starting_long(&self, cx: &App) -> bool {
         self.browsers.read(cx).starting_long()
-    }
-
-    pub(in crate::browser) fn restart_host(&mut self, cx: &mut Context<Self>) {
-        self.browsers.update(cx, Browsers::restart);
     }
 
     pub(in crate::browser) fn send(&self, request: AppRequest, cx: &mut Context<Self>) {
@@ -137,7 +110,7 @@ impl BrowserView {
         let page = matches!(request, AppRequest::Open { .. });
         self.opened = Some(epoch);
         // A page opens on screen: the host is told at once whether it is (`sight.rs`), as
-        // one no pane draws, or a hidden tab's after the engine restarts, isn't.
+        // one no pane draws, or a hidden tab's opened again, isn't.
         self.visible = None;
         self.send(request, cx);
         self.tell_sight(cx);
@@ -158,7 +131,7 @@ impl BrowserView {
         }
         self.agent_uses(cx);
         let viewport = self.undrawn_viewport();
-        self.viewport_changed(viewport, Dragging::No, cx);
+        self.viewport_changed(viewport, cx);
     }
 
     /// The host started, stopped or failed.
@@ -171,7 +144,6 @@ impl BrowserView {
             self.forget_passkey();
             self.menu_request = None;
             self.open_menu = None;
-            self.frame = None;
             // A page full screen in it isn't, in the one now.
             if self.is_fullscreen() {
                 self.fullscreen_changed(false, cx);
@@ -184,33 +156,33 @@ impl BrowserView {
         cx.notify();
     }
 
-    /// The page's size is `viewport`, as `dragging` drags the pane's edge: sent to the host
-    /// when it's new, and once more as a held drag is let go, at the size it ended at, so the
-    /// host settles the page at once.
+    /// The page is laid out at `viewport` in the pane that draws it: a page not open yet opens
+    /// at it. The open page is the size of its pane already, which the host has from where the
+    /// pane puts it (`native::place`).
+    pub(in crate::browser) fn drawn_at(&mut self, viewport: Viewport, cx: &mut Context<Self>) {
+        if self.viewport.replace(viewport) != Some(viewport) {
+            self.ensure_open(cx);
+        }
+    }
+
+    /// The page's size is `viewport`, though no pane may draw it at that, as an agent sizes
+    /// it: one no pane draws is told it, which it lays out at out of sight, and one not open
+    /// yet opens at it. A page a pane draws is the size of the pane, and is laid out at
+    /// `viewport` as it's drawn next.
     pub(in crate::browser) fn viewport_changed(
         &mut self,
         viewport: Viewport,
-        dragging: Dragging,
         cx: &mut Context<Self>,
     ) {
-        let resized = self.viewport != Some(viewport);
-        let let_go = self.drag_sent && dragging != Dragging::Held;
-        if !resized && !let_go {
+        if self.viewport.replace(viewport) == Some(viewport) {
             return;
         }
-        self.viewport = Some(viewport);
-        self.drag_sent = dragging == Dragging::Held;
-        if resized {
-            self.resized_at = Some(Instant::now());
+        if self.shown.is_some() {
+            self.ensure_open(cx);
+            return;
         }
-        self.send_or_open(
-            AppRequest::Resize {
-                pane: self.pane,
-                viewport,
-                dragging: dragging != Dragging::No,
-            },
-            cx,
-        );
+        let pane = self.pane;
+        self.send_or_open(AppRequest::Resize { pane, viewport }, cx);
     }
 
     /// The host closed the page to clear its profile's data from under it
@@ -222,26 +194,10 @@ impl BrowserView {
             return;
         }
         self.opened = None;
-        self.frame = None;
         if !self.page.url.is_empty() {
             self.target.clone_from(&self.page.url);
         }
         self.ensure_open(cx);
         cx.notify();
-    }
-
-    /// Whether the frame shown is `size`, give or take a device pixel of rounding.
-    pub(in crate::browser) fn shows_frame_of(&self, size: PixelSize) -> bool {
-        self.frame
-            .as_ref()
-            .is_some_and(|frame| frame.size.near(size))
-    }
-}
-
-impl BrowserView {
-    /// Whether the page is native: Chromium's own views in the window, which draw themselves
-    /// and take their input from `AppKit` (`browser/native`). Every page is, or none.
-    pub(in crate::browser) fn is_native(&self) -> bool {
-        crate::browser::native::enabled()
     }
 }

@@ -121,10 +121,11 @@ gpui-kit = { workspace = true, features = ["test-support"] }
 koyo-accounts = { path = "../koyo-accounts", features = ["testing"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-# Native pages (browser/native/): the browser host as a library, run in the app's own process.
+# Browser pages (browser/native/): the browser host as a library, run in the app's own process.
 koyo-browser-host = { path = "../koyo-browser-host" }
-# GPUI's Metal renderer, which draws a browser page's frame in the window's own frame, the
-# part of the shared surface the page fills said by `set_surface_picture` (`vendor/README.md`).
+# GPUI's Metal renderer: the native surfaces pages, glass and controls are placed in
+# (`set_surface_pane`), and the tab switcher's pictures of the window (`set_surface_capture`)
+# (`vendor/README.md`).
 gpui-fast-apple = "0.1.12"
 # Haptic ticks on the theme picker's detents; the version GPUI already pulls in.
 objc = "0.2"
@@ -191,8 +192,9 @@ objc2-user-notifications = { version = "0.3", default-features = false, features
   "UNNotificationTrigger",
   "UNUserNotificationCenter",
 ] }
-# The browser panes' frames: the host's `IOSurface`s, found from the mach ports it sends,
-# drawn by GPUI as pixel buffers. All versions GPUI already pulls in.
+# Pictures another process shares as `IOSurface`s, a device's and the agent desktop's windows
+# (`surfaces.rs`), found from the mach ports it sends and drawn by GPUI as pixel buffers. All
+# versions GPUI already pulls in.
 objc2-core-foundation = { version = "0.3", default-features = false, features = [
   "std",
   "CFBase",

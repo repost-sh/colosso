@@ -104,6 +104,10 @@ fn an_older_koyo_running_on_its_folder_keeps_it_there() {
 }
 
 #[test]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "what holds the socket a moment longer is another process, outside any executor"
+)]
 fn a_koyo_is_running_while_its_socket_answers() {
     let root = scratch("former-answers");
     let socket = root.join("control.sock");
@@ -111,7 +115,17 @@ fn a_koyo_is_running_while_its_socket_answers() {
     let listener = koyo_daemon::bind(&socket).unwrap();
     assert!(answers(&socket));
     drop(listener);
-    assert!(!answers(&socket), "a socket nobody listens on");
+    // A process being started holds a copy of every descriptor until it becomes its program,
+    // the listener's among them, and other tests start git all the while: it's let go of
+    // within moments.
+    let let_go = (0..200).any(|_| {
+        let quiet = !answers(&socket);
+        if !quiet {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        quiet
+    });
+    assert!(let_go, "a socket nobody listens on");
     fs::remove_dir_all(&root).unwrap();
 }
 

@@ -120,9 +120,7 @@ fn an_agent_sees_and_answers_the_dialogs_its_click_opens(cx: &mut TestAppContext
         <button style='position:fixed;left:0;top:0;width:200px;height:100px' \
         onclick=\"document.title=confirm('Sure?')+' '+prompt('Name?','Ada')\">go</button>";
     let (view, cx, scratch) = open("agent-dialogs", page, cx);
-    wait_for(cx, &view, "the page on screen", |view| {
-        view.page.title == "ready" && view.frame.is_some()
-    });
+    wait_for_title(cx, &view, "ready");
     let actor = tester();
 
     assert!(matches!(

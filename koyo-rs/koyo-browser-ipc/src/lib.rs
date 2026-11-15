@@ -1,15 +1,15 @@
 //! The protocol between `Koyo` and its browser host.
 //!
-//! The app starts the host from the installed engine and talks to it over a
-//! socket pair whose host end the host inherits ([`inherit`]). Every message is one frame: a 4-byte
-//! little-endian length, then that many bytes of JSON. The app speaks first
-//! with [`Hello`], carrying the protocol version and a one-time token the
-//! host was started with; the host answers [`HostEvent::Ready`] or closes.
+//! The app starts the host in its own process, from the engine in its bundle, and talks to
+//! it over a socket pair. Every message is one frame: a 4-byte little-endian length, then
+//! that many bytes of JSON. The app speaks first with [`Hello`], carrying the protocol
+//! version and a one-time token the host was started with; the host answers
+//! [`HostEvent::Ready`] or closes.
 //!
-//! Pixels never travel over the socket. Each pane renders into a small ring
-//! of shared surfaces the host hands over once (on macOS, `IOSurface` mach
-//! ports through [`mach`]); per frame the host only sends which slot is
-//! ready and what changed.
+//! A page's picture and its pointer and keys never travel here: the page's own views are in
+//! the app's window, where Chromium draws them and `AppKit` hands them their input
+//! (`docs/native-pages.md`). [`mach`] and [`inherit`] are how the simulator's and the agent
+//! desktop's hosts, processes of their own, hand over their pictures and inherit a socket.
 use serde::{Deserialize, Serialize};
 use std::io::{self, Read, Write};
 
@@ -31,15 +31,13 @@ mod requests;
 pub use devtools::{DevToolsAsk, DevToolsDock};
 pub use dialogs::{Answer, Dialog, FileMode, MenuEntry, MenuTarget, Permission};
 pub use events::{Cursor, HostEvent, PageState, SiteSetting};
-pub use input::{
-    KeyKind, Modifiers, MouseButton, MouseKind, PinchPhase, PixelSize, Point, Viewport,
-};
+pub use input::{Point, Viewport};
 pub use passkeys::{
     Assertion, AuthenticatorSelection, Bytes, Created, Creation, CredentialDescriptor,
     CredentialParameters, Extensions, Got, PasskeyAnswer, PasskeyAsk, PasskeyError, Refusal,
     RelyingParty, User,
 };
-pub use requests::{AppRequest, Edit, Go, Ime, ViewAction};
+pub use requests::{AppRequest, Edit, Go, ViewAction};
 
 /// The protocol version. The app only starts engines whose `engine.json`
 /// names this version; both sides refuse a [`Hello`] that differs.
@@ -49,24 +47,27 @@ pub use requests::{AppRequest, Edit, Go, Ime, ViewAction};
 /// 3: agent control over the page's `DevTools` protocol session
 /// ([`AppRequest::Cdp`], [`HostEvent::CdpReply`], [`HostEvent::CdpEvent`]).
 /// 6: page icons ([`PageState::favicon`], [`HostEvent::Favicon`]).
-/// 7: trackpad pinches ([`AppRequest::Pinch`]).
 /// 8: a page's full screen ([`HostEvent::Fullscreen`], [`AppRequest::ExitFullscreen`]).
 /// 9: passkeys ([`Hello::passkeys`], [`HostEvent::Passkey`], [`HostEvent::PasskeyWithdrawn`],
 /// [`AppRequest::Passkey`]).
-/// 10: a native page's keys count as the person's ([`HostEvent::Typed`]), and browsing data is
+/// 10: a page's keys, which `AppKit` hands it, count as the person's ([`HostEvent::Typed`]), and browsing data is
 /// cleared without stopping the host ([`AppRequest::ClearData`]).
 /// 11: what a page's site is allowed and blocked from ([`AppRequest::SiteSettings`],
 /// [`AppRequest::SetSiteSetting`], [`HostEvent::SiteSettings`]).
 /// 12: `DevTools` with their own controls: the side they open at
 /// ([`AppRequest::OpenDevTools`]'s `dock`), and what their dock menu, × and device toolbar
 /// toggle ask ([`HostEvent::DevTools`]).
-pub const PROTOCOL: u32 = 12;
+/// 13: pages are native and nothing else: no frames or surfaces from the host, no pointer,
+/// wheel, pinch, keys or composition from the app, and `Resize` only sizes a page no pane
+/// draws (`docs/native-pages.md`).
+pub const PROTOCOL: u32 = 13;
 
 /// Frames larger than this are refused, so a confused peer cannot make the
 /// other side allocate without bound.
 pub const MAX_FRAME: usize = 16 * 1024 * 1024;
 
-/// Surfaces in each pane's ring: one shown, one being drawn, one spare.
+/// Surfaces in a ring sent over a mach service ([`mach`]): one shown, one being drawn, one
+/// spare. The device and desktop hosts send their pictures so.
 pub const RING: u8 = 3;
 
 /// The environment variable carrying the number of the inherited file
@@ -74,9 +75,6 @@ pub const RING: u8 = 3;
 pub const ENV_SOCKET_FD: &str = "KOYO_BROWSER_SOCKET_FD";
 /// The environment variable carrying the one-time token to the host.
 pub const ENV_TOKEN: &str = "KOYO_BROWSER_TOKEN";
-/// The environment variable naming the mach service the app checked in, to
-/// which the host sends its frame surfaces (macOS).
-pub const ENV_SURFACE_SERVICE: &str = "KOYO_BROWSER_SURFACES";
 /// The environment variable with the folder for CEF's caches and profiles.
 pub const ENV_PROFILE_ROOT: &str = "KOYO_BROWSER_PROFILES";
 

@@ -1,4 +1,4 @@
-//! A browser pane: the page the host renders, what the person does with it, and the
+//! A browser pane: the page the host shows in it, what the person does with it, and the
 //! toolbar over it.
 
 use std::collections::VecDeque;
@@ -18,7 +18,6 @@ use super::control::Control;
 use super::dialog::Question;
 use super::dock::{Asked, Devtools};
 use super::find::{ACTUAL_SIZE, FindBar};
-use super::frames::{Frame, Shown};
 use super::host::Browsers;
 use crate::history::How;
 
@@ -26,6 +25,7 @@ pub(super) mod lifecycle;
 mod navigation;
 pub(super) mod sight;
 use super::menu::MenuRequest;
+use sight::Shown;
 use super::toolbar;
 pub use navigation::{Controls, Visit};
 
@@ -95,11 +95,10 @@ pub struct BrowserView {
     pub(super) viewport: Option<Viewport>,
     /// The host epoch the page was opened in.
     opened: Option<u64>,
-    pub(super) frame: Option<Frame>,
     /// Whether the glass of the bar over the page is dark, as the page under it last said; none
     /// while it's the theme's.
     pub(super) bar_dark: Option<bool>,
-    /// How light a native page is, as it last said, and the task that asks it (`tone.rs`).
+    /// How light the page is, as it last said, and the task that asks it (`tone.rs`).
     pub(super) tone: Option<super::tone::Tone>,
     pub(super) tone_watch: Option<Task<()>>,
     /// What the page's site is allowed and blocked from, as the host last said, the button
@@ -111,8 +110,6 @@ pub struct BrowserView {
     pub(super) asked_in: super::dialog::Put,
     /// Whether the page is full screen, and where (`fullscreen.rs`).
     pub(super) fullscreen: super::fullscreen::Fullscreen,
-    /// How many frames the page has shown, which tests count.
-    pub(super) frames_shown: u64,
     /// The page element's state while the page is drawn: let go, the page is out of sight.
     pub(super) shown: Option<WeakEntity<Shown>>,
     /// Whether the host was last told the page is on screen.
@@ -123,23 +120,13 @@ pub struct BrowserView {
     /// Until when the page is on screen for the engine though no pane draws it, an agent
     /// having used it, and the task that ends that then (`sight.rs`).
     pub(super) awake: Option<(Instant, Task<()>)>,
-    /// Whether the host was last told a held drag of the pane's edge is under way, and when
-    /// the page's size last changed: sizes that keep coming are laid out live (`Dragging`).
-    pub(super) drag_sent: bool,
-    pub(super) resized_at: Option<Instant>,
     pub(super) cursor: Cursor,
     pub(super) focus: FocusHandle,
     pub(super) address: Entity<InputState>,
     pub(super) notice: Option<Notice>,
-    /// Text the input method is composing.
-    pub(super) marked: Option<String>,
-    /// The modifier keys held, as the page was last told.
-    pub(super) held: gpui_kit::Modifiers,
-    pub(super) pressed: Option<ipc::MouseButton>,
-    pub(super) hovered: bool,
     /// What the next render, which has the window, settles.
     settle: Settle,
-    /// Where the page is in the window, for input and menus at page positions.
+    /// Where the page is in the window, for menus and an agent's pointer at page positions.
     pub(super) origin: Point<Pixels>,
     /// Questions the page waits on, the first one asked.
     pub(super) dialogs: VecDeque<Question>,
@@ -198,8 +185,8 @@ impl BrowserView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        // The inspector opens once its page is open, and again after the host restarts and
-        // the page reopens.
+        // The inspector opens once its page is open, and again once the page has opened again
+        // (clearing the browsing data closes every page and opens it afresh).
         let changes = cx.observe(&inspected, |this, _, cx| this.ensure_open(cx));
         let kind = Kind::DevTools {
             inspected,
@@ -266,7 +253,6 @@ impl BrowserView {
             target: url,
             viewport: None,
             opened: None,
-            frame: None,
             bar_dark: None,
             tone: None,
             tone_watch: None,
@@ -275,9 +261,6 @@ impl BrowserView {
             link_copied: None,
             asked_in: super::dialog::Put::Dialog,
             fullscreen: super::fullscreen::Fullscreen::default(),
-            frames_shown: 0,
-            drag_sent: false,
-            resized_at: None,
             shown: None,
             visible: None,
             window_visible: window.is_visible(),
@@ -286,10 +269,6 @@ impl BrowserView {
             focus,
             address,
             notice: None,
-            marked: None,
-            held: gpui_kit::Modifiers::default(),
-            pressed: None,
-            hovered: false,
             settle: Settle::default(),
             origin: Point::default(),
             dialogs: VecDeque::new(),
@@ -334,14 +313,6 @@ impl BrowserView {
         matches!(self.kind, Kind::DevTools { .. })
     }
 
-    /// Whether the pane draws the frames it gets. While the `DevTools` frontend loads it
-    /// paints an empty document and then its UI unstyled, white whatever the theme; it
-    /// shows from the moment it names the page it is attached to, which it does once it
-    /// has styled itself.
-    pub(super) fn shows_frames(&self) -> bool {
-        !self.is_inspector() || self.page.title.starts_with("DevTools - ")
-    }
-
     pub fn is_start_page(&self) -> bool {
         self.target.is_empty() && self.page.url.is_empty()
     }
@@ -357,7 +328,6 @@ impl BrowserView {
     /// The host closed this browser.
     pub(super) fn closed(&mut self, cx: &mut Context<Self>) {
         self.opened = None;
-        self.frame = None;
         self.forget_passkey();
         // A page closed full screen leaves it: the window comes out of full screen with it.
         if self.is_fullscreen() {
@@ -367,26 +337,29 @@ impl BrowserView {
         cx.notify();
     }
 
-    /// Shows the element at `at` of the inspected page in the open inspector, or once it
-    /// opens.
-    pub fn reveal(&mut self, at: ipc::Point, cx: &mut Context<Self>) {
-        let Kind::DevTools {
-            inspected, inspect, ..
-        } = &mut self.kind
-        else {
+    /// Shows the element at `at` of the inspected page, `page`, in the open inspector, or
+    /// once it opens; `dock` is the side the page has its tools at. The page asks this as
+    /// it's updated, so it says both itself.
+    pub fn reveal(
+        &mut self,
+        at: ipc::Point,
+        page: PaneId,
+        dock: ipc::DevToolsDock,
+        cx: &mut Context<Self>,
+    ) {
+        let Kind::DevTools { inspect, .. } = &mut self.kind else {
             return;
         };
         let (Some(viewport), true) = (self.viewport, self.opened.is_some()) else {
             *inspect = Some(at);
             return;
         };
-        let page = inspected.read(cx);
         let request = AppRequest::OpenDevTools {
-            pane: page.pane,
+            pane: page,
             devtools: self.pane,
             viewport,
             inspect: Some(at),
-            dock: page.devtools_side(cx),
+            dock,
         };
         self.send(request, cx);
     }
@@ -430,25 +403,6 @@ impl BrowserView {
     pub(super) fn failed(&mut self, message: String, cx: &mut Context<Self>) {
         self.notice = Some(Notice::Failed(message));
         cx.notify();
-    }
-
-    /// A new frame, drawn with the window's next frame; returns the slot it replaces, which
-    /// goes straight back to the host. The renderer marks a slot in use while the GPU reads
-    /// it, and the host paints only into slots that aren't, so nothing waits for the window
-    /// to draw again first.
-    pub(super) fn show_frame(
-        &mut self,
-        mut frame: Frame,
-        cx: &mut Context<Self>,
-    ) -> Option<(u32, u8)> {
-        self.frames_shown += 1;
-        let before = self.frame.as_ref().map(|before| before.scale);
-        frame.scale = super::responsive::frame_scale(frame.size, self.viewport, before);
-        let slot = (frame.generation, frame.slot);
-        cx.notify();
-        (self.frame.replace(frame))
-            .map(|previous| (previous.generation, previous.slot))
-            .filter(|previous| *previous != slot)
     }
 
     /// The address field, which the page's toolbar shows, or the Arc sidebar in its place.

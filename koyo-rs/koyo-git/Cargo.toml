@@ -14,5 +14,9 @@ trash = "5.2"
 # Each git command run, at debug, through the facade the app's log reads.
 log = "0.4"
 
+[dev-dependencies]
+# Counts the forks a test's thread makes: git is spawned, never forked from the app.
+libc = "0.2"
+
 [lints]
 workspace = true

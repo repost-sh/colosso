@@ -42,10 +42,10 @@ Status marks: `[decided]`, `[not built]`.
   terminal that ended or was closed, a chat that was deleted, a file that's no longer there.
 - Terminals and chats made while the window was closed, which no pane of the file shows,
   get a tab of their own after the others, as they did before the window kept its shape.
-- The browser host never outlives the app, as before: the app stops it on quit
-  (`browser/host.rs`, `koyo-browser-ipc/src/client.rs`), and the host stops itself when the
-  app's socket closes (`koyo-browser-host/src/host.rs`). The host starts at launch with no
-  page (`browser::warm_up`).
+- The browser host runs in the app's own process (`docs/native-pages.md` 3.1), so it never
+  outlives it: the app stops it on quit (`browser/host.rs`,
+  `koyo-browser-ipc/src/client.rs`). It starts at launch with no page (`browser::warm_up`),
+  once while Koyo runs.
 
 ## 2. Where it's kept [decided]
 
@@ -471,8 +471,7 @@ folder (`settings::data_dir()`; `KOYO_DATA_DIR` moves it):
 
 Written 2026-11-13 on branch `schulzfel/fix-video-playback`, when the owner found that
 WhatsApp's videos don't play. Drafted with Claude. What a page's `<video>` and `<audio>` play
-is decided when the engine is built, not by anything Koyo sets, and not by how a page is
-drawn, off screen or in a window of its own: it's the same framework either way.
+is decided when the engine is built, not by anything Koyo sets.
 
 ### 11.1 What CEF's own build plays [checked 2026-11-13]
 
@@ -625,7 +624,7 @@ are an action here.
 
 Chromium keeps them, in the profile, as the site's content settings; Koyo keeps none of its
 own. So they're a profile's (a project's pages share them, another project's don't), they go
-with "Clear browsing data", and a page of either kind, native or off screen, reads the same.
+with "Clear browsing data".
 
 - The app asks the host for a page's (`AppRequest::SiteSettings`, protocol 11) as the
   popover opens and after each change; the host answers with, for each
@@ -799,8 +798,8 @@ the frontend's × and dock menu would go nowhere.
 In Chrome the docked tools take the tab's whole area and leave a hole the page is put in
 (`setInspectedPageBounds`): the frontend draws the divider, and the device toolbar round the
 hole. In Koyo the tools are a pane of their own beside the page's, each a page with its own
-picture and input, off screen or native. Following Chrome there means layering two pages'
-pictures and routing every press to the right one, in both modes: a far larger change, for a
+picture and input. Following Chrome there means layering two pages'
+pictures and routing every press to the right one: a far larger change, for a
 divider and a toolbar. So:
 
 - The frontend's page placeholder, which it shows beside itself when docked, is hidden
@@ -846,4 +845,4 @@ divider and a toolbar. So:
   set from Koyo's (an agent's `settings_set`) while the frontend remembered another: at
   Koyo's side, the setting left as it was. ⌥⌘I with the keys in the tools closed them. The
   divider dragged at each side with every page fitting its pane after (`docs/native-pages.md`
-  6), and with pages off screen. Not tried: a link followed from inside the tools.
+  6). Not tried: a link followed from inside the tools.

@@ -69,17 +69,18 @@ pub fn fit(window: &Window, extent: Size<Pixels>, corner: Corner, cx: &mut App) 
 /// apart from the view.
 #[cfg(not(test))]
 pub fn draw_in_transaction(window: &Window, cx: &mut App) {
-    let Some(layer) = gpui_view(window).and_then(|view| view.layer()) else {
-        return;
-    };
     thread_local! {
         /// Whether a draw is asked for and not yet made: a drag's moves, and the pages it
         /// resizes, come faster than frames, and one draw shows them all.
         static ASKED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     }
-    if ASKED.replace(true) {
+    if ASKED.get() {
         return;
     }
+    let Some(layer) = gpui_view(window).and_then(|view| view.layer()) else {
+        return;
+    };
+    ASKED.set(true);
     // GPUI's view draws its layer when asked to display it, presenting in the transaction.
     cx.spawn(async move |_: &mut AsyncApp| {
         ASKED.set(false);

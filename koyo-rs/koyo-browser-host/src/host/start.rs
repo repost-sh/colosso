@@ -35,18 +35,6 @@ fn connect(mut stream: UnixStream, token: &str) -> Result<UnixStream, String> {
     Ok(reader)
 }
 
-/// Finds where off-screen pages' surfaces go, and the GPU they're made on.
-#[cfg(target_os = "macos")]
-fn surfaces(service: &str) -> Result<(), String> {
-    let sender = ipc::mach::Sender::look_up(service).map_err(|e| e.to_string())?;
-    let gpu = crate::surfaces::Gpu::new().ok_or("no Metal device")?;
-    with(|host| {
-        host.surfaces = Some(sender);
-        host.gpu = Some(gpu);
-    });
-    Ok(())
-}
-
 /// Starts CEF on `profiles`: as the browser process of its own, or in the app's
 /// (`embedded.rs`), where the app runs the loop and CEF is found in the engine.
 fn initialize(args: &Args, profiles: &std::path::Path) -> Result<(), String> {
@@ -62,12 +50,8 @@ fn initialize(args: &Args, profiles: &std::path::Path) -> Result<(), String> {
         host.generation = generation;
     });
     let path = |p: PathBuf| CefString::from(p.to_string_lossy().as_ref());
-    #[cfg(target_os = "macos")]
     let engine = crate::embedded::engine();
     let settings = Settings {
-        // No page is rendered off screen in the app's process, and CEF says not to turn
-        // this on then.
-        windowless_rendering_enabled: i32::from(!super::native()),
         root_cache_path: path(profiles.clone()),
         cache_path: path(profiles.join("default")),
         persist_session_cookies: 1,
@@ -78,16 +62,12 @@ fn initialize(args: &Args, profiles: &std::path::Path) -> Result<(), String> {
         keychain_service_name: "Koyo Browser Engine".into(),
         // CEF takes the outermost app bundle for its own, which inside Koyo.app is Koyo's,
         // and looks for its framework and helpers there.
-        #[cfg(target_os = "macos")]
         main_bundle_path: crate::own_bundle().unwrap_or_default().as_str().into(),
         // In the app's process the app runs the loop, and CEF isn't beside the executable.
-        #[cfg(target_os = "macos")]
         external_message_pump: i32::from(engine.is_some()),
-        #[cfg(target_os = "macos")]
         framework_dir_path: engine
             .map(|engine| path(crate::embedded::framework(engine)))
             .unwrap_or_default(),
-        #[cfg(target_os = "macos")]
         browser_subprocess_path: engine
             .map(|engine| path(crate::embedded::helper(engine)))
             .unwrap_or_default(),
@@ -123,7 +103,6 @@ fn serve(reader: UnixStream) -> Result<(), String> {
 pub(crate) fn teardown() {
     crate::dialogs::clear();
     crate::menus::clear();
-    #[cfg(target_os = "macos")]
     crate::native::clear();
     with(|host| {
         host.panes.clear();
@@ -139,11 +118,7 @@ pub(crate) fn run(args: &Args) -> Result<(), String> {
     let stream =
         ipc::inherit::take(&socket).map_err(|e| format!("the app's socket ({socket}): {e}"))?;
     let reader = connect(stream, &token)?;
-    #[cfg(target_os = "macos")]
-    {
-        crate::mac_app::install()?;
-        surfaces(&env(ipc::ENV_SURFACE_SERVICE)?)?;
-    }
+    crate::mac_app::install()?;
     let mut app = crate::app::HostApp::new();
     let code = cef::execute_process(
         Some(args.as_main_args()),
@@ -165,7 +140,6 @@ pub(crate) fn run(args: &Args) -> Result<(), String> {
 /// The host's start in the app's own process, on its main thread (`embedded.rs`): the same
 /// hello, then CEF loaded from the engine and started with the app running the loop. What
 /// goes wrong once the app is heard is said on the socket, as a host process would say it.
-#[cfg(target_os = "macos")]
 pub(crate) fn run_embedded(start: crate::embedded::Start) -> Result<(), String> {
     let crate::embedded::Start {
         stream,
@@ -197,7 +171,8 @@ pub(crate) fn run_embedded(start: crate::embedded::Start) -> Result<(), String> 
 /// Every pane has closed after a shutdown was asked for: the loop ends. In the app's process
 /// the app runs the loop, and stops CEF once it sees the same (`embedded::finish`).
 pub(crate) fn quit() {
-    if !super::native() {
-        cef::quit_message_loop();
+    if crate::embedded::engine().is_some() {
+        return;
     }
+    cef::quit_message_loop();
 }

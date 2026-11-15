@@ -3,15 +3,14 @@
 #
 #   script/dev-bundle [--no-run] [-- <arguments for Koyo>]
 #
-# Native pages (docs/native-pages.md) need it: the browser engine runs in Koyo's own process
-# then, and its helpers only start when Koyo runs from a bundle that holds the engine, as a
-# packaged Koyo does (script/bundle). A bare `cargo run` or script/dev binary keeps pages off
-# screen. The bundle is koyo-rs/target/dev-bundle/Koyo Dev.app, made of clones of the build's
-# files, so making it again after a build costs nothing.
+# Pages need it (docs/native-pages.md): the browser engine runs in Koyo's own process, and its
+# helpers only start when Koyo runs from a bundle that holds the engine, as a packaged Koyo does
+# (script/bundle). A bare `cargo run` or script/dev binary has no pages. The bundle is
+# koyo-rs/target/dev-bundle/Koyo Dev.app, made of clones of the build's files, so making it
+# again after a build costs nothing.
 #
-# The environment is the caller's: KOYO_NATIVE_PAGES=1 turns native pages on whatever the
-# settings say, and KOYO_DATA_DIR, KOYO_CONFIG_DIR and KOYO_LOG_DIR keep a run apart from the
-# Koyo in use.
+# The environment is the caller's: KOYO_DATA_DIR, KOYO_CONFIG_DIR and KOYO_LOG_DIR keep a run
+# apart from the Koyo in use.
 set -eu
 cd "$(dirname "$0")/.."
 

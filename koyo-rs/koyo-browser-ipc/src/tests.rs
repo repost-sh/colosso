@@ -13,23 +13,17 @@ fn frames_round_trip_and_a_clean_end_is_none() {
             },
             profile: "project-a".into(),
         },
-        AppRequest::Key {
+        AppRequest::Resize {
             pane: 7,
-            kind: KeyKind::Char,
-            key_code: 65,
-            native_key_code: 0,
-            text: Some("é".into()),
-            modifiers: Modifiers {
-                shift: true,
-                ..Modifiers::default()
+            viewport: Viewport {
+                width: 390,
+                height: 844,
+                scale: 3.,
             },
         },
-        AppRequest::Pinch {
+        AppRequest::Edit {
             pane: 7,
-            x: 120.,
-            y: 80.5,
-            delta: -0.25,
-            phase: PinchPhase::Moved,
+            command: Edit::Paste,
         },
         AppRequest::SiteSettings { pane: 7 },
         AppRequest::SetSiteSetting {
@@ -75,21 +69,13 @@ fn a_truncated_or_oversized_frame_is_an_error() {
 
 #[test]
 fn the_wire_names_are_stable() {
-    let event = HostEvent::Frame {
+    let event = HostEvent::Cursor {
         pane: 3,
-        generation: 2,
-        slot: 1,
-        size: PixelSize {
-            width: 300,
-            height: 200,
-        },
+        cursor: Cursor::ResizeColumn,
     };
     assert_eq!(
         serde_json::to_value(&event).expect("json"),
-        serde_json::json!({
-            "type": "frame", "pane": 3, "generation": 2, "slot": 1,
-            "size": {"width": 300, "height": 200}
-        })
+        serde_json::json!({"type": "cursor", "pane": 3, "cursor": "resizeColumn"})
     );
     let go = AppRequest::Go {
         pane: 1,
@@ -225,34 +211,6 @@ fn hello_needs_the_same_protocol_and_token() {
     assert!(check_hello(&hello(PROTOCOL, "secreT"), "secret").is_err());
     assert!(check_hello(&hello(PROTOCOL, "secre"), "secret").is_err());
     assert!(check_hello(&hello(PROTOCOL + 1, "secret"), "secret").is_err());
-}
-
-#[test]
-fn viewports_round_to_device_pixels() {
-    let v = Viewport {
-        width: 401,
-        height: 300,
-        scale: 1.5,
-    };
-    assert_eq!(
-        v.pixels(),
-        PixelSize {
-            width: 602,
-            height: 450
-        }
-    );
-    let broken = Viewport {
-        width: 0,
-        height: 10,
-        scale: f32::NAN,
-    };
-    assert_eq!(
-        broken.pixels(),
-        PixelSize {
-            width: 1,
-            height: 10
-        }
-    );
 }
 
 #[test]

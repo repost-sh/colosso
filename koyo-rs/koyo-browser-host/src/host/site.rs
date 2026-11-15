@@ -88,7 +88,6 @@ pub(super) fn set(pane: PaneId, permission: Permission, allowed: bool) {
     if let (Some((context, site)), Some((_, kind))) = (of(pane), kind) {
         decide(&context, &site, *kind, allowed);
         // Chromium reads the position only once macOS lets the host know it.
-        #[cfg(target_os = "macos")]
         if allowed && permission == Permission::Location {
             crate::location::allowed();
         }

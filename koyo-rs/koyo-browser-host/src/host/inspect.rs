@@ -1,7 +1,6 @@
 //! A page inspected: Chrome `DevTools` in a pane of their own, joined to the page's session,
 //! with the shim in their frontend's page (`devtools/embedder.rs`), and the app's own protocol
 //! commands on it.
-use super::panes::create;
 use super::{Pane, Queued, enqueue, host_of, send, with, with_pane};
 use crate::devtools::embedder;
 use cef::{BrowserHost, ImplBrowserHost};
@@ -10,7 +9,7 @@ use koyo_browser_ipc::{
 };
 
 /// Chrome `DevTools` for `page`, as the pane `devtools`: the inspector
-/// frontend in a second off-screen browser, joined to the page's session
+/// frontend in a page of its own, joined to the page's session
 /// over the bridge (`devtools`), opening at `dock`. Open already, it reveals
 /// the element at `inspect`.
 pub(super) fn open_dev_tools(
@@ -96,7 +95,7 @@ pub(super) fn open_dev_tools(
     let begin = inspected.session.begin();
     let url = crate::devtools::frontend_url(&bridge);
     with(|host| {
-        let mut inspector = Pane::new(&url, viewport);
+        let mut inspector = Pane::new(&url);
         inspector.inspector = Some((page, bridge));
         host.panes.insert(devtools, inspector);
         if let Some(page) = host.panes.get_mut(&page) {
@@ -104,8 +103,8 @@ pub(super) fn open_dev_tools(
         }
     });
     host.send_dev_tools_message(Some(begin.as_bytes()));
-    // The frontend is Chromium's own; it needs no profile of the page's.
-    create(devtools, &url, None, true);
+    // The frontend is Chromium's own: of no profile of Koyo's.
+    crate::native::create(devtools, &url, viewport, None);
 }
 
 /// Makes sure `page`'s protocol messages reach the host.
@@ -153,8 +152,7 @@ pub(super) fn cdp(page: PaneId, call: u64, method: &str, params: serde_json::Val
     if held.is_some() {
         return;
     }
-    let (method, params) = super::live::drive::app_command(page, method, params);
-    if let Err(unsent) = send_in_session(page, &method, params, Whose::Agent(call)) {
+    if let Err(unsent) = send_in_session(page, method, params, Whose::Agent(call)) {
         let why = match unsent {
             Unsent::Closed => "The page is closed.",
             Unsent::NoSession => "The page's DevTools session is unavailable.",
@@ -166,9 +164,9 @@ pub(super) fn cdp(page: PaneId, call: u64, method: &str, params: serde_json::Val
 
 /// Whose a command in a page's own session is, for its answer to reach.
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum Whose {
-    /// The host's own (live sizing's).
-    Host(super::live::drive::Own),
+enum Whose {
+    /// The host's own (what puts the `DevTools` frontend's shim in).
+    Host,
     /// The app's or an agent's, by the app's number for the call.
     Agent(u64),
 }
@@ -186,7 +184,7 @@ pub(crate) enum Unsent {
 
 /// Sends `method` with `params` in `page`'s own session under an id of the host's, kept as
 /// `whose` until it's answered.
-pub(crate) fn send_in_session(
+fn send_in_session(
     page: PaneId,
     method: &str,
     params: serde_json::Value,
@@ -198,8 +196,8 @@ pub(crate) fn send_in_session(
     }
     let id = crate::devtools::host_id();
     with_pane(page, |p| match whose {
-        Whose::Host(own) => {
-            p.own.insert(id, own);
+        Whose::Host => {
+            p.own.insert(id);
         }
         Whose::Agent(call) => {
             p.agent.get_or_insert_default().insert(id, call);
@@ -229,8 +227,9 @@ fn agent_message(page: PaneId, fields: &mut crate::devtools::Fields) -> bool {
         return false;
     }
     let id = fields.get("id").and_then(serde_json::Value::as_i64);
+    // The answer to a command of the host's own is nobody else's.
     if let Some(id) = id
-        && super::live::drive::answered(page, id, fields.contains_key("error"))
+        && with_pane(page, |p| p.own.remove(&id)) == Some(true)
     {
         return true;
     }
@@ -330,8 +329,7 @@ pub(super) fn frontend_loaded(devtools: PaneId) {
         return;
     };
     for (method, params) in embedder::install(side) {
-        let own = Whose::Host(super::live::drive::Own::Other);
-        if let Err(why) = send_in_session(devtools, method, params, own) {
+        if let Err(why) = send_in_session(devtools, method, params, Whose::Host) {
             log::warn!("the developer tools' own controls aren't heard: {method} {why:?}");
             return;
         }

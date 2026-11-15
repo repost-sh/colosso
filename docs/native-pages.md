@@ -1,39 +1,57 @@
 # Native pages
 
-Written 2026-11-13 on branch `schulzfel/browser-extensions`. Drafted with Claude. The owner
-decided that Koyo's browser pages become native, windowed pages, as Arc and Chrome have:
-Chromium presents its own frames in Koyo's window and `AppKit` hands it its input, instead of
-pages rendered off screen and composited by GPUI. This is the design, what was tried, and what
-is still to build. Keep it in step with `koyo-rs/koyo/src/browser/native/`.
+Written 2026-11-13 on branch `schulzfel/browser-extensions`. Drafted with Claude. Koyo's
+browser pages are native, windowed pages, as Arc's and Chrome's are: Chromium presents its
+own frames in Koyo's window and `AppKit` hands it its input. This is how that works, what
+was tried, and what is checked. Keep it in step with `koyo-rs/koyo/src/browser/native/` and
+`koyo-rs/koyo-browser-host/src/native.rs`.
 
 Status marks: `[proven]` (run on this machine, evidence named), `[read]` (taken from source,
 not run), `[proposed]`, `[not built]`, `[owner]` (the owner's to decide).
 
-**Where it stands (2026-11-14):** the four open questions were answered by a spike, and the
-owner accepted what a crash takes with it (section 4) and saw a native page on the real
-screen. Since then the browser host runs inside Koyo as a library, every pane a native page,
-over the protocol the off-screen host speaks, and it was checked in the running app, on
-screen: the picture, the pointer, typing, the keyboard going back to Koyo and into the page
-again, edits, find, `DevTools`, responsive mode, the browser tools, pages out of sight,
-closing and a clean quit (section 7). On the agent desktop since: the cursor, full screen on
-the whole screen, permission prompts, passkeys turned down, browsing data cleared at once,
-the holder following the window, and a split's divider dragged along a page, the last run
-of them on the build as committed. A split drag on the real screen with the GPU on, the owner tried: it works (section 6).
-A page and its developer tools sat too high after their divider was dragged, the owner
-found: a native page is on whole points now, which is what it took (section 6). Native
-pages are off unless asked for (section 9).
+**Where it stands (2026-11-15): pages are native and nothing else.** Until then a page was
+drawn off screen by a host process, copied into shared surfaces and composited by GPUI, with
+the person's pointer and keys sent to it over a socket; native pages were built beside that
+and off unless asked for, which was not what the owner had asked for and left his Koyo on the
+off-screen path. That path is removed: the host's off-screen rendering, its surfaces, its
+frame clock and its live-resize emulation; the app's frame drawing and its forwarding of
+pointer, wheel, pinch, keys and composition; the protocol's messages for both (protocol 13);
+and the setting and `KOYO_NATIVE_PAGES`, since there is nothing left to choose. What settled
+it is in section 1. What was checked of native pages on the way, on screen and on the agent
+desktop, is in sections 3 to 7: the picture, the pointer, typing, the keyboard going back to
+Koyo and into the page again, edits, find, `DevTools`, responsive mode, the browser tools,
+pages out of sight, closing and a clean quit, the cursor, full screen, permission prompts,
+browsing data cleared at once, the holder following the window, and dividers dragged along a
+page at a hand's speed and on half points (section 6).
 
 ---
 
 ## 1. Why [decided]
 
-- Every page today is an off-screen CEF browser, which CEF makes "Alloy style": extensions get
-  no tabs, windows, toolbar or popups, and `chrome://settings` and `chrome://extensions` are
-  blocked (`.superpowers/research/run/*.out`; CEF issues #3859, #4255).
-- Off screen, each frame costs a GPU copy, a socket hop and a second compositor, and each
-  input a round trip. `[read]`, not measured.
-- Koyo re-implements what a browser window gives: passkeys, `DevTools`, menus, dialogs, the
-  frame clock.
+- An off-screen CEF browser is one CEF makes "Alloy style": extensions get no tabs, windows,
+  toolbar or popups, and `chrome://settings` and `chrome://extensions` are blocked
+  (`.superpowers/research/run/*.out`; CEF issues #3859, #4255).
+- Off screen, each frame cost a GPU copy, a socket hop and a second compositor, and each
+  input a round trip; and Koyo re-implemented what a browser window gives: passkeys,
+  `DevTools`, menus, dialogs, the frame clock.
+- **It dropped a quarter of a video's frames.** `[proven]` 2026-11-15, on the release build
+  then installed, both ways from the same binary, a YouTube clip played muted on the real
+  screen (M4 Max, 5K display at 2x), `getVideoPlaybackQuality()` counted over 30 s after 12 s
+  of settling (`.superpowers/perf/`):
+
+  | | Off screen | Native |
+  | --- | --- | --- |
+  | The stream YouTube offered | VP9 SDR, 2160p at most | AV1 10-bit HDR, up to 4320p, as it offers Arc |
+  | 2160p60 | 452 of 1808 frames dropped (25.0 %), 45 shown a second | 0 of 1809 dropped |
+  | 1080p60 | 297 of 1209 dropped (24.6 %), 45 a second | not measured |
+  | 4320p60 | not offered | 0 of 1808 dropped |
+  | Animation frames a second the page was given | 30.7 with the video paused, 45.4 playing | 60 to 70 (section 3.2) |
+
+  The same quarter at 1080p as at 2160p: not what decoding cost, but how often the page was
+  given a frame to draw. Off screen a frame began on the host's own clock, a display link
+  that skipped a page still busy with its last frame (the removed `host/clock.rs`, itself
+  there because an off-screen page left to Chromium's clock fell to half the display's
+  rate). Natively Chromium runs its own compositor against the display, as in a browser.
 
 ## 2. What was settled
 
@@ -66,15 +84,14 @@ engine's helper apps running the browser host's binary, so what the host does in
   run-loop timer in the common modes runs `cef_do_message_loop_work` when CEF asks, at the
   latest every 1/30 s (`embedded/pump.rs`). CEF is started from that timer, never inside
   GPUI's frame, and what moves the keyboard or edits a page is done from it too. `[proven]`
-- **Started as the app starts**, as the off-screen host is (`browser::warm_up`), from the
-  run loop. Not measured: what `cef_initialize` costs the main thread.
+- **Started as the app starts** (`browser::warm_up`), from the run loop. Not measured: what `cef_initialize` costs the main thread.
 - **Koyo must run from a bundle that holds the engine.** Run as a bare binary with the engine
   elsewhere (`koyo-rs/target/debug/koyo`), every helper exits at once (GPU process
   `exit_code=5`, then "GPU process isn't usable"). Run from
   `X.app/Contents/MacOS/koyo` with the engine in `X.app/Contents/Frameworks`, as a packaged
   Koyo is laid out, they stay up. `[proven]`; the cause (the helpers' sandbox and the bundle
   paths it's given) is `[read]`. `script/dev-bundle` makes such a bundle of the debug build;
-  from a bare binary (`script/dev`, `cargo run`) pages stay off screen, and the log says why.
+  from a bare binary (`script/dev`, `cargo run`) there are no pages, and a page says why.
 
 ### 3.2 The page is made in a window of CEF's, and its views move into the pane [proven]
 
@@ -86,7 +103,13 @@ Alloy style (`cef_types_mac.h:151`). So, as Cra does
    to a frameless `cef_window_create_top_level` window (`koyo-browser-host/src/native.rs`).
 2. That window, the **holder**, stays: clear, click-through, never key or main (its class's
    `canBecomeKeyWindow` and `canBecomeMainWindow` are replaced for holders), left out of screen
-   captures, kept over the pane on screen so Chromium places its own menus and bubbles right.
+   captures, kept over the pane on screen so Chromium places its own menus and bubbles right,
+   and a level under the usual windows' (`native/holder.rs`). Shown after Koyo's window while
+   the app wasn't in front, a holder at the usual level was in front of it, over its page:
+   the presses there were the holder's, which has no page in it, and the page took none for
+   as long as Koyo ran, 2026-11-15. `[proven]` with the pointer's own clicks on the agent
+   desktop: a click the page didn't count with its holder in front, and counted with every
+   holder a level down.
 3. Chromium draws the whole holder with one compositor, whose layers hang in its
    `ViewsCompositorSuperview`; the page's `WebContentsViewCocoa` over it only takes input. Both
    move into a view of Koyo's in a native surface of GPUI's composition
@@ -149,7 +172,9 @@ GPU process.
   (`docs/browser.md` 2). Chats weren't tried; they live in the agent host, as terminals live
   in the daemon.
 - Seen on the way: a panic in the spike's own measuring code took every page and the window
-  with it. Today a host that stops is started again under a window that stays.
+  with it. Off screen, a host that stopped was started again under a window that stayed; in
+  Koyo's process the engine starts once, and one that stops leaves its panes saying to restart
+  Koyo.
 - How often: this machine has 13 crash reports of the browser host, all within four minutes
   on 2026-11-08, and none since; two more came from poking extension APIs in Alloy style
   (`.superpowers/research/evidence/`). Each would have been a Koyo crash.
@@ -163,8 +188,7 @@ the input, the input method or accessibility. `[read]`
 ## 5. Pages out of sight [proven]
 
 Today a page no pane draws is hidden for the engine unless an agent used it in the last 90 s
-(`docs/app-control.md` 11, `view/sight.rs`). Native pages can do the same without the
-off-screen path. A page whose tab wasn't shown, asked over the `DevTools` protocol
+(`docs/app-control.md` 11, `view/sight.rs`). Native pages do the same. A page whose tab wasn't shown, asked over the `DevTools` protocol
 (`.superpowers/native/probe/cdp.out`, `q3.sh`):
 
 | Where its views are | `visibilityState` | Animation frames | Script | Screenshot | Protocol click |
@@ -190,8 +214,7 @@ locked, a page opened in the background answered `visible` with frames running, 
 `browser_eval`, `browser_click`, `browser_type`, `browser_navigate`, `browser_screenshot`,
 `browser_dialog` and `browser_viewport` (390 × 844, read back from the page).
 
-Whether the off-screen path stays for agents' or responsive pages once native has parity is
-the owner's. `[owner]` What's measured so far gives no reason to keep it for pages out of sight.
+The off-screen path wasn't needed for pages out of sight, and is gone (2026-11-15).
 
 ## 6. Resizes [built; the owner saw it work]
 
@@ -272,44 +295,66 @@ every side and a pane of their own, from their own controls and from Koyo's sett
 each time. Before the fix the first drag onto a half point failed the
 same check.
 
-**A divider is picked up at any speed.** A native view takes the pointer over it before the
-app's content does, and until a drag has started the window hands GPUI only the moves made
-over GPUI's own content (gpui-fast-macos 0.1.12 `fast/composition.rs`, `send_window_event`:
-a drag move over a native view goes `AppKit`'s way, and GPUI's view lets it pass). GPUI
-starts a drag once it has heard the pointer move more than two points from the press. A hand
-at its usual speed is off a divider nine points thick by its first move, which was the
-page's: nothing was picked up, and the owner couldn't resize the developer tools at all,
-2026-11-15. The harness's drags had all begun with three one-point moves, which is why they
-passed; with a first move of six points or more, none of eight moved the divider.
+**A divider is picked up at any speed.** GPUI starts a drag once it has heard the pointer
+move more than two points from the press, and a hand at its usual speed is off a divider nine
+points thick, over the page beside it, by its first move. Two things kept such a drag from
+being picked up, and the owner couldn't resize the developer tools reliably, 2026-11-15.
 
-So from the press on a seam until the button is let go, the whole window is the app's: a
-hit region over all of it, among the window's overlays, with the seam's cursor
-(`theme::card`, `shield`), drawn at once on the press rather than at the screen's next
-refresh. Every seam has it: the divider between a page and its tools, the gap between
-islands, Orca's hairline. The drag goes by where the pointer is, so a move lost before the
-shield is up costs nothing. `[proven]` with the harness, events handed to the window as
-`AppKit` hands a hand's: first moves of 6 to 150 points land the tools' divider on the point
-expected, twelve of twelve; 215 more drags, half of them straight off the seam, at the
-bottom and right docks and on splits in both layouts, fitted after each, and the only ones
-that picked nothing up were over in under two frames or already at the split's limit; Orca's
-hairline pressed on the line and four points off it, slow and fast, landed where expected;
-and a press on the page after a drag, and after a bare click on the divider, was the page's.
+*Whose a button's moves are.* gpui-fast's window gave each drag move to whatever lay under
+the pointer, a native view or GPUI, and kept one native view as the owner of every button
+until it had counted each button's release (gpui-fast-macos 0.1.12 `fast/composition.rs`,
+`send_window_event`). So a drag pressed on a divider lost the moves made over the page, and a
+release the window never saw, one a menu the press opened had tracked, left that view the
+owner for good. Now **a press owns its button**: the drag and the release of a button go to
+whoever took its press, a native view or GPUI, wherever the pointer is by then, and each press
+says anew whose its button is. `gpui-fast-macos` is in `koyo-rs/vendor/` for it
+(`vendor/README.md`). With every pointer event traced, GPUI's view got the press, each move
+and the release of every drag, first moves of 30 to 80 points off the divider among them.
+
+*Where GPUI takes the page to be.* GPUI draws a frame in two passes. Once the first, prepaint,
+is done it notes where the window's native views are, and what of its own a press finds is
+what none of them covers (gpui-fast 0.1.12 `fast/composition.rs`, `finish_input` and
+`hit_test`). The page's view was moved in the second pass, as its element was painted, so each
+frame noted it where it had been a frame before. After a fast drag the last frame's move was
+a divider's width or more: the divider then lay where GPUI still took the page to be, a
+press on it counted as behind the page, and nothing was picked up until something else had the
+window drawn again. A slow drag ends on a move of a point, which left the divider's middle
+clear: slow worked, fast didn't. The page's view is now placed as its element is prepainted
+(`browser/page.rs`, `place_native`), with its hitbox, and the island it rounds its corners by
+says where it is then too (`theme::card::prepainted`). Traced inside GPUI's drag start, one
+fast drag in three found its divider not hovered at the press before; none of thirty-two
+after: fourteen on a split's gap, twelve on the tools' divider docked at the right, six more
+on the build without the tracing, first moves of 12 to 60 points both ways, each landing on
+the point expected.
+
+Before these, a hit region over the whole window was put up on a seam's press, drawn at once
+(commit 455480ba2). It raced the pointer's first move and treated neither cause; it's gone.
+
+How these were found matters for the next check. The harness hands its events to the window
+(section 9), which is not where the pointer's own come in: it can't show which window of the
+app is in front, and its events carry no button number. The checks above that say *real* were
+made on Koyo's agent desktop (`.superpowers/native/desk2/`), with the pointer's and keyboard's
+own events: a click on a page's button counted by the page, the page's menu opened by a right
+click and Inspect picked from it, and drags of the tools' divider, a split's gap and the
+sidebar's edge, both ways, twenty in all, each read back from the views' frames. A window
+there isn't one `AppKit` takes to be visible, so the harness's `tick` has it drawn and counted
+as seen (`view/sight.rs`, `UNSEEN_COUNTS`).
 
 Seen on a real screen with the GPU on by the owner, 2026-11-14, dragging a split's divider beside a native page: it works. Holding the edge until Chromium's frame is in, the step kept in reserve, isn't needed.
 
-## 7. Parity
+## 7. What the host does for a page, and what's checked
 
 The host runs in Koyo's process as a library (`koyo_browser_host::embedded`): Koyo gives it
-the socket end a host process would get, and talks to it over `koyo-browser-ipc` as before.
-So profiles, page state, dialogs, menus, permissions, passkeys, `DevTools`, the protocol
-bridge, agents' commands, edits and keyboard focus are the host's own code behind the same
-requests. What differs is in `native.rs` (a pane's browser is a Chrome-style view in a
-holder) and on the app's side in `browser/native` (a page's view in its pane).
+one end of a socket and talks to it over `koyo-browser-ipc`. Profiles, page state, dialogs,
+menus, permissions, passkeys, `DevTools`, the protocol bridge, agents' commands, edits and
+keyboard focus are the host's code behind the protocol's requests, as they were for the
+off-screen path this replaced; "as off screen" below marks what was carried over unchanged.
+The page itself is `native.rs` in the host (a pane's browser is a Chrome-style view in a
+holder) and `browser/native` in the app (a page's view in its pane).
 
 - **One engine a run.** A profile folder serves one browser process, and CEF starts once in a
-  process: native or off screen is chosen as Koyo starts (section 9), for every page,
-  `DevTools` included. `browser::native::decide` settles it once; off macOS and in tests a
-  stub of the same few calls says pages are off screen.
+  process, Koyo's. Off macOS and in tests, which start no engine in their own process, a stub
+  of the same few calls says there are no pages (`browser/native_off.rs`).
 - **What the app doesn't send a native page:** its pointer, wheel and keys, which `AppKit`
   hands the page itself; GPUI has no key handler on a native page. A press is still heard on
   its way to the page, so GPUI's focus follows it and the person has the page.
@@ -323,8 +368,7 @@ holder) and on the app's side in `browser/native` (a page's view in its pane).
 - **Keys the page leaves** go from CEF's `OnKeyEvent` to the app's own view in that window
   (`pane/keys.rs`), as they would have had the page not had the keyboard. ⌘ and ⌃ shortcuts
   don't need it: GPUI is asked about key equivalents first.
-- **Keys before the page hears them** (`OnPreKeyEvent`, `pane/keys.rs`) do what the app does
-  with an off-screen page's keys on their way through it. A key with an event of the
+- **Keys before the page hears them** (`OnPreKeyEvent`, `pane/keys.rs`). A key with an event of the
   system's behind it is the person's: the app is told (`HostEvent::Typed`, protocol 10, at
   most twice a second a pane) and counts them as at the page, as a press does, so an agent's
   command waits. And Escape takes a page out of full screen without the page hearing it:
@@ -332,7 +376,7 @@ holder) and on the app's side in `browser/native` (a page's view in its pane).
 - **The cursor** is Chromium's to set (`OnCursorChange` lets it), and the app is told which
   it is as before. GPUI sets the window's cursor after each of its frames from what's under
   the pointer, which over a native page was nothing, so an arrow: the page element names the
-  page's cursor for its place, as it does off screen, and the two agree.
+  page's cursor for its place, and the two agree.
 - **The page's views fill their place by themselves**: they resize with the app's view they
   are in, and Chromium, which lays them out again by its holder's size each time that
   changes, puts them where they already are, the holder being the size of that view. A
@@ -351,8 +395,7 @@ holder) and on the app's side in `browser/native` (a page's view in its pane).
   `profile-<name>.g<times>`, the host closes every page, and the app opens each again at the
   address it showed (`Browsers::reopening`, `BrowserView::reopen`). The old folders go as the
   host next starts, before CEF opens the root, and come off Chrome's list of profiles
-  (`Local State`), which it would make them again from. Off screen the host is stopped and
-  the folders deleted, as before.
+  (`Local State`), which it would make them again from.
 - **The window delegate's `CanClose`** has to be implemented: the Rust wrapper's default is
   no, where CEF's is yes, and a holder that can't close keeps its page from closing and CEF
   from shutting down.
@@ -404,10 +447,11 @@ on, what a page shows with it off.
 | A split's divider dragged along a page | drawn in the transaction; the page's canvas colour behind it (section 6) | checked by the owner on the real screen with the GPU on, 2026-11-14: "it works perfectly". The page went through fourteen widths in the app's log of that drag |
 | A pane's edge between points (a drag, a split's ratio) | the page on the whole points nearest its pane's edges, its holder with it (section 6) | checked on the real screen with the GPU on by the harness's drags, on half points and anywhere between: the tools' divider at each side, splits both ways, odd ratios and window sizes; frames, the picture's layer and the page's own size fit after each |
 
-## 8. Measuring [first numbers; the bar not met]
+## 8. Measured against the off-screen path
 
-Scroll and typing latency against today's build is the bar for done. A first measurement
-exists, of the input's way in only (`.superpowers/native/latency.sh`,
+The way out, from a page's frame to the glass, is section 1's video numbers. The input's way
+in was measured too, both ways from one debug build, before the off-screen path was removed
+(2026-11-14; `.superpowers/native/latency.sh`,
 `probe/lat-*.json`): 300 keys and 300 wheel turns, 40 ms apart, each stamped as it's handed to
 Koyo's window and again by the page (`www/latency.html`) in its handler and in its next
 animation frame. Both modes from the same debug build, GPU compositing, one run each.
@@ -434,66 +478,108 @@ What it doesn't say:
   (section 3.3). Whether that moves the off-screen frame number wasn't checked.
 - One run, a debug build, and no real page.
 
-## 9. Turning it on
+## 9. Running it
 
-Native pages are off unless asked for, as Koyo starts:
+There is nothing to turn on: a page is native, and there is no other kind.
 
-- **Settings → Browser → Native pages** (`native_pages` in `settings.json`), read at start.
-- `KOYO_NATIVE_PAGES=1` or `=0` in the environment overrides the setting.
 - Koyo has to run from a bundle that holds the engine (section 3.1): a packaged Koyo does
   (`script/bundle`); for the debug build, `script/dev-bundle` makes and runs
-  `koyo-rs/target/dev-bundle/Koyo Dev.app`.
+  `koyo-rs/target/dev-bundle/Koyo Dev.app`. From a bare binary a page says it needs the
+  bundle, and shows nothing.
 
 ```sh
-KOYO_NATIVE_PAGES=1 script/dev-bundle
+script/dev-bundle
 ```
 
 In a debug build, `KOYO_NATIVE_SWITCHES="a b=c"` adds Chromium switches and
 `KOYO_NATIVE_PROBE=<folder>` takes
 commands from `<folder>/cmd` (`browser/native/probe.rs`): captures of the app's own window
-taken in the process, and clicks, keys and scrolls made as `NSEvent`s and handed to the
-window, so nothing is injected into the system. The checks in this document were run with it,
-on a copy of the bundle with data, settings, logs and temporary folders of its own inside the
-checkout (`.superpowers/native/test/`), and on another for Koyo's agent desktop
+taken in the process, and clicks, keys, scrolls and drags made as `NSEvent`s and handed to
+the window, so nothing is injected into the system. The checks in this document were run with
+it, on a copy of the bundle with data, settings, logs and temporary folders of its own inside
+the checkout (`.superpowers/native/test/`), and on another for Koyo's agent desktop
 (`.superpowers/native/desk/`, its environment in its `Info.plist`, as the desktop starts apps
 without one).
+
+The engine's own tests (`koyo-browser-host/tests/smoke`) run the host as a process of its
+own, from the engine's bundle, speaking the same protocol: its pages are in holders parked
+off the screen, which is how a page out of sight is kept (section 5), so they load, run
+script, draw and answer the `DevTools` protocol with no window of Koyo's to be in.
+`[proven]`: the suite's seven tests pass so, in 3.5 s.
 
 ## 10. Where it lives
 
 | Path | What |
 | --- | --- |
-| `koyo-browser-host/src/lib.rs`, `main.rs` | The host as a library, and the binary made of it |
+| `koyo-browser-host/src/lib.rs`, `main.rs` | The host as a library, and the binary made of it: CEF's helpers, and a host process of its own for the engine's tests |
 | `koyo-browser-host/src/embedded.rs` | The host's start and end in Koyo's process; CEF found in the engine; Chrome's saved sessions dropped |
 | `koyo-browser-host/src/embedded/pump.rs` | CEF's work run from the app's run loop |
 | `koyo-browser-host/src/embedded/nsapp.rs` | Chromium's `NSApp` protocols on the app's class; activation turned down while a page's window shows |
-| `koyo-browser-host/src/native.rs` | A native pane: its browser view, its holder, where its views are, the keyboard |
-| `koyo-browser-host/src/native/holder.rs`, `parts.rs` | The holder's window made inert; the delegates; the client of browsers Chrome makes on its own |
+| `koyo-browser-host/src/native.rs` | A pane's page: its browser view, its holder, where its views are, the keyboard |
+| `koyo-browser-host/src/native/holder.rs`, `parts.rs` | The holder's window made inert, and its answer to Chromium's full screen request; the delegates; the client of browsers Chrome makes on its own |
 | `koyo-browser-host/src/native/report.rs` | For the harness: where each page's views and its picture's layer are, and whether they fit the pane |
-| `koyo-browser-host/src/host/start.rs` | Hello, CEF's settings and start, shared by both ways of running |
+| `koyo-browser-host/src/host/start.rs` | Hello, CEF's settings and start, in Koyo's process or the host's own |
+| `koyo-browser-host/src/host/edit.rs` | An editing command, the one thing of a page's input the app asks for |
 | `koyo-browser-host/src/pane/keys.rs` | Keys a page leaves, handed to the app's view; the person's keys told to the app; Escape out of full screen |
-| `koyo-browser-host/src/host/panes.rs` | Profiles' folders by how often they were cleared; clearing without stopping |
-| `koyo-browser-ipc/src/client.rs` | `Connection::start_embedded`, beside the start of a host process |
-| `koyo/src/browser/native/mod.rs` | Whether pages are native; the host started in the app; a page's view in its pane |
-| `koyo/src/browser/native_off.rs` | The same calls where pages are never native |
+| `koyo-browser-host/src/host/panes.rs` | Panes from open to closed; profiles' folders by how often they were cleared; clearing without stopping |
+| `koyo-browser-host/tests/smoke/` | The engine's tests, against the host as a process of its own |
+| `koyo-browser-ipc/src/client.rs` | `Connection::start_embedded`, and `start` for a host process |
+| `koyo/src/browser/native/mod.rs` | The host started in the app; a page's view in its pane |
+| `koyo/src/browser/native_off.rs` | The same call in tests, which start a host process, and off macOS, where there are no pages |
 | `koyo/src/browser/native/probe.rs`, `probe/look.rs` | The harness, in debug builds |
-| `koyo/src/browser/page.rs`, `input.rs` | The page element's native branch: no frame, no GPUI key handling, a press heard on its way to the page |
-| `koyo/src/browser/engine.rs` | The engine in Koyo's own bundle |
-| `koyo/src/browser/host.rs`, `host/events.rs`, `view/lifecycle.rs` | Clearing data under running pages: which pages open again, and how |
-| `koyo/src/native/window.rs` | A frame drawn in the transaction a native view moves in |
-| `koyo/src/native/surface.rs` | A view in a native surface; a pane's bounds on whole points, as a native page takes them |
-| `koyo/src/browser/responsive/` | The size and scale a native page is told |
-| `koyo/src/browser/tone.rs`, `lightness.rs` | How light a native page says it is, for the glass over it, and its canvas's colour, for what's behind it |
-| `koyo/src/settings_view/browser.rs` | The setting's switch |
-| `script/dev-bundle` | The debug build as a bundle round the engine |
+| `koyo/src/browser/page.rs`, `input.rs` | The page element: where the page's view goes, a press heard on its way to the page, Koyo's shortcuts and edits |
+| `koyo/src/browser/engine.rs` | The engine in Koyo's own bundle, and what a Koyo run without one says |
+| `koyo/src/browser/host.rs`, `host/events.rs`, `host/starting.rs`, `view/lifecycle.rs` | The host started once; clearing data under running pages: which pages open again, and how |
+| `koyo/src/native/window.rs` | A frame drawn in the transaction a page's view moves in |
+| `koyo/src/native/surface.rs` | A view in a native surface; a pane's bounds on whole points, as a page takes them |
+| `koyo/src/surfaces.rs` | Rings of shared surfaces, which the simulator's and the agent desktop's pictures come as (a page's no longer do) |
+| `koyo/src/browser/responsive/` | The size and scale a page is told |
+| `koyo/src/browser/tone.rs`, `lightness.rs` | How light a page says it is, for the glass over it, and its canvas's colour, for what's behind it |
+| `script/dev-bundle`, `script/dev` | The debug build as a bundle round the engine; the hot-reload build with the engine put in the bundle `dx` runs it from |
 
-## 11. For the owner
+## 11. Koyo doesn't fork itself [proven]
+
+With the engine in its process, Koyo is a process that must not be forked. A fork's child
+runs the system's `atfork` handlers before it becomes anything else, and one of them reaches
+into Chromium for a lock: taken while one of the engine's threads held it, the child waited
+on it for good, a copy of Koyo that never became `git`, and the thread that asked for git
+waited with it. That copy outlived Koyo, holding the control socket and the browser profile:
+the next Koyo logged "Another Koyo already answers" and "CEF did not initialize", and had no
+pages. Seen 2026-11-15, the child sampled in `xpc_atfork_child` under `fork`, called from
+`std::process::Command::spawn`, within ten seconds of a start.
+
+The standard library spawns a program without forking unless it's asked for something only a
+fork can do. Three things asked:
+
+- A program named, not given by its path, with a `PATH` of its own to look in: git
+  (`koyo-git/src/command.rs`) and npm (`koyo-lsp/src/servers/node.rs`). Each is now found on
+  that path first and run by where it is.
+- A step in the child before it becomes the program (`pre_exec`), to unblock its signals: the
+  daemons' start (`koyo-daemon`). The thread that spawns unblocks its own for the spawn
+  instead, and puts them back.
+- The same step to hand a host its end of the app's socket on a descriptor of its own: a
+  device's host, and the browser's when it runs as a process (`koyo-browser-ipc/src/inherit.rs`).
+  The socket is now the host's standard input, which the standard library puts in place as it
+  spawns, and its alone; the host moves it off there and puts the null device in its place,
+  so the engine's helpers, started with their parent's standard input, don't get it.
+
+Git, the daemons' start and the socket's handing over each have a test that counts the forks
+its thread makes: none, the daemon still starting with no signal blocked and the socket still
+reaching only its host. Two things keep it so. The lint turns down the standard library's
+calls that always fork (`koyo-rs/clippy.toml`, `disallowed-methods`). And a debug build logs,
+with where from, any fork made once the engine has started (`browser/native/mod.rs`,
+`say_when_forked`): a named program with its own `PATH`, which no lint sees, or a crate's own
+fork.
+
+## 12. For the owner
 
 Decided: the crash scope (section 4) is accepted, 2026-11-14.
 
 Open:
 
-1. **The off-screen path after parity** (section 5): nothing measured needs it for pages out
-   of sight.
+1. **A bare binary has no pages** (section 3.1): `cargo run` and `script/dev` start Koyo
+   outside a bundle, where the engine's helpers exit. `script/dev-bundle` is the debug build
+   with pages.
 2. **Private parts relied on**: Chromium's view class names, two methods of CEF's window class
    and three of `NSApplication` replaced at run time. Cra relies on the first two.
 3. **Resizes** (section 6): built, and to be judged by eye in a split drag on the real

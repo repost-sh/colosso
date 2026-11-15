@@ -1,8 +1,7 @@
-//! Keys as Chromium knows them on a Mac: the Windows virtual key code it keys events by,
-//! the Mac key code `KeyboardEvent.code` comes from, and the characters a Mac key event
-//! carries, function keys' in Apple's private use range.
-
-use gpui_kit::Keystroke;
+//! Keys as Chromium knows them on a Mac: the Windows virtual key code it keys events by, and
+//! the Mac key code `KeyboardEvent.code` comes from: how an agent's keys reach a page
+//! (`control/exec/browser/keys.rs`). The person's keys on the agent desktop go to its apps by
+//! the Mac's code (`agent_desktop/view.rs`).
 
 /// Chromium keys events by Windows virtual key code, and fills in `KeyboardEvent.code`
 /// from the macOS key code.
@@ -72,54 +71,6 @@ pub(crate) fn key_codes(key: &str) -> (i32, i32) {
     }
 }
 
-/// The characters a Mac key event for `keystroke` carries: the text it types, with Shift
-/// and Option applied; the key itself when Command or Control keep it from typing; a
-/// control character or a function key's code for keys that type nothing. None for a
-/// modifier key.
-pub(super) fn characters(keystroke: &Keystroke) -> Option<String> {
-    let function = |code: u32| char::from_u32(code).map(String::from);
-    let key = keystroke.key.as_str();
-    match key {
-        "enter" => return Some("\r".into()),
-        "tab" => return Some("\t".into()),
-        "backspace" => return function(0x7F),
-        "escape" => return function(0x1B),
-        "space" => return Some(" ".into()),
-        "up" => return function(0xF700),
-        "down" => return function(0xF701),
-        "left" => return function(0xF702),
-        "right" => return function(0xF703),
-        "insert" => return function(0xF727),
-        "delete" => return function(0xF728),
-        "home" => return function(0xF729),
-        "end" => return function(0xF72B),
-        "pageup" => return function(0xF72C),
-        "pagedown" => return function(0xF72D),
-        "shift" | "control" | "alt" | "platform" | "function" | "capslock" => return None,
-        _ => {}
-    }
-    if let Some(n) = key
-        .strip_prefix('f')
-        .and_then(|n| n.parse::<u32>().ok())
-        .filter(|n| (1..=24).contains(n))
-    {
-        return function(0xF704 + n - 1);
-    }
-    if let Some(typed) = keystroke
-        .key_char
-        .as_ref()
-        .filter(|typed| typed.chars().count() == 1)
-    {
-        return Some(typed.clone());
-    }
-    let mut chars = key.chars();
-    match (chars.next(), chars.next()) {
-        (Some(c), None) if keystroke.modifiers.shift => Some(c.to_uppercase().collect()),
-        (Some(c), None) => Some(c.into()),
-        _ => None,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -135,20 +86,5 @@ mod tests {
         assert_eq!(key_codes("f1"), (0x70, 0x7A));
         assert_eq!(key_codes("f12"), (0x7B, 0x6F));
         assert_eq!(key_codes("ß"), (0, 0));
-    }
-
-    #[test]
-    fn a_key_carries_the_characters_a_mac_key_event_would() {
-        let of = |source: &'static str| characters(&Keystroke::parse(source).unwrap());
-        assert_eq!(of("tab").as_deref(), Some("\t"));
-        assert_eq!(of("shift-tab").as_deref(), Some("\t"));
-        assert_eq!(of("enter").as_deref(), Some("\r"));
-        assert_eq!(of("backspace").as_deref(), Some("\u{7f}"));
-        assert_eq!(of("left").as_deref(), Some("\u{f702}"));
-        assert_eq!(of("f5").as_deref(), Some("\u{f708}"));
-        assert_eq!(of("a").as_deref(), Some("a"));
-        assert_eq!(of("shift-a").as_deref(), Some("A"));
-        assert_eq!(of("cmd-k").as_deref(), Some("k"));
-        assert_eq!(of("shift").as_deref(), None);
     }
 }

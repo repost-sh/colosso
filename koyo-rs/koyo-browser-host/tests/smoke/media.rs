@@ -1,6 +1,5 @@
 //! A page's `<video>` plays H.264 with AAC in MP4, which `WhatsApp`'s video and most of the
-//! web's is in: the clip runs, its sound is decoded and its picture reaches the surface the
-//! app shows. An engine packaged from CEF's own build can't, and fails this with the engine's
+//! web's is in: the clip runs, its sound is decoded and its picture is what the page draws. An engine packaged from CEF's own build can't, and fails this with the engine's
 //! reason; one whose framework `script/cef` built does (docs/browser.md 11).
 //!
 //! The clip is a second of a picture white on its left half and black on its right, with a
@@ -16,7 +15,6 @@
 //! base64 -i clip.mp4 | tr -d '\n' > h264-aac.mp4.base64
 //! ```
 use crate::support::{Session, close, launch, open, until};
-use koyo_browser_ipc::HostEvent;
 use std::time::Duration;
 
 /// A page, blue where nothing is drawn, that the clip fills and plays over and over as soon
@@ -34,6 +32,14 @@ const PAGE: &str = concat!(
 const CLIP: &str = "(video => JSON.stringify({ seconds: video.currentTime, width: video.videoWidth, \
     sound: video.webkitAudioDecodedByteCount, reason: video.error && video.error.message }))\
     (document.querySelector('video'))";
+
+/// The red, green and blue of the clip's picture a quarter and three quarters of the way
+/// along its middle row, as the page draws the clip to a canvas; `null` until it has one.
+const PICTURE: &str = "(video => { if (!video.videoWidth) return 'null'; \
+    const canvas = document.createElement('canvas'); canvas.width = 96; canvas.height = 54; \
+    const pen = canvas.getContext('2d'); pen.drawImage(video, 0, 0, 96, 54); \
+    const at = x => Array.from(pen.getImageData(x, 27, 1, 1).data.slice(0, 3)); \
+    return JSON.stringify([...at(24), ...at(72)]); })(document.querySelector('video'))";
 
 #[test]
 #[ignore = "Needs a packaged browser engine whose framework script/cef built; see the module docs"]
@@ -56,21 +62,17 @@ fn a_page_plays_h264_with_aac() {
     );
     assert_eq!(clip["width"], 96, "no H.264 picture: {clip}");
     assert!(clip["sound"].as_u64() > Some(0), "no AAC sound: {clip}");
-    // The picture is in the frames the app is handed: along the middle row, white a quarter
-    // of the way in and black three quarters, where a page that drew no clip is blue.
-    session.wait("the clip's picture in the page's frame", |event, seen| {
-        matches!(event, HostEvent::Frame { pane: 1, .. })
-            && seen.is_some_and(|seen| light(seen.row[25]) && dark(seen.row[75]))
-    });
+    // The picture is the clip's: drawn to a canvas, white a quarter of the way along its
+    // middle row and black three quarters.
+    let picture = until(
+        &mut session,
+        PICTURE,
+        "the clip's picture",
+        Duration::from_secs(10),
+        serde_json::Value::is_array,
+    );
+    let at = |index: usize| picture[index].as_u64().expect("a colour part");
+    assert!((0..3).all(|part| at(part) > 200), "not white on its left: {picture}");
+    assert!((3..6).all(|part| at(part) < 60), "not black on its right: {picture}");
     close(session, &launch);
-}
-
-/// Whether a BGRA pixel is near white.
-fn light(pixel: [u8; 4]) -> bool {
-    pixel[..3].iter().all(|&part| part > 200)
-}
-
-/// Whether a BGRA pixel is near black.
-fn dark(pixel: [u8; 4]) -> bool {
-    pixel[..3].iter().all(|&part| part < 60)
 }

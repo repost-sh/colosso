@@ -1,9 +1,6 @@
-//! What the app asks of the host: panes opened, sized and closed, and what the person does
-//! in them.
-use crate::{
-    Answer, DevToolsDock, KeyKind, Modifiers, MouseButton, MouseKind, PaneId, PasskeyAnswer,
-    Permission, PinchPhase, Point, Viewport,
-};
+//! What the app asks of the host: panes opened, sized and closed, and what the person asks
+//! of their pages. A page's pointer, wheel and keys are `AppKit`'s to hand it, not the app's.
+use crate::{Answer, DevToolsDock, PaneId, PasskeyAnswer, Permission, Point, Viewport};
 use serde::{Deserialize, Serialize};
 
 /// A request from the app to the host.
@@ -14,7 +11,7 @@ use serde::{Deserialize, Serialize};
     rename_all_fields = "camelCase"
 )]
 pub enum AppRequest {
-    /// Open a pane. Its surfaces follow as [`HostEvent::Surfaces`].
+    /// Open a pane.
     Open {
         /// The app's id for the pane.
         pane: PaneId,
@@ -26,17 +23,13 @@ pub enum AppRequest {
         /// project, so projects never share logins.
         profile: String,
     },
-    /// The pane changed size or moved to a display with another scale.
+    /// The size of a page no pane draws, as an agent sizes one out of sight. A page a pane
+    /// draws is the size of the pane.
     Resize {
         /// The pane.
         pane: PaneId,
         /// Its new size.
         viewport: Viewport,
-        /// Whether a drag of the pane's edge is under way (a split's divider, a responsive
-        /// grip, the window's edge): the host lays the page out live while it is, and settles
-        /// once the app says it's over, sending this `false` at the last size.
-        #[serde(default)]
-        dragging: bool,
     },
     /// Load a page.
     Navigate {
@@ -99,83 +92,6 @@ pub enum AppRequest {
         pane: PaneId,
         /// Whether it has focus.
         focused: bool,
-    },
-    /// A mouse event, at a logical position in the pane.
-    Mouse {
-        /// The pane.
-        pane: PaneId,
-        /// What happened.
-        kind: MouseKind,
-        /// Left edge offset.
-        x: f32,
-        /// Top edge offset.
-        y: f32,
-        /// The button pressed or released, or held while moving.
-        button: Option<MouseButton>,
-        /// 1 for a click, 2 for a double click.
-        click_count: u32,
-        /// Held modifiers.
-        modifiers: Modifiers,
-    },
-    /// A scroll, in logical pixels.
-    Wheel {
-        /// The pane.
-        pane: PaneId,
-        /// Left edge offset of the pointer.
-        x: f32,
-        /// Top edge offset of the pointer.
-        y: f32,
-        /// Horizontal distance.
-        dx: f32,
-        /// Vertical distance.
-        dy: f32,
-        /// Held modifiers.
-        modifiers: Modifiers,
-    },
-    /// A pinch on the trackpad, which zooms the page in or out around it.
-    Pinch {
-        /// The pane.
-        pane: PaneId,
-        /// Left edge offset of the pinch's centre.
-        x: f32,
-        /// Top edge offset of the pinch's centre.
-        y: f32,
-        /// How much it zoomed since the last event: 0.1 for a tenth more.
-        delta: f32,
-        /// Where it is in its course.
-        phase: PinchPhase,
-    },
-    /// A key event.
-    Key {
-        /// The pane.
-        pane: PaneId,
-        /// What happened.
-        kind: KeyKind,
-        /// The Windows virtual key code Chromium keys events by.
-        key_code: i32,
-        /// The platform's native key code, when known.
-        native_key_code: i32,
-        /// The text for [`KeyKind::Char`]; for a press or release, the characters a Mac key
-        /// event for the key carries (none for a modifier key).
-        text: Option<String>,
-        /// Held modifiers.
-        modifiers: Modifiers,
-    },
-    /// Input method composition.
-    Ime {
-        /// The pane.
-        pane: PaneId,
-        /// What the input method did.
-        action: Ime,
-    },
-    /// The app is done showing `slot`; the host may draw into it again.
-    Release {
-        /// The pane.
-        pane: PaneId,
-        /// The ring the slot belongs to; a slot of an older ring is ignored.
-        generation: u32,
-        /// The slot.
-        slot: u8,
     },
     /// An editing command for the focused element of the page.
     Edit {
@@ -273,12 +189,6 @@ impl AppRequest {
             | Self::SiteSettings { pane }
             | Self::SetSiteSetting { pane, .. }
             | Self::View { pane, .. }
-            | Self::Mouse { pane, .. }
-            | Self::Wheel { pane, .. }
-            | Self::Pinch { pane, .. }
-            | Self::Key { pane, .. }
-            | Self::Ime { pane, .. }
-            | Self::Release { pane, .. }
             | Self::Edit { pane, .. }
             | Self::Answer { pane, .. }
             | Self::Passkey { pane, .. }
@@ -349,26 +259,3 @@ pub enum Edit {
     SelectAll,
 }
 
-/// Input method composition.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(
-    tag = "kind",
-    rename_all = "camelCase",
-    rename_all_fields = "camelCase"
-)]
-pub enum Ime {
-    /// The marked text changed.
-    Compose {
-        /// The marked text.
-        text: String,
-        /// The selection in it, in UTF-16 units.
-        selection: (u32, u32),
-    },
-    /// The text was committed.
-    Commit {
-        /// The committed text.
-        text: String,
-    },
-    /// The composition was abandoned.
-    Cancel,
-}

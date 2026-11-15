@@ -46,9 +46,6 @@ pub(crate) fn run(
     callback: RunContextMenuCallback,
 ) {
     let menu = MENUS.with(|menus| menus.borrow_mut().add(pane, callback));
-    if host::native() {
-        log::debug!("a native page asks for its menu at {}, {}", params.xcoord(), params.ycoord());
-    }
     let text = |value: cef::CefStringUserfree| CefString::from(&value).to_string();
     host::send(&HostEvent::ContextMenu {
         pane,

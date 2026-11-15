@@ -48,7 +48,7 @@ fn agents_run_protocol_commands_on_the_page_beside_its_dev_tools() {
             dock: koyo_browser_ipc::DevToolsDock::Bottom,
         })
         .expect("open devtools");
-    session.wait("the inspector to attach to the page", |event, _| {
+    session.wait("the inspector to attach to the page", |event| {
         matches!(event, HostEvent::Page { pane: 2, state } if state.title.starts_with("DevTools - "))
     });
     cdp(&mut session, 2, "No.such", serde_json::json!({}));
@@ -56,7 +56,7 @@ fn agents_run_protocol_commands_on_the_page_beside_its_dev_tools() {
     let (mut failed, mut enabled, mut logged) = (None, false, false);
     session.wait(
         "the bad command, Runtime.enable and the earlier log",
-        |event, _| {
+        |event| {
             match event {
                 HostEvent::CdpReply { call: 2, error, .. } => failed = error.clone(),
                 HostEvent::CdpReply {
@@ -109,7 +109,7 @@ pub fn cdp(session: &mut Session, call: u64, method: &str, params: serde_json::V
 /// The host's reply to the agent command `call`: its result, or its error.
 pub fn reply(session: &mut Session, call: u64) -> (Option<serde_json::Value>, Option<String>) {
     let mut answer = None;
-    session.wait("the agent's answer", |event, _| {
+    session.wait("the agent's answer", |event| {
         if let HostEvent::CdpReply {
             call: answered,
             result,

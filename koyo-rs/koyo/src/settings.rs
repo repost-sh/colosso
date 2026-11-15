@@ -199,11 +199,6 @@ pub struct Settings {
     /// Whether a page that goes full screen, as a video does, takes the whole screen; off, it
     /// fills its pane (`browser/fullscreen.rs`).
     pub fullscreen_fills_screen: bool,
-    /// Whether pages are native: Chromium's own views in Koyo's window, the browser engine in
-    /// Koyo's process (`docs/native-pages.md`). Off, pages are rendered off screen in a host
-    /// of their own. Read as Koyo starts (`browser::native::decide`): a change takes the next
-    /// start.
-    pub native_pages: bool,
     /// What quitting does with the terminals still running.
     pub on_quit: crate::quitting::OnQuit,
     /// Whether agents have a desktop of their own to drive apps on (`docs/agent-desktop.md`):
@@ -301,7 +296,6 @@ impl Default for Settings {
             devtools: crate::browser::DevtoolsPlace::default(),
             search_suggestions: true,
             fullscreen_fills_screen: true,
-            native_pages: false,
             on_quit: crate::quitting::OnQuit::default(),
             agent_desktop: false,
             simulators_at_once: 2,

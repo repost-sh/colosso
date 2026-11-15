@@ -88,15 +88,21 @@ impl ServerSpec {
     }
 }
 
+/// Each `name` there is in `folders`, in their order.
+pub(crate) fn found<'a>(
+    folders: impl IntoIterator<Item = PathBuf> + 'a,
+    name: &'a str,
+) -> impl Iterator<Item = PathBuf> + 'a {
+    (folders.into_iter().map(move |folder| folder.join(name))).filter(|found| found.is_file())
+}
+
 /// The first `name` in `folders` that answers `--version`: a rustup proxy for a component
 /// that isn't installed is on PATH, and doesn't.
 pub(crate) fn first_that_runs(
     folders: impl IntoIterator<Item = PathBuf>,
     name: &str,
 ) -> Option<PathBuf> {
-    (folders.into_iter().map(|folder| folder.join(name)))
-        .filter(|candidate| candidate.is_file())
-        .find(|candidate| runs(candidate))
+    found(folders, name).find(|candidate| runs(candidate))
 }
 
 /// Whether `binary --version` runs and succeeds.

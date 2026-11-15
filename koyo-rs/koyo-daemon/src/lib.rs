@@ -88,6 +88,27 @@ pub fn connect_or_start(
     connect(&dir.socket())
 }
 
+/// Runs `spawn` with no signal blocked on this thread, and puts its blocked signals back. A
+/// child starts with the blocked signals of the thread that spawns it, and the app's
+/// background threads are GCD's, with nearly all of them blocked: a daemon started from one
+/// could never be told SIGTERM. Unblocked here rather than in the child before it becomes the
+/// daemon (`pre_exec`), which has the standard library fork the app to run it: the app holds
+/// the browser engine, and a fork of it can wait for good on a lock one of the engine's
+/// threads held (`docs/native-pages.md` 11).
+fn with_no_signal_blocked<R>(spawn: impl FnOnce() -> R) -> R {
+    // SAFETY: the sets are this function's own, initialised before they're read, and the
+    // calls change this thread's blocked signals only.
+    unsafe {
+        let mut none = std::mem::zeroed::<libc::sigset_t>();
+        let mut before = std::mem::zeroed::<libc::sigset_t>();
+        libc::sigemptyset(&raw mut none);
+        libc::pthread_sigmask(libc::SIG_SETMASK, &raw const none, &raw mut before);
+        let spawned = spawn();
+        libc::pthread_sigmask(libc::SIG_SETMASK, &raw const before, std::ptr::null_mut());
+        spawned
+    }
+}
+
 /// Starts the daemon `command` runs, told its folder with `--dir` and working in it, so it
 /// reaches its socket by name: detached, in a process group of its own, its stderr in its log.
 /// Returns once it says it listens, the line `ready` on its stdout.
@@ -96,26 +117,15 @@ pub fn start(dir: &DaemonDir, mut command: Command) -> io::Result<()> {
         .create(true)
         .append(true)
         .open(dir.log())?;
-    // A child inherits its thread's blocked signals, and the app's background threads are GCD's,
-    // with nearly all of them blocked: a daemon started from one could never be told SIGTERM.
-    // SAFETY: both calls are async-signal-safe, and the set is initialised before it's read.
-    unsafe {
-        command.pre_exec(|| {
-            let mut none = std::mem::zeroed::<libc::sigset_t>();
-            libc::sigemptyset(&raw mut none);
-            libc::pthread_sigmask(libc::SIG_SETMASK, &raw const none, std::ptr::null_mut());
-            Ok(())
-        });
-    }
-    let mut child = command
+    command
         .arg("--dir")
         .arg(dir.root())
         .current_dir(dir.root())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(log)
-        .process_group(0)
-        .spawn()?;
+        .process_group(0);
+    let mut child = with_no_signal_blocked(|| command.spawn())?;
     let stdout = child
         .stdout
         .take()
@@ -225,5 +235,40 @@ mod tests {
         assert_eq!(dir.lock(), PathBuf::from("/data/agents/host.lock"));
         assert_eq!(dir.start_lock(), PathBuf::from("/data/agents/start.lock"));
         assert_eq!(dir.log(), PathBuf::from("/data/agents/host.log"));
+    }
+
+    thread_local! {
+        /// How often this thread has forked the process.
+        static FORKS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    }
+
+    extern "C" fn forking() {
+        FORKS.set(FORKS.get() + 1);
+    }
+
+    #[test]
+    fn a_daemon_is_started_without_forking_the_app_and_with_no_signal_blocked() {
+        // SAFETY: the handler only counts, on the thread that forks.
+        unsafe { libc::pthread_atfork(Some(forking), None, None) };
+        let root = std::env::temp_dir().join(format!("koyo-daemon-test-{}", std::process::id()));
+        let dir = DaemonDir::new(&root, "host");
+        std::fs::create_dir_all(dir.root()).unwrap();
+        // As the app's background threads are: SIGTERM blocked where the daemon is started.
+        // SAFETY: this thread's own blocked signals, set from an initialised set.
+        unsafe {
+            let mut term = std::mem::zeroed::<libc::sigset_t>();
+            libc::sigemptyset(&raw mut term);
+            libc::sigaddset(&raw mut term, libc::SIGTERM);
+            libc::pthread_sigmask(libc::SIG_BLOCK, &raw const term, std::ptr::null_mut());
+        }
+        // A daemon that says which signals it starts with blocked (the shell's `ps` reads its
+        // own), then that it listens.
+        let mut daemon = Command::new("/bin/sh");
+        daemon.args(["-c", "ps -o sigmask= -p $$ > blocked; echo ready"]);
+        start(&dir, daemon).unwrap();
+        let blocked = std::fs::read_to_string(dir.root().join("blocked")).unwrap();
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(FORKS.get(), 0, "the app was forked to start it");
+        assert_eq!(blocked.trim().trim_start_matches('0'), "", "signals blocked: {blocked}");
     }
 }

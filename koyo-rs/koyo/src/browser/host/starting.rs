@@ -1,8 +1,8 @@
 //! Starting the host: launched off the main thread, its panes told only once it's taken a
-//! while, started once more if it failed to, and again when it stops on its own, unless it
-//! keeps stopping; then the person is told why.
+//! while. It starts once while Koyo runs, in Koyo's own process (`browser/native`): one that
+//! fails to start, or stops, leaves its panes saying why.
 
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use futures::StreamExt as _;
 use futures::channel::mpsc;
@@ -13,13 +13,6 @@ use koyo_browser_ipc::{self as ipc, AppRequest};
 #[cfg(test)]
 use super::TestLaunch;
 use super::{Browsers, Host, STARTING_QUIETLY};
-
-/// How many times a host that failed to start is started again before the person is told.
-const START_RETRIES: u32 = 1;
-/// A host that stops is started again for its pages, unless it stopped this often lately:
-/// then it would only stop again, and the person is told.
-const RESTARTS: usize = 3;
-const RESTARTS_WITHIN: Duration = Duration::from_secs(60);
 
 impl Browsers {
     pub(super) fn start(&mut self, cx: &mut Context<Self>) {
@@ -43,18 +36,15 @@ impl Browsers {
         self.starting_since = Some(Instant::now());
         self.notify_views(cx);
         let (tell, mut told) = mpsc::unbounded::<Incoming>();
-        // Where pages are native the host runs in the app's own process (`browser/native`).
-        let embedded = crate::browser::native::embedded(&launch);
+        // The host starts in the app's own process, on its main thread (`browser/native`), and
+        // is waited for off it.
         let started = cx.background_executor().spawn(async move {
             let sink = move |message: Incoming| {
                 tell.unbounded_send(message)
                     .err()
                     .map(mpsc::TrySendError::into_inner)
             };
-            match embedded {
-                Some(embedded) => Connection::start_embedded(&launch, embedded, sink),
-                None => Connection::start(&launch, sink),
-            }
+            crate::browser::native::start(&launch, sink)
         });
         let quietly = cx.background_executor().timer(STARTING_QUIETLY);
         self._events = Some(cx.spawn(async move |this, cx| {
@@ -75,7 +65,7 @@ impl Browsers {
                 return;
             }
             // What came while the main thread was busy is handled in one update: a page's
-            // frame and its state together.
+            // state and its cursor together.
             while let Some(first) = told.next().await {
                 let handled = this.update(cx, |this, cx| {
                     let mut next = Some(first);
@@ -107,16 +97,7 @@ impl Browsers {
         let (connection, writer) = match writer {
             Ok(started) => started,
             Err(error) => {
-                let message = format!("The browser engine did not start: {error}");
-                // Another app's host holding the profiles won't let go for a retry.
-                let busy = error.kind() == std::io::ErrorKind::ResourceBusy;
-                if !busy && self.failed_starts < START_RETRIES {
-                    self.failed_starts += 1;
-                    log::warn!("{message}; starting it again");
-                    self.start(cx);
-                } else {
-                    self.fail(message, cx);
-                }
+                self.fail(format!("The browser engine did not start: {error}"), cx);
                 return None;
             }
         };
@@ -146,32 +127,20 @@ impl Browsers {
             requests,
         };
         self.starting_since = None;
-        self.failed_starts = 0;
         self.epoch += 1;
         self.notify_views(cx);
         Some(())
     }
 
-    /// The running host went away on its own: it is started again for the pages, which
-    /// reopen, unless it keeps stopping.
+    /// The running host went away on its own. It can't be started again in this process:
+    /// the panes say so.
     pub(super) fn stopped(&mut self, cx: &mut Context<Self>) {
-        if !matches!(self.host, Host::Running { .. }) {
-            return;
+        if matches!(self.host, Host::Running { .. }) {
+            self.fail(
+                "The browser engine stopped. Restart Koyo to bring its pages back.".into(),
+                cx,
+            );
         }
-        let now = Instant::now();
-        self.stops
-            .retain(|stop| now.duration_since(*stop) < RESTARTS_WITHIN);
-        self.stops.push(now);
-        if self.stops.len() > RESTARTS {
-            self.fail("The browser engine stopped.".into(), cx);
-            return;
-        }
-        log::warn!("the browser engine stopped; starting it again");
-        self.drop_calls("The browser engine stopped.");
-        self.rings.clear();
-        self.pending.clear();
-        self.host = Host::Idle;
-        self.start(cx);
     }
 
     fn fail(&mut self, message: String, cx: &mut Context<Self>) {
@@ -180,8 +149,6 @@ impl Browsers {
         self.drop_calls(&message);
         self.host = Host::Failed(message);
         self.queued.clear();
-        self.pending.clear();
-        self.rings.clear();
         self.notify_views(cx);
     }
 }

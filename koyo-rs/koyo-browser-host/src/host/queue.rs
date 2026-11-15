@@ -1,6 +1,5 @@
 //! The UI thread's queue: what the reader thread decodes from the app's socket, and what the
-//! host's own callbacks put off until they return, drained in one posted task at a time, a
-//! pointer move the next one replaces dropped on the way.
+//! host's own callbacks put off until they return, drained in one posted task at a time.
 
 use std::collections::VecDeque;
 use std::os::unix::net::UnixStream;
@@ -8,11 +7,10 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use cef::{ImplTask, Task, ThreadId, WrapTask, rc::Rc, wrap_task};
-use koyo_browser_ipc::{self as ipc, AppRequest, MouseKind, PaneId};
+use koyo_browser_ipc::{self as ipc, AppRequest, PaneId};
 
 use super::inspect::{frontend_message, to_page};
-use super::panes::size_next;
-use super::{handle, live, with};
+use super::{handle, with};
 
 /// Work for the UI thread: the app's requests, decoded by the reader
 /// thread, and what `DevTools` frontends send.
@@ -28,16 +26,6 @@ pub(super) enum Queued {
     ToPage {
         page: PaneId,
         messages: Vec<String>,
-    },
-    /// What live sizing does next, decided within a paint or an answer.
-    Live {
-        pane: PaneId,
-        todo: Vec<live::Do>,
-    },
-    /// `pane` painted at the size it was laid out at: the latest size asked for meanwhile, if
-    /// any is still kept by then, is laid out (`sizing.rs`).
-    SizeNext {
-        pane: PaneId,
     },
 }
 
@@ -101,36 +89,13 @@ fn drain() {
         return;
     }
     loop {
-        let Some(queued) = QUEUE.lock().ok().and_then(|mut queue| {
-            let queued = queue.pop_front()?;
-            // A move the next move replaces is never seen by the page.
-            let replaced = match &queued {
-                Queued::App(AppRequest::Mouse {
-                    pane,
-                    kind: MouseKind::Move,
-                    ..
-                }) => queue.front().is_some_and(|next| moved_in(next, *pane)),
-                _ => false,
-            };
-            Some((!replaced).then_some(queued))
-        }) else {
+        let Some(queued) = QUEUE.lock().ok().and_then(|mut queue| queue.pop_front()) else {
             return;
         };
         match queued {
-            Some(Queued::App(request)) => handle(request),
-            Some(Queued::Frontend { pane, text }) => frontend_message(pane, &text),
-            Some(Queued::ToPage { page, messages }) => to_page(page, &messages),
-            Some(Queued::Live { pane, todo }) => live::drive::run(pane, &todo),
-            Some(Queued::SizeNext { pane }) => size_next(pane),
-            None => {}
+            Queued::App(request) => handle(request),
+            Queued::Frontend { pane, text } => frontend_message(pane, &text),
+            Queued::ToPage { page, messages } => to_page(page, &messages),
         }
     }
-}
-
-/// Whether `queued` is a pointer move in `pane`.
-fn moved_in(queued: &Queued, pane: PaneId) -> bool {
-    matches!(
-        queued,
-        Queued::App(AppRequest::Mouse { pane: p, kind: MouseKind::Move, .. }) if *p == pane
-    )
 }

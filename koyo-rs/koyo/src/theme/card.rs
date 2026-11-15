@@ -5,10 +5,9 @@
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext as _, Bounds, BoxShadow, CursorStyle, DispatchPhase, Div,
-    ElementId, EmptyView, Global, Hsla, HitboxBehavior, InteractiveElement as _, IntoElement,
-    MouseButton, MouseUpEvent, ParentElement as _, Pixels, Point, SharedString, Stateful,
-    StatefulInteractiveElement as _, Styled as _, Window, canvas, deferred, div, px,
+    AnyElement, App, AppContext as _, Bounds, BoxShadow, Div, ElementId, EmptyView, Hsla,
+    InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Point, SharedString,
+    Stateful, StatefulInteractiveElement as _, Styled as _, canvas, deferred, div, px,
 };
 
 use super::{CARD_RADIUS, Palette};
@@ -32,8 +31,10 @@ const SHADOW: BoxShadow = BoxShadow {
 };
 
 /// An island: a rounded card in the theme's colour, a barely-there shadow under it, clipping
-/// what it holds, a browser page's frame included. It's `relative`, so what's in it can be
-/// placed over it.
+/// what GPUI draws in it. It's `relative`, so what's in it can be placed over it. A native
+/// view in it isn't GPUI's to clip: the island says where it is as it's prepainted
+/// ([`prepainted`]), which is when such a view is placed, and the view rounds the corners
+/// it shares with it.
 pub fn island(p: Palette) -> Div {
     div()
         .relative()
@@ -43,6 +44,26 @@ pub fn island(p: Palette) -> Div {
         .bg(p.card)
         .shadow(vec![SHADOW])
         .overflow_hidden()
+        // Prepainted before what the island holds, which is added after it; and what's
+        // prepainted once the island is done is in it no longer.
+        .child(
+            canvas(|bounds, _, _| PREPAINTED.set(Some(bounds)), |_, (), _, _| {})
+                .absolute()
+                .size_full(),
+        )
+        .on_children_prepainted(|_, _, _| PREPAINTED.set(None))
+}
+
+thread_local! {
+    /// Where the island being prepainted is, from when its prepainting begins until all it
+    /// holds is prepainted; none outside one.
+    static PREPAINTED: std::cell::Cell<Option<Bounds<Pixels>>> = const { std::cell::Cell::new(None) };
+}
+
+/// The island being prepainted: the one what's prepainted now is in, if it's in one.
+#[cfg_attr(test, expect(dead_code, reason = "a page's view is what asks, and tests show none"))]
+pub fn prepainted() -> Option<Bounds<Pixels>> {
+    PREPAINTED.get()
 }
 
 /// Whether the layout puts each part on an island of its own: Arc's does; Orca's has one card.
@@ -110,7 +131,8 @@ pub fn divider<T: Clone + 'static>(
 
 /// A band `thickness` thick between two parts, `row` when they sit side by side, with room of
 /// its own: picked up, it drags `payload`, resizing them. Bare, it's the glass between two
-/// islands.
+/// islands. The drag is the app's from the press on, over a native view too: the window
+/// hands a button's moves to whoever took its press (`docs/native-pages.md` 6).
 fn band<T: Clone + 'static>(
     id: impl Into<ElementId>,
     selector: SharedString,
@@ -129,74 +151,7 @@ fn band<T: Clone + 'static>(
                 band.h(px(thickness)).w_full().cursor_row_resize()
             }
         })
-        .map(|band| held(band, deferred(shield(row))))
         .on_drag(payload, |_, _, _, cx| cx.new(|_| EmptyView))
-}
-
-/// `grabbed`, what a press picks a seam up by, with the pointer the app's all over the window
-/// from that press until the button is let go: `shield` is [`shield`], among the window's
-/// overlays, where a seam's own handle may be already.
-fn held(grabbed: Stateful<Div>, shield: impl IntoElement) -> Stateful<Div> {
-    grabbed
-        .on_mouse_down(MouseButton::Left, |_, window, cx| hold(true, window, cx))
-        // Let go before the shield was drawn: over what was pressed, or off it.
-        .on_mouse_up(MouseButton::Left, |_, window, cx| hold(false, window, cx))
-        .on_mouse_up_out(MouseButton::Left, |_, window, cx| hold(false, window, cx))
-        .child(shield)
-}
-
-/// Whether a seam is pressed: a drag of it may be under way.
-#[derive(Default)]
-struct Held(bool);
-
-impl Global for Held {}
-
-/// Says whether a seam is pressed, and has the window drawn again for it: at once on a press,
-/// so the shield is there before the pointer's next move rather than at the screen's next
-/// refresh.
-fn hold(held: bool, window: &mut Window, cx: &mut App) {
-    if cx.default_global::<Held>().0 == held {
-        return;
-    }
-    cx.set_global(Held(held));
-    window.refresh();
-    #[cfg(all(target_os = "macos", not(test)))]
-    if held {
-        crate::native::window::draw_in_transaction(window, cx);
-    }
-}
-
-/// While a seam is pressed, the whole window as the app's own, among its overlays, with the
-/// seam's cursor. A native view takes the pointer over it before the app's content does, and
-/// GPUI starts a drag only once it has heard the pointer move more than two points from the
-/// press: a hand at its usual speed is off a band nine points thick, over the page beside it,
-/// by its first move, which was the page's, and nothing was picked up
-/// (`docs/native-pages.md` 6). Under the shield every move from the press on is the app's,
-/// the first frame's aside, which the drag does without: it goes by where the pointer is.
-fn shield(row: bool) -> impl IntoElement {
-    canvas(
-        |_, window, cx| {
-            let held = cx.try_global::<Held>().is_some_and(|held| held.0);
-            let all = Bounds::new(Point::default(), window.viewport_size());
-            held.then(|| window.insert_hitbox(all, HitboxBehavior::Normal))
-        },
-        move |_, hitbox, window, _| {
-            let Some(hitbox) = hitbox else {
-                return;
-            };
-            let cursor = if row {
-                CursorStyle::ResizeColumn
-            } else {
-                CursorStyle::ResizeRow
-            };
-            window.set_cursor_style(cursor, &hitbox);
-            window.on_mouse_event(|_: &MouseUpEvent, phase, window, cx| {
-                if phase == DispatchPhase::Capture {
-                    hold(false, window, cx);
-                }
-            });
-        },
-    )
 }
 
 /// The line between two parts on the one card, `row` when they sit side by side, picked up a
@@ -232,8 +187,6 @@ fn hairline<T: Clone + 'static>(
                     .cursor_row_resize()
             }
         })
-        // Among the overlays already, and its shield with it.
-        .map(|handle| held(handle, shield(row)))
         .on_drag(payload, |_, _, _, cx| cx.new(|_| EmptyView));
     let line = div().flex_shrink_0().relative().bg(p.hairline);
     if row {

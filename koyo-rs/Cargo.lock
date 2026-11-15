@@ -3796,8 +3796,6 @@ dependencies = [
 [[package]]
 name = "gpui-fast-macos"
 version = "0.1.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d8e8b377d6dcbc0007e68098cb3f40bc2591a1d29526301e9572a70bb674f171"
 dependencies = [
  "accesskit",
  "accesskit_macos",
@@ -5483,11 +5481,8 @@ dependencies = [
  "log",
  "objc2 0.6.5",
  "objc2-app-kit 0.3.2",
- "objc2-core-foundation",
  "objc2-core-location",
  "objc2-foundation 0.3.2",
- "objc2-io-surface",
- "objc2-metal 0.3.2",
  "psl",
  "serde",
  "serde_json",
@@ -5587,6 +5582,7 @@ name = "koyo-git"
 version = "0.1.0"
 dependencies = [
  "gix",
+ "libc",
  "log",
  "trash",
 ]

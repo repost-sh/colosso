@@ -1,15 +1,14 @@
-//! A page drawn again after its mode changed: filled again once the device bar was drawn, out
-//! of sight, an old frame at its own scale until a new one comes, a grip let go outside the
-//! window, and a free size on a denser screen.
+//! A page drawn again after its mode changed: filled again once the device bar was drawn,
+//! measured once told its size, a grip held and let go outside the window, and a free size on
+//! a denser screen.
 
 use gpui_kit::{
     Bounds, Modifiers, MouseButton, MouseDownEvent, TestAppContext, VisualTestContext, point, px,
     size,
 };
-use koyo_browser_ipc::{PixelSize, Viewport};
 
 use super::super::devices::{self, find};
-use super::super::{Change, Choice, Device, frame_scale};
+use super::super::{Change, Choice, Device};
 use super::{iphone, page};
 use crate::browser::control::Actor;
 use crate::browser::view::BrowserView;
@@ -74,57 +73,28 @@ fn filling_again_after_the_mode_was_drawn_tells_the_page_the_whole_pane(cx: &mut
 }
 
 #[gpui_kit::test]
-fn a_page_out_of_sight_is_measured_without_a_frame(cx: &mut TestAppContext) {
+fn a_page_is_measured_once_told_its_size_and_only_of_that_size(cx: &mut TestAppContext) {
     let (window, view) = page(cx);
     let agent = agent();
     let phone = device(iphone());
     let shown = view.update(cx, |view, cx| view.agent_viewport(&agent, &phone, cx));
     let shown = shown.unwrap().unwrap();
     draw(window, cx);
-    view.update(cx, |view, cx| view.set_visible(true, cx));
     view.read_with(cx, |view, _| {
-        assert!(
-            !view.ready_to_measure(shown),
-            "on screen, it waits for a frame of its new size"
-        );
+        assert!(view.ready_to_measure(shown), "its own report says it's there");
     });
-    // Its tab goes out of sight: the host stops painting it.
+    // Its tab goes out of sight, and it's sized there.
     view.update(cx, |view, cx| view.set_visible(false, cx));
     let tablet = device(find("ipad-mini").unwrap());
     let target = view.update(cx, |view, cx| view.agent_viewport(&agent, &tablet, cx));
     let target = target.unwrap().unwrap();
     view.read_with(cx, |view, _| {
-        assert!(
-            view.ready_to_measure(target),
-            "no frame comes: its own report is all there is"
-        );
+        assert!(view.ready_to_measure(target));
         assert!(
             !view.ready_to_measure(shown),
             "only of the size it was told"
         );
     });
-}
-
-#[test]
-fn an_old_frame_shows_at_its_own_scale_until_one_of_the_new_size_comes() {
-    let is = |found: f32, wanted: f32| (found - wanted).abs() < f32::EPSILON;
-    let at = |width, height| PixelSize { width, height };
-    let phone = Viewport {
-        width: 393,
-        height: 852,
-        scale: 3.,
-    };
-    assert!(is(frame_scale(at(1179, 2556), Some(phone), None), 3.));
-    // A free size at the window's 2×, the phone's frame still on screen.
-    let free = Viewport { scale: 2., ..phone };
-    let old = frame_scale(at(1179, 2556), Some(free), Some(3.));
-    assert!(is(old, 3.), "the old frame's own: {old}");
-    let new = frame_scale(at(786, 1704), Some(free), Some(3.));
-    assert!(is(new, 2.), "the new one's: {new}");
-    // Mid-drag, frames of a size the page has since left share the scale of the one before.
-    let wider = Viewport { width: 500, ..free };
-    let between = frame_scale(at(800, 1704), Some(wider), Some(2.));
-    assert!(is(between, 2.), "{between}");
 }
 
 #[gpui_kit::test]
@@ -170,7 +140,7 @@ fn a_grip_let_go_outside_the_window_sizes_nothing_more(cx: &mut TestAppContext) 
 }
 
 #[gpui_kit::test]
-fn a_grip_held_is_told_as_a_drag_and_its_let_go_too(cx: &mut TestAppContext) {
+fn a_grip_held_sizes_the_page_as_the_pane_is_drawn(cx: &mut TestAppContext) {
     let (window, view) = page(cx);
     view.update(cx, BrowserView::toggle_responsive);
     draw(window, cx);
@@ -194,22 +164,23 @@ fn a_grip_held_is_told_as_a_drag_and_its_let_go_too(cx: &mut TestAppContext) {
     pointer.simulate_mouse_move(grip - point(px(50.), px(0.)), held, none);
     let dragged = view.read_with(cx, |view, _| view.responsive.mode.as_ref().unwrap().width);
     assert_ne!(dragged, before.width, "the grip sized the mode");
-    // The page is told as the pane is drawn (a test's window draws once the update is over).
+    // The page is laid out at it as the pane is drawn (a test's window draws once the update
+    // is over).
     draw(window, cx);
     view.read_with(cx, |view, _| {
         assert_eq!(view.viewport.map(|viewport| viewport.width), Some(dragged));
-        assert!(view.drag_sent, "told as a drag");
     });
     // Let go where the window doesn't see it: the next move has no button held.
     let mut pointer = VisualTestContext::from_window(window, cx);
     pointer.simulate_mouse_move(grip - point(px(50.), px(0.)), None, none);
     draw(window, cx);
     view.read_with(cx, |view, _| {
-        assert_eq!(view.viewport.map(|viewport| viewport.width), Some(dragged));
-        assert!(
-            !view.drag_sent,
-            "let go: told again at the size it ended at"
+        assert_eq!(
+            view.viewport.map(|viewport| viewport.width),
+            Some(dragged),
+            "let go, it stays at the size it ended at"
         );
+        assert!(view.responsive.drag.is_none());
     });
 }
 
@@ -226,16 +197,14 @@ fn a_free_size_stays_within_what_a_denser_screen_shows(cx: &mut TestAppContext) 
     };
     (view.update(cx, |view, cx| view.agent_viewport(&agent, &wide, cx))).unwrap();
     draw(window, cx);
-    let pixels = view.read_with(cx, |view, _| {
-        view.viewport.map(|viewport| viewport.pixels())
-    });
-    assert_eq!(pixels.map(|pixels| pixels.width), Some(10_000));
+    let width = view.read_with(cx, |view, _| view.viewport.map(|viewport| viewport.width));
+    assert_eq!(width, Some(10_000));
     // The window moves to a 2× screen.
     cx.simulate_window_scale_factor_change(window, 2.);
     draw(window, cx);
     view.read_with(cx, |view, _| {
         let viewport = view.viewport.unwrap();
-        assert!(viewport.pixels().width <= 16_384, "{viewport:?}");
+        assert!(viewport.width * 2 <= 16_384, "{viewport:?}");
         let mode = view.responsive.mode.as_ref().unwrap();
         assert_eq!(mode.width, devices::max_side(2.), "the widest a 2× page is");
     });
@@ -246,7 +215,7 @@ fn a_free_size_stays_within_what_a_denser_screen_shows(cx: &mut TestAppContext) 
     let taller = view.update(cx, |view, cx| view.agent_viewport(&agent, &taller, cx));
     assert!(taller.is_ok(), "later changes still go: {taller:?}");
     view.update(cx, |view, cx| view.person_sizes(4000, 900, cx));
-    // The person's size goes to the page as the pane is drawn.
+    // The person's size is the page's as the pane is drawn.
     draw(window, cx);
     let width = view.read_with(cx, |view, _| view.viewport.map(|viewport| viewport.width));
     assert_eq!(width, Some(4000), "and so do the person's");

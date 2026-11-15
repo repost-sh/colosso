@@ -97,7 +97,7 @@ pub fn install() {
             std::ptr::null_mut(),
         );
         if timer.is_null() {
-            log::error!("native pages: no run-loop timer for CEF's work");
+            log::error!("browser engine: no run-loop timer for CEF's work");
             return;
         }
         CFRunLoopAddTimer(CFRunLoopGetMain(), timer, kCFRunLoopCommonModes);

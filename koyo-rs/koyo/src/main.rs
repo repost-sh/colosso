@@ -47,6 +47,7 @@ mod settings_view;
 mod shell;
 mod sidebar;
 mod spaces;
+mod surfaces;
 mod symbols;
 mod terminals;
 #[cfg(any(test, feature = "visual-check"))]
@@ -168,10 +169,6 @@ fn main() -> ExitCode {
         return language::visual::run();
     }
     #[cfg(feature = "visual-check")]
-    if std::env::args().any(|arg| arg == "--visual-check-browser") {
-        return browser::visual::run();
-    }
-    #[cfg(feature = "visual-check")]
     if std::env::args().any(|arg| arg == "--visual-check-settings") {
         return settings_view::visual::run();
     }
@@ -243,7 +240,7 @@ fn main() -> ExitCode {
         open_main_window(cx).expect("failed to open window");
         // Ready before the first page asks for it.
         browser::warm_up(cx);
-        // A debug build's harness for trying native pages out, armed by `KOYO_NATIVE_PROBE`.
+        // A debug build's harness for driving pages and the window, armed by `KOYO_NATIVE_PROBE`.
         #[cfg(all(target_os = "macos", debug_assertions, not(test)))]
         browser::native::probe::start(cx);
     });

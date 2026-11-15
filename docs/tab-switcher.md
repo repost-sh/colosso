@@ -141,8 +141,7 @@ As Arc and macOS have them. **[ours, but asked: Arc's behaviour]**
   window is drawn anew with the tab shown, at most four times a second (Koyo draws only what
   changes), and once more as the switcher opens. A tab left has a picture at most a quarter
   second old. A tab closed lets its picture go.
-- The switcher draws them as a page's frame is drawn, a surface the renderer samples, in the
-  card's rounded corners.
+- The switcher draws them as a surface the renderer samples, in the card's rounded corners.
 - A tab not shown since launch has no picture: its card shows its icon large on the theme's
   card colour.
 - **What it costs.** The check (section 7) draws a frame of a 1600 × 1000 point window with a

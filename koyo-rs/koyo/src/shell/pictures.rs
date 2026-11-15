@@ -27,7 +27,7 @@ use objc2_io_surface::{
     kIOSurfacePixelFormat, kIOSurfaceWidth,
 };
 
-use crate::browser::frames::pixel_buffer;
+use crate::surfaces::pixel_buffer;
 use crate::model::Workspace;
 
 /// A picture's size in pixels: a card's picture's in points, twice over, for a display of two
@@ -157,7 +157,7 @@ pub(super) fn image(key: u64, cx: &App) -> Option<image::RgbaImage> {
             image::Rgba([red, green, blue, alpha])
         })
     };
-    crate::browser::frames::with_pixels(&shown, WIDTH as usize, HEIGHT as usize, read)
+    crate::surfaces::with_pixels(&shown, WIDTH as usize, HEIGHT as usize, read)
 }
 
 /// Empties the picture of the tab known by `key`, if it has one, for a check to tell it's

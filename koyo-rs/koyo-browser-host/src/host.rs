@@ -4,11 +4,9 @@
 //! to CEF's UI thread, which drains it. All pane state lives on that thread.
 //! CEF calls back into the handlers synchronously from many of its own
 //! calls, so state is never borrowed across a call into CEF.
-use cef::{
-    Browser, BrowserHost, ImplBrowser, ImplBrowserHost, RequestContext,
-};
+use cef::{Browser, BrowserHost, ImplBrowser, ImplFrame, RequestContext};
 use koyo_browser_ipc::{
-    self as ipc, AppRequest, Cursor, Go, HostEvent, PageState, PaneId, Viewport,
+    self as ipc, AppRequest, Cursor, Edit, Go, HostEvent, PageState, PaneId,
 };
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -16,26 +14,18 @@ use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 
-#[cfg(target_os = "macos")]
-mod clock;
-mod frames;
-mod input;
 mod inspect;
-mod live;
 mod panes;
 mod profiles;
 mod queue;
 mod site;
-mod sizing;
 mod start;
 
-use frames::release;
-pub(crate) use frames::{accelerated_frame, logical_size, popup_moved, popup_shown, scale};
 use inspect::{cdp, open_dev_tools};
 pub(crate) use inspect::{from_frontend, from_page};
 pub(crate) use panes::{
     browser_closed, browser_created, cursor_changed, found, fullscreen_changed, loading_changed,
-    navigate_later, page_changed, renderer_gone, software_frame,
+    navigate_later, page_changed, renderer_gone,
 };
 use panes::{close, exit_fullscreen, navigate, open, resize, view, visible};
 pub(crate) use panes::leave_fullscreen;
@@ -44,7 +34,6 @@ pub(crate) use site::{keep_media, media_decided};
 pub(crate) use queue::context_initialized;
 use queue::{Queued, enqueue, read_requests};
 pub(crate) use start::{quit, run, teardown};
-#[cfg(target_os = "macos")]
 pub(crate) use start::run_embedded;
 
 /// The app's socket, for events. Written from the UI thread only.
@@ -64,46 +53,20 @@ struct Host {
     generation: u32,
     contexts: HashMap<String, RequestContext>,
     panes: HashMap<PaneId, Pane>,
-    #[cfg(target_os = "macos")]
-    gpu: Option<crate::surfaces::Gpu>,
-    #[cfg(target_os = "macos")]
-    surfaces: Option<ipc::mach::Sender>,
 }
 
 struct Pane {
     browser: Option<Browser>,
-    viewport: Viewport,
     page: PageState,
     cursor: Cursor,
-    generation: u32,
-    #[cfg(target_os = "macos")]
-    ring: Option<crate::surfaces::Ring>,
-    #[cfg(target_os = "macos")]
-    layers: crate::surfaces::Layers,
-    /// Slots the app is not showing; one it still uses (`Ring::in_use`) isn't painted into yet.
-    free: Vec<u8>,
-    /// Whether a frame waits for a slot (`frames::Behind`).
-    behind: frames::Behind,
-    /// Whether the app shows the page, which the frame clock begins frames of (`clock.rs`).
-    /// Not shown, Chromium was told it's hidden, or is once its browser arrives.
-    shown: bool,
-    software: bool,
-    /// What the trackpad's last events leave for its next.
-    trackpad: input::Trackpad,
     /// A page's open `DevTools`.
     inspected: Option<crate::devtools::Inspected>,
     /// A `DevTools` pane's page, and the bridge its frontend talks over.
     inspector: Option<(PaneId, crate::devtools::Bridge)>,
     /// Requests that need the browser, made before it was created.
     waiting: Vec<AppRequest>,
-    /// What the page is being sized to, while its pane's edge is dragged.
-    sizing: sizing::Sizing,
-    /// A drag the page follows by device metrics on a view of its own size (`live.rs`).
-    live: Option<live::Live>,
     /// The host's own commands in the page's session, until answered.
-    own: HashMap<i64, live::drive::Own>,
-    /// The app's own device metrics for the page (a responsive mode's), which a drag keeps.
-    app_metrics: Option<serde_json::Value>,
+    own: std::collections::HashSet<i64>,
     /// Keeps the page's `DevTools` protocol messages coming, once `DevTools`
     /// or the app's agent commands need them.
     observer: Option<cef::Registration>,
@@ -119,32 +82,18 @@ struct Pane {
 }
 
 impl Pane {
-    fn new(url: &str, viewport: Viewport) -> Self {
+    fn new(url: &str) -> Self {
         Self {
             browser: None,
-            viewport,
             page: PageState {
                 url: url.into(),
                 ..PageState::default()
             },
             cursor: Cursor::Arrow,
-            generation: 0,
-            #[cfg(target_os = "macos")]
-            ring: None,
-            #[cfg(target_os = "macos")]
-            layers: crate::surfaces::Layers::default(),
-            free: Vec::new(),
-            behind: frames::Behind::default(),
-            shown: true,
-            software: false,
-            trackpad: input::Trackpad::default(),
             inspected: None,
             inspector: None,
             waiting: Vec::new(),
-            sizing: sizing::Sizing::default(),
-            live: None,
-            own: HashMap::new(),
-            app_metrics: None,
+            own: std::collections::HashSet::new(),
             observer: None,
             agent: None,
             loaded: false,
@@ -171,26 +120,9 @@ pub(crate) fn send(event: &HostEvent) {
     }
 }
 
-/// Whether panes are native: the host runs in the app's process.
-pub(crate) fn native() -> bool {
-    #[cfg(target_os = "macos")]
-    {
-        crate::embedded::engine().is_some()
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        false
-    }
-}
-
 /// Whether a shutdown was asked for and every pane has closed since.
 pub(crate) fn all_closed() -> bool {
     with(|host| host.shutting_down && host.panes.is_empty()) == Some(true)
-}
-
-/// The size a pane's page was asked for at, and whether it's on screen for the engine.
-pub(crate) fn viewport_and_sight(pane: PaneId) -> Option<(Viewport, bool)> {
-    with_pane(pane, |p| (p.viewport, p.shown))
 }
 
 /// A pane's browser couldn't be made: the pane goes, and the app is told.
@@ -243,11 +175,7 @@ fn handle(request: AppRequest) {
             viewport,
             profile,
         } => open(pane, &url, viewport, &profile),
-        AppRequest::Resize {
-            pane,
-            viewport,
-            dragging,
-        } => resize(pane, viewport, dragging),
+        AppRequest::Resize { pane, viewport } => resize(pane, viewport),
         AppRequest::Navigate { pane, url } => navigate(pane, &url),
         AppRequest::Go { pane, to } => {
             if let Some(browser) = browser_of(pane) {
@@ -272,36 +200,20 @@ fn handle(request: AppRequest) {
             visible: shown,
         } => visible(pane, shown),
         AppRequest::View { pane, action } => view(pane, action),
-        AppRequest::Focus { pane, focused } => {
-            // A native page has the keyboard as its window's first responder.
-            #[cfg(target_os = "macos")]
-            if native() {
-                crate::native::keyboard(pane, focused);
-                return;
-            }
-            if let Some(host) = host_of(pane) {
-                host.set_focus(i32::from(focused));
-            }
-        }
-        // An edit is the engine's own command in the page, however the page is drawn.
-        request @ AppRequest::Edit { .. } => input::handle(request),
-        request @ (AppRequest::Mouse { .. }
-        | AppRequest::Wheel { .. }
-        | AppRequest::Pinch { .. }
-        | AppRequest::Key { .. }
-        | AppRequest::Ime { .. }) => {
-            // `AppKit` hands a native page its pointer and keys itself.
-            if !native() {
-                input::handle(request);
-            }
-        }
-        AppRequest::Release {
-            pane,
-            generation,
-            slot,
-        } => {
-            if !native() {
-                release(pane, generation, slot);
+        // A page has the keyboard as its window's first responder.
+        AppRequest::Focus { pane, focused } => crate::native::keyboard(pane, focused),
+        // The engine's own, in the page's focused frame: the page's pointer, wheel and keys
+        // are `AppKit`'s to hand it (`native.rs`).
+        AppRequest::Edit { pane, command } => {
+            if let Some(frame) = browser_of(pane).and_then(|browser| browser.focused_frame()) {
+                match command {
+                    Edit::Undo => frame.undo(),
+                    Edit::Redo => frame.redo(),
+                    Edit::Cut => frame.cut(),
+                    Edit::Copy => frame.copy(),
+                    Edit::Paste => frame.paste(),
+                    Edit::SelectAll => frame.select_all(),
+                }
             }
         }
         AppRequest::Answer {

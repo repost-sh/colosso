@@ -32,7 +32,7 @@ fn a_page_allowed_to_know_where_it_is_hears_back() {
     // Asked once the evaluation has answered, so the prompt comes after.
     evaluate(&mut session, "setTimeout(ask, 200), true");
     let mut asked = None;
-    session.wait("the page to ask for its position", |event, _| {
+    session.wait("the page to ask for its position", |event| {
         if let HostEvent::Dialog {
             pane: 1,
             dialog,
@@ -69,7 +69,7 @@ fn a_page_allowed_to_know_where_it_is_hears_back() {
             url: again.clone(),
         })
         .expect("navigate");
-    session.wait("the page to load again", |event, _| {
+    session.wait("the page to load again", |event| {
         matches!(event, HostEvent::Page { pane: 1, state } if state.url == again && !state.loading)
     });
     evaluate(&mut session, "ask(), true");

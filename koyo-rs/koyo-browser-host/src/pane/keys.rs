@@ -1,8 +1,7 @@
-//! Keys a native page leaves unhandled, handed back to the app: its own shortcuts go on
-//! working while the keyboard is in a page (`native.rs`). And what the app does with a key
-//! before an off-screen page hears it, done here: the person counted as at the page, Escape
-//! out of full screen. An off-screen page's keys come from
-//! the app in the first place, which keeps what it wants, so only a native page has this.
+//! Keys a page leaves unhandled, handed back to the app: its own shortcuts go on working
+//! while the keyboard is in a page (`native.rs`). And what's done with a key before the page
+//! hears it: the person counted as at the page, Escape out of full screen. A page's keys are
+//! `AppKit`'s to hand it, so the app sees none of them but through here.
 
 use cef::{
     Browser, ImplKeyboardHandler, KeyEvent, KeyEventType, KeyboardHandler, WrapKeyboardHandler,
@@ -50,11 +49,9 @@ wrap_keyboard_handler! {
             let down = event.is_some_and(|event| {
                 event.type_ == KeyEventType::RAWKEYDOWN || event.type_ == KeyEventType::KEYDOWN
             });
-            #[cfg(target_os = "macos")]
             if down {
                 return c_int::from(crate::native::unhandled_key(self.pane, os_event.cast()));
             }
-            let _ = (down, os_event);
             0
         }
     }

@@ -1,8 +1,8 @@
-//! How light a native page is, for the glass over it (`lightness.rs`). An off-screen page's
-//! frame is in a surface the app reads; a native page is drawn by Chromium in its own layers,
-//! which the app can't read, so the page is asked instead: once a second while it's drawn, the
-//! background colour at a grid of its points, through its `DevTools` session. That's what glass
-//! takes its tone from, blurred as it is; pictures and gradients read as what's behind them.
+//! How light a page is, for the glass over it (`lightness.rs`), and what its canvas is painted,
+//! for what's behind it (`page.rs`). A page is drawn by Chromium in its own layers, which the
+//! app can't read, so the page is asked: once a second while it's drawn, the background colour
+//! at a grid of its points, through its `DevTools` session. That's what glass takes its tone
+//! from, blurred as it is; pictures and gradients read as what's behind them.
 
 use std::time::Duration;
 
@@ -81,10 +81,10 @@ impl Tone {
 }
 
 impl BrowserView {
-    /// Has a native page asked how light it is for as long as the view lives, while it's
-    /// drawn. Started once.
+    /// Has the page asked how light it is for as long as the view lives, while it's drawn.
+    /// Started once.
     pub(super) fn watch_tone(&mut self, cx: &mut Context<Self>) {
-        if self.tone_watch.is_some() || !self.is_native() {
+        if self.tone_watch.is_some() {
             return;
         }
         self.tone_watch = Some(cx.spawn(async move |this, cx| {

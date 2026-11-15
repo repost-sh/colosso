@@ -1,7 +1,6 @@
-//! Native panes: a page as a Chrome-style browser whose own views the app shows in its window,
+//! A pane's page: a Chrome-style browser whose own views the app shows in its window,
 //! Chromium presenting its frames itself and `AppKit` handing it its input
-//! (`docs/native-pages.md`). Every pane is one while the host runs in the app's process
-//! ([`crate::embedded`]).
+//! (`docs/native-pages.md`).
 //!
 //! CEF makes a Chrome-style browser only inside a window of its own (with a parent view it
 //! makes it Alloy style), so each page has one, its **holder**: frameless, never key or main,
@@ -24,7 +23,7 @@ use std::ffi::CStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use cef::{BrowserSettings, BrowserView, ImplPanel, ImplWindow, RequestContext, View, Window};
-use koyo_browser_ipc::PaneId;
+use koyo_browser_ipc::{PaneId, Viewport};
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2_app_kit::{NSAutoresizingMaskOptions, NSView, NSWindow};
@@ -34,7 +33,7 @@ mod holder;
 mod parts;
 mod report;
 
-use holder::{hold, let_go};
+use holder::{closing, hold};
 pub(crate) use parts::stray_client;
 use parts::{HolderDelegate, PageViewDelegate};
 pub use report::describe;
@@ -80,8 +79,9 @@ pub(crate) fn windows() -> usize {
     WINDOWS.load(Ordering::Acquire)
 }
 
-/// One of CEF's windows for a page is destroyed.
-fn window_destroyed() {
+/// `pane`'s window of CEF's is destroyed.
+fn window_destroyed(pane: PaneId) {
+    holder::gone(pane);
     let _ = WINDOWS.fetch_update(Ordering::AcqRel, Ordering::Acquire, |open| open.checked_sub(1));
 }
 
@@ -108,16 +108,19 @@ pub(crate) fn profiles_cleared() {
 /// Makes `pane`'s page, once the profile it's of is ready (a new one initializes on disk
 /// first, and CEF makes no browser view before): a Chrome-style browser view with the pane's
 /// client, in a holder of its own. No profile is `DevTools`, which use the engine's own
-/// context. Its browser arrives in `on_after_created`, as an off-screen one does.
-pub(crate) fn create(pane: PaneId, url: &str, profile: Option<(&str, RequestContext)>) {
-    let Some((viewport, on_screen)) = crate::host::viewport_and_sight(pane) else {
-        return;
-    };
+/// context. Its browser arrives in `on_after_created`. The page is `viewport`'s size until
+/// a pane places it, and on screen for the engine until the app says it isn't.
+pub(crate) fn create(
+    pane: PaneId,
+    url: &str,
+    viewport: Viewport,
+    profile: Option<(&str, RequestContext)>,
+) {
     let entry = Entry {
         holder: None,
         views: None,
         shown_in: None,
-        on_screen,
+        on_screen: true,
         keyboard: false,
         size: NSSize::new(f64::from(viewport.width.max(1)), f64::from(viewport.height.max(1))),
     };
@@ -179,7 +182,7 @@ fn window_created(pane: PaneId, window: &Window, view: &BrowserView) {
     // SAFETY: on macOS a CEF window's handle is its content `NSView`, which lives with it.
     let content: Option<&NSView> = unsafe { window.window_handle().cast::<NSView>().as_ref() };
     if let Some(holder) = content.and_then(NSView::window) {
-        hold(&holder);
+        hold(pane, &holder);
         if let Some(size) = page(pane, |entry| {
             entry.holder = Some((window.clone(), holder.clone()));
             entry.size
@@ -401,7 +404,7 @@ pub(crate) fn closed(pane: PaneId) {
         web.removeFromSuperview();
     }
     if let Some((window, holder)) = &entry.holder {
-        let_go(holder);
+        closing(holder);
         window.close();
     }
 }

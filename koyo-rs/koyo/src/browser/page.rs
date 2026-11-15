@@ -1,35 +1,34 @@
-//! The page itself, as an element: its latest frame drawn in the window's own frame, at the
-//! pane's size (or, in responsive mode, at the size chosen, scaled to fit and centred), and
-//! every pointer event over it. The page counts as on screen while the element is drawn with
-//! no notice over it, frame or not (`Shown`, in its state): a pane that isn't drawn takes its
-//! page out of sight, unless an agent is using it (`view/sight.rs`).
+//! The page itself, as an element: its views placed in a native surface of the window's
+//! composition, at the pane's size (or, in responsive mode, at the size chosen, scaled to fit
+//! and centred), and a press on it heard on its way there. The page counts as on screen while
+//! the element is drawn with no notice over it, painted yet or not (`Shown`, in its state): a
+//! pane that isn't drawn takes its page out of sight, unless an agent is using it
+//! (`view/sight.rs`).
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    App, Bounds, Context, DispatchPhase, Div, Element, ElementId, ElementInputHandler, Entity,
-    GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, InteractiveElement as _,
-    IntoElement, LayoutId, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _,
-    PinchEvent, Pixels, ScrollEvent, Stateful, Style, Styled as _, Window, div, fill, relative,
-    white,
+    App, Bounds, Context, DispatchPhase, Div, Element, ElementId, Entity, GlobalElementId,
+    Hitbox, HitboxBehavior, InspectorElementId, InteractiveElement as _, IntoElement, LayoutId,
+    MouseDownEvent, ParentElement as _, Pixels, Stateful, Style, Styled as _, Window, div, fill,
+    relative, white,
 };
 
-use super::frames::Shown;
 use super::input::{self, cursor_style};
 use super::pointer;
 use super::responsive::Grip;
 use super::toolbar;
 use super::view::BrowserView;
-use super::view::lifecycle::{Dragging, MOVING};
+use super::view::sight::Shown;
 use crate::responsive::{self, grips};
 use crate::theme::{self, Palette};
 
 pub struct PageSurface {
     pub view: Entity<BrowserView>,
-    pub focused: bool,
     /// Whether a notice covers the page, which then isn't drawn, and so counts as out of
-    /// sight: the host stops painting it.
+    /// sight: the engine stops painting it.
     pub covered: bool,
-    /// What a page in responsive mode shows on before its frame is in, and its outline.
+    /// What a page in responsive mode shows on before it has said how it's painted, and its
+    /// outline.
     pub blank: bool,
     pub palette: Palette,
 }
@@ -40,10 +39,14 @@ pub struct Placed {
     /// The page's bounds in the window: the element's, or in responsive mode the page's
     /// scaled and centred in it.
     shown: Bounds<Pixels>,
-    /// How much of its true size the page shows at.
-    fit: f32,
     responsive: bool,
     grips: Vec<(Grip, Hitbox)>,
+    /// The page's pane, and whether the host has the page open.
+    pane: koyo_browser_ipc::PaneId,
+    open: bool,
+    /// The page's native view, placed there, while the page is open with no notice over it.
+    #[cfg(all(target_os = "macos", not(test)))]
+    native: Option<Entity<crate::native::surface::Kept<super::native::NativePage>>>,
 }
 
 impl IntoElement for PageSurface {
@@ -88,31 +91,19 @@ impl Element for PageSurface {
         cx: &mut App,
     ) -> Placed {
         let scale = window.scale_factor();
-        let (laid, responsive, free, dragging, placed) = {
+        let (laid, responsive, free, placed, pane, open) = {
             let view = self.view.read(cx);
             let mode = view.responsive.mode.as_ref();
             let laid = view.lay_out(bounds, scale);
-            // What moves the pane's edge (`Dragging`): a drag in hand or a grip held, else
-            // layout, live while its sizes keep coming (the window's edge, the sidebar folding).
-            let moving = (view.resized_at).is_some_and(|at| at.elapsed() < MOVING);
-            let dragging = if cx.has_active_drag() || view.responsive.drag.is_some() {
-                Dragging::Held
-            } else if moving {
-                Dragging::Layout
-            } else {
-                Dragging::No
-            };
-            // A held drag let go is told even at the size it ended at.
-            let placed = view.is_placed(&laid, bounds.size, scale)
-                && (dragging == Dragging::Held || !view.drag_sent);
+            let placed = view.is_placed(&laid, bounds.size, scale);
             let free = mode.is_some_and(|mode| mode.device.is_none());
-            (laid, mode.is_some(), free, dragging, placed)
+            (laid, mode.is_some(), free, placed, view.pane, view.is_open(cx))
         };
-        let (shown, fit) = (laid.1, laid.2);
+        let shown = laid.1;
         // An update counts as a change to the view, so it's made only when one happened.
         if !placed {
             self.view.update(cx, |view, cx| {
-                view.place_page(laid, bounds.size, window, dragging, cx);
+                view.place_page(laid, bounds.size, window, cx);
             });
         }
         let hitbox = window.insert_hitbox(shown, HitboxBehavior::Normal);
@@ -124,9 +115,13 @@ impl Element for PageSurface {
         Placed {
             hitbox,
             shown,
-            fit,
             responsive,
             grips,
+            pane,
+            open,
+            #[cfg(all(target_os = "macos", not(test)))]
+            native: (open && !self.covered)
+                .then(|| self.place_native(pane, shown, window, cx)),
         }
     }
 
@@ -149,49 +144,32 @@ impl Element for PageSurface {
             let held = (self.view.read(cx).responsive.drag.as_ref()).map(|drag| drag.grip);
             grips::paint(&placed.grips, held, &self.view, p, window);
         }
-        let (pane, frame, cursor, open, native) = {
-            let view = self.view.read(cx);
-            let frame = (view.frame.clone()).filter(|_| view.shows_frames());
-            (view.pane, frame, view.cursor, view.is_open(cx), view.is_native())
-        };
-        // Drawn with nothing over it, the page is on screen whether or not a frame is in yet:
+        let (pane, open) = (placed.pane, placed.open);
+        let cursor = self.view.read(cx).cursor;
+        // A drag that resizes the page (a split's divider, a panel's edge) moves its view
+        // against what GPUI draws beside it: from the first frame that did, each move of the
+        // drag is drawn at once, in the transaction the view moves in, so the edge and the
+        // page land together (`docs/native-pages.md` 6).
+        #[cfg(all(target_os = "macos", not(test)))]
+        if let Some(native) = placed.native.as_ref().map(Entity::downgrade) {
+            window.on_mouse_event(move |_: &gpui_kit::MouseMoveEvent, phase, window, cx| {
+                let resizing = phase == DispatchPhase::Capture
+                    && cx.has_active_drag()
+                    && (native.upgrade()).is_some_and(|native| {
+                        (native.read(cx).0.as_ref())
+                            .is_some_and(super::native::NativePage::resizing)
+                    });
+                if resizing {
+                    crate::native::window::draw_in_transaction(window, cx);
+                }
+            });
+        }
+        // Drawn with nothing over it, the page is on screen whether or not it has painted yet:
         // one opened out of sight, or hidden before it painted, paints once it's shown.
         if !self.covered {
             let key = ElementId::NamedInteger("browser-page-view".into(), pane);
             let owner = self.view.downgrade();
             let shown = window.use_keyed_state(key, cx, |_, cx| Shown::new(owner, cx));
-            if let Some(frame) = frame {
-                frame.paint(bounds, placed.fit, window);
-            }
-            #[cfg(all(target_os = "macos", not(test)))]
-            if native && open {
-                let clip = window.content_mask().bounds;
-                let key = ElementId::NamedInteger("browser-native-page".into(), pane);
-                let kept = crate::native::surface::keep(key, window, cx, |window| {
-                    super::native::NativePage::new(window, pane)
-                        .inspect_err(|why| log::error!("no place for a native page: {why}"))
-                        .ok()
-                });
-                let first = (kept.read(cx).0.as_ref())
-                    .is_some_and(|native| native.place(bounds, clip, window));
-                // The keyboard follows GPUI's focus as it moves (`set_focused`); a page that
-                // had the focus before it was here is told now.
-                if first && self.focused {
-                    self.view.update(cx, |view, cx| view.set_focused(true, cx));
-                }
-                // A drag that resizes the page (a split's divider, a panel's edge) moves its
-                // view against what GPUI draws beside it: from the first frame that did, each
-                // move of the drag is drawn at once, in the transaction the view moves in, so
-                // the edge and the page land together (`docs/native-pages.md` 6).
-                window.on_mouse_event(move |_: &MouseMoveEvent, phase, window, cx| {
-                    let resizing = phase == DispatchPhase::Capture
-                        && cx.has_active_drag()
-                        && (kept.read(cx).0.as_ref()).is_some_and(super::native::NativePage::resizing);
-                    if resizing {
-                        crate::native::window::draw_in_transaction(window, cx);
-                    }
-                });
-            }
             let shown = shown.downgrade();
             let view = self.view.read(cx);
             // An update counts as a change to the view, so it's made only when one happened.
@@ -202,101 +180,65 @@ impl Element for PageSurface {
                 });
             }
         }
-        // A native page's pointer, keys and text are Chromium's own, handed to it by `AppKit`.
-        // GPUI sets the window's cursor after each of its frames from what's under the pointer:
-        // over a page, the page's own, which a native page's Chromium sets as well.
+        // The page's pointer, keys and text are Chromium's own, handed to it by `AppKit`. GPUI
+        // sets the window's cursor after each of its frames from what's under the pointer: over
+        // a page, the page's own, which Chromium sets as well.
         if open {
             window.set_cursor_style(cursor_style(cursor), hitbox);
         }
-        if native {
-            self.listen_native(bounds, window);
-            return;
-        }
-        if self.focused {
-            let focus = self.view.read(cx).focus.clone();
-            window.handle_input(
-                &focus,
-                ElementInputHandler::new(bounds, self.view.clone()),
-                cx,
-            );
-        }
-        self.listen(hitbox, window);
+        self.listen(bounds, window);
     }
 }
 
 impl PageSurface {
-    /// A press on a native page, which `AppKit` hands the page itself: GPUI's focus follows it
-    /// into the page, so Koyo's keys are the page's, and the person has the page, as when
-    /// they press on one drawn off screen. Heard before the page hears it, and left to it.
-    fn listen_native(&self, bounds: Bounds<Pixels>, window: &mut Window) {
+    /// The native view of `pane`'s page put over `shown`, for a page that's open with no notice
+    /// over it. As the element is prepainted, with its hitbox, not as it's painted: once a frame
+    /// is prepainted GPUI notes where the window's native views are, and what of its own a
+    /// press finds is what none of them covers. A view moved while the frame is painted
+    /// is noted where it was a frame before: after a drag that moved a pane's edge fast,
+    /// the last frame's move a divider's width or more, the divider lay where GPUI still
+    /// took the page to be, and a press on it picked nothing up until something else had
+    /// the window drawn again (`docs/native-pages.md` 6).
+    #[cfg(all(target_os = "macos", not(test)))]
+    fn place_native(
+        &self,
+        pane: koyo_browser_ipc::PaneId,
+        shown: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Entity<crate::native::surface::Kept<super::native::NativePage>> {
+        let clip = window.content_mask().bounds;
+        let key = ElementId::NamedInteger("browser-native-page".into(), pane);
+        let kept = crate::native::surface::keep(key, window, cx, |window| {
+            super::native::NativePage::new(window, pane)
+                .inspect_err(|why| log::error!("no place for a page: {why}"))
+                .ok()
+        });
+        let first =
+            (kept.read(cx).0.as_ref()).is_some_and(|native| native.place(shown, clip, window));
+        // The keyboard follows GPUI's focus as it moves (`set_focused`); a page that had the
+        // focus before it was here is told now.
+        if first && self.view.read(cx).focus.is_focused(window) {
+            self.view.update(cx, |view, cx| view.set_focused(true, cx));
+        }
+        kept
+    }
+
+    /// A press on the page, which `AppKit` hands the page itself: GPUI's focus follows it into
+    /// the page, so Koyo's keys are the page's, and the person has the page. Heard before the
+    /// page hears it, and left to it.
+    fn listen(&self, bounds: Bounds<Pixels>, window: &mut Window) {
         let down = self.view.downgrade();
         window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
             if phase == DispatchPhase::Capture && bounds.contains(&event.position) {
                 let _ = down.update(cx, |view, cx| view.pressed_at(event, window, cx));
             }
         });
-        let up = self.view.downgrade();
-        window.on_mouse_event(move |event: &MouseUpEvent, phase, _, cx| {
-            if phase == DispatchPhase::Capture {
-                let _ = up.update(cx, |view, cx| view.released_at(event, cx));
-            }
-        });
-    }
-
-    /// The pointer over the page: presses focus it, a drag that started in it keeps
-    /// reaching it, and what's scrolled or pinched over it scrolls or zooms it rather than
-    /// the pane.
-    fn listen(&self, hitbox: &Hitbox, window: &mut Window) {
-        let (down, hitbox_down) = (self.view.downgrade(), hitbox.clone());
-        window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
-            if phase != DispatchPhase::Bubble || !hitbox_down.is_hovered(window) {
-                return;
-            }
-            let _ = down.update(cx, |view, cx| view.pressed_at(event, window, cx));
-            cx.stop_propagation();
-        });
-        let up = self.view.downgrade();
-        window.on_mouse_event(move |event: &MouseUpEvent, phase, _, cx| {
-            if phase == DispatchPhase::Capture {
-                let _ = up.update(cx, |view, cx| view.released_at(event, cx));
-            }
-        });
-        let (moved, hitbox_move) = (self.view.downgrade(), hitbox.clone());
-        window.on_mouse_event(move |event: &MouseMoveEvent, phase, window, cx| {
-            if phase != DispatchPhase::Capture {
-                return;
-            }
-            let over = hitbox_move.is_hovered(window);
-            let Some(moved) = moved.upgrade() else {
-                return;
-            };
-            // Moves elsewhere in the window are nothing to this page.
-            let view = moved.read(cx);
-            if over || view.hovered || view.pressed.is_some() {
-                moved.update(cx, |view, cx| view.moved_to(event, over, cx));
-            }
-        });
-        let (scrolled, hitbox_scroll) = (self.view.downgrade(), hitbox.clone());
-        window.on_mouse_event(move |event: &ScrollEvent, phase, window, cx| {
-            if phase != DispatchPhase::Bubble || !hitbox_scroll.should_handle_scroll(window) {
-                return;
-            }
-            let _ = scrolled.update(cx, |view, cx| view.wheel(event, cx));
-            cx.stop_propagation();
-        });
-        let (pinched, hitbox_pinch) = (self.view.downgrade(), hitbox.clone());
-        window.on_mouse_event(move |event: &PinchEvent, phase, window, cx| {
-            if phase != DispatchPhase::Bubble || !hitbox_pinch.is_hovered(window) {
-                return;
-            }
-            let _ = pinched.update(cx, |view, cx| view.pinch(event, cx));
-            cx.stop_propagation();
-        });
     }
 }
 
 impl BrowserView {
-    /// The page itself under its notices, taking the keys bound to it. In responsive mode
+    /// The page itself under its notices, taking the edits bound to it. In responsive mode
     /// it shows on the sunken area round it, with the size by the pointer while a grip is in
     /// hand.
     pub(super) fn page_element(
@@ -309,9 +251,9 @@ impl BrowserView {
         let start = self.is_start_page();
         let inspector = self.is_inspector();
         let responsive = self.responsive.mode.is_some();
-        // The pane's own colour until the page's first frame is in, so a page never opens on
-        // a blank white one; DevTools keep it.
-        let blank = self.frame.is_none() || inspector;
+        // The pane's own colour until the page has said how its canvas is painted, so a page
+        // never opens on a blank white one; DevTools keep it.
+        let blank = self.tone.is_none() || inspector;
         let overlay = toolbar::overlay(self, &status, cx);
         let bar = toolbar::control_bar(self, window, cx);
         // Under the bar, which names the agent the marks show at work.
@@ -326,13 +268,12 @@ impl BrowserView {
             .bg(match (responsive, blank) {
                 (true, _) => p.sunken,
                 (false, true) => p.card,
-                // Behind a native page, what its own canvas is painted: that's what shows
-                // beside it for the frame or two its picture lags a pane's edge by.
+                // Behind the page, what its own canvas is painted: that's what shows beside it
+                // for the frame or two its picture lags a pane's edge by.
                 (false, false) => (self.tone.as_ref()).map_or_else(white, super::tone::Tone::canvas),
             })
             .child(PageSurface {
                 view: cx.entity(),
-                focused: self.focus.is_focused(window),
                 covered: overlay.is_some(),
                 blank,
                 palette: p,
@@ -344,9 +285,6 @@ impl BrowserView {
             .children(self.responsive.mode.as_ref().and_then(|mode| {
                 grips::label(self.responsive.drag.as_ref(), mode.width, mode.height, p)
             }));
-        if self.is_native() {
-            return input::edits(page, cx);
-        }
-        input::listen(page, cx)
+        input::edits(page, cx)
     }
 }

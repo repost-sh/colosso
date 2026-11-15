@@ -51,7 +51,7 @@ wrap_window_delegate! {
         }
 
         fn on_window_destroyed(&self, _window: Option<&mut Window>) {
-            window_destroyed();
+            window_destroyed(self.pane);
         }
 
         // The window may close once its browser says so, which a browser asked to close
