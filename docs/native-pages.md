@@ -330,6 +330,26 @@ the point expected.
 Before these, a hit region over the whole window was put up on a seam's press, drawn at once
 (commit 455480ba2). It raced the pointer's first move and treated neither cause; it's gone.
 
+**A release a menu takes is still a release.** GPUI's core counts a press over a native view
+as that view's until it has seen the release of every button down (gpui-fast 0.1.12
+`fast/composition.rs`, `dispatch_native`), and while it does, a press anywhere in the window
+is the view's: none of GPUI's own content answers. A page's menu is `AppKit`'s, opened by the
+right button's press; it tracks the pointer itself from the moment it opens, and the release
+of that button is the menu's, never the window's. With the release lost the count never came
+down: after Inspect picked from a page's menu no tab could be picked and no divider moved
+until Koyo was started again, the owner's, 2026-11-15, traced with the capture still set on
+the dead click. The menu now says which buttons were down as it opened and up as it closed,
+and GPUI is told of each release (`vendor/gpui-component`, `native_menu/macos.rs`).
+
+**A key the page leaves is a shortcut or nothing.** A key Chromium didn't handle goes back to
+Koyo's view, so Koyo's shortcuts work with the keyboard in a page; Chromium counts a
+character's key-down as unhandled even where the page then takes the character as text. Handed
+back as a key press, GPUI found no binding for it and passed it to the text system, which
+typed it into whatever had the keyboard: the page, a second time, "f" coming out "ff". It's
+handed back as a key equivalent (`native.rs`, `unhandled_key`), which GPUI matches against its
+bindings and never sends to the text system. `[proven]` with the keyboard's own events on the
+agent desktop: one key, one `input` event in the page, where there were two.
+
 How these were found matters for the next check. The harness hands its events to the window
 (section 9), which is not where the pointer's own come in: it can't show which window of the
 app is in front, and its events carry no button number. The checks above that say *real* were
