@@ -697,7 +697,7 @@ allowed, kept and answered by their setting (the owner's camera request ended in
 popover or the question in a window: `site/panel.rs` has its height and its names,
 `site/prompt.rs` its wording, `host/site.rs` a site's address and a media request's devices.
 
-### 12.7 What macOS allows Koyo: the screen, the camera, the microphone [not run]
+### 12.7 What macOS allows Koyo: the screen, the camera, the microphone [decided]
 
 The owner reported, 2026-11-15: a page asked to share the screen, macOS opened System
 Settings on Screen Recording, and Koyo wasn't in the list to switch on. Read from the log of
@@ -712,11 +712,14 @@ macOS's privacy service (`log show --predicate 'process == "tccd"'`) that day:
   12:06).
 - **Why Koyo wasn't listed.** macOS keeps an app's grants by its bundle id and its designated
   requirement. Two things stood in the way, both of this Mac:
-  - The bundle id had moved from `dev.koyo.desktop` that morning (`2e193a503`). Launch
-    Services still knew `/Applications/Koyo.app` by the old id and the list held an entry for
-    it, so macOS's alert listed the app as `dev.koyo.desktop`: a switch for the old id, none
-    for the Koyo that asked. The owner added `/Applications/Koyo.app` with "+" (12:05) and
-    the screen was shared. Launch Services knows the new id now.
+  - The bundle id had moved from `dev.koyo.desktop` that morning (`2e193a503`). The agent
+    that shows macOS's alert and puts the app in the list, `universalAccessAuthWarn`, had run
+    since days before and still named `/Applications/Koyo.app` by the old id, where the
+    signature, the Info.plist and Launch Services gave the new one. So it listed the app as
+    `dev.koyo.desktop`, and System Settings dropped that entry as it opened: at 12:04, and
+    again at 18:17 with a build signed by the identity below. Added with "+", Koyo is listed
+    by the app on disk, and shares. Someone new to Koyo never meets this; an update across
+    the rename does, until the agent starts again, at a logout.
   - Signed ad hoc, the designated requirement is the build's hash, so every build is another
     app to macOS. The entry made for one build stays in the list, switched on, and the next
     build is refused against it ("Failed to match existing code requirement"), with nothing
@@ -730,7 +733,7 @@ macOS's privacy service (`log show --predicate 'process == "tccd"'`) that day:
 - **So a build is signed by one identity** (`script/bundle`): one made on this Mac, once, by
   `script/signing-identity` (a certificate for code signing, signed by itself, its key in
   the login keychain for codesign alone). Signed by it, the designated requirement is
-  `identifier "codes.koyo.desktop" and certificate root = H"…"`, the same for every build,
+  `identifier "codes.koyo.desktop" and certificate leaf = H"…"`, the same for every build,
   and only code signed with that key meets it. Until it exists a build is signed ad hoc, and
   says so. Only the app's own signature counts: the engine's helpers run as Koyo's, and keep
   theirs ad hoc, so the engine still packs `KoyoMockKeychain` and the profiles' cookie key
@@ -750,8 +753,10 @@ macOS's privacy service (`log show --predicate 'process == "tccd"'`) that day:
   The first time codesign signs with the key, macOS may ask whether it may use it: Always
   Allow.
 
-Not run yet: no identity has been made on this Mac, so no build has been signed by one, nor
-a grant seen to hold across two builds.
+Checked 2026-11-15: the identity made; a build signed by it installed (`019344328a8e…`,
+`certificate leaf = H"6b376c3f…"`); the camera and the microphone asked for and kept under
+it; Screen Recording added with "+", and the screen shared. Not seen yet: a grant holding
+across two builds, which the next builds signed by the identity show.
 
 ## 13. Developer tools
 
