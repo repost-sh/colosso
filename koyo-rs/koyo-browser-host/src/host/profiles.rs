@@ -14,6 +14,17 @@ pub(super) fn folder(name: &str, generation: u32) -> String {
     }
 }
 
+/// The folder of the profile the app names `profile`: its name in what a folder may be
+/// called (lower-case letters, digits and hyphens, 64 at most), `default` for one with none.
+pub(super) fn folder_of(profile: &str, generation: u32) -> String {
+    let name: String = profile
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' { c.to_ascii_lowercase() } else { '-' })
+        .take(64)
+        .collect();
+    folder(if name.is_empty() { "default" } else { &name }, generation)
+}
+
 /// Where the root keeps how many times the profiles were cleared.
 const GENERATION: &str = "generation";
 
@@ -131,6 +142,14 @@ mod tests {
     fn a_cleared_profile_has_a_folder_of_its_own() {
         assert_eq!(folder("proj-1", 0), "profile-proj-1");
         assert_eq!(folder("proj-1", 3), "profile-proj-1.g3");
+    }
+
+    #[test]
+    fn a_profiles_folder_is_its_name_as_a_folder_may_be_called() {
+        assert_eq!(folder_of("Proj 1/a", 0), "profile-proj-1-a");
+        assert_eq!(folder_of("proj-1", 2), "profile-proj-1.g2");
+        assert_eq!(folder_of("", 0), "profile-default");
+        assert_eq!(folder_of(&"x".repeat(80), 0).len(), "profile-".len() + 64);
     }
 
     #[test]

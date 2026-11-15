@@ -1,34 +1,73 @@
-//! A native page's delegates, which make it a Chrome-style browser in a frameless window, and
-//! the client of browsers Chrome makes on its own.
+//! A native page's delegates, which make it a Chrome-style browser in a frameless window.
 
 use cef::{
-    BrowserView, BrowserViewDelegate, ChromeToolbarType, Client, ImplBrowser, ImplBrowserHost,
-    ImplBrowserView,
-    ImplBrowserViewDelegate, ImplClient, ImplLifeSpanHandler, ImplPanelDelegate, ImplViewDelegate,
-    ImplWindowDelegate, LifeSpanHandler, Rect, RuntimeStyle, Window, WindowDelegate,
-    WrapBrowserViewDelegate, WrapClient, WrapLifeSpanHandler, WrapWindowDelegate, rc::Rc,
-    wrap_browser_view_delegate, wrap_client, wrap_life_span_handler, wrap_window_delegate,
+    BrowserSettings, BrowserView, BrowserViewDelegate, ChromeToolbarType, Client, ImplBrowser,
+    ImplBrowserHost, ImplBrowserView, ImplBrowserViewDelegate, ImplPanelDelegate,
+    ImplView, ImplViewDelegate, ImplWindowDelegate, Rect, RuntimeStyle, Window, WindowDelegate,
+    WrapBrowserViewDelegate, WrapWindowDelegate, rc::Rc, wrap_browser_view_delegate,
+    wrap_window_delegate,
 };
 use koyo_browser_ipc::PaneId;
-use objc2_app_kit::NSView;
 use std::os::raw::c_int;
 
-use super::{window_created, window_destroyed};
+use super::{adopted, adopting, window_created, window_destroyed};
+
+/// Hides Chrome's toolbar on `view`, where the page has one: it's there for extensions, whose
+/// popups anchor to it, and never seen.
+pub(super) fn hide_toolbar(view: &BrowserView) {
+    if let Some(toolbar) = view.chrome_toolbar() {
+        toolbar.set_visible(0);
+    }
+}
 
 wrap_browser_view_delegate! {
+    // `toolbar`: whether the page carries Chrome's toolbar, which is never shown: extensions'
+    // popups anchor to it.
     pub(super) struct PageViewDelegate {
         pane: PaneId,
+        toolbar: bool,
     }
 
     impl ViewDelegate {}
 
     impl BrowserViewDelegate {
         fn chrome_toolbar_type(&self, _browser_view: Option<&mut BrowserView>) -> ChromeToolbarType {
-            ChromeToolbarType::NONE
+            if self.toolbar {
+                ChromeToolbarType::NORMAL
+            } else {
+                ChromeToolbarType::NONE
+            }
         }
 
         fn browser_runtime_style(&self) -> RuntimeStyle {
             RuntimeStyle::CHROME
+        }
+
+        // A page an extension opens from this one (`chrome.tabs.create`) is a page as this
+        // one is: Chrome-style, in a holder of its own (`native::adopt`).
+        fn delegate_for_popup_browser_view(
+            &self,
+            _browser_view: Option<&mut BrowserView>,
+            _settings: Option<&BrowserSettings>,
+            _client: Option<&mut Client>,
+            is_devtools: c_int,
+        ) -> Option<BrowserViewDelegate> {
+            if is_devtools != 0 {
+                return None;
+            }
+            adopting().map(|pane| PageViewDelegate::new(pane, self.toolbar))
+        }
+
+        fn on_popup_browser_view_created(
+            &self,
+            _browser_view: Option<&mut BrowserView>,
+            popup_browser_view: Option<&mut BrowserView>,
+            is_devtools: c_int,
+        ) -> c_int {
+            match popup_browser_view {
+                Some(view) if is_devtools == 0 => c_int::from(adopted(view)),
+                _ => 0,
+            }
         }
     }
 }
@@ -88,44 +127,6 @@ wrap_window_delegate! {
 
         fn window_runtime_style(&self) -> RuntimeStyle {
             RuntimeStyle::CHROME
-        }
-    }
-}
-
-/// The client of a browser Chrome makes on its own (a window it brings back, one an extension
-/// opens): for now such a browser is closed as soon as it's made, and its window never shown.
-pub(crate) fn stray_client() -> Client {
-    StrayClient::new()
-}
-
-wrap_client! {
-    struct StrayClient;
-
-    impl Client {
-        fn life_span_handler(&self) -> Option<LifeSpanHandler> {
-            Some(StrayLife::new())
-        }
-    }
-}
-
-wrap_life_span_handler! {
-    struct StrayLife;
-
-    impl LifeSpanHandler {
-        fn on_after_created(&self, browser: Option<&mut cef::Browser>) {
-            let Some(host) = browser.and_then(|browser| browser.host()) else {
-                return;
-            };
-            log::warn!("closing a browser Chrome made on its own");
-            // SAFETY: on macOS a browser's window handle is an `NSView`, which lives with it.
-            let view: Option<&NSView> = unsafe { host.window_handle().cast::<NSView>().as_ref() };
-            if let Some(window) = view.and_then(NSView::window) {
-                // SAFETY: `NSWindow`'s own setter, a `CGFloat`.
-                let _: () = unsafe { objc2::msg_send![&*window, setAlphaValue: 0.0f64] };
-                window.setIgnoresMouseEvents(true);
-                window.orderOut(None);
-            }
-            host.close_browser(1);
         }
     }
 }

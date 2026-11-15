@@ -1,0 +1,69 @@
+diff --git a/chrome/browser/extensions/api/extension_action/extension_action_api.cc b/chrome/browser/extensions/api/extension_action/extension_action_api.cc
+index 35e0c91..c702702 100644
+--- a/chrome/browser/extensions/api/extension_action/extension_action_api.cc
++++ b/chrome/browser/extensions/api/extension_action/extension_action_api.cc
+@@ -57,6 +57,10 @@
+ #include "chrome/browser/ui/window_feature_controller/window_feature_controller.h"
+ #endif  // !BUILDFLAG(IS_ANDROID)
+ 
++#if BUILDFLAG(ENABLE_CEF)
++#include "cef/libcef/browser/chrome/browser_delegate.h"
++#endif
++
+ using content::WebContents;
+ using extensions::browser_window_util::GetLastActiveBrowserWithProfile;
+ 
+@@ -145,9 +149,18 @@ bool OpenPopupInBrowser(BrowserWindowInterface& browser,
+   // exists, so the check below is sufficient.
+   // On other platforms, ExtensionsContainer is always constructed except for
+   // guest sessions, so we need more detailed checks.
+-  if (!WindowFeatureController::From(&browser)->SupportsWindowFeature(
+-          WindowFeatureController::WindowFeature::kFeatureToolbar) ||
+-      !BrowserWindow::FromBrowser(&browser)->IsToolbarVisible()) {
++  bool has_toolbar =
++      WindowFeatureController::From(&browser)->SupportsWindowFeature(
++          WindowFeatureController::WindowFeature::kFeatureToolbar) &&
++      BrowserWindow::FromBrowser(&browser)->IsToolbarVisible();
++#if BUILDFLAG(ENABLE_CEF)
++  // Cra: CEF hosts pages in popup-type Browsers, which never "have" a toolbar,
++  // and Cra draws its own toolbar over Chrome's hidden one. The extensions
++  // container still shows the popup, as it does for Cra's toolbar buttons.
++  has_toolbar = has_toolbar ||
++                (browser.cef_delegate() && browser.cef_delegate()->IsViewsHosted());
++#endif
++  if (!has_toolbar) {
+     *error = "Browser window has no toolbar.";
+     return false;
+   }
+diff --git a/chrome/browser/extensions/browser_extension_window_controller.cc b/chrome/browser/extensions/browser_extension_window_controller.cc
+index b48c045..bacb778 100644
+--- a/chrome/browser/extensions/browser_extension_window_controller.cc
++++ b/chrome/browser/extensions/browser_extension_window_controller.cc
+@@ -32,6 +32,10 @@
+ #include "ui/base/page_transition_types.h"
+ #include "ui/base/window_open_disposition.h"
+ 
++#if BUILDFLAG(ENABLE_CEF)
++#include "cef/libcef/browser/chrome/browser_delegate.h"
++#endif
++
+ // TODO(http://crbug.com/453008083): Stop including
+ // "android/chrome_feature_list.h".
+ #if BUILDFLAG(IS_ANDROID)
+@@ -137,6 +141,16 @@ int BrowserExtensionWindowController::GetWindowId() const {
+ }
+ 
+ std::string BrowserExtensionWindowController::GetWindowTypeText() const {
++#if BUILDFLAG(ENABLE_CEF)
++  // Cra: a page in a CefBrowserView is a popup-type Browser (CEF's way of
++  // dropping the tab strip), but to extensions it is the user's normal browser
++  // window, as in Chrome and Arc. Reporting "popup" made password managers
++  // treat every tab as a sign-in popup opened from the previous one.
++  if (window_type_ == api::tabs::WindowType::kPopup &&
++      browser_->cef_delegate() && browser_->cef_delegate()->IsViewsHosted()) {
++    return api::tabs::ToString(api::tabs::WindowType::kNormal);
++  }
++#endif
+   return api::tabs::ToString(window_type_);
+ }
+ 

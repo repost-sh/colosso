@@ -233,3 +233,87 @@ fn a_page_icon_travels_as_its_address_then_its_png() {
         Some(icon)
     );
 }
+
+#[test]
+fn extensions_have_stable_wire_names() {
+    use serde_json::json;
+    let act = AppRequest::ExtensionAct {
+        pane: 3,
+        extension: "abc".into(),
+        at: [100., 640.5],
+    };
+    assert_eq!(
+        serde_json::to_value(act).unwrap(),
+        json!({ "type": "extensionAct", "pane": 3, "extension": "abc", "at": [100.0, 640.5] })
+    );
+    let change = |change| {
+        serde_json::to_value(AppRequest::ChangeExtension {
+            profile: "p".into(),
+            extension: "abc".into(),
+            change,
+        })
+        .unwrap()
+    };
+    assert_eq!(
+        change(ExtensionChange::Pinned { on: true }),
+        json!({ "type": "changeExtension", "profile": "p", "extension": "abc",
+                "change": { "change": "pinned", "on": true } })
+    );
+    assert_eq!(change(ExtensionChange::Remove)["change"], json!({ "change": "remove" }));
+    assert_eq!(
+        change(ExtensionChange::Enabled { on: false })["change"],
+        json!({ "change": "enabled", "on": false })
+    );
+    assert_eq!(
+        serde_json::to_value(AppRequest::Active { pane: 3 }).unwrap(),
+        json!({ "type": "active", "pane": 3 })
+    );
+
+    // What an extension leaves out is empty, not an error.
+    let listed: HostEvent = serde_json::from_value(json!({
+        "type": "extensions", "profile": "p",
+        "extensions": [{ "id": "abc", "name": "Block", "version": "1.2", "enabled": true,
+                         "removable": true, "pinned": false, "source": "store" }],
+    }))
+    .unwrap();
+    let HostEvent::Extensions { profile, extensions } = listed else {
+        panic!("not a list of extensions");
+    };
+    assert_eq!(profile, "p");
+    assert_eq!(extensions[0].source, ExtensionSource::Store);
+    assert!(extensions[0].icon_path.is_empty() && extensions[0].options_url.is_empty());
+
+    let set = HostEvent::ExtensionAction {
+        profile: "p".into(),
+        extension: "abc".into(),
+        pane: None,
+        action: ExtensionAction {
+            badge_text: "12".into(),
+            badge_color: "#FF0000FF".into(),
+            enabled: true,
+            ..ExtensionAction::default()
+        },
+    };
+    let wire = serde_json::to_value(&set).unwrap();
+    assert_eq!(wire["type"], "extensionAction");
+    assert_eq!(wire["pane"], json!(null));
+    assert_eq!(wire["action"]["badgeText"], "12");
+    assert_eq!(wire["action"]["badgeColor"], "#FF0000FF");
+    assert_eq!(serde_json::from_value::<HostEvent>(wire).unwrap(), set);
+
+    let opened = HostEvent::TabOpened {
+        pane: (1 << 40) + 1,
+        opener: 3,
+        url: "chrome-extension://abc/options.html".into(),
+        active: true,
+    };
+    assert_eq!(
+        serde_json::to_value(opened).unwrap(),
+        json!({ "type": "tabOpened", "pane": 1_099_511_627_777_u64, "opener": 3,
+                "url": "chrome-extension://abc/options.html", "active": true })
+    );
+    assert_eq!(
+        serde_json::to_value(HostEvent::TabActivated { pane: 3 }).unwrap(),
+        json!({ "type": "tabActivated", "pane": 3 })
+    );
+}

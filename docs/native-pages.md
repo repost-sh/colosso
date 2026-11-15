@@ -128,8 +128,9 @@ What the spike showed (`.superpowers/native/probe/`):
 - An extension sees the page: `chrome.tabs.query({})` returns it with its address, title and
   size, and `sender.tab` is set (`10-ext-crop.png`). Off screen both are empty
   (`.superpowers/research/run/01-basics.out`). Each page is its own window of type `popup`, so
-  `tabs.query({active: true, currentWindow: true})` from the service worker is empty; making
-  the pages one window's tabs is the extension work's, with Cra's patches.
+  `tabs.query({active: true, currentWindow: true})` from the service worker is empty. Since:
+  on the framework `script/cef` builds, a page is a `normal` window whose tab is the current
+  one while the person is on it (`docs/extensions.md` 3).
 - No CEF patch was needed for any of this. `[proven]` for this scope only.
 
 Not known:
@@ -150,8 +151,9 @@ bar and all, over Koyo. Koyo brings its own tabs back, so before CEF starts each
 `Sessions` folder goes and the profile is marked as having left cleanly, and Chrome is started
 with `--no-startup-window --disable-session-crashed-bubble --hide-crash-restore-bubble`
 (`embedded.rs`, `app.rs`). After that a killed Koyo came back with no Chrome window. A browser Chrome
-still makes on its own (an extension's window, later) gets a client that closes it
-(`default_client`); what should become of such windows is the extension work's.
+still makes on its own is an extension's doing, and gets a client of its own
+(`default_client`, `native/strays.rs`): a window an extension asked for stays Chrome's
+window, and a tabbed window's page becomes a tab of Koyo's (`docs/extensions.md` 3).
 
 Chromium also brings the app forward when it shows one of its windows, and every page's holder
 is one: the spike was the active app after its first native page without anyone activating it,
@@ -639,5 +641,5 @@ Open:
    (file watching, inlay hints): different ones each run, each passing alone. The browser
    host's smoke test of a trackpad pinch times out now and then within the suite, and
    passes alone, six times of six.
-5. **The own CEF build** (`fix-video-playback`): not needed for the page; the extension UI
-   will need Cra's patches, and so a patch step.
+5. **The own CEF build** (`script/cef`): not needed for the page. Extensions' icons, popups
+   and installs need it, with Koyo's patches (`docs/extensions.md` 2.2).

@@ -14,20 +14,9 @@ fn context(profile: &str) -> Option<RequestContext> {
     if let Some(context) = with(|host| host.contexts.get(profile).cloned()).flatten() {
         return Some(context);
     }
-    let name: String = profile
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '-' {
-                c.to_ascii_lowercase()
-            } else {
-                '-'
-            }
-        })
-        .take(64)
-        .collect();
     let (root, generation) = with(|host| (host.profiles.clone(), host.generation))?;
     // Chromium profiles must sit directly in the root cache folder.
-    let dir = root.join(super::profiles::folder(if name.is_empty() { "default" } else { &name }, generation));
+    let dir = root.join(super::profiles::folder_of(profile, generation));
     let settings = RequestContextSettings {
         cache_path: dir.to_string_lossy().as_ref().into(),
         persist_session_cookies: 1,
@@ -36,6 +25,7 @@ fn context(profile: &str) -> Option<RequestContext> {
     let mut ready = ContextReady::new(profile.to_owned());
     let context = cef::request_context_create_context(Some(&settings), Some(&mut ready))?;
     with(|host| host.contexts.insert(profile.into(), context.clone()));
+    crate::extensions::profile_opened();
     Some(context)
 }
 
@@ -84,6 +74,22 @@ pub(super) fn open(pane: PaneId, url: &str, viewport: Viewport, profile: &str) {
         return;
     };
     crate::native::create(pane, url, viewport, Some((profile, context)));
+}
+
+/// Where the numbers of the panes the host makes itself begin: far above the app's own, which
+/// count up from one.
+const ADOPTED: PaneId = 1 << 40;
+
+/// A pane for a page an extension opens from `opener`'s (`native::adopt`): its number, which
+/// the host gives it. None while shutting down, or with no such opener.
+pub(crate) fn adopt(opener: PaneId, url: &str) -> Option<PaneId> {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    if with(|host| host.shutting_down || !host.panes.contains_key(&opener)) != Some(false) {
+        return None;
+    }
+    let pane = ADOPTED + NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    with(|host| host.panes.insert(pane, Pane::new(url)));
+    Some(pane)
 }
 
 /// The size of a page no pane draws: one out of sight, as an agent sizes it. Shown, a page is
@@ -180,6 +186,10 @@ pub(crate) fn browser_created(pane: PaneId, browser: &Browser) {
     for request in waiting {
         handle(request);
     }
+    // A page, not its developer tools, may be the one the person is on.
+    if with_pane(pane, |p| p.inspector.is_none()) == Some(true) {
+        crate::extensions::browser_created(pane);
+    }
 }
 
 /// The pane's browser is gone. A page's `DevTools` close with it, and each
@@ -189,6 +199,7 @@ pub(crate) fn browser_closed(pane: PaneId) {
     crate::dialogs::pane_closed(pane);
     crate::menus::pane_closed(pane);
     crate::passkeys::pane_gone(pane);
+    crate::extensions::pane_closed(pane);
     let (done, devtools, calls) = with(|host| {
         let mut closed = host.panes.remove(&pane);
         let mut calls: Vec<u64> = closed

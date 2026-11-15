@@ -22,6 +22,7 @@ pub(crate) mod control;
 mod dialog;
 mod dock;
 mod engine;
+mod extensions;
 mod favicon;
 mod find;
 mod history;

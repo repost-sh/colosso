@@ -112,12 +112,19 @@ pub(super) fn cursor(window: &NSWindow) -> String {
 }
 
 /// Has GPUI lay out and paint every window of the app that nothing shows, which it wouldn't
-/// by itself: on a desktop that isn't the one shown, the app goes on as if it were seen.
+/// by itself: on a desktop that isn't the one shown, the app goes on as if it were seen, its
+/// menus and popovers too.
 pub(super) fn draw_unseen() {
     let Some(main) = MainThreadMarker::new() else {
         return;
     };
     for window in &NSApplication::sharedApplication(main).windows() {
+        // A menu or a popover hides while Koyo isn't the app in front, which on such a
+        // desktop it never is: it stays, so it can be seen and pressed there.
+        if window.hidesOnDeactivate() {
+            window.setHidesOnDeactivate(false);
+            window.orderFrontRegardless();
+        }
         // SAFETY: NSWindow's own.
         let occlusion: usize = unsafe { msg_send![&*window, occlusionState] };
         if occlusion & 2 != 0 || !window.isVisible() {

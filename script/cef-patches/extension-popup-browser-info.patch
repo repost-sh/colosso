@@ -1,0 +1,28 @@
+diff --git a/cef/libcef/browser/browser_info_manager.cc b/cef/libcef/browser/browser_info_manager.cc
+index 8b077f0..ff7fc60 100644
+--- a/cef/libcef/browser/browser_info_manager.cc
++++ b/cef/libcef/browser/browser_info_manager.cc
+@@ -26,6 +26,8 @@
+ #include "content/public/browser/web_ui.h"
+ #include "content/public/browser/web_ui_controller.h"
+ #include "content/public/common/url_constants.h"
++#include "extensions/browser/view_type_utils.h"
++#include "extensions/common/mojom/view_type.mojom.h"
+ 
+ namespace {
+ 
+@@ -650,6 +652,14 @@ bool CefBrowserInfoManager::IsExcludedFrameHost(content::RenderFrameHost* rfh) {
+     return true;
+   }
+ 
++  // Cra: a Chrome-style extension popup (ExtensionPopup's ExtensionViewHost) has
++  // no CefBrowser, so its renderer otherwise waits out the 2 s new browser info
++  // timeout before the popup page loads.
++  if (extensions::GetViewType(web_contents) ==
++      extensions::mojom::ViewType::kExtensionPopup) {
++    return true;
++  }
++
+   return false;
+ }
+ 

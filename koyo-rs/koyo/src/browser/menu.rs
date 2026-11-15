@@ -347,6 +347,11 @@ pub fn handle_actions(root: Div) -> Div {
     .on_action(|pick: &super::history::HistoryPick, _, cx| {
         with_view(pick.pane, cx, |view, cx| view.go_to_entry(pick.entry, cx));
     })
+    .on_action(|pick: &super::extensions::menu::ExtensionPick, _, cx| {
+        with_view(pick.pane, cx, |view, cx| {
+            view.extension_picked(&pick.extension, pick.pick, cx);
+        });
+    })
 }
 
 pub(super) fn with_view(

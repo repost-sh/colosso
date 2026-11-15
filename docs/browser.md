@@ -505,6 +505,10 @@ packaged from this checkout (CEF 156.0.14, Chromium 156.0.8078.48):
   wrapper and the `cef` crate's bindings stay what they were; only the framework differs.
 - The same switch compiles in HEVC through the Mac's own decoder and Chromium's HLS demuxer
   (`media/media_options.gni` of Chromium 156), and on the build both play (11.5).
+- Since 2026-11-15 the same build carries Koyo's patches for extensions
+  (`script/cef-patches/`, `docs/extensions.md` 10): `script/cef` runs CEF's own patching
+  once, applies Koyo's over it, and builds; the framework lists the patches it has in its
+  `Resources/koyo-patches.txt`.
 
 ### 11.3 What it costs
 
@@ -518,6 +522,19 @@ packaged from this checkout (CEF 156.0.14, Chromium 156.0.8078.48):
   a worktree: `script/cef --dir ~/.cache/cef-build`. Another worktree gets the framework by
   running the same there, which builds nothing again and takes twenty seconds
   **[checked 2026-11-14]**.
+- **The patches, 2026-11-15.** The build with them was made in this checkout's own folder
+  (`.superpowers/cef-build.noindex`), a copy-on-write copy of `~/.cache/cef-build`, which
+  was left as it is: unpatched. The copy took 7 minutes and next to no room; a build folder
+  moved has its paths in the build tool's state (`.siso_fs_state`), and with those written
+  for the new place and the GN project made again, the copy counted 48 steps as stale
+  rather than all 76,000. With the patches it built 21,000 steps (the DevTools protocol's
+  definition reaches far, and the copy's own tools were linked again) in about an hour of
+  building, in pieces and beside other builds, the framework's link four minutes of it. Run again on the
+  built folder, `script/cef` finds the patches applied, builds nothing and takes 6 seconds
+  **[checked]**. A run from nothing, fetching and all, wasn't made with the patch step
+  **[not run]**: it's the order Cra's build has, CEF's hook then the patches then the
+  build. `script/cef --dir ~/.cache/cef-build` would patch and build the shared folder the
+  same way; that wasn't done, as other checkouts build from it.
 - The framework an app carries is its worktree's: bundled where `script/cef` hasn't run, it
   carries CEF's own, and installing that app takes the codecs away again. So in a worktree
   whose app is to be installed, `script/cef` runs before `script/bundle`.
@@ -614,8 +631,12 @@ showing something else, and Koyo no longer being the app in front. Top to bottom
 - **Foot:** under a hairline, the connection: "Secure" with a lock for `https`, "Not
   Secure" with an open one for anything else.
 
-What Arc and Zen have here that Koyo doesn't, so it isn't shown `[not built]`: extensions
-(the row of their icons and the "+"), boosts, reader mode, bookmarks; a certificate's
+- **Extensions:** between the actions and the settings, the row of the profile's
+  extensions' icons and the "+" after them, where the engine runs extensions with icons
+  (`docs/extensions.md` 5).
+
+What Arc and Zen have here that Koyo doesn't, so it isn't shown `[not built]`: boosts,
+reader mode, bookmarks; a certificate's
 details behind "Secure"; the "…" at the foot's right, a menu of the page's other commands. "Developer Mode" and
 "Automatic Picture-in-Picture", rows of Arc's own, have no counterpart: the developer tools
 are an action here.

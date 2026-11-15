@@ -82,8 +82,14 @@ pub fn finish(grace: Duration) {
     }
     let began = Instant::now();
     let deadline = began + grace;
+    // Chromium doesn't stop while a client is on its `DevTools` pipe, and the windows it
+    // made on its own (an extension's) close as the pages do.
+    crate::extensions::stopping();
+    crate::native::close_strays();
     // Every page's browser gone, and every window CEF made for one: it must outlive neither.
-    let closed = || crate::host::all_closed() && crate::native::windows() == 0;
+    let closed = || {
+        crate::host::all_closed() && crate::native::windows() == 0 && crate::native::strays() == 0
+    };
     // The main thread has nothing else to do as the app quits: CEF's work runs from here, a
     // millisecond's wait between turns (on a channel nothing sends on).
     let (_never, wait) = std::sync::mpsc::channel::<()>();

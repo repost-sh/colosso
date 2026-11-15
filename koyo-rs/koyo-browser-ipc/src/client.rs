@@ -138,9 +138,23 @@ impl Connection {
     /// cannot be started, does not connect in time, or speaks another
     /// protocol.
     pub fn start(launch: &Launch, sink: impl Sink) -> io::Result<Self> {
+        Self::start_with(launch, &[], sink)
+    }
+
+    /// As [`Connection::start`], with `environment` added to the host's own: a test's
+    /// Chromium switches (`KOYO_NATIVE_SWITCHES`), which a debug build of the host takes.
+    ///
+    /// # Errors
+    /// As [`Connection::start`].
+    pub fn start_with(
+        launch: &Launch,
+        environment: &[(&str, &str)],
+        sink: impl Sink,
+    ) -> io::Result<Self> {
         let (mut stream, host_end, token) = Self::begin(launch)?;
         let mut command = Command::new(&launch.executable);
         command
+            .envs(environment.iter().copied())
             .env(ENV_SOCKET_FD, inherit::HOST_FD.to_string())
             .env(ENV_TOKEN, &token)
             .env(ENV_PROFILE_ROOT, &launch.profiles);

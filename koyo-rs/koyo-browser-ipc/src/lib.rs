@@ -24,6 +24,7 @@ pub mod profiles;
 mod devtools;
 mod dialogs;
 mod events;
+mod extensions;
 mod input;
 mod passkeys;
 mod requests;
@@ -31,6 +32,7 @@ mod requests;
 pub use devtools::{DevToolsAsk, DevToolsDock};
 pub use dialogs::{Answer, Dialog, FileMode, MenuEntry, MenuTarget, Permission};
 pub use events::{Cursor, HostEvent, PageState, SiteSetting};
+pub use extensions::{Extension, ExtensionAction, ExtensionChange, ExtensionSource};
 pub use input::{Point, Viewport};
 pub use passkeys::{
     Assertion, AuthenticatorSelection, Bytes, Created, Creation, CredentialDescriptor,
@@ -62,7 +64,13 @@ pub use requests::{AppRequest, Edit, Go, ViewAction};
 /// draws (`docs/native-pages.md`).
 /// 14: no `Focus`: the app's keyboard moves a page's first responder itself, in its own
 /// process (`docs/keyboard.md`).
-pub const PROTOCOL: u32 = 14;
+/// 15: browser extensions (`docs/extensions.md`): a profile's extensions
+/// ([`HostEvent::Extensions`]) and their toolbar actions ([`HostEvent::ExtensionAction`]), an
+/// action run ([`AppRequest::ExtensionAct`]), an extension turned off, pinned or removed
+/// ([`AppRequest::ChangeExtension`]), the page the person is on ([`AppRequest::Active`]), and
+/// the tabs extensions open and bring forward ([`HostEvent::TabOpened`],
+/// [`HostEvent::TabActivated`]).
+pub const PROTOCOL: u32 = 15;
 
 /// Frames larger than this are refused, so a confused peer cannot make the
 /// other side allocate without bound.

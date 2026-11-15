@@ -34,6 +34,38 @@ impl Browsers {
         }
     }
 
+    /// What the host says of extensions (`docs/extensions.md`): a profile's, what one set
+    /// its toolbar action to, and the tabs they open and ask for in front.
+    fn extension_event(&mut self, event: HostEvent, cx: &mut Context<Self>) {
+        match event {
+            HostEvent::Extensions { profile, extensions } => {
+                self.extensions.listed(profile, extensions);
+                // Their icons are on every page of the profile, and in a popover's window.
+                cx.refresh_windows();
+            }
+            HostEvent::ExtensionAction { profile, extension, pane, action } => {
+                self.extensions.acted(profile, extension, pane, action);
+                match pane {
+                    Some(pane) => drop(self.update_view(pane, cx, |_, cx| cx.notify())),
+                    None => cx.refresh_windows(),
+                }
+            }
+            HostEvent::TabOpened { pane, opener, url, active } => {
+                let heard = self.update_view(opener, cx, |_, cx| {
+                    cx.emit(BrowserEvent::Adopted { pane, url, active });
+                });
+                // With no tab to open beside, the page the host made has no pane: it closes.
+                if heard.is_none() {
+                    self.send(AppRequest::Close { pane });
+                }
+            }
+            HostEvent::TabActivated { pane } => {
+                self.update_view(pane, cx, |_, cx| cx.emit(BrowserEvent::Activate));
+            }
+            _ => {}
+        }
+    }
+
     pub(super) fn receive(&mut self, message: Incoming, cx: &mut Context<Self>) {
         match message {
             Incoming::Event(event) => self.event(event, cx),
@@ -85,7 +117,14 @@ impl Browsers {
             HostEvent::Typed { pane } => {
                 self.update_view(pane, cx, BrowserView::typed);
             }
-            HostEvent::Closed { pane } => self.page_closed(pane, cx),
+            HostEvent::Closed { pane } => {
+                self.extensions.pane_closed(pane);
+                self.page_closed(pane, cx);
+            }
+            event @ (HostEvent::Extensions { .. }
+            | HostEvent::ExtensionAction { .. }
+            | HostEvent::TabOpened { .. }
+            | HostEvent::TabActivated { .. }) => self.extension_event(event, cx),
             HostEvent::OpenUrl { pane, url } => {
                 self.update_view(pane, cx, |_, cx| cx.emit(BrowserEvent::OpenTab(url)));
             }

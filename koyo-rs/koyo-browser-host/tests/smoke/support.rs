@@ -39,8 +39,14 @@ pub struct Session {
 
 impl Session {
     pub fn start(launch: &Launch) -> Self {
+        Self::start_with(launch, &[])
+    }
+
+    /// A host with `environment` added to its own, as Chromium switches to try are.
+    pub fn start_with(launch: &Launch, environment: &[(&str, &str)]) -> Self {
         let (sink, incoming) = std::sync::mpsc::channel();
-        let host = Connection::start(launch, move |message| sink.send(message).err().map(|e| e.0))
+        let sink = move |message| sink.send(message).err().map(|e| e.0);
+        let host = Connection::start_with(launch, environment, sink)
             .expect("the host starts and says hello");
         Self { host, incoming }
     }

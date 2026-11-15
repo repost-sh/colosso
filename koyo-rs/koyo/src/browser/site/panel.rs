@@ -6,12 +6,14 @@ use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyWindowHandle, App, Context, Div, ElementId, FontWeight, Hsla, InteractiveElement as _,
-    IntoElement, ParentElement as _, Pixels, Render, SharedString, Size, Stateful,
-    StatefulInteractiveElement as _, Styled as _, Subscription, WeakEntity, Window, div, px, size,
+    IntoElement, MouseButton, ParentElement as _, Pixels, Render, SharedString, Size, Stateful,
+    StatefulInteractiveElement as _, Styled as _, Subscription, WeakEntity, Window, div, point,
+    px, size,
 };
 use koyo_browser_ipc::{Permission, SiteSetting};
 
 use super::share;
+use crate::browser::extensions::{self, Shown};
 use crate::browser::view::BrowserView;
 use crate::menu::{self, MenuBody};
 use crate::shell::icon;
@@ -28,6 +30,10 @@ const ROUND: f32 = 34.;
 const FOOT: f32 = 28.;
 /// Between its parts.
 const APART: f32 = 12.;
+/// An extension's button in the row of them, the gap between two, and how many fit a line.
+const EXTENSION: f32 = 26.;
+const EXTENSION_GAP: f32 = 4.;
+const PER_LINE: usize = 7;
 
 /// The popover's colours. It lies over the sidebar and the page both, so it's its own glass,
 /// dark or light with the theme and thicker than a menu's: what's behind tints it, as in Arc,
@@ -179,6 +185,86 @@ impl SitePanel {
         }))
     }
 
+    /// Runs `extension`'s action on the page, as a press on its icon in Chrome does, and
+    /// closes the popover: a popup it opens hangs from the button the popover opened from.
+    fn run(&self, extension: &str, cx: &mut App) {
+        let Some(page) = self.page.upgrade() else {
+            return;
+        };
+        let at = self.at.drawn();
+        let _ = self.parent.update(cx, |_, window, cx| {
+            page.update(cx, |page, cx| page.extension_act(extension, at, window, cx));
+        });
+        self.at.close(cx);
+    }
+
+    /// Closes the popover and opens `shown`'s menu in the page's window, under the button
+    /// the popover opened from.
+    fn menu(&self, shown: &Shown, cx: &mut App) {
+        let Some(page) = self.page.upgrade() else {
+            return;
+        };
+        let at = self.at.drawn();
+        self.at.close(cx);
+        let _ = self.parent.update(cx, |_, window, cx| {
+            let under = point(at.left(), at.bottom());
+            page.update(cx, |page, cx| page.extension_menu(shown, under, window, cx));
+        });
+    }
+
+    /// A button of the extensions' row.
+    fn extension_button(id: (&'static str, usize), t: Tones) -> Stateful<Div> {
+        div()
+            .id(id)
+            .size(px(EXTENSION))
+            .flex_shrink_0()
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded(px(8.))
+            .cursor_pointer()
+            .hover(move |button| button.bg(t.hover))
+    }
+
+    /// The row of the profile's extensions (`docs/extensions.md` 5): an icon each, pinned
+    /// ones first, then "+", which goes to the Chrome Web Store. None where the engine runs
+    /// no extensions with icons: off-screen pages, or CEF's own framework.
+    fn extensions(&self, t: Tones, cx: &mut Context<Self>) -> Option<Div> {
+        let page = self.page.upgrade()?;
+        page.read(cx).extension_count(cx)?;
+        let shown = page.update(cx, |page, cx| page.extensions(false, cx));
+        let icons = shown.into_iter().enumerate().map(|(index, shown)| {
+            let says = shown.title.clone();
+            let (pressed, asked) = (shown.id.clone(), shown.clone());
+            Self::extension_button(("site-extension", index), t)
+                .debug_selector(move || format!("site-extension-{index}"))
+                .tooltip(move |window, cx| Tooltip::new(says.clone()).build(window, cx))
+                .child(extensions::icon::face(&shown, t.text, t.off))
+                .on_click(cx.listener(move |this, _, _, cx| this.run(&pressed, cx)))
+                .on_mouse_down(
+                    MouseButton::Right,
+                    cx.listener(move |this, _, _, cx| this.menu(&asked, cx)),
+                )
+        });
+        let add = Self::extension_button(("site-extension-add", 0), t)
+            .debug_selector(|| "site-extension-add".to_owned())
+            .tooltip(|window, cx| Tooltip::new("Add extensions").build(window, cx))
+            .child(icon(IconName::Plus, 15.).text_color(t.muted))
+            .on_click(cx.listener(|this, _, _, cx| {
+                if let Some(page) = this.page.upgrade() {
+                    page.update(cx, BrowserView::open_extension_store);
+                }
+                this.at.close(cx);
+            }));
+        let row = div()
+            .debug_selector(|| "site-extensions".to_owned())
+            .mt(px(APART))
+            .flex()
+            .flex_wrap()
+            .gap(px(EXTENSION_GAP));
+        Some(row.children(icons).child(add))
+    }
+
     fn setting(&self, setting: SiteSetting, t: Tones) -> Stateful<Div> {
         let SiteSetting { permission, allowed } = setting;
         let (mark, name) = shown(permission);
@@ -273,14 +359,19 @@ pub(super) fn shown(permission: Permission) -> (IconName, &'static str) {
     }
 }
 
-/// How tall the popover's content is with `settings` rows.
-fn height(settings: usize) -> f32 {
+/// How tall the popover's content is with `settings` rows and, where extensions have their
+/// row, the icons of `extensions` of them and the "+" after.
+fn height(settings: usize, extensions: Option<usize>) -> f32 {
     let listed = if settings == 0 {
         0.
     } else {
         APART + TITLE + 4. + ROW * settings as f32
     };
-    PAD + ACTION + listed + 8. + 1. + 8. + FOOT + PAD
+    let row = extensions.map_or(0., |icons| {
+        let lines = (icons + 1).div_ceil(PER_LINE) as f32;
+        APART + lines * EXTENSION + (lines - 1.) * EXTENSION_GAP
+    });
+    PAD + ACTION + row + listed + 8. + 1. + 8. + FOOT + PAD
 }
 
 impl MenuBody for SitePanel {
@@ -289,7 +380,8 @@ impl MenuBody for SitePanel {
     }
 
     fn extent(&self, _: &Window, cx: &App) -> Size<Pixels> {
-        size(px(WIDTH), px(height(self.settings(cx).len())))
+        let extensions = (self.page.upgrade()).and_then(|page| page.read(cx).extension_count(cx));
+        size(px(WIDTH), px(height(self.settings(cx).len(), extensions)))
     }
 
     fn backdrop(&self, cx: &App) -> Option<Hsla> {
@@ -326,6 +418,7 @@ impl Render for SitePanel {
             .flex_col()
             .text_color(t.text)
             .child(self.actions(t, cx))
+            .children(self.extensions(t, cx))
             .children(listed)
             .child(self.foot(t, cx))
     }
@@ -337,10 +430,22 @@ mod tests {
 
     #[test]
     fn the_popover_is_as_tall_as_what_it_lists() {
-        let bare = height(0);
-        assert!((height(2) - bare - (APART + TITLE + 4. + 2. * ROW)).abs() < f32::EPSILON);
+        let bare = height(0, None);
+        assert!((height(2, None) - bare - (APART + TITLE + 4. + 2. * ROW)).abs() < f32::EPSILON);
         // The top row and the foot are there with nothing listed.
         assert!(bare > ACTION + FOOT);
+    }
+
+    #[test]
+    fn the_extensions_row_takes_a_line_for_every_seven_buttons() {
+        let bare = height(0, None);
+        let line = |lines: f32| APART + lines * EXTENSION + (lines - 1.) * EXTENSION_GAP;
+        // With no extension there's the "+" alone; six and it fill a line, seven start another.
+        assert!((height(0, Some(0)) - bare - line(1.)).abs() < f32::EPSILON);
+        assert!((height(0, Some(6)) - bare - line(1.)).abs() < f32::EPSILON);
+        assert!((height(0, Some(7)) - bare - line(2.)).abs() < f32::EPSILON);
+        // Seven buttons and the gaps between fit the popover's width.
+        assert!(PER_LINE as f32 * EXTENSION + (PER_LINE - 1) as f32 * EXTENSION_GAP <= WIDTH - 2. * PAD);
     }
 
     #[test]

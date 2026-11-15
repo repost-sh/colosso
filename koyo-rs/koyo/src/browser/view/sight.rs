@@ -95,6 +95,10 @@ impl BrowserView {
         if self.visible.replace(visible) != Some(visible) {
             let pane = self.pane;
             self.send_to_page(AppRequest::Visible { pane, visible }, cx);
+            // A page the person now sees is the one they're on, until another has the keys.
+            if visible && self.drawn() {
+                self.tell_active(cx);
+            }
         }
     }
 }

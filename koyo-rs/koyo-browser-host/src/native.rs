@@ -29,15 +29,19 @@ use objc2::runtime::AnyObject;
 use objc2_app_kit::{NSAutoresizingMaskOptions, NSView, NSWindow};
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 
+mod adopt;
 mod holder;
 mod parts;
 mod report;
+mod strays;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use adopt::{adopt, holder_of};
+use adopt::{adopted, adopting};
 use holder::{closing, hold};
-pub(crate) use parts::stray_client;
 use parts::{HolderDelegate, PageViewDelegate};
+pub(crate) use strays::{alpha, client as stray_client, close_all as close_strays, count as strays, set_alpha};
 pub use report::describe;
 
 /// Chromium's view that hosts a window's compositor, the page's view over it, and the view in
@@ -153,7 +157,10 @@ fn make(pane: PaneId, url: &str, mut context: Option<RequestContext>) {
     }
     let devtools = context.is_none();
     let mut client = crate::pane::client(pane, devtools);
-    let mut delegate = PageViewDelegate::new(pane);
+    // A page carries Chrome's toolbar, hidden, where extensions have their icons: a popup
+    // anchors to its extensions button, and there's no action to run without one
+    // (`docs/extensions.md` 2.3). The developer tools need none.
+    let mut delegate = PageViewDelegate::new(pane, !devtools && crate::extensions::on());
     let settings = BrowserSettings {
         background_color: 0xFFFF_FFFF,
         ..BrowserSettings::default()
@@ -181,6 +188,7 @@ fn window_created(pane: PaneId, window: &Window, view: &BrowserView) {
     WINDOWS.fetch_add(1, Ordering::AcqRel);
     let mut as_view = View::from(view);
     window.add_child_view(Some(&mut as_view));
+    parts::hide_toolbar(view);
     // SAFETY: on macOS a CEF window's handle is its content `NSView`, which lives with it.
     let content: Option<&NSView> = unsafe { window.window_handle().cast::<NSView>().as_ref() };
     if let Some(holder) = content.and_then(NSView::window) {
@@ -434,6 +442,8 @@ pub(crate) fn closed(pane: PaneId) {
 pub(crate) fn clear() {
     PAGES.with(|pages| pages.borrow_mut().clear());
     PROFILES.with(|profiles| profiles.borrow_mut().clear());
+    adopt::clear();
+    strays::clear();
 }
 
 /// The class `object` says it is. Not its `isa`, which for an object under key-value observing

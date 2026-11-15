@@ -23,13 +23,14 @@ use super::profiles::By;
 use crate::history::How;
 use crate::keyboard::{Cause, Intent, Part, Surface};
 
+mod about;
+mod extensions;
 pub(super) mod lifecycle;
 mod navigation;
 mod profile;
 pub(super) mod sight;
 use super::menu::MenuRequest;
 use sight::Shown;
-use super::toolbar;
 pub use navigation::{Controls, Visit};
 
 pub enum BrowserEvent {
@@ -43,6 +44,16 @@ pub enum BrowserEvent {
     Undock(Entity<BrowserView>),
     /// The host closed this browser: `DevTools` whose page went away.
     Closed,
+    /// An extension opened a tab from this page (`chrome.tabs.create`): its page is made
+    /// already, as the host's pane `pane`, and wants a tab beside this one, in front when
+    /// `active` (`docs/extensions.md` 3).
+    Adopted {
+        pane: PaneId,
+        url: String,
+        active: bool,
+    },
+    /// An extension asked for this page's tab in front (`chrome.tabs.update`).
+    Activate,
     /// The person searched the web for this from the address.
     Searched(String),
     /// A page loaded, as the history keeps it (`navigation.rs`).
@@ -185,7 +196,7 @@ impl BrowserView {
             project: project.to_owned(),
             by: By::Person,
         };
-        Self::with_kind(url, kind, window, cx)
+        Self::with_kind(None, url, kind, window, cx)
     }
 
     /// The `DevTools` of `inspected`'s page, as a pane of their own.
@@ -203,10 +214,18 @@ impl BrowserView {
             inspect,
             _inspected: changes,
         };
-        Self::with_kind("devtools:".into(), kind, window, cx)
+        Self::with_kind(None, "devtools:".into(), kind, window, cx)
     }
 
-    fn with_kind(url: String, kind: Kind, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    /// A view of `kind` at `url`: `adopted` is its number in the host when the host gave it
+    /// one, a page it made itself; else the app gives it the next of its own.
+    fn with_kind(
+        adopted: Option<PaneId>,
+        url: String,
+        kind: Kind,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let browsers = Browsers::global(cx);
         let address =
             cx.new(|cx| InputState::new(window, cx).placeholder("Search or enter an address"));
@@ -215,7 +234,7 @@ impl BrowserView {
         }
         // Each view is a page of its own in the host, even when it reuses a closed pane's
         // id while the host is still closing that page.
-        let pane = NEXT_PANE.fetch_add(1, Ordering::Relaxed);
+        let pane = adopted.unwrap_or_else(|| NEXT_PANE.fetch_add(1, Ordering::Relaxed));
         let focus = cx.focus_handle();
         let subscriptions = vec![
             cx.observe_window_visibility(window, |this, visibility, _, cx| {
@@ -299,45 +318,6 @@ impl BrowserView {
             marks: super::pointer::Marks::default(),
             passkey: super::passkeys::Passkey::default(),
             _subscriptions: subscriptions,
-        }
-    }
-
-    /// What the strip calls the pane.
-    pub fn title(&self) -> String {
-        match &self.kind {
-            Kind::Page { .. } => toolbar::tab_title(&self.page.title, &self.page.url),
-            Kind::DevTools { .. } => "DevTools".into(),
-        }
-    }
-
-    /// The address the page shows, or the one it's opening.
-    pub fn address(&self) -> String {
-        if self.page.url.is_empty() {
-            self.target.clone()
-        } else {
-            self.page.url.clone()
-        }
-    }
-
-    /// The page's id in the host, which the keyboard knows it by.
-    pub fn page_id(&self) -> PaneId {
-        self.pane
-    }
-
-    /// The `DevTools` of another pane's page.
-    pub fn is_inspector(&self) -> bool {
-        matches!(self.kind, Kind::DevTools { .. })
-    }
-
-    pub fn is_start_page(&self) -> bool {
-        self.target.is_empty() && self.page.url.is_empty()
-    }
-
-    /// The page `DevTools` inspect.
-    pub fn inspected(&self) -> Option<&Entity<BrowserView>> {
-        match &self.kind {
-            Kind::DevTools { inspected, .. } => Some(inspected),
-            Kind::Page { .. } => None,
         }
     }
 
@@ -442,6 +422,8 @@ impl BrowserView {
     fn focus_moved(&mut self, into: bool, window: &mut Window, cx: &mut Context<Self>) {
         if into {
             crate::keyboard::entered_page(window, self.pane);
+            // The page with the keyboard is the one the person is on, for extensions.
+            self.tell_active(cx);
         } else if let Some(part) = self.part_with_focus(window, cx) {
             crate::keyboard::left_page(window, self.pane, part);
         }

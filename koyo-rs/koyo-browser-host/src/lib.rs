@@ -16,6 +16,7 @@
 mod app;
 mod devtools;
 mod dialogs;
+mod extensions;
 pub mod embedded;
 mod host;
 mod location;
