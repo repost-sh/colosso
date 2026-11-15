@@ -50,13 +50,13 @@ ready() {
     return 1
   fi
   # The private key's record (class 0x10), by its label, and the description of its
-  # partition_id entry: the partitions, comma-separated.
+  # partition_id entry: the partitions, separated by a comma and a space, which goes.
   partitions=$(security dump-keychain -a "$where" | awk -v label="<blob>=\"$NAME\"" '
     /^keychain: / { key = 0; named = 0; next }
     /^class: 0x00000010/ { key = 1 }
     key && index($0, label) { named = 1 }
     key && named && /: partition_id$/ { listed = 1; next }
-    listed && /description: / { sub(/^ *description: /, ""); print; exit }')
+    listed && /description: / { sub(/^ *description: /, ""); print; exit }' | tr -d ' \t')
   case ",$partitions," in
     *,apple:,*) ;;
     *)
