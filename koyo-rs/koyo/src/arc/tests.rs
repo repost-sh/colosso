@@ -183,7 +183,7 @@ fn clear_asks_first_then_closes_every_tab_of_the_worktree(cx: &mut TestAppContex
     cx.run_until_parked();
     assert!(tabs(&shell, cx).is_empty());
     // They can come back, as any tab closed can.
-    let closed = shell.update(cx, |shell, _| shell.workspace.take_closed().is_some());
+    let closed = shell.update(cx, |shell, _| shell.workspace.take_closed(|_| true).is_some());
     assert!(closed);
 }
 

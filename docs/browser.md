@@ -240,7 +240,7 @@ don't make one of their own.
 | `koyo/src/shell/reopen.rs` | `make_shown_editors`, beside ⌘⇧T |
 | `koyo/src/projects.rs` | `show_worktrees`, where restoring runs, in order |
 | `koyo/src/shell.rs` | The shell's observer, where the rule runs, and `workspace_content` |
-| `koyo/src/shell/browser_tabs.rs` | Closing a tab, its unshown pages' addresses kept for ⌘⇧T |
+| `koyo/src/shell/closing.rs` | Closing a tab, its unshown pages' addresses kept for ⌘⇧T |
 | `koyo/src/control/exec/browser/page.rs` | Unshown pages in `browser_list` and the tools' refusal |
 | `koyo/src/browser/view/navigation.rs` | `mark_restored`: a restored page's first load is no visit |
 

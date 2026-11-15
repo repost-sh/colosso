@@ -1,7 +1,8 @@
-//! ⌘⇧T: the tab closed last comes back where it was, its pages opening again at the
-//! addresses they showed, its files on the files they showed, as they are on disk, and the
-//! diffs' pane on the checkout's diffs. And the editor panes the window brought back, which
-//! open what they showed the same way once their tab is shown.
+//! ⌘⇧T: the tab closed last comes back where it was, a worktree's on its checkout and a loose
+//! page among its space's, its pages opening again at the addresses they showed, its files on
+//! the files they showed, as they are on disk, and the diffs' pane on the checkout's diffs.
+//! And the editor panes the window brought back, which open what they showed the same way once
+//! their tab is shown.
 
 use std::path::{Path, PathBuf};
 
@@ -9,19 +10,50 @@ use gpui_kit::{AppContext as _, Context, Entity, Window};
 
 use super::Shell;
 use crate::files::FilePane;
-use crate::model::{Pane, PaneKind, Tab, Unopened};
+use crate::model::{ClosedFrom, Loose, Pane, PaneKind, Spot, Tab, Unopened};
 use crate::navigation::Route;
 
 impl Shell {
-    /// Opens the tab closed last again, on its checkout at its place, and shows it: where
-    /// it went back, as `(project, branch, tab)`, unless no tab was closed.
+    /// Opens the tab closed last again where it was, and shows it: a worktree's tab on its
+    /// checkout at its place, a loose page among its space's at its place, its space shown.
+    /// Where it went back, unless no tab was closed.
     pub(crate) fn reopen_closed_tab(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
+    ) -> Option<Spot> {
+        self.reopen_closed(|_| true, window, cx)
+    }
+
+    /// Opens the worktree's tab closed last again, as `reopen_closed_tab` does, as `(project,
+    /// branch, tab)`: what app control's `tab_reopen` brings back. A loose page closed since is
+    /// the person's, and stays closed for them to bring back.
+    pub(crate) fn reopen_closed_checkout_tab(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
     ) -> Option<(usize, usize, usize)> {
-        let (closed, at) = self.workspace.take_closed()?;
-        let project = self.workspace.projects[at.0].path.clone();
+        let checkout = |from: &ClosedFrom| matches!(from, ClosedFrom::Checkout(_));
+        match self.reopen_closed(checkout, window, cx)? {
+            Spot::Checkout(project, branch, at) => Some((project, branch, at)),
+            Spot::Pinned | Spot::Loose(_) => None,
+        }
+    }
+
+    fn reopen_closed(
+        &mut self,
+        which: impl Fn(&ClosedFrom) -> bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<Spot> {
+        let (closed, back) = self.workspace.take_closed(which)?;
+        let project = match (&closed.from, back) {
+            (ClosedFrom::Loose { project, .. }, _) => project.clone(),
+            (ClosedFrom::Checkout(_), Spot::Checkout(project, ..)) => {
+                self.workspace.projects[project].path.clone()
+            }
+            (ClosedFrom::Checkout(_), Spot::Pinned | Spot::Loose(_)) => return None,
+        };
         let mut tab = closed.tab;
         for pane in tab.panes_mut() {
             if pane.kind == PaneKind::Desktop {
@@ -46,12 +78,27 @@ impl Shell {
             // Titled as it was until the page says otherwise.
             pane.set_view(self.browser_view(address, &project, window, cx));
         }
-        self.workspace.restore_tab(at, tab);
-        self.reopen_files(at, &closed.files, window, cx);
-        self.reopen_changes(at, &closed.changes, window, cx);
+        let back = match back {
+            Spot::Checkout(project, branch, at) => {
+                let at = (project, branch, at);
+                self.workspace.restore_tab(at, tab);
+                self.reopen_files(at, &closed.files, window, cx);
+                self.reopen_changes(at, &closed.changes, window, cx);
+                Spot::Checkout(at.0, at.1, at.2)
+            }
+            // In its space, or the space shown if it's gone since.
+            Spot::Loose(_) | Spot::Pinned => {
+                if let Spot::Loose(space) = back {
+                    self.show_space_known_by(space, cx);
+                }
+                let page = Loose { tab, project };
+                self.workspace.add_loose(page, closed.at, true);
+                Spot::Loose(self.workspace.space_shown())
+            }
+        };
         self.navigate(Route::Workspace, cx);
         self.keys_to_shown_tab(cx);
-        Some(at)
+        Some(back)
     }
 
     /// Opens what the shown tab's editor panes brought back with the window showed

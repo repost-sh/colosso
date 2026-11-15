@@ -7,6 +7,7 @@
 use gpui_kit::{App, Context, Window};
 
 use super::Shell;
+use crate::model::{ClosedFrom, ClosedTab, Loose};
 use crate::navigation::Route;
 use crate::settings::{self, Layout};
 
@@ -34,12 +35,35 @@ impl Shell {
     }
 
     /// Closes the loose page known by `key`, as its ×, a middle click and ⌘W do: it's gone, its
-    /// page and its `DevTools` with it.
+    /// page and its `DevTools` with it, kept to open again where it was with ⌘⇧T, at the
+    /// address it showed, as a worktree's tab closed is.
     pub(crate) fn close_loose(&mut self, key: u64, cx: &mut Context<Self>) {
         self.let_apart_devtools_go(key, cx);
-        if let Some(at) = self.workspace.loose_at(key) {
-            self.workspace.close_loose(at);
-            cx.notify();
+        let Some(at) = self.workspace.loose_at(key) else {
+            return;
+        };
+        let address = self.workspace.pane(key).and_then(|pane| pane.address(cx));
+        let space = self.workspace.space_shown();
+        if let Some(Loose { tab, project }) = self.workspace.close_loose(at) {
+            self.workspace.remember_closed(ClosedTab {
+                from: ClosedFrom::Loose { space, project },
+                at,
+                tab,
+                addresses: address.map(|address| vec![(key, address)]).unwrap_or_default(),
+                files: Vec::new(),
+                changes: Vec::new(),
+                devices: Vec::new(),
+            });
+        }
+        cx.notify();
+    }
+
+    /// Shows the space known by `space`, unless it's the one shown or is gone.
+    pub(super) fn show_space_known_by(&mut self, space: u64, cx: &mut Context<Self>) {
+        let settings = settings::get(cx);
+        let index = settings.spaces.iter().position(|kept| kept.id == space);
+        if let Some(index) = index.filter(|index| *index != settings.space) {
+            self.show_space(index, cx);
         }
     }
 

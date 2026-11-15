@@ -249,7 +249,7 @@ pub(crate) fn close_question(
 pub(crate) fn reopen(cx: &mut App) -> Result<Value, ControlError> {
     try_update_shell(cx, |shell, window, cx| {
         let at = shell
-            .reopen_closed_tab(window, cx)
+            .reopen_closed_checkout_tab(window, cx)
             .ok_or_else(|| ControlError::not_found("No closed tab is left to reopen."))?;
         let pane = (shell.workspace.tab(at))
             .map(|tab| tab.first().id)

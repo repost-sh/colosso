@@ -178,8 +178,8 @@ pane's size. The pages the person opens fill their pane, as before.
 
 Operations whose point is to show something always do: `project_select`,
 `worktree_select`, `tab_select`, `pane_focus`, `chat_open`, `settings_open`,
-`settings_close`, `app_focus`; and `tab_reopen`, which puts back the tab closed last as
-⇧⌘T does. `tab_move` and `pane_detach` change which tab their own checkout shows, never the
+`settings_close`, `app_focus`; and `tab_reopen`, which puts back the worktree's tab closed
+last as ⇧⌘T does (a loose page the person closed is theirs to bring back, and stays closed). `tab_move` and `pane_detach` change which tab their own checkout shows, never the
 selected checkout.
 
 ### App and window
@@ -258,7 +258,7 @@ tab_move   [navigate] I { pane, to: index }
 tab_close  [navigate] I { pane } → refuses with `unsaved_changes` (listing files) when an
              editor in it has unsaved edits, unless `discard: true`, which needs
              [destructive] and is confirmed
-tab_reopen [navigate] C {} → reopens the latest closed tab
+tab_reopen [navigate] C {} → reopens the latest closed worktree tab
 pane_split [navigate] C { pane (target), edge: "left"|"right"|"top"|"bottom",
              move?: pane (an existing pane, taken from its tab) | kind + tab_open's fields,
              `viewport` among them (a new pane), select?: bool (default: the person's

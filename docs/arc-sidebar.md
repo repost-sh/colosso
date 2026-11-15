@@ -450,7 +450,11 @@ project's name would be (section 4). **[asked]**
   pinned pages, pinned. **[ours]**
 - ⌘W, its ×, or a middle click closes a loose page: it's gone. The one before it shows in
   its place, the one after when it was the first, and the selected worktree's tab when it
-  was the only one. It isn't among the tabs ⌘⇧T brings back. **[ours]**
+  was the only one. **[ours]** It's among the tabs ⌘⇧T brings back, from the one history
+  worktrees' tabs are kept in: back at its place among its space's loose pages, that space
+  shown, at the address it showed, of the profile it kept (the space shown's if its own is
+  gone). App control's `tab_reopen` brings back worktrees' tabs only, and leaves a closed
+  loose page for the person (`ClosedFrom`, `shell/reopen.rs`). **[asked, 2026-11-15]**
 - A space deleted hands its loose pages on with its projects: to the space that takes them,
   after that space's own; they close when the projects are taken out of Koyo. **[ours]**
 

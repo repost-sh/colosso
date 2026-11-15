@@ -9,7 +9,7 @@ use gpui_kit::{App, Context, Entity, Window};
 use super::Shell;
 use crate::browser::{BrowserView, Dock};
 use crate::files::{self, FileEditor, Then};
-use crate::model::{ClosedTab, Spot, Tab};
+use crate::model::{ClosedFrom, ClosedTab, Spot, Tab};
 
 impl Shell {
     /// Closes pane `id`, and its tab when it's the tab's only pane, asking first when its
@@ -193,12 +193,12 @@ impl Shell {
         }
         // Panes elsewhere that closed may have moved the tab.
         let unit = &self.workspace.projects[project].branches[branch];
-        let checkout = unit.worktree.path.clone();
+        let from = ClosedFrom::Checkout(unit.worktree.path.clone());
         if let Some(now) = panes.iter().find_map(|(id, _)| unit.tab_with(*id))
             && let Some(tab) = self.workspace.close_tab(project, branch, now)
         {
             self.workspace.remember_closed(ClosedTab {
-                checkout,
+                from,
                 at: now,
                 tab,
                 addresses,

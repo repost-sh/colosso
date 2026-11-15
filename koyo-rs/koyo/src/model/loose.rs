@@ -136,7 +136,7 @@ impl Workspace {
     }
 
     /// The space shown, by its id.
-    pub(super) fn space_shown(&self) -> u64 {
+    pub fn space_shown(&self) -> u64 {
         self.apart.space
     }
 

@@ -19,7 +19,7 @@ mod tab;
 mod terminals;
 mod unopened;
 mod visits;
-pub use closed::ClosedTab;
+pub use closed::{ClosedFrom, ClosedTab};
 pub use loose::Loose;
 pub use pane::{Pane, Unloaded};
 pub use pinned::Pinned;
