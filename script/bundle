@@ -7,8 +7,10 @@
 # The app's executable, the agent host beside it, where a packaged app looks for it
 # (koyo-rs/koyo/src/chat/host.rs), its icon, and in its Contents/Frameworks the browser engine
 # (koyo-rs/koyo/src/browser/engine.rs) and the agent desktop's host
-# (koyo-rs/koyo/src/agent_desktop/host.rs), signed ad hoc: enough to run on this Mac, not to
-# hand out, which needs a release identity and notarization.
+# (koyo-rs/koyo/src/agent_desktop/host.rs), signed for this Mac: enough to run here, not to
+# hand out, which needs a release identity and notarization. The app is signed by the identity
+# script/signing-identity makes, so macOS keeps what Koyo was allowed across builds, or ad hoc
+# while there's none (docs/browser.md 12.7).
 #
 #   script/bundle --sign "Developer ID Application: <Org> (<TEAMID>)" [--profile <file>]
 #
@@ -16,8 +18,8 @@
 # With --profile, a Developer ID provisioning profile for codes.koyo.desktop that carries Apple's
 # browser-passkey entitlement, the app claims that entitlement and embeds the profile, so its
 # pages can use passkeys (docs/browser.md 9). The profile is checked before anything is built.
-# An ad-hoc build never claims an entitlement: macOS won't start an app that claims a managed
-# one without its profile.
+# A build without --sign never claims an entitlement: macOS won't start an app that claims a
+# managed one without its profile.
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -88,9 +90,17 @@ if [ -n "$profile" ]; then
 ENTITLEMENTS
   plutil -lint -s "$entitlements"
 fi
-if [ -n "$identity" ] && ! security find-identity -v -p codesigning | grep -qF "\"$identity\""; then
-  echo "script/bundle: no signing identity \"$identity\" in the keychain" >&2
-  exit 1
+if [ -n "$identity" ]; then
+  if ! security find-identity -v -p codesigning | grep -qF "\"$identity\""; then
+    echo "script/bundle: no signing identity \"$identity\" in the keychain" >&2
+    exit 1
+  fi
+else
+  local_identity=$(script/signing-identity --hash || :)
+  if [ -z "$local_identity" ]; then
+    echo "script/bundle: signing ad hoc: macOS forgets what Koyo was allowed at every build" \
+      "until script/signing-identity has run once (docs/browser.md 12.7)" >&2
+  fi
 fi
 
 script/cargo build -p koyo --release
@@ -191,11 +201,13 @@ if [ -n "$identity" ]; then
     codesign "$@" "$app"
   fi
 else
-  codesign --force --timestamp=none --sign - "$app"
+  # The app's own signature is what macOS keeps its grants by: the engine's helpers and the
+  # agent host run as Koyo's, so theirs stay ad hoc.
+  codesign --force --timestamp=none --sign "${local_identity:--}" "$app"
 fi
 codesign --verify --strict "$app"
 # What the app claims, said back: the passkey entitlement only with its profile, and nothing
-# at all signed ad hoc.
+# at all without --sign.
 claimed=$(codesign -d --entitlements - --xml "$app" 2>/dev/null || true)
 if [ -n "$entitlements" ]; then
   case "$claimed" in

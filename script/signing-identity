@@ -1,0 +1,59 @@
+#!/bin/sh
+# The identity script/bundle signs Koyo with on this Mac, so what the person allowed Koyo
+# (Screen Recording, the camera, the microphone) holds from one build to the next instead of
+# going with each build's hash, as an ad-hoc signature's does (docs/browser.md 12.7):
+#
+#   script/signing-identity           # makes it, once
+#   script/signing-identity --hash    # its SHA-1, or fails while there's none
+#
+# A certificate for code signing, signed by itself, and its key, in the login keychain, where
+# codesign alone may use the key. It signs for this Mac only: a release signs with a Developer
+# ID (script/bundle --sign).
+set -eu
+cd "$(dirname "$0")/.."
+
+NAME="Koyo Local Signing"
+
+# Its SHA-1 names it to codesign whatever else shares its name. Not `find-identity -v`: signed
+# by itself, nothing trusts it, and -v lists only identities something trusts.
+identity_hash() {
+  security find-identity -p codesigning |
+    awk -v name="\"$NAME\"" 'index($0, name) { print $2; found = 1; exit } END { exit !found }'
+}
+
+case "${1:-}" in
+  --hash) identity_hash; exit ;;
+  "") ;;
+  *) echo "script/signing-identity: unknown option $1" >&2; exit 2 ;;
+esac
+if identity_hash > /dev/null; then
+  echo "\"$NAME\" is in the keychain already"
+  exit 0
+fi
+
+# The key never leaves this folder but for the keychain, and the folder goes when it's done.
+work=.superpowers/signing-identity
+rm -rf "$work"
+mkdir -p "$work"
+trap 'rm -rf "$work"' EXIT
+cat > "$work/openssl.cnf" <<CONFIG
+[req]
+prompt = no
+distinguished_name = name
+x509_extensions = signing
+[name]
+CN = $NAME
+[signing]
+basicConstraints = critical, CA:false
+keyUsage = critical, digitalSignature
+extendedKeyUsage = critical, codeSigning
+CONFIG
+# LibreSSL, macOS's own: the bundle it packs is one the keychain reads.
+/usr/bin/openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -config "$work/openssl.cnf" \
+  -keyout "$work/key.pem" -out "$work/certificate.pem" 2> /dev/null
+password=$(/usr/bin/openssl rand -hex 16)
+/usr/bin/openssl pkcs12 -export -name "$NAME" -inkey "$work/key.pem" -in "$work/certificate.pem" \
+  -passout "pass:$password" -out "$work/identity.p12"
+security import "$work/identity.p12" -k "$HOME/Library/Keychains/login.keychain-db" \
+  -P "$password" -T /usr/bin/codesign
+echo "Made \"$NAME\": script/bundle signs with it from now on"
