@@ -3,8 +3,9 @@
 # (Screen Recording, the camera, the microphone) holds from one build to the next instead of
 # going with each build's hash, as an ad-hoc signature's does (docs/browser.md 12.7):
 #
-#   script/signing-identity           # makes it, once
+#   script/signing-identity           # makes it once, and lets codesign use it unasked
 #   script/signing-identity --hash    # its SHA-1, or fails while there's none
+#   script/signing-identity --ready   # whether codesign can sign with it now, unasked
 #
 # A certificate for code signing, signed by itself, and its key, in the login keychain, where
 # codesign alone may use the key. It signs for this Mac only: a release signs with a Developer
@@ -21,22 +22,66 @@ identity_hash() {
     awk -v name="\"$NAME\"" 'index($0, name) { print $2; found = 1; exit } END { exit !found }'
 }
 
+# The keychain that holds it.
+keychain() {
+  security find-certificate -c "$NAME" | sed -n 's/^keychain: "\(.*\)"$/\1/p' | head -n 1
+}
+
+# Whether codesign can sign with it without a dialog, found out without one. A dialog waits
+# for as long as nobody answers it, so a build left running would wait with it. codesign asks
+# while the keychain is locked, and while the key's partitions leave out its own, `apple:`:
+# a key the security tool imports lets in only `apple-tool:`. The lock is read with
+# SecKeychainGetStatus, which never asks; the partitions from the key's access list, which
+# `dump-keychain -a` reads without decrypting anything, once the keychain is known unlocked.
+ready() {
+  where=$(keychain)
+  if [ -z "$where" ]; then
+    echo "there's no \"$NAME\" in the keychain" >&2
+    return 1
+  fi
+  unlocked=$(osascript -l JavaScript -e 'ObjC.import("Security")' -e '
+    function run(argv) {
+      const keychain = Ref(), status = Ref();
+      if ($.SecKeychainOpen(argv[0], keychain) || $.SecKeychainGetStatus(keychain[0], status)) return "unknown";
+      return status[0] & 1 ? "yes" : "no";
+    }' "$where" 2> /dev/null) || unlocked=unknown
+  if [ "$unlocked" != yes ]; then
+    echo "$where is locked, or its lock can't be read" >&2
+    return 1
+  fi
+  # The private key's record (class 0x10), by its label, and the description of its
+  # partition_id entry: the partitions, comma-separated.
+  partitions=$(security dump-keychain -a "$where" | awk -v label="<blob>=\"$NAME\"" '
+    /^keychain: / { key = 0; named = 0; next }
+    /^class: 0x00000010/ { key = 1 }
+    key && index($0, label) { named = 1 }
+    key && named && /: partition_id$/ { listed = 1; next }
+    listed && /description: / { sub(/^ *description: /, ""); print; exit }')
+  case ",$partitions," in
+    *,apple:,*) ;;
+    *)
+      echo "codesign may use the key of \"$NAME\" only with the keychain's password" >&2
+      return 1
+      ;;
+  esac
+}
+
 case "${1:-}" in
   --hash) identity_hash; exit ;;
+  --ready) ready; exit ;;
   "") ;;
   *) echo "script/signing-identity: unknown option $1" >&2; exit 2 ;;
 esac
+
 if identity_hash > /dev/null; then
   echo "\"$NAME\" is in the keychain already"
-  exit 0
-fi
-
-# The key never leaves this folder but for the keychain, and the folder goes when it's done.
-work=.superpowers/signing-identity
-rm -rf "$work"
-mkdir -p "$work"
-trap 'rm -rf "$work"' EXIT
-cat > "$work/openssl.cnf" <<CONFIG
+else
+  # The key never leaves this folder but for the keychain, and the folder goes when it's done.
+  work=.superpowers/signing-identity
+  rm -rf "$work"
+  mkdir -p "$work"
+  trap 'rm -rf "$work"' EXIT
+  cat > "$work/openssl.cnf" <<CONFIG
 [req]
 prompt = no
 distinguished_name = name
@@ -48,12 +93,24 @@ basicConstraints = critical, CA:false
 keyUsage = critical, digitalSignature
 extendedKeyUsage = critical, codeSigning
 CONFIG
-# LibreSSL, macOS's own: the bundle it packs is one the keychain reads.
-/usr/bin/openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -config "$work/openssl.cnf" \
-  -keyout "$work/key.pem" -out "$work/certificate.pem" 2> /dev/null
-password=$(/usr/bin/openssl rand -hex 16)
-/usr/bin/openssl pkcs12 -export -name "$NAME" -inkey "$work/key.pem" -in "$work/certificate.pem" \
-  -passout "pass:$password" -out "$work/identity.p12"
-security import "$work/identity.p12" -k "$HOME/Library/Keychains/login.keychain-db" \
-  -P "$password" -T /usr/bin/codesign
-echo "Made \"$NAME\": script/bundle signs with it from now on"
+  # LibreSSL, macOS's own: the bundle it packs is one the keychain reads.
+  /usr/bin/openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -config "$work/openssl.cnf" \
+    -keyout "$work/key.pem" -out "$work/certificate.pem" 2> /dev/null
+  password=$(/usr/bin/openssl rand -hex 16)
+  /usr/bin/openssl pkcs12 -export -name "$NAME" -inkey "$work/key.pem" \
+    -in "$work/certificate.pem" -passout "pass:$password" -out "$work/identity.p12"
+  security import "$work/identity.p12" -k "$HOME/Library/Keychains/login.keychain-db" \
+    -P "$password" -T /usr/bin/codesign
+  echo "Made \"$NAME\""
+fi
+
+if ready 2> /dev/null; then
+  echo "codesign signs with it unasked"
+  exit 0
+fi
+# codesign's partition let in, so it never asks: changing the key's access takes the
+# keychain's password, which the security tool asks for here, in the terminal.
+echo "Letting codesign use it: the login keychain's password, once"
+security set-key-partition-list -S apple-tool:,apple: -s -l "$NAME" "$(keychain)" > /dev/null
+ready
+echo "codesign signs with it unasked: script/bundle signs with it from now on"
