@@ -84,6 +84,11 @@ impl BrowserView {
         (self.is_open(cx) && store.known(profile)).then(|| store.count(profile))
     }
 
+    /// How many times what the engine said of extensions changed (`Store::changes`).
+    pub(in crate::browser) fn extension_changes(&self, cx: &gpui_kit::App) -> u64 {
+        self.browsers.read(cx).extensions.changes()
+    }
+
     /// A press on `extension`'s icon, drawn at `icon` in `window`: Chrome runs its action on
     /// the page, and a popup it opens hangs from under the icon's right end.
     pub(in crate::browser) fn extension_act(
