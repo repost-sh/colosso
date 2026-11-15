@@ -219,13 +219,29 @@ fn marker() -> Option<CFRetained<CVPixelBuffer>> {
     NonNull::new(buffer).map(|buffer| unsafe { CFRetained::from_raw(buffer) })
 }
 
-/// `bounds` with each edge on the nearest whole point, for a view that has to be a whole
-/// number of points in size. Two that share an edge round it the same way, so they still
-/// meet, and a size that was whole stays what it was wherever it starts.
-pub fn on_whole_points(bounds: Bounds<Pixels>) -> Bounds<Pixels> {
+/// `bounds` with each edge on a whole point, for a view that has to be a whole number of
+/// points in size and is shown as far as `clip` shows it. An edge that reaches the clip's goes
+/// out to the next whole point, so the view covers all the clip shows there and the clip trims
+/// what's over: rounded to the nearest, a pane's edge half a point in rounded inwards as often
+/// as not, and what's drawn behind the view showed in that half point, a page's guessed canvas
+/// a white line down its side (`docs/native-pages.md` 6). An edge within the clip, a device's
+/// in responsive mode, goes to the nearest: a size that was whole stays what it was wherever it
+/// starts.
+pub fn on_whole_points(bounds: Bounds<Pixels>, clip: Bounds<Pixels>) -> Bounds<Pixels> {
+    let edge = |at: Pixels, out: bool, down: bool| match (out, down) {
+        (false, _) => at.round(),
+        (true, true) => at.floor(),
+        (true, false) => at.ceil(),
+    };
     Bounds::from_corners(
-        point(bounds.left().round(), bounds.top().round()),
-        point(bounds.right().round(), bounds.bottom().round()),
+        point(
+            edge(bounds.left(), bounds.left() <= clip.left(), true),
+            edge(bounds.top(), bounds.top() <= clip.top(), true),
+        ),
+        point(
+            edge(bounds.right(), bounds.right() >= clip.right(), false),
+            edge(bounds.bottom(), bounds.bottom() >= clip.bottom(), false),
+        ),
     )
 }
 
@@ -264,18 +280,28 @@ mod tests {
     use super::on_whole_points;
 
     #[test]
-    fn a_view_on_whole_points_keeps_a_whole_size_and_meets_its_neighbour() {
+    fn a_view_on_whole_points_covers_its_pane_and_keeps_a_device_whole() {
         let bounds = |x: f32, y: f32, w: f32, h: f32| Bounds::new(point(px(x), px(y)), size(px(w), px(h)));
-        // A pane a pointer sized: half a point over, and anywhere between.
-        assert_eq!(on_whole_points(bounds(268., 40., 1644., 739.5)), bounds(268., 40., 1644., 740.));
-        assert_eq!(on_whole_points(bounds(267.3, 40.4, 821.9, 515.2)), bounds(267., 40., 822., 516.));
-        // A whole size stays what it was, wherever it starts: a device's, centred in a pane.
+        // A page filling its pane, whose edges a pointer set: half a point over, and anywhere
+        // between. Each edge goes out, so the page covers the pane, which clips it back.
+        let filling = |pane| on_whole_points(pane, pane);
+        assert_eq!(filling(bounds(268., 40., 1644., 739.5)), bounds(268., 40., 1644., 740.));
+        assert_eq!(filling(bounds(267.3, 40.4, 821.9, 515.2)), bounds(267., 40., 823., 516.));
+        // The owner's, 2026-11-15: a pane's left edge on a half point, which the nearest
+        // whole point left uncovered, a white line beside Google Meet's dark page.
+        let pane = bounds(9.5, 44., 1000., 700.);
+        let placed = filling(pane);
+        assert!(placed.left() <= pane.left() && placed.right() >= pane.right());
+        assert_eq!(placed, bounds(9., 44., 1001., 700.));
+        // A device's whole size, centred in a pane larger than it, stays what it was.
+        let pane = bounds(0., 0., 1200., 1000.);
         for at in [0., 0.25, 0.5, 0.75] {
-            let placed = on_whole_points(bounds(100. + at, 60. + at, 390., 844.));
+            let placed = on_whole_points(bounds(100. + at, 60. + at, 390., 844.), pane);
             assert_eq!(placed.size, size(px(390.), px(844.)), "from {at}");
         }
-        // Two panes with an edge between them round it the same way: no gap, no overlap.
+        // Two panes with an edge between them: each covers its side of it.
         let (above, below) = (bounds(0., 40., 800., 371.5), bounds(0., 411.5, 800., 300.));
-        assert_eq!(on_whole_points(above).bottom(), on_whole_points(below).top());
+        assert!(filling(above).bottom() >= above.bottom());
+        assert!(filling(below).top() <= below.top());
     }
 }
