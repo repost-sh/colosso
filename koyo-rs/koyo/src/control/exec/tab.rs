@@ -1,13 +1,13 @@
-//! Tabs: listed with their panes' layout, opened of any kind, selected, moved in the strip,
-//! closed (refused over unsaved edits unless they're discarded, which the person confirms)
-//! and reopened.
+//! Tabs: listed with their panes' layout, the person's own pages, pinned and loose, listed
+//! apart; opened of any kind, selected, moved in the strip, closed (refused over unsaved edits
+//! unless they're discarded, which the person confirms) and reopened.
 
 use gpui_kit::{App, Context, Window};
 use koyo_app_control::ControlError;
 use koyo_app_control::ops::shared::Closed;
 use koyo_app_control::ops::tab::{
-    CloseInput, Place, TabInfo, TabListInput, TabListOutput, TabMoveInput, TabOpenInput,
-    TabSelectInput, TabTarget, WorktreeTabs,
+    CloseInput, PersonsTabs, Place, TabInfo, TabListInput, TabListOutput, TabMoveInput,
+    TabOpenInput, TabSelectInput, TabTarget, WorktreeTabs,
 };
 use serde_json::Value;
 
@@ -15,6 +15,7 @@ use super::super::confirm::Question;
 use super::super::{Caller, policy};
 use super::select::{self, TabAt};
 use super::{Exec, info, open, output, try_update_shell};
+use crate::model::Tab;
 use crate::navigation::Route;
 use crate::shell::Shell;
 
@@ -68,13 +69,9 @@ fn tabs_output(
             let unit = &workspace.projects[project].branches[branch];
             let shown = selected == Some((project, branch));
             let tabs = (unit.tabs.iter().enumerate())
-                .map(|(index, tab)| TabInfo {
-                    index: info::count(index),
-                    selected: index == unit.active_tab,
-                    layout: info::tree(tab),
-                    panes: (tab.panes().into_iter())
-                        .map(|pane| info::pane(shell, pane, shown && focused == Some(pane.id), cx))
-                        .collect(),
+                .map(|(index, tab)| {
+                    let focused = focused.filter(|_| shown);
+                    tab_info(shell, (index, tab), index == unit.active_tab, focused, cx)
                 })
                 .collect();
             WorktreeTabs {
@@ -83,7 +80,47 @@ fn tabs_output(
             }
         })
         .collect();
-    output(&TabListOutput { worktrees })
+    let persons = persons(shell, focused, cx);
+    output(&TabListOutput { worktrees, persons })
+}
+
+/// The tab `tab` at `index` where it is, the one shown there when `selected`, its pane
+/// `focused` having the keyboard.
+fn tab_info(
+    shell: &Shell,
+    (index, tab): (usize, &Tab),
+    selected: bool,
+    focused: Option<u64>,
+    cx: &App,
+) -> TabInfo {
+    TabInfo {
+        index: info::count(index),
+        selected,
+        layout: info::tree(tab),
+        panes: (tab.panes().into_iter())
+            .map(|pane| info::pane(shell, pane, focused == Some(pane.id), cx))
+            .collect(),
+    }
+}
+
+/// The person's own pages: the pinned, and every space's loose ones, the one shown in place of
+/// the worktree's tab selected, its pane `focused` having the keyboard.
+fn persons(shell: &Shell, focused: Option<u64>, cx: &App) -> PersonsTabs {
+    let workspace = &shell.workspace;
+    let shown = workspace.apart_shown_key();
+    let listed = |(index, tab): (usize, &Tab)| {
+        let selected = shown == Some(tab.first().id);
+        tab_info(shell, (index, tab), selected, focused.filter(|_| selected), cx)
+    };
+    PersonsTabs {
+        pinned: (workspace.pinned().iter().enumerate())
+            .map(|(index, pinned)| listed((index, &pinned.tab)))
+            .collect(),
+        loose: (workspace.loose_by_space())
+            .flat_map(|(_, pages, _)| pages.iter().enumerate())
+            .map(|(index, page)| listed((index, &page.tab)))
+            .collect(),
+    }
 }
 
 /// Opens a tab of the kind `input` asks for on its worktree, as the New Tab menu would: shown

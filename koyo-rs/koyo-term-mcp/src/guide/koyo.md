@@ -184,6 +184,22 @@ their last act: wait, then retry. A page they took with Take control is theirs u
 give it back: do not wait for it, do not retry, do not claim it with takeover; open
 another page for your own work.
 
+The person's own pages, pinned in the sidebar or loose in a space, are listed by
+`browser_list` (`persons: true`, `place` `pinned` or `loose`, no `worktree`) and in
+`tab_list`'s `persons`, but they're theirs: every browser tool on one answers
+`consent_required` until the person lets you use it, and a call naming no pane never means
+one. To use one, ask: `browser_claim` with its `pane` shows the person Koyo's own prompt,
+and Allow lets you read and act on that page alone while you hold it, on the connection you
+asked on, until you release it, they take it back, or 10 minutes pass without you using it.
+Consent is per connection: `koyo app` opens one per call, so through it consent lasts only
+for the call that asked; use the MCP server for work on a person's page. Or ask for a copy
+instead: `browser_duplicate` with its `pane` asks them to open the address the page has now
+in your worktree, as a page of your own (it needs the navigate scope too). Ask only when the
+task needs it, and say why in `reason`. A no, or no answer, is `user_declined`: you can't
+ask about that page again for 10 minutes, and others wait a minute; don't retry. The person is
+asked about a page by one client at a time (`request_conflict` meanwhile). Showing, closing
+or moving their pages is never yours to do.
+
 `browser_viewport` shows a page as a phone or tablet (`device`: `iphone-se`, `iphone-15`,
 `iphone-15-pro-max`, `pixel-8`, `galaxy-s24`, `ipad-mini`, `ipad-pro-11`, with its user
 agent, touch and mobile layout) or at a free `width` × `height`, scaled down to fit the
@@ -390,6 +406,7 @@ A failure has a `code`, a `message` and `retryable`; retry only what is retryabl
 | `unsaved_changes` | Save `details.files` first, or discard them with the person's confirmation. |
 | `person_has_control` | The person holds the page, terminal, agent desktop or device. A page, the desktop or a device they're only using comes back 5 s after they stop (`retryable`): wait, then retry. Otherwise use another. |
 | `control_required` | Claim the page first. |
+| `consent_required` | It's the person's own page: `browser_claim` it to ask them, or `browser_duplicate` it for a copy in your worktree, when the task needs it. |
 | `timeout` | Retry when `retryable`, or wait for something narrower. A browser act that timed out may have acted all the same (`retryable: false`): look at the page before doing it again. |
 | `browser_unavailable` | The page can't take the command now, as the message says. Retryable: the engine is starting, or the page is between documents; try again shortly. Not retryable: the page waits on a dialog (answer it with `browser_dialog`), a tab brought back at launch or never shown (ask the person to show it, or open your own page), a start page (`browser_navigate` loads one), a failed engine (the person restarts it), or a closed page. |
 | `desktop_unavailable` | The agent desktop is off, starting or lacks a grant, as the message says: tell the person (Settings → Agent desktop); don't retry in a loop. |

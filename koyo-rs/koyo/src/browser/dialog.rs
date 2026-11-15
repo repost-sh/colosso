@@ -39,6 +39,13 @@ const MOST_LINES: usize = 8;
 const FIELD: f32 = modal::FIELD + 8.;
 
 impl BrowserView {
+    /// The page asks `question`, as the host says it does: for tests outside the browser.
+    #[cfg(test)]
+    pub(crate) fn page_asks(&mut self, question: Dialog, cx: &mut Context<Self>) {
+        let origin = self.url().to_owned();
+        self.dialog_opened(1, origin, question, cx);
+    }
+
     /// The page asks something. File choosers open the system panel; every other question
     /// waits for the dialog.
     pub(super) fn dialog_opened(

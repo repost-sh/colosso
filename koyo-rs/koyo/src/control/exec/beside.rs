@@ -13,7 +13,7 @@ use crate::navigation::Route;
 use crate::shell::{Place, Shell};
 
 /// The tab `caller` runs in: its chat's, or its terminal's, when a tab shows it.
-fn own_tab(shell: &Shell, caller: &Caller) -> Option<TabAt> {
+pub(crate) fn own_tab(shell: &Shell, caller: &Caller) -> Option<TabAt> {
     match &caller.chat {
         Some(chat) => (shell.workspace)
             .find_pane(|pane| pane.chat.as_ref().is_some_and(|id| id.0 == *chat))

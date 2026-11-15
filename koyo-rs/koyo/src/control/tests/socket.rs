@@ -18,16 +18,23 @@ use crate::control::{Control, InProcess, Request, handle};
 use crate::test_support::repo;
 
 /// Answers the next request a connection or client hands the UI thread, and what follows
-/// from it; fails once the thread making them has ended, `done` dropped, instead of
-/// waiting for a request that won't come.
+/// from it, the client's coming and going it tells as well answered on the way; fails once the
+/// thread making them has ended, `done` dropped, instead of waiting for a request that won't
+/// come.
 fn answer_next(rig: &mut Rig, done: &mut oneshot::Receiver<()>, cx: &mut TestAppContext) {
-    let request = match block_on(select(rig.requests.next(), done)) {
-        Either::Left((Some(request), _)) => request,
-        Either::Left((None, _)) => panic!("app control's channel closed"),
-        Either::Right(_) => panic!("the thread ended without the request awaited"),
-    };
-    cx.update(|cx| handle(request, cx));
-    cx.run_until_parked();
+    loop {
+        let request = match block_on(select(rig.requests.next(), &mut *done)) {
+            Either::Left((Some(request), _)) => request,
+            Either::Left((None, _)) => panic!("app control's channel closed"),
+            Either::Right(_) => panic!("the thread ended without the request awaited"),
+        };
+        let presence = matches!(request, Request::Present { .. });
+        cx.update(|cx| handle(request, cx));
+        cx.run_until_parked();
+        if !presence {
+            return;
+        }
+    }
 }
 
 fn next_frame(reader: &mut FrameReader) -> Value {

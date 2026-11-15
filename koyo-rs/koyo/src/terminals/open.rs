@@ -198,4 +198,10 @@ impl Shell {
     pub(crate) fn terminal_known(&self, handle: &Handle) -> bool {
         self.terminals.states.get(handle).is_some()
     }
+
+    /// What the daemon says terminal `handle` is called, and the checkout it runs in.
+    pub(crate) fn terminal_named(&self, handle: &Handle) -> Option<(&str, Option<&Path>)> {
+        let state = self.terminals.states.get(handle)?;
+        Some((&state.name, state.worktree.as_deref()))
+    }
 }

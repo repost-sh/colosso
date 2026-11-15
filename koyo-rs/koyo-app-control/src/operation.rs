@@ -106,6 +106,9 @@ pub trait Operation {
     /// Whether the person confirms every call in the window before it runs. Calls that need
     /// `destructive` through [`Operation::ALSO`] are confirmed as well.
     const CONFIRM: bool = false;
+    /// Whether some call of it asks the person in the window, as its own question rather than
+    /// a confirmation: `browser_claim` and `browser_duplicate` on the person's own page.
+    const ASKS: bool = false;
 
     /// The arguments.
     type Input: Serialize + DeserializeOwned + JsonSchema + Debug + Clone + PartialEq + Send;
@@ -142,6 +145,8 @@ pub struct Info {
     pub hints: Hints,
     /// Whether the person confirms every call ([`Operation::CONFIRM`]).
     pub confirm: bool,
+    /// Whether some call asks the person a question of its own ([`Operation::ASKS`]).
+    pub asks: bool,
 }
 
 impl Info {
@@ -156,13 +161,14 @@ impl Info {
             description: Op::DESCRIPTION,
             hints: Op::HINTS,
             confirm: Op::CONFIRM,
+            asks: Op::ASKS,
         }
     }
 
-    /// Whether some call of it may wait for the person's confirmation: it's confirmed, or
-    /// some input makes it need `destructive`.
+    /// Whether some call of it may wait for the person's answer: it's confirmed, some input
+    /// makes it need `destructive`, or it asks a question of its own.
     pub fn may_confirm(&self) -> bool {
-        self.confirm || self.also.contains(&Scope::Destructive)
+        self.confirm || self.asks || self.also.contains(&Scope::Destructive)
     }
 
     /// The description's first sentence, for one-line listings.

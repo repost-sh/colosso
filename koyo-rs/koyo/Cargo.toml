@@ -53,6 +53,9 @@ futures = "0.3"
 # TOML, Svelte and more. Pure-Rust regexes, so nothing to link.
 syntect = { version = "5.3", default-features = false, features = ["parsing", "dump-load", "regex-fancy"] }
 two-face = { version = "0.5", default-features = false, features = ["syntect-fancy"] }
+# Unicode's general categories, to keep marks and modifier letters out of the words a prompt
+# shows of a client or a page (control/exec/browser/asker.rs). Already in the build.
+unicode-general-category = "1.1"
 # The grammars the file tabs colour code with: picked by what a checkout usually holds. SQL's
 # isn't among them: it pins `cc` below the version GPUI locks.
 gpui-kit = { workspace = true, features = [

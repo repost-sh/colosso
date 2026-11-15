@@ -21,6 +21,9 @@ pub(crate) struct Caller {
     pub worktree: Option<PathBuf>,
     /// Its working folder.
     pub cwd: Option<PathBuf>,
+    /// The connection it calls on, once welcomed: what the person's consent for one of their
+    /// pages is bound to, since anything can say hello under another's name.
+    pub connection: Option<u64>,
 }
 
 impl Caller {
@@ -37,6 +40,7 @@ impl Caller {
             chat: hello.chat.clone().filter(|id| !id.is_empty()),
             worktree: path(&hello.worktree),
             cwd: path(&hello.cwd),
+            connection: None,
         }
     }
 

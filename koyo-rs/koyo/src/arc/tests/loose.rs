@@ -1,14 +1,16 @@
 //! The loose pages of a space (`docs/arc-sidebar.md` 11): a page opened where no project is
 //! shown is one, and so is one opened from a pinned or a loose page; each space lists its own;
 //! a page's tab let go on them is one, a loose page let go on a worktree's tabs is its tab, and
-//! on the pinned pages is pinned; and a space with no project shows no dot.
+//! on the pinned pages is pinned; a space with no project shows no dot; and a loose or a pinned
+//! page's menu copies it into the selected worktree.
 
 use gpui_kit::{
     AppContext as _, Entity, Modifiers, MouseButton, TestAppContext, VisualTestContext, point, px,
 };
 
 use super::{act, arc_shell, chat, drag, drag_onto, drawn, let_go_on, listed, take_up};
-use crate::arc::actions::{NewSpace, PreviousSpace};
+use crate::arc::actions::{CopyToWorktree, NewSpace, PreviousSpace};
+use crate::arc::pinned::Menu;
 use crate::files::tests::{dialog, press};
 use crate::launcher::{Launcher, NewTab};
 use crate::settings;
@@ -228,4 +230,46 @@ fn a_loose_page_closed_comes_back_where_it_was_with_cmd_shift_t(cx: &mut TestApp
     assert_eq!(cx.read(|cx| settings::get(cx).space), 1);
     assert_eq!(loose(&shell, cx), [page("one"), page("two"), page("three")]);
     assert_eq!(shown(&shell, cx), (Some(page("two")), true));
+}
+
+#[gpui_kit::test]
+fn a_pinned_or_a_loose_page_is_copied_into_the_selected_worktree_from_its_menu(
+    cx: &mut TestAppContext,
+) {
+    let (window, shell, _) = arc_shell(&["arc-copy-to-worktree"], cx);
+    let pinned = open_page(window, &shell, Some("https://mail.example/inbox"), cx);
+    let page = open_page(window, &shell, Some("https://bank.example/"), cx);
+    shell.update(cx, |shell, cx| {
+        assert!(shell.pin_tab_of(pinned, cx));
+        shell.loosen_tab_of(page, usize::MAX, cx);
+    });
+    draw(window, cx);
+    let tabs = |cx: &TestAppContext| {
+        cx.read(|cx| {
+            let unit = &shell.read(cx).workspace.projects[0].branches[0];
+            (unit.tabs.iter())
+                .map(|tab| tab.first().address(cx).unwrap_or_default())
+                .collect::<Vec<_>>()
+        })
+    };
+    let menu = |cx: &TestAppContext| cx.read(|cx| Menu::of(shell.read(cx), pinned, cx));
+    assert!(tabs(cx).is_empty());
+    assert!(menu(cx).worktree, "a worktree is selected to copy into");
+
+    // A copy of each, a tab of the worktree, shown; the pages themselves stay where they are.
+    act(window, CopyToWorktree(pinned), cx);
+    assert_eq!(tabs(cx), ["https://mail.example/inbox"]);
+    let copy = cx.read(|cx| shell.read(cx).shown_tab_key());
+    assert!(copy.is_some_and(|copy| copy != pinned), "the copy shows");
+    act(window, CopyToWorktree(page), cx);
+    assert_eq!(tabs(cx), ["https://mail.example/inbox", "https://bank.example/"]);
+    assert_eq!(loose(&shell, cx), ["https://bank.example/"]);
+    let still = cx.read(|cx| shell.read(cx).workspace.pinned().len());
+    assert_eq!(still, 1);
+
+    // With no worktree selected, there's none to copy into.
+    act(window, NewSpace, cx);
+    assert!(!menu(cx).worktree, "greyed out");
+    act(window, CopyToWorktree(pinned), cx);
+    assert_eq!(tabs(cx).len(), 2);
 }

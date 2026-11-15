@@ -133,8 +133,15 @@ pub(crate) fn serve(connection: Connection, requests: &UnboundedSender<Request>)
         return;
     };
     let connection = next_connection();
-    read(connection, &welcome.caller, &mut reader, &out, requests);
+    let caller = Caller {
+        connection: Some(connection),
+        ..welcome.caller
+    };
+    let present = |open| Request::Present { connection, open };
+    requests.unbounded_send(present(true)).ok();
+    read(connection, &caller, &mut reader, &out, requests);
     requests.unbounded_send(Request::Closed { connection }).ok();
+    requests.unbounded_send(present(false)).ok();
 }
 
 fn write(writer: &FrameWriter, outgoing: &Receiver<Out>) {

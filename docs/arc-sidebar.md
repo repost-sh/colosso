@@ -448,6 +448,9 @@ project's name would be (section 4). **[asked]**
 - A row is dragged among the others, as a tab along its list, but joins none: each stays a
   page. Dragged onto a worktree's tab or header it's a tab of that worktree, shown; onto the
   pinned pages, pinned. **[ours]**
+- Right-clicked, a row's menu has **Copy to Worktree**, as a pinned tile's (11.5): a new tab
+  of the selected worktree at its address, shown there; the loose page stays. Greyed out with
+  no worktree selected. **[asked: the item; ours: a menu of that one item]**
 - ⌘W, its ×, or a middle click closes a loose page: it's gone. The one before it shows in
   its place, the one after when it was the first, and the selected worktree's tab when it
   was the only one. **[ours]** It's among the tabs ⌘⇧T brings back, from the one history
@@ -521,6 +524,10 @@ menu is Arc's.
   - **Close**: as ⌘W. Greyed out when there's nothing to close.
   - **Unpin**: a tab of the selected worktree, after its others, shown there; with no
     worktree selected, a loose page of the space. **[ours: where it goes with no worktree]**
+  - **Copy to Worktree**: a new tab of the selected worktree at the address its page shows
+    (or opens at, closed), after its others, shown there, of that worktree's project's
+    profile; the pinned page stays as it is. Greyed out with no worktree selected.
+    **[asked: the item; ours: its name, and the profile]**
   - **Remove Pinned Tab**: the page goes and it's pinned no longer. **[ours: Arc's "Remove
     Favorite"; the brief's first Close did this]**
 - A pinned page closed or removed isn't among the tabs ⌘⇧T brings back. **[ours]**
@@ -551,9 +558,19 @@ menu is Arc's.
   engine has quit and started again. **[checked 2026-11-13]**
 - The history keeps a pinned or a loose page's visits under the project whose profile it
   keeps (`Shell::profile_place`).
-- App control lists and drives worktrees' tabs only: a pinned or a loose page isn't in
-  `tab_list` or `browser_list`, and an agent can't drive it. What an agent opens out of sight
-  leaves such a page shown. **[ours]**
+- **App control's reach** (2026-11-15, the owner): agents see the person's pages and can't
+  use them without asking. `browser_list` lists a pinned or a loose page with its title and
+  address, as the person's (`persons`, `place`), and `tab_list` under `persons`; every
+  browser tool on one fails `consent_required` until the person allows that agent that page
+  in a prompt `browser_claim` asks, which names the agent as it says it is, marked so, in
+  Koyo's words for it. Allowed, it's that agent's, on the connection it asked on, while its
+  lease lasts: until it lets go, the person takes the page back, 10 minutes pass without it
+  acting, or the page closes, moves or is pinned elsewhere. `browser_duplicate` asks
+  for a copy in the agent's worktree instead. A call naming no pane never means one of these
+  pages, and the window tools (`tab_select`, `tab_close`, `pane_split`, …) refuse them
+  outright: showing, moving and closing them is the person's. What an agent opens out of
+  sight leaves such a page shown. `docs/app-control.md` 5, The person's own pages.
+  **[asked]**
 
 ### 11.7 Kept for the next launch
 
@@ -584,11 +601,12 @@ menu is Arc's.
 | `koyo/src/shell/kept/pinned.rs` | `pinned-tabs.json`: reading it tolerantly, writing it, and bringing the pinned pages back |
 | `koyo/src/shell/kept/loose.rs` | The loose pages in `window.json`, and bringing both kinds back as the window opens |
 | `koyo/src/arc/pinned.rs` | The pinned region: tiles, the zone, the chip, the menu and its actions |
-| `koyo/src/arc/loose.rs` | The loose rows and the strip that takes the first |
+| `koyo/src/arc/loose.rs` | The loose rows, their menu, and the strip that takes the first |
+| `koyo/src/control/exec/browser/pages/` (`listing.rs`, `consent.rs`, `grants.rs`), `asking.rs`, `asker.rs` | App control's reach: the person's pages listed, the gate and the consents it keeps, the prompts, and who asks |
 | `koyo/src/arc/tile_grid.rs` | The grid both kinds of tiles share, each with its own `TileHand` |
 | `koyo/src/arc/card.rs`, `hover.rs` | A pinned page's card |
 | `koyo/src/shell/reorder.rs`, `reorder/hand.rs` | The loose rows' list, and a tab off its list (`TabHand::left_list`, `taken_at`) |
 | `koyo/src/spaces.rs` | A space's `id` |
 | `koyo/src/launcher/here.rs` | The launcher where no checkout is selected: a page only |
-| `koyo/src/arc/tests/pinned.rs`, `tests/loose.rs`, `shell/kept/tests/pinned.rs`, `tests/loose.rs`, `model/pinned/tests.rs`, `model/loose/tests.rs` | The tests |
+| `koyo/src/arc/tests/pinned.rs`, `tests/loose.rs`, `shell/kept/tests/pinned.rs`, `tests/loose.rs`, `model/pinned/tests.rs`, `model/loose/tests.rs`, `control/tests/persons.rs`, `persons_asked.rs`, `persons_ends.rs` | The tests |
 | `koyo/src/arc/visual/pins.rs` | The pictures (`arc-pinned-*.png`, `arc-loose-*.png`) |

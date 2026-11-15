@@ -14,14 +14,16 @@ use serde_json::{Value, json};
 
 use super::super::{Caller, Exec, output};
 use super::keys::Key;
-use super::page::{self as pages, Page, acted, call, now, resolve};
+use super::page::{acted, call, later, now, refused, resolve};
+use super::pages::Page;
 use super::script::{self, evaluate};
 use crate::browser::BrowserView;
 
 /// The most characters `browser_read` answers unless told otherwise.
 const READ_LIMIT: usize = 50_000;
 
-/// Finds the page, then carries out `act` on it from a task; `acts` claims it for `caller`.
+/// Finds the page, then carries out `act` on it from a task, its answer settled as every
+/// call's on the person's page is (`page::later`); `acts` claims it for `caller`.
 fn on_page<F>(
     caller: &Caller,
     named: Option<u64>,
@@ -33,11 +35,11 @@ where
     F: AsyncFnOnce(Page, Option<Caller>, &mut AsyncApp) -> Result<Value, ControlError> + 'static,
 {
     let found = resolve(caller, named, cx)?;
-    acted(caller, found.pane, cx);
+    acted(caller, found.pane(), cx);
     let actor = acts.then(|| caller.clone());
-    Ok(Exec::Later(cx.spawn(async move |cx: &mut AsyncApp| {
-        act(found, actor, cx).await
-    })))
+    Ok(later(found, cx, async move |page, cx| {
+        act(page.clone(), actor, cx).await
+    }))
 }
 
 pub(crate) fn read(
@@ -69,7 +71,7 @@ pub(crate) fn read(
         } else {
             content
         };
-        let at = cx.update(|cx| now(&page, cx));
+        let at = cx.update(|cx| now(&page, cx))?;
         output(&BrowserReadOutput {
             pane: at.pane,
             url: at.url,
@@ -88,7 +90,7 @@ pub(crate) fn snapshot(
     let interactive = input.interactive.unwrap_or(false);
     on_page(caller, input.pane, false, cx, async move |page, _, cx| {
         let tree = evaluate(&page, None, &script::snapshot(interactive), false, cx).await?;
-        let at = cx.update(|cx| now(&page, cx));
+        let at = cx.update(|cx| now(&page, cx))?;
         output(&BrowserSnapshotOutput {
             pane: at.pane,
             url: at.url,
@@ -135,7 +137,7 @@ pub(crate) fn screenshot(
     let full_page = input.full_page.unwrap_or(false);
     on_page(caller, input.pane, false, cx, async move |page, _, cx| {
         let data = capture(&page, format, full_page, cx).await?;
-        let at = cx.update(|cx| now(&page, cx));
+        let at = cx.update(|cx| now(&page, cx))?;
         output(&BrowserScreenshotOutput {
             pane: at.pane,
             url: at.url,
@@ -199,10 +201,13 @@ pub(crate) fn click(
             // it gets there.
             if let Some(caller) = actor {
                 let actor = caller.actor();
+                // The pointer's claim asks the gate again first, as each command does.
                 let travel = cx.update(|cx| {
-                    (page.view).update(cx, |view, cx| view.agent_points(&actor, (x, y), cx))
+                    page.still(cx)?;
+                    (page.view()?.update(cx, |view, cx| view.agent_points(&actor, (x, y), cx)))
+                        .map_err(refused)
                 });
-                let travel = travel.map_err(pages::refused)?;
+                let travel = travel?;
                 if !travel.is_zero() {
                     cx.background_executor().timer(travel).await;
                 }
@@ -219,7 +224,7 @@ pub(crate) fn click(
                     json!({ "type": kind, "x": x, "y": y, "button": button, "clickCount": count });
                 mouse(&page, actor, event, cx).await?;
             }
-            cx.update(|cx| page.view.update(cx, BrowserView::agent_clicked));
+            cx.update(|cx| (page.view()).map(|view| view.update(cx, BrowserView::agent_clicked)))?;
             at_page(&page, cx)
         },
     )
@@ -227,7 +232,7 @@ pub(crate) fn click(
 
 /// Where the page is now, as an acting operation answers.
 fn at_page(page: &Page, cx: &mut AsyncApp) -> Result<Value, ControlError> {
-    output(&cx.update(|cx| now(page, cx)))
+    output(&cx.update(|cx| now(page, cx))?)
 }
 
 /// Runs `body` on the element `element` or `selector` names, as `el`, after scrolling it

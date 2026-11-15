@@ -99,6 +99,9 @@ pub(crate) enum Request {
     },
     /// A connection that followed topics ended.
     Closed { connection: u64 },
+    /// A welcomed client's connection `connection` opened, or closed: closed, the consents the
+    /// person gave on it for their pages end.
+    Present { connection: u64, open: bool },
 }
 
 /// A hello accepted: who calls, and what it may do.
@@ -223,7 +226,11 @@ pub(crate) fn start_for_test(cx: &mut App) -> UnboundedReceiver<Request> {
 fn install(cx: &mut App) -> UnboundedReceiver<Request> {
     let (requests, received) = unbounded();
     let shells = cx.observe_new::<Shell>(|_, _, cx| {
-        let observer = cx.observe_self(|_, cx| topics::mark(&[Topic::App, Topic::Workspace], cx));
+        // A person's page closed or moved takes the consents for it along.
+        let observer = cx.observe_self(|shell, cx| {
+            topics::mark(&[Topic::App, Topic::Workspace], cx);
+            exec::consents_follow(shell, cx);
+        });
         if cx.has_global::<Control>() {
             Control::get_mut(cx).hub.shell_observer = Some(observer);
         }
@@ -287,16 +294,26 @@ pub(crate) fn handle(request: Request, cx: &mut App) {
             reply,
         } => topics::subscribe(connection, &caller, &topics, sink, reply, cx),
         Request::Closed { connection } => topics::closed(connection, cx),
+        Request::Present {
+            connection,
+            open: true,
+        } => exec::client_joined(connection, cx),
+        Request::Present {
+            connection,
+            open: false,
+        } => exec::client_left(connection, cx),
     }
 }
 
 /// A setting changed, the control policy maybe: with external control off, the hellos of
-/// external clients waiting on the person are refused, and followers who may no longer read
-/// stop hearing. A destructive call waiting on the person is checked against the policy
+/// external clients waiting on the person are refused, followers who may no longer read stop
+/// hearing, and clients that may no longer drive pages lose the person's consent for theirs. A destructive call waiting on the person is checked against the policy
 /// again once they've answered.
 fn policy_changed(cx: &mut App) {
     if !settings::get(cx).external_control.enabled {
         auth::refuse_all(&ControlError::control_disabled(), cx);
     }
     topics::drop_refused(cx);
+    // A client that may no longer drive pages loses the person's consent for theirs at once.
+    exec::consents_rescope(cx);
 }

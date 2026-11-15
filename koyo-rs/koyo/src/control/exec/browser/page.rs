@@ -1,21 +1,20 @@
-//! The page an agent means, the pages listed, a page's lease, moving a page, and waiting on
-//! it; and the protocol call every operation here makes, within its time limit, its refusals
-//! in app control's words (`refusals.rs`).
+//! The page an agent means, moving a page, and waiting on it; and the protocol call every
+//! operation here makes, within its time limit, its refusals in app control's words
+//! (`refusals.rs`). Which pages there are is `listing.rs`'s; a page's lease, `asking.rs`'s.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use gpui_kit::{App, AsyncApp, Entity, Global};
+use gpui_kit::{App, AsyncApp, Global};
 use koyo_app_control::ControlError;
 use koyo_app_control::ops::browser::{
-    BrowserClaimInput, BrowserDialogInput, BrowserGoInput, BrowserListOutput, BrowserNavigateInput,
-    BrowserWaitInput, BrowserWaitOutput, DEFAULT_TIMEOUT_MS, GoAction, Lease, MAX_TIMEOUT_MS,
-    PageInfo, PageOutput, WaitFor, WaitUntil,
+    BrowserDialogInput, BrowserGoInput, BrowserNavigateInput, BrowserWaitInput, BrowserWaitOutput,
+    DEFAULT_TIMEOUT_MS, GoAction, MAX_TIMEOUT_MS, PageOutput, WaitFor, WaitUntil,
 };
 use serde_json::Value;
 
-use super::super::{Caller, Exec, main_shell, output, window_closed};
+use super::super::{Caller, Exec, output};
+use super::pages::{self, Found, Page};
 use super::{refusals, script};
 use crate::browser::agent::{self, Actor, AgentError, Answer, Go, Mode, NotOpen, Refused};
 use crate::browser::{self, BrowserView};
@@ -23,125 +22,41 @@ use crate::browser::{self, BrowserView};
 /// How often a wait looks at the page again.
 const POLL: Duration = Duration::from_millis(150);
 
-/// A browser pane: its id in the window, its view, and its worktree.
-#[derive(Clone)]
-pub(super) struct Page {
-    pub pane: u64,
-    pub view: Entity<BrowserView>,
-    pub worktree: PathBuf,
-}
-
 /// The page each caller acted on last, which an operation naming no pane means.
 #[derive(Default)]
 struct LastPages(HashMap<String, u64>);
 
 impl Global for LastPages {}
 
-/// A browser pane as the tools list it: a page, or one brought back at launch whose tab wasn't
-/// shown yet, listed as it was kept, with no page to act on until it's shown
-/// (`docs/browser.md` 6).
-enum Listed {
-    Page(Page),
-    Unshown(PageInfo),
-}
-
-impl Listed {
-    fn pane(&self) -> u64 {
-        match self {
-            Listed::Page(page) => page.pane,
-            Listed::Unshown(info) => info.pane,
-        }
-    }
-
-    /// Its page, to act on; an unshown one has none yet.
-    fn page(&self) -> Result<Page, ControlError> {
-        match self {
-            Listed::Page(page) => Ok(page.clone()),
-            Listed::Unshown(info) => Err(refusals::unshown(info.pane)),
-        }
-    }
-}
-
-/// Every browser pane in the window, `DevTools` left out, and which is in the tab shown.
-fn pages(cx: &App) -> Result<(Vec<Listed>, Option<u64>), ControlError> {
-    let (_, shell) = main_shell(cx).ok_or_else(window_closed)?;
-    let workspace = &shell.read(cx).workspace;
-    let mut pages = Vec::new();
-    for project in &workspace.projects {
-        for unit in &project.branches {
-            for tab in &unit.tabs {
-                for pane in tab.panes() {
-                    if let Some(view) = pane.view()
-                        && !view.read(cx).is_inspector()
-                    {
-                        pages.push(Listed::Page(Page {
-                            pane: pane.id,
-                            view: view.clone(),
-                            worktree: unit.worktree.path.clone(),
-                        }));
-                    } else if let Some(address) = pane.unloaded_address() {
-                        pages.push(Listed::Unshown(PageInfo {
-                            pane: pane.id,
-                            url: address.to_owned(),
-                            title: pane.title.to_string(),
-                            loading: false,
-                            open: false,
-                            on_screen: false,
-                            worktree: unit.worktree.path.display().to_string(),
-                            controller: None,
-                            viewport: agent::unshown_viewport(),
-                            dialog: None,
-                        }));
-                    }
-                }
-            }
-        }
-    }
-    let shown = (workspace.shown_tab())
-        .and_then(|at| workspace.tab(at))
-        .and_then(|tab| {
-            (tab.panes().into_iter())
-                .find(|pane| pane.address(cx).is_some())
-                .map(|pane| pane.id)
-        });
-    Ok((pages, shown))
-}
-
-/// The page `pane` names; else the one `caller` acted on last; else the shown tab's.
+/// The page `pane` names; else the one `caller` acted on last; else the shown tab's; else the
+/// only one: the one way every browser tool gets its page. The person's own is never one meant
+/// unnamed, and named it goes through the gate (`pages/consent.rs`).
 pub(super) fn resolve(
     caller: &Caller,
     pane: Option<u64>,
     cx: &mut App,
 ) -> Result<Page, ControlError> {
-    let (pages, shown) = pages(cx)?;
-    let find = |id: u64| pages.iter().find(|page| page.pane() == id);
-    if let Some(id) = pane {
-        let found = find(id).ok_or_else(|| {
-            ControlError::not_found(format!(
-                "Pane {id} isn't a browser page; browser_list lists them."
-            ))
-        });
-        return found.and_then(Listed::page);
+    match pages::find(caller, pane, cx)? {
+        Found::Page(found) => Ok(found),
+        Found::Persons(persons) => persons.admit(caller, cx),
     }
-    let last = (cx.try_global::<LastPages>())
-        .and_then(|last| last.0.get(&caller.key()).copied())
-        .and_then(find);
-    if let Some(page) = last.or_else(|| shown.and_then(find)) {
-        return page.page();
-    }
-    match pages.as_slice() {
-        [] => Err(ControlError::not_found(
-            "There's no browser page; tab_open with kind browser opens one.",
-        )),
-        [only] => only.page(),
-        many => Err(ControlError::ambiguous(
-            "Several browser pages are open; name one with `pane`.",
-            &many
-                .iter()
-                .map(|page| page.pane().to_string())
-                .collect::<Vec<_>>(),
-        )),
-    }
+}
+
+/// Carries out `work` on `page` from a task: its answer, which on the person's page stands only
+/// if they still let the caller use it once it's done (`Page::settle`).
+pub(super) fn later<F>(page: Page, cx: &mut App, work: F) -> Exec
+where
+    F: AsyncFnOnce(&Page, &mut AsyncApp) -> Result<Value, ControlError> + 'static,
+{
+    Exec::Later(cx.spawn(async move |cx: &mut AsyncApp| {
+        let answer = work(&page, cx).await;
+        cx.update(|cx| page.settle(answer, cx))
+    }))
+}
+
+/// The pane `caller` acted on last, if it did.
+pub(super) fn last(caller: &Caller, cx: &App) -> Option<u64> {
+    (cx.try_global::<LastPages>()).and_then(|last| last.0.get(&caller.key()).copied())
 }
 
 /// Notes pane `pane`, a page `caller` opened or acted on, as the one its next call without a
@@ -204,11 +119,15 @@ pub(super) async fn call_within(
     cx: &mut AsyncApp,
 ) -> Result<Value, ControlError> {
     let actor = caller.map(Caller::actor);
-    let asked = cx.update(|cx| agent::cdp(&page.view, actor.as_ref(), method, params, limit, cx));
-    match asked
-        .map_err(|error| refusals::failed(error, page.pane))?
-        .await
-    {
+    // Each command asks the gate again: on the person's page, one sent after their consent
+    // ended would take a lease nobody gave.
+    let asked = cx.update(|cx| {
+        page.still(cx)?;
+        let view = page.view()?;
+        agent::cdp(&view, actor.as_ref(), method, params, limit, cx)
+            .map_err(|error| refusals::failed(error, page.pane()))
+    });
+    match asked?.await {
         Answer::Answered(Ok(value)) => Ok(value),
         Answer::Answered(Err(why)) => Err(refusals::command_failed(method, why)),
         Answer::Stopped => Err(ControlError::browser_unavailable(
@@ -216,7 +135,7 @@ pub(super) async fn call_within(
         )),
         Answer::TimedOut => Err(refusals::timed_out(method, limit, caller.is_some())),
         Answer::Asking => {
-            let dialog = cx.update(|cx| page.view.read(cx).dialog());
+            let dialog = cx.update(|cx| (page.view().ok()).and_then(|view| view.read(cx).dialog()));
             Err(refusals::asked_meanwhile(
                 method,
                 dialog.as_ref(),
@@ -227,60 +146,13 @@ pub(super) async fn call_within(
 }
 
 /// The page's address and title now.
-pub(super) fn now(page: &Page, cx: &App) -> PageOutput {
-    let facts = page.view.read(cx).facts(cx);
-    PageOutput {
-        pane: page.pane,
+pub(super) fn now(page: &Page, cx: &App) -> Result<PageOutput, ControlError> {
+    let facts = page.view()?.read(cx).facts(cx);
+    Ok(PageOutput {
+        pane: page.pane(),
         url: facts.url,
         title: facts.title,
         loaded: None,
-    }
-}
-
-pub(crate) fn list(cx: &mut App) -> Result<Value, ControlError> {
-    let (pages, _) = pages(cx)?;
-    let pages = (pages.iter())
-        .map(|listed| match listed {
-            Listed::Page(page) => {
-                let facts = page.view.read(cx).facts(cx);
-                PageInfo {
-                    pane: page.pane,
-                    url: facts.url,
-                    title: facts.title,
-                    loading: facts.loading,
-                    open: facts.open,
-                    on_screen: facts.on_screen,
-                    worktree: page.worktree.display().to_string(),
-                    controller: facts.controller,
-                    viewport: facts.viewport,
-                    dialog: facts.dialog,
-                }
-            }
-            Listed::Unshown(info) => info.clone(),
-        })
-        .collect();
-    output(&BrowserListOutput { pages })
-}
-
-pub(crate) fn claim(
-    caller: &Caller,
-    input: &BrowserClaimInput,
-    cx: &mut App,
-) -> Result<Value, ControlError> {
-    let page = resolve(caller, input.pane, cx)?;
-    let (actor, takeover, reason) = (
-        caller.actor(),
-        input.takeover.unwrap_or(false),
-        input.reason.clone(),
-    );
-    (page.view.update(cx, |view, cx| {
-        view.agent_claims(actor, takeover, reason, cx)
-    }))
-    .map_err(refused)?;
-    acted(caller, page.pane, cx);
-    output(&Lease {
-        pane: page.pane,
-        held: true,
     })
 }
 
@@ -292,27 +164,11 @@ pub(crate) fn dialog(
 ) -> Result<Exec, ControlError> {
     let page = resolve(caller, input.pane, cx)?;
     let (actor, action, text) = (caller.actor(), input.action, input.text.clone());
-    (page
-        .view
-        .update(cx, |view, cx| view.agent_answers(&actor, action, text, cx)))
-    .map_err(|why| refusals::unanswered(why, page.pane))?;
-    acted(caller, page.pane, cx);
-    Ok(Exec::Ready(output(&now(&page, cx))))
-}
-
-pub(crate) fn release(
-    caller: &Caller,
-    named: Option<u64>,
-    cx: &mut App,
-) -> Result<Value, ControlError> {
-    let page = resolve(caller, named, cx)?;
-    let actor = caller.actor();
-    page.view
-        .update(cx, |view, cx| view.agent_releases(&actor, cx));
-    output(&Lease {
-        pane: page.pane,
-        held: false,
-    })
+    (page.view()?.update(cx, |view, cx| view.agent_answers(&actor, action, text, cx)))
+        .map_err(|why| refusals::unanswered(why, page.pane()))?;
+    acted(caller, page.pane(), cx);
+    let answer = now(&page, cx).and_then(|at| output(&at));
+    Ok(Exec::Ready(page.settle(answer, cx)))
 }
 
 /// How long a call may wait, as asked, within the most it may.
@@ -367,19 +223,19 @@ fn steer(
 ) -> Result<Exec, ControlError> {
     let page = resolve(caller, named, cx)?;
     let actor = caller.actor();
-    (page.view.update(cx, |view, cx| act(view, &actor, cx)))
-        .map_err(|why| refusals::failed(why, page.pane))?;
-    acted(caller, page.pane, cx);
-    Ok(Exec::Later(cx.spawn(async move |cx: &mut AsyncApp| {
+    (page.view()?.update(cx, |view, cx| act(view, &actor, cx)))
+        .map_err(|why| refusals::failed(why, page.pane()))?;
+    acted(caller, page.pane(), cx);
+    Ok(later(page, cx, async move |page, cx| {
         let loaded = match limit {
-            Some(limit) => Some(settle(&page, limit, cx).await),
+            Some(limit) => Some(settle(page, limit, cx).await),
             None => None,
         };
         output(&PageOutput {
             loaded,
-            ..cx.update(|cx| now(&page, cx))
+            ..cx.update(|cx| now(page, cx))?
         })
-    })))
+    }))
 }
 
 /// Waits, up to `limit`, until the page has started and finished loading: whether it did.
@@ -388,7 +244,7 @@ async fn settle(page: &Page, limit: Duration, cx: &mut AsyncApp) -> bool {
     // The host says the page is loading a moment after it's asked to load.
     cx.background_executor().timer(POLL).await;
     while started.elapsed() < limit {
-        if !cx.update(|cx| page.view.read(cx).loading()) {
+        if !cx.update(|cx| (page.view()).is_ok_and(|view| view.read(cx).loading())) {
             return true;
         }
         cx.background_executor().timer(POLL).await;
@@ -409,13 +265,18 @@ pub(crate) fn wait(
         ));
     }
     let (limit, until) = (timeout(input.timeout_ms), input.until);
-    Ok(Exec::Later(cx.spawn(async move |cx: &mut AsyncApp| {
+    Ok(later(page, cx, async move |page, cx| {
         let started = Instant::now();
         loop {
             // What it waits for may need the page's frames, as an animated page's next step
-            // does: it's on screen for the engine while the agent waits on it.
-            cx.update(|cx| page.view.update(cx, BrowserView::agent_uses));
-            let met = met(&page, until, &value, cx).await?;
+            // does: it's on screen for the engine while the agent waits on it. On the person's
+            // page, each look waits on their consent still holding.
+            cx.update(|cx| {
+                page.still(cx)?;
+                page.view()?.update(cx, BrowserView::agent_uses);
+                Ok::<_, ControlError>(())
+            })?;
+            let met = met(page, until, &value, cx).await?;
             if met || started.elapsed() >= limit {
                 return output(&BrowserWaitOutput {
                     met,
@@ -424,7 +285,7 @@ pub(crate) fn wait(
             }
             cx.background_executor().timer(POLL).await;
         }
-    })))
+    }))
 }
 
 /// The script that says whether the page meets `until` for `value`; none for an address,
@@ -449,13 +310,14 @@ async fn met(
     cx: &mut AsyncApp,
 ) -> Result<bool, ControlError> {
     let (url, loading, ready) = cx.update(|cx| {
-        let view = page.view.read(cx);
-        (
+        let view = page.view()?;
+        let view = view.read(cx);
+        Ok::<_, ControlError>((
             view.url().to_owned(),
             view.loading(),
             view.ready_for_agents(cx),
-        )
-    });
+        ))
+    })?;
     let Some(expression) = condition(until, value) else {
         return Ok(url.contains(value));
     };
@@ -464,7 +326,7 @@ async fn met(
     match ready {
         Ok(()) => {}
         Err(AgentError::NotOpen(NotOpen::Starting)) => return Ok(false),
-        Err(why) => return Err(refusals::failed(why, page.pane)),
+        Err(why) => return Err(refusals::failed(why, page.pane())),
     }
     if until == WaitFor::Load && loading {
         return Ok(false);

@@ -36,6 +36,9 @@ pub enum ErrorCode {
     PersonHasControl,
     /// Acting needs control, which someone else holds.
     ControlRequired,
+    /// The page is the person's own, pinned or loose, and they haven't let this client use it:
+    /// `browser_claim` asks them.
+    ConsentRequired,
     /// The app, a page or the person didn't answer in time.
     Timeout,
     /// The browser engine isn't running yet, or stopped.
@@ -83,7 +86,7 @@ pub enum ErrorCode {
 
 impl ErrorCode {
     /// Every code, in declaration order.
-    pub const ALL: [ErrorCode; 31] = [
+    pub const ALL: [ErrorCode; 32] = [
         ErrorCode::InvalidInput,
         ErrorCode::NotFound,
         ErrorCode::Ambiguous,
@@ -95,6 +98,7 @@ impl ErrorCode {
         ErrorCode::UnsavedChanges,
         ErrorCode::PersonHasControl,
         ErrorCode::ControlRequired,
+        ErrorCode::ConsentRequired,
         ErrorCode::Timeout,
         ErrorCode::BrowserUnavailable,
         ErrorCode::DesktopUnavailable,
@@ -131,6 +135,7 @@ impl ErrorCode {
             ErrorCode::UnsavedChanges => "unsaved_changes",
             ErrorCode::PersonHasControl => "person_has_control",
             ErrorCode::ControlRequired => "control_required",
+            ErrorCode::ConsentRequired => "consent_required",
             ErrorCode::Timeout => "timeout",
             ErrorCode::BrowserUnavailable => "browser_unavailable",
             ErrorCode::DesktopUnavailable => "desktop_unavailable",
@@ -308,6 +313,11 @@ impl ControlError {
 
     pub fn control_required(message: impl Into<String>) -> ControlError {
         ControlError::new(ErrorCode::ControlRequired, message)
+    }
+
+    /// The page is the person's own, which they haven't let this client use.
+    pub fn consent_required(message: impl Into<String>) -> ControlError {
+        ControlError::new(ErrorCode::ConsentRequired, message)
     }
 
     pub fn timeout(message: impl Into<String>) -> ControlError {
