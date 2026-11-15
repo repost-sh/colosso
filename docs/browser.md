@@ -723,7 +723,9 @@ in step with `koyo-rs/koyo/src/browser/dock.rs` and
 - Between the page and the tools is Koyo's divider, as Arc has it: a band of its own, nine
   points, with a grip in its middle, picked up anywhere along it (`theme::card::divider`). It
   has room of its own rather than lying over the two, either of which may be a native view
-  that takes a press before Koyo's own content does. Dragged, the pointer holds its middle.
+  that takes a press before Koyo's own content does; from the press until the button is let
+  go the pointer is Koyo's all over the window, so it's picked up however fast the hand
+  moves (`docs/native-pages.md` 6). Dragged, the pointer holds its middle.
   The size it sets is kept as before, in whole points, as a native page's is
   (`docs/native-pages.md` 6), and leaves the page and the tools 120 points each at the
   least.
