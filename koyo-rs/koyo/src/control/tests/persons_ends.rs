@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 use super::persons::{allowed, listed, persons_page, reading};
 use super::{activity, call, controlled, op, read_shell, send, taken, terminal};
 use crate::control::ActivityKind;
+use crate::browser::BrowserEvent;
 use crate::browser::control::IMPLICIT_HOLD;
 use crate::control::exec::IDLE;
 use crate::control::{Caller, Request, handle};
@@ -212,6 +213,37 @@ fn a_call_under_way_stops_once_consent_ends_or_its_page_closes(cx: &mut TestAppC
     let closed = taken(&waiting).expect("answered").unwrap_err();
     assert_eq!(closed.code, ErrorCode::BrowserUnavailable, "{}", closed.message);
     assert!(closed.message.contains("closed"), "{}", closed.message);
+}
+
+#[gpui_kit::test]
+fn a_page_an_extension_closes_ends_consent_as_any_close_does(cx: &mut TestAppContext) {
+    let root = repo("control-persons-extension", &[("README.md", "hi\n")]);
+    let rig = controlled("control-persons-extension", &[&root], cx);
+    select(&rig.shell, &root, cx);
+    let agent = terminal("term_1");
+    // A pinned page and a loose one, each used with the person's consent, a call under way.
+    for pinned in [true, false] {
+        let page = persons_page(&rig, &agent, "https://a.example/", pinned, cx);
+        allowed(&agent, page, cx);
+        let wait = json!({ "pane": page, "for": "url", "value": "never", "timeoutMs": 20_000 });
+        let waiting = send(&agent, None, op("browser_wait", wait), cx);
+        cx.executor().advance_clock(Duration::from_secs(1));
+        cx.run_until_parked();
+        assert!(taken(&waiting).is_none(), "still waiting");
+        // The engine says the page closed without the app asking: an extension closed its
+        // tab (`chrome.tabs.remove`). Its tab closes as it does when the person closes it.
+        let view = read_shell(&rig, cx, |shell, _| shell.workspace.pane(page)?.view().cloned());
+        (view.expect("the page")).update(cx, |_, cx| cx.emit(BrowserEvent::ClosedItself));
+        cx.executor().advance_clock(Duration::from_secs(1));
+        cx.run_until_parked();
+        let closed = taken(&waiting).expect("answered").unwrap_err();
+        assert_eq!(closed.code, ErrorCode::BrowserUnavailable, "{}", closed.message);
+        assert!(closed.message.contains("closed"), "{}", closed.message);
+        // No page is left for the consent to be for: a pinned page's tile has none open, and
+        // a loose page is gone.
+        let open = read_shell(&rig, cx, |shell, _| shell.workspace.pane(page)?.view().cloned());
+        assert!(open.is_none(), "pinned {pinned}: the page is closed");
+    }
 }
 
 #[gpui_kit::test]
