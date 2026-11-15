@@ -242,13 +242,8 @@ pub(super) fn overlay(
     let start = view.is_start_page();
     let p = theme::palette(cx);
     let (message, action): (String, Option<(&str, OnClick)>) = match (&view.notice, status) {
-        (_, HostStatus::Failed(message)) if !start => {
-            let restart = cx.listener(|this, _: &ClickEvent, _, cx| this.restart_host(cx));
-            (
-                message.clone(),
-                Some(("Restart browser", Box::new(restart))),
-            )
-        }
+        // The engine starts once while Koyo runs: what failed says what to do about it.
+        (_, HostStatus::Failed(message)) if !start => (message.clone(), None),
         (Some(Notice::Gone(reason)), _) => {
             let reload = cx.listener(|this, _: &ClickEvent, _, cx| this.go(Go::Reload, cx));
             (

@@ -1,7 +1,5 @@
-//! What the host tells the app: pages changing, frames ready, and what each page asks.
-use crate::{
-    DevToolsAsk, Dialog, MenuEntry, MenuTarget, PaneId, PasskeyAsk, Permission, PixelSize,
-};
+//! What the host tells the app: pages changing, and what each page asks.
+use crate::{DevToolsAsk, Dialog, MenuEntry, MenuTarget, PaneId, PasskeyAsk, Permission};
 use serde::{Deserialize, Serialize};
 
 /// The pointer the page asks for.
@@ -82,33 +80,6 @@ pub enum HostEvent {
         /// The Chromium version it embeds.
         chromium: String,
     },
-    /// A pane's surface ring, sent when it opens and whenever its pixel
-    /// size changes. The surfaces themselves arrive out of band, tagged
-    /// with `generation`; frames of an older generation are stale.
-    Surfaces {
-        /// The pane.
-        pane: PaneId,
-        /// Bumped for every new ring.
-        generation: u32,
-        /// The surfaces' size: at least the page's, with room for it to
-        /// grow, so a resize rarely needs a new ring.
-        size: PixelSize,
-        /// How many surfaces the ring has.
-        slots: u8,
-    },
-    /// A frame is ready in `slot`. The app shows it and answers
-    /// [`AppRequest::Release`] for the slot it stops showing.
-    Frame {
-        /// The pane.
-        pane: PaneId,
-        /// The ring it belongs to.
-        generation: u32,
-        /// The slot drawn.
-        slot: u8,
-        /// The page's size in the slot, from its top-left corner; the rest
-        /// of the surface holds nothing to show.
-        size: PixelSize,
-    },
     /// The page's address, title, loading or history changed.
     Page {
         /// The pane.
@@ -164,7 +135,7 @@ pub enum HostEvent {
         /// Why, for the person.
         reason: String,
     },
-    /// The person pressed a key in a native page, which `AppKit` hands the page without the app
+    /// The person pressed a key in the page, which `AppKit` hands the page without the app
     /// hearing of it: said at most twice a second for a pane, and never for keys an agent sends.
     Typed {
         /// The pane.

@@ -52,14 +52,23 @@ fn search_path() -> &'static OsString {
     })
 }
 
+/// The program `name` where it's first found on the [`search_path`]. A program is run by its
+/// path, not looked up by its name as it starts: with a `PATH` of its own to look in, the
+/// standard library starts a named one by forking the app, whose child runs the app's own
+/// `atfork` handlers before it becomes the program. The app holds the browser engine, and a
+/// fork taken while one of the engine's threads held a lock left that child waiting on it for
+/// good, the thread that asked for git with it (`docs/native-pages.md` 11). By its path it's
+/// spawned, with no copy of the app in between.
+fn installed(name: &str) -> Option<PathBuf> {
+    std::env::split_paths(search_path())
+        .map(|folder| folder.join(name))
+        .find(|program| program.is_file())
+}
+
 impl Git {
     /// The GitHub CLI in place of git, run in `dir`, where it's installed.
     pub(crate) fn github_cli(dir: &Path) -> Result<Self> {
-        let folders = std::env::split_paths(search_path());
-        let Some(gh) = folders
-            .map(|folder| folder.join("gh"))
-            .find(|gh| gh.is_file())
-        else {
+        let Some(gh) = installed("gh") else {
             return Err(GitError::refused("The GitHub CLI isn't installed."));
         };
         let mut command = Command::new(gh);
@@ -77,7 +86,10 @@ impl Git {
     }
 
     pub fn new(dir: &Path) -> Self {
-        let mut command = Command::new("git");
+        static GIT: OnceLock<PathBuf> = OnceLock::new();
+        // Not installed, it's asked for by name, and the failure to start it says so.
+        let git = GIT.get_or_init(|| installed("git").unwrap_or_else(|| "git".into()));
+        let mut command = Command::new(git);
         command
             .arg("-C")
             .arg(dir)
@@ -179,4 +191,31 @@ fn could_not_run(error: &std::io::Error) -> GitError {
 /// Splits `-z` output into its NUL-terminated fields.
 pub(crate) fn nul_fields(output: &str) -> impl Iterator<Item = &str> {
     output.strip_suffix('\0').unwrap_or(output).split('\0')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Git;
+
+    thread_local! {
+        /// How often this thread has forked the process.
+        static FORKS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    }
+
+    extern "C" fn forking() {
+        FORKS.set(FORKS.get() + 1);
+    }
+
+    #[test]
+    fn git_and_the_github_cli_are_started_without_forking_the_app() {
+        // SAFETY: the handler only counts, on the thread that forks.
+        unsafe { libc::pthread_atfork(Some(forking), None, None) };
+        let here = std::env::current_dir().unwrap();
+        Git::new(&here).arg("--version").read().unwrap();
+        // Where it's installed: started as git is.
+        if let Ok(gh) = Git::github_cli(&here) {
+            gh.arg("--version").read().unwrap();
+        }
+        assert_eq!(FORKS.get(), 0, "the app was forked to start git");
+    }
 }

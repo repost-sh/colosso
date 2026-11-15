@@ -10,7 +10,7 @@ use std::ptr::NonNull;
 
 use gpui_apple::metal_renderer::{SurfacePane, set_surface_pane};
 use gpui_kit::{
-    AnyWindowHandle, App, Bounds, DevicePixels, ElementId, Entity, Pixels,
+    AnyWindowHandle, App, Bounds, Corners, DevicePixels, ElementId, Entity, Pixels,
     PlatformSurfaceAttachment, Size, Window, WindowCompositionSurface, point,
 };
 use objc2::Message as _;
@@ -21,6 +21,7 @@ use objc2_core_video::{
     CVPixelBuffer, CVPixelBufferCreate, kCVPixelFormatType_32BGRA, kCVReturnSuccess,
 };
 use objc2_foundation::{NSPoint, NSRect, NSSize};
+use objc2_quartz_core::CACornerMask;
 
 pub struct Surface {
     window: AnyWindowHandle,
@@ -35,6 +36,9 @@ pub struct Surface {
     visible: Cell<Option<bool>>,
     /// Where the view was last put in its surface.
     frame: Cell<Option<NSRect>>,
+    /// Which of the view's corners were last rounded, and by how much.
+    #[cfg_attr(test, expect(dead_code, reason = "a page's view is what's rounded, and tests show none"))]
+    rounded: Cell<Option<(Corners<bool>, f64)>>,
     /// What stands for the view in a picture of the window ([`Surface::mark`]): a buffer that
     /// draws nothing, made when first asked for, none if the system gives none; and how a
     /// picture was last told to fill it.
@@ -70,6 +74,7 @@ impl Surface {
             placed: Cell::new(None),
             visible: Cell::new(None),
             frame: Cell::new(None),
+            rounded: Cell::new(None),
             marker: OnceCell::new(),
             marked: Cell::new(None),
         })
@@ -89,6 +94,15 @@ impl Surface {
     }
 
     /// Puts the view over `bounds`, showing only what of it lies within `clip`.
+    ///
+    /// Called as the element the view belongs to is prepainted, with its hitboxes: once a
+    /// frame is prepainted GPUI notes where the window's native views are, to tell what of
+    /// its own content the pointer finds, and a view placed later, as the frame is painted,
+    /// is noted where it was a frame before (`docs/native-pages.md` 6). The prepaint it's
+    /// placed in also says which side of GPUI's overlays the view stacks on, the root
+    /// view's or a deferred element's; glass under a deferred bar is the one view placed as
+    /// it's painted, to stay under what's drawn on it (`liquid.rs`), where being noted a
+    /// frame late costs nothing.
     pub fn place(&self, bounds: Bounds<Pixels>, clip: Bounds<Pixels>, window: &Window) {
         let Ok(surface) = self.composited.platform_surface() else {
             return;
@@ -127,6 +141,34 @@ impl Surface {
         if self.frame.replace(Some(frame)) != Some(frame) {
             self.view.setFrame(frame);
         }
+    }
+
+    /// Rounds by `radius` those of the view's corners `corners` says. For a view that fills
+    /// a rounded card to its corners: the card clips what GPUI draws in it, and a native
+    /// view not at all.
+    #[cfg_attr(test, expect(dead_code, reason = "a page's view is what's rounded, and tests show none"))]
+    pub fn round(&self, corners: Corners<bool>, radius: f64) {
+        let rounded = Some((corners, radius));
+        if self.rounded.replace(rounded) == rounded {
+            return;
+        }
+        let Some(layer) = self.view.layer() else {
+            return;
+        };
+        // Core Animation's corners are by the layer's own axes, whose y runs up in a view
+        // that isn't flipped: its "min y" corners are the bottom ones.
+        let mask = [
+            (corners.bottom_left, CACornerMask::LayerMinXMinYCorner),
+            (corners.bottom_right, CACornerMask::LayerMaxXMinYCorner),
+            (corners.top_left, CACornerMask::LayerMinXMaxYCorner),
+            (corners.top_right, CACornerMask::LayerMaxXMaxYCorner),
+        ]
+        .into_iter()
+        .filter(|(round, _)| *round)
+        .fold(CACornerMask::empty(), |mask, (_, corner)| mask | corner);
+        layer.setCornerRadius(radius);
+        layer.setMaskedCorners(mask);
+        layer.setMasksToBounds(!mask.is_empty());
     }
 
     /// Shows or hides the surface, unless it's so already.

@@ -102,8 +102,8 @@ pub(crate) fn viewport(
     })))
 }
 
-/// Waits, 5 seconds at most, until the page reports the size it lays out at as `target`,
-/// having shown a frame of it when it's in sight: whether it did.
+/// Waits, 5 seconds at most, until the page, told `target`, reports it as the size it lays
+/// out at: whether it did.
 async fn settle(page: &Page, target: Viewport, cx: &mut AsyncApp) -> bool {
     for _ in 0..POLLS {
         if cx.update(|cx| page.view.read(cx).ready_to_measure(target)) {

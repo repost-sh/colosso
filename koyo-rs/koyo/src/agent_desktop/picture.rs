@@ -10,7 +10,7 @@ use objc2_core_foundation::CFRetained;
 use objc2_core_video::CVPixelBuffer;
 use objc2_io_surface::IOSurfaceRef;
 
-use crate::browser::frames::pixel_buffer;
+use crate::surfaces::pixel_buffer;
 
 /// The desktop's picture: each window's latest frame. Apart from the desk, so a frame, sixty
 /// of which can come in a second, redraws the tab and nothing that only watches how the desk

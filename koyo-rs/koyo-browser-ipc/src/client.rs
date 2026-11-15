@@ -1,10 +1,10 @@
 //! The app's side: start the host from an installed engine and talk to it.
 //!
-//! [`Connection::start`] makes a socket pair, starts the host with its end
-//! inherited, a fresh token and (on macOS) the name of a mach service for
-//! surfaces, then says [`Hello`] and waits for the host's answer. Events
-//! from a reader thread and surface rings from the mach receiver are handed
-//! to the caller's sink as they arrive.
+//! [`Connection::start_embedded`] makes a socket pair, has the host start in the app's own
+//! process with its end and a fresh token, then says [`Hello`] and waits for the host's
+//! answer. [`Connection::start`] does the same with a host process of its own, whose pages
+//! nothing shows: the engine's tests use it. Events from a reader thread are handed to the
+//! caller's sink as they arrive.
 use crate::{
     AppRequest, ENV_PROFILE_ROOT, ENV_SOCKET_FD, ENV_TOKEN, Hello, HostEvent, PROTOCOL, inherit,
 };
@@ -13,10 +13,6 @@ use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::mpsc::{self, Receiver};
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
 use std::time::Duration;
 
 /// How long the host may take to start and say hello.
@@ -38,9 +34,6 @@ pub struct Launch {
 pub enum Incoming {
     /// A protocol event.
     Event(HostEvent),
-    /// A pane's surface ring (macOS: send rights to `IOSurface`s).
-    #[cfg(target_os = "macos")]
-    Ring(crate::mach::Ring),
     /// The connection ended; the host quit or crashed.
     Closed,
 }
@@ -70,7 +63,6 @@ pub struct Connection {
     child: Option<Child>,
     /// What stops a host in the app's process.
     finish: Option<Box<dyn FnOnce(Duration) + Send>>,
-    stop: Arc<AtomicBool>,
     /// Told once the reader thread ends: the host closed its end, as it does
     /// when it exits.
     exited: Receiver<()>,
@@ -134,25 +126,9 @@ fn read_events(reader: UnixStream, sink: &impl Sink) {
     let _ = sink(Incoming::Closed);
 }
 
-#[cfg(target_os = "macos")]
-fn read_rings(receiver: &crate::mach::Receiver, host: u32, stop: &AtomicBool, sink: &impl Sink) {
-    while !stop.load(Ordering::Relaxed) {
-        match receiver.receive(host, 200) {
-            Ok(Some(ring)) => {
-                if let Some(Incoming::Ring(ring)) = sink(Incoming::Ring(ring)) {
-                    ring.ports.into_iter().for_each(crate::mach::release);
-                    return;
-                }
-            }
-            Ok(None) => {}
-            Err(_) => return,
-        }
-    }
-}
-
 impl Connection {
-    /// Starts the host and completes the handshake; from then on events
-    /// and rings go to `sink`, in arrival order per source.
+    /// Starts the host as a process of its own and completes the handshake; from then on
+    /// events go to `sink`. Its pages are in no window: what tests of the engine need.
     ///
     /// A host left behind by an app that died, still holding the profiles,
     /// is stopped first ([`crate::profiles`]).
@@ -164,25 +140,13 @@ impl Connection {
     pub fn start(launch: &Launch, sink: impl Sink) -> io::Result<Self> {
         let (mut stream, host_end, token) = Self::begin(launch)?;
         let mut command = Command::new(&launch.executable);
-        inherit::pass(&mut command, &host_end);
         command
             .env(ENV_SOCKET_FD, inherit::HOST_FD.to_string())
             .env(ENV_TOKEN, &token)
             .env(ENV_PROFILE_ROOT, &launch.profiles);
-        #[cfg(target_os = "macos")]
-        let receiver = {
-            let name = format!(
-                "codes.koyo.desktop.browser.{}.{}",
-                std::process::id(),
-                &token[..12]
-            );
-            let receiver = crate::mach::Receiver::check_in(&name)?;
-            command.env(crate::ENV_SURFACE_SERVICE, receiver.name());
-            receiver
-        };
-        let mut child = command.spawn()?;
-        // The host holds its end now; ours closing is how it learns we left.
-        drop(host_end);
+        // The host holds its end from here, and nothing else does; ours closing is how it
+        // learns we left.
+        let mut child = inherit::spawn(command, host_end)?;
         let versions = match handshake(&mut stream, token, launch.passkeys) {
             Ok(versions) => versions,
             Err(e) => {
@@ -202,22 +166,12 @@ impl Connection {
                 });
             }
         };
-        let connection = Self::connected(stream, versions, Some(child), None, sink.clone())?;
-        #[cfg(target_os = "macos")]
-        {
-            let host = connection.pid();
-            let stop = connection.stop.clone();
-            std::thread::Builder::new()
-                .name("browser-host-surfaces".into())
-                .spawn(move || read_rings(&receiver, host, &stop, &sink))?;
-        }
-        Ok(connection)
+        Self::connected(stream, versions, Some(child), None, sink)
     }
 
     /// Starts the host in the app's own process and completes the handshake, as
     /// [`Connection::start`] does with a host process. The handshake waits for the host,
-    /// which starts on the main thread: call this off it. Its pages are native, so no
-    /// surfaces come from it.
+    /// which starts on the main thread: call this off it.
     ///
     /// # Errors
     /// When a host process left behind holds the profiles, or the host doesn't start in
@@ -269,17 +223,10 @@ impl Connection {
             writer: stream,
             child,
             finish,
-            stop: Arc::new(AtomicBool::new(false)),
             exited,
             engine,
             chromium,
         })
-    }
-
-    /// Whether the host runs in the app's own process.
-    #[must_use]
-    pub fn embedded(&self) -> bool {
-        self.child.is_none()
     }
 
     /// Sends a request.
@@ -323,7 +270,6 @@ impl Connection {
 
 impl Drop for Connection {
     fn drop(&mut self) {
-        self.stop.store(true, Ordering::Relaxed);
         let _ = self.writer.shutdown(std::net::Shutdown::Both);
         if let Some(child) = &mut self.child
             && matches!(child.try_wait(), Ok(None))

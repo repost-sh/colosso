@@ -91,6 +91,9 @@ gpui-kit = { version = "0.8.1", features = ["gpui-fast"] }
 gpui-base = { path = "vendor/gpui-base" }
 gpui-component = { path = "vendor/gpui-component" }
 gpui-fast-apple = { path = "vendor/gpui-fast-apple" }
+# GPUI's macOS windows: a mouse button's drag and release go to whoever took its press, a
+# native view or GPUI (vendor/README.md).
+gpui-fast-macos = { path = "vendor/gpui-fast-macos" }
 
 # Every dependency stays optimized in debug builds, so the dev app's frames cost what a
 # release build's do: the renderer and rasterizers, the editor (gpui-base, gpui-component,

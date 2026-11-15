@@ -18,4 +18,11 @@ disallowed-methods = [
     { path = "std::process::exit", reason = "return from main instead, so destructors and flushes run" },
     { path = "std::process::abort", reason = "aborting skips every destructor and says nothing" },
     { path = "std::thread::sleep", reason = "blocks the thread; wait on a timer or a channel instead" },
+    # The app holds the browser engine and must not be forked (docs/native-pages.md 11), and
+    # each of these has the standard library fork to start a program.
+    { path = "std::os::unix::process::CommandExt::pre_exec", reason = "forks the app to start the program; spawn it as it is, or hand a socket over with koyo_browser_ipc::inherit::spawn" },
+    { path = "std::os::unix::process::CommandExt::before_exec", reason = "forks the app to start the program" },
+    { path = "std::os::unix::process::CommandExt::uid", reason = "forks the app to start the program" },
+    { path = "std::os::unix::process::CommandExt::gid", reason = "forks the app to start the program" },
+    { path = "std::os::unix::process::CommandExt::groups", reason = "forks the app to start the program" },
 ]

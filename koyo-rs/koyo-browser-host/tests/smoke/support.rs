@@ -1,10 +1,8 @@
-//! What the smoke tests share: the engine to start, a session that keeps the host's rings
-//! and hands its frames back, the pixels read out of a frame, and a page to open, serve and
-//! ask things of.
+//! What the smoke tests share: the engine to start, a session with the host in a process of
+//! its own, where its pages are in holders parked off the screen, and a page to open, serve
+//! and ask things of.
 use koyo_browser_ipc::client::{Connection, Incoming, Launch};
-use koyo_browser_ipc::{AppRequest, HostEvent, PixelSize, Viewport};
-use objc2_io_surface::{IOSurfaceLockOptions, IOSurfaceRef};
-use std::collections::HashMap;
+use koyo_browser_ipc::{AppRequest, HostEvent, Viewport};
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::path::PathBuf;
@@ -33,58 +31,10 @@ pub fn launch(test: &str) -> Launch {
     }
 }
 
-/// The BGRA pixel at the centre of a surface.
-pub fn centre(surface: &IOSurfaceRef) -> [u8; 4] {
-    pixels(surface, &[(surface.width() / 2, surface.height() / 2)])[0]
-}
-
-/// The BGRA pixels at `points` of a surface.
-fn pixels(surface: &IOSurfaceRef, points: &[(usize, usize)]) -> Vec<[u8; 4]> {
-    unsafe {
-        surface.lock(IOSurfaceLockOptions::ReadOnly, std::ptr::null_mut());
-        let row = surface.bytes_per_row();
-        let base = surface.base_address().as_ptr().cast::<u8>();
-        let read = points
-            .iter()
-            .map(|(x, y)| {
-                let p = base.add(y * row + x * 4);
-                [*p, *p.add(1), *p.add(2), *p.add(3)]
-            })
-            .collect();
-        surface.unlock(IOSurfaceLockOptions::ReadOnly, std::ptr::null_mut());
-        read
-    }
-}
-
-/// What a frame showed: its centre, and a grid over the whole of it.
-pub struct Seen {
-    pub centre: [u8; 4],
-    pub grid: Vec<[u8; 4]>,
-    /// Every 4th pixel along the middle row, left to right.
-    pub row: Vec<[u8; 4]>,
-}
-
-impl Seen {
-    fn of(surface: &IOSurfaceRef, size: PixelSize) -> Self {
-        let (width, height) = (size.width as usize, size.height as usize);
-        let points: Vec<_> = (0..5)
-            .flat_map(|i| (0..5).map(move |j| (4 + i * (width - 8) / 4, 4 + j * (height - 8) / 4)))
-            .collect();
-        let across: Vec<_> = (0..width / 4).map(|i| (i * 4, height / 2)).collect();
-        Self {
-            centre: centre(surface),
-            grid: pixels(surface, &points),
-            row: pixels(surface, &across),
-        }
-    }
-}
-
 /// A running host and what it sent so far.
 pub struct Session {
     pub host: Connection,
     incoming: std::sync::mpsc::Receiver<Incoming>,
-    /// Each pane's rings by generation.
-    rings: HashMap<(u64, u32), Vec<objc2_core_foundation::CFRetained<IOSurfaceRef>>>,
 }
 
 impl Session {
@@ -92,27 +42,18 @@ impl Session {
         let (sink, incoming) = std::sync::mpsc::channel();
         let host = Connection::start(launch, move |message| sink.send(message).err().map(|e| e.0))
             .expect("the host starts and says hello");
-        Self {
-            host,
-            incoming,
-            rings: HashMap::new(),
-        }
+        Self { host, incoming }
     }
 
-    /// Waits for the event `want` accepts, keeping rings, handing frame
-    /// slots back and failing on host errors meanwhile.
-    pub fn wait(&mut self, what: &str, want: impl FnMut(&HostEvent, Option<&Seen>) -> bool) {
+    /// Waits for the event `want` accepts, failing on host errors meanwhile.
+    pub fn wait(&mut self, what: &str, want: impl FnMut(&HostEvent) -> bool) {
         let deadline = Instant::now() + Duration::from_secs(30);
         assert!(self.pump(deadline, want), "timed out waiting for {what}");
     }
 
     /// Handles what the host sends until `deadline`, or until `want` accepts an event:
     /// whether it did.
-    pub fn pump(
-        &mut self,
-        deadline: Instant,
-        mut want: impl FnMut(&HostEvent, Option<&Seen>) -> bool,
-    ) -> bool {
+    pub fn pump(&mut self, deadline: Instant, mut want: impl FnMut(&HostEvent) -> bool) -> bool {
         while Instant::now() < deadline {
             let left = deadline.saturating_duration_since(Instant::now());
             let Ok(incoming) = self
@@ -122,43 +63,8 @@ impl Session {
                 continue;
             };
             match incoming {
-                Incoming::Ring(ring) => {
-                    let surfaces = ring
-                        .ports
-                        .iter()
-                        .map(|port| {
-                            let surface = IOSurfaceRef::lookup_from_mach_port(*port)
-                                .expect("surface from port");
-                            koyo_browser_ipc::mach::release(*port);
-                            surface
-                        })
-                        .collect();
-                    self.rings.insert((ring.pane, ring.generation), surfaces);
-                }
                 Incoming::Event(event) => {
-                    let mut seen = None;
-                    if let HostEvent::Frame {
-                        pane,
-                        generation,
-                        slot,
-                        size,
-                    } = &event
-                    {
-                        let surface = self
-                            .rings
-                            .get(&(*pane, *generation))
-                            .and_then(|r| r.get(usize::from(*slot)))
-                            .expect("the ring arrives before its frames are needed");
-                        seen = Some(Seen::of(surface, *size));
-                        self.host
-                            .send(&AppRequest::Release {
-                                pane: *pane,
-                                generation: *generation,
-                                slot: *slot,
-                            })
-                            .expect("release");
-                    }
-                    if want(&event, seen.as_ref()) {
+                    if want(&event) {
                         return true;
                     }
                     if let HostEvent::Error { pane, message } = &event {
@@ -170,11 +76,6 @@ impl Session {
         }
         false
     }
-}
-
-pub fn is_red(pixel: [u8; 4]) -> bool {
-    // BGRA: blue, green, red, alpha.
-    pixel[2] > 240 && pixel[1] < 16 && pixel[0] < 16
 }
 
 /// The size [`open`] opens a page at.
@@ -195,7 +96,7 @@ pub fn open(session: &mut Session, url: &str, title: &str) {
             profile: "smoke".into(),
         })
         .expect("open");
-    session.wait("the page to load", |event, _| {
+    session.wait("the page to load", |event| {
         matches!(event, HostEvent::Page { pane: 1, state } if state.title == title && !state.loading)
     });
 }
@@ -233,7 +134,7 @@ pub fn evaluate(session: &mut Session, expression: &str) -> serde_json::Value {
     });
     cdp(session, call, "Runtime.evaluate", params);
     let mut answer = None;
-    session.wait("the page's answer", |event, _| match event {
+    session.wait("the page's answer", |event| match event {
         HostEvent::Gone { reason, .. } => panic!("the page stopped: {reason}"),
         HostEvent::CdpReply {
             call: answered,

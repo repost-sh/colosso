@@ -1,7 +1,7 @@
 //! Responsive mode in a pane's view: its state, the person's changes and an agent's, the
-//! page's new size sent to the host at once (a tab out of sight resizes too) or, for a size
-//! the person drags or types, as the pane is next drawn, its emulation sent to the page's
-//! session, and the one mapping between the window and the page shown scaled in it.
+//! page's new size (laid out as the pane is next drawn, or sent to the host at once for a tab
+//! out of sight), its emulation sent to the page's session, and the one mapping between the
+//! window and the page shown scaled in it.
 
 use gpui_kit::{Bounds, Context, Pixels, Point, Size, Window, point, px, size};
 use koyo_browser_ipc::{self as ipc, Viewport};
@@ -11,7 +11,6 @@ use super::devices::{self, Device};
 use super::{Emulation, Responsive, SetBy, Zoom, commands, place, to_page, to_window};
 use crate::browser::control::{Actor, Refused};
 use crate::browser::view::BrowserView;
-use crate::browser::view::lifecycle::Dragging;
 use crate::responsive::Drag;
 use crate::responsive::bar::Fields;
 
@@ -190,8 +189,7 @@ pub enum ViewportRefused {
 }
 
 impl BrowserView {
-    /// A point of the window as a point of the page, in its own logical pixels: every
-    /// pointer position the page is told goes through here.
+    /// A point of the window as a point of the page, in its own logical pixels.
     pub(in crate::browser) fn page_point(&self, position: Point<Pixels>) -> Point<Pixels> {
         to_page(position, self.origin, self.responsive.fit)
     }
@@ -245,14 +243,12 @@ impl BrowserView {
             && state.barred == state.mode.is_some()
     }
 
-    /// Places the page as `laid` lays it out in `window`, telling the host its size when it
-    /// changed, as `dragging` drags the pane's edge.
+    /// Places the page as `laid` lays it out in `window`.
     pub(in crate::browser) fn place_page(
         &mut self,
         laid: (Viewport, Bounds<Pixels>, f32),
         room: Size<Pixels>,
         window: &Window,
-        dragging: Dragging,
         cx: &mut Context<Self>,
     ) {
         let (viewport, shown, fit) = laid;
@@ -268,12 +264,9 @@ impl BrowserView {
             self.responsive.mode = Some(kept);
             cx.notify();
         }
-        self.viewport_changed(viewport, dragging, cx);
-        // A native page's emulated size follows the size it shows at, while the mode is on
-        // or was.
-        if self.is_native()
-            && (self.responsive.mode.is_some() || self.responsive.emulated.shown.is_some())
-        {
+        self.drawn_at(viewport, cx);
+        // The page's emulated size follows the size it shows at, while the mode is on or was.
+        if self.responsive.mode.is_some() || self.responsive.emulated.shown.is_some() {
             self.emulate(cx);
         }
     }
@@ -364,9 +357,9 @@ impl BrowserView {
         }
     }
 
-    /// The person sizes a free page to `width` × `height`, within the limits. The page is told
-    /// as the pane is next drawn, so a grip dragged faster than the window draws sends one
-    /// size a frame, which the host lays the page out to live (its `live.rs`).
+    /// The person sizes a free page to `width` × `height`, within the limits. The page is laid
+    /// out at it as the pane is next drawn, so a grip dragged faster than the window draws
+    /// sizes the page once a frame.
     pub(in crate::browser) fn person_sizes(
         &mut self,
         width: u32,
@@ -405,8 +398,8 @@ impl BrowserView {
         Ok(self.wanted_viewport())
     }
 
-    /// Puts the page in `mode`: its new size goes to the host now, and what it emulates to
-    /// its session.
+    /// Puts the page in `mode`: its new size is laid out at (`viewport_changed`), and what it
+    /// emulates goes to its session.
     pub(in crate::browser) fn set_responsive(
         &mut self,
         mode: Option<Responsive>,
@@ -420,7 +413,7 @@ impl BrowserView {
         }
         self.responsive.mode = mode;
         if let Some(viewport) = self.wanted_viewport() {
-            self.viewport_changed(viewport, Dragging::No, cx);
+            self.viewport_changed(viewport, cx);
         }
         self.emulate(cx);
         cx.notify();
@@ -430,7 +423,7 @@ impl BrowserView {
     pub(in crate::browser) fn session_opened(&mut self, cx: &mut Context<Self>) {
         self.responsive.emulated = Emulation::default();
         self.emulate(cx);
-        // A native page is asked how light it is from now on, for the glass over it.
+        // The page is asked how light it is from now on, for the glass over it.
         self.watch_tone(cx);
     }
 
@@ -444,9 +437,9 @@ impl BrowserView {
         let mut wanted = (self.responsive.mode.as_ref())
             .map(|mode| mode.emulation(&major))
             .unwrap_or_default();
-        // A native page is drawn by the engine at its view's size: the mode's size and how
-        // much of it shows are the engine's to emulate.
-        if self.is_native() && self.responsive.mode.is_some() {
+        // The page is drawn by the engine at its view's size: the mode's size and how much of
+        // it shows are the engine's to emulate.
+        if self.responsive.mode.is_some() {
             wanted.shown = self.viewport.map(|viewport| super::Scaled {
                 width: viewport.width,
                 height: viewport.height,

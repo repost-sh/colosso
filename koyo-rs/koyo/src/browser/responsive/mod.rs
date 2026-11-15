@@ -18,7 +18,7 @@ mod opening;
 mod pane;
 
 use gpui_kit::{Bounds, Pixels, Point, Size, point};
-use koyo_browser_ipc::{PixelSize, Viewport};
+use koyo_browser_ipc::Viewport;
 use serde_json::{Value, json};
 
 pub use crate::responsive::{Grip, Zoom};
@@ -169,10 +169,10 @@ pub struct Emulation {
     pub mobile: bool,
     pub touch: bool,
     pub agent: Option<Override>,
-    /// The size the page is told while it shows scaled: a native page (`browser/native`) is
-    /// drawn by the engine itself, at the size of its view, so the mode's size, its pixel ratio
-    /// and how much of its true size it shows at are the engine's to emulate. None off screen,
-    /// where the page is its true size and the app scales its picture.
+    /// The size the page is told while the mode is on: a page is drawn by the engine itself, at
+    /// the size of its view, so the mode's size, its pixel ratio and how much of its true size
+    /// it shows at are the engine's to emulate. None with the mode off, the page filling its
+    /// view.
     pub shown: Option<Scaled>,
 }
 
@@ -198,12 +198,6 @@ pub fn commands(applied: &Emulation, wanted: &Emulation) -> Vec<(&'static str, V
                     "deviceScaleFactor": shown.device_scale, "mobile": wanted.mobile,
                     "scale": shown.fit,
                 });
-                ("Emulation.setDeviceMetricsOverride", metrics)
-            }
-            None if wanted.mobile => {
-                // Zeros keep the real size and scale: only `mobile` is overridden.
-                let metrics =
-                    json!({ "width": 0, "height": 0, "deviceScaleFactor": 0, "mobile": true });
                 ("Emulation.setDeviceMetricsOverride", metrics)
             }
             None => ("Emulation.clearDeviceMetricsOverride", json!({})),
@@ -259,17 +253,6 @@ pub fn to_page(position: Point<Pixels>, origin: Point<Pixels>, fit: f32) -> Poin
 /// A point of the page shown at `origin` at `fit` as a point of the window.
 pub fn to_window(at: Point<Pixels>, origin: Point<Pixels>, fit: f32) -> Point<Pixels> {
     origin + point(at.x * fit, at.y * fit)
-}
-
-/// The device pixels per logical pixel of a frame `size` device pixels, the page last told
-/// `viewport`: its scale when the frame is of it; else, the frame being one painted before
-/// the page was told, the scale of the frame before it (`previous`).
-pub fn frame_scale(size: PixelSize, viewport: Option<Viewport>, previous: Option<f32>) -> f32 {
-    let told = viewport.map(|viewport| viewport.scale);
-    match viewport {
-        Some(viewport) if size.near(viewport.pixels()) => viewport.scale,
-        _ => previous.or(told).unwrap_or(1.),
-    }
 }
 
 /// Whether a page that reports `inner` (`innerWidth`, `innerHeight`) has laid out at

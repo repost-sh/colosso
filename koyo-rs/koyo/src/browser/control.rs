@@ -185,7 +185,7 @@ impl BrowserView {
     /// The person is at the page. Taken by acting in it, it goes back [`IMPLICIT_HOLD`]
     /// from now unless they act again first; taken by asking, it stays theirs. One task
     /// waits on the hold however often they act: each act only moves its deadline on.
-    pub(super) fn keep_hold(&mut self, cx: &mut Context<Self>) {
+    fn keep_hold(&mut self, cx: &mut Context<Self>) {
         if !self.control.person_using() {
             self.lapse = None;
             return;

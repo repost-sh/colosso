@@ -1,23 +1,5 @@
-//! What the app tells the host about a pane: its viewport, and the pointer, keys and
-//! modifiers in it.
+//! What the app tells the host about a pane: its viewport, and a point in it.
 use serde::{Deserialize, Serialize};
-
-/// A size in device pixels.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PixelSize {
-    /// Width.
-    pub width: u32,
-    /// Height.
-    pub height: u32,
-}
-
-impl PixelSize {
-    /// Whether `other` is this size, give or take a device pixel of rounding on each side.
-    #[must_use]
-    pub fn near(self, other: PixelSize) -> bool {
-        self.width.abs_diff(other.width) <= 1 && self.height.abs_diff(other.height) <= 1
-    }
-}
 
 /// The view a pane is laid out at.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -31,113 +13,17 @@ pub struct Viewport {
     pub scale: f32,
 }
 
-/// The largest side of a page's surface, in device pixels.
-pub const MAX_SURFACE_SIDE: f32 = 16384.;
+/// The largest side a page is drawn at, in device pixels.
+pub const MAX_SIDE: f32 = 16384.;
 
 impl Viewport {
-    /// The surface size the host renders at.
-    #[must_use]
-    pub fn pixels(&self) -> PixelSize {
-        let scale = self.device_scale();
-        let scaled = |v: u32| ((v as f32) * scale).round().max(1.) as u32;
-        PixelSize {
-            width: scaled(self.width),
-            height: scaled(self.height),
-        }
-    }
-
-    /// Device pixels per logical pixel: the scale, or 1 where it's none (not positive, or not
-    /// a number).
-    #[must_use]
-    pub fn device_scale(&self) -> f32 {
-        usable_scale(self.scale)
-    }
-
-    /// The most logical pixels a side has at `scale` for its surface to stay within
-    /// [`MAX_SURFACE_SIDE`] device pixels.
+    /// The most logical pixels a side has at `scale` for the page to stay within [`MAX_SIDE`]
+    /// device pixels; `scale` counts as 1 where it's none (not positive, or not a number).
     #[must_use]
     pub fn max_side(scale: f32) -> u32 {
-        (MAX_SURFACE_SIDE / usable_scale(scale)).floor() as u32
+        let scale = if scale.is_finite() && scale > 0. { scale } else { 1. };
+        (MAX_SIDE / scale).floor() as u32
     }
-}
-
-fn usable_scale(scale: f32) -> f32 {
-    if scale.is_finite() && scale > 0. {
-        scale
-    } else {
-        1.
-    }
-}
-
-/// Keyboard and mouse modifiers held during an event.
-#[expect(
-    clippy::struct_excessive_bools,
-    reason = "each modifier is held or not; the wire format names them one by one"
-)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Modifiers {
-    /// Shift.
-    #[serde(default)]
-    pub shift: bool,
-    /// Control.
-    #[serde(default)]
-    pub control: bool,
-    /// Option / Alt.
-    #[serde(default)]
-    pub alt: bool,
-    /// Command / Windows / Super.
-    #[serde(default)]
-    pub platform: bool,
-}
-
-/// A mouse button.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum MouseButton {
-    /// The primary button.
-    Left,
-    /// The middle button or wheel press.
-    Middle,
-    /// The secondary button.
-    Right,
-}
-
-/// What a mouse event is.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum MouseKind {
-    /// The pointer moved, with `button` held if any.
-    Move,
-    /// A button went down.
-    Down,
-    /// A button went up.
-    Up,
-    /// The pointer left the pane.
-    Leave,
-}
-
-/// Where a pinch on the trackpad is in its course.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum PinchPhase {
-    /// The fingers came down.
-    Started,
-    /// They spread or closed.
-    Moved,
-    /// They lifted.
-    Ended,
-}
-
-/// What a key event is.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum KeyKind {
-    /// A key went down.
-    Down,
-    /// A key went up.
-    Up,
-    /// Text the key produced.
-    Char,
 }
 
 /// A position in a pane, in logical pixels.

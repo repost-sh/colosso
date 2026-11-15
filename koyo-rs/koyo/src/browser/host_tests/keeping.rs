@@ -1,5 +1,5 @@
-//! What a page keeps: its paint while out of sight, the engine's attention while an agent
-//! uses it out of sight, and its site data until cleared.
+//! What a page keeps: its sight for the engine as its tab is left and picked again, the
+//! engine's attention while an agent uses it out of sight, and its site data until cleared.
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -17,9 +17,7 @@ use super::super::host::{Browsers, CdpResult, HostStatus};
 use super::super::keys::key_codes;
 use super::super::view::BrowserView;
 use super::super::view::sight::AWAKE_FOR;
-use super::{
-    centre, finish, open, pause, prepare, run, serve, tester, wait_for, wait_for_title, wait_until,
-};
+use super::{finish, open, pause, prepare, run, serve, tester, wait_for_title, wait_until};
 
 /// A window showing its page or not, as a tab does once another is picked.
 struct Tab {
@@ -37,8 +35,8 @@ impl Render for Tab {
 
 #[gpui_kit::test]
 #[ignore = "needs the engine script/browser-engine packages"]
-fn a_page_out_of_sight_is_hidden_and_paints_again_once_back(cx: &mut TestAppContext) {
-    let url = "data:text/html,<title>visible</title><body style='margin:0;background:%230f0'>\
+fn a_page_out_of_sight_is_hidden_and_visible_again_once_back(cx: &mut TestAppContext) {
+    let url = "data:text/html,<title>loaded</title><body style='margin:0;background:%230f0'>\
         <script>document.addEventListener('visibilitychange',\
         ()=>document.title=document.visibilityState)</script>";
     let scratch = prepare("sight", cx);
@@ -48,21 +46,13 @@ fn a_page_out_of_sight_is_hidden_and_paints_again_once_back(cx: &mut TestAppCont
         Tab { page, shown: true }
     });
     let view = tab.read_with(cx, |tab, _| tab.page.clone());
-    wait_for(cx, &view, "the page on screen", |view| {
-        view.page.title == "visible" && view.frame.is_some()
-    });
+    wait_for_title(cx, &view, "loaded");
 
     show(&tab, false, cx);
     wait_for_title(cx, &view, "hidden");
-    let painted = view.read_with(cx, |view, _| view.frames_shown);
 
     show(&tab, true, cx);
-    wait_for(
-        cx,
-        &view,
-        "the page back on screen and painted afresh",
-        |view| view.page.title == "visible" && view.frames_shown > painted,
-    );
+    wait_for_title(cx, &view, "visible");
     finish(cx, scratch);
 }
 
@@ -101,9 +91,7 @@ fn left<'a>(
 ) -> (Entity<BrowserView>, &'a mut VisualTestContext, PathBuf) {
     let (tab, view, cx, scratch) = unseen(test, DRIVEN, cx);
     show(&tab, true, cx);
-    wait_for(cx, &view, "the page on screen", |view| {
-        view.page.title == "ready" && view.frame.is_some()
-    });
+    wait_for_title(cx, &view, "ready");
     show(&tab, false, cx);
     wait_for_title(cx, &view, "hidden");
     (view, cx, scratch)
@@ -207,7 +195,7 @@ const DRIVEN: &str = "data:text/html,<title>ready</title><body style='margin:0'>
 
 #[gpui_kit::test]
 #[ignore = "needs the engine script/browser-engine packages"]
-fn a_page_opened_out_of_sight_paints_once_shown(cx: &mut TestAppContext) {
+fn a_page_opened_out_of_sight_is_visible_once_shown(cx: &mut TestAppContext) {
     let url = "data:text/html,<body style='margin:0;background:%230f0'><script>\
         const say=()=>document.title=document.visibilityState;say();\
         document.addEventListener('visibilitychange',say)</script>";
@@ -218,9 +206,7 @@ fn a_page_opened_out_of_sight_paints_once_shown(cx: &mut TestAppContext) {
     cx.executor().advance_clock(AWAKE_FOR);
     wait_for_title(cx, &view, "hidden");
     show(&tab, true, cx);
-    wait_for(cx, &view, "the page painted once shown", |view| {
-        view.page.title == "visible" && view.frame.as_ref().is_some_and(|f| centre(f)[1] > 240)
-    });
+    wait_for_title(cx, &view, "visible");
     finish(cx, scratch);
 }
 
@@ -259,31 +245,26 @@ fn an_agent_drives_a_page_whose_tab_was_left(cx: &mut TestAppContext) {
 
 #[gpui_kit::test]
 #[ignore = "needs the engine script/browser-engine packages"]
-fn a_capture_that_cannot_complete_answers_within_its_limit(cx: &mut TestAppContext) {
-    let (view, cx, scratch) = left("capture-limit", cx);
-    // Asked of the engine straight, which no agent's command is, so the page stays hidden
-    // and has no frame to capture.
+fn a_command_the_page_never_answers_is_answered_within_its_limit(cx: &mut TestAppContext) {
+    let (view, cx, scratch) = left("command-limit", cx);
+    // A promise nothing settles: the engine waits on it for good.
     let limit = Duration::from_secs(5);
     let browsers = cx.update(|_, cx| Browsers::global(cx));
     let pane = view.read_with(cx, |view, _| view.pane);
-    let mut capture = browsers.update(cx, |browsers, cx| {
-        let params = json!({"format": "png"});
-        browsers.ask(pane, "Page.captureScreenshot", params, limit, cx)
+    let mut asked = browsers.update(cx, |browsers, cx| {
+        let params = json!({"expression": "new Promise(() => {})", "awaitPromise": true});
+        browsers.ask(pane, "Runtime.evaluate", params, limit, cx)
     });
     let started = Instant::now();
     while started.elapsed() < Duration::from_secs(1) {
         cx.run_until_parked();
         pause(Duration::from_millis(20));
     }
-    assert_eq!(
-        (&mut capture).now_or_never(),
-        None,
-        "a hidden page captures nothing"
-    );
+    assert_eq!((&mut asked).now_or_never(), None, "nothing answers it");
 
     cx.executor().advance_clock(limit);
     cx.run_until_parked();
-    assert_eq!((&mut capture).now_or_never(), Some(Answer::TimedOut));
+    assert_eq!((&mut asked).now_or_never(), Some(Answer::TimedOut));
     let waiting = browsers.read_with(cx, |browsers, _| browsers.calls_waiting());
     assert_eq!(waiting, 0, "the app forgot the command");
     finish(cx, scratch);
@@ -300,7 +281,7 @@ fn store(name: &str) -> Option<String> {
 
 #[gpui_kit::test]
 #[ignore = "needs the engine script/browser-engine packages"]
-fn clearing_browsing_data_restarts_the_engine_with_nothing_kept(cx: &mut TestAppContext) {
+fn clearing_browsing_data_opens_the_page_again_with_nothing_kept(cx: &mut TestAppContext) {
     let port = serve(store);
     let (view, cx, scratch) = open("clear", &format!("http://127.0.0.1:{port}/store"), cx);
     wait_for_title(cx, &view, "fresh");
@@ -346,7 +327,7 @@ fn a_sign_in_outlives_the_engine_quitting_and_starting_again(cx: &mut TestAppCon
         .expect("the engine, running")
         .shutdown(Duration::from_secs(5));
     // And starts again on the same profiles: the page opens anew, and its site knows it.
-    browsers.update(cx, Browsers::restart);
+    browsers.update(cx, Browsers::start_if_idle);
     wait_for_title(cx, &view, "session+cookie+storage");
     finish(cx, scratch);
 }

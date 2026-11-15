@@ -76,7 +76,14 @@ fn pointer_positions_map_through_the_scale_both_ways() {
 
 #[test]
 fn a_preset_emulates_a_phone_and_leaving_it_clears_all_of_it() {
-    let phone = Responsive::preset(iphone(), false, Zoom::Fit, SetBy::Person).emulation("146");
+    let mut phone = Responsive::preset(iphone(), false, Zoom::Fit, SetBy::Person).emulation("146");
+    // Shown at half its size, as a pane shorter than the phone has it.
+    phone.shown = Some(Scaled {
+        width: 393,
+        height: 852,
+        device_scale: 3.,
+        fit: 0.5,
+    });
     let set = commands(&Emulation::default(), &phone);
     let methods: Vec<&str> = set.iter().map(|(method, _)| *method).collect();
     assert_eq!(
@@ -90,7 +97,9 @@ fn a_preset_emulates_a_phone_and_leaving_it_clears_all_of_it() {
     );
     assert_eq!(
         set[0].1,
-        json!({ "width": 0, "height": 0, "deviceScaleFactor": 0, "mobile": true })
+        json!({
+            "width": 393, "height": 852, "deviceScaleFactor": 3.0, "mobile": true, "scale": 0.5,
+        })
     );
     assert_eq!(set[1].1, json!({ "enabled": true, "maxTouchPoints": 5 }));
     assert_eq!(
@@ -125,11 +134,21 @@ fn a_preset_emulates_a_phone_and_leaving_it_clears_all_of_it() {
         commands(&phone, &phone).is_empty(),
         "nothing new, nothing sent"
     );
-    let free = Responsive::free(800, 600, Zoom::Fit, SetBy::Person).emulation("146");
-    assert!(
-        commands(&Emulation::default(), &free).is_empty(),
-        "a free size is a desktop"
+    let mut free = Responsive::free(800, 600, Zoom::Fit, SetBy::Person).emulation("146");
+    free.shown = Some(Scaled {
+        width: 800,
+        height: 600,
+        device_scale: 2.,
+        fit: 1.,
+    });
+    let free = commands(&Emulation::default(), &free);
+    let methods: Vec<&str> = free.iter().map(|(method, _)| *method).collect();
+    assert_eq!(
+        methods,
+        ["Emulation.setDeviceMetricsOverride"],
+        "a free size is a desktop of its size"
     );
+    assert_eq!(free[0].1["mobile"], false);
 }
 
 #[test]
@@ -260,7 +279,7 @@ fn an_agents_change_is_refused_when_it_makes_no_sense() {
 }
 
 #[test]
-fn a_page_has_settled_once_it_reports_the_size_and_shows_a_frame_of_it() {
+fn a_page_has_settled_once_it_reports_the_size() {
     assert!(laid_out(393, 852, 100, false, (393., 852.)));
     assert!(
         !laid_out(393, 852, 100, false, (1200., 800.)),
@@ -276,15 +295,6 @@ fn a_page_has_settled_once_it_reports_the_size_and_shows_a_frame_of_it() {
         !laid_out(375, 667, 100, false, (980., 1743.)),
         "only on a phone"
     );
-    let target = Viewport {
-        width: 412,
-        height: 915,
-        scale: 2.625,
-    };
-    let fits = |width, height| target.pixels().near(PixelSize { width, height });
-    assert!(fits(1082, 2402));
-    assert!(fits(1081, 2401), "a device pixel either way");
-    assert!(!fits(2400, 1600));
 }
 
 /// A page of `url` in a window of its own; a test names no engine, so its host fails to
@@ -327,10 +337,30 @@ fn the_page_is_told_a_preset_on_setting_clearing_and_reopening(cx: &mut TestAppC
         "a page filling its pane emulates nothing"
     );
     view.update(cx, |view, cx| view.pick_device(Some(iphone()), cx));
+    draw(window, cx);
     let set = asked(&view, cx);
-    assert_eq!(methods(&set).len(), 4, "{set:?}");
+    let told = [
+        "Emulation.setDeviceMetricsOverride",
+        "Emulation.setTouchEmulationEnabled",
+        "Emulation.setEmitTouchEventsForMouse",
+        "Emulation.setUserAgentOverride",
+    ];
+    assert_eq!(methods(&set[..4]), told, "{set:?}");
     assert_eq!(set[0].1["mobile"], true);
-    // The page is resized at once, at the phone's size and scale.
+    // Drawn, it's told the size again as it shows at it, scaled down into the pane.
+    assert!(
+        methods(&set[4..])
+            .iter()
+            .all(|method| *method == "Emulation.setDeviceMetricsOverride"),
+        "{set:?}"
+    );
+    let sized = &set[set.len() - 1].1;
+    let fit = view.read_with(cx, |view, _| view.responsive.fit);
+    assert_eq!((&sized["width"], &sized["height"]), (&json!(393), &json!(852)));
+    let scale = sized["scale"].as_f64().unwrap_or_default();
+    assert!((scale - f64::from(fit)).abs() < 1e-6, "at {fit}, not {scale}");
+    assert!(fit < 1., "the phone is taller than the pane");
+    // The page is laid out at the phone's size and scale.
     view.read_with(cx, |view, _| {
         let viewport = view.viewport.unwrap();
         assert_eq!((viewport.width, viewport.height), (393, 852));
@@ -339,7 +369,7 @@ fn the_page_is_told_a_preset_on_setting_clearing_and_reopening(cx: &mut TestAppC
     view.update(cx, BrowserView::pretend_opened);
     assert_eq!(
         methods(&asked(&view, cx)),
-        methods(&set),
+        told,
         "a new session is told it again"
     );
     view.update(cx, |view, cx| view.set_responsive(None, cx));

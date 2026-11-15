@@ -21,7 +21,8 @@ pub(super) fn windows() -> String {
         let content = (window.contentView()).map_or("none".to_owned(), |view| class_name(&view));
         let _ = write!(
             text,
-            "\n{} {} “{}” {:.0},{:.0} {:.0}x{:.0} visible {} key {} seen {} alpha {} content {}",
+            "\n{} {} “{}” {:.0},{:.0} {:.0}x{:.0} visible {} key {} seen {} alpha {} content {} \
+             through {} level {} order {}",
             window.windowNumber(),
             class_name(&window),
             window.title(),
@@ -34,6 +35,9 @@ pub(super) fn windows() -> String {
             occlusion & 2 != 0,
             window.alphaValue(),
             content,
+            window.ignoresMouseEvents(),
+            window.level(),
+            window.orderedIndex(),
         );
     }
     text
@@ -106,9 +110,6 @@ pub(super) fn cursor(window: &NSWindow) -> String {
         screen - frame.origin.y - frame.size.height
     )
 }
-
-/// Whether windows nothing shows are drawn all the same (`tick`).
-pub(super) static TICKS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Has GPUI lay out and paint every window of the app that nothing shows, which it wouldn't
 /// by itself: on a desktop that isn't the one shown, the app goes on as if it were seen.

@@ -1,12 +1,10 @@
-//! What the host says, routed to the pane views: page state, cursors, questions, menus,
-//! and frames, whose rings arrive on a channel of their own.
+//! What the host says, routed to the pane views: page state, cursors, questions and menus.
 
 use gpui_kit::Context;
 use koyo_browser_ipc::client::Incoming;
-use koyo_browser_ipc::{self as ipc, AppRequest, HostEvent, PaneId, PixelSize};
+use koyo_browser_ipc::{self as ipc, AppRequest, HostEvent, PaneId};
 
 use super::Browsers;
-use crate::browser::frames::{self, Frame};
 use crate::browser::view::{BrowserEvent, BrowserView};
 
 impl Browsers {
@@ -39,30 +37,13 @@ impl Browsers {
     pub(super) fn receive(&mut self, message: Incoming, cx: &mut Context<Self>) {
         match message {
             Incoming::Event(event) => self.event(event, cx),
-            Incoming::Ring(ring) => {
-                let pane = ring.pane;
-                if !self.views.contains_key(&pane) {
-                    ring.ports.into_iter().for_each(ipc::mach::release);
-                    return;
-                }
-                let Some(ring) = frames::import(ring) else {
-                    return;
-                };
-                let generation = ring.generation;
-                self.rings.insert(pane, ring);
-                if let Some((frame_generation, slot, size)) = self.pending.remove(&pane)
-                    && frame_generation == generation
-                {
-                    self.show(pane, generation, slot, size, cx);
-                }
-            }
             Incoming::Closed => self.stopped(cx),
         }
     }
 
     fn event(&mut self, event: HostEvent, cx: &mut Context<Self>) {
         match event {
-            HostEvent::Ready { .. } | HostEvent::Surfaces { .. } | HostEvent::CdpEvent { .. } => {}
+            HostEvent::Ready { .. } | HostEvent::CdpEvent { .. } => {}
             HostEvent::CdpReply {
                 call,
                 result,
@@ -76,12 +57,6 @@ impl Browsers {
                     });
                 }
             }
-            HostEvent::Frame {
-                pane,
-                generation,
-                slot,
-                size,
-            } => self.frame(pane, generation, slot, size, cx),
             HostEvent::Page { pane, state } => {
                 self.update_view(pane, cx, |view, cx| view.page_changed(state, cx));
             }
@@ -219,67 +194,6 @@ impl Browsers {
                     ipc::PasskeyError::NotAllowed,
                     "The page is closed.",
                 ),
-            });
-        }
-    }
-
-    fn frame(
-        &mut self,
-        pane: PaneId,
-        generation: u32,
-        slot: u8,
-        size: PixelSize,
-        cx: &mut Context<Self>,
-    ) {
-        if self
-            .rings
-            .get(&pane)
-            .is_some_and(|ring| ring.generation == generation)
-        {
-            self.show(pane, generation, slot, size, cx);
-            return;
-        }
-        // The ring travels on another channel; a newer frame replaces a waiting one, whose
-        // slot goes straight back.
-        if let Some((waiting_generation, waiting, _)) =
-            self.pending.insert(pane, (generation, slot, size))
-        {
-            self.send(AppRequest::Release {
-                pane,
-                generation: waiting_generation,
-                slot: waiting,
-            });
-        }
-    }
-
-    fn show(
-        &mut self,
-        pane: PaneId,
-        generation: u32,
-        slot: u8,
-        size: PixelSize,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(frame) = self
-            .rings
-            .get(&pane)
-            .and_then(|ring| ring.surfaces.get(usize::from(slot)))
-            .map(|surface| Frame::new((generation, slot), size, surface))
-        else {
-            return;
-        };
-        // The slot shown before goes back; or this one, when it can't be drawn.
-        let back = match frame {
-            Some(frame) => self
-                .update_view(pane, cx, |view, cx| view.show_frame(frame, cx))
-                .flatten(),
-            None => Some((generation, slot)),
-        };
-        if let Some((generation, slot)) = back {
-            self.send(AppRequest::Release {
-                pane,
-                generation,
-                slot,
             });
         }
     }

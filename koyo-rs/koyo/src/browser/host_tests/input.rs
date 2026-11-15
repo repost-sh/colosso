@@ -1,174 +1,42 @@
-//! The person's pointer, trackpad and keys reach the page: links followed, fields typed
-//! into, pages scrolled and pinched, popups answered, addresses entered.
+//! What the person does in the app reaches the page: the keys that steer it, an address
+//! entered, and a page's full screen given the screen and taken back.
 
-use std::time::Duration;
+use gpui_kit::TestAppContext;
+use serde_json::json;
 
-use gpui_kit::{
-    KeyUpEvent, Keystroke, Modifiers, PinchEvent, ScrollDelta, ScrollEvent, ScrollSource,
-    TestAppContext, TouchPhase, VisualTestContext, point, px,
-};
+use super::super::agent::Answer;
+use super::{BrowserView, finish, open, run, serve, wait_for_title};
 
-use super::{click, finish, open, page_origin, pause, pixel, serve, wait_for, wait_for_title};
-
-/// Two linked pages and a long one, served locally.
+/// Two pages, served locally.
 fn site(name: &str) -> Option<String> {
-    let link = "position:absolute;left:0;top:0;width:300px;height:60px;font-size:40px";
     match name {
-        "one" => Some(format!(
-            "<title>one</title><body style='margin:0'><a href='/two' style='{link}'>two</a>"
-        )),
-        "two" => Some(format!(
-            "<title>two</title><body style='margin:0'><a href='/one' style='{link}'>one</a>"
-        )),
-        "long" => Some(
-            "<title>long</title><body style='margin:0;height:5000px;\
-             background:linear-gradient(red,blue)'>\
-             <script>addEventListener('scroll',()=>document.title='at '+scrollY)</script>"
-                .into(),
-        ),
-        "wide" => Some(
-            "<title>wide</title><body style='margin:0;width:3000px;height:3000px'>\
-             <script>visualViewport.onresize=()=>document.title='scale '+visualViewport.scale\
-             </script>"
-                .into(),
-        ),
+        "one" => Some("<title>one</title><body style='margin:0'>one".into()),
+        "two" => Some("<title>two</title><body style='margin:0'>two".into()),
         _ => None,
     }
 }
 
 #[gpui_kit::test]
 #[ignore = "needs the engine script/browser-engine packages"]
-fn a_clicked_link_is_followed_and_the_keys_go_back_and_forward(cx: &mut TestAppContext) {
+fn the_keys_take_the_page_back_and_forward(cx: &mut TestAppContext) {
     let port = serve(site);
-    let (view, cx, scratch) = open("link", &format!("http://127.0.0.1:{port}/one"), cx);
-    wait_for(cx, &view, "page one", |view| {
-        view.page.title == "one" && view.frame.is_some()
+    let (view, cx, scratch) = open("history", &format!("http://127.0.0.1:{port}/one"), cx);
+    wait_for_title(cx, &view, "one");
+    view.update(cx, |view, cx| {
+        view.navigate(format!("http://127.0.0.1:{port}/two"), cx);
     });
-    let (x, y) = page_origin(cx, &view);
-    click(cx, x + 30., y + 30.);
     wait_for_title(cx, &view, "two");
     view.read_with(cx, |view, _| assert!(view.page.can_go_back));
 
+    // The keys are the page's while GPUI's focus is in it, as a press on it puts it there.
+    cx.update(|window, cx| {
+        let focus = view.read(cx).focus.clone();
+        window.focus(&focus, cx);
+    });
     cx.simulate_keystrokes("cmd-[");
     wait_for_title(cx, &view, "one");
     cx.simulate_keystrokes("cmd-]");
     wait_for_title(cx, &view, "two");
-    finish(cx, scratch);
-}
-
-#[gpui_kit::test]
-#[ignore = "needs the engine script/browser-engine packages"]
-fn the_wheel_scrolls_the_page(cx: &mut TestAppContext) {
-    let port = serve(site);
-    let (view, cx, scratch) = open("wheel", &format!("http://127.0.0.1:{port}/long"), cx);
-    wait_for(cx, &view, "the long page", |view| {
-        view.page.title == "long" && view.frame.is_some()
-    });
-    let (x, y) = page_origin(cx, &view);
-    let at = point(px(x + 200.), px(y + 200.));
-    cx.simulate_mouse_move(at, None, Modifiers::default());
-    for _ in 0..5 {
-        cx.simulate_event(ScrollEvent {
-            position: at,
-            delta: ScrollDelta::Pixels(point(px(0.), px(-120.))),
-            modifiers: Modifiers::default(),
-            touch_phase: TouchPhase::Moved,
-            source: ScrollSource::Pointer,
-        });
-        pause(Duration::from_millis(16));
-    }
-    wait_for(cx, &view, "the page scrolled down", |view| {
-        view.page
-            .title
-            .strip_prefix("at ")
-            .and_then(|at| at.parse::<f32>().ok())
-            .is_some_and(|at| at > 100.)
-    });
-    finish(cx, scratch);
-}
-
-#[gpui_kit::test]
-#[ignore = "needs the engine script/browser-engine packages"]
-fn a_trackpad_pinch_zooms_the_page(cx: &mut TestAppContext) {
-    let port = serve(site);
-    let (view, cx, scratch) = open("pinch", &format!("http://127.0.0.1:{port}/wide"), cx);
-    wait_for(cx, &view, "the wide page", |view| {
-        view.page.title == "wide" && view.frame.is_some()
-    });
-    let (x, y) = page_origin(cx, &view);
-    let at = point(px(x + 200.), px(y + 200.));
-    let phases = std::iter::once((TouchPhase::Started, 0.))
-        .chain(std::iter::repeat_n((TouchPhase::Moved, 0.1), 10))
-        .chain([(TouchPhase::Ended, 0.)]);
-    for (phase, delta) in phases {
-        let pinch = PinchEvent {
-            position: at,
-            delta,
-            modifiers: Modifiers::default(),
-            phase,
-        };
-        view.update(cx, |view, cx| view.pinch(&pinch, cx));
-        pause(Duration::from_millis(16));
-    }
-    wait_for(cx, &view, "the page zoomed in", |view| {
-        view.page
-            .title
-            .strip_prefix("scale ")
-            .and_then(|scale| scale.parse::<f32>().ok())
-            .is_some_and(|scale| scale > 1.5)
-    });
-    finish(cx, scratch);
-}
-
-#[gpui_kit::test]
-#[ignore = "needs the engine script/browser-engine packages"]
-fn typing_reaches_the_page_and_a_select_popup_answers_keys(cx: &mut TestAppContext) {
-    let page = "data:text/html,<title>input</title><body style='margin:0;background:%23f00'>\
-        <input oninput=\"document.title='typed '+this.value\"\
-          style='position:absolute;left:0;top:0;width:200px;height:30px'>\
-        <input oninput=\"document.title='second '+this.value\"\
-          style='position:absolute;left:220px;top:0;width:200px;height:30px'>\
-        <select onchange=\"document.title='picked '+this.value\"\
-          style='position:absolute;left:0;top:60px;width:200px;height:30px'>\
-          <option>a</option><option>b</option><option>c</option></select>";
-    let (view, cx, scratch) = open("typing", page, cx);
-    let scale = cx.update(|window, _| window.scale_factor());
-    let device = move |v: f32| (v * scale) as usize;
-    // Under the select, where its list opens.
-    let below = move |frame: &super::Frame| pixel(frame, device(20.), device(110.));
-    wait_for(cx, &view, "the page", |view| {
-        view.page.title == "input"
-            && view
-                .frame
-                .as_ref()
-                .is_some_and(|f| below(f) == [0, 0, 255, 255])
-    });
-    let (x, y) = page_origin(cx, &view);
-
-    click(cx, x + 20., y + 15.);
-    cx.run_until_parked();
-    cx.simulate_input("héllo");
-    wait_for_title(cx, &view, "typed héllo");
-    cx.simulate_keystrokes("backspace");
-    wait_for_title(cx, &view, "typed héll");
-
-    // Tab moves on to the next field, where typing carries on.
-    cx.simulate_keystrokes("tab");
-    cx.simulate_input("ok");
-    wait_for_title(cx, &view, "second ok");
-
-    click(cx, x + 20., y + 75.);
-    wait_for(cx, &view, "the open list", |view| {
-        view.frame.as_ref().is_some_and(|f| below(f)[2] < 200)
-    });
-    cx.simulate_keystrokes("down");
-    cx.simulate_keystrokes("enter");
-    wait_for_title(cx, &view, "picked b");
-    wait_for(cx, &view, "the closed list", |view| {
-        view.frame
-            .as_ref()
-            .is_some_and(|f| below(f) == [0, 0, 255, 255])
-    });
     finish(cx, scratch);
 }
 
@@ -190,60 +58,25 @@ fn an_address_typed_into_the_bar_opens_and_the_page_takes_the_keys(cx: &mut Test
     finish(cx, scratch);
 }
 
-/// Presses and lets go of `key`, as a person does.
-fn tap(cx: &mut VisualTestContext, key: &'static str) {
-    cx.simulate_keystrokes(key);
-    let keystroke = Keystroke::parse(key).expect("a key");
-    cx.simulate_event(KeyUpEvent { keystroke });
-    cx.run_until_parked();
-}
-
+/// A page's full screen: the page asks for it, as a click on its button would, the app gives
+/// the page the whole screen, and taking the window out of it takes the page out too, the
+/// page hearing it leave.
 #[gpui_kit::test]
 #[ignore = "needs the engine script/browser-engine packages"]
-fn each_key_reaches_the_page_once_pressed_and_once_let_go(cx: &mut TestAppContext) {
-    let page = "data:text/html,<title>keys</title><body style='margin:0'>\
-        <input id=f style='position:absolute;left:0;top:0;width:200px;height:30px'>\
-        <script>const log=[];const add=s=>{log.push(s);document.title=log.join(' ')};\
-        f.onkeydown=e=>add('d'+e.key);f.onkeyup=e=>add('u'+e.key)</script>";
-    let (view, cx, scratch) = open("keys", page, cx);
-    wait_for(cx, &view, "the page", |view| {
-        view.page.title == "keys" && view.frame.is_some()
-    });
-    let (x, y) = page_origin(cx, &view);
-    click(cx, x + 20., y + 15.);
-    cx.run_until_parked();
-    tap(cx, "left");
-    tap(cx, "a");
-    cx.simulate_modifiers_change(Modifiers::shift());
-    tap(cx, "shift-b");
-    cx.simulate_modifiers_change(Modifiers::default());
-    for key in ["backspace", "escape", "enter"] {
-        tap(cx, key);
-    }
-    wait_for_title(
-        cx,
-        &view,
-        "dArrowLeft uArrowLeft da ua dShift dB uB uShift dBackspace uBackspace \
-         dEscape uEscape dEnter uEnter",
-    );
-    finish(cx, scratch);
-}
-
-/// A page's full screen: a click on its button asks for it, the app gives the page the whole
-/// screen, and Escape takes it out again, the page hearing it leave.
-#[gpui_kit::test]
-#[ignore = "needs the engine script/browser-engine packages"]
-fn a_page_full_screen_takes_the_screen_until_escape(cx: &mut TestAppContext) {
+fn a_page_full_screen_takes_the_screen_until_it_is_left(cx: &mut TestAppContext) {
     let page = "data:text/html,<title>small</title><body style='margin:0'>\
-        <button style='width:300px;height:100px' onclick='document.body.requestFullscreen()'>\
-        go</button><script>document.onfullscreenchange=()=>\
+        <script>document.onfullscreenchange=()=>\
         document.title=document.fullscreenElement?'full':'small'</script>";
     let (view, cx, scratch) = open("fullscreen", page, cx);
-    wait_for(cx, &view, "the small page", |view| {
-        view.page.title == "small" && view.frame.is_some()
+    wait_for_title(cx, &view, "small");
+    // A gesture of the person's, which full screen asks for.
+    let ask = json!({
+        "expression": "document.body.requestFullscreen()",
+        "userGesture": true,
+        "awaitPromise": true,
     });
-    let (x, y) = page_origin(cx, &view);
-    click(cx, x + 50., y + 50.);
+    let asked = run(cx, &view, None, "Runtime.evaluate", ask);
+    assert!(matches!(asked, Answer::Answered(Ok(_))), "{asked:?}");
     wait_for_title(cx, &view, "full");
     view.read_with(cx, |view, _| {
         assert!(
@@ -251,7 +84,8 @@ fn a_page_full_screen_takes_the_screen_until_escape(cx: &mut TestAppContext) {
             "on the whole screen, as the setting has it"
         );
     });
-    cx.simulate_keystrokes("escape");
+    let left = view.update(cx, BrowserView::exit_fullscreen);
+    assert!(left, "it was full screen");
     wait_for_title(cx, &view, "small");
     view.read_with(cx, |view, _| assert!(!view.is_fullscreen()));
     finish(cx, scratch);

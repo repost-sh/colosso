@@ -1,8 +1,7 @@
-//! The app's browser host and the panes it serves. One host process serves every pane: it
-//! starts as the app launches, or with the first page where nothing launched it, starts
-//! again when it fails or stops, and [`Browsers`] routes what it says to the pane views: page
-//! state, cursors, questions, menus and frames. Frames are shared surfaces the views show
-//! directly; after showing a new one, a view hands the previous slot back to the host.
+//! The app's browser host and the panes it serves. One host, in Koyo's own process
+//! (`browser/native`), serves every pane: it starts as the app launches, or with the first page
+//! where nothing launched it, and [`Browsers`] routes what it says to the pane views: page
+//! state, cursors, questions and menus.
 
 use std::collections::HashMap;
 use std::sync::mpsc::Sender;
@@ -12,9 +11,8 @@ use futures::channel::oneshot;
 use futures::future::{self, Either};
 use gpui_kit::{App, AppContext as _, Context, Entity, Global, Task, WeakEntity};
 use koyo_browser_ipc::client::Connection;
-use koyo_browser_ipc::{AppRequest, PaneId, PixelSize};
+use koyo_browser_ipc::{AppRequest, PaneId};
 
-use super::frames::Ring;
 use super::view::BrowserView;
 
 mod events;
@@ -26,7 +24,7 @@ const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
 /// the blank page it is anyway.
 const STARTING_QUIETLY: Duration = Duration::from_millis(1500);
 
-/// Where the host process is.
+/// Where the host is.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum HostStatus {
     /// Not started; no pane has needed it.
@@ -85,21 +83,14 @@ enum Host {
 
 pub struct Browsers {
     host: Host,
-    /// Bumped each time a host is ready, so views reopen their pages after a restart.
+    /// Bumped once the host is ready, when views open their pages.
     epoch: u64,
     /// When the host now starting was asked for.
     starting_since: Option<Instant>,
-    /// Starts of the host that failed since it last ran.
-    failed_starts: u32,
-    /// When a running host stopped on its own, lately.
-    stops: Vec<Instant>,
     views: HashMap<PaneId, WeakEntity<BrowserView>>,
     /// Pages the host is closing because browsing data was cleared under it: each opens
     /// again, in its profile's fresh folder, once the host says it has closed.
     reopening: std::collections::HashSet<PaneId>,
-    rings: HashMap<PaneId, Ring>,
-    /// The newest frame of a pane whose ring has not arrived yet.
-    pending: HashMap<PaneId, (u32, u8, PixelSize)>,
     /// Requests made while the host was starting.
     queued: Vec<AppRequest>,
     /// Protocol commands under way, the app's and agents', by the app's number for each:
@@ -143,12 +134,8 @@ impl Browsers {
             host: Host::Idle,
             epoch: 0,
             starting_since: None,
-            failed_starts: 0,
-            stops: Vec::new(),
             views: HashMap::new(),
             reopening: std::collections::HashSet::new(),
-            rings: HashMap::new(),
-            pending: HashMap::new(),
             queued: Vec::new(),
             calls: HashMap::new(),
             next_call: 0,
@@ -199,13 +186,11 @@ impl Browsers {
         self.views.insert(pane, view);
     }
 
-    /// A view left: its page closes and its surfaces are dropped.
+    /// A view left: its page closes.
     pub fn detach(&mut self, pane: PaneId) {
         if self.views.remove(&pane).is_none() {
             return;
         }
-        self.rings.remove(&pane);
-        self.pending.remove(&pane);
         self.queued.retain(|request| request.pane() != Some(pane));
         if matches!(self.host, Host::Running { .. }) {
             self.send(AppRequest::Close { pane });
@@ -224,17 +209,8 @@ impl Browsers {
         }
     }
 
-    /// Tries again after the host failed or stopped, as the person asked.
-    pub fn restart(&mut self, cx: &mut Context<Self>) {
-        if matches!(self.host, Host::Failed(_) | Host::Idle) {
-            self.failed_starts = 0;
-            self.stops.clear();
-            self.start(cx);
-        }
-    }
-
     /// Sends `request` to a running host, handing it back when the host isn't running. It
-    /// changes nothing of `Browsers`, so a page's input, sent most often, goes through it.
+    /// changes nothing of `Browsers`, which every page view reads.
     pub fn send_now(&self, request: AppRequest) -> Option<AppRequest> {
         match &self.host {
             Host::Running { requests, .. } => {
@@ -250,15 +226,15 @@ impl Browsers {
         let Some(request) = self.send_now(request) else {
             return;
         };
-        // Only the latest size matters; input to a page that is not open yet has nowhere to
-        // go.
+        // What opens and moves pages, and clears what they keep; the rest is for a page that is
+        // open, which none is yet.
         let kept = matches!(
             request,
             AppRequest::Open { .. }
                 | AppRequest::OpenDevTools { .. }
                 | AppRequest::Navigate { .. }
                 | AppRequest::Go { .. }
-                | AppRequest::Resize { .. }
+                | AppRequest::ClearData
         );
         if kept && matches!(self.host, Host::Starting) {
             self.queued.push(request);
@@ -388,46 +364,29 @@ impl Browsers {
         chromium.split('.').next().map(str::to_owned)
     }
 
-    /// Stops the host, deletes what every project's pages keep (cookies, sign-ins, caches,
-    /// site storage) once it has exited, and starts it again for the pages open, which load
-    /// afresh.
+    /// Forgets what every project's pages keep (cookies, sign-ins, caches, site storage). The
+    /// engine starts once a run and can't be stopped under its pages: it's asked to move every
+    /// profile to a fresh folder, and closes its pages, which open again as the views hear of
+    /// it (`page_closed`); one starting is asked once it runs. With no engine, nothing holds
+    /// the profiles, and their folder goes.
     pub fn clear_data(&mut self, cx: &mut Context<Self>) {
-        let Some(profiles) = profiles(cx) else {
-            return;
-        };
-        // The engine in Koyo's own process (`browser/native`) starts once a run and can't be
-        // stopped under its pages: it's asked to move every profile to a fresh folder, and
-        // closes its pages, which open again as the views hear of it.
-        if let Host::Running { connection, .. } = &self.host
-            && connection.embedded()
-        {
+        if matches!(self.host, Host::Running { .. } | Host::Starting) {
             self.reopening = self.views.keys().copied().collect();
             self.send(AppRequest::ClearData);
             return;
         }
-        let connection = self.stop();
-        // No page starts it again meanwhile: their requests wait for the new one.
-        self.host = Host::Starting;
-        self.notify_views(cx);
-        let cleared = cx.background_executor().spawn(async move {
-            if let Some(connection) = connection {
-                connection.shutdown(Duration::from_secs(5));
-            }
-            match std::fs::remove_dir_all(&profiles) {
-                Ok(()) => {}
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                Err(error) => log::warn!("couldn't clear {}: {error}", profiles.display()),
-            }
-        });
-        self._events = Some(cx.spawn(async move |this, cx| {
-            cleared.await;
-            // Started again whether or not a page is open, as at launch, so the next
-            // page needn't wait for it.
-            let _ = this.update(cx, |this, cx| {
-                this.host = Host::Idle;
-                this.start(cx);
-            });
-        }));
+        let Some(profiles) = profiles(cx) else {
+            return;
+        };
+        cx.background_executor()
+            .spawn(async move {
+                match std::fs::remove_dir_all(&profiles) {
+                    Ok(()) => {}
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => log::warn!("couldn't clear {}: {error}", profiles.display()),
+                }
+            })
+            .detach();
     }
 
     /// Views react once this update is over, since they send requests back.

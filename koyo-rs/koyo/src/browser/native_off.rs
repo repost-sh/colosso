@@ -1,15 +1,12 @@
-//! Where pages are never native: off macOS, and in tests, which start no engine in their own
-//! process. The same few calls as `browser/native`, answering that pages are off screen.
+//! Where no page is shown in Koyo's window: in tests, which start no engine in their own
+//! process. The same call as `browser/native`.
 
-use gpui_kit::App;
-use koyo_browser_ipc::client::{Embedded, Launch};
+use std::io;
 
-pub fn decide(_: &App) {}
+use koyo_browser_ipc::client::{Connection, Launch, Sink};
 
-pub fn enabled() -> bool {
-    false
-}
-
-pub fn embedded(_: &Launch) -> Option<Embedded> {
-    None
+/// Starts a host process of its own on the engine `launch` names, whose pages nothing shows:
+/// what a test drives pages on.
+pub fn start(launch: &Launch, sink: impl Sink) -> io::Result<Connection> {
+    Connection::start(launch, sink)
 }

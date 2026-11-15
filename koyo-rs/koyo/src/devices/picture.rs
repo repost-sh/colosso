@@ -1,15 +1,15 @@
 //! A device's picture on the app's side (`docs/devices.md` 3.1): the ring of the current
 //! generation, looked up from the mach ports the host sent once, and the slot shown now as a
-//! pixel buffer over it. One slot is held at a time, as the browser holds a page's: the newer is
-//! shown, then the one before let go, so the host always has a slot to copy into. An entity of
-//! its own, so sixty frames a second redraw the tab and nothing else.
+//! pixel buffer over it. One slot is held at a time: the newer is shown, then the one before
+//! let go, so the host always has a slot to copy into. An entity of its own, so sixty frames a
+//! second redraw the tab and nothing else.
 
 use gpui_kit::Context;
 use koyo_browser_ipc::mach;
 use objc2_core_foundation::CFRetained;
 use objc2_core_video::CVPixelBuffer;
 
-use crate::browser::frames::{self, Ring};
+use crate::surfaces::{self, Ring};
 
 /// The frame shown: the buffer over its slot, which holds the slot in use.
 pub struct Shown {
@@ -38,7 +38,7 @@ impl Picture {
             ring.ports.into_iter().for_each(mach::release);
             return;
         }
-        let Some(ring) = frames::import(ring) else {
+        let Some(ring) = surfaces::import(ring) else {
             log::warn!("a device's pictures can't be drawn: their surfaces didn't come through");
             return;
         };
@@ -68,7 +68,7 @@ impl Picture {
         else {
             return;
         };
-        let Some(pixels) = frames::pixel_buffer(surface) else {
+        let Some(pixels) = surfaces::pixel_buffer(surface) else {
             return;
         };
         // The newer is held before the one before it is let go.

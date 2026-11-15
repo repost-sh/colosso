@@ -7,7 +7,7 @@
 use std::io::{self, BufReader};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -119,15 +119,12 @@ pub fn start(launch: &Launch, sink: impl Fn(Incoming) + Clone + Send + 'static) 
         .arg(&launch.state)
         .env(ENV_SOCKET_FD, inherit::HOST_FD.to_string())
         .env(ENV_TOKEN, &token)
-        .stdin(Stdio::null())
         .stdout(log.try_clone()?)
         .stderr(log);
     if std::env::var_os("KOYO_DEVICE_STATS").is_some() {
         command.arg("--stats");
     }
-    inherit::pass(&mut command, &theirs);
-    let mut child = command.spawn()?;
-    drop(theirs);
+    let mut child = inherit::spawn(command, theirs)?;
     // The child is waited for on a thread of its own, so it never lingers as a zombie: one whose
     // hello fails too, which goes once its end of the link is dropped.
     std::thread::Builder::new()

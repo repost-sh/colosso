@@ -145,9 +145,7 @@ impl Driver {
         if stats {
             command.arg("--stats");
         }
-        inherit::pass(&mut command, &theirs);
-        let child = command.spawn().unwrap();
-        drop(theirs);
+        let child = inherit::spawn(command, theirs).unwrap();
         let pid = child.id();
         let (tell, said) = mpsc::channel();
         let reader = writer.try_clone().unwrap();

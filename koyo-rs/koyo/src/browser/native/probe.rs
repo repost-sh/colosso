@@ -20,6 +20,7 @@
 //! click <x> <y> [number]   a press and release at a point of the window (or the app's window
 //!                          of that number), from its top left
 //! rclick <x> <y>           a right press and release there
+//! rdown <x> <y>            a right press there and no release, as while a menu tracks it
 //! move <x> <y>             the pointer moved there
 //! hover <x> <y>            the pointer's move handed to the view there and to GPUI's, as their
 //!                          tracking areas would be: a window nothing shows gets none of its own
@@ -53,6 +54,8 @@ use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
 
 mod look;
 use look::{draw, quit, state, views, windows};
+
+use crate::browser::view::sight::UNSEEN_COUNTS;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -106,7 +109,7 @@ pub fn start(cx: &mut App) {
         let (cmd, out) = (folder.join("cmd"), folder.join("out"));
         loop {
             cx.background_executor().timer(Duration::from_millis(100)).await;
-            if look::TICKS.load(std::sync::atomic::Ordering::Relaxed) {
+            if UNSEEN_COUNTS.load(std::sync::atomic::Ordering::Relaxed) {
                 look::draw_unseen();
             }
             let Ok(text) = std::fs::read_to_string(&cmd) else {
@@ -230,19 +233,18 @@ fn run(verb: &str, rest: &str, folder: &Path) -> String {
             }
             None => "no such window".into(),
         },
-        ("click", [x, y]) => {
-            let at = point(&window, *x, *y);
-            mouse(&window, 5, at, 0); // moved
-            mouse(&window, 1, at, 1); // left down
-            mouse(&window, 2, at, 1); // left up
+        // The pointer moved there, then a button down and up: the left's (1, 2), the right's (3, 4).
+        ("click" | "rclick", [x, y]) => {
+            let (at, down) = (point(&window, *x, *y), if verb == "click" { 1 } else { 3 });
+            for (kind, clicks) in [(5, 0), (down, 1), (down + 1, 1)] {
+                mouse(&window, kind, at, clicks);
+            }
             "clicked".into()
         }
-        ("rclick", [x, y]) => {
-            let at = point(&window, *x, *y);
-            mouse(&window, 5, at, 0); // moved
-            mouse(&window, 3, at, 1); // right down
-            mouse(&window, 4, at, 1); // right up
-            "right-clicked".into()
+        // Down and not up, as a hand's is while the menu the press opens tracks it.
+        ("rdown", [x, y]) => {
+            mouse(&window, 3, point(&window, *x, *y), 1);
+            "right down".into()
         }
         ("hover", [x, y]) => look::hover(&window, mouse_event(&window, 5, point(&window, *x, *y), 0)),
         ("move", [x, y]) => {
@@ -277,7 +279,7 @@ fn run(verb: &str, rest: &str, folder: &Path) -> String {
         ("cursor", _) => look::cursor(&window),
         ("layers", _) => look::layers(&window),
         ("tick", _) => {
-            let on = !look::TICKS.fetch_xor(true, std::sync::atomic::Ordering::Relaxed);
+            let on = !UNSEEN_COUNTS.fetch_xor(true, std::sync::atomic::Ordering::Relaxed);
             format!("ticking {on}")
         }
         ("views", _) => {

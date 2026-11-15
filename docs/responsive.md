@@ -34,31 +34,29 @@ Status marks: `[decided]`, `[proposed]` (designed here, confirmed by implementat
 
 ### 2.1 How it works [decided]
 
-The page's viewport today is the size of the page element (`browser/page.rs`,
-`PageSurface::prepaint`), sent as `AppRequest::Resize`. In responsive mode the view keeps
-a `Responsive` state and the page element:
+A page's viewport is the size of its view, which is the page element's (`browser/page.rs`,
+`PageSurface::prepaint`; an `AppRequest::Resize` sizes only a page no pane draws). In
+responsive mode the view keeps a `Responsive` state and the page element:
 
 1. Computes the emulated viewport: `width × height` logical px at `scale` (the device's
    pixel ratio for a preset; the window's scale factor for free sizes).
-2. Sends `AppRequest::Resize { viewport, dragging }` with *that* viewport, not the
-   element's bounds (`dragging` is live sizing's, section 8: whether a grip is held).
-   The host renders at `width·scale × height·scale` device pixels, so the page's
-   `innerWidth`, `devicePixelRatio` and media queries are the device's. Responsive mode
-   needs nothing more of the host or `browser-ipc`.
-3. Lays the page out centred horizontally and at the top of the area under the device
+2. Lays the page out centred horizontally and at the top of the area under the device
    bar, with a 16 px gutter, at `fit = min(1, room_w / width, room_h / height)` (or the
-   person's chosen zoom). The page's frame is drawn at the scaled bounds, in the window's
-   own frame (`browser/frames.rs`); GPUI's renderer scales it.
-4. Maps every pointer position (mouse, wheel, pinch, context menu, `DevTools` inspect
-   point, the input method's caret rectangle) as `(window − page origin) / fit`, in one
-   function on `BrowserView`, so nothing reads `origin` raw.
+   person's chosen zoom). The page's view is put at those scaled bounds, on whole points
+   (`docs/native-pages.md` 6).
+3. Has Chromium emulate the device in that view: `Emulation.setDeviceMetricsOverride` with
+   the viewport's `width`, `height` and `deviceScaleFactor`, and `scale: fit`, so the page's
+   `innerWidth`, `devicePixelRatio` and media queries are the device's while its picture is
+   drawn at the fit, by Chromium itself. The pointer in the view is Chromium's to map; the
+   app maps only what it places itself (a context menu, the `DevTools` inspect point) as
+   `(window − page origin) / fit`.
 
 Device behaviour goes over the page's `DevTools` protocol session (`browser/agent.rs`
 `cdp`, sent by the app itself, not under an agent's lease):
 
 | Preset sets | Command |
 | --- | --- |
-| mobile (meta viewport, overlay scrollbars, `screen` size) | `Emulation.setDeviceMetricsOverride { width: 0, height: 0, deviceScaleFactor: 0, mobile: true }` (0 keeps the real value; only `mobile` is overridden) |
+| size, pixel ratio, fit, and mobile (meta viewport, overlay scrollbars, `screen` size) | `Emulation.setDeviceMetricsOverride { width, height, deviceScaleFactor, mobile, scale }` (step 3; a free size sends it too, with `mobile: false`) |
 | touch | `Emulation.setTouchEmulationEnabled { enabled: true, maxTouchPoints: 5 }` and `Emulation.setEmitTouchEventsForMouse { enabled: true, configuration: "mobile" }` |
 | user agent | `Emulation.setUserAgentOverride { userAgent, platform, userAgentMetadata }` |
 
@@ -389,83 +387,15 @@ Where the build differs from the sections above, or settles what they left open:
 - `terminal_guide` gains a "Sizes" section; it says to read the screen, as
   `terminal_screenshot` isn't built.
 
-## 8. Live sizing of browser pages (2026-11-02)
+## 8. Live sizing of browser pages (2026-11-02; gone 2026-11-15)
 
-A page follows a drag of its pane's edge (a split's divider, a responsive grip, the window)
-with a new layout every frame, as a Chrome window does. This is the browser host's job
-(`koyo-rs/koyo-browser-host/src/host/{sizing.rs,live.rs,live/drive.rs}`); the app keeps sending
-one size per frame, and says whether a drag is under way (`AppRequest::Resize { dragging }`).
-
-- Why: resizing Chromium's off-screen view restarts its capture, which first paints the
-  new layout scaled into the old size between bars. The host used to drop every paint not
-  at the latest size, so a drag showed about one frame in two seconds.
-- How: while a drag goes on, the view keeps a size with room to spare (the drag's size
-  plus 512 px, within 16384 device px) and the page is laid out at each size by
-  `Emulation.setDeviceMetricsOverride`, in the page's own session under ids of the host's.
-  This is the same technique as DevTools' device mode, and costs one frame. The app is
-  shown the top-left of each frame, the part the page fills. A drag past the view first
-  pins the layout at what the view holds, then grows the view under it. When the app says
-  the drag is over, the view is given its last size for real (once grown, if it's growing)
-  and, once the page has painted at it (or 500 ms passed), the override goes.
-- Which drags the app tells of (`browser/page.rs`, prepaint; `view/lifecycle.rs`
-  `Dragging`): a drag in hand in GPUI (a split's divider, the sidebar's and right panel's
-  edges, docked DevTools' divider) and a responsive grip held, which the app sees end: as
-  one is let go the app sends its size once more with `dragging: false`, even when it
-  didn't change. And sizes layout keeps giving the page, each within 50 ms of the last
-  (`MOVING`): the window's edge dragged, the sidebar folding. GPUI doesn't say when those
-  end, so the host ends them 150 ms after the last size (`SETTLE`). That timer stays on
-  every drag, as a fallback.
-- A size on its own (`dragging: false` with no drag under way: an agent's
-  `browser_viewport`, a preset, the mode turned on, a panel opened, the first size of a
-  run) is laid out as on a page not loaded yet, below: one resize of the view, no override
-  and no 150 ms settle. A size Chromium already has is not told again.
-- The app's own device metrics (responsive mode) are kept: the host rewrites the app's
-  `set`/`clearDeviceMetricsOverride` to the drag's size while one is under way, merges
-  them into its own overrides, and puts them back when the drag ends.
-- Pages that aren't loaded yet and DevTools are resized as before. There, one size is laid
-  out at a time and only letterboxed paints (`content_rect` or `source_size` differing
-  from the visible rect) are dropped. The paint at the size laid out lets the next go
-  (`Queued::SizeNext`): it is the latest asked for when the host's queue gets to it, so a
-  size asked for meanwhile replaces it and an older one is never laid out after it.
-- The view grows once per drag, at its start and whichever way it goes, to the largest
-  display (`largest_screen`), so a fast drag never has it grow again partway.
-- The window never waits for the page. Its latest frame is drawn in the window's own frame
-  (`browser/frames.rs`, `browser/page.rs`), with everything round it, so the pane's edge
-  and the page can't reach the screen a frame apart, and the card's rounded corners clip
-  the page as they clip the rest of what's in it. A page laid out a frame behind a pane
-  that grew has its edge pixels reach out to the pane's edge (`gpui-fast-apple`'s
-  `set_surface_picture`); one behind a pane that shrank is clipped by it.
-- Every frame Chromium paints reaches the window. A slot of the page's ring goes back to the
-  host as soon as a newer frame replaces it (`BrowserView::show_frame`). Each frame gets a
-  pixel buffer of its own, and while it lives, macOS marks the slot's surface in use, which
-  the host can see. The window's scene and the frames on its GPU keep their buffers until
-  the GPU is done, the renderer drawing each straight from its surface, not through Core
-  Video's texture cache, which kept them until it was next flushed (`gpui-fast-apple`'s
-  `metal_renderer.rs`). The host paints only into free slots that aren't in use, and looks
-  again 2 ms later when none is, waiting twice as long each time it finds them in use still,
-  up to 128 ms (`host/frames.rs`).
-  Before this, the app held two of the three slots until its next draw, and a page painting
-  at 120 Hz reached the window at 60.
-- The host begins each frame of a page on screen as the display refreshes: a display link
-  in the host (`host/clock.rs`) and CEF's external begin frames. Chromium's own clock for an
-  off-screen page fell from 120 Hz to 60 the first time the pointer moved over the page,
-  and stayed there with the pointer's moves no longer forwarded and after the page was
-  hidden and shown again. CEF sets the rate once and never changes it on input, so the
-  fall is in Chromium's compositor. Measured with TestUFO and the pointer moving over it:
-  120 frames a second painted and received throughout. The link stops while no page is
-  shown, so the host sleeps.
-- Checked by the browser visual check (`browser/visual/fold.rs`): the sidebar folded and
-  unfolded over a dark page, ten pictures taken as it moves, each with the page dark from
-  its left edge to its right. Measured in the app (a debug build, ⌘B over openai.com, a
-  terminal and a local page of 2500 blurred, animated cards): a fold runs at the window's
-  rate over a page as over a terminal; a page that keeps the GPU busy (the cards) slows the
-  window's frames, as it slows Arc's.
-- Measured by the engine smoke test `live_resize::a_page_dragged_wider_lays_out_again_every_frame`
-  (120 sizes at 60 Hz): 118 frames and 118 distinct layouts in a 2 s drag, mostly 0 to
-  4 px behind the drag, and the page edge to edge at the last size once it stops.
-- A daemon of another build that doesn't stop on `Shutdown` or SIGTERM within 5 s is now
-  killed with SIGKILL (`koyo-term-control/src/client.rs`, `stop_daemon`), so "Restart
-  terminals" can't hang on it (test `koyo-term-control/tests/stop.rs`).
+This was the off-screen host's work: a page followed a drag of its pane's edge with a new
+layout every frame by keeping a view larger than the pane and emulating the drag's size in
+it, on a frame clock of the host's own (`host/sizing.rs`, `live.rs`, `clock.rs`, and
+`AppRequest::Resize { dragging }`). Pages are native now (`docs/native-pages.md`): a page's
+view is resized with its pane and Chromium lays it out as it does a window's, so all of it
+is removed. What a drag still needs, the page's view and GPUI's frame landing together, is
+`docs/native-pages.md` 6.
 
 ## 9. Pages agents open (2026-11-08) [decided]
 

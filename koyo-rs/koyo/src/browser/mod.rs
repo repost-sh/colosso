@@ -1,16 +1,17 @@
-//! Browser panes: pages the browser engine packaged with the app renders, in a process of
-//! its own.
+//! Browser panes: pages of the browser engine packaged with the app, Chromium's own views
+//! shown in Koyo's window (`docs/native-pages.md`).
 //!
 //! The engine (`engine`) is the browser host of `koyo-rs/koyo-browser-host` with CEF beside it,
-//! packaged by `script/browser-engine` and carried with the app. One host serves every pane
-//! of the app: `host` starts it as the app launches, so no page waits for it, starts it
-//! again when it stops, and routes what it says to the pane views. A page is a
-//! [`BrowserView`] in a tab: its frames are shared surfaces the host paints into, drawn in
-//! the window's own frame where the pane lays the page out (`frames`, `page`); the person's
-//! pointer and keys go to it (`input`); it can be shown at a chosen size or as a device
-//! (`responsive`); its questions are asked in the app's dialogs
-//! (`dialog`) and its context menu shown as the app's (`menu`); and who drives it, the
-//! person or an agent, is a lease (`control`) the person always wins.
+//! packaged by `script/browser-engine` and carried in the app's bundle. The host runs in Koyo's
+//! own process (`native`), which has to run from that bundle: run as a bare binary, it shows no
+//! page. One host serves every pane of the app: `host` starts it as the app launches, so no
+//! page waits for it, and routes what it says to the pane views. A page is a [`BrowserView`]
+//! in a tab: its views are placed where the pane lays the page out (`page`), and `AppKit`
+//! hands them the person's pointer and keys, of which the app hears a press and the edits it
+//! binds (`input`); it can be shown at a chosen size or as a device (`responsive`); its
+//! questions are asked in the app's dialogs (`dialog`) and its context menu shown as the app's
+//! (`menu`); and who drives it, the person or an agent, is a lease (`control`) the person
+//! always wins.
 
 use std::path::Path;
 
@@ -23,7 +24,6 @@ mod dock;
 mod engine;
 mod favicon;
 mod find;
-pub(crate) mod frames;
 mod history;
 mod host;
 #[cfg(test)]
@@ -45,10 +45,7 @@ mod site;
 mod tabs;
 mod tone;
 mod toolbar;
-mod trackpad;
 mod view;
-#[cfg(feature = "visual-check")]
-pub mod visual;
 
 pub mod fullscreen;
 pub use dock::DOCK_MIN;
@@ -62,13 +59,12 @@ pub use view::{BrowserEvent, BrowserView, Controls, Visit};
 
 /// Starts the engine, so the first page opens as quickly as the next.
 pub fn warm_up(cx: &mut App) {
-    native::decide(cx);
     let browsers = host::Browsers::global(cx);
     browsers.update(cx, host::Browsers::start_if_idle);
 }
 
-/// Stops the engine, deletes every project's browsing data, and starts it again; and forgets
-/// the pages visited and the searches made, which the new-tab launcher offers.
+/// Forgets every project's browsing data, the open pages loading again afresh; and the pages
+/// visited and the searches made, which the new-tab launcher offers.
 pub fn clear_data(cx: &mut App) {
     let browsers = host::Browsers::global(cx);
     browsers.update(cx, host::Browsers::clear_data);
@@ -93,9 +89,6 @@ actions!(
         SelectAll,
         Undo,
         Redo,
-        SendTab,
-        SendBackTab,
-        SendEscape,
         ToggleDevTools,
         ToggleResponsive,
         TakeControl,
@@ -109,18 +102,15 @@ actions!(
     ]
 );
 
-/// The keys a page owns while it has focus, and those the address bar shares with it; and
-/// where `DevTools` open, picked in settings. ⌘L isn't among them: it's the window's, heard
-/// wherever the keyboard is (`launcher::OpenAddress`).
+/// The edits a page takes while it has focus, and the keys the address bar and the find bar
+/// share with it; and where `DevTools` open, picked in settings. ⌘L isn't among them: it's the
+/// window's, heard wherever the keyboard is (`launcher::OpenAddress`).
 pub fn init(cx: &mut App) {
     cx.on_action(|SetDevtoolsDock(dock): &SetDevtoolsDock, cx| {
         crate::settings::update(cx, |settings| settings.devtools.dock = *dock);
     });
     let page = Some("BrowserPage");
     cx.bind_keys([
-        KeyBinding::new("tab", SendTab, page),
-        KeyBinding::new("shift-tab", SendBackTab, page),
-        KeyBinding::new("escape", SendEscape, page),
         KeyBinding::new("cmd-c", Copy, page),
         KeyBinding::new("cmd-x", Cut, page),
         KeyBinding::new("cmd-v", Paste, page),

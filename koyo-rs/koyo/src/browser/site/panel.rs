@@ -108,8 +108,8 @@ impl SitePanel {
         at: menu::Trigger,
         cx: &mut Context<Self>,
     ) -> Self {
-        // Drawn again as the host says how the site's settings stand, and only then: an
-        // off-screen page's view changes with every frame of its page.
+        // Drawn again as the host says how the site's settings stand, and only then: a page's
+        // view changes far more often, with its cursor and its tone.
         let page_changed = page.upgrade().map(|page| {
             cx.observe(&page, |panel: &mut Self, page, cx| {
                 let listed = page.read(cx).site.clone().unwrap_or_default();

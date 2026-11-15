@@ -133,7 +133,12 @@ impl BrowserView {
             return;
         }
         match (&self.devtools, at) {
-            (Some(tools), Some(at)) => tools.view.update(cx, |tools, cx| tools.reveal(at, cx)),
+            (Some(tools), Some(at)) => {
+                // The page says which it is and where its tools are: it's being updated here,
+                // so the tools can't read it.
+                let (page, side) = (self.pane, self.devtools_side(cx));
+                tools.view.update(cx, |tools, cx| tools.reveal(at, page, side, cx));
+            }
             (Some(_), None) => self.close_devtools(cx),
             (None, at) => {
                 // They're made with the window, by the next render.
@@ -319,8 +324,8 @@ impl BrowserView {
                         Dock::Detached => return,
                     };
                     // The pointer holds the divider's middle, the tools past it. In whole
-                    // points, which is what the setting keeps (a native page beside them is
-                    // on whole points whatever this is: `docs/native-pages.md` 6), and
+                    // points, which is what the setting keeps (a page beside them is on
+                    // whole points whatever this is: `docs/native-pages.md` 6), and
                     // leaving the page its least room on the divider's other side.
                     let band = theme::card::DIVIDER;
                     let room = (span.as_f32() - band - DOCK_MIN).floor().max(DOCK_MIN);

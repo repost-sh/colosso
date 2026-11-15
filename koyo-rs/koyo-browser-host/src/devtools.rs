@@ -1,11 +1,10 @@
 //! Chrome `DevTools` for a page: the inspector frontend bundled with Chromium,
-//! loaded in a windowless browser of its own and joined to the page's
+//! loaded in a page of its own, a pane like any other, and joined to the page's
 //! `DevTools` session over a `WebSocket` the host serves on the loopback
 //! interface.
 //!
-//! CEF's own `DevTools` window cannot render off-screen (the Chrome bootstrap
-//! logs "Windowless rendering is not supported for this `DevTools` window" and
-//! makes a native window), and Chromium's remote debugging port would open
+//! CEF's own `DevTools` are a window of Chromium's, which is no pane of Koyo's, and
+//! Chromium's remote debugging port would open
 //! every page to any local process. The bridge here serves one page to one
 //! frontend: an ephemeral port, a path only the frontend is told, and the
 //! page's in-process session (`SendDevToolsMessage`) behind it.

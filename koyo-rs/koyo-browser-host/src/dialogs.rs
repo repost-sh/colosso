@@ -150,7 +150,6 @@ fn resolve(waiting: Waiting, answer: Answer) {
             });
             // Chromium reads the position only once macOS lets the host know it.
             if accepted && location {
-                #[cfg(target_os = "macos")]
                 crate::location::allowed();
             }
         }

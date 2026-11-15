@@ -1,6 +1,7 @@
-//! A browser pane against the real host of the engine `script/browser-engine` packages in
-//! the checkout, in a test window: what the person sees and does reaches the page, and the
-//! page paints at the display's rate. Ignored by default, since they need that engine:
+//! A browser pane in a test window against the real host of the engine `script/browser-engine`
+//! packages in the checkout, run as a process of its own, whose pages nothing shows: what the
+//! app asks of a page reaches it, and what the page does reaches the app. Ignored by default,
+//! since they need that engine:
 //!
 //! ```text
 //! script/cargo test -p koyo browser::host_tests -- --ignored
@@ -11,7 +12,7 @@ use std::net::{Shutdown, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use gpui_kit::{Entity, Modifiers, MouseButton, TestAppContext, VisualTestContext, point, px};
+use gpui_kit::{Entity, TestAppContext, VisualTestContext};
 use koyo_browser_ipc::Go;
 use koyo_browser_ipc::client::Launch;
 
@@ -19,7 +20,6 @@ use futures::FutureExt as _;
 use serde_json::Value;
 
 use super::agent::{self, Actor, Answer};
-use super::frames::Frame;
 use super::host::{Browsers, HostStatus, TestLaunch};
 use super::view::BrowserView;
 
@@ -65,7 +65,7 @@ fn open_with<'a>(
 /// scratch folder of the test's own, which it returns.
 fn prepare(test: &str, cx: &mut TestAppContext) -> PathBuf {
     cx.executor().allow_parking();
-    let executable = super::engine::host()
+    let executable = super::engine::packaged::host()
         .expect("an engine packaged in the checkout: run script/browser-engine");
     let scratch = crate::test_support::scratch(&format!("browser-{test}"));
     let launch = Launch {
@@ -175,34 +175,6 @@ fn finish(cx: &mut VisualTestContext, scratch: PathBuf) {
     let _ = std::fs::remove_dir_all(scratch);
 }
 
-/// BGRA at a device pixel of a frame.
-fn pixel(frame: &Frame, x: usize, y: usize) -> [u8; 4] {
-    frame
-        .with_pixels(|pixel| pixel(x, y))
-        .expect("a page's frame is a shared surface")
-}
-
-/// BGRA at the middle of a frame's page.
-fn centre(frame: &Frame) -> [u8; 4] {
-    let (width, height) = (frame.size.width as usize, frame.size.height as usize);
-    pixel(frame, width / 2, height / 2)
-}
-
-/// A left click at a point of the window.
-fn click(cx: &mut VisualTestContext, x: f32, y: f32) {
-    let at = point(px(x), px(y));
-    cx.simulate_mouse_move(at, None, Modifiers::default());
-    cx.simulate_mouse_down(at, MouseButton::Left, Modifiers::default());
-    cx.simulate_mouse_up(at, MouseButton::Left, Modifiers::default());
-}
-
-/// Where the page starts in the window, under the toolbar.
-fn page_origin(cx: &mut VisualTestContext, view: &Entity<BrowserView>) -> (f32, f32) {
-    view.read_with(cx, |view, _| {
-        (view.origin.x.as_f32(), view.origin.y.as_f32())
-    })
-}
-
 /// A local server answering `GET /<name>` with what `page` gives for the name, `None` being
 /// a 404.
 fn serve(page: fn(&str) -> Option<String>) -> u16 {
@@ -252,28 +224,22 @@ fn answer(mut stream: TcpStream, respond: impl Fn(&str) -> String) {
 
 #[gpui_kit::test]
 #[ignore = "needs the engine script/browser-engine packages"]
-fn a_pane_shows_its_page_and_follows_navigation(cx: &mut TestAppContext) {
+fn a_pane_opens_its_page_and_follows_navigation(cx: &mut TestAppContext) {
     let red = "data:text/html,<title>Red page</title><body style='margin:0;background:%23f00'>";
     let blue = "data:text/html,<title>Blue page</title><body style='margin:0;background:%2300f'>";
     let opened = Instant::now();
     let (view, cx, scratch) = open("nav", red, cx);
-    wait_for(cx, &view, "the red page", |view| {
-        view.page.title == "Red page" && view.frame.as_ref().is_some_and(|f| centre(f)[2] > 240)
-    });
+    wait_for_title(cx, &view, "Red page");
     eprintln!(
-        "first page painted {:?} after the pane opened",
+        "first page loaded {:?} after the pane opened",
         opened.elapsed()
     );
     view.read_with(cx, |view, cx| {
         assert_eq!(view.status(cx), HostStatus::Running);
-        let [b, g, r, _] = centre(view.frame.as_ref().unwrap());
-        assert!(r > 240 && g < 16 && b < 16, "red: {r} {g} {b}");
     });
 
     view.update(cx, |view, cx| view.navigate(blue.into(), cx));
-    wait_for(cx, &view, "the blue page", |view| {
-        view.page.title == "Blue page" && view.frame.as_ref().is_some_and(|f| centre(f)[0] > 240)
-    });
+    wait_for_title(cx, &view, "Blue page");
     view.read_with(cx, |view, _| {
         assert!(view.page.can_go_back, "the red page is behind");
         assert_eq!(view.title(), "Blue page");
@@ -283,41 +249,5 @@ fn a_pane_shows_its_page_and_follows_navigation(cx: &mut TestAppContext) {
     wait_for_title(cx, &view, "Red page");
     view.update(cx, |view, cx| view.go(Go::Forward, cx));
     wait_for_title(cx, &view, "Blue page");
-    finish(cx, scratch);
-}
-
-/// The fastest refresh rate among the displays.
-fn display_rate() -> f64 {
-    // SAFETY: only reads the screen list; nothing here changes AppKit's state.
-    let main = unsafe { objc2::MainThreadMarker::new_unchecked() };
-    objc2_app_kit::NSScreen::screens(main)
-        .iter()
-        .map(|screen| screen.maximumFramesPerSecond())
-        .max()
-        .map_or(60., |fps| fps as f64)
-}
-
-#[gpui_kit::test]
-#[ignore = "needs the engine script/browser-engine packages"]
-fn an_animating_page_paints_at_the_displays_rate(cx: &mut TestAppContext) {
-    // A new colour every animation frame, so every frame paints.
-    let busy = "data:text/html,<title>busy</title><body style='margin:0'><script>\
-        let n=0;function f(){document.body.style.background=n++%2?'%23f00':'%2300f';\
-        requestAnimationFrame(f)}requestAnimationFrame(f)</script>";
-    let (view, cx, scratch) = open("rate", busy, cx);
-    wait_for(cx, &view, "the busy page", |view| {
-        view.page.title == "busy" && view.frame.is_some()
-    });
-    let count = |cx: &mut VisualTestContext| view.read_with(cx, |view, _| view.frames_shown);
-    let before = count(cx);
-    let started = Instant::now();
-    while started.elapsed() < Duration::from_millis(2000) {
-        cx.run_until_parked();
-        pause(Duration::from_millis(1));
-    }
-    let fps = (count(cx) - before) as f64 / started.elapsed().as_secs_f64();
-    let rate = display_rate();
-    eprintln!("{fps:.0} frames a second; the fastest display runs at {rate}");
-    assert!(fps >= rate * 0.9, "{fps:.0} frames a second, wanted {rate}");
     finish(cx, scratch);
 }

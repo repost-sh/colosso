@@ -93,6 +93,7 @@ fn a_file_with_retired_keys_reads_without_them() {
     let old = r#"{
         "layout": "Arc",
         "files_width": 280,
+        "native_pages": true,
         "key_repeat": {
             "delay_ms": 200,
             "start_per_frame": 0.8,
@@ -109,6 +110,7 @@ fn a_file_with_retired_keys_reads_without_them() {
     let mut value = serde_json::from_str(old).unwrap();
     migrate(&mut value);
     assert!(value.get("files_width").is_none());
+    assert!(value.get("native_pages").is_none());
     assert_eq!(value["key_repeat"], serde_json::json!({ "delay_ms": 200 }));
     let settings = read(&path).unwrap();
     assert_eq!(settings.layout, Layout::Arc);

@@ -135,17 +135,9 @@ impl BrowserView {
     }
 
     /// The find bar's matches and the one selected, while it's open.
-    #[cfg(any(test, feature = "visual-check"))]
+    #[cfg(test)]
     pub(super) fn find_tally(&self) -> Option<(u32, u32)> {
         self.find.as_ref().map(|find| (find.count, find.active))
-    }
-
-    /// Whether the find bar's field has the keys.
-    #[cfg(feature = "visual-check")]
-    pub(super) fn find_focused(&self, window: &Window, cx: &gpui_kit::App) -> bool {
-        use gpui_kit::Focusable as _;
-        (self.find.as_ref())
-            .is_some_and(|find| find.input.read(cx).focus_handle(cx).is_focused(window))
     }
 
     /// What the find bar searches for, while it's open.

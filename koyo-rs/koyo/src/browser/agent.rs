@@ -43,7 +43,7 @@ pub enum AgentError {
 pub enum NotOpen {
     /// The engine is starting, or yet to start: it opens the page once it runs.
     Starting,
-    /// The engine failed, as the message says, and stays down until the person restarts it.
+    /// The engine failed, as the message says, and stays down until Koyo is started again.
     Failed(String),
     /// The pane shows the start page, which has no page until an address is loaded.
     StartPage,
@@ -177,14 +177,10 @@ impl BrowserView {
     }
 
     /// Whether the page can be asked the size it lays out at, as at `target`: it was told
-    /// `target`, and it shows a frame of it, unless the engine has it out of sight, where
-    /// the host paints nothing and the page's own report is all there is. A page an agent
-    /// uses is on screen for the engine (`view/sight.rs`), so it paints.
+    /// `target`, as its pane lays it out or as a size of its own out of sight, and its own
+    /// report is what says it's there.
     pub fn ready_to_measure(&self, target: Viewport) -> bool {
         self.viewport == Some(target)
-            && (self.visible == Some(false)
-                || self.is_native()
-                || self.shows_frame_of(target.pixels()))
     }
 
     /// Whether a page reporting `inner` (`innerWidth`, `innerHeight`) has laid out at

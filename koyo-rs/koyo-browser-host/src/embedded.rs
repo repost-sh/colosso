@@ -1,8 +1,8 @@
-//! The host inside Koyo's own process, where pages are native (`docs/native-pages.md`).
+//! The host inside Koyo's own process (`docs/native-pages.md`).
 //!
-//! An `NSView` can't be shown in another process's window, so for native pages the browser
-//! process is the app. The app hands [`start`] its end of the socket it would have given a
-//! host process, and the host runs on the app's main thread from then on: CEF is loaded from
+//! An `NSView` can't be shown in another process's window, so the browser process is the
+//! app. The app hands [`start`] the host's end of their socket, and the host runs on the
+//! app's main thread from then on: CEF is loaded from
 //! the engine the app carries and started there, its work run from `AppKit`'s run loop
 //! (`pump`), and `NSApp` given what Chromium asks of it (`nsapp`). The helpers are still the
 //! engine's, running this crate's binary. Everything else is the host as it is in a process of

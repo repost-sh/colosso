@@ -2,17 +2,16 @@
 //! reports to [`crate::host`], which owns the pane's state on the UI thread.
 use crate::host;
 use cef::{
-    AcceleratedPaintInfo, Browser, BrowserSettings, CefString, CefStringList, Client,
-    ContextMenuHandler, ContextMenuParams, CursorInfo, CursorType, DialogHandler, DictionaryValue,
-    DisplayHandler, FindHandler, Frame, FrameHandler, ImplClient, ImplContextMenuHandler,
-    ImplDisplayHandler, ImplFindHandler, ImplFrameHandler, ImplLifeSpanHandler, ImplLoadHandler,
-    ImplRenderHandler, JsdialogHandler, LifeSpanHandler, LoadHandler, MenuModel, PaintElementType,
-    PermissionHandler, PopupFeatures, ProcessId, ProcessMessage, Rect, RenderHandler,
-    RequestHandler, RunContextMenuCallback, ScreenInfo, TransitionType, WindowInfo,
-    WindowOpenDisposition, WrapClient, WrapContextMenuHandler, WrapDisplayHandler, WrapFindHandler,
-    WrapFrameHandler, WrapLifeSpanHandler, WrapLoadHandler, WrapRenderHandler, rc::Rc, wrap_client,
-    wrap_context_menu_handler, wrap_display_handler, wrap_find_handler, wrap_frame_handler,
-    wrap_life_span_handler, wrap_load_handler, wrap_render_handler,
+    Browser, BrowserSettings, CefString, CefStringList, Client, ContextMenuHandler,
+    ContextMenuParams, CursorInfo, CursorType, DialogHandler, DictionaryValue, DisplayHandler,
+    FindHandler, Frame, FrameHandler, ImplClient, ImplContextMenuHandler, ImplDisplayHandler,
+    ImplFindHandler, ImplFrameHandler, ImplLifeSpanHandler, ImplLoadHandler, JsdialogHandler,
+    LifeSpanHandler, LoadHandler, MenuModel, PermissionHandler, PopupFeatures, ProcessId,
+    ProcessMessage, Rect, RequestHandler, RunContextMenuCallback, TransitionType, WindowInfo,
+    WindowOpenDisposition, WrapClient, WrapContextMenuHandler, WrapDisplayHandler,
+    WrapFindHandler, WrapFrameHandler, WrapLifeSpanHandler, WrapLoadHandler, rc::Rc,
+    wrap_client, wrap_context_menu_handler, wrap_display_handler, wrap_find_handler,
+    wrap_frame_handler, wrap_life_span_handler, wrap_load_handler,
 };
 use koyo_browser_ipc::{Cursor, HostEvent, PaneId};
 use std::os::raw::c_int;
@@ -34,9 +33,6 @@ wrap_client! {
     }
 
     impl Client {
-        fn render_handler(&self) -> Option<RenderHandler> {
-            Some(PaneRender::new(self.pane))
-        }
         fn display_handler(&self) -> Option<DisplayHandler> {
             Some(PaneDisplay::new(self.pane))
         }
@@ -68,7 +64,7 @@ wrap_client! {
             Some(PaneFrames::new(self.pane))
         }
         fn keyboard_handler(&self) -> Option<cef::KeyboardHandler> {
-            host::native().then(|| keys::keys(self.pane))
+            Some(keys::keys(self.pane))
         }
         fn on_process_message_received(
             &self,
@@ -165,77 +161,6 @@ wrap_context_menu_handler! {
     }
 }
 
-wrap_render_handler! {
-    struct PaneRender {
-        pane: PaneId,
-    }
-
-    impl RenderHandler {
-        fn view_rect(&self, _browser: Option<&mut Browser>, rect: Option<&mut Rect>) {
-            if let Some(rect) = rect {
-                let (width, height) = host::logical_size(self.pane);
-                *rect = Rect { x: 0, y: 0, width, height };
-            }
-        }
-
-        fn screen_info(
-            &self,
-            _browser: Option<&mut Browser>,
-            screen_info: Option<&mut ScreenInfo>,
-        ) -> c_int {
-            let Some(info) = screen_info else {
-                return 0;
-            };
-            let (width, height) = host::logical_size(self.pane);
-            info.device_scale_factor = host::scale(self.pane);
-            info.rect = Rect { x: 0, y: 0, width, height };
-            info.available_rect = info.rect.clone();
-            1
-        }
-
-        fn on_paint(
-            &self,
-            _browser: Option<&mut Browser>,
-            _type_: PaintElementType,
-            _dirty_rects: Option<&[Rect]>,
-            _buffer: *const u8,
-            _width: c_int,
-            _height: c_int,
-        ) {
-            // Shared textures are on; CPU frames only come when the GPU
-            // process fell back, which the app reports as a blank pane.
-            host::software_frame(self.pane);
-        }
-
-        fn on_accelerated_paint(
-            &self,
-            _browser: Option<&mut Browser>,
-            type_: PaintElementType,
-            _dirty_rects: Option<&[Rect]>,
-            info: Option<&AcceleratedPaintInfo>,
-        ) {
-            let layer = if type_ == PaintElementType::POPUP {
-                crate::surfaces::Layer::Popup
-            } else {
-                crate::surfaces::Layer::Page
-            };
-            if let Some(info) = info {
-                host::accelerated_frame(self.pane, layer, info);
-            }
-        }
-
-        fn on_popup_show(&self, _browser: Option<&mut Browser>, show: c_int) {
-            host::popup_shown(self.pane, show != 0);
-        }
-
-        fn on_popup_size(&self, _browser: Option<&mut Browser>, rect: Option<&Rect>) {
-            if let Some(rect) = rect {
-                host::popup_moved(self.pane, rect);
-            }
-        }
-    }
-}
-
 wrap_display_handler! {
     struct PaneDisplay {
         pane: PaneId,
@@ -251,10 +176,7 @@ wrap_display_handler! {
             use cef::ImplFrame;
             if frame.is_some_and(|f| f.is_main() == 1) {
                 let url = text(url);
-                #[cfg(target_os = "macos")]
                 crate::location::opened(browser, &url);
-                #[cfg(not(target_os = "macos"))]
-                let _ = browser;
                 host::page_changed(self.pane, |page| page.url = url);
             }
         }
@@ -302,9 +224,8 @@ wrap_display_handler! {
             _custom_cursor_info: Option<&CursorInfo>,
         ) -> c_int {
             host::cursor_changed(self.pane, cursor(type_));
-            // The app draws the pointer over an off-screen page, and CEF must not touch
-            // NSCursor; a native page's pointer is Chromium's to set.
-            c_int::from(!host::native())
+            // The pointer over a page is Chromium's to set; the app is told which it is.
+            0
         }
     }
 }

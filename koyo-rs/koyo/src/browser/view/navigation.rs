@@ -10,7 +10,6 @@ use koyo_browser_ipc::{AppRequest, Go};
 
 use super::{BrowserEvent, BrowserView, Notice};
 use crate::browser::control::Mode;
-use crate::browser::host::HostStatus;
 use crate::browser::{Address, read_address, search_url};
 use crate::history::How;
 
@@ -108,10 +107,6 @@ impl BrowserView {
     fn load(&mut self, url: String, came: How, cx: &mut Context<Self>) {
         if self.is_inspector() {
             return;
-        }
-        if matches!(self.status(cx), HostStatus::Failed(_)) {
-            // Asking for a page again is the way to retry.
-            self.restart_host(cx);
         }
         self.came = Some(came);
         self.notice = None;

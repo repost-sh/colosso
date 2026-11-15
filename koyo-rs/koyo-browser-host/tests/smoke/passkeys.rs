@@ -80,7 +80,7 @@ fn asking(session: &mut Session, call: u64, expression: &str) -> (u64, PasskeyAs
     let params = serde_json::json!({"expression": expression, "returnByValue": true});
     crate::agents::cdp(session, call, "Runtime.evaluate", params);
     let (mut replied, mut got) = (false, None);
-    session.wait("the script's reply and its passkey request", |event, _| {
+    session.wait("the script's reply and its passkey request", |event| {
         match event {
             HostEvent::CdpReply { call: c, error, .. } if *c == call => {
                 assert_eq!(*error, None);
@@ -112,7 +112,7 @@ fn open_and_ask(session: &mut Session) -> u64 {
         })
         .expect("open");
     let (mut loaded, mut framed) = (false, None);
-    session.wait("the page to load and its frame to ask", |event, _| {
+    session.wait("the page to load and its frame to ask", |event| {
         match event {
             HostEvent::Page { pane: 1, state } => {
                 loaded |= state.title == "passkeys" && !state.loading;
@@ -203,7 +203,7 @@ fn with_passkeys_the_app_is_asked_and_its_answer_or_a_withdrawal_follows() {
     let params = serde_json::json!({"expression": "stop_it.abort()"});
     crate::agents::cdp(&mut session, 1003, "Runtime.evaluate", params);
     let (mut replied, mut withdrawn) = (false, Vec::new());
-    session.wait("the abort and its request withdrawn", |event, _| {
+    session.wait("the abort and its request withdrawn", |event| {
         match event {
             HostEvent::CdpReply { call: 1003, .. } => replied = true,
             HostEvent::PasskeyWithdrawn { request, .. } => withdrawn.push(*request),
@@ -221,7 +221,7 @@ fn with_passkeys_the_app_is_asked_and_its_answer_or_a_withdrawal_follows() {
         .expect("navigate");
     session.wait(
         "the framed request withdrawn as the page goes",
-        |event, _| {
+        |event| {
             if let HostEvent::PasskeyWithdrawn { request, .. } = event {
                 withdrawn.push(*request);
             }

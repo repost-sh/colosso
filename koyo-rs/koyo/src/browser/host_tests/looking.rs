@@ -58,3 +58,22 @@ fn find_counts_the_matches_and_zooming_lays_the_page_out_afresh(cx: &mut TestApp
     view.read_with(cx, |view, _| assert_eq!(view.zoom, 175));
     finish(cx, scratch);
 }
+
+#[gpui_kit::test]
+#[ignore = "needs the engine script/browser-engine packages"]
+fn an_element_is_inspected_again_while_the_tools_are_open(cx: &mut TestAppContext) {
+    let (view, cx, scratch) = open("inspecting", "data:text/html,<title>loaded</title><p>hi", cx);
+    super::wait_for_title(cx, &view, "loaded");
+    let at = koyo_browser_ipc::Point { x: 10., y: 10. };
+    view.update(cx, |view, cx| view.inspect(Some(at), cx));
+    let open = super::wait_until(cx, |cx| {
+        let tools = view.read_with(cx, |view, _| view.devtools().cloned());
+        tools.is_some_and(|tools| tools.read_with(cx, super::BrowserView::is_open))
+    });
+    assert!(open, "the tools open");
+    // The page asks its open tools, as its own menu's Inspect does: it's being updated as
+    // it asks, and the tools once read it for that.
+    view.update(cx, |view, cx| view.inspect(Some(at), cx));
+    view.read_with(cx, |view, _| assert!(view.devtools().is_some(), "still open"));
+    finish(cx, scratch);
+}
