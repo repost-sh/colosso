@@ -1,16 +1,18 @@
 //! Browser tabs in the shell: opened with a page of the selected checkout's project, titled
 //! as their page is, links from them opened beside them, and a page's detached `DevTools`
-//! split into its tab, closing with it. And closing tabs and panes of any kind, asking
-//! first about a file's unsaved edits.
+//! split into its tab, closing with it. A page's events go this one way whichever kind of tab
+//! it's in, a checkout's, a pinned page's or a loose one's, each found where it is
+//! (`Workspace::locate`), with only what's a pinned or a loose page's rule apart. Closing them
+//! is `closing.rs`'s.
 
 use std::path::{Path, PathBuf};
 
-use gpui_kit::{App, AppContext as _, Context, Entity, Window};
+use gpui_kit::{AppContext as _, Context, Entity, Window};
 
 use super::Shell;
-use crate::browser::{self, BrowserEvent, BrowserView, Dock, Responsive};
-use crate::files::{self, FileEditor, Then};
-use crate::model::{ClosedTab, Edge, Loose, Pane, Tab};
+use crate::browser::{self, BrowserEvent, BrowserView, Responsive};
+use crate::history::Place;
+use crate::model::{Edge, Located, Loose, Pane, Spot, Tab};
 use crate::navigation::Route;
 
 impl Shell {
@@ -128,17 +130,15 @@ impl Shell {
         }
     }
 
-    /// The pane showing `view`: where its tab is, as `(project, branch, tab)`, and its id.
-    pub(crate) fn pane_of(
-        &self,
-        view: &Entity<BrowserView>,
-    ) -> Option<((usize, usize, usize), u64)> {
-        self.workspace.find_pane(|pane| pane.view() == Some(view))
+    /// The pane showing `view`, wherever its tab is, a checkout's, a pinned page's or a loose
+    /// one's: where that tab is, and the pane's id.
+    pub(crate) fn locate_view(&self, view: &Entity<BrowserView>) -> Option<Located> {
+        self.workspace.locate(|pane| pane.view() == Some(view))
     }
 
-    /// Where the tab holding `view` is.
-    pub(super) fn tab_of(&self, view: &Entity<BrowserView>) -> Option<(usize, usize, usize)> {
-        self.pane_of(view).map(|(at, _)| at)
+    /// The pane showing `view`, wherever it is: its id.
+    pub(crate) fn pane_showing(&self, view: &Entity<BrowserView>) -> Option<u64> {
+        self.locate_view(view).map(|located| located.pane)
     }
 
     /// The tab's title follows its page's, a pinned or a loose page's too.
@@ -151,7 +151,10 @@ impl Shell {
         }
     }
 
-    /// A link from `view`'s page opens in a tab right after it, without leaving it.
+    /// A link from `view`'s page, or from its `DevTools`, opens in a tab right after the tab
+    /// it's in, without leaving it, of its opener's profile, so it's signed in as its opener
+    /// is: on its checkout, after its tab; from a pinned or a loose page, as a loose page of
+    /// the space shown, right after a loose opener or after them all.
     fn open_beside(
         &mut self,
         view: &Entity<BrowserView>,
@@ -159,14 +162,48 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(at) = self.tab_of(view) else {
-            return self.open_from_apart(view, url, window, cx);
+        let Some(located) = self.locate_view(view) else {
+            return;
         };
-        let project = self.workspace.projects[at.0].path.clone();
-        let beside = self.browser_view(url, &project, window, cx);
-        let pane = Pane::browser(beside, cx);
-        self.workspace.insert_tab_after(at, Tab::Single(pane));
+        let Some(Place { project, .. }) = self.profile_place(located) else {
+            return;
+        };
+        let opened = self.browser_view(url, &project, window, cx);
+        let tab = Tab::Single(Pane::browser(opened, cx));
+        match located.spot {
+            Spot::Checkout(project_at, branch, at) => {
+                self.workspace.insert_tab_after((project_at, branch, at), tab);
+            }
+            Spot::Pinned | Spot::Loose(_) => {
+                // By the opener's tab, its page: `DevTools` beside it are in it too.
+                let loose = self.workspace.loose_at(located.tab);
+                let place = loose.map_or(usize::MAX, |beside| beside + 1);
+                (self.workspace).add_loose(Loose { tab, project }, place, false);
+            }
+        }
         cx.notify();
+    }
+
+    /// Where the history keeps the visits of the page `located` finds, and the project whose
+    /// profile it keeps: its checkout, or a pinned or a loose page's project.
+    pub(super) fn profile_place(&self, located: Located) -> Option<Place> {
+        match located.spot {
+            Spot::Checkout(project, branch, _) => {
+                let project = self.workspace.projects.get(project)?;
+                let unit = project.branches.get(branch)?;
+                Some(Place {
+                    worktree: unit.worktree.path.clone(),
+                    project: project.path.clone(),
+                })
+            }
+            Spot::Pinned | Spot::Loose(_) => {
+                let (_, project) = self.workspace.find_apart(|pane| pane.id == located.pane)?;
+                Some(Place {
+                    worktree: project.to_owned(),
+                    project: project.to_owned(),
+                })
+            }
+        }
     }
 
     /// `page`'s `DevTools` take a pane right of the page's, the shell hearing what they say.
@@ -191,218 +228,16 @@ impl Shell {
         }
     }
 
-    /// Takes the pane showing `view` out of its tab, closing the tab when it was alone.
-    fn remove_browser_pane(&mut self, view: &Entity<BrowserView>, cx: &mut Context<Self>) {
-        let Some(((project, branch, _), id)) = self.pane_of(view) else {
-            return self.remove_apart_pane(view, cx);
-        };
-        if let Some(unit) = self.workspace.unit_mut(project, branch) {
-            unit.close_pane(id);
+    /// Takes the pane showing `view` out of its tab, wherever it is: a checkout's tab it was
+    /// alone in closes, a pinned or a loose page's keeps its page (`Workspace::remove_pane`).
+    pub(super) fn remove_browser_pane(
+        &mut self,
+        view: &Entity<BrowserView>,
+        cx: &mut Context<Self>,
+    ) {
+        let removed = self.pane_showing(view).is_some_and(|id| self.workspace.remove_pane(id));
+        if removed {
             cx.notify();
-        }
-    }
-
-    /// Closes pane `id`, and its tab when it's the tab's only pane, asking first when its
-    /// file has unsaved edits or its terminal runs something. Its terminal ends.
-    pub fn close_pane(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
-        let pane = self.workspace.branch().and_then(|unit| unit.pane(id));
-        let editors = (pane.and_then(|pane| pane.file.as_ref()))
-            .and_then(|file| file.read(cx).unsaved().cloned())
-            .into_iter()
-            .collect();
-        let terminals = pane.and_then(|pane| pane.terminal).into_iter().collect();
-        // Closed with the keyboard in it, the pane left beside it has the keyboard.
-        let typing = self.pane_with_keyboard(window, cx) == Some(id);
-        let close = move |shell: &mut Self, cx: &mut Context<Self>| {
-            shell.close_pane_now(id, cx);
-            if typing {
-                shell.keys_to_shown_tab(cx);
-            }
-        };
-        self.ask_then(editors, terminals, close, window, cx);
-    }
-
-    /// Closes pane `id`, on whichever checkout it is, and its tab when it's the tab's only
-    /// pane, whatever its file has. Detached `DevTools` close for their page, and a page's
-    /// detached `DevTools` close with it.
-    pub(crate) fn close_pane_now(&mut self, id: u64, cx: &mut Context<Self>) {
-        let Some(((project, branch, _), _)) = self.workspace.find_pane(|pane| pane.id == id) else {
-            return self.close_apart_pane(id, cx);
-        };
-        let unit = self.workspace.unit_mut(project, branch);
-        let view = unit.and_then(|unit| unit.pane(id)?.view().cloned());
-        if let Some(view) = view {
-            self.let_devtools_go(view, cx);
-        }
-        if let Some(unit) = self.workspace.unit_mut(project, branch) {
-            unit.close_pane(id);
-        }
-        cx.notify();
-    }
-
-    /// Closes the tab at `at`, as `(project, branch, tab)`, asking first when its files have
-    /// unsaved edits or its terminals run something. Its terminals end.
-    pub fn close_tab_at(
-        &mut self,
-        at: (usize, usize, usize),
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(tab) = self.workspace.tab(at) else {
-            return;
-        };
-        let editors = tab.unsaved(cx);
-        let terminals = (tab.panes().into_iter())
-            .filter_map(|pane| pane.terminal)
-            .collect();
-        // Found again by a pane of it once answered: tabs may have moved meanwhile. Closed
-        // with the keyboard in it, the tab shown in its place has the keyboard.
-        let shown = self.workspace.shown_checkout_tab() == Some(at);
-        let typing = shown && self.pane_with_keyboard(window, cx).is_some();
-        let id = tab.first().id;
-        let close = move |shell: &mut Self, cx: &mut Context<Self>| {
-            if let Some((at, _)) = shell.workspace.find_pane(|pane| pane.id == id) {
-                shell.close_tab_now(at, cx);
-                if typing {
-                    shell.keys_to_shown_tab(cx);
-                }
-            }
-        };
-        self.ask_then(editors, terminals, close, window, cx);
-    }
-
-    /// Ends `terminals` and does `close`, asking first about what's running in them and then
-    /// about what's unsaved in `editors`: once it's agreed, and saved or let go.
-    fn ask_then(
-        &mut self,
-        editors: Vec<Entity<FileEditor>>,
-        terminals: Vec<u64>,
-        close: impl FnOnce(&mut Self, &mut Context<Self>) + 'static,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let asked = terminals.clone();
-        let then = move |shell: &mut Self, window: &mut Window, cx: &mut Context<Self>| {
-            let close = move |shell: &mut Self, cx: &mut Context<Self>| {
-                shell.end_terminals(&terminals, cx);
-                close(shell, cx);
-            };
-            shell.ask_about_files_then(editors, close, window, cx);
-        };
-        self.ask_to_end_terminals(&asked, then, window, cx);
-    }
-
-    /// Closes every tab of the checkout at `worktree` (`docs/arc-sidebar.md` 5), its chats
-    /// asked to stop and its terminals ended, asking first about unsaved edits.
-    pub fn clear_worktree(&mut self, worktree: &Path, window: &mut Window, cx: &mut Context<Self>) {
-        let Some((project, branch)) = self.workspace.unit_at(worktree) else {
-            return;
-        };
-        let unit = &self.workspace.projects[project].branches[branch];
-        let editors = (unit.tabs.iter()).flat_map(|tab| tab.unsaved(cx)).collect();
-        let terminals: Vec<u64> = (unit.tabs.iter())
-            .flat_map(Tab::panes)
-            .filter_map(|pane| pane.terminal)
-            .collect();
-        let worktree = worktree.to_owned();
-        let close = move |shell: &mut Self, cx: &mut Context<Self>| {
-            shell.end_terminals(&terminals, cx);
-            shell.close_tabs_of(&worktree, cx);
-        };
-        self.ask_about_files_then(editors, close, window, cx);
-    }
-
-    /// Closes every tab of the checkout at `worktree` now, last first, asking its chats to stop.
-    fn close_tabs_of(&mut self, worktree: &Path, cx: &mut Context<Self>) {
-        let Some((project, branch)) = self.workspace.unit_at(worktree) else {
-            return;
-        };
-        let count = self.workspace.projects[project].branches[branch].tabs.len();
-        for at in (0..count).rev() {
-            if let Some(tab) = self.workspace.tab((project, branch, at)) {
-                self.stop_chats_in(tab, cx);
-            }
-            self.close_tab_now((project, branch, at), cx);
-        }
-    }
-
-    /// Does `close` now when `editors` have no unsaved edits, and otherwise asks about them
-    /// first: once they're saved or let go.
-    fn ask_about_files_then(
-        &mut self,
-        editors: Vec<Entity<FileEditor>>,
-        close: impl FnOnce(&mut Self, &mut Context<Self>) + 'static,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if editors.is_empty() {
-            return close(self, cx);
-        }
-        let shell = cx.entity().downgrade();
-        let then = move |cx: &mut App| {
-            (shell.update(cx, close)).ok();
-        };
-        files::ask(editors, Then::Close(Box::new(then)), window, cx);
-    }
-
-    /// Closes the tab at `at`, as `(project, branch, tab)`, whatever its files have, and
-    /// the detached `DevTools` of its pages wherever they are, keeping it to open again.
-    pub(crate) fn close_tab_now(&mut self, at: (usize, usize, usize), cx: &mut Context<Self>) {
-        let (project, branch, _) = at;
-        let Some(tab) = self.workspace.tab_mut(at) else {
-            return;
-        };
-        let files = (tab.panes().into_iter())
-            .filter_map(|pane| Some((pane.id, pane.file.as_ref()?.read(cx).path.clone())))
-            .collect();
-        let changes = (tab.panes().into_iter())
-            .filter(|pane| pane.changes.is_some())
-            .map(|pane| pane.id)
-            .collect();
-        let devices = (tab.panes().into_iter())
-            .filter_map(|pane| Some((pane.id, pane.device_view()?.read(cx).chosen()?.clone())))
-            .collect();
-        // A page brought back at launch and never shown has the address it would open at.
-        let addresses = (tab.panes().into_iter())
-            .filter(|pane| !pane.is_inspector(cx))
-            .filter_map(|pane| Some((pane.id, pane.address(cx)?)))
-            .collect();
-        let panes: Vec<_> = tab
-            .panes()
-            .into_iter()
-            .map(|pane| (pane.id, pane.view().cloned()))
-            .collect();
-        for view in panes.iter().filter_map(|(_, view)| view.clone()) {
-            self.let_devtools_go(view, cx);
-        }
-        // Panes elsewhere that closed may have moved the tab.
-        let unit = &self.workspace.projects[project].branches[branch];
-        let checkout = unit.worktree.path.clone();
-        if let Some(now) = panes.iter().find_map(|(id, _)| unit.tab_with(*id))
-            && let Some(tab) = self.workspace.close_tab(project, branch, now)
-        {
-            self.workspace.remember_closed(ClosedTab {
-                checkout,
-                at: now,
-                tab,
-                addresses,
-                files,
-                changes,
-                devices,
-            });
-        }
-        cx.notify();
-    }
-
-    /// The `DevTools` of `view`'s page, or `view`'s own when it's a page, close; detached,
-    /// their pane goes too.
-    pub(super) fn let_devtools_go(&mut self, view: Entity<BrowserView>, cx: &mut Context<Self>) {
-        let page = view.read(cx).inspected().cloned().unwrap_or(view);
-        let detached = page.read(cx).devtools_dock() == Some(Dock::Detached);
-        let tools = page.read(cx).devtools().cloned().filter(|_| detached);
-        page.update(cx, BrowserView::close_devtools);
-        if let Some(tools) = tools {
-            self.remove_browser_pane(&tools, cx);
         }
     }
 }

@@ -220,8 +220,8 @@ impl Switcher {
         };
         let (shell, behind) = (self.shell.clone(), self.behind);
         cx.defer(move |cx| {
-            (behind.update(cx, |_, window, cx| {
-                shell.update(cx, |shell, cx| shell.show_visited(key, window, cx));
+            (behind.update(cx, |_, _, cx| {
+                shell.update(cx, |shell, cx| shell.show_visited(key, cx));
             }))
             .ok();
         });

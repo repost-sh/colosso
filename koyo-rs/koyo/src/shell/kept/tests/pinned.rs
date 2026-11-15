@@ -290,7 +290,7 @@ fn pinned_pages_come_back_in_order_where_they_were_with_the_one_shown(cx: &mut T
     // The Orca layout shows none of them, switched to or launched in: they stay pinned.
     back.update(cx, |shell, cx| {
         let first = shell.workspace.pinned()[0].key();
-        shell.pick_pinned(first, cx);
+        shell.show_tab_holding(first, cx);
     });
     assert_eq!(pins_of(&back, cx).1, Some(0));
     cx.update(|cx| settings::update(cx, |settings| settings.layout = Layout::Orca));

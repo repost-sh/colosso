@@ -7,7 +7,7 @@
 
 use std::cmp::Reverse;
 
-use super::{Tab, Workspace};
+use super::{Pane, Tab, Workspace};
 
 /// Where a tab is, to show it from there.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -18,6 +18,17 @@ pub enum Spot {
     Pinned,
     /// Among the loose pages of the space known by this id.
     Loose(u64),
+}
+
+/// A pane found wherever its tab is (`Workspace::locate`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Located {
+    /// Where its tab is.
+    pub spot: Spot,
+    /// Its tab, by its first pane: a pinned or a loose page's page.
+    pub tab: u64,
+    /// The pane.
+    pub pane: u64,
 }
 
 /// A tab, and where it is.
@@ -85,9 +96,53 @@ impl Workspace {
 
     /// Where the tab holding pane `key` is now, if it's open.
     pub fn spot_of(&self, key: u64) -> Option<Spot> {
-        (self.everywhere())
-            .find(|visited| visited.tab.has_pane(key))
-            .map(|visited| visited.spot)
+        self.locate(|pane| pane.id == key).map(|located| located.spot)
+    }
+
+    /// The first pane that is `found`, wherever its tab is, a checkout's, a pinned page's or a
+    /// loose one's: how a page's pane is found, so it goes the same way whichever kind of tab
+    /// it's in (`docs/arc-sidebar.md` 11).
+    pub fn locate(&self, found: impl Fn(&Pane) -> bool) -> Option<Located> {
+        self.everywhere().find_map(|visited| {
+            let pane = visited.tab.panes().into_iter().find(|pane| found(pane))?;
+            Some(Located {
+                spot: visited.spot,
+                tab: visited.tab.first().id,
+                pane: pane.id,
+            })
+        })
+    }
+
+    /// Takes pane `id` out of its tab, wherever it is, the other side of its split taking its
+    /// room: a checkout's tab it was the only pane of closes with it, while a pinned or a loose
+    /// page's tab is its page, which stays. Whether anything changed.
+    pub fn remove_pane(&mut self, id: u64) -> bool {
+        match self.spot_of(id) {
+            Some(Spot::Checkout(project, branch, _)) => {
+                (self.unit_mut(project, branch)).is_some_and(|unit| unit.close_pane(id))
+            }
+            Some(Spot::Pinned | Spot::Loose(_)) => {
+                (self.tab_holding_mut(id)).is_some_and(|tab| tab.take(id).is_some())
+            }
+            None => false,
+        }
+    }
+
+    /// Shows the tab known by `key`, its first pane's, where `spot` says it is: a checkout's
+    /// tab in its checkout, a pinned page over whatever the space shows, a loose page among
+    /// those of the space shown. Whether there was such a tab to show.
+    pub fn show_tab(&mut self, spot: Spot, key: u64) -> bool {
+        match spot {
+            Spot::Checkout(project, branch, at) => {
+                let there = self.tab((project, branch, at)).is_some();
+                if there {
+                    self.select_tab(project, branch, at);
+                }
+                there
+            }
+            Spot::Pinned => (self.pinned_at(key)).is_some_and(|at| self.show_pinned(at)),
+            Spot::Loose(_) => (self.loose_at(key)).is_some_and(|at| self.show_loose(at)),
+        }
     }
 
     /// What every tab there is is known by: its first pane.

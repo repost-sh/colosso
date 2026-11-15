@@ -667,7 +667,7 @@ pub(crate) struct MacWindowState {
     close_callback: Option<Box<dyn FnOnce()>>,
     appearance_changed_callback: Option<Box<dyn FnMut()>>,
     input_handler: Option<PlatformInputHandler>,
-    last_key_equivalent: Option<KeyDownEvent>,
+    last_key_equivalent: Option<(KeyDownEvent, f64)>,
     last_left_mouse_down_event: Option<Retained<AnyObject>>,
     synthetic_drag_counter: usize,
     traffic_light_position: Option<Point<Pixels>>,
@@ -680,6 +680,9 @@ pub(crate) struct MacWindowState {
     external_files_dragged: bool,
     // Whether the next left-mouse click is also the focusing click.
     first_mouse: bool,
+    // Koyo: the mouse buttons GPUI was told went down and hasn't been told came up, each with
+    // the system's number of the button the hand pressed (`lost_releases`).
+    buttons_down: Vec<(MouseButton, NSInteger)>,
     // When true, the whole content view is reported as app-owned titlebar content via
     // `_opaqueRectForWindowMoveWhenInTitlebar`, so AppKit does not drag the window from
     // the titlebar or delay titlebar clicks (a delay first observed on macOS 27). Such
@@ -1115,6 +1118,7 @@ impl MacWindow {
                 do_command_handled: None,
                 external_files_dragged: false,
                 first_mouse: false,
+                buttons_down: Vec::new(),
                 app_owns_titlebar_drag,
                 fullscreen_restore_bounds: Bounds::default(),
                 is_exiting_fullscreen: false,
@@ -2688,9 +2692,18 @@ extern "C" fn handle_key_event(
             // If that event isn't handled, it will then dispatch a "key down" event. GPUI
             // makes no distinction between these two types of events, so we need to ignore
             // the "key down" event if we've already just processed its "key equivalent" version.
+            //
+            // Koyo: by the very event, its time with it. A key a browser page left unhandled is
+            // offered to this view as a key equivalent and comes as no key down after, so by
+            // the keystroke alone it was still taken to be pending, and the first key typed in
+            // GPUI after it, were it the same, was lost: "f" in a page, then "f" in a chat.
+            // SAFETY: `native_event` is the key event being handled.
+            let at: f64 = unsafe { msg_send![native_event, timestamp] };
             if key_equivalent {
-                lock.last_key_equivalent = Some(key_down_event.clone());
-            } else if lock.last_key_equivalent.take().as_ref() == Some(&key_down_event) {
+                lock.last_key_equivalent = Some((key_down_event.clone(), at));
+            } else if (lock.last_key_equivalent.take())
+                .is_some_and(|(was, when)| was == key_down_event && when == at)
+            {
                 return Bool::NO;
             }
 
@@ -2904,6 +2917,9 @@ pub(crate) extern "C" fn handle_view_event(this: &AnyObject, _: Sel, native_even
             _ => {}
         };
 
+        // Koyo: releases GPUI never heard of are told first (`lost_releases`).
+        let lost = lost_releases(&mut lock, &event, native_event);
+
         match &event {
             PlatformInput::MouseDown(_) => {
                 drop(lock);
@@ -2965,10 +2981,76 @@ pub(crate) extern "C" fn handle_view_event(this: &AnyObject, _: Sel, native_even
 
         if let Some(mut callback) = lock.event_callback.take() {
             drop(lock);
+            for release in lost {
+                callback(PlatformInput::MouseUp(release));
+            }
             let result = callback(event);
             crate::fast::composition::complete_event(&window_state, native_event, callback, result);
         }
     }
+}
+
+/// Koyo: the releases GPUI was never told of, which it's told of before `event`, and what
+/// GPUI's told of `event` itself kept count of (`MacWindowState::buttons_down`).
+///
+/// A press is under way for GPUI until it hears the release, and one over a native view keeps
+/// that view the owner of the pointer meanwhile: no press anywhere in the window reaches
+/// GPUI's own content (gpui-fast's `dispatch_native`). A release can go where GPUI never hears
+/// of it: a menu the press opened (a page's, or one Chromium shows itself) tracks the pointer
+/// and takes it, as does a drag session. Left so, after a right click in a page or in its
+/// `DevTools` no tab could be picked and no divider moved until Koyo was started again. So the
+/// presses GPUI was told of are let go once it's plain they're over: by a move with no button
+/// down, and by a press while the button the hand pressed for one is no longer down.
+fn lost_releases(
+    lock: &mut MacWindowState,
+    event: &PlatformInput,
+    native_event: *mut AnyObject,
+) -> Vec<MouseUpEvent> {
+    let (position, modifiers, lost) = match event {
+        PlatformInput::MouseMove(MouseMoveEvent {
+            pressed_button: None,
+            position,
+            modifiers,
+            ..
+        }) => (*position, *modifiers, std::mem::take(&mut lock.buttons_down)),
+        PlatformInput::MouseDown(down) => {
+            let lost = if lock.buttons_down.is_empty() {
+                Vec::new()
+            } else {
+                // SAFETY: a class method of `NSEvent`, the buttons down now, a bit each by
+                // number.
+                let held: usize = unsafe { msg_send![class!(NSEvent), pressedMouseButtons] };
+                (lock.buttons_down)
+                    .extract_if(.., |(_, number)| held >> *number & 1 == 0)
+                    .collect()
+            };
+            // SAFETY: `native_event` is the mouse event being handled.
+            let number: NSInteger = unsafe { msg_send![native_event, buttonNumber] };
+            if !lock.buttons_down.iter().any(|(button, _)| *button == down.button) {
+                lock.buttons_down.push((down.button, number));
+            }
+            (down.position, down.modifiers, lost)
+        }
+        PlatformInput::MouseUp(up) => {
+            // As gpui-fast counts them: a single press ends whatever its release is called,
+            // a ctrl-click let go of with Control already up being a left button's.
+            if lock.buttons_down.len() == 1 {
+                lock.buttons_down.clear();
+            } else {
+                lock.buttons_down.retain(|(button, _)| *button != up.button);
+            }
+            return Vec::new();
+        }
+        _ => return Vec::new(),
+    };
+    lost.into_iter()
+        .map(|(button, _)| MouseUpEvent {
+            button,
+            position,
+            modifiers,
+            click_count: 1,
+        })
+        .collect()
 }
 
 fn visibility(state: &MacWindowState) -> WindowVisibility {

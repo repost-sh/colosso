@@ -2,9 +2,7 @@
 
 use std::{cell::Cell, sync::Arc};
 
-use gpui::{
-    Action, App, AssetSource, MouseButton, MouseUpEvent, Pixels, PlatformInput, Point, Window,
-};
+use gpui::{Action, App, AssetSource, Pixels, Point, Window};
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, NSObject};
 use objc2::{AnyThread, DefinedClass, MainThreadMarker, define_class, msg_send, sel};
@@ -67,24 +65,9 @@ pub(super) fn show(
     let handle = Window::window_handle(window);
 
     cx.spawn(async move |cx| {
-        let (action, let_go) = run_menu(view_ptr, &items, asset_source.as_ref(), position);
+        let action = run_menu(view_ptr, &items, asset_source.as_ref(), position);
         let _ = cx.update(move |app| {
             let _ = handle.update(app, move |_, window, app| {
-                // Koyo: the menu tracks the pointer itself from the moment it opens, so the
-                // release of a button that was down then is the menu's, and the window never
-                // gets it. GPUI counts a press as under way until its release, and one over a
-                // native view as that view's: with the release lost, every press after it,
-                // anywhere in the window, was the view's and none of GPUI's own content
-                // answered. The menu says which releases it took, and GPUI is told of each.
-                for button in let_go {
-                    let release = MouseUpEvent {
-                        button,
-                        position: window.mouse_position(),
-                        modifiers: window.modifiers(),
-                        click_count: 1,
-                    };
-                    window.dispatch_event(PlatformInput::MouseUp(release), app);
-                }
                 if let Some(action) = action {
                     window.dispatch_action(action, app);
                 }
@@ -101,17 +84,14 @@ pub(super) fn show(
 }
 
 /// Build the menu (recursively, including submenus), show it, and return the
-/// selected item's action, with the mouse buttons that were down as it opened
-/// and let go while it tracked the pointer.
+/// selected item's action.
 fn run_menu(
     view_ptr: usize,
     items: &[NativeMenuItem],
     asset_source: &dyn AssetSource,
     position: Point<Pixels>,
-) -> (Option<Box<dyn Action>>, Vec<MouseButton>) {
-    let Some(mtm) = MainThreadMarker::new() else {
-        return (None, Vec::new());
-    };
+) -> Option<Box<dyn Action>> {
+    let mtm = MainThreadMarker::new()?;
     // SAFETY: `view_ptr` came from the window's AppKit handle, and the window
     // outlives this synchronous call.
     let view: &NSView = unsafe { &*(view_ptr as *const NSView) };
@@ -127,29 +107,59 @@ fn run_menu(
         f32::from(position.x) as f64,
         height - f32::from(position.y) as f64,
     );
-    let down_before = pressed_buttons();
-    ns_menu.popUpMenuPositioningItem_atLocation_inView(None, location, Some(view));
-    let let_go = down_before & !pressed_buttons();
-    let let_go = [MouseButton::Left, MouseButton::Right, MouseButton::Middle]
-        .into_iter()
-        .enumerate()
-        .filter(|(number, _)| let_go >> number & 1 == 1)
-        .map(|(_, button)| button)
-        .collect();
+    // Koyo: shown with a press of the window's own, as Chromium shows its menus. The menu
+    // is shown a turn or more after whatever asked for it (a page's menu, once the page has
+    // said what's in it), with no event of the window's under way, and so shown that way
+    // macOS put it on the desktop the person is looking at: a menu an agent opened in an app
+    // on the agent desktop (`docs/agent-desktop.md`) showed on the person's own. A press
+    // stamped with the window's number puts it where the window is.
+    match window_press(view, location) {
+        // SAFETY: a menu, an event of the view's window and the view, as AppKit takes them.
+        Some(press) => unsafe {
+            let _: () = msg_send![
+                objc2::class!(NSMenu),
+                popUpContextMenu: &*ns_menu,
+                withEvent: &*press,
+                forView: view
+            ];
+        },
+        None => {
+            ns_menu.popUpMenuPositioningItem_atLocation_inView(None, location, Some(view));
+        }
+    }
 
     let tag = target.ivars().selected.get();
-    let action = if tag >= 0 {
+    if tag >= 0 {
         actions.get(tag as usize).map(|action| action.boxed_clone())
     } else {
         None
-    };
-    (action, let_go)
+    }
 }
 
-/// The mouse buttons down right now, a bit each by the system's button number.
-fn pressed_buttons() -> usize {
-    // SAFETY: a class method of `NSEvent`, returning an `NSUInteger`.
-    unsafe { msg_send![objc2::class!(NSEvent), pressedMouseButtons] }
+/// A right press at `location` in `view`, as of now, stamped with the number of the view's
+/// window; none while the view is in no window.
+fn window_press(view: &NSView, location: NSPoint) -> Option<Retained<AnyObject>> {
+    let window = view.window()?;
+    let in_window = view.convertPoint_toView(location, None);
+    // SAFETY: class methods of `NSProcessInfo` and `NSEvent`; the event is made with no
+    // graphics context, as AppKit asks of a caller, and handed back autoreleased.
+    unsafe {
+        let info: *mut AnyObject = msg_send![objc2::class!(NSProcessInfo), processInfo];
+        let now: f64 = msg_send![info, systemUptime];
+        let press: *mut AnyObject = msg_send![
+            objc2::class!(NSEvent),
+            mouseEventWithType: objc2_app_kit::NSEventType::RightMouseDown,
+            location: in_window,
+            modifierFlags: objc2_app_kit::NSEventModifierFlags::empty(),
+            timestamp: now,
+            windowNumber: window.windowNumber(),
+            context: std::ptr::null_mut::<AnyObject>(),
+            eventNumber: 0_isize,
+            clickCount: 1_isize,
+            pressure: 1.0f32
+        ];
+        Retained::retain(press)
+    }
 }
 
 /// Recursively build an `NSMenu`. Each actionable leaf item is given a tag equal

@@ -40,7 +40,7 @@ pub fn describe() -> String {
 /// Chromium's picture is in. `FITS` where each fills what it's in and the holder is that
 /// size, which is how a page is meant to sit; `OFF` else.
 fn fit(entry: &Entry) -> String {
-    let (true, Some((container, _)), Some((compositor, web)), Some((_, holder))) =
+    let (true, Some(container), Some((compositor, web)), Some((_, holder))) =
         (entry.on_screen, &entry.shown_in, &entry.views, &entry.holder)
     else {
         return String::new();

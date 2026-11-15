@@ -1,8 +1,8 @@
 //! The shell's side of the pages pinned in the Arc sidebar (`docs/arc-sidebar.md` 11): a page's
 //! tab pinned as it's dropped on their region, a pinned page shown as its tile is picked, moved
 //! among them, closed and still pinned, pinned at another address, unpinned onto a checkout's
-//! tabs or among the space's loose pages, or removed. What a pinned page's own events do is in
-//! `loose.rs`, with the loose pages', as both are pages of no checkout.
+//! tabs or among the space's loose pages, or removed. What a pinned page's own events do goes
+//! as a checkout's page's do (`browser_tabs.rs`).
 
 use gpui_kit::{App, Context, SharedString};
 
@@ -48,15 +48,6 @@ impl Shell {
             cx.notify();
         }
         pinned.is_some()
-    }
-
-    /// Shows the pinned page known by `key`, as a press on its tile does: its page takes the
-    /// keyboard.
-    pub(crate) fn pick_pinned(&mut self, key: u64, cx: &mut Context<Self>) {
-        let at = self.workspace.pinned_at(key);
-        if at.is_some_and(|at| self.workspace.show_pinned(at)) {
-            self.picked_tab_shown(cx);
-        }
     }
 
     /// A pinned page's tile let go over another slot: it moves there among them.

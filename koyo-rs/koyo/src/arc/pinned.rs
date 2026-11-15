@@ -260,7 +260,9 @@ fn tile(
         cx.new(|_| chip)
     })
     .child(face)
-    .on_click(cx.listener(move |this, _, _, cx| this.pick_pinned(key, cx)));
+    .on_click(cx.listener(move |this, _, _, cx| {
+        this.show_tab_holding(key, cx);
+    }));
     // Its menu is worked out as it's opened, not as the tile's drawn.
     let shell = cx.weak_entity();
     with_menu(tile, move |_, cx| {

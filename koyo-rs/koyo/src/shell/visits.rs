@@ -60,21 +60,9 @@ impl Shell {
         }
     }
 
-    /// Where the tab showing `view` is: its checkout, or a pinned or a loose page's project.
+    /// Where the history keeps what `view`'s page visits: its checkout, or a pinned or a
+    /// loose page's project.
     fn place_of(&self, view: &Entity<BrowserView>) -> Option<Place> {
-        match self.tab_of(view) {
-            Some(at) => self.place_at(at),
-            None => self.apart_place(view),
-        }
-    }
-
-    /// Where the tab at `(project, branch, tab)` is.
-    fn place_at(&self, (project, branch, _): (usize, usize, usize)) -> Option<Place> {
-        let project = self.workspace.projects.get(project)?;
-        let unit = project.branches.get(branch)?;
-        Some(Place {
-            worktree: unit.worktree.path.clone(),
-            project: project.path.clone(),
-        })
+        self.profile_place(self.locate_view(view)?)
     }
 }

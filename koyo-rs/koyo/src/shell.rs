@@ -31,6 +31,7 @@ use crate::{arc, backdrop, bottom, gradient, orca, picker, theme};
 
 mod actions;
 mod browser_tabs;
+mod closing;
 mod device_tabs;
 mod elements;
 mod kept;

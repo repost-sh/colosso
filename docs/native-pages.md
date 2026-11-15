@@ -330,16 +330,21 @@ the point expected.
 Before these, a hit region over the whole window was put up on a seam's press, drawn at once
 (commit 455480ba2). It raced the pointer's first move and treated neither cause; it's gone.
 
-**A release a menu takes is still a release.** GPUI's core counts a press over a native view
-as that view's until it has seen the release of every button down (gpui-fast 0.1.12
-`fast/composition.rs`, `dispatch_native`), and while it does, a press anywhere in the window
-is the view's: none of GPUI's own content answers. A page's menu is `AppKit`'s, opened by the
-right button's press; it tracks the pointer itself from the moment it opens, and the release
-of that button is the menu's, never the window's. With the release lost the count never came
-down: after Inspect picked from a page's menu no tab could be picked and no divider moved
-until Koyo was started again, the owner's, 2026-11-15, traced with the capture still set on
-the dead click. The menu now says which buttons were down as it opened and up as it closed,
-and GPUI is told of each release (`vendor/gpui-component`, `native_menu/macos.rs`).
+**A release GPUI never hears is let go all the same.** GPUI's core counts a press over a
+native view as that view's until it has seen the release of every button down (gpui-fast
+0.1.12 `fast/composition.rs`, `dispatch_native`), and while it does, a press anywhere in the
+window is the view's: none of GPUI's own content answers. A release can go where the window
+never sees it: a menu tracks the pointer itself from the moment it opens and takes the release
+of the button that opened it, a page's menu (Koyo's) and the menus Chromium shows itself (a
+`<select>`'s, the developer tools' own) alike, and a drag session takes the left button's.
+After a right click in a page or in its tools, no tab could be picked and no divider moved
+until Koyo was started again, or until the page's tab had been left, which takes its surface
+and the press with it (the owner, 2026-11-15: "once, switching back to the page with ⌃⇥ and
+dragging the divider unlocked it"). The first answer, the menu telling GPUI of the releases it
+took (commit cdcebcf5a), covered Koyo's menu only and is gone. Now GPUI's view keeps the
+presses it passed on, and lets go of them, telling GPUI first, once it's plain they're over: a
+move with no button down, or a press while the button the hand pressed for one is up
+(`vendor/gpui-fast-macos`, `window.rs`, `lost_releases`). `[read]`, not run on screen.
 
 **A key the page leaves is a shortcut or nothing.** A key Chromium didn't handle goes back to
 Koyo's view, so Koyo's shortcuts work with the keyboard in a page; Chromium counts a
@@ -348,7 +353,25 @@ back as a key press, GPUI found no binding for it and passed it to the text syst
 typed it into whatever had the keyboard: the page, a second time, "f" coming out "ff". It's
 handed back as a key equivalent (`native.rs`, `unhandled_key`), which GPUI matches against its
 bindings and never sends to the text system. `[proven]` with the keyboard's own events on the
-agent desktop: one key, one `input` event in the page, where there were two.
+agent desktop: one key, one `input` event in the page, where there were two. GPUI takes a key
+equivalent it didn't use to be about to come again as a key press, and let the next key press
+go by if it was the same keystroke: "f" in a page, then "f" in a chat, and the chat's "f" was
+lost. It's matched by the very event now, its time with it (`window.rs`, `handle_key_event`).
+
+**The modifiers are the window's.** GPUI hears the modifier keys change only through its own
+view, and with the keyboard in a page Chromium's view hears them instead: ⌃ let go after ⌃⇥
+never reached GPUI, and the tab switcher stayed up with its pick, the tab never changing
+(the owner, 2026-11-15, from a pinned page). The window hands every change of the modifiers to
+GPUI's view too while another view has the keyboard, and GPUI counts a change it hears twice
+once (`fast/composition.rs`, `send_window_event`).
+
+**The keyboard goes back to Koyo before a page's views leave its window.** A view that has the
+keyboard as it's taken out of its window leaves the window itself with it, which hands no key
+on. A page's views leave Koyo's window as its tab is left, the moment the pane stops drawing it,
+before the app's word that the keyboard is out of the page reaches the host; so after a tab
+with the keyboard in its page was left, nothing typed reached a chat's composer or a terminal.
+The host gives the keyboard to Koyo's view first, as the page is let go, hidden or closed
+(`native.rs`, `keyboard_home`).
 
 How these were found matters for the next check. The harness hands its events to the window
 (section 9), which is not where the pointer's own come in: it can't show which window of the
