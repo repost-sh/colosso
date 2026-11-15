@@ -1,5 +1,7 @@
 //! What the host tells the app: pages changing, frames ready, and what each page asks.
-use crate::{Dialog, MenuEntry, MenuTarget, PaneId, PasskeyAsk, Permission, PixelSize};
+use crate::{
+    DevToolsAsk, Dialog, MenuEntry, MenuTarget, PaneId, PasskeyAsk, Permission, PixelSize,
+};
 use serde::{Deserialize, Serialize};
 
 /// The pointer the page asks for.
@@ -181,6 +183,14 @@ pub enum HostEvent {
         pane: PaneId,
         /// The page.
         url: String,
+    },
+    /// A `DevTools` pane's frontend asks for something from its own controls: its dock menu,
+    /// its ×, its device toolbar toggle (`docs/browser.md` 13.2).
+    DevTools {
+        /// The `DevTools` pane.
+        pane: PaneId,
+        /// What it asks.
+        ask: DevToolsAsk,
     },
     /// The page or the engine asks the person something. The pane shows
     /// it and answers [`AppRequest::Answer`]; until then the page waits.

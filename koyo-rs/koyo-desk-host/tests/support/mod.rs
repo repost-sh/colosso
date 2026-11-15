@@ -148,7 +148,7 @@ impl Driver {
         let listener = UnixListener::bind(&socket).unwrap();
         // A name of its own for every start: a test may start a second host after a first.
         let start = STARTS.fetch_add(1, Ordering::Relaxed);
-        let service = format!("dev.koyo.desk.test.{}.{start}", std::process::id());
+        let service = format!("codes.koyo.desk.test.{}.{start}", std::process::id());
         let receiver = mach::Receiver::check_in(&service).unwrap();
         let status = Command::new("/usr/bin/open")
             .args(["-n", "-g", "-a", &app])

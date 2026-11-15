@@ -40,7 +40,7 @@ fn saying(
 
 #[gpui_kit::test]
 fn a_persons_message_is_markdown_drawn_as_an_answer_is(cx: &mut TestAppContext) {
-    let said = "## Plan\n\n**Read** `main.rs`, then *check* it:\n\n- one\n- [docs](https://koyo.dev)\n\n> quoted";
+    let said = "## Plan\n\n**Read** `main.rs`, then *check* it:\n\n- one\n- [docs](https://koyo.codes)\n\n> quoted";
     let (_, _, thread) = saying("chat-said-markdown", said, cx);
     let shown = rendered(&thread, "u", cx).expect("its words have a text view");
     for words in [

@@ -441,7 +441,7 @@ impl Streams {
                 delegate: std::ptr::null::<AnyObject>()
             ];
             let queue =
-                sys::dispatch_queue_create(c"dev.koyo.desk.capture".as_ptr(), std::ptr::null());
+                sys::dispatch_queue_create(c"codes.koyo.desk.capture".as_ptr(), std::ptr::null());
             let _: bool = msg_send![
                 &*stream,
                 addStreamOutput: &*output,

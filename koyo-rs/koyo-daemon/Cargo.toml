@@ -9,6 +9,8 @@ publish.workspace = true
 # The signals that stop a daemon that won't stop when asked.
 libc = "0.2"
 log = "0.4"
+# The platform's data folder, which the app's folder is in: the version the app already uses.
+dirs = "6"
 
 [lints]
 workspace = true

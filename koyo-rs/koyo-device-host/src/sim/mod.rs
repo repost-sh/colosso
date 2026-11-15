@@ -100,7 +100,7 @@ impl Simulator {
             .surface()
             .ok_or("the simulator's display has no picture yet")?;
         ring.mount(surface)?;
-        let queue = sys::serial_queue(c"dev.koyo.device.frames", sys::QOS_USER_INTERACTIVE);
+        let queue = sys::serial_queue(c"codes.koyo.device.frames", sys::QOS_USER_INTERACTIVE);
         let (frames, surfaces) = (ring.clone(), ring.clone());
         display.watch(
             queue,

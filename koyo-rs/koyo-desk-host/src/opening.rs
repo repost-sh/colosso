@@ -38,6 +38,10 @@ const HANDS_OVER: [&str; 4] = [
     "com.apple.systempreferences",
 ];
 
+/// How Koyo's own bundle ids start: under the koyo.codes domain, and under koyo.dev, which a
+/// Koyo built before the domain changed still carries.
+const KOYOS: [&str; 2] = ["codes.koyo.", "dev.koyo."];
+
 pub struct Opening {
     pub request: RequestId,
     /// The caller went away: the app is still taken in, and nobody is answered.
@@ -109,9 +113,9 @@ fn askable(asked: &str, document: Option<&str>) -> Result<(Obj, Option<String>),
         ));
     };
     let bundle = apps::bundle_id(&url);
-    // Koyo itself isn't for agents to drive: a second Koyo on the person's data would
-    // let an agent grant itself what the person didn't.
-    if (bundle.as_deref()).is_some_and(|bundle| bundle.starts_with("dev.koyo.")) {
+    // Koyo itself isn't for agents to drive, nor an older Koyo still installed: a second
+    // Koyo on the person's data would let an agent grant itself what the person didn't.
+    if (bundle.as_deref()).is_some_and(is_koyo) {
         return Err(Refusal::new(
             RefusalCode::Invalid,
             "Koyo isn't opened on the agent desktop: drive it with its own tools",
@@ -127,6 +131,11 @@ fn askable(asked: &str, document: Option<&str>) -> Result<(Obj, Option<String>),
         ));
     }
     Ok((url, bundle))
+}
+
+/// Whether `bundle` is one of Koyo's own apps, of this build or of one before it.
+fn is_koyo(bundle: &str) -> bool {
+    KOYOS.iter().any(|koyo| bundle.starts_with(koyo))
 }
 
 impl Host {
@@ -455,5 +464,25 @@ impl Host {
             format!("{} was still closing: open it again", opening.asked)
         };
         Some(Err(Refusal::new(RefusalCode::Failed, message)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_koyo;
+
+    #[test]
+    fn koyo_is_known_by_its_bundle_ids_old_and_new() {
+        for koyo in [
+            "codes.koyo.desktop",
+            "codes.koyo.desktop.dev",
+            "codes.koyo.agent-desktop.host",
+            "dev.koyo.desktop",
+        ] {
+            assert!(is_koyo(koyo), "{koyo}");
+        }
+        for other in ["com.apple.calculator", "codes.koyoish.app", "dev.koyoapp"] {
+            assert!(!is_koyo(other), "{other}");
+        }
     }
 }

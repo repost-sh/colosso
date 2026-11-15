@@ -46,7 +46,6 @@ use crate::gradient::GradientTheme;
 use crate::key_repeat::KeyRepeat;
 use crate::theme::{self, ThemePreference};
 
-pub const APP_ID: &str = "dev.koyo.desktop";
 const FILE: &str = "settings.json";
 /// How long changes must settle before they are written, so a drag saves once.
 const SAVE_DELAY: Duration = Duration::from_millis(500);
@@ -312,12 +311,10 @@ impl Default for Settings {
     }
 }
 
-/// The folder the app keeps what it fetches in, language servers among it, unless
-/// `KOYO_DATA_DIR` points elsewhere.
+/// The folder the app keeps what it fetches in, language servers among it: the one its
+/// daemons and relays find, wherever `KOYO_DATA_DIR` points or the app's own.
 pub fn data_dir() -> Option<PathBuf> {
-    std::env::var_os("KOYO_DATA_DIR")
-        .map(PathBuf::from)
-        .or_else(|| dirs::data_dir().map(|dir| dir.join(APP_ID)))
+    koyo_daemon::data_dir()
 }
 
 fn default_worktrees_dir() -> PathBuf {
@@ -345,7 +342,7 @@ pub fn init(cx: &mut App) {
     // Tests keep no file: each starts from the defaults, and none writes over the user's.
     let path = std::env::var_os("KOYO_CONFIG_DIR")
         .map(PathBuf::from)
-        .or_else(|| dirs::data_dir().map(|dir| dir.join(APP_ID)))
+        .or_else(|| dirs::data_dir().map(|dir| koyo_daemon::app_folder(&dir)))
         .map(|dir| dir.join(FILE))
         .filter(|_| !cfg!(test));
     let mut settings: Settings = path.as_deref().map(file::load).unwrap_or_default();

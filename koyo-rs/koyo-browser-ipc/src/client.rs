@@ -172,7 +172,7 @@ impl Connection {
         #[cfg(target_os = "macos")]
         let receiver = {
             let name = format!(
-                "dev.koyo.desktop.browser.{}.{}",
+                "codes.koyo.desktop.browser.{}.{}",
                 std::process::id(),
                 &token[..12]
             );

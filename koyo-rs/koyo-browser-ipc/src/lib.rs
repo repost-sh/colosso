@@ -21,12 +21,14 @@ pub mod inherit;
 pub mod mach;
 pub mod profiles;
 
+mod devtools;
 mod dialogs;
 mod events;
 mod input;
 mod passkeys;
 mod requests;
 
+pub use devtools::{DevToolsAsk, DevToolsDock};
 pub use dialogs::{Answer, Dialog, FileMode, MenuEntry, MenuTarget, Permission};
 pub use events::{Cursor, HostEvent, PageState, SiteSetting};
 pub use input::{
@@ -55,7 +57,10 @@ pub use requests::{AppRequest, Edit, Go, Ime, ViewAction};
 /// cleared without stopping the host ([`AppRequest::ClearData`]).
 /// 11: what a page's site is allowed and blocked from ([`AppRequest::SiteSettings`],
 /// [`AppRequest::SetSiteSetting`], [`HostEvent::SiteSettings`]).
-pub const PROTOCOL: u32 = 11;
+/// 12: `DevTools` with their own controls: the side they open at
+/// ([`AppRequest::OpenDevTools`]'s `dock`), and what their dock menu, × and device toolbar
+/// toggle ask ([`HostEvent::DevTools`]).
+pub const PROTOCOL: u32 = 12;
 
 /// Frames larger than this are refused, so a confused peer cannot make the
 /// other side allocate without bound.

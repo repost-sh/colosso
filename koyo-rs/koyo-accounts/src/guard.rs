@@ -29,7 +29,12 @@ fn real_roots() -> &'static [PathBuf] {
             ] {
                 roots.push(home.join(name));
             }
-            roots.push(home.join("Library/Application Support/dev.koyo.desktop/claude-accounts"));
+            // The app's folder, and the one it had under the koyo.dev id: the store stays
+            // there until a newer Koyo has moved it.
+            for app in ["codes.koyo.desktop", "dev.koyo.desktop"] {
+                let support = home.join("Library/Application Support");
+                roots.push(support.join(app).join("claude-accounts"));
+            }
         }
         if let Some(dir) = std::env::var_os("CLAUDE_CONFIG_DIR").filter(|dir| !dir.is_empty()) {
             let dir = PathBuf::from(dir);
@@ -150,6 +155,8 @@ mod tests {
             home.join(".claude/.credentials.json"),
             home.join(".claude/./x/../.credentials.json"),
             home.join(".claude-swap-backup/sequence.json"),
+            home.join("Library/Application Support/codes.koyo.desktop/claude-accounts/a.json"),
+            home.join("Library/Application Support/dev.koyo.desktop/claude-accounts/a.json"),
         ] {
             assert!(is_real(&real), "{}", real.display());
             assert!(check(&env, &real).is_err(), "{}", real.display());

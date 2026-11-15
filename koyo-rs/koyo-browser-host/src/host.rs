@@ -324,7 +324,8 @@ fn handle(request: AppRequest) {
             devtools,
             viewport,
             inspect,
-        } => open_dev_tools(pane, devtools, viewport, inspect),
+            dock,
+        } => open_dev_tools(pane, devtools, viewport, inspect, dock),
         AppRequest::Cdp {
             pane,
             call,

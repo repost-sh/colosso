@@ -121,7 +121,16 @@ impl NativePage {
 
     /// Puts the page over `bounds`, as much as `clip` shows, and its holder over it on screen;
     /// whether that's the first time.
+    ///
+    /// On whole points, whatever the pane's are: a native page is a whole number of points in
+    /// size, as its holder, a window, and Chromium's own layout are. In a view half a point
+    /// over, the layer Chromium's picture is in is rounded up each time the view is resized
+    /// and never comes back down, so it ends up taller than the view by what the halves add
+    /// up to, the picture's top cut off and a gap at its foot (`docs/native-pages.md` 6). A
+    /// pane's edges fall between points whenever a pointer set them: on a screen of two
+    /// pixels a point, a pointer is on half points.
     pub fn place(&self, bounds: Bounds<Pixels>, clip: Bounds<Pixels>, window: &Window) -> bool {
+        let bounds = crate::native::surface::on_whole_points(bounds);
         self.surface.place(bounds, clip, window);
         if self.size.replace(Some(bounds.size)).is_some_and(|was| was != bounds.size) {
             self.resized.set(Some(std::time::Instant::now()));

@@ -35,6 +35,8 @@
 //! frame <x> <y> <w> <h>    the window's frame set, in screen points from the bottom left
 //! wait <ms>                nothing for a while
 //! clear-data               browsing data cleared, as from Settings
+//! eval <pane> <script>     a script evaluated in a page, the developer tools' own too
+//! drag <ms> <x> <y> <x> <y> …           a left drag through the points, a pause a move
 //! burst <keys|wheels> <n> <gap ms> [x y]   n inputs, each stamped as it's handed to the window
 //! ```
 
@@ -122,6 +124,10 @@ pub fn start(cx: &mut App) {
                     // What Settings → Browser → Clear browsing data does, once confirmed.
                     cx.update(crate::browser::clear_data);
                     "clearing".to_owned()
+                } else if verb == "drag" {
+                    look::drag(rest, cx).await
+                } else if verb == "eval" {
+                    look::eval(rest, cx).await
                 } else if verb == "burst" {
                     burst(rest, &folder, cx).await
                 } else {

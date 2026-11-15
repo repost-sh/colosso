@@ -130,6 +130,7 @@ impl BrowserView {
                     devtools: self.pane,
                     viewport,
                     inspect: inspect.take(),
+                    dock: page.devtools_side(cx),
                 }
             }
         };

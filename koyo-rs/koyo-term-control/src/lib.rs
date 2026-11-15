@@ -25,7 +25,7 @@ pub use log::{
     ActivityEntry, CommandRecord, HumanInput, KEPT_OUTPUT_BYTES, LogKind, LogRead, ScreenshotEntry,
 };
 pub use message::Message;
-pub use paths::{APP_ID, TermDir};
+pub use paths::TermDir;
 pub use protocol::{
     AttachMode, Auth, ClientInfo, ClientKind, DAEMON_VERSION, ErrorCode, ErrorDetails, Hello,
     IfExists, OpenRequest, Outcome, PROTOCOL, ProtocolError, Request, RequestBody, Response,

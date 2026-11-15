@@ -119,7 +119,7 @@ impl Driver {
         let (writer, theirs) = UnixStream::pair().unwrap();
         let token = token();
         let service = format!(
-            "dev.koyo.device.test.{}.{}",
+            "codes.koyo.device.test.{}.{}",
             std::process::id(),
             token.len() + rand_suffix()
         );

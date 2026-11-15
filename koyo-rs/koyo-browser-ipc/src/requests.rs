@@ -1,8 +1,8 @@
 //! What the app asks of the host: panes opened, sized and closed, and what the person does
 //! in them.
 use crate::{
-    Answer, KeyKind, Modifiers, MouseButton, MouseKind, PaneId, PasskeyAnswer, Permission,
-    PinchPhase, Point, Viewport,
+    Answer, DevToolsDock, KeyKind, Modifiers, MouseButton, MouseKind, PaneId, PasskeyAnswer,
+    Permission, PinchPhase, Point, Viewport,
 };
 use serde::{Deserialize, Serialize};
 
@@ -227,6 +227,9 @@ pub enum AppRequest {
         /// An element of the page to inspect, at a logical position in the
         /// page's pane.
         inspect: Option<Point>,
+        /// The side the frontend opens at, which its dock menu shows checked.
+        #[serde(default)]
+        dock: DevToolsDock,
     },
     /// Run a Chrome `DevTools` protocol command on `pane`'s page, in the
     /// page's own session (an open `DevTools` frontend has a session of its

@@ -59,6 +59,7 @@ fn dev_tools_paint_into_surfaces_of_their_own_and_close_with_their_page() {
             devtools: 2,
             viewport,
             inspect: Some(koyo_browser_ipc::Point { x: 4., y: 4. }),
+            dock: koyo_browser_ipc::DevToolsDock::Bottom,
         })
         .expect("open devtools");
     session.wait("the DevTools surfaces", |event, _| {
@@ -86,6 +87,7 @@ fn dev_tools_paint_into_surfaces_of_their_own_and_close_with_their_page() {
             devtools: 3,
             viewport,
             inspect: None,
+            dock: koyo_browser_ipc::DevToolsDock::Bottom,
         })
         .expect("open devtools again");
     session.wait("the second inspector to be refused", |event, _| {
@@ -105,6 +107,7 @@ fn dev_tools_paint_into_surfaces_of_their_own_and_close_with_their_page() {
             devtools: 4,
             viewport,
             inspect: None,
+            dock: koyo_browser_ipc::DevToolsDock::Bottom,
         })
         .expect("open devtools after closing them");
     session.wait("the new inspector to attach to the page", |event, _| {

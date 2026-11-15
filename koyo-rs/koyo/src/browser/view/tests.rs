@@ -124,3 +124,61 @@ fn the_agents_pointer_travels_only_where_the_person_can_see_it(cx: &mut TestAppC
         "out of sight, nobody waits for it"
     );
 }
+
+#[gpui_kit::test]
+fn the_devtools_own_controls_move_and_close_them_and_turn_responsive_mode_on_and_off(
+    cx: &mut TestAppContext,
+) {
+    use crate::browser::Dock;
+    use koyo_browser_ipc::{DevToolsAsk, DevToolsDock};
+    let (window, view) = start_page(cx);
+    let device = |on| DevToolsAsk::DeviceMode { on };
+    let responsive =
+        |cx: &mut TestAppContext| view.read_with(cx, |view, _| view.responsive.mode.is_some());
+    // Without open DevTools, nothing they'd ask changes the page.
+    view.update(cx, |view, cx| view.devtools_asked(device(true), cx));
+    assert!(!responsive(cx));
+
+    view.update(cx, |view, cx| view.inspect(None, cx));
+    draw(window, cx);
+    let side = |cx: &mut TestAppContext| view.read_with(cx, BrowserView::devtools_side);
+    assert_eq!(
+        side(cx),
+        DevToolsDock::Bottom,
+        "they open where the next ones open"
+    );
+    for (asked, dock) in [
+        (DevToolsDock::Left, Dock::Left),
+        (DevToolsDock::Left, Dock::Left),
+        (DevToolsDock::Right, Dock::Right),
+        (DevToolsDock::Undocked, Dock::Detached),
+        (DevToolsDock::Bottom, Dock::Bottom),
+    ] {
+        let ask = DevToolsAsk::Dock { side: asked };
+        view.update(cx, |view, cx| view.devtools_asked(ask, cx));
+        view.read_with(cx, |view, _| assert_eq!(view.devtools_dock(), Some(dock)));
+        assert_eq!(side(cx), asked);
+        assert_eq!(
+            cx.update(|cx| crate::settings::get(cx).devtools.dock),
+            dock,
+            "kept"
+        );
+    }
+
+    // The device toolbar toggle sets responsive mode, said twice or not.
+    for (on, then) in [(true, true), (true, true), (false, false), (false, false)] {
+        view.update(cx, |view, cx| view.devtools_asked(device(on), cx));
+        assert_eq!(responsive(cx), then);
+    }
+
+    view.update(cx, |view, cx| view.devtools_asked(DevToolsAsk::Close, cx));
+    view.read_with(cx, |view, _| assert!(view.devtools().is_none(), "closed"));
+
+    // Toggled with the keys in the tools themselves, they close as from their page.
+    view.update(cx, |view, cx| view.inspect(None, cx));
+    draw(window, cx);
+    let tools = view.read_with(cx, |view, _| view.devtools().cloned().expect("open again"));
+    tools.update(cx, |tools, cx| tools.inspect(None, cx));
+    cx.run_until_parked();
+    view.read_with(cx, |view, _| assert!(view.devtools().is_none(), "closed from inside"));
+}

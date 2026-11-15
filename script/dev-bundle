@@ -54,7 +54,7 @@ cat > "$app/Info.plist" <<PLIST
   <key>CFBundleDevelopmentRegion</key><string>en</string>
   <key>CFBundleExecutable</key><string>koyo</string>
   <key>CFBundleIconFile</key><string>Koyo</string>
-  <key>CFBundleIdentifier</key><string>dev.koyo.desktop.dev</string>
+  <key>CFBundleIdentifier</key><string>codes.koyo.desktop.dev</string>
   <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
   <key>CFBundleName</key><string>Koyo Dev</string>
   <key>CFBundlePackageType</key><string>APPL</string>

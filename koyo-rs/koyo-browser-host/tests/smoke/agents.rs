@@ -45,6 +45,7 @@ fn agents_run_protocol_commands_on_the_page_beside_its_dev_tools() {
             devtools: 2,
             viewport,
             inspect: None,
+            dock: koyo_browser_ipc::DevToolsDock::Bottom,
         })
         .expect("open devtools");
     session.wait("the inspector to attach to the page", |event, _| {

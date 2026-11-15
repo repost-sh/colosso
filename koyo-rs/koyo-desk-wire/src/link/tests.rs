@@ -31,7 +31,7 @@ fn every_message_to_the_host_round_trips() {
     for message in [
         ToHost::Hello {
             protocol: PROTOCOL,
-            surfaces: "dev.koyo.desk.1a2b".into(),
+            surfaces: "codes.koyo.desk.1a2b".into(),
         },
         ToHost::Visible { visible: true },
         ToHost::Input {

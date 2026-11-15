@@ -18,9 +18,10 @@ again, edits, find, `DevTools`, responsive mode, the browser tools, pages out of
 closing and a clean quit (section 7). On the agent desktop since: the cursor, full screen on
 the whole screen, permission prompts, passkeys turned down, browsing data cleared at once,
 the holder following the window, and a split's divider dragged along a page, the last run
-of them on the build as committed. What nobody has
-seen yet is a split drag on a real screen with the GPU on (section 6). Native pages are off
-unless asked for (section 9).
+of them on the build as committed. A split drag on the real screen with the GPU on, the owner tried: it works (section 6).
+A page and its developer tools sat too high after their divider was dragged, the owner
+found: a native page is on whole points now, which is what it took (section 6). Native
+pages are off unless asked for (section 9).
 
 ---
 
@@ -192,7 +193,7 @@ locked, a page opened in the background answered `visible` with frames running, 
 Whether the off-screen path stays for agents' or responsive pages once native has parity is
 the owner's. `[owner]` What's measured so far gives no reason to keep it for pages out of sight.
 
-## 6. Resizes [built; not seen on a real screen]
+## 6. Resizes [built; the owner saw it work]
 
 The risk: the pane's edge is GPUI's and lands in GPUI's frame; the page is Chromium's and
 lands when its next frame is ready.
@@ -236,12 +237,42 @@ along a page drew eleven frames in the transaction and none after the drag, and 
 822 points wide before and 1023 after; the canvas's colour was read (238 246 255, and
 20 24 28 once the page was made dark).
 
-Not seen: any of this on a real screen with the GPU on. A window on the agent desktop isn't
-on screen, so GPUI draws it only when asked, and every such frame presents in a transaction:
-the difference this section is about can't be seen there. Whether a drag now looks right is
-for the owner to judge in the running app. If it doesn't, what's left is to hold the edge
-until Chromium's frame at the new size is in, for a frame or two at most; that needs a signal
-of that frame, which the windowed path doesn't give today. `[proposed]`
+**A page sits on whole points.** A pane's edges fall between points whenever a pointer set
+them: on a screen of two pixels a point a pointer is on half points, and a split's ratio
+puts an edge anywhere. A native page can't be sized so. Its holder is a window, whose frame
+macOS rounds, and Chromium lays the page out in whole points; and in a view half a point
+over, the layer Chromium's picture is in (the one under the compositor view's own, resized
+with it by Core Animation) is rounded up each time the view is resized and never comes back
+down. The halves add up: after a few drags of the developer tools' divider the picture's
+layer was 16 to 20 points taller than its view, so the picture sat that much too high, its
+top cut off and a gap at its foot, in the page and in the tools alike, while every view's
+frame was where it belonged. Seen by the owner, 2026-11-14, and `[proven]` in the harness:
+a view 739.5 points high had a picture layer of 740, and back at 725 one of 726; whole-point
+drags never moved it, 100 drags.
+
+So the page is put on the whole points nearest its pane's edges
+(`native::surface::on_whole_points`, in `NativePage::place`), view and holder both. Two
+panes that share an edge round it the same way and still meet; a size that was whole, a
+device's in responsive mode, stays what it was; and a page is at most half a point over or
+under its pane at an edge. The host checks it in debug builds (`native::place`). Apart from
+that, the docked tools' size, which a drag of their divider sets and the settings keep, is
+kept in whole points too (`dock.rs`): tidier, not what keeps a page whole, as a split's
+ratio or a window's size puts a pane's edge anywhere all the same.
+
+`[proven]` on the real screen with the GPU on, by the harness's drags (events handed to the
+window as `AppKit` hands a hand's; nothing here can move the real pointer), each drag a slow
+start on the divider and then up to forty jumps of 1 to 400 points on whole points, half
+points and anywhere between, a move every 1 to 33 ms, and after each the views' frames, the
+picture's layer and the size the page itself reports checked against the pane (`pages`,
+`fit.sh`), 485 drags in all: the tools' divider docked at the bottom (210), right (90, 25 of
+them in the Orca layout) and left (40), and a split's divider between two pages side by side
+(85, 25 of them on Orca's hairline) and one above the other (60); and 30 bursts of odd split
+ratios and window sizes. No page was off its pane. The tools opened, closed and moved between
+every side and a pane of their own, from their own controls and from Koyo's setting, fitted
+each time. Before the fix the first drag onto a half point failed the
+same check.
+
+Seen on a real screen with the GPU on by the owner, 2026-11-14, dragging a split's divider beside a native page: it works. Holding the edge until Chromium's frame is in, the step kept in reserve, isn't needed.
 
 ## 7. Parity
 
@@ -279,10 +310,13 @@ holder) and on the app's side in `browser/native` (a page's view in its pane).
   it is as before. GPUI sets the window's cursor after each of its frames from what's under
   the pointer, which over a native page was nothing, so an arrow: the page element names the
   page's cursor for its place, as it does off screen, and the two agree.
-- **The page's views are put back to fill their place** when their holder changes, and
-  once more as Chromium next works (`native::fill`): Chromium lays them out again by its
-  holder's measure whenever the holder changes size, and left alone a page whose pane grew
-  or shrank, as when the developer tools closed, sat off its place by the difference.
+- **The page's views fill their place by themselves**: they resize with the app's view they
+  are in, and Chromium, which lays them out again by its holder's size each time that
+  changes, puts them where they already are, the holder being the size of that view. A
+  trace of every frame set on them through 1,700 placements showed no other (the trace is
+  gone; the harness's `pages` says whether each page fits). An earlier step that put them
+  back after each resize answered a page pushed up after the tools closed; that was the
+  picture's layer, not the views (section 6), and the step is gone.
 - **The holder follows Koyo's window**: it's put over the pane as the pane is drawn, and
   GPUI draws a window again when its bounds change, a move too. It isn't made a child of
   Koyo's window, which would move it for nothing: tried, and with a child window lying over
@@ -322,7 +356,7 @@ on, what a page shows with it off.
 | ⌘C, ⌘X, ⌘V, ⌘A, ⌘Z, ⇧⌘Z | `Edit`, as off screen | ⌘A checked |
 | Koyo's shortcuts with the keyboard in a page | GPUI is asked first | checked: ⌘L, ⌃Tab |
 | Find bar | the host's `Find`; the bar is GPUI's, over the page | checked |
-| `DevTools` | a native page of the frontend, same bridge | checked, docked |
+| `DevTools` | a native page of the frontend, same bridge; since `docs/browser.md` 13, its own dock menu, × and device toggle, and no bar of Koyo's | checked, docked, with Koyo's bar; since, its own toolbar seen with no bar of Koyo's, its dock menu and × at work not yet |
 | Responsive mode | Chromium's emulated size and scale | checked: 390 × 844 at 40 %, a click at the scaled place, a tool's screenshot at full size |
 | `window.open` | the host's `OnBeforePopup`: the same pane goes there | checked |
 | Browser tools: eval, click, type, navigate, back, reload, screenshot, dialog, viewport | the protocol through the host | checked, shown and out of sight |
@@ -336,7 +370,7 @@ on, what a page shows with it off.
 | Zoom | the host's zoom level | checked: ⌘= twice, 554 to 443 CSS pixels wide; ⌘0 back |
 | Full screen, filling the pane | the page's own full screen in the pane it has; Chrome's window stays as it is (it can't go full screen beside another, which the holder is set to) | checked: entered, Escape leaves it |
 | Full screen, filling the screen (the default) | Koyo's window goes full screen, macOS's own, with that page alone, as off screen | checked, agent desktop: the window and the page 2560 × 1440, the page's picture filling it; Escape and the page's own `exitFullscreen` each bring the window and the pane back. Escape is the host's (section 3): Chromium's own didn't leave it |
-| Cursor | Chromium's own, and GPUI told the same | checked, agent desktop, by moves handed to the views: a hand over a link, an I-beam over a field, an arrow over the page. With the real pointer, before the fix, it was an arrow nearly everywhere; not tried with the real pointer since |
+| Cursor | Chromium's own, and GPUI told the same | checked with the owner's pointer on the real screen, 2026-11-14: the app's log of the cursor it had set, twice a second while they used it, has a hand over a link, an I-beam over a field and the resize cursor on a divider. An earlier finding here, that it was an arrow nearly everywhere, was measured by moving the pointer without the app hearing of it, and showed nothing |
 | Permissions | the host's handlers, in Koyo's process now; Koyo's own prompt | checked, agent desktop: notifications asked, Allow, the page told `granted`; put away, `denied`. Location and the camera asked and blocked, the page told so. Allowed, those two go on to macOS's own prompt, which shows on the person's screen: not tried. `script/bundle` and `script/dev-bundle` give Koyo the usage reasons macOS asks for |
 | Passkeys | the host's bridge, as off screen | checked, agent desktop: turned down at once (`NotAllowedError` in 2 ms), as an unsigned build does (`docs/browser.md` 9). The sheet itself needs a signed build |
 | Trackpad swipe back, pinch | Chromium's own | not checked |
@@ -344,7 +378,8 @@ on, what a page shows with it off.
 | The person "has" a page by typing in it | the host says a key of the person's was pressed (`Typed`) | checked: after typing with no press, an agent's command was told the person has the page |
 | Clearing browsing data | every profile to a fresh folder, pages closed and opened again (section 3) | checked: a cookie, `localStorage` and a granted permission gone, the page back at its address; the old folder deleted at the next start |
 | A window moved | GPUI draws the window again, and the holder is put over the pane | checked, agent desktop: the window moved 80 by 45 points, the holder with it |
-| A split's divider dragged along a page | drawn in the transaction; the page's canvas colour behind it (section 6) | checked that it's done, agent desktop; how it looks on a real screen not seen |
+| A split's divider dragged along a page | drawn in the transaction; the page's canvas colour behind it (section 6) | checked by the owner on the real screen with the GPU on, 2026-11-14: "it works perfectly". The page went through fourteen widths in the app's log of that drag |
+| A pane's edge between points (a drag, a split's ratio) | the page on the whole points nearest its pane's edges, its holder with it (section 6) | checked on the real screen with the GPU on by the harness's drags, on half points and anywhere between: the tools' divider at each side, splits both ways, odd ratios and window sizes; frames, the picture's layer and the page's own size fit after each |
 
 ## 8. Measuring [first numbers; the bar not met]
 
@@ -410,6 +445,7 @@ without one).
 | `koyo-browser-host/src/embedded/nsapp.rs` | Chromium's `NSApp` protocols on the app's class; activation turned down while a page's window shows |
 | `koyo-browser-host/src/native.rs` | A native pane: its browser view, its holder, where its views are, the keyboard |
 | `koyo-browser-host/src/native/holder.rs`, `parts.rs` | The holder's window made inert; the delegates; the client of browsers Chrome makes on its own |
+| `koyo-browser-host/src/native/report.rs` | For the harness: where each page's views and its picture's layer are, and whether they fit the pane |
 | `koyo-browser-host/src/host/start.rs` | Hello, CEF's settings and start, shared by both ways of running |
 | `koyo-browser-host/src/pane/keys.rs` | Keys a page leaves, handed to the app's view; the person's keys told to the app; Escape out of full screen |
 | `koyo-browser-host/src/host/panes.rs` | Profiles' folders by how often they were cleared; clearing without stopping |
@@ -421,6 +457,7 @@ without one).
 | `koyo/src/browser/engine.rs` | The engine in Koyo's own bundle |
 | `koyo/src/browser/host.rs`, `host/events.rs`, `view/lifecycle.rs` | Clearing data under running pages: which pages open again, and how |
 | `koyo/src/native/window.rs` | A frame drawn in the transaction a native view moves in |
+| `koyo/src/native/surface.rs` | A view in a native surface; a pane's bounds on whole points, as a native page takes them |
 | `koyo/src/browser/responsive/` | The size and scale a native page is told |
 | `koyo/src/browser/tone.rs`, `lightness.rs` | How light a native page says it is, for the glass over it, and its canvas's colour, for what's behind it |
 | `koyo/src/settings_view/browser.rs` | The setting's switch |
@@ -438,7 +475,19 @@ Open:
    and three of `NSApplication` replaced at run time. Cra relies on the first two.
 3. **Resizes** (section 6): built, and to be judged by eye in a split drag on the real
    screen with the GPU on, which nothing but a person at the screen can do.
-4. **`script/check`** stops on timing-dependent tests when the Mac is busy with other builds
-   (file watching, inlay hints): different ones each run, each passing alone.
-5. **The own CEF build** (`fix-video-playback`): not needed for the page; the extension UI
+4. **A divider picked up at its very edge.** GPUI starts a drag once the pointer has moved
+   more than two points from the press, and until then hears only the moves made over its
+   own content: a move that lands on a native page first is the page's. So a press within
+   two points of a divider's edge, moved straight off it onto a page, picks nothing up; from
+   the middle of the nine-point divider between a page and its tools, or of the gap between
+   islands, it always does. Orca's hairline between two native pages, whose handle lies over
+   the pages either side, is the narrowest: in the harness a press three to six points off
+   the line started a drag about half the time. Once a drag has started every move is heard,
+   wherever the pointer is. The cure is in gpui-fast's routing of a drag whose press was
+   GPUI's (`fast/composition.rs`, `send_window_event`), not in Koyo.
+5. **`script/check`** stops on timing-dependent tests when the Mac is busy with other builds
+   (file watching, inlay hints): different ones each run, each passing alone. The browser
+   host's smoke test of a trackpad pinch times out now and then within the suite, and
+   passes alone, six times of six.
+6. **The own CEF build** (`fix-video-playback`): not needed for the page; the extension UI
    will need Cra's patches, and so a patch step.

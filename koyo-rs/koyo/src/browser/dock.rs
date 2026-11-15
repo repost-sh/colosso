@@ -1,17 +1,17 @@
 //! A page's `DevTools`: in the page's pane at its bottom, left or right, past a divider the
 //! person drags, or detached into a pane of their own beside it in the tab. Where the last
-//! ones went is where the next ones open, and the docked size holds for every page.
+//! ones went is where the next ones open, and the docked size holds for every page. They're
+//! moved and closed from their own controls, whose asks the host passes on
+//! (`docs/browser.md` 13).
 
-use gpui_kit::assets::IconName;
 use gpui_kit::component::native_menu::NativeMenu;
-use gpui_kit::component::{Selectable as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     Action, AnyElement, App, AppContext as _, Context, Div, DragMoveEvent, Entity,
     InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, MouseUpEvent,
     ParentElement as _, Render, Stateful, Styled, Subscription, Window, deferred, div, px,
 };
-use koyo_browser_ipc as ipc;
+use koyo_browser_ipc::{self as ipc, DevToolsAsk, DevToolsDock};
 use serde::{Deserialize, Serialize};
 
 use super::find::ACTUAL_SIZE;
@@ -19,8 +19,7 @@ use super::view::{BrowserEvent, BrowserView};
 use super::{ActualSize, FindInPage, FindNext, FindPrevious, ZoomIn, ZoomOut};
 use super::{input, toolbar};
 use crate::settings;
-use crate::shell::{ellipsized, icon, icon_button};
-use crate::theme::{self, Palette};
+use crate::theme;
 
 /// Where a page's `DevTools` are.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -51,6 +50,29 @@ impl Dock {
         settings::checked_menu(Dock::ALL, self, Dock::label, |dock| {
             Box::new(SetDevtoolsDock(dock))
         })
+    }
+}
+
+impl From<DevToolsDock> for Dock {
+    /// Undocked, the frontend's tools are in a pane of their own.
+    fn from(side: DevToolsDock) -> Self {
+        match side {
+            DevToolsDock::Bottom => Dock::Bottom,
+            DevToolsDock::Left => Dock::Left,
+            DevToolsDock::Right => Dock::Right,
+            DevToolsDock::Undocked => Dock::Detached,
+        }
+    }
+}
+
+impl From<Dock> for DevToolsDock {
+    fn from(dock: Dock) -> Self {
+        match dock {
+            Dock::Bottom => DevToolsDock::Bottom,
+            Dock::Left => DevToolsDock::Left,
+            Dock::Right => DevToolsDock::Right,
+            Dock::Detached => DevToolsDock::Undocked,
+        }
     }
 }
 
@@ -101,9 +123,13 @@ pub struct DockDivider(u64);
 
 impl BrowserView {
     /// Shows the page's `DevTools`, revealing the element at `at` when there is one; asked
-    /// without one while they show, hides them.
+    /// without one while they show, hides them. Asked of the `DevTools` themselves, as with
+    /// the keys in them, it's their page that hides them, once this update is done.
     pub fn inspect(&mut self, at: Option<ipc::Point>, cx: &mut Context<Self>) {
-        if self.is_inspector() {
+        if let Some(page) = self.inspected().cloned() {
+            if at.is_none() {
+                cx.defer(move |cx| page.update(cx, BrowserView::close_devtools));
+            }
             return;
         }
         match (&self.devtools, at) {
@@ -180,6 +206,34 @@ impl BrowserView {
         self.devtools.as_ref().map(|tools| tools.dock)
     }
 
+    /// The side the page's `DevTools` frontend opens at: where they are, else where the
+    /// next ones open.
+    pub(super) fn devtools_side(&self, cx: &App) -> DevToolsDock {
+        (self.devtools_dock())
+            .unwrap_or(settings::get(cx).devtools.dock)
+            .into()
+    }
+
+    /// What the page's `DevTools` asked from their own controls (`docs/browser.md` 13.2): to
+    /// be at a side, undocked into a pane of their own, closed, or the page in responsive mode
+    /// or out of it. A side they're at already, or a mode the page is in, changes nothing.
+    pub(super) fn devtools_asked(&mut self, ask: DevToolsAsk, cx: &mut Context<Self>) {
+        match ask {
+            DevToolsAsk::Dock { side } => {
+                let dock = Dock::from(side);
+                if self.devtools_dock().is_some_and(|open| open != dock) {
+                    self.dock_devtools(dock, cx);
+                }
+            }
+            DevToolsAsk::Close => self.close_devtools(cx),
+            DevToolsAsk::DeviceMode { on } => {
+                if self.devtools.is_some() && self.responsive.mode.is_some() != on {
+                    self.toggle_responsive(cx);
+                }
+            }
+        }
+    }
+
     /// The page's open `DevTools`.
     pub fn devtools(&self) -> Option<&Entity<BrowserView>> {
         self.devtools.as_ref().map(|tools| &tools.view)
@@ -211,7 +265,7 @@ impl BrowserView {
         let row = dock != Dock::Bottom;
         let place = &settings::get(cx).devtools;
         let size = (self.dock_drag).unwrap_or(if row { place.width } else { place.height });
-        let me = cx.entity();
+        // The tools' own toolbar is their top: no bar of Koyo's over it.
         let panel = div()
             .flex()
             .flex_col()
@@ -225,7 +279,6 @@ impl BrowserView {
                     panel.h(px(size)).w_full()
                 }
             })
-            .child(bar(&me, &self.title(), dock, p, cx))
             .child(div().flex_1().min_h_0().min_w_0().child(tools));
         let id = self.pane;
         let divider = theme::card::divider(
@@ -258,14 +311,20 @@ impl BrowserView {
                         return;
                     }
                     let (bounds, at) = (event.bounds, event.event.position);
-                    let (span, size) = match dock {
+                    // How far the pointer is from the tools' own edge of the pane.
+                    let (span, reach) = match dock {
                         Dock::Bottom => (bounds.size.height, bounds.bottom() - at.y),
                         Dock::Right => (bounds.size.width, bounds.right() - at.x),
                         Dock::Left => (bounds.size.width, at.x - bounds.left()),
                         Dock::Detached => return,
                     };
-                    let most = (span.as_f32() - DOCK_MIN).max(DOCK_MIN);
-                    let size = size.as_f32().clamp(DOCK_MIN, most);
+                    // The pointer holds the divider's middle, the tools past it. In whole
+                    // points, which is what the setting keeps (a native page beside them is
+                    // on whole points whatever this is: `docs/native-pages.md` 6), and
+                    // leaving the page its least room on the divider's other side.
+                    let band = theme::card::DIVIDER;
+                    let room = (span.as_f32() - band - DOCK_MIN).floor().max(DOCK_MIN);
+                    let size = (reach.as_f32() - band / 2.).round().clamp(DOCK_MIN, room);
                     if this.dock_drag != Some(size) {
                         this.dock_drag = Some(size);
                         cx.notify();
@@ -295,91 +354,17 @@ impl BrowserView {
     }
 }
 
-/// The bar over `page`'s `DevTools` at `dock`: what they're of, where they can go, and a
-/// button that closes them.
-fn bar(page: &Entity<BrowserView>, title: &str, dock: Dock, p: Palette, cx: &App) -> Div {
-    let place = |id: &'static str, glyph: IconName, label: &'static str, to: Dock| {
-        let page = page.clone();
-        icon_button(id, glyph, label, cx)
-            .xsmall()
-            .selected(dock == to)
-            .on_click(move |_, _, cx| page.update(cx, |page, cx| page.dock_devtools(to, cx)))
-    };
-    let closing = page.clone();
-    div()
-        .h(px(30.))
-        .flex_shrink_0()
-        .w_full()
-        .px_2()
-        .flex()
-        .items_center()
-        .gap(px(2.))
-        .border_b_1()
-        .border_color(p.hairline)
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .flex()
-                .items_center()
-                .gap(px(6.))
-                .text_xs()
-                .text_color(p.muted)
-                .child(icon(IconName::Inspector, 13.))
-                .child(ellipsized(format!("DevTools · {title}"))),
-        )
-        .child(place(
-            "devtools-dock-left",
-            IconName::PanelLeft,
-            "Dock to the left",
-            Dock::Left,
-        ))
-        .child(place(
-            "devtools-dock-bottom",
-            IconName::PanelBottom,
-            "Dock to the bottom",
-            Dock::Bottom,
-        ))
-        .child(place(
-            "devtools-dock-right",
-            IconName::PanelRight,
-            "Dock to the right",
-            Dock::Right,
-        ))
-        .child(place(
-            "devtools-detach",
-            IconName::SquareArrowOutUpRight,
-            "Open in a pane of its own",
-            Dock::Detached,
-        ))
-        .child(
-            icon_button("devtools-close", IconName::X, "Close DevTools", cx)
-                .xsmall()
-                .on_click(move |_, _, cx| closing.update(cx, BrowserView::close_devtools)),
-        )
-}
-
 impl Render for BrowserView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.settle(window, cx);
         self.make_devtools(window, cx);
         let page = self.page_element(window, cx);
         let column = input::steer(div().size_full().flex().flex_col(), cx);
-        // Full screen on the whole screen, the page is all there is.
-        if self.fills_screen() {
+        // Full screen on the whole screen, the page is all there is. So are `DevTools`, docked
+        // or detached, their frontend alone: its own toolbar has their dock menu and their ×
+        // (`docs/browser.md` 13.1).
+        if self.fills_screen() || self.is_inspector() {
             return column.child(div().flex_1().min_h_0().w_full().child(page));
-        }
-        if let Some(inspected) = self.inspected().cloned() {
-            // Detached, they carry their bar themselves.
-            let of = inspected.read(cx);
-            let detached = of.devtools_dock() == Some(Dock::Detached);
-            let title = of.title();
-            let p = theme::palette(cx);
-            return column
-                .when(detached, |column| {
-                    column.child(bar(&inspected, &title, Dock::Detached, p, cx))
-                })
-                .child(div().flex_1().min_h_0().w_full().child(page));
         }
         // In the Arc layout the sidebar has the page's back, forward, reload and address, and
         // its right-click menu responsive mode and the DevTools (`docs/arc-sidebar.md` 2).
