@@ -81,12 +81,10 @@
  namespace {
  
  // Gets an extension with ID `id`. If no extension is found, returns a
-@@ -158,10 +198,543 @@
-   result.frontend = extensions::StorageFrontend::Get(context);
- 
+@@ -160,8 +200,547 @@
    return result;
-+}
-+
+ }
+ 
 +// Koyo: `image` as a PNG data: URL from its largest scale, empty when it has
 +// none. (From Cra's extensions-action-updates.patch, MIT.)
 +std::string PngDataUrl(const gfx::Image& image) {
@@ -197,8 +195,8 @@
 +      extensions::ExtensionSystem::Get(profile)->management_policy();
 +  return !policy || (policy->UserMayModifySettings(&extension, nullptr) &&
 +                     !policy->MustRemainInstalled(&extension, nullptr));
- }
- 
++}
++
  }  // namespace
 +
 +// Koyo: forwards one profile's changes to the handler: its extensions'
@@ -421,7 +419,7 @@
 +                               badge_text, badge_color, badge_text_color,
 +                               enabled, std::move(browser_id));
 +}
- 
++
 +void ExtensionsHandler::ReportInstalledChanged(const std::string& profile) {
 +  if (frontend_) {
 +    frontend_->KoyoInstalledChanged(profile);
@@ -517,7 +515,7 @@
 +  }
 +  return protocol::Response::Success();
 +}
-+
+ 
 +protocol::DispatchResponse ExtensionsHandler::KoyoUninstall(
 +    const protocol::String& id,
 +    const protocol::String& profile_name) {
@@ -618,6 +616,12 @@
 +    }
 +  }
 +#endif
++  // Said again of a page that already counts as active, it is the last active
++  // one again: a window of Chrome's own may have been in between, which leaves
++  // the page active and no longer the last.
++  if (state->IsActive()) {
++    state->DidBecomeInactive();
++  }
 +  state->DidBecomeActive();
 +  return protocol::Response::Success();
 +}
@@ -625,7 +629,7 @@
  protocol::DispatchResponse ExtensionsHandler::TriggerAction(
      const std::string& extension_id,
      const std::string& target_id) {
-@@ -184,15 +757,35 @@
+@@ -184,15 +763,35 @@
    if (web_contents == nullptr) {
      return protocol::Response::ServerError("Tab target has no WebContents.");
    }
@@ -661,7 +665,7 @@
  
    extension_model->ExecuteUserAction(
        ExtensionActionViewModel::InvocationSource::kCdp);
-@@ -206,6 +799,9 @@
+@@ -206,6 +805,9 @@
      : target_id_(target_id),
        allow_loading_extensions_(allow_loading_extensions) {
    protocol::Extensions::Dispatcher::wire(dispatcher, this);

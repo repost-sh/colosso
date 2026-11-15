@@ -78,6 +78,13 @@ pub fn page_view(pane: koyo_browser_ipc::PaneId, cx: &mut App) -> Option<Entity<
     host::Browsers::global(cx).read(cx).view(pane)
 }
 
+/// Closes the page the engine has as its pane `pane`, which has no view: a tab an extension
+/// opened that found no place among the app's.
+pub fn close_page(pane: koyo_browser_ipc::PaneId, cx: &mut App) {
+    let browsers = host::Browsers::global(cx);
+    browsers.update(cx, |browsers, _| browsers.send(koyo_browser_ipc::AppRequest::Close { pane }));
+}
+
 /// The packaged engine's version and its Chromium's, once it runs.
 pub fn versions(cx: &App) -> Option<(String, String)> {
     let browsers = cx.try_global::<host::GlobalBrowsers>()?;

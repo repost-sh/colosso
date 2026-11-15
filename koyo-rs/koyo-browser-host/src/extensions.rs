@@ -44,6 +44,10 @@ struct State {
     listing: bool,
     /// Whether the list changed while one was on its way.
     stale: bool,
+    /// What extensions set for every page of a profile the host couldn't name yet, by the
+    /// profile's folder and the extension: the engine says it as it starts, of the profile
+    /// used last, before any pane was opened in it. Told once the profile has a name.
+    unnamed: HashMap<(String, String), ExtensionAction>,
 }
 
 thread_local! {
@@ -119,10 +123,17 @@ pub(crate) fn profile_opened() {
     if !pipe::is_open() {
         return;
     }
-    // What its extensions set for every page was said when the engine started, of a
-    // profile the host couldn't name yet: turned off and on, the engine says it all again.
-    for enabled in [false, true] {
-        ask("Extensions.koyoSetUpdatesEnabled", &json!({ "enabled": enabled }), Asked::Done("updates"));
+    // What its extensions set for every page, said before the profile had a name here.
+    let kept = STATE.with(|state| std::mem::take(&mut state.borrow_mut().unnamed));
+    for ((folder, extension), action) in kept {
+        match host::profile_of_folder(&folder) {
+            Some(profile) => {
+                host::send(&HostEvent::ExtensionAction { profile, extension, pane: None, action });
+            }
+            None => {
+                STATE.with(|state| state.borrow_mut().unnamed.insert((folder, extension), action));
+            }
+        }
     }
     list();
 }
@@ -248,9 +259,15 @@ fn extension(entry: &Value) -> Option<Extension> {
 /// An extension set its toolbar action, for a page or for every page of a profile.
 fn action_updated(params: &Value) {
     let text = |name: &str| params.get(name).and_then(Value::as_str).unwrap_or_default().to_owned();
-    let Some(profile) = host::profile_of_folder(&text("profile")) else {
-        return;
+    let action = ExtensionAction {
+        icon: text("icon"),
+        title: text("title"),
+        badge_text: text("badgeText"),
+        badge_color: text("badgeColor"),
+        badge_text_color: text("badgeTextColor"),
+        enabled: params.get("enabled").and_then(Value::as_bool).unwrap_or(true),
     };
+    let (folder, extension) = (text("profile"), text("id"));
     let pane = match params.get("browserId").and_then(Value::as_i64) {
         // A page that isn't a pane's (a window of Chrome's own) has no icon of the app's.
         Some(browser) => match i32::try_from(browser).ok().and_then(host::pane_of_browser) {
@@ -259,32 +276,27 @@ fn action_updated(params: &Value) {
         },
         None => None,
     };
-    host::send(&HostEvent::ExtensionAction {
-        profile,
-        extension: text("id"),
-        pane,
-        action: ExtensionAction {
-            icon: text("icon"),
-            title: text("title"),
-            badge_text: text("badgeText"),
-            badge_color: text("badgeColor"),
-            badge_text_color: text("badgeTextColor"),
-            enabled: params.get("enabled").and_then(Value::as_bool).unwrap_or(true),
-        },
-    });
+    let Some(profile) = host::profile_of_folder(&folder) else {
+        // No pane was opened in the profile yet. A page's own can't come before one was;
+        // what's set for every page is kept until the profile has a name ([`profile_opened`]).
+        if pane.is_none() {
+            STATE.with(|state| state.borrow_mut().unnamed.insert((folder, extension), action));
+        }
+        return;
+    };
+    host::send(&HostEvent::ExtensionAction { profile, extension, pane, action });
 }
 
-/// The person is on `pane`'s page: Chromium is told, once for each change, and extensions
-/// get it as the current window's active tab. A page whose browser isn't made yet is told
-/// when it is ([`browser_created`]).
+/// The person is on `pane`'s page: Chromium is told, and extensions get it as the current
+/// window's active tab. Told each time the app says so, were it the same page as before: a
+/// window of Chrome's own may have been the one in between, which the host doesn't hear of.
+/// A page whose browser isn't made yet is told when it is ([`browser_created`]).
 pub(crate) fn active(pane: PaneId) {
     if !pipe::is_open() {
         return;
     }
-    let was = STATE.with(|state| state.borrow_mut().active.replace(pane));
-    if was != Some(pane) {
-        tell_active(pane);
-    }
+    STATE.with(|state| state.borrow_mut().active = Some(pane));
+    tell_active(pane);
 }
 
 fn tell_active(pane: PaneId) {

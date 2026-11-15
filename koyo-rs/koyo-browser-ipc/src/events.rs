@@ -283,6 +283,13 @@ pub enum HostEvent {
         /// Whether the extension asked for it in front.
         active: bool,
     },
+    /// The pane's page closed without the app asking: an extension closed its tab
+    /// (`chrome.tabs.remove`), or a page a script opened closed itself. The pane's tab goes;
+    /// [`HostEvent::Closed`] follows.
+    TabClosed {
+        /// The pane.
+        pane: PaneId,
+    },
     /// An extension asked for the pane's tab to be brought forward
     /// (`chrome.tabs.update` with `active`).
     TabActivated {

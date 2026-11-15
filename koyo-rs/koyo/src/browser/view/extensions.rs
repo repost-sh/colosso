@@ -29,7 +29,13 @@ impl BrowserView {
             by,
         };
         let mut view = Self::with_kind(Some(pane), url, kind, window, cx);
+        // Open already: what follows an open follows here (`ensure_open`). The host is told
+        // whether the page is on screen, which one no pane draws yet isn't, and its session
+        // starts as any page's does.
         view.opened = Some(view.browsers.read(cx).epoch());
+        view.visible = None;
+        view.tell_sight(cx);
+        view.session_opened(cx);
         view
     }
 

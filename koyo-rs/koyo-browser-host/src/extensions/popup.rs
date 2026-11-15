@@ -97,10 +97,12 @@ fn reveal(hidden: &[Retained<NSWindow>]) {
     }
 }
 
-/// Whether `window` is one of Chromium's bubbles: its class, and no title bar.
+/// Whether `window` is one of Chromium's bubbles: its class, no title bar, and no sheet of
+/// a window's, as a dialog Chrome asks something in is (an extension's permissions).
 fn is_bubble(window: &NSWindow) -> bool {
     crate::native::class_of(window).name() == BUBBLE
         && !window.styleMask().contains(NSWindowStyleMask::Titled)
+        && !window.isSheet()
 }
 
 /// Whether `bubble`, a new bubble of Chromium's, is the popup of the page in `holder`.

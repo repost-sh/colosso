@@ -316,4 +316,8 @@ fn extensions_have_stable_wire_names() {
         serde_json::to_value(HostEvent::TabActivated { pane: 3 }).unwrap(),
         json!({ "type": "tabActivated", "pane": 3 })
     );
+    assert_eq!(
+        serde_json::to_value(HostEvent::TabClosed { pane: 3 }).unwrap(),
+        json!({ "type": "tabClosed", "pane": 3 })
+    );
 }

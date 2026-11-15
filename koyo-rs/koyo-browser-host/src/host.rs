@@ -67,6 +67,9 @@ struct Pane {
     inspector: Option<(PaneId, crate::devtools::Bridge)>,
     /// Requests that need the browser, made before it was created.
     waiting: Vec<AppRequest>,
+    /// Whether the app asked for the pane to close: one that closes unasked was closed by
+    /// an extension (`chrome.tabs.remove`) or by its own page.
+    closing: bool,
     /// The host's own commands in the page's session, until answered.
     own: std::collections::HashSet<i64>,
     /// Keeps the page's `DevTools` protocol messages coming, once `DevTools`
@@ -95,6 +98,7 @@ impl Pane {
             inspected: None,
             inspector: None,
             waiting: Vec::new(),
+            closing: false,
             own: std::collections::HashSet::new(),
             observer: None,
             agent: None,
@@ -307,15 +311,41 @@ fn shutdown() {
         host.panes.keys().copied().collect()
     })
     .unwrap_or_default();
-    if open.is_empty() {
-        quit();
-        return;
-    }
+    // Chromium doesn't stop while a client is on its `DevTools` pipe, and the windows it
+    // made on its own (an extension's) close as the pages do.
+    crate::extensions::stopping();
+    crate::native::close_strays();
     for pane in open {
         close(pane);
     }
     // Panes whose browser had not arrived yet are gone already.
-    if with(|host| host.panes.is_empty()) == Some(true) {
+    quit_when_closed();
+}
+
+/// Ends the host's loop once a shutdown was asked for and every pane has closed since, and
+/// every window Chrome made on its own.
+pub(crate) fn quit_when_closed() {
+    if all_closed() && crate::native::strays() == 0 {
         quit();
     }
+}
+
+/// The pane whose page is of the profile `context` is, `preferred` if it's one: where what
+/// belongs to that profile opens.
+pub(crate) fn pane_of_profile(context: &mut RequestContext, preferred: Option<PaneId>) -> Option<PaneId> {
+    use cef::{ImplBrowserHost as _, ImplRequestContext as _};
+    let browsers: Vec<(PaneId, Browser)> = with(|host| {
+        (host.panes.iter())
+            .filter(|(_, pane)| pane.inspector.is_none())
+            .filter_map(|(id, pane)| Some((*id, pane.browser.clone()?)))
+            .collect()
+    })
+    .unwrap_or_default();
+    let mut of_it = browsers.into_iter().filter_map(|(pane, browser)| {
+        let own = browser.host()?.request_context()?;
+        (own.is_same(Some(context)) != 0).then_some(pane)
+    });
+    let first = of_it.next()?;
+    let wanted = preferred.filter(|wanted| *wanted == first || of_it.any(|pane| pane == *wanted));
+    Some(wanted.unwrap_or(first))
 }
