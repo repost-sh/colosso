@@ -25,24 +25,60 @@ pub(super) fn generation(root: &Path) -> u32 {
         .unwrap_or(0)
 }
 
+/// Where the root lists the profiles the person deleted, a name a line, whose folders go as
+/// the host next starts.
+const DELETED: &str = "deleted";
+
+/// Whether `root` holds a folder for the profile `name` since the profiles were last cleared:
+/// whether its pages kept anything.
+pub fn keeps_profile(root: &Path, name: &str) -> bool {
+    root.join(folder(name, generation(root))).is_dir()
+}
+
+/// Has the folders of the profile `name` go as the host next starts, as they can't from under
+/// a running Chromium.
+pub fn forget_profile(root: &Path, name: &str) -> std::io::Result<()> {
+    use std::io::Write as _;
+    std::fs::create_dir_all(root)?;
+    let mut deleted =
+        (std::fs::OpenOptions::new().create(true).append(true)).open(root.join(DELETED))?;
+    writeln!(deleted, "{name}")
+}
+
 /// Deletes the folders of profiles cleared before, which were still open when they were
-/// cleared, and takes them off Chrome's list of profiles, which it would make again from.
-/// Before CEF opens the root, and not on a thread that mustn't wait.
+/// cleared, and of profiles deleted, and takes them off Chrome's list of profiles, which it
+/// would make again from. Before CEF opens the root, and not on a thread that mustn't wait.
 pub(crate) fn drop_cleared(root: &Path) {
     let now = generation(root);
+    let listed = std::fs::read_to_string(root.join(DELETED)).unwrap_or_default();
+    let deleted: Vec<&str> = listed
+        .lines()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .collect();
     let Ok(entries) = std::fs::read_dir(root) else {
         return;
     };
-    let mut dropped = Vec::new();
+    let (mut dropped, mut stuck) = (Vec::new(), false);
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
         let Some(rest) = name.strip_prefix("profile-") else {
             continue;
         };
-        let of = (rest.rsplit_once(".g")).and_then(|(_, times)| times.parse::<u32>().ok());
-        if of.unwrap_or(0) != now && std::fs::remove_dir_all(entry.path()).is_ok() {
-            dropped.push(name);
+        let cleared = (rest.rsplit_once(".g"))
+            .and_then(|(profile, times)| Some((profile, times.parse::<u32>().ok()?)));
+        let (profile, of) = cleared.unwrap_or((rest, 0));
+        if of == now && !deleted.contains(&profile) {
+            continue;
         }
+        match std::fs::remove_dir_all(entry.path()) {
+            Ok(()) => dropped.push(name),
+            Err(_) => stuck = true,
+        }
+    }
+    // A deleted profile whose folder wouldn't go is tried again the next time.
+    if !deleted.is_empty() && !stuck {
+        let _ = std::fs::remove_file(root.join(DELETED));
     }
     if !dropped.is_empty() {
         unlist(root, &dropped);
@@ -128,5 +164,30 @@ mod tests {
         assert_eq!(profile["profiles_order"], serde_json::json!(["Default", "profile-a.g2"]));
         assert_eq!(profile["last_active_profiles"], serde_json::json!([]));
         assert!(profile.get("last_used").is_none());
+    }
+
+    #[test]
+    fn a_deleted_profiles_folders_go_as_the_host_next_starts() {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path();
+        keep_generation(root, 1);
+        for name in [
+            "profile-work-1.g1",
+            "profile-work-1",
+            "profile-home-2.g1",
+            "profile-work-10.g1",
+        ] {
+            std::fs::create_dir(root.join(name)).unwrap();
+        }
+        assert!(keeps_profile(root, "work-1") && keeps_profile(root, "home-2"));
+        assert!(!keeps_profile(root, "gone-3"));
+
+        forget_profile(root, "work-1").unwrap();
+        drop_cleared(root);
+
+        let left = |name: &str| root.join(name).is_dir();
+        assert!(!left("profile-work-1.g1") && !left("profile-work-1"));
+        assert!(left("profile-home-2.g1") && left("profile-work-10.g1"));
+        assert!(!root.join(DELETED).exists());
     }
 }

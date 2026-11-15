@@ -135,6 +135,13 @@ pub struct Project {
 }
 
 /// What a project is called until it's given a name: its folder's.
+/// What the project whose main checkout is at `path` is called in Koyo: the name given it in
+/// `looks`, its folder's otherwise.
+pub fn project_name(looks: &crate::spaces::ProjectLooks, path: &Path) -> SharedString {
+    let given = looks.get(path).and_then(|look| look.name.as_deref());
+    given.map_or_else(|| folder_name(path), SharedString::from)
+}
+
 fn folder_name(path: &Path) -> SharedString {
     path.file_name()
         .map_or_else(

@@ -1,6 +1,6 @@
-//! A page's life in the host: opened once the host runs and the pane has a size, opened
-//! again once clearing the browsing data has closed it, and the requests that go to it
-//! meanwhile.
+//! A page's life in the host: opened once the host runs and the pane has a size, in the
+//! profile its project is on; opened again once clearing the browsing data, or its project put
+//! on another profile, has closed it; and the requests that go to it meanwhile.
 
 use gpui_kit::{App, Context};
 use koyo_browser_ipc::{AppRequest, Viewport};
@@ -85,12 +85,17 @@ impl BrowserView {
             return;
         };
         let request = match &mut self.kind {
-            Kind::Page { profile } => AppRequest::Open {
-                pane: self.pane,
-                url: self.target.clone(),
-                viewport,
-                profile: profile.clone(),
-            },
+            Kind::Page { profile, project } => {
+                // Of the profile its project is on now: put on another, the page closes and
+                // opens again in it (`Browsers::profiles_changed`).
+                crate::browser::profile(project, cx).clone_into(profile);
+                AppRequest::Open {
+                    pane: self.pane,
+                    url: self.target.clone(),
+                    viewport,
+                    profile: profile.clone(),
+                }
+            }
             Kind::DevTools {
                 inspected, inspect, ..
             } => {
@@ -186,8 +191,9 @@ impl BrowserView {
     }
 
     /// The host closed the page to clear its profile's data from under it
-    /// (`Browsers::clear_data`): it opens again, at the address it showed, in the profile's
-    /// fresh folder. `DevTools` just close, as when their page goes.
+    /// (`Browsers::clear_data`), or for its project put on another profile
+    /// (`Browsers::profiles_changed`): it opens again, at the address it showed, in the profile's
+    /// fresh folder or the other profile. `DevTools` just close, as when their page goes.
     pub(in crate::browser) fn reopen(&mut self, cx: &mut Context<Self>) {
         if self.is_inspector() {
             self.closed(cx);

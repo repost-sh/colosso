@@ -4,7 +4,7 @@
 //! ```text
 //! Koyo.app/Contents/MacOS/koyo                          # the app
 //! Koyo.app/Contents/Frameworks/Koyo Browser Host.app    # the engine, CEF inside
-//! <data>/browser/profiles/                              # CEF's root cache, a folder a project
+//! <data>/browser/profiles/                              # CEF's root cache, a folder a profile
 //! ```
 //!
 //! The engine runs in Koyo's own process (`browser/native`), and its helpers start only when
@@ -33,7 +33,7 @@ fn host_beside(executable: &Path) -> Option<PathBuf> {
     host.is_file().then_some(host)
 }
 
-/// The folder of the per-project browsing profiles (cookies, storage, caches).
+/// The folder of the browsing profiles (cookies, storage, caches): the engine's root.
 pub fn profiles() -> Option<PathBuf> {
     settings::data_dir().map(|data| data.join("browser").join("profiles"))
 }

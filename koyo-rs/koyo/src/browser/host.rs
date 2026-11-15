@@ -9,7 +9,9 @@ use std::time::{Duration, Instant};
 
 use futures::channel::oneshot;
 use futures::future::{self, Either};
-use gpui_kit::{App, AppContext as _, Context, Entity, EntityId, Global, Task, WeakEntity};
+use gpui_kit::{
+    App, AppContext as _, Context, Entity, EntityId, Global, Subscription, Task, WeakEntity,
+};
 use koyo_browser_ipc::client::Connection;
 use koyo_browser_ipc::{AppRequest, PaneId};
 
@@ -88,8 +90,9 @@ pub struct Browsers {
     /// When the host now starting was asked for.
     starting_since: Option<Instant>,
     views: HashMap<PaneId, WeakEntity<BrowserView>>,
-    /// Pages the host is closing because browsing data was cleared under it: each opens
-    /// again, in its profile's fresh folder, once the host says it has closed.
+    /// Pages the host is closing because browsing data was cleared under it, or their project
+    /// was put on another profile: each opens again, in its profile's fresh folder or the other
+    /// profile, once the host says it has closed.
     reopening: std::collections::HashSet<PaneId>,
     /// Requests made while the host was starting.
     queued: Vec<AppRequest>,
@@ -101,6 +104,7 @@ pub struct Browsers {
     #[cfg(test)]
     pub(super) asked: Vec<(PaneId, String, serde_json::Value)>,
     _events: Option<Task<()>>,
+    _profiles: Subscription,
 }
 
 pub(super) struct GlobalBrowsers(pub(super) Entity<Browsers>);
@@ -124,13 +128,29 @@ fn profiles(_: &App) -> Option<std::path::PathBuf> {
     super::engine::profiles()
 }
 
+/// Has the folders of the profile of this id go as the engine next starts: they can't from
+/// under a running Chromium, and one deleted has no page left open in it to need them now.
+pub(super) fn forget_profile(id: &str, cx: &App) {
+    let Some(root) = profiles(cx) else {
+        return;
+    };
+    let id = id.to_owned();
+    cx.background_executor()
+        .spawn(async move {
+            if let Err(error) = koyo_browser_host::forget_profile(&root, &id) {
+                log::warn!("couldn't have the profile {id}'s folder go: {error}");
+            }
+        })
+        .detach();
+}
+
 impl Browsers {
     /// The app's browsers, created on first use. The host goes with the app.
     pub fn global(cx: &mut App) -> Entity<Self> {
         if let Some(global) = cx.try_global::<GlobalBrowsers>() {
             return global.0.clone();
         }
-        let browsers = cx.new(|_| Self {
+        let browsers = cx.new(|cx| Self {
             host: Host::Idle,
             epoch: 0,
             starting_since: None,
@@ -142,6 +162,7 @@ impl Browsers {
             #[cfg(test)]
             asked: Vec::new(),
             _events: None,
+            _profiles: super::profiles::on_change(cx, Self::profiles_changed),
         });
         let quitting = browsers.downgrade();
         cx.on_app_quit(move |cx| {
@@ -367,7 +388,7 @@ impl Browsers {
         chromium.split('.').next().map(str::to_owned)
     }
 
-    /// Forgets what every project's pages keep (cookies, sign-ins, caches, site storage). The
+    /// Forgets what every profile's pages keep (cookies, sign-ins, caches, site storage). The
     /// engine starts once a run and can't be stopped under its pages: it's asked to move every
     /// profile to a fresh folder, and closes its pages, which open again as the views hear of
     /// it (`page_closed`); one starting is asked once it runs. With no engine, nothing holds
@@ -390,6 +411,26 @@ impl Browsers {
                 }
             })
             .detach();
+    }
+
+    /// The profiles changed: each open page whose project is on another profile now closes,
+    /// and opens again in it at the address it showed (`page_closed`), the same view, as one
+    /// does once its data's cleared. A page not open yet opens in the right one.
+    fn profiles_changed(&mut self, cx: &mut Context<Self>) {
+        if !matches!(self.host, Host::Running { .. }) {
+            return;
+        }
+        let epoch = self.epoch;
+        let moved: Vec<PaneId> = (self.views.iter())
+            .filter(|(_, view)| {
+                (view.upgrade()).is_some_and(|view| view.read(cx).profile_moved(epoch, cx))
+            })
+            .map(|(pane, _)| *pane)
+            .collect();
+        for pane in moved {
+            self.reopening.insert(pane);
+            self.send(AppRequest::Close { pane });
+        }
     }
 
     /// Views react once this update is over, since they send requests back.

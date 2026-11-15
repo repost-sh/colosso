@@ -25,7 +25,7 @@ mod header;
 mod hover;
 mod loose;
 mod pinned;
-mod rename;
+pub(crate) mod rename;
 mod swipe;
 mod tab_steps;
 #[cfg(test)]

@@ -2,7 +2,7 @@
 //! toolbar over it.
 
 use std::collections::VecDeque;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
@@ -49,8 +49,9 @@ pub enum BrowserEvent {
 
 /// What a pane's browser shows.
 enum Kind {
-    /// A page of the project's profile.
-    Page { profile: String },
+    /// A page of `project`'s, opened in `profile`, the one the project was on then
+    /// (`browser::profile`).
+    Page { profile: String, project: PathBuf },
     /// The `DevTools` of another pane's page. They open once the page is open, and the
     /// host closes them with it.
     DevTools {
@@ -174,9 +175,20 @@ impl BrowserView {
     /// A page of `project`'s profile, at `url` (empty for the start page).
     pub fn new(url: String, project: &Path, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let kind = Kind::Page {
-            profile: super::profile(project),
+            profile: super::profile(project, cx).to_owned(),
+            project: project.to_owned(),
         };
         Self::with_kind(url, kind, window, cx)
+    }
+
+    /// Whether the page is open, in the host of `epoch`, in a profile its project's pages no
+    /// longer use: the project was put on another, or the profile deleted. One not open opens
+    /// in the right one; `DevTools` are their page's.
+    pub(super) fn profile_moved(&self, epoch: u64, cx: &App) -> bool {
+        let Kind::Page { profile, project } = &self.kind else {
+            return false;
+        };
+        self.opened == Some(epoch) && *profile != super::profile(project, cx)
     }
 
     /// The `DevTools` of `inspected`'s page, as a pane of their own.

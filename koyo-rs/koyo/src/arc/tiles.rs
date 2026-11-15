@@ -249,7 +249,7 @@ fn tile_menu(path: &Path, cx: &App) -> NativeMenu {
     if settings.project_icon(path).is_some() {
         menu = menu.menu("Reset Icon", Box::new(ResetProjectIcon(owned())));
     }
-    project_items(menu.separator(), path)
+    project_items(menu.separator(), path, cx)
 }
 
 #[cfg(test)]

@@ -212,7 +212,15 @@ fn a_copy_of_the_persons_page_opens_in_the_callers_worktree(cx: &mut TestAppCont
     let (rig, [here, there], page) = two_projects("control-persons-copy", cx);
     let selected = read_shell(&rig, cx, |shell, _| shell.workspace.active_project());
     // A chat's copy goes to the worktree Koyo knows it in, whatever its hello says; there it's
-    // of that worktree's project's sign-ins, not the page's.
+    // of that worktree's project's sign-ins, not the page's, its project being on a profile of
+    // its own (`browser/profiles.rs`): on Default as the page's is, it'd be signed in alike.
+    let there_project = project_of(&rig, &there, cx);
+    cx.update(|cx| {
+        crate::browser::profiles::update(cx, |profiles| {
+            let own = profiles.make("There");
+            profiles.set(&there_project, &own);
+        });
+    });
     hears(&rig, vec![summary("c1", &there, "2026-11-15T10:00:00Z")], cx);
     let chat = Caller {
         worktree: Some(here.clone()),
