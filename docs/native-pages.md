@@ -272,6 +272,29 @@ every side and a pane of their own, from their own controls and from Koyo's sett
 each time. Before the fix the first drag onto a half point failed the
 same check.
 
+**A divider is picked up at any speed.** A native view takes the pointer over it before the
+app's content does, and until a drag has started the window hands GPUI only the moves made
+over GPUI's own content (gpui-fast-macos 0.1.12 `fast/composition.rs`, `send_window_event`:
+a drag move over a native view goes `AppKit`'s way, and GPUI's view lets it pass). GPUI
+starts a drag once it has heard the pointer move more than two points from the press. A hand
+at its usual speed is off a divider nine points thick by its first move, which was the
+page's: nothing was picked up, and the owner couldn't resize the developer tools at all,
+2026-11-15. The harness's drags had all begun with three one-point moves, which is why they
+passed; with a first move of six points or more, none of eight moved the divider.
+
+So from the press on a seam until the button is let go, the whole window is the app's: a
+hit region over all of it, among the window's overlays, with the seam's cursor
+(`theme::card`, `shield`), drawn at once on the press rather than at the screen's next
+refresh. Every seam has it: the divider between a page and its tools, the gap between
+islands, Orca's hairline. The drag goes by where the pointer is, so a move lost before the
+shield is up costs nothing. `[proven]` with the harness, events handed to the window as
+`AppKit` hands a hand's: first moves of 6 to 150 points land the tools' divider on the point
+expected, twelve of twelve; 215 more drags, half of them straight off the seam, at the
+bottom and right docks and on splits in both layouts, fitted after each, and the only ones
+that picked nothing up were over in under two frames or already at the split's limit; Orca's
+hairline pressed on the line and four points off it, slow and fast, landed where expected;
+and a press on the page after a drag, and after a bare click on the divider, was the page's.
+
 Seen on a real screen with the GPU on by the owner, 2026-11-14, dragging a split's divider beside a native page: it works. Holding the edge until Chromium's frame is in, the step kept in reserve, isn't needed.
 
 ## 7. Parity
@@ -475,19 +498,9 @@ Open:
    and three of `NSApplication` replaced at run time. Cra relies on the first two.
 3. **Resizes** (section 6): built, and to be judged by eye in a split drag on the real
    screen with the GPU on, which nothing but a person at the screen can do.
-4. **A divider picked up at its very edge.** GPUI starts a drag once the pointer has moved
-   more than two points from the press, and until then hears only the moves made over its
-   own content: a move that lands on a native page first is the page's. So a press within
-   two points of a divider's edge, moved straight off it onto a page, picks nothing up; from
-   the middle of the nine-point divider between a page and its tools, or of the gap between
-   islands, it always does. Orca's hairline between two native pages, whose handle lies over
-   the pages either side, is the narrowest: in the harness a press three to six points off
-   the line started a drag about half the time. Once a drag has started every move is heard,
-   wherever the pointer is. The cure is in gpui-fast's routing of a drag whose press was
-   GPUI's (`fast/composition.rs`, `send_window_event`), not in Koyo.
-5. **`script/check`** stops on timing-dependent tests when the Mac is busy with other builds
+4. **`script/check`** stops on timing-dependent tests when the Mac is busy with other builds
    (file watching, inlay hints): different ones each run, each passing alone. The browser
    host's smoke test of a trackpad pinch times out now and then within the suite, and
    passes alone, six times of six.
-6. **The own CEF build** (`fix-video-playback`): not needed for the page; the extension UI
+5. **The own CEF build** (`fix-video-playback`): not needed for the page; the extension UI
    will need Cra's patches, and so a patch step.
