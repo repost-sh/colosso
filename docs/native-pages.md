@@ -273,11 +273,17 @@ frame was where it belonged. Seen by the owner, 2026-11-14, and `[proven]` in th
 a view 739.5 points high had a picture layer of 740, and back at 725 one of 726; whole-point
 drags never moved it, 100 drags.
 
-So the page is put on the whole points nearest its pane's edges
-(`native::surface::on_whole_points`, in `NativePage::place`), view and holder both. Two
-panes that share an edge round it the same way and still meet; a size that was whole, a
-device's in responsive mode, stays what it was; and a page is at most half a point over or
-under its pane at an edge. The host checks it in debug builds (`native::place`). Apart from
+So the page is put on whole points (`native::surface::on_whole_points`, in
+`NativePage::place`), view and holder both. Where it reaches its pane's edge, an edge goes
+out to the next whole point, and the pane, which clips the page's view, trims what's over:
+the page covers all of its pane, up to a point over at an edge and never under. Put on the
+nearest whole points at first, a pane's edge half a point in rounded inwards as often as
+not, and what GPUI draws behind the page showed in that half point: the page's canvas as
+Koyo guesses it (`tone.rs`), white for a page whose root and body are transparent, a white
+line down the left of Google Meet's dark page (the owner, 2026-11-15; his sidebar, dragged,
+was 321.3164 points wide). `[read]`: the line's place, one pixel just left of the page and
+down its whole height, fits this; not run on screen. An edge within its pane, a device's in responsive mode, goes to
+the nearest whole point, so a size that was whole stays what it was. The host checks it in debug builds (`native::place`). Apart from
 that, the docked tools' size, which a drag of their divider sets and the settings keep, is
 kept in whole points too (`dock.rs`): tidier, not what keeps a page whole, as a split's
 ratio or a window's size puts a pane's edge anywhere all the same.

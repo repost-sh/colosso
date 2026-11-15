@@ -116,9 +116,11 @@ impl NativePage {
     /// and never comes back down, so it ends up taller than the view by what the halves add
     /// up to, the picture's top cut off and a gap at its foot (`docs/native-pages.md` 6). A
     /// pane's edges fall between points whenever a pointer set them: on a screen of two
-    /// pixels a point, a pointer is on half points.
+    /// pixels a point, a pointer is on half points. Where the page reaches the edge of what
+    /// shows it, it goes out to the next whole point and `clip` trims it, so nothing behind
+    /// it shows beside it.
     pub fn place(&self, bounds: Bounds<Pixels>, clip: Bounds<Pixels>, window: &Window) -> bool {
-        let bounds = crate::native::surface::on_whole_points(bounds);
+        let bounds = crate::native::surface::on_whole_points(bounds, clip);
         self.surface.place(bounds, clip, window);
         // The card the page is in clips what GPUI draws to its rounded corners, as it did a
         // page's picture when GPUI drew that; the page's own view takes the card's radius at
