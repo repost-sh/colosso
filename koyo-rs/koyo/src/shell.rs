@@ -138,6 +138,7 @@ impl Shell {
             // Worktrees may have come or gone in a terminal while the window was away, and the
             // Claude login's usage may be due a reading.
             cx.observe_window_activation(window, |this, window, cx| {
+                crate::keyboard::key(window);
                 if window.is_window_active() {
                     this.reload_projects(cx);
                     crate::accounts::window_activated(cx);
@@ -477,9 +478,7 @@ impl Render for Shell {
             .flex()
             .flex_col()
             // A gradient theme paints the glass instead of the plain tint.
-            .when(gradient::current(cx).dots.is_empty(), |root| {
-                root.bg(p.rail_tint)
-            })
+            .when(gradient::current(cx).dots.is_empty(), |root| root.bg(p.rail_tint))
             .text_color(p.text)
             .child(backdrop::backdrop(cx))
             .child(self.top_rail(shown, window, cx))

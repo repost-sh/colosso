@@ -22,6 +22,7 @@ mod held;
 mod history;
 mod kept_file;
 mod key_repeat;
+mod keyboard;
 mod language;
 mod launcher;
 mod list;

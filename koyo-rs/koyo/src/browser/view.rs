@@ -20,6 +20,7 @@ use super::dock::{Asked, Devtools};
 use super::find::{ACTUAL_SIZE, FindBar};
 use super::host::Browsers;
 use crate::history::How;
+use crate::keyboard::Part;
 
 pub(super) mod lifecycle;
 mod navigation;
@@ -212,8 +213,8 @@ impl BrowserView {
                 this.window_visible = visibility.is_visible();
                 this.tell_sight(cx);
             }),
-            cx.on_focus(&focus, window, |this, _, cx| this.set_focused(true, cx)),
-            cx.on_blur(&focus, window, |this, _, cx| this.set_focused(false, cx)),
+            cx.on_focus(&focus, window, |this, window, cx| this.focus_moved(true, window, cx)),
+            cx.on_blur(&focus, window, |this, window, cx| this.focus_moved(false, window, cx)),
             cx.subscribe_in(
                 &address,
                 window,
@@ -235,6 +236,7 @@ impl BrowserView {
         let releasing = browsers.clone();
         cx.on_release(move |_, cx| {
             releasing.update(cx, |browsers, _| browsers.detach(pane, id));
+            crate::keyboard::page_closed(pane);
         })
         .detach();
         // The window's scale is known before the pane is drawn.
@@ -306,6 +308,11 @@ impl BrowserView {
         } else {
             self.page.url.clone()
         }
+    }
+
+    /// The page's id in the host, which the keyboard knows it by.
+    pub fn page_id(&self) -> PaneId {
+        self.pane
     }
 
     /// The `DevTools` of another pane's page.
@@ -421,6 +428,20 @@ impl BrowserView {
     pub(super) fn set_focused(&mut self, focused: bool, cx: &mut Context<Self>) {
         let pane = self.pane;
         self.send_to_page(AppRequest::Focus { pane, focused }, cx);
+    }
+
+    /// GPUI's focus came to the page, or left it: the keyboard's holder hears so, and where it
+    /// went, its address or find bar or elsewhere.
+    fn focus_moved(&mut self, into: bool, window: &mut Window, cx: &mut Context<Self>) {
+        self.set_focused(into, cx);
+        if into {
+            crate::keyboard::entered_page(window, self.pane);
+            return;
+        }
+        let address = self.address.read(cx).focus_handle(cx).contains_focused(window, cx);
+        let bar = address || self.find.as_ref().is_some_and(|find| find.has_focus(window, cx));
+        let part = if bar { Part::Bar(self.pane) } else { Part::Other };
+        crate::keyboard::left_page(window, self.pane, &self.focus, part);
     }
 
     /// What the render has to do first, with the window: focus, menus and dialogs asked

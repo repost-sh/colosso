@@ -100,6 +100,8 @@ struct Up {
     /// The look, once activation settles, at whether the person has left it: the latest
     /// replaces the one before.
     settling: Option<Task<()>>,
+    /// A dialog has the keys of the window it's over for as long as it's up.
+    _keys: Option<crate::keyboard::DialogOver>,
 }
 
 #[derive(Default)]
@@ -182,6 +184,7 @@ pub fn open<V: Render>(
         source,
         _watching: watching,
         settling: None,
+        _keys: kind.is_task().then(|| crate::keyboard::DialogOver::new(over)),
     };
     cx.default_global::<Popups>().up.insert(kind, up);
     Some(handle)
