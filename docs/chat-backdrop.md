@@ -165,6 +165,47 @@ default (sections 2 and 6). The name stays `chat_backdrop`, in the code and the 
   handled. **[proposed]**
 - Needs the `NSWorkspace` and `NSScreen` features of `objc2-app-kit`, and
   `CGImageDestination` of `objc2-image-io`, in `koyo-rs/koyo/Cargo.toml`.
+- **A dynamic wallpaper shows the picture macOS shows** (`dynamic.rs`), asked for 2026-11-16,
+  after the owner saw his solar wallpaper's day picture behind the chat while macOS showed its
+  dark one. A dynamic wallpaper is one HEIC holding several pictures; its first image's
+  metadata, in the `apple_desktop` namespace, says which to show: `apr` by the appearance
+  (`{l, d}`, the light and the dark picture), `h24` by the time of day (`ti`, each picture from
+  a fraction of the day on, with an `ap` like `apr`'s), or `solar` by the sun (`si`, each
+  picture at a sun altitude `a` and azimuth `z`, with an `ap`), each value a binary property
+  list in Base64. Before, the backdrop decoded the file's primary picture, index 0, whatever
+  macOS showed. Now:
+  - **Light (Still) and Dark (Still)** show `ap`'s light or dark picture; **Automatic** the one
+    for the system's appearance (`AppleInterfaceStyle`, not Koyo's own theme); **Dynamic** the
+    schedule's: for `h24` the last picture whose time has come (before the first, the day's
+    last, still showing from the evening before), for `solar` the picture whose sun is nearest
+    the sun now on the sky, by the angle between them. The sun is the Astronomical Almanac's
+    low-precision position, good to about a hundredth of a degree.
+  - **Where the sun is seen from**: Koyo has no location and doesn't ask for one. It takes the
+    place the time zone database gives the system's time zone (`/etc/localtime` and
+    `/usr/share/zoneinfo/zone.tab`, Brussels for Europe/Brussels): right to the time zone's
+    city, not to the person. macOS with Location Services uses where the Mac is; without it,
+    its own words are "This wallpaper changes throughout the day", and what it then uses
+    wasn't checked. With no place at all, a solar wallpaper shows its picture for the
+    appearance.
+  - **The person's choice** is read from the store System Settings keeps,
+    `~/Library/Application Support/com.apple.wallpaper/Store/Index.plist`, a private format,
+    read as macOS 27.2 writes it: `AllSpacesAndDisplays.Desktop.Content.EncodedOptionValues`, a
+    property list whose `values.style.picker._0.id` was `dark` for Dark (Still); `light`,
+    `automatic` and `dynamic` are taken to name the other three, the names System Settings
+    shows them by (not seen written). It's behind one function (`style`), read again only when
+    the store's file changes; unreadable, or a name it doesn't know, it's Dynamic (which for an
+    `apr` wallpaper is Automatic), said once in the log. A choice made for one display alone
+    (the store's `Displays`) isn't read.
+  - **When the picture is made again**: the chosen picture is part of the wallpaper as read, so
+    a new one is a changed wallpaper (3.3). The system's appearance changing is heard at once
+    (`AppleInterfaceThemeChangedNotification`); a time or a sun position coming is caught by
+    the once-a-second ask the wallpaper already had, as the metadata is read once a file and
+    the pick is arithmetic: no timer of its own, as one would add a wake without removing that
+    ask.
+  - Checked against The Cliffs (solar, 8 pictures, Dark (Still) chosen: picture 1), Sonoma
+    (`apr`, 2 pictures) and a time-of-day file written for the check, as none ships with
+    macOS 27.2 (`dynamic/tests.rs`, the ignored `dynamic_wallpapers_through_a_day` with
+    `KOYO_DYNAMIC` naming the files).
 - **When it draws nothing, the log says why**, once: a window on no screen `AppKit` names
   (`NSWindow.screen` nil, `element.rs`), or a screen with no wallpaper file (`screens.rs`).
   Added 2026-11-16, after two sittings on the agent desktop were spent guessing.

@@ -270,7 +270,7 @@ fn draw(
 }
 
 /// A source for the file at `path` that keeps nothing decoded once it's asked for a picture.
-fn source(path: &Path) -> Result<CFRetained<CGImageSource>, String> {
+pub(crate) fn source(path: &Path) -> Result<CFRetained<CGImageSource>, String> {
     let url = CFURL::from_file_path(path).ok_or("its path isn't one the system takes")?;
     // SAFETY: a constant ImageIO defines.
     let keys: [&CFString; 1] = [unsafe { kCGImageSourceShouldCache }];
