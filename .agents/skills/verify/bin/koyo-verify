@@ -1,0 +1,462 @@
+#!/bin/bash
+# One test Koyo for verification, apart from the Koyo in use: its own bundle id, data, settings,
+# logs, temporary folder and probe folder, all under <checkout>/.superpowers/v/. The skill's
+# SKILL.md says when to run each command; `koyo-verify help` lists them.
+#
+# The launch itself is not here: the test Koyo goes on the agent desktop through the Koyo MCP
+# tool `desktop_open` (SKILL.md, Launch), and `koyo-verify confirm <pid>` takes it from there.
+set -euo pipefail
+
+SKILL=$(cd "$(dirname "$0")/.." && pwd)
+R=$(cd "$SKILL/../../.." && pwd)
+V="$R/.superpowers/v"
+APP="$V/KoyoVerify.app"
+BIN="$APP/Contents/MacOS/koyo"
+DEV="$R/koyo-rs/target/dev-bundle/Koyo Dev.app"
+BUILT="$R/koyo-rs/target/debug/koyo"
+D="$V/d" C="$V/c" L="$V/l" P="$V/p" T="$V/t" S="$V/s"
+FIX="$V/fixture"
+EV="$V/evidence"
+ID=test.koyo.verify
+CLIENT=koyo-verify
+SOCK="$D/control/koyo-control.sock"
+OWNER_BIN=/Applications/Koyo.app/Contents/MacOS/koyo
+# What `desktop_open` must pass as `args`: the value GPUI would otherwise write into
+# ~/Library/Preferences/test.koyo.verify.plist on every launch (gpui-fast-macos platform.rs),
+# found in the arguments' domain instead, so nothing is written outside the checkout.
+ARGS='["-NSAutoFillHeuristicControllerEnabled","NO"]'
+
+die() { echo "koyo-verify: $*" >&2; exit 1; }
+now() { date +%H:%M:%S; }
+
+# The evidence folder of the run under way, if any.
+run_dir() { [ -f "$EV/.current" ] && cat "$EV/.current" || true; }
+record() {
+  local run; run=$(run_dir)
+  [ -n "$run" ] && [ -d "$run" ] && printf '%s\n' "$@" >> "$run/transcript.log"
+  return 0
+}
+
+# When process $1 started, as one line: the pid and this tell a process from a later one with its pid.
+started_at() { ps -o lstart= -p "$1" | awk '{ $1 = $1; print }'; }
+
+# The test Koyo's pid, when the one recorded by `confirm` still runs as the same process.
+pid_of() {
+  [ -f "$S/pid" ] || return 1
+  local pid started
+  read -r pid started < "$S/pid"
+  kill -0 "$pid" 2>/dev/null || return 1
+  [ "$(started_at "$pid")" = "$started" ] || return 1
+  [ "$(ps -o comm= -p "$pid")" = "$BIN" ] || return 1
+  echo "$pid"
+}
+need_running() { pid_of >/dev/null || die "no test Koyo of this checkout runs (koyo-verify doctor)"; }
+
+# Whether process $1 has this instance's own folders in its environment.
+isolated() {
+  local env; env=$(ps eww -o command= -p "$1" | tr ' ' '\n')
+  printf '%s\n' "$env" | grep -qx "KOYO_DATA_DIR=$D" &&
+    printf '%s\n' "$env" | grep -qx "KOYO_CONFIG_DIR=$C" &&
+    printf '%s\n' "$env" | grep -qx "KOYO_LOG_DIR=$L"
+}
+
+# Every process of this user whose environment names this instance's data folder: the app,
+# and what it started that outlives it (the chat agent host, the terminal daemon).
+# Only executables inside this checkout count: the bundle's (the app, `koyo termd`, the engine's
+# helpers) and the agent host's. That leaves out this pipeline's own awk, which `ps -E` shows
+# with the data folder too.
+ours() {
+  ps -ww -E -o pid=,command= -U "$(id -u)" 2>/dev/null |
+    awk -v want="KOYO_DATA_DIR=$D" -v root="$R/" 'index($2, root) == 1 {
+      for (i = 3; i <= NF; i++) if ($i == want) { print $1; break } }' || true
+}
+
+cmd_help() {
+  cat <<EOF
+koyo-verify paths                  the folders, the bundle and the desktop_open input
+koyo-verify prepare [--pin URL]... [--layout Orca|Arc] [--native-switches "a b=c"] [--log LEVEL]
+                                   KoyoVerify.app from the dev bundle, and a fresh instance:
+                                   settings, a fixture repo and page, pinned pages
+koyo-verify confirm <pid>          after desktop_open: ours and isolated, else killed; waits ready
+koyo-verify doctor                 read-only: is this instance worth driving?
+koyo-verify run <label>            a new evidence folder; later commands log into it
+koyo-verify app <operation> ['{json}']   koyo app on the test instance only
+koyo-verify mcp <tool | --list> [json]  a koyo mcp tool (terminal_*) on the test instance only
+koyo-verify probe '<cmd>' ...      in-app probe commands (shot, state, click x y, type, key, …)
+koyo-verify shot <name> [window#]  the app's window as <run>/<name>.png
+koyo-verify pageshot <name> [pane] a page through browser_screenshot as <run>/<name>.png
+koyo-verify note <text>            a line in the run's transcript (say what a desktop_* call did)
+koyo-verify keep <file> <name>     a desktop_screenshot's PNG (the path its result names) into the run
+koyo-verify stop [--keep]          quit what this checkout started, logs into the run, instance
+                                   folders removed (kept with --keep); evidence stays
+EOF
+}
+
+cmd_paths() {
+  cat <<EOF
+checkout   $R
+bundle     $APP   (bundle id $ID)
+data       $D
+config     $C
+logs       $L/Koyo.log
+probe      $P
+tmp        $T   (koyo app / koyo mcp only: the app gets the per-user temporary folder)
+fixture    $FIX/repo, file://$FIX/focus.html
+evidence   $EV/<stamp>-<label>/   (current: $(run_dir))
+socket     $SOCK   (${#SOCK} bytes of at most 100)
+desktop_open input: {"app": "$APP", "args": $ARGS}
+EOF
+}
+
+cmd_prepare() {
+  local pins=() layout=Orca switches="" level=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --pin) pins+=("$2"); shift ;;
+      --layout) layout="$2"; shift ;;
+      --native-switches) switches="$2"; shift ;;
+      --log) level="$2"; shift ;;
+      *) die "prepare: unknown option $1" ;;
+    esac
+    shift
+  done
+  [ ${#SOCK} -le 100 ] || die "the socket path would be ${#SOCK} bytes, over 100: this checkout's path ($R) is too long for an instance here; ask the owner where to put it"
+  if pid_of >/dev/null; then die "a test Koyo of this checkout runs (pid $(pid_of)): koyo-verify stop first"; fi
+  [ -x "$DEV/Contents/MacOS/koyo" ] || die "no dev bundle: run  nice -n 10 script/dev-bundle --no-run  first"
+  if [ -x "$BUILT" ] && ! cmp -s "$BUILT" "$DEV/Contents/MacOS/koyo"; then
+    die "the dev bundle is older than koyo-rs/target/debug/koyo: run  nice -n 10 script/dev-bundle --no-run  again"
+  fi
+
+  # The bundle: clones of the dev bundle's files, its own id and environment.
+  rm -rf "$APP"
+  mkdir -p "$V"
+  cp -cR "$DEV" "$APP"
+  local plist="$APP/Contents/Info.plist" pb=/usr/libexec/PlistBuddy
+  $pb -c "Set :CFBundleIdentifier $ID" "$plist"
+  $pb -c "Set :CFBundleName KoyoVerify" "$plist"
+  $pb -c "Add :LSEnvironment dict" "$plist"
+  # No TMPDIR: macOS gives a launched app the per-user temporary folder whatever the bundle
+  # says, and one in the checkout would be too deep for Chromium's singleton socket (104 bytes).
+  # The owner allowed the per-user folder; `stop` removes what the engine leaves there.
+  local kv
+  for kv in "KOYO_DATA_DIR=$D" "KOYO_CONFIG_DIR=$C" "KOYO_LOG_DIR=$L" \
+    "KOYO_NATIVE_PROBE=$P" "KOYO_AGENT_PROVIDER=fake" "KOYO_VERIFY=$R" \
+    ${level:+"KOYO_LOG=$level"} ${switches:+"KOYO_NATIVE_SWITCHES=$switches"}; do
+    $pb -c "Add :LSEnvironment:${kv%%=*} string ${kv#*=}" "$plist"
+  done
+  {
+    echo "head $(git -C "$R" rev-parse --short HEAD)"
+    echo "dirty $(git -C "$R" status --porcelain --untracked-files=no | wc -l | tr -d ' ') tracked files"
+    echo "binary $(stat -f '%Sm' -t '%Y-%m-%d %H:%M:%S' "$DEV/Contents/MacOS/koyo")"
+    echo "assembled $(date '+%Y-%m-%d %H:%M:%S')"
+  } > "$APP/Contents/Resources/verify-stamp"
+
+  # A fresh instance.
+  rm -rf "$D" "$C" "$L" "$P" "$T" "$S" "$FIX"
+  mkdir -p "$D" "$C" "$L" "$P" "$T" "$S" "$FIX/repo" "$V/worktrees"
+  git -C "$FIX/repo" init -q -b main
+  printf '# verify fixture\n\nA repository for the test Koyo to show.\n' > "$FIX/repo/README.md"
+  git -C "$FIX/repo" add README.md
+  git -C "$FIX/repo" -c user.name=verify -c user.email=verify@localhost commit -q -m "fixture"
+  cat > "$FIX/focus.html" <<'HTML'
+<!doctype html>
+<title>verify focus</title>
+<body style="font: 20px -apple-system; margin: 24px">
+<input id="field" placeholder="type here" style="font-size: 24px; width: 90%">
+<p>keys: <span id="keys"></span></p>
+<script>
+  window.keys = [];
+  document.addEventListener("keydown", (event) => {
+    window.keys.push(event.key);
+    document.getElementById("keys").textContent = window.keys.join(" ");
+  });
+</script>
+</body>
+HTML
+  # Settings: the fixture project, the agent desktop off (a test Koyo must never make a desktop
+  # of its own), the Mac's Claude login left alone (accounts.manage), quitting ends what runs,
+  # worktrees inside the checkout, and app control on for this helper's client alone, its MCP
+  # server on a port the system picks so it never answers on the owner's 6272. `desktop` and
+  # `devices` aren't granted.
+  jq -n --arg repo "$FIX/repo" --arg wt "$V/worktrees" --arg layout "$layout" --arg client "$CLIENT" '{
+    projects: [$repo], layout: $layout, worktrees_dir: $wt, agent_desktop: false, on_quit: "End",
+    accounts: { manage: false, autoSwitch: false },
+    externalControl: { enabled: true, port: 0, showWhatAgentsOpen: false, pagesOpenAt: "fill",
+      clients: [{ name: $client, approvedAt: 0,
+        scopes: ["read", "navigate", "manage", "browser", "settings", "destructive"] }] } }' \
+    > "$C/settings.json"
+  if [ ${#pins[@]} -gt 0 ]; then
+    printf '%s\n' "${pins[@]}" | jq -R . | jq -s --arg repo "$FIX/repo" '{ version: 1, shown: 0,
+      tabs: map({ url: ., title: "Pinned", pinnedUrl: ., project: $repo }) }' > "$D/pinned-tabs.json"
+  fi
+  cat "$APP/Contents/Resources/verify-stamp"
+  echo "ready to launch. desktop_open with:"
+  echo "{\"app\": \"$APP\", \"args\": $ARGS}"
+}
+
+cmd_confirm() {
+  local pid="${1:-}"
+  [ -n "$pid" ] || die "confirm <pid>: the pid desktop_open answered"
+  kill -0 "$pid" 2>/dev/null || die "process $pid doesn't run"
+  if [ "$(ps -o comm= -p "$pid")" != "$BIN" ]; then
+    die "process $pid is $(ps -o comm= -p "$pid"), not this checkout's test Koyo: left alone"
+  fi
+  if ! isolated "$pid"; then
+    kill "$pid"
+    die "process $pid runs without this instance's KOYO_DATA_DIR/CONFIG_DIR/LOG_DIR: stopped it. Nothing was driven."
+  fi
+  echo "$pid $(started_at "$pid")" > "$S/pid"
+  local i
+  for i in $(seq 1 120); do
+    if [ -S "$SOCK" ] && grep -q "app control listens on" "$L/Koyo.log" 2>/dev/null &&
+      cmd_app app_status >/dev/null 2>&1; then
+      break
+    fi
+    kill -0 "$pid" 2>/dev/null || die "the test Koyo ended while starting: see $L/Koyo.log"
+    sleep 0.5
+  done
+  [ -S "$SOCK" ] || die "no control socket after 60 s: see $L/Koyo.log"
+  # Windows on a desktop that isn't on screen are never told they're seen: drawn ten times a
+  # second all the same, or shots and pages go stale. `tick` toggles, so it's sent once here.
+  local tick; tick=$(cmd_probe tick)
+  echo "$tick" | grep -q "ticking true" || die "the probe didn't start ticking: $tick"
+  echo "ticking" > "$S/tick"
+  record "## $(now) confirmed pid $pid, isolated, ticking"
+  echo "test Koyo pid $pid: isolated (KOYO_DATA_DIR=$D), control socket up, probe ticking"
+}
+
+cmd_app() {
+  local op="${1:-}" json="${2:-}"
+  [ -n "$op" ] || die "app <operation> ['{json}']"
+  [ -S "$SOCK" ] || die "no control socket at $SOCK: is the test Koyo running? (koyo-verify doctor)"
+  # A turn that ends while Koyo has no main window posts a macOS notification (chat/notify.rs),
+  # and the first one asks the person for permission on their own screen. On the agent desktop
+  # the window is main only after desktop_focus.
+  case "$op" in
+    chat_create|chat_send)
+      local state; state=$(cmd_probe state 2>&1 || true)
+      case "$state" in
+        *"main true"*) ;;
+        *) die "$op refused: the test window isn't main ($state), so the turn's end would post a notification that asks the owner on their screen. desktop_focus the window first (SKILL.md, Keyboard focus)." ;;
+      esac ;;
+  esac
+  # A clean environment: no KOYO_TERMINAL or KOYO_CHAT of the caller's own Koyo, whose hello
+  # this instance would refuse, and only this instance's data folder, so the call can't reach
+  # the Koyo in use.
+  local out status=0
+  out=$(cd "$R" && env -i HOME="$HOME" USER="$USER" PATH=/usr/bin:/bin KOYO_DATA_DIR="$D" TMPDIR="$T" \
+    "$BIN" app "$op" ${json:+--json "$json"} --client "$CLIENT" 2>&1) || status=$?
+  record "## $(now) app $op ${json}" "$out" ""
+  printf '%s\n' "$out"
+  return $status
+}
+
+# The tools only `koyo mcp` serves (terminal_*), through its stdio relay, in the same clean
+# environment as cmd_app: the relay finds the test instance's daemon by KOYO_DATA_DIR.
+cmd_mcp() {
+  local tool="${1:-}" json="${2:-}"
+  [ -n "$tool" ] || die "mcp <tool | --list> ['{json}']"
+  [ -S "$SOCK" ] || die "no control socket at $SOCK: is the test Koyo running? (koyo-verify doctor)"
+  local out status=0
+  out=$(cd "$R" && env -i HOME="$HOME" USER="$USER" PATH=/usr/bin:/bin KOYO_DATA_DIR="$D" TMPDIR="$T" \
+    /usr/bin/python3 -I "$SKILL/bin/mcp-call.py" "$BIN" "$CLIENT" "$tool" "$json" 2>&1) || status=$?
+  record "## $(now) mcp $tool ${json}" "$out" ""
+  printf '%s\n' "$out"
+  return $status
+}
+
+cmd_probe() {
+  [ $# -gt 0 ] || die "probe '<command>' ..."
+  need_running
+  local waits=0 c
+  for c in "$@"; do
+    case "$c" in wait\ *) waits=$((waits + ${c#wait })) ;; esac
+  done
+  : > "$P/out"
+  printf '%s\n' "$@" > "$P/cmd.tmp"
+  mv "$P/cmd.tmp" "$P/cmd"
+  local limit=$(( (waits / 1000 + 30) * 5 )) i=0
+  until grep -q '^done$' "$P/out" 2>/dev/null; do
+    sleep 0.2
+    i=$((i + 1))
+    [ $i -gt $limit ] && { record "## $(now) probe $* => timeout"; die "the probe didn't answer"; }
+  done
+  local out; out=$(grep -v '^done$' "$P/out")
+  record "## $(now) probe" "$out" ""
+  printf '%s\n' "$out"
+}
+
+cmd_shot() {
+  local name="${1:-}" number="${2:-}" run; run=$(run_dir)
+  [ -n "$name" ] || die "shot <name> [window#]"
+  [ -n "$run" ] || die "no run: koyo-verify run <label> first"
+  local out; out=$(cmd_probe "shot $name${number:+ $number}")
+  echo "$out" | grep -q "=> saved" || die "no picture: $out"
+  mv "$P/$name.png" "$run/$name.png"
+  record "saved $run/$name.png"
+  echo "$run/$name.png"
+}
+
+cmd_pageshot() {
+  local name="${1:-}" pane="${2:-}" run; run=$(run_dir)
+  [ -n "$name" ] || die "pageshot <name> [pane]"
+  [ -n "$run" ] || die "no run: koyo-verify run <label> first"
+  local json='{}'; [ -n "$pane" ] && json="{\"pane\":$pane}"
+  [ -S "$SOCK" ] || die "no control socket at $SOCK"
+  # Called directly rather than through cmd_app, which would copy the base64 into the transcript.
+  local out; out=$(cd "$R" && env -i HOME="$HOME" USER="$USER" PATH=/usr/bin:/bin KOYO_DATA_DIR="$D" TMPDIR="$T" \
+    "$BIN" app browser_screenshot --json "$json" --client "$CLIENT") || die "browser_screenshot: $out"
+  printf '%s' "$out" | jq -r .data | base64 -d > "$run/$name.png"
+  record "saved $run/$name.png ($(printf '%s' "$out" | jq -r .url))"
+  echo "$run/$name.png"
+}
+
+cmd_run() {
+  local label="${1:-run}" dir
+  dir="$EV/$(date +%Y%m%d-%H%M%S)-$label"
+  mkdir -p "$dir"
+  echo "$dir" > "$EV/.current"
+  {
+    echo "# $label"
+    echo "checkout $R at $(git -C "$R" rev-parse --short HEAD)"
+    [ -f "$APP/Contents/Resources/verify-stamp" ] && sed 's/^/bundle /' "$APP/Contents/Resources/verify-stamp"
+    echo
+  } > "$dir/transcript.log"
+  echo "$dir"
+}
+
+cmd_note() { record "## $(now) note: $*"; echo "noted"; }
+
+# A file made outside the helper, such as the PNG a desktop_screenshot result names, copied
+# into the run as <name>.png.
+cmd_keep() {
+  local from="${1:-}" name="${2:-}" run; run=$(run_dir)
+  [ -f "$from" ] && [ -n "$name" ] || die "keep <file> <name>"
+  [ -n "$run" ] || die "no run: koyo-verify run <label> first"
+  cp "$from" "$run/$name.png"
+  record "## $(now) kept $from as $run/$name.png"
+  echo "$run/$name.png"
+}
+
+cmd_doctor() {
+  local bad=0 pid
+  ok() { echo "ok    $*"; }
+  warn() { echo "warn  $*"; }
+  fail() { echo "FAIL  $*"; bad=1; }
+  [ ${#SOCK} -le 100 ] && ok "socket path ${#SOCK} bytes" || fail "socket path ${#SOCK} bytes, over 100"
+  if [ -x "$BIN" ]; then
+    ok "bundle $APP"
+    sed 's/^/      /' "$APP/Contents/Resources/verify-stamp"
+    local head; head=$(git -C "$R" rev-parse --short HEAD)
+    grep -q "^head $head$" "$APP/Contents/Resources/verify-stamp" || warn "bundle assembled at another commit than HEAD $head"
+    if [ -x "$BUILT" ] && ! cmp -s "$BUILT" "$BIN"; then warn "koyo-rs/target/debug/koyo differs from the bundle's: script/dev-bundle --no-run, then prepare"; fi
+    local newer; newer=$(find "$R/koyo-rs" -path "$R/koyo-rs/target" -prune -o -path "$R/koyo-rs/vendor" -prune -o -name '*.rs' -newer "$BIN" -print 2>/dev/null | head -1)
+    [ -z "$newer" ] || warn "sources newer than the bundle's binary, e.g. ${newer#$R/}: rebuild before proving a change"
+  else
+    fail "no bundle: koyo-verify prepare"
+  fi
+  if pid=$(pid_of); then
+    ok "test Koyo pid $pid runs $BIN"
+    isolated "$pid" && ok "isolated: KOYO_DATA_DIR=$D" || fail "pid $pid lacks this instance's folders in its environment: koyo-verify stop"
+    [ -S "$SOCK" ] && ok "control socket" || fail "no control socket at $SOCK"
+    local status
+    if status=$(cmd_app app_status 2>&1); then
+      local answered; answered=$(printf '%s' "$status" | jq -r '.dataDir // empty' 2>/dev/null)
+      [ "$answered" = "$D" ] && ok "app_status answered from dataDir $answered" ||
+        fail "app_status answered from dataDir '${answered:-?}', not $D"
+    else
+      fail "app_status: $status"
+    fi
+    local state; state=$(cmd_probe state 2>&1) && ok "probe: ${state#state => }" || fail "probe: $state"
+    [ -f "$S/tick" ] && ok "probe ticking" || warn "probe not ticking: shots may be stale"
+  else
+    warn "no test Koyo of this checkout runs"
+  fi
+  if [ -f "$C/settings.json" ]; then
+    [ "$(jq -r '.agent_desktop // false' "$C/settings.json")" = false ] && ok "agent_desktop off in the test settings" || fail "agent_desktop on in $C/settings.json"
+    [ "$(jq -r '.externalControl.port' "$C/settings.json")" != 6272 ] && ok "MCP port not the owner's 6272" || fail "MCP port 6272 in the test settings"
+  fi
+  if [ -f "$L/Koyo.log" ]; then
+    local panics; panics=$(grep -c "panicked" "$L/Koyo.log" || true)
+    [ "$panics" = 0 ] && ok "no panic in Koyo.log" || fail "$panics panics in $L/Koyo.log"
+    local serves; serves=$(grep -o "the MCP server serves .*" "$L/Koyo.log" | tail -1 || true)
+    [ -n "$serves" ] && ok "$serves"
+  fi
+  local owner; owner=$(pgrep -f "^$OWNER_BIN" | head -1 || true)
+  [ -n "$owner" ] && echo "info  the owner's Koyo runs (pid $owner): never quit, drive or read its data" || true
+  for f in "Preferences/$ID.plist" "Saved Application State/$ID.savedState" "Caches/$ID" "HTTPStorages/$ID"; do
+    [ -e "$HOME/Library/$f" ] && warn "~/Library/$f exists: written outside the checkout, tell the owner" || true
+  done
+  echo "info  run: $(run_dir)"
+  return $bad
+}
+
+cmd_stop() {
+  local keep=no
+  [ "${1:-}" = --keep ] && keep=yes
+  local pid
+  if pid=$(pid_of); then
+    # Quit as from the menu. The app goes before the probe could say it's done, so nothing
+    # waits for its answer.
+    printf 'quit\n' > "$P/cmd.tmp" && mv "$P/cmd.tmp" "$P/cmd"
+    record "## $(now) probe quit"
+    local i
+    for i in $(seq 1 30); do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done
+    if kill -0 "$pid" 2>/dev/null; then kill -TERM "$pid"; sleep 3; fi
+    if kill -0 "$pid" 2>/dev/null; then kill -KILL "$pid"; fi
+    echo "stopped the test Koyo, pid $pid"
+  fi
+  # What it started that outlives it: only processes carrying this instance's data folder.
+  local left
+  for left in $(ours); do
+    echo "stopping pid $left ($(ps -o comm= -p "$left")): it carries KOYO_DATA_DIR=$D"
+    kill -TERM "$left" 2>/dev/null || true
+  done
+  sleep 1
+  for left in $(ours); do kill -KILL "$left" 2>/dev/null || true; done
+  # The engine's singleton folder in the per-user temporary folder, found by the link Chromium
+  # keeps in the data folder, so only this instance's is touched. A clean quit removes it.
+  local link target temp; temp=$(getconf DARWIN_USER_TEMP_DIR)
+  for link in $(find "$D" -maxdepth 4 -name SingletonSocket -type l 2>/dev/null); do
+    target=$(dirname "$(readlink "$link")")
+    case "$target" in
+      "${temp%/}"/codes.koyo.desktop.browser-host.*)
+        if [ -e "$target" ]; then rm -rf "$target"; echo "removed the engine's leftover $target"; fi ;;
+    esac
+  done
+  local run; run=$(run_dir)
+  local keep_logs="${run:-$EV/$(date +%Y%m%d-%H%M%S)-stopped}"
+  mkdir -p "$keep_logs/logs"
+  cp -p "$L"/*.log* "$keep_logs/logs/" 2>/dev/null || true
+  cp -p "$D"/agents/host.log* "$keep_logs/logs/" 2>/dev/null || true
+  find "$D" -maxdepth 3 -name '*.log' -not -path '*/browser/*' -exec cp -p {} "$keep_logs/logs/" \; 2>/dev/null || true
+  record "## $(now) stopped; logs in $keep_logs/logs"
+  if [ "$keep" = no ]; then
+    rm -rf "$D" "$C" "$L" "$P" "$T" "$S" "$FIX" "$V/worktrees"
+    echo "instance folders removed; the bundle and $EV stay"
+  else
+    rm -f "$S/pid" "$S/tick"
+    echo "instance folders kept for the next launch (--keep)"
+  fi
+  rm -f "$EV/.current"
+  echo "evidence: $keep_logs"
+  ls -1 "$keep_logs"
+}
+
+case "${1:-help}" in
+  help|-h|--help) cmd_help ;;
+  paths) cmd_paths ;;
+  prepare) shift; cmd_prepare "$@" ;;
+  confirm) shift; cmd_confirm "$@" ;;
+  doctor) cmd_doctor ;;
+  run) shift; cmd_run "$@" ;;
+  app) shift; cmd_app "$@" ;;
+  mcp) shift; cmd_mcp "$@" ;;
+  probe) shift; cmd_probe "$@" ;;
+  shot) shift; cmd_shot "$@" ;;
+  pageshot) shift; cmd_pageshot "$@" ;;
+  note) shift; cmd_note "$@" ;;
+  keep) shift; cmd_keep "$@" ;;
+  stop) shift; cmd_stop "$@" ;;
+  *) cmd_help; exit 2 ;;
+esac
