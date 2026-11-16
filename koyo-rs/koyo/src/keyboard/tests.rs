@@ -1,6 +1,6 @@
 //! The holders, told what happens as the app tells them, and the log's line for each move.
 
-use super::lines;
+use super::lines::{self, Followed};
 use super::state::{Cause, Change, Holder, Keyboards, Part, Surface};
 
 const WINDOW: u64 = 1;
@@ -118,14 +118,14 @@ fn a_line_names_what_had_it_what_has_it_and_why() {
         to: Holder::Page(PAGE),
         cause: Cause::Focused,
     };
-    assert_eq!(lines::line(&change), "keyboard: gpui (pane 7) → page 12 (focus moved)");
+    assert_eq!(lines::line(&change, Followed::Untold), "keyboard: gpui (pane 7) → page 12 (focus moved)");
     assert_eq!(lines::level(&change), log::Level::Info);
     let bar = Change {
         from: Holder::Page(PAGE),
         to: Holder::Gpui(Part::Bar(PAGE)),
         ..change
     };
-    assert_eq!(lines::line(&bar), "keyboard: page 12 → gpui (a bar of page 12) (focus moved)");
+    assert_eq!(lines::line(&bar, Followed::Untold), "keyboard: page 12 → gpui (a bar of page 12) (focus moved)");
 }
 
 #[test]
@@ -136,7 +136,7 @@ fn going_away_and_dialogs_are_warnings() {
         to: Holder::Away,
         cause: Cause::WindowResigned,
     };
-    assert_eq!(lines::line(&away), "keyboard: page 12 → away (window resigned)");
+    assert_eq!(lines::line(&away, Followed::Untold), "keyboard: page 12 → away (window resigned)");
     assert_eq!(lines::level(&away), log::Level::Warn);
     let back = Change {
         from: Holder::Away,
@@ -145,4 +145,40 @@ fn going_away_and_dialogs_are_warnings() {
         ..away
     };
     assert_eq!(lines::level(&back), log::Level::Warn);
+}
+
+mod fake;
+mod reconciler;
+mod told;
+
+#[test]
+fn a_line_says_what_the_first_responder_did_and_never_more() {
+    use super::reconcile::{Moved, Responder};
+    let change = Change {
+        window: WINDOW,
+        from: Holder::Gpui(COMPOSER),
+        to: Holder::Page(PAGE),
+        cause: Cause::Click,
+    };
+    let moved = Moved { before: Responder::Gpui, after: Responder::Page(PAGE) };
+    assert_eq!(
+        lines::line(&change, Followed::Moved(moved)),
+        "keyboard: gpui (pane 7) → page 12 (click); first responder gpui → page 12"
+    );
+    assert_eq!(
+        lines::line(&change, Followed::Stayed),
+        "keyboard: gpui (pane 7) → page 12 (click); first responder as it was"
+    );
+    let asked = Moved { before: Responder::Gpui, after: Responder::Page(OTHER_PAGE) };
+    assert_eq!(
+        lines::refused(OTHER_PAGE, Holder::Gpui(COMPOSER), asked),
+        "keyboard: page 13 asked for the keyboard (gpui → page 13) while gpui (pane 7) has it: \
+         refused"
+    );
+    let healed = Moved { before: Responder::Window, after: Responder::Gpui };
+    assert_eq!(
+        lines::healed(Holder::Gpui(COMPOSER), "a key found the first responder elsewhere", healed),
+        "keyboard: gpui (pane 7) has it, a key found the first responder elsewhere; first \
+         responder the window → gpui: healed"
+    );
 }

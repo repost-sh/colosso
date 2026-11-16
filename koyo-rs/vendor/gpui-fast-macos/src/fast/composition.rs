@@ -217,21 +217,51 @@ pub(crate) unsafe fn register_window_input(decl: &mut ClassBuilder, superclass: 
     }
 }
 
+/// Koyo: the keys' way into the window, before `AppKit` delivers them to its first responder.
+/// Key equivalents have been offered already, by the application, and aren't touched here.
+///
+/// - A key going down or up: the app is asked first (`responders`), and may hand the keyboard
+///   to what should have it before the key is delivered, so the key goes there.
+/// - The modifiers are the window's, whoever has the keyboard. GPUI hears them change only
+///   through its own view, and a native view that has the keyboard (a browser page's) hears
+///   them in its place: ⌃ let go after ⌃⇥ in a page never reached GPUI, and the tab switcher
+///   waited for it for good. So GPUI hears each change, and a change it also hears from its
+///   own view it counts once (`handle_view_event`).
+fn route_keys(this: &AnyObject, event: Id, kind: NSEventType) {
+    match kind {
+        NSEventType::KeyDown | NSEventType::KeyUp => {
+            crate::responders::tell(|responders| responders.key(this));
+        }
+        NSEventType::FlagsChanged => {
+            let root = unsafe { get_window_state(this) }.lock().native_view;
+            let first: Id = unsafe { msg_send![this, firstResponder] };
+            if first != root.as_ptr() {
+                handle_view_event(unsafe { root.as_ref() }, sel!(flagsChanged:), event);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Koyo: a press about to be handed on in the window, to `over`, a native view under the
+/// pointer, or to GPUI's own content (nil), is told to the app first (`responders`): the
+/// press is the person's, and says what they put the keyboard in.
+fn tell_press(this: &AnyObject, event: Id, over: Id) {
+    let button: NSInteger = unsafe { msg_send![event, buttonNumber] };
+    crate::responders::tell(|responders| responders.pressed(this, over, button));
+}
+
 fn send_window_event(this: &AnyObject, event: Id, superclass: &AnyClass) {
     let kind: NSEventType = unsafe { msg_send![event, type] };
-    // Koyo: the modifiers are the window's, whoever has the keyboard. GPUI hears them change
-    // only through its own view, and a native view that has the keyboard (a browser page's)
-    // hears them in its place: ⌃ let go after ⌃⇥ in a page never reached GPUI, and the tab
-    // switcher waited for it for good. So GPUI hears each change, and a change it also hears
-    // from its own view it counts once (`handle_view_event`).
-    if kind == NSEventType::FlagsChanged {
-        let root = unsafe { get_window_state(this) }.lock().native_view;
-        let first: Id = unsafe { msg_send![this, firstResponder] };
-        if first != root.as_ptr() {
-            handle_view_event(unsafe { root.as_ref() }, sel!(flagsChanged:), event);
-        }
-    }
+    route_keys(this, event, kind);
+    let pressed = matches!(
+        kind,
+        NSEventType::LeftMouseDown | NSEventType::RightMouseDown | NSEventType::OtherMouseDown
+    );
     if !unsafe { *ivar(this, NATIVE_INPUT_IVAR).load::<Bool>(this) }.as_bool() {
+        if pressed {
+            tell_press(this, event, NIL);
+        }
         unsafe {
             let _: () = msg_send![super(this, superclass), sendEvent: event];
         }
@@ -305,7 +335,11 @@ fn send_window_event(this: &AnyObject, event: Id, superclass: &AnyClass) {
             let location: NSPoint = msg_send![event, locationInWindow];
             let point: NSPoint = msg_send![parent, convertPoint: location, fromView: NIL];
             let target: Id = msg_send![root.as_ptr(), hitTest: point];
-            native_for_target(target, &native_views)
+            let native = native_for_target(target, &native_views);
+            if pressed {
+                tell_press(this, event, if native.is_some() { target } else { NIL });
+            }
+            native
         }
     };
     let forward =

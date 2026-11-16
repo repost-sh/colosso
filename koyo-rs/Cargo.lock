@@ -5360,6 +5360,7 @@ dependencies = [
  "futures",
  "globset",
  "gpui-fast-apple",
+ "gpui-fast-macos",
  "gpui-kit",
  "gpui-pre",
  "image",

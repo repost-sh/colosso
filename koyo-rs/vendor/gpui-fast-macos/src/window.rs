@@ -308,6 +308,29 @@ unsafe fn build_classes() {
     }
 }
 
+extern "C" fn make_window_first_responder(this: &AnyObject, _: Sel, to: *mut AnyObject) -> Bool {
+    make_first_responder(this, to, class!(NSWindow))
+}
+
+extern "C" fn make_panel_first_responder(this: &AnyObject, _: Sel, to: *mut AnyObject) -> Bool {
+    make_first_responder(this, to, class!(NSPanel))
+}
+
+/// Koyo: `AppKit`'s own `makeFirstResponder:`, after which the app hears of the change, if it
+/// was one, whoever asked for it: a click, a view of its own accord (a browser page's), or the
+/// app (`responders`).
+fn make_first_responder(this: &AnyObject, to: *mut AnyObject, superclass: &AnyClass) -> Bool {
+    unsafe {
+        let before: *mut AnyObject = msg_send![this, firstResponder];
+        let made: Bool = msg_send![super(this, superclass), makeFirstResponder: to];
+        let after: *mut AnyObject = msg_send![this, firstResponder];
+        if before != after {
+            crate::responders::tell(|responders| responders.changed(this, before, after));
+        }
+        made
+    }
+}
+
 // NSKeyedArchiverDelegate callback that skips objects which don't adopt `NSSecureCoding`
 // (the window itself and its NSView hierarchy), so encoding the window's restorable state
 // succeeds. AppKit still encodes the window frame and its persistent window-management
@@ -414,6 +437,18 @@ unsafe fn build_window_class(name: &CStr, superclass: &AnyClass) -> *const AnyCl
         let mut decl = ClassBuilder::new(name, superclass).unwrap();
         decl.add_ivar::<*mut c_void>(WINDOW_STATE_IVAR);
         crate::fast::composition::register_window_input(&mut decl, superclass);
+        // Koyo: each change of the first responder is told to the app (`responders`).
+        if superclass == class!(NSPanel) {
+            decl.add_method(
+                sel!(makeFirstResponder:),
+                make_panel_first_responder as extern "C" fn(_, Sel, *mut AnyObject) -> Bool,
+            );
+        } else {
+            decl.add_method(
+                sel!(makeFirstResponder:),
+                make_window_first_responder as extern "C" fn(_, Sel, *mut AnyObject) -> Bool,
+            );
+        }
         decl.add_method(sel!(dealloc), dealloc_window as extern "C" fn(_, Sel));
 
         decl.add_method(
@@ -3044,11 +3079,17 @@ fn lost_releases(
         _ => return Vec::new(),
     };
     lost.into_iter()
-        .map(|(button, _)| MouseUpEvent {
-            button,
-            position,
-            modifiers,
-            click_count: 1,
+        .map(|(button, _)| {
+            log::info!(
+                target: "koyo::input",
+                "input: GPUI is told of a release of its {button:?} button it never heard"
+            );
+            MouseUpEvent {
+                button,
+                position,
+                modifiers,
+                click_count: 1,
+            }
         })
         .collect()
 }

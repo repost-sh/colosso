@@ -97,6 +97,7 @@ fn init(cx: &mut App) {
     terminals::init(cx);
     #[cfg(target_os = "macos")]
     native::init(cx);
+    keyboard::init(cx);
 }
 
 /// The app's window: most of the screen, so the chat, the sidebar and the changes fit side
