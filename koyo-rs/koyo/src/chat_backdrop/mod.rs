@@ -14,10 +14,13 @@ mod strips;
 mod tests;
 mod texture;
 mod wallpaper;
+mod watch;
 
 use gpui_kit::{AnyElement, App, Hsla};
 
 pub use astc::Blocks;
+pub use screens::memory;
+pub use watch::init;
 
 use crate::settings;
 use crate::theme::Palette;

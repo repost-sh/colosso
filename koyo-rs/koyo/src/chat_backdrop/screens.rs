@@ -19,11 +19,14 @@ use super::blur::Small;
 use super::make::{self, Recipe};
 use super::texture::Texture;
 use super::wallpaper::{self, Wallpaper};
+use crate::settings::Quality;
 use crate::viewer::bitmap;
 
 #[derive(Default)]
 struct Screens {
     by_display: HashMap<u64, Screen>,
+    /// The screens Koyo's windows are on, as their display IDs and sizes in pixels.
+    windows: Vec<(u64, u32, u32)>,
 }
 
 impl Global for Screens {}
@@ -287,4 +290,41 @@ fn blurred_as(
     bitmap::release(old.into_iter().collect(), cx);
     blur_as_wanted(display, cx);
     cx.refresh_windows();
+}
+
+/// Notes the screens Koyo's windows are on, for the memory the Quality row names.
+pub fn note_windows(cx: &mut App) {
+    let mut screens: Vec<(u64, u32, u32)> = Vec::new();
+    for handle in cx.windows() {
+        let screen = handle.update(cx, |_, window, cx| {
+            let display = window.display(cx)?;
+            let size = display.bounds().size;
+            let pixels = |points: gpui_kit::Pixels| (points.as_f32() * window.scale_factor()).round() as u32;
+            Some((u64::from(display.id()), pixels(size.width), pixels(size.height)))
+        });
+        if let Ok(Some(screen)) = screen
+            && !screens.iter().any(|(display, ..)| *display == screen.0)
+        {
+            screens.push(screen);
+        }
+    }
+    screens.sort_unstable();
+    let noted = &mut cx.default_global::<Screens>().windows;
+    if *noted != screens {
+        *noted = screens;
+        cx.refresh_windows();
+    }
+}
+
+/// What the pictures of the screens Koyo's windows are on take at `quality`, as the Quality
+/// row says it; nothing before they're noted.
+pub fn memory(quality: Quality, cx: &App) -> String {
+    let screens = cx.try_global::<Screens>().map_or(&[][..], |screens| &screens.windows);
+    let bytes: usize = (screens.iter()).map(|&(_, width, height)| quality.bytes(width, height)).sum();
+    let megabytes = bytes as f64 / 1e6;
+    match screens.len() {
+        0 => String::new(),
+        1 => format!("About {megabytes:.1} MB on this screen."),
+        count => format!("About {megabytes:.1} MB on these {count} screens."),
+    }
 }

@@ -1,10 +1,11 @@
-//! Appearance: light, dark or the system's, the gradient glass of each, and the fonts.
+//! Appearance: light, dark or the system's, the gradient glass of each, the wallpaper behind
+//! chats, and the fonts.
 
 use gpui_kit::App;
 use gpui_kit::component::ActiveTheme as _;
 
 use super::components::{MenuButton, PillButton, SettingRow, SettingsSection};
-use super::fonts;
+use super::{chat_backdrop, fonts};
 use crate::gradient::{self, GradientTheme};
 use crate::picker;
 use crate::theme;
@@ -45,6 +46,7 @@ pub fn sections(cx: &App) -> Vec<SettingsSection> {
                         },
                     )),
             ),
+        chat_backdrop::section(cx),
         fonts::section(cx),
     ]
 }

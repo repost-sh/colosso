@@ -240,6 +240,12 @@ on by default, customizable, in Appearance]**
 | Blur starts | slider, High to Low | half way | when on and Blur is on |
 | Quality | slider, Smallest to Sharpest, the memory the stop takes on the person's screens under it | 8 × 8, full | when on |
 
+Built (`settings_view/chat_backdrop.rs`, `settings/chat_backdrop.rs`), the stops for now: Dim
+30, 45, 60, 75 and 90 %; Dot size ½, 1, 1½ and 2 pt; Density 0, ¼, ½, ¾ and 1, from five dot
+widths apart and 18 % dark to two and a half and 50 % (section 4); Blur strength 8, 16, 24, 36
+and 48 pt; Blur starts a quarter, three eighths, half, five eighths and three quarters of the
+way down; Quality its four stops (3.1). They're still to be tuned by eye (section 9).
+
 - **Rows show only when they apply**, not greyed out: with the switch off, the section is the
   switch alone. **[asked]** The settings pages are built from the settings as they draw, so a
   row left out is simply not added; the MCP server page does the same with its port and
@@ -248,9 +254,16 @@ on by default, customizable, in Appearance]**
 - **Search still finds it.** Settings search looks at the rows shown, so with the switch off
   "dim" or "blur" would find nothing. The switch's description names what it reveals, for
   instance "Your wallpaper, dimmed under a dot screen behind chats. Turn it on to set the dim,
-  the dots, the blur and the quality." **[proposed]**
+  the dot size and density, the blur, its strength and where it starts, and the quality."
+  **[proposed]** Built so: off, the switch's description says that; on, its first sentence
+  alone. The Blur switch does the same for its two rows while it's off ("Turn it on to set
+  its strength and where it starts."). A test searches the section on, with the blur off,
+  and off, for each row's word.
 - **The Quality row's memory** is worked out from the sizes of the screens Koyo's windows are
   on, summed for more than one: "About 3.7 MB on this screen." **[asked: shown; proposed: how]**
+  Built so, after "How sharp the wallpaper behind chats is kept, always compressed."; "on these
+  2 screens" for two. The screens are noted once a second (`screens.rs`, `note_windows`), as a
+  settings page is drawn from the settings alone, without its window.
 - Sliders are `NativeSlider` over stops, switches `NativeSwitch` (`settings_view/`), each
   value kept in `settings.json` as the stop's value, as the other sliders keep theirs. The
   stops' values are tuned by eye against the reference once built. **[proposed]**
@@ -358,7 +371,8 @@ is 489 lines, so its new field and default may need something moved out of it fi
    where the blur starts to the bottom. How they look waits for the agent desktop.
 5. The see-through composer and cards. **Built** (section 1); how they read waits for the
    agent desktop.
-6. The settings, their rows and their search wording.
+6. The settings, their rows and their search wording. **Built** (section 6); the stops'
+   values wait to be tuned by eye.
 7. Noticing a change of wallpaper, Space, screen and settings.
 8. The drag measured; Koyo's own drag only if the slip shows.
 9. A visual check, as the tab switcher has (`docs/tab-switcher.md` 7): the shell in a real
