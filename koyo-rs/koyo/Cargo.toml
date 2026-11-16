@@ -126,6 +126,7 @@ koyo-accounts = { path = "../koyo-accounts", features = ["testing"] }
 [target.'cfg(target_os = "macos")'.dependencies]
 # Browser pages (browser/native/): the browser host as a library, run in the app's own process.
 koyo-browser-host = { path = "../koyo-browser-host" }
+koyo-seam = { path = "../koyo-seam" }
 # GPUI's Metal renderer: the native surfaces pages, glass and controls are placed in
 # (`set_surface_pane`), and the tab switcher's pictures of the window (`set_surface_capture`)
 # (`vendor/README.md`).

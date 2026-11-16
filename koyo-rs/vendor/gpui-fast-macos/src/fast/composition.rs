@@ -231,6 +231,9 @@ fn route_keys(this: &AnyObject, event: Id, kind: NSEventType) {
     match kind {
         NSEventType::KeyDown | NSEventType::KeyUp => {
             crate::responders::tell(|responders| responders.key(this));
+            if kind == NSEventType::KeyUp {
+                gpui_hears_up(this, event);
+            }
         }
         NSEventType::FlagsChanged => {
             let root = unsafe { get_window_state(this) }.lock().native_view;
@@ -240,6 +243,26 @@ fn route_keys(this: &AnyObject, event: Id, kind: NSEventType) {
             }
         }
         _ => {}
+    }
+}
+
+/// Koyo: a key going up whose going down another view handed back to GPUI goes to GPUI's view
+/// too, as well as to the view that has the keyboard: what GPUI began on the key going down,
+/// a held arrow's repeat among it, ends on its going up.
+fn gpui_hears_up(this: &AnyObject, event: Id) {
+    let code: u16 = unsafe { msg_send![event, keyCode] };
+    let state = unsafe { get_window_state(this) };
+    let root = {
+        let mut state = state.lock();
+        let Some(at) = state.koyo_handed_back.iter().position(|held| *held == code) else {
+            return;
+        };
+        state.koyo_handed_back.swap_remove(at);
+        state.native_view
+    };
+    let first: Id = unsafe { msg_send![this, firstResponder] };
+    if first != root.as_ptr() {
+        let _: () = unsafe { msg_send![root.as_ptr(), keyUp: event] };
     }
 }
 

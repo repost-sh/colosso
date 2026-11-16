@@ -11,7 +11,7 @@ use std::rc::Rc;
 
 use block2::RcBlock;
 use gpui_kit::{App, Window};
-use gpui_macos::responders::{Responders, set_responders};
+use gpui_macos::responders::{self, Responders, set_responders};
 use koyo_browser_host::native::Views;
 use objc2::rc::{Retained, Weak};
 use objc2::runtime::{AnyObject, Bool, NSObjectProtocol, ProtocolObject};
@@ -206,6 +206,34 @@ impl Responders for Told {
     fn key(&self, window: &AnyObject) {
         if let Some(key) = key_of(window) {
             hooks::at_key(key);
+        }
+    }
+
+    fn key_route(
+        &self,
+        _window: &AnyObject,
+        key: responders::KeyOffered,
+        pass: responders::KeyPass,
+        first: responders::KeyFirst,
+    ) -> responders::KeyRoute {
+        use koyo_seam::keys::{First, Key, Pass, Route};
+        let key = Key {
+            command: key.command,
+            control: key.control,
+        };
+        let pass = match pass {
+            responders::KeyPass::Equivalent => Pass::Equivalent,
+            responders::KeyPass::HandBack => Pass::HandBack,
+        };
+        let first = match first {
+            responders::KeyFirst::Gpui => First::Gpui,
+            responders::KeyFirst::Native => First::Native,
+        };
+        match koyo_seam::keys::route(key, pass, first) {
+            Route::Whole => responders::KeyRoute::Whole,
+            Route::Bindings => responders::KeyRoute::Bindings,
+            Route::Deliver => responders::KeyRoute::Deliver,
+            Route::Drop => responders::KeyRoute::Drop,
         }
     }
 }

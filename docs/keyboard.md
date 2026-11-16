@@ -243,6 +243,13 @@ undone. What takes its place is one decision for each key where it enters the wi
 page's hand-back a call of its own, in the native layer (`docs/native-layer.md` 4.1 and 8).
 Until that's built, a ⌘ key in a page reaches both while Koyo isn't in front.
 
+Its first part is built: what GPUI's view does with a key offered to it while a page has the
+keyboard (`koyo-seam`, `keys::route`). `AppKit` offers function keys, the arrows among them, to
+GPUI's view before it delivers them, and GPUI's view passed them to the text system, which
+typed a control character into the page's field in the arrow's place (the owner, 2026-11-16:
+"arrows registers as spaces"). Such a key is the page's now; a ⌘ or ⌃ key is offered to Koyo's
+bindings first, as before; and a key the page hands back runs Koyo's bindings alone.
+
 ## 11. Floating panels and Spaces
 
 Koyo's floating windows (the address, the launcher, the switcher's panel, menus, dialogs) open

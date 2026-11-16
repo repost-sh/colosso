@@ -415,13 +415,21 @@ pub(crate) fn unhandled_key(pane: PaneId, event: *mut AnyObject) -> bool {
     if event.is_null() {
         return false;
     }
-    // As a shortcut, and not as a key press: the page has had the key, as text where it's
-    // text, and a view handed a key press it has no use for passes it on to the text system,
-    // which types it into whatever has the keyboard, the page, a second time.
-    // SAFETY: `event` is the `NSEvent` CEF is handling, alive through this call; a view is
-    // asked whether a key is a shortcut of its own as `AppKit` asks it.
+    // Handed back as what it is, where the app's view takes that (GPUI's does, with
+    // `koyoHandBackKey:`): the app runs its shortcuts on it and nothing else. Never as a key
+    // press: the page has had the key, as text where it's text, and a view handed a key press
+    // it has no use for passes it on to the text system, which types it into whatever has the
+    // keyboard, the page, a second time. A view that doesn't take a key handed back is asked
+    // as `AppKit` asks whether a key is a shortcut of its own.
+    // SAFETY: `event` is the `NSEvent` CEF is handling, alive through this call.
     unsafe {
-        let _: objc2::runtime::Bool = objc2::msg_send![&*home, performKeyEquivalent: event];
+        let hand_back = objc2::sel!(koyoHandBackKey:);
+        let takes: objc2::runtime::Bool = objc2::msg_send![&*home, respondsToSelector: hand_back];
+        let _: objc2::runtime::Bool = if takes.as_bool() {
+            objc2::msg_send![&*home, koyoHandBackKey: event]
+        } else {
+            objc2::msg_send![&*home, performKeyEquivalent: event]
+        };
     }
     true
 }
