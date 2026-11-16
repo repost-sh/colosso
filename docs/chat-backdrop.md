@@ -351,8 +351,9 @@ is 489 lines, so its new field and default may need something moved out of it fi
   goes. Measured against the picture uncompressed and dimmed 60 %, on the owner's wallpaper:
   8 × 8 full 40.9 dB, 4 × 4 half 39.7 dB, 4 × 4 full 47.0 dB, 8 × 8 half 36.7 dB. Under the
   first look the four stops looked alike at 2× (`.superpowers/v/evidence/20261116-141927-backdrop`,
-  `quality-*-x2.png`); under the dither they're to be shot again, as a cell samples the
-  picture at one point.
+  `quality-*-x2.png`), and again under the dither, 8 × 8 full and 4 × 4 half side by side
+  (`.superpowers/v/evidence/20261116-153057-dither-light`, `crop-*.png`). By the rule above
+  one of the two middle stops goes; which is the owner's call, so both stay until then.
 - Whether the ASTC texture is sampled as sRGB or not: GPUI's atlas holds plain BGRA and
   blends its colours as they are, so the texture's format should match, or the picture comes
   out darker. **Settled**: not as sRGB. Drawn through the renderer headless, a picture
@@ -368,7 +369,9 @@ is 489 lines, so its new field and default may need something moved out of it fi
 - The text's contrast over the see-through composer and cards, at each Opacity stop, in both
   appearances. Under the first look, the picture showing 40 % (Dim 60 %), text over the
   brightest and darkest bands was hard to read in both appearances; at 25 % and less it read
-  everywhere. The dither at its default 24 % is to be checked the same way.
+  everywhere. **Settled for the dither**: at its default 24 %, and at 35 %, the text reads
+  cleanly over it in both appearances (`.superpowers/v/evidence/20261116-152949-dither` and
+  `…-153057-dither-light`).
 - What macOS names for a moving (aerial) wallpaper: a still the backdrop can use, or nothing,
   which shows the card. **Unverified**, and left so: no wallpaper is changed to find out,
   the agent desktop's included, as it's the owner's system. What the code does with it: a
@@ -380,7 +383,9 @@ is 489 lines, so its new field and default may need something moved out of it fi
   Koyo as it runs. **Settled**: the bundled app made screen 4's picture from the owner's
   `Radial Yellow.heic` (its log, 2026-11-16 14:19:37).
 - The stops' values for Opacity, Cell size, Density and the fade, by eye against the
-  reference (`.superpowers/ref/reference.jpg`, the owner's screenshot of Monodrive).
+  reference (`.superpowers/ref/reference.jpg`, the owner's screenshot of Monodrive). The
+  defaults are Monodrive's (24 %, 2 px, its density, 18 % to 72 %) and looked like the
+  reference on screen; 35 % comes closer to its brightest parts. The owner's eye decides.
 
 ## 10. Order of work [proposed]
 
@@ -430,5 +435,9 @@ is 489 lines, so its new field and default may need something moved out of it fi
     nothing like the reference.
 11. The reference's look: Monodrive's dither and fade, drawn by the renderer's shader as the
     texture is sampled (section 4), the picture made without the dim, the blurred copy and
-    dot tile gone, the settings mapped onto it (section 6). **Written; not built yet**: the
-    Mac's builds are paused while the owner's keyboard fix is installed.
+    dot tile gone, the settings mapped onto it (section 6). **Built** (`afab5daec`), tested
+    headless through the real renderer (a mid-grey lights 8 cells of 16, density 1.5 lights
+    12, the opacity and the fade as section 1 says), and shot in a test Koyo on the agent
+    desktop on 2026-11-16, dark and light: the wallpaper in its own colours in 2 × 2 cells
+    fixed to the screen, faint at the top, gone by three quarters down, the picture made in
+    100 to 300 ms.
