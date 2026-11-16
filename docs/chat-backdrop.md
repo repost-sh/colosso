@@ -96,9 +96,9 @@ settled once it's built.
   | **ASTC 8 × 8 (2 bits a pixel), the default** | **3.7 MB** | 0.9 MB |
 
   While it's made, the bitmap takes 59 MB for the fifth of a second that takes (section 9),
-  and is freed. A
-  screen's texture is let go once no chat on that screen shows it, and made again when one
-  does. The blurred copy is about 1 MB and the dot tile next to nothing (section 4).
+  and is freed. A screen's texture is let go once no chat on that screen shows it, and made
+  again when one does. The blur is 1.2 MB, as GPUI holds an image twice, the small copy it's
+  blurred from, kept to blur again, 0.6 MB, and a dot tile 0.5 MB (section 4).
   **[asked: 8 × 8 at full resolution; proposed: letting go]**
 - **Quality is the person's to pick** (section 6): four stops, always compressed, never the
   uncompressed picture. **[asked]**
@@ -178,10 +178,27 @@ settled once it's built.
   is a stack of thin strips across the lower part of the pane, each a little more opaque than
   the one above it, from nothing where the blur starts to whole at the bottom. Since the
   copy is smooth, the strips' steps don't show. The surface path has no opacity, which is why
-  the blur isn't drawn through it. **[proposed]**
+  the blur isn't drawn through it. **[proposed]** Built as proposed (`chat_backdrop/strips.rs`,
+  `blur.rs`): the copy is a tenth of the screen's pixels a side (512 × 288 on the owner's
+  screen, 0.6 MB, held twice as a GPUI image), made with the picture from its bitmap, and
+  blurred by three box blurs one after another, which come within a tenth of a Gaussian's
+  width, a sixth at the softest stop; Blur strength is that Gaussian's sigma, as CSS's
+  `blur()` takes it. A change of strength blurs the copy again, which is kept, without making
+  the picture again. The fade is 32 strips, each a thirty-second more opaque. Each strip draws
+  the whole blur, as big as the screen, clipped to the strip, so no strip cuts the image and
+  none of them moves it by a part of a pixel.
 - **The dots** are a small tile, repeated across the pane as `backdrop::grain` repeats its
   grain, one tile pixel a screen pixel, its origin on the screen's so the grid holds still.
-  Over the blur its strips fade out as the blur's fade in. **[proposed]**
+  Over the blur its strips fade out as the blur's fade in. **[proposed]** Built as proposed
+  (`dots.rs`, `strips.rs`): the tile is about 256 pixels a side, whole dots across and whole
+  pairs of rows down, black, each dot's coverage measured at 16 points a pixel. A row's dots
+  are an even number of pixels apart, so the next row's sit half way between them on whole
+  pixels, and the rows are a triangle's height apart, so each dot is as far from the six
+  round it. A dot an even number of pixels wide sits on a pixel's corner, an odd one on its
+  middle, so either fills whole pixels. Density takes the dots from five of their widths
+  apart to two and a half, and their darkness from 18 % to 50 %; the stops are still to be
+  tuned by eye (section 9). Tiles are made the first time a size, density and scale ask for
+  one, and the last four are kept.
 - **Order, bottom up:** the picture, the blur's strips, the dots' strips, then the chat.
 - **While dragging, the backdrop may slip by a frame.** Koyo's window is dragged by macOS
   (`start_window_move`, which is `performWindowDragWithEvent`), which moves it before Koyo
@@ -330,7 +347,9 @@ is 489 lines, so its new field and default may need something moved out of it fi
    screens' pictures (`screens.rs`, `texture.rs`) and the chat's element (`element.rs`, the
    chat view's first child), the setting's values in `settings.json` (`settings/chat_backdrop.rs`).
    The screenshots wait for the agent desktop.
-4. The blur's strips and the dots' tiles.
+4. The blur's strips and the dots' tiles. **Built**: `blur.rs`, `dots.rs`, `strips.rs`;
+   tested for the blur's width, the dots' places in their tile and the strips meeting from
+   where the blur starts to the bottom. How they look waits for the agent desktop.
 5. The see-through composer and cards.
 6. The settings, their rows and their search wording.
 7. Noticing a change of wallpaper, Space, screen and settings.

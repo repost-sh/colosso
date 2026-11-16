@@ -3,16 +3,19 @@
 //! blurred towards the bottom.
 
 mod astc;
+mod blur;
+mod dots;
 mod element;
 mod layout;
 mod make;
 mod screens;
+mod strips;
 #[cfg(test)]
 mod tests;
 mod texture;
 mod wallpaper;
 
-use gpui_kit::{AnyElement, App, IntoElement as _};
+use gpui_kit::{AnyElement, App};
 
 pub use astc::Blocks;
 
@@ -21,6 +24,6 @@ use crate::settings;
 /// The backdrop behind a chat, filling its parent, which must be `relative`; none while it's
 /// turned off, and the card shows.
 pub fn backdrop(cx: &App) -> Option<AnyElement> {
-    let on = settings::get(cx).chat_backdrop.on;
-    on.then(|| element::Picture.into_any_element())
+    let settings = settings::get(cx).chat_backdrop;
+    settings.on.then(|| strips::backdrop(settings))
 }
