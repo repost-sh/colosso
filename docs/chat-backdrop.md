@@ -269,8 +269,9 @@ Quality its three stops (3.1). They're still to be tuned by eye (section 9).
 - **The Quality row's memory** is worked out from the sizes of the screens Koyo's windows are
   on, summed for more than one: "About 3.7 MB on this screen." **[asked: shown; proposed: how]**
   Built so, after "How sharp the wallpaper behind chats is kept, always compressed."; "on these
-  2 screens" for two. The screens are noted once a second (`screens.rs`, `note_windows`), as a
-  settings page is drawn from the settings alone, without its window.
+  2 screens" for two. The screens are `AppKit`'s, asked as the row is drawn: the screen of
+  each of the app's visible windows, once each, at its size in pixels
+  (`wallpaper.rs`, `screens_of_windows`).
 - Sliders are `NativeSlider` over stops, switches `NativeSwitch` (`settings_view/`), each
   value kept in `settings.json` as the stop's value, as the other sliders keep theirs. The
   stops' values are tuned by eye against the reference once built. **[proposed]**

@@ -44,7 +44,7 @@ pub fn section(cx: &App) -> SettingsSection {
         ));
     let quality = format!(
         "How sharp the wallpaper behind chats is kept, always compressed. {}",
-        chat_backdrop::memory(backdrop.quality, cx)
+        chat_backdrop::memory(backdrop.quality)
     );
     section
         .row(slider(

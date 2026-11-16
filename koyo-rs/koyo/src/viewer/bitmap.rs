@@ -74,8 +74,14 @@ impl Canvas {
 
     /// Fills the bitmap with opaque white, as paper.
     pub fn paper(&self) {
-        CGContext::set_rgb_fill_color(Some(&self.context), 1., 1., 1., 1.);
-        CGContext::fill_rect(Some(&self.context), self.bounds());
+        self.fill(self.bounds(), [1., 1., 1.]);
+    }
+
+    /// Paints `rect`, in the context's own coordinates, in `colour`, opaque red, green and blue.
+    pub fn fill(&self, rect: CGRect, colour: [CGFloat; 3]) {
+        let [r, g, b] = colour;
+        CGContext::set_rgb_fill_color(Some(&self.context), r, g, b, 1.);
+        CGContext::fill_rect(Some(&self.context), rect);
     }
 
     /// The pixels as a frame GPUI can show, held on screen for `delay` when it's one of an

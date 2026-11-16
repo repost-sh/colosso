@@ -115,7 +115,7 @@ impl Quality {
     /// The quality at `stop` along the Quality slider.
     pub fn at(stop: f32) -> Quality {
         let index = stop.round().clamp(0., (Quality::ALL.len() - 1) as f32) as usize;
-        Quality::ALL.get(index).copied().unwrap_or_default()
+        Quality::ALL[index]
     }
 }
 

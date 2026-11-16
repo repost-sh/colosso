@@ -8,10 +8,11 @@ use std::time::SystemTime;
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
 use objc2_app_kit::{
-    NSColor, NSColorSpace, NSScreen, NSWorkspace, NSWorkspaceDesktopImageAllowClippingKey,
-    NSWorkspaceDesktopImageFillColorKey, NSWorkspaceDesktopImageScalingKey,
+    NSApplication, NSColor, NSColorSpace, NSScreen, NSWorkspace,
+    NSWorkspaceDesktopImageAllowClippingKey, NSWorkspaceDesktopImageFillColorKey,
+    NSWorkspaceDesktopImageScalingKey,
 };
-use objc2_foundation::{NSNumber, NSString};
+use objc2_foundation::{NSNumber, NSString, ns_string};
 
 use super::layout::Scaling;
 
@@ -81,9 +82,27 @@ fn screen(display: u32, main: MainThreadMarker) -> Option<Retained<NSScreen>> {
 
 /// The display ID of `screen`, as its `NSScreenNumber`, which GPUI's display IDs are on macOS.
 fn number(screen: &NSScreen) -> Option<u32> {
-    let key = NSString::from_str("NSScreenNumber");
-    let value = screen.deviceDescription().objectForKey(&key)?;
+    let value = (screen.deviceDescription()).objectForKey(ns_string!("NSScreenNumber"))?;
     Some(value.downcast::<NSNumber>().ok()?.unsignedIntValue())
+}
+
+/// The size in pixels of each screen the app's visible windows are on, once each.
+pub fn screens_of_windows(main: MainThreadMarker) -> Vec<(u32, u32)> {
+    let mut seen = Vec::new();
+    let mut sizes = Vec::new();
+    for window in NSApplication::sharedApplication(main).windows() {
+        let Some(screen) = window.screen().filter(|_| window.isVisible()) else {
+            continue;
+        };
+        let Some(display) = number(&screen).filter(|display| !seen.contains(display)) else {
+            continue;
+        };
+        seen.push(display);
+        let (size, scale) = (screen.frame().size, screen.backingScaleFactor());
+        let pixels = |points: f64| (points * scale).round() as u32;
+        sizes.push((pixels(size.width), pixels(size.height)));
+    }
+    sizes
 }
 
 /// `colour` in sRGB, from 0 to 1, if it's one that converts.

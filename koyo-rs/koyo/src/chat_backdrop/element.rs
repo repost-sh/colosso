@@ -3,7 +3,7 @@
 //! pane, so only the pane's part reaches the GPU, and two panes side by side meet without a
 //! seam and show one dither. Moving or resizing the window only moves where it's placed: GPUI
 //! draws the whole window again as the window moves (`Window::bounds_changed`). The renderer
-//! dithers it, sets its opacity and fades it down the pane as it draws it (`texture::Look`).
+//! dithers it, sets its opacity and fades it down the pane as it draws it (`Texture::mark`).
 
 use gpui_kit::{
     App, Bounds, ContentMask, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
@@ -12,7 +12,6 @@ use gpui_kit::{
 
 use super::make::Recipe;
 use super::screens::{self, Hold};
-use super::texture::Look;
 use crate::settings::ChatBackdrop;
 
 /// The screen's wallpaper behind a chat, filling its parent, which must be `relative`, looking
@@ -97,13 +96,12 @@ impl Element for Picture {
             self.settings,
             cx,
         );
-        let look = Look::of(self.settings);
-        let Some(placeholder) = screens::picture(display, recipe, look, cx) else {
+        let Some(placeholder) = screens::picture(display, recipe, self.settings, cx) else {
             return;
         };
-        // The pane as far as it's on the screen: what the renderer clips to and fades down.
-        let shown = bounds.intersect(&screen);
-        window.with_content_mask(Some(ContentMask { bounds: shown }), |window| {
+        // Clipped to the pane, which the renderer fades down; it draws only what's also on the
+        // screen.
+        window.with_content_mask(Some(ContentMask { bounds }), |window| {
             window.paint_surface(screen, placeholder);
         });
     }
@@ -140,7 +138,6 @@ fn recipe(
             f64::from(size.height.as_f32()),
         ),
         scale: f64::from(scale),
-        blocks: backdrop.quality.blocks(),
-        resolution: backdrop.quality.resolution(),
+        quality: backdrop.quality,
     })
 }
