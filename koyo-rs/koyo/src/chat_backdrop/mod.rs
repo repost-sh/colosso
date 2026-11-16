@@ -15,15 +15,27 @@ mod tests;
 mod texture;
 mod wallpaper;
 
-use gpui_kit::{AnyElement, App};
+use gpui_kit::{AnyElement, App, Hsla};
 
 pub use astc::Blocks;
 
 use crate::settings;
+use crate::theme::Palette;
 
 /// The backdrop behind a chat, filling its parent, which must be `relative`; none while it's
 /// turned off, and the card shows.
 pub fn backdrop(cx: &App) -> Option<AnyElement> {
     let settings = settings::get(cx).chat_backdrop;
     settings.on.then(|| strips::backdrop(settings))
+}
+
+/// The fill of what floats over a chat where there's no glass: over the backdrop, the card's
+/// own colour, as see-through as the card is, so the backdrop shows through as it does through
+/// glass; solid otherwise (`Palette::floating`).
+pub fn fill(p: Palette, cx: &App) -> Hsla {
+    if settings::get(cx).chat_backdrop.on {
+        p.card
+    } else {
+        p.floating()
+    }
 }

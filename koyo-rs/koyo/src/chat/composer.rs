@@ -406,7 +406,9 @@ impl Render for ChatComposer {
             .children(crate::marks::mark("chat-composer"))
             .occlude();
         let typed = self.text.read(cx).value();
-        let surface = Self::takes_drops(liquid::floating(surface, on_glass, p), p, cx)
+        let fill = crate::chat_backdrop::fill(p, cx);
+        let surface = liquid::floating_filled(surface, on_glass, fill, p);
+        let surface = Self::takes_drops(surface, p, cx)
             .children(self.drawer(&typed, p, cx))
             .children(self.held_queue(p, cx))
             .children(self.tiles(p, cx))

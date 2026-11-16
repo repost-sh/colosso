@@ -35,7 +35,13 @@ settled once it's built.
   reference. **[asked]**
 - **The composer and the floating cards are see-through** over it: the prompt, the details
   card and the floating prompt take a translucent fill, so the blur shows behind them. Their
-  text's contrast is checked at every Dim stop (section 9). **[asked]**
+  text's contrast is checked at every Dim stop (section 9). **[asked]** Where macOS has
+  Liquid Glass (26 on), the three are glass, as they were, and glass shows what's under it
+  already. Where it hasn't, and in the visual check, which draws glass as the fill it falls
+  back to, they're filled in the card's own colour, as see-through as the card is (60 % in
+  the dark appearance, 65 % in the light), where they were the card's colour solid
+  (`chat_backdrop::fill`, `native/liquid.rs`, `floating_filled`). **[proposed: the fill]** The
+  scroll pill and the details card's buttons keep theirs.
 - **With nothing to show, the plain card**, as today: when the setting is off, when the
   wallpaper is a moving one macOS gives no still of, or when its file can't be read.
   **[asked]**
@@ -350,7 +356,8 @@ is 489 lines, so its new field and default may need something moved out of it fi
 4. The blur's strips and the dots' tiles. **Built**: `blur.rs`, `dots.rs`, `strips.rs`;
    tested for the blur's width, the dots' places in their tile and the strips meeting from
    where the blur starts to the bottom. How they look waits for the agent desktop.
-5. The see-through composer and cards.
+5. The see-through composer and cards. **Built** (section 1); how they read waits for the
+   agent desktop.
 6. The settings, their rows and their search wording.
 7. Noticing a change of wallpaper, Space, screen and settings.
 8. The drag measured; Koyo's own drag only if the slip shows.
