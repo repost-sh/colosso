@@ -107,6 +107,8 @@ impl Element for PageSurface {
             });
         }
         let hitbox = window.insert_hitbox(shown, HitboxBehavior::Normal);
+        #[cfg(debug_assertions)]
+        crate::marks::note(format!("page-{pane}"), shown, window);
         let grips = if free {
             grips::hitboxes(shown, window)
         } else {

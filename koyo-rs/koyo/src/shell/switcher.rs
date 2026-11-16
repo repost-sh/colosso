@@ -236,6 +236,8 @@ impl Render for Switcher {
             .collect();
         div()
             .size_full()
+            .relative()
+            .children(crate::marks::mark("tab-switcher"))
             .flex()
             .items_center()
             .p(px(PADDING * self.scale))

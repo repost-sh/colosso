@@ -152,6 +152,8 @@ fn address(
         .id(id)
         .on_hover(hover)
         .key_context("BrowserAddress")
+        .relative()
+        .children(crate::marks::mark("browser-address"))
         .ml_1()
         .h(px(26.))
         .min_w_0()

@@ -196,6 +196,15 @@ GPUI never heard and is told of is one line at `koyo::input`.
 Each to be run on the owner's machine with his go, Koyo's log open at `koyo::keyboard`. Each
 says where the text must land and what the log must say; nothing typed may appear in the log.
 
+A debug build's harness (`KOYO_NATIVE_PROBE`, `browser/native/probe.rs`) reads what a check
+needs without a look at the screen:
+
+| Command | What it says or does |
+| --- | --- |
+| `keyboard` | for each window the keyboard is kept for: its holder (kind and pane), its first responder's kind, whether it's key; and whether Koyo is the app in front |
+| `bounds <name>` | where a named part was last drawn, in points from its window's top left, and which window: `chat-composer`, `browser-address`, `page-<pane>` (the browser host's pane id), `tab-switcher` (`crate::marks`, debug builds only: GPUI records its own debug selectors only in test builds) |
+| `key` | the window made the key window, Koyo left behind, for the agent desktop, where a click may not make it key (`key <code> <chars> …` is still a key typed) |
+
 1. A pinned tab: click into its page, type; click the chat's composer, type. Text in the page,
    then in the composer; lines `… → page N (click)`, `page N → gpui (…) (focus moved)`.
 2. With the composer holding, open a pinned page (one that opens and loads by itself); type in
@@ -217,3 +226,49 @@ says where the text must land and what the log must say; nothing typed may appea
     line in the middle of a composition.
 11. An agent typing into its page (`browser_type`) while the person types in the composer.
     Neither's text lands in the other; any `asked for the keyboard` line is refused.
+
+## 10. One key, one owner
+
+A key going to a page and to Koyo both was two owners for one key: a ⌘L in a page opened Koyo's
+address and typed an `l` in the page, on the agent desktop, where Koyo is never the app in front
+and `AppKit` makes no pass of key equivalents of its own. Koyo goes by Chrome's split:
+
+- **The keys Koyo keeps** go to Koyo and never to the page, whoever has the keyboard: the tab and
+  window keys (`keyboard/reserved.rs`, checked against the keymap by a test).
+
+  | Key | Koyo's |
+  | --- | --- |
+  | ⌘T | a new tab |
+  | ⌘W | the tab closed |
+  | ⌘N | a new worktree |
+  | ⌘L | the address |
+  | ⌘⇧T | a closed tab back |
+  | ⌘Q | quitting |
+  | ⌃⇥, ⌃⇧⇥ | the tab switcher |
+
+  Koyo binds no ⌘1 to ⌘9. ⌥↑, ⌥↓, ⌥← and ⌥→, which move among tabs and projects, aren't kept:
+  they move the caret in a page's text.
+- **Every other key Koyo binds** goes to a page that has the keyboard first, and to Koyo only once
+  the page leaves it (the browser host's `unhandled_key`): a web app's own ⌘K, ⌘B or ⌘Enter
+  works in it. With GPUI's view holding, Koyo has every key it binds first, as before.
+- **One event is dispatched by GPUI once at most**, matched by its time, however often it's
+  offered to GPUI's view: by `AppKit`'s pass, by the window's key routing (which offers a ⌘ or ⌃
+  key to GPUI's view before delivering it while a page has the keyboard, as `AppKit` makes no
+  pass while Koyo isn't in front), and handed back by the page (vendored gpui-fast-macos,
+  `responders::Offers`). ⌘, (Settings), in Koyo's app menu, is the menu's before the page's.
+  A modifier pressed alone reaches the page, as in any browser.
+
+## 11. Floating panels and Spaces
+
+Koyo's floating windows (the address, the launcher, the switcher's panel, menus, dialogs) open
+on the Space in front, not on their window's (`native/window.rs`, `float_on_its_space`), and
+are unseen while Koyo isn't the app in front (`hidesOnDeactivate`), which on the agent desktop,
+where Koyo never is, is always. Making each a child window of the window it's over
+(`addChildWindow:ordered:`) would keep it on that window's Space and screen. They're left as
+they are, as that isn't plainly right without a check on screen:
+
+- `addChildWindow:` orders a child window in: the switcher's panel, which opens unseen and shows
+  only once ⌃ has been held a moment, would show at once, unless it's made a child as it shows.
+- A child window's level and order against its parent and other floating windows, under
+  `hidesOnDeactivate` and with the parent full screen, can't be seen off screen.
+- A panel goes as its window moves anyway (`popup.rs`), so following it adds nothing there.

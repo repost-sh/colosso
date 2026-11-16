@@ -27,6 +27,7 @@ mod language;
 mod launcher;
 mod list;
 mod logs;
+mod marks;
 mod menu;
 mod modal;
 mod model;

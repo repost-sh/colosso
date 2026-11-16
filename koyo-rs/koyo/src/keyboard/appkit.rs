@@ -208,6 +208,27 @@ impl Responders for Told {
             hooks::at_key(key);
         }
     }
+
+    fn gpui_first(&self, window: &AnyObject, keystroke: &gpui_kit::Keystroke) -> bool {
+        key_of(window).is_none_or(|key| hooks::gpui_first(key, keystroke))
+    }
+}
+
+/// Each window the keyboard is kept for, its holder, its first responder and whether it's key,
+/// and whether the app is in front.
+#[cfg(debug_assertions)]
+pub fn describe() -> String {
+    let active = MainThreadMarker::new().is_some_and(|main| {
+        objc2_app_kit::NSApplication::sharedApplication(main).isActive()
+    });
+    let windows: Vec<WindowKey> = KNOWN.with(|known| known.borrow().keys().copied().collect());
+    let mut lines = vec![format!("app active {active}")];
+    for window in windows {
+        let holder = super::held(window).map_or("not known".to_owned(), |(holder, _)| holder.to_string());
+        let first = Real.first_responder(window);
+        lines.push(format!("window {window}: holder {holder}, first responder {first}, key {}", Real.is_key(window)));
+    }
+    lines.join("; ")
 }
 
 /// Has `heard` hear `AppKit`'s notification `name`, from any object, as it's posted.
