@@ -15,6 +15,7 @@ use gpui_kit::{App, Context, Entity, FocusHandle, Focusable as _, Window};
 
 use super::Shell;
 use crate::files::FilePane;
+use crate::keyboard::{self, Cause, Part, Surface};
 use crate::model::{Pane, PaneKind, Spot};
 use crate::navigation::Route;
 
@@ -227,7 +228,12 @@ impl Shell {
             return;
         }
         let id = pane.id;
+        let surface = match pane.view() {
+            Some(browser) => Surface::Page(browser.read(cx).page_id()),
+            None => Surface::Gpui(Part::Pane(id)),
+        };
         cx.defer_in(window, move |this, window, cx| {
+            keyboard::set(window, surface, Cause::TabShown);
             keys.take(window, cx);
             this.enter_pane(id, cx);
         });

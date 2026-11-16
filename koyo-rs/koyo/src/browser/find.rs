@@ -7,7 +7,7 @@ use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::Button;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::{
-    AppContext as _, Context, Div, Entity, InteractiveElement as _, KeyDownEvent,
+    AppContext as _, Context, Div, Entity, Focusable as _, InteractiveElement as _, KeyDownEvent,
     ParentElement as _, Styled as _, Subscription, Window, div, px,
 };
 use koyo_browser_ipc::{AppRequest, ViewAction};
@@ -32,6 +32,13 @@ pub(super) struct FindBar {
     count: u32,
     active: u32,
     _typed: Subscription,
+}
+
+impl FindBar {
+    /// Whether GPUI's focus is in its field.
+    pub(super) fn has_focus(&self, window: &Window, cx: &gpui_kit::App) -> bool {
+        self.input.read(cx).focus_handle(cx).contains_focused(window, cx)
+    }
 }
 
 impl BrowserView {

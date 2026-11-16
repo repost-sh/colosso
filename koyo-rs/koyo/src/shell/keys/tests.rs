@@ -3,6 +3,7 @@
 
 use gpui_kit::{AnyWindowHandle, AppContext as _, Entity, Focusable as _, TestAppContext};
 
+use crate::keyboard::{self, Holder, Part};
 use crate::model::PaneKind;
 use crate::shell::{CloseTab, Shell};
 use crate::test_support::{
@@ -360,4 +361,26 @@ fn a_pane_closed_with_the_keyboard_at_the_window_leaves_it_there(cx: &mut TestAp
         keyboard_at_window(window, &shell, cx),
         "it wasn't in the pane closed"
     );
+}
+
+/// The keyboard's holder hears where GPUI's focus is: in a page opened to be used, out of it for
+/// the window's own keys, and in it again as its tab is asked for.
+#[gpui_kit::test]
+fn the_keyboards_holder_follows_the_page_in_and_out(cx: &mut TestAppContext) {
+    let (window, shell) = shell("shell-page-holder", cx);
+    // Heard only in the key window, as GPUI tells focus moves only there.
+    (cx.update_window(window, |_, window, _| window.activate_window())).unwrap();
+    cx.run_until_parked();
+    let pane = new_page(window, &shell, cx);
+    let page_id = shell.read_with(cx, |shell, cx| {
+        shell.workspace.pane(pane).unwrap().view().unwrap().read(cx).page_id()
+    });
+    assert_eq!(typing_in(window, &shell, cx), Some(pane));
+    assert_eq!(keyboard::holder(window), Some(Holder::Page(page_id)));
+    keys_to_window(window, &shell, cx);
+    draw(window, cx);
+    assert_eq!(keyboard::holder(window), Some(Holder::Gpui(Part::Other)));
+    shell.update(cx, |shell, cx| shell.show_tab_holding(pane, cx));
+    assert_eq!(typing_in(window, &shell, cx), Some(pane));
+    assert_eq!(keyboard::holder(window), Some(Holder::Page(page_id)));
 }
