@@ -154,7 +154,9 @@ settled once it's built.
   Moving or resizing the window only moves where it's placed. GPUI tells of both through
   `observe_window_bounds`, and redraws the whole window as it does, the views it would
   otherwise keep from the last frame included (`Window::bounds_changed`, vendored
-  `release_gpui/src/window.rs`). **[proposed]**
+  `release_gpui/src/window.rs`). The window's bounds are its screen's, from that screen's top
+  left, so the screen lies at the negative of the window's origin (`chat_backdrop/element.rs`,
+  `Picture`). **[proposed]**
 - **Through the renderer's surface path.** The vendored Metal renderer already draws a
   texture over one rectangle and clipped to another, with rounded clips, for a browser page's
   frame (`draw_page_surface` and `page_surface_fragment`, `vendor/README.md`). The fragment
@@ -164,7 +166,12 @@ settled once it's built.
   `metal_renderer.rs`): a placeholder BGRA pixel buffer marked as standing for a texture the
   app registered with the renderer, drawn with the page pipeline over the screen's rectangle,
   clipped to the pane. A `Koyo:` change, described in `vendor/README.md` as the others are.
-  **[proposed]**
+  **[proposed]** Built as proposed: `register_texture` makes the texture of the blocks from
+  any thread, on the system's GPU, as `ASTC_4x4_LDR` or `ASTC_8x8_LDR` (section 9), and gives
+  it a number; `set_surface_texture` marks a pixel standing for it (`Mark::Texture`);
+  `release_texture` lets it go. A test draws a picture so through the real renderer, headless,
+  and finds it where it was laid out, its colours as they were, and nothing past the pane
+  (`chat_backdrop/tests.rs`).
 - **The blur** is a blurred copy of the dimmed picture, small (it's smooth, so about a tenth
   of the screen's size, about 1 MB), drawn as an ordinary GPUI image. GPUI can't fade an
   image with a gradient, but it applies an element's opacity to the images in it, so the blur
@@ -189,7 +196,10 @@ settled once it's built.
 Once the picture is made, a frame draws one texture clipped to the pane, the blur's strips
 and the dots' tiles, all sampled by the GPU. Nothing is decoded, blurred or compressed while
 the window moves, resizes or scrolls. The picture is made again only when what it's made from
-changes (3.1), off the main thread, while the card shows until it's ready.
+changes (3.1), off the main thread. The card shows until a screen's first picture is ready;
+after that the last one made shows until the next is, so moving the Dim slider along shows
+each stop in turn rather than the card between them. One picture of a screen is made at a
+time, and the last one asked for next (`chat_backdrop/screens.rs`). **[proposed]**
 
 ## 6. Settings
 
@@ -293,7 +303,10 @@ is 489 lines, so its new field and default may need something moved out of it fi
   half 36.7 dB. The screenshots are still to be taken.
 - Whether the ASTC texture is sampled as sRGB or not: GPUI's atlas holds plain BGRA and
   blends its colours as they are, so the texture's format should match, or the picture comes
-  out darker.
+  out darker. **Settled**: not as sRGB. Drawn through the renderer headless, a picture
+  dimmed to 128 comes out 128 as `ASTC_8x8_LDR`, and 54 as `ASTC_8x8_sRGB`, which takes the
+  colours out of sRGB as it samples them (`the_gpu_draws_a_screens_picture_as_it_was_laid_out_and_only_where_its_pane_is`;
+  the sRGB format tried once and put back).
 - How far the backdrop slips while the window is dragged, recorded on the real window.
 - The text's contrast over the see-through composer and cards, at each Dim stop, in both
   appearances.
@@ -313,7 +326,10 @@ is 489 lines, so its new field and default may need something moved out of it fi
    the main thread, as AppKit asks of its screens), `make.rs` and `astc.rs`, tested by
    compressing a picture and reading its blocks back; times in section 9.
 3. The renderer's texture mark, and the chat view drawing the picture cropped to its pane.
-   Screenshots of the real app on this checkout.
+   Screenshots of the real app on this checkout. **Built**: the mark (section 4), the
+   screens' pictures (`screens.rs`, `texture.rs`) and the chat's element (`element.rs`, the
+   chat view's first child), the setting's values in `settings.json` (`settings/chat_backdrop.rs`).
+   The screenshots wait for the agent desktop.
 4. The blur's strips and the dots' tiles.
 5. The see-through composer and cards.
 6. The settings, their rows and their search wording.

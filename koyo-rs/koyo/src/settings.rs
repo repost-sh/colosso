@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 mod accounts;
 mod chat_activity;
+mod chat_backdrop;
 mod chat_details;
 mod chat_mode;
 mod chat_verbosity;
@@ -26,6 +27,7 @@ mod save_scope;
 
 pub use accounts::{AccountSettings, SetAccountsThreshold};
 pub use chat_activity::{ChatActivity, SetChatActivity};
+pub use chat_backdrop::ChatBackdrop;
 pub use chat_details::{ChatDetails, DetailsItem, FlipDetailsItem};
 pub use chat_mode::{SetChatMode, chat_mode_label, chat_mode_menu};
 pub use chat_verbosity::{Preset, SetChatVerbosity, Shows, Step, Verbosity};
@@ -179,6 +181,8 @@ pub struct Settings {
     pub floating_prompts: bool,
     /// What the composer's edge does while the agent or a subagent works.
     pub chat_activity: ChatActivity,
+    /// The wallpaper behind a chat (`docs/chat-backdrop.md`).
+    pub chat_backdrop: ChatBackdrop,
     /// The commands a person keeps for each project.
     pub project_scripts: ProjectScripts,
     /// How hard the agent works in a chat not set to anything else, as far as its model can.
@@ -287,6 +291,7 @@ impl Default for Settings {
             chat_width: ChatWidth::default(),
             floating_prompts: true,
             chat_activity: ChatActivity::default(),
+            chat_backdrop: ChatBackdrop::default(),
             project_scripts: ProjectScripts::default(),
             chat_effort: koyo_agent::protocol::model::Effort::Xhigh,
             chat_mode: None,
