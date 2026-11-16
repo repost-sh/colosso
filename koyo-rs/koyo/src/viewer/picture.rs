@@ -216,6 +216,23 @@ fn frame(
     see_through: bool,
     delay: Option<Duration>,
 ) -> Result<image::Frame, String> {
+    let image = thumbnail(source, index, longest)?;
+    draw(&image, see_through, delay)
+}
+
+/// Image `index` of the picture at `path`, decoded as the viewer decodes it: its longest side
+/// at most `longest`, upright, its colours in sRGB.
+pub fn decoded(path: &Path, index: usize, longest: u32) -> Result<CFRetained<CGImage>, String> {
+    let source = source(path)?;
+    thumbnail(&source, index, longest)
+}
+
+/// Image `index` of `source`, its longest side at most `longest`.
+fn thumbnail(
+    source: &CGImageSource,
+    index: usize,
+    longest: u32,
+) -> Result<CFRetained<CGImage>, String> {
     let most = CFNumber::new_i64(i64::from(longest));
     let yes = CFBoolean::new(true);
     // SAFETY: constants ImageIO defines.
@@ -230,9 +247,8 @@ fn frame(
     let values: [&CFType; 4] = [yes, &most, yes, yes];
     let options = CFDictionary::<CFString, CFType>::from_slices(&keys, &values);
     // SAFETY: the options are the keys and values ImageIO documents for thumbnails.
-    let image = unsafe { source.thumbnail_at_index(index, Some(options.as_opaque())) }
-        .ok_or("it couldn't be decoded")?;
-    draw(&image, see_through, delay)
+    unsafe { source.thumbnail_at_index(index, Some(options.as_opaque())) }
+        .ok_or_else(|| "it couldn't be decoded".into())
 }
 
 /// `image` in a bitmap GPUI can show.

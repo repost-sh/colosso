@@ -75,7 +75,12 @@ settled once it's built.
      Quartz (`viewer/bitmap.rs`, `Canvas`), and dimmed towards the card's colour.
   3. macOS's own encoder compresses it to ASTC: an `org.khronos.astc` image destination in
      ImageIO, its block size set by `kCGImagePropertyASTCBlockSize` (4 × 4 or 8 × 8, the only
-     two ImageIO names). The result is a 16-byte header, then the blocks, 16 bytes each.
+     two ImageIO names). The result is a 16-byte header, then the blocks, 16 bytes each
+     (`chat_backdrop/astc.rs`). The encoder writes the picture's bottom row of blocks first,
+     as OpenGL counts rows, where the GPU reads the first row as the top one, so the picture
+     is drawn into its bitmap upside down and reaches the GPU upright (`make.rs`,
+     `upside_down`); a test reads the blocks back in the file's order and finds it upright,
+     dimmed as asked.
   4. The blocks go straight into a Metal texture of the matching ASTC format; the bitmap and
      the encoded bytes are then dropped.
 - **Why ASTC and why the system's encoder:** Koyo builds for Apple Silicon only, and every
@@ -90,7 +95,8 @@ settled once it's built.
   | ASTC 4 × 4 (8 bits a pixel, near lossless) | 14.7 MB | 3.7 MB |
   | **ASTC 8 × 8 (2 bits a pixel), the default** | **3.7 MB** | 0.9 MB |
 
-  While it's made, the bitmap takes 59 MB for the second or so that takes, and is freed. A
+  While it's made, the bitmap takes 59 MB for the fifth of a second that takes (section 9),
+  and is freed. A
   screen's texture is let go once no chat on that screen shows it, and made again when one
   does. The blurred copy is about 1 MB and the dot tile next to nothing (section 4).
   **[asked: 8 × 8 at full resolution; proposed: letting go]**
@@ -274,10 +280,17 @@ is 489 lines, so its new field and default may need something moved out of it fi
 
 ## 9. To settle once built
 
-- How long ImageIO takes to encode a screen's picture, at each Quality stop.
+- How long ImageIO takes to encode a screen's picture, at each Quality stop. **Settled**:
+  little. Making the picture of a 2560 × 1440 pt screen at 2× from the owner's wallpaper
+  (a 6016 px square HEIC), the file warm, takes 80 ms to decode, 70 ms to lay out and dim
+  and 33 ms to compress at 8 × 8, full: under a fifth of a second, 0.6 s the first time the
+  file is read. At half resolution it's 67, 17 and 11 ms; 4 × 4 at full compresses in 30 ms.
+  (`make.rs`, `making_a_screens_picture_takes`, run with `--ignored`.)
 - Whether 8 × 8 blocks show under the dim and the dots, against 4 × 4 at half resolution,
   which costs the same, by screenshots side by side. If they look alike, one of the two
-  middle stops goes.
+  middle stops goes. Measured so far, against the picture uncompressed and dimmed 60 %, on
+  the owner's wallpaper: 8 × 8 full 40.9 dB, 4 × 4 half 39.7 dB, 4 × 4 full 47.0 dB, 8 × 8
+  half 36.7 dB. The screenshots are still to be taken.
 - Whether the ASTC texture is sampled as sRGB or not: GPUI's atlas holds plain BGRA and
   blends its colours as they are, so the texture's format should match, or the picture comes
   out darker.
@@ -296,7 +309,9 @@ is 489 lines, so its new field and default may need something moved out of it fi
    **Built**: `chat_backdrop/layout.rs`, `place` and `decode_longest`, tested for each
    layout of 3.2 and for the pixels a picture is decoded at.
 2. Reading each screen's wallpaper and its options; making the picture: decoded, laid out,
-   dimmed, compressed to ASTC, its encode time measured.
+   dimmed, compressed to ASTC, its encode time measured. **Built**: `wallpaper.rs` (read on
+   the main thread, as AppKit asks of its screens), `make.rs` and `astc.rs`, tested by
+   compressing a picture and reading its blocks back; times in section 9.
 3. The renderer's texture mark, and the chat view drawing the picture cropped to its pane.
    Screenshots of the real app on this checkout.
 4. The blur's strips and the dots' tiles.

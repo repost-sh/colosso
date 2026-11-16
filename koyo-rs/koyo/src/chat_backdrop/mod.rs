@@ -2,9 +2,9 @@
 //! the chat's pane covers, dimmed towards the card's colour, under a fixed grid of dots, and
 //! blurred towards the bottom.
 
-#![cfg_attr(
-    not(test),
-    expect(dead_code, reason = "the picture is made from it next (docs/chat-backdrop.md 10)")
-)]
+#![expect(dead_code, reason = "the chat draws it next (docs/chat-backdrop.md 10)")]
 
+mod astc;
 mod layout;
+mod make;
+mod wallpaper;

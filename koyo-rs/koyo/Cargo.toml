@@ -176,6 +176,10 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
   "NSImage",
   # A native menu tracking the keys, which the keyboard hears of (keyboard/appkit.rs).
   "NSMenu",
+  # Each screen's wallpaper, behind a chat (chat_backdrop/wallpaper.rs).
+  "NSWorkspace",
+  "NSScreen",
+  "NSGraphics",
 ] }
 objc2-foundation = { version = "0.3", default-features = false, features = [
   "std",
@@ -188,6 +192,10 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
   "NSNotification",
   "NSOperation",
   "NSString",
+  # A wallpaper's options, file and screen (chat_backdrop/wallpaper.rs).
+  "NSDictionary",
+  "NSURL",
+  "NSValue",
 ] }
 block2 = "0.6"
 # The window's view, to reach its traffic lights (native/traffic_lights.rs), and the `NSWindow`
@@ -217,6 +225,8 @@ objc2-core-foundation = { version = "0.3", default-features = false, features = 
   "CFNumber",
   "CFString",
   "CFURL",
+  # A chat backdrop's picture, compressed into memory (chat_backdrop/astc.rs).
+  "CFData",
 ] }
 objc2-io-surface = { version = "0.3", default-features = false, features = ["std", "IOSurfaceRef", "IOSurfaceTypes", "libc", "objc2", "objc2-core-foundation"] }
 objc2-core-video = { version = "=0.3.2", default-features = false, features = [
@@ -292,6 +302,8 @@ objc2-image-io = { version = "0.3", default-features = false, features = [
   "std",
   "CGImageProperties",
   "CGImageSource",
+  # A chat backdrop's picture compressed to ASTC by the system's encoder (chat_backdrop/astc.rs).
+  "CGImageDestination",
   "objc2-core-graphics",
 ] }
 

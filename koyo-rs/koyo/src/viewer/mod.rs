@@ -9,13 +9,13 @@
 //! (GPUI's own) and documents with Quartz (Preview's): nothing the app doesn't link already,
 //! and every format Preview opens.
 
-mod bitmap;
+pub(crate) mod bitmap;
 mod canvas;
 mod element;
 mod input;
 mod lane;
 mod pdf;
-mod picture;
+pub(crate) mod picture;
 mod plan;
 mod render;
 pub(crate) use render::size_on_disk;
