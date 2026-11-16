@@ -913,3 +913,64 @@ divider and a toolbar. So:
   Koyo's side, the setting left as it was. ⌥⌘I with the keys in the tools closed them. The
   divider dragged at each side with every page fitting its pane after (`docs/native-pages.md`
   6). Not tried: a link followed from inside the tools.
+
+## 14. Native menus only for the person's own press [decided]
+
+Decided 2026-11-16, after a page's right-click menu kept showing on the owner's desktop while
+an agent worked in a test Koyo on the agent desktop. No native menu (a page's context menu,
+Chromium's own, a `<select>`'s popup, Koyo's) appears on the screen the person sees unless the
+person's own press or key, in a window on that screen, opened it.
+
+### 14.1 Why
+
+macOS draws a popped-up menu at menu level on the Space the person is looking at, whatever
+window or Space it was opened for. A menu for a window on the agent desktop (a Space of its
+own, `docs/agent-desktop.md`), or one an agent's click asked for in a window of the person's,
+showed on the person's screen. Popping a menu up with a press stamped with its window's
+number (f38a22c3a) didn't change where it showed, and is gone: gpui-component's menu is
+upstream's again.
+
+### 14.2 The gate [decided]
+
+Every native menu Koyo's process pops up asks one gate first (`koyo/src/native/menus.rs`). It
+refuses on evidence and allows otherwise:
+
+| Refused when | Known by |
+| --- | --- |
+| The window it's for isn't on the screen the person sees | `isOnActiveSpace` and `isVisible` of the window: an agent desktop window is on another Space |
+| No press or key in that window in the last 5 seconds | A local event monitor notes each window's last press and key as the app takes them. An agent's click through the page's protocol (`browser_click`), or a probe's press handed straight to the window, leaves none |
+| The window's last input was posted by a program | Its system event: a private event source (the agent desktop's host posts from one, the hardware never does), or the process that posted it is the agent desktop's host or Koyo, whatever state its source claims |
+| An agent drives the page that asked (a page's menu) | The page's holder (`browser/control.rs`) |
+
+Anything else is the person's: the hardware's press, or a tool of theirs posting for them (a
+remapped button, Screen Sharing), with the process that posted it logged. A press with the
+hardware's signature, in a window on the person's screen, always shows its menu.
+
+The gate sits on `AppKit`'s own ways in, wrapped once for the process: `NSMenu`'s
+`popUpMenuPositioningItem:atLocation:inView:` (Koyo's menus and a page's), its
+`popUpContextMenu:withEvent:forView:` and `…withFont:` (Chromium's own context menus), and
+`NSPopUpButtonCell`'s `performClickWithFrame:inView:` (a `<select>`'s popup, Chromium's
+`WebMenuRunner`). Refused, each returns at once with nothing chosen, as a menu the person
+closed with Escape: a page's menu is over for the page (`BrowserView::show_menu` asks the gate
+before it builds the menu), and a `<select>` is left as it was and still works. Each verdict
+is logged at `koyo::menus`, with the window's last input as its source state and the process
+that posted it, never what was typed.
+
+In a debug build, which the test Koyo is, a net under it: a menu that starts tracking without
+the gate having let it show, and isn't the menu bar's, is cancelled at once and logged at
+error.
+
+### 14.3 Agents
+
+An agent gets no native menu, anywhere. A `<select>`'s popup wasn't theirs to use before
+either: one opened by an agent's click waited for a pick only the person could make. Menus
+and a `<select>`'s options as data, through the tools, are `[not built]`; until then an agent
+sets a `<select>`'s value with `browser_eval`.
+
+### 14.4 What's checked
+
+Unit tests (`native/menus/tests.rs`): each side of the gate, the hardware's press shown, every
+poster refused. `[open]` on screen: the person's own right-click on a page and a `<select>` on
+a page still open their menus (the owner's QA), and on the agent desktop none of an agent's
+right-clicks, `desktop_click`'s or `browser_click`'s, shows a menu anywhere (the window
+server's list read before, during and after).
