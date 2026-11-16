@@ -57,10 +57,21 @@ pub const EDGE_WIDTH: f32 = 1.;
 /// `surface`, floating over what's under it: with `glass` behind what it holds and a faint line
 /// round it, or a raised fill where there's none.
 pub fn floating<E: ParentElement + Styled>(surface: E, glass: Option<AnyElement>, p: Palette) -> E {
+    floating_filled(surface, glass, p.floating(), p)
+}
+
+/// [`floating`], filled in `fill` where there's no glass: over a chat's backdrop, see-through
+/// (`chat_backdrop::fill`), as glass is.
+pub fn floating_filled<E: ParentElement + Styled>(
+    surface: E,
+    glass: Option<AnyElement>,
+    fill: Hsla,
+    p: Palette,
+) -> E {
     match glass {
         Some(glass) => surface.child(glass).shadow(vec![edge(p.glass_edge)]),
         None => surface
-            .bg(p.floating())
+            .bg(fill)
             .border_1()
             .border_color(p.hairline)
             .shadow_md(),

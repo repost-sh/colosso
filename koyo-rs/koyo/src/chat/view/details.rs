@@ -282,7 +282,7 @@ fn card(view: &ChatView, window: &mut Window, cx: &mut Context<ChatView>) -> Any
                     .border_color(p.hairline)
             })
         }));
-    liquid::floating(surface, on_glass, p)
+    liquid::floating_filled(surface, on_glass, crate::chat_backdrop::fill(p, cx), p)
         .child(body)
         .into_any_element()
 }
