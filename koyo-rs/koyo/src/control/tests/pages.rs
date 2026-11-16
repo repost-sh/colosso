@@ -6,8 +6,9 @@ use gpui_kit::TestAppContext;
 use koyo_app_control::ErrorCode;
 use serde_json::json;
 
-use super::{call, controlled, terminal};
-use crate::test_support::{repo, select};
+use super::{call, controlled, read_shell, terminal};
+use crate::browser::BrowserEvent;
+use crate::test_support::{draw, repo, select};
 
 #[gpui_kit::test]
 fn a_page_the_engine_cant_open_is_listed_so_and_refused_at_once(cx: &mut TestAppContext) {
@@ -56,4 +57,37 @@ fn the_app_says_whether_its_window_is_on_screen(cx: &mut TestAppContext) {
     select(&rig.shell, &root, cx);
     let status = call(&terminal("term_1"), "app_status", json!({}), cx).unwrap();
     assert_eq!(status["onScreen"], json!(true), "a test's window is drawn");
+}
+
+#[gpui_kit::test]
+fn a_tab_the_person_asked_to_go_to_is_shown_and_a_link_opened_beside_is_not(cx: &mut TestAppContext) {
+    let root = repo("control-go-to-tab", &[("README.md", "hi\n")]);
+    let rig = controlled("control-go-to-tab", &[&root], cx);
+    select(&rig.shell, &root, cx);
+    let agent = terminal("term_1");
+    let opening = json!({ "kind": "browser", "url": "https://example.com/", "select": true });
+    let page = call(&agent, "tab_open", opening, cx).unwrap()["pane"].as_u64().unwrap();
+    let view = read_shell(&rig, cx, |shell, _| shell.workspace.pane(page)?.view().cloned()).expect("the page");
+    let shown = |cx: &mut TestAppContext| {
+        draw(rig.window, cx);
+        call(&agent, "app_status", json!({}), cx).unwrap()["selected"]["pane"].clone()
+    };
+    assert_eq!(shown(cx), json!(page));
+
+    // A link opened in a new tab, as from DevTools: beside its page, which stays shown.
+    view.update(cx, |_, cx| cx.emit(BrowserEvent::OpenTab("https://b.example/".into())));
+    cx.run_until_parked();
+    assert_eq!(shown(cx), json!(page), "a link's tab opens behind");
+
+    // An extension's options, its page in chrome://extensions, the store: a place the person
+    // asked to go to, or a window Chrome would have shown. Its tab is shown.
+    view.update(cx, |_, cx| cx.emit(BrowserEvent::GoToTab("chrome://extensions/".into())));
+    cx.run_until_parked();
+    let now = shown(cx);
+    assert_ne!(now, json!(page), "the tab asked for is shown");
+    let listed = call(&agent, "browser_list", json!({}), cx).unwrap();
+    let pages = listed["pages"].as_array().expect("pages");
+    let there = pages.iter().find(|info| info["pane"] == now).expect("listed");
+    assert_eq!(there["url"], json!("chrome://extensions/"));
+    assert_eq!(pages.len(), 3);
 }

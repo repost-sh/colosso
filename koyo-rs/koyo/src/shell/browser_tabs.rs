@@ -142,7 +142,13 @@ impl Shell {
             }
             BrowserEvent::Visited(visit) => self.note_visit(view, visit, cx),
             BrowserEvent::Searched(words) => self.note_search(view, words, cx),
-            BrowserEvent::OpenTab(url) => self.open_beside(view, None, url.clone(), window, cx),
+            BrowserEvent::OpenTab(url) => drop(self.open_beside(view, None, url.clone(), window, cx)),
+            BrowserEvent::GoToTab(url) => {
+                let opened = self.open_beside(view, None, url.clone(), window, cx);
+                if let Some(pane) = opened.and_then(|opened| self.pane_showing(&opened)) {
+                    self.show_tab_holding(pane, cx);
+                }
+            }
             BrowserEvent::Adopted { pane, url, active } => {
                 self.tab_adopted(view, *pane, url.clone(), *active, window, cx);
             }
@@ -219,7 +225,7 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.open_beside(view, Some(pane), url, window, cx);
+        drop(self.open_beside(view, Some(pane), url, window, cx));
         let opened = (self.workspace)
             .locate(|shown| shown.view().is_some_and(|page| page.read(cx).host_pane() == pane));
         match opened {
@@ -242,7 +248,8 @@ impl Shell {
     /// is, and an agent's if its opener is: on its checkout, after its tab; from a pinned or a
     /// loose page, as a loose page of the space shown, right after a loose opener or after them
     /// all. With `adopted`, the page is one the host made already under that number, a tab an
-    /// extension opened (`BrowserView::adopted`).
+    /// extension opened (`BrowserView::adopted`). The page opened, when its opener's tab was
+    /// found.
     pub(super) fn open_beside(
         &mut self,
         view: &Entity<BrowserView>,
@@ -250,16 +257,12 @@ impl Shell {
         url: String,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) {
-        let Some(located) = self.locate_view(view) else {
-            return;
-        };
-        let Some(Place { project, .. }) = self.profile_place(located) else {
-            return;
-        };
+    ) -> Option<Entity<BrowserView>> {
+        let located = self.locate_view(view)?;
+        let Place { project, .. } = self.profile_place(located)?;
         let by = view.read(cx).inspected().unwrap_or(view).read(cx).by();
         let opened = self.page_view(adopted, url, (&project, by), window, cx);
-        let tab = Tab::Single(Pane::browser(opened, cx));
+        let tab = Tab::Single(Pane::browser(opened.clone(), cx));
         match located.spot {
             Spot::Checkout(project_at, branch, at) => {
                 self.workspace.insert_tab_after((project_at, branch, at), tab);
@@ -272,6 +275,7 @@ impl Shell {
             }
         }
         cx.notify();
+        Some(opened)
     }
 
     /// Where the history keeps the visits of the page `located` finds, and the project whose

@@ -121,6 +121,7 @@ impl BrowserView {
         // A page opens on screen: the host is told at once whether it is (`sight.rs`), as
         // one no pane draws, or a hidden tab's opened again, isn't.
         self.visible = None;
+        self.seen = false;
         self.send(request, cx);
         self.tell_sight(cx);
         if page {

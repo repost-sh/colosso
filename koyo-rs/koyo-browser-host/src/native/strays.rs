@@ -206,7 +206,8 @@ wrap_request_handler! {
                         crate::host::pane_of_profile(&mut profile, crate::extensions::active_pane())
                     });
                 match beside {
-                    Some(pane) => crate::host::send(&HostEvent::OpenUrl { pane, url }),
+                    // Chrome would have shown its window: the tab is shown.
+                    Some(pane) => crate::host::send(&HostEvent::OpenUrl { pane, url, front: true }),
                     None => log::warn!("a page Chrome opened has no pane of its profile to open beside: {url}"),
                 }
             }

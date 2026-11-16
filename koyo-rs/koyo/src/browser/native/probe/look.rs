@@ -279,6 +279,30 @@ pub(super) async fn eval(rest: &str, cx: &mut gpui_kit::AsyncApp) -> String {
     }
 }
 
+/// A row of an extension icon's menu picked, without the menu, which is a native one and
+/// shows on the person's own desktop: `pick <pane> <extension> <home|options|pin|unpin|
+/// remove|manage>`. What the pick does is what the menu's row does.
+pub(super) fn pick(rest: &str, cx: &mut gpui_kit::App) -> String {
+    use crate::browser::extensions::menu::IconPick;
+    let words: Vec<&str> = rest.split(' ').collect();
+    let (Some(Ok(pane)), Some(extension), Some(pick)) =
+        (words.first().map(|pane| pane.parse()), words.get(1), words.get(2))
+    else {
+        return "pick <pane> <extension> <home|options|pin|unpin|remove|manage>".into();
+    };
+    let pick = match *pick {
+        "home" => IconPick::Home,
+        "options" => IconPick::Options,
+        "pin" => IconPick::Pin(true),
+        "unpin" => IconPick::Pin(false),
+        "remove" => IconPick::Remove,
+        "manage" => IconPick::Manage,
+        _ => return "no such pick".into(),
+    };
+    crate::browser::menu::with_view(pane, cx, |view, cx| view.extension_picked(extension, pick, cx));
+    "picked".into()
+}
+
 /// A left drag across the window, as a hand makes it: a press at the first point, a move to
 /// each of the others a pause apart, so what answers a move has its turn before the next, and
 /// a release at the last. `<ms a move> <x> <y> <x> <y> …`, from the window's top left.

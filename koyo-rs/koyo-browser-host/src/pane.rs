@@ -328,6 +328,7 @@ wrap_life_span_handler! {
                 Some(url) if self.devtools => host::send(&HostEvent::OpenUrl {
                     pane: self.pane,
                     url: url.to_string(),
+                    front: false,
                 }),
                 Some(url) => host::navigate_later(self.pane, url.to_string()),
                 None => {}

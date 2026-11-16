@@ -146,6 +146,8 @@ pub fn start(cx: &mut App) {
                     look::drag(rest, cx).await
                 } else if verb == "eval" {
                     look::eval(rest, cx).await
+                } else if verb == "pick" {
+                    cx.update(|cx| look::pick(rest, cx))
                 } else if verb == "burst" {
                     keys::burst(rest, &folder, cx).await
                 } else {
