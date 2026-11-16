@@ -95,9 +95,18 @@ popup itself (`.superpowers/research/run/03-popup-as-page.out`).
   process: `--remote-debugging-pipe`, with the two descriptors named by
   `--remote-debugging-io-pipes` (a patch: Chromium takes 3 and 4 on macOS, which Koyo has
   long given away by the time the engine starts). No port is opened; nothing outside the
-  process can reach it. Chromium stops waiting for its client when the pipe hangs up,
-  which the host does as Koyo quits, and never before: Chrome takes a hung-up pipe as the
-  word to quit.
+  process can reach it.
+- **The pipe mustn't make Koyo an automation client** (`devtools-pipe-embedder`). Started
+  with no window of its own (`no-startup-window`) and a DevTools pipe, stock Chrome takes
+  whoever holds the pipe for one: it holds itself alive until the pipe hangs up, and when
+  it does, quits by itself (`ChromeDevToolsManagerDelegate`, `CloseBrowserSoon`). That
+  exit ran beside the host's own shutdown and ended the process before the profiles had
+  written theirs: the host's test of a sign-in across the engine quitting lost its cookies
+  every time. `[proven]` 2026-11-16, the engine as a process of its own; in the app's
+  process the sign-in was kept all the same, twice of twice. Leaving the pipe open instead
+  left an engine that never quit. With the patch Chrome does neither for a pipe whose ends
+  are named (`--remote-debugging-io-pipes`), the host hangs up as it stops, and the pipe
+  isn't made on a framework without the patch.
 - Over it, Koyo's additions to the `Extensions` domain: the installed extensions of every
   profile, an action run on a page, turning one on or off, removing, pinning, which page
   is the active one, and events when an action or the list changes (section 10). Pages are
@@ -296,6 +305,7 @@ aren't carried: Koyo's menu rows have none.
 | `extension-install-ui-null-tab` | Cra | No "installed" bubble; an install with no active tab doesn't crash |
 | `koyo-extensions-protocol` | Koyo | The `Extensions` DevTools domain: the list (`koyoGetInstalled`), an action run (`koyoTriggerAction`), on and off, remove, pin, the active page, and events for an action and for the list; `triggerAction` answers instead of crashing (from Cra); a page found by CEF's number for its browser |
 | `devtools-pipe-descriptors` | Koyo | `--remote-debugging-io-pipes=<read>,<write>` on macOS and Linux |
+| `devtools-pipe-embedder` | Koyo | With those descriptors named, Chrome doesn't wait on the pipe's client before it quits, and doesn't quit by itself when the client hangs up |
 | `dialog-without-parent-titlebar` | Koyo | A window-modal dialog whose parent isn't one of Chromium's windows, Chrome's install dialog over a page in Koyo's, has no title bar drawn over its heading |
 | `extension-current-window-last-active` | Koyo | With no window focused, an extension's current window is the one active last, not the one made last |
 
@@ -376,12 +386,17 @@ sees and told what to do. Where a row says an extension did something, that is h
 | A content script, a service worker, blocking rules | checked: the folder extension's script marked the page; with uBlock Origin Lite, a page's fetch of an ad script and of an analytics script failed and of its own site loaded |
 | An extension's entries in a page's context menu | **not checked**: the menu is native and would show on the owner's desktop `[open]` |
 | Koyo quits cleanly with extensions, a popup and a window of Chrome's open | checked: "the browser engine stopped in" 90 to 270 ms each time |
+| A sign-in across Koyo quitting, in the app | checked: a page's session cookie, its cookie with an age and its local storage were all there after a quit within a second of setting them and a start again, 2 of 2 before `devtools-pipe-embedder` and 2 of 2 with it (the host then not yet hanging up, as it does now) |
+| A sign-in across the engine quitting, the engine a process of its own (`host_tests`, `keeping`) | lost 3 of 3 before `devtools-pipe-embedder`; kept 15 of 15 with it, and the engine as quick to quit as with no pipe (section 2.3) |
+| The host's smoke test for extensions (`tests/smoke/extensions.rs`) | passed, its first run, before the patch; not run since |
 | `script/cef` on a built folder | checked: patches found applied, only what a new patch touches built, the framework and its list of patches in place |
 
-Still to do: the three rows marked; the host's smoke test for extensions
-(`tests/smoke/extensions.rs`) and the engine's suites, which were held back on both days
-because they take the keyboard from whoever is at the machine; and a from-scratch
-`script/cef` (`docs/browser.md` 11.3).
+Still to do: the three rows marked; both of the engine's suites whole on the framework
+with `devtools-pipe-embedder`, on a machine not busy with other builds (they allow an
+engine five seconds to quit, and on 2026-11-16, with other checkouts building, an engine
+with no pipe at all missed that in 20 tests of 20); and a from-scratch `script/cef`
+(`docs/browser.md` 11.3). The suites run only while nobody is at the machine: they take
+the keyboard from whoever is.
 
 ## 13. For the owner
 

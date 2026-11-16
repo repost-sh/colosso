@@ -58,7 +58,9 @@ thread_local! {
 /// that names its ends (`--remote-debugging-io-pipes`); none where the engine is CEF's own,
 /// or the pipe couldn't be made, and then there are no extension controls.
 pub(crate) fn pipe_switch() -> Option<String> {
-    if !patched("devtools-pipe-descriptors") {
+    // Both: the second has Chromium neither wait on the pipe's client before it quits nor
+    // quit by itself when the client hangs up (`docs/extensions.md` 2.3).
+    if !(patched("devtools-pipe-descriptors") && patched("devtools-pipe-embedder")) {
         log::info!("extensions: the engine is CEF's own, without Koyo's patches; their icons and popups are off");
         return None;
     }
@@ -95,7 +97,11 @@ pub(crate) fn started() {
     list();
 }
 
-/// The engine is about to stop: the pipe hangs up, which Chromium waits for.
+/// The engine is about to stop: the pipe hangs up, and Chromium's thread reading it ends.
+/// Stock Chromium takes that for a request to quit and starts an exit of its own beside the
+/// one under way, which loses what the profiles hadn't written yet, a sign-in's cookies
+/// among it; with Koyo's `devtools-pipe-embedder` patch, which the pipe isn't made without
+/// ([`pipe_switch`]), it's nothing but the client going.
 pub(crate) fn stopping() {
     pipe::close();
     popup::forget();
