@@ -113,6 +113,10 @@ unsafe fn build_classes() {
                 handle_key_equivalent as extern "C" fn(_, Sel, *mut AnyObject) -> Bool,
             );
             decl.add_method(
+                sel!(koyoHandBackKey:),
+                handle_key_handed_back as extern "C" fn(_, Sel, *mut AnyObject) -> Bool,
+            );
+            decl.add_method(
                 sel!(keyDown:),
                 handle_key_down as extern "C" fn(_, Sel, *mut AnyObject),
             );
@@ -718,6 +722,9 @@ pub(crate) struct MacWindowState {
     // Koyo: the mouse buttons GPUI was told went down and hasn't been told came up, each with
     // the system's number of the button the hand pressed (`lost_releases`).
     buttons_down: Vec<(MouseButton, NSInteger)>,
+    // Koyo: the keys, by key code, that another view handed back and GPUI's bindings were
+    // given: their going up is GPUI's to hear too (`route_keys`).
+    pub(crate) koyo_handed_back: Vec<u16>,
     // When true, the whole content view is reported as app-owned titlebar content via
     // `_opaqueRectForWindowMoveWhenInTitlebar`, so AppKit does not drag the window from
     // the titlebar or delay titlebar clicks (a delay first observed on macOS 27). Such
@@ -1154,6 +1161,7 @@ impl MacWindow {
                 external_files_dragged: false,
                 first_mouse: false,
                 buttons_down: Vec::new(),
+                koyo_handed_back: Vec::new(),
                 app_owns_titlebar_drag,
                 fullscreen_restore_bounds: Bounds::default(),
                 is_exiting_fullscreen: false,
@@ -2620,15 +2628,26 @@ extern "C" fn handle_key_equivalent(
     _: Sel,
     native_event: *mut AnyObject,
 ) -> Bool {
-    handle_key_event(this, native_event, true)
+    handle_key_event(this, native_event, Some(crate::responders::KeyPass::Equivalent))
+}
+
+/// Koyo: a key the view that had the keyboard had no use for, handed back to GPUI's view
+/// (`koyoHandBackKey:`). An entry of its own, so it's never taken for `AppKit`'s pass of key
+/// equivalents, which comes the same way upstream.
+extern "C" fn handle_key_handed_back(
+    this: &AnyObject,
+    _: Sel,
+    native_event: *mut AnyObject,
+) -> Bool {
+    handle_key_event(this, native_event, Some(crate::responders::KeyPass::HandBack))
 }
 
 extern "C" fn handle_key_down(this: &AnyObject, _: Sel, native_event: *mut AnyObject) {
-    handle_key_event(this, native_event, false);
+    handle_key_event(this, native_event, None);
 }
 
 extern "C" fn handle_key_up(this: &AnyObject, _: Sel, native_event: *mut AnyObject) {
-    handle_key_event(this, native_event, false);
+    handle_key_event(this, native_event, None);
 }
 
 // Things to test if you're modifying this method:
@@ -2695,11 +2714,13 @@ unsafe fn is_ime_input_source_active() -> bool {
     }
 }
 
-extern "C" fn handle_key_event(
+// Koyo: a function of Rust's own, as only this file calls it, so it can say who offers the key.
+fn handle_key_event(
     this: &AnyObject,
     native_event: *mut AnyObject,
-    key_equivalent: bool,
+    offered: Option<crate::responders::KeyPass>,
 ) -> Bool {
+    let key_equivalent = offered.is_some();
     let window_state = unsafe { get_window_state(this) };
     let mut lock = window_state.as_ref().lock();
 
@@ -2734,7 +2755,44 @@ extern "C" fn handle_key_event(
             // GPUI after it, were it the same, was lost: "f" in a page, then "f" in a chat.
             // SAFETY: `native_event` is the key event being handled.
             let at: f64 = unsafe { msg_send![native_event, timestamp] };
-            if key_equivalent {
+            if let Some(pass) = offered {
+                // Koyo: a key offered to this view while another has the keyboard is the
+                // app's to route (`responders`). Upstream runs everything on it, the text
+                // system too, which types into whatever has the keyboard: an arrow `AppKit`
+                // offered as a key equivalent put a control character in a browser page's
+                // field and, answered as taken, never reached the page as a key.
+                use crate::responders::{KeyFirst, KeyOffered, KeyPass, KeyRoute};
+                let window = lock.native_window;
+                drop(lock);
+                // SAFETY: the window is live while its view handles its key.
+                let first: *mut AnyObject = unsafe { msg_send![window, firstResponder] };
+                let own = this as *const AnyObject as *mut AnyObject;
+                let first = if first.is_null() || first == own || first == window {
+                    KeyFirst::Gpui
+                } else {
+                    KeyFirst::Native
+                };
+                let key = KeyOffered {
+                    command: key_down_event.keystroke.modifiers.platform,
+                    control: key_down_event.keystroke.modifiers.control,
+                };
+                // SAFETY: as above.
+                match crate::responders::key_route(unsafe { &*window }, key, pass, first) {
+                    KeyRoute::Whole => {}
+                    KeyRoute::Bindings => {
+                        if pass == KeyPass::HandBack {
+                            // SAFETY: `native_event` is the key event being handled.
+                            let code: u16 = unsafe { msg_send![native_event, keyCode] };
+                            let mut lock = window_state.as_ref().lock();
+                            if !lock.koyo_handed_back.contains(&code) {
+                                lock.koyo_handed_back.push(code);
+                            }
+                        }
+                        return run_callback(PlatformInput::KeyDown(key_down_event));
+                    }
+                    KeyRoute::Deliver | KeyRoute::Drop => return Bool::NO,
+                }
+                lock = window_state.as_ref().lock();
                 lock.last_key_equivalent = Some((key_down_event.clone(), at));
             } else if (lock.last_key_equivalent.take())
                 .is_some_and(|(was, when)| was == key_down_event && when == at)

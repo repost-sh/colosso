@@ -1,11 +1,14 @@
 //! The harness's keyboard: where each window's keyboard is, where a named part of a window was
 //! last drawn, a window made key, and bursts of keys or wheel turns.
 
+use std::ffi::c_void;
 use std::path::Path;
 use std::time::Duration;
 
 use gpui_kit::AsyncApp;
-use objc2_app_kit::NSWindow;
+use objc2::runtime::{AnyObject, Bool};
+use objc2::{MainThreadMarker, class, msg_send};
+use objc2_app_kit::{NSApplication, NSWindow};
 
 use super::{key, scroll, window};
 
@@ -69,3 +72,64 @@ fn wall_ms() -> f64 {
         .map_or(0., |since| since.as_secs_f64() * 1000.)
 }
 
+#[link(name = "CoreGraphics", kind = "framework")]
+unsafe extern "C" {
+    fn CGEventCreateKeyboardEvent(source: *const c_void, code: u16, down: bool) -> *mut c_void;
+    fn CGEventSetFlags(event: *mut c_void, flags: u64);
+    fn CGEventGetFlags(event: *mut c_void) -> u64;
+    fn CGEventSetIntegerValueField(event: *mut c_void, field: u32, value: i64);
+}
+
+#[link(name = "CoreFoundation", kind = "framework")]
+unsafe extern "C" {
+    fn CFRelease(object: *const c_void);
+}
+
+/// A key down and up as a keyboard's, `what` its code and the modifiers held: made by Core Graphics, which
+/// gives it the flags and characters the system gives that key (an arrow's function and
+/// numeric-pad flags, its function-key character), and put in the app's queue, never posted to
+/// the system. What it says names the key's code, character and flags as `AppKit` read them.
+pub(super) fn press(window: &NSWindow, what: &str) -> String {
+    use std::fmt::Write as _;
+    let mut words = what.split(' ');
+    let code = words.next().and_then(|word| word.parse::<u16>().ok()).unwrap_or(0);
+    let held = words.fold(0u64, |held, word| {
+        held | match word {
+            "shift" => 1 << 17,
+            "ctrl" => 1 << 18,
+            "alt" => 1 << 19,
+            "cmd" => 1 << 20,
+            _ => 0,
+        }
+    });
+    let mut said = String::new();
+    // SAFETY: Core Graphics' own constructors, the events ours to release; `NSEvent`'s
+    // constructor from one; the application's own queue.
+    unsafe {
+        for down in [true, false] {
+            let made = CGEventCreateKeyboardEvent(std::ptr::null(), code, down);
+            if made.is_null() {
+                return "no key event".into();
+            }
+            CGEventSetFlags(made, CGEventGetFlags(made) | held);
+            CGEventSetIntegerValueField(made, 51, window.windowNumber() as i64);
+            let event: *mut AnyObject = msg_send![class!(NSEvent), eventWithCGEvent: made];
+            CFRelease(made);
+            if event.is_null() {
+                return "no NSEvent for the key".into();
+            }
+            let chars: *mut AnyObject = msg_send![event, charactersIgnoringModifiers];
+            let units: usize = if chars.is_null() { 0 } else { msg_send![chars, length] };
+            let first: u16 = if units > 0 { msg_send![chars, characterAtIndex: 0usize] } else { 0 };
+            let flags: usize = msg_send![event, modifierFlags];
+            let way = if down { "down" } else { "up" };
+            let _ = write!(said, "{way} code {code} U+{first:04X} flags {flags:#x}; ");
+            if let Some(main) = MainThreadMarker::new() {
+                let app = NSApplication::sharedApplication(main);
+                let _: () = msg_send![&*app, postEvent: event, atStart: Bool::NO];
+            }
+        }
+    }
+    said.push_str("queued");
+    said
+}

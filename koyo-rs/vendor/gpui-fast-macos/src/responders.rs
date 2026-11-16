@@ -25,6 +25,53 @@ pub trait Responders {
 
     /// A key going down or up is about to be delivered to `window`'s first responder.
     fn key(&self, window: &AnyObject);
+
+    /// What `window`'s GPUI view does with a key going down that `pass` offers it while
+    /// `first` has the keyboard. Left to the app, as only it knows which keys it keeps:
+    /// with nothing said, everything GPUI does with a key, as upstream.
+    fn key_route(&self, window: &AnyObject, key: KeyOffered, pass: KeyPass, first: KeyFirst) -> KeyRoute {
+        let _ = (window, key, pass, first);
+        KeyRoute::Whole
+    }
+}
+
+/// Koyo: who offers a key to GPUI's view.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KeyPass {
+    /// `AppKit`'s own pass of key equivalents (`performKeyEquivalent:`), which it makes for
+    /// ⌘ and ⌃ keys and for function keys, the arrows among them, before delivering the key.
+    Equivalent,
+    /// The view that had the keyboard, handing back a key it had no use for (`hand_back`).
+    HandBack,
+}
+
+/// Koyo: what has the keyboard in the window as a key is offered to GPUI's view.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KeyFirst {
+    /// GPUI's view, or no view: the window itself.
+    Gpui,
+    /// Another view of the window, a native one.
+    Native,
+}
+
+/// Koyo: the key offered, by its modifiers alone.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct KeyOffered {
+    pub command: bool,
+    pub control: bool,
+}
+
+/// Koyo: what GPUI's view does with a key offered to it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KeyRoute {
+    /// Everything GPUI does with a key, as upstream: its bindings, then the text system.
+    Whole,
+    /// GPUI's bindings alone, never the text system; unused, the key goes on.
+    Bindings,
+    /// Not GPUI's: it's left to the view that has the keyboard.
+    Deliver,
+    /// Nobody's.
+    Drop,
 }
 
 thread_local! {
@@ -34,6 +81,17 @@ thread_local! {
 /// Has every window of GPUI's tell `responders` of its keyboard from now on.
 pub fn set_responders(responders: Rc<dyn Responders>) {
     RESPONDERS.with(|held| *held.borrow_mut() = Some(responders));
+}
+
+/// What the app says GPUI's view does with a key offered to it; everything, with no app's say.
+pub(crate) fn key_route(
+    window: &AnyObject,
+    key: KeyOffered,
+    pass: KeyPass,
+    first: KeyFirst,
+) -> KeyRoute {
+    let responders = RESPONDERS.with(|held| held.borrow().clone());
+    responders.map_or(KeyRoute::Whole, |responders| responders.key_route(window, key, pass, first))
 }
 
 /// Runs `with` on what the app gave, if it gave anything: not borrowed meanwhile, so what it

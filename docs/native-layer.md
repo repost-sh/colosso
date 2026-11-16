@@ -323,10 +323,12 @@ What this fixes, by construction:
   was the second bug.
 - **⌃⇥'s key-up reaching the page.** Its key-down went to GPUI alone, so its key-up does.
 
-What it doesn't change: a key a page hands back runs GPUI's whole key-down path, as today.
-That path gives a key with no character (Escape, Backspace, the arrows) to the input context
-after the bindings (`window.rs:2814-2835`). The fork can't run bindings alone, since its only
-way into GPUI is the window's event callback, and the core is not vendored. Koyo's arrow
+What it doesn't change: a key a page hands back runs GPUI's whole key dispatch.
+The fork can't run bindings alone, since its only way into GPUI is the window's event
+callback, and the core is not vendored. That callback runs GPUI's whole key dispatch, its
+interceptors and key-down listeners with it. What the fork can do, and now does, is keep such
+a key from the input context, which is where a key with no character (Escape, the arrows) went
+first, and from where the text system typed it into the page. Koyo's arrow
 repeater (`key_repeat.rs`) starts on a handed-back arrow and stops on a key-up at GPUI's view.
 Today that key-up goes to the page alone. The key-up rule above sends it to GPUI as well.
 Inferred from the code, and a sequence in step 5 checks it (⌥→ held in a page).
@@ -334,6 +336,17 @@ Inferred from the code, and a sequence in step 5 checks it (⌥→ held in a pag
 `AppKit`'s pass asks GPUI's view and never Chromium's. `[read]` A page's views sit under
 GPUI's view (`fast/composition.rs:628-640`), and GPUI's `performKeyEquivalent:` doesn't call
 its superclass (`window.rs:2624-2630`), so the pass stops there.
+
+**Built so far** (2026-11-16, ahead of step 5, for a bug the owner hit: arrows in a page's
+field typed a blank). The first and third entries: `koyo-seam`'s `keys::route` decides
+`Pass::Equivalent` and the hand-back, asked through the fork's `Responders::key_route`. The
+hand-back is `koyoHandBackKey:` on GPUI's view. A key handed back runs through the window's
+event callback and never the input context, and its key-up goes to GPUI's view too. Until step
+5 the route answers by the modifiers alone (⌘ or ⌃ is offered to Koyo's bindings first), a
+handed-back key is dropped only when GPUI's view has the keyboard by then, and `Pass::Window`
+isn't built, so a ⌘ key still reaches both while Koyo isn't in front. `[proven]` on the agent
+desktop by `script/seam-bench/arrows-in-page.sh`
+(`.superpowers/v/evidence/20261116-205438-arrows-in-page/`).
 
 The tests are section 9. The pure test walks the table for every binding in the real keymap,
 under each policy. The rig sends real key events through the real `sendEvent:` with a stand-in
@@ -723,7 +736,7 @@ and the bench sequences named, with evidence under `.superpowers/v/evidence/`.
 | 0 | The menu gate proof on the agent desktop, as planned. No code | The three right-clicks' window lists and log lines. Decides whether `d33840cad` goes into the owner's next build | an hour, once the owner is idle |  |
 | 1 | `ce2f3c7fc`'s key mechanism undone by a forward commit (section 8) | The fork's diff has no `Offers`. `script/lint`, with no dead code left. The app's and the fork's tests. `key-once` on the agent desktop. The tip is shippable | half a day |  |
 | 2 | The crate `koyo-seam`, empty of rules: the input label and journal, `NSApp`'s `sendEvent:` patch moved in, the registry of pages (which page a view is, and a page's keys' view, registered by the host as it makes and closes them), `seam::inject` for the probe, `seam::engine_input` for the protocol, `probe seam`, `script/seam-fence` in report mode, `script/seam-bench`. The desk host's tag, if a check shows it survives. No behaviour changes | Tier 0 for the label. The engine's smoke suite while the owner is idle, for the moved `NSApp` patch. A bench sequence `labels`: a probe click, a `desktop_click` and a `browser_click` each show their label in `probe seam` | 2 days |  |
-| 3 | Menus read the label. The gate moves in, its monitor goes, the share picker is checked | The gate's tests in tier 0. `no-menu-for-agents`, which is step 0's proof as a script. The owner's own right-click and a `<select>` | 1 day | yes: menus |
+| 3 | Menus read the label. The gate moves in, its monitor goes, the share picker is checked. | The gate's tests in tier 0. `no-menu-for-agents`, which is step 0's proof as a script. The owner's own right-click and a `<select>` | 1 day | yes: menus |
 | 4 | The keyboard moves in: `keyboard/*` to `koyo-seam`, reading step 2's registry in place of the host's `key_view` and `page_of`. `press_routed` in place of the one-second window. Controls refuse the first responder. Key and active state still come from GPUI's observer, until step 9 | The 48 tests moved. The rig's first version. `composer-after-pinned`, `ctrl-tab-from-page`, and `docs/keyboard.md` 9's journeys 1 to 5, 7, 8 and 11 as sequences | 3 days |  |
 | 5 | Keys: `keys::route`, `page_left_key`, the fork's `hand_back`, key-ups (section 4.1), under policy A | The table test over the real keymap. The rig with hand-backs at once, late, and after the keyboard moved, and with marked text. `cmd-l-once`, `key-once`, `shortcut-under-typing` with the owner's typing pattern, F12 while not in front, ⌥→ held in a page. Dead keys and an input method (`docs/keyboard.md` 9, journey 10) by the owner or in tier 3, since the probe can't compose text | 2 days | yes: keys |
 | 6 | Presses: the ledger, causes for a press's end, the fork keeps the mechanics | Tier 0. The rig with a lost release. `dead-ui-after-menu`, `divider-fast-drag` | 2 days |  |

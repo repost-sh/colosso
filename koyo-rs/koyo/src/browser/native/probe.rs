@@ -28,6 +28,11 @@
 //!                          made here has the pointer's place, not one of its own)
 //! type <text>              keys for the text, to the window's first responder
 //! key <code> <chars> [cmd|shift|ctrl|alt…]   a key down and up, as a key equivalent first
+//! press <code> [cmd|shift|ctrl|alt…]   a key down and up as a keyboard's: an event of the
+//!                          system's making, with the flags and characters the system gives
+//!                          that key, put in the app's own queue, so `AppKit` handles it as
+//!                          it does a key pressed (its pass of key equivalents, the text
+//!                          system); nothing is posted to the system
 //! key                      the window made key now, the app left behind (the agent desktop)
 //! keyboard                 each window's keyboard holder, first responder, key; app in front
 //! bounds <name>            where a named part was drawn (`crate::marks`): chat-composer,
@@ -233,6 +238,7 @@ fn run(verb: &str, rest: &str, folder: &Path) -> String {
             }
             "typed".into()
         }
+        ("press", _) => keys::press(&window, rest),
         ("keyboard", _) => keys::keyboard(),
         ("bounds", _) => keys::bounds(rest),
         ("key", []) if rest.is_empty() => keys::make_key(&window),

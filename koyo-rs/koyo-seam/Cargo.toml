@@ -1,0 +1,10 @@
+[package]
+name = "koyo-seam"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "The one owner of the seam between GPUI's window and the native views in it (docs/native-layer.md): its rules, kept apart from AppKit so they're tested as they run."
+
+[lints]
+workspace = true

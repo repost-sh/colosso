@@ -5376,6 +5376,7 @@ dependencies = [
  "koyo-git",
  "koyo-lsp",
  "koyo-project",
+ "koyo-seam",
  "koyo-term",
  "koyo-term-control",
  "koyo-term-engine",
@@ -5617,6 +5618,10 @@ dependencies = [
  "objc2-core-services",
  "rayon",
 ]
+
+[[package]]
+name = "koyo-seam"
+version = "0.1.0"
 
 [[package]]
 name = "koyo-term"
