@@ -14,10 +14,12 @@ use super::make::Recipe;
 use super::screens::{self, Hold};
 use crate::settings::ChatBackdrop;
 
-/// The screen's wallpaper behind a chat, filling its parent, which must be `relative`, looking
-/// as `settings` say.
+/// The screen's wallpaper behind a chat or another pane, filling its parent, which must be
+/// `relative`, looking as `settings` say. `id` keeps its hold of the screen apart from the
+/// others'.
 pub struct Picture {
     pub settings: ChatBackdrop,
+    pub id: ElementId,
 }
 
 impl IntoElement for Picture {
@@ -32,7 +34,7 @@ impl Element for Picture {
     type PrepaintState = ();
 
     fn id(&self) -> Option<ElementId> {
-        Some("chat-backdrop".into())
+        Some(self.id.clone())
     }
 
     fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
@@ -114,7 +116,16 @@ fn screen(window: &Window, cx: &App) -> Option<(u64, Bounds<Pixels>)> {
     if let Some(stand_in) = super::visual::screen() {
         return Some(stand_in);
     }
-    let display = window.display(cx)?;
+    let Some(display) = window.display(cx) else {
+        static SAID: std::sync::Once = std::sync::Once::new();
+        SAID.call_once(|| {
+            log::warn!(
+                "a chat backdrop drew nothing: its window is on no screen AppKit names \
+                 (NSWindow.screen is nil)"
+            );
+        });
+        return None;
+    };
     // The window's bounds are its screen's, from the screen's top left.
     let origin = window.bounds().origin;
     let screen = Bounds::new(point(-origin.x, -origin.y), display.bounds().size);

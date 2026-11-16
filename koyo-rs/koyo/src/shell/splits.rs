@@ -225,6 +225,7 @@ impl Shell {
             .size_full()
             .flex()
             .flex_col()
+            .children(crate::chat_backdrop::behind(pane, cx))
             .child(hears_presses(id, cx))
             // A pane whose content has a bar (a device's standing and buttons) has its header
             // alone too.

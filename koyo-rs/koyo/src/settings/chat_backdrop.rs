@@ -1,5 +1,5 @@
-//! The backdrop behind a chat (`docs/chat-backdrop.md` 6): whether it shows, how strongly, the
-//! dither's cells, its fade, and the quality its picture is kept at. The look is Monodrive's
+//! The backdrop behind a chat (`docs/chat-backdrop.md` 6): whether it shows, and behind what,
+//! how strongly, the dither's cells, its fade, and the quality its picture is kept at. The look is Monodrive's
 //! Dither effect, whose defaults these are. Each slider keeps the value of its stop, as the
 //! other sliders keep theirs.
 
@@ -12,6 +12,8 @@ use crate::chat_backdrop::Blocks;
 #[serde(default)]
 pub struct ChatBackdrop {
     pub on: bool,
+    /// What it shows behind, while it's on.
+    pub surfaces: Surfaces,
     /// How much of the dithered wallpaper shows over the card, from 0 to 1.
     pub opacity: f32,
     /// How many screen pixels a cell of the dither is a side.
@@ -30,6 +32,7 @@ impl Default for ChatBackdrop {
     fn default() -> Self {
         ChatBackdrop {
             on: true,
+            surfaces: Surfaces::default(),
             opacity: 0.24,
             cell: 2.,
             density: 1.,
@@ -56,11 +59,112 @@ impl ChatBackdrop {
     /// The stops of the Quality slider, one for each of [`Quality::ALL`].
     pub const QUALITY_STOPS: [f32; 3] = [0., 1., 2.];
 
+    /// Whether it shows behind `surface`.
+    pub fn shows(&self, surface: Surface) -> bool {
+        self.on && *{ self.surfaces }.switch(surface)
+    }
+
     /// Where the fade starts and ends, if it fades: in order, whatever the file says.
     pub fn fade(&self) -> Option<[f32; 2]> {
         let start = self.fade_start.clamp(0., 1.);
         let end = self.fade_end.clamp(0., 1.).max(start);
         self.fade.then_some([start, end])
+    }
+}
+
+/// What the backdrop can show behind.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Surface {
+    Chat,
+    /// The right panel's file tree and its list of changed files.
+    Explorer,
+    Files,
+    Diff,
+    Terminal,
+    /// Round a simulator's screen and the agent desktop.
+    Devices,
+}
+
+/// Which surfaces the backdrop shows behind: all of them, unless turned off one by one.
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "a switch each in Settings, and kept so in the settings file"
+)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Surfaces {
+    pub chat: bool,
+    pub explorer: bool,
+    pub files: bool,
+    pub diff: bool,
+    pub terminal: bool,
+    pub devices: bool,
+}
+
+impl Default for Surfaces {
+    fn default() -> Self {
+        Surfaces {
+            chat: true,
+            explorer: true,
+            files: true,
+            diff: true,
+            terminal: true,
+            devices: true,
+        }
+    }
+}
+
+impl Surface {
+    /// In the order Settings shows their switches.
+    pub const ALL: [Surface; 6] = [
+        Surface::Chat,
+        Surface::Explorer,
+        Surface::Files,
+        Surface::Diff,
+        Surface::Terminal,
+        Surface::Devices,
+    ];
+
+    /// Its switch's id, name, and what it's behind.
+    pub fn names(self) -> (&'static str, &'static str, &'static str) {
+        match self {
+            Surface::Chat => (
+                "chat-backdrop-chat",
+                "Chats",
+                "Behind a chat's conversation.",
+            ),
+            Surface::Explorer => (
+                "chat-backdrop-explorer",
+                "Explorers",
+                "Behind the file tree and the list of changed files.",
+            ),
+            Surface::Files => ("chat-backdrop-files", "Files", "Behind an open file."),
+            Surface::Diff => ("chat-backdrop-diff", "Diffs", "Behind a checkout's diffs."),
+            Surface::Terminal => (
+                "chat-backdrop-terminal",
+                "Terminals",
+                "Behind a terminal, where its program leaves the background alone.",
+            ),
+            Surface::Devices => (
+                "chat-backdrop-devices",
+                "Simulators and agent desktop",
+                "Round a simulator's screen and the agent desktop.",
+            ),
+        }
+    }
+}
+
+impl Surfaces {
+    /// Whether it shows behind `surface`, to read or flip.
+    pub fn switch(&mut self, surface: Surface) -> &mut bool {
+        match surface {
+            Surface::Chat => &mut self.chat,
+            Surface::Explorer => &mut self.explorer,
+            Surface::Files => &mut self.files,
+            Surface::Diff => &mut self.diff,
+            Surface::Terminal => &mut self.terminal,
+            Surface::Devices => &mut self.devices,
+        }
     }
 }
 
@@ -121,13 +225,21 @@ impl Quality {
 
 #[cfg(test)]
 mod tests {
-    use super::{ChatBackdrop, Quality};
+    use super::{ChatBackdrop, Quality, Surface};
 
     #[test]
     fn it_is_kept_as_the_doc_shows_it() {
         let json = serde_json::to_value(ChatBackdrop::default()).unwrap();
         let expected = serde_json::json!({
             "on": true,
+            "surfaces": {
+                "chat": true,
+                "explorer": true,
+                "files": true,
+                "diff": true,
+                "terminal": true,
+                "devices": true,
+            },
             "opacity": 0.24,
             "cell": 2.0,
             "density": 1.0,
@@ -149,6 +261,22 @@ mod tests {
             },
             "what the file leaves out is the default"
         );
+    }
+
+    #[test]
+    fn each_surface_shows_it_while_it_and_the_backdrop_are_on() {
+        let terminal_off: ChatBackdrop =
+            serde_json::from_str(r#"{"surfaces": {"terminal": false}}"#).unwrap();
+        assert!(!terminal_off.shows(Surface::Terminal));
+        assert!(
+            terminal_off.shows(Surface::Files) && terminal_off.shows(Surface::Chat),
+            "the rest as they were"
+        );
+        let off = ChatBackdrop {
+            on: false,
+            ..ChatBackdrop::default()
+        };
+        assert!(!off.shows(Surface::Files), "off is off everywhere");
     }
 
     #[test]

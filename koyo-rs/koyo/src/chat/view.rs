@@ -460,7 +460,6 @@ impl Render for ChatView {
             }))
             .on_action(cx.listener(|this, open: &OpenIn, _, cx| details::opened_in(this, open, cx)))
             .map(|chat| with_menu(chat, context_menu::menu))
-            .children(crate::chat_backdrop::backdrop(cx))
             .child(details::measure(cx))
             .children(timeline)
             .children(self.floating_prompt(window, cx))

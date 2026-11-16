@@ -21,6 +21,10 @@ Monodrive's Dither effect ([donnes/monodrive](https://github.com/donnes/monodriv
 `project_background` shader of its vendored renderer), and the owner asked for it, with the
 settings mapped onto it. Koyo takes the technique, not the code (section 4).
 
+**It shows behind more than chats since 2026-11-16**: the explorers, files, diffs, terminals,
+and round a simulator's screen and the agent desktop, each with a switch of its own, all on by
+default (sections 2 and 6). The name stays `chat_backdrop`, in the code and the settings file.
+
 ## 1. What it shows
 
 - **The screen's wallpaper, where it lies behind the window.** Each chat shows the part of
@@ -57,13 +61,23 @@ settings mapped onto it. Koyo takes the technique, not the code (section 4).
 
 ## 2. Where it shows
 
-- **In chat tabs only**: a chat and a subagent's chat, in a pane of their own or one of a
-  split. Terminals, files, pages and the rest keep the card. **[asked: chats; proposed: the
-  rest]**
+- **Behind chats, and the rest but pages**: a chat and a subagent's chat; the right panel's
+  file tree and list of changed files; an open file; a checkout's diffs; a terminal; round a
+  simulator's screen and the agent desktop. Each has a switch of its own, all on by default
+  (section 6). A page keeps the card, which its native view covers anyway. **[asked: chats,
+  2026-11-16 the rest, each a switch, on by default]**
+- **Where each draws it.** Every tab's pane, a chat's included, draws it as the first child of
+  its part (`shell/splits.rs`, `pane_part`, by way of `chat_backdrop::behind`, which names the
+  pane's surface and keys the backdrop by the pane's id), so it lies under a split pane's
+  header too; the right panel as the first child of its part (`right_panel.rs`). What paints over it, partly: a diff's file
+  cards (`p.sunken`, see-through), the simulator's screen and the agent desktop's own
+  wallpaper, and a terminal's background where a program sets its own, or the terminal's
+  pinned grid, which is painted solid.
 - The chat view has no background of its own (`chat/view.rs`, `impl Render for ChatView`): it
   lies on the pane's card, which rounds its corners and clips what it holds
-  (`theme/card.rs`, `island`). The backdrop is the chat view's first child, absolute and
-  filling it, so the card's corners clip it too. **[proposed]**
+  (`theme/card.rs`, `island`). The backdrop is the pane part's first child, absolute and
+  filling it, so the card's corners clip it too. Until 2026-11-16 it was the chat view's own
+  first child. **[proposed]**
 - **One picture a screen, cropped.** Every chat on a screen shows a part of the same picture,
   placed where the screen is relative to the window and clipped to the pane. Two panes side by
   side meet without a seam. **[proposed]**
@@ -151,6 +165,14 @@ settings mapped onto it. Koyo takes the technique, not the code (section 4).
   handled. **[proposed]**
 - Needs the `NSWorkspace` and `NSScreen` features of `objc2-app-kit`, and
   `CGImageDestination` of `objc2-image-io`, in `koyo-rs/koyo/Cargo.toml`.
+- **When it draws nothing, the log says why**, once: a window on no screen `AppKit` names
+  (`NSWindow.screen` nil, `element.rs`), or a screen with no wallpaper file (`screens.rs`).
+  Added 2026-11-16, after two sittings on the agent desktop were spent guessing.
+- **A debug build's stand-in**: `KOYO_WALLPAPER=<file>` gives every screen that file as its
+  wallpaper, laid out to fill, so a test Koyo on a desktop with no wallpaper still has one,
+  and no one's wallpaper is changed for it. Release builds ignore it (`debug_assertions`).
+  It pins the picture, so a test Koyo given it doesn't follow a change of wallpaper; leave it
+  out on a screen that has one (`koyo-verify prepare` passes it on only when it's set).
 
 ### 3.3 Noticing a change
 
@@ -232,12 +254,14 @@ screen is made at a time, and the last one asked for next (`chat_backdrop/screen
 
 ## 6. Settings
 
-In Settings → Appearance, a section of its own, "Chat background", under "Theme". **[asked:
+In Settings → Appearance, a section of its own, "Wallpaper background" (first "Chat
+background", renamed once it showed behind more), under "Theme". **[asked:
 on by default, customizable, in Appearance]**
 
 | Row | Control | Default | Shown |
 |---|---|---|---|
-| Chat background | switch | on | always |
+| Wallpaper background | switch | on | always |
+| Chats, Explorers, Files, Diffs, Terminals, Simulators and agent desktop | a switch each: what it shows behind | on | when on |
 | Opacity | slider, Less to More | 24 %, as Monodrive's | when on |
 | Cell size | slider, Fine to Coarse: how many screen pixels a cell is a side | 2, as Monodrive's | when on |
 | Density | slider, Sparse to Dense: how many cells are lit | as Monodrive's | when on |
@@ -261,9 +285,10 @@ Quality its three stops (3.1). They're still to be tuned by eye (section 9).
   same rule]**
 - **Search still finds it.** Settings search looks at the rows shown, so with the switch off
   "opacity" or "fade" would find nothing. The switch's description names what it reveals:
-  off, "Your wallpaper behind chats, dithered in its own colours. Turn it on to set its
-  opacity, the cell size and density, the fade, where it starts and ends, and the quality.";
-  on, its first sentence alone. The Fade switch does the same for its two rows while it's
+  off, "Your wallpaper behind chats, files, diffs, terminals and devices, dithered in its own
+  colours. Turn it on to choose what it shows behind (chats, explorers, files, diffs,
+  terminals, simulators and agent desktop), and set its opacity, the cell size and density,
+  the fade, where it starts and ends, and the quality."; on, its first sentence alone. The Fade switch does the same for its two rows while it's
   off ("Turn it on to set where it starts and ends."). A test searches the section on, with
   the fade off, and off, for each row's word. **[proposed]**
 - **The Quality row's memory** is worked out from the sizes of the screens Koyo's windows are
@@ -280,6 +305,14 @@ Quality its three stops (3.1). They're still to be tuned by eye (section 9).
   ```json
   "chat_backdrop": {
     "on": true,
+    "surfaces": {
+      "chat": true,
+      "explorer": true,
+      "files": true,
+      "diff": true,
+      "terminal": true,
+      "devices": true
+    },
     "opacity": 0.24,
     "cell": 2.0,
     "density": 1.0,

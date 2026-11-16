@@ -1,5 +1,5 @@
-//! Appearance › Chat background (`docs/chat-backdrop.md` 6): the wallpaper behind chats, and how
-//! it looks. Rows show only while they apply: with the switch off the section is the switch
+//! Appearance › Wallpaper background (`docs/chat-backdrop.md` 6): the wallpaper behind chats and
+//! the rest, what it shows behind, and how it looks. Rows show only while they apply: with the switch off the section is the switch
 //! alone, and the fade's own rows show only while it fades. Settings search looks at the rows
 //! shown, so a switch that hides rows names what they set.
 
@@ -9,27 +9,46 @@ use super::components::{SettingRow, SettingsSection};
 use super::native_slider::NativeSlider;
 use super::native_switch::NativeSwitch;
 use crate::chat_backdrop;
-use crate::settings::{self, ChatBackdrop, Quality};
+use crate::settings::{self, ChatBackdrop, Quality, Surface};
+use crate::toggle::Toggle;
+
+/// What the section's switch says first, on or off.
+const WHAT: &str = "Your wallpaper behind chats, files, diffs, terminals and devices, dithered \
+                    in its own colours.";
 
 pub fn section(cx: &App) -> SettingsSection {
     let backdrop = settings::get(cx).chat_backdrop;
-    let switch = SettingRow::new("Chat background")
+    let switch = SettingRow::new("Wallpaper background")
         .description(if backdrop.on {
-            "Your wallpaper behind chats, dithered in its own colours."
+            WHAT.to_owned()
         } else {
-            "Your wallpaper behind chats, dithered in its own colours. Turn it on to set its \
-             opacity, the cell size and density, the fade, where it starts and ends, and the \
-             quality."
+            format!(
+                "{WHAT} Turn it on to choose what it shows behind (chats, explorers, files, \
+                 diffs, terminals, simulators and agent desktop), and set its opacity, the cell \
+                 size and density, the fade, where it starts and ends, and the quality."
+            )
         })
         .control(NativeSwitch::new(
             "chat-backdrop",
             |settings| settings.chat_backdrop.on,
             |settings, on| settings.chat_backdrop.on = on,
         ));
-    let section = SettingsSection::new("Chat background").row(switch);
+    let section = SettingsSection::new("Wallpaper background").row(switch);
     if !backdrop.on {
         return section;
     }
+    let mut surfaces = backdrop.surfaces;
+    let section = section.rows(Surface::ALL.map(|surface| {
+        let (id, name, behind) = surface.names();
+        let flip = move |on, cx: &mut App| {
+            settings::update(cx, |settings| {
+                *settings.chat_backdrop.surfaces.switch(surface) = on;
+            });
+        };
+        SettingRow::new(name)
+            .description(behind)
+            .control(Toggle::new(id, *surfaces.switch(surface), flip))
+    }));
     let fade = SettingRow::new("Fade")
         .description(if backdrop.fade {
             "The wallpaper fades out towards the bottom of a chat."
@@ -152,6 +171,12 @@ mod tests {
         };
         let shows = |cx: &mut TestAppContext| cx.read(|cx| section(cx).matches("how strongly"));
         let all = [
+            "chats",
+            "explorers",
+            "files",
+            "diffs",
+            "terminals",
+            "agent desktop",
             "opacity",
             "cell size",
             "density",

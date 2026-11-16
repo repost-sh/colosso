@@ -195,6 +195,11 @@ impl RightPanel {
                         .h_full()
                         .w(px(width))
                         .flex_shrink_0()
+                        .children(crate::chat_backdrop::backdrop(
+                            settings::Surface::Explorer,
+                            u64::MAX,
+                            cx,
+                        ))
                         .child(panel),
                 ),
         )
