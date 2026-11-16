@@ -262,13 +262,8 @@ impl BrowserView {
         if cfg!(feature = "visual-check") {
             return;
         }
-        // Only the person's own press or key, in a window on their screen, shows a menu there
-        // (`docs/browser.md` 14). One an agent's act asked for is over for the page at once.
-        let gate = match self.control.agent() {
-            Some(_) => Err(Refusal::Agent),
-            None => menus::may_show(window, "a page's menu"),
-        };
-        if let Err(refusal) = gate {
+        // One the gate refuses is over for the page at once.
+        if let Err(refusal) = self.menu_gate(window) {
             if refusal == Refusal::Agent {
                 log::warn!(target: "koyo::menus", "refused a page's menu: {}", refusal.why());
             }
@@ -278,6 +273,16 @@ impl BrowserView {
         }
         log::debug!("showing a page's menu at {at:?}");
         native(rows, self.pane, request.id).show(at, window, cx);
+    }
+
+    /// Whether the menu the page asked for may show now: only for the person's own press or
+    /// key, in a window on their screen (`docs/browser.md` 14). Never while an agent drives
+    /// the page, as its act asked for it; the person's press in the page takes it back first.
+    pub(super) fn menu_gate(&self, window: &Window) -> Result<(), Refusal> {
+        match self.control.agent() {
+            Some(_) => Err(Refusal::Agent),
+            None => menus::may_show(window, "a page's menu"),
+        }
     }
 
     /// A menu left without a pick is over for the page: the next press or key says so.
