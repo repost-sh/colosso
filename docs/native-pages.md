@@ -545,7 +545,8 @@ In a debug build, `KOYO_NATIVE_SWITCHES="a b=c"` adds Chromium switches and
 `KOYO_NATIVE_PROBE=<folder>` takes
 commands from `<folder>/cmd` (`browser/native/probe.rs`): captures of the app's own window
 taken in the process, and clicks, keys, scrolls and drags made as `NSEvent`s and handed to
-the window, so nothing is injected into the system. The checks in this document were run with
+the window, so nothing is injected into the system. Its `keyboard`, `bounds <name>` and bare
+`key` commands are the keyboard's (`docs/keyboard.md` 9). The checks in this document were run with
 it, on a copy of the bundle with data, settings, logs and temporary folders of its own inside
 the checkout (`.superpowers/native/test/`), and on another for Koyo's agent desktop
 (`.superpowers/native/desk/`, its environment in its `Info.plist`, as the desktop starts apps

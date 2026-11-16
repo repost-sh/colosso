@@ -403,6 +403,7 @@ impl Render for ChatComposer {
             .px_3()
             .rounded(px(RADIUS))
             .debug_selector(|| "chat-composer".to_owned())
+            .children(crate::marks::mark("chat-composer"))
             .occlude();
         let typed = self.text.read(cx).value();
         let surface = Self::takes_drops(liquid::floating(surface, on_glass, p), p, cx)

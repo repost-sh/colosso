@@ -24,6 +24,7 @@ mod hooks;
 mod lines;
 mod rate;
 mod reconcile;
+mod reserved;
 mod state;
 #[cfg(test)]
 mod tests;
@@ -171,6 +172,13 @@ impl Drop for DialogOver {
         let window = key_of(self.0);
         change(|keyboards| keyboards.dialog(window, false));
     }
+}
+
+/// Each window the keyboard is kept for, its holder, its first responder and whether it's key,
+/// and whether the app is in front, for the native pages' harness (`browser/native/probe.rs`).
+#[cfg(all(target_os = "macos", debug_assertions, not(test)))]
+pub fn describe() -> String {
+    appkit::describe()
 }
 
 /// What has the keyboard in `window`, as a test reads it.

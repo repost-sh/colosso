@@ -175,6 +175,16 @@ pub fn pressed(window: WindowKey, over: Responder, button: isize) {
     }
 }
 
+/// Whether `keystroke`, a key equivalent offered to `window`'s GPUI view for the first time, is
+/// Koyo's first: always while GPUI's view has the keyboard; with a page holding, only the keys
+/// Koyo keeps for itself (`reserved.rs`), every other being the page's first, and Koyo's once
+/// the page leaves it.
+pub fn gpui_first(window: WindowKey, keystroke: &gpui_kit::Keystroke) -> bool {
+    let in_page = installed()
+        .is_some_and(|it| matches!(it.appkit.first_responder(window), Responder::Page(_)));
+    !in_page || super::reserved::reserved(keystroke)
+}
+
 /// A key is about to be delivered in `window`: it goes to what the holder wants, the first
 /// responder made that first if it isn't.
 pub fn at_key(window: WindowKey) {

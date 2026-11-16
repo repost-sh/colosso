@@ -28,6 +28,10 @@
 //!                          made here has the pointer's place, not one of its own)
 //! type <text>              keys for the text, to the window's first responder
 //! key <code> <chars> [cmd|shift|ctrl|alt…]   a key down and up, as a key equivalent first
+//! key                      the window made key now, the app left behind (the agent desktop)
+//! keyboard                 each window's keyboard holder, first responder, key; app in front
+//! bounds <name>            where a named part was drawn (`crate::marks`): chat-composer,
+//!                          browser-address, page-<pane>, tab-switcher
 //! state                    the window's first responder and whether it's key
 //! cursor                   the cursor the app has set, and where the window is on screen
 //! tick                     windows nothing shows drawn all the same, ten times a second (again: off)
@@ -52,6 +56,7 @@ use objc2::{MainThreadMarker, class, msg_send};
 use objc2_app_kit::{NSApplication, NSWindow};
 use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
 
+mod keys;
 mod look;
 use look::{draw, quit, state, views, windows};
 
@@ -132,7 +137,7 @@ pub fn start(cx: &mut App) {
                 } else if verb == "eval" {
                     look::eval(rest, cx).await
                 } else if verb == "burst" {
-                    burst(rest, &folder, cx).await
+                    keys::burst(rest, &folder, cx).await
                 } else {
                     run(verb, rest, &folder)
                 };
@@ -143,37 +148,6 @@ pub fn start(cx: &mut App) {
         }
     })
     .detach();
-}
-
-/// `burst <keys|wheels> <count> <gap ms> [x y]`: inputs one after another, each stamped as
-/// it's handed to the window, the stamps in `<kind>.json`.
-async fn burst(rest: &str, folder: &Path, cx: &AsyncApp) -> String {
-    let words: Vec<&str> = rest.split(' ').collect();
-    let kind = words.first().copied().unwrap_or("keys");
-    let number = |at: usize, or: f64| words.get(at).and_then(|w| w.parse::<f64>().ok()).unwrap_or(or);
-    let (count, gap) = (number(1, 50.) as usize, number(2, 100.) as u64);
-    let mut sent = Vec::with_capacity(count);
-    for _ in 0..count {
-        if let Some(window) = window() {
-            sent.push(wall_ms());
-            if kind == "wheels" {
-                scroll(&window, -3);
-            } else {
-                key(&window, 0, "a", 0, false);
-            }
-        }
-        cx.background_executor().timer(Duration::from_millis(gap)).await;
-    }
-    let stamps: Vec<String> = sent.iter().map(|at| format!("{at:.3}")).collect();
-    let _ = std::fs::write(folder.join(format!("{kind}.json")), format!("[{}]", stamps.join(",")));
-    format!("{} {kind} sent", sent.len())
-}
-
-/// The time by the wall clock, in milliseconds, as a page reads it too.
-fn wall_ms() -> f64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0., |since| since.as_secs_f64() * 1000.)
 }
 
 fn append(path: &Path, text: &str) {
@@ -259,6 +233,9 @@ fn run(verb: &str, rest: &str, folder: &Path) -> String {
             }
             "typed".into()
         }
+        ("keyboard", _) => keys::keyboard(),
+        ("bounds", _) => keys::bounds(rest),
+        ("key", []) if rest.is_empty() => keys::make_key(&window),
         ("key", _) => {
             let mut words = rest.split(' ');
             let code = words.next().and_then(|w| w.parse::<u16>().ok()).unwrap_or(0);

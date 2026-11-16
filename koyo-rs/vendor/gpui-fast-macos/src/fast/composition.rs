@@ -227,10 +227,13 @@ pub(crate) unsafe fn register_window_input(decl: &mut ClassBuilder, superclass: 
 ///   them in its place: ⌃ let go after ⌃⇥ in a page never reached GPUI, and the tab switcher
 ///   waited for it for good. So GPUI hears each change, and a change it also hears from its
 ///   own view it counts once (`handle_view_event`).
-fn route_keys(this: &AnyObject, event: Id, kind: NSEventType) {
+fn route_keys(this: &AnyObject, event: Id, kind: NSEventType) -> bool {
     match kind {
         NSEventType::KeyDown | NSEventType::KeyUp => {
             crate::responders::tell(|responders| responders.key(this));
+            if kind == NSEventType::KeyDown {
+                return offer_first(this, event);
+            }
         }
         NSEventType::FlagsChanged => {
             let root = unsafe { get_window_state(this) }.lock().native_view;
@@ -241,6 +244,30 @@ fn route_keys(this: &AnyObject, event: Id, kind: NSEventType) {
         }
         _ => {}
     }
+    false
+}
+
+/// Koyo: a ⌘ or ⌃ key going down while another view has the keyboard is offered to GPUI's view
+/// as a key equivalent before the window delivers it, as `AppKit` would have offered it first
+/// were the app in front; whether GPUI took it, and the window delivers it to nobody else. GPUI
+/// takes it only if it's GPUI's first, and never twice (`responders::Offers`).
+fn offer_first(this: &AnyObject, event: Id) -> bool {
+    const COMMAND: usize = 1 << 20;
+    const CONTROL: usize = 1 << 18;
+    let flags: usize = unsafe { msg_send![event, modifierFlags] };
+    if flags & (COMMAND | CONTROL) == 0 {
+        return false;
+    }
+    let state = unsafe { get_window_state(this) };
+    let root = state.lock().native_view;
+    let first: Id = unsafe { msg_send![this, firstResponder] };
+    if first == root.as_ptr() {
+        return false;
+    }
+    state.lock().koyo_router_offering = true;
+    let taken: Bool = unsafe { msg_send![root.as_ptr(), performKeyEquivalent: event] };
+    state.lock().koyo_router_offering = false;
+    taken.as_bool()
 }
 
 /// Koyo: a press about to be handed on in the window, to `over`, a native view under the
@@ -253,7 +280,9 @@ fn tell_press(this: &AnyObject, event: Id, over: Id) {
 
 fn send_window_event(this: &AnyObject, event: Id, superclass: &AnyClass) {
     let kind: NSEventType = unsafe { msg_send![event, type] };
-    route_keys(this, event, kind);
+    if route_keys(this, event, kind) {
+        return;
+    }
     let pressed = matches!(
         kind,
         NSEventType::LeftMouseDown | NSEventType::RightMouseDown | NSEventType::OtherMouseDown
