@@ -149,9 +149,20 @@ settled once it's built.
   wallpaper of each screen a chat shows the backdrop on once a second, a few calls that cost
   next to nothing, and again at once when the Space changes
   (`NSWorkspaceActiveSpaceDidChangeNotification`): each Space can have a picture of its own.
-  A change in what's asked (3.1) makes the picture again. **[proposed]**
+  A change in what's asked (3.1) makes the picture again. **[proposed]** Built so
+  (`chat_backdrop/watch.rs`, `screens.rs`, `tick`): a changed wallpaper draws the windows
+  again, and each chat on that screen asks for the picture of the new one. A screen no chat
+  had shown is read again when one does.
 - The settings and the appearance are heard as the rest of the app hears them
-  (`settings::observe`, `theme::follow_window_appearance`).
+  (`settings::observe`, `theme::follow_window_appearance`). Built: a change of the backdrop's
+  settings draws the windows again; the appearance, a window moved to another screen and a
+  screen's new size or scale draw them again already (GPUI's own refresh), and each chat
+  then asks for the picture they call for.
+- **Letting go** (3.1): the same tick lets a screen's picture go once no chat has shown it
+  for 30 seconds, not at once, so a chat shown again after a terminal's tab shows its
+  backdrop without the card in between. A chat holds its screen's picture through its
+  element's state, which GPUI drops the first frame that doesn't draw the chat.
+  **[proposed: the 30 seconds]**
 
 ## 4. Drawing it
 
@@ -373,7 +384,8 @@ is 489 lines, so its new field and default may need something moved out of it fi
    agent desktop.
 6. The settings, their rows and their search wording. **Built** (section 6); the stops'
    values wait to be tuned by eye.
-7. Noticing a change of wallpaper, Space, screen and settings.
+7. Noticing a change of wallpaper, Space, screen and settings. **Built** (3.3); how it does
+   on screen waits for the agent desktop.
 8. The drag measured; Koyo's own drag only if the slip shows.
 9. A visual check, as the tab switcher has (`docs/tab-switcher.md` 7): the shell in a real
    window off screen, over a wallpaper kept in the checkout rather than the person's, saving
