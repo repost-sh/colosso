@@ -13,6 +13,7 @@ mod checkouts;
 mod control;
 mod delete_worktree;
 mod devices;
+mod edit_menu;
 mod fade;
 mod files;
 mod former_name;
@@ -99,6 +100,7 @@ fn init(cx: &mut App) {
     #[cfg(target_os = "macos")]
     native::init(cx);
     keyboard::init(cx);
+    edit_menu::init(cx);
 }
 
 /// The app's window: most of the screen, so the chat, the sidebar and the changes fit side

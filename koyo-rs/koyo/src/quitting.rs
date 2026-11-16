@@ -80,7 +80,7 @@ pub fn set_menu(cx: &App) {
         MenuItem::action("Settings…", OpenSettings),
         MenuItem::separator(),
         MenuItem::action("Quit Koyo", Quit),
-    ])]);
+    ]), crate::edit_menu::menu()]);
 }
 
 /// What runs on without the app: the daemon's terminals, to end, with the names of those

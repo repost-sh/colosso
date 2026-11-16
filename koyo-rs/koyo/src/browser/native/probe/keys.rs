@@ -12,6 +12,60 @@ use objc2_app_kit::{NSApplication, NSWindow};
 
 use super::{key, scroll, window};
 
+/// `menus`: the menu bar as `AppKit` has it, never opened: each menu's title, and each of its
+/// items by title, with `+key` for one that has a key of its own.
+pub(super) fn menus() -> String {
+    use std::fmt::Write as _;
+    let mut said = String::new();
+    // SAFETY: the application's main menu and its items, read on the main thread.
+    unsafe {
+        let Some(main) = MainThreadMarker::new() else {
+            return "not the main thread".into();
+        };
+        let app = NSApplication::sharedApplication(main);
+        let bar: *mut AnyObject = msg_send![&*app, mainMenu];
+        let Some(bar) = bar.as_ref() else {
+            return "no menu bar".into();
+        };
+        let count: isize = msg_send![bar, numberOfItems];
+        for at in 0..count {
+            let top: *mut AnyObject = msg_send![bar, itemAtIndex: at];
+            let menu: *mut AnyObject = msg_send![top, submenu];
+            let Some(menu) = menu.as_ref() else {
+                continue;
+            };
+            let title: *mut AnyObject = msg_send![menu, title];
+            let _ = write!(said, "[{}]", text(title));
+            let items: isize = msg_send![menu, numberOfItems];
+            for item in 0..items {
+                let item: *mut AnyObject = msg_send![menu, itemAtIndex: item];
+                let separator: Bool = msg_send![item, isSeparatorItem];
+                if separator.as_bool() {
+                    continue;
+                }
+                let name: *mut AnyObject = msg_send![item, title];
+                let key: *mut AnyObject = msg_send![item, keyEquivalent];
+                let keyed = if text(key).is_empty() { "" } else { "+key" };
+                let _ = write!(said, " {}{keyed};", text(name));
+            }
+            said.push(' ');
+        }
+    }
+    said
+}
+
+/// An `NSString`'s text, empty for nil.
+unsafe fn text(string: *mut AnyObject) -> String {
+    let Some(string) = (unsafe { string.as_ref() }) else {
+        return String::new();
+    };
+    let utf8: *const std::ffi::c_char = unsafe { msg_send![string, UTF8String] };
+    if utf8.is_null() {
+        return String::new();
+    }
+    unsafe { std::ffi::CStr::from_ptr(utf8) }.to_string_lossy().into_owned()
+}
+
 /// `seam`: what the native layer keeps of `window`'s inputs and of each page's.
 pub(super) fn seam(window: &NSWindow) -> String {
     let pages = koyo_browser_host::native::pages();

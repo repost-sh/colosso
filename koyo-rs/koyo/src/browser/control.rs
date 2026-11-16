@@ -220,6 +220,18 @@ impl BrowserView {
 
     /// The person gives the page back, or their hold of it lapses: an agent may drive it
     /// again.
+    /// Whether the person has the page, as a test outside the browser reads it.
+    #[cfg(test)]
+    pub fn person_has_it(&self) -> bool {
+        self.control.person_holds()
+    }
+
+    /// The page given back, as a test outside the browser does it.
+    #[cfg(test)]
+    pub fn nobody_has_it(&mut self, cx: &mut Context<Self>) {
+        self.give_back(cx);
+    }
+
     pub(super) fn give_back(&mut self, cx: &mut Context<Self>) {
         self.lapse = None;
         self.control.person_gives_back();
