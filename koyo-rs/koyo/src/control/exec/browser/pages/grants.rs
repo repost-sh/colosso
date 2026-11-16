@@ -16,8 +16,8 @@ use koyo_app_control::Scope;
 use super::super::super::super::gate;
 use super::super::super::Caller;
 use super::asks;
-use crate::browser::BrowserView;
 use crate::browser::agent::Actor;
+use crate::browser::{BrowserView, profiles};
 use crate::model::{Spot, Tab};
 use crate::shell::Shell;
 
@@ -34,6 +34,18 @@ pub(super) struct Which {
     pub view: Option<EntityId>,
     pub spot: Spot,
     pub home: Option<String>,
+}
+
+impl Which {
+    /// Whether it's the page `other` is, where `other` is: a worktree's page by its checkout,
+    /// not its place among the tabs, which tabs opened and closed before it move.
+    fn is(&self, other: &Which) -> bool {
+        let here = |spot: Spot| match spot {
+            Spot::Checkout(project, branch, _) => Spot::Checkout(project, branch, 0),
+            spot => spot,
+        };
+        self.view == other.view && self.home == other.home && here(self.spot) == here(other.spot)
+    }
 }
 
 /// What the person allowed a client.
@@ -86,7 +98,7 @@ pub(super) fn held(
     cx: &App,
 ) -> Option<u64> {
     let grant = mine(&(caller.key(), pane), caller, cx)?;
-    (grant.which == *which && on_lease(grant, view, cx)).then_some(grant.number)
+    (grant.which.is(which) && on_lease(grant, view, cx)).then_some(grant.number)
 }
 
 /// Whether `caller`'s grant numbered `number` for pane `pane` still holds for `view`.
@@ -274,17 +286,26 @@ pub(crate) fn rescope(cx: &mut App) {
 }
 
 /// The window changed: consents for a page that closed, moved, was pinned again or at another
-/// address, or whose chat ended, end; a lease an agent holds of one of the person's pages that
-/// no consent covers, as of a page pinned while an agent drove it, is let go; and refusals that
-/// are over are forgotten.
+/// address, or whose chat ended, end, and those for a worktree's page once agents' pages are
+/// signed in as the person again; a lease an agent holds of one of the person's pages that no
+/// consent covers, as of a page pinned while an agent drove it, or one they opened in a
+/// worktree as agents' pages were kept apart, is let go; and refusals that are over are
+/// forgotten.
 pub(crate) fn prune(shell: &Shell, cx: &mut App) {
     asks::forget_over(cx.background_executor().now(), cx);
     let workspace = &shell.workspace;
     let loose = (workspace.loose_by_space())
         .flat_map(|(_, pages, _)| pages.iter().map(|page| &page.tab));
+    let separate = profiles::get(cx).separate();
+    let worktrees = (workspace.projects.iter())
+        .flat_map(|project| &project.branches)
+        .flat_map(|unit| &unit.tabs)
+        .flat_map(Tab::panes)
+        .filter(|pane| separate && !pane.by_agent);
     let theirs = (workspace.pinned().iter().map(|pinned| &pinned.tab))
         .chain(loose)
         .flat_map(Tab::panes)
+        .chain(worktrees)
         .filter_map(|pane| Some((pane.id, pane.view()?.clone())));
     let stray: Vec<_> = theirs
         .filter(|(pane, view)| view.read(cx).agent_holding().is_some() && !covered(*pane, view, cx))
@@ -317,5 +338,6 @@ fn still(shell: &Shell, pane: u64, grant: &Grant, cx: &App) -> bool {
         let chats = shell.chats().read(cx);
         chats.knows(&ThreadId(id.clone())) != Some(false)
     });
-    there.as_ref() == Some(&grant.which) && chat
+    let theirs = !matches!(grant.which.spot, Spot::Checkout(..)) || profiles::get(cx).separate();
+    there.is_some_and(|there| there.is(&grant.which)) && chat && theirs
 }

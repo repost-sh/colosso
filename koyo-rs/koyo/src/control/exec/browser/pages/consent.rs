@@ -86,11 +86,13 @@ impl Persons {
         }
     }
 
-    /// "pinned" or "loose".
+    /// "pinned", "loose", or "worktree" for one the person opened in a worktree while agents'
+    /// pages are kept apart.
     pub(in super::super) fn kind(&self) -> &'static str {
         match self.spot {
             Spot::Pinned => "pinned",
-            Spot::Loose(_) | Spot::Checkout(..) => "loose",
+            Spot::Loose(_) => "loose",
+            Spot::Checkout(..) => "worktree",
         }
     }
 

@@ -6,9 +6,13 @@
 //! its profile, and projects on the same profile share their sign-ins. A page asks
 //! [`profile`](super::profile) which profile it's of, whichever way it's opened.
 //!
+//! An agent's pages, those an agent's tool opened and those they open, are signed in as the
+//! person's are, of their project's profile; or, the person having them kept apart, of the
+//! Agents profile, built in as Default is (`docs/browser.md` 15.7).
+//!
 //! They're kept in `browser-profiles.json` in the data folder, not in `settings.json`: a build
 //! that doesn't know them writes the settings with only what it knows, and would take them
-//! with it.
+//! with it, and an agent's `settings_set` can't change what agents' pages are signed in as.
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -24,7 +28,7 @@ use crate::spaces::ProjectLooks;
 
 mod actions;
 
-pub use actions::{DeleteProfile, NewProfile, RenameProfile, handle_actions, menu};
+pub use actions::{DeleteProfile, NewProfile, RenameProfile, SetAgentPages, handle_actions, menu};
 
 /// Default's id: the folder the pages opened outside any project kept before profiles had
 /// names (`own(Path::new(NO_PROJECT))`), so what they're signed in to stays.
@@ -32,6 +36,45 @@ pub const DEFAULT: &str = "no-project-5131f9da27ba906e";
 
 /// What Default is called. It can't be renamed or deleted.
 pub const DEFAULT_NAME: &str = "Default";
+
+/// The profile agents' pages use while the person keeps them apart from theirs: built in, never
+/// renamed or deleted, and no project's to be put on.
+pub const AGENTS: &str = "koyo-agents";
+
+/// What the Agents profile is called.
+pub const AGENTS_NAME: &str = "Agents";
+
+/// Who opened a page, which the profile it's of goes by: the person, or an agent's tool and
+/// what the page it opened opens.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum By {
+    #[default]
+    Person,
+    Agent,
+}
+
+/// What agents' pages are signed in as.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AgentPages {
+    /// As the person's are: of their project's profile.
+    #[default]
+    Shared,
+    /// As none of the person's are: of the Agents profile. A page the person opened is then
+    /// theirs to let an agent use, in a worktree too (`docs/app-control.md` 5).
+    Separate,
+}
+
+impl AgentPages {
+    pub const ALL: [AgentPages; 2] = [AgentPages::Shared, AgentPages::Separate];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            AgentPages::Shared => "Signed in as you",
+            AgentPages::Separate => "Separate",
+        }
+    }
+}
 
 const FILE: &str = "browser-profiles.json";
 const SAVE_DELAY: Duration = Duration::from_millis(300);
@@ -52,12 +95,15 @@ pub struct Profiles {
     pub made: Vec<Profile>,
     /// By the project's main checkout; a project not here is on Default.
     pub projects: BTreeMap<PathBuf, String>,
+    /// What agents' pages are signed in as; as the person's when the file says nothing.
+    pub agents: AgentPages,
 }
 
 /// What a test that sets none up reads: no profile but Default.
 static NONE: Profiles = Profiles {
     made: Vec::new(),
     projects: BTreeMap::new(),
+    agents: AgentPages::Shared,
 };
 
 /// The folder a project's pages kept before profiles had names: named after the project's
@@ -95,6 +141,22 @@ impl Profiles {
             .unwrap_or(DEFAULT)
     }
 
+    /// The profile a page opened for `project`, by `by`, uses: an agent's, while agents' pages
+    /// are separate, the Agents profile; any other its project's (`of`).
+    pub fn page(&self, project: &Path, by: By) -> &str {
+        if by == By::Agent && self.separate() {
+            AGENTS
+        } else {
+            self.of(project)
+        }
+    }
+
+    /// Whether agents' pages are kept apart from the person's, theirs then all the pages they
+    /// opened.
+    pub fn separate(&self) -> bool {
+        self.agents == AgentPages::Separate
+    }
+
     /// Whether there's a profile of this id, Default or one of those made.
     pub fn has(&self, id: &str) -> bool {
         id == DEFAULT || self.made.iter().any(|made| made.id == id)
@@ -106,8 +168,12 @@ impl Profiles {
         std::iter::once((DEFAULT, DEFAULT_NAME)).chain(made)
     }
 
-    /// What the profile of this id is called; Default's name for one that's gone.
+    /// What the profile of this id is called, the Agents profile too; Default's name for one
+    /// that's gone.
     pub fn name(&self, id: &str) -> &str {
+        if id == AGENTS {
+            return AGENTS_NAME;
+        }
         (self.all().find(|(of, _)| *of == id)).map_or(DEFAULT_NAME, |(_, name)| name)
     }
 

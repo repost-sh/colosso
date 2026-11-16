@@ -7,6 +7,7 @@ use std::path::Path;
 
 use gpui_kit::{App, Context, Window};
 
+use super::profiles::By;
 use super::toolbar::tab_title;
 use crate::history;
 use crate::model::{Pane, Unloaded};
@@ -24,14 +25,16 @@ pub(crate) fn page_brought_back(url: &str, title: &str, cx: &mut App) -> Pane {
 
 impl Shell {
     /// Makes the pages the shown tab's browser panes don't have yet, at the addresses they
-    /// kept, so the panes draw them. Each opens its page once laid out; its first load is no
-    /// new visit, as it was visited before.
+    /// kept, so the panes draw them, an agent's page an agent's again. Each opens its page once
+    /// laid out; its first load is no new visit, as it was visited before.
     pub fn make_shown_browsers(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let workspace = &self.workspace;
-        let missing: Vec<(u64, String)> = (workspace.tab_shown())
+        let missing: Vec<(u64, String, By)> = (workspace.tab_shown())
             .map(|tab| {
                 (tab.panes().into_iter())
-                    .filter_map(|pane| Some((pane.id, pane.unloaded_address()?.to_owned())))
+                    .filter_map(|pane| {
+                        Some((pane.id, pane.unloaded_address()?.to_owned(), pane.by()))
+                    })
                     .collect()
             })
             .unwrap_or_default();
@@ -44,9 +47,12 @@ impl Shell {
         let Some(project) = apart.or_else(selected) else {
             return;
         };
-        for (id, address) in missing {
+        for (id, address, by) in missing {
             let view = self.browser_view(address, &project, window, cx);
-            view.update(cx, |view, _| view.mark_restored());
+            view.update(cx, |view, _| {
+                view.mark_restored();
+                view.made_by(by);
+            });
             if let Some(pane) = self.workspace.pane_mut(id) {
                 pane.set_view(view);
             }

@@ -1006,7 +1006,7 @@ the owner's to change, **[ours]**.
   same profile are signed in alike. Whichever way a page is opened (a worktree's tab, ⌘T, a
   link opened beside its page, ⌘⇧T, brought back with the window, pinned, loose, an agent's),
   it asks one place which profile it's of: `browser::profile`, from the project it's opened
-  for. **[asked: which profile a project's worktrees get; ours: one place]**
+  for and who opened it, the person or an agent (15.7). **[asked: which profile a project's worktrees get; ours: one place]**
 
 ### 15.2 Where it's picked [decided]
 
@@ -1078,11 +1078,57 @@ signed in to is lost: **[asked]**
 | `koyo-rs/koyo/src/browser/host.rs`, `browser/view/lifecycle.rs` | Open pages closing and opening again in the profile their project's on now |
 | `koyo-rs/koyo/src/settings_view/browser.rs` | Settings → Browser's Profiles and Project profiles |
 | `koyo-rs/koyo-browser-host/src/host/profiles.rs` | Whether a profile's folder holds anything; deleted profiles' folders going at the next start |
+| `koyo-rs/koyo/src/control/exec/open.rs`, `control/exec/browser/pages/` | Agents' pages marked as they're made; the person's worktree pages through the consent gate while agents' are kept apart (15.7) |
 
 - Unit tests: Default is the old `no-project` folder; a project on Default until put on
   another; a new profile's folder no other had; Default kept; a profile deleted puts its
   projects on Default; each project's old folder brought over with its name; the file read
   back as it was kept, and nothing brought over again once it's there; an open page to close
   and open again once its project's on another profile, and one not open not; a deleted
-  profile's folders gone at the next start, its neighbours' left.
+  profile's folders gone at the next start, its neighbours' left. Agents' pages (15.7): of the
+  project's or the Agents profile as the setting says, the setting read back and `shared` by
+  default; an agent's page moving on a switch and the person's not; the mark kept with the
+  window and through `tab_reopen`; kept apart, a person's worktree page needing their consent
+  and an agent's not, its grant holding as a tab before it closes, and free again once agents'
+  pages are signed in as the person (`control/tests/agents_apart.rs`).
 - Not run here: the engine against a real profile change. The owner checks it by hand.
+
+### 15.7 Agents' pages: signed in as the person, or kept apart [decided]
+
+Asked for by the owner on 2026-11-16: "the default behaviour user defined in settings. For
+myself I prefer that agents' tabs get my profile … but other people might want otherwise (a
+more advanced use case; by default people expect the profile to be shared, not segregated)."
+**[asked]**
+
+- **Settings → Browser → Profiles → Agents' pages**: **Signed in as you**, the default, or
+  **Separate**. One setting for every project. **[asked: a setting, shared by default; ours:
+  global, no override per project]**
+- **Signed in as you**: an agent's page is of its project's profile, as the person's pages
+  there are. Nothing else changes from 15.1–15.3.
+- **Separate**: an agent's page is of the **Agents** profile, built in as Default is: always
+  there, its own folder (`profile-koyo-agents`), never renamed or deleted, and no project's
+  to be put on (Set Profile doesn't offer it). One for every project's agents, so an agent's
+  account signs in once for all of them, and never into the person's. **[ours: one, not one
+  per project]**
+- **An agent's page** is one an agent's tool made, `tab_open` with `kind` `browser` or
+  `browser_duplicate`'s copy, and any page such a page opens, as a link opened beside it or
+  from its `DevTools`. It's marked so as it's made, whichever the setting (`Pane::by_agent`,
+  `BrowserView::made_by`, `control/exec/open.rs` `agents_page_made`), so a later switch moves
+  the right pages. The mark is kept with the window (`window.json`, `"byAgent": true`, said
+  only when it is) and in what ⌘⇧T brings back, and the page is made again with it
+  (`make_shown_browsers`, `reopen_closed`). `browser_navigate` makes no page: it steers one.
+- **A page the person opened in a worktree**, while agents' pages are kept apart, is theirs
+  for an agent to use only with their consent, as a pinned or a loose page is
+  (`docs/app-control.md` 5, The person's own pages): it's signed in as them, so keeping
+  agents apart means something. While they're signed in as the person, it's the
+  worktree's, as before. **[asked by the coordinator; ours: the gate is item 10's own]**
+- **Switching** moves only the open agents' pages whose profile changes, the project's to the
+  Agents profile or back: each closes and opens again in the other at its address, the same
+  page, an agent holding it still holding it (`Browsers::profiles_changed`, 15.3). The
+  person's pages stay as they are.
+- **A page kept from before this build** has no mark, and is the person's: kept apart, an agent
+  asks the person for a page it opened itself before then, or opens another. **[accepted by
+  the coordinator]**
+- **Kept** in `browser-profiles.json` (15.5) as `agents`, `"shared"` or `"separate"`, `shared`
+  when the file says nothing: not in `settings.json`, so an agent's `settings_set` can't
+  change what agents' pages are signed in as; only the person does, in Settings.

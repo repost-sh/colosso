@@ -19,12 +19,19 @@ use crate::shell::Shell;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum KeptPane {
-    /// A page, at the address it showed, titled as it was until it says otherwise. A new
-    /// tab's start page has no address.
+    /// A page, at the address it showed, titled as it was until it says otherwise, and
+    /// whether it's an agent's (`Pane::by_agent`), said only when it is: one kept before that
+    /// was kept is the person's. A new tab's start page has no address.
     Page {
         url: String,
         #[serde(default)]
         title: String,
+        #[serde(
+            default,
+            rename = "byAgent",
+            skip_serializing_if = "std::ops::Not::not"
+        )]
+        by_agent: bool,
     },
     /// A terminal the daemon runs, by its handle and its name.
     Terminal {
@@ -104,6 +111,7 @@ impl Shell {
             PaneKind::Browser => Some(KeptPane::Page {
                 url: pane.address(cx)?,
                 title: pane.title.to_string(),
+                by_agent: pane.by_agent,
             }),
             PaneKind::Terminal => {
                 let (handle, name) = self.terminals.kept(pane.terminal?)?;
@@ -168,7 +176,15 @@ impl Shell {
     /// deleted goes once the daemon or the host says so.
     fn pane_of_kept(&mut self, kept: &KeptPane, cx: &mut Context<Self>) -> Option<Pane> {
         match kept {
-            KeptPane::Page { url, title } => Some(browser::page_brought_back(url, title, cx)),
+            KeptPane::Page {
+                url,
+                title,
+                by_agent,
+            } => {
+                let mut pane = browser::page_brought_back(url, title, cx);
+                pane.by_agent = *by_agent;
+                Some(pane)
+            }
             KeptPane::Terminal { handle, name } => {
                 let mut pane = Pane::new(PaneKind::Terminal);
                 pane.terminal = Some(self.terminals.bring_back(handle.clone(), name.clone()));

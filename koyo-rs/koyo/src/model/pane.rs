@@ -50,6 +50,10 @@ pub struct Pane {
     pub terminal: Option<u64>,
     /// The thread a chat pane shows: a new chat has none until its first send.
     pub chat: Option<ThreadId>,
+    /// Whether a browser pane's page is an agent's: opened by an agent's tool, or by such a
+    /// page (`browser/profiles.rs` `By`). It's kept with the window, and its page made again
+    /// so (`BrowserView::made_by`).
+    pub by_agent: bool,
 }
 
 impl Pane {
@@ -67,6 +71,7 @@ impl Pane {
             entered_at: 0,
             terminal: None,
             chat: None,
+            by_agent: false,
         }
     }
 
@@ -133,13 +138,22 @@ impl Pane {
         }
     }
 
-    /// A browser pane showing `view`, titled as the view calls itself.
+    /// A browser pane showing `view`, titled as the view calls itself, an agent's when its
+    /// page is.
     pub fn browser(view: Entity<BrowserView>, cx: &App) -> Self {
+        let shown = view.read(cx);
         Pane {
-            title: view.read(cx).title().into(),
+            title: shown.title().into(),
+            by_agent: shown.by() == crate::browser::profiles::By::Agent,
             page: Some(Page::Made(view)),
             ..Pane::new(PaneKind::Browser)
         }
+    }
+
+    /// Who opened a browser pane's page: an agent, when it's an agent's (`by_agent`).
+    pub fn by(&self) -> crate::browser::profiles::By {
+        use crate::browser::profiles::By;
+        if self.by_agent { By::Agent } else { By::Person }
     }
 
     /// A browser pane with no view yet, titled `title`, that opens `unloaded`'s address once

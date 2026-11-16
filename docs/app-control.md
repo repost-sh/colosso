@@ -492,23 +492,40 @@ so, in Koyo's window.
 - **A copy instead.** `browser_duplicate { pane, reason? }`, with the `navigate` scope too
   as `tab_open` needs, asks "An agent saying it's from the chat “Fix login” (koyo/feat-x)
   asks for a copy of your page “Inbox” (mail.example.com) in its worktree koyo/feat-x",
-  Allow / Cancel, the same 10-minute memory of a refusal. Its detail says how the copy is
-  signed in: "signed in as you, as this page is" when the worktree's project's profile is
-  the page's (`browser::profile`), else "with that worktree's own sign-ins". Allowed, a
+  Allow / Cancel, the same 10-minute memory of a refusal. Its detail says how the copy, an
+  agent's page, is signed in: "with the agents' own sign-ins, not yours" while agents' pages
+  are kept apart (`docs/browser.md` 15.7); else "signed in as you, as this page is" when the
+  copy's profile is the page's (`browser::profile`), and "with that worktree's own sign-ins"
+  when it isn't. Allowed, a
   browser tab of the caller's worktree opens at the address the page had when the person was
   asked, as a page the agent opens does: beside the agent's own tab (else after the one its
   worktree shows), out of sight unless Switch to what agents open is on, at the size Pages
-  agents open says, of that worktree's project's profile. A page that closed, moved or went
+  agents open says, of the profile an agent's page of that worktree is of. A page that closed, moved or went
   to another address meanwhile isn't copied (`browser_unavailable`). Only the address is
   copied; the copy is an ordinary page of the worktree, the agent's to drive. The caller's
   worktree is a chat's folder's checkout, a terminal's checkout as the daemon says it, and
   for any other client the one its hello names (`KOYO_WORKTREE`, else its working folder);
   a client in none is refused `not_found`, before anyone's asked. A worktree's page is
   refused `invalid_input`: `tab_open` opens another.
+- **Kept apart, a worktree's page the person opened is theirs too** [decided 2026-11-16].
+  While agents' pages are signed in as the person (Settings › Browser, Agents' pages: Signed
+  in as you, the default), every worktree's page is the worktree's, as above. Kept apart
+  (Separate), an agent's pages, those its tools opened (`tab_open`, `browser_duplicate`'s copy)
+  and those they open, are of the Agents profile, and a page the person opened in a worktree,
+  signed in as them, goes through the gate above as a pinned or a loose page does: listed
+  `place` `worktree`, its `worktree` given, `persons: true`; "Pane 12 is the person's worktree
+  page. Call browser_claim…"; never meant by a call naming no pane; a grant on it holds
+  however the tabs before it open and close, and ends once agents' pages are signed in as the
+  person again, when it's the worktree's for any agent once more. A lease an agent holds of
+  one with no consent, as when agents' pages are kept apart while it drives one, is let go.
+  Which pages are an agent's is kept with each (`Pane::by_agent`, `docs/browser.md` 15.7): a
+  page kept with the window by a build before that is the person's, so kept apart, an agent
+  asks for a page it opened itself then.
 - **Profiles are shared.** `browser_list` lists a person's page's address, so an agent may
   `tab_open` it in a worktree of the same project and read it signed in, as that profile is
-  the page's too (`docs/arc-sidebar.md` 11.6). That's what a profile is, and it's for the
-  owner, with browser profiles, to decide; the consent above doesn't cover it.
+  the page's too (`docs/arc-sidebar.md` 11.6), while agents' pages are signed in as the
+  person. Kept apart, the page it opens is of the Agents profile, with none of the person's
+  sign-ins (`docs/browser.md` 15.7).
 - **The window tools** refuse the person's pages outright (Tabs and panes).
 
 ### Agent desktop (`docs/agent-desktop.md`, through its host)

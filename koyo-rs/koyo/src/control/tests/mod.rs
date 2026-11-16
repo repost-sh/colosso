@@ -5,6 +5,7 @@
 
 mod accounts;
 mod activity;
+mod agents_apart;
 mod approval;
 mod beside;
 mod chat_modes;

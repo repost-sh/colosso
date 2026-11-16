@@ -6,8 +6,11 @@ use gpui_kit::{App, AsyncApp, ParentElement as _, PromptLevel, Styled as _, div,
 
 use super::components::{MenuButton, PillButton, SettingRow, SettingsSection};
 use super::native_switch::NativeSwitch;
-use crate::browser::profiles::{self, DeleteProfile, NewProfile, RenameProfile};
+use crate::browser::profiles::{
+    self, AgentPages, DeleteProfile, NewProfile, RenameProfile, SetAgentPages,
+};
 use crate::model::project_name;
+use crate::settings::checked_menu;
 use crate::{browser, settings};
 
 pub fn sections(cx: &App) -> Vec<SettingsSection> {
@@ -22,8 +25,9 @@ pub fn sections(cx: &App) -> Vec<SettingsSection> {
     ]
 }
 
-/// Every profile, with the projects on it, and making one (`browser/profiles.rs`). Default
-/// can't be renamed or deleted.
+/// Every profile, with the projects on it, and making one (`browser/profiles.rs`); what
+/// agents' pages are signed in as, and the Agents profile they use kept apart. Default and
+/// Agents can't be renamed or deleted.
 fn profiles(cx: &App) -> SettingsSection {
     let (settings, kept) = (settings::get(cx), profiles::get(cx));
     let new = SettingRow::new("New profile")
@@ -68,7 +72,26 @@ fn profiles(cx: &App) -> SettingsSection {
             );
         row.description(used).control(buttons)
     });
-    SettingsSection::new("Profiles").row(new).rows(listed)
+    let agents = kept.agents;
+    let agent_pages = SettingRow::new("Agents' pages")
+        .description(
+            "The pages an agent opens in a project's worktrees. Signed in as you, they use the \
+             project's profile, as your pages there do. Separate, they use the Agents profile, \
+             with none of your sign-ins, and an agent asks you before using a page you opened.",
+        )
+        .control(MenuButton::new("agent-pages", agents.label(), |cx| {
+            let agents = profiles::get(cx).agents;
+            checked_menu(AgentPages::ALL, agents, AgentPages::label, |agents| {
+                Box::new(SetAgentPages(agents))
+            })
+        }));
+    let agents_profile = SettingRow::new(profiles::AGENTS_NAME).description(match agents {
+        AgentPages::Shared => "Agents' pages, while they're kept separate. Unused now.",
+        AgentPages::Separate => "Every project's agents' pages, apart from your sign-ins.",
+    });
+    (SettingsSection::new("Profiles").row(new).rows(listed))
+        .row(agent_pages)
+        .row(agents_profile)
 }
 
 /// The profile each project's pages use, picked as from its Set Profile menu.

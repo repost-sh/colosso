@@ -175,8 +175,9 @@ impl Shell {
 
     /// A link from `view`'s page, or from its `DevTools`, opens in a tab right after the tab
     /// it's in, without leaving it, of its opener's profile, so it's signed in as its opener
-    /// is: on its checkout, after its tab; from a pinned or a loose page, as a loose page of
-    /// the space shown, right after a loose opener or after them all.
+    /// is, and an agent's if its opener is: on its checkout, after its tab; from a pinned or a
+    /// loose page, as a loose page of the space shown, right after a loose opener or after them
+    /// all.
     fn open_beside(
         &mut self,
         view: &Entity<BrowserView>,
@@ -190,7 +191,9 @@ impl Shell {
         let Some(Place { project, .. }) = self.profile_place(located) else {
             return;
         };
+        let by = view.read(cx).inspected().unwrap_or(view).read(cx).by();
         let opened = self.browser_view(url, &project, window, cx);
+        opened.update(cx, |opened, _| opened.made_by(by));
         let tab = Tab::Single(Pane::browser(opened, cx));
         match located.spot {
             Spot::Checkout(project_at, branch, at) => {

@@ -17,7 +17,7 @@ use super::super::super::{Caller, main_shell, output, window_closed};
 use super::super::page;
 use super::super::refusals;
 use super::{Admission, Page, Persons, grants};
-use crate::browser::{BrowserView, agent};
+use crate::browser::{BrowserView, agent, profiles};
 use crate::model::{Spot, Tab};
 
 /// Whose a browser pane is.
@@ -27,6 +27,9 @@ enum Owner {
     Worktree(PathBuf),
     /// The person's own: pinned, or loose in a space.
     Persons(Spot),
+    /// The person's own in a worktree, at its checkout: one they opened, signed in as them,
+    /// while agents' pages are kept apart (`docs/browser.md` 15.7).
+    PersonsWorktree(PathBuf, Spot),
 }
 
 /// A browser pane as the tools see it: its page, or none to act on yet for a tab brought back
@@ -60,7 +63,7 @@ impl Listed {
                 Ok(Found::Page(Page::new(self.pane, view, admitted)))
             }
             (Owner::Worktree(_), None) => Err(refusals::unshown(self.pane)),
-            (Owner::Persons(spot), view) => {
+            (Owner::Persons(spot) | Owner::PersonsWorktree(_, spot), view) => {
                 Ok(Found::Persons(self.persons(*spot, view.as_ref(), cx)))
             }
         }
@@ -79,6 +82,11 @@ impl Listed {
     fn info(&self, caller: &Caller, cx: &App) -> PageInfo {
         let (place, worktree, spot) = match &self.owner {
             Owner::Worktree(path) => (PagePlace::Worktree, Some(path.display().to_string()), None),
+            Owner::PersonsWorktree(path, spot) => (
+                PagePlace::Worktree,
+                Some(path.display().to_string()),
+                Some(*spot),
+            ),
             Owner::Persons(spot @ Spot::Pinned) => (PagePlace::Pinned, None, Some(*spot)),
             Owner::Persons(spot) => (PagePlace::Loose, None, Some(*spot)),
         };
@@ -149,12 +157,16 @@ fn holder(pane: u64, view: &Entity<BrowserView>, caller: &Caller, cx: &App) -> O
 fn pages(cx: &App) -> Result<(Vec<Listed>, Option<u64>), ControlError> {
     let (_, shell) = main_shell(cx).ok_or_else(window_closed)?;
     let workspace = &shell.read(cx).workspace;
+    let separate = profiles::get(cx).separate();
     let mut pages = Vec::new();
-    for project in &workspace.projects {
-        for unit in &project.branches {
-            let owner = Owner::Worktree(unit.worktree.path.clone());
-            for tab in &unit.tabs {
-                add(&mut pages, tab, (&owner, None), cx);
+    for (project_at, project) in workspace.projects.iter().enumerate() {
+        for (branch, unit) in project.branches.iter().enumerate() {
+            let path = &unit.worktree.path;
+            for (at, tab) in unit.tabs.iter().enumerate() {
+                let spot = Spot::Checkout(project_at, branch, at);
+                let theirs = separate.then(|| Owner::PersonsWorktree(path.clone(), spot));
+                let owners = (&Owner::Worktree(path.clone()), theirs.as_ref());
+                add_checkouts(&mut pages, tab, owners, cx);
             }
         }
     }
@@ -176,6 +188,31 @@ fn pages(cx: &App) -> Result<(Vec<Listed>, Option<u64>), ControlError> {
                 .map(|pane| pane.id)
         });
     Ok((pages, shown))
+}
+
+/// Lists the pages of a checkout's `tab`: an agent's the worktree's, and one the person opened
+/// `theirs` when that's given, as it is while agents' pages are kept apart; else the
+/// worktree's too.
+fn add_checkouts(
+    pages: &mut Vec<Listed>,
+    tab: &Tab,
+    (worktree, theirs): (&Owner, Option<&Owner>),
+    cx: &App,
+) {
+    let from = pages.len();
+    add(pages, tab, (worktree, None), cx);
+    let Some(theirs) = theirs else {
+        return;
+    };
+    let persons: Vec<u64> = (tab.panes().into_iter())
+        .filter(|pane| !pane.by_agent)
+        .map(|pane| pane.id)
+        .collect();
+    for listed in &mut pages[from..] {
+        if persons.contains(&listed.pane) {
+            listed.owner = theirs.clone();
+        }
+    }
 }
 
 /// Lists the pages of `tab`, `owner`'s, pinned at `home` when it's a pinned page.

@@ -47,6 +47,7 @@ pub(super) fn tabs_kept_before(window: &Path) -> Vec<KeptCheckout> {
                     KeptTree::Pane(KeptPane::Page {
                         url: tab.url,
                         title: tab.title,
+                        by_agent: false,
                     })
                 })
                 .collect(),

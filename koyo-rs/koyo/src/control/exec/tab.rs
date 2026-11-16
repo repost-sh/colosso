@@ -141,6 +141,7 @@ pub(crate) fn open(
     let caller = caller.clone();
     Ok(opened.then(cx, move |pane, cx| {
         try_update_shell(cx, |shell, window, cx| {
+            open::agents_page_made(shell, pane, cx);
             open::open_agents_page(shell, Some(&caller), pane, window, cx);
             output(&info::place(shell, pane)?)
         })
