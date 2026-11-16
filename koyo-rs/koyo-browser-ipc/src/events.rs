@@ -151,12 +151,16 @@ pub enum HostEvent {
         /// The pane.
         pane: PaneId,
     },
-    /// The pane asks for a page in a new tab: a link opened from `DevTools`.
+    /// The pane asks for a page in a new tab: a link opened from `DevTools`, or the page of
+    /// a tabbed window Chrome made on its own (an extension's options, `windows.create`).
     OpenUrl {
         /// The pane.
         pane: PaneId,
         /// The page.
         url: String,
+        /// Whether the tab is shown, as Chrome's window would have been: not for a link.
+        #[serde(default)]
+        front: bool,
     },
     /// A `DevTools` pane's frontend asks for something from its own controls: its dock menu,
     /// its ×, its device toolbar toggle (`docs/browser.md` 13.2).

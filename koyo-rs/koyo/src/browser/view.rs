@@ -38,6 +38,9 @@ pub enum BrowserEvent {
     Changed,
     /// Open an address in a new tab beside this one, without leaving it.
     OpenTab(String),
+    /// Open an address in a new tab beside this one and show it: a place the person asked
+    /// to go to (an extension's options, the store), not a link opened for later.
+    GoToTab(String),
     /// Put the page's `DevTools` in a pane of their own beside this one.
     Detach(Entity<BrowserView>),
     /// Take the page's `DevTools` out of their pane: they're docked again, or closed.
@@ -136,6 +139,8 @@ pub struct BrowserView {
     pub(super) shown: Option<WeakEntity<Shown>>,
     /// Whether the host was last told the page is on screen.
     pub(super) visible: Option<bool>,
+    /// Whether the person saw the page when its sight was last told ([`Self::tell_sight`]).
+    pub(super) seen: bool,
     /// Whether the page's window is on screen: minimized or on another desktop it draws
     /// nothing, so the page isn't seen however its pane is laid out (`sight.rs`).
     pub(super) window_visible: bool,
@@ -296,6 +301,7 @@ impl BrowserView {
             fullscreen: super::fullscreen::Fullscreen::default(),
             shown: None,
             visible: None,
+            seen: false,
             window_visible: window.is_visible(),
             awake: None,
             cursor: Cursor::Arrow,

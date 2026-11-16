@@ -153,23 +153,23 @@ impl BrowserView {
         match pick {
             IconPick::Home => {
                 if let Some(known) = known.filter(|known| !known.homepage_url.is_empty()) {
-                    cx.emit(BrowserEvent::OpenTab(known.homepage_url));
+                    cx.emit(BrowserEvent::GoToTab(known.homepage_url));
                 }
             }
             IconPick::Options => {
                 if let Some(known) = known.filter(|known| !known.options_url.is_empty()) {
-                    cx.emit(BrowserEvent::OpenTab(known.options_url));
+                    cx.emit(BrowserEvent::GoToTab(known.options_url));
                 }
             }
             IconPick::Pin(on) => self.send_to_page(change(ExtensionChange::Pinned { on }), cx),
             IconPick::Remove => self.send_to_page(change(ExtensionChange::Remove), cx),
-            IconPick::Manage => cx.emit(BrowserEvent::OpenTab(format!("{MANAGE}?id={extension}"))),
+            IconPick::Manage => cx.emit(BrowserEvent::GoToTab(format!("{MANAGE}?id={extension}"))),
         }
     }
 
     /// The Chrome Web Store's extensions, in a tab beside this one.
     pub(in crate::browser) fn open_extension_store(&mut self, cx: &mut Context<Self>) {
-        cx.emit(BrowserEvent::OpenTab(STORE.into()));
+        cx.emit(BrowserEvent::GoToTab(STORE.into()));
     }
 }
 

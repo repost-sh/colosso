@@ -11,6 +11,7 @@ anything a patch adds.
 | --- | --- | --- |
 | `devtools-pipe-descriptors` | Koyo | `content/browser/devtools/devtools_agent_host_impl.cc` |
 | `dialog-without-parent-titlebar` | Koyo | `ui/views/widget/native_widget_mac.mm` |
+| `extension-current-window-last-active` | Koyo | `chrome/browser/extensions/window_controller_list.cc` |
 | `extension-install-ui-null-tab` | Cra | `chrome/browser/ui/extensions/extension_install_ui_desktop.cc` |
 | `extension-popup-browser-info` | Cra | `cef/libcef/browser/browser_info_manager.cc` |
 | `extension-popup-no-popout-wait` | Cra | `chrome/browser/ui/views/extensions/extensions_toolbar_desktop.cc` |

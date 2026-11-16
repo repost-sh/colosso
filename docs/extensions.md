@@ -117,6 +117,15 @@ popup itself (`.superpowers/research/run/03-popup-as-page.out`).
   to be. Each time, as a window of Chrome's own may have been the active one in between,
   which the host doesn't hear of. So `tabs.query({active: true, currentWindow: true})`
   from a service worker, a context-menu click or a shortcut is that page.
+- **`windows.getCurrent()` too**, by a patch. Chrome answers it with the focused window,
+  else the caller's own, else the window made last; a page of Koyo's is in a window that's
+  never key, and a service worker has none, so it named the newest page, were that a tab
+  opened in the background. With no window focused it's now the one active last
+  (`extension-current-window-last-active`). `[proven]` 2026-11-16
+- **The page the person is on is told as they come to see it**, not as the engine comes
+  to count it on screen: a page an agent opens is on screen for the engine before its pane
+  draws it (`sight.rs`), and was never told, so extensions went on taking the page before
+  for the current one.
 - **`tabs.create`** opens a Koyo tab: Chrome offers the new tab to the page's client as it
   offers a `window.open` (`OnBeforePopup`, marked `koyo_extension_tab`, which no page can
   set). The host takes it: the page gets a pane number of the host's own (from 2^40 up,
@@ -194,6 +203,10 @@ popup itself (`.superpowers/research/run/03-popup-as-page.out`).
   from Toolbar, Manage Extension (its page in `chrome://extensions`), and Remove from
   Koyo, whose only row, "Remove “name”", is the asking once more. From the popover the menu
   opens under the sliders button, the popover having closed.
+- What the menu, the "+" and Chrome itself open comes in front: an extension's page, its
+  options, Chrome's page about it, the store, and the tab that stands in for a tabbed
+  window Chrome made (`BrowserEvent::GoToTab`, `HostEvent::OpenUrl`'s `front`). A link
+  opened in a new tab still opens behind. They opened behind at first, as links do.
 - Pinning is Chrome's own (`extensions.pinned_extensions` in the profile), so an extension
   that asks `action.getUserSettings()` is told the truth, and `chrome://extensions` agrees.
 - A page with no site (a start page, `chrome://` pages) has no site controls, and so no
@@ -284,6 +297,7 @@ aren't carried: Koyo's menu rows have none.
 | `koyo-extensions-protocol` | Koyo | The `Extensions` DevTools domain: the list (`koyoGetInstalled`), an action run (`koyoTriggerAction`), on and off, remove, pin, the active page, and events for an action and for the list; `triggerAction` answers instead of crashing (from Cra); a page found by CEF's number for its browser |
 | `devtools-pipe-descriptors` | Koyo | `--remote-debugging-io-pipes=<read>,<write>` on macOS and Linux |
 | `dialog-without-parent-titlebar` | Koyo | A window-modal dialog whose parent isn't one of Chromium's windows, Chrome's install dialog over a page in Koyo's, has no title bar drawn over its heading |
+| `extension-current-window-last-active` | Koyo | With no window focused, an extension's current window is the one active last, not the one made last |
 
 Each is a patch to carry: an engine update applies them again, and one that no longer
 applies stops `script/cef` with its name. `script/cef-patches/README.md` says which files

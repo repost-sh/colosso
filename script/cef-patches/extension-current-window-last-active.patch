@@ -1,0 +1,39 @@
+--- a/chrome/browser/extensions/window_controller_list.cc
++++ b/chrome/browser/extensions/window_controller_list.cc
+@@ -10,6 +10,7 @@
+ #include "base/observer_list.h"
+ #include "chrome/browser/extensions/api/tabs/windows_util.h"
+ #include "chrome/browser/extensions/window_controller_list_observer.h"
++#include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
+ #include "chrome/common/extensions/api/windows.h"
+ #include "components/sessions/core/session_id.h"
+ #include "extensions/browser/extension_function.h"
+@@ -121,7 +122,27 @@
+     last_window = controller;
+   }
+ 
+-  return parent_window ? parent_window : last_window;
++  if (parent_window) {
++    return parent_window;
++  }
++
++  // Koyo: with no window focused, the window of the browser that was active
++  // last rather than the one made last. An embedder's pages are in windows
++  // that are never key, so none of them is ever "focused", and a service
++  // worker has no parent window: windows.getCurrent() named the newest page.
++  WindowController* last_active = nullptr;
++  ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
++      [&](BrowserWindowInterface* browser) {
++        for (const auto& controller : windows_) {
++          if (controller->GetBrowserWindowInterface() == browser &&
++              windows_util::CanOperateOnWindow(function, controller, filter)) {
++            last_active = controller;
++            return false;
++          }
++        }
++        return true;
++      });
++  return last_active ? last_active : last_window;
+ }
+ 
+ }  // namespace extensions

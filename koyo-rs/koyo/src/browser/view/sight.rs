@@ -84,9 +84,17 @@ impl BrowserView {
         self.drawn() || self.awake.is_some()
     }
 
-    /// Tells the host whether the page is on screen ([`BrowserView::on_screen`]).
+    /// Tells the host whether the page is on screen ([`BrowserView::on_screen`]), and, as
+    /// the person comes to see it, that it's the page they're on, until another has the
+    /// keys. The two differ: a page an agent opened is on screen for the engine before its
+    /// pane draws it, and was never told as the one the person is on.
     pub(in crate::browser) fn tell_sight(&mut self, cx: &mut Context<Self>) {
         self.set_visible(self.on_screen(), cx);
+        let drawn = self.drawn();
+        if drawn && !std::mem::replace(&mut self.seen, drawn) {
+            self.tell_active(cx);
+        }
+        self.seen = drawn;
     }
 
     /// Tells the host whether the page is on screen, when that changed; out of sight it
@@ -95,10 +103,6 @@ impl BrowserView {
         if self.visible.replace(visible) != Some(visible) {
             let pane = self.pane;
             self.send_to_page(AppRequest::Visible { pane, visible }, cx);
-            // A page the person now sees is the one they're on, until another has the keys.
-            if visible && self.drawn() {
-                self.tell_active(cx);
-            }
         }
     }
 }

@@ -128,8 +128,9 @@ impl Browsers {
             | HostEvent::TabOpened { .. }
             | HostEvent::TabActivated { .. }
             | HostEvent::TabClosed { .. }) => self.extension_event(event, cx),
-            HostEvent::OpenUrl { pane, url } => {
-                self.update_view(pane, cx, |_, cx| cx.emit(BrowserEvent::OpenTab(url)));
+            HostEvent::OpenUrl { pane, url, front } => {
+                let open = if front { BrowserEvent::GoToTab(url) } else { BrowserEvent::OpenTab(url) };
+                self.update_view(pane, cx, |_, cx| cx.emit(open));
             }
             HostEvent::DevTools { pane, ask } => self.devtools_asked(pane, ask, cx),
             HostEvent::Error { pane, message } => {
