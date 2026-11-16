@@ -130,6 +130,9 @@ koyo-browser-host = { path = "../koyo-browser-host" }
 # (`set_surface_pane`), and the tab switcher's pictures of the window (`set_surface_capture`)
 # (`vendor/README.md`).
 gpui-fast-apple = "0.1.12"
+# GPUI's macOS windows: what they tell the keyboard of their first responders, presses and
+# keys, and how it has its say (`keyboard/appkit.rs`, `vendor/README.md`).
+gpui-fast-macos = { version = "0.1.12", default-features = false }
 # Haptic ticks on the theme picker's detents; the version GPUI already pulls in.
 objc = "0.2"
 # The system's accent colour, under each appearance, and word when System Settings changes
@@ -167,6 +170,8 @@ objc2-app-kit = { version = "0.3", default-features = false, features = [
   "NSGlassEffectView",
   # The app's icon in the Dock (native/icon.rs).
   "NSImage",
+  # A native menu tracking the keys, which the keyboard hears of (keyboard/appkit.rs).
+  "NSMenu",
 ] }
 objc2-foundation = { version = "0.3", default-features = false, features = [
   "std",

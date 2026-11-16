@@ -26,6 +26,8 @@ pub mod metal_renderer {
 }
 
 mod platform;
+// Koyo: the app's say over the keyboard of GPUI's windows.
+pub mod responders;
 mod window;
 mod window_appearance;
 

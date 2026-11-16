@@ -389,6 +389,27 @@ fn keyboard_in(web: &NSView) -> Option<Retained<NSWindow>> {
     first.isDescendantOf(web).then_some(window)
 }
 
+/// The view of `pane`'s page that takes its keys, and the window it's in, while it's in one.
+pub fn key_view(pane: PaneId) -> Option<(Retained<NSWindow>, Retained<NSView>)> {
+    let (window, web) = web_view(pane)?;
+    let keys = find_view(&web, KEYS).unwrap_or(web);
+    Some((window, keys))
+}
+
+/// The page `view` is one of the views of, if it's a page's: its keys' view, or another in it.
+pub fn page_of(view: &NSView) -> Option<PaneId> {
+    PAGES.with(|pages| {
+        let pages = pages.try_borrow().ok()?;
+        let of = |entry: &Entry| {
+            let Some((compositor, web)) = &entry.views else {
+                return false;
+            };
+            view.isDescendantOf(web) || view.isDescendantOf(compositor)
+        };
+        pages.iter().find(|(_, entry)| of(entry)).map(|(pane, _)| *pane)
+    })
+}
+
 /// Makes `pane`'s page the first responder of the window that shows it, unless it is.
 fn take_keyboard(pane: PaneId) {
     if let Some((window, web)) = web_view(pane)

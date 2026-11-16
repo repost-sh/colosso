@@ -241,13 +241,16 @@ impl Shell {
 
     /// The window shows `route` this frame. Leaving the workspace for a settings page takes
     /// the keyboard from the pane that had it, which is no longer drawn; back on the
-    /// workspace, the tab shown has it again if one of its panes had.
+    /// workspace, the tab shown has it again if one of its panes had. The keyboard's holder
+    /// hears whether the window is the key window as each frame is drawn, as well as when it
+    /// changes, so a change it missed is made up.
     pub(super) fn keys_follow_route(
         &mut self,
         route: Route,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        keyboard::key(window);
         match (route == Route::Workspace, self.keys.left) {
             (false, None) => {
                 // With the keyboard at the window, no pane has it: none is read to find out.

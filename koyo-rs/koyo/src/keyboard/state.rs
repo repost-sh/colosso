@@ -16,6 +16,8 @@ pub enum Holder {
     Gpui(Part),
     /// A page's own views, Chromium's: a pinned, loose or worktree page, or `DevTools`.
     Page(PaneId),
+    /// A native menu, which takes the keys while it tracks them.
+    Menu,
     /// Nothing in the window: another window has the keys (a dialog, a sheet, one of
     /// Chromium's), or another app.
     Away,
@@ -56,6 +58,8 @@ pub enum Part {
 /// Why the keyboard moved.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Cause {
+    /// The person pressed the surface, as the window heard before handing the press on.
+    Click,
     /// GPUI's focus moved, as the app or the person moved it.
     Focused,
     /// Another tab is shown, and the keyboard is handed to it.
@@ -68,6 +72,14 @@ pub enum Cause {
     DialogClosed,
     /// The page that had it closed.
     PageClosed,
+    /// A native menu began tracking the keys, or ended.
+    MenuOpened,
+    MenuClosed,
+    /// Koyo became the app in front, or another app did.
+    AppActive,
+    AppInactive,
+    /// A window of Koyo's that had the keyboard closed, and it falls back to this one.
+    WindowClosed,
 }
 
 /// The keyboard moved in `window`, from `from` to `to`, because of `cause`.
@@ -88,6 +100,8 @@ struct Held {
     key: bool,
     /// Whether a dialog of Koyo's is open over it, taking its keys.
     dialog: bool,
+    /// How many native menus opened while it was the key window are tracking the keys.
+    menus: u32,
 }
 
 impl Held {
@@ -97,11 +111,15 @@ impl Held {
             surface: Surface::Gpui(Part::Window),
             key: true,
             dialog: false,
+            menus: 0,
         }
     }
 
-    fn holder(&self) -> Holder {
-        if self.dialog || !self.key {
+    /// What has the keyboard, with the app in front or not.
+    fn holder(&self, inactive: bool) -> Holder {
+        if self.menus > 0 {
+            Holder::Menu
+        } else if self.dialog || !self.key || inactive {
             Holder::Away
         } else {
             self.surface.into()
@@ -113,13 +131,14 @@ impl Held {
 #[derive(Clone, Debug, Default)]
 pub struct Keyboards {
     windows: HashMap<WindowKey, Held>,
+    /// Whether another app is in front: no window of Koyo's has the keys then.
+    inactive: bool,
 }
 
 impl Keyboards {
     /// What has the keyboard in `window`, if it's known.
-    #[cfg(test)]
     pub fn holder(&self, window: WindowKey) -> Option<Holder> {
-        Some(self.windows.get(&window)?.holder())
+        Some(self.windows.get(&window)?.holder(self.inactive))
     }
 
     /// What the person put the keyboard in, in `window`, if it's known.
@@ -134,10 +153,11 @@ impl Keyboards {
         cause: Cause,
         with: impl FnOnce(&mut Held),
     ) -> Option<Change> {
+        let inactive = self.inactive;
         let held = self.windows.entry(window).or_insert_with(Held::new);
-        let from = held.holder();
+        let from = held.holder(inactive);
         with(held);
-        let to = held.holder();
+        let to = held.holder(inactive);
         (from != to).then_some(Change {
             window,
             from,
@@ -191,5 +211,74 @@ impl Keyboards {
                 self.set(window, Surface::Gpui(Part::Window), Cause::PageClosed)
             })
             .collect()
+    }
+
+    /// The person pressed `surface` in `window`.
+    pub fn click(&mut self, window: WindowKey, surface: Surface) -> Option<Change> {
+        self.set(window, surface, Cause::Click)
+    }
+
+    /// A native menu began tracking the keys, or ended: the key window's, while it's open.
+    pub fn menu(&mut self, open: bool) -> Vec<Change> {
+        let cause = if open {
+            Cause::MenuOpened
+        } else {
+            Cause::MenuClosed
+        };
+        let windows: Vec<WindowKey> = self.windows.keys().copied().collect();
+        (windows.into_iter())
+            .filter_map(|window| {
+                self.change(window, cause, |held| {
+                    if open && held.key {
+                        held.menus += 1;
+                    } else if !open {
+                        held.menus = held.menus.saturating_sub(1);
+                    }
+                })
+            })
+            .collect()
+    }
+
+    /// Koyo became the app in front, or another app did.
+    pub fn active(&mut self, active: bool) -> Vec<Change> {
+        let cause = if active {
+            Cause::AppActive
+        } else {
+            Cause::AppInactive
+        };
+        let before: Vec<(WindowKey, Holder)> = (self.windows.iter())
+            .map(|(window, held)| (*window, held.holder(self.inactive)))
+            .collect();
+        self.inactive = !active;
+        (before.into_iter())
+            .filter_map(|(window, from)| {
+                let to = self.holder(window)?;
+                (from != to).then_some(Change {
+                    window,
+                    from,
+                    to,
+                    cause,
+                })
+            })
+            .collect()
+    }
+
+    /// A window of Koyo's closed: one the keyboard is kept for (`window`), which goes with its
+    /// keyboard, or another (a dialog, a panel, one of Chromium's). Another that was the key
+    /// window hands the keys back to one the keyboard is kept for, which has what the person
+    /// had in it again: the one whose change is returned, to be made the key window.
+    pub fn closed(&mut self, window: Option<WindowKey>, was_key: bool) -> Option<Change> {
+        if let Some(window) = window {
+            self.windows.remove(&window);
+            return None;
+        }
+        if !was_key {
+            return None;
+        }
+        let back = self.windows.keys().copied().min()?;
+        self.change(back, Cause::WindowClosed, |held| {
+            held.key = true;
+            held.dialog = false;
+        })
     }
 }

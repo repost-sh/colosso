@@ -8,24 +8,39 @@
 //! log gets one line for each move (`lines.rs`), naming surfaces by kind and pane and never
 //! anything typed.
 //!
+//! The holders are the one say over `AppKit`'s first responder, which only the reconciler
+//! moves (`reconcile.rs`), told by the window of each change, each press and each key
+//! (`hooks.rs`, `appkit.rs`, the vendored gpui-fast-macos's `responders`).
+//!
 //! It's on the main thread, where `AppKit` and GPUI are, and is read and changed there only.
 
 use std::cell::RefCell;
 
-use gpui_kit::{AnyWindowHandle, FocusHandle, Window};
+use gpui_kit::{AnyWindowHandle, App, FocusHandle, Window};
 
+#[cfg(all(target_os = "macos", not(test)))]
+mod appkit;
+mod hooks;
 mod lines;
+mod reconcile;
 mod state;
 #[cfg(test)]
 mod tests;
 
-#[cfg(test)]
-pub use state::Holder;
-pub use state::{Cause, PaneId, Part, Surface};
+pub use state::{Cause, Holder, PaneId, Part, Surface};
 use state::{Change, Keyboards, WindowKey};
 
 thread_local! {
     static KEYBOARDS: RefCell<Keyboards> = RefCell::default();
+}
+
+/// Has the window's say over the keyboard go through the holders, in the app; tests, with no
+/// `AppKit` of their own, only keep the holders.
+pub fn init(cx: &mut App) {
+    #[cfg(all(target_os = "macos", not(test)))]
+    appkit::install(cx);
+    #[cfg(any(not(target_os = "macos"), test))]
+    let _ = cx;
 }
 
 /// GPUI's window as the holders know it.
@@ -33,17 +48,38 @@ fn key_of(window: AnyWindowHandle) -> WindowKey {
     window.window_id().as_u64()
 }
 
-/// Runs `with` on the holders, and logs the changes it made.
+/// GPUI's `window` as the holders know it, which `AppKit`'s side learns of the first time.
+fn known(window: &Window) -> WindowKey {
+    #[cfg(all(target_os = "macos", not(test)))]
+    appkit::know(window);
+    key_of(window.window_handle())
+}
+
+/// What has the keyboard in `window`, and what the person put it in there, if it's known.
+fn held(window: WindowKey) -> Option<(Holder, Surface)> {
+    KEYBOARDS.with(|keyboards| {
+        let keyboards = keyboards.borrow();
+        Some((keyboards.holder(window)?, keyboards.surface(window)?))
+    })
+}
+
+/// Runs `with` on the holders; each change it made moves the first responder to match, and is
+/// logged with how it moved.
 fn change<C: IntoIterator<Item = Change>>(with: impl FnOnce(&mut Keyboards) -> C) {
-    let changes = KEYBOARDS.with(|keyboards| with(&mut keyboards.borrow_mut()));
+    let changes: Vec<Change> =
+        KEYBOARDS.with(|keyboards| with(&mut keyboards.borrow_mut()).into_iter().collect());
     for change in changes {
-        lines::tell(&change);
+        let moved = hooks::reconcile(change.window);
+        lines::tell(&change, moved);
     }
 }
 
 /// The person's keyboard in `window` is in `surface` now, because of `cause`.
 pub fn set(window: &Window, surface: Surface, cause: Cause) {
-    let window = key_of(window.window_handle());
+    set_in(known(window), surface, cause);
+}
+
+fn set_in(window: WindowKey, surface: Surface, cause: Cause) {
     change(|keyboards| keyboards.set(window, surface, cause));
 }
 
@@ -59,14 +95,14 @@ pub fn left_page(window: &Window, pane: PaneId, focus: &FocusHandle, part: Part)
     if focus.is_focused(window) {
         return;
     }
-    let window = key_of(window.window_handle());
+    let window = known(window);
     change(|keyboards| keyboards.left_page(window, pane, part));
 }
 
 /// `window` became the key window, or stopped being it.
 pub fn key(window: &Window) {
     let key = window.is_window_active();
-    let window = key_of(window.window_handle());
+    let window = known(window);
     change(|keyboards| keyboards.key(window, key));
 }
 
