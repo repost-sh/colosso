@@ -106,6 +106,7 @@ fn stand_in(path: std::path::PathBuf) -> Wallpaper {
         .and_then(|file| file.modified())
         .ok();
     Wallpaper {
+        image: super::dynamic::image(&path, modified),
         path,
         modified,
         scaling: super::layout::Scaling::Fill,

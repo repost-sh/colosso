@@ -112,6 +112,9 @@ libc = "0.2"
 log = { version = "0.4", features = ["std"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 serde = { version = "1", features = ["derive"] }
+# A dynamic wallpaper's schedule and the wallpaper store, both property lists
+# (chat_backdrop/dynamic.rs).
+plist = "1"
 # A file written from outside lands in its editor as the difference, line by line; the
 # version already in the lockfile.
 similar = { version = "2", default-features = false, features = ["text"] }
@@ -196,6 +199,9 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
   "NSDictionary",
   "NSURL",
   "NSValue",
+  # Which picture of a dynamic wallpaper the system shows (chat_backdrop/dynamic.rs).
+  "NSUserDefaults",
+  "NSDistributedNotificationCenter",
 ] }
 block2 = "0.6"
 # The window's view, to reach its traffic lights (native/traffic_lights.rs), and the `NSWindow`
@@ -304,6 +310,8 @@ objc2-image-io = { version = "0.3", default-features = false, features = [
   "CGImageSource",
   # A chat backdrop's picture compressed to ASTC by the system's encoder (chat_backdrop/astc.rs).
   "CGImageDestination",
+  # A dynamic wallpaper's schedule, in its first image's metadata (chat_backdrop/dynamic.rs).
+  "CGImageMetadata",
   "objc2-core-graphics",
 ] }
 

@@ -81,6 +81,7 @@ fn draw() -> Result<Vec<String>> {
         path,
         modified: None,
         scaling: Scaling::Fill,
+        image: None,
         fill: [0., 0., 0.],
     });
     let mut drawn = Drawn::open_on_checkout(OUT, &[])?;

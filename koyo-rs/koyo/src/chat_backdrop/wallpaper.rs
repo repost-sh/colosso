@@ -23,6 +23,8 @@ pub struct Wallpaper {
     /// When the file last changed, so one saved over under the same name is read again.
     pub modified: Option<SystemTime>,
     pub scaling: Scaling,
+    /// Which of the file's pictures to show, for a dynamic wallpaper: the one macOS shows now.
+    pub image: Option<usize>,
     /// The colour round a picture that leaves part of the screen bare, in sRGB.
     pub fill: [f32; 3],
 }
@@ -66,6 +68,7 @@ pub fn read(display: u32, main: MainThreadMarker) -> Option<Wallpaper> {
         .and_then(|fill| srgb(&fill))
         .unwrap_or(FILL);
     Some(Wallpaper {
+        image: super::dynamic::image(&path, modified),
         path,
         modified,
         scaling: Scaling::from_options(scaling, clipping),

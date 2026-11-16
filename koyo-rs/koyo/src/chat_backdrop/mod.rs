@@ -4,6 +4,7 @@
 //! (github.com/donnes/monodrive, MIT).
 
 mod astc;
+mod dynamic;
 mod element;
 mod layout;
 mod make;

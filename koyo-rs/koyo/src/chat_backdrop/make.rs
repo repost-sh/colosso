@@ -71,7 +71,7 @@ pub(super) fn lay_out(recipe: &Recipe) -> Result<Laid, String> {
     let placed = layout::place(points, recipe.screen, recipe.wallpaper.scaling);
     let scale = recipe.scale * recipe.quality.resolution();
     let longest = layout::decode_longest(probe.pixels, placed, scale);
-    let image = picture::decoded(path, probe.index, longest)?;
+    let image = picture::decoded(path, recipe.wallpaper.image.unwrap_or(probe.index), longest)?;
     let decoded = started.elapsed();
 
     let pixels = |points: f64| (points * scale).round().max(1.) as u32;

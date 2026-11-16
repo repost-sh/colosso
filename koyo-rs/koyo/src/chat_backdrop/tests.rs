@@ -56,6 +56,7 @@ fn recipe(path: PathBuf, screen: (f64, f64), quality: Quality) -> Recipe {
             path,
             modified: None,
             scaling: Scaling::Fill,
+            image: None,
             fill: [0., 0., 0.],
         },
         screen,
