@@ -1,0 +1,21 @@
+--- a/ui/views/widget/native_widget_mac.mm
++++ b/ui/views/widget/native_widget_mac.mm
+@@ -289,6 +289,18 @@
+   create_window_params->style_mask = StyleMaskForParams(params);
+   create_window_params->titlebar_appears_transparent = false;
+   create_window_params->window_title_hidden = false;
++  // Koyo: a window-modal widget is given a titled window because it is shown as
++  // a sheet, and a sheet draws no title bar. Its parent has to be one of
++  // Chromium's own windows for that. When a page is drawn in an embedder's
++  // window the parent is not one, the widget is shown as a window of its own,
++  // and the title bar is drawn over the top of its contents (see the TODO in
++  // StyleMaskForParams). Keep the bar clear and untitled then, so the dialog
++  // looks as it does in a sheet.
++  if (!parent_host && params.delegate &&
++      params.delegate->GetModalType() == ui::mojom::ModalType::kWindow) {
++    create_window_params->titlebar_appears_transparent = true;
++    create_window_params->window_title_hidden = true;
++  }
+   PopulateCreateWindowParams(params, create_window_params.get());
+ 
+   if (application_host) {

@@ -143,11 +143,26 @@ popup itself (`.superpowers/research/run/03-popup-as-page.out`).
 ## 4. Installing
 
 - The Chrome Web Store opens as any page. Its banner says "Switch to Chrome to install
-  extensions and themes" (it reads the browser's brand, which is Chromium's); the "Add to
-  Chrome" button beside it works all the same, as in Arc.
+  extensions and themes"; the "Add to Chrome" button beside it works all the same.
+- **The banner is Google's server's word, not anything the page reads of Koyo.** The
+  store's script (its module `o2G9me`, read 2026-11-16) shows it when a value the server
+  writes into the page is false, in any Chrome from 142 on, and then looks at neither the
+  user agent nor the brands. The server takes four request headers, `X-Browser-Validation`,
+  `-Channel`, `-Year` and `-Copyright`, which Google's own Chrome sends and Chromium's
+  sources haven't got. `[proven]` by fetching the page: with "Google Chrome" among the
+  `Sec-CH-UA` brands the value is still false, and the four headers come back in the page.
+  That a true validation header turns it is `[read]`, not tried: only Google's build makes
+  one. So Koyo, which says `Chrome/156.0.0.0` and the brands `Chromium` and `Not:A-Brand`
+  as CEF does, leaves the banner: nothing it may honestly send takes it away. `[decided]`
 - The button brings Chrome's own dialog over the page, with the permissions asked for; "Add
   extension" installs it in the page's profile. A patch drops Chrome's "installed" bubble,
   which points at a toolbar button Koyo doesn't show.
+- **The dialog is a window of its own, not a sheet.** Chrome shows it as a sheet on the
+  page's window, and a sheet needs that window to be one of Chromium's; the page is drawn in
+  Koyo's. Shown as a window instead, it kept the title bar a sheet never draws, over its
+  heading (the owner's build, 2026-11-16). `dialog-without-parent-titlebar` keeps that bar
+  clear and untitled. `[read]` in `native_widget_mac.mm`, whose own note says as much; the
+  dialog hasn't been seen with it.
 - The extension is in the row and the list at once (`koyoInstalledChanged`), and its
   welcome page, if it opens one, is a Koyo tab.
 - **"+"** at the end of the row opens the Web Store's extensions page in a new tab.
@@ -252,6 +267,7 @@ aren't carried: Koyo's menu rows have none.
 | `extension-install-ui-null-tab` | Cra | No "installed" bubble; an install with no active tab doesn't crash |
 | `koyo-extensions-protocol` | Koyo | The `Extensions` DevTools domain: the list (`koyoGetInstalled`), an action run (`koyoTriggerAction`), on and off, remove, pin, the active page, and events for an action and for the list; `triggerAction` answers instead of crashing (from Cra); a page found by CEF's number for its browser |
 | `devtools-pipe-descriptors` | Koyo | `--remote-debugging-io-pipes=<read>,<write>` on macOS and Linux |
+| `dialog-without-parent-titlebar` | Koyo | A window-modal dialog whose parent isn't one of Chromium's windows, Chrome's install dialog over a page in Koyo's, has no title bar drawn over its heading |
 
 Each is a patch to carry: an engine update applies them again, and one that no longer
 applies stops `script/cef` with its name. `script/cef-patches/README.md` says which files
@@ -311,7 +327,8 @@ turning off; a tab an extension opens and a tab it asks for in front; a window a
 opens, and which of Chrome's windows are told apart as tabbed (`native/strays.rs` goes by
 the title bar, which is read, not seen); an extension's context-menu entries in Koyo's
 menu; an install from the Chrome Web Store on the patched framework (on CEF's own it ends
-Koyo, section 2.2); across a restart; the smoke test, which starts an engine. They wait on
+Koyo, section 2.2), and its dialog's look and place with `dialog-without-parent-titlebar`;
+across a restart; the smoke test, which starts an engine. They wait on
 the owner's word: on 2026-11-15 the engine's suites and anything that opens a window were
 held back while he worked on the machine.
 
@@ -327,3 +344,5 @@ Decisions made while the owner was away, each the nearest to Arc:
 5. Icons in the site controls in both layouts; pinned ones on the Orca toolbar (section 5).
 6. No side panels, no Manifest V2 (section 9).
 7. "Clear browsing data" takes the extensions too (section 8).
+8. Koyo doesn't pass for Google's Chrome to the Web Store, so the store's "Switch to
+   Chrome" banner stays above a button that works (section 4).
