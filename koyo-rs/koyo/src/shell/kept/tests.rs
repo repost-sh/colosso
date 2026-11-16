@@ -20,6 +20,7 @@ fn page(url: &str, title: &str) -> KeptTree {
     KeptTree::Pane(KeptPane::Page {
         url: url.into(),
         title: title.into(),
+        by_agent: false,
     })
 }
 
@@ -109,6 +110,31 @@ fn tabs_of(shell: &Entity<Shell>, root: &Path, cx: &TestAppContext) -> (Vec<Vec<
         };
         (unit.tabs.iter().map(titles).collect(), unit.active_tab)
     })
+}
+
+#[test]
+fn an_agents_page_is_kept_as_one_and_any_other_as_before() {
+    let agents = KeptPane::Page {
+        url: "https://agent.example/".into(),
+        title: "Agent".into(),
+        by_agent: true,
+    };
+    let json = serde_json::to_value(&agents).unwrap();
+    assert_eq!(json["byAgent"], true);
+    assert_eq!(serde_json::from_value::<KeptPane>(json).unwrap(), agents);
+    // The person's is written as a page always was, and one written before is the person's.
+    let persons = KeptPane::Page {
+        url: "https://mail.example/".into(),
+        title: "Mail".into(),
+        by_agent: false,
+    };
+    let persons = serde_json::to_value(persons).unwrap();
+    assert!(persons.get("byAgent").is_none(), "{persons}");
+    let before = serde_json::json!({ "kind": "page", "url": "https://mail.example/" });
+    let KeptPane::Page { by_agent, .. } = serde_json::from_value(before).unwrap() else {
+        panic!("a page");
+    };
+    assert!(!by_agent);
 }
 
 #[test]

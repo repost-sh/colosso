@@ -27,7 +27,7 @@ pub(super) use self::grants::still_open;
 pub(crate) use self::listing::list;
 pub(super) use self::listing::{Found, find};
 use super::super::{Caller, main_shell};
-use crate::browser::BrowserView;
+use crate::browser::{BrowserView, profiles};
 use crate::model::Spot;
 
 /// What a call was let use a page on.
@@ -80,13 +80,20 @@ impl Page {
     }
 
     /// Refused once the worktree's page the call began on is the person's: pinned, or among a
-    /// space's loose pages, meanwhile.
+    /// space's loose pages, meanwhile; or, one they opened, as agents' pages were kept apart.
     fn still_a_worktrees(&self, cx: &App) -> Result<(), ControlError> {
-        let spot = (main_shell(cx))
-            .and_then(|(_, shell)| shell.read(cx).workspace.spot_of(self.pane));
+        let workspace = main_shell(cx).map(|(_, shell)| &shell.read(cx).workspace);
+        let spot = workspace.and_then(|workspace| workspace.spot_of(self.pane));
+        let opened_by_person = || {
+            let pane = workspace.and_then(|workspace| workspace.pane(self.pane));
+            pane.is_some_and(|pane| !pane.by_agent)
+        };
         let kind = match spot {
             Some(Spot::Pinned) => "pinned",
             Some(Spot::Loose(_)) => "loose",
+            Some(Spot::Checkout(..)) if profiles::get(cx).separate() && opened_by_person() => {
+                "worktree"
+            }
             Some(Spot::Checkout(..)) | None => return Ok(()),
         };
         Err(ControlError::consent_required(format!(

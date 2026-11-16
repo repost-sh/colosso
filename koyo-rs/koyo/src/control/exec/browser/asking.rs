@@ -21,7 +21,9 @@ use super::asker::{self, REASON, TITLE, clean};
 use super::page::{acted, refused};
 use super::pages::{self, Found, Persons};
 use crate::browser;
+use crate::browser::profiles::{self, By};
 use crate::history;
+use crate::model::Spot;
 use crate::shell::Shell;
 
 pub(crate) fn claim(
@@ -141,6 +143,7 @@ pub(crate) fn duplicate(
             try_update_shell(cx, |shell, window, cx| {
                 let at = asker::worktree(&caller, shell, cx).ok_or_else(no_worktree)?;
                 let copy = copy(shell, &caller, at, persons.url.clone(), window, cx)?;
+                open::agents_page_made(shell, copy, cx);
                 open::open_agents_page(shell, Some(&caller), copy, window, cx);
                 output(&info::place(shell, copy)?)
             })
@@ -191,6 +194,20 @@ fn copy(
         },
     );
     opened.ok_or_else(|| ControlError::internal("The copy of the page didn't open."))
+}
+
+/// The profile the person's page in pane `pane` is of, wherever it is.
+fn page_profile<'a>(shell: &Shell, pane: u64, cx: &'a App) -> Option<&'a str> {
+    let workspace = &shell.workspace;
+    let by = workspace.pane(pane)?.by();
+    let project = match workspace.spot_of(pane)? {
+        Spot::Checkout(project, ..) => workspace.projects.get(project)?.path.clone(),
+        Spot::Pinned | Spot::Loose(_) => {
+            let (_, project) = workspace.find_apart(|found| found.id == pane)?;
+            project.to_owned()
+        }
+    };
+    Some(browser::profile(&project, by, cx))
 }
 
 fn no_worktree() -> ControlError {
@@ -287,8 +304,9 @@ fn to_use(
 }
 
 /// What the person is asked before a copy of their page opens in `caller`'s worktree at `at`:
-/// whether the copy is signed in as the page is, its profile and the worktree's project's being
-/// the same, or with the worktree's own sign-ins.
+/// whether the copy, an agent's page, is signed in as the page is, its profile and the page's
+/// being the same; with the agents' own sign-ins, agents' pages kept apart; or with the
+/// worktree's own.
 fn to_copy(
     caller: &Caller,
     persons: &Persons,
@@ -301,10 +319,10 @@ fn to_copy(
     let asker = asker::named(caller, shell, cx);
     let (title, site) = shown_as(persons);
     let worktree = asker::label(shell, at);
-    let copy_profile = browser::profile(&shell.workspace.projects[at.0].path, cx);
-    let page_profile = (shell.workspace.find_apart(|pane| pane.id == persons.pane))
-        .map(|(_, project)| browser::profile(project, cx));
-    let signed_in = if page_profile == Some(copy_profile) {
+    let copy_profile = browser::profile(&shell.workspace.projects[at.0].path, By::Agent, cx);
+    let signed_in = if copy_profile == profiles::AGENTS {
+        "with the agents' own sign-ins, not yours"
+    } else if page_profile(shell, persons.pane, cx) == Some(copy_profile) {
         "signed in as you, as this page is"
     } else {
         "with that worktree's own sign-ins"

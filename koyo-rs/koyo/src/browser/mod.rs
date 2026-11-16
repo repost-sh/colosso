@@ -227,12 +227,12 @@ pub fn search_url(query: &str) -> String {
 /// opened outside any project. Such pages use Default, the person's own, in every space.
 pub const NO_PROJECT: &str = "no-project";
 
-/// The profile a page opened for `project`, a main checkout or [`NO_PROJECT`], is of: the one
-/// its project is on, Default outside any (`profiles.rs`). Every way of opening a page asks
-/// here, so the pages of a project are of one profile, and cookies, storage and cache never
-/// cross profiles.
-pub fn profile<'a>(project: &Path, cx: &'a App) -> &'a str {
-    profiles::get(cx).of(project)
+/// The profile a page opened for `project`, a main checkout or [`NO_PROJECT`], by `by` is of:
+/// the one its project is on, Default outside any; an agent's, while agents' pages are kept
+/// apart, the Agents profile (`profiles.rs`). Every way of opening a page asks here, so the
+/// pages of a project are of one profile, and cookies, storage and cache never cross profiles.
+pub fn profile<'a>(project: &Path, by: profiles::By, cx: &'a App) -> &'a str {
+    profiles::get(cx).page(project, by)
 }
 
 #[cfg(test)]

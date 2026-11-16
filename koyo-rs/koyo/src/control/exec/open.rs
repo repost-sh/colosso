@@ -19,6 +19,7 @@ use super::{Exec, browser};
 use crate::browser::BrowserView;
 use crate::browser::Responsive;
 use crate::browser::agent::{self, SetBy};
+use crate::browser::profiles::By;
 use crate::files::{At, Place};
 use crate::model::{self, Pane, Tab};
 use crate::navigation::Route;
@@ -121,6 +122,23 @@ pub(crate) fn page_mode(
     let by = SetBy::Agent(caller.label());
     agent::opening(asked.as_ref(), default, window.scale_factor(), &by)
         .map_err(ControlError::invalid_input)
+}
+
+/// Browser pane `pane`, which an agent's call just made, is an agent's page from its making:
+/// its profile goes by that, agents' pages being kept apart from the person's or not
+/// (`docs/browser.md` 15.7), so it's no page of the person's to ask them for, and the pages it
+/// opens are an agent's too.
+pub(crate) fn agents_page_made(shell: &mut Shell, pane: u64, cx: &mut Context<Shell>) {
+    let Some(made) = shell.workspace.pane_mut(pane) else {
+        return;
+    };
+    if made.kind != model::PaneKind::Browser {
+        return;
+    }
+    made.by_agent = true;
+    if let Some(view) = made.view().cloned() {
+        view.update(cx, |view, _| view.made_by(By::Agent));
+    }
 }
 
 /// Opens browser pane `pane`'s page, which an agent placed, in the browser engine: the

@@ -75,8 +75,10 @@ impl Shell {
                 .find(|(id, _)| *id == pane.id)
                 .map(|(_, address)| address.clone())
                 .unwrap_or_default();
-            // Titled as it was until the page says otherwise.
-            pane.set_view(self.browser_view(address, &project, window, cx));
+            // Titled as it was until the page says otherwise; an agent's page an agent's again.
+            let (view, by) = (self.browser_view(address, &project, window, cx), pane.by());
+            view.update(cx, |view, _| view.made_by(by));
+            pane.set_view(view);
         }
         let back = match back {
             Spot::Checkout(project, branch, at) => {

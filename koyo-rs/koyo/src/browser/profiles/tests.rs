@@ -127,6 +127,44 @@ fn each_projects_own_profile_is_brought_over_with_its_sign_ins() {
     assert_eq!(profiles.of(Path::new("/work/colosso")), named);
 }
 
+#[test]
+fn agents_pages_are_the_projects_or_the_agents_profiles_as_the_person_has_them() {
+    let mut profiles = Profiles::default();
+    let app = Path::new("/work/app");
+    let work = profiles.make("Work");
+    profiles.set(app, &work);
+    // Signed in as the person, as they are when nothing's said.
+    assert_eq!(profiles.agents, AgentPages::Shared);
+    assert_eq!(profiles.page(app, By::Agent), work);
+    assert_eq!(profiles.page(app, By::Person), work);
+    // Kept apart, an agent's are of the Agents profile, wherever they're opened.
+    profiles.agents = AgentPages::Separate;
+    assert_eq!(profiles.page(app, By::Agent), AGENTS);
+    assert_eq!(profiles.page(Path::new(NO_PROJECT), By::Agent), AGENTS);
+    assert_eq!(profiles.page(app, By::Person), work);
+    // Built in: named, but no profile a project is put on, listed, renamed or deleted.
+    assert_eq!(profiles.name(AGENTS), "Agents");
+    assert!(!profiles.has(AGENTS));
+    assert!(profiles.all().all(|(id, _)| id != AGENTS));
+    profiles.set(app, AGENTS);
+    assert_eq!(profiles.of(app), DEFAULT);
+    profiles.rename(AGENTS, "Bots");
+    profiles.delete(AGENTS);
+    assert_eq!(profiles.name(AGENTS), "Agents");
+    assert!(
+        AGENTS
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-')
+    );
+    // Kept with the profiles, read back as written; a file that says nothing is shared.
+    let json = serde_json::to_value(&profiles).unwrap();
+    assert_eq!(json["agents"], "separate");
+    let back: Profiles = serde_json::from_value(json).unwrap();
+    assert_eq!(back.agents, AgentPages::Separate);
+    let before: Profiles = serde_json::from_str(r#"{"made": [], "projects": {}}"#).unwrap();
+    assert_eq!(before.agents, AgentPages::Shared);
+}
+
 #[gpui_kit::test]
 fn the_profiles_come_back_from_their_file_and_are_brought_over_once(cx: &mut TestAppContext) {
     cx.update(settings::init);
@@ -198,4 +236,21 @@ fn an_open_page_moves_with_its_projects_profile(cx: &mut TestAppContext) {
     let unopened = page(cx);
     put_on(cx, &work);
     assert!(!moved(&unopened, cx));
+
+    // An agent's page moves as agents' pages are kept apart, and back; the person's stays.
+    let agents = |cx: &mut TestAppContext, pages: AgentPages| {
+        cx.update(|cx| update(cx, |profiles| profiles.agents = pages));
+    };
+    let (agents_page, persons_page) = (page(cx), page(cx));
+    agents_page.update(cx, |view, cx| {
+        view.made_by(By::Agent);
+        view.pretend_opened(cx);
+    });
+    persons_page.update(cx, BrowserView::pretend_opened);
+    assert!(!moved(&agents_page, cx) && !moved(&persons_page, cx));
+    agents(cx, AgentPages::Separate);
+    assert!(moved(&agents_page, cx));
+    assert!(!moved(&persons_page, cx));
+    agents(cx, AgentPages::Shared);
+    assert!(!moved(&agents_page, cx));
 }

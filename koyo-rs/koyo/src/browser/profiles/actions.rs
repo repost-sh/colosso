@@ -15,6 +15,11 @@ use crate::settings::{self, checked_menu};
 #[action(namespace = browser, no_json)]
 pub struct SetProjectProfile(pub PathBuf, pub String);
 
+/// Has agents' pages signed in as this says.
+#[derive(Clone, Debug, PartialEq, Action)]
+#[action(namespace = browser, no_json)]
+pub struct SetAgentPages(pub super::AgentPages);
+
 /// Asks what to call a new profile, and puts the project whose main checkout is at the path
 /// on it, when one's given.
 #[derive(Clone, Debug, PartialEq, Action)]
@@ -45,10 +50,13 @@ pub fn menu(project: &Path, cx: &App) -> NativeMenu {
         .menu("New Profile…", Box::new(NewProfile(Some(owned()))))
 }
 
-/// Picking a profile for a project needs no window.
+/// Picking a profile for a project, and what agents' pages are signed in as, needs no window.
 pub(super) fn init(cx: &mut App) {
     cx.on_action(|SetProjectProfile(project, id): &SetProjectProfile, cx| {
         super::update(cx, |profiles| profiles.set(project, id));
+    });
+    cx.on_action(|SetAgentPages(agents): &SetAgentPages, cx| {
+        super::update(cx, |profiles| profiles.agents = *agents);
     });
 }
 

@@ -85,10 +85,14 @@ impl BrowserView {
             return;
         };
         let request = match &mut self.kind {
-            Kind::Page { profile, project } => {
-                // Of the profile its project is on now: put on another, the page closes and
-                // opens again in it (`Browsers::profiles_changed`).
-                crate::browser::profile(project, cx).clone_into(profile);
+            Kind::Page {
+                profile,
+                project,
+                by,
+            } => {
+                // Of the profile its pages use now: that changed, the page closes and opens again
+                // in it (`Browsers::profiles_changed`).
+                crate::browser::profile(project, *by, cx).clone_into(profile);
                 AppRequest::Open {
                     pane: self.pane,
                     url: self.target.clone(),
