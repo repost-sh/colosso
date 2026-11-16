@@ -75,6 +75,12 @@ pub fn wallpaper(display: u64, cx: &mut App) -> Option<Wallpaper> {
     let screen = screen(display, cx);
     if !screen.read {
         (screen.wallpaper, screen.read) = (read(display), true);
+        if screen.wallpaper.is_none() {
+            log::warn!(
+                "screen {display} has no wallpaper file AppKit names: its chat backdrop shows \
+                 the card"
+            );
+        }
     }
     screen.wallpaper.clone()
 }
@@ -85,7 +91,26 @@ fn read(display: u64) -> Option<Wallpaper> {
     if let Some(stand_in) = super::visual::wallpaper() {
         return Some(stand_in);
     }
+    #[cfg(debug_assertions)]
+    if let Some(path) = std::env::var_os("KOYO_WALLPAPER") {
+        return Some(stand_in(path.into()));
+    }
     wallpaper::read(u32::try_from(display).ok()?, MainThreadMarker::new()?)
+}
+
+/// A debug build's wallpaper for every screen, from `KOYO_WALLPAPER`: a test Koyo on a desktop
+/// with no wallpaper still has one to show, and no one's wallpaper is changed for it.
+#[cfg(debug_assertions)]
+fn stand_in(path: std::path::PathBuf) -> Wallpaper {
+    let modified = std::fs::metadata(&path)
+        .and_then(|file| file.modified())
+        .ok();
+    Wallpaper {
+        path,
+        modified,
+        scaling: super::layout::Scaling::Fill,
+        fill: [0., 0., 0.],
+    }
 }
 
 /// A hold on screen `display`'s picture, for a chat showing it. The first since none held it

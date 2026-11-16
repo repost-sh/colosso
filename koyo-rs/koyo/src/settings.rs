@@ -27,7 +27,7 @@ mod save_scope;
 
 pub use accounts::{AccountSettings, SetAccountsThreshold};
 pub use chat_activity::{ChatActivity, SetChatActivity};
-pub use chat_backdrop::{ChatBackdrop, Quality};
+pub use chat_backdrop::{ChatBackdrop, Quality, Surface};
 pub use chat_details::{ChatDetails, DetailsItem, FlipDetailsItem};
 pub use chat_mode::{SetChatMode, chat_mode_label, chat_mode_menu};
 pub use chat_verbosity::{Preset, SetChatVerbosity, Shows, Step, Verbosity};
