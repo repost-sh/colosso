@@ -16,6 +16,7 @@ path = "src/main.rs"
 
 [dependencies]
 koyo-browser-ipc = { path = "../koyo-browser-ipc" }
+koyo-seam = { path = "../koyo-seam" }
 # Chromium, embedded: the exact version the distribution under .superpowers/cef matches
 # (cef-dll-sys fetches it there and builds its C++ wrapper with script/cmake; script/cef
 # builds its framework again with H.264 and AAC).

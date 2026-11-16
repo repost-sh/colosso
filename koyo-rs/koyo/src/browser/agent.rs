@@ -283,6 +283,10 @@ pub fn cdp(
         view.agent_uses(cx);
         view.pane
     });
+    #[cfg(target_os = "macos")]
+    if actor.is_some() && method.starts_with("Input.") {
+        koyo_seam::heard::engine_input(pane);
+    }
     let browsers = Browsers::global(cx);
     Ok(browsers.update(cx, |browsers, cx| {
         browsers.ask(pane, method, params, limit, cx)

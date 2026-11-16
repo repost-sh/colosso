@@ -45,3 +45,6 @@ expect() {
   [ "$got" = "$3" ] || fail "$4: got $got, wanted $3"
   echo "ok: $4"
 }
+
+# What the native layer keeps (the probe's `seam`), its answer alone.
+seam() { probe seam | sed 's/^seam => //'; }

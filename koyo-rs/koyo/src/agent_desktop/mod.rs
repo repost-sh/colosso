@@ -245,6 +245,7 @@ impl Desk {
                 log::info!("the agent desktop's host runs as process {}", running.pid);
                 // What it posts never shows a native menu (`docs/browser.md` 14).
                 crate::native::menus::desk_host(Some(running.pid));
+                koyo_seam::heard::desk_host(Some(running.pid));
                 let visible = !self.shown_by.is_empty();
                 let _ = (running.tell).send(ToHost::Visible { visible });
                 for message in std::mem::take(&mut self.queued) {

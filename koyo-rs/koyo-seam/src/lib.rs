@@ -4,7 +4,11 @@
 //! own and so do the views, and every rule about what happens where they meet is here, asked
 //! through hooks by the code that touches `AppKit`.
 //!
-//! So far: where a key goes ([`keys`]), and whose an input is ([`input`]).
+//! So far: where a key goes ([`keys`]), whose an input is ([`input`]), and the inputs the
+//! process hears, kept under their labels ([`heard`]).
 
+#[cfg(target_os = "macos")]
+pub mod appkit;
+pub mod heard;
 pub mod input;
 pub mod keys;

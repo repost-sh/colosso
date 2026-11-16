@@ -5481,6 +5481,7 @@ version = "0.1.0"
 dependencies = [
  "cef",
  "koyo-browser-ipc",
+ "koyo-seam",
  "log",
  "objc2 0.6.5",
  "objc2-app-kit 0.3.2",
@@ -5622,6 +5623,9 @@ dependencies = [
 [[package]]
 name = "koyo-seam"
 version = "0.1.0"
+dependencies = [
+ "objc2 0.6.5",
+]
 
 [[package]]
 name = "koyo-term"

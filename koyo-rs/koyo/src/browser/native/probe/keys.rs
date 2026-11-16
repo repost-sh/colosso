@@ -12,6 +12,12 @@ use objc2_app_kit::{NSApplication, NSWindow};
 
 use super::{key, scroll, window};
 
+/// `seam`: what the native layer keeps of `window`'s inputs and of each page's.
+pub(super) fn seam(window: &NSWindow) -> String {
+    let pages = koyo_browser_host::native::pages();
+    koyo_seam::heard::describe(&[window.windowNumber()], &pages)
+}
+
 /// `keyboard`: each window the keyboard is kept for, its holder, its first responder and whether
 /// it's key, and whether the app is in front (`docs/keyboard.md`).
 pub(super) fn keyboard() -> String {
@@ -125,6 +131,9 @@ pub(super) fn press(window: &NSWindow, what: &str) -> String {
             let way = if down { "down" } else { "up" };
             let _ = write!(said, "{way} code {code} U+{first:04X} flags {flags:#x}; ");
             if let Some(main) = MainThreadMarker::new() {
+                if down {
+                    koyo_seam::heard::probe_queued(1);
+                }
                 let app = NSApplication::sharedApplication(main);
                 let _: () = msg_send![&*app, postEvent: event, atStart: Bool::NO];
             }

@@ -43,6 +43,9 @@ extern "C-unwind" fn set_handling_send_event(_: &AnyObject, _: Sel, handling: Bo
 
 extern "C-unwind" fn send_event(this: &AnyObject, _: Sel, event: *mut AnyObject) {
     let previous = HANDLING_SEND_EVENT.swap(true, Ordering::Relaxed);
+    // Whose the input is, noted before any window hears it (`koyo-seam`).
+    // SAFETY: the event the application is dispatching, on the main thread.
+    unsafe { koyo_seam::appkit::app_sends(event) };
     // SAFETY: `NSApplication`'s own implementation, which the app's class didn't have one over.
     unsafe {
         let _: () = msg_send![super(this, class!(NSApplication)), sendEvent: event];
