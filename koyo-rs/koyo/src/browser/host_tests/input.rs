@@ -46,7 +46,10 @@ fn an_address_typed_into_the_bar_opens_and_the_page_takes_the_keys(cx: &mut Test
     let port = serve(site);
     let (view, cx, scratch) = open("address", &format!("http://127.0.0.1:{port}/one"), cx);
     wait_for_title(cx, &view, "one");
-    cx.update(|window, cx| view.update(cx, |view, cx| view.focus_address(window, cx)));
+    cx.update(|window, cx| {
+        let intent = crate::keyboard::Intent::Address;
+        view.update(cx, |view, cx| view.focus_address(intent, window, cx));
+    });
     cx.simulate_input(&format!("127.0.0.1:{port}/two"));
     cx.simulate_keystrokes("enter");
     wait_for_title(cx, &view, "two");

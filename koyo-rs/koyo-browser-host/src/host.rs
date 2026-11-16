@@ -200,8 +200,6 @@ fn handle(request: AppRequest) {
             visible: shown,
         } => visible(pane, shown),
         AppRequest::View { pane, action } => view(pane, action),
-        // A page has the keyboard as its window's first responder.
-        AppRequest::Focus { pane, focused } => crate::native::keyboard(pane, focused),
         // The engine's own, in the page's focused frame: the page's pointer, wheel and keys
         // are `AppKit`'s to hand it (`native.rs`).
         AppRequest::Edit { pane, command } => {

@@ -86,13 +86,6 @@ pub enum AppRequest {
         /// Whether it may.
         allowed: bool,
     },
-    /// The pane gained or lost keyboard focus.
-    Focus {
-        /// The pane.
-        pane: PaneId,
-        /// Whether it has focus.
-        focused: bool,
-    },
     /// An editing command for the focused element of the page.
     Edit {
         /// The pane.
@@ -183,7 +176,6 @@ impl AppRequest {
             | Self::Navigate { pane, .. }
             | Self::Go { pane, .. }
             | Self::Close { pane }
-            | Self::Focus { pane, .. }
             | Self::Visible { pane, .. }
             | Self::ExitFullscreen { pane }
             | Self::SiteSettings { pane }

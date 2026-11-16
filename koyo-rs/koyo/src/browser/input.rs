@@ -69,7 +69,9 @@ pub(super) fn steer(view: Div, cx: &mut Context<BrowserView>) -> Div {
     view.on_action(cx.listener(|this, _: &Back, _, cx| this.go(Go::Back, cx)))
         .on_action(cx.listener(|this, _: &Forward, _, cx| this.go(Go::Forward, cx)))
         .on_action(cx.listener(|this, _: &Reload, _, cx| this.go(Go::Reload, cx)))
-        .on_action(cx.listener(|this, _: &ToggleDevTools, _, cx| this.inspect(None, cx)))
+        .on_action(cx.listener(|this, _: &ToggleDevTools, window, cx| {
+            this.toggle_devtools(window, cx);
+        }))
         .on_action(cx.listener(|this, _: &ToggleResponsive, _, cx| this.toggle_responsive(cx)))
 }
 

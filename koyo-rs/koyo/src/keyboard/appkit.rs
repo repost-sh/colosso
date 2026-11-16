@@ -1,7 +1,8 @@
 //! `AppKit` for the keyboard: Koyo's windows by GPUI's ids, their first responders told apart and
 //! moved, and what the windows and the app tell of the keyboard, heard: GPUI's windows through
-//! the vendored gpui-fast-macos's `responders`, menus, Koyo in front or not and windows closing
-//! through `AppKit`'s notifications.
+//! the vendored gpui-fast-macos's `responders`, a page's views moving through the browser
+//! host's `native::set_keyboard`, and menus, Koyo in front or not and windows closing through
+//! `AppKit`'s notifications.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -11,6 +12,7 @@ use std::rc::Rc;
 use block2::RcBlock;
 use gpui_kit::{App, Window};
 use gpui_macos::responders::{Responders, set_responders};
+use koyo_browser_host::native::Views;
 use objc2::rc::{Retained, Weak};
 use objc2::runtime::{AnyObject, Bool, NSObjectProtocol, ProtocolObject};
 use objc2::{ClassType as _, MainThreadMarker, msg_send, sel};
@@ -241,6 +243,10 @@ pub fn install(cx: &mut App) {
     let later: hooks::Later = Box::new(move |task| executor.spawn(async move { task() }).detach());
     hooks::install(Rc::new(Real), later);
     set_responders(Rc::new(Told));
+    koyo_browser_host::native::set_keyboard(|pane, views| match views {
+        Views::Leaving => hooks::page_leaving(pane),
+        Views::Arrived => hooks::page_arrived(pane),
+    });
     // SAFETY: `AppKit`'s own constants, set before any of the app's code runs.
     unsafe {
         observe(NSMenuDidBeginTrackingNotification, |_| hooks::menu(true));

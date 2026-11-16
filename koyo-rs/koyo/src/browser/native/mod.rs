@@ -72,8 +72,6 @@ pub struct NativePage {
     pane: PaneId,
     container: Retained<NSView>,
     surface: Surface,
-    /// Whether the page has been placed yet.
-    placed: std::cell::Cell<bool>,
     /// The size it was last placed at, and when that last changed.
     size: std::cell::Cell<Option<gpui_kit::Size<Pixels>>>,
     resized: std::cell::Cell<Option<std::time::Instant>>,
@@ -101,14 +99,12 @@ impl NativePage {
             pane,
             container,
             surface,
-            placed: std::cell::Cell::new(false),
             size: std::cell::Cell::new(None),
             resized: std::cell::Cell::new(None),
         })
     }
 
-    /// Puts the page over `bounds`, as much as `clip` shows, and its holder over it on screen;
-    /// whether that's the first time.
+    /// Puts the page over `bounds`, as much as `clip` shows, and its holder over it on screen.
     ///
     /// On whole points, whatever the pane's are: a page is a whole number of points in size,
     /// as its holder, a window, and Chromium's own layout are. In a view half a point
@@ -119,7 +115,7 @@ impl NativePage {
     /// pixels a point, a pointer is on half points. Where the page reaches the edge of what
     /// shows it, it goes out to the next whole point and `clip` trims it, so nothing behind
     /// it shows beside it.
-    pub fn place(&self, bounds: Bounds<Pixels>, clip: Bounds<Pixels>, window: &Window) -> bool {
+    pub fn place(&self, bounds: Bounds<Pixels>, clip: Bounds<Pixels>, window: &Window) {
         let bounds = crate::native::surface::on_whole_points(bounds, clip);
         self.surface.place(bounds, clip, window);
         // The card the page is in clips what GPUI draws to its rounded corners, as it did a
@@ -142,12 +138,12 @@ impl NativePage {
         if self.size.replace(Some(bounds.size)).is_some_and(|was| was != bounds.size) {
             self.resized.set(Some(std::time::Instant::now()));
         }
-        // The view GPUI draws in is the page's home: the keyboard's when the page hasn't it.
+        // The view GPUI draws in is the page's home, which takes the keys the page leaves.
         let Some(home) = crate::native::window::gpui_view(window) else {
-            return false;
+            return;
         };
         let Some(ns_window) = home.window() else {
-            return false;
+            return;
         };
         let height = home.frame().size.height;
         let points = |pixels: Pixels| f64::from(f32::from(pixels));
@@ -159,7 +155,6 @@ impl NativePage {
         );
         let screen = ns_window.convertRectToScreen(in_window);
         koyo_browser_host::native::place(self.pane, &self.container, &home, screen);
-        !self.placed.replace(true)
     }
 
     /// Whether the page's size has just changed, as while an edge of its pane is dragged.

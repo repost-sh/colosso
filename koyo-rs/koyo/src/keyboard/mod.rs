@@ -27,7 +27,7 @@ mod state;
 #[cfg(test)]
 mod tests;
 
-pub use state::{Cause, Holder, PaneId, Part, Surface};
+pub use state::{Cause, Holder, Intent, PaneId, Part, Surface};
 use state::{Change, Keyboards, WindowKey};
 
 thread_local! {
@@ -81,6 +81,13 @@ pub fn set(window: &Window, surface: Surface, cause: Cause) {
 
 fn set_in(window: WindowKey, surface: Surface, cause: Cause) {
     change(|keyboards| keyboards.set(window, surface, cause));
+}
+
+/// `window` shows the tab known by `tab` now, and hands it the keyboard: what that tab had
+/// the keyboard in when it was last left, if it's known.
+pub fn tab_shown(window: &Window, tab: u64) -> Option<Surface> {
+    let window = known(window);
+    KEYBOARDS.with(|keyboards| keyboards.borrow_mut().tab_shown(window, tab))
 }
 
 /// GPUI's focus moved into the page in `pane`, the view whose focus is the page's.

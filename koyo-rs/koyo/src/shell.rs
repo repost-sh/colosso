@@ -391,7 +391,7 @@ impl Shell {
         self.make_shown_terminals(window, cx);
         self.make_shown_chats(window, cx);
         self.make_shown_browsers(window, cx);
-        self.hand_keys_over(window, cx);
+        self.tab_takes_keys(window, cx);
         let workspace = &self.workspace;
         let islands = theme::card::islands(cx);
         let note = |text: &'static str| {

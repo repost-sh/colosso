@@ -10,6 +10,7 @@ use super::Kind;
 use super::rows::Act;
 use crate::browser::{Address, search_url};
 use crate::history::{self, Place};
+use crate::keyboard::Intent;
 use crate::new_worktree;
 use crate::shell::Shell;
 
@@ -83,7 +84,7 @@ fn act_on(
             shell.open_browser(Some(search_url(&words)), window, cx);
         }
         Act::Switch(pane) => {
-            shell.focus_pane(pane, window, cx);
+            shell.focus_pane(pane, Intent::Launcher, window, cx);
         }
         Act::Resume(id) => {
             shell.open_chat(&id, cx);
@@ -94,7 +95,7 @@ fn act_on(
                 if let Some(view) = shell.device_view_of(pane) {
                     view.update(cx, |view, cx| view.start_asking(window, cx));
                 }
-                shell.focus_pane(pane, window, cx);
+                shell.focus_pane(pane, Intent::Launcher, window, cx);
             }
         }
         Act::Run(line) => {

@@ -214,12 +214,10 @@ impl PageSurface {
                 .inspect_err(|why| log::error!("no place for a page: {why}"))
                 .ok()
         });
-        let first =
-            (kept.read(cx).0.as_ref()).is_some_and(|native| native.place(shown, clip, window));
-        // The keyboard follows GPUI's focus as it moves (`set_focused`); a page that had the
-        // focus before it was here is told now.
-        if first && self.view.read(cx).focus.is_focused(window) {
-            self.view.update(cx, |view, cx| view.set_focused(true, cx));
+        // A page the keyboard is wanted in takes it as its views come into the window
+        // (`docs/keyboard.md`).
+        if let Some(native) = kept.read(cx).0.as_ref() {
+            native.place(shown, clip, window);
         }
         kept
     }

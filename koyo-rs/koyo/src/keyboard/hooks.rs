@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use super::lines::{self, Followed, TARGET};
 use super::reconcile::{self, AppKit, Heard, Moved, Responder};
-use super::state::{Surface, WindowKey};
+use super::state::{PaneId, Surface, WindowKey};
 
 /// Runs a task on the main thread's next turn.
 pub type Later = Box<dyn Fn(Box<dyn FnOnce()>)>;
@@ -28,12 +28,19 @@ struct Installed {
 const MOST_PUT_BACK: u32 = 20;
 const PUT_BACK_PER: Duration = Duration::from_secs(1);
 
+/// How long after the person pressed a page its view taking the first responder is theirs:
+/// `AppKit` hands it the press at once, and Chromium can ask again after a trip to the
+/// renderer.
+const CLICK_LASTS: Duration = Duration::from_secs(1);
+
 thread_local! {
     static INSTALLED: RefCell<Option<Rc<Installed>>> = const { RefCell::new(None) };
     /// Whether the reconciler is moving a first responder itself.
     static MOVING: Cell<bool> = const { Cell::new(false) };
     /// For each window, since when its first responder has been put back, and how many times.
     static PUT_BACK: RefCell<HashMap<WindowKey, (Instant, u32)>> = RefCell::default();
+    /// The page the person last pressed, in which window, and when, until a press elsewhere.
+    static CLICKED: Cell<Option<(WindowKey, PaneId, Instant)>> = const { Cell::new(None) };
 }
 
 /// Has the keyboard move `appkit`'s first responders from now on, coming back to it through
@@ -116,6 +123,12 @@ pub fn heard(window: WindowKey, before: Responder, after: Responder) {
     if MOVING.get() {
         return;
     }
+    if let Responder::Page(pane) = after
+        && clicked(window, pane)
+    {
+        super::change(|keyboards| keyboards.click(window, Surface::Page(pane)));
+        return;
+    }
     let (Some(installed), Some((holder, surface))) = (installed(), super::held(window)) else {
         return;
     };
@@ -130,16 +143,31 @@ pub fn heard(window: WindowKey, before: Responder, after: Responder) {
     }
 }
 
-/// A press of mouse button `button` is about to be handed on in `window`, over `over`: a page
-/// it gives the keyboard to, or GPUI's own content, which has the keyboard at once if it
-/// should and hasn't. The side buttons only step through a page's history.
+/// Whether the person pressed the page in `pane`, in `window`, just now, and nowhere since.
+fn clicked(window: WindowKey, pane: PaneId) -> bool {
+    CLICKED.get().is_some_and(|(clicked_in, page, at)| {
+        (clicked_in, page) == (window, pane) && at.elapsed() < CLICK_LASTS
+    })
+}
+
+/// A press of mouse button `button` is about to be handed on in `window`, over `over`: a page,
+/// whose view taking the first responder then is the person's doing and gives it the keyboard,
+/// or GPUI's own content, which has the keyboard at once if it should and hasn't. A press GPUI
+/// keeps for itself never reaches the page, which takes nothing then. The side buttons only
+/// step through a page's history.
 pub fn pressed(window: WindowKey, over: Responder, button: isize) {
+    CLICKED.set(None);
     if !(0..=2).contains(&button) {
         return;
     }
     match over {
         Responder::Page(pane) => {
-            super::change(|keyboards| keyboards.click(window, Surface::Page(pane)));
+            CLICKED.set(Some((window, pane, Instant::now())));
+            // Already the first responder, it hears of no change: the press is theirs all
+            // the same.
+            if installed().is_some_and(|it| it.appkit.first_responder(window) == over) {
+                super::change(|keyboards| keyboards.click(window, Surface::Page(pane)));
+            }
         }
         Responder::Gpui => {
             let (Some(installed), Some((holder, _))) = (installed(), super::held(window)) else {
@@ -164,6 +192,42 @@ pub fn at_key(window: WindowKey) {
     if let Some(moved) = moving(|| reconcile::at_key(holder, window, &*installed.appkit)) {
         let why = "a key found the first responder elsewhere";
         log::warn!(target: TARGET, "{}", lines::healed(holder, why, moved));
+    }
+}
+
+/// The views of the page in `pane` are about to leave the window they're in: the first
+/// responder, if it's one of them, goes to GPUI's view first, as a view that has it as it
+/// leaves takes it out of the window with it.
+pub fn page_leaving(pane: PaneId) {
+    let Some(installed) = installed() else {
+        return;
+    };
+    let appkit = &*installed.appkit;
+    let Some(window) = appkit.page_window(pane) else {
+        return;
+    };
+    if appkit.first_responder(window) != Responder::Page(pane) {
+        return;
+    }
+    if let Some(moved) = moving(|| reconcile::make(Responder::Gpui, window, appkit)) {
+        log::info!(target: TARGET, "keyboard: page {pane}'s views leave the window; {moved}");
+    }
+}
+
+/// The views of the page in `pane` are in a window now: one whose holder wants them has them
+/// take the keyboard.
+pub fn page_arrived(pane: PaneId) {
+    let Some(installed) = installed() else {
+        return;
+    };
+    let Some(window) = installed.appkit.page_window(pane) else {
+        return;
+    };
+    let Some((holder, _)) = super::held(window) else {
+        return;
+    };
+    if let Some(moved) = moving(|| reconcile::reconcile(holder, window, &*installed.appkit)) {
+        log::info!(target: TARGET, "keyboard: page {pane}'s views came into the window; {moved}");
     }
 }
 

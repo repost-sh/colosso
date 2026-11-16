@@ -176,7 +176,8 @@ impl Shell {
         };
         if crate::settings::get(cx).layout == crate::settings::Layout::Orca {
             self.enter_pane(pane, cx);
-            view.update(cx, |view, cx| view.focus_address(window, cx));
+            let intent = crate::keyboard::Intent::Address;
+            view.update(cx, |view, cx| view.focus_address(intent, window, cx));
             return;
         }
         let address = view.read(cx).address();

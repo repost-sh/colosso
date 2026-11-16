@@ -203,3 +203,35 @@ fn a_view_going_leaves_its_pane_to_the_view_that_took_it_since(cx: &mut TestAppC
     browsers.update(cx, |browsers, _| browsers.detach(pane, second.entity_id()));
     assert_eq!(browsers.read_with(cx, |browsers, _| browsers.view(pane)), None);
 }
+
+/// ⌥⌘I with the keyboard in the page's `DevTools` hides them and gives the keyboard back to
+/// the page, as the person asked them gone.
+#[gpui_kit::test]
+fn command_option_i_out_of_the_devtools_gives_the_keyboard_back_to_the_page(
+    cx: &mut TestAppContext,
+) {
+    use crate::keyboard::{self, Holder};
+    let (window, view) = start_page(cx);
+    (cx.update_window(window, |_, window, _| window.activate_window())).unwrap();
+    cx.run_until_parked();
+    view.update(cx, |view, cx| view.inspect(None, cx));
+    draw(window, cx);
+    let tools = view.read_with(cx, |view, _| view.devtools().cloned()).unwrap();
+    let ids = (view.read_with(cx, |view, _| view.pane), tools.read_with(cx, |tools, _| tools.pane));
+    (cx.update_window(window, |_, window, cx| {
+        let focus = tools.read(cx).focus.clone();
+        window.focus(&focus, cx);
+    }))
+    .unwrap();
+    draw(window, cx);
+    assert_eq!(keyboard::holder(window), Some(Holder::Page(ids.1)));
+    (cx.update_window(window, |_, window, cx| {
+        view.update(cx, |view, cx| view.toggle_devtools(window, cx));
+    }))
+    .unwrap();
+    assert_eq!(keyboard::holder(window), Some(Holder::Page(ids.0)), "at once");
+    draw(window, cx);
+    view.read_with(cx, |view, _| assert!(view.devtools().is_none(), "hidden"));
+    let in_page = cx.update_window(window, |_, window, cx| view.read(cx).focus.is_focused(window));
+    assert!(in_page.unwrap());
+}

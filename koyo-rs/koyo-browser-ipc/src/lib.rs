@@ -60,7 +60,9 @@ pub use requests::{AppRequest, Edit, Go, ViewAction};
 /// 13: pages are native and nothing else: no frames or surfaces from the host, no pointer,
 /// wheel, pinch, keys or composition from the app, and `Resize` only sizes a page no pane
 /// draws (`docs/native-pages.md`).
-pub const PROTOCOL: u32 = 13;
+/// 14: no `Focus`: the app's keyboard moves a page's first responder itself, in its own
+/// process (`docs/keyboard.md`).
+pub const PROTOCOL: u32 = 14;
 
 /// Frames larger than this are refused, so a confused peer cannot make the
 /// other side allocate without bound.

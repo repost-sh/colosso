@@ -5,7 +5,7 @@
 use std::fmt;
 
 use super::reconcile::{Moved, Responder};
-use super::state::{Cause, Change, Holder, PaneId, Part};
+use super::state::{Cause, Change, Holder, Intent, PaneId, Part};
 
 /// Where the keyboard's lines go in Koyo's log.
 pub const TARGET: &str = "koyo::keyboard";
@@ -32,9 +32,25 @@ impl fmt::Display for Holder {
     }
 }
 
+impl fmt::Display for Intent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Intent::Address => "⌘L",
+            Intent::DevTools => "⌥⌘I",
+            Intent::NewTab => "new tab",
+            Intent::Reopen => "⌘⇧T",
+            Intent::LinkBeside => "link opened beside",
+            Intent::Switcher => "⌃⇥",
+            Intent::Launcher => "launcher",
+            Intent::PaneFocus => "pane_focus",
+        })
+    }
+}
+
 impl fmt::Display for Cause {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
+            Cause::Intent(intent) => return intent.fmt(f),
             Cause::Click => "click",
             Cause::Focused => "focus moved",
             Cause::TabShown => "tab shown",

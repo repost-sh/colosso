@@ -12,6 +12,7 @@ use gpui_kit::{AppContext as _, Context, Entity, Window};
 use super::Shell;
 use crate::browser::{self, BrowserEvent, BrowserView, Responsive};
 use crate::history::Place;
+use crate::keyboard::Intent;
 use crate::model::{Edge, Located, Loose, Pane, Spot, Tab};
 use crate::navigation::Route;
 
@@ -81,9 +82,11 @@ impl Shell {
             self.workspace.push_tab(tab);
         }
         // The keyboard is in its address on the start page, else in the page.
+        let intent = if beside { Intent::LinkBeside } else { Intent::NewTab };
         if start {
-            view.update(cx, |view, cx| view.focus_address(window, cx));
+            view.update(cx, |view, cx| view.focus_address(intent, window, cx));
         } else {
+            self.intend(intent);
             self.keys_to_shown_tab(cx);
         }
         // A new tab is something to look at, so leave settings for it.

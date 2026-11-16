@@ -89,7 +89,7 @@ pub(crate) fn split(
 pub(crate) fn focus(pane: u64, cx: &mut App) -> Result<Value, ControlError> {
     try_update_shell(cx, |shell, window, cx| {
         select::pane(&shell.workspace, pane)?;
-        shell.focus_pane(pane, window, cx);
+        shell.focus_pane(pane, crate::keyboard::Intent::PaneFocus, window, cx);
         output(&info::place(shell, pane)?)
     })
 }
