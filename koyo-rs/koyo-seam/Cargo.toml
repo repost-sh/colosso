@@ -6,5 +6,8 @@ license.workspace = true
 publish.workspace = true
 description = "The one owner of the seam between GPUI's window and the native views in it (docs/native-layer.md): its rules, kept apart from AppKit so they're tested as they run."
 
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+
 [lints]
 workspace = true

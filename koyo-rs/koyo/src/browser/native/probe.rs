@@ -33,6 +33,9 @@
 //!                          that key, put in the app's own queue, so `AppKit` handles it as
 //!                          it does a key pressed (its pass of key equivalents, the text
 //!                          system); nothing is posted to the system
+//! seam                     what the native layer keeps (`koyo-seam`): whose the window's last
+//!                          press or key was and how long ago, each page's last input through
+//!                          its protocol, and the processes known to post inputs
 //! key                      the window made key now, the app left behind (the agent desktop)
 //! keyboard                 each window's keyboard holder, first responder, key; app in front
 //! bounds <name>            where a named part was drawn (`crate::marks`): chat-composer,
@@ -239,6 +242,7 @@ fn run(verb: &str, rest: &str, folder: &Path) -> String {
             "typed".into()
         }
         ("press", _) => keys::press(&window, rest),
+        ("seam", _) => keys::seam(&window),
         ("keyboard", _) => keys::keyboard(),
         ("bounds", _) => keys::bounds(rest),
         ("key", []) if rest.is_empty() => keys::make_key(&window),
@@ -310,6 +314,7 @@ fn escape(window: &NSWindow) -> String {
             keyCode: 53u16
         ];
         if let (Some(main), false) = (MainThreadMarker::new(), event.is_null()) {
+            koyo_seam::heard::probe_queued(1);
             let _: () = msg_send![
                 &*NSApplication::sharedApplication(main),
                 postEvent: event,
@@ -337,6 +342,10 @@ fn uptime() -> f64 {
 fn mouse(window: &NSWindow, kind: usize, at: NSPoint, clicks: isize) {
     let event = mouse_event(window, kind, at, clicks);
     if !event.is_null() {
+        // A press of the left or right button, going down: the harness's own.
+        if matches!(kind, 1 | 3) {
+            koyo_seam::heard::probe_sends(window.windowNumber(), koyo_seam::input::Kind::Press);
+        }
         // SAFETY: an event of this window's, handed to it as the app would.
         unsafe {
             let _: () = msg_send![window, sendEvent: event];
@@ -432,6 +441,7 @@ fn key(window: &NSWindow, code: u16, chars: &str, flags: usize, equivalent: bool
             }
         }
         if !taken {
+            koyo_seam::heard::probe_sends(window.windowNumber(), koyo_seam::input::Kind::Key);
             let _: () = msg_send![window, sendEvent: down];
             let up = make(11);
             if !up.is_null() {

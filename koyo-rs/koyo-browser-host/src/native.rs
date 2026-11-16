@@ -390,6 +390,14 @@ pub fn key_view(pane: PaneId) -> Option<(Retained<NSWindow>, Retained<NSView>)> 
     Some((window, keys))
 }
 
+/// Every native page there is, by its pane, lowest first.
+#[must_use]
+pub fn pages() -> Vec<PaneId> {
+    let mut pages: Vec<PaneId> = PAGES.with(|pages| pages.borrow().keys().copied().collect());
+    pages.sort_unstable();
+    pages
+}
+
 /// The page `view` is one of the views of, if it's a page's: its keys' view, or another in it.
 pub fn page_of(view: &NSView) -> Option<PaneId> {
     PAGES.with(|pages| {
