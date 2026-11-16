@@ -1,7 +1,8 @@
 //! Making a screen's picture, off the main thread: the wallpaper decoded by the system's
 //! decoders at no more pixels than its layout needs, drawn into a bitmap the screen's size as
 //! macOS lays it out, dimmed towards the card's colour, and compressed to ASTC, the only copy
-//! kept. The bitmap is dropped once the blocks are out of it.
+//! kept; and a copy a tenth of its size for the blur. The bitmap is dropped once both are out
+//! of it.
 
 use std::time::{Duration, Instant};
 
@@ -9,6 +10,7 @@ use objc2_core_foundation::{CFRetained, CGFloat, CGPoint, CGRect, CGSize};
 use objc2_core_graphics::{CGBitmapContextCreateImage, CGContext, CGImage};
 
 use super::astc::{self, Astc, Blocks};
+use super::blur::{self, Small};
 use super::layout;
 use super::wallpaper::Wallpaper;
 use crate::viewer::bitmap::Canvas;
@@ -33,6 +35,8 @@ pub struct Recipe {
 /// A screen's picture, made.
 pub struct Made {
     pub picture: Astc,
+    /// The copy the blur is made from, a tenth of the screen's pixels a side.
+    pub small: Small,
     /// How long it took to decode the wallpaper, to lay it out and dim it, and to compress it.
     pub took: [Duration; 3],
 }
@@ -43,12 +47,34 @@ pub fn make(recipe: &Recipe) -> Result<Made, String> {
     let laid = lay_out(recipe)?;
     let laid_out = Instant::now();
     let picture = astc::encode(&laid.image, recipe.blocks)?;
+    let small = shrink(&laid.image, recipe)?;
     let took = [
         laid.decoded,
         laid_out.saturating_duration_since(started).saturating_sub(laid.decoded),
         laid_out.elapsed(),
     ];
-    Ok(Made { picture, took })
+    Ok(Made {
+        picture,
+        small,
+        took,
+    })
+}
+
+/// The copy of `image`, the picture `recipe` laid out upside down, the blur is made from:
+/// upright, a tenth of the screen's pixels a side, whatever the picture's resolution.
+fn shrink(image: &CGImage, recipe: &Recipe) -> Result<Small, String> {
+    let side = |points: f64| (points * recipe.scale / blur::SHRINK).ceil().max(1.) as u32;
+    let canvas = Canvas::new(side(recipe.screen.0), side(recipe.screen.1))
+        .ok_or("there's no memory for its blur")?;
+    upside_down(canvas.context(), canvas.height);
+    CGContext::draw_image(Some(canvas.context()), canvas.bounds(), Some(image));
+    let (width, height) = (canvas.width, canvas.height);
+    let frame = canvas.into_frame(false, None).ok_or("its blur has no pixels")?;
+    Ok(Small {
+        width,
+        height,
+        pixels: frame.into_buffer().into_raw(),
+    })
 }
 
 /// A screen's picture before it's compressed.

@@ -6,16 +6,23 @@
 
 use gpui_kit::{
     App, Bounds, ContentMask, Element, ElementId, GlobalElementId, InspectorElementId,
-    IntoElement, LayoutId, Pixels, Position, Rgba, Size, Style, Window, point, px, relative,
+    IntoElement, LayoutId, Pixels, Position, Rgba, Size, Style, Window, point, px, relative, size,
 };
 
+use super::blur;
+use super::dots::Grid;
 use super::make::Recipe;
 use super::screens::{self, Hold};
-use crate::settings;
+use super::strips::{self, Placed, Shared};
+use crate::settings::ChatBackdrop;
 use crate::theme;
 
-/// The screen's wallpaper behind a chat, filling its parent, which must be `relative`.
-pub struct Picture;
+/// The screen's wallpaper behind a chat, filling its parent, which must be `relative`, looking
+/// as `settings` say. Painted, it says where it was and what the strips over it draw (`placed`).
+pub struct Picture {
+    pub settings: ChatBackdrop,
+    pub placed: Shared,
+}
 
 impl IntoElement for Picture {
     type Element = Self;
@@ -75,6 +82,7 @@ impl Element for Picture {
         window: &mut Window,
         cx: &mut App,
     ) {
+        self.placed.replace(None);
         let Some((display, screen)) = screen(window, cx) else {
             return;
         };
@@ -86,14 +94,27 @@ impl Element for Picture {
                 _ => ((), screens::hold(display, cx)),
             });
         }
-        let recipe = recipe(display, screen.size, window.scale_factor(), cx);
-        let Some(placeholder) = screens::picture(display, recipe, cx) else {
+        let settings = self.settings;
+        let scale = window.scale_factor();
+        let recipe = recipe(display, screen.size, scale, settings, cx);
+        let sigma = (settings.blur)
+            .then(|| settings.blur_strength * scale / blur::SHRINK as f32);
+        let Some(showing) = screens::picture(display, recipe, sigma, cx) else {
             return;
         };
         let shown = bounds.intersect(&screen);
         window.with_content_mask(Some(ContentMask { bounds: shown }), |window| {
-            window.paint_surface(screen, placeholder);
+            window.paint_surface(screen, showing.placeholder);
         });
+        let grid = Grid::new(settings.dot_size, settings.density, scale);
+        let (width, height) = grid.tile();
+        let tile = size(px(width as f32 / scale), px(height as f32 / scale));
+        self.placed.replace(Some(Placed {
+            screen,
+            shown,
+            blur: showing.blur,
+            dots: (strips::tile(grid, cx), tile),
+        }));
     }
 }
 
@@ -107,11 +128,16 @@ fn screen(window: &Window, cx: &App) -> Option<(u64, Bounds<Pixels>)> {
     Some((u64::from(display.id()), screen))
 }
 
-/// What screen `display`'s picture is made from, `size` in points at `scale`, as the settings
+/// What screen `display`'s picture is made from, `size` in points at `scale`, as `backdrop`
 /// and the card's colour are now; none while it has no wallpaper to show.
-fn recipe(display: u64, size: Size<Pixels>, scale: f32, cx: &mut App) -> Option<Recipe> {
+fn recipe(
+    display: u64,
+    size: Size<Pixels>,
+    scale: f32,
+    backdrop: ChatBackdrop,
+    cx: &mut App,
+) -> Option<Recipe> {
     let wallpaper = screens::wallpaper(display, cx)?;
-    let backdrop = settings::get(cx).chat_backdrop;
     let Rgba { r, g, b, .. } = theme::palette(cx).card.into();
     Some(Recipe {
         wallpaper,
