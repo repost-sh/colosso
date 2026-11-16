@@ -8,9 +8,8 @@
 
 if [ "${1:-}" = "posted" ]; then
   seam | grep -q 'window [0-9]*: Posted(DeskHost) Press' \
-    || seam | grep -q 'window [0-9]*: Person { through: Some' \
-    || fail "a desktop_click isn't kept as posted: $(seam)"
-  echo "ok: the agent desktop's click is kept as posted, or as a tool's while this Koyo knows no desk host: $(seam | tr ';' '\n' | grep window)"
+    || fail "a desktop_click isn't kept as the agent desktop's host's: $(seam)"
+  echo "ok: the agent desktop's click is kept as its host's, though this Koyo didn't start that host"
   echo "PASS labels posted"
   exit 0
 fi

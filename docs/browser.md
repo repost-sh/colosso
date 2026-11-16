@@ -941,7 +941,7 @@ app's (`koyo/src/native/menus/appkit.rs`). It refuses on evidence and allows oth
 | --- | --- |
 | The window it's for isn't on the screen the person sees | `isOnActiveSpace` and `isVisible` of the window: an agent desktop window is on another Space |
 | No press or key in that window in the last 5 seconds | The layer notes each window's last press and key as the application dispatches them |
-| The window's last input wasn't the person's | Its label: posted by the agent desktop's host (by the poster's pid, which arrives; a private source's state arrives as an id of its own, 1498617647 on 2026-11-16, never as -1), made by Koyo itself, the harness's press handed to the window, or an agent's through the page's protocol. Before 2026-11-17 the last two left no note, and a menu they caused was judged by the person's press before them |
+| The window's last input wasn't the person's | Its label: posted by the agent desktop's host (by the poster's pid, which arrives, and the bundle that process runs from, so a host another Koyo started is known too; a private source's state arrives as an id of its own, 1498617647 on 2026-11-16, never as -1), made by Koyo itself, the harness's press handed to the window, or an agent's through the page's protocol. Before 2026-11-17 the last two left no note, and a menu they caused was judged by the person's press before them |
 | An agent drives the page that asked (a page's menu) | The page's holder (`browser/control.rs`) |
 
 Anything else is the person's: the hardware's press, or a tool of theirs posting for them (a

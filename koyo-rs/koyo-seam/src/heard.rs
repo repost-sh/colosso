@@ -22,6 +22,9 @@ thread_local! {
     static ENGINE: RefCell<HashMap<u64, Instant>> = RefCell::new(HashMap::new());
     /// How many of the events the app's own process next puts in its queue are the harness's.
     static QUEUED: Cell<u32> = const { Cell::new(0) };
+    /// The processes found to be an agent desktop's host by the bundle they run from: one
+    /// this Koyo didn't start posts to it too, to a test Koyo on the agent desktop.
+    static DESK_HOSTS: RefCell<Vec<i64>> = const { RefCell::new(Vec::new()) };
     /// Whether the application's dispatch tells the layer of its events yet.
     static LISTENING: Cell<bool> = const { Cell::new(false) };
 }
@@ -29,6 +32,27 @@ thread_local! {
 /// The agent desktop's host runs as process `pid`, and posts inputs from now on.
 pub fn desk_host(pid: Option<i32>) {
     DESK.store(pid.map_or(0, i64::from), Ordering::Relaxed);
+}
+
+/// Process `pid` is an agent desktop's host, whoever started it.
+pub fn is_desk_host(pid: i64) {
+    DESK_HOSTS.with_borrow_mut(|hosts| {
+        if !hosts.contains(&pid) {
+            hosts.push(pid);
+        }
+    });
+}
+
+/// The processes known to post inputs that aren't the person's, as far as `source` needs
+/// them: the host that posted it, if a host did, else the one this Koyo started.
+fn posters_for(source: Option<Source>) -> Posters {
+    let mut posters = posters();
+    if let Some(source) = source
+        && DESK_HOSTS.with_borrow(|hosts| hosts.contains(&source.posted_by))
+    {
+        posters.desk = source.posted_by;
+    }
+    posters
 }
 
 /// The processes known to post inputs that aren't the person's.
@@ -66,7 +90,7 @@ fn note(window: isize, origin: Origin, kind: Kind) {
 /// says `source` of where it came from. One the app's own process made is the harness's if
 /// the harness said it queued one ([`probe_queued`]).
 pub fn app_sends(window: isize, source: Option<Source>, kind: Kind) {
-    let mut origin = label(source, posters());
+    let mut origin = label(source, posters_for(source));
     if origin == Origin::Koyo && QUEUED.get() > 0 {
         QUEUED.set(QUEUED.get() - 1);
         origin = Origin::Probe;
@@ -163,6 +187,16 @@ mod tests {
         assert_eq!(last(2).unwrap().1.origin, Origin::Probe);
         app_sends(2, Some(own()), Kind::Key);
         assert_eq!(last(2).unwrap().1.origin, Origin::Koyo);
+    }
+
+    #[test]
+    fn a_host_this_koyo_didnt_start_is_a_host_once_its_found_to_be_one() {
+        let posted = Some(Source { state: 1_498_617_647, posted_by: 29277 });
+        app_sends(5, posted, Kind::Press);
+        assert_eq!(last(5).unwrap().1.origin, Origin::Person { through: Some(29277) });
+        super::is_desk_host(29277);
+        app_sends(5, posted, Kind::Press);
+        assert_eq!(last(5).unwrap().1.origin, Origin::Posted(crate::input::Poster::DeskHost));
     }
 
     #[test]
