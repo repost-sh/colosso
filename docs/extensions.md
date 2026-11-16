@@ -332,35 +332,56 @@ change to a patch is the files it touches and the framework's link.
 ## 12. Checked
 
 By tests that need no engine: the protocol's wire names (`koyo-browser-ipc` `tests.rs`);
-the pipe's framing, a list entry read, a popup's place on the screen
-(`koyo-browser-host`); the store's order and what a page shows, a badge's colours, an
-icon's letter and picture, an icon's menu, the popover's height with the row (`koyo`).
+the pipe's framing, a list entry read, a popup's place on the screen by either corner, a
+tabbed window told from a popup by its style (`koyo-browser-host`); the store's order and
+what a page shows, a badge's colours, an icon's letter and picture, an icon's menu, which
+corner a popup hangs by, the popover's height with the row, a tab asked for shown and a
+link's tab not (`koyo`).
 
-In the running debug build on Koyo's agent desktop, 2026-11-15, a test bundle with folders
-of its own (`.superpowers/ext/desk/`), the pointer's own events through the desktop's
-tools, an extension loaded from a folder (`.superpowers/research/ext/probe`):
+In the running debug build on Koyo's agent desktop, 2026-11-15 and 16, a test bundle with
+folders of its own (`.superpowers/ext/desk/`), the pointer's own events through the
+desktop's tools, on the patched framework. The extensions: Bitwarden and uBlock Origin
+Lite from the Chrome Web Store, and one loaded from a folder
+(`.superpowers/research/ext/probe`), whose service worker was asked over DevTools what it
+sees and told what to do. Where a row says an extension did something, that is how.
 
 | What | State |
 | --- | --- |
-| On CEF's own framework the build runs as before, and says extensions' controls are off | checked: a page opened and drew; the log line; no row in the popover |
-| The patched framework starts in Koyo's process with the pipe on named descriptors | checked: the host heard the engine's list over it ("the engine lists 1") |
-| A page is a `normal` window with one active tab, and the current one | checked: the probe's `windows.getAll`, `windows.getCurrent` and `tabs.query({active, currentWindow})` |
+| On CEF's own framework the build runs as before, and says extensions' controls are off | checked 11-15: a page opened and drew; the log line; no row in the popover |
+| The patched framework starts in Koyo's process with the pipe on named descriptors | checked: the host heard the engine's list over it |
 | Chrome's toolbar, carried hidden, takes no room and isn't seen | checked: the page fills its pane, by eye |
-| The popover's row: the extension's icon (a letter, it has none) and "+" | checked, by eye |
-| A press on the icon opens Chrome's own popup | checked: Chrome's bubble opened, the size of the probe's popup. It wasn't put under the icon: it stayed clear for three seconds and then showed where Chrome put it. Why, `[read]`: Chromium makes a bubble a child of its page's window only once that window is on the Space shown (`native_widget_ns_window_bridge.mm`, `OrderChildren`), which on the agent desktop it never is, and the popup was known by being that child. It's now known, where it has no parent, by lying over its page (`popup.rs`, `is_popup_of`). **Not seen since** `[open]` |
-| Koyo quits cleanly with the pipe open | checked: "the browser engine stopped in 90 ms" |
-| `script/cef` on a built folder | checked: patches found applied, nothing built, the framework and its list of patches in place, 6 seconds |
+| An install from the Chrome Web Store | checked, twice: "Add to Chrome", Chrome's dialog, "Add extension"; no crash; the icon in the row at once; Bitwarden's welcome page a Koyo tab; the store's button turned to "Remove from Chrome" |
+| The install dialog's look | checked: its heading clear, no band over it (`dialog-without-parent-titlebar`); over the page, near its top, above Koyo's window |
+| The store's "Switch to Chrome" banner | there, as section 4 says it would be |
+| Across a restart of the test build | checked: both extensions listed again, their icons drawn, the pinned one still on the toolbar |
+| A page is a `normal` window with one active tab | checked: `windows.getAll` |
+| The current window and its active tab are the page shown | checked from a worker, `windows.getCurrent`, `windows.getLastFocused`, `tabs.query({active, currentWindow})`: after a tab was chosen, after an agent opened one in front, and with a tab an extension opened behind. The last two were wrong before two fixes (section 3) |
+| The popover's row: icons and "+" | checked, by eye: an extension's own icon, a letter for one with none, "+" opens the store in front |
+| The toolbar's pinned icons (Orca layout) | checked, by eye |
+| A press on an icon opens Chrome's own popup under it | checked: from the sidebar's site controls it hangs by its top left and from the toolbar's end by its top right, over Koyo's window both times. It hung out to the left of the window before `Corner` (section 6) |
+| A second press on the icon closes the popup | checked. It opened a second popup before |
+| The popup goes when another tab is chosen | checked. It stayed before |
+| A press inside the popup | **not checked**: a click on Bitwarden's popup changed nothing. `[read]` why: a page of Chromium's doesn't take the click that would make its window key (`acceptsFirstMouse`, `render_widget_host_view_cocoa.mm`), and on the agent desktop the test build is never the active app, so no window of its becomes key and every click is that one. On a real desktop the host makes the popup key as it places it. Nor is "it closes when it loses the keyboard" seen there. Both need the app in front on a real desktop `[open]` |
+| A badge and an icon an extension sets | checked, by eye: an icon set from image data; a badge for every page and another, with its own colour, for one tab; the icon greyed where the action is off for the tab; uBlock Origin Lite's own count of what it blocked |
+| Pin and unpin | checked: the extension's `action.getUserSettings()` says so each time, `chrome://extensions` agrees, the toolbar's icon comes and goes |
+| Options, Manage Extension | checked: each opens its page in a tab in front. They opened behind before |
+| Turning off, in `chrome://extensions` | checked: Koyo's icon went at once, and came back with it on |
+| Remove | checked: gone from the row, the engine's list and the profile's folder |
+| The icon's menu itself | **not opened**: it's a native menu, which shows on the owner's own desktop from there. Its rows were picked through the harness (`pick`), which runs what a row runs |
+| `tabs.create`, in front and behind | checked: a Koyo tab beside its opener, shown or not as asked |
+| `tabs.update({active: true})` | checked: Koyo shows that tab |
+| `tabs.remove` | checked: Koyo's tab closes |
+| `windows.create`, type `popup` | checked: a window of Chrome's own with its title bar, on the same desktop as Koyo's. It became a tab before the kind was read from the window's style (section 3) |
+| `windows.create`, type `normal` | checked: its page opens as a Koyo tab; no window shows |
+| A content script, a service worker, blocking rules | checked: the folder extension's script marked the page; with uBlock Origin Lite, a page's fetch of an ad script and of an analytics script failed and of its own site loaded |
+| An extension's entries in a page's context menu | **not checked**: the menu is native and would show on the owner's desktop `[open]` |
+| Koyo quits cleanly with extensions, a popup and a window of Chrome's open | checked: "the browser engine stopped in" 90 to 270 ms each time |
+| `script/cef` on a built folder | checked: patches found applied, only what a new patch touches built, the framework and its list of patches in place |
 
-Not yet checked, each built: the popup under the icon; a badge and an icon an extension
-sets, per tab and for all; pinning and the toolbar's icons; the icon's menu; removing and
-turning off; a tab an extension opens and a tab it asks for in front; a window an extension
-opens, and which of Chrome's windows are told apart as tabbed (`native/strays.rs` goes by
-the title bar, which is read, not seen); an extension's context-menu entries in Koyo's
-menu; an install from the Chrome Web Store on the patched framework (on CEF's own it ends
-Koyo, section 2.2), and its dialog's look and place with `dialog-without-parent-titlebar`;
-across a restart; the smoke test, which starts an engine. They wait on
-the owner's word: on 2026-11-15 the engine's suites and anything that opens a window were
-held back while he worked on the machine.
+Still to do: the three rows marked; the host's smoke test for extensions
+(`tests/smoke/extensions.rs`) and the engine's suites, which were held back on both days
+because they take the keyboard from whoever is at the machine; and a from-scratch
+`script/cef` (`docs/browser.md` 11.3).
 
 ## 13. For the owner
 
