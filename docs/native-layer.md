@@ -825,7 +825,8 @@ To go into the repository's agent instructions at step 10. `[proposed]`
 | A child window changes a float's ordering or the switcher's unseen open | Step 9 | Needs Koyo in front. Not merged without tier 3 or the owner's check |
 | Refusing a second container (L1) breaks a legitimate hand-over between two elements in one frame, as when DevTools change dock | Step 7 | The refusal is logged and counted first, and enforced only after the bench shows zero in dock changes |
 | The stand-in page doesn't behave like Chromium | Every rig test | Each rig case is paired with a tier 2 sequence against the real engine. The rig is for speed, the sequence is the proof |
-| Moving the `NSApp` patch out of the host changes when it is installed relative to CEF's start | Step 2 | The engine's smoke suite and a page loading in the test Koyo |
+| Moving the `NSApp` patch out of the host changes when it is installed relative to CEF's start | Step 9 | A page loading in the test Koyo, and the `labels` sequence. The engine's smoke suite doesn't show it: it runs the host as a process of its own, with an `NSApp` class of its own (`mac_app.rs`) |
+| The engine's smoke suite puts a system prompt on the person's screen | Any step that runs it | Its `location::` test has macOS ask for the person's location, on their screen (seen 2026-11-17). It's run with `--skip location::`, and only while the person is away |
 | The move of `native.rs` collides with browser-extensions | Step 7 | The pure move lands alone, announced a day ahead |
 | The fence is too strict and gets a long allow-list | Step 10 | Each entry needs a reason. The count of entries is printed by the lint |
 | gpui-fast is updated upstream | Any time | The fork's seam diff is hooks only, so a rebase is small. The rig runs after it |
