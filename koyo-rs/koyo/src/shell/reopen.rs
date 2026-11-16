@@ -97,6 +97,7 @@ impl Shell {
             }
         };
         self.navigate(Route::Workspace, cx);
+        self.intend(crate::keyboard::Intent::Reopen);
         self.keys_to_shown_tab(cx);
         Some(back)
     }

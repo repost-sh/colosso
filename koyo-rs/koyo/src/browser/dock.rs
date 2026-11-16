@@ -18,6 +18,7 @@ use super::find::ACTUAL_SIZE;
 use super::view::{BrowserEvent, BrowserView};
 use super::{ActualSize, FindInPage, FindNext, FindPrevious, ZoomIn, ZoomOut};
 use super::{input, toolbar};
+use crate::keyboard::{Cause, Intent, Surface};
 use crate::settings;
 use crate::theme;
 
@@ -122,6 +123,27 @@ pub(super) struct Asked {
 pub struct DockDivider(u64);
 
 impl BrowserView {
+    /// ⌥⌘I: the page's `DevTools` show, or hide. Hidden with the keyboard in them, the
+    /// keyboard goes back to the page they inspect, as the person asked them gone; shown, it
+    /// stays where it is, and `DevTools` asking for it as they open are refused.
+    pub(super) fn toggle_devtools(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let in_tools = |tools: &BrowserView| tools.focus.contains_focused(window, cx);
+        let typing = match (self.inspected(), &self.devtools) {
+            (Some(_), _) => in_tools(self),
+            (None, Some(tools)) => in_tools(tools.view.read(cx)),
+            (None, None) => false,
+        };
+        if typing {
+            let (focus, pane) = match self.inspected() {
+                Some(page) => (page.read(cx).focus.clone(), page.read(cx).pane),
+                None => (self.focus.clone(), self.pane),
+            };
+            crate::keyboard::set(window, Surface::Page(pane), Cause::Intent(Intent::DevTools));
+            window.focus(&focus, cx);
+        }
+        self.inspect(None, cx);
+    }
+
     /// Shows the page's `DevTools`, revealing the element at `at` when there is one; asked
     /// without one while they show, hides them. Asked of the `DevTools` themselves, as with
     /// the keys in them, it's their page that hides them, once this update is done.

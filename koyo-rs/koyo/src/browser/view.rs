@@ -20,7 +20,7 @@ use super::dock::{Asked, Devtools};
 use super::find::{ACTUAL_SIZE, FindBar};
 use super::host::Browsers;
 use crate::history::How;
-use crate::keyboard::Part;
+use crate::keyboard::{Cause, Intent, Part, Surface};
 
 pub(super) mod lifecycle;
 mod navigation;
@@ -417,23 +417,20 @@ impl BrowserView {
         &self.address
     }
 
-    /// Puts the keyboard in the address, all of it selected.
-    pub fn focus_address(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Puts the keyboard in the address, all of it selected, as the person asked with `intent`.
+    pub fn focus_address(&mut self, intent: Intent, window: &mut Window, cx: &mut Context<Self>) {
+        let bar = Surface::Gpui(Part::Bar(self.pane));
+        crate::keyboard::set(window, bar, Cause::Intent(intent));
         self.address.update(cx, |address, cx| {
             address.focus(window, cx);
             address.select_all(window, cx);
         });
     }
 
-    pub(super) fn set_focused(&mut self, focused: bool, cx: &mut Context<Self>) {
-        let pane = self.pane;
-        self.send_to_page(AppRequest::Focus { pane, focused }, cx);
-    }
-
     /// GPUI's focus came to the page, or left it: the keyboard's holder hears so, and where it
-    /// went, its address or find bar or elsewhere.
+    /// went, its address or find bar or elsewhere. The holder moves the window's first
+    /// responder in or out of the page (`docs/keyboard.md`).
     fn focus_moved(&mut self, into: bool, window: &mut Window, cx: &mut Context<Self>) {
-        self.set_focused(into, cx);
         if into {
             crate::keyboard::entered_page(window, self.pane);
             return;

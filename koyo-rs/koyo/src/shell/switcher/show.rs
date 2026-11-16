@@ -18,6 +18,7 @@ impl Shell {
         if let Some(file) = file.map(|pane| pane.id) {
             self.workspace.enter_pane(file);
         }
+        self.intend(crate::keyboard::Intent::Switcher);
         self.show_tab_holding(key, cx);
     }
 }

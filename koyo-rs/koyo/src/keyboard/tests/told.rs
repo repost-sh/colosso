@@ -34,11 +34,11 @@ fn first(fake: &Fake) -> Responder {
 fn the_person_clicking_a_page_then_the_composer_has_the_keyboard_follow() {
     let (fake, turns) = in_composer();
     // Heard before the press is handed on; `AppKit` makes the page's view the first
-    // responder as it hands it on, which is what's wanted by then.
+    // responder as it hands it on, which is the person's doing.
     hooks::pressed(WINDOW, Responder::Page(PAGE), 0);
-    assert_eq!(holder(), Holder::Page(PAGE));
-    assert_eq!(first(&fake), Responder::Page(PAGE), "the reconciler moved it");
     fake.moved(WINDOW, Responder::Page(PAGE));
+    assert_eq!(holder(), Holder::Page(PAGE));
+    assert_eq!(first(&fake), Responder::Page(PAGE));
     // GPUI's focus moves to the composer as the press there is handled.
     hooks::pressed(WINDOW, Responder::Gpui, 0);
     assert_eq!(first(&fake), Responder::Page(PAGE), "a press alone leaves a page holding");
@@ -113,12 +113,41 @@ fn a_key_while_text_is_composed_in_a_page_stays_there() {
 
 #[test]
 fn the_side_buttons_give_no_page_the_keyboard() {
-    let (_, _) = in_composer();
-    hooks::pressed(WINDOW, Responder::Page(PAGE), 3);
-    hooks::pressed(WINDOW, Responder::Page(PAGE), 4);
-    assert_eq!(holder(), Holder::Gpui(Part::Pane(7)));
+    let (fake, turns) = in_composer();
+    for button in [3, 4] {
+        hooks::pressed(WINDOW, Responder::Page(PAGE), button);
+        fake.moved(WINDOW, Responder::Page(PAGE));
+        assert_eq!(holder(), Holder::Gpui(Part::Pane(7)));
+        assert_eq!(turns.next(), 1, "taken back");
+    }
     hooks::pressed(WINDOW, Responder::Page(PAGE), 1);
+    fake.moved(WINDOW, Responder::Page(PAGE));
     assert_eq!(holder(), Holder::Page(PAGE), "a right press does, as it opens the page's menu");
+}
+
+#[test]
+fn a_press_on_a_page_that_gpui_keeps_for_itself_gives_the_page_nothing() {
+    let (fake, turns) = in_composer();
+    // Never handed on, the press makes the page's view no first responder.
+    hooks::pressed(WINDOW, Responder::Page(PAGE), 0);
+    assert_eq!(holder(), Holder::Gpui(Part::Pane(7)));
+    hooks::at_key(WINDOW);
+    assert_eq!(first(&fake), Responder::Gpui);
+    // A press on the composer after it, and the page asking, is refused.
+    hooks::pressed(WINDOW, Responder::Gpui, 0);
+    fake.moved(WINDOW, Responder::Page(PAGE));
+    assert_eq!(holder(), Holder::Gpui(Part::Pane(7)));
+    assert_eq!(turns.next(), 1);
+    assert_eq!(first(&fake), Responder::Gpui);
+}
+
+#[test]
+fn a_press_on_the_page_that_has_the_first_responder_already_gives_it_the_keyboard() {
+    let (fake, _) = in_composer();
+    fake.tells.set(false);
+    fake.moved(WINDOW, Responder::Page(PAGE));
+    hooks::pressed(WINDOW, Responder::Page(PAGE), 0);
+    assert_eq!(holder(), Holder::Page(PAGE));
 }
 
 #[test]
@@ -168,5 +197,27 @@ fn a_window_kept_for_closing_is_forgotten() {
     let (_, turns) = in_composer();
     hooks::closed(Some(WINDOW), true);
     assert_eq!(held(WINDOW), None);
+    assert_eq!(turns.next(), 0);
+}
+
+#[test]
+fn a_pages_views_leaving_take_the_first_responder_to_gpuis_view_and_back_as_they_return() {
+    let (fake, turns) = in_composer();
+    set_in(WINDOW, Surface::Page(PAGE), Cause::Focused);
+    assert_eq!(first(&fake), Responder::Page(PAGE));
+    // Heard before they leave, while they're still in the window.
+    hooks::page_leaving(PAGE);
+    assert_eq!(first(&fake), Responder::Gpui);
+    fake.page_in(PAGE, None);
+    assert_eq!(holder(), Holder::Page(PAGE), "the page holds, out of sight");
+    hooks::at_key(WINDOW);
+    assert_eq!(first(&fake), Responder::Gpui, "a key meanwhile goes to GPUI's view");
+    fake.page_in(PAGE, Some(WINDOW));
+    hooks::page_arrived(PAGE);
+    assert_eq!(first(&fake), Responder::Page(PAGE), "the page has it once it's back");
+    // Another page's views coming and going leave the first responder alone.
+    hooks::page_leaving(AGENTS_PAGE);
+    hooks::page_arrived(AGENTS_PAGE);
+    assert_eq!(first(&fake), Responder::Page(PAGE));
     assert_eq!(turns.next(), 0);
 }

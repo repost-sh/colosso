@@ -55,11 +55,35 @@ pub enum Part {
     Other,
 }
 
+/// What the person asked for that puts the keyboard somewhere: theirs to say, so the holder
+/// is set from it as it's asked, not from what GPUI's focus does after.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Intent {
+    /// ⌘L: the page's address.
+    Address,
+    /// ⌥⌘I: a page's `DevTools` closed with the keyboard in them, which the page has again.
+    DevTools,
+    /// A new tab, from the launcher or a button.
+    NewTab,
+    /// ⌘⇧T: a closed tab back.
+    Reopen,
+    /// A link opened in a tab beside the page's.
+    LinkBeside,
+    /// ⌃⇥: the tab switcher's pick.
+    Switcher,
+    /// The launcher's pick of an open tab.
+    Launcher,
+    /// An app control client's `pane_focus`, which moves the person's keyboard as they would.
+    PaneFocus,
+}
+
 /// Why the keyboard moved.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Cause {
     /// The person pressed the surface, as the window heard before handing the press on.
     Click,
+    /// What the person asked for.
+    Intent(Intent),
     /// GPUI's focus moved, as the app or the person moved it.
     Focused,
     /// Another tab is shown, and the keyboard is handed to it.
@@ -102,6 +126,10 @@ struct Held {
     dialog: bool,
     /// How many native menus opened while it was the key window are tracking the keys.
     menus: u32,
+    /// The tab it shows, by its key, as it was handed the keyboard last.
+    tab: Option<u64>,
+    /// What each tab it showed before had the keyboard in, as it was left.
+    tabs: HashMap<u64, Surface>,
 }
 
 impl Held {
@@ -112,6 +140,8 @@ impl Held {
             key: true,
             dialog: false,
             menus: 0,
+            tab: None,
+            tabs: HashMap::new(),
         }
     }
 
@@ -199,9 +229,28 @@ impl Keyboards {
         self.change(window, cause, |held| held.dialog = open)
     }
 
+    /// `window` shows the tab known by `tab` now, and hands it the keyboard: what the tab
+    /// shown before had it in is kept for that tab, and what this one had, if anything's kept,
+    /// is returned. The tab shown already has what it has now.
+    pub fn tab_shown(&mut self, window: WindowKey, tab: u64) -> Option<Surface> {
+        let held = self.windows.entry(window).or_insert_with(Held::new);
+        match held.tab.replace(tab) {
+            Some(was) if was == tab => return Some(held.surface),
+            Some(was) => {
+                held.tabs.insert(was, held.surface);
+            }
+            None => {}
+        }
+        held.tabs.get(&tab).copied()
+    }
+
     /// The page in `pane` closed: a window whose keyboard the person had put in it has it
-    /// at the window's own keys, until GPUI's focus says where it is now.
+    /// at the window's own keys, until GPUI's focus says where it is now, and no tab has it
+    /// kept.
     pub fn page_closed(&mut self, pane: PaneId) -> Vec<Change> {
+        for held in self.windows.values_mut() {
+            held.tabs.retain(|_, surface| *surface != Surface::Page(pane));
+        }
         let windows: Vec<WindowKey> = (self.windows.iter())
             .filter(|(_, held)| held.surface == Surface::Page(pane))
             .map(|(window, _)| *window)

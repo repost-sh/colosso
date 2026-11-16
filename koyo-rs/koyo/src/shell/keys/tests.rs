@@ -5,6 +5,7 @@ use gpui_kit::{AnyWindowHandle, AppContext as _, Entity, Focusable as _, TestApp
 
 use crate::keyboard::{self, Holder, Part};
 use crate::model::PaneKind;
+use crate::settings::Layout;
 use crate::shell::{CloseTab, Shell};
 use crate::test_support::{
     draw, keyboard_at_window, open_page, press_prompt, repo, select, shell_with,
@@ -102,7 +103,7 @@ fn moving_to_a_chat_never_puts_the_keyboard_in_its_prompt(cx: &mut TestAppContex
     at_window("switched to with ⌃⇥", cx);
     // Asked for by its pane, as the launcher's list of open tabs asks.
     (cx.update_window(window, |_, window, cx| {
-        shell.update(cx, |shell, cx| shell.focus_pane(first, window, cx));
+        shell.update(cx, |shell, cx| shell.focus_pane(first, keyboard::Intent::Launcher, window, cx));
     }))
     .unwrap();
     at_window("asked for by its pane", cx);
@@ -333,7 +334,7 @@ fn a_pane_closed_with_the_keyboard_in_it_hands_it_to_the_pane_left_beside_it(
     let (window, shell) = shell("keys-close-pane", cx);
     let (left, right) = two_pages_beside(window, &shell, cx);
     (cx.update_window(window, |_, window, cx| {
-        shell.update(cx, |shell, cx| shell.focus_pane(right, window, cx));
+        shell.update(cx, |shell, cx| shell.focus_pane(right, keyboard::Intent::Launcher, window, cx));
     }))
     .unwrap();
     assert_eq!(typing_in(window, &shell, cx), Some(right));
@@ -383,4 +384,52 @@ fn the_keyboards_holder_follows_the_page_in_and_out(cx: &mut TestAppContext) {
     shell.update(cx, |shell, cx| shell.show_tab_holding(pane, cx));
     assert_eq!(typing_in(window, &shell, cx), Some(pane));
     assert_eq!(keyboard::holder(window), Some(Holder::Page(page_id)));
+}
+
+/// A page's `DevTools` the person was typing in have the keyboard again as the page's tab is
+/// shown again, not the page: GPUI's focus is in the same pane either way, and the keyboard's
+/// holder kept which page of it had the keys.
+#[gpui_kit::test]
+fn a_tab_shown_again_gives_the_keyboard_back_to_the_devtools_it_was_in(cx: &mut TestAppContext) {
+    let (window, shell) = shell("shell-devtools-holder", cx);
+    (cx.update_window(window, |_, window, _| window.activate_window())).unwrap();
+    cx.run_until_parked();
+    let pane = new_page(window, &shell, cx);
+    let view = shell.read_with(cx, |shell, _| shell.workspace.pane(pane).unwrap().view().cloned());
+    let view = view.unwrap();
+    view.update(cx, |view, cx| view.inspect(None, cx));
+    draw(window, cx);
+    let tools = view.read_with(cx, |view, _| view.devtools().cloned()).unwrap();
+    let tools_id = tools.read_with(cx, |tools, _| tools.page_id());
+    (cx.update_window(window, |_, window, cx| window.focus(&tools.focus_handle(cx), cx))).unwrap();
+    draw(window, cx);
+    assert_eq!(keyboard::holder(window), Some(Holder::Page(tools_id)));
+
+    new_chat(window, &shell, cx);
+    assert_ne!(keyboard::holder(window), Some(Holder::Page(tools_id)));
+    shell.update(cx, |shell, cx| shell.show_tab_holding(pane, cx));
+    for _ in 0..3 {
+        draw(window, cx);
+    }
+    assert_eq!(keyboard::holder(window), Some(Holder::Page(tools_id)));
+    let in_tools = cx.update_window(window, |_, window, cx| tools.focus_handle(cx).is_focused(window));
+    assert!(in_tools.unwrap(), "GPUI's focus is the DevTools' too");
+}
+
+/// ⌘L puts the keyboard in the page's address as the person asks, before GPUI's focus moves.
+#[gpui_kit::test]
+fn command_l_puts_the_keyboard_in_the_address_at_once(cx: &mut TestAppContext) {
+    let (window, shell) = shell("shell-address-holder", cx);
+    (cx.update_window(window, |_, window, _| window.activate_window())).unwrap();
+    cx.run_until_parked();
+    cx.update(|cx| crate::settings::update(cx, |settings| settings.layout = Layout::Orca));
+    let pane = new_page(window, &shell, cx);
+    let page_id = shell.read_with(cx, |shell, cx| {
+        shell.workspace.pane(pane).unwrap().view().unwrap().read(cx).page_id()
+    });
+    (cx.update_window(window, |_, window, cx| {
+        shell.update(cx, |shell, cx| shell.open_address(window, cx));
+        assert_eq!(keyboard::holder(window.window_handle()), Some(Holder::Gpui(Part::Bar(page_id))));
+    }))
+    .unwrap();
 }

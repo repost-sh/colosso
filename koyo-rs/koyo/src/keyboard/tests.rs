@@ -147,10 +147,6 @@ fn going_away_and_dialogs_are_warnings() {
     assert_eq!(lines::level(&back), log::Level::Warn);
 }
 
-mod fake;
-mod reconciler;
-mod told;
-
 #[test]
 fn a_line_says_what_the_first_responder_did_and_never_more() {
     use super::reconcile::{Moved, Responder};
@@ -182,3 +178,44 @@ fn a_line_says_what_the_first_responder_did_and_never_more() {
          responder the window → gpui: healed"
     );
 }
+
+#[test]
+fn a_tab_shown_again_has_what_it_had_as_it_was_left() {
+    let mut keyboards = holding(Surface::Gpui(COMPOSER));
+    let (pages, chat) = (100, 200);
+    assert_eq!(keyboards.tab_shown(WINDOW, pages), None, "nothing kept yet");
+    keyboards.set(WINDOW, Surface::Page(PAGE), Cause::Click);
+    assert_eq!(keyboards.tab_shown(WINDOW, chat), None);
+    keyboards.set(WINDOW, Surface::Gpui(COMPOSER), Cause::Click);
+    assert_eq!(keyboards.tab_shown(WINDOW, pages), Some(Surface::Page(PAGE)));
+    keyboards.set(WINDOW, Surface::Page(PAGE), Cause::TabShown);
+    assert_eq!(keyboards.tab_shown(WINDOW, chat), Some(Surface::Gpui(COMPOSER)));
+    keyboards.set(WINDOW, Surface::Gpui(COMPOSER), Cause::TabShown);
+    // The tab shown, asked for again, has what it has now.
+    keyboards.set(WINDOW, Surface::Gpui(Part::Window), Cause::Focused);
+    assert_eq!(keyboards.tab_shown(WINDOW, chat), Some(Surface::Gpui(Part::Window)));
+    // A page that closed is kept for no tab.
+    keyboards.page_closed(PAGE);
+    assert_eq!(keyboards.tab_shown(WINDOW, pages), None);
+}
+
+#[test]
+fn what_the_person_asked_for_is_the_lines_cause() {
+    use super::state::Intent;
+    let change = Change {
+        window: WINDOW,
+        from: Holder::Page(PAGE),
+        to: Holder::Gpui(Part::Bar(PAGE)),
+        cause: Cause::Intent(Intent::Address),
+    };
+    assert_eq!(
+        lines::line(&change, Followed::Untold),
+        "keyboard: page 12 → gpui (a bar of page 12) (⌘L)"
+    );
+    let switched = Change { cause: Cause::Intent(Intent::Switcher), ..change };
+    assert!(lines::line(&switched, Followed::Untold).ends_with("(⌃⇥)"));
+}
+
+mod fake;
+mod reconciler;
+mod told;

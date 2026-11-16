@@ -83,7 +83,7 @@ engine's helper apps running the browser host's binary, so what the host does in
 - **Run loop.** GPUI runs `[NSApp run]`. CEF is started with `external_message_pump`, and a
   run-loop timer in the common modes runs `cef_do_message_loop_work` when CEF asks, at the
   latest every 1/30 s (`embedded/pump.rs`). CEF is started from that timer, never inside
-  GPUI's frame, and what moves the keyboard or edits a page is done from it too. `[proven]`
+  GPUI's frame, and what edits a page is done from it too. `[proven]`
 - **Started as the app starts** (`browser::warm_up`), from the run loop. Not measured: what `cef_initialize` costs the main thread.
 - **Koyo must run from a bundle that holds the engine.** Run as a bare binary with the engine
   elsewhere (`koyo-rs/target/debug/koyo`), every helper exits at once (GPU process
@@ -369,15 +369,16 @@ view, and with the keyboard in a page Chromium's view hears them instead: ⌃ le
 never reached GPUI, and the tab switcher stayed up with its pick, the tab never changing
 (the owner, 2026-11-15, from a pinned page). The window hands every change of the modifiers to
 GPUI's view too while another view has the keyboard, and GPUI counts a change it hears twice
-once (`fast/composition.rs`, `send_window_event`).
+once (`fast/composition.rs`, `route_keys`).
 
-**The keyboard goes back to Koyo before a page's views leave its window.** A view that has the
-keyboard as it's taken out of its window leaves the window itself with it, which hands no key
-on. A page's views leave Koyo's window as its tab is left, the moment the pane stops drawing it,
-before the app's word that the keyboard is out of the page reaches the host; so after a tab
-with the keyboard in its page was left, nothing typed reached a chat's composer or a terminal.
-The host gives the keyboard to Koyo's view first, as the page is let go, hidden or closed
-(`native.rs`, `keyboard_home`).
+**Where the keyboard is, in a page or in Koyo, is `docs/keyboard.md`'s.** One holder per window
+says whether GPUI's view or a page's has the keys, and only it moves the window's first
+responder: as GPUI's focus comes to a page or leaves it, as the person clicks or asks for a tab,
+and before a page's views leave the window (a view that has the keyboard as it's taken out of
+its window leaves the window itself with it, which hands no key on, and after a tab with the
+keyboard in its page was left nothing typed reached a chat's composer or a terminal). The host
+only says where a page's views go and which page a view is (`native.rs`, `set_keyboard`,
+`key_view`, `page_of`); a page that takes the keyboard on its own is refused.
 
 How these were found matters for the next check. The harness hands its events to the window
 (section 9), which is not where the pointer's own come in: it can't show which window of the
@@ -395,9 +396,10 @@ Seen on a real screen with the GPU on by the owner, 2026-11-14, dragging a split
 
 The host runs in Koyo's process as a library (`koyo_browser_host::embedded`): Koyo gives it
 one end of a socket and talks to it over `koyo-browser-ipc`. Profiles, page state, dialogs,
-menus, permissions, passkeys, `DevTools`, the protocol bridge, agents' commands, edits and
-keyboard focus are the host's code behind the protocol's requests, as they were for the
-off-screen path this replaced; "as off screen" below marks what was carried over unchanged.
+menus, permissions, passkeys, `DevTools`, the protocol bridge, agents' commands and edits are
+the host's code behind the protocol's requests, as they were for the off-screen path this
+replaced; "as off screen" below marks what was carried over unchanged. Keyboard focus was too,
+until protocol 14: the app moves it now (`docs/keyboard.md`).
 The page itself is `native.rs` in the host (a pane's browser is a Chrome-style view in a
 holder) and `browser/native` in the app (a page's view in its pane).
 
@@ -407,13 +409,12 @@ holder) and `browser/native` in the app (a page's view in its pane).
 - **What the app doesn't send a native page:** its pointer, wheel and keys, which `AppKit`
   hands the page itself; GPUI has no key handler on a native page. A press is still heard on
   its way to the page, so GPUI's focus follows it and the person has the page.
-- **What goes over the protocol as before:** `Focus` (the host makes the page, or the app's
-  own view, the window's first responder; a page whose views aren't there yet takes the
-  keyboard once they are), `Edit` (⌘C and the rest are the engine's commands in the focused
-  frame), `Visible`, `Resize` (the size of a page no pane draws).
+- **What goes over the protocol as before:** `Edit` (⌘C and the rest are the engine's
+  commands in the focused frame), `Visible`, `Resize` (the size of a page no pane draws).
 - **What the app calls directly**, because it carries views: `native::place` as it draws the
-  pane (the page's views into the pane's view, its holder over it on screen) and
-  `native::release` when the pane stops drawing it.
+  pane (the page's views into the pane's view, its holder over it on screen),
+  `native::release` when the pane stops drawing it, and for the keyboard `native::key_view`,
+  `native::page_of` and `native::set_keyboard` (`docs/keyboard.md`).
 - **Keys the page leaves** go from CEF's `OnKeyEvent` to the app's own view in that window
   (`pane/keys.rs`), as they would have had the page not had the keyboard. ⌘ and ⌃ shortcuts
   don't need it: GPUI is asked about key equivalents first.
@@ -467,7 +468,7 @@ on, what a page shows with it off.
 | Address, title, loading, history | the host's handlers | checked |
 | Pointer | `AppKit` to the page's view; a press gives the person the page | checked: clicks, the wheel |
 | Keys and text | `AppKit` to the page's view | checked: typing in a field |
-| Keyboard into the page and back | `Focus`: first responder follows GPUI's focus | checked: ⌘L takes it to Koyo, a click gives it back |
+| Keyboard into the page and back | the app's keyboard holder moves the first responder (`docs/keyboard.md`); `Focus` before protocol 14 | checked with `Focus`: ⌘L takes it to Koyo, a click gives it back; with the holder, not yet on screen |
 | ⌘C, ⌘X, ⌘V, ⌘A, ⌘Z, ⇧⌘Z | `Edit`, as off screen | ⌘A checked |
 | Koyo's shortcuts with the keyboard in a page | GPUI is asked first | checked: ⌘L, ⌃Tab |
 | Find bar | the host's `Find`; the bar is GPUI's, over the page | checked |
@@ -564,7 +565,7 @@ script, draw and answer the `DevTools` protocol with no window of Koyo's to be i
 | `koyo-browser-host/src/embedded.rs` | The host's start and end in Koyo's process; CEF found in the engine; Chrome's saved sessions dropped |
 | `koyo-browser-host/src/embedded/pump.rs` | CEF's work run from the app's run loop |
 | `koyo-browser-host/src/embedded/nsapp.rs` | Chromium's `NSApp` protocols on the app's class; activation turned down while a page's window shows |
-| `koyo-browser-host/src/native.rs` | A pane's page: its browser view, its holder, where its views are, the keyboard |
+| `koyo-browser-host/src/native.rs` | A pane's page: its browser view, its holder, where its views are, which tell the app's keyboard as they move |
 | `koyo-browser-host/src/native/holder.rs`, `parts.rs` | The holder's window made inert, and its answer to Chromium's full screen request; the delegates; the client of browsers Chrome makes on its own |
 | `koyo-browser-host/src/native/report.rs` | For the harness: where each page's views and its picture's layer are, and whether they fit the pane |
 | `koyo-browser-host/src/host/start.rs` | Hello, CEF's settings and start, in Koyo's process or the host's own |

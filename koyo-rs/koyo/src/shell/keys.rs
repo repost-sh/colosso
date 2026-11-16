@@ -10,12 +10,18 @@
 //! glass; a button leaves it where it was), and when what had it stops being shown, as
 //! another space, project or worktree shown instead does (`on_focus_lost` in `Shell::new`).
 //! At the window, the window's own keys work and nothing is typed into.
+//!
+//! What the person asks for is told to the keyboard's holder as it's asked, with what they
+//! asked (`docs/keyboard.md`): the holder moves `AppKit`'s first responder into a page or out
+//! of it to match. A tab shown again gives the keyboard back to the page that had it as it was
+//! left, the page's own or its `DevTools`, which GPUI's focus alone can't tell apart.
 
 use gpui_kit::{App, Context, Entity, FocusHandle, Focusable as _, Window};
 
 use super::Shell;
 use crate::files::FilePane;
-use crate::keyboard::{self, Cause, Part, Surface};
+use crate::browser::BrowserView;
+use crate::keyboard::{self, Cause, Intent, Part, Surface};
 use crate::model::{Pane, PaneKind, Spot};
 use crate::navigation::Route;
 
@@ -28,6 +34,8 @@ pub(crate) struct Handing {
     to: Option<(u64, bool)>,
     /// On a settings page, whether a pane had the keyboard when the workspace was left.
     left: Option<bool>,
+    /// What the person asked for that hands it over, if they asked: else it's the tab shown.
+    intent: Option<Intent>,
 }
 
 /// What takes the keyboard for a pane: the focus of its chat, its terminal or its page, or its
@@ -61,6 +69,7 @@ impl Shell {
     pub(crate) fn focus_pane(
         &mut self,
         id: u64,
+        intent: Intent,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
@@ -81,12 +90,19 @@ impl Shell {
         // A chat is moved to, not typed in: its prompt is left alone, the window has the keys.
         let keys = (self.workspace.pane(id))
             .filter(|pane| pane.kind != PaneKind::Chat)
-            .and_then(|pane| self.keys_of(pane, cx));
+            .and_then(|pane| Some((self.keys_of(pane, cx)?, surface_of(pane, cx))));
+        let asked = Cause::Intent(intent);
         match keys {
-            Some(keys) => keys.take(window, cx),
+            Some((keys, surface)) => {
+                keyboard::set(window, surface, asked);
+                keys.take(window, cx);
+            }
             // A terminal whose view can't be made leaves the keyboard where it is.
             None if terminal.is_some() => {}
-            None => window.focus(&self.focus, cx),
+            None => {
+                keyboard::set(window, Surface::Gpui(Part::Window), asked);
+                window.focus(&self.focus, cx);
+            }
         }
         cx.notify();
         true
@@ -184,10 +200,17 @@ impl Shell {
         cx.notify();
     }
 
+    /// What the person asked for hands the keyboard to the tab shown next
+    /// (`keys_to_shown_tab`), and the keyboard's holder hears it as `intent`.
+    pub(crate) fn intend(&mut self, intent: Intent) {
+        self.keys.intent = Some(intent);
+    }
+
     /// The tab of `kind` the person just opened takes the keyboard, a chat's prompt too, as
     /// it's opened to type in; a terminal does once it's open (`open_terminal`).
     pub(super) fn keys_to_new_tab(&mut self, kind: PaneKind, cx: &mut Context<Self>) {
         if kind != PaneKind::Terminal {
+            self.intend(Intent::NewTab);
             self.keys.to = (self.shown_tab_key()).map(|tab| (tab, kind == PaneKind::Chat));
             cx.notify();
         }
@@ -198,20 +221,36 @@ impl Shell {
         Some(self.workspace.tab_shown()?.first().id)
     }
 
-    /// Hands the keyboard to the tab asked to take it (`keys_to_shown_tab`), as the workspace
-    /// draws it: to the pane the person was in, a file among them, else to the tab's first
-    /// terminal, chat, page or device. A file they've only looked at leaves the keyboard
-    /// where it is, as the tree previews one, and so does a chat that wasn't just opened.
-    pub(super) fn hand_keys_over(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// The tab asked to take the keyboard (`keys_to_shown_tab`) takes it, as the workspace
+    /// draws it: the keyboard's holder is told so, with what the person asked if they did
+    /// (`intend`), and GPUI's focus follows. It goes to the page the tab had it in as it was
+    /// left, its own or its `DevTools`; else to the pane the person was in, a file among them,
+    /// else to the tab's first terminal, chat, page or device. A file they've only looked at
+    /// leaves the keyboard where it is, as the tree previews one, and so does a chat that
+    /// wasn't just opened.
+    pub(super) fn tab_takes_keys(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some((to, prompt)) = self.keys.to else {
             return;
         };
         // Settled now, by this tab or by none: its views are made, so a tab with nothing to
         // take the keyboard, or another shown instead, leaves it where it is for good.
         self.keys.to = None;
+        let cause = self.keys.intent.take().map_or(Cause::TabShown, Cause::Intent);
         let Some(tab) = (self.workspace.tab_shown()).filter(|tab| tab.first().id == to) else {
             return;
         };
+        // The page that had the keyboard as the tab was left has it again.
+        if let Some(Surface::Page(page)) = keyboard::tab_shown(window, to)
+            && let Some((id, view)) = page_in(&tab.panes(), page, cx)
+        {
+            let focus = view.focus_handle(cx);
+            cx.defer_in(window, move |this, window, cx| {
+                keyboard::set(window, Surface::Page(page), cause);
+                window.focus(&focus, cx);
+                this.enter_pane(id, cx);
+            });
+            return;
+        }
         let theirs = Some(tab.current()).filter(|pane| pane.file.is_none() || pane.entered_at > 0);
         let panes = tab.panes();
         let of = |kind: PaneKind| panes.iter().copied().filter(move |pane| pane.kind == kind);
@@ -227,13 +266,9 @@ impl Shell {
         if pane.kind == PaneKind::Chat && !prompt {
             return;
         }
-        let id = pane.id;
-        let surface = match pane.view() {
-            Some(browser) => Surface::Page(browser.read(cx).page_id()),
-            None => Surface::Gpui(Part::Pane(id)),
-        };
+        let (id, surface) = (pane.id, surface_of(pane, cx));
         cx.defer_in(window, move |this, window, cx| {
-            keyboard::set(window, surface, Cause::TabShown);
+            keyboard::set(window, surface, cause);
             keys.take(window, cx);
             this.enter_pane(id, cx);
         });
@@ -268,6 +303,28 @@ impl Shell {
             _ => {}
         }
     }
+}
+
+/// What has the keyboard when `pane` has it: its page, or GPUI's view for anything else.
+fn surface_of(pane: &Pane, cx: &App) -> Surface {
+    match pane.view() {
+        Some(browser) => Surface::Page(browser.read(cx).page_id()),
+        None => Surface::Gpui(Part::Pane(pane.id)),
+    }
+}
+
+/// The pane among `panes` showing the page known by `page`, its own or its `DevTools`', and
+/// the page's view.
+fn page_in(panes: &[&Pane], page: u64, cx: &App) -> Option<(u64, Entity<BrowserView>)> {
+    let is = |view: &Entity<BrowserView>| view.read(cx).page_id() == page;
+    let own = |pane: &&&Pane| pane.view().is_some_and(is);
+    if let Some(pane) = panes.iter().find(own) {
+        return Some((pane.id, pane.view()?.clone()));
+    }
+    panes.iter().find_map(|pane| {
+        let tools = pane.view()?.read(cx).devtools()?.clone();
+        is(&tools).then_some((pane.id, tools))
+    })
 }
 
 #[cfg(test)]

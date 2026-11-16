@@ -17,7 +17,7 @@
 //! All of it happens on the main thread, which is CEF's UI thread here. No page's state is
 //! borrowed across a call into `AppKit` or CEF, which call back.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::ffi::CStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -51,13 +51,11 @@ struct Entry {
     views: Option<(Retained<NSView>, Retained<NSView>)>,
     /// The app's view the page is shown in while a pane draws it.
     shown_in: Option<Retained<NSView>>,
-    /// The app's own view in the window the page was last shown in: it has the keyboard when
-    /// the page hasn't, and takes the keys the page leaves.
+    /// The app's own view in the window the page was last shown in, which takes the keys the
+    /// page leaves.
     home: Option<Retained<NSView>>,
     /// Whether the page is on screen for the engine.
     on_screen: bool,
-    /// Whether the app wants the keyboard in the page.
-    keyboard: bool,
     /// The page's size in points, for its holder while no pane says where it is.
     size: NSSize,
 }
@@ -71,6 +69,8 @@ enum Profile {
 thread_local! {
     static PAGES: RefCell<HashMap<PaneId, Entry>> = RefCell::new(HashMap::new());
     static PROFILES: RefCell<HashMap<String, Profile>> = RefCell::new(HashMap::new());
+    /// What the app's keyboard hears of a page's views moving ([`set_keyboard`]).
+    static KEYBOARD: Cell<Option<Hear>> = const { Cell::new(None) };
 }
 
 /// How many windows CEF has made for pages and not yet destroyed: it mustn't stop before
@@ -124,7 +124,6 @@ pub(crate) fn create(
         shown_in: None,
         home: None,
         on_screen: true,
-        keyboard: false,
         size: NSSize::new(f64::from(viewport.width.max(1)), f64::from(viewport.height.max(1))),
     };
     PAGES.with(|pages| pages.borrow_mut().insert(pane, entry));
@@ -214,10 +213,9 @@ fn settle(pane: PaneId) {
     let settled = page(pane, |entry| {
         let (_, holder) = entry.holder.clone()?;
         let views = entry.views.clone();
-        let (shown_in, home) = (entry.shown_in.clone(), entry.home.clone());
-        Some((holder, views, shown_in, home, entry.on_screen, entry.size, entry.keyboard))
+        Some((holder, views, entry.shown_in.clone(), entry.on_screen, entry.size))
     });
-    let Some(Some((holder, known, shown_in, home, on_screen, size, keyboard))) = settled else {
+    let Some(Some((holder, known, shown_in, on_screen, size))) = settled else {
         return;
     };
     let made = || {
@@ -251,7 +249,13 @@ fn settle(pane: PaneId) {
         _ => None,
     };
     let to_window = to.as_ref().and_then(|parent| parent.window());
-    keyboard_home(&web, home.as_deref(), to_window.as_deref());
+    let leaving = web.window().is_some_and(|now| {
+        (to_window.as_ref()).is_none_or(|to| !std::ptr::eq(&raw const *now, &raw const **to))
+    });
+    if leaving {
+        tell_keyboard(pane, Views::Leaving);
+    }
+    let arriving = to_window.is_some();
     if let Some(parent) = to {
         into(&parent);
     } else {
@@ -261,8 +265,9 @@ fn settle(pane: PaneId) {
     // Its holder holds no place while no pane shows the page.
     if shown_in.is_none() {
         park(&holder, size);
-    } else if keyboard {
-        take_keyboard(pane);
+    }
+    if arriving {
+        tell_keyboard(pane, Views::Arrived);
     }
 }
 
@@ -271,8 +276,8 @@ fn settle(pane: PaneId) {
 /// left): the page is that size. Whole points, both: Chromium lays the page out by its
 /// holder's size, a window's, and the views resize with the container, so the two have to
 /// agree, and a view between points puts Chromium's picture off it (`docs/native-pages.md`
-/// 6). `home` is the app's own view in that window: it has the keyboard when the page hasn't,
-/// and takes the keys the page leaves. The app calls this as it draws the pane, each time.
+/// 6). `home` is the app's own view in that window, which takes the keys the page leaves.
+/// The app calls this as it draws the pane, each time.
 pub fn place(pane: PaneId, container: &NSView, home: &NSView, screen: NSRect) {
     let Some((moved, holder)) = page(pane, |entry| {
         let same = (entry.shown_in.as_ref())
@@ -341,37 +346,31 @@ pub(crate) fn on_screen(pane: PaneId, visible: bool) {
     }
 }
 
-/// The app wants the keyboard in `pane`'s page, or back in its own view: the window's first
-/// responder follows. A page whose views aren't in a window yet takes it once they are.
-pub(crate) fn keyboard(pane: PaneId, in_page: bool) {
-    if page(pane, |entry| entry.keyboard = in_page).is_none() {
-        return;
-    }
-    if in_page {
-        take_keyboard(pane);
-    } else if let Some(Some((web, home))) =
-        page(pane, |entry| Some((entry.views.as_ref()?.1.clone(), entry.home.clone())))
-    {
-        keyboard_home(&web, home.as_deref(), None);
-    }
+/// A page's views moving, as the app's keyboard hears of it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Views {
+    /// They're about to leave the window they're in, for another or for none. A view that has
+    /// the keyboard as it leaves its window leaves the window itself with it, which hands no
+    /// key on: after a tab with the keyboard in its page was left, nothing typed reached a
+    /// chat's composer or a terminal. So the keyboard is moved off them first.
+    Leaving,
+    /// They're in a window now, the app's or the page's holder: a page the keyboard is wanted
+    /// in takes it once its views are there.
+    Arrived,
 }
 
-/// The keyboard, if it's in the page whose view is `web`, in a window other than `to`, the
-/// one the view is going to (if any), goes back to `home`, the app's own view in that window.
-/// Before the view leaves the window: a view that has the keyboard as it leaves its window
-/// leaves the window itself with it, which hands no key on, and after a tab with the keyboard
-/// in its page was left nothing typed reached the app, a chat's composer or a terminal, until
-/// a page took the keyboard and gave it back.
-fn keyboard_home(web: &NSView, home: Option<&NSView>, to: Option<&NSWindow>) {
-    let Some(window) = keyboard_in(web) else {
-        return;
-    };
-    let here = |other: &NSWindow| std::ptr::eq(other, &raw const *window);
-    if to.is_some_and(here) {
-        return;
-    }
-    if let Some(home) = home.filter(|home| home.window().is_some_and(|own| here(&own))) {
-        window.makeFirstResponder(Some(home));
+/// What hears a page's views moving.
+type Hear = fn(PaneId, Views);
+
+/// Has `hear` hear, from now on, each time a page's views leave a window or come into one.
+/// The app's keyboard moves the first responder; the host never does.
+pub fn set_keyboard(hear: Hear) {
+    KEYBOARD.set(Some(hear));
+}
+
+fn tell_keyboard(pane: PaneId, views: Views) {
+    if let Some(hear) = KEYBOARD.get() {
+        hear(pane, views);
     }
 }
 
@@ -379,14 +378,6 @@ fn keyboard_home(web: &NSView, home: Option<&NSView>, to: Option<&NSWindow>) {
 fn web_view(pane: PaneId) -> Option<(Retained<NSWindow>, Retained<NSView>)> {
     let web = page(pane, |entry| Some(entry.views.as_ref()?.1.clone()))??;
     Some((web.window()?, web))
-}
-
-/// The window whose keyboard is in the page whose view is `web`: its first responder is one of
-/// the page's views.
-fn keyboard_in(web: &NSView) -> Option<Retained<NSWindow>> {
-    let window = web.window()?;
-    let first = window.firstResponder()?.downcast::<NSView>().ok()?;
-    first.isDescendantOf(web).then_some(window)
 }
 
 /// The view of `pane`'s page that takes its keys, and the window it's in, while it's in one.
@@ -408,16 +399,6 @@ pub fn page_of(view: &NSView) -> Option<PaneId> {
         };
         pages.iter().find(|(_, entry)| of(entry)).map(|(pane, _)| *pane)
     })
-}
-
-/// Makes `pane`'s page the first responder of the window that shows it, unless it is.
-fn take_keyboard(pane: PaneId) {
-    if let Some((window, web)) = web_view(pane)
-        && keyboard_in(&web).is_none()
-    {
-        let keys = find_view(&web, KEYS).unwrap_or(web);
-        window.makeFirstResponder(Some(&keys));
-    }
 }
 
 /// A key `pane`'s page left unhandled, as the `NSEvent` it came as, is offered to the app's
@@ -448,7 +429,9 @@ pub(crate) fn closed(pane: PaneId) {
         return;
     };
     if let Some((compositor, web)) = &entry.views {
-        keyboard_home(web, entry.home.as_deref(), None);
+        if web.window().is_some() {
+            tell_keyboard(pane, Views::Leaving);
+        }
         compositor.removeFromSuperview();
         web.removeFromSuperview();
     }
