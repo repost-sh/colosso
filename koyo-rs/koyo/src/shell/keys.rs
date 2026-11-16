@@ -118,6 +118,8 @@ impl Shell {
         if shown {
             self.navigate(Route::Workspace, cx);
             self.keys_to_shown_tab(cx);
+        } else {
+            self.keys.intent = None;
         }
         shown
     }
@@ -197,6 +199,10 @@ impl Shell {
     /// prompt has the keyboard once they press in it.
     pub(crate) fn keys_to_shown_tab(&mut self, cx: &mut Context<Self>) {
         self.keys.to = self.shown_tab_key().map(|tab| (tab, false));
+        // With no tab to hand it to, what was asked is over.
+        if self.keys.to.is_none() {
+            self.keys.intent = None;
+        }
         cx.notify();
     }
 
@@ -230,6 +236,7 @@ impl Shell {
     /// wasn't just opened.
     pub(super) fn tab_takes_keys(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some((to, prompt)) = self.keys.to else {
+            self.keys.intent = None;
             return;
         };
         // Settled now, by this tab or by none: its views are made, so a tab with nothing to
@@ -285,7 +292,7 @@ impl Shell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        keyboard::key(window);
+        keyboard::key(window, cx);
         match (route == Route::Workspace, self.keys.left) {
             (false, None) => {
                 // With the keyboard at the window, no pane has it: none is read to find out.

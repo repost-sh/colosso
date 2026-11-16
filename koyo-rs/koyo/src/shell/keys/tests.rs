@@ -433,3 +433,19 @@ fn command_l_puts_the_keyboard_in_the_address_at_once(cx: &mut TestAppContext) {
     }))
     .unwrap();
 }
+
+/// What the person asked for that hands no tab the keyboard leaves nothing behind for the next
+/// hand-over to be told as.
+#[gpui_kit::test]
+fn an_intent_that_shows_no_tab_is_forgotten(cx: &mut TestAppContext) {
+    let (window, shell) = shell("shell-intent-forgotten", cx);
+    shell.update(cx, |shell, cx| {
+        shell.intend(keyboard::Intent::Switcher);
+        assert!(!shell.show_tab_holding(u64::MAX, cx), "no such tab");
+        assert!(shell.keys.intent.is_none());
+        shell.intend(keyboard::Intent::Reopen);
+        cx.notify();
+    });
+    draw(window, cx);
+    shell.read_with(cx, |shell, _| assert!(shell.keys.intent.is_none(), "nothing to hand over"));
+}

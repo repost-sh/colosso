@@ -30,6 +30,13 @@ fn first(fake: &Fake) -> Responder {
     fake.first_responder(WINDOW)
 }
 
+/// How many lines this test's keyboard has written with `with` in them.
+fn written(with: &str) -> usize {
+    crate::keyboard::lines::WRITTEN.with(|lines| {
+        lines.borrow().iter().filter(|line| line.contains(with)).count()
+    })
+}
+
 #[test]
 fn the_person_clicking_a_page_then_the_composer_has_the_keyboard_follow() {
     let (fake, turns) = in_composer();
@@ -84,7 +91,10 @@ fn a_page_asking_again_and_again_is_taken_back_twenty_times_a_second_at_most() {
         fake.moved(WINDOW, Responder::Gpui);
     }
     // Moved off a page back to GPUI's view by itself is no request: only the asks count.
-    assert_eq!(turns.next(), 20);
+    // And one more turn, a second on, sums up the refusals the log was spared.
+    assert_eq!(turns.next(), 21);
+    assert_eq!(written("asked for the keyboard"), 20);
+    assert_eq!(written("10 more refused or healed"), 1);
 }
 
 #[test]
@@ -177,25 +187,39 @@ fn another_app_in_front_and_back_gives_the_person_what_they_had() {
 }
 
 #[test]
-fn a_dialog_closing_with_the_keys_hands_them_back_to_the_window_behind() {
+fn a_floating_window_closing_with_the_keys_hands_them_back_to_the_window_it_was_over() {
     let (fake, turns) = in_composer();
+    set_in(2, COMPOSER, Cause::Focused);
     // A window of Koyo's the keyboard isn't kept for, a dialog's or the tab switcher's,
-    // takes the keys and closes with them.
-    crate::keyboard::KEYBOARDS.with(|keyboards| keyboards.borrow_mut().key(WINDOW, false));
-    assert_eq!(holder(), Holder::Away);
-    hooks::closed(None, true);
-    assert_eq!(holder(), Holder::Gpui(Part::Pane(7)));
+    // takes the keys and closes with them; the window it belonged to is the second.
+    crate::keyboard::KEYBOARDS.with(|keyboards| keyboards.borrow_mut().key(2, false));
+    hooks::closed_over(Some(2), true);
+    assert_eq!(held(2).unwrap().0, Holder::Gpui(Part::Pane(7)));
     assert_eq!(turns.next(), 1);
-    assert_eq!(*fake.keyed.borrow(), vec![WINDOW]);
-    // One that closes without the keys changes nothing.
-    hooks::closed(None, false);
+    assert_eq!(*fake.keyed.borrow(), vec![2], "that window, and no other");
+    // One that closes without the keys, or that nothing is known to belong to, changes nothing:
+    // `AppKit` picks the next key window itself.
+    hooks::closed_over(Some(WINDOW), false);
+    hooks::closed_over(None, true);
     assert_eq!(turns.next(), 0);
+    assert_eq!(fake.keyed.borrow().len(), 1);
+}
+
+#[test]
+fn a_window_closing_leaves_a_dialog_open_over_its_own_window_to_say_when_it_ends() {
+    let (_, turns) = in_composer();
+    crate::keyboard::KEYBOARDS.with(|keyboards| keyboards.borrow_mut().dialog(WINDOW, true));
+    hooks::closed_over(Some(WINDOW), true);
+    assert_eq!(holder(), Holder::Away, "the dialog is still open");
+    assert_eq!(turns.next(), 1);
+    crate::keyboard::KEYBOARDS.with(|keyboards| keyboards.borrow_mut().dialog(WINDOW, false));
+    assert_eq!(holder(), Holder::Gpui(Part::Pane(7)));
 }
 
 #[test]
 fn a_window_kept_for_closing_is_forgotten() {
     let (_, turns) = in_composer();
-    hooks::closed(Some(WINDOW), true);
+    hooks::forget(WINDOW);
     assert_eq!(held(WINDOW), None);
     assert_eq!(turns.next(), 0);
 }
@@ -219,5 +243,104 @@ fn a_pages_views_leaving_take_the_first_responder_to_gpuis_view_and_back_as_they
     hooks::page_leaving(AGENTS_PAGE);
     hooks::page_arrived(AGENTS_PAGE);
     assert_eq!(first(&fake), Responder::Page(PAGE));
+    // The page closing: told while it's still there, as the host tells it, then gone.
+    hooks::page_leaving(PAGE);
+    assert_eq!(first(&fake), Responder::Gpui, "off the page before it's gone");
+    fake.page_in(PAGE, None);
+    crate::keyboard::page_closed(PAGE);
+    assert_eq!(holder(), Holder::Gpui(Part::Window));
+    assert_eq!(first(&fake), Responder::Gpui);
     assert_eq!(turns.next(), 0);
+}
+
+#[test]
+fn a_key_ping_ponging_with_a_page_is_healed_each_time_and_logged_twenty_times_a_second() {
+    let (fake, turns) = in_composer();
+    fake.tells.set(false);
+    for _ in 0..30 {
+        fake.moved(WINDOW, Responder::Page(AGENTS_PAGE));
+        hooks::at_key(WINDOW);
+        assert_eq!(first(&fake), Responder::Gpui);
+    }
+    assert_eq!(written(": healed"), 20);
+    assert_eq!(turns.next(), 1, "the summing up, a second on");
+    assert_eq!(written("10 more refused or healed"), 1);
+    // Never a character, a key or a code in any of it.
+    let lines = crate::keyboard::lines::WRITTEN.with(|lines| lines.borrow().clone());
+    assert!(lines.iter().all(|line| line.starts_with("keyboard: ")));
+}
+
+#[test]
+fn a_late_request_of_a_page_pressed_before_the_person_moved_on_is_refused() {
+    let (fake, turns) = in_composer();
+    hooks::pressed(WINDOW, Responder::Page(PAGE), 0);
+    fake.moved(WINDOW, Responder::Page(PAGE));
+    assert_eq!(holder(), Holder::Page(PAGE));
+    // ⌘L within the second, then Chromium asks again for the page, late.
+    set_in(WINDOW, Surface::Gpui(Part::Bar(PAGE)), Cause::Intent(crate::keyboard::Intent::Address));
+    fake.moved(WINDOW, Responder::Page(PAGE));
+    assert_eq!(holder(), Holder::Gpui(Part::Bar(PAGE)));
+    assert_eq!(turns.next(), 1);
+    assert_eq!(first(&fake), Responder::Gpui);
+}
+
+#[test]
+fn a_press_on_a_page_already_holding_the_first_responder_uses_the_press_up() {
+    let (fake, turns) = in_composer();
+    fake.tells.set(false);
+    fake.moved(WINDOW, Responder::Page(PAGE));
+    hooks::pressed(WINDOW, Responder::Page(PAGE), 0);
+    fake.tells.set(true);
+    set_in(WINDOW, COMPOSER, Cause::Focused);
+    fake.moved(WINDOW, Responder::Page(PAGE));
+    assert_eq!(holder(), Holder::Gpui(Part::Pane(7)), "the press was used: the ask is refused");
+    assert_eq!(turns.next(), 1);
+}
+
+#[test]
+fn a_key_with_a_menu_count_left_up_unsticks_it_and_goes_where_it_should() {
+    let (fake, _) = in_composer();
+    hooks::menu(true);
+    assert_eq!(holder(), Holder::Menu);
+    fake.tells.set(false);
+    fake.moved(WINDOW, Responder::Page(AGENTS_PAGE));
+    hooks::at_key(WINDOW);
+    assert_eq!(holder(), Holder::Gpui(Part::Pane(7)));
+    assert_eq!(first(&fake), Responder::Gpui);
+    assert_eq!(written("(healed: a key or a press came to the window)"), 1);
+}
+
+#[test]
+fn a_key_with_a_dialog_left_open_over_the_window_unsticks_it_and_goes_where_it_should() {
+    let (fake, _) = in_composer();
+    crate::keyboard::KEYBOARDS.with(|keyboards| keyboards.borrow_mut().dialog(WINDOW, true));
+    fake.tells.set(false);
+    fake.moved(WINDOW, Responder::Page(AGENTS_PAGE));
+    hooks::at_key(WINDOW);
+    assert_eq!(holder(), Holder::Gpui(Part::Pane(7)));
+    assert_eq!(first(&fake), Responder::Gpui);
+}
+
+#[test]
+fn a_press_on_a_window_that_isnt_key_leaves_what_has_the_keys_elsewhere_alone() {
+    let (fake, _) = in_composer();
+    crate::keyboard::KEYBOARDS.with(|keyboards| keyboards.borrow_mut().dialog(WINDOW, true));
+    fake.not_key.set(true);
+    hooks::pressed(WINDOW, Responder::Gpui, 0);
+    assert_eq!(holder(), Holder::Away, "a dialog of Koyo's is key");
+    fake.not_key.set(false);
+    hooks::pressed(WINDOW, Responder::Gpui, 0);
+    assert_eq!(holder(), Holder::Gpui(Part::Pane(7)), "the window is key: the dialog was missed");
+}
+
+#[test]
+fn refusing_an_agents_page_touches_only_the_persons_first_responder() {
+    // An agent types into its page through the engine, past `AppKit`: refusing the page's ask
+    // asks `AppKit` for the person's first responder back, and for nothing of the page's.
+    let (fake, turns) = in_composer();
+    fake.asked.borrow_mut().clear();
+    fake.moved(WINDOW, Responder::Page(AGENTS_PAGE));
+    assert_eq!(turns.next(), 1);
+    assert_eq!(*fake.asked.borrow(), vec![(WINDOW, Responder::Gpui)]);
+    assert_eq!(holder(), Holder::Gpui(Part::Pane(7)));
 }

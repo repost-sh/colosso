@@ -138,7 +138,7 @@ impl Shell {
             // Worktrees may have come or gone in a terminal while the window was away, and the
             // Claude login's usage may be due a reading.
             cx.observe_window_activation(window, |this, window, cx| {
-                crate::keyboard::key(window);
+                crate::keyboard::key(window, cx);
                 if window.is_window_active() {
                     this.reload_projects(cx);
                     crate::accounts::window_activated(cx);
@@ -433,11 +433,11 @@ impl Render for Shell {
             .track_focus(&self.focus)
             .map(|root| Self::handle_actions(root, cx))
             .size_full();
+        self.keys_follow_route(route, window, cx);
         // A page full screen on the whole screen is all the window shows (`browser/fullscreen.rs`).
         if let Some(page) = crate::browser::fullscreen::settle(window, cx) {
             return root.bg(gpui_kit::black()).child(page).into_any_element();
         }
-        self.keys_follow_route(route, window, cx);
         // A space settling after a swipe moves a frame on first, so all that's drawn agrees.
         self.step_swipe(window, cx);
         let p = theme::palette(cx);

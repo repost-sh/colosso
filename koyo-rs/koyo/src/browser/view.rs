@@ -433,12 +433,21 @@ impl BrowserView {
     fn focus_moved(&mut self, into: bool, window: &mut Window, cx: &mut Context<Self>) {
         if into {
             crate::keyboard::entered_page(window, self.pane);
-            return;
+        } else if let Some(part) = self.part_with_focus(window, cx) {
+            crate::keyboard::left_page(window, self.pane, part);
+        }
+    }
+
+    /// Where GPUI's focus is, as the keyboard's holder names it, unless it's the page's own:
+    /// the page's address or find bar, or another part of Koyo's. Still the page's while the
+    /// window only stopped being key, as its views hear it leave all the same.
+    pub fn part_with_focus(&self, window: &Window, cx: &App) -> Option<Part> {
+        if self.focus.is_focused(window) {
+            return None;
         }
         let address = self.address.read(cx).focus_handle(cx).contains_focused(window, cx);
         let bar = address || self.find.as_ref().is_some_and(|find| find.has_focus(window, cx));
-        let part = if bar { Part::Bar(self.pane) } else { Part::Other };
-        crate::keyboard::left_page(window, self.pane, &self.focus, part);
+        Some(if bar { Part::Bar(self.pane) } else { Part::Other })
     }
 
     /// What the render has to do first, with the window: focus, menus and dialogs asked

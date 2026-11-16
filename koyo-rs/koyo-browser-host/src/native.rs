@@ -32,6 +32,8 @@ use objc2_foundation::{NSPoint, NSRect, NSSize};
 mod holder;
 mod parts;
 mod report;
+#[cfg(test)]
+mod tests;
 
 use holder::{closing, hold};
 pub(crate) use parts::stray_client;
@@ -349,10 +351,11 @@ pub(crate) fn on_screen(pane: PaneId, visible: bool) {
 /// A page's views moving, as the app's keyboard hears of it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Views {
-    /// They're about to leave the window they're in, for another or for none. A view that has
-    /// the keyboard as it leaves its window leaves the window itself with it, which hands no
-    /// key on: after a tab with the keyboard in its page was left, nothing typed reached a
-    /// chat's composer or a terminal. So the keyboard is moved off them first.
+    /// They're about to leave the window they're in, for another or for none, or the page is
+    /// about to close; told while the page is still here. A view that has the keyboard as it
+    /// leaves its window leaves the window itself with it, which hands no key on: after a tab
+    /// with the keyboard in its page was left, nothing typed reached a chat's composer or a
+    /// terminal. So the keyboard is moved off them first.
     Leaving,
     /// They're in a window now, the app's or the page's holder: a page the keyboard is wanted
     /// in takes it once its views are there.
@@ -425,13 +428,14 @@ pub(crate) fn unhandled_key(pane: PaneId, event: *mut AnyObject) -> bool {
 
 /// `pane`'s browser has closed: its views and its holder go.
 pub(crate) fn closed(pane: PaneId) {
+    // Told while the page is still here, for the keyboard to find its views.
+    if page(pane, |_| ()).is_some() {
+        tell_keyboard(pane, Views::Leaving);
+    }
     let Some(entry) = PAGES.with(|pages| pages.borrow_mut().remove(&pane)) else {
         return;
     };
     if let Some((compositor, web)) = &entry.views {
-        if web.window().is_some() {
-            tell_keyboard(pane, Views::Leaving);
-        }
         compositor.removeFromSuperview();
         web.removeFromSuperview();
     }

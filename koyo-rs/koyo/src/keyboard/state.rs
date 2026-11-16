@@ -104,6 +104,8 @@ pub enum Cause {
     AppInactive,
     /// A window of Koyo's that had the keyboard closed, and it falls back to this one.
     WindowClosed,
+    /// The holders were found wrong, a key or a press coming where they said none could.
+    Healed,
 }
 
 /// The keyboard moved in `window`, from `from` to `to`, because of `cause`.
@@ -312,21 +314,29 @@ impl Keyboards {
             .collect()
     }
 
-    /// A window of Koyo's closed: one the keyboard is kept for (`window`), which goes with its
-    /// keyboard, or another (a dialog, a panel, one of Chromium's). Another that was the key
-    /// window hands the keys back to one the keyboard is kept for, which has what the person
-    /// had in it again: the one whose change is returned, to be made the key window.
-    pub fn closed(&mut self, window: Option<WindowKey>, was_key: bool) -> Option<Change> {
-        if let Some(window) = window {
-            self.windows.remove(&window);
+    /// `window`, one the keyboard is kept for, closed: its keyboard goes with it.
+    pub fn forget(&mut self, window: WindowKey) {
+        self.windows.remove(&window);
+    }
+
+    /// A window that had the keys closed over `over`, the window the keyboard is kept for that it
+    /// belonged to: `over` has what the person had in it again, to be made the key window. A
+    /// dialog's own end is its own to tell (`dialog`).
+    pub fn closed_over(&mut self, over: WindowKey) -> Option<Change> {
+        if !self.windows.contains_key(&over) {
             return None;
         }
-        if !was_key {
-            return None;
-        }
-        let back = self.windows.keys().copied().min()?;
-        self.change(back, Cause::WindowClosed, |held| {
+        self.change(over, Cause::WindowClosed, |held| held.key = true)
+    }
+
+    /// A key or a press came to `window` itself, which only the key window of the app in front
+    /// gets, with no menu tracking: whatever said otherwise was missed, a menu's end, a
+    /// dialog's, the window becoming key. All of it is made so again.
+    pub fn unstick(&mut self, window: WindowKey) -> Option<Change> {
+        self.inactive = false;
+        self.change(window, Cause::Healed, |held| {
             held.key = true;
+            held.menus = 0;
             held.dialog = false;
         })
     }

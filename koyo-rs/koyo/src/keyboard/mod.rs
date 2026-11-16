@@ -16,12 +16,13 @@
 
 use std::cell::RefCell;
 
-use gpui_kit::{AnyWindowHandle, App, FocusHandle, Window};
+use gpui_kit::{AnyWindowHandle, App, Window};
 
 #[cfg(all(target_os = "macos", not(test)))]
 mod appkit;
 mod hooks;
 mod lines;
+mod rate;
 mod reconcile;
 mod state;
 #[cfg(test)]
@@ -68,6 +69,9 @@ fn held(window: WindowKey) -> Option<(Holder, Surface)> {
 fn change<C: IntoIterator<Item = Change>>(with: impl FnOnce(&mut Keyboards) -> C) {
     let changes: Vec<Change> =
         KEYBOARDS.with(|keyboards| with(&mut keyboards.borrow_mut()).into_iter().collect());
+    if changes.iter().any(|change| change.cause != Cause::Click) {
+        hooks::end_click();
+    }
     for change in changes {
         let moved = hooks::reconcile(change.window);
         lines::tell(&change, moved);
@@ -80,6 +84,9 @@ pub fn set(window: &Window, surface: Surface, cause: Cause) {
 }
 
 fn set_in(window: WindowKey, surface: Surface, cause: Cause) {
+    if cause != Cause::Click {
+        hooks::end_click();
+    }
     change(|keyboards| keyboards.set(window, surface, cause));
 }
 
@@ -95,27 +102,57 @@ pub fn entered_page(window: &Window, pane: PaneId) {
     set(window, Surface::Page(pane), Cause::Focused);
 }
 
-/// GPUI's focus left the page in `pane` (whose focus is `focus`) for `part` of Koyo's own.
-/// Not when the window only stopped being key: GPUI's focus stays where it was then, though
-/// its views hear it leave.
-pub fn left_page(window: &Window, pane: PaneId, focus: &FocusHandle, part: Part) {
-    if focus.is_focused(window) {
-        return;
-    }
+/// GPUI's focus left the page in `pane` for `part` of Koyo's own.
+pub fn left_page(window: &Window, pane: PaneId, part: Part) {
     let window = known(window);
     change(|keyboards| keyboards.left_page(window, pane, part));
 }
 
-/// `window` became the key window, or stopped being it.
-pub fn key(window: &Window) {
+/// `window` became the key window, or stopped being it; and GPUI's focus is where it is now
+/// (`follow_focus`). Read as the window's key state changes and as each frame of the shell is
+/// drawn, so a change the holders missed is made up.
+pub fn key(window: &Window, cx: &mut App) {
+    follow_focus(window, cx);
     let key = window.is_window_active();
     let window = known(window);
     change(|keyboards| keyboards.key(window, key));
 }
 
+/// A page the person put the keyboard in has it only while GPUI's focus is its view's: if it
+/// isn't, the keyboard is in GPUI's view, its bar or elsewhere. GPUI tells a page its focus
+/// left only in a frame after one drawn with the window key, so a move made while it wasn't,
+/// by the very press that makes it key again (back from the launcher or another app, on the
+/// composer), is never told.
+pub fn follow_focus(window: &Window, cx: &mut App) {
+    if !window.is_window_active() {
+        return;
+    }
+    let key = known(window);
+    let Some((_, Surface::Page(pane))) = held(key) else {
+        return;
+    };
+    let view = crate::browser::page_view(pane, cx);
+    let Some(part) = (match &view {
+        Some(view) => view.read(cx).part_with_focus(window, cx),
+        None => Some(Part::Other),
+    }) else {
+        return;
+    };
+    change(|keyboards| keyboards.left_page(key, pane, part));
+}
+
 /// The page in `pane` closed.
 pub fn page_closed(pane: PaneId) {
     change(|keyboards| keyboards.page_closed(pane));
+}
+
+/// `window`, a floating window of Koyo's (a menu, a dialog, the launcher, the tab switcher's
+/// panel), belongs to `over`, which has the keys back if it closes with them.
+pub fn opened_over(window: &Window, over: AnyWindowHandle) {
+    #[cfg(all(target_os = "macos", not(test)))]
+    appkit::over(window, key_of(over));
+    #[cfg(any(not(target_os = "macos"), test))]
+    let _ = (window, over);
 }
 
 /// A dialog of Koyo's open over a window, for as long as it's kept: it has that window's keys.

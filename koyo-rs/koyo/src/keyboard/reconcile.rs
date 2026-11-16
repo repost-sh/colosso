@@ -31,6 +31,8 @@ pub trait AppKit {
     fn has_marked_text(&self, window: WindowKey) -> bool;
     /// Makes `window` the key window.
     fn make_key(&self, window: WindowKey);
+    /// Whether `window` is the key window.
+    fn is_key(&self, window: WindowKey) -> bool;
 }
 
 /// What the person's `surface` means in `window`: GPUI's view, or the page's keys' view while

@@ -5,28 +5,19 @@
 //! its own is heard as its own.
 
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use super::lines::{self, Followed, TARGET};
+use super::lines::{self, Followed};
+use super::rate::{self, Later};
 use super::reconcile::{self, AppKit, Heard, Moved, Responder};
-use super::state::{PaneId, Surface, WindowKey};
+use super::state::{Holder, PaneId, Surface, WindowKey};
 
-/// Runs a task on the main thread's next turn.
-pub type Later = Box<dyn Fn(Box<dyn FnOnce()>)>;
-
-/// `AppKit`, and how to come back to it on the next turn.
+/// `AppKit`, and how to come back to it later.
 struct Installed {
     appkit: Rc<dyn AppKit>,
     later: Later,
 }
-
-/// How many times a window's first responder is put back in a second before the keyboard
-/// stops putting it back until the second is up: a page asking again each time it's refused
-/// would have the main thread do nothing else.
-const MOST_PUT_BACK: u32 = 20;
-const PUT_BACK_PER: Duration = Duration::from_secs(1);
 
 /// How long after the person pressed a page its view taking the first responder is theirs:
 /// `AppKit` hands it the press at once, and Chromium can ask again after a trip to the
@@ -37,14 +28,13 @@ thread_local! {
     static INSTALLED: RefCell<Option<Rc<Installed>>> = const { RefCell::new(None) };
     /// Whether the reconciler is moving a first responder itself.
     static MOVING: Cell<bool> = const { Cell::new(false) };
-    /// For each window, since when its first responder has been put back, and how many times.
-    static PUT_BACK: RefCell<HashMap<WindowKey, (Instant, u32)>> = RefCell::default();
-    /// The page the person last pressed, in which window, and when, until a press elsewhere.
+    /// The page the person last pressed, in which window, and when, until the keyboard moves
+    /// for anything else or the press is used.
     static CLICKED: Cell<Option<(WindowKey, PaneId, Instant)>> = const { Cell::new(None) };
 }
 
 /// Has the keyboard move `appkit`'s first responders from now on, coming back to it through
-/// `later`.
+/// `later`, at once on the next turn or once a while has passed.
 pub fn install(appkit: Rc<dyn AppKit>, later: Later) {
     let installed = Rc::new(Installed { appkit, later });
     INSTALLED.with(|held| *held.borrow_mut() = Some(installed));
@@ -77,43 +67,40 @@ pub fn reconcile(window: WindowKey) -> Followed {
     }
 }
 
-/// Whether `window`'s first responder may be put back once more this second.
-fn may_put_back(window: WindowKey) -> bool {
-    PUT_BACK.with(|put| {
-        let mut put = put.borrow_mut();
-        let now = Instant::now();
-        let (since, count) = put.entry(window).or_insert((now, 0));
-        if now.duration_since(*since) >= PUT_BACK_PER {
-            (*since, *count) = (now, 0);
-        }
-        *count += 1;
-        if *count == MOST_PUT_BACK + 1 {
-            log::error!(
-                target: TARGET,
-                "keyboard: the first responder of a window was put back {MOST_PUT_BACK} times \
-                 in a second; left as it is until the second is up"
-            );
-        }
-        *count <= MOST_PUT_BACK
-    })
-}
-
-/// Puts `window`'s first responder back to what its holder wants, on the next turn; and says
-/// so as `why`, if it moved.
-fn put_back(installed: &Installed, window: WindowKey, why: &'static str) {
-    if !may_put_back(window) {
+/// Puts `window`'s first responder back to what its holder wants, on the next turn, unless
+/// it's been put back too often this second; and says so as `why`, if it moved.
+fn put_back(installed: &Rc<Installed>, window: WindowKey, why: &'static str) {
+    if !rate::may_put_back(window) {
         return;
     }
-    let appkit = installed.appkit.clone();
-    (installed.later)(Box::new(move || {
+    let again = installed.clone();
+    (installed.later)(Duration::ZERO, Box::new(move || {
         let Some((holder, surface)) = super::held(window) else {
             return;
         };
-        let moved = moving(|| reconcile::restore(holder, surface, window, &*appkit));
+        let moved = moving(|| reconcile::restore(holder, surface, window, &*again.appkit));
         if let Some(moved) = moved {
-            log::warn!(target: TARGET, "{}", lines::healed(holder, why, moved));
+            rate::tell(window, || lines::healed(holder, why, moved), &again.later);
         }
     }));
+}
+
+/// The person's press on a page is over for the keyboard: it was used, or the keyboard moved
+/// for something else since, which a late request of the page's mustn't undo.
+pub fn end_click() {
+    CLICKED.set(None);
+}
+
+/// What has the keyboard in `window`, and what the person put it in there, made right first if
+/// it says a menu or something away has the keys though one came to the window itself, which
+/// only the key window of the app in front gets with no menu tracking.
+fn unstuck(installed: &Installed, window: WindowKey) -> Option<(Holder, Surface)> {
+    let (holder, surface) = super::held(window)?;
+    if !matches!(holder, Holder::Menu | Holder::Away) || !installed.appkit.is_key(window) {
+        return Some((holder, surface));
+    }
+    super::change(|keyboards| keyboards.unstick(window));
+    super::held(window)
 }
 
 /// `window`'s first responder changed from `before` to `after`, not by the reconciler: a
@@ -126,6 +113,7 @@ pub fn heard(window: WindowKey, before: Responder, after: Responder) {
     if let Responder::Page(pane) = after
         && clicked(window, pane)
     {
+        end_click();
         super::change(|keyboards| keyboards.click(window, Surface::Page(pane)));
         return;
     }
@@ -136,7 +124,7 @@ pub fn heard(window: WindowKey, before: Responder, after: Responder) {
         Heard::Wanted => {}
         Heard::Refused(pane) => {
             let moved = Moved { before, after };
-            log::warn!(target: TARGET, "{}", lines::refused(pane, holder, moved));
+            rate::tell(window, || lines::refused(pane, holder, moved), &installed.later);
             put_back(&installed, window, "a page took the first responder");
         }
         Heard::Astray => put_back(&installed, window, "something else took the first responder"),
@@ -156,27 +144,31 @@ fn clicked(window: WindowKey, pane: PaneId) -> bool {
 /// keeps for itself never reaches the page, which takes nothing then. The side buttons only
 /// step through a page's history.
 pub fn pressed(window: WindowKey, over: Responder, button: isize) {
-    CLICKED.set(None);
+    end_click();
     if !(0..=2).contains(&button) {
         return;
     }
+    let Some(installed) = installed() else {
+        return;
+    };
+    let Some((holder, _)) = unstuck(&installed, window) else {
+        return;
+    };
     match over {
         Responder::Page(pane) => {
-            CLICKED.set(Some((window, pane, Instant::now())));
             // Already the first responder, it hears of no change: the press is theirs all
-            // the same.
-            if installed().is_some_and(|it| it.appkit.first_responder(window) == over) {
+            // the same, and used.
+            if installed.appkit.first_responder(window) == over {
                 super::change(|keyboards| keyboards.click(window, Surface::Page(pane)));
+            } else {
+                CLICKED.set(Some((window, pane, Instant::now())));
             }
         }
         Responder::Gpui => {
-            let (Some(installed), Some((holder, _))) = (installed(), super::held(window)) else {
-                return;
-            };
             let moved = moving(|| reconcile::at_press(holder, window, &*installed.appkit));
             if let Some(moved) = moved {
                 let why = "a press on its own content found the first responder elsewhere";
-                log::warn!(target: TARGET, "{}", lines::healed(holder, why, moved));
+                rate::tell(window, || lines::healed(holder, why, moved), &installed.later);
             }
         }
         Responder::Window | Responder::Other => {}
@@ -186,12 +178,15 @@ pub fn pressed(window: WindowKey, over: Responder, button: isize) {
 /// A key is about to be delivered in `window`: it goes to what the holder wants, the first
 /// responder made that first if it isn't.
 pub fn at_key(window: WindowKey) {
-    let (Some(installed), Some((holder, _))) = (installed(), super::held(window)) else {
+    let Some(installed) = installed() else {
+        return;
+    };
+    let Some((holder, _)) = unstuck(&installed, window) else {
         return;
     };
     if let Some(moved) = moving(|| reconcile::at_key(holder, window, &*installed.appkit)) {
         let why = "a key found the first responder elsewhere";
-        log::warn!(target: TARGET, "{}", lines::healed(holder, why, moved));
+        rate::tell(window, || lines::healed(holder, why, moved), &installed.later);
     }
 }
 
@@ -210,7 +205,8 @@ pub fn page_leaving(pane: PaneId) {
         return;
     }
     if let Some(moved) = moving(|| reconcile::make(Responder::Gpui, window, appkit)) {
-        log::info!(target: TARGET, "keyboard: page {pane}'s views leave the window; {moved}");
+        let line = format!("keyboard: page {pane}'s views leave the window; {moved}");
+        lines::write(log::Level::Info, &line);
     }
 }
 
@@ -227,7 +223,8 @@ pub fn page_arrived(pane: PaneId) {
         return;
     };
     if let Some(moved) = moving(|| reconcile::reconcile(holder, window, &*installed.appkit)) {
-        log::info!(target: TARGET, "keyboard: page {pane}'s views came into the window; {moved}");
+        let line = format!("keyboard: page {pane}'s views came into the window; {moved}");
+        lines::write(log::Level::Info, &line);
     }
 }
 
@@ -241,17 +238,22 @@ pub fn active(active: bool) {
     super::change(|keyboards| keyboards.active(active));
 }
 
-/// A window closed: one the keyboard is kept for (`window`), or another, which was the key
-/// window or not. The window the keys fall back to is made the key window on the next turn.
-pub fn closed(window: Option<WindowKey>, was_key: bool) {
-    let mut back = None;
-    super::change(|keyboards| {
-        let change = keyboards.closed(window, was_key);
-        back = change.map(|change| change.window);
-        change
-    });
-    if let (Some(back), Some(installed)) = (back, installed()) {
+/// A window the keyboard is kept for closed: its keyboard goes with it.
+pub fn forget(window: WindowKey) {
+    super::KEYBOARDS.with(|keyboards| keyboards.borrow_mut().forget(window));
+}
+
+/// Another window closed, a dialog, a panel or one of Chromium's, the key window or not, over
+/// `over`, the window the keyboard is kept for it belonged to, if it's known. One that had the
+/// keys gives them back to that window, made the key window on the next turn; with none known,
+/// `AppKit` picks the next key window itself.
+pub fn closed_over(over: Option<WindowKey>, was_key: bool) {
+    let Some(over) = over.filter(|_| was_key) else {
+        return;
+    };
+    super::change(|keyboards| keyboards.closed_over(over));
+    if let Some(installed) = installed() {
         let appkit = installed.appkit.clone();
-        (installed.later)(Box::new(move || appkit.make_key(back)));
+        (installed.later)(Duration::ZERO, Box::new(move || appkit.make_key(over)));
     }
 }
