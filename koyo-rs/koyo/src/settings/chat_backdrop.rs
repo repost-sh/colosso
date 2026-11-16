@@ -54,7 +54,7 @@ impl ChatBackdrop {
     /// start, so the fade always ends below where it starts.
     pub const FADE_END_STOPS: [f32; 5] = [0.5, 0.6, 0.72, 0.85, 1.];
     /// The stops of the Quality slider, one for each of [`Quality::ALL`].
-    pub const QUALITY_STOPS: [f32; 4] = [0., 1., 2., 3.];
+    pub const QUALITY_STOPS: [f32; 3] = [0., 1., 2.];
 
     /// Where the fade starts and ends, if it fades: in order, whatever the file says.
     pub fn fade(&self) -> Option<[f32; 2]> {
@@ -64,38 +64,36 @@ impl ChatBackdrop {
     }
 }
 
-/// How a screen's picture is kept on the GPU: always compressed to ASTC, in blocks of 4 × 4 or
-/// 8 × 8 pixels, at the screen's resolution or half of it.
+/// How a screen's picture is kept on the GPU: always compressed to ASTC, in blocks of 8 × 8
+/// pixels at half the screen's resolution or the whole, or of 4 × 4 at the whole. 4 × 4 at half
+/// took as much memory as 8 × 8 at the whole and looked the same, so it was dropped; a file that
+/// still names it, or any other, reads as the default.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Quality {
     Astc8Half,
-    Astc4Half,
-    #[default]
-    Astc8Full,
     Astc4Full,
+    /// Last, as what a file names that isn't one of these reads as this.
+    #[default]
+    #[serde(other)]
+    Astc8Full,
 }
 
 impl Quality {
     /// From the smallest to the sharpest.
-    pub const ALL: [Quality; 4] = [
-        Quality::Astc8Half,
-        Quality::Astc4Half,
-        Quality::Astc8Full,
-        Quality::Astc4Full,
-    ];
+    pub const ALL: [Quality; 3] = [Quality::Astc8Half, Quality::Astc8Full, Quality::Astc4Full];
 
     pub fn blocks(self) -> Blocks {
         match self {
             Quality::Astc8Half | Quality::Astc8Full => Blocks::Eight,
-            Quality::Astc4Half | Quality::Astc4Full => Blocks::Four,
+            Quality::Astc4Full => Blocks::Four,
         }
     }
 
     /// The picture's pixels to the screen's: 1, or ½ for half.
     pub fn resolution(self) -> f64 {
         match self {
-            Quality::Astc8Half | Quality::Astc4Half => 0.5,
+            Quality::Astc8Half => 0.5,
             Quality::Astc8Full | Quality::Astc4Full => 1.,
         }
     }
@@ -179,7 +177,7 @@ mod tests {
     fn each_quality_stop_takes_the_memory_section_3_1_names() {
         // In tenths of a megabyte.
         let tenths = |quality: Quality| (quality.bytes(5120, 2880) as f64 / 1e5).round() as u32;
-        assert_eq!(Quality::ALL.map(tenths), [9, 37, 37, 147]);
+        assert_eq!(Quality::ALL.map(tenths), [9, 37, 147]);
         for quality in Quality::ALL {
             assert_eq!(Quality::at(quality.stop()), quality);
         }
@@ -187,6 +185,18 @@ mod tests {
             Quality::at(9.),
             Quality::Astc4Full,
             "past the end, the sharpest"
+        );
+        let dropped: ChatBackdrop =
+            serde_json::from_str(r#"{"quality": "astc4_half", "opacity": 0.5}"#).unwrap();
+        assert_eq!(
+            dropped.quality,
+            Quality::default(),
+            "a dropped stop reads as the default"
+        );
+        assert_eq!(
+            dropped.opacity.to_bits(),
+            0.5f32.to_bits(),
+            "and the rest as written"
         );
     }
 }

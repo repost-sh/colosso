@@ -114,18 +114,19 @@ settings mapped onto it. Koyo takes the technique, not the code (section 4).
   and is freed. A screen's texture is let go once no chat on that screen shows it, and made
   again when one does. Nothing else is kept: the dither and the fade take no memory of
   their own. **[asked: 8 × 8 at full resolution; proposed: letting go]**
-- **Quality is the person's to pick** (section 6): four stops, always compressed, never the
+- **Quality is the person's to pick** (section 6): three stops, always compressed, never the
   uncompressed picture. **[asked]**
 
   | Stop | Blocks | Resolution | On that screen |
   |---|---|---|---|
   | Smallest | 8 × 8 | half | 0.9 MB |
-  | | 4 × 4 | half | 3.7 MB |
   | **Default** | 8 × 8 | full | 3.7 MB |
   | Sharpest | 4 × 4 | full | 14.7 MB |
 
-  The two middle stops cost the same. If they look the same once built, one goes and three
-  stops stay (section 9).
+  There were four: 4 × 4 at half resolution cost what 8 × 8 at full does, and the rule was
+  that if the two looked the same once built, one would go. They did (section 9), so 4 × 4
+  at half went, as 8 × 8 at full is the default the owner asked for and came closer to the
+  picture (40.9 dB against 39.7). A `settings.json` that still names it reads as the default.
 
 ### 3.2 Reading the wallpaper
 
@@ -251,7 +252,7 @@ Density how many cells are lit, and the blur's rows the fade's. The stops for no
 12, 18, 24, 35 and 50 %; Cell size 1, 2, 3 and 4 pixels; Density, the threshold scaled by
 0.6, 0.8, 1, 1.25 and 1.5 (more lights more cells); Fade starts at 0, 9, 18, 30 or 45 % of the
 way down, and ends at 50, 60, 72, 85 or 100 %, so it always ends below where it starts;
-Quality its four stops (3.1). They're still to be tuned by eye (section 9).
+Quality its three stops (3.1). They're still to be tuned by eye (section 9).
 
 - **Rows show only when they apply**, not greyed out: with the switch off, the section is the
   switch alone. **[asked]** The settings pages are built from the settings as they draw, so a
@@ -352,8 +353,8 @@ is 489 lines, so its new field and default may need something moved out of it fi
   8 × 8 full 40.9 dB, 4 × 4 half 39.7 dB, 4 × 4 full 47.0 dB, 8 × 8 half 36.7 dB. Under the
   first look the four stops looked alike at 2× (`.superpowers/v/evidence/20261116-141927-backdrop`,
   `quality-*-x2.png`), and again under the dither, 8 × 8 full and 4 × 4 half side by side
-  (`.superpowers/v/evidence/20261116-153057-dither-light`, `crop-*.png`). By the rule above
-  one of the two middle stops goes; which is the owner's call, so both stay until then.
+  (`.superpowers/v/evidence/20261116-153057-dither-light`, `crop-*.png`). **Settled**: they
+  look alike, so 4 × 4 at half went (3.1).
 - Whether the ASTC texture is sampled as sRGB or not: GPUI's atlas holds plain BGRA and
   blends its colours as they are, so the texture's format should match, or the picture comes
   out darker. **Settled**: not as sRGB. Drawn through the renderer headless, a picture
