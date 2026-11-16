@@ -690,13 +690,18 @@ Koyo does.
 
 ### 9.3 Tier 2: scripted sequences on the agent desktop
 
-The verify skill and the probe, as a suite. `script/seam-bench <name>...` runs sequences from
-`.agents/skills/verify/bench/`. Each is a script named for the bug it reproduces. It launches
-the test Koyo, drives it through the probe and `desktop_*`, and asserts on:
+The verify skill and the probe, as a suite: the sequences are the scripts in
+`script/seam-bench/`, each named for the bug it reproduces, with `lib.sh` shared among them. A
+sequence doesn't launch the test Koyo: only the Koyo tool `desktop_open` starts it on the
+agent desktop, and that's an agent's call, not a shell's. An agent opens and confirms the
+instance (the verify skill's Launch), runs the sequence against it, and makes any
+`desktop_*` call the sequence asks for between its parts. A sequence drives the instance
+through the probe and app control, and asserts on:
 
-- `probe seam`, a new command that prints the layer's state as JSON: each window's holder and
-  first responder, the press ledger, each page's state and container, the floats, the last
-  labelled inputs, and the counters;
+- `probe seam`, which prints what the layer keeps. Built so far: whose each window's last
+  press or key was, each page's last input through its protocol, and the processes known to
+  post. To come as each concern moves in: each window's holder and first responder, the press
+  ledger, each page's state and container, the floats, and the counters;
 - the window server's list (`.superpowers/bin/winlist` moves into the skill), for what is on
   the person's screen;
 - the page's own record of keys and clicks, read through the probe's `eval`.
