@@ -796,6 +796,17 @@ before geometry, since the layer must own a page's views before it sets their fr
 come last, because their checks need the bench host of section 9.4. Step 3 doesn't wait for
 step 4: the gate already names windows by `windowNumber`.
 
+**Step 4 in five commits** (agreed 2026-11-17), since the keyboard is what the owner uses every
+minute. 4a: the rules and their tests move to `koyo-seam` unchanged. 4b: the registry of pages,
+and the host tells the layer directly as a page's views come and go. 4c: a press that reached
+the page replaces the one-second guess, behind a user default read once at start and logged
+with its value (`defaults write codes.koyo.desktop SeamClick old`, `routed` when unset), which
+is the owner's way back without a build and goes once 4c has run some days with no new
+"refused" or "healed" line. 4d: a hosted control refuses the first responder on a click, and
+takes it still when the person has Full Keyboard Access on, so Tab and VoiceOver reach it. 4e:
+the harness's `seam` prints the keyboard's state from the layer, and the backstops count.
+`script/seam-bench/keyboard-journeys.sh` runs before and after each.
+
 **The branches on top.** browser-profiles, chat-backdrop and browser-extensions rebase onto
 this branch. Extensions edits the host's `native.rs` and the shell's close path. Step 7 moves
 `native.rs`'s placement code. It lands as a pure move and then a change, and the coordinator
