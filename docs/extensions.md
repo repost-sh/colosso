@@ -139,6 +139,12 @@ popup itself (`.superpowers/research/run/03-popup-as-page.out`).
   that profile, and the window is closed before it shows. Such windows close as Koyo
   quits. On CEF's own framework, where extensions have no controls, every such browser is
   closed at once, as all were before. `[decided]`
+- **How the two are told apart.** Chrome tells a client nothing of a browser's kind, and a
+  browser just made has no window to look at. By its first page it has one, and the
+  window's style says: a tabbed window's content takes the whole window, its tabs being in
+  the title bar (`FullSizeContentView`); a popup's has a title bar of its own. `[proven]`
+  2026-11-16, both made by an extension. Before, the kind was read as the browser was
+  made, found no window, and took every one for tabbed: a popup became a tab.
 
 ## 4. Installing
 
@@ -199,12 +205,22 @@ popup itself (`.superpowers/research/run/03-popup-as-page.out`).
   (`Extensions.koyoTriggerAction`): Chrome grants `activeTab`, then opens the popup or fires
   `action.onClicked`.
 - Chrome opens the popup as a bubble of its own under its hidden toolbar. The host finds
-  the new window and puts it where the app said: its top right corner under the icon's,
+  the new window and puts it where the app said: a top corner of it under the icon,
   kept on the screen, and put back there whenever Chrome anchors it to its toolbar again,
   which it does as the popup's page resizes. Until it's placed it's clear, so it doesn't
   flash at the page's top. The window is known for the popup by what it is: a new bubble
   of Chromium's that is a child of the page's holder, or, where Chromium has given it no
   parent yet, lies over the page.
+- **Which corner** (`Corner`) is the app's to say: the one that keeps the popup over
+  Koyo's window. From an icon in the window's left half, the site controls of the
+  sidebar's address field, it hangs by its top left and opens to the right; from one in
+  the right half, a toolbar's end, by its top right, as under Chrome's toolbar. By its top
+  right from the sidebar it hung out over the desktop to the window's left (seen
+  2026-11-16).
+- **A press on the icon of the popup that's open closes it** and opens no other, and a
+  popup goes when its page stops being the one the person is on (another tab chosen, its
+  own closed). Chrome does both through its toolbar, which is hidden here, so the host
+  does them (`popup.rs`): left to Chrome, a second press opened a second popup.
 - A press that opens no popup (`action.onClicked`) is waited on for five seconds, a new
   bubble kept clear meanwhile, then let be.
 - **What it rests on.** Nothing of Chrome's says which window a popup is: the host takes

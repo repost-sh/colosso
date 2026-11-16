@@ -1,9 +1,14 @@
 //! Where an extension's popup shows (`docs/extensions.md` 6). The popup is Chrome's own: a
 //! bubble it opens under the extensions button of the page's toolbar, which a page of Koyo's
 //! carries hidden, so left alone the bubble sits at the page's top right corner. The app says
-//! where the icon pressed is, and the bubble is put there, its top right corner under the
+//! where the icon pressed is, and the bubble is put there, a top corner of its under the
 //! icon's, and kept there: Chrome anchors it to its toolbar again each time the popup's page
 //! resizes.
+//!
+//! Chrome closes a popup that loses the keyboard, which is how a press anywhere else shuts
+//! it. Two things it does through its own toolbar are done here, the toolbar being hidden: a
+//! press on the icon of the popup that's open shuts it and opens no other, and a popup goes
+//! when its page stops being the one the person is on.
 //!
 //! Chrome makes the bubble's window before the popup's page has loaded and shows it once it
 //! has. Until it's placed a new bubble is clear, so it never flashes at the page's corner.
@@ -15,7 +20,7 @@ use std::collections::HashSet;
 use std::ffi::CStr;
 use std::time::{Duration, Instant};
 
-use koyo_browser_ipc::PaneId;
+use koyo_browser_ipc::{Corner, PaneId};
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
 use objc2_app_kit::{NSApplication, NSScreen, NSWindow, NSWindowStyleMask};
@@ -33,13 +38,19 @@ const MARGIN: f64 = 7.;
 const UNSIZED: f64 = 25. + 2. * MARGIN;
 /// How long a bubble that stays that small is waited for before it's shown as it is.
 const SIZING: Duration = Duration::from_millis(250);
+/// How long after a popup closed a press on its icon is the press that closed it: the
+/// button going down takes the keyboard from the popup, and the press is told as it comes up.
+const SAME_PRESS: Duration = Duration::from_millis(400);
 
 struct Expected {
     /// The page the action ran on, whose holder the popup is a child of.
     pane: PaneId,
-    /// Where the popup hangs from: its top right corner, in screen points from the bottom
-    /// left.
+    /// The extension whose action it was.
+    extension: String,
+    /// Where the popup hangs from, in screen points from the bottom left, and by which of
+    /// its top corners.
     at: NSPoint,
+    corner: Corner,
     /// The windows there were before the action ran.
     before: HashSet<isize>,
     /// When to stop waiting for a popup.
@@ -54,10 +65,56 @@ struct Expected {
 
 thread_local! {
     static EXPECTED: RefCell<Option<Expected>> = const { RefCell::new(None) };
+    /// The popup that closed last: its page, its extension, and when.
+    static CLOSED: RefCell<Option<(PaneId, String, Instant)>> = const { RefCell::new(None) };
 }
 
-/// An action is about to run on `pane`'s page: a popup it opens hangs from `at`.
-pub(super) fn expect(pane: PaneId, at: [f64; 2]) {
+/// Whether a press on `extension`'s icon for `pane`'s page shuts its popup rather than run
+/// its action: the popup is open, and is closed here; or it closed a moment ago, by that
+/// press taking the keyboard from it.
+pub(super) fn pressed_shut(pane: PaneId, extension: &str) -> bool {
+    let open = EXPECTED.with(|expected| {
+        let expected = expected.borrow();
+        expected.as_ref().filter(|open| open.pane == pane && open.extension == extension).and_then(shown)
+    });
+    if let Some(popup) = open {
+        popup.close();
+        return true;
+    }
+    CLOSED.with(|closed| {
+        closed.borrow().as_ref().is_some_and(|(of, whose, when)| {
+            *of == pane && whose == extension && when.elapsed() < SAME_PRESS
+        })
+    })
+}
+
+/// Closes the popup that's open over a page other than `pane`'s.
+pub(super) fn close_unless(pane: PaneId) {
+    close_where(|of| of != pane);
+}
+
+/// Closes the popup that's open over `pane`'s page.
+pub(super) fn close_of(pane: PaneId) {
+    close_where(|of| of == pane);
+}
+
+fn close_where(goes: impl Fn(PaneId) -> bool) {
+    let open =
+        EXPECTED.with(|expected| expected.borrow().as_ref().filter(|open| goes(open.pane)).and_then(shown));
+    if let Some(popup) = open {
+        popup.close();
+    }
+}
+
+/// The popup of `expected`, while it's in its place and on the screen.
+fn shown(expected: &Expected) -> Option<Retained<NSWindow>> {
+    let (popup, _) = expected.popup.as_ref()?;
+    (expected.placed && popup.isVisible()).then(|| popup.clone())
+}
+
+/// `extension`'s action is about to run on `pane`'s page: a popup it opens hangs by its
+/// `corner` from `at`.
+pub(super) fn expect(pane: PaneId, extension: &str, at: [f64; 2], corner: Corner) {
     let Some(mtm) = MainThreadMarker::new() else {
         return;
     };
@@ -65,7 +122,9 @@ pub(super) fn expect(pane: PaneId, at: [f64; 2]) {
     let was = EXPECTED.with(|expected| {
         expected.borrow_mut().replace(Expected {
             pane,
+            extension: extension.to_owned(),
             at: NSPoint::new(at[0], at[1]),
+            corner,
             before,
             until: Instant::now() + WAIT,
             popup: None,
@@ -160,9 +219,12 @@ fn step(expected: &mut Expected, mtm: MainThreadMarker) -> bool {
     {
         // Shown and placed: kept there until it closes.
         if !popup.isVisible() {
+            CLOSED.with(|closed| {
+                *closed.borrow_mut() = Some((expected.pane, expected.extension.clone(), now));
+            });
             return false;
         }
-        put(popup, expected.at, mtm);
+        put(popup, expected.at, expected.corner, mtm);
         return true;
     }
     if expected.popup.is_none() {
@@ -193,7 +255,7 @@ fn step(expected: &mut Expected, mtm: MainThreadMarker) -> bool {
     if popup.frame().size.width <= UNSIZED && now.duration_since(*since) < SIZING {
         return true;
     }
-    put(popup, expected.at, mtm);
+    put(popup, expected.at, expected.corner, mtm);
     crate::native::set_alpha(popup, 1.);
     // With the keyboard, as a popup has it in Chrome: it closes when it loses it, which it
     // only does once it had it.
@@ -205,15 +267,15 @@ fn step(expected: &mut Expected, mtm: MainThreadMarker) -> bool {
     true
 }
 
-/// Puts `popup` with its top right corner at `at`, the margin round it aside, and wholly on
-/// the screen `at` is on.
-fn put(popup: &NSWindow, at: NSPoint, mtm: MainThreadMarker) {
+/// Puts `popup` with its top `corner` at `at`, the margin round it aside, and wholly on the
+/// screen `at` is on.
+fn put(popup: &NSWindow, at: NSPoint, corner: Corner, mtm: MainThreadMarker) {
     let frame = popup.frame();
     let screen = NSScreen::screens(mtm)
         .iter()
         .map(|screen| screen.visibleFrame())
         .find(|screen| contains(*screen, at));
-    let origin = place(frame.size.width, frame.size.height, at, screen);
+    let origin = place(frame.size.width, frame.size.height, at, corner, screen);
     if (origin.x - frame.origin.x).abs() > 0.5 || (origin.y - frame.origin.y).abs() > 0.5 {
         popup.setFrameOrigin(origin);
     }
@@ -227,9 +289,12 @@ fn contains(rect: NSRect, point: NSPoint) -> bool {
 }
 
 /// The origin (bottom left) of a bubble `width` by `height`, margin included, whose page's
-/// top right corner is at `at`; moved as little as it takes to be wholly on `screen`.
-fn place(width: f64, height: f64, at: NSPoint, screen: Option<NSRect>) -> NSPoint {
-    let mut x = at.x + MARGIN - width;
+/// top `corner` is at `at`; moved as little as it takes to be wholly on `screen`.
+fn place(width: f64, height: f64, at: NSPoint, corner: Corner, screen: Option<NSRect>) -> NSPoint {
+    let mut x = match corner {
+        Corner::Left => at.x - MARGIN,
+        Corner::Right => at.x + MARGIN - width,
+    };
     let mut y = at.y + MARGIN - height;
     if let Some(screen) = screen {
         let (left, bottom) = (screen.origin.x, screen.origin.y);
@@ -257,10 +322,20 @@ mod tests {
     #[test]
     fn a_popup_hangs_by_its_top_right_corner() {
         // 300 by 400 of page in a bubble 314 by 414: the page's corner is at the point.
-        let origin = place(314., 414., NSPoint::new(1000., 800.), Some(screen()));
+        let origin = place(314., 414., NSPoint::new(1000., 800.), Corner::Right, Some(screen()));
         assert!(near(origin.x, 693.) && near(origin.y, 393.));
         assert!(near(origin.x + 314. - MARGIN, 1000.));
         assert!(near(origin.y + 414. - MARGIN, 800.));
+    }
+
+    #[test]
+    fn a_popup_hangs_by_its_top_left_corner_when_asked() {
+        // The page's left edge at the point, the popup opening to its right.
+        let origin = place(314., 414., NSPoint::new(200., 800.), Corner::Left, Some(screen()));
+        assert!(near(origin.x + MARGIN, 200.) && near(origin.y + 414. - MARGIN, 800.));
+        // Too near the screen's right edge for that, it's moved in.
+        let origin = place(314., 414., NSPoint::new(1300., 800.), Corner::Left, Some(screen()));
+        assert!(near(origin.x + 314. - MARGIN, 1440.));
     }
 
     #[test]
@@ -278,13 +353,13 @@ mod tests {
     fn a_popup_stays_on_its_screen() {
         // Wider than what's left of the screen to the icon's left: its left edge at the
         // screen's.
-        let origin = place(414., 314., NSPoint::new(200., 800.), Some(screen()));
+        let origin = place(414., 314., NSPoint::new(200., 800.), Corner::Right, Some(screen()));
         assert!(near(origin.x, -MARGIN));
         // Taller than what's under the icon: its foot at the screen's.
-        let origin = place(314., 614., NSPoint::new(1000., 300.), Some(screen()));
+        let origin = place(314., 614., NSPoint::new(1000., 300.), Corner::Right, Some(screen()));
         assert!(near(origin.y, -MARGIN));
         // With no screen known it's where it was asked.
-        let origin = place(414., 314., NSPoint::new(200., 800.), None);
+        let origin = place(414., 314., NSPoint::new(200., 800.), Corner::Right, None);
         assert!(near(origin.x, 200. + MARGIN - 414.));
     }
 }

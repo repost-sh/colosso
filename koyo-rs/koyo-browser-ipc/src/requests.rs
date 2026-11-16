@@ -166,9 +166,12 @@ pub enum AppRequest {
         pane: PaneId,
         /// The extension's id.
         extension: String,
-        /// Where its popup hangs from, its top right corner there: a point of the screen, in
-        /// points from the main screen's bottom left, as `AppKit` counts them.
+        /// Where its popup hangs from: a point of the screen, in points from the main
+        /// screen's bottom left, as `AppKit` counts them.
         at: [f64; 2],
+        /// Which of the popup's top corners is put there.
+        #[serde(default)]
+        corner: crate::Corner,
     },
     /// Turn an extension of a profile on or off, pin it, or remove it. The host says how
     /// the profile's extensions stand after ([`crate::HostEvent::Extensions`]).

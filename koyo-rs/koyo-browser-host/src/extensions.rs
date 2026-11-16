@@ -15,7 +15,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 
 use koyo_browser_ipc::{
-    Extension, ExtensionAction, ExtensionChange, ExtensionSource, HostEvent, PaneId,
+    Corner, Extension, ExtensionAction, ExtensionChange, ExtensionSource, HostEvent, PaneId,
 };
 use serde_json::{Value, json};
 
@@ -296,6 +296,8 @@ pub(crate) fn active(pane: PaneId) {
         return;
     }
     STATE.with(|state| state.borrow_mut().active = Some(pane));
+    // A popup open over another page goes with it, as it does in Chrome when its tab does.
+    popup::close_unless(pane);
     tell_active(pane);
 }
 
@@ -320,8 +322,9 @@ pub(crate) fn browser_created(pane: PaneId) {
     }
 }
 
-/// `pane` closed: it's no longer the page the person is on.
+/// `pane` closed: it's no longer the page the person is on, and a popup open over it goes.
 pub(crate) fn pane_closed(pane: PaneId) {
+    popup::close_of(pane);
     STATE.with(|state| {
         let mut state = state.borrow_mut();
         if state.active == Some(pane) {
@@ -336,14 +339,18 @@ pub(crate) fn active_pane() -> Option<PaneId> {
 }
 
 /// A press on `extension`'s icon for `pane`'s page: Chrome runs its action there, and a popup
-/// it opens hangs from `at` (a point of the screen, from the bottom left).
-pub(crate) fn act(pane: PaneId, extension: &str, at: [f64; 2]) {
+/// it opens hangs by its `corner` from `at` (a point of the screen, from the bottom left).
+/// A press on the icon whose popup is open closes it and runs nothing, as in Chrome.
+pub(crate) fn act(pane: PaneId, extension: &str, at: [f64; 2], corner: Corner) {
     let Some(browser) = host::browser_id(pane) else {
         return;
     };
+    if popup::pressed_shut(pane, extension) {
+        return;
+    }
     // The page pressed for is the one the person is on, whatever had the keyboard.
     active(pane);
-    popup::expect(pane, at);
+    popup::expect(pane, extension, at, corner);
     ask(
         "Extensions.koyoTriggerAction",
         &json!({ "id": extension, "browserId": browser }),
