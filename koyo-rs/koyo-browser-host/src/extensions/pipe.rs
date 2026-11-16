@@ -50,8 +50,7 @@ pub(super) fn send(message: &str) -> bool {
     sent.is_ok()
 }
 
-/// Hangs up: Chromium keeps running while a client is on the pipe, and stops waiting for
-/// one once its end closes.
+/// Hangs up, as the engine is about to stop.
 pub(super) fn close() {
     if let Some(Ok(mut writer)) = WRITER.get().map(Mutex::lock) {
         *writer = None;

@@ -312,8 +312,8 @@ fn shutdown() {
         host.panes.keys().copied().collect()
     })
     .unwrap_or_default();
-    // Chromium doesn't stop while a client is on its `DevTools` pipe, and the windows it
-    // made on its own (an extension's) close as the pages do.
+    // The `DevTools` pipe hangs up, and the windows Chromium made on its own (an
+    // extension's) close as the pages do.
     crate::extensions::stopping();
     crate::native::close_strays();
     for pane in open {

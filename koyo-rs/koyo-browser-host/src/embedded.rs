@@ -82,8 +82,8 @@ pub fn finish(grace: Duration) {
     }
     let began = Instant::now();
     let deadline = began + grace;
-    // Chromium doesn't stop while a client is on its `DevTools` pipe, and the windows it
-    // made on its own (an extension's) close as the pages do.
+    // The `DevTools` pipe hangs up, and the windows Chromium made on its own (an
+    // extension's) close as the pages do.
     crate::extensions::stopping();
     crate::native::close_strays();
     // Every page's browser gone, and every window CEF made for one: it must outlive neither.
