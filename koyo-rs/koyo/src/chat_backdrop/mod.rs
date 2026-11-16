@@ -13,6 +13,8 @@ mod strips;
 #[cfg(test)]
 mod tests;
 mod texture;
+#[cfg(feature = "visual-check")]
+pub mod visual;
 mod wallpaper;
 mod watch;
 

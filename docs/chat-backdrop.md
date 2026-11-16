@@ -358,7 +358,12 @@ is 489 lines, so its new field and default may need something moved out of it fi
 - The text's contrast over the see-through composer and cards, at each Dim stop, in both
   appearances.
 - What macOS names for a moving (aerial) wallpaper: a still the backdrop can use, or nothing,
-  which shows the card.
+  which shows the card. **Unverified**, and left so: no wallpaper is changed to find out,
+  the agent desktop's included, as it's the owner's system. What the code does with it: a
+  screen with no file NSWorkspace names, or a file ImageIO can't read (a movie, say), shows
+  the card; why is logged, and that picture isn't tried again until something it's made from
+  changes (`screens.rs`, `finished`). On
+  the owner's QA list, as optional.
 - That a downloaded wallpaper's file, under `com.apple.mobileAssetDesktop`, can be read by
   Koyo as it runs.
 - The stops' values for Dim, Dot size, Density and the blur, by eye against the reference.
@@ -390,3 +395,18 @@ is 489 lines, so its new field and default may need something moved out of it fi
 9. A visual check, as the tab switcher has (`docs/tab-switcher.md` 7): the shell in a real
    window off screen, over a wallpaper kept in the checkout rather than the person's, saving
    screenshots with the backdrop on and off, in both appearances, and at each Quality stop.
+   **Wired** as the regression check (`chat_backdrop/visual.rs`): the wallpaper is painted into
+   `.superpowers/qa/chat-backdrop/wallpaper.png` (a diagonal from amber to blue, soft discs, a
+   grid of fine lines and a band of finer checks), and the window stands on a screen of the
+   check's own, 2560 × 1440 points, at (480, 220), as a window off screen lies on no screen.
+   It saves the backdrop light and dark, at each Quality stop with a crop of each where the
+   picture is sharp, off in both appearances, and Appearance › Chat background. Its windows
+   open in the person's session, so it's run only while they're away; this step's
+   screenshots are taken in a test Koyo on the agent desktop instead.
+
+   ```sh
+   Q=$PWD/.superpowers/qa/chat-backdrop && mkdir -p $Q/tmp &&
+     KOYO_AGENT_PROVIDER=fake KOYO_DATA_DIR=$Q/data TMPDIR=$Q/tmp KOYO_CONFIG_DIR=$Q/config \
+     KOYO_LOG_DIR=$Q/logs script/cargo run -p koyo --features visual-check -- \
+     --visual-check-chat-backdrop
+   ```

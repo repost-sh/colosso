@@ -191,6 +191,10 @@ fn main() -> ExitCode {
     if std::env::args().any(|arg| arg == "--visual-check-chat-markdown") {
         return chat::visual::run_markdown();
     }
+    #[cfg(feature = "visual-check")]
+    if std::env::args().any(|arg| arg == "--visual-check-chat-backdrop") {
+        return chat_backdrop::visual::run();
+    }
     #[cfg(all(target_os = "macos", feature = "visual-check"))]
     if std::env::args().any(|arg| arg == "--visual-check-native-controls") {
         return settings_view::native_visual::run();
