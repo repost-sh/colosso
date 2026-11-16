@@ -34,10 +34,18 @@ const FILL: [f32; 3] = [0., 0., 0.];
 pub fn read(display: u32, main: MainThreadMarker) -> Option<Wallpaper> {
     let screen = screen(display, main)?;
     let workspace = NSWorkspace::sharedWorkspace();
-    let path = workspace.desktopImageURLForScreen(&screen)?.to_file_path()?;
-    let modified = std::fs::metadata(&path).and_then(|file| file.modified()).ok();
+    let path = workspace
+        .desktopImageURLForScreen(&screen)?
+        .to_file_path()?;
+    let modified = std::fs::metadata(&path)
+        .and_then(|file| file.modified())
+        .ok();
     let options = workspace.desktopImageOptionsForScreen(&screen);
-    let option = |key: &NSString| options.as_ref().and_then(|options| options.objectForKey(key));
+    let option = |key: &NSString| {
+        options
+            .as_ref()
+            .and_then(|options| options.objectForKey(key))
+    };
     // SAFETY: constants `AppKit` defines.
     let (scaling, clipping, fill) = unsafe {
         (

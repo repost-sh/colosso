@@ -951,6 +951,78 @@ fragment float4 page_surface_fragment(PageSurfaceVarying input [[stage_in]],
   return color;
 }
 
+// Koyo: a chat's backdrop (`metal_renderer::set_surface_backdrop`): the screen's picture,
+// dithered in its own colours, faint, and fading out down the chat's pane. The look is
+// Monodrive's Dither effect (github.com/donnes/monodrive, MIT, (c) 2026 Donald Silveira),
+// which dithers its picture on the CPU and fades it in a pass of its own; here both are worked
+// out as the picture is sampled.
+struct BackdropSurface {
+  Bounds_ScaledPixels quad;
+  Bounds_ScaledPixels mapping;
+  Bounds_ScaledPixels pane;
+  float cell;
+  float density;
+  float opacity;
+  float fade_start;
+  float fade_end;
+};
+
+struct BackdropVarying {
+  float4 position [[position]];
+};
+
+vertex BackdropVarying backdrop_vertex(
+    uint unit_vertex_id [[vertex_id]],
+    constant float2 *unit_vertices [[buffer(SurfaceInputIndex_Vertices)]],
+    constant Size_DevicePixels *viewport_size
+    [[buffer(SurfaceInputIndex_ViewportSize)]],
+    constant BackdropSurface *surface [[buffer(SurfaceInputIndex_Page)]]) {
+  float2 unit_vertex = unit_vertices[unit_vertex_id];
+  return BackdropVarying{
+      to_device_position(unit_vertex, surface->quad, viewport_size)};
+}
+
+// The standard 4 x 4 Bayer matrix: each cell's threshold, from 0 to 15.
+constant float BACKDROP_BAYER[16] = {0., 8.,  2., 10., 12., 4., 14., 6.,
+                                     3., 11., 1., 9.,  15., 7., 13., 5.};
+
+// How much of the backdrop shows `t` of the way from where its fade starts to where it's
+// gone: Monodrive's stops, 1 at 0, 0.61 at 0.259, 0.32 at 0.537, 0.11 at 0.815, 0 at 1.
+float backdrop_fade(float t) {
+  t = saturate(t);
+  if (t <= 0.259) return mix(1., 0.61, t / 0.259);
+  if (t <= 0.537) return mix(0.61, 0.32, (t - 0.259) / 0.278);
+  if (t <= 0.815) return mix(0.32, 0.11, (t - 0.537) / 0.278);
+  return mix(0.11, 0., (t - 0.815) / 0.185);
+}
+
+fragment float4 backdrop_fragment(BackdropVarying input [[stage_in]],
+                                  constant BackdropSurface *surface
+                                  [[buffer(SurfaceInputIndex_Page)]],
+                                  texture2d<float> picture
+                                  [[texture(SurfaceInputIndex_YTexture)]]) {
+  constexpr sampler middle_sampler(mag_filter::linear, min_filter::linear);
+  float2 origin = float2(surface->mapping.origin.x, surface->mapping.origin.y);
+  float2 size = max(
+      float2(surface->mapping.size.width, surface->mapping.size.height), 1.);
+  // The pixel's cell, counted from the screen's top left, and the picture at its middle.
+  float2 cell = floor((input.position.xy - origin) / surface->cell);
+  float4 colour =
+      picture.sample(middle_sampler, (cell + 0.5) * surface->cell / size);
+  float peak = max(colour.r, max(colour.g, colour.b));
+  int2 at = int2(cell) & 3;
+  float threshold = (BACKDROP_BAYER[at.y * 4 + at.x] + 0.5) / 16.;
+  float3 shade = peak * surface->density > threshold
+                     ? colour.rgb / max(peak, 0.001)
+                     : colour.rgb * 0.08;
+  float y = (input.position.y - surface->pane.origin.y) /
+            max(surface->pane.size.height, 1.);
+  float span = max(surface->fade_end - surface->fade_start, 0.001);
+  float shows =
+      surface->opacity * backdrop_fade((y - surface->fade_start) / span);
+  return float4(shade, shows);
+}
+
 float4 hsla_to_rgba(Hsla hsla) {
   float h = hsla.h * 6.0; // Now, it's an angle but scaled in [0, 6) range
   float s = hsla.s;

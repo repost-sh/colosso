@@ -146,6 +146,8 @@ pub struct MetalRenderer {
     surfaces_pipeline_state: metal::RenderPipelineState,
     /// Koyo: BGRA surfaces with a picture (`set_surface_picture`).
     page_surfaces_pipeline_state: metal::RenderPipelineState,
+    /// Koyo: a chat's backdrop (`set_surface_backdrop`).
+    backdrop_pipeline_state: metal::RenderPipelineState,
     /// Koyo: the BGRA surfaces the frame being encoded samples, and their textures, held until
     /// the GPU is done with the frame. A pixel buffer made over an `IOSurface` marks the surface
     /// in use while it lives, which every process sees: so the process that shares the surface
@@ -426,6 +428,14 @@ impl MetalRenderer {
             "page_surface_fragment",
             MTLPixelFormat::BGRA8Unorm,
         );
+        let backdrop_pipeline_state = build_pipeline_state(
+            &device,
+            &library,
+            "backdrop",
+            "backdrop_vertex",
+            "backdrop_fragment",
+            MTLPixelFormat::BGRA8Unorm,
+        );
 
         let command_queue = device.new_command_queue();
         let supports_shared_storage = cfg!(target_os = "ios") || is_apple_gpu;
@@ -467,6 +477,7 @@ impl MetalRenderer {
             polychrome_sprites_pipeline_state,
             surfaces_pipeline_state,
             page_surfaces_pipeline_state,
+            backdrop_pipeline_state,
             page_surfaces_in_flight: Vec::new(),
             pictures: Pictures::default(),
             unit_vertices,
@@ -1409,9 +1420,9 @@ impl MetalRenderer {
                 return;
             }
             Some(Mark::Picture(picture)) => Some(picture),
-            // Koyo: a texture of the app's own is drawn whole over the surface's bounds.
-            Some(Mark::Texture(id)) => {
-                self.draw_texture(surface, id, command_encoder);
+            // Koyo: a chat's backdrop is a texture of the app's own, dithered and faded.
+            Some(Mark::Backdrop(backdrop)) => {
+                self.draw_backdrop(surface, backdrop, command_encoder);
                 return;
             }
             None => None,
@@ -1475,31 +1486,66 @@ impl MetalRenderer {
         command_encoder.draw_primitives(metal::MTLPrimitiveType::Triangle, 0, 6);
     }
 
-    /// Koyo: draws texture `id` of the app's (`register_texture`) whole over `surface`'s
-    /// bounds, as far as its content mask shows them; nothing while no texture has the id.
-    /// The command buffer keeps the texture until the GPU is done with it.
-    fn draw_texture(
+    /// Koyo: draws `backdrop`'s texture (`register_texture`) whole over `surface`'s bounds, as
+    /// far as its content mask shows them, dithered, faint and fading down the content mask as
+    /// `backdrop` says; nothing while no texture has its number. The command buffer keeps the
+    /// texture until the GPU is done with it.
+    fn draw_backdrop(
         &self,
         surface: &PaintSurface,
-        id: u64,
+        backdrop: Backdrop,
         command_encoder: &metal::RenderCommandEncoderRef,
     ) {
-        let Some(texture) = TEXTURES.lock().get(&id).cloned() else {
+        let Some(texture) = TEXTURES.lock().get(&backdrop.texture).cloned() else {
             return;
         };
-        let quad = surface.bounds.intersect(&surface.content_mask.bounds);
+        let pane = surface.content_mask.bounds;
+        let quad = surface.bounds.intersect(&pane);
         if quad.size.width.0 <= 0. || quad.size.height.0 <= 0. {
             return;
         }
-        let extent = [texture.width() as f32, texture.height() as f32];
-        let page = PageSurface {
+        // Past the pane's bottom, so it never fades.
+        let [fade_start, fade_end] = backdrop.fade.unwrap_or([2., 3.]);
+        let params = BackdropSurface {
             quad,
             mapping: surface.bounds,
-            picture: extent,
-            texture_size: extent,
+            pane,
+            cell: backdrop.cell.max(1.),
+            density: backdrop.density,
+            opacity: backdrop.opacity.clamp(0., 1.),
+            fade_start,
+            fade_end,
         };
-        self.draw_page(&page, &texture, command_encoder);
+        command_encoder.set_render_pipeline_state(&self.backdrop_pipeline_state);
+        for set_bytes in [
+            metal::RenderCommandEncoderRef::set_vertex_bytes,
+            metal::RenderCommandEncoderRef::set_fragment_bytes,
+        ] {
+            set_bytes(
+                command_encoder,
+                SurfaceInputIndex::Page as u64,
+                mem::size_of_val(&params) as u64,
+                &params as *const BackdropSurface as *const _,
+            );
+        }
+        command_encoder.set_fragment_texture(SurfaceInputIndex::YTexture as u64, Some(&*texture));
+        command_encoder.draw_primitives(metal::MTLPrimitiveType::Triangle, 0, 6);
     }
+}
+
+/// Koyo: what `backdrop_vertex` and `backdrop_fragment` take of a chat's backdrop.
+#[repr(C)]
+struct BackdropSurface {
+    quad: Bounds<ScaledPixels>,
+    /// The screen, which the texture covers whole.
+    mapping: Bounds<ScaledPixels>,
+    /// What the fade runs down: the surface's content mask, the chat's pane.
+    pane: Bounds<ScaledPixels>,
+    cell: f32,
+    density: f32,
+    opacity: f32,
+    fade_start: f32,
+    fade_end: f32,
 }
 
 /// Koyo: a Metal texture over the `IOSurface` a BGRA pixel buffer is made over, `size` of it,
@@ -1557,8 +1603,8 @@ enum Mark {
     Capture(u32),
     /// It stands for a native view in a picture (`set_surface_pane`).
     Pane(SurfacePane),
-    /// It stands for a texture of the app's own (`set_surface_texture`).
-    Texture(u64),
+    /// It stands for a chat's backdrop, a texture of the app's own (`set_surface_backdrop`).
+    Backdrop(Backdrop),
 }
 
 impl Mark {
@@ -1573,7 +1619,21 @@ impl Mark {
                 ];
                 iter::once(2).chain(said.map(f32::to_bits)).collect()
             }
-            Mark::Texture(id) => vec![3, id as u32, (id >> 32) as u32],
+            Mark::Backdrop(backdrop) => {
+                let [start, end] = backdrop.fade.unwrap_or([f32::NAN; 2]);
+                let id = backdrop.texture;
+                let said = [
+                    backdrop.cell,
+                    backdrop.density,
+                    backdrop.opacity,
+                    start,
+                    end,
+                ];
+                [3, id as u32, (id >> 32) as u32]
+                    .into_iter()
+                    .chain(said.map(f32::to_bits))
+                    .collect()
+            }
         }
     }
 
@@ -1596,9 +1656,16 @@ impl Mark {
                 fill: colour(2)?,
                 edge: colour(6)?,
             })),
-            3 => Some(Mark::Texture(
-                u64::from(word(1)?) | (u64::from(word(2)?) << 32),
-            )),
+            3 => {
+                let (start, end) = (part(6)?, part(7)?);
+                Some(Mark::Backdrop(Backdrop {
+                    texture: u64::from(word(1)?) | (u64::from(word(2)?) << 32),
+                    cell: part(3)?,
+                    density: part(4)?,
+                    opacity: part(5)?,
+                    fade: (!start.is_nan()).then_some([start, end]),
+                }))
+            }
             _ => None,
         }
     }
@@ -1696,7 +1763,7 @@ static NEXT_TEXTURE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64
 
 /// Koyo: makes a texture `width` by `height` in `format`, of `blocks`, row by row of blocks from
 /// its top left, on the system's GPU, and gives the number a surface marked for it draws it by
-/// (`set_surface_texture`) until it's let go (`release_texture`). Any thread may make one. None
+/// (`set_surface_backdrop`) until it's let go (`release_texture`). Any thread may make one. None
 /// when the blocks aren't the texture's or the GPU can't hold it.
 pub fn register_texture(
     format: TextureFormat,
@@ -1709,8 +1776,7 @@ pub fn register_texture(
         TextureFormat::Astc8x8 => (MTLPixelFormat::ASTC_8x8_LDR, 8),
     };
     let row = u64::from(width.div_ceil(side)) * 16;
-    if width == 0 || height == 0 || blocks.len() as u64 != row * u64::from(height.div_ceil(side))
-    {
+    if width == 0 || height == 0 || blocks.len() as u64 != row * u64::from(height.div_ceil(side)) {
         return None;
     }
     let device = metal::Device::system_default()?;
@@ -1737,13 +1803,35 @@ pub fn release_texture(id: u64) {
     TEXTURES.lock().remove(&id);
 }
 
-/// Koyo: marks `buffer`, a BGRA one of any size, as standing for texture `id` of the app's
-/// (`register_texture`). Painted in a scene, the texture goes whole over the surface's bounds,
-/// as far as its content mask shows them, with the rounded clips over it, as a page's frame
-/// does; nothing is drawn while no texture has the id. The buffer keeps the mark for every
-/// scene that draws it after.
-pub fn set_surface_texture(buffer: &CVPixelBuffer, id: u64) {
-    mark_surface(buffer, Mark::Texture(id));
+/// Koyo: how a chat's backdrop is drawn (`set_surface_backdrop`): the screen's picture,
+/// dithered in its own colours, faint, and fading out down the chat's pane, as Monodrive's
+/// Dither effect looks (github.com/donnes/monodrive, MIT, © 2026 Donald Silveira).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Backdrop {
+    /// The picture, a texture of the app's own (`register_texture`), which covers the
+    /// surface's bounds whole.
+    pub texture: u64,
+    /// How many screen pixels a cell of the dither is a side, from the bounds' top left.
+    pub cell: f32,
+    /// How many cells are lit: 1 as Monodrive lights them, more for more.
+    pub density: f32,
+    /// How much of it shows over what's under it, from 0 to 1.
+    pub opacity: f32,
+    /// Where it starts fading out and where it's gone, as parts of the content mask's height
+    /// from its top; none for no fade.
+    pub fade: Option<[f32; 2]>,
+}
+
+/// Koyo: marks `buffer`, a BGRA one of any size, as standing for a chat's backdrop. Painted in
+/// a scene, `backdrop`'s texture goes whole over the surface's bounds, as far as its content
+/// mask shows them, with the rounded clips over it, as a page's frame does: in cells of
+/// `backdrop.cell` pixels from the bounds' top left, each sampled at its middle and lit or not
+/// by a 4 × 4 Bayer matrix of thresholds, a lit cell at its colour's full brightness and an
+/// unlit one at 8 % of it, at `backdrop.opacity`, fading down the content mask. Nothing is
+/// drawn while no texture has its number. The buffer keeps the mark for every scene that draws
+/// it after.
+pub fn set_surface_backdrop(buffer: &CVPixelBuffer, backdrop: Backdrop) {
+    mark_surface(buffer, Mark::Backdrop(backdrop));
 }
 
 /// Koyo: what a renderer keeps of the pictures taken of its frames.

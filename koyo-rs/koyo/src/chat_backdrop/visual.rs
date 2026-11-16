@@ -57,7 +57,10 @@ static STAND_IN: Mutex<Option<Wallpaper>> = Mutex::new(None);
 pub fn screen() -> Option<(u64, Bounds<Pixels>)> {
     STAND_IN.lock().ok()?.as_ref()?;
     let origin = point(px(-WINDOW_AT.0), px(-WINDOW_AT.1));
-    Some((DISPLAY, Bounds::new(origin, size(px(SCREEN.0), px(SCREEN.1)))))
+    Some((
+        DISPLAY,
+        Bounds::new(origin, size(px(SCREEN.0), px(SCREEN.1))),
+    ))
 }
 
 /// The wallpaper of the check's own screen, while the check runs.
@@ -83,7 +86,9 @@ fn draw() -> Result<Vec<String>> {
     let mut drawn = Drawn::open_on_checkout(OUT, &[])?;
     drawn.chat_saying(&checkout()?, SAID)?;
     let start = Instant::now();
-    drawn.until(ANSWERED_IN + PATIENCE, |_| Ok(start.elapsed() >= ANSWERED_IN))?;
+    drawn.until(ANSWERED_IN + PATIENCE, |_| {
+        Ok(start.elapsed() >= ANSWERED_IN)
+    })?;
 
     let mut saved = vec![settled(&mut drawn, "light.png")?];
     drawn.cx.update(|cx| cx.dispatch_action(&UseDarkTheme));
@@ -122,19 +127,25 @@ fn draw() -> Result<Vec<String>> {
 
 /// Changes the backdrop's settings as `change` does.
 fn set(drawn: &mut Drawn, change: impl FnOnce(&mut settings::ChatBackdrop)) {
-    drawn.cx.update(|cx| settings::update(cx, |settings| change(&mut settings.chat_backdrop)));
+    drawn
+        .cx
+        .update(|cx| settings::update(cx, |settings| change(&mut settings.chat_backdrop)));
 }
 
 /// Saves the window as `name` once the screen's picture and its blur are the ones asked for.
 fn settled(drawn: &mut Drawn, name: &str) -> Result<PathBuf> {
-    drawn.until(PATIENCE, |drawn| Ok(drawn.cx.read(|cx| screens::settled(DISPLAY, cx))))?;
+    drawn.until(PATIENCE, |drawn| {
+        Ok(drawn.cx.read(|cx| screens::settled(DISPLAY, cx)))
+    })?;
     drawn.save(name)
 }
 
 /// A part of the picture saved at `shown`, where the backdrop is sharp, as `name`, a pixel a
 /// pixel.
 fn crop(drawn: &Drawn, shown: &Path, name: &str) -> Result<PathBuf> {
-    let image = image::open(shown).map_err(|error| error.to_string())?.to_rgba8();
+    let image = image::open(shown)
+        .map_err(|error| error.to_string())?
+        .to_rgba8();
     let (width, height) = (image.width(), image.height());
     let part = image::imageops::crop_imm(&image, width / 4, height / 10, width / 3, height / 4);
     drawn.save_image(&part.to_image(), name)

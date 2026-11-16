@@ -1,27 +1,23 @@
 //! The pictures of the screens chats show the backdrop on: one a screen, made off the main
 //! thread the first time a chat there asks for it, and again when what it's made from changes.
-//! One is made at a time, the last one asked for next, and the last one made shows meanwhile,
-//! so moving the Dim slider along shows each stop in turn rather than the card between them.
-//! Each has its blur, made with it and again from its small copy when the blur's strength
-//! changes. A picture is kept while a chat on its screen shows it, and let go a while after
-//! none does ([`KEPT`]).
+//! One is made at a time, the last one asked for next, and the last one made shows meanwhile.
+//! How a picture looks is said to the renderer as it's drawn (`texture::Look`), so changing the
+//! look makes nothing again. A picture is kept while a chat on its screen shows it, and let go
+//! a while after none does ([`KEPT`]).
 
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use gpui_kit::{App, Global, RenderImage, Task};
+use gpui_kit::{App, Global, Pixels, Task};
 use objc2::MainThreadMarker;
 use objc2_core_foundation::CFRetained;
 use objc2_core_video::CVPixelBuffer;
 
-use super::blur::Small;
 use super::make::{self, Recipe};
-use super::texture::Texture;
+use super::texture::{Look, Texture};
 use super::wallpaper::{self, Wallpaper};
 use crate::settings::Quality;
-use crate::viewer::bitmap;
 
 /// How long a screen's picture is kept once no chat shows it: a chat shown again within it,
 /// after a terminal's tab say, shows its backdrop at once rather than the card while it's made.
@@ -45,10 +41,8 @@ struct Screen {
     shown: Option<Shown>,
     /// The picture being made.
     making: Option<Task<()>>,
-    /// The recipe the chats on the screen asked for last, and the blur: its sigma in the small
-    /// copy's pixels, none for none.
+    /// The recipe the chats on the screen asked for last.
     wanted: Option<Recipe>,
-    wanted_blur: Option<f32>,
     /// The last recipe that couldn't be made: it isn't tried again until something in it
     /// changes.
     failed: Option<Recipe>,
@@ -61,20 +55,10 @@ struct Screen {
 struct Shown {
     recipe: Recipe,
     /// Kept for as long as the picture shows; dropped, it lets the GPU's copy go.
-    _texture: Texture,
-    /// What a chat paints to draw it.
+    texture: Texture,
+    /// What a chat paints to draw it, and the look it was last marked with.
     placeholder: CFRetained<CVPixelBuffer>,
-    /// The small copy its blur is made from, the blur with its sigma, and the sigma of the
-    /// blur being made.
-    small: Arc<Small>,
-    blur: Option<(f32, Arc<RenderImage>)>,
-    blurring: Option<(f32, Task<()>)>,
-}
-
-/// What a chat paints its screen's backdrop with.
-pub struct Showing {
-    pub placeholder: CFRetained<CVPixelBuffer>,
-    pub blur: Option<Arc<RenderImage>>,
+    look: Option<Look>,
 }
 
 /// What a chat holds while it shows a screen's backdrop.
@@ -119,40 +103,30 @@ pub fn hold(display: u64, cx: &mut App) -> Hold {
     }
 }
 
-/// What a chat paints to draw screen `display`'s picture, as `recipe` says it once it's made
-/// and the last one made meanwhile, with its blur `blur` wide, a sigma in its small copy's
-/// pixels; and they're made. With no recipe, as for a screen whose wallpaper can't be shown,
-/// nothing.
+/// What a chat paints to draw screen `display`'s picture as `recipe` says it, once it's made,
+/// and the last one made meanwhile, looking as `look` says; and it's made. With no recipe, as
+/// for a screen whose wallpaper can't be shown, nothing.
 pub fn picture(
     display: u64,
     recipe: Option<Recipe>,
-    blur: Option<f32>,
+    look: Look,
     cx: &mut App,
-) -> Option<Showing> {
+) -> Option<CFRetained<CVPixelBuffer>> {
     let screen = screen(display, cx);
-    screen.wanted_blur = blur;
     let Some(recipe) = recipe else {
-        let shown = screen.shown.take();
-        screen.wanted = None;
-        let_go(shown, cx);
+        (screen.shown, screen.wanted) = (None, None);
         return None;
     };
     if screen.wanted.as_ref() != Some(&recipe) {
         screen.wanted = Some(recipe);
         start(display, cx);
     }
-    blur_as_wanted(display, cx);
-    let shown = self::screen(display, cx).shown.as_ref()?;
-    Some(Showing {
-        placeholder: shown.placeholder.clone(),
-        blur: shown.blur.as_ref().map(|(_, image)| image.clone()),
-    })
-}
-
-/// Lets `shown` go: its texture, and its blur out of every window's atlas.
-fn let_go(shown: Option<Shown>, cx: &mut App) {
-    let blur = shown.and_then(|shown| shown.blur).map(|(_, image)| image);
-    bitmap::release(blur.into_iter().collect(), cx);
+    let shown = self::screen(display, cx).shown.as_mut()?;
+    if shown.look != Some(look) {
+        shown.texture.mark(&shown.placeholder, look);
+        shown.look = Some(look);
+    }
+    Some(shown.placeholder.clone())
 }
 
 /// Makes the picture screen `display`'s chats asked for last, unless it's the one shown, one is
@@ -167,7 +141,6 @@ fn start(display: u64, cx: &mut App) {
     {
         return;
     }
-    let sigma = screen.wanted_blur;
     let making = cx.spawn(async move |cx| {
         let recipe = wanted.clone();
         let made = cx
@@ -176,15 +149,7 @@ fn start(display: u64, cx: &mut App) {
                 let started = Instant::now();
                 let made = make::make(&recipe)?;
                 let texture = Texture::new(&made.picture).ok_or("the GPU can't hold it")?;
-                let blur =
-                    sigma.and_then(|sigma| Some((sigma, made.small.blurred(sigma).image()?)));
-                let took = (made.took, started.elapsed());
-                Ok::<_, String>(Made {
-                    texture,
-                    small: Arc::new(made.small),
-                    blur,
-                    took,
-                })
+                Ok::<_, String>((texture, made.took, started.elapsed()))
             })
             .await;
         cx.update(|cx| finished(display, wanted, made, cx));
@@ -192,118 +157,42 @@ fn start(display: u64, cx: &mut App) {
     self::screen(display, cx).making = Some(making);
 }
 
-/// What making a screen's picture gave.
-struct Made {
-    texture: Texture,
-    small: Arc<Small>,
-    blur: Option<(f32, Arc<RenderImage>)>,
-    /// How long decoding, laying out and compressing took, and all of it.
-    took: ([Duration; 3], Duration),
-}
+/// What making a screen's picture gave: the texture, how long decoding, laying out and
+/// compressing took, and all of it.
+type Made = Result<(Texture, [Duration; 3], Duration), String>;
 
 /// Shows the picture made of `recipe` on screen `display`, or the card if it couldn't be
 /// made, and makes the next one asked for meanwhile.
-fn finished(display: u64, recipe: Recipe, made: Result<Made, String>, cx: &mut App) {
-    let shown = made.and_then(|made| {
-        let placeholder = made.texture.placeholder().ok_or("no pixel stands for it")?;
-        let ([decoded, laid_out, compressed], all) = made.took;
+fn finished(display: u64, recipe: Recipe, made: Made, cx: &mut App) {
+    let shown = made.and_then(|(texture, took, all)| {
+        let placeholder = Texture::placeholder().ok_or("no pixel stands for it")?;
+        let [decoded, laid_out, compressed] = took.map(|took| took.as_millis());
         log::info!(
-            "made screen {display}'s chat backdrop in {} ms (decoded in {} ms, laid out in {} ms, \
-             compressed in {} ms): {:.1} MB",
+            "made screen {display}'s chat backdrop in {} ms (decoded in {decoded} ms, laid out in \
+             {laid_out} ms, compressed in {compressed} ms): {:.1} MB",
             all.as_millis(),
-            decoded.as_millis(),
-            laid_out.as_millis(),
-            compressed.as_millis(),
-            made.texture.bytes as f64 / 1e6,
+            texture.bytes as f64 / 1e6,
         );
         Ok(Shown {
             recipe: recipe.clone(),
-            _texture: made.texture,
+            texture,
             placeholder,
-            small: made.small,
-            blur: made.blur,
-            blurring: None,
+            look: None,
         })
     });
     let screen = screen(display, cx);
     screen.making = None;
-    let old = match shown {
-        Ok(shown) => {
-            screen.failed = None;
-            screen.shown.replace(shown)
-        }
+    match shown {
+        Ok(shown) => (screen.shown, screen.failed) = (Some(shown), None),
         Err(why) => {
             log::warn!(
                 "screen {display}'s chat backdrop couldn't be made from {}: {why}",
                 recipe.wallpaper.path.display()
             );
-            screen.failed = Some(recipe);
-            screen.shown.take()
+            (screen.shown, screen.failed) = (None, Some(recipe));
         }
-    };
-    let_go(old, cx);
+    }
     start(display, cx);
-    blur_as_wanted(display, cx);
-    cx.refresh_windows();
-}
-
-/// Blurs screen `display`'s picture as its chats asked for last, unless it's blurred so or
-/// being blurred; with no blur asked for, lets its blur go.
-fn blur_as_wanted(display: u64, cx: &mut App) {
-    let screen = screen(display, cx);
-    let wanted = screen.wanted_blur;
-    let Some(shown) = screen.shown.as_mut() else {
-        return;
-    };
-    let Some(sigma) = wanted else {
-        let old = shown.blur.take().map(|(_, image)| image);
-        shown.blurring = None;
-        bitmap::release(old.into_iter().collect(), cx);
-        return;
-    };
-    let blurred = shown.blur.as_ref().map(|(sigma, _)| *sigma);
-    if blurred == Some(sigma) || shown.blurring.is_some() {
-        return;
-    }
-    let small = shown.small.clone();
-    let task = cx.spawn(async move |cx| {
-        let from = small.clone();
-        let image = cx
-            .background_executor()
-            .spawn(async move { from.blurred(sigma).image() })
-            .await;
-        cx.update(|cx| blurred_as(display, &small, sigma, image, cx));
-    });
-    if let Some(shown) = self::screen(display, cx).shown.as_mut() {
-        shown.blurring = Some((sigma, task));
-    }
-}
-
-/// Shows `image`, the blur `sigma` wide of the picture whose small copy is `small`, on screen
-/// `display`, if that picture still shows; and blurs it again if a blur of another width has
-/// been asked for meanwhile.
-fn blurred_as(
-    display: u64,
-    small: &Arc<Small>,
-    sigma: f32,
-    image: Option<Arc<RenderImage>>,
-    cx: &mut App,
-) {
-    let screen = screen(display, cx);
-    let shown = (screen.shown.as_mut()).filter(|shown| Arc::ptr_eq(&shown.small, small));
-    let old = match (shown, image) {
-        (Some(shown), Some(image)) => {
-            shown.blurring = None;
-            shown.blur.replace((sigma, image)).map(|(_, old)| old)
-        }
-        (Some(shown), None) => {
-            shown.blurring = None;
-            None
-        }
-        (None, image) => image,
-    };
-    bitmap::release(old.into_iter().collect(), cx);
-    blur_as_wanted(display, cx);
     cx.refresh_windows();
 }
 
@@ -314,7 +203,7 @@ fn blurred_as(
 pub fn tick(cx: &mut App) {
     note_windows(cx);
     let now = Instant::now();
-    let (mut changed, mut gone) = (false, Vec::new());
+    let mut changed = false;
     for (&display, screen) in &mut cx.default_global::<Screens>().by_display {
         if Rc::strong_count(&screen.chats) > 1 {
             let wallpaper = if screen.read { read(display) } else { continue };
@@ -327,12 +216,8 @@ pub fn tick(cx: &mut App) {
         let since = *screen.unheld_since.get_or_insert(now);
         if screen.shown.is_some() && now.saturating_duration_since(since) >= KEPT {
             log::info!("let screen {display}'s chat backdrop go: no chat shows it");
-            gone.push(screen.shown.take());
-            (screen.wanted, screen.making) = (None, None);
+            (screen.shown, screen.wanted, screen.making) = (None, None, None);
         }
-    }
-    for shown in gone {
-        let_go(shown, cx);
     }
     if changed {
         cx.refresh_windows();
@@ -346,8 +231,12 @@ fn note_windows(cx: &mut App) {
         let screen = handle.update(cx, |_, window, cx| {
             let display = window.display(cx)?;
             let size = display.bounds().size;
-            let pixels = |points: gpui_kit::Pixels| (points.as_f32() * window.scale_factor()).round() as u32;
-            Some((u64::from(display.id()), pixels(size.width), pixels(size.height)))
+            let pixels = |points: Pixels| (points.as_f32() * window.scale_factor()).round() as u32;
+            Some((
+                u64::from(display.id()),
+                pixels(size.width),
+                pixels(size.height),
+            ))
         });
         if let Ok(Some(screen)) = screen
             && !screens.iter().any(|(display, ..)| *display == screen.0)
@@ -366,8 +255,12 @@ fn note_windows(cx: &mut App) {
 /// What the pictures of the screens Koyo's windows are on take at `quality`, as the Quality
 /// row says it; nothing before they're noted.
 pub fn memory(quality: Quality, cx: &App) -> String {
-    let screens = cx.try_global::<Screens>().map_or(&[][..], |screens| &screens.windows);
-    let bytes: usize = (screens.iter()).map(|&(_, width, height)| quality.bytes(width, height)).sum();
+    let screens = cx
+        .try_global::<Screens>()
+        .map_or(&[][..], |screens| &screens.windows);
+    let bytes: usize = (screens.iter())
+        .map(|&(_, width, height)| quality.bytes(width, height))
+        .sum();
     let megabytes = bytes as f64 / 1e6;
     match screens.len() {
         0 => String::new(),
@@ -376,20 +269,15 @@ pub fn memory(quality: Quality, cx: &App) -> String {
     }
 }
 
-/// Whether screen `display`'s picture and its blur are the ones its chats asked for last, and
-/// nothing is being made: for the visual check, which saves a picture of the window then.
+/// Whether screen `display`'s picture is the one its chats asked for last, and nothing is
+/// being made: for the visual check, which saves a picture of the window then.
 #[cfg(feature = "visual-check")]
 pub fn settled(display: u64, cx: &App) -> bool {
-    let Some(screen) = cx.try_global::<Screens>().and_then(|screens| screens.by_display.get(&display))
-    else {
-        return false;
-    };
-    let Some(shown) = &screen.shown else {
-        return false;
-    };
-    let blur = shown.blur.as_ref().map(|(sigma, _)| *sigma);
-    screen.making.is_none()
-        && shown.blurring.is_none()
-        && screen.wanted.as_ref() == Some(&shown.recipe)
-        && blur == screen.wanted_blur
+    let screen = cx
+        .try_global::<Screens>()
+        .and_then(|screens| screens.by_display.get(&display));
+    screen.is_some_and(|screen| {
+        let shown = screen.shown.as_ref().map(|shown| &shown.recipe);
+        screen.making.is_none() && shown.is_some() && shown == screen.wanted.as_ref()
+    })
 }

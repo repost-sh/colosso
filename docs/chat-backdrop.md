@@ -1,16 +1,25 @@
-# Koyo's chat backdrop: the wallpaper behind a chat, under a dot screen
+# Koyo's chat backdrop: the wallpaper behind a chat, dithered in its own colours
 
 Written 2026-11-16 on branch `main`, and built on `schulzfel/chat-backdrop` in the order of
 section 10, which says what of it is built and checked so far. Drafted with Claude, from
 research in the code and an interview with the owner. Keep it in step with
 `koyo-rs/koyo/src/chat_backdrop/`. A chat's background shows the desktop
-picture that lies behind the window, dimmed, under a fixed grid of dots, and blurred towards
-the bottom, as in the owner's reference: a disk overview whose top half shows the picture
-sharp under the dots and whose bottom half fades into a plain blur. The picture is drawn
-once for each screen and only moved as the window moves, so a frame costs what drawing one
-texture costs. What the owner decided is marked **[asked]**; what was proposed while
-researching it, and is the owner's to change, **[proposed]**. Section 9 lists what can only be
-settled once it's built.
+picture that lies behind the window, dithered in its own colours, faint, and fading out
+towards the bottom, as in the owner's reference: Monodrive's disk overview with its Dither
+effect, whose top shows the picture as a lattice of lit and dark cells and whose bottom fades
+into the window's plain blur. The picture is made once for each screen and only moved as the
+window moves; the dither and the fade are the renderer's, as it draws, so a frame costs what
+drawing one texture costs. What the owner decided is marked **[asked]**; what was proposed
+while researching it, and is the owner's to change, **[proposed]**. Section 9 lists what can
+only be settled once it's built.
+
+**The look changed on 2026-11-16.** The first build put a grid of black dots over the
+picture, dimmed it towards the card's colour and blurred its bottom, from the doc's
+description of the reference; seen on screen, it looked nothing like it. The reference is
+Monodrive's Dither effect ([donnes/monodrive](https://github.com/donnes/monodrive), MIT,
+© 2026 Donald Silveira: `crates/monodrive/src/background.rs`, and the
+`project_background` shader of its vendored renderer), and the owner asked for it, with the
+settings mapped onto it. Koyo takes the technique, not the code (section 4).
 
 ## 1. What it shows
 
@@ -18,24 +27,24 @@ settled once it's built.
   the picture its pane covers on the screen, laid out as macOS lays it out (section 3.2). Not
   the windows behind Koyo's: those would need the screen captured live (section 8).
   **[asked]**
-- **Dimmed towards the chat's own colour**, the card it sits on (`theme/card.rs`): dark in
-  the dark appearance, pale in the light one, so the text over it stays readable either way.
-  How far is the Dim setting. **[asked]**
-- **A dot screen over it**, as in the reference: the picture itself stays smooth, and a fixed
-  grid of dots lies over it. It's a screen, not a dither of the picture's colours. **[asked]**
-  - The grid is staggered, each row's dots between the last row's, as in the reference.
-    **[proposed]**
-  - The dots are darker than the picture under them, in both appearances. **[proposed]**
-  - The grid is fixed to the screen, not to the pane, so it holds still as the window moves
-    and two chats side by side show one grid. **[proposed]**
-- **Blurred towards the bottom.** A blurred copy of the dimmed picture fades in from where
-  the blur starts, half way down the pane by default, to the bottom, where it's all there is.
+- **Dithered in its own colours, as Monodrive's Dither.** The picture is cut into cells of
+  2 × 2 screen pixels, each taking the picture's colour there. A 4 × 4 Bayer matrix of
+  thresholds lies over the cells: a cell whose brightest channel passes its threshold is lit
+  and shows its colour at full brightness; one that doesn't shows 8 % of it. On a mid-tone
+  that's a regular lattice of dark cells two cells apart, in the picture's own colours.
   **[asked]**
-- **The dots fade out as the blur fades in**, so the bottom is a plain blur, as in the
-  reference. **[asked]**
+  - The cells are the screen's, counted from its top left, so the pattern holds still as the
+    window moves and two chats side by side show one. **[proposed]**
+- **Faint, at an opacity over the card** it sits on (`theme/card.rs`), 24 % by default, as
+  Monodrive's: the card and the window's glass under it show through. How faint is the
+  Opacity setting. **[asked: the opacity; proposed: 24 %]**
+- **Fading out towards the bottom**, by Monodrive's curve: whole down to 18 % of the pane's
+  height, 61 % of itself at 32 %, 32 % at 47 %, 11 % at 62 %, gone by 72 %. Below it the card
+  over the window's glass, which blurs the desktop behind the window: the plain blur at the
+  bottom. Where the fade starts and ends are settings. **[asked]**
 - **The composer and the floating cards are see-through** over it: the prompt, the details
-  card and the floating prompt take a translucent fill, so the blur shows behind them. Their
-  text's contrast is checked at every Dim stop (section 9). **[asked]** Where macOS has
+  card and the floating prompt take a translucent fill, so the backdrop shows through. Their
+  text's contrast is checked at every Opacity stop (section 9). **[asked]** Where macOS has
   Liquid Glass (26 on), the three are glass, as they were, and glass shows what's under it
   already. Where it hasn't, and in the visual check, which draws glass as the fill it falls
   back to, they're filled in the card's own colour, as see-through as the card is (60 % in
@@ -68,8 +77,9 @@ settled once it's built.
 
 - **Made once for each screen** a chat shows the backdrop on, and again only when what it's
   made from changes: the wallpaper (its file, the file's time, how it's laid out, its fill
-  colour), the screen's size and scale, the card's colour (so the appearance and the glass
-  theme), Dim, and Quality. Off the main thread. **[proposed]**
+  colour), the screen's size and scale, and Quality. Off the main thread. The dither, the
+  opacity and the fade are applied as it's drawn (section 4), so the appearance and every
+  other setting change nothing of it. **[proposed]**
 - **Kept on the GPU as an ASTC texture, the only copy.** Uncompressed, the picture for a
   2560 × 1440 pt screen at 2× is 5120 × 2880 pixels, 59 MB, and GPUI keeps an image twice,
   once in the app's memory to upload it again and once in the GPU's atlas: 118 MB for one
@@ -78,15 +88,14 @@ settled once it's built.
      (`viewer/picture.rs`): HEIC, JPEG, PNG and the rest, at no more pixels than the layout
      needs, upright, in sRGB.
   2. It's drawn into a bitmap the screen's size, laid out as macOS lays it out (3.2), with
-     Quartz (`viewer/bitmap.rs`, `Canvas`), and dimmed towards the card's colour.
+     Quartz (`viewer/bitmap.rs`, `Canvas`).
   3. macOS's own encoder compresses it to ASTC: an `org.khronos.astc` image destination in
      ImageIO, its block size set by `kCGImagePropertyASTCBlockSize` (4 × 4 or 8 × 8, the only
      two ImageIO names). The result is a 16-byte header, then the blocks, 16 bytes each
      (`chat_backdrop/astc.rs`). The encoder writes the picture's bottom row of blocks first,
      as OpenGL counts rows, where the GPU reads the first row as the top one, so the picture
      is drawn into its bitmap upside down and reaches the GPU upright (`make.rs`,
-     `upside_down`); a test reads the blocks back in the file's order and finds it upright,
-     dimmed as asked.
+     `upside_down`); a test reads the blocks back in the file's order and finds it upright.
   4. The blocks go straight into a Metal texture of the matching ASTC format; the bitmap and
      the encoded bytes are then dropped.
 - **Why ASTC and why the system's encoder:** Koyo builds for Apple Silicon only, and every
@@ -103,9 +112,8 @@ settled once it's built.
 
   While it's made, the bitmap takes 59 MB for the fifth of a second that takes (section 9),
   and is freed. A screen's texture is let go once no chat on that screen shows it, and made
-  again when one does. The blur is 1.2 MB, as GPUI holds an image twice, the small copy it's
-  blurred from, kept to blur again, 0.6 MB, and a dot tile 0.5 MB (section 4).
-  **[asked: 8 × 8 at full resolution; proposed: letting go]**
+  again when one does. Nothing else is kept: the dither and the fade take no memory of
+  their own. **[asked: 8 × 8 at full resolution; proposed: letting go]**
 - **Quality is the person's to pick** (section 6): four stops, always compressed, never the
   uncompressed picture. **[asked]**
 
@@ -176,47 +184,33 @@ settled once it's built.
   `Picture`). **[proposed]**
 - **Through the renderer's surface path.** The vendored Metal renderer already draws a
   texture over one rectangle and clipped to another, with rounded clips, for a browser page's
-  frame (`draw_page_surface` and `page_surface_fragment`, `vendor/README.md`). The fragment
-  shader samples whatever texture it's given, compressed or not. What it lacks is a way to be
-  given a texture Koyo made: it draws only pixel buffers, which can't hold a compressed format.
-  So one more mark, beside a picture's, a capture's and a pane's (`Mark` in
-  `metal_renderer.rs`): a placeholder BGRA pixel buffer marked as standing for a texture the
-  app registered with the renderer, drawn with the page pipeline over the screen's rectangle,
-  clipped to the pane. A `Koyo:` change, described in `vendor/README.md` as the others are.
-  **[proposed]** Built as proposed: `register_texture` makes the texture of the blocks from
-  any thread, on the system's GPU, as `ASTC_4x4_LDR` or `ASTC_8x8_LDR` (section 9), and gives
-  it a number; `set_surface_texture` marks a pixel standing for it (`Mark::Texture`);
-  `release_texture` lets it go. A test draws a picture so through the real renderer, headless,
-  and finds it where it was laid out, its colours as they were, and nothing past the pane
-  (`chat_backdrop/tests.rs`).
-- **The blur** is a blurred copy of the dimmed picture, small (it's smooth, so about a tenth
-  of the screen's size, about 1 MB), drawn as an ordinary GPUI image. GPUI can't fade an
-  image with a gradient, but it applies an element's opacity to the images in it, so the blur
-  is a stack of thin strips across the lower part of the pane, each a little more opaque than
-  the one above it, from nothing where the blur starts to whole at the bottom. Since the
-  copy is smooth, the strips' steps don't show. The surface path has no opacity, which is why
-  the blur isn't drawn through it. **[proposed]** Built as proposed (`chat_backdrop/strips.rs`,
-  `blur.rs`): the copy is a tenth of the screen's pixels a side (512 × 288 on the owner's
-  screen, 0.6 MB, held twice as a GPUI image), made with the picture from its bitmap, and
-  blurred by three box blurs one after another, which come within a tenth of a Gaussian's
-  width, a sixth at the softest stop; Blur strength is that Gaussian's sigma, as CSS's
-  `blur()` takes it. A change of strength blurs the copy again, which is kept, without making
-  the picture again. The fade is 32 strips, each a thirty-second more opaque. Each strip draws
-  the whole blur, as big as the screen, clipped to the strip, so no strip cuts the image and
-  none of them moves it by a part of a pixel.
-- **The dots** are a small tile, repeated across the pane as `backdrop::grain` repeats its
-  grain, one tile pixel a screen pixel, its origin on the screen's so the grid holds still.
-  Over the blur its strips fade out as the blur's fade in. **[proposed]** Built as proposed
-  (`dots.rs`, `strips.rs`): the tile is about 256 pixels a side, whole dots across and whole
-  pairs of rows down, black, each dot's coverage measured at 16 points a pixel. A row's dots
-  are an even number of pixels apart, so the next row's sit half way between them on whole
-  pixels, and the rows are a triangle's height apart, so each dot is as far from the six
-  round it. A dot an even number of pixels wide sits on a pixel's corner, an odd one on its
-  middle, so either fills whole pixels. Density takes the dots from five of their widths
-  apart to two and a half, and their darkness from 18 % to 50 %; the stops are still to be
-  tuned by eye (section 9). Tiles are made the first time a size, density and scale ask for
-  one, and the last four are kept.
-- **Order, bottom up:** the picture, the blur's strips, the dots' strips, then the chat.
+  frame (`draw_page_surface` and `page_surface_fragment`, `vendor/README.md`). What it lacks is
+  a way to be given a texture Koyo made: it draws only pixel buffers, which can't hold a
+  compressed format. So one more mark, beside a picture's, a capture's and a pane's (`Mark`
+  in `metal_renderer.rs`): a placeholder BGRA pixel buffer marked as standing for a texture the
+  app registered with the renderer, drawn over the screen's rectangle, clipped to the pane. A
+  `Koyo:` change, described in `vendor/README.md` as the others are. **[proposed]**
+  `register_texture` makes the texture of the blocks from any thread, on the system's GPU, as
+  `ASTC_4x4_LDR` or `ASTC_8x8_LDR` (section 9), and gives it a number; `release_texture` lets
+  it go. A test draws a picture so through the real renderer, headless, and finds it where it
+  was laid out, its colours as they were, and nothing past the pane (`chat_backdrop/tests.rs`).
+- **The dither, the opacity and the fade are the shader's.** The mark says how the texture
+  is drawn (`set_surface_backdrop`, `Mark::Backdrop`): its cells' size in screen pixels, how
+  many are lit, its opacity, and where its fade starts and ends. Its own fragment shader
+  (`backdrop_fragment`, `shaders.metal`) finds each pixel's cell from the screen's top left,
+  samples the picture at the cell's middle, lights the cell or not by the Bayer threshold
+  there, and gives it the opacity times the fade at its height in the pane, the pane being
+  the surface's content mask. Monodrive bakes its dither into its picture and fades it in
+  its shader. Here both are the shader's: the picture stays the smooth wallpaper, which ASTC
+  compresses well, where 8 × 8 blocks would smear a pattern two pixels across; a cell size,
+  density, opacity or fade changes without making the picture again; and the pattern lands
+  on the screen's own pixels at either resolution. **[proposed]**
+- **Taken from Monodrive, credited in the shader and here:** the 4 × 4 Bayer dither of a
+  picture's colours in 2 × 2 cells, a lit cell at its colour divided by its brightest
+  channel and an unlit one at 8 % of it, and the fade's stops. The Bayer matrix is the
+  standard one. No code is copied: Monodrive dithers on the CPU and fades in a pass of its own
+  over a captured layer; Koyo does both in the one draw.
+- **Order, bottom up:** the card, the dithered picture, then the chat.
 - **While dragging, the backdrop may slip by a frame.** Koyo's window is dragged by macOS
   (`start_window_move`, which is `performWindowDragWithEvent`), which moves it before Koyo
   hears of it, so the picture is a frame behind until it catches up. The first version
@@ -227,13 +221,13 @@ settled once it's built.
 
 ## 5. What a frame costs
 
-Once the picture is made, a frame draws one texture clipped to the pane, the blur's strips
-and the dots' tiles, all sampled by the GPU. Nothing is decoded, blurred or compressed while
-the window moves, resizes or scrolls. The picture is made again only when what it's made from
-changes (3.1), off the main thread. The card shows until a screen's first picture is ready;
-after that the last one made shows until the next is, so moving the Dim slider along shows
-each stop in turn rather than the card between them. One picture of a screen is made at a
-time, and the last one asked for next (`chat_backdrop/screens.rs`). **[proposed]**
+Once the picture is made, a frame draws one textured rectangle for each chat, clipped to its
+pane, the dither and the fade worked out as it's sampled. Nothing is decoded, dithered or
+compressed while the window moves, resizes or scrolls. The picture is made again only when
+what it's made from changes (3.1), off the main thread. The card shows until a screen's first
+picture is ready; after that the last one made shows until the next is. One picture of a
+screen is made at a time, and the last one asked for next (`chat_backdrop/screens.rs`).
+**[proposed]**
 
 ## 6. Settings
 
@@ -243,33 +237,34 @@ on by default, customizable, in Appearance]**
 | Row | Control | Default | Shown |
 |---|---|---|---|
 | Chat background | switch | on | always |
-| Dim | slider, Less to More | proposed 60% | when on |
-| Dot size | slider, Fine to Coarse | proposed 1 pt | when on |
-| Density | slider, Sparse to Dense: the grid's spacing and how dark its dots are | proposed as the reference | when on |
-| Blur | switch | on | when on |
-| Blur strength | slider, Soft to Strong | proposed 24 pt | when on and Blur is on |
-| Blur starts | slider, High to Low | half way | when on and Blur is on |
+| Opacity | slider, Less to More | 24 %, as Monodrive's | when on |
+| Cell size | slider, Fine to Coarse: how many screen pixels a cell is a side | 2, as Monodrive's | when on |
+| Density | slider, Sparse to Dense: how many cells are lit | as Monodrive's | when on |
+| Fade | switch | on | when on |
+| Fade starts | slider, High to Low | 18 % of the way down, as Monodrive's | when on and Fade is on |
+| Fade ends | slider, High to Low | 72 %, as Monodrive's | when on and Fade is on |
 | Quality | slider, Smallest to Sharpest, the memory the stop takes on the person's screens under it | 8 × 8, full | when on |
 
-Built (`settings_view/chat_backdrop.rs`, `settings/chat_backdrop.rs`), the stops for now: Dim
-30, 45, 60, 75 and 90 %; Dot size ½, 1, 1½ and 2 pt; Density 0, ¼, ½, ¾ and 1, from five dot
-widths apart and 18 % dark to two and a half and 50 % (section 4); Blur strength 8, 16, 24, 36
-and 48 pt; Blur starts a quarter, three eighths, half, five eighths and three quarters of the
-way down; Quality its four stops (3.1). They're still to be tuned by eye (section 9).
+**[asked: mapped onto the dither, 2026-11-16]** The first build's rows were Dim, Dot size,
+Density, Blur, Blur strength and Blur starts; Dim became Opacity, Dot size the cell's size,
+Density how many cells are lit, and the blur's rows the fade's. The stops for now: Opacity
+12, 18, 24, 35 and 50 %; Cell size 1, 2, 3 and 4 pixels; Density, the threshold scaled by
+0.6, 0.8, 1, 1.25 and 1.5 (more lights more cells); Fade starts at 0, 9, 18, 30 or 45 % of the
+way down, and ends at 50, 60, 72, 85 or 100 %, so it always ends below where it starts;
+Quality its four stops (3.1). They're still to be tuned by eye (section 9).
 
 - **Rows show only when they apply**, not greyed out: with the switch off, the section is the
   switch alone. **[asked]** The settings pages are built from the settings as they draw, so a
   row left out is simply not added; the MCP server page does the same with its port and
-  clients (`settings_view/mcp_server.rs`). **[proposed: the blur's own rows following the
+  clients (`settings_view/mcp_server.rs`). **[proposed: the fade's own rows following the
   same rule]**
 - **Search still finds it.** Settings search looks at the rows shown, so with the switch off
-  "dim" or "blur" would find nothing. The switch's description names what it reveals, for
-  instance "Your wallpaper, dimmed under a dot screen behind chats. Turn it on to set the dim,
-  the dot size and density, the blur, its strength and where it starts, and the quality."
-  **[proposed]** Built so: off, the switch's description says that; on, its first sentence
-  alone. The Blur switch does the same for its two rows while it's off ("Turn it on to set
-  its strength and where it starts."). A test searches the section on, with the blur off,
-  and off, for each row's word.
+  "opacity" or "fade" would find nothing. The switch's description names what it reveals:
+  off, "Your wallpaper behind chats, dithered in its own colours. Turn it on to set its
+  opacity, the cell size and density, the fade, where it starts and ends, and the quality.";
+  on, its first sentence alone. The Fade switch does the same for its two rows while it's
+  off ("Turn it on to set where it starts and ends."). A test searches the section on, with
+  the fade off, and off, for each row's word. **[proposed]**
 - **The Quality row's memory** is worked out from the sizes of the screens Koyo's windows are
   on, summed for more than one: "About 3.7 MB on this screen." **[asked: shown; proposed: how]**
   Built so, after "How sharp the wallpaper behind chats is kept, always compressed."; "on these
@@ -283,12 +278,12 @@ way down; Quality its four stops (3.1). They're still to be tuned by eye (sectio
   ```json
   "chat_backdrop": {
     "on": true,
-    "dim": 0.6,
-    "dot_size": 1.0,
-    "density": 0.5,
-    "blur": true,
-    "blur_strength": 24.0,
-    "blur_start": 0.5,
+    "opacity": 0.24,
+    "cell": 2.0,
+    "density": 1.0,
+    "fade": true,
+    "fade_start": 0.18,
+    "fade_end": 0.72,
     "quality": "astc8_full"
   }
   ```
@@ -300,15 +295,15 @@ way down; Quality its four stops (3.1). They're still to be tuned by eye (sectio
 | Rendering an image once on the CPU and drawing it as a GPUI image | `backdrop.rs` (the glass theme's gradient and grain) |
 | Decoding any wallpaper format at a set size | `viewer/picture.rs` (ImageIO) |
 | Drawing it laid out into a bitmap | `viewer/bitmap.rs` (`Canvas`, Quartz) |
-| A tile repeated one pixel to a screen pixel | `backdrop::grain` |
+| The look: a Bayer dither of a picture's colours, and its fade | Monodrive's Dither ([donnes/monodrive](https://github.com/donnes/monodrive), MIT) |
 | Drawing a texture over one rectangle, clipped to another, rounded | vendored `metal_renderer.rs`, `draw_page_surface` |
 | Hearing the window move and resize | `cx.observe_window_bounds`, used by `shell.rs` and `popup.rs` |
 | Rounded clipping of the chat | `theme/card.rs`, `island` |
 | A settings row and its controls | `settings_view/components.rs`, `native_slider.rs`, `native_switch.rs` |
 
 Where it would go **[proposed]**: a module of its own, `koyo-rs/koyo/src/chat_backdrop/`, a
-file for each job (reading the wallpaper, laying it out, making the picture, the dots, the
-blur, the element), each under the 500 lines `script/hygiene` holds them to; the setting in
+file for each job (reading the wallpaper, laying it out, making the picture, the element),
+each under the 500 lines `script/hygiene` holds them to; the setting in
 `settings/chat_backdrop.rs` and its rows in `settings_view/chat_backdrop.rs`. `settings.rs`
 is 489 lines, so its new field and default may need something moved out of it first.
 
@@ -324,8 +319,14 @@ is 489 lines, so its new field and default may need something moved out of it fi
   long as it runs, trails what it shows by a frame or two, and redraws the window whenever
   anything behind changes. The owner picked the wallpaper alone, for its cost and
   simplicity.
-- **A true ordered dither** (Bayer) of the picture's colours, and **halftone dots** whose
-  size follows its brightness. The owner picked the dot screen, as in the reference.
+- **A dot screen over the picture**, dimmed towards the card's colour, with a blurred copy
+  fading in towards the bottom under strips of a black dot tile. Built first, from the doc's
+  description of the reference, and dropped on 2026-11-16 once the owner saw it: the
+  reference is a dither of the picture's own colours, faded to the window's glass.
+- **Halftone dots** whose size follows the picture's brightness, and Monodrive's other
+  effects (ASCII, scanlines, and Haze, which blurs and darkens instead of dithering).
+- **The dither baked into the picture**, as Monodrive bakes it: 8 × 8 blocks would smear a
+  pattern two pixels across, and every change of the look would make the picture again.
 - **The picture uncompressed** at full resolution (118 MB, as GPUI keeps an image twice), and
   **as a JPEG**: the GPU can't sample a JPEG, so it would be decoded back to the same 59 MB to
   be drawn; it would only save making it again, which is mostly decoding the wallpaper anyway.
@@ -342,12 +343,16 @@ is 489 lines, so its new field and default may need something moved out of it fi
   (a 6016 px square HEIC), the file warm, takes 80 ms to decode, 70 ms to lay out and dim
   and 33 ms to compress at 8 × 8, full: under a fifth of a second, 0.6 s the first time the
   file is read. At half resolution it's 67, 17 and 11 ms; 4 × 4 at full compresses in 30 ms.
-  (`make.rs`, `making_a_screens_picture_takes`, run with `--ignored`.)
-- Whether 8 × 8 blocks show under the dim and the dots, against 4 × 4 at half resolution,
-  which costs the same, by screenshots side by side. If they look alike, one of the two
-  middle stops goes. Measured so far, against the picture uncompressed and dimmed 60 %, on
-  the owner's wallpaper: 8 × 8 full 40.9 dB, 4 × 4 half 39.7 dB, 4 × 4 full 47.0 dB, 8 × 8
-  half 36.7 dB. The screenshots are still to be taken.
+  (`make.rs`, `making_a_screens_picture_takes`, run with `--ignored`.) In the bundled app on
+  the agent desktop, 250 to 420 ms, and up to 4.7 s while the Mac ran at a load of 50 from
+  other builds.
+- Whether 8 × 8 blocks show under the dither, against 4 × 4 at half resolution, which costs
+  the same, by screenshots side by side. If they look alike, one of the two middle stops
+  goes. Measured against the picture uncompressed and dimmed 60 %, on the owner's wallpaper:
+  8 × 8 full 40.9 dB, 4 × 4 half 39.7 dB, 4 × 4 full 47.0 dB, 8 × 8 half 36.7 dB. Under the
+  first look the four stops looked alike at 2× (`.superpowers/v/evidence/20261116-141927-backdrop`,
+  `quality-*-x2.png`); under the dither they're to be shot again, as a cell samples the
+  picture at one point.
 - Whether the ASTC texture is sampled as sRGB or not: GPUI's atlas holds plain BGRA and
   blends its colours as they are, so the texture's format should match, or the picture comes
   out darker. **Settled**: not as sRGB. Drawn through the renderer headless, a picture
@@ -355,8 +360,15 @@ is 489 lines, so its new field and default may need something moved out of it fi
   colours out of sRGB as it samples them (`the_gpu_draws_a_screens_picture_as_it_was_laid_out_and_only_where_its_pane_is`;
   the sRGB format tried once and put back).
 - How far the backdrop slips while the window is dragged, recorded on the real window.
-- The text's contrast over the see-through composer and cards, at each Dim stop, in both
-  appearances.
+  **Not measured yet.** On the agent desktop `desktop_drag` answers only once the move is
+  done, so every picture taken comes after it, and the agent desktop shows no wallpaper of
+  its own around the window to compare with. After each move, at rest, the backdrop lay where
+  the screen's picture is. Left to the owner's eye, or to a trace of the window's frame
+  against the frame drawn, which needs code.
+- The text's contrast over the see-through composer and cards, at each Opacity stop, in both
+  appearances. Under the first look, the picture showing 40 % (Dim 60 %), text over the
+  brightest and darkest bands was hard to read in both appearances; at 25 % and less it read
+  everywhere. The dither at its default 24 % is to be checked the same way.
 - What macOS names for a moving (aerial) wallpaper: a still the backdrop can use, or nothing,
   which shows the card. **Unverified**, and left so: no wallpaper is changed to find out,
   the agent desktop's included, as it's the owner's system. What the code does with it: a
@@ -365,8 +377,10 @@ is 489 lines, so its new field and default may need something moved out of it fi
   changes (`screens.rs`, `finished`). On
   the owner's QA list, as optional.
 - That a downloaded wallpaper's file, under `com.apple.mobileAssetDesktop`, can be read by
-  Koyo as it runs.
-- The stops' values for Dim, Dot size, Density and the blur, by eye against the reference.
+  Koyo as it runs. **Settled**: the bundled app made screen 4's picture from the owner's
+  `Radial Yellow.heic` (its log, 2026-11-16 14:19:37).
+- The stops' values for Opacity, Cell size, Density and the fade, by eye against the
+  reference (`.superpowers/ref/reference.jpg`, the owner's screenshot of Monodrive).
 
 ## 10. Order of work [proposed]
 
@@ -381,17 +395,19 @@ is 489 lines, so its new field and default may need something moved out of it fi
    Screenshots of the real app on this checkout. **Built**: the mark (section 4), the
    screens' pictures (`screens.rs`, `texture.rs`) and the chat's element (`element.rs`, the
    chat view's first child), the setting's values in `settings.json` (`settings/chat_backdrop.rs`).
-   The screenshots wait for the agent desktop.
-4. The blur's strips and the dots' tiles. **Built**: `blur.rs`, `dots.rs`, `strips.rs`;
-   tested for the blur's width, the dots' places in their tile and the strips meeting from
-   where the blur starts to the bottom. How they look waits for the agent desktop.
-5. The see-through composer and cards. **Built** (section 1); how they read waits for the
-   agent desktop.
-6. The settings, their rows and their search wording. **Built** (section 6); the stops'
-   values wait to be tuned by eye.
-7. Noticing a change of wallpaper, Space, screen and settings. **Built** (3.3); how it does
-   on screen waits for the agent desktop.
-8. The drag measured; Koyo's own drag only if the slip shows.
+   Shot in a test Koyo on the agent desktop on 2026-11-16, under the first look:
+   `.superpowers/v/evidence/20261116-141927-backdrop` (dark) and `…-142530-backdrop-light`.
+   Two chats side by side met without a seam, and where a pane reached past the screen's
+   edge the card showed.
+4. The blur's strips and the dots' tiles. **Built, then dropped for step 11.**
+5. The see-through composer and cards. **Built** (section 1).
+6. The settings, their rows and their search wording. **Built** (section 6), then mapped onto
+   the dither in step 11. On screen the switches turned on and off by a click, and the rows
+   hid and showed as section 6 says.
+7. Noticing a change of wallpaper, Space, screen and settings. **Built** (3.3). On screen, a
+   screen's picture was let go 30 s after no chat showed it, and made again in 353 ms when
+   one did. A changed wallpaper and Space weren't tried, as no wallpaper is changed for it.
+8. The drag measured; Koyo's own drag only if the slip shows. **Not measured** (section 9).
 9. A visual check, as the tab switcher has (`docs/tab-switcher.md` 7): the shell in a real
    window off screen, over a wallpaper kept in the checkout rather than the person's, saving
    screenshots with the backdrop on and off, in both appearances, and at each Quality stop.
@@ -401,8 +417,8 @@ is 489 lines, so its new field and default may need something moved out of it fi
    check's own, 2560 × 1440 points, at (480, 220), as a window off screen lies on no screen.
    It saves the backdrop light and dark, at each Quality stop with a crop of each where the
    picture is sharp, off in both appearances, and Appearance › Chat background. Its windows
-   open in the person's session, so it's run only while they're away; this step's
-   screenshots are taken in a test Koyo on the agent desktop instead.
+   open in the person's session, so it's run only while they're away (an idle time of 5
+   minutes); this step's screenshots are taken in a test Koyo on the agent desktop instead.
 
    ```sh
    Q=$PWD/.superpowers/qa/chat-backdrop && mkdir -p $Q/tmp &&
@@ -410,3 +426,9 @@ is 489 lines, so its new field and default may need something moved out of it fi
      KOYO_LOG_DIR=$Q/logs script/cargo run -p koyo --features visual-check -- \
      --visual-check-chat-backdrop
    ```
+10. The first look tried on screen. Done on 2026-11-16 (step 3's shots); the owner found it
+    nothing like the reference.
+11. The reference's look: Monodrive's dither and fade, drawn by the renderer's shader as the
+    texture is sampled (section 4), the picture made without the dim, the blurred copy and
+    dot tile gone, the settings mapped onto it (section 6). **Written; not built yet**: the
+    Mac's builds are paused while the owner's keyboard fix is installed.
