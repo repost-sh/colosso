@@ -298,17 +298,17 @@ If the keyboard has moved since (the person clicked the composer while the rende
 thinking), the key is dropped and counted. A key is never given to an owner that didn't have
 it when it was pressed.
 
-**Which keys Koyo keeps.** `[owner]` The layer takes this as one predicate, and two policies
-fit it.
+**Which keys Koyo keeps.** Decided by the owner, 2026-11-16: policy A. The layer takes the
+policy as one predicate, and two fit it.
 
 | Policy | Koyo keeps | For | Against |
 | --- | --- | --- | --- |
 | A. As the owner's build behaves today with Koyo in front | Every ⌘ or ⌃ key GPUI has a binding for | No change for the owner. ⌘R and ⌥⌘I work when a renderer hangs. No shortcut of Koyo's waits for a trip to the renderer. A ⌘ key Koyo doesn't bind goes on to the page | A web app's own shortcut never reaches it where Koyo binds the same key (⌘F), as today |
 | B. Chrome's split, as `ce2f3c7fc` made it | The eight tab and window keys of `reserved.rs` | Web apps get their own ⌘ shortcuts | ⌘F, ⌘R, ⌘G, ⌘=, ⌘-, ⌘0, ⌘[, ⌘], ⌥⌘I, ⌥⌘R and ⌘C/X/V/A/Z wait for the renderer. A page can block them. A hung renderer never hands them back |
 
-The recommendation is A now. It makes the behaviour with Koyo behind the same as with Koyo in
-front, which is the bug `ce2f3c7fc` set out to fix, and changes nothing else. B is a product
-change the owner can ask for later by changing the predicate. Under A, "GPUI has a binding" is
+A makes the behaviour with Koyo behind the same as with Koyo in front, which is the bug
+`ce2f3c7fc` set out to fix, and changes nothing else. B stays possible later by changing the
+predicate. Under A, "GPUI has a binding" is
 found by offering: `GpuiFirst` hands the key on when GPUI has no use for it, so ⌘`, ⌘H, ⌘M and
 the menu's keys go on working.
 
@@ -587,8 +587,8 @@ treats the symptom. Section 4.1 removes the guess.
 
 It also changed more than it said. Before it, with Koyo in front, GPUI took every ⌘ key Koyo
 binds in `AppKit`'s pass, and that is how the owner's build behaves. `ce2f3c7fc` made every
-key but eight the page's first. That is policy B of section 4.1, a product change, and it is
-the owner's to choose.
+key but eight the page's first. That is policy B of section 4.1, a product change the owner
+didn't ask for. He has since picked policy A.
 
 **What is undone** (migration step 1):
 
@@ -596,7 +596,7 @@ the owner's to choose.
   `koyo_router_offering`, and the `Offers` branch in `handle_key_event`. The match of a key
   equivalent to its key-down by the event's time stays, as it is from an earlier commit;
 - in the app: `hooks::gpui_first`, `keyboard/reserved.rs` (it would be dead code, which the
-  lint refuses in a binary crate, and it comes back with policy B if the owner picks it), and
+  lint refuses in a binary crate, and it would come back with policy B), and
   the tests in `keyboard/tests/keys.rs` that test a copy of the window's logic;
 - in the docs: `docs/keyboard.md` 10 is marked superseded by this file, and
   `vendor/README.md`'s "One key, one owner" bullet goes.
@@ -694,7 +694,8 @@ outside the checkout.
 | A macOS virtual machine | Fully apart. Snapshots make each run start clean | About 60 GB outside the checkout. The GPU is paravirtual, and a page's compositing may differ. Focus, key window, Spaces and menus are the real `AppKit` |
 | A spare Mac | The most faithful, and no load on the owner's | Hardware, and a runner to keep |
 
-Recommendation: try the second user first, in a one-day spike that runs `cmd-l-once` and
+The owner wants to try a Mac mini on his network first (2026-11-16), which is the third row.
+How it's reached and driven is `[open]`. Failing that, the recommendation was: try the second user first, in a one-day spike that runs `cmd-l-once` and
 `no-panel-off-space` there. It costs the least and keeps the real GPU. If a session without a
 physical display doesn't composite pages, a spare Mac is the durable answer, and the virtual
 machine is the fallback for focus and window sequences only.
@@ -724,7 +725,7 @@ and the bench sequences named, with evidence under `.superpowers/v/evidence/`.
 | 2 | The crate `koyo-seam`, empty of rules: the input label and journal, `NSApp`'s `sendEvent:` patch moved in, the registry of pages (which page a view is, and a page's keys' view, registered by the host as it makes and closes them), `seam::inject` for the probe, `seam::engine_input` for the protocol, `probe seam`, `script/seam-fence` in report mode, `script/seam-bench`. The desk host's tag, if a check shows it survives. No behaviour changes | Tier 0 for the label. The engine's smoke suite while the owner is idle, for the moved `NSApp` patch. A bench sequence `labels`: a probe click, a `desktop_click` and a `browser_click` each show their label in `probe seam` | 2 days |  |
 | 3 | Menus read the label. The gate moves in, its monitor goes, the share picker is checked | The gate's tests in tier 0. `no-menu-for-agents`, which is step 0's proof as a script. The owner's own right-click and a `<select>` | 1 day | yes: menus |
 | 4 | The keyboard moves in: `keyboard/*` to `koyo-seam`, reading step 2's registry in place of the host's `key_view` and `page_of`. `press_routed` in place of the one-second window. Controls refuse the first responder. Key and active state still come from GPUI's observer, until step 9 | The 48 tests moved. The rig's first version. `composer-after-pinned`, `ctrl-tab-from-page`, and `docs/keyboard.md` 9's journeys 1 to 5, 7, 8 and 11 as sequences | 3 days |  |
-| 5 | Keys: `keys::route`, `page_left_key`, the fork's `hand_back`, key-ups (section 4.1), under the policy the owner picked | The table test over the real keymap. The rig with hand-backs at once, late, and after the keyboard moved, and with marked text. `cmd-l-once`, `key-once`, `shortcut-under-typing` with the owner's typing pattern, F12 while not in front, ⌥→ held in a page. Dead keys and an input method (`docs/keyboard.md` 9, journey 10) by the owner or in tier 3, since the probe can't compose text | 2 days | yes: keys |
+| 5 | Keys: `keys::route`, `page_left_key`, the fork's `hand_back`, key-ups (section 4.1), under policy A | The table test over the real keymap. The rig with hand-backs at once, late, and after the keyboard moved, and with marked text. `cmd-l-once`, `key-once`, `shortcut-under-typing` with the owner's typing pattern, F12 while not in front, ⌥→ held in a page. Dead keys and an input method (`docs/keyboard.md` 9, journey 10) by the owner or in tier 3, since the probe can't compose text | 2 days | yes: keys |
 | 6 | Presses: the ledger, causes for a press's end, the fork keeps the mechanics | Tier 0. The rig with a lost release. `dead-ui-after-menu`, `divider-fast-drag` | 2 days |  |
 | 7 | Lifecycle: the page state machine, the host's `native.rs` as its caller, one container per page, the remount hooks | Tier 0. The engine's smoke suite while the owner is idle. `devtools-own-tab`, a tab left with the keyboard in its page | 3 days |  |
 | 8 | Geometry: one frame function, the layer sets every native frame, one way to present in the transaction | Property tests for G1 and G2. `page-covers-pane`, which reads the pixel column at a dark page's left edge with the sidebar at a fractional width. The existing fit drags | 1 to 2 days | yes: steps 6 to 8 together |
@@ -802,9 +803,10 @@ To go into the repository's agent instructions at step 10. `[proposed]`
 
 ## 14. Open questions for the owner
 
-1. Which keys Koyo keeps while a page has the keyboard: policy A or B (section 4.1). The
-   recommendation is A.
-2. Where tier 3 runs (section 9.4).
+1. Which keys Koyo keeps while a page has the keyboard (section 4.1). Decided 2026-11-16:
+   policy A.
+2. Where tier 3 runs (section 9.4). The owner wants to try a Mac mini on his network first.
+   How it's reached is being found out.
 3. Whether a posted click should make a page the person's and lock agents out for five
    seconds (section 5.3). The design keeps today's behaviour.
 4. Whether gpui-fast's core stays unvendored (section 4.2).
