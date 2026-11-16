@@ -36,6 +36,8 @@
 //! seam                     what the native layer keeps (`koyo-seam`): whose the window's last
 //!                          press or key was and how long ago, each page's last input through
 //!                          its protocol, and the processes known to post inputs
+//! menus                    the menu bar, never opened: each menu's title and its items' names,
+//!                          `+key` after one with a key of its own
 //! key                      the window made key now, the app left behind (the agent desktop)
 //! keyboard                 each window's keyboard holder, first responder, key; app in front
 //! bounds <name>            where a named part was drawn (`crate::marks`): chat-composer,
@@ -243,6 +245,7 @@ fn run(verb: &str, rest: &str, folder: &Path) -> String {
         }
         ("press", _) => keys::press(&window, rest),
         ("seam", _) => keys::seam(&window),
+        ("menus", _) => keys::menus(),
         ("keyboard", _) => keys::keyboard(),
         ("bounds", _) => keys::bounds(rest),
         ("key", []) if rest.is_empty() => keys::make_key(&window),
