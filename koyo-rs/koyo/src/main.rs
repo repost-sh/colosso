@@ -8,6 +8,7 @@ mod bottom;
 mod browser;
 mod changes;
 mod chat;
+mod chat_backdrop;
 mod checkout;
 mod checkouts;
 mod control;
