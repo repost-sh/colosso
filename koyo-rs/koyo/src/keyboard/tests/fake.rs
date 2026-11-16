@@ -20,6 +20,8 @@ pub struct Fake {
     pub keyed: RefCell<Vec<WindowKey>>,
     /// Whether a change is told to the keyboard, as the window tells it of every change.
     pub tells: Cell<bool>,
+    /// Whether the windows aren't key.
+    pub not_key: Cell<bool>,
 }
 
 impl Fake {
@@ -71,6 +73,10 @@ impl AppKit for Fake {
     fn make_key(&self, window: WindowKey) {
         self.keyed.borrow_mut().push(window);
     }
+
+    fn is_key(&self, _: WindowKey) -> bool {
+        !self.not_key.get()
+    }
 }
 
 /// What waits for the main thread's next turn.
@@ -99,6 +105,6 @@ pub fn installed() -> (Rc<Fake>, Turns) {
     fake.tells.set(true);
     let turns = Turns::default();
     let queue = turns.clone();
-    hooks::install(fake.clone(), Box::new(move |task| queue.0.borrow_mut().push(task)));
+    hooks::install(fake.clone(), Box::new(move |_, task| queue.0.borrow_mut().push(task)));
     (fake, turns)
 }

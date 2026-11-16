@@ -24,6 +24,7 @@ use objc2_app_kit::{
 use objc2_foundation::{NSNotification, NSNotificationCenter, NSNotificationName};
 
 use super::hooks;
+use super::rate::Later;
 use super::reconcile::{AppKit, Responder};
 use super::state::{PaneId, WindowKey};
 
@@ -35,6 +36,8 @@ struct Known {
 
 thread_local! {
     static KNOWN: RefCell<HashMap<WindowKey, Known>> = RefCell::default();
+    /// Koyo's floating windows, by their `NSWindow`, and the window each belongs to.
+    static OVER: RefCell<HashMap<usize, WindowKey>> = RefCell::default();
     /// What hears `AppKit`'s notifications, kept for as long as the app runs.
     static OBSERVERS: RefCell<Vec<Retained<ProtocolObject<dyn NSObjectProtocol>>>> =
         RefCell::default();
@@ -167,6 +170,10 @@ impl AppKit for Real {
             ns.makeKeyWindow();
         }
     }
+
+    fn is_key(&self, window: WindowKey) -> bool {
+        known(window).is_some_and(|(ns, _)| ns.isKeyWindow())
+    }
 }
 
 /// What GPUI's windows tell of their keyboard (gpui-fast-macos's `responders`), for the
@@ -218,7 +225,17 @@ fn observe(name: &NSNotificationName, heard: impl Fn(&NSNotification) + 'static)
     OBSERVERS.with(|observers| observers.borrow_mut().push(observer));
 }
 
-/// A window `AppKit` says will close: one the keyboard is kept for, forgotten, or another.
+/// GPUI's `window`, a floating window of Koyo's, belongs to `over`.
+pub fn over(window: &Window, over: WindowKey) {
+    if let Some(ns) = crate::native::window::ns_window(window) {
+        let ns = Retained::as_ptr(&ns) as usize;
+        OVER.with(|held| held.borrow_mut().insert(ns, over));
+    }
+}
+
+/// A window `AppKit` says will close: one the keyboard is kept for, forgotten, or another, over
+/// the window it belongs to, a floating window of Koyo's, or a window of Chromium's whose parent
+/// is a window the keyboard is kept for.
 fn closing(notification: &NSNotification) {
     let Some(object) = notification.object() else {
         return;
@@ -226,11 +243,16 @@ fn closing(notification: &NSNotification) {
     let Ok(window) = object.downcast::<NSWindow>() else {
         return;
     };
-    let key = key_of(&window);
-    if let Some(key) = key {
+    if let Some(key) = key_of(&window) {
         KNOWN.with(|known| known.borrow_mut().remove(&key));
+        hooks::forget(key);
+        return;
     }
-    hooks::closed(key, window.isKeyWindow());
+    let ns = Retained::as_ptr(&window) as usize;
+    let floating = OVER.with(|held| held.borrow_mut().remove(&ns));
+    let parent = || window.parentWindow().and_then(|parent| key_of(&parent));
+    let over = floating.or_else(parent);
+    hooks::closed_over(over, window.isKeyWindow());
 }
 
 /// Has the keyboard move `AppKit`'s first responders, and hear what the windows and the app
@@ -239,8 +261,17 @@ pub fn install(cx: &mut App) {
     if MainThreadMarker::new().is_none() {
         return;
     }
-    let executor = cx.foreground_executor().clone();
-    let later: hooks::Later = Box::new(move |task| executor.spawn(async move { task() }).detach());
+    let (executor, timers) = (cx.foreground_executor().clone(), cx.background_executor().clone());
+    let later: Later = Box::new(move |after, task| {
+        let timer = (!after.is_zero()).then(|| timers.timer(after));
+        let waited = async move {
+            if let Some(timer) = timer {
+                timer.await;
+            }
+            task();
+        };
+        executor.spawn(waited).detach();
+    });
     hooks::install(Rc::new(Real), later);
     set_responders(Rc::new(Told));
     koyo_browser_host::native::set_keyboard(|pane, views| match views {

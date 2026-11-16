@@ -15,7 +15,7 @@
 
 use std::path::Path;
 
-use gpui_kit::{App, KeyBinding, actions};
+use gpui_kit::{App, Entity, KeyBinding, actions};
 
 pub mod agent;
 pub(crate) mod control;
@@ -69,6 +69,11 @@ pub fn clear_data(cx: &mut App) {
     let browsers = host::Browsers::global(cx);
     browsers.update(cx, host::Browsers::clear_data);
     crate::history::clear_browsing(cx);
+}
+
+/// The view of the page the host knows as `pane`, while it's open.
+pub fn page_view(pane: koyo_browser_ipc::PaneId, cx: &mut App) -> Option<Entity<BrowserView>> {
+    host::Browsers::global(cx).read(cx).view(pane)
 }
 
 /// The packaged engine's version and its Chromium's, once it runs.

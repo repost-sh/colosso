@@ -153,6 +153,7 @@ pub fn open<V: Render>(
     let opened = cx.open_window(options, |window, cx| {
         #[cfg(target_os = "macos")]
         crate::native::window::float_on_its_space(window);
+        crate::keyboard::opened_over(window, over);
         cx.new(|cx| {
             if !kept {
                 let popup = window.window_handle();

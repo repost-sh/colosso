@@ -217,5 +217,6 @@ fn what_the_person_asked_for_is_the_lines_cause() {
 }
 
 mod fake;
+mod inactive;
 mod reconciler;
 mod told;

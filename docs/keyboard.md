@@ -49,14 +49,23 @@ Each move has a cause, and the log names it:
 | app active, app inactive | Koyo in front, or another app (`AppKit`'s notifications) | the surface, or away |
 | menu opened, menu closed | a native menu tracking the keys, Koyo's or Chromium's (`AppKit`'s notifications) | a menu, then the surface |
 | dialog opened, dialog closed | a dialog of Koyo's over the window, from open to closed (`popup.rs`) | away, then the surface once the window is key |
-| window closed | another window of Koyo's that had the keys (a dialog, the tab switcher's panel) or one of Chromium's closing | the surface of the window the keyboard is kept for, made the key window |
+| window closed | another window that had the keys closing: one of Koyo's floating windows (a dialog, the launcher, the tab switcher's panel), or one of Chromium's whose parent is a window the keyboard is kept for | the surface of the window it belonged to, made the key window; a window it belonged to that isn't known is left to `AppKit`, and a dialog's own end is only the dialog's to tell |
+| healed | a key or a press coming to a window the holders said had a menu or was away: only the key window of the app in front, with no menu tracking, gets one | the window is key, no menu tracks and no dialog of Koyo's is open over it; then the key or the press is routed |
 | page closed | the page that had it closed (`browser/view.rs`) | the window's own keys |
 
 GPUI's focus moves heard as a window stops being key aren't moves: GPUI's focus stays where it
 was, though its views hear it leave. Two pages' focus moves are heard in no set order, so a page
 left after another took the keyboard changes nothing. The mouse's side buttons only step through
-a page's history, and give it no keyboard. Whether the window is key is read again as each frame
-of the shell is drawn, so a change the holders missed is made up.
+a page's history, and give it no keyboard.
+
+GPUI tells a page its focus left only in a frame that follows one drawn with the window key. A
+move made while the window wasn't, as by the very press that makes it key again (back from the
+launcher or another app, on the composer), is told nothing of, and the page would hold on with
+GPUI's focus elsewhere. So a page holds only while GPUI's focus is its view's: as the window
+becomes key, and as each frame of the shell is drawn (every frame after a focus move is), a page
+whose view hasn't GPUI's focus has the keyboard go to GPUI's view, with "focus moved"
+(`keyboard::follow_focus`). Whether the window is key is read again then too, so a change the
+holders missed is made up.
 
 ### 3.1 What the person asks for
 
@@ -101,13 +110,14 @@ Each of GPUI's windows tells the keyboard three things, through the vendored gpu
   turn, once whatever asked is done. Chromium asks for itself as a page opens, loads or is told
   to focus, in whatever window its views are in, and an agent's input to a page can have it
   ask. Anything else that moves it off what's wanted is put back the same way. A window put
-  back more than 20 times in a second is left as it is until the second is up.
+  back more than 20 times in a second is left as it is until the second is up (`rate.rs`).
 - **Every press, before it's handed on**, from the hit test the window makes to route it. Over a
   page, it's the person's click: the page's view taking the first responder in the second after
   it, as `AppKit` hands it the press or Chromium asks after a trip to the renderer, is theirs,
   and makes the page the holder; so is a press on a page that has it already. A press GPUI
-  keeps for itself never reaches the page, which then takes nothing, and a press anywhere else
-  ends the click. Over GPUI's own content, GPUI's view is made the first responder first if the
+  keeps for itself never reaches the page, which then takes nothing. The click ends as it's
+  used, at a press anywhere else, and as the keyboard moves for anything else (⌘L, ⌃⇥, the
+  launcher, GPUI's focus), so a late ask of the page's after that is refused. Over GPUI's own content, GPUI's view is made the first responder first if the
   holder is GPUI's and it isn't, so a press on the composer always gives it the keys; with a
   page holding, the press is GPUI's to judge: one that moves GPUI's focus moves the holder,
   and a button leaves the keyboard in the page.
@@ -117,6 +127,10 @@ Each of GPUI's windows tells the keyboard three things, through the vendored gpu
   marked text), which the key belongs to wherever it is. Key equivalents, Koyo's shortcuts
   and the menu's, are offered by the application before the window hears the key at all, and
   go as they did. The modifiers go to GPUI's view too, whoever has the keyboard, as before.
+- A key, or a press on a window that's key, finding the holders saying a menu has the keys or
+  they're away has them made right first (cause "healed"): only the key window of the app in
+  front, with no menu tracking, is sent either, so a menu's end, a dialog's or the window
+  becoming key was missed. Then it's routed as any other.
 
 ## 6. The log
 
@@ -134,8 +148,9 @@ Surfaces are named by kind and by pane (the shell's pane id for GPUI's parts, th
 host's for a page), never by anything in them: no character, no key code, nothing a key could be
 told from, as passwords go the same way. Refused pages, anything healed, menus, dialogs and the
 keyboard leaving the window are warnings, the rest is information. Nothing is written for a key
-that goes where it should. A release GPUI never heard and is told of is one line at
-`koyo::input`.
+that goes where it should. Refusals and heals are 20 lines a second a window at most; past that
+they're counted, and a second on one line says how many more there were (`rate.rs`). A release
+GPUI never heard and is told of is one line at `koyo::input`.
 
 ## 7. Every surface
 
@@ -165,6 +180,12 @@ that goes where it should. A release GPUI never heard and is told of is one line
 - `DevTools` shown with ⌥⌘I don't take the keyboard, as before; Chrome's do.
 - A page that asks for the keyboard more than 20 times in a second is let have it until the
   second is up; a key in the meantime still goes where it should, as the router moves it first.
+- A page refused the keyboard while an agent drives it loses the focus Chromium gave it: the
+  same as a page an agent drives out of sight, which never has it. Agents type and click through
+  the engine (`Input.insertText`, `Input.dispatchKeyEvent`, `Input.dispatchMouseEvent`), which
+  needs no focus, and nothing of an agent's asks for it (no focus emulation either). Whether a
+  page that reads its own focus (`document.hasFocus()`) behaves for an agent then is only to be
+  seen on screen (section 9, 11).
 - A key that comes while a dead key or an input method's text is being composed goes where the
   composition is, even if that's off what the holder wants; the next key after it is routed.
 - None of this has been run on screen yet (section 9): the reconciler, the hooks and the router

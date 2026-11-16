@@ -64,6 +64,7 @@ impl fmt::Display for Cause {
             Cause::AppActive => "app active",
             Cause::AppInactive => "app inactive",
             Cause::WindowClosed => "window closed",
+            Cause::Healed => "healed: a key or a press came to the window",
         })
     }
 }
@@ -121,7 +122,26 @@ pub fn level(change: &Change) -> log::Level {
 
 /// Writes `change`'s line to the log, with what the first responder did if it's known.
 pub fn tell(change: &Change, followed: Followed) {
-    log::log!(target: TARGET, level(change), "{}", line(change, followed));
+    write(level(change), &line(change, followed));
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Every line written in this test's thread, as a test reads them.
+    pub static WRITTEN: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Writes `line` to the log at `level`.
+pub fn write(level: log::Level, line: &str) {
+    log::log!(target: TARGET, level, "{line}");
+    #[cfg(test)]
+    WRITTEN.with(|written| written.borrow_mut().push(line.to_owned()));
+}
+
+/// The line for the refused and healed moves of a window left out of the log in the last
+/// second, `count` of them, past what a second may have.
+pub fn left_out(count: u32) -> String {
+    format!("keyboard: {count} more refused or healed in the last second, not logged one by one")
 }
 
 /// The line for the page in `pane` asking for the keyboard while `holder` has it: refused.
