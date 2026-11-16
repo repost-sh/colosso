@@ -20,6 +20,8 @@ use gpui_kit::{AnyWindowHandle, App, Window};
 
 #[cfg(all(target_os = "macos", not(test)))]
 mod appkit;
+#[cfg(target_os = "macos")]
+mod characters;
 mod hooks;
 mod lines;
 mod rate;
@@ -38,9 +40,11 @@ thread_local! {
 /// Has the window's say over the keyboard go through the holders, in the app; tests, with no
 /// `AppKit` of their own, only keep the holders.
 pub fn init(cx: &mut App) {
+    #[cfg(target_os = "macos")]
+    characters::init(cx);
     #[cfg(all(target_os = "macos", not(test)))]
     appkit::install(cx);
-    #[cfg(any(not(target_os = "macos"), test))]
+    #[cfg(not(target_os = "macos"))]
     let _ = cx;
 }
 
