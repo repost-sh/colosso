@@ -3,7 +3,8 @@
 //! One is made at a time, the last one asked for next, and the last one made shows meanwhile,
 //! so moving the Dim slider along shows each stop in turn rather than the card between them.
 //! Each has its blur, made with it and again from its small copy when the blur's strength
-//! changes.
+//! changes. A picture is kept while a chat on its screen shows it, and let go a while after
+//! none does ([`KEPT`]).
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -21,6 +22,10 @@ use super::texture::Texture;
 use super::wallpaper::{self, Wallpaper};
 use crate::settings::Quality;
 use crate::viewer::bitmap;
+
+/// How long a screen's picture is kept once no chat shows it: a chat shown again within it,
+/// after a terminal's tab say, shows its backdrop at once rather than the card while it's made.
+const KEPT: Duration = Duration::from_secs(30);
 
 #[derive(Default)]
 struct Screens {
@@ -47,8 +52,9 @@ struct Screen {
     /// The last recipe that couldn't be made: it isn't tried again until something in it
     /// changes.
     failed: Option<Recipe>,
-    /// Held by each chat showing the backdrop on the screen.
+    /// Held by each chat showing the backdrop on the screen, and since when none has.
     chats: Rc<()>,
+    unheld_since: Option<Instant>,
 }
 
 /// A screen's picture, on the GPU.
@@ -96,11 +102,16 @@ fn read(display: u64) -> Option<Wallpaper> {
     wallpaper::read(u32::try_from(display).ok()?, MainThreadMarker::new()?)
 }
 
-/// A hold on screen `display`'s picture, for a chat showing it.
+/// A hold on screen `display`'s picture, for a chat showing it. The first since none held it
+/// reads the wallpaper again, which nothing watched meanwhile.
 pub fn hold(display: u64, cx: &mut App) -> Hold {
+    let screen = screen(display, cx);
+    if Rc::strong_count(&screen.chats) == 1 {
+        (screen.read, screen.unheld_since) = (false, None);
+    }
     Hold {
         display,
-        _chats: screen(display, cx).chats.clone(),
+        _chats: screen.chats.clone(),
     }
 }
 
@@ -292,8 +303,40 @@ fn blurred_as(
     cx.refresh_windows();
 }
 
+/// Looks again at what the screens' pictures are made from: the screens Koyo's windows are on,
+/// and the wallpaper of each screen a chat shows the backdrop on, drawing the windows again when
+/// either changed, so they ask for the pictures they then need; and lets the pictures no chat
+/// has shown for [`KEPT`] go.
+pub fn tick(cx: &mut App) {
+    note_windows(cx);
+    let now = Instant::now();
+    let (mut changed, mut gone) = (false, Vec::new());
+    for (&display, screen) in &mut cx.default_global::<Screens>().by_display {
+        if Rc::strong_count(&screen.chats) > 1 {
+            let wallpaper = if screen.read { read(display) } else { continue };
+            if wallpaper != screen.wallpaper {
+                log::info!("screen {display}'s wallpaper changed");
+                (screen.wallpaper, changed) = (wallpaper, true);
+            }
+            continue;
+        }
+        let since = *screen.unheld_since.get_or_insert(now);
+        if screen.shown.is_some() && now.saturating_duration_since(since) >= KEPT {
+            log::info!("let screen {display}'s chat backdrop go: no chat shows it");
+            gone.push(screen.shown.take());
+            (screen.wanted, screen.making) = (None, None);
+        }
+    }
+    for shown in gone {
+        let_go(shown, cx);
+    }
+    if changed {
+        cx.refresh_windows();
+    }
+}
+
 /// Notes the screens Koyo's windows are on, for the memory the Quality row names.
-pub fn note_windows(cx: &mut App) {
+fn note_windows(cx: &mut App) {
     let mut screens: Vec<(u64, u32, u32)> = Vec::new();
     for handle in cx.windows() {
         let screen = handle.update(cx, |_, window, cx| {
