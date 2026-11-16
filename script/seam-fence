@@ -1,0 +1,43 @@
+#!/bin/sh
+# The fence round the seam between GPUI's window and the native views in it
+# (docs/native-layer.md 6.3): the AppKit calls that only the native layer may make, counted
+# where they're made outside it, and the vendored GPUI crates' Koyo marks.
+#
+#   script/seam-fence            the counts, as a report: exits 0
+#   script/seam-fence --files    each call outside the layer, as file:line
+#
+# A report for now. Once the layer owns each concern (the design's step 10) this fails the
+# lint on a call outside koyo-rs/koyo-seam that isn't on its list of exceptions.
+set -eu
+cd "$(dirname "$0")/../koyo-rs"
+
+# The calls, by the concern that owns them.
+keyboard='makeFirstResponder'
+windows='makeKeyWindow|makeKeyAndOrderFront|orderFront|orderFrontRegardless|setLevel|setCollectionBehavior|setHidesOnDeactivate|addChildWindow|activateIgnoringOtherApps'
+menus='popUpMenuPositioningItem|popUpContextMenu|performClickWithFrame'
+events='addLocalMonitorForEvents|sendEvent|postEvent'
+views='addSubview|removeFromSuperview|setFrame'
+
+calls() {
+  grep -rnE "$1" koyo/src koyo-browser-host/src vendor/gpui-fast-macos/src vendor/gpui-component/src \
+    --include='*.rs' 2>/dev/null | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true
+}
+
+if [ "${1:-}" = "--files" ]; then
+  calls "$keyboard|$windows|$menus|$events|$views" | cut -d: -f1,2
+  exit 0
+fi
+
+echo "Calls the native layer is to own, made outside koyo-seam (code lines):"
+for concern in keyboard windows menus events views; do
+  eval "pattern=\$$concern"
+  found="$(calls "$pattern")"
+  count=$(printf '%s' "$found" | grep -c . || true)
+  files=$(printf '%s' "$found" | cut -d: -f1 | sort -u | grep -c . || true)
+  printf '  %-9s %3s in %2s files\n' "$concern" "$count" "$files"
+done
+echo "Koyo: marks in the vendored GPUI crates' seam files:"
+for file in vendor/gpui-fast-macos/src/window.rs vendor/gpui-fast-macos/src/fast/composition.rs \
+  vendor/gpui-fast-macos/src/responders.rs; do
+  printf '  %3s %s\n' "$(grep -c 'Koyo:' "$file")" "$file"
+done
