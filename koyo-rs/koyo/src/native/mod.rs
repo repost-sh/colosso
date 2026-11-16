@@ -11,6 +11,7 @@ mod glass;
 mod host;
 mod icon;
 pub mod liquid;
+pub mod menus;
 pub mod notifications;
 pub mod slider;
 pub(crate) mod surface;
@@ -25,4 +26,5 @@ pub use host::{Control, host};
 pub fn init(cx: &mut gpui_kit::App) {
     icon::set_dock_icon();
     glass::init(cx);
+    menus::install();
 }

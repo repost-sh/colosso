@@ -9,6 +9,7 @@ use koyo_browser_ipc::{self as ipc, AppRequest, MenuEntry, MenuTarget, PaneId};
 use super::control::Mode;
 use super::host::Browsers;
 use super::view::{BrowserEvent, BrowserView};
+use crate::native::menus::{self, Refusal};
 
 /// What a picked row does.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -259,6 +260,20 @@ impl BrowserView {
         self.open_menu = Some((request.id, request.page_at));
         // The visual check runs unattended, where the menu's tracking would wait for a pick.
         if cfg!(feature = "visual-check") {
+            return;
+        }
+        // Only the person's own press or key, in a window on their screen, shows a menu there
+        // (`docs/browser.md` 14). One an agent's act asked for is over for the page at once.
+        let gate = match self.control.agent() {
+            Some(_) => Err(Refusal::Agent),
+            None => menus::may_show(window, "a page's menu"),
+        };
+        if let Err(refusal) = gate {
+            if refusal == Refusal::Agent {
+                log::warn!(target: "koyo::menus", "refused a page's menu: {}", refusal.why());
+            }
+            self.open_menu = None;
+            self.menu_command(request.id, None, cx);
             return;
         }
         log::debug!("showing a page's menu at {at:?}");

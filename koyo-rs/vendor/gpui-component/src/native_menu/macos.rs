@@ -107,58 +107,13 @@ fn run_menu(
         f32::from(position.x) as f64,
         height - f32::from(position.y) as f64,
     );
-    // Koyo: shown with a press of the window's own, as Chromium shows its menus. The menu
-    // is shown a turn or more after whatever asked for it (a page's menu, once the page has
-    // said what's in it), with no event of the window's under way, and so shown that way
-    // macOS put it on the desktop the person is looking at: a menu an agent opened in an app
-    // on the agent desktop (`docs/agent-desktop.md`) showed on the person's own. A press
-    // stamped with the window's number puts it where the window is.
-    match window_press(view, location) {
-        // SAFETY: a menu, an event of the view's window and the view, as AppKit takes them.
-        Some(press) => unsafe {
-            let _: () = msg_send![
-                objc2::class!(NSMenu),
-                popUpContextMenu: &*ns_menu,
-                withEvent: &*press,
-                forView: view
-            ];
-        },
-        None => {
-            ns_menu.popUpMenuPositioningItem_atLocation_inView(None, location, Some(view));
-        }
-    }
+    ns_menu.popUpMenuPositioningItem_atLocation_inView(None, location, Some(view));
 
     let tag = target.ivars().selected.get();
     if tag >= 0 {
         actions.get(tag as usize).map(|action| action.boxed_clone())
     } else {
         None
-    }
-}
-
-/// A right press at `location` in `view`, as of now, stamped with the number of the view's
-/// window; none while the view is in no window.
-fn window_press(view: &NSView, location: NSPoint) -> Option<Retained<AnyObject>> {
-    let window = view.window()?;
-    let in_window = view.convertPoint_toView(location, None);
-    // SAFETY: class methods of `NSProcessInfo` and `NSEvent`; the event is made with no
-    // graphics context, as AppKit asks of a caller, and handed back autoreleased.
-    unsafe {
-        let info: *mut AnyObject = msg_send![objc2::class!(NSProcessInfo), processInfo];
-        let now: f64 = msg_send![info, systemUptime];
-        let press: *mut AnyObject = msg_send![
-            objc2::class!(NSEvent),
-            mouseEventWithType: objc2_app_kit::NSEventType::RightMouseDown,
-            location: in_window,
-            modifierFlags: objc2_app_kit::NSEventModifierFlags::empty(),
-            timestamp: now,
-            windowNumber: window.windowNumber(),
-            context: std::ptr::null_mut::<AnyObject>(),
-            eventNumber: 0_isize,
-            clickCount: 1_isize,
-            pressure: 1.0f32
-        ];
-        Retained::retain(press)
     }
 }
 
