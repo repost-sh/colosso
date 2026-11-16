@@ -4,6 +4,7 @@
 //! own and so do the views, and every rule about what happens where they meet is here, asked
 //! through hooks by the code that touches `AppKit`.
 //!
-//! So far: where a key goes ([`keys`]).
+//! So far: where a key goes ([`keys`]), and whose an input is ([`input`]).
 
+pub mod input;
 pub mod keys;
