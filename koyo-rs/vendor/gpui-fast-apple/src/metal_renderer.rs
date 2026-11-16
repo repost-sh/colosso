@@ -1409,6 +1409,11 @@ impl MetalRenderer {
                 return;
             }
             Some(Mark::Picture(picture)) => Some(picture),
+            // Koyo: a texture of the app's own is drawn whole over the surface's bounds.
+            Some(Mark::Texture(id)) => {
+                self.draw_texture(surface, id, command_encoder);
+                return;
+            }
             None => None,
         };
         let mask = surface.content_mask.bounds;
@@ -1469,6 +1474,32 @@ impl MetalRenderer {
         command_encoder.set_fragment_texture(SurfaceInputIndex::YTexture as u64, Some(texture));
         command_encoder.draw_primitives(metal::MTLPrimitiveType::Triangle, 0, 6);
     }
+
+    /// Koyo: draws texture `id` of the app's (`register_texture`) whole over `surface`'s
+    /// bounds, as far as its content mask shows them; nothing while no texture has the id.
+    /// The command buffer keeps the texture until the GPU is done with it.
+    fn draw_texture(
+        &self,
+        surface: &PaintSurface,
+        id: u64,
+        command_encoder: &metal::RenderCommandEncoderRef,
+    ) {
+        let Some(texture) = TEXTURES.lock().get(&id).cloned() else {
+            return;
+        };
+        let quad = surface.bounds.intersect(&surface.content_mask.bounds);
+        if quad.size.width.0 <= 0. || quad.size.height.0 <= 0. {
+            return;
+        }
+        let extent = [texture.width() as f32, texture.height() as f32];
+        let page = PageSurface {
+            quad,
+            mapping: surface.bounds,
+            picture: extent,
+            texture_size: extent,
+        };
+        self.draw_page(&page, &texture, command_encoder);
+    }
 }
 
 /// Koyo: a Metal texture over the `IOSurface` a BGRA pixel buffer is made over, `size` of it,
@@ -1526,6 +1557,8 @@ enum Mark {
     Capture(u32),
     /// It stands for a native view in a picture (`set_surface_pane`).
     Pane(SurfacePane),
+    /// It stands for a texture of the app's own (`set_surface_texture`).
+    Texture(u64),
 }
 
 impl Mark {
@@ -1540,6 +1573,7 @@ impl Mark {
                 ];
                 iter::once(2).chain(said.map(f32::to_bits)).collect()
             }
+            Mark::Texture(id) => vec![3, id as u32, (id >> 32) as u32],
         }
     }
 
@@ -1562,6 +1596,9 @@ impl Mark {
                 fill: colour(2)?,
                 edge: colour(6)?,
             })),
+            3 => Some(Mark::Texture(
+                u64::from(word(1)?) | (u64::from(word(2)?) << 32),
+            )),
             _ => None,
         }
     }
@@ -1641,6 +1678,72 @@ pub struct SurfacePane {
 /// content mask shows them, under what that layer draws.
 pub fn set_surface_pane(buffer: &CVPixelBuffer, pane: SurfacePane) {
     mark_surface(buffer, Mark::Pane(pane));
+}
+
+/// Koyo: the compressed formats a texture of the app's may be in (`register_texture`): ASTC in
+/// blocks of 4 × 4 or 8 × 8 pixels, which every Apple GPU reads as it samples. Its colours are
+/// read as they are, as GPUI's atlas holds them, not taken out of sRGB.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TextureFormat {
+    Astc4x4,
+    Astc8x8,
+}
+
+/// Koyo: the textures the app made (`register_texture`), by the number each was given.
+static TEXTURES: std::sync::LazyLock<Mutex<std::collections::HashMap<u64, metal::Texture>>> =
+    std::sync::LazyLock::new(Mutex::default);
+static NEXT_TEXTURE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// Koyo: makes a texture `width` by `height` in `format`, of `blocks`, row by row of blocks from
+/// its top left, on the system's GPU, and gives the number a surface marked for it draws it by
+/// (`set_surface_texture`) until it's let go (`release_texture`). Any thread may make one. None
+/// when the blocks aren't the texture's or the GPU can't hold it.
+pub fn register_texture(
+    format: TextureFormat,
+    width: u32,
+    height: u32,
+    blocks: &[u8],
+) -> Option<u64> {
+    let (pixel_format, side) = match format {
+        TextureFormat::Astc4x4 => (MTLPixelFormat::ASTC_4x4_LDR, 4),
+        TextureFormat::Astc8x8 => (MTLPixelFormat::ASTC_8x8_LDR, 8),
+    };
+    let row = u64::from(width.div_ceil(side)) * 16;
+    if width == 0 || height == 0 || blocks.len() as u64 != row * u64::from(height.div_ceil(side))
+    {
+        return None;
+    }
+    let device = metal::Device::system_default()?;
+    if !device.supports_family(MTLGPUFamily::Apple2) {
+        return None;
+    }
+    let descriptor = metal::TextureDescriptor::new();
+    descriptor.set_pixel_format(pixel_format);
+    descriptor.set_width(u64::from(width));
+    descriptor.set_height(u64::from(height));
+    descriptor.set_usage(metal::MTLTextureUsage::ShaderRead);
+    descriptor.set_storage_mode(metal::MTLStorageMode::Shared);
+    let texture = device.new_texture(&descriptor);
+    let region = metal::MTLRegion::new_2d(0, 0, u64::from(width), u64::from(height));
+    texture.replace_region(region, 0, blocks.as_ptr().cast(), row);
+    let id = NEXT_TEXTURE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    TEXTURES.lock().insert(id, texture);
+    Some(id)
+}
+
+/// Koyo: lets texture `id` go (`register_texture`): a frame the GPU is still drawing keeps it
+/// until it's done, and a surface marked for it draws nothing from the next.
+pub fn release_texture(id: u64) {
+    TEXTURES.lock().remove(&id);
+}
+
+/// Koyo: marks `buffer`, a BGRA one of any size, as standing for texture `id` of the app's
+/// (`register_texture`). Painted in a scene, the texture goes whole over the surface's bounds,
+/// as far as its content mask shows them, with the rounded clips over it, as a page's frame
+/// does; nothing is drawn while no texture has the id. The buffer keeps the mark for every
+/// scene that draws it after.
+pub fn set_surface_texture(buffer: &CVPixelBuffer, id: u64) {
+    mark_surface(buffer, Mark::Texture(id));
 }
 
 /// Koyo: what a renderer keeps of the pictures taken of its frames.
