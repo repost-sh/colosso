@@ -1,15 +1,12 @@
 //! The backdrop behind a chat (`docs/chat-backdrop.md`): the part of the screen's wallpaper
-//! the chat's pane covers, dimmed towards the card's colour, under a fixed grid of dots, and
-//! blurred towards the bottom.
+//! the chat's pane covers, dithered in its own colours, faint, and fading out towards the
+//! bottom, as Monodrive's Dither effect looks (github.com/donnes/monodrive, MIT).
 
 mod astc;
-mod blur;
-mod dots;
 mod element;
 mod layout;
 mod make;
 mod screens;
-mod strips;
 #[cfg(test)]
 mod tests;
 mod texture;
@@ -18,7 +15,7 @@ pub mod visual;
 mod wallpaper;
 mod watch;
 
-use gpui_kit::{AnyElement, App, Hsla};
+use gpui_kit::{AnyElement, App, Hsla, IntoElement as _};
 
 pub use astc::Blocks;
 pub use screens::memory;
@@ -31,7 +28,7 @@ use crate::theme::Palette;
 /// turned off, and the card shows.
 pub fn backdrop(cx: &App) -> Option<AnyElement> {
     let settings = settings::get(cx).chat_backdrop;
-    settings.on.then(|| strips::backdrop(settings))
+    (settings.on).then(|| element::Picture { settings }.into_any_element())
 }
 
 /// The fill of what floats over a chat where there's no glass: over the backdrop, the card's

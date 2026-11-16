@@ -1,7 +1,7 @@
 //! Appearance › Chat background (`docs/chat-backdrop.md` 6): the wallpaper behind chats, and how
 //! it looks. Rows show only while they apply: with the switch off the section is the switch
-//! alone, and the blur's own rows show only while the blur is on. Settings search looks at the
-//! rows shown, so a switch that hides rows names what they set.
+//! alone, and the fade's own rows show only while it fades. Settings search looks at the rows
+//! shown, so a switch that hides rows names what they set.
 
 use gpui_kit::App;
 
@@ -15,10 +15,10 @@ pub fn section(cx: &App) -> SettingsSection {
     let backdrop = settings::get(cx).chat_backdrop;
     let switch = SettingRow::new("Chat background")
         .description(if backdrop.on {
-            "Your wallpaper, dimmed under a dot screen behind chats."
+            "Your wallpaper behind chats, dithered in its own colours."
         } else {
-            "Your wallpaper, dimmed under a dot screen behind chats. Turn it on to set the dim, \
-             the dot size and density, the blur, its strength and where it starts, and the \
+            "Your wallpaper behind chats, dithered in its own colours. Turn it on to set its \
+             opacity, the cell size and density, the fade, where it starts and ends, and the \
              quality."
         })
         .control(NativeSwitch::new(
@@ -30,17 +30,17 @@ pub fn section(cx: &App) -> SettingsSection {
     if !backdrop.on {
         return section;
     }
-    let blur = SettingRow::new("Blur")
-        .description(if backdrop.blur {
-            "The bottom of a chat fades into a blur of the wallpaper."
+    let fade = SettingRow::new("Fade")
+        .description(if backdrop.fade {
+            "The wallpaper fades out towards the bottom of a chat."
         } else {
-            "The bottom of a chat fades into a blur of the wallpaper. Turn it on to set its \
-             strength and where it starts."
+            "The wallpaper fades out towards the bottom of a chat. Turn it on to set where it \
+             starts and ends."
         })
         .control(NativeSwitch::new(
-            "chat-backdrop-blur",
-            |settings| settings.chat_backdrop.blur,
-            |settings, on| settings.chat_backdrop.blur = on,
+            "chat-backdrop-fade",
+            |settings| settings.chat_backdrop.fade,
+            |settings, on| settings.chat_backdrop.fade = on,
         ));
     let quality = format!(
         "How sharp the wallpaper behind chats is kept, always compressed. {}",
@@ -48,27 +48,30 @@ pub fn section(cx: &App) -> SettingsSection {
     );
     section
         .row(slider(
-            ("Dim", "How far the wallpaper fades into the chat's own colour."),
+            ("Opacity", "How strongly the wallpaper shows over the chat."),
             NativeSlider::new(
-                "chat-backdrop-dim",
-                &ChatBackdrop::DIM_STOPS,
-                |settings| settings.chat_backdrop.dim,
-                |settings, stop| settings.chat_backdrop.dim = stop,
+                "chat-backdrop-opacity",
+                &ChatBackdrop::OPACITY_STOPS,
+                |settings| settings.chat_backdrop.opacity,
+                |settings, stop| settings.chat_backdrop.opacity = stop,
             ),
             ("Less", "More"),
         ))
         .row(slider(
-            ("Dot size", "How wide the dots over the wallpaper are."),
+            (
+                "Cell size",
+                "How many screen pixels each cell of the dither is.",
+            ),
             NativeSlider::new(
-                "chat-backdrop-dot-size",
-                &ChatBackdrop::DOT_SIZE_STOPS,
-                |settings| settings.chat_backdrop.dot_size,
-                |settings, stop| settings.chat_backdrop.dot_size = stop,
+                "chat-backdrop-cell",
+                &ChatBackdrop::CELL_STOPS,
+                |settings| settings.chat_backdrop.cell,
+                |settings, stop| settings.chat_backdrop.cell = stop,
             ),
             ("Fine", "Coarse"),
         ))
         .row(slider(
-            ("Density", "How close together the dots are, and how dark."),
+            ("Density", "How many of the cells are lit."),
             NativeSlider::new(
                 "chat-backdrop-density",
                 &ChatBackdrop::DENSITY_STOPS,
@@ -77,8 +80,8 @@ pub fn section(cx: &App) -> SettingsSection {
             ),
             ("Sparse", "Dense"),
         ))
-        .row(blur)
-        .rows(backdrop.blur.then(blur_rows).into_iter().flatten())
+        .row(fade)
+        .rows(backdrop.fade.then(fade_rows).into_iter().flatten())
         .row(
             SettingRow::new("Quality").description(quality).control(
                 NativeSlider::new(
@@ -92,26 +95,29 @@ pub fn section(cx: &App) -> SettingsSection {
         )
 }
 
-/// The blur's own rows, shown while it's on.
-fn blur_rows() -> [SettingRow; 2] {
+/// The fade's own rows, shown while it fades.
+fn fade_rows() -> [SettingRow; 2] {
     [
         slider(
-            ("Blur strength", "How far the blur at the bottom of a chat spreads."),
-            NativeSlider::new(
-                "chat-backdrop-blur-strength",
-                &ChatBackdrop::BLUR_STRENGTH_STOPS,
-                |settings| settings.chat_backdrop.blur_strength,
-                |settings, stop| settings.chat_backdrop.blur_strength = stop,
+            (
+                "Fade starts",
+                "How far down a chat the wallpaper starts to fade out.",
             ),
-            ("Soft", "Strong"),
+            NativeSlider::new(
+                "chat-backdrop-fade-start",
+                &ChatBackdrop::FADE_START_STOPS,
+                |settings| settings.chat_backdrop.fade_start,
+                |settings, stop| settings.chat_backdrop.fade_start = stop,
+            ),
+            ("High", "Low"),
         ),
         slider(
-            ("Blur starts", "How far down a chat the blur starts to fade in."),
+            ("Fade ends", "How far down a chat the wallpaper is gone."),
             NativeSlider::new(
-                "chat-backdrop-blur-start",
-                &ChatBackdrop::BLUR_START_STOPS,
-                |settings| settings.chat_backdrop.blur_start,
-                |settings, stop| settings.chat_backdrop.blur_start = stop,
+                "chat-backdrop-fade-end",
+                &ChatBackdrop::FADE_END_STOPS,
+                |settings| settings.chat_backdrop.fade_end,
+                |settings, stop| settings.chat_backdrop.fade_end = stop,
             ),
             ("High", "Low"),
         ),
@@ -144,13 +150,24 @@ mod tests {
         let finds = |words: &[&str], cx: &mut TestAppContext| {
             cx.read(|cx| words.iter().all(|word| section(cx).matches(word)))
         };
-        let shows = |cx: &mut TestAppContext| cx.read(|cx| section(cx).matches("how wide"));
-        let all = ["dim", "dot size", "density", "blur", "strength", "quality"];
+        let shows = |cx: &mut TestAppContext| cx.read(|cx| section(cx).matches("how strongly"));
+        let all = [
+            "opacity",
+            "cell size",
+            "density",
+            "fade",
+            "starts",
+            "ends",
+            "quality",
+        ];
         assert!(finds(&all, cx) && shows(cx), "on, as it starts");
-        assert!(finds(&["spreads"], cx), "the blur's rows with it");
-        cx.update(|cx| settings::update(cx, |settings| settings.chat_backdrop.blur = false));
-        assert!(finds(&all, cx), "the blur off, its switch names its rows");
-        assert!(!cx.read(|cx| section(cx).matches("spreads")), "and they're gone");
+        assert!(finds(&["is gone"], cx), "the fade's rows with it");
+        cx.update(|cx| settings::update(cx, |settings| settings.chat_backdrop.fade = false));
+        assert!(finds(&all, cx), "the fade off, its switch names its rows");
+        assert!(
+            !cx.read(|cx| section(cx).matches("is gone")),
+            "and they're gone"
+        );
         cx.update(|cx| settings::update(cx, |settings| settings.chat_backdrop.on = false));
         assert!(finds(&all, cx), "off, the switch names every row");
         assert!(!shows(cx), "and the switch is all there is");

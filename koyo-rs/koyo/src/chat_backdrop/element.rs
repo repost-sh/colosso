@@ -1,27 +1,24 @@
 //! What a chat draws its backdrop with. Cropping is placing: the screen's picture is painted as
 //! big as the screen, where the screen lies relative to the window, and clipped to the chat's
-//! pane, so only the pane's part reaches the GPU and two panes side by side meet without a
-//! seam. Moving or resizing the window only moves where it's placed: GPUI draws the whole
-//! window again as the window moves (`Window::bounds_changed`).
+//! pane, so only the pane's part reaches the GPU, and two panes side by side meet without a
+//! seam and show one dither. Moving or resizing the window only moves where it's placed: GPUI
+//! draws the whole window again as the window moves (`Window::bounds_changed`). The renderer
+//! dithers it, sets its opacity and fades it down the pane as it draws it (`texture::Look`).
 
 use gpui_kit::{
-    App, Bounds, ContentMask, Element, ElementId, GlobalElementId, InspectorElementId,
-    IntoElement, LayoutId, Pixels, Position, Rgba, Size, Style, Window, point, px, relative, size,
+    App, Bounds, ContentMask, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
+    LayoutId, Pixels, Position, Size, Style, Window, point, px, relative,
 };
 
-use super::blur;
-use super::dots::Grid;
 use super::make::Recipe;
 use super::screens::{self, Hold};
-use super::strips::{self, Placed, Shared};
+use super::texture::Look;
 use crate::settings::ChatBackdrop;
-use crate::theme;
 
 /// The screen's wallpaper behind a chat, filling its parent, which must be `relative`, looking
-/// as `settings` say. Painted, it says where it was and what the strips over it draw (`placed`).
+/// as `settings` say.
 pub struct Picture {
     pub settings: ChatBackdrop,
-    pub placed: Shared,
 }
 
 impl IntoElement for Picture {
@@ -82,7 +79,6 @@ impl Element for Picture {
         window: &mut Window,
         cx: &mut App,
     ) {
-        self.placed.replace(None);
         let Some((display, screen)) = screen(window, cx) else {
             return;
         };
@@ -94,27 +90,22 @@ impl Element for Picture {
                 _ => ((), screens::hold(display, cx)),
             });
         }
-        let settings = self.settings;
-        let scale = window.scale_factor();
-        let recipe = recipe(display, screen.size, scale, settings, cx);
-        let sigma = (settings.blur)
-            .then(|| settings.blur_strength * scale / blur::SHRINK as f32);
-        let Some(showing) = screens::picture(display, recipe, sigma, cx) else {
+        let recipe = recipe(
+            display,
+            screen.size,
+            window.scale_factor(),
+            self.settings,
+            cx,
+        );
+        let look = Look::of(self.settings);
+        let Some(placeholder) = screens::picture(display, recipe, look, cx) else {
             return;
         };
+        // The pane as far as it's on the screen: what the renderer clips to and fades down.
         let shown = bounds.intersect(&screen);
         window.with_content_mask(Some(ContentMask { bounds: shown }), |window| {
-            window.paint_surface(screen, showing.placeholder);
+            window.paint_surface(screen, placeholder);
         });
-        let grid = Grid::new(settings.dot_size, settings.density, scale);
-        let (width, height) = grid.tile();
-        let tile = size(px(width as f32 / scale), px(height as f32 / scale));
-        self.placed.replace(Some(Placed {
-            screen,
-            shown,
-            blur: showing.blur,
-            dots: (strips::tile(grid, cx), tile),
-        }));
     }
 }
 
@@ -133,7 +124,7 @@ fn screen(window: &Window, cx: &App) -> Option<(u64, Bounds<Pixels>)> {
 }
 
 /// What screen `display`'s picture is made from, `size` in points at `scale`, as `backdrop`
-/// and the card's colour are now; none while it has no wallpaper to show.
+/// says; none while it has no wallpaper to show.
 fn recipe(
     display: u64,
     size: Size<Pixels>,
@@ -142,13 +133,13 @@ fn recipe(
     cx: &mut App,
 ) -> Option<Recipe> {
     let wallpaper = screens::wallpaper(display, cx)?;
-    let Rgba { r, g, b, .. } = theme::palette(cx).card.into();
     Some(Recipe {
         wallpaper,
-        screen: (f64::from(size.width.as_f32()), f64::from(size.height.as_f32())),
+        screen: (
+            f64::from(size.width.as_f32()),
+            f64::from(size.height.as_f32()),
+        ),
         scale: f64::from(scale),
-        card: [r, g, b],
-        dim: backdrop.dim,
         blocks: backdrop.quality.blocks(),
         resolution: backdrop.quality.resolution(),
     })

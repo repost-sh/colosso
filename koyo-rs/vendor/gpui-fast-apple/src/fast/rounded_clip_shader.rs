@@ -16,6 +16,8 @@ pub fn source(source: &str) -> String {
         "surface_fragment",
         // Koyo: a browser page's frame (`metal_renderer::set_surface_picture`).
         "page_surface_fragment",
+        // Koyo: a chat's backdrop (`metal_renderer::set_surface_backdrop`).
+        "backdrop_fragment",
     ] {
         let start = source
             .find(&format!("fragment float4 {name}("))

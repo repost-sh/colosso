@@ -58,7 +58,10 @@ impl Rect {
 /// Where a picture `picture` points in size lies on a screen `screen` points in size, laid out
 /// as `scaling` says. It may reach past the screen, which shows only its own part of it.
 pub fn place(picture: (f64, f64), screen: (f64, f64), scaling: Scaling) -> Rect {
-    let (width, height) = (picture.0.max(f64::MIN_POSITIVE), picture.1.max(f64::MIN_POSITIVE));
+    let (width, height) = (
+        picture.0.max(f64::MIN_POSITIVE),
+        picture.1.max(f64::MIN_POSITIVE),
+    );
     let fit = (screen.0 / width).min(screen.1 / height);
     let size = match scaling {
         Scaling::Stretch => return centred(screen, screen),
@@ -158,7 +161,10 @@ mod tests {
         assert_near(tall, rect(575., 0., 450., 900.));
         assert!(!tall.covers(SCREEN));
         let same = place((3200., 1800.), SCREEN, Scaling::Fit);
-        assert!(same.covers(SCREEN), "a picture of the screen's shape fits it exactly");
+        assert!(
+            same.covers(SCREEN),
+            "a picture of the screen's shape fits it exactly"
+        );
     }
 
     #[test]
@@ -192,10 +198,18 @@ mod tests {
         assert_eq!(decode_longest((6016, 3384), fill, 2.), 5120);
         assert_eq!(decode_longest((6016, 3384), fill, 1.), 2560);
         let centred = place((800., 600.), (2560., 1440.), Scaling::Centre);
-        assert_eq!(decode_longest((1600, 1200), centred, 2.), 1600, "all it has");
+        assert_eq!(
+            decode_longest((1600, 1200), centred, 2.),
+            1600,
+            "all it has"
+        );
         let tall = place((1000., 3000.), (2560., 1440.), Scaling::Fill);
         assert_eq!(decode_longest((1000, 3000), tall, 2.), 3000, "all it has");
         let tall = place((3000., 9000.), (2560., 1440.), Scaling::Fit);
-        assert_eq!(decode_longest((3000, 9000), tall, 2.), 2880, "its height spans the screen's");
+        assert_eq!(
+            decode_longest((3000, 9000), tall, 2.),
+            2880,
+            "its height spans the screen's"
+        );
     }
 }

@@ -1,8 +1,8 @@
 //! Making a screen's picture, off the main thread: the wallpaper decoded by the system's
 //! decoders at no more pixels than its layout needs, drawn into a bitmap the screen's size as
-//! macOS lays it out, dimmed towards the card's colour, and compressed to ASTC, the only copy
-//! kept; and a copy a tenth of its size for the blur. The bitmap is dropped once both are out
-//! of it.
+//! macOS lays it out, and compressed to ASTC, the only copy kept. The bitmap is dropped once
+//! the blocks are out of it. How the picture looks, its dither, opacity and fade, is the
+//! renderer's, as it's drawn (`texture::Look`).
 
 use std::time::{Duration, Instant};
 
@@ -10,7 +10,6 @@ use objc2_core_foundation::{CFRetained, CGFloat, CGPoint, CGRect, CGSize};
 use objc2_core_graphics::{CGBitmapContextCreateImage, CGContext, CGImage};
 
 use super::astc::{self, Astc, Blocks};
-use super::blur::{self, Small};
 use super::layout;
 use super::wallpaper::Wallpaper;
 use crate::viewer::bitmap::Canvas;
@@ -23,10 +22,6 @@ pub struct Recipe {
     /// The screen's size in points, and how many pixels make a point on it.
     pub screen: (f64, f64),
     pub scale: f64,
-    /// The colour the picture is dimmed towards, the card's, in sRGB; and how far, from 0 for
-    /// not at all to 1 for the card alone.
-    pub card: [f32; 3],
-    pub dim: f32,
     /// The blocks it's compressed in, and its pixels to the screen's: 1, or ½ for half.
     pub blocks: Blocks,
     pub resolution: f64,
@@ -35,9 +30,7 @@ pub struct Recipe {
 /// A screen's picture, made.
 pub struct Made {
     pub picture: Astc,
-    /// The copy the blur is made from, a tenth of the screen's pixels a side.
-    pub small: Small,
-    /// How long it took to decode the wallpaper, to lay it out and dim it, and to compress it.
+    /// How long it took to decode the wallpaper, to lay it out, and to compress it.
     pub took: [Duration; 3],
 }
 
@@ -47,34 +40,14 @@ pub fn make(recipe: &Recipe) -> Result<Made, String> {
     let laid = lay_out(recipe)?;
     let laid_out = Instant::now();
     let picture = astc::encode(&laid.image, recipe.blocks)?;
-    let small = shrink(&laid.image, recipe)?;
     let took = [
         laid.decoded,
-        laid_out.saturating_duration_since(started).saturating_sub(laid.decoded),
+        laid_out
+            .saturating_duration_since(started)
+            .saturating_sub(laid.decoded),
         laid_out.elapsed(),
     ];
-    Ok(Made {
-        picture,
-        small,
-        took,
-    })
-}
-
-/// The copy of `image`, the picture `recipe` laid out upside down, the blur is made from:
-/// upright, a tenth of the screen's pixels a side, whatever the picture's resolution.
-fn shrink(image: &CGImage, recipe: &Recipe) -> Result<Small, String> {
-    let side = |points: f64| (points * recipe.scale / blur::SHRINK).ceil().max(1.) as u32;
-    let canvas = Canvas::new(side(recipe.screen.0), side(recipe.screen.1))
-        .ok_or("there's no memory for its blur")?;
-    upside_down(canvas.context(), canvas.height);
-    CGContext::draw_image(Some(canvas.context()), canvas.bounds(), Some(image));
-    let (width, height) = (canvas.width, canvas.height);
-    let frame = canvas.into_frame(false, None).ok_or("its blur has no pixels")?;
-    Ok(Small {
-        width,
-        height,
-        pixels: frame.into_buffer().into_raw(),
-    })
+    Ok(Made { picture, took })
 }
 
 /// A screen's picture before it's compressed.
@@ -84,8 +57,8 @@ pub(super) struct Laid {
     decoded: Duration,
 }
 
-/// The wallpaper `recipe` names, laid out on its screen and dimmed, in a bitmap the screen's
-/// size at the recipe's resolution.
+/// The wallpaper `recipe` names, laid out on its screen, in a bitmap the screen's size at the
+/// recipe's resolution.
 pub(super) fn lay_out(recipe: &Recipe) -> Result<Laid, String> {
     let started = Instant::now();
     let path = &recipe.wallpaper.path;
@@ -120,8 +93,6 @@ pub(super) fn lay_out(recipe: &Recipe) -> Result<Laid, String> {
         CGSize::new(placed.width * scale, placed.height * scale),
     );
     CGContext::draw_image(Some(context), rect, Some(&image));
-    let [r, g, b] = recipe.card;
-    fill(context, canvas.bounds(), [r, g, b, recipe.dim.clamp(0., 1.)]);
     let image = CGBitmapContextCreateImage(Some(context)).ok_or("its pixels can't be read")?;
     Ok(Laid { image, decoded })
 }

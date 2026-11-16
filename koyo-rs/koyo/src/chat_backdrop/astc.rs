@@ -131,7 +131,10 @@ mod tests {
         let mut file = header(8, 20, 9);
         file.extend(vec![7; 3 * 2 * 16]);
         let astc = read(&file).unwrap();
-        assert_eq!((astc.blocks, astc.width, astc.height), (Blocks::Eight, 20, 9));
+        assert_eq!(
+            (astc.blocks, astc.width, astc.height),
+            (Blocks::Eight, 20, 9)
+        );
         assert_eq!(astc.data.len(), 96);
     }
 
