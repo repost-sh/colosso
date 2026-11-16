@@ -219,6 +219,8 @@ fn what_the_person_asked_for_is_the_lines_cause() {
 mod fake;
 mod inactive;
 #[cfg(target_os = "macos")]
+mod characters;
+#[cfg(target_os = "macos")]
 mod marks;
 mod reconciler;
 mod told;

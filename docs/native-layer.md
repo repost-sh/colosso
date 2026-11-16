@@ -562,6 +562,17 @@ event monitor goes, since `NSApp`'s `sendEvent:` labels every event. The share p
 (`browser/site.rs:198-231`) is checked against the gate, as it pops up a system menu without
 asking. Menus as data for agents stay `[not built]` and out of this design's scope.
 
+A real Edit menu is this step's too. `[proposed]` Koyo's menu bar has one menu, with Settings
+and Quit, and `AppKit` puts its own items only in a menu titled Edit: Emoji & Symbols (⌃⌘Space),
+Start Dictation and AutoFill. Without it, ⌃⌘Space in a page's field opened nothing (the owner,
+2026-11-16); an app-wide binding that opens the viewer stands in until then. An Edit menu's
+Cut, Copy, Paste, Select All, Undo and Redo carry ⌘ keys of their own, and a menu's key comes
+after the views' in `AppKit`'s pass, so Koyo's bindings still take them first where it binds
+them (a page's ⌘C is Koyo's `Edit` request to the engine). What has to be settled with it:
+that a menu item picked by hand reaches the same place as its key (the page's field through
+the engine, GPUI's inputs through their actions), and that the gate of this step lets the
+menu bar's own menus through, as it does today.
+
 **Windows and panels.** The layer registers each window as it is first seen, with a kind.
 `seam::windows::float(window, parent, kind)` is the one writer of a floating window's Space,
 level, parent and `hidesOnDeactivate`. A float becomes a child window of its parent as it
@@ -736,7 +747,7 @@ and the bench sequences named, with evidence under `.superpowers/v/evidence/`.
 | 0 | The menu gate proof on the agent desktop, as planned. No code | The three right-clicks' window lists and log lines. Decides whether `d33840cad` goes into the owner's next build | an hour, once the owner is idle |  |
 | 1 | `ce2f3c7fc`'s key mechanism undone by a forward commit (section 8) | The fork's diff has no `Offers`. `script/lint`, with no dead code left. The app's and the fork's tests. `key-once` on the agent desktop. The tip is shippable | half a day |  |
 | 2 | The crate `koyo-seam`, empty of rules: the input label and journal, `NSApp`'s `sendEvent:` patch moved in, the registry of pages (which page a view is, and a page's keys' view, registered by the host as it makes and closes them), `seam::inject` for the probe, `seam::engine_input` for the protocol, `probe seam`, `script/seam-fence` in report mode, `script/seam-bench`. The desk host's tag, if a check shows it survives. No behaviour changes | Tier 0 for the label. The engine's smoke suite while the owner is idle, for the moved `NSApp` patch. A bench sequence `labels`: a probe click, a `desktop_click` and a `browser_click` each show their label in `probe seam` | 2 days |  |
-| 3 | Menus read the label. The gate moves in, its monitor goes, the share picker is checked. | The gate's tests in tier 0. `no-menu-for-agents`, which is step 0's proof as a script. The owner's own right-click and a `<select>` | 1 day | yes: menus |
+| 3 | Menus read the label. The gate moves in, its monitor goes, the share picker is checked. A real Edit menu, for `AppKit`'s own items (section 7) | The gate's tests in tier 0. `no-menu-for-agents`, which is step 0's proof as a script. The owner's own right-click and a `<select>` | 1 day | yes: menus |
 | 4 | The keyboard moves in: `keyboard/*` to `koyo-seam`, reading step 2's registry in place of the host's `key_view` and `page_of`. `press_routed` in place of the one-second window. Controls refuse the first responder. Key and active state still come from GPUI's observer, until step 9 | The 48 tests moved. The rig's first version. `composer-after-pinned`, `ctrl-tab-from-page`, and `docs/keyboard.md` 9's journeys 1 to 5, 7, 8 and 11 as sequences | 3 days |  |
 | 5 | Keys: `keys::route`, `page_left_key`, the fork's `hand_back`, key-ups (section 4.1), under policy A | The table test over the real keymap. The rig with hand-backs at once, late, and after the keyboard moved, and with marked text. `cmd-l-once`, `key-once`, `shortcut-under-typing` with the owner's typing pattern, F12 while not in front, ⌥→ held in a page. Dead keys and an input method (`docs/keyboard.md` 9, journey 10) by the owner or in tier 3, since the probe can't compose text | 2 days | yes: keys |
 | 6 | Presses: the ledger, causes for a press's end, the fork keeps the mechanics | Tier 0. The rig with a lost release. `dead-ui-after-menu`, `divider-fast-drag` | 2 days |  |
