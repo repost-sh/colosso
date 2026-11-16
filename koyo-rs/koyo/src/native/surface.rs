@@ -204,8 +204,9 @@ impl Surface {
     }
 }
 
-/// A buffer to mark as a pane ([`Surface::mark`]): a pixel of it, as none is ever drawn.
-fn marker() -> Option<CFRetained<CVPixelBuffer>> {
+/// A buffer to mark as a pane ([`Surface::mark`]), or as a chat's backdrop
+/// (`chat_backdrop::texture`): a pixel of it, as none is ever drawn.
+pub(crate) fn marker() -> Option<CFRetained<CVPixelBuffer>> {
     let mut buffer = std::ptr::null_mut();
     // SAFETY: `buffer` is a valid out-pointer; the default allocator, no attributes.
     let status = unsafe {

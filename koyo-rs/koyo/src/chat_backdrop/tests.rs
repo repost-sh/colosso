@@ -11,42 +11,35 @@ use objc2_core_foundation::{
 use objc2_core_graphics::{CGBitmapContextCreateImage, CGContext, CGImage};
 use objc2_image_io::{CGImageDestination, CGImageSource};
 
-use super::make::{Recipe, fill, lay_out, make, upside_down};
-use super::texture::{Look, Texture};
-use crate::chat_backdrop::astc::{Astc, Blocks};
+use super::astc::{self, Astc};
+use super::make::{Recipe, lay_out, make, upside_down};
+use super::texture::Texture;
 use crate::chat_backdrop::layout::Scaling;
 use crate::chat_backdrop::wallpaper::Wallpaper;
-use crate::settings::ChatBackdrop;
+use crate::settings::{ChatBackdrop, Quality};
 use crate::test_support::scratch;
 use crate::viewer::bitmap::Canvas;
 
-/// Red over the top half of a picture `w` by `h`, blue under, a white bar down its middle third.
-fn striped(context: &CGContext, w: CGFloat, h: CGFloat) {
+/// Red over the top half of `canvas`, blue under, a white bar down its middle third.
+fn striped(canvas: &Canvas) {
+    let (w, h) = (CGFloat::from(canvas.width), CGFloat::from(canvas.height));
     let rect = |x: f64, y: f64, w: f64, h: f64| CGRect::new(CGPoint::new(x, y), CGSize::new(w, h));
     // Quartz's y goes up: the top half is the upper rectangle.
-    fill(context, rect(0., h / 2., w, h / 2.), [1., 0., 0., 1.]);
-    fill(context, rect(0., 0., w, h / 2.), [0., 0., 1., 1.]);
-    fill(context, rect(w / 3., 0., w / 3., h), [1., 1., 1., 1.]);
+    canvas.fill(rect(0., h / 2., w, h / 2.), [1., 0., 0.]);
+    canvas.fill(rect(0., 0., w, h / 2.), [0., 0., 1.]);
+    canvas.fill(rect(w / 3., 0., w / 3., h), [1., 1., 1.]);
 }
 
-/// Grey half way to white, all over a picture `w` by `h`.
-fn grey(context: &CGContext, w: CGFloat, h: CGFloat) {
-    let all = CGRect::new(CGPoint::new(0., 0.), CGSize::new(w, h));
-    fill(context, all, [0.5, 0.5, 0.5, 1.]);
+/// Grey half way to white, all over `canvas`.
+fn grey(canvas: &Canvas) {
+    canvas.fill(canvas.bounds(), [0.5, 0.5, 0.5]);
 }
 
 /// A picture `width` by `height` saved at `path` as `kind`, as `paint` paints it.
-fn picture_file(
-    path: &Path,
-    width: u32,
-    height: u32,
-    kind: &str,
-    paint: fn(&CGContext, CGFloat, CGFloat),
-) {
+fn picture_file(path: &Path, width: u32, height: u32, kind: &str, paint: fn(&Canvas)) {
     let canvas = Canvas::new(width, height).unwrap();
-    let context = canvas.context();
-    paint(context, CGFloat::from(width), CGFloat::from(height));
-    let image = CGBitmapContextCreateImage(Some(context)).unwrap();
+    paint(&canvas);
+    let image = CGBitmapContextCreateImage(Some(canvas.context())).unwrap();
     let url = CFURL::from_file_path(path).unwrap();
     let kind = CFString::from_str(kind);
     // SAFETY: a type ImageIO names, for one image, with no options.
@@ -57,7 +50,7 @@ fn picture_file(
     }
 }
 
-fn recipe(path: PathBuf, screen: (f64, f64), blocks: Blocks, resolution: f64) -> Recipe {
+fn recipe(path: PathBuf, screen: (f64, f64), quality: Quality) -> Recipe {
     Recipe {
         wallpaper: Wallpaper {
             path,
@@ -67,8 +60,7 @@ fn recipe(path: PathBuf, screen: (f64, f64), blocks: Blocks, resolution: f64) ->
         },
         screen,
         scale: 2.,
-        blocks,
-        resolution,
+        quality,
     }
 }
 
@@ -76,11 +68,7 @@ fn recipe(path: PathBuf, screen: (f64, f64), blocks: Blocks, resolution: f64) ->
 /// order the GPU reads them in: `ImageIO` turns them over as it writes a file, not as it reads
 /// one.
 fn decoded_image(astc: &Astc) -> CFRetained<CGImage> {
-    let side = astc.blocks.side() as u8;
-    let mut file = vec![0x13, 0xab, 0xa1, 0x5c, side, side, 1];
-    file.extend(&astc.width.to_le_bytes()[..3]);
-    file.extend(&astc.height.to_le_bytes()[..3]);
-    file.extend([1, 0, 0]);
+    let mut file = astc::header(astc.blocks.side() as u8, astc.width, astc.height);
     file.extend(&astc.data);
     let data = CFData::from_bytes(&file);
     // SAFETY: a source over the bytes, asked for its first image.
@@ -134,11 +122,12 @@ fn a_screens_picture_is_laid_out_upright_and_compressed() {
     let folder = scratch("chat-backdrop-make");
     let path = folder.join("wallpaper.png");
     picture_file(&path, 300, 200, "public.png", striped);
-    for (blocks, resolution) in [(Blocks::Eight, 1.), (Blocks::Four, 0.5)] {
-        let made = make(&recipe(path.clone(), (96., 64.), blocks, resolution)).unwrap();
+    for quality in Quality::ALL {
+        let made = make(&recipe(path.clone(), (96., 64.), quality)).unwrap();
+        let resolution = quality.resolution();
         let picture = &made.picture;
         let side = (192. * resolution) as u32;
-        assert_eq!((picture.blocks, picture.width), (blocks, side));
+        assert_eq!((picture.blocks, picture.width), (quality.blocks(), side));
         assert_eq!(picture.height, (128. * resolution) as u32);
         let (width, pixels) = decoded(picture);
         let pixel = |x: u32, y: u32| {
@@ -182,26 +171,21 @@ fn making_a_screens_picture_takes() {
         },
         PathBuf::from,
     );
-    let stops = [
-        ("8 × 8, half", Blocks::Eight, 0.5),
-        ("4 × 4, half", Blocks::Four, 0.5),
-        ("8 × 8, full", Blocks::Eight, 1.),
-        ("4 × 4, full", Blocks::Four, 1.),
-    ];
     let ms = |took: Duration| took.as_secs_f64() * 1000.;
-    let at = |blocks, resolution| recipe(path.clone(), (2560., 1440.), blocks, resolution);
+    let at = |quality| recipe(path.clone(), (2560., 1440.), quality);
     let (width, height) = (5120, 2880);
-    let reference = lay_out(&at(Blocks::Eight, 1.)).unwrap();
+    let reference = lay_out(&at(Quality::Astc8Full)).unwrap();
     let reference = pixels_of(&reference.image, width, height, true);
-    for (name, blocks, resolution) in stops {
-        let made = make(&at(blocks, resolution)).unwrap();
+    for quality in Quality::ALL {
+        let name = format!("{quality:?}");
+        let made = make(&at(quality)).unwrap();
         let shown = pixels_of(&decoded_image(&made.picture), width, height, false);
         println!(
             "{name}: {:.1} dB against the picture uncompressed",
             psnr(&shown, &reference)
         );
         for _ in 0..3 {
-            let made = make(&at(blocks, resolution)).unwrap();
+            let made = make(&at(quality)).unwrap();
             let [decoded, laid_out, compressed] = made.took;
             println!(
                 "{name}: decoded {:.0} ms, laid out {:.0} ms, compressed {:.0} ms, \
@@ -256,11 +240,11 @@ fn whole() -> gpui_kit::Bounds<gpui_kit::ScaledPixels> {
 /// the GPU, and a pixel standing for it.
 fn on_the_gpu(
     name: &str,
-    paint: fn(&CGContext, CGFloat, CGFloat),
+    paint: fn(&Canvas),
 ) -> (Texture, CFRetained<objc2_core_video::CVPixelBuffer>) {
     let path = scratch(name).join("wallpaper.png");
     picture_file(&path, 300, 200, "public.png", paint);
-    let made = make(&recipe(path, (96., 64.), Blocks::Eight, 1.)).unwrap();
+    let made = make(&recipe(path, (96., 64.), Quality::Astc8Full)).unwrap();
     let texture = Texture::new(&made.picture).unwrap();
     assert_eq!(texture.bytes, 24 * 16 * 16);
     (texture, Texture::placeholder().unwrap())
@@ -290,7 +274,7 @@ fn the_gpu_draws_a_screens_picture_where_it_was_laid_out_and_only_where_its_pane
     use gpui_kit::{Bounds, ScaledPixels, size};
 
     let (texture, placeholder) = on_the_gpu("chat-backdrop-gpu", striped);
-    texture.mark(&placeholder, Look::of(solid()));
+    texture.mark(&placeholder, &solid());
     // Colours at their full brightness are every cell lit, so the dither leaves them as they are.
     let image = drawn(&placeholder, (192, 128), whole());
     assert!(
@@ -327,7 +311,7 @@ fn a_mid_grey_lights_half_its_cells_at_full_brightness_and_the_rest_near_black()
     let (texture, placeholder) = on_the_gpu("chat-backdrop-dither", grey);
     let lit = |density: f32| {
         let look = ChatBackdrop { density, ..solid() };
-        texture.mark(&placeholder, Look::of(look));
+        texture.mark(&placeholder, &look);
         let image = drawn(&placeholder, (192, 128), whole());
         // Each cell is two pixels a side, and all of one shade.
         for (x, y) in [(0, 0), (2, 0), (4, 6), (10, 12)] {
@@ -369,7 +353,7 @@ fn it_shows_at_its_opacity_and_fades_out_down_its_pane() {
         opacity: 0.5,
         ..solid()
     };
-    texture.mark(&placeholder, Look::of(faint));
+    texture.mark(&placeholder, &faint);
     let image = drawn(&placeholder, (192, 128), whole());
     assert!(
         near(rgb(&image, 4, 4), [128, 0, 0]),
@@ -383,7 +367,7 @@ fn it_shows_at_its_opacity_and_fades_out_down_its_pane() {
         fade_end: 1.,
         ..solid()
     };
-    texture.mark(&placeholder, Look::of(fading));
+    texture.mark(&placeholder, &fading);
     let image = drawn(&placeholder, (192, 128), whole());
     let red = |y: u32| rgb(&image, 4, y)[0];
     assert!(red(0) > 240, "whole where it starts: {}", red(0));

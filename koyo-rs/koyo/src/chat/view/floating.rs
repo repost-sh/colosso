@@ -303,8 +303,7 @@ impl ChatView {
             .max_h_full()
             .occlude()
             .text_color(p.text);
-        let fill = crate::chat_backdrop::fill(p, cx);
-        let card = liquid::floating_filled(card, on_glass, fill, p)
+        let card = crate::chat_backdrop::floating(card, on_glass, p, cx)
             .child(
                 div()
                     .id("chat-floating-words")

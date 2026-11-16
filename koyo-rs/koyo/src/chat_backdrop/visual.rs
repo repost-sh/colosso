@@ -40,13 +40,13 @@ const WINDOW_AT: (f32, f32) = (480., 220.);
 const PATIENCE: Duration = Duration::from_secs(20);
 /// How long the chat gets to take in what the fake provider said back.
 const ANSWERED_IN: Duration = Duration::from_secs(3);
-/// What's told to the chat, and so said back: enough lines to reach the blur.
+/// What's told to the chat, and so said back: enough lines to reach where it fades.
 const SAID: &str = "\
-The backdrop is the wallpaper behind the window, dimmed towards the card's colour.
+The backdrop is the wallpaper behind the window, dithered in its own colours.
 
-- A dot screen lies over it, fixed to the screen.
-- It's blurred towards the bottom, where the dots fade out.
-- The composer floats over the blur.
+- Each cell is two screen pixels, lit at full brightness or at 8 percent.
+- It shows faintly over the card, and fades out towards the bottom.
+- The composer floats over where it has faded.
 
 Each screen's picture is made once, compressed to ASTC, and only moved as the window moves.";
 
@@ -132,7 +132,7 @@ fn set(drawn: &mut Drawn, change: impl FnOnce(&mut settings::ChatBackdrop)) {
         .update(|cx| settings::update(cx, |settings| change(&mut settings.chat_backdrop)));
 }
 
-/// Saves the window as `name` once the screen's picture and its blur are the ones asked for.
+/// Saves the window as `name` once the screen's picture is the one asked for.
 fn settled(drawn: &mut Drawn, name: &str) -> Result<PathBuf> {
     drawn.until(PATIENCE, |drawn| {
         Ok(drawn.cx.read(|cx| screens::settled(DISPLAY, cx)))
@@ -152,8 +152,8 @@ fn crop(drawn: &Drawn, shown: &Path, name: &str) -> Result<PathBuf> {
 }
 
 /// A wallpaper of the check's own at `path`: a diagonal from amber to blue, soft discs of colour,
-/// a grid of fine lines and a band of finer checks, so the dim, the blocks, the dots and the blur
-/// each have something to show on.
+/// a grid of fine lines and a band of finer checks, so the dither, the fade and the blocks each
+/// have something to show on.
 fn paint_wallpaper(path: &Path) -> Result<()> {
     let (width, height) = (5120u32, 2880u32);
     let discs = [

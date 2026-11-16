@@ -73,7 +73,8 @@ pub fn encode(image: &CGImage, blocks: Blocks) -> Result<Astc, String> {
     if !written {
         return Err("the system's ASTC encoder couldn't compress it".into());
     }
-    read(&file.to_vec())
+    // SAFETY: the data is the destination's, which nothing writes to once it's finalized.
+    read(unsafe { file.as_bytes_unchecked() })
 }
 
 /// The picture an ASTC file holds, taken out of it.
@@ -108,23 +109,24 @@ pub fn read(file: &[u8]) -> Result<Astc, String> {
     })
 }
 
+/// An ASTC file's header for a picture `width` by `height` in `side` pixel blocks, as the
+/// tests write files for `read` and for `ImageIO` to read back.
+#[cfg(test)]
+pub(super) fn header(side: u8, width: u32, height: u32) -> Vec<u8> {
+    let mut header = MAGIC.to_vec();
+    header.extend([side, side, 1]);
+    header.extend(&width.to_le_bytes()[..3]);
+    header.extend(&height.to_le_bytes()[..3]);
+    header.extend([1, 0, 0]);
+    header
+}
+
 #[cfg(test)]
 mod tests {
     use objc2_core_graphics::CGBitmapContextCreateImage;
 
-    use super::{Blocks, HEADER, MAGIC, encode, read};
+    use super::{Blocks, MAGIC, encode, header, read};
     use crate::viewer::bitmap::Canvas;
-
-    /// An ASTC file's header for a picture `width` by `height` in `side` pixel blocks.
-    fn header(side: u8, width: u32, height: u32) -> Vec<u8> {
-        let mut header = MAGIC.to_vec();
-        header.extend([side, side, 1]);
-        header.extend(&width.to_le_bytes()[..3]);
-        header.extend(&height.to_le_bytes()[..3]);
-        header.extend([1, 0, 0]);
-        assert_eq!(header.len(), HEADER);
-        header
-    }
 
     #[test]
     fn a_file_gives_its_blocks_and_its_size() {

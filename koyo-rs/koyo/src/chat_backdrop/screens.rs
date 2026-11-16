@@ -1,7 +1,7 @@
 //! The pictures of the screens chats show the backdrop on: one a screen, made off the main
 //! thread the first time a chat there asks for it, and again when what it's made from changes.
 //! One is made at a time, the last one asked for next, and the last one made shows meanwhile.
-//! How a picture looks is said to the renderer as it's drawn (`texture::Look`), so changing the
+//! How a picture looks is said to the renderer as it's drawn (`Texture::mark`), so changing the
 //! look makes nothing again. A picture is kept while a chat on its screen shows it, and let go
 //! a while after none does ([`KEPT`]).
 
@@ -9,15 +9,15 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use gpui_kit::{App, Global, Pixels, Task};
+use gpui_kit::{App, Global, Task};
 use objc2::MainThreadMarker;
 use objc2_core_foundation::CFRetained;
 use objc2_core_video::CVPixelBuffer;
 
 use super::make::{self, Recipe};
-use super::texture::{Look, Texture};
+use super::texture::Texture;
 use super::wallpaper::{self, Wallpaper};
-use crate::settings::Quality;
+use crate::settings::{ChatBackdrop, Quality};
 
 /// How long a screen's picture is kept once no chat shows it: a chat shown again within it,
 /// after a terminal's tab say, shows its backdrop at once rather than the card while it's made.
@@ -26,8 +26,6 @@ const KEPT: Duration = Duration::from_secs(30);
 #[derive(Default)]
 struct Screens {
     by_display: HashMap<u64, Screen>,
-    /// The screens Koyo's windows are on, as their display IDs and sizes in pixels.
-    windows: Vec<(u64, u32, u32)>,
 }
 
 impl Global for Screens {}
@@ -58,7 +56,7 @@ struct Shown {
     texture: Texture,
     /// What a chat paints to draw it, and the look it was last marked with.
     placeholder: CFRetained<CVPixelBuffer>,
-    look: Option<Look>,
+    look: Option<ChatBackdrop>,
 }
 
 /// What a chat holds while it shows a screen's backdrop.
@@ -109,7 +107,7 @@ pub fn hold(display: u64, cx: &mut App) -> Hold {
 pub fn picture(
     display: u64,
     recipe: Option<Recipe>,
-    look: Look,
+    look: ChatBackdrop,
     cx: &mut App,
 ) -> Option<CFRetained<CVPixelBuffer>> {
     let screen = screen(display, cx);
@@ -123,7 +121,7 @@ pub fn picture(
     }
     let shown = self::screen(display, cx).shown.as_mut()?;
     if shown.look != Some(look) {
-        shown.texture.mark(&shown.placeholder, look);
+        shown.texture.mark(&shown.placeholder, &look);
         shown.look = Some(look);
     }
     Some(shown.placeholder.clone())
@@ -159,11 +157,11 @@ fn start(display: u64, cx: &mut App) {
 
 /// What making a screen's picture gave: the texture, how long decoding, laying out and
 /// compressing took, and all of it.
-type Made = Result<(Texture, [Duration; 3], Duration), String>;
+type Ready = Result<(Texture, [Duration; 3], Duration), String>;
 
 /// Shows the picture made of `recipe` on screen `display`, or the card if it couldn't be
 /// made, and makes the next one asked for meanwhile.
-fn finished(display: u64, recipe: Recipe, made: Made, cx: &mut App) {
+fn finished(display: u64, recipe: Recipe, made: Ready, cx: &mut App) {
     let shown = made.and_then(|(texture, took, all)| {
         let placeholder = Texture::placeholder().ok_or("no pixel stands for it")?;
         let [decoded, laid_out, compressed] = took.map(|took| took.as_millis());
@@ -196,12 +194,10 @@ fn finished(display: u64, recipe: Recipe, made: Made, cx: &mut App) {
     cx.refresh_windows();
 }
 
-/// Looks again at what the screens' pictures are made from: the screens Koyo's windows are on,
-/// and the wallpaper of each screen a chat shows the backdrop on, drawing the windows again when
-/// either changed, so they ask for the pictures they then need; and lets the pictures no chat
-/// has shown for [`KEPT`] go.
+/// Looks again at the wallpaper of each screen a chat shows the backdrop on, drawing the
+/// windows again when one changed, so they ask for the pictures they then need; and lets the
+/// pictures no chat has shown for [`KEPT`] go.
 pub fn tick(cx: &mut App) {
-    note_windows(cx);
     let now = Instant::now();
     let mut changed = false;
     for (&display, screen) in &mut cx.default_global::<Screens>().by_display {
@@ -224,42 +220,13 @@ pub fn tick(cx: &mut App) {
     }
 }
 
-/// Notes the screens Koyo's windows are on, for the memory the Quality row names.
-fn note_windows(cx: &mut App) {
-    let mut screens: Vec<(u64, u32, u32)> = Vec::new();
-    for handle in cx.windows() {
-        let screen = handle.update(cx, |_, window, cx| {
-            let display = window.display(cx)?;
-            let size = display.bounds().size;
-            let pixels = |points: Pixels| (points.as_f32() * window.scale_factor()).round() as u32;
-            Some((
-                u64::from(display.id()),
-                pixels(size.width),
-                pixels(size.height),
-            ))
-        });
-        if let Ok(Some(screen)) = screen
-            && !screens.iter().any(|(display, ..)| *display == screen.0)
-        {
-            screens.push(screen);
-        }
-    }
-    screens.sort_unstable();
-    let noted = &mut cx.default_global::<Screens>().windows;
-    if *noted != screens {
-        *noted = screens;
-        cx.refresh_windows();
-    }
-}
-
 /// What the pictures of the screens Koyo's windows are on take at `quality`, as the Quality
-/// row says it; nothing before they're noted.
-pub fn memory(quality: Quality, cx: &App) -> String {
-    let screens = cx
-        .try_global::<Screens>()
-        .map_or(&[][..], |screens| &screens.windows);
+/// row says it, from `AppKit` as the row is drawn; nothing off the main thread.
+pub fn memory(quality: Quality) -> String {
+    let screens = MainThreadMarker::new().map(wallpaper::screens_of_windows);
+    let screens = screens.unwrap_or_default();
     let bytes: usize = (screens.iter())
-        .map(|&(_, width, height)| quality.bytes(width, height))
+        .map(|&(width, height)| quality.bytes(width, height))
         .sum();
     let megabytes = bytes as f64 / 1e6;
     match screens.len() {
