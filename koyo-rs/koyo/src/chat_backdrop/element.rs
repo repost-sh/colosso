@@ -121,6 +121,10 @@ impl Element for Picture {
 /// The screen holding most of `window`, as GPUI's display ID and where it lies relative to the
 /// window.
 fn screen(window: &Window, cx: &App) -> Option<(u64, Bounds<Pixels>)> {
+    #[cfg(feature = "visual-check")]
+    if let Some(stand_in) = super::visual::screen() {
+        return Some(stand_in);
+    }
     let display = window.display(cx)?;
     // The window's bounds are its screen's, from the screen's top left.
     let origin = window.bounds().origin;

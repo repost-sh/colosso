@@ -99,6 +99,10 @@ pub fn wallpaper(display: u64, cx: &mut App) -> Option<Wallpaper> {
 
 /// The wallpaper `AppKit` names for screen `display`, from the main thread.
 fn read(display: u64) -> Option<Wallpaper> {
+    #[cfg(feature = "visual-check")]
+    if let Some(stand_in) = super::visual::wallpaper() {
+        return Some(stand_in);
+    }
     wallpaper::read(u32::try_from(display).ok()?, MainThreadMarker::new()?)
 }
 
@@ -370,4 +374,22 @@ pub fn memory(quality: Quality, cx: &App) -> String {
         1 => format!("About {megabytes:.1} MB on this screen."),
         count => format!("About {megabytes:.1} MB on these {count} screens."),
     }
+}
+
+/// Whether screen `display`'s picture and its blur are the ones its chats asked for last, and
+/// nothing is being made: for the visual check, which saves a picture of the window then.
+#[cfg(feature = "visual-check")]
+pub fn settled(display: u64, cx: &App) -> bool {
+    let Some(screen) = cx.try_global::<Screens>().and_then(|screens| screens.by_display.get(&display))
+    else {
+        return false;
+    };
+    let Some(shown) = &screen.shown else {
+        return false;
+    };
+    let blur = shown.blur.as_ref().map(|(sigma, _)| *sigma);
+    screen.making.is_none()
+        && shown.blurring.is_none()
+        && screen.wanted.as_ref() == Some(&shown.recipe)
+        && blur == screen.wanted_blur
 }
