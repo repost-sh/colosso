@@ -22,6 +22,8 @@ thread_local! {
     static ENGINE: RefCell<HashMap<u64, Instant>> = RefCell::new(HashMap::new());
     /// How many of the events the app's own process next puts in its queue are the harness's.
     static QUEUED: Cell<u32> = const { Cell::new(0) };
+    /// Whether the application's dispatch tells the layer of its events yet.
+    static LISTENING: Cell<bool> = const { Cell::new(false) };
 }
 
 /// The agent desktop's host runs as process `pid`, and posts inputs from now on.
@@ -36,6 +38,23 @@ pub fn posters() -> Posters {
         own: i64::from(std::process::id()),
         desk: DESK.load(Ordering::Relaxed),
     }
+}
+
+/// The application's dispatch tells the layer of its events from now on.
+pub fn listening() {
+    LISTENING.set(true);
+}
+
+/// Whether the layer hears the app's inputs: until it does, nothing is known of them.
+#[must_use]
+pub fn hearing() -> bool {
+    LISTENING.get()
+}
+
+/// The window of the latest input noted, for what's asked for at a point of the screen.
+#[must_use]
+pub fn latest_window() -> Option<isize> {
+    JOURNAL.with_borrow(Journal::latest_window)
 }
 
 fn note(window: isize, origin: Origin, kind: Kind) {

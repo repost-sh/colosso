@@ -932,14 +932,16 @@ upstream's again.
 
 ### 14.2 The gate [decided]
 
-Every native menu Koyo's process pops up asks one gate first (`koyo/src/native/menus.rs`). It
-refuses on evidence and allows otherwise:
+Every native menu Koyo's process pops up asks one gate first. Its rule is the native layer's
+(`koyo-seam`, `menus.rs`; `docs/native-layer.md` 7), which judges by the window's last press or
+key as the layer heard it and labelled it (`heard.rs`, `input.rs`); its place in `AppKit` is the
+app's (`koyo/src/native/menus/appkit.rs`). It refuses on evidence and allows otherwise:
 
 | Refused when | Known by |
 | --- | --- |
 | The window it's for isn't on the screen the person sees | `isOnActiveSpace` and `isVisible` of the window: an agent desktop window is on another Space |
-| No press or key in that window in the last 5 seconds | A local event monitor notes each window's last press and key as the app takes them. An agent's click through the page's protocol (`browser_click`), or a probe's press handed straight to the window, leaves none |
-| The window's last input was posted by a program | Its system event: the process that posted it is the agent desktop's host or Koyo, whatever state its source has. The gate also tests for a private source's state (-1), which no posted event arrives with: the host's click came with the host's pid and a state id of its own (1498617647, 2026-11-16), so a program is known by its poster's pid alone |
+| No press or key in that window in the last 5 seconds | The layer notes each window's last press and key as the application dispatches them |
+| The window's last input wasn't the person's | Its label: posted by the agent desktop's host (by the poster's pid, which arrives; a private source's state arrives as an id of its own, 1498617647 on 2026-11-16, never as -1), made by Koyo itself, the harness's press handed to the window, or an agent's through the page's protocol. Before 2026-11-17 the last two left no note, and a menu they caused was judged by the person's press before them |
 | An agent drives the page that asked (a page's menu) | The page's holder (`browser/control.rs`) |
 
 Anything else is the person's: the hardware's press, or a tool of theirs posting for them (a
@@ -969,8 +971,9 @@ sets a `<select>`'s value with `browser_eval`.
 
 ### 14.4 What's checked
 
-Unit tests (`native/menus/tests.rs`): each side of the gate, the hardware's press shown, every
-poster refused. `[proven]` 2026-11-16 on the agent desktop, the person away
+Unit tests (`koyo-seam`, `menus.rs`, running the function the gate's hooks call): each side of
+the gate, the person's press shown, every other origin refused. `script/seam-bench/no-menu-for-agents.sh`
+is the proof below as a script. `[proven]` 2026-11-16 on the agent desktop, the person away
 five minutes before each: a probe's right-click, `desktop_click`'s and an agent's
 `browser_click`'s each reached the page, each was refused, and the window server's list,
 read before, during and after each, had no menu window of the test Koyo's

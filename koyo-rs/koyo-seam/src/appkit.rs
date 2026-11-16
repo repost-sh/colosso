@@ -30,6 +30,7 @@ const KEY_DOWN: usize = 10;
 /// # Safety
 /// `event` is null or a live `NSEvent`, and this is the main thread.
 pub unsafe fn app_sends(event: *mut AnyObject) {
+    heard::listening();
     let Some(event) = (unsafe { event.as_ref() }) else {
         return;
     };

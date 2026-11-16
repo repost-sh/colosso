@@ -5,10 +5,12 @@
 //! through hooks by the code that touches `AppKit`.
 //!
 //! So far: where a key goes ([`keys`]), whose an input is ([`input`]), and the inputs the
-//! process hears, kept under their labels ([`heard`]).
+//! process hears, kept under their labels ([`heard`]), and which native menus may show
+//! ([`menus`]).
 
 #[cfg(target_os = "macos")]
 pub mod appkit;
 pub mod heard;
 pub mod input;
 pub mod keys;
+pub mod menus;
