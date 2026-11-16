@@ -74,6 +74,7 @@ fn an_extension_is_listed_acts_on_the_page_opens_a_tab_and_is_pinned_and_removed
                 pane: 1,
                 extension: id.clone(),
                 at: [200., 200.],
+                corner: koyo_browser_ipc::Corner::Right,
             })
         })
         .expect("act");
@@ -111,6 +112,7 @@ fn an_extension_is_listed_acts_on_the_page_opens_a_tab_and_is_pinned_and_removed
             pane: 1,
             extension: id.clone(),
             at: [200., 200.],
+            corner: koyo_browser_ipc::Corner::Right,
         })
         .expect("act again");
     let (mut went, mut closed) = (false, false);

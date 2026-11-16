@@ -8,8 +8,10 @@
 //!   put (an extension's options, a page it opens after it's removed). The address it goes
 //!   to opens as a tab of the app's, and the window is closed before it shows.
 //!
-//! Chrome tells a client nothing of a browser's kind. A popup's window shows its title in a
-//! title bar of its own; a tabbed window's title bar holds its tabs, and shows no title.
+//! Chrome tells a client nothing of a browser's kind, and a browser just made has no window
+//! yet. By its first page it has, and the window says: a tabbed one draws its tabs in its
+//! title bar, so its content takes the whole window (`FullSizeContentView`); a popup's has a
+//! title bar of its own over its page. Seen on Chromium 156, 2026-11-16.
 //!
 //! On an engine without Koyo's patches, where extensions have no controls of the app's
 //! (`extensions::on`), every such browser is closed as soon as it's made, as before.
@@ -24,13 +26,13 @@ use cef::{
 };
 use koyo_browser_ipc::HostEvent;
 use objc2::rc::Retained;
-use objc2_app_kit::{NSView, NSWindow, NSWindowTitleVisibility};
+use objc2_app_kit::{NSView, NSWindow, NSWindowStyleMask};
 use std::os::raw::c_int;
 
 thread_local! {
     /// The browsers Chrome made on its own that are still open: CEF's identifier of each,
-    /// the browser, and whether it's a tabbed window, to be closed once it says where it goes.
-    static STRAYS: RefCell<Vec<(c_int, Browser, bool)>> = const { RefCell::new(Vec::new()) };
+    /// the browser, and what it is, once its window has said.
+    static STRAYS: RefCell<Vec<(c_int, Browser, Option<Kind>)>> = const { RefCell::new(Vec::new()) };
 }
 
 /// The client of a browser Chrome makes on its own.
@@ -80,9 +82,51 @@ fn window_of(browser: &Browser) -> Option<Retained<NSWindow>> {
     view.and_then(NSView::window)
 }
 
-/// Whether `window` is a tabbed window of Chrome's: its title bar holds tabs, and no title.
-fn is_tabbed(window: &NSWindow) -> bool {
-    window.titleVisibility() != NSWindowTitleVisibility::Visible
+/// What a browser Chrome made on its own is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Kind {
+    /// A tabbed window, whose page becomes a tab of the app's.
+    Tabbed,
+    /// A window an extension asked for, which stays Chrome's.
+    Window,
+}
+
+/// What a window of Chrome's with this style is: a tabbed one's content takes all of it.
+fn kind(style: NSWindowStyleMask) -> Kind {
+    if style.contains(NSWindowStyleMask::FullSizeContentView) { Kind::Tabbed } else { Kind::Window }
+}
+
+/// What `browser` is, read from its window once and kept; none while it has no window.
+fn kind_of(browser: &Browser) -> Option<Kind> {
+    let id = browser.identifier();
+    let known = STRAYS
+        .with(|strays| strays.borrow().iter().find(|(stray, ..)| *stray == id).map(|(.., kind)| *kind));
+    // None: not one of them (an engine without the patches closes each as it's made).
+    let known = known?;
+    if known.is_some() {
+        return known;
+    }
+    let window = window_of(browser)?;
+    let found = kind(window.styleMask());
+    log::info!(
+        "the browser Chrome made is {}",
+        match found {
+            Kind::Tabbed => "a tabbed window, whose page becomes a tab",
+            Kind::Window => "a window of its own, which stays",
+        }
+    );
+    if found == Kind::Tabbed {
+        // Never seen: it closes as it says where it was going.
+        set_alpha(&window, 0.);
+        window.setIgnoresMouseEvents(true);
+        window.orderOut(None);
+    }
+    STRAYS.with(|strays| {
+        if let Some(entry) = strays.borrow_mut().iter_mut().find(|(stray, ..)| *stray == id) {
+            entry.2 = Some(found);
+        }
+    });
+    Some(found)
 }
 
 wrap_client! {
@@ -107,34 +151,19 @@ wrap_life_span_handler! {
             let Some(browser) = browser else {
                 return;
             };
-            let window = window_of(browser);
-            let kept = crate::extensions::on();
-            let tabbed = !kept || window.as_deref().is_none_or(is_tabbed);
-            log::info!(
-                "Chrome made a browser on its own: {}",
-                if !kept {
-                    "closed"
-                } else if tabbed {
-                    "a tabbed window, whose page becomes a tab"
-                } else {
-                    "a window, which stays"
-                }
-            );
-            if tabbed && let Some(window) = &window {
-                // Never seen: it closes once it says where it was going.
-                set_alpha(window, 0.);
-                window.setIgnoresMouseEvents(true);
-                window.orderOut(None);
-            }
-            if !kept {
+            if !crate::extensions::on() {
+                log::info!("Chrome made a browser on its own: closed");
                 if let Some(host) = browser.host() {
                     host.close_browser(1);
                 }
                 return;
             }
+            log::info!("Chrome made a browser on its own");
             STRAYS.with(|strays| {
-                strays.borrow_mut().push((browser.identifier(), browser.clone(), tabbed));
+                strays.borrow_mut().push((browser.identifier(), browser.clone(), None));
             });
+            // It has no window yet, as a rule: what it is is read at its first page.
+            kind_of(browser);
         }
 
         fn on_before_close(&self, browser: Option<&mut Browser>) {
@@ -166,11 +195,7 @@ wrap_request_handler! {
             let (Some(browser), Some(frame), Some(request)) = (browser, frame, request) else {
                 return 0;
             };
-            let id = browser.identifier();
-            let tabbed = STRAYS.with(|strays| {
-                strays.borrow().iter().any(|(stray, _, tabbed)| *stray == id && *tabbed)
-            });
-            if !tabbed || cef::ImplFrame::is_main(frame) == 0 {
+            if cef::ImplFrame::is_main(frame) == 0 || kind_of(browser) != Some(Kind::Tabbed) {
                 return 0;
             }
             let url = cef::CefString::from(&request.url()).to_string();
@@ -190,5 +215,21 @@ wrap_request_handler! {
             }
             1
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_window_whose_content_takes_all_of_it_is_tabbed() {
+        // As Chromium 156 makes them: a popup's window, and a tabbed one.
+        let popup = NSWindowStyleMask::Titled
+            | NSWindowStyleMask::Closable
+            | NSWindowStyleMask::Miniaturizable
+            | NSWindowStyleMask::Resizable;
+        assert_eq!(kind(popup), Kind::Window);
+        assert_eq!(kind(popup | NSWindowStyleMask::FullSizeContentView), Kind::Tabbed);
     }
 }

@@ -32,7 +32,7 @@ mod requests;
 pub use devtools::{DevToolsAsk, DevToolsDock};
 pub use dialogs::{Answer, Dialog, FileMode, MenuEntry, MenuTarget, Permission};
 pub use events::{Cursor, HostEvent, PageState, SiteSetting};
-pub use extensions::{Extension, ExtensionAction, ExtensionChange, ExtensionSource};
+pub use extensions::{Corner, Extension, ExtensionAction, ExtensionChange, ExtensionSource};
 pub use input::{Point, Viewport};
 pub use passkeys::{
     Assertion, AuthenticatorSelection, Bytes, Created, Creation, CredentialDescriptor,

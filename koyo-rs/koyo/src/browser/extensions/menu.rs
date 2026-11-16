@@ -4,7 +4,7 @@
 
 use gpui_kit::component::native_menu::NativeMenu;
 use gpui_kit::{Action, Bounds, Context, Pixels, Point, Window};
-use koyo_browser_ipc::{AppRequest, ExtensionChange, PaneId};
+use koyo_browser_ipc::{AppRequest, Corner, ExtensionChange, PaneId};
 
 use super::{MANAGE, STORE, Shown};
 use crate::browser::view::{BrowserEvent, BrowserView};
@@ -31,6 +31,14 @@ pub struct ExtensionPick {
     pub pane: PaneId,
     pub extension: String,
     pub pick: IconPick,
+}
+
+/// Which of its top corners a popup hangs by from under `icon`, in a window `width` wide:
+/// the one that keeps it over the window. From an icon in the window's left half (the site
+/// controls of a sidebar's address field) it opens to the right, by its top left; from one
+/// in the right half (a toolbar's end) to the left, as under Chrome's own toolbar.
+fn hangs_by(icon: Bounds<Pixels>, width: Pixels) -> Corner {
+    if icon.center().x < width / 2. { Corner::Left } else { Corner::Right }
 }
 
 /// The rows of `shown`'s menu, by what each says: a separator is none.
@@ -90,7 +98,8 @@ impl BrowserView {
     }
 
     /// A press on `extension`'s icon, drawn at `icon` in `window`: Chrome runs its action on
-    /// the page, and a popup it opens hangs from under the icon's right end.
+    /// the page, and a popup it opens hangs from under the icon, towards the window's middle,
+    /// so it's over the window from an icon at either side of it.
     pub(in crate::browser) fn extension_act(
         &mut self,
         extension: &str,
@@ -98,12 +107,16 @@ impl BrowserView {
         window: &Window,
         cx: &mut Context<Self>,
     ) {
-        let under = Point { x: icon.right(), y: icon.bottom() };
-        let Some(at) = crate::native::window::on_screen(window, under) else {
+        let corner = hangs_by(icon, window.viewport_size().width);
+        let x = match corner {
+            Corner::Left => icon.left(),
+            Corner::Right => icon.right(),
+        };
+        let Some(at) = crate::native::window::on_screen(window, Point { x, y: icon.bottom() }) else {
             return;
         };
-        let pane = self.pane;
-        self.send_to_page(AppRequest::ExtensionAct { pane, extension: extension.to_owned(), at }, cx);
+        let (pane, extension) = (self.pane, extension.to_owned());
+        self.send_to_page(AppRequest::ExtensionAct { pane, extension, at, corner }, cx);
     }
 
     /// A right press on `shown`'s icon: its menu opens at `at` in `window`.
@@ -163,6 +176,15 @@ impl BrowserView {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpui_kit::{point, px, size};
+
+    #[test]
+    fn a_popup_opens_towards_the_windows_middle() {
+        let icon = |x: f32| Bounds::new(point(px(x), px(40.)), size(px(26.), px(26.)));
+        // The sliders button of a sidebar's address field, and a toolbar's last icon.
+        assert_eq!(hangs_by(icon(226.), px(1920.)), Corner::Left);
+        assert_eq!(hangs_by(icon(1860.), px(1920.)), Corner::Right);
+    }
 
     fn shown(pinned: bool, options: &str, homepage: &str) -> Shown {
         Shown {

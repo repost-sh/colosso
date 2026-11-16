@@ -293,7 +293,8 @@ fn handle(request: AppRequest) {
             pane,
             extension,
             at,
-        } => crate::extensions::act(pane, &extension, at),
+            corner,
+        } => crate::extensions::act(pane, &extension, at, corner),
         AppRequest::ChangeExtension {
             profile,
             extension,

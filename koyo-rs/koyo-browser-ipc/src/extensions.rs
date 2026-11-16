@@ -50,6 +50,18 @@ pub enum ExtensionSource {
     Other,
 }
 
+/// Which of its top corners an extension's popup hangs by.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Corner {
+    /// Its top left: the popup opens to the right of the point, as from an icon at the
+    /// window's left.
+    Left,
+    /// Its top right, as under Chrome's own toolbar: the popup opens to the left of it.
+    #[default]
+    Right,
+}
+
 /// What an extension set its toolbar action to, for one page or for every page. An empty
 /// value is one it didn't set: for a page, what's set for every page shows; for every page,
 /// the manifest's.
