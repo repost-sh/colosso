@@ -407,8 +407,8 @@ Each path has exactly one place. `[proposed]`
 
 | Path | Where it enters | How it is labelled |
 | --- | --- | --- |
-| The hardware | `NSApp`'s `sendEvent:` (already patched by the host, moves into the layer) and the fork's hooks | The event's source state is not private and its poster is 0 or unknown: `Person` |
-| The agent desktop's host | The same | Source state private, or the poster is the desk host: `Posted`. With the tag below: `Relayed` or `Posted` |
+| The hardware | `NSApp`'s `sendEvent:` (already patched by the host, moves into the layer) and the fork's hooks | Its poster is neither the desk host nor Koyo: `Person` |
+| The agent desktop's host | The same | The poster is the desk host: `Posted`. With the tag below: `Relayed` or `Posted` |
 | Another program | The same | Poster named: `Posted { by }`, treated as the person's tool, as the gate does today |
 | The page's protocol | `browser::agent::cdp`, as it sends `Input.*` | `seam::engine_input(page, kind)` writes the journal. No `NSEvent` exists |
 | The probe | The probe's event helpers | They send through `seam::inject(event, Origin::Probe)`, the only way to hand a made-up event to a window |
@@ -430,6 +430,21 @@ input that caused this". What changes is that a probe press and a protocol click
 it with their labels, so a menu they cause is judged by them and not by what the person
 pressed before. A menu that a page opens by itself within five seconds of the person's press
 is still taken for theirs, as today. Chromium gives no way to know the cause.
+
+**What a posted event says of itself.** `[proven]` 2026-11-16, in the menu gate's proof
+(`.superpowers/v/evidence/20261116-234153-menu-gate/`): a right-click the agent desktop's host
+posted with `CGEventPostToPid` arrived in the test Koyo's event monitor with the host's
+process as its poster (29277, checked against `ps`) and with a source state of 1498617647.
+So the poster survives, and the state doesn't arrive as -1: a private source has a state id
+of its own. The menu gate's test for -1 never matches a posted event; a posted input is
+known by its poster alone. What state the hardware's own events arrive with is `[open]`: the
+gate logs it at each menu it shows, so the owner's first right-click in a build with the gate
+answers it. Until then no state is taken for a program's.
+
+**The idle clock.** `[proven]` the same night: `desktop_open` and `desktop_click` reset
+`HIDIdleTime` (83 s before an open, 4.6 s after), and the probe's and app control's calls
+don't. A check that the person is away has to be read before a `desktop_*` call, never after
+one.
 
 **A tag from the desk host.** `[open]`, settled in step 2. The desk host would stamp each
 event it posts with `kCGEventSourceUserData`: one value for an agent's act, one for the
@@ -744,7 +759,7 @@ and the bench sequences named, with evidence under `.superpowers/v/evidence/`.
 
 | Step | Change | Ends verified by | Estimate | A build for the owner |
 | --- | --- | --- | --- | --- |
-| 0 | The menu gate proof on the agent desktop, as planned. No code | The three right-clicks' window lists and log lines. Decides whether `d33840cad` goes into the owner's next build | an hour, once the owner is idle |  |
+| 0 | The menu gate proof on the agent desktop, as planned. No code. Done 2026-11-16: all three refused, no menu window (section 5.2) | The three right-clicks' window lists and log lines. Decides whether `d33840cad` goes into the owner's next build | an hour, once the owner is idle |  |
 | 1 | `ce2f3c7fc`'s key mechanism undone by a forward commit (section 8) | The fork's diff has no `Offers`. `script/lint`, with no dead code left. The app's and the fork's tests. `key-once` on the agent desktop. The tip is shippable | half a day |  |
 | 2 | The crate `koyo-seam`, empty of rules: the input label and journal, `NSApp`'s `sendEvent:` patch moved in, the registry of pages (which page a view is, and a page's keys' view, registered by the host as it makes and closes them), `seam::inject` for the probe, `seam::engine_input` for the protocol, `probe seam`, `script/seam-fence` in report mode, `script/seam-bench`. The desk host's tag, if a check shows it survives. No behaviour changes | Tier 0 for the label. The engine's smoke suite while the owner is idle, for the moved `NSApp` patch. A bench sequence `labels`: a probe click, a `desktop_click` and a `browser_click` each show their label in `probe seam` | 2 days |  |
 | 3 | Menus read the label. The gate moves in, its monitor goes, the share picker is checked. A real Edit menu, for `AppKit`'s own items (section 7) | The gate's tests in tier 0. `no-menu-for-agents`, which is step 0's proof as a script. The owner's own right-click and a `<select>` | 1 day | yes: menus |
@@ -796,7 +811,8 @@ To go into the repository's agent instructions at step 10. `[proposed]`
 
 | Risk | Where it lands | What is watched |
 | --- | --- | --- |
-| The source fields or a tag don't survive `CGEventPostToPid` | Step 0 answers state and poster. Step 2 answers the tag | If the tag is lost, relayed and agent input stay one label, as today. No rule in 5.3 depends on telling them apart |
+| The source fields or a tag don't survive `CGEventPostToPid` | Step 0 answered state and poster: the poster's pid arrives, and a private source's state arrives as an id of its own, not -1 (section 5.2). Step 2 answers the tag | A program is known by its poster's pid, so the layer has to know each poster: the desk host's pid is told as it starts, and an unknown program's input counts as the person's. If the tag is lost, relayed and agent input stay one label, as today. No rule in 5.3 depends on telling them apart |
+| The hardware's own source state hasn't been read in the app | Step 3 | The gate logs it at each menu it shows. Until it's read, no state is taken for a program's |
 | A handed-back key runs GPUI's whole key-down path, not bindings alone | Step 5 | Unchanged from today. The key-up rule covers the arrow repeater. A sequence holds ⌥→ in a page |
 | A hook that runs under the fork's lock sends `AppKit` something | Steps 6 and 7 | The contract in 6.1. The rig runs a remount with the keyboard in the stand-in page, which would deadlock at once |
 | The journal takes a page's own menu for the person's, within five seconds of their press | Step 3 | As today. Written down in 5.2. Chromium gives no cause to read |

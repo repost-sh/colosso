@@ -939,7 +939,7 @@ refuses on evidence and allows otherwise:
 | --- | --- |
 | The window it's for isn't on the screen the person sees | `isOnActiveSpace` and `isVisible` of the window: an agent desktop window is on another Space |
 | No press or key in that window in the last 5 seconds | A local event monitor notes each window's last press and key as the app takes them. An agent's click through the page's protocol (`browser_click`), or a probe's press handed straight to the window, leaves none |
-| The window's last input was posted by a program | Its system event: a private event source (the agent desktop's host posts from one, the hardware never does), or the process that posted it is the agent desktop's host or Koyo, whatever state its source claims |
+| The window's last input was posted by a program | Its system event: the process that posted it is the agent desktop's host or Koyo, whatever state its source has. The gate also tests for a private source's state (-1), which no posted event arrives with: the host's click came with the host's pid and a state id of its own (1498617647, 2026-11-16), so a program is known by its poster's pid alone |
 | An agent drives the page that asked (a page's menu) | The page's holder (`browser/control.rs`) |
 
 Anything else is the person's: the hardware's press, or a tool of theirs posting for them (a
@@ -970,7 +970,12 @@ sets a `<select>`'s value with `browser_eval`.
 ### 14.4 What's checked
 
 Unit tests (`native/menus/tests.rs`): each side of the gate, the hardware's press shown, every
-poster refused. `[open]` on screen: the person's own right-click on a page and a `<select>` on
-a page still open their menus (the owner's QA), and on the agent desktop none of an agent's
-right-clicks, `desktop_click`'s or `browser_click`'s, shows a menu anywhere (the window
-server's list read before, during and after).
+poster refused. `[proven]` 2026-11-16 on the agent desktop, the person away
+five minutes before each: a probe's right-click, `desktop_click`'s and an agent's
+`browser_click`'s each reached the page, each was refused, and the window server's list,
+read before, during and after each, had no menu window of the test Koyo's
+(`.superpowers/v/evidence/20261116-234153-menu-gate/`). The first two were refused for their
+window's Space, which every window there fails first; that an input posted into a window on
+the person's own screen is refused has no case to try, as nothing posts into the person's
+Koyo. `[open]` on screen: the person's own right-click on a page and a `<select>` on a page
+still open their menus (the owner's QA).
