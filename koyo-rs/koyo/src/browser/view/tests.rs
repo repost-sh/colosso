@@ -235,3 +235,43 @@ fn command_option_i_out_of_the_devtools_gives_the_keyboard_back_to_the_page(
     let in_page = cx.update_window(window, |_, window, cx| view.read(cx).focus.is_focused(window));
     assert!(in_page.unwrap());
 }
+
+#[gpui_kit::test]
+fn the_persons_right_click_in_a_page_an_agent_holds_takes_it_back_and_shows_its_menu(
+    cx: &mut TestAppContext,
+) {
+    use crate::browser::control::Actor;
+    use crate::native::menus::Refusal;
+    use gpui_kit::{Modifiers, MouseButton, MouseDownEvent, point};
+
+    let (window, view) = start_page(cx);
+    let agent = Actor {
+        id: "a".into(),
+        label: "claude-code:7f3a".into(),
+    };
+    view.update(cx, |view, cx| view.agent_claims(agent, false, None, cx))
+        .unwrap();
+    let gate = |cx: &mut TestAppContext| {
+        window
+            .update(cx, |_, window, cx| view.read(cx).menu_gate(window))
+            .unwrap()
+    };
+    // The agent's own right-click reaches the page with no press of the window's: the page
+    // is still the agent's as it asks for its menu.
+    assert_eq!(gate(cx), Err(Refusal::Agent));
+    // The person's right press in the page, heard on its way there, before the page asks.
+    let press = MouseDownEvent {
+        position: point(px(200.), px(150.)),
+        button: MouseButton::Right,
+        modifiers: Modifiers::default(),
+        click_count: 1,
+        first_mouse: false,
+    };
+    window
+        .update(cx, |_, window, cx| {
+            view.update(cx, |view, cx| view.pressed_at(&press, window, cx));
+        })
+        .unwrap();
+    view.read_with(cx, |view, _| assert!(view.control.person_holds()));
+    assert_eq!(gate(cx), Ok(()), "the person's menu shows");
+}
