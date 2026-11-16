@@ -208,10 +208,6 @@ impl Responders for Told {
             hooks::at_key(key);
         }
     }
-
-    fn gpui_first(&self, window: &AnyObject, keystroke: &gpui_kit::Keystroke) -> bool {
-        key_of(window).is_none_or(|key| hooks::gpui_first(key, keystroke))
-    }
 }
 
 /// Each window the keyboard is kept for, its holder, its first responder and whether it's key,

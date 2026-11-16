@@ -227,36 +227,21 @@ needs without a look at the screen:
 11. An agent typing into its page (`browser_type`) while the person types in the composer.
     Neither's text lands in the other; any `asked for the keyboard` line is refused.
 
-## 10. One key, one owner
+## 10. One key, one owner [not built; `docs/native-layer.md` 4.1]
 
-A key going to a page and to Koyo both was two owners for one key: a ⌘L in a page opened Koyo's
+A key going to a page and to Koyo both is two owners for one key: a ⌘L in a page opened Koyo's
 address and typed an `l` in the page, on the agent desktop, where Koyo is never the app in front
-and `AppKit` makes no pass of key equivalents of its own. Koyo goes by Chrome's split:
+and `AppKit` makes no pass of key equivalents of its own. With Koyo in front, as the person runs
+it, `AppKit`'s pass gives GPUI's view every ⌘ and ⌃ key Koyo binds before the page hears it, and
+no key is handled twice.
 
-- **The keys Koyo keeps** go to Koyo and never to the page, whoever has the keyboard: the tab and
-  window keys (`keyboard/reserved.rs`, checked against the keymap by a test).
-
-  | Key | Koyo's |
-  | --- | --- |
-  | ⌘T | a new tab |
-  | ⌘W | the tab closed |
-  | ⌘N | a new worktree |
-  | ⌘L | the address |
-  | ⌘⇧T | a closed tab back |
-  | ⌘Q | quitting |
-  | ⌃⇥, ⌃⇧⇥ | the tab switcher |
-
-  Koyo binds no ⌘1 to ⌘9. ⌥↑, ⌥↓, ⌥← and ⌥→, which move among tabs and projects, aren't kept:
-  they move the caret in a page's text.
-- **Every other key Koyo binds** goes to a page that has the keyboard first, and to Koyo only once
-  the page leaves it (the browser host's `unhandled_key`): a web app's own ⌘K, ⌘B or ⌘Enter
-  works in it. With GPUI's view holding, Koyo has every key it binds first, as before.
-- **One event is dispatched by GPUI once at most**, matched by its time, however often it's
-  offered to GPUI's view: by `AppKit`'s pass, by the window's key routing (which offers a ⌘ or ⌃
-  key to GPUI's view before delivering it while a page has the keyboard, as `AppKit` makes no
-  pass while Koyo isn't in front), and handed back by the page (vendored gpui-fast-macos,
-  `responders::Offers`). ⌘, (Settings), in Koyo's app menu, is the menu's before the page's.
-  A modifier pressed alone reaches the page, as in any browser.
+A first answer (`ce2f3c7fc`) had GPUI's view remember each key offered to it, to tell `AppKit`'s
+pass from the window's own offer and from a page's hand-back. It lost a key a page handed back
+late, and F12 and other keys without ⌘ or ⌃ while Koyo wasn't in front; and it made every key
+but Koyo's tab and window keys the page's first, which the person's Koyo never did. It's
+undone. What takes its place is one decision for each key where it enters the window, with the
+page's hand-back a call of its own, in the native layer (`docs/native-layer.md` 4.1 and 8).
+Until that's built, a ⌘ key in a page reaches both while Koyo isn't in front.
 
 ## 11. Floating panels and Spaces
 

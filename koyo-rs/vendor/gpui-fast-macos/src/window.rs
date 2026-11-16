@@ -703,10 +703,6 @@ pub(crate) struct MacWindowState {
     appearance_changed_callback: Option<Box<dyn FnMut()>>,
     input_handler: Option<PlatformInputHandler>,
     last_key_equivalent: Option<(KeyDownEvent, f64)>,
-    // Koyo: whose each key equivalent is, by its event's time, and whether the window's own key
-    // routing is offering one (`responders::Offers`).
-    pub(crate) koyo_offers: crate::responders::Offers,
-    pub(crate) koyo_router_offering: bool,
     last_left_mouse_down_event: Option<Retained<AnyObject>>,
     synthetic_drag_counter: usize,
     traffic_light_position: Option<Point<Pixels>>,
@@ -1142,8 +1138,6 @@ impl MacWindow {
                 appearance_changed_callback: None,
                 input_handler: None,
                 last_key_equivalent: None,
-                koyo_offers: crate::responders::Offers::default(),
-                koyo_router_offering: false,
                 last_left_mouse_down_event: None,
                 synthetic_drag_counter: 0,
                 traffic_light_position: titlebar
@@ -2741,32 +2735,6 @@ extern "C" fn handle_key_event(
             // SAFETY: `native_event` is the key event being handled.
             let at: f64 = unsafe { msg_send![native_event, timestamp] };
             if key_equivalent {
-                // Koyo: one key, one owner. The same event is offered here by `AppKit`'s own
-                // pass, by the window's key routing, and handed back by a page that left it;
-                // GPUI dispatches it once at most, first or once the page is done with it, as
-                // the app says (`responders::Offers`).
-                use crate::responders::{Answer, Offerer};
-                let from = if lock.koyo_router_offering {
-                    Offerer::Router
-                } else {
-                    Offerer::AppKit
-                };
-                let answer = match lock.koyo_offers.again(at, from) {
-                    Some(answer) => answer,
-                    None => {
-                        let window = lock.native_window;
-                        drop(lock);
-                        // SAFETY: the window is live while its view handles its key.
-                        let window = unsafe { &*window };
-                        let first =
-                            crate::responders::gpui_first(window, &key_down_event.keystroke);
-                        lock = window_state.as_ref().lock();
-                        lock.koyo_offers.first(at, first)
-                    }
-                };
-                if answer == Answer::Decline {
-                    return Bool::NO;
-                }
                 lock.last_key_equivalent = Some((key_down_event.clone(), at));
             } else if (lock.last_key_equivalent.take())
                 .is_some_and(|(was, when)| was == key_down_event && when == at)
