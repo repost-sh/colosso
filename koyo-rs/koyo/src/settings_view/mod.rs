@@ -7,6 +7,7 @@ mod agent_desktop;
 mod appearance;
 mod browser;
 mod chat;
+mod chat_backdrop;
 mod components;
 mod devices;
 mod editor;

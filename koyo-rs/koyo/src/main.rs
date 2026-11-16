@@ -95,6 +95,7 @@ fn init(cx: &mut App) {
     arc::bind_keys(cx);
     go_to_file::init(cx);
     chat::init(cx);
+    chat_backdrop::init(cx);
     symbols::init(cx);
     koyo_term::init(cx);
     terminals::init(cx);
