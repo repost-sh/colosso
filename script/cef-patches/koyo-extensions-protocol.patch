@@ -81,7 +81,7 @@
  namespace {
  
  // Gets an extension with ID `id`. If no extension is found, returns a
-@@ -160,8 +200,547 @@
+@@ -160,8 +200,562 @@
    return result;
  }
  
@@ -218,7 +218,7 @@
 +      toolbar_.Observe(toolbar);
 +    }
 +  }
-+
+ 
 +  const std::string& profile() const { return profile_; }
 +
 +  // extensions::ExtensionActionDispatcher::Observer:
@@ -448,7 +448,22 @@
 +    const std::string profile_name = profile->GetBaseName().AsUTF8Unsafe();
 +    const extensions::ExtensionSet installed =
 +        registry->GenerateInstalledExtensionsSet();
++    // The pinned ones first, in the order they were pinned, which is the order
++    // their icons have; then the rest.
++    std::vector<scoped_refptr<const extensions::Extension>> ordered;
++    if (toolbar) {
++      for (const auto& id : toolbar->pinned_action_ids()) {
++        if (const extensions::Extension* pinned = installed.GetByID(id)) {
++          ordered.emplace_back(pinned);
++        }
++      }
++    }
 +    for (const auto& extension : installed) {
++      if (!toolbar || !toolbar->IsActionPinned(extension->id())) {
++        ordered.push_back(extension);
++      }
++    }
++    for (const auto& extension : ordered) {
 +      if (!extensions::ui_util::ShouldDisplayInExtensionSettings(*extension)) {
 +        continue;
 +      }
@@ -515,7 +530,7 @@
 +  }
 +  return protocol::Response::Success();
 +}
- 
++
 +protocol::DispatchResponse ExtensionsHandler::KoyoUninstall(
 +    const protocol::String& id,
 +    const protocol::String& profile_name) {
@@ -629,7 +644,7 @@
  protocol::DispatchResponse ExtensionsHandler::TriggerAction(
      const std::string& extension_id,
      const std::string& target_id) {
-@@ -184,15 +763,35 @@
+@@ -184,15 +778,35 @@
    if (web_contents == nullptr) {
      return protocol::Response::ServerError("Tab target has no WebContents.");
    }
@@ -665,7 +680,7 @@
  
    extension_model->ExecuteUserAction(
        ExtensionActionViewModel::InvocationSource::kCdp);
-@@ -206,6 +805,9 @@
+@@ -206,6 +820,9 @@
      : target_id_(target_id),
        allow_loading_extensions_(allow_loading_extensions) {
    protocol::Extensions::Dispatcher::wire(dispatcher, this);

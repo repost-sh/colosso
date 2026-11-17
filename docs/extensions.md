@@ -203,7 +203,7 @@ popup itself (`.superpowers/research/run/03-popup-as-page.out`).
   the address field and the responsive button, as Chrome's sit right of its address.
 - **In the sidebar's address field**, in the Arc layout, which has no toolbar: the pinned
   icons are inside the field at its right, before the link and the sliders buttons, side
-  by side in pin order, each with its badge, as Arc has them. They come and go with those
+  by side in the order they were pinned in, each with its badge, as Arc has them. They come and go with those
   two buttons, while the pointer is over the field: away from it the field shows the
   address alone. A press runs the action, the popup hanging from under the icon; a right
   press opens the icon's menu (`extensions/pinned.rs`). Until 2026-11-17 a pinned icon
@@ -384,7 +384,7 @@ sees and told what to do. Where a row says an extension did something, that is h
 | The current window and its active tab are the page shown | checked from a worker, `windows.getCurrent`, `windows.getLastFocused`, `tabs.query({active, currentWindow})`: after a tab was chosen, after an agent opened one in front, and with a tab an extension opened behind. The last two were wrong before two fixes (section 3) |
 | The popover's row: icons and "+" | checked, by eye: an extension's own icon, a letter for one with none, "+" opens the store in front |
 | The toolbar's pinned icons (Orca layout) | checked, by eye |
-| The pinned icons in the sidebar's address field (Arc layout) | checked 2026-11-17, by eye: two pinned icons at the field's right, before the link and the sliders buttons, the badge on its icon; there with the pointer over the field and gone without it; a press opens the popup with its top left under the icon, and a second press closes it. Their order is the list's, by name, not yet the order they were pinned in `[open]`. The right press, which opens a native menu, wasn't made |
+| The pinned icons in the sidebar's address field (Arc layout) | checked 2026-11-17, by eye: two pinned icons at the field's right, before the link and the sliders buttons, the badge on its icon; there with the pointer over the field and gone without it; a press opens the popup with its top left under the icon, and a second press closes it. That time their order was by name; it's now the order they were pinned in, as Chrome keeps it (the engine lists the pinned ones first in that order, and the host keeps it: a unit test), **not seen since**. The right press, which opens a native menu, wasn't made |
 | In the installed build, on the owner's own desktop, 2026-11-17 | the popup opened **behind Koyo's window** and kept the keyboard, and an icon's menu opened behind the popover: neither shows on the agent desktop, where Chrome gives a popup no parent window. Read off the window server's list of his Koyo's windows as he pressed (section 6) |
 | A popup closes once it loses the keyboard | **not seen**: it needs Koyo in front on a real desktop |
 | A press on an icon opens Chrome's own popup under it | checked: from the sidebar's site controls it hangs by its top left and from the toolbar's end by its top right, over Koyo's window both times. It hung out to the left of the window before `Corner` (section 6) |
