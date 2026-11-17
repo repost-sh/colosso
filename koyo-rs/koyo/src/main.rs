@@ -6,6 +6,8 @@ mod atomic_file;
 mod backdrop;
 mod bottom;
 mod browser;
+#[cfg(test)]
+mod budget;
 mod changes;
 mod chat;
 mod chat_backdrop;

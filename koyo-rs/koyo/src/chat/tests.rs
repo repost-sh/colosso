@@ -23,6 +23,7 @@ use crate::test_support::{draw, repo, select, shell_with};
 
 mod activity;
 pub(super) mod asks;
+mod budget;
 mod config;
 mod details;
 mod drawers;
@@ -202,6 +203,22 @@ fn tabs(shell: &Entity<Shell>, cx: &TestAppContext) -> Vec<String> {
 
 fn chats_of(shell: &Entity<Shell>, cx: &TestAppContext) -> Entity<Chats> {
     shell.read_with(cx, |shell, _| shell.chat_tabs.chats.clone())
+}
+
+/// Chat `0001` in the checkout at `root` as the host lists it, at `status`.
+fn at(root: &Path, status: Status) -> ThreadSummary {
+    ThreadSummary {
+        status,
+        ..summary("0001", root, "A chat", true)
+    }
+}
+
+/// `summary` as the host says it, its event taken in by `chats`.
+fn hears(chats: &Entity<Chats>, summary: ThreadSummary, cx: &mut TestAppContext) {
+    chats.update(cx, |chats, cx| {
+        let event = Event::ThreadSummary(summary);
+        chats.take_in(vec![Notice::Event(Box::new(event))], cx);
+    });
 }
 
 #[gpui_kit::test]

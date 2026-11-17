@@ -60,6 +60,10 @@ pub struct ChatTabs {
 
 struct Made {
     view: Entity<ChatView>,
+    /// Where the view was last told it works, compared here and not in the view: the shell is
+    /// drawn again whenever a view it reached into while rendering changes, which a chat's
+    /// does as its answer arrives (`budget.rs`).
+    place: Option<Workplace>,
     _events: Subscription,
 }
 
@@ -163,7 +167,7 @@ impl Shell {
     }
 
     /// Tells the shown tab's chats where they work, once the right panel holds its checkout.
-    fn tell_chats_where_they_work(&self, cx: &mut Context<Self>) {
+    fn tell_chats_where_they_work(&mut self, cx: &mut Context<Self>) {
         let (Some(project), Some(unit)) = (self.workspace.project(), self.workspace.branch())
         else {
             return;
@@ -175,16 +179,21 @@ impl Shell {
         let (Some(checkout), Some(tab)) = (held, unit.tabs.get(unit.active_tab)) else {
             return;
         };
+        let place = Workplace {
+            branch: unit.name(),
+            folder: unit.worktree.path.clone(),
+            project: project.path.clone(),
+            is_main: unit.is_main(),
+            checkout: checkout.clone(),
+        };
         for pane in tab.panes() {
-            if let Some(view) = self.chat_tabs.view(pane.id) {
-                let place = Workplace {
-                    branch: unit.name(),
-                    folder: unit.worktree.path.clone(),
-                    project: project.path.clone(),
-                    is_main: unit.is_main(),
-                    checkout: checkout.clone(),
-                };
-                view.update(cx, |view, cx| view.set_place(place, cx));
+            let Some(made) = self.chat_tabs.views.get_mut(&pane.id) else {
+                continue;
+            };
+            if made.place.as_ref() != Some(&place) {
+                made.place = Some(place.clone());
+                let place = place.clone();
+                made.view.update(cx, |view, cx| view.set_place(place, cx));
             }
         }
     }
@@ -223,6 +232,7 @@ impl Shell {
             pane,
             Made {
                 view,
+                place: None,
                 _events: events,
             },
         );

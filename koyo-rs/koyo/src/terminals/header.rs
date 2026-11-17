@@ -193,7 +193,7 @@ impl Shell {
     fn responsive_toggle(&self, id: u64, key: usize, cx: &App) -> Option<Button> {
         let made = self.terminals.views.get(&id)?;
         let responsive = made.responsive.clone();
-        let pinned = made.view.read(cx).pinned().is_some();
+        let pinned = made.pinned;
         Some(
             toggle_button(
                 ("terminal-responsive", key),

@@ -405,6 +405,8 @@ impl Shell {
 
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        #[cfg(test)]
+        crate::budget::shell_rendered();
         let (route, layout) = (self.route(cx), Self::layout(cx));
         let root = crate::key_repeat::track(div(), window, cx)
             .key_context(Self::root_keys(route, layout))
