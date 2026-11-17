@@ -226,12 +226,19 @@ fn installed(result: &Value) {
     for profile in host::profiles() {
         by_profile.entry(profile).or_default();
     }
-    for (profile, mut extensions) in by_profile {
-        extensions.sort_by(|a, b| {
-            (a.name.to_lowercase(), &a.id).cmp(&(b.name.to_lowercase(), &b.id))
-        });
-        host::send(&HostEvent::Extensions { profile, extensions });
+    for (profile, extensions) in by_profile {
+        host::send(&HostEvent::Extensions { profile, extensions: in_order(extensions) });
     }
+}
+
+/// A profile's extensions in the order their icons have: the pinned ones first, as Chromium
+/// lists them, which is the order they were pinned in; then the rest by name.
+fn in_order(extensions: Vec<Extension>) -> Vec<Extension> {
+    let (mut ordered, mut rest): (Vec<_>, Vec<_>) =
+        extensions.into_iter().partition(|extension| extension.pinned);
+    rest.sort_by(|a, b| (a.name.to_lowercase(), &a.id).cmp(&(b.name.to_lowercase(), &b.id)));
+    ordered.append(&mut rest);
+    ordered
 }
 
 /// One extension of Chromium's list (`KoyoExtension` in the protocol).
@@ -388,6 +395,25 @@ pub(crate) fn change(profile: &str, extension: &str, change: ExtensionChange) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pinned_extensions_keep_the_order_they_were_pinned_in_and_the_rest_go_by_name() {
+        let one = |id: &str, name: &str, pinned| Extension {
+            id: id.into(),
+            name: name.into(),
+            pinned,
+            ..Extension::default()
+        };
+        // As Chromium lists them: the pinned ones in pin order, then the others in its own.
+        let listed = vec![
+            one("u", "uBlock Origin Lite", true),
+            one("b", "Bitwarden", true),
+            one("z", "zotero", false),
+            one("a", "Annotate", false),
+        ];
+        let names: Vec<String> = in_order(listed).into_iter().map(|extension| extension.name).collect();
+        assert_eq!(names, ["uBlock Origin Lite", "Bitwarden", "Annotate", "zotero"]);
+    }
 
     #[test]
     fn an_extension_is_read_from_chromiums_list() {
