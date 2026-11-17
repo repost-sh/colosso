@@ -23,10 +23,10 @@ use objc2_app_kit::{
 };
 use objc2_foundation::{NSNotification, NSNotificationCenter, NSNotificationName};
 
-use super::hooks;
-use super::rate::Later;
-use super::reconcile::{AppKit, Responder};
-use super::state::{PaneId, WindowKey};
+use koyo_seam::keyboard::hooks;
+use koyo_seam::keyboard::rate::Later;
+use koyo_seam::keyboard::reconcile::{AppKit, Responder};
+use koyo_seam::keyboard::state::{PaneId, WindowKey};
 
 /// A window the keyboard is kept for, and GPUI's view in it.
 struct Known {
@@ -257,7 +257,7 @@ pub fn describe() -> String {
     let windows: Vec<WindowKey> = KNOWN.with(|known| known.borrow().keys().copied().collect());
     let mut lines = vec![format!("app active {active}")];
     for window in windows {
-        let holder = super::held(window).map_or("not known".to_owned(), |(holder, _)| holder.to_string());
+        let holder = koyo_seam::keyboard::held(window).map_or("not known".to_owned(), |(holder, _)| holder.to_string());
         let first = Real.first_responder(window);
         lines.push(format!("window {window}: holder {holder}, first responder {first}, key {}", Real.is_key(window)));
     }

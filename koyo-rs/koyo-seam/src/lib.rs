@@ -12,5 +12,6 @@
 pub mod appkit;
 pub mod heard;
 pub mod input;
+pub mod keyboard;
 pub mod keys;
 pub mod menus;

@@ -35,6 +35,8 @@ koyo-project = { path = "../koyo-project" }
 koyo-lsp = { path = "../koyo-lsp" }
 # The browser panes' host process (koyo-rs/koyo-browser-host), talked to over this.
 koyo-browser-ipc = { path = "../koyo-browser-ipc" }
+# The native layer: the one owner of the seam between GPUI's window and the native views in it.
+koyo-seam = { path = "../koyo-seam" }
 # A search typed into a browser tab's address, encoded as a query: the version `url` (in
 # GPUI's tree) already pulls in.
 form_urlencoded = "1.2"
@@ -122,11 +124,12 @@ gpui-pre = { version = "=0.3.10", default-features = false, optional = true }
 gpui-kit = { workspace = true, features = ["test-support"] }
 # The accounts on a sandbox: a fake `security`, a fake HTTP, never the real login.
 koyo-accounts = { path = "../koyo-accounts", features = ["testing"] }
+# The keyboard's fake `AppKit`, for the tests of what's GPUI's of the keyboard.
+koyo-seam = { path = "../koyo-seam", features = ["testing"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # Browser pages (browser/native/): the browser host as a library, run in the app's own process.
 koyo-browser-host = { path = "../koyo-browser-host" }
-koyo-seam = { path = "../koyo-seam" }
 # GPUI's Metal renderer: the native surfaces pages, glass and controls are placed in
 # (`set_surface_pane`), and the tab switcher's pictures of the window (`set_surface_capture`)
 # (`vendor/README.md`).

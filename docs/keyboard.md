@@ -3,7 +3,7 @@
 Written 2026-11-16 on branch `schulzfel/browser-ui-fixes`. Drafted with Claude. The owner kept
 losing the keyboard ("I used the pinned tabs and then when I went back to this chat I couldn't
 type in this box anymore; I had to restart Koyo") and asked for a refactor of how Koyo
-controls input. Keep this note in step with `koyo-rs/koyo/src/keyboard/`.
+controls input. Keep this note in step with `koyo-rs/koyo-seam/src/keyboard/`, where the holders and their rules are (the native layer, `docs/native-layer.md`), and `koyo-rs/koyo/src/keyboard/`, which tells them of GPUI's windows and focus and gives them `AppKit`. File names below without a folder are the layer's.
 
 ## 1. Why
 

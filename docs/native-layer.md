@@ -797,7 +797,7 @@ come last, because their checks need the bench host of section 9.4. Step 3 doesn
 step 4: the gate already names windows by `windowNumber`.
 
 **Step 4 in five commits** (agreed 2026-11-17), since the keyboard is what the owner uses every
-minute. 4a: the rules and their tests move to `koyo-seam` unchanged. 4b: the registry of pages,
+minute. 4a (done 2026-11-17): the rules and their tests move to `koyo-seam` unchanged, nine files renamed whole, with the app left telling them of GPUI's windows and focus. 4b: the registry of pages,
 and the host tells the layer directly as a page's views come and go. 4c (done 2026-11-17, ahead of 4a and 4b, for the bug in 11.1): a press that reached
 the page replaces the one-second guess, behind a user default read once at start and logged
 with its value (`defaults write codes.koyo.desktop SeamClick old`, `routed` when unset), which
