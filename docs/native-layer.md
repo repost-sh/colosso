@@ -868,19 +868,25 @@ To go into the repository's agent instructions at step 10. `[proposed]`
   shown is heard by the page (`.superpowers/native-layer/step2/journeys-4c.out`). Why the
   outer view is the one hit for that second isn't known; the fix doesn't depend on it.
 
-- **A page loses the first responder, unheard, when the window's native views are put back.**
-  Found 2026-11-17 by `keyboard-journeys.sh`, journey 3, not yet fixed. The developer tools
-  docked or hidden with ⌥⌘I change the window's composition, and the vendored window takes
-  every native view out and puts it back (`set_composition_order`, section 2.2, finding 6). A
-  page's view that had the first responder loses it to the window itself, and `AppKit` says so
-  through no `makeFirstResponder:`, so the keyboard isn't told. As the tools dock, the page's
-  views arriving puts it right ("first responder the window → page 1"). As they're hidden,
-  nothing does until the next key, which finds it and heals it first: no key is lost, and a
-  backstop fires (`.superpowers/native-layer/step2/journeys-4b.out`: "holder page 1, first
-  responder the window"; 1 healed). The same unheard loss is in the logs from before step 4b
-  ("first responder the window → gpui" on a focus move), so it isn't the registry's move. Its
-  fix is the hook planned for it (6.1, `remounted`): the fork says the views were put back, and
-  the layer makes the first responder right on the next turn.
+- **A page lost the first responder, unheard, when the window's native views were put back.**
+  Found 2026-11-17 by `keyboard-journeys.sh`, journey 3, and fixed the same day. The developer
+  tools docked or hidden with ⌥⌘I change the window's composition, and the vendored window
+  takes every native view out and puts it back (`set_composition_order`, section 2.2, finding
+  6). A page's view that had the first responder loses it to the window itself, and `AppKit`
+  says so through no `makeFirstResponder:`. As the tools were hidden, nothing put it right
+  until the next key, which healed it first: no key lost, a backstop fired. The window now
+  tells the app once it has put its views back (the fork's `Responders::remounted`, told with
+  the window's state let go of), and on the next turn the layer makes the first responder what
+  the holder wants (`keyboard/hooks.rs`, `remounted`). `[proven]`: the journey passes, 24 of
+  24, no first responder healed, and the log has "the window's views were put back; first
+  responder the window → page 1" (`.superpowers/native-layer/step2/journeys-remounted.out`).
+- **The harness's keys took the modifiers the person was holding.** Found 2026-11-17: an ⌥→
+  of `arrows-in-page.sh` came with ⌘ in its flags and didn't move the caret. `press` made its
+  events from no event source, and such an event takes the modifiers held on the keyboard at
+  that moment; the owner was at work. It makes them from a source of its own now, which has
+  none. A run the day before in which a page heard ⌘A and ⌘Z as keys, left unexplained, was
+  likely this the other way round, a modifier dropped or added; its flags weren't kept, so
+  that isn't proven.
 
 ## 12. Risks
 

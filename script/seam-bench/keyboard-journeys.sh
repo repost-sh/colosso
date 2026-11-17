@@ -150,7 +150,9 @@ if [ -n "$tools" ] && [ "$(probe pages | grep -c '^page ')" -gt "$before" ]; the
     held_by "page $tools" "page $tools" "3: a click in the tools gives them the keyboard"
     probe 'type q' 'wait 300' > /dev/null
     expect "$page" "window.keys.length" "$heard" "3: a key typed in the tools isn't the page's"
-    probe 'press 34 alt cmd' 'wait 1500' > /dev/null
+    # The tools' surface goes a frame or more after the key, and the window puts its views
+    # back then: three seconds, for the state it settles in.
+    probe 'press 34 alt cmd' 'wait 3000' > /dev/null
     held_by "page $page" "page $page" "3: option-command-I out of the tools gives the keyboard back to their page"
     probe 'type r' 'wait 300' > /dev/null
     expect "$page" "window.keys.at(-1)" r "3: and the page hears the next key"

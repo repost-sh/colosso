@@ -81,6 +81,9 @@ pub(crate) struct MacComposition {
     // the press opened tracks it, a drag session takes it) left that owner on for good, and
     // every later drag in the window, of any button, went to it and so reached nobody.
     native_presses: FxHashMap<NSInteger, usize>,
+    // Koyo: the window's native views were taken out and put back since the app was last
+    // told (`set_composition_order`), which the window tells it of once that's done.
+    pub(crate) koyo_remounted: bool,
     input_forwarders: FxHashSet<usize>,
     event_result: gpui::DispatchEventResult,
     forwarding_scroll: bool,
@@ -97,6 +100,7 @@ impl MacComposition {
             input_order: Rc::new(Vec::new()),
             native_event: 0,
             native_presses: FxHashMap::default(),
+            koyo_remounted: false,
             input_forwarders: FxHashSet::default(),
             event_result: gpui::DispatchEventResult {
                 propagate: true,
@@ -757,6 +761,9 @@ pub(crate) fn set_composition_order(
             for (_, view, parent) in &view_order {
                 let _: () = msg_send![*parent as Id, addSubview: *view as Id];
             }
+            // Koyo: a view that had the first responder as it was taken out left it to the
+            // window, and `AppKit` says so through no `makeFirstResponder:`.
+            lock.fast_composition.koyo_remounted = true;
             lock.fast_composition.native_views = Rc::new(
                 view_order
                     .iter()

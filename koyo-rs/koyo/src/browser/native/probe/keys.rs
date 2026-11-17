@@ -10,7 +10,7 @@ use objc2::runtime::{AnyObject, Bool};
 use objc2::{MainThreadMarker, class, msg_send};
 use objc2_app_kit::{NSApplication, NSWindow};
 
-use super::{key, scroll, window};
+use super::{key, window};
 
 /// `menus`: the menu bar as `AppKit` has it, never opened: each menu's title, and each of its
 /// items by title, with `+key` for one that has a key of its own.
@@ -135,6 +135,15 @@ fn wall_ms() -> f64 {
 #[link(name = "CoreGraphics", kind = "framework")]
 unsafe extern "C" {
     fn CGEventCreateKeyboardEvent(source: *const c_void, code: u16, down: bool) -> *mut c_void;
+    fn CGEventSourceCreate(state: i32) -> *mut c_void;
+    fn CGEventCreateScrollWheelEvent2(
+        source: *const c_void,
+        units: u32,
+        wheels: u32,
+        wheel1: i32,
+        wheel2: i32,
+        wheel3: i32,
+    ) -> *mut c_void;
     fn CGEventSetFlags(event: *mut c_void, flags: u64);
     fn CGEventGetFlags(event: *mut c_void) -> u64;
     fn CGEventSetIntegerValueField(event: *mut c_void, field: u32, value: i64);
@@ -166,8 +175,12 @@ pub(super) fn press(window: &NSWindow, what: &str) -> String {
     // SAFETY: Core Graphics' own constructors, the events ours to release; `NSEvent`'s
     // constructor from one; the application's own queue.
     unsafe {
+        // From a source of the harness's own (`kCGEventSourceStatePrivate`), whose modifiers are
+        // none: made from no source, an event takes the modifiers held on the keyboard at that
+        // moment, and the person's ⌘, held as they worked, turned an ⌥→ here into ⌘⌥→.
+        let source = CGEventSourceCreate(-1);
         for down in [true, false] {
-            let made = CGEventCreateKeyboardEvent(std::ptr::null(), code, down);
+            let made = CGEventCreateKeyboardEvent(source.cast_const(), code, down);
             if made.is_null() {
                 return "no key event".into();
             }
@@ -192,7 +205,38 @@ pub(super) fn press(window: &NSWindow, what: &str) -> String {
                 let _: () = msg_send![&*app, postEvent: event, atStart: Bool::NO];
             }
         }
+        if !source.is_null() {
+            CFRelease(source.cast_const());
+        }
     }
     said.push_str("queued");
     said
+}
+
+pub(super) fn scroll(window: &NSWindow, dy: i32) -> String {
+    // SAFETY: Core Graphics makes the event; the fields set are the window it's over, which
+    // `AppKit` reads back as the event's window.
+    unsafe {
+        // From a source of the harness's own, as its keys are (`keys::press`): made from no
+        // source, the wheel takes the modifiers held on the keyboard just then, and the
+        // person's ⌘ would make a scroll a zoom.
+        let source = CGEventSourceCreate(-1);
+        let made = CGEventCreateScrollWheelEvent2(source.cast_const(), 0, 1, dy, 0, 0);
+        if !source.is_null() {
+            CFRelease(source.cast_const());
+        }
+        if made.is_null() {
+            return "no scroll event".into();
+        }
+        let number = window.windowNumber() as i64;
+        CGEventSetIntegerValueField(made, 91, number);
+        CGEventSetIntegerValueField(made, 92, number);
+        let event: *mut AnyObject = msg_send![class!(NSEvent), eventWithCGEvent: made];
+        CFRelease(made);
+        if event.is_null() {
+            return "no NSEvent for the scroll".into();
+        }
+        let _: () = msg_send![window, sendEvent: event];
+    }
+    "scrolled".into()
 }
