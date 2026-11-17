@@ -837,6 +837,19 @@ To go into the repository's agent instructions at step 10. `[proposed]`
 > 4. No rule reads an event to work out whose it is. It reads the label.
 > 5. A new backstop needs a counter, and a counter that fires in the bench is a bug.
 
+### 11.1 Seam bugs the bench has found, not yet fixed
+
+- **The first key after the first return to a page's tab is lost.** `[proven]` 2026-11-17,
+  `script/seam-bench/keyboard-journeys.sh`, three fresh test Koyos of three, on the code of
+  `0358c38b3`: a page is typed in, a chat's tab is shown and its composer typed in, the page's
+  tab is shown again, its field is clicked, and a letter typed 300 ms later isn't heard by the
+  page. The keyboard's log has the page take the keyboard there by "focus moved", where every
+  later return has "click": the press wasn't heard as a press on the page. A letter typed 1.5 s
+  later is heard, and the second return and every one after it are whole (ten of ten). Not
+  explained yet. It's the kind of case step 4c is about (which press reached the page), and it
+  is fixed there or before it, in the layer, with this sequence as its check
+  (`.superpowers/native-layer/step2/journeys-baseline.out`).
+
 ## 12. Risks
 
 | Risk | Where it lands | What is watched |
