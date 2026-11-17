@@ -264,9 +264,11 @@ popup itself (`.superpowers/research/run/03-popup-as-page.out`).
   window for 21 seconds, holding the keyboard for 8 of them, until another tab was shown
   (`.superpowers/ext/evidence`, the window server's record). One that opened while Koyo
   wasn't in front never had the keys, and stays until its icon is pressed again or its
-  page leaves. That it showed behind Koyo's window at all is the native layer's to mend:
-  the popup becomes a child of Koyo's window (`koyo_seam::windows::adopt`). `[open]` until
-  seen on a real desktop.
+  page leaves. That it showed behind Koyo's window at all is mended with the native layer:
+  as the host places the popup it makes it a child of Koyo's window the page is drawn in
+  (`koyo_seam::windows::adopt`), and again on any later look that finds Chrome has tied it
+  back to the holder; the log says so each time it takes it. `[open]` until seen on a real
+  desktop: the agent desktop doesn't show the fault.
 - The popup is the extension's `popup` view: it sizes itself and takes the keyboard, as in
   Chrome. Two patches take out a two-second wait before its
   page loads and a quarter second's animation of the hidden toolbar.
