@@ -15,3 +15,5 @@ pub mod input;
 pub mod keyboard;
 pub mod keys;
 pub mod menus;
+#[cfg(target_os = "macos")]
+pub mod pages;

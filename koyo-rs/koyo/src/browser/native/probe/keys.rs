@@ -68,7 +68,7 @@ unsafe fn text(string: *mut AnyObject) -> String {
 
 /// `seam`: what the native layer keeps of `window`'s inputs and of each page's.
 pub(super) fn seam(window: &NSWindow) -> String {
-    let pages = koyo_browser_host::native::pages();
+    let pages = koyo_seam::pages::all();
     koyo_seam::heard::describe(&[window.windowNumber()], &pages)
 }
 
