@@ -797,8 +797,8 @@ come last, because their checks need the bench host of section 9.4. Step 3 doesn
 step 4: the gate already names windows by `windowNumber`.
 
 **Step 4 in five commits** (agreed 2026-11-17), since the keyboard is what the owner uses every
-minute. 4a (done 2026-11-17): the rules and their tests move to `koyo-seam` unchanged, nine files renamed whole, with the app left telling them of GPUI's windows and focus. 4b: the registry of pages,
-and the host tells the layer directly as a page's views come and go. 4c (done 2026-11-17, ahead of 4a and 4b, for the bug in 11.1): a press that reached
+minute. 4a (done 2026-11-17): the rules and their tests move to `koyo-seam` unchanged, nine files renamed whole, with the app left telling them of GPUI's windows and focus. 4b (done 2026-11-17): the registry of pages
+(`koyo-seam`, `pages.rs`), and the host tells the layer directly as a page's views come and go. 4c (done 2026-11-17, ahead of 4a and 4b, for the bug in 11.1): a press that reached
 the page replaces the one-second guess, behind a user default read once at start and logged
 with its value (`defaults write codes.koyo.desktop SeamClick old`, `routed` when unset), which
 is the owner's way back without a build and goes once 4c has run some days with no new
@@ -854,6 +854,20 @@ To go into the repository's agent instructions at step 10. `[proposed]`
   the fork's hook of that name). `[proven]`: a key 50 ms after a click 200 ms after the tab is
   shown is heard by the page (`.superpowers/native-layer/step2/journeys-4c.out`). Why the
   outer view is the one hit for that second isn't known; the fix doesn't depend on it.
+
+- **A page loses the first responder, unheard, when the window's native views are put back.**
+  Found 2026-11-17 by `keyboard-journeys.sh`, journey 3, not yet fixed. The developer tools
+  docked or hidden with ⌥⌘I change the window's composition, and the vendored window takes
+  every native view out and puts it back (`set_composition_order`, section 2.2, finding 6). A
+  page's view that had the first responder loses it to the window itself, and `AppKit` says so
+  through no `makeFirstResponder:`, so the keyboard isn't told. As the tools dock, the page's
+  views arriving puts it right ("first responder the window → page 1"). As they're hidden,
+  nothing does until the next key, which finds it and heals it first: no key is lost, and a
+  backstop fires (`.superpowers/native-layer/step2/journeys-4b.out`: "holder page 1, first
+  responder the window"; 1 healed). The same unheard loss is in the logs from before step 4b
+  ("first responder the window → gpui" on a focus move), so it isn't the registry's move. Its
+  fix is the hook planned for it (6.1, `remounted`): the fork says the views were put back, and
+  the layer makes the first responder right on the next turn.
 
 ## 12. Risks
 

@@ -1,8 +1,8 @@
 //! `AppKit` for the keyboard: Koyo's windows by GPUI's ids, their first responders told apart and
 //! moved, and what the windows and the app tell of the keyboard, heard: GPUI's windows through
-//! the vendored gpui-fast-macos's `responders`, a page's views moving through the browser
-//! host's `native::set_keyboard`, and menus, Koyo in front or not and windows closing through
-//! `AppKit`'s notifications.
+//! the vendored gpui-fast-macos's `responders`, and menus, Koyo in front or not and windows
+//! closing through `AppKit`'s notifications. Which view is which page's, and a page's views
+//! moving, are the native layer's own to know (`koyo_seam::pages`), told by the browser host.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -12,7 +12,6 @@ use std::rc::Rc;
 use block2::RcBlock;
 use gpui_kit::{App, Window};
 use gpui_macos::responders::{self, Responders, set_responders};
-use koyo_browser_host::native::Views;
 use objc2::rc::{Retained, Weak};
 use objc2::runtime::{AnyObject, Bool, NSObjectProtocol, ProtocolObject};
 use objc2::{ClassType as _, MainThreadMarker, msg_send, sel};
@@ -85,13 +84,20 @@ fn key_of(ns: &AnyObject) -> Option<WindowKey> {
 /// The page whose views `object` is among, if it's a view and a page's.
 fn page_of(object: *mut AnyObject) -> Option<PaneId> {
     // SAFETY: `object` is a live responder `AppKit` handed over; any object answers whether it's
-    // of a class, and one that's a view is one.
-    let view = unsafe {
-        let object = object.as_ref()?;
-        let is_view: Bool = msg_send![object, isKindOfClass: NSView::class()];
-        is_view.as_bool().then(|| &*(ptr::from_ref(object).cast::<NSView>()))?
-    };
-    koyo_browser_host::native::page_of(view)
+    // of a class, and only one that's a view is asked whose page it's in.
+    unsafe {
+        let is_view: Bool = msg_send![object.as_ref()?, isKindOfClass: NSView::class()];
+        is_view.as_bool().then(|| koyo_seam::pages::page_of(object))?
+    }
+}
+
+/// The window the page in `pane` is in and the view of it that takes its keys, as the layer
+/// knows them (`koyo_seam::pages`), while the page is in a window.
+fn page_keys(pane: PaneId) -> Option<(Retained<NSWindow>, Retained<NSView>)> {
+    let (window, keys) = koyo_seam::pages::key_view(pane)?;
+    // SAFETY: the layer keeps a page's views, which are `NSView`s, and a view's window is an
+    // `NSWindow`.
+    unsafe { Some((Retained::cast_unchecked(window), Retained::cast_unchecked(keys))) }
 }
 
 /// What `responder`, a first responder of `ns`, whose GPUI view is `view`, is.
@@ -130,7 +136,7 @@ impl AppKit for Real {
         match to {
             Responder::Gpui => ns.makeFirstResponder(Some(&view)),
             Responder::Page(pane) => {
-                let Some((shown_in, keys)) = koyo_browser_host::native::key_view(pane) else {
+                let Some((shown_in, keys)) = page_keys(pane) else {
                     return false;
                 };
                 Retained::as_ptr(&shown_in) == Retained::as_ptr(&ns)
@@ -142,7 +148,7 @@ impl AppKit for Real {
     }
 
     fn page_window(&self, pane: PaneId) -> Option<WindowKey> {
-        let (shown_in, _) = koyo_browser_host::native::key_view(pane)?;
+        let (shown_in, _) = page_keys(pane)?;
         key_of(&shown_in)
     }
 
@@ -356,10 +362,6 @@ pub fn install(cx: &mut App) {
     });
     hooks::install(Rc::new(Real), later);
     set_responders(Rc::new(Told));
-    koyo_browser_host::native::set_keyboard(|pane, views| match views {
-        Views::Leaving => hooks::page_leaving(pane),
-        Views::Arrived => hooks::page_arrived(pane),
-    });
     // SAFETY: `AppKit`'s own constants, set before any of the app's code runs.
     unsafe {
         observe(NSMenuDidBeginTrackingNotification, |_| hooks::menu(true));

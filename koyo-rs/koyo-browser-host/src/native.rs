@@ -17,7 +17,7 @@
 //! All of it happens on the main thread, which is CEF's UI thread here. No page's state is
 //! borrowed across a call into `AppKit` or CEF, which call back.
 
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::CStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -71,8 +71,6 @@ enum Profile {
 thread_local! {
     static PAGES: RefCell<HashMap<PaneId, Entry>> = RefCell::new(HashMap::new());
     static PROFILES: RefCell<HashMap<String, Profile>> = RefCell::new(HashMap::new());
-    /// What the app's keyboard hears of a page's views moving ([`set_keyboard`]).
-    static KEYBOARD: Cell<Option<Hear>> = const { Cell::new(None) };
 }
 
 /// How many windows CEF has made for pages and not yet destroyed: it mustn't stop before
@@ -229,6 +227,15 @@ fn settle(pane: PaneId) {
     };
     if known.is_none() {
         page(pane, |entry| entry.views = Some((compositor.clone(), web.clone())));
+        // The layer knows a page by its views from here on (`koyo_seam::pages`).
+        // SAFETY: both are live views, on the main thread.
+        unsafe {
+            koyo_seam::pages::register(
+                pane,
+                Retained::as_ptr(&compositor).cast_mut().cast(),
+                Retained::as_ptr(&web).cast_mut().cast(),
+            );
+        }
     }
     let into = |parent: &NSView| {
         let bounds = parent.bounds();
@@ -348,9 +355,9 @@ pub(crate) fn on_screen(pane: PaneId, visible: bool) {
     }
 }
 
-/// A page's views moving, as the app's keyboard hears of it.
+/// A page's views moving, as the layer's keyboard hears of it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Views {
+enum Views {
     /// They're about to leave the window they're in, for another or for none, or the page is
     /// about to close; told while the page is still here. A view that has the keyboard as it
     /// leaves its window leaves the window itself with it, which hands no key on: after a tab
@@ -362,54 +369,15 @@ pub enum Views {
     Arrived,
 }
 
-/// What hears a page's views moving.
-type Hear = fn(PaneId, Views);
-
-/// Has `hear` hear, from now on, each time a page's views leave a window or come into one.
-/// The app's keyboard moves the first responder; the host never does.
-pub fn set_keyboard(hear: Hear) {
-    KEYBOARD.set(Some(hear));
-}
-
+/// Tells the layer a page's views are moving (`koyo_seam::pages`), whose keyboard moves the
+/// first responder; the host never does.
 fn tell_keyboard(pane: PaneId, views: Views) {
-    if let Some(hear) = KEYBOARD.get() {
-        hear(pane, views);
+    #[cfg(test)]
+    tests::heard(pane, views);
+    match views {
+        Views::Leaving => koyo_seam::pages::leaving(pane),
+        Views::Arrived => koyo_seam::pages::arrived(pane),
     }
-}
-
-/// The page's view, when it's in a window.
-fn web_view(pane: PaneId) -> Option<(Retained<NSWindow>, Retained<NSView>)> {
-    let web = page(pane, |entry| Some(entry.views.as_ref()?.1.clone()))??;
-    Some((web.window()?, web))
-}
-
-/// The view of `pane`'s page that takes its keys, and the window it's in, while it's in one.
-pub fn key_view(pane: PaneId) -> Option<(Retained<NSWindow>, Retained<NSView>)> {
-    let (window, web) = web_view(pane)?;
-    let keys = find_view(&web, KEYS).unwrap_or(web);
-    Some((window, keys))
-}
-
-/// Every native page there is, by its pane, lowest first.
-#[must_use]
-pub fn pages() -> Vec<PaneId> {
-    let mut pages: Vec<PaneId> = PAGES.with(|pages| pages.borrow().keys().copied().collect());
-    pages.sort_unstable();
-    pages
-}
-
-/// The page `view` is one of the views of, if it's a page's: its keys' view, or another in it.
-pub fn page_of(view: &NSView) -> Option<PaneId> {
-    PAGES.with(|pages| {
-        let pages = pages.try_borrow().ok()?;
-        let of = |entry: &Entry| {
-            let Some((compositor, web)) = &entry.views else {
-                return false;
-            };
-            view.isDescendantOf(web) || view.isDescendantOf(compositor)
-        };
-        pages.iter().find(|(_, entry)| of(entry)).map(|(pane, _)| *pane)
-    })
 }
 
 /// A key `pane`'s page left unhandled, as the `NSEvent` it came as, is offered to the app's
@@ -451,6 +419,7 @@ pub(crate) fn closed(pane: PaneId) {
     let Some(entry) = PAGES.with(|pages| pages.borrow_mut().remove(&pane)) else {
         return;
     };
+    koyo_seam::pages::forget(pane);
     if let Some((compositor, web)) = &entry.views {
         compositor.removeFromSuperview();
         web.removeFromSuperview();

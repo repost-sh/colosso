@@ -4,7 +4,7 @@ use std::cell::Cell;
 
 use objc2_foundation::NSSize;
 
-use super::{Entry, PAGES, PaneId, Views, closed, page, set_keyboard};
+use super::{Entry, PAGES, PaneId, Views, closed, page};
 
 thread_local! {
     /// What the keyboard last heard: the page, how its views move, and whether the page was
@@ -12,7 +12,8 @@ thread_local! {
     static HEARD: Cell<Option<(PaneId, Views, bool)>> = const { Cell::new(None) };
 }
 
-fn hear(pane: PaneId, views: Views) {
+/// What the host tells the layer's keyboard, noted as it's told.
+pub(super) fn heard(pane: PaneId, views: Views) {
     HEARD.set(Some((pane, views, page(pane, |_| ()).is_some())));
 }
 
@@ -31,7 +32,6 @@ fn opened(pane: PaneId) {
 
 #[test]
 fn a_page_closing_tells_the_keyboard_while_the_page_is_still_there() {
-    set_keyboard(hear);
     opened(7);
     closed(7);
     assert_eq!(HEARD.get(), Some((7, Views::Leaving, true)));
