@@ -4,6 +4,13 @@
 # agent desktop can make):
 #
 #   1   a page, then a chat's composer, then the page again: each typed in, each got its own
+#   1b  back in the page's tab, a click 200 ms after it's shown and a key 50 ms after the
+#       click: the page hears the key (for a second after its views come back, the view under
+#       the pointer is the page's outer one, which takes the press and never asks for the
+#       keyboard; a page has it from the press that reaches it, docs/native-layer.md 11.1)
+#   1c  a press on Koyo's own edge beside the page gives the page nothing
+#   1d  (`keyboard-journeys.sh right`, run apart, the person away five minutes) the right
+#       button on a page gives it the keyboard as the left does; its menu is refused
 #   2   a page that opens and loads by itself while the composer has the keyboard: the composer
 #       keeps it
 #   11  an agent types into its page while the composer has the keyboard: the composer keeps it
@@ -24,6 +31,28 @@ held_by() {
   said="$(probe keyboard | sed 's/^keyboard => //')"
   if echo "$said" | grep -q "holder $1, first responder $2, key true"; then echo "ok: $3"; else fail "$3: $said"; fi
 }
+
+# Journey 1d, by itself: a right-click asks the page for its menu, which the gate refuses
+# for a window on the agent desktop; like every right-click here, only with the person away.
+if [ "${1:-}" = "right" ]; then
+  idle=$(ioreg -c IOHIDSystem | awk '/HIDIdleTime/ {print int($NF/1000000000); exit}')
+  [ "$idle" -ge 300 ] || { echo "the person was last at the keyboard ${idle} s ago: wait until it's 300" >&2; exit 1; }
+  pane="$("$B" app tab_open "{\"kind\":\"browser\",\"url\":\"$fixture\",\"viewport\":{\"fill\":true},\"select\":true}" | pane_of)"
+  probe 'wait 1500' > /dev/null
+  page="$(shown_page)"
+  [ -n "$page" ] || { echo "no page is shown" >&2; exit 1; }
+  "$B" app tab_open '{"kind":"chat","select":true}' > /dev/null
+  probe 'wait 1000' > /dev/null
+  "$B" app tab_select "{\"pane\":$pane}" > /dev/null
+  probe 'wait 1500' > /dev/null
+  held_by 'gpui ([^,]*)' gpui "1d: a tab shown through app control leaves the keyboard with GPUI"
+  set -- $(page_point 300 400)
+  probe "rclick $1 $2" 'wait 400' > /dev/null
+  held_by "page $page" "page $page" "1d: the right button on the page gives it the keyboard"
+  if grep -q 'koyo::menus.*showing' "$log"; then fail "1d: the gate let a menu show"; fi
+  finish "keyboard-journeys right"
+  exit 0
+fi
 
 probe state | grep -q 'app active true' || fail "the test Koyo isn't the app in front: relaunch, and run this first"
 
@@ -54,6 +83,30 @@ expect "$page" "$keys" '["a","b"]' "1: typed in the composer, none of it reaches
 probe 'wait 800' "click $field_x $field_y" 'wait 300' 'type e' 'wait 300' > /dev/null
 expect "$page" "$keys" '["a","b","e"]' "1: back in the page, it hears the next key"
 held_by "page $page" "page $page" "1: and has the keyboard again"
+
+# Journey 1b.
+"$B" app tab_select "{\"pane\":$chat_pane}" > /dev/null
+probe 'wait 800' "click $composer_x $composer_y" 'wait 400' 'type c' 'wait 300' > /dev/null
+"$B" app tab_select "{\"pane\":$page_pane}" > /dev/null
+probe 'wait 200' "click $field_x $field_y" 'wait 50' 'type t' 'wait 500' > /dev/null
+expect "$page" "window.keys.at(-1)" t "1b: a key 50 ms after a click 200 ms after the tab is shown is the page's"
+held_by "page $page" "page $page" "1b: and the page has the keyboard"
+
+# Journey 1c.
+"$B" app tab_select "{\"pane\":$chat_pane}" > /dev/null
+probe 'wait 600' > /dev/null
+"$B" app tab_select "{\"pane\":$page_pane}" > /dev/null
+probe 'wait 1500' > /dev/null
+held_by 'gpui ([^,]*)' gpui "1c: a tab shown through app control leaves the keyboard with GPUI"
+edge_x=$((field_x - 100 - 3)) edge_y=$((field_y + 300))
+if probe "hover $edge_x $edge_y" | grep -q 'over GPUI'; then
+  heard="$(page_eval "$page" 'window.keys.length')"
+  probe "click $edge_x $edge_y" 'wait 400' 'type u' 'wait 300' > /dev/null
+  held_by 'gpui ([^,]*)' gpui "1c: a press on Koyo's edge beside the page leaves the keyboard with GPUI"
+  expect "$page" "window.keys.length" "$heard" "1c: and a key after it isn't the page's"
+else
+  fail "1c: the point left of the page isn't Koyo's own: $(probe "hover $edge_x $edge_y")"
+fi
 
 # Journey 2.
 "$B" app tab_select "{\"pane\":$chat_pane}" > /dev/null

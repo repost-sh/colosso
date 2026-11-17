@@ -798,7 +798,7 @@ step 4: the gate already names windows by `windowNumber`.
 
 **Step 4 in five commits** (agreed 2026-11-17), since the keyboard is what the owner uses every
 minute. 4a: the rules and their tests move to `koyo-seam` unchanged. 4b: the registry of pages,
-and the host tells the layer directly as a page's views come and go. 4c: a press that reached
+and the host tells the layer directly as a page's views come and go. 4c (done 2026-11-17, ahead of 4a and 4b, for the bug in 11.1): a press that reached
 the page replaces the one-second guess, behind a user default read once at start and logged
 with its value (`defaults write codes.koyo.desktop SeamClick old`, `routed` when unset), which
 is the owner's way back without a build and goes once 4c has run some days with no new
@@ -837,18 +837,23 @@ To go into the repository's agent instructions at step 10. `[proposed]`
 > 4. No rule reads an event to work out whose it is. It reads the label.
 > 5. A new backstop needs a counter, and a counter that fires in the bench is a bug.
 
-### 11.1 Seam bugs the bench has found, not yet fixed
+### 11.1 Seam bugs the bench has found
 
-- **The first key after the first return to a page's tab is lost.** `[proven]` 2026-11-17,
-  `script/seam-bench/keyboard-journeys.sh`, three fresh test Koyos of three, on the code of
-  `0358c38b3`: a page is typed in, a chat's tab is shown and its composer typed in, the page's
-  tab is shown again, its field is clicked, and a letter typed 300 ms later isn't heard by the
-  page. The keyboard's log has the page take the keyboard there by "focus moved", where every
-  later return has "click": the press wasn't heard as a press on the page. A letter typed 1.5 s
-  later is heard, and the second return and every one after it are whole (ten of ten). Not
-  explained yet. It's the kind of case step 4c is about (which press reached the page), and it
-  is fixed there or before it, in the layer, with this sequence as its check
-  (`.superpowers/native-layer/step2/journeys-baseline.out`).
+- **A key typed right after a click in a page whose tab was just shown was lost.** Found
+  2026-11-17 by `script/seam-bench/keyboard-journeys.sh`, three fresh test Koyos of three, and
+  fixed the same day (step 4c). For about a second after a page's views come back into the
+  window, the view under the pointer is the page's outer one (`WebContentsViewCocoa`), not the
+  one that takes its keys. It takes the press and never asks for the first responder, and the
+  keyboard gave a page the keys only once its view asked after a press: the next key went to
+  GPUI's view, and the page had the keyboard only when GPUI's own focus caught up, a frame
+  later. `[proven]` on a build with the press's route logged
+  (`.superpowers/native-layer/spike/first-return-2.out`). It wasn't only the first return, as
+  first read: a click later after the tab was shown hit the keys' view, which asked, and
+  worked. Now a press that reaches any view of a page gives the page the keyboard at once, its
+  keys' view the first responder before the next key (`keyboard/hooks.rs`, `delivered`, told by
+  the fork's hook of that name). `[proven]`: a key 50 ms after a click 200 ms after the tab is
+  shown is heard by the page (`.superpowers/native-layer/step2/journeys-4c.out`). Why the
+  outer view is the one hit for that second isn't known; the fix doesn't depend on it.
 
 ## 12. Risks
 

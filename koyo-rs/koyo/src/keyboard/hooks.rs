@@ -28,6 +28,9 @@ thread_local! {
     static INSTALLED: RefCell<Option<Rc<Installed>>> = const { RefCell::new(None) };
     /// Whether the reconciler is moving a first responder itself.
     static MOVING: Cell<bool> = const { Cell::new(false) };
+    /// Whether a press that goes on to a page gives the page the keyboard at once
+    /// ([`delivered`]), and not only once the page's view takes the first responder after it.
+    static BY_THE_PRESS: Cell<bool> = const { Cell::new(true) };
     /// The page the person last pressed, in which window, and when, until the keyboard moves
     /// for anything else or the press is used.
     static CLICKED: Cell<Option<(WindowKey, PaneId, Instant)>> = const { Cell::new(None) };
@@ -83,6 +86,32 @@ fn put_back(installed: &Rc<Installed>, window: WindowKey, why: &'static str) {
             rate::tell(window, || lines::healed(holder, why, moved), &again.later);
         }
     }));
+}
+
+/// Whether a press that goes on to a page gives it the keyboard at once (the default), or the
+/// page's view taking the first responder within a second of the press does, as before
+/// 2026-11-17 (`defaults write <bundle> SeamClick old`).
+pub fn click_by_the_press(by_the_press: bool) {
+    BY_THE_PRESS.set(by_the_press);
+}
+
+/// A press of mouse button `button` goes on to `over` in `window`: GPUI didn't keep it. On a
+/// page, the person put the keyboard there, whichever of the page's views is under the
+/// pointer: the page has it at once, its keys' view the first responder before the next key.
+/// Waiting for the page to ask lost the keys typed meanwhile: for a second after a page's
+/// views come back into a window, the view under the pointer is the page's outer one, which
+/// takes the press and never asks for the keyboard.
+pub fn delivered(window: WindowKey, over: Responder, button: isize) {
+    let Responder::Page(pane) = over else {
+        return;
+    };
+    if !BY_THE_PRESS.get() || !(0..=2).contains(&button) {
+        return;
+    }
+    end_click();
+    super::change(|keyboards| keyboards.click(window, Surface::Page(pane)));
+    // The page may have been the holder already, with the first responder elsewhere.
+    reconcile(window);
 }
 
 /// The person's press on a page is over for the keyboard: it was used, or the keyboard moved
@@ -160,7 +189,7 @@ pub fn pressed(window: WindowKey, over: Responder, button: isize) {
             // the same, and used.
             if installed.appkit.first_responder(window) == over {
                 super::change(|keyboards| keyboards.click(window, Surface::Page(pane)));
-            } else {
+            } else if !BY_THE_PRESS.get() {
                 CLICKED.set(Some((window, pane, Instant::now())));
             }
         }

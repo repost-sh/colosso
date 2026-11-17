@@ -111,6 +111,15 @@ Each of GPUI's windows tells the keyboard three things, through the vendored gpu
   to focus, in whatever window its views are in, and an agent's input to a page can have it
   ask. Anything else that moves it off what's wanted is put back the same way. A window put
   back more than 20 times in a second is left as it is until the second is up (`rate.rs`).
+- **Every press that goes on to a page** (since 2026-11-17; `hooks.rs`, `delivered`). GPUI has
+  its say over a press first, and one it doesn't keep goes on to the page's view under the
+  pointer. That press is the person's click: the page is the holder at once, and its keys' view
+  the first responder before the next key, whichever of the page's views took the press and
+  whether or not it asks. Before, the page had the keyboard only once its keys' view took the
+  first responder in the second after the press (below), and for a second after a page's views
+  come back into the window it doesn't: the keys typed meanwhile went to GPUI's view
+  (`docs/native-layer.md` 11.1). `defaults write codes.koyo.desktop SeamClick old`, read as
+  Koyo starts and logged then, brings the old way back until it's removed.
 - **Every press, before it's handed on**, from the hit test the window makes to route it. Over a
   page, it's the person's click: the page's view taking the first responder in the second after
   it, as `AppKit` hands it the press or Chromium asks after a trip to the renderer, is theirs,

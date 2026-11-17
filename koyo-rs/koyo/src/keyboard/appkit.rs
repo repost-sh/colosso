@@ -203,6 +203,15 @@ impl Responders for Told {
         hooks::pressed(key, over, button);
     }
 
+    fn delivered(&self, window: &AnyObject, over: *mut AnyObject, button: isize) {
+        let Some(key) = key_of(window) else {
+            return;
+        };
+        if let Some(pane) = page_of(over) {
+            hooks::delivered(key, Responder::Page(pane), button);
+        }
+    }
+
     fn key(&self, window: &AnyObject) {
         if let Some(key) = key_of(window) {
             hooks::at_key(key);
@@ -278,6 +287,27 @@ pub fn over(window: &Window, over: WindowKey) {
     }
 }
 
+/// Whether a press that reaches a page gives it the keyboard at once: so unless the person's
+/// defaults say `SeamClick` is `old`, their way back to how it was without another build
+/// (`defaults write <the app's bundle id> SeamClick old`, read once, here, as the app starts).
+fn click_by_the_press() -> bool {
+    // SAFETY: Foundation's own defaults, a string read from them on the main thread.
+    let old = unsafe {
+        let defaults: *mut AnyObject = msg_send![objc2::class!(NSUserDefaults), standardUserDefaults];
+        let key = objc2_foundation::NSString::from_str("SeamClick");
+        let value: *mut AnyObject = msg_send![defaults, stringForKey: &*key];
+        let old = objc2_foundation::NSString::from_str("old");
+        match value.as_ref() {
+            Some(value) => {
+                let same: Bool = msg_send![value, isEqualToString: &*old];
+                same.as_bool()
+            }
+            None => false,
+        }
+    };
+    !old
+}
+
 /// A window `AppKit` says will close: one the keyboard is kept for, forgotten, or another, over
 /// the window it belongs to, a floating window of Koyo's, or a window of Chromium's whose parent
 /// is a window the keyboard is kept for.
@@ -303,6 +333,13 @@ fn closing(notification: &NSNotification) {
 /// Has the keyboard move `AppKit`'s first responders, and hear what the windows and the app
 /// tell of the keyboard, from now on.
 pub fn install(cx: &mut App) {
+    let by_the_press = click_by_the_press();
+    hooks::click_by_the_press(by_the_press);
+    log::info!(
+        target: "koyo::keyboard",
+        "keyboard: a page has the keyboard from {} (SeamClick)",
+        if by_the_press { "the press that reaches it" } else { "its view asking after a press, as before" }
+    );
     if MainThreadMarker::new().is_none() {
         return;
     }

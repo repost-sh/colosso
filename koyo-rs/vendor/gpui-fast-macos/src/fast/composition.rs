@@ -350,6 +350,8 @@ fn send_window_event(this: &AnyObject, event: Id, superclass: &AnyClass) {
         }
         return;
     }
+    // Koyo: the view a press was hit-tested to, for telling the app the press went on to it.
+    let mut over: Id = NIL;
     let native = if dragged || up {
         captured
     } else {
@@ -359,6 +361,7 @@ fn send_window_event(this: &AnyObject, event: Id, superclass: &AnyClass) {
             let point: NSPoint = msg_send![parent, convertPoint: location, fromView: NIL];
             let target: Id = msg_send![root.as_ptr(), hitTest: point];
             let native = native_for_target(target, &native_views);
+            over = target;
             if pressed {
                 tell_press(this, event, if native.is_some() { target } else { NIL });
             }
@@ -410,6 +413,13 @@ fn send_window_event(this: &AnyObject, event: Id, superclass: &AnyClass) {
             let _: () = msg_send![super(this, superclass), sendEvent: event];
         }
         return;
+    }
+    // Koyo: GPUI didn't keep the press, and the native view is about to hear it: the app is
+    // told so first (`responders`), as a page that's pressed has the keyboard from the press,
+    // not from when its view next asks for it.
+    if pressed && !over.is_null() {
+        let button: NSInteger = unsafe { msg_send![event, buttonNumber] };
+        crate::responders::tell(|responders| responders.delivered(this, over, button));
     }
     let previous = {
         let mut state = state.lock();
