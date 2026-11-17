@@ -5,6 +5,11 @@
 //! icon's, and kept there: Chrome anchors it to its toolbar again each time the popup's page
 //! resizes.
 //!
+//! Chrome ties the bubble to the page's holder, which sits a level under the app's windows:
+//! left there it opened behind the app's window, unseen, with the keyboard (the owner,
+//! 2026-11-17). As it's placed it's made a child of the app's window its page is drawn in
+//! (`koyo_seam::windows::adopt`), and again whenever Chrome has tied it back.
+//!
 //! Three things Chrome does through its own window and toolbar are done here, a page's
 //! window being the app's and its toolbar hidden. A popup that had the keyboard and lost it
 //! closes, which is how a press anywhere else shuts it: Chrome closes one when its browser's
@@ -235,6 +240,7 @@ fn step(expected: &mut Expected, mtm: MainThreadMarker) -> bool {
             });
             return false;
         }
+        over_its_page(&popup, expected.pane);
         put(&popup, expected.at, expected.corner, mtm);
         return true;
     }
@@ -268,6 +274,7 @@ fn step(expected: &mut Expected, mtm: MainThreadMarker) -> bool {
     }
     put(popup, expected.at, expected.corner, mtm);
     crate::native::set_alpha(popup, 1.);
+    over_its_page(popup, expected.pane);
     // With the keyboard, as a popup has it in Chrome: it closes when it loses it, which it
     // only does once it had it.
     popup.makeKeyWindow();
@@ -276,6 +283,27 @@ fn step(expected: &mut Expected, mtm: MainThreadMarker) -> bool {
     expected.hidden.clear();
     expected.placed = true;
     true
+}
+
+/// Has `popup` belong to the app's window `pane`'s page is drawn in: in front of it, on its
+/// Space, moving with it. Nothing to do once it does, which is most looks; and nothing while
+/// no pane draws the page.
+fn over_its_page(popup: &NSWindow, pane: PaneId) {
+    use koyo_seam::windows::Adoption;
+    let Some(over) = crate::native::shown_window_of(pane) else {
+        return;
+    };
+    let window = |window: &NSWindow| std::ptr::from_ref(window).cast_mut().cast();
+    // SAFETY: two live windows of the app's process, on the main thread, where the popup's
+    // place is looked at.
+    let how = unsafe { koyo_seam::windows::adopt(window(popup), window(&over)) };
+    match how {
+        Some(Adoption::Taken) => log::info!("extensions: a popup is over the window its page is in"),
+        Some(Adoption::TakenFrom(_)) => {
+            log::info!("extensions: a popup is over the window its page is in, taken from the page's holder");
+        }
+        Some(Adoption::Kept) | None => {}
+    }
 }
 
 /// Whether a popup that `had` the keyboard, and `has` it or not now, lost it: one that never

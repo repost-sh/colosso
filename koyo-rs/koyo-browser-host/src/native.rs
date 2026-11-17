@@ -37,7 +37,7 @@ mod strays;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use adopt::{adopt, holder_of};
+pub(crate) use adopt::{adopt, holder_of, shown_window_of};
 use adopt::{adopted, adopting};
 use holder::{closing, hold};
 use parts::{HolderDelegate, PageViewDelegate};

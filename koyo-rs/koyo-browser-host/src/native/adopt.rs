@@ -52,6 +52,12 @@ pub(crate) fn holder_of(pane: PaneId) -> Option<Retained<NSWindow>> {
     page(pane, |entry| entry.holder.as_ref().map(|(_, holder)| holder.clone()))?
 }
 
+/// The app's window `pane`'s page is drawn in, while a pane draws it: the window a pop-up of
+/// the page's belongs over (`koyo_seam::windows::adopt`).
+pub(crate) fn shown_window_of(pane: PaneId) -> Option<Retained<NSWindow>> {
+    page(pane, |entry| entry.shown_in.as_ref().and_then(|view| view.window()))?
+}
+
 /// The pane of the page an extension is opening, whose browser view Chrome makes next.
 pub(super) fn adopting() -> Option<PaneId> {
     ADOPTING.with(|adopting| adopting.borrow().front().copied())
