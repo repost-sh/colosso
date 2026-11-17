@@ -47,10 +47,10 @@ impl Browsers {
             }
             HostEvent::ExtensionAction { profile, extension, pane, action } => {
                 self.extensions.acted(profile, extension, pane, action);
-                match pane {
-                    Some(pane) => drop(self.update_view(pane, cx, |_, cx| cx.notify())),
-                    None => cx.refresh_windows(),
-                }
+                // An icon is on its page's toolbar, in a popover's window, or in the
+                // sidebar's address field, which is the window's and not the page's.
+                let _ = pane;
+                cx.refresh_windows();
             }
             HostEvent::TabOpened { pane, opener, url, active } => {
                 let heard = self.update_view(opener, cx, |_, cx| {

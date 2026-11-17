@@ -5,10 +5,12 @@
 //! icon's, and kept there: Chrome anchors it to its toolbar again each time the popup's page
 //! resizes.
 //!
-//! Chrome closes a popup that loses the keyboard, which is how a press anywhere else shuts
-//! it. Two things it does through its own toolbar are done here, the toolbar being hidden: a
-//! press on the icon of the popup that's open shuts it and opens no other, and a popup goes
-//! when its page stops being the one the person is on.
+//! Three things Chrome does through its own window and toolbar are done here, a page's
+//! window being the app's and its toolbar hidden. A popup that had the keyboard and lost it
+//! closes, which is how a press anywhere else shuts it: Chrome closes one when its browser's
+//! window becomes active again, and a page's holder never does, so left to Chrome it stayed
+//! (seen 2026-11-17). A press on the icon of the popup that's open shuts it and opens no
+//! other. And a popup goes when its page stops being the one the person is on.
 //!
 //! Chrome makes the bubble's window before the popup's page has loaded and shows it once it
 //! has. Until it's placed a new bubble is clear, so it never flashes at the page's corner.
@@ -59,6 +61,8 @@ struct Expected {
     popup: Option<(Retained<NSWindow>, Instant)>,
     /// Whether the popup is in its place and shown.
     placed: bool,
+    /// Whether the popup has had the keyboard: it closes once it loses it.
+    had_keys: bool,
     /// New bubbles kept clear until one of them is the popup.
     hidden: Vec<Retained<NSWindow>>,
 }
@@ -129,6 +133,7 @@ pub(super) fn expect(pane: PaneId, extension: &str, at: [f64; 2], corner: Corner
             until: Instant::now() + WAIT,
             popup: None,
             placed: false,
+            had_keys: false,
             hidden: Vec::new(),
         })
     });
@@ -214,17 +219,23 @@ fn look() -> bool {
 
 fn step(expected: &mut Expected, mtm: MainThreadMarker) -> bool {
     let now = Instant::now();
-    if let Some((popup, _)) = &expected.popup
+    if let Some((popup, _)) = expected.popup.clone()
         && expected.placed
     {
-        // Shown and placed: kept there until it closes.
-        if !popup.isVisible() {
+        // Shown and placed: kept there until it closes, or loses the keyboard it had.
+        let has = popup.isKeyWindow() || keys_in_a_child_of(&popup, mtm);
+        let lost = lost_keys(expected.had_keys, has);
+        expected.had_keys |= has;
+        if lost {
+            popup.close();
+        }
+        if lost || !popup.isVisible() {
             CLOSED.with(|closed| {
                 *closed.borrow_mut() = Some((expected.pane, expected.extension.clone(), now));
             });
             return false;
         }
-        put(popup, expected.at, expected.corner, mtm);
+        put(&popup, expected.at, expected.corner, mtm);
         return true;
     }
     if expected.popup.is_none() {
@@ -265,6 +276,19 @@ fn step(expected: &mut Expected, mtm: MainThreadMarker) -> bool {
     expected.hidden.clear();
     expected.placed = true;
     true
+}
+
+/// Whether a popup that `had` the keyboard, and `has` it or not now, lost it: one that never
+/// had it (the app wasn't in front when it opened) lost nothing, and stays.
+fn lost_keys(had: bool, has: bool) -> bool {
+    had && !has
+}
+
+/// Whether the keyboard is in a window of `popup`'s own: a list or a bubble it opened.
+fn keys_in_a_child_of(popup: &NSWindow, mtm: MainThreadMarker) -> bool {
+    let key = NSApplication::sharedApplication(mtm).keyWindow();
+    let parent = key.and_then(|key| key.parentWindow());
+    parent.is_some_and(|parent| std::ptr::eq(&raw const *parent, std::ptr::from_ref(popup)))
 }
 
 /// Puts `popup` with its top `corner` at `at`, the margin round it aside, and wholly on the
@@ -326,6 +350,16 @@ mod tests {
         assert!(near(origin.x, 693.) && near(origin.y, 393.));
         assert!(near(origin.x + 314. - MARGIN, 1000.));
         assert!(near(origin.y + 414. - MARGIN, 800.));
+    }
+
+    #[test]
+    fn a_popup_closes_once_it_had_the_keyboard_and_lost_it() {
+        // Opened while the app wasn't in front, it never had the keys: it stays.
+        assert!(!lost_keys(false, false));
+        assert!(!lost_keys(false, true));
+        assert!(!lost_keys(true, true));
+        // A press elsewhere, or another app in front, took them.
+        assert!(lost_keys(true, false));
     }
 
     #[test]

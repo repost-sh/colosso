@@ -11,6 +11,7 @@ use koyo_browser_ipc::{Extension, ExtensionAction, PaneId};
 
 pub(super) mod icon;
 pub(super) mod menu;
+pub(super) mod pinned;
 
 /// The Chrome Web Store's extensions, where "+" goes.
 pub(super) const STORE: &str = "https://chromewebstore.google.com/category/extensions";
