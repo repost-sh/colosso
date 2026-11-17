@@ -23,6 +23,13 @@ pub trait Responders {
     /// window's composition, or to GPUI's own content when `over` is nil.
     fn pressed(&self, window: &AnyObject, over: *mut AnyObject, button: isize);
 
+    /// The press of mouse button `button` told with `pressed` goes on to `over`, a view in a
+    /// native view of `window`'s composition: GPUI had its say first and didn't keep it. Told
+    /// before the view hears the press. A press GPUI keeps is told with `pressed` alone.
+    fn delivered(&self, window: &AnyObject, over: *mut AnyObject, button: isize) {
+        let _ = (window, over, button);
+    }
+
     /// A key going down or up is about to be delivered to `window`'s first responder.
     fn key(&self, window: &AnyObject);
 
