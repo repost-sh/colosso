@@ -229,6 +229,13 @@ logs and counts. `[proposed]`
 - W2. Every change of the key window made by Koyo goes through the layer, and every change
   made by anything else is heard by the layer from `AppKit`'s notifications.
 - W3. Each window has one identity in the layer, its `windowNumber`.
+- W4. A native menu, and a window of Chromium's own, show above Koyo's floating windows, and
+  a floating window that's closed is off the screen at once. Built 2026-11-17, ahead of step
+  9 (`koyo-seam`, `windows.rs`): Koyo's floating windows sit one level under the menus'
+  (100; GPUI gives a pop-up panel 101, the menus' own level, where only the order of showing
+  decided, and a menu opened for the main window while a popover was still up came up behind
+  it), and closing one orders it out before GPUI's own removal of the window, which waits
+  for the update that asked for it to unwind.
 
 **Geometry**
 

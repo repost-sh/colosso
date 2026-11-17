@@ -17,3 +17,4 @@ pub mod keys;
 pub mod menus;
 #[cfg(target_os = "macos")]
 pub mod pages;
+pub mod windows;

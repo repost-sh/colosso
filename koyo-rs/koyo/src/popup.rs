@@ -102,6 +102,9 @@ struct Up {
     settling: Option<Task<()>>,
     /// A dialog has the keys of the window it's over for as long as it's up.
     _keys: Option<crate::keyboard::DialogOver>,
+    /// Its window as `AppKit` has it, to take it off the screen the moment it's closed.
+    #[cfg(target_os = "macos")]
+    native: Option<objc2::rc::Retained<objc2_app_kit::NSWindow>>,
 }
 
 #[derive(Default)]
@@ -186,6 +189,10 @@ pub fn open<V: Render>(
         _watching: watching,
         settling: None,
         _keys: kind.is_task().then(|| crate::keyboard::DialogOver::new(over)),
+        #[cfg(target_os = "macos")]
+        native: (handle.update(cx, |_, window, _| crate::native::window::ns_window(window)))
+            .ok()
+            .flatten(),
     };
     cx.default_global::<Popups>().up.insert(kind, up);
     Some(handle)
@@ -226,6 +233,12 @@ pub fn close(kind: Kind, cx: &mut App) {
     let Some(up) = cx.default_global::<Popups>().up.remove(&kind) else {
         return;
     };
+    // Off the screen now: GPUI removes the window once this update has unwound, and a menu or
+    // a page's pop-up the close makes way for would open under it meanwhile.
+    #[cfg(target_os = "macos")]
+    if let Some(native) = &up.native {
+        crate::native::window::dismiss(native);
+    }
     cx.defer(move |cx| {
         (up.window)
             .update(cx, |_, window, _| window.remove_window())
@@ -247,6 +260,10 @@ pub fn close_from_inside(window: &mut Window, cx: &mut App) {
     cx.default_global::<Popups>()
         .up
         .retain(|_, up| up.window != handle);
+    #[cfg(target_os = "macos")]
+    if let Some(native) = crate::native::window::ns_window(window) {
+        crate::native::window::dismiss(&native);
+    }
     window.remove_window();
 }
 
